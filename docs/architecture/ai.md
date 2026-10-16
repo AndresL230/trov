@@ -305,6 +305,31 @@ the tab says what is SENT (`web-ui.md`, the Privacy Policy).
 
 Off means the field is MISSING on every screen — never an `"off"` state (`shared/ai-core.ts`).
 
+### The read rule (`aiShown`, `src/plans/gate.ts`; owner rulings 2026-10-16, Q17 / Q18 / Q13 / Q19)
+
+ONE rule for every COMPUTED AI surface — the brief, the repo state, the themes, the Roadmap's notes, drift and
+suggestions, the ticket / Unplaced / Review cards — on the screens AND over MCP:
+
+- **No Anthropic key reads EXACTLY like the switch off**: every one of those fields is ABSENT (`not_connected` in the
+  spec's words: no field, never an "off" state). With no key nothing is read at all (`aiKeySet(ctx)`,
+  `src/data/context.ts` — the one bit of the key a context hands out, so MCP's reads keep importing nothing from
+  `src/ai/`); else ONE statement (`planAndAiRuns`: the plan, the switch, the month's runs). The reads that already
+  join `orgs.ai_automation` in their own statement (`openSuggestions`, `org_insights`' `latest`,
+  `roadmapSuggestions`) check the bit first and keep their join.
+- **Off refuses every decision**: Accept and Dismiss answer 403 `off` (after `not_found`, before anything else) —
+  theme and Roadmap decisions included: a suggestion nobody is shown is decided by nobody.
+- **At the cap every surface sends `capped` with its LAST version** (`resumesOn` the 1st of next month, `upgrade` on
+  Free): the brief and the state as before, the themes (both ranges — "Planning" sent `ready` before), and the
+  Roadmap's note and drift (`AiRoadmapLine.state?: "capped"`, present only then; `web/src/roadmap-ai.ts` adds the
+  AI kit's capped line). A Roadmap line asks the rule's statement only when a line came back.
+- **Records are not computed surfaces**: Trov's feed entries keep their `ai` mark and Sift's stored importance keeps
+  showing in the Feed and the daily's "Also" with the switch off or no key (Q29 / Q32).
+- **`LOCAL_AI_PREVIEW` honours both** (`aiPreviewShown`, `src/ai/preview.ts`): with the switch off or no key in
+  `.dev.vars` the previewed reads carry no fixture, so the off state can be screenshotted; Org settings › AI keeps
+  its real `off` / `no_key` eligibility; the filter answers 403 `off` / 503 `no_key` before its fixture.
+
+`test/ai.read-rule.test.ts` pins it; a suite that reads these surfaces holds a fake key (`test/helpers/ai-key.ts`).
+
 ## Metering (`src/data/meter.ts`, actor `ai-pass`)
 
 Per provider, per org per UTC day in `org_usage_daily`. Counts only.
@@ -373,7 +398,7 @@ so the eval runner and the recorded-response test build exactly what the pass se
   nearby doc, or the section the agent filed it under. No reason → no suggestion.
 - **The screens** (cookie reads only, `src/ai/attach.ts`): `GET /tickets/:id` carries `TicketDetail.ai?`,
   `GET /needs-triage` each row's `ai?`, `GET /proposals` / `GET /adrs` each item's `ai?` — open suggestions only,
-  only while the switch is on (`openSuggestions` joins `orgs.ai_automation`); a failed read returns the rows as they
+  only under the read rule (`openSuggestions` joins `orgs.ai_automation`, and reads nothing without a key); a failed read returns the rows as they
   were. MCP's `get_ticket` never carries the field. Drawn by `web/src/ai-cards.ts` (chips with Accept / Dismiss on
   the ticket detail and on an Unplaced item; a quiet risk line on Review with Dismiss only).
 
@@ -458,7 +483,8 @@ a breaking change skips it — 6 h otherwise).
 4. **The write** — computed, direct (`appendRepoState`): version N+1 and every version older than the last 20
    deleted, in ONE batch.
 
-**The read** (`readRepoState`, MCP-reachable, imports nothing from `src/ai/`): absent with no repo, the switch off,
+**The read** (`readRepoState`, MCP-reachable, imports nothing from `src/ai/`): absent with no repo, the read rule's
+off (the switch off or no key),
 nothing written, a row that no longer parses, the viewer's "Wrong?" on that version
 (`aiItemRef.repoState(repo, generatedAt)`), or a failed read; `capped` once the month's `ai_runs` are spent (the
 last state, `resumesOn`, `upgrade` on Free); else `ready`. Two statements (plus "Wrong?"'s with a viewer).
@@ -525,7 +551,7 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
   insert and the trim in ONE batch). In `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; deleting the account
   DELETES the person's rows (`src/deletion/person.ts`), never hands them to the tombstone.
 - **The read** (`storedBrief`, `src/tools/mywork.ts`, plain D1 — reachable from MCP, so it imports nothing from
-  `src/ai/`): the newest row → `AiBrief`; ABSENT when the switch is off, there is none, it fails `AiBriefSchema`,
+  `src/ai/`): the newest row → `AiBrief`; ABSENT under the read rule's off (the switch off or no key), there is none, it fails `AiBriefSchema`,
   or the person pressed "Wrong?" on that version; `capped` (with `resumesOn`, `upgrade` on Free) when `ai_runs` are
   spent; `empty` for a no-model version. `GET /me/dashboard`, `get_my_work` and — Phase E — the e-mail read it. An
   OLDER stored brief may be longer, carry more than three or several of a kind, or mark a past-due item `due`: it
@@ -571,7 +597,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
 - **The read** (`readRepoThemes`, from `getRepoDashboard` — so the screen and `get_repo_dashboard`'s planning tab): 8 weeks
   and a quarter (13), each `AiThemes` with active lanes (PRs counted from `pr_themes`) and proposed lanes that have an
   OPEN suggestion (counted from `seed_prs`, `suggestionId` set), at most 8; `prCount` = the PRs drawn; the newest caption
-  on the 8-week range only, and only while every theme it names is still active. ABSENT when the switch is off, there is
+  on the 8-week range only, and only while every theme it names is still active; `capped` (both ranges, `resumesOn`,
+  `upgrade` on Free) once the month's `ai_runs` are spent. ABSENT under the read rule's off (the switch off or no key), there is
   no repository, or neither an active theme nor a waiting proposal exists; a failed read leaves it out and marks the
   dashboard `degraded`. A range the READER marked "Wrong?" (`aiItemRef.themes(repo, range, generatedAt)`) is left out
   for them (`hiddenFor`), so the field is `Partial<Record<AiThemeRange, AiThemes>>` — the screen keeps the card and its
@@ -613,8 +640,9 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   written in the text (`ticket:14`) states no number, is shown as its label (`#14`), and one not offered drops the
   line; people's words go fenced as data (a document as its own text, `fencedText`). A note claiming the sprint is
   done is dropped. Nothing here marks work done (invariant 5).
-- **Reads**: `org_insights` (newest of the last 10 versions per key) joins `orgs.ai_automation = 1`, so with the
-  switch off every field is ABSENT. `SprintView.note?` (active sprints only) and `PlanView.drift?` (until its
+- **Reads**: `org_insights` (newest of the last 10 versions per key) joins `orgs.ai_automation = 1` and reads nothing
+  without a key (the read rule), so with the switch off or no key every field is ABSENT; at the cap a note and the
+  drift carry `state: "capped"` with `resumesOn` / `upgrade`. `SprintView.note?` (active sprints only) and `PlanView.drift?` (until its
   window passes) come with `GET /roadmap`, `GET /sprints` and MCP `get_roadmap`; `PlanView.suggestions?` (the open
   Roadmap suggestions) only with the cookie `GET /roadmap`, only for an admin. "Wrong?" on a note or the drift
   hides it for that person (`roadmapForPerson`, `src/data/org-insights.ts`).
@@ -670,7 +698,8 @@ API (`batch: true`, half the price), the pass's last stage.
   kinds (› The Roadmap). A value that is an
   object names itself with a `label` (`suggestionDto`).
 - **Accept** — `POST /ai/suggestions/:id/accept { value? }` (`:id` is the row id; another org's id is
-  `not_found`). In order: `not_found` (404) → `not_open` (409) → `not_available` (409: no handler for the kind) →
+  `not_found`). In order: `not_found` (404) → `off` (403: the read rule's off — the switch off or no key; Dismiss
+  answers it too) → `not_open` (409) → `not_available` (409: no handler for the kind) →
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
   holds Phase C's (`src/ai/jobs/accept.ts`), the theme handlers (kind `themes.propose`) and the Roadmap's `sprint_draft` /
@@ -732,7 +761,8 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   not a filter here, with Undo back to the filters set by hand; after Undo it leaves by the kit's one exit
   (`AiController.leave`, key `filter:<screen>`).
 - **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
-  model's answer, with no key, no call and no count; `empty` is unreadable, `capped` the 402. The switch still holds.
+  model's answer, with no call and no count; `empty` is unreadable, `capped` the 402. The switch and the key still
+  hold (403 `off`, 503 `no_key` first — the read rule).
 - Tests: `test/ai.filter.test.ts` (the call, the gates, the checks, the preview), `test/render.ai-filter.test.ts`.
 
 ## Ask Trov (`src/ai/ask/`; in full: `ask.md`)
@@ -769,7 +799,8 @@ on it — off or nothing written is a MISSING field, never an "off" state. `get_
 tab) and `themes` with `planning` (or no tab) when the dashboard has them — they are not sections, so
 `REPO_TAB_SECTIONS` does not name them (`src/tools/repo-agent.ts`).
 
-**`LOCAL_AI_PREVIEW`** (`src/ai/preview.ts`, `env.md` › Local development only) fills four cookie reads from
+**`LOCAL_AI_PREVIEW`** (`src/ai/preview.ts`, `env.md` › Local development only) — under the read rule: switch on and a
+key in `.dev.vars` (any value; the preview never sends it) — fills four cookie reads from
 `shared/ai-fixtures.ts` — the brief, `state` + `themes`, two feed entries merged by `created_at`, and Org settings ›
 AI's numbers (`aiSettingsFixture`: all four allowances and the eligibility of a 5-seat Pro org — partway through the
 month in `ready` / `proposed`, nothing used in `empty`, every allowance used up in `capped`; the switches stay the

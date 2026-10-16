@@ -50,12 +50,6 @@ export function seedPrsOf(r: Pick<ThemeRow, "seed_prs">): number[] {
   }
 }
 
-/** Is the org's AI switch on? (Off: every AI field is MISSING.) A missing org reads as off. */
-export async function aiSwitchOn(ctx: TenantContext): Promise<boolean> {
-  const r = await first<{ enabled: number }>(ctx, `SELECT ai_automation AS enabled FROM orgs WHERE id = ?`, ctx.orgId);
-  return r?.enabled === 1;
-}
-
 /** A repository's themes in the given states, in lane order. */
 export function repoThemes(ctx: TenantContext, repo: string, statuses: readonly ThemeStatus[] = ["active"]): Promise<ThemeRow[]> {
   const st = statuses.length ? statuses : ["active"];

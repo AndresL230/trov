@@ -22,6 +22,10 @@ import events from "../fixtures/dev/events.json";
 import identity from "../fixtures/dev/identity.json";
 import tickets from "../fixtures/dev/tickets.json";
 import aiRoadmap from "../fixtures/dev/ai-roadmap.json";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const LOCAL = "http://localhost:8787";
 const DEPLOYED = "https://trov.dev";

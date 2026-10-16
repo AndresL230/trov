@@ -26,6 +26,10 @@ import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { markRow, stubProviders, succeededLine, type ClaudeReply } from "./helpers/ai-pass";
 import { fencedBlocks, inputOf, tick, withThemes } from "./helpers/ai-roadmap";
 import { addOrgRepo } from "./helpers/org-config";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const e = env as unknown as Env;
 const HOUR = 3_600_000;

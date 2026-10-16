@@ -5,11 +5,10 @@ import { isFeedImportance } from "@shared/ai-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { memberPerson, memberGithubLogins } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
-import { AiBriefSchema, aiItemRef, nextMonthStart, type AiBrief } from "@shared/ai";
-import { FREE_PLAN, planRefusal } from "@shared/plans";
+import { AiBriefSchema, aiItemRef, type AiBrief } from "@shared/ai";
 import { latestBrief } from "../data/person-brief";
 import { hiddenFor } from "../data/ai";
-import { planAndAiRuns } from "../plans/gate";
+import { aiShown } from "../plans/gate";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 
 // My Work: a D1-only projection over captured GitHub events (Task 6). No live
@@ -291,27 +290,26 @@ const BriefContentSchema = AiBriefSchema.pick({ now: true, recently: true, next:
 /**
  * THE read of a person's brief (0063_person_brief): the NEWEST row the AI pass stored for them — what My Work
  * (`GET /me/dashboard`), MCP `get_my_work` and, from Phase E, the e-mail show. D1 only: no model, nothing from
- * src/ai/ (this module is reachable from src/mcp.ts). Null — the field is ABSENT — when the org's AI switch is
- * off, nothing was stored, the stored row fails its schema, or this person pressed "Wrong?" on that very version
+ * src/ai/ (this module is reachable from src/mcp.ts). Null — the field is ABSENT — when THE read rule hides it
+ * (`aiShown`: the org's AI switch off, or no Anthropic key on the deployment), nothing was stored, the stored row fails its schema, or this person pressed "Wrong?" on that very version
  * (`aiItemRef.brief(generatedAt)`; the next version shows again). When the org's `ai_runs` are spent the LAST
  * brief is shown as `capped`, with the day it resumes. A row the pass stored with no model is `empty`.
  */
 export async function storedBrief(ctx: TenantContext, handle: string, now: Date = new Date()): Promise<AiBrief | null> {
-  const [org, row] = await Promise.all([planAndAiRuns(ctx, now), latestBrief(ctx, handle)]);
-  if (!org.enabled || !row) return null;
+  const [org, row] = await Promise.all([aiShown(ctx, now), latestBrief(ctx, handle)]);
+  if (!org.shown || !row) return null;
   let content: unknown;
   try { content = JSON.parse(row.brief_json); } catch { return null; }
   const parsed = BriefContentSchema.safeParse(content);
   if (!parsed.success) return null;
   const written = row.model !== null;
   if (written && (await hiddenFor(ctx, handle, "brief")).has(aiItemRef.brief(row.generated_at))) return null;
-  const capped = planRefusal(org.plan, "ai_runs", org.used, 1) !== null;
   return {
-    state: capped ? "capped" : written ? "ready" : "empty",
+    state: org.capped ? "capped" : written ? "ready" : "empty",
     generatedAt: written ? row.generated_at : null,
     model: row.model,
-    resumesOn: capped ? nextMonthStart(now) : null,
-    upgrade: capped && org.plan.plan === FREE_PLAN,
+    resumesOn: org.resumesOn,
+    upgrade: org.upgrade,
     ...parsed.data,
   };
 }

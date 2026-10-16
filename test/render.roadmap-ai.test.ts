@@ -65,6 +65,15 @@ describe("a sprint's note", () => {
     expect(sprintNoteBlock(sprint(), note, hidden)).toBe("");
     expect(sprintNoteBlock(sprint(), undefined, initialAiUi())).toBe("");
   });
+  it("at the month's cap (the read rule, Q19): the LAST note and drift with the AI kit's capped line — and none without it", () => {
+    const capped = { state: "capped" as const, resumesOn: "2026-11-01", upgrade: true };
+    const note = sprintNoteBlock(sprint(), { ...fx.notes[0], ...capped }, initialAiUi());
+    expect(note).toContain(fx.notes[0].text);
+    expect(note).toContain("Monthly AI allowance used; notes resume Nov 1.");
+    expect(note).toContain("Upgrade to Pro");
+    expect(driftLine({ ...fx.drift, ...capped, upgrade: false }, initialAiUi())).toContain("Monthly AI allowance used; notes resume Nov 1.");
+    expect(sprintNoteBlock(sprint(), fx.notes[0], initialAiUi())).not.toContain("cnpy-ai-capped");
+  });
   it("on the card: the forecast and the note on an active sprint; a done card shows neither", () => {
     const sp = sprint({ forecast: { remaining: 3, perDay: 0.2, projected: "2026-11-02", daysLate: 13 }, note: fx.notes[0] });
     const html = sprintCard(sp, [], { now: NOW.getTime() });

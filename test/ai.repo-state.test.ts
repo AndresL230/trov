@@ -20,6 +20,10 @@ import { addOrgRepo, setOrgEnvironments } from "./helpers/org-config";
 import { ENVS } from "./helpers/repo";
 import { addPart, deployRow, pollState } from "./helpers/dashboard-hosting";
 import { dirtyRow, keyedEnv, markRow, stubProviders, type ClaudeReply, type Stub } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const e = env as unknown as Env;
 const REPO = "SaplingLearn/sapling";

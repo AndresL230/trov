@@ -11,6 +11,7 @@ import type { AiSuggestion, AiSuggestionError } from "@shared/ai";
 import { hasRole, type TenantContext } from "../data/context";
 import { decideSuggestion, getSuggestion, reopenSuggestion, suggestionDto, type AiSuggestionRow } from "../data/ai";
 import { nowIso } from "../data/sql";
+import { aiShown } from "../plans/gate";
 import { AcceptRefused, type AcceptHandler, type AcceptRequest } from "./accept";
 import { THEME_ACCEPT_HANDLERS } from "./themes-accept";
 import { CARD_ACCEPT_HANDLERS } from "./jobs/accept";
@@ -30,12 +31,14 @@ export type SuggestionAnswer =
   | { ok: true; suggestion: AiSuggestion }
   | { ok: false; status: 400 | 403 | 404 | 409; error: AiSuggestionError };
 
-const STATUS: Record<AiSuggestionError, 400 | 403 | 404 | 409> = { not_found: 404, not_open: 409, not_available: 409, forbidden: 403, invalid: 400 };
+const STATUS: Record<AiSuggestionError, 400 | 403 | 404 | 409> = { not_found: 404, off: 403, not_open: 409, not_available: 409, forbidden: 403, invalid: 400 };
 const refuse = (error: AiSuggestionError): SuggestionAnswer => ({ ok: false, status: STATUS[error], error });
 
 /**
  * Accept suggestion `id` (its global row id) as `ctx`'s person. In this order: an id that is not this org's
- * is `not_found` (before anything else is said about it, a bad body included); a decided one `not_open`; a
+ * is `not_found` (before anything else is said about it, a bad body included); THE read rule's off (the org's switch
+ * off, or no Anthropic key — src/plans/gate.ts `aiShown`) `off`: a suggestion nobody is shown is decided by nobody;
+ * a decided one `not_open`; a
  * kind with no handler `not_available`; a person below the handler's role `forbidden`; a body the contract
  * refuses (`body` null) `invalid`. Then the row is CLAIMED (one guarded
  * UPDATE, so two people pressing at once cannot both apply it), the handler writes, and on its throw the
@@ -47,6 +50,7 @@ export async function acceptSuggestion(
 ): Promise<SuggestionAnswer> {
   const row = await getSuggestion(ctx, id);
   if (!row) return refuse("not_found");
+  if (!(await aiShown(ctx)).shown) return refuse("off");
   if (row.state !== "open") return refuse("not_open");
   const handler = Object.hasOwn(handlers, row.kind) ? handlers[row.kind] : undefined;
   if (!handler) return refuse("not_available");
@@ -70,12 +74,14 @@ export async function acceptSuggestion(
 }
 
 /** Dismiss suggestion `id` as `ctx`'s person — any member, unless the kind's handler says an admin
- *  (`dismissRole`); the decision is remembered (a re-run of the kind supersedes only an OPEN suggestion). */
+ *  (`dismissRole`); the decision is remembered (a re-run of the kind supersedes only an OPEN suggestion). THE read
+ *  rule's off refuses it (`off`), as it refuses Accept. */
 export async function dismissSuggestion(
   ctx: TenantContext, id: number, handlers: Readonly<Record<string, AcceptHandler>> = AI_ACCEPT_HANDLERS,
 ): Promise<SuggestionAnswer> {
   const row = await getSuggestion(ctx, id);
   if (!row) return refuse("not_found");
+  if (!(await aiShown(ctx)).shown) return refuse("off");
   if (row.state !== "open") return refuse("not_open");
   const handler = Object.hasOwn(handlers, row.kind) ? handlers[row.kind] : undefined;
   if (handler?.dismissRole === "admin" && !hasRole(ctx, "admin")) return refuse("forbidden");

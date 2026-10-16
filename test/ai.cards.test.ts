@@ -25,6 +25,10 @@ import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, systemCtx, tenantCtx } from "./helpers/tenant";
 import { keyedEnv } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const BASE = "/api/o/saplinglearn";
 const later = () => new Date(Date.now() + 60_000);

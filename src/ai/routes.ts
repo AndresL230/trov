@@ -58,8 +58,9 @@ aiApp.use("/ai/*", cookieOnly);
 const settingsOr503 = async (c: Context<AppEnv>) => {
   try {
     const s = await aiSettings(c.env, c.var.ctx);
-    // LOCAL DEVELOPMENT ONLY (./preview.ts): the sample numbers over the real switches.
-    const preview = aiPreview(c.env, c.req.url);
+    // LOCAL DEVELOPMENT ONLY (./preview.ts): the sample numbers over the real switches — never over an `off` or
+    // `no_key` eligibility, which is THE read rule's off and is shown as it is (owner ruling Q13).
+    const preview = s.eligibility === "off" || s.eligibility === "no_key" ? null : aiPreview(c.env, c.req.url);
     return c.json(preview ? { ...s, ...preview.settings } : s);
   } catch (e) {
     console.error("ai settings", e instanceof Error ? e.name : "error");
@@ -117,8 +118,8 @@ aiApp.post(AI_ROUTES.feedback, async (c) => {
 
 // ── The plain-language filter (#162, ./filter.ts) ────────────────────────────
 // Gates in order, each spending nothing when it refuses: the body (400 `invalid`), the org's AI switch (403
-// `off` — the preview honours it too), then — unless `LOCAL_AI_PREVIEW` answers from the screen's fixture,
-// with no key, no call and no count — the key (503 `no_key`), the month's `ai_runs` (the house 402
+// `off`), the key (503 `no_key`) — the preview honours both — then, unless `LOCAL_AI_PREVIEW` answers from the
+// screen's fixture with no call and no count, the month's `ai_runs` (the house 402
 // `plan_limit`, one `ai_run_capped:filter` counted), the person's `ai_filter` rate (429). Then ONE call. An
 // answer that sets nothing is 422 `unreadable`, naming the request's words that are no filter here.
 const filterRefusal = (c: Context<AppEnv>, code: AiFilterErrorCode, status: 400 | 403 | 422 | 503, message: string = AI_FILTER_MESSAGES[code]) =>
@@ -143,11 +144,12 @@ aiApp.post(AI_FILTER_ROUTE, async (c) => {
   try {
     const a = await aiAllowance(ctx, c.env);
     if (!a.enabled) return filterRefusal(c, "off", 403);
-    // LOCAL DEVELOPMENT ONLY (./preview.ts): the fixture, checked exactly as a model's answer is.
+    if (a.eligibility === "no_key") return filterRefusal(c, "no_key", 503);
+    // LOCAL DEVELOPMENT ONLY (./preview.ts): the fixture, checked exactly as a model's answer is — under the same
+    // switch and key as a real call (owner ruling Q13), with no call and no count.
     const preview = aiPreviewMode(c.env, c.req.url);
     if (preview === "capped") return c.json(previewCapped(a), PLAN_LIMIT_STATUS);
     if (preview) return filterAnswer(c, await previewAiFilter(ctx, parsed.data, preview));
-    if (a.eligibility === "no_key") return filterRefusal(c, "no_key", 503);
     // THE allowance (shared/plans.ts `ai_runs`): one call is one run.
     const refusal = planRefusal(a.plan, "ai_runs", a.used, 1);
     if (refusal) {

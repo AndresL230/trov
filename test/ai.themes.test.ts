@@ -31,6 +31,10 @@ import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
 import { themesDevStatements } from "../scripts/seed/themes-dev.mjs";
 import { dirtyRow, keyedEnv, markRow, stubProviders, succeededLine, type ClaudeReply, type Stub } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const REPO = "SaplingLearn/sapling";
 const BASE = "/api/o/saplinglearn";

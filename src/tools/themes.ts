@@ -3,7 +3,8 @@
 // MCP `get_repo_dashboard`'s planning tab). No model, no network: what a model wrote (the themes, each PR's theme,
 // the caption) is read back from rows; every number is counted here.
 //
-// The field is ABSENT (undefined) when the org's AI switch is off, when there is no repository, and when the
+// The field is ABSENT (undefined) when THE read rule hides it (`aiShown`: the org's AI switch off, or no Anthropic key
+// on the deployment), when there is no repository, and when the
 // repository has no active theme and no proposed theme waiting on an admin — never an empty or "off" state. A
 // range the reading person marked "Wrong?" is left out for them (`ai_feedback`, item type `themes`).
 //
@@ -14,10 +15,11 @@ import {
   type AiCite, type AiThemeColor, type AiThemeLane, type AiThemeRange, type AiThemes,
 } from "@shared/ai-core";
 import {
-  aiSwitchOn, latestCaption, mergedPrsSince, openThemeSuggestions, repoThemes, seedPrsOf, type MergedPrRow, type ThemeRow,
+  latestCaption, mergedPrsSince, openThemeSuggestions, repoThemes, seedPrsOf, type MergedPrRow, type ThemeRow,
 } from "../data/themes";
 import type { TenantContext } from "../data/sql";
 import { hiddenFor } from "../data/ai";
+import { aiShown } from "../plans/gate";
 
 const DAY = 86_400_000;
 /** The lanes the screen draws at most (shared/ai.ts `AiThemesSchema`). */
@@ -56,6 +58,7 @@ const prCite = (p: Pick<MergedPrRow, "number" | "title" | "url" | "card_title">)
 export function themesForRange(
   range: AiThemeRange, now: number, themes: readonly ThemeRow[], suggestions: ReadonlyMap<number, number>, prs: readonly MergedPrRow[],
   caption: { text: string; generatedAt: string; model: string | null } | null,
+  cap: { capped: boolean; resumesOn: string | null; upgrade: boolean } = { capped: false, resumesOn: null, upgrade: false },
 ): AiThemes {
   const weeks = weeksEnding(now, AI_THEME_RANGE_WEEKS[range]);
   const inRange = prs.map((p) => ({ p, w: weekIndex(weeks, p.at) })).filter((x) => x.w >= 0);
@@ -81,11 +84,12 @@ export function themesForRange(
   }
   const newest = themes.reduce<ThemeRow | null>((a, t) => (!a || t.created_at > a.created_at ? t : a), null);
   return {
-    state: "ready",
+    // At the month's cap the chart is still the server's count, and what Trov wrote is its LAST version (Q19).
+    state: cap.capped ? "capped" : "ready",
     generatedAt: caption?.generatedAt ?? newest?.created_at ?? null,
     model: caption ? caption.model : newest?.model ?? null,
-    resumesOn: null,
-    upgrade: false,
+    resumesOn: cap.capped ? cap.resumesOn : null,
+    upgrade: cap.capped && cap.upgrade,
     caption: caption?.text ?? null,
     prCount: drawn.size,
     range,
@@ -98,7 +102,8 @@ export function themesForRange(
  *  then leaves the field out and says it is degraded). */
 export async function readRepoThemes(ctx: TenantContext, repo: string, now: number = Date.now()): Promise<Partial<Record<AiThemeRange, AiThemes>> | undefined> {
   if (!repo) return undefined;
-  if (!(await aiSwitchOn(ctx))) return undefined;
+  const gate = await aiShown(ctx, new Date(now));
+  if (!gate.shown) return undefined;
   const [themes, suggestions] = await Promise.all([repoThemes(ctx, repo, ["active", "proposed"]), openThemeSuggestions(ctx, repo)]);
   const active = themes.filter((t) => t.status === "active");
   if (!active.length && !themes.some((t) => t.status === "proposed" && suggestions.has(t.id))) return undefined;
@@ -118,7 +123,7 @@ export async function readRepoThemes(ctx: TenantContext, repo: string, now: numb
   const hidden = await hiddenFor(ctx, ctx.userId, "themes").catch(() => new Set<string>()); // unreadable: hide nothing
   const out: Partial<Record<AiThemeRange, AiThemes>> = {};
   for (const r of AI_THEME_RANGES) {
-    const t = themesForRange(r, now, themes, suggestions, prs, r === "8w" ? caption : null);
+    const t = themesForRange(r, now, themes, suggestions, prs, r === "8w" ? caption : null, gate);
     if (!hidden.has(aiItemRef.themes(repo, r, t.generatedAt ?? "themes"))) out[r] = t;
   }
   return Object.keys(out).length ? out : undefined;

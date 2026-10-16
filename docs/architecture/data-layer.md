@@ -32,7 +32,9 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
   (`test/data-layer.context.test.ts` › the merged read).
 - A repository never builds a context. A module that touches both kinds takes the tenant ctx and receives
   `p` as a parameter. (One exception: `createOrg` writes the new org's seed rows as `systemTenant(p, newId)`.)
-- `src/data/secrets.ts` reads its key through `kekOf(ctx)`; no other module can reach a context's `Env`.
+- `src/data/secrets.ts` reads its key through `kekOf(ctx)`; no other module can reach a context's `Env`. The one
+  other accessor is `aiKeySet(ctx)` — ONE BIT (is there an Anthropic key?), never the key — for the AI read rule
+  (`ai.md` › The read rule).
 
 ## Bearer: which organization an MCP call acts in (spec §7; 0051_mcp_connection_orgs)
 

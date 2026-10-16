@@ -225,6 +225,11 @@ export interface AiRoadmapLine {
   cites: AiCite[];
   generatedAt: string;
   model: string | null;
+  /** Present ONLY when the org's month's `ai_runs` are spent (owner ruling Q19: every surface says `capped`): the
+   *  line is the LAST version, `resumesOn` the 1st of next month and `upgrade` true on Free (`AiMeta`). */
+  state?: "capped";
+  resumesOn?: string | null;
+  upgrade?: boolean;
 }
 /** `SprintView.note?` — one line per ACTIVE sprint ("Two of five done; the other three wait on hosting"). */
 export type AiSprintNote = AiRoadmapLine;
@@ -263,10 +268,11 @@ export interface AiFeedbackBody {
 /** `POST /ai/suggestions/:id/accept` — `value` replaces the suggested value (Rename). */
 export interface AiAcceptBody { value?: unknown }
 
-/** Refusal codes the suggestion routes answer with (`{ error }`): `not_found` 404, `not_open` and
- *  `not_available` 409 (no accept handler is registered for the suggestion's kind yet — every kind,
- *  today), `forbidden` 403, `invalid` 400 (a body the schema refuses). */
-export const AI_SUGGESTION_ERRORS = ["not_found", "not_open", "not_available", "forbidden", "invalid"] as const;
+/** Refusal codes the suggestion routes answer with (`{ error }`): `not_found` 404, `off` 403 (THE read rule hides
+ *  every suggestion — the org's AI switch is off, or the deployment has no Anthropic key, which reads exactly the
+ *  same — so nothing is decided: owner ruling Q18), `not_open` and `not_available` 409 (no accept handler for the
+ *  kind, or the item it was about is gone), `forbidden` 403, `invalid` 400 (a body or value the kind refuses). */
+export const AI_SUGGESTION_ERRORS = ["not_found", "off", "not_open", "not_available", "forbidden", "invalid"] as const;
 export type AiSuggestionError = (typeof AI_SUGGESTION_ERRORS)[number];
 
 /** Tenant routes (cookie only, under `/api/o/:slug`). */

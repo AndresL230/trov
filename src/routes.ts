@@ -72,7 +72,7 @@ import { aiApp } from "./ai/routes";
 import { askApp } from "./ai/ask/routes";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
-import { aiPreview, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
 import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
@@ -281,7 +281,7 @@ tenantRoot.get("/feed", async (c) => {
   // hidden for them (and only them); the record stays. Under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries
   // are merged in (src/ai/preview.ts).
   const feed = await hideWrongFor(c.var.ctx, c.get("principal").handle, await get_feed(c.var.ctx, filter));
-  const preview = aiPreview(c.env, c.req.url);
+  const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
   return c.json({ feed: preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed });
 });
 
@@ -762,7 +762,7 @@ tenantRoot.get("/roadmap", async (c) => {
   const ctx = c.var.ctx;
   const admin = hasRole(ctx, "admin");
   const plan = await roadmapForPerson(ctx, c.get("principal").handle, await get_plan(ctx), { admin });
-  const preview = aiPreview(c.env, c.req.url);
+  const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
   return c.json(preview ? withPreviewRoadmap(plan, preview.roadmap, { admin }) : plan);
 });
 
@@ -781,7 +781,7 @@ tenantRoot.get("/me/dashboard", async (c) => {
     ]);
     // `brief` is the newest stored one (src/tools/mywork.ts `storedBrief`), absent when there is none. LOCAL_AI_PREVIEW
     // shows the sample instead under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets the sample.
-    const preview = aiPreview(c.env, c.req.url);
+    const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
     return c.json(preview ? { ...data, brief: preview.brief } : data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
@@ -816,7 +816,7 @@ tenantRoot.get("/repo/dashboard", async (c) => {
     const written = state ? { ...dash, state } : dash;
     // `themes` (not a section) is there when the repo has themes (src/tools/themes.ts). LOCAL_AI_PREVIEW shows the
     // samples under `wrangler dev` only (src/ai/preview.ts), over the real state.
-    const preview = aiPreview(c.env, c.req.url);
+    const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
     return c.json(preview ? { ...written, state: preview.repoState, themes: preview.themes } : written);
   } catch {
     await heldP.catch(() => undefined); // the repository's name, if its own read succeeded

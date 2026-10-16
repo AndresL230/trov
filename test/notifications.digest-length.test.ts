@@ -14,6 +14,10 @@ import { runDigest } from "../src/notifications/run";
 import { localDelivery } from "../src/notifications/delivery";
 import { storeBrief } from "../src/data/person-brief";
 import { BUSY_LOGIN, BUSY_NOW, htmlWordCount, seedBusyDay, wordCount } from "./helpers/digest-fixture";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 async function daily() {
   await runDigest(systemCtx(), platformCtx(), "daily", BUSY_NOW, { delivery: localDelivery(systemCtx()), origin: "https://trov.dev" });

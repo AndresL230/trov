@@ -30,6 +30,10 @@ import { first, run } from "./helpers/db";
 import { ORG_A, systemCtx } from "./helpers/tenant";
 import { cookieFor } from "./helpers/persons";
 import { keyedEnv, markRow, stubProviders } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const ME = "AndresL230";
 const MIN = 60_000;

@@ -13,6 +13,7 @@ import { all, first, run } from "./helpers/db";
 import { FIXTURE_ADMIN, cookieFor } from "./helpers/persons";
 import { ORG_A, ORG_B, ensureMember, systemCtx } from "./helpers/tenant";
 import { FAKE_ANTHROPIC_KEY } from "./helpers/anthropic";
+import { useAiKey } from "./helpers/ai-key";
 
 const BASE = "/api/o/saplinglearn";
 const MEMBER = "ai-member";
@@ -157,6 +158,9 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
 });
 
 describe("suggestions — accept and dismiss", () => {
+  // THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key refuses a decision as the switch off does, so these
+  // tests hold a fake one (Org settings › AI above reads the pool's real "no key").
+  useAiKey();
   it("accept with the empty registry is 409 not_available for every kind, and the suggestion stays open", async () => {
     const id = await suggestion();
     const r = await call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), {});

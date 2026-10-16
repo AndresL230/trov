@@ -166,11 +166,12 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     // …and src/ai/router.ts (the AI side's name for it) only re-exports them.
     expect([...reachableDirect("src/ai/router.ts")].sort()).toEqual(["src/data/ai-dirty.ts", "src/tools/ai-route.ts"]);
     // The key is read where summaries are chosen, where AI eligibility is answered, the pass starts and the filter calls (and
-    // where Platform says whether they are on) — nowhere else.
+    // where Platform says whether they are on) — and, as ONE BIT (`aiKeySet`: is there a key?), by the data layer's
+    // context for THE read rule of the computed AI surfaces (src/plans/gate.ts `aiShown`) — nowhere else.
     const readers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.ANTHROPIC_API_KEY\b/.test(text)).map(([f]) => f).sort();
     expect(readers).toEqual([
       "src/ai/ask/history.ts", "src/ai/ask/routes.ts", "src/ai/ask/turn.ts",
-      "src/ai/eligibility.ts", "src/ai/filter.ts", "src/ai/pass.ts", "src/plans/summaries.ts", "src/platform/routes.ts",
+      "src/ai/eligibility.ts", "src/ai/filter.ts", "src/ai/pass.ts", "src/data/context.ts", "src/plans/summaries.ts", "src/platform/routes.ts",
     ]);
     // TypeSafe's key: the Sift run and the AI pass (its Jev jobs and gates) send with it; the Tags list says whether one is set.
     const jevReaders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.TYPESAFE_API_KEY\b/.test(text)).map(([f]) => f).sort();

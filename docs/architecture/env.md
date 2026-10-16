@@ -151,7 +151,9 @@ Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `ht
 `LOCAL_AI_PREVIEW` — `ready` | `empty` | `capped` | `proposed`: the AI screens' sample content (`src/ai/preview.ts`,
 `ai.md`) on `/me/dashboard`, `/repo/dashboard` and `/feed`, before anything writes it. The same rule as the stand-ins:
 honoured only for a request to a loopback `http://` origin (what `wrangler dev` serves on; a deployed Worker is never
-reached there) and never beside a live Stripe key; any other value is ignored, and MCP never sees it. Blank in the
+reached there) and never beside a live Stripe key; any other value is ignored, and MCP never sees it. It keeps the AI
+read rule (`ai.md` › The read rule): with the org's switch off or no `ANTHROPIC_API_KEY` in `.dev.vars` it shows the
+off state (no field) — set any value as the key to see the samples; the preview never sends it. Blank in the
 test pool (`vitest.config.ts`); a deployed Worker must not set it.
 
 ### Legacy — SaplingLearn's fallback, and two vars nothing reads

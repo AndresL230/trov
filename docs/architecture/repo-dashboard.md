@@ -646,14 +646,14 @@ does not name them (Summary is a SCREEN tab, `REPO_SCREEN_TABS`, never a `RepoTa
 newest `repo_state` version** (0062; written by the AI pass's `repo.state` job — `ai.md` › Repo state), read by
 `readRepoState` (`src/tools/repo-state.ts`) beside the projection — `GET /repo/dashboard` (`src/routes.ts`) and
 `get_repo_dashboard` (`getRepoDashboardForAgent`) make the same read, never a model call. It is ABSENT with no
-repository, with the org's AI switch off, with nothing written yet, for the person who flagged that version
+repository, under the AI read rule's off (the org's switch off or no Anthropic key — `ai.md` › The read rule), with nothing written yet, for the person who flagged that version
 "Wrong?", or on any failed read (never a 500, never a degraded dashboard); `ready` otherwise, and `capped` (same
 content, `resumesOn`, `upgrade` on Free) once the month's `ai_runs` are spent. `eventCount` is the server's count
 of what the version was written from. **`themes` is written too** (`src/tools/themes.ts` `readRepoThemes`, called at
 the end of `getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read —
 merged PRs per theme per UTC Monday week from `pr_themes`, a proposal's lane from the PRs it cited, the newest caption
-on the 8-week range — present only while the org's AI switch is on and the repository has an active theme or a
-proposal waiting on an admin; a failed read leaves it out and sets `degraded` (`ai.md` › Themes). `LOCAL_AI_PREVIEW`
+on the 8-week range — present only under the AI read rule (the switch on and a key) and while the repository has an
+active theme or a proposal waiting on an admin, `capped` (both ranges) once the month's `ai_runs` are spent; a failed read leaves it out and sets `degraded` (`ai.md` › Themes). `LOCAL_AI_PREVIEW`
 fills both from the fixtures under `wrangler dev` only, over the real state, never over MCP (`ai.md`).
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab);
 the `load-context` skill reads it FIRST, before any query. The screen is `web/src/repo-ai.ts` `repoStateSection`

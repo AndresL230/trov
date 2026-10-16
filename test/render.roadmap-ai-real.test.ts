@@ -27,6 +27,10 @@ import type { PlanView } from "../src/tools/plan";
 import { FIXTURE_ADMIN, cookieFor } from "./helpers/persons";
 import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
 import { run } from "./helpers/db";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const DEPLOYED = "https://trov.dev";
 /** The SPA's own modules, by a path tsc does not follow (see the header). */

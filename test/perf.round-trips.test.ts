@@ -19,6 +19,10 @@ import { create_sprint, set_sprint_active } from "../src/tools/sprints";
 import { SprintCreate } from "@shared/sprints";
 import type { RepoEvent } from "../src/repo/types";
 import type { CapturedEvent } from "@shared/contract";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const NOW = Date.parse("2026-10-01T12:00:00Z");
 const ago = (days: number): string => new Date(NOW - days * 86_400_000).toISOString().replace(/\.\d{3}Z$/, "Z");
@@ -89,7 +93,7 @@ describe("D1 round trips", () => {
       prs: "ok", activity: "ok", ciFailures: "ok", environments: "ok", deploys: "ok", providers: "ok", health: "ok",
       sprint: "ok", coverage: "ok", branches: "ok", drift: "ok", contributors: "ok", bars: "ok",
     });
-    // 58 before #178: + Trov's themes (the AI switch, the themes and their suggestions, the merged PRs and the caption,
+    // 58 before #178: + Trov's themes (THE AI read rule's statement, the themes and their suggestions, the merged PRs and the caption,
     // what the viewer hid — src/tools/themes.ts), read beside the rest, so the chain is unchanged.
     expect(c.total).toBe(62);
     expect(c.serial).toBeLessThanOrEqual(6);

@@ -153,6 +153,9 @@ export const AiRoadmapLineSchema = z.object({
   cites: z.array(AiCiteSchema).min(1).max(10),
   generatedAt: z.string().min(1),
   model: z.string().nullable(),
+  state: z.literal("capped").optional(),
+  resumesOn: z.string().nullable().optional(),
+  upgrade: z.boolean().optional(),
 }) satisfies z.ZodType<AiRoadmapLine>;
 
 export const AiPlanDriftSchema = AiRoadmapLineSchema.extend({

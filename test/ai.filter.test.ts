@@ -282,8 +282,10 @@ describe("POST /ai/filter — the gates", () => {
   });
 });
 
-describe("LOCAL_AI_PREVIEW — the fixture, with no key and no call", () => {
-  const preview = (mode: string, over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), LOCAL_AI_PREVIEW: mode, ...over });
+describe("LOCAL_AI_PREVIEW — the fixture, with no call, under the real switch and key", () => {
+  // The preview honours the switch AND the key (owner ruling Q13): it answers from the fixture with no call and no
+  // count only where a real call could be made — a key is set (a fake one: it is never sent).
+  const preview = (mode: string, over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, LOCAL_AI_PREVIEW: mode, ...over });
 
   it("ready: each screen's fixture, checked like a model's answer (\"me\" is the caller; unmatched only when typed)", async () => {
     const m = stubModel({ filter: {} });
@@ -298,8 +300,10 @@ describe("LOCAL_AI_PREVIEW — the fixture, with no key and no call", () => {
     expect(await metrics()).toEqual([]);
   });
 
-  it("empty → unreadable; capped → the 402; the switch still holds", async () => {
+  it("empty → unreadable; capped → the 402; the switch and the key still hold", async () => {
     expect((await post({ screen: "tickets", text: "x" }, preview("empty"), { origin: LOCAL })).status).toBe(422);
+    const noKey = await post<{ error: string }>({ screen: "tickets", text: "x" }, preview("ready", { ANTHROPIC_API_KEY: "" }), { origin: LOCAL });
+    expect([noKey.status, noKey.json.error]).toEqual([503, "no_key"]);
     const capped = await post<{ error: string; limit: string }>({ screen: "tickets", text: "x" }, preview("capped"), { origin: LOCAL });
     expect(capped.status).toBe(402);
     expect(capped.json).toMatchObject({ error: "plan_limit", limit: "ai_runs" });
@@ -309,7 +313,7 @@ describe("LOCAL_AI_PREVIEW — the fixture, with no key and no call", () => {
 
   it("not honoured off `wrangler dev`: a deployed origin, https, or a live Stripe key — the real path (no key: 503)", async () => {
     for (const [origin, over] of [[DEPLOYED, {}], ["https://localhost:8787", {}], [LOCAL, { STRIPE_SECRET_KEY: "sk_live_x" }]] as const) {
-      const r = await post<{ error: string }>({ screen: "tickets", text: "x" }, preview("ready", over), { origin });
+      const r = await post<{ error: string }>({ screen: "tickets", text: "x" }, preview("ready", { ...over, ANTHROPIC_API_KEY: "" }), { origin });
       expect(r.status, origin).toBe(503);
       expect(r.json.error).toBe("no_key");
     }

@@ -21,6 +21,10 @@ import { TicketCreate } from "@shared/tickets";
 import { SprintCreate } from "@shared/sprints";
 import type { Window } from "@shared/notifications";
 import type { CapturedEvent } from "@shared/contract";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 // Window under test: the 24h ending 2026-09-11T12:00Z (a Friday).
 const WINDOW: Window = { cadence: "daily", start: new Date("2026-09-10T12:00:00.000Z"), end: new Date("2026-09-11T12:00:00.000Z"), id: "2026-09-11" };

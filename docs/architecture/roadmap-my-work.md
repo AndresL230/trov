@@ -56,8 +56,8 @@ those two writers, never at render.
 recently, what is next — by the AI pass's `brief.person` job (`src/ai/brief.ts`; `ai.md` › The brief), stored in
 `person_brief` (0063, the last 5 versions). `getMyWork` reads the NEWEST row (`storedBrief`, `src/tools/mywork.ts`,
 through `src/data/person-brief.ts` — plain D1, no model, nothing from `src/ai/`), so `/me/dashboard` and
-`get_my_work` carry the same one — and the digest e-mail will (Phase E). The field is ABSENT when the org's AI
-switch is off, nothing is stored, the stored row fails `AiBriefSchema`, or the person pressed "Wrong?" on that very
+`get_my_work` carry the same one — and the digest e-mail will (Phase E). The field is ABSENT under the AI read rule
+(`ai.md` › The read rule: the org's AI switch off, or no Anthropic key on the deployment), nothing is stored, the stored row fails `AiBriefSchema`, or the person pressed "Wrong?" on that very
 version (`aiItemRef.brief(generatedAt)`; the next version shows again); `state` is `capped` (the last brief, its
 `resumesOn`, `upgrade` on Free) when the org's `ai_runs` are spent, `empty` for a version the pass wrote with no
 model when nothing was left to say. A failed brief read never degrades the rest of My Work. `GET /me/dashboard`
@@ -142,8 +142,9 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   day (`projected`, `daysLate`). Null for a sprint not active, with no start, or with nothing closed yet. The card
   says "At this pace, done Nov 2, 3 days late" with no AI mark.
 - **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
-  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only while
-  the org's AI switch is on.
+  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only under
+  the AI read rule (the switch on and a key); at the month's cap it is the last version with `state: "capped"`, and
+  the card adds the AI kit's capped line (so does the drift).
 - **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
   the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
 - **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4

@@ -22,7 +22,7 @@
 import type { SprintForecast, SprintView } from "@shared/sprints";
 import { aiItemRef, type AiPlanDrift, type AiSprintDraftValue, type AiPlanNarrativeValue, type AiSprintNote, type AiSuggestion } from "@shared/ai-core";
 import { AI_NOT_OFFICIAL, aiMark } from "./marks";
-import { aiByline, aiCites, aiFeedback, aiHiddenKey, aiLeaving, aiLeavingT, aiSuggestionChip, aiSuggestionKey, aiWrongBtn, type AiUi } from "./ai-ui";
+import { aiByline, aiCapped, aiCites, aiDay, aiFeedback, aiHiddenKey, aiLeaving, aiLeavingT, aiSuggestionChip, aiSuggestionKey, aiWrongBtn, type AiUi } from "./ai-ui";
 import { esc, attr } from "./ui";
 import { renderMarkdown } from "./markdown";
 
@@ -32,6 +32,9 @@ const day = (iso: string): string => {
   return m ? `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}` : iso;
 };
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+/** At the month's cap the line is Trov's LAST version and says so (the server's `state: "capped"`, Q19). */
+const cappedLine = (l: AiSprintNote, what: string): string =>
+  l.state === "capped" ? aiCapped({ upgrade: !!l.upgrade }, `${what} resume${l.resumesOn ? ` ${aiDay(l.resumesOn)}` : " next month"}`) : "";
 
 /** One piece in its row: a stable wrapper (`cls`, and its morph key in a keyed list) around the piece, drawn through
  *  the AI kit's exit while `leaveKey` leaves. `pad` is the space above or below it, INSIDE the exit's clip so it
@@ -75,6 +78,7 @@ export function sprintNoteBlock(sp: Pick<SprintView, "id">, note: AiSprintNote |
   if (gone(ui, key)) return "";
   return exitRow(ui, key, "rm-note-row", "padding-top:10px", `<div class="rm-note" data-screen-label="Sprint note" style="display:flex;flex-direction:column;gap:6px">
       <p style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(note.text)}</p>
+      ${cappedLine(note, "notes")}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;min-width:0">
         ${aiByline(note.generatedAt, ROADMAP_TIP.note, { size: 12 })}
         ${note.cites.length ? `<span style="display:inline-flex;flex-wrap:wrap;gap:6px;min-width:0">${aiCites(note.cites)}</span>` : ""}
@@ -98,6 +102,7 @@ export function driftLine(drift: AiPlanDrift | undefined, ui: LeaveUi): string {
   return exitRow(ui, key, "rm-drift-row cnpy-rise", "padding-top:14px", `<section class="rm-drift" data-screen-label="Roadmap · Drift" style="padding:12px 14px;border:1px dashed var(--border-strong);border-radius:10px;display:flex;flex-direction:column;gap:7px;min-width:0">
     <div style="display:flex;align-items:flex-start;gap:8px;min-width:0">${aiMark(13, ROADMAP_TIP.drift)}<p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--fg)">${esc(drift.text)}</p></div>
     ${shares}
+    ${cappedLine(drift, "notes")}
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;min-width:0">
       ${aiByline(drift.generatedAt, ROADMAP_TIP.drift, { size: 12, from: `the last ${drift.windowDays} days` })}
       ${drift.cites.length ? `<span style="display:inline-flex;flex-wrap:wrap;gap:6px">${aiCites(drift.cites)}</span>` : ""}

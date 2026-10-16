@@ -38,6 +38,11 @@ export const d1Of = (ctx: TenantContext | PlatformContext): D1Database => ctx[DB
 export const kekOf = (ctx: TenantContext): Pick<Env, "TROV_KEK" | "TROV_KEK_PREVIOUS"> =>
   ({ TROV_KEK: ctx[ENV].TROV_KEK, TROV_KEK_PREVIOUS: ctx[ENV].TROV_KEK_PREVIOUS });
 
+/** Whether this deployment has an Anthropic key — a BOOLEAN, never the key — for THE read rule of every computed AI
+ *  surface (src/plans/gate.ts `aiShown`; docs/architecture/ai.md › The read rule): no key reads exactly like the
+ *  org's switch off. MCP's reads reach it, and it hands them that one bit and nothing else. */
+export const aiKeySet = (ctx: TenantContext): boolean => !!ctx[ENV].ANTHROPIC_API_KEY;
+
 // A context holds the Env and reads `env.DB` at each use, as the code it replaces did: building one
 // costs nothing and cannot throw, so a broken binding still fails inside the caller's own guarded read.
 const tenant = (env: Env, orgId: string, userId: string, role: OrgRole | "system", via: Via): TenantContext =>

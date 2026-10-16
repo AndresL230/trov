@@ -5,19 +5,18 @@
 // that backs a screen only reads rows.
 //
 // What a read returns (`AiRepoState`, shared/ai-core.ts):
-//   • ABSENT — no repository, the org's AI switch off (off is not a state), nothing written yet, the newest version
+//   • ABSENT — no repository, THE read rule (`aiShown`: the org's AI switch off, or no Anthropic key — off is not a
+//     state), nothing written yet, the newest version
 //     flagged "Wrong?" by the person reading it, a row that no longer parses, or any failed read (the dashboard
 //     never fails over it);
 //   • `ready` — the newest version, with when and by which model it was written and how many events it was
 //     written from (counted by the server);
 //   • `capped` — the same content, when the org has spent this month's `ai_runs`: `resumesOn` the 1st of next
 //     month, `upgrade` on Free.
-import { AiRepoStateSchema, AI_LIST_MAX, aiItemRef, nextMonthStart, type AiLine, type AiRepoState } from "@shared/ai";
-import { planRefusal } from "@shared/plans";
-import { FREE_PLAN } from "@shared/plans";
+import { AiRepoStateSchema, AI_LIST_MAX, aiItemRef, type AiLine, type AiRepoState } from "@shared/ai";
 import { batch, first, stmt, type TenantContext } from "../data/sql";
 import { hiddenFor } from "../data/ai";
-import { planAndAiRuns } from "../plans/gate";
+import { aiShown } from "../plans/gate";
 
 /** Versions kept per repository. */
 export const REPO_STATE_KEEP = 20;
@@ -85,18 +84,17 @@ export async function readRepoState(ctx: TenantContext, repo: string, opts: { vi
   if (!repo) return undefined;
   try {
     const now = opts.now ?? new Date();
-    const [gate, row] = await Promise.all([planAndAiRuns(ctx, now), latestRepoState(ctx, repo)]);
-    if (!gate.enabled || !row) return undefined;
+    const [gate, row] = await Promise.all([aiShown(ctx, now), latestRepoState(ctx, repo)]);
+    if (!gate.shown || !row) return undefined;
     const stored = parseStoredState(row.state_json);
     if (!stored) return undefined;
     if (opts.viewer && (await hiddenFor(ctx, opts.viewer, "repo_state")).has(aiItemRef.repoState(repo, row.generated_at))) return undefined;
-    const capped = !!planRefusal(gate.plan, "ai_runs", gate.used, 1);
     const dto: AiRepoState = {
-      state: capped ? "capped" : "ready",
+      state: gate.capped ? "capped" : "ready",
       generatedAt: row.generated_at,
       model: row.model,
-      resumesOn: capped ? nextMonthStart(now) : null,
-      upgrade: capped && gate.plan.plan === FREE_PLAN,
+      resumesOn: gate.resumesOn,
+      upgrade: gate.upgrade,
       headline: stored.headline,
       shipped: stored.shipped.slice(0, AI_LIST_MAX),
       inFlight: stored.inFlight.slice(0, AI_LIST_MAX),

@@ -29,6 +29,10 @@ import { cookieFor } from "./helpers/persons";
 import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
 import { keyedEnv, stubProviders, type ClaudeReply } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const mdMock = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 vi.mock("../web/src/markdown", () => ({

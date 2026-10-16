@@ -26,6 +26,10 @@ import tickets from "../fixtures/dev/tickets.json";
 import handoffs from "../fixtures/dev/handoffs.json";
 import roadmap from "../fixtures/dev/roadmap.json";
 import { dirtyRow, keyedEnv, markRow, stubProviders, type ClaudeReply, type Stub } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const REPO = "AndresL230/trov";
 const ME = "AndresL230";
