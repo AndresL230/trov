@@ -11,7 +11,7 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
 import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
-import { ASK_BOTTOM_SLACK, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, closingAttr, stickAfterScroll } from "../web/src/ask-motion";
+import { ASK_BOTTOM_SLACK, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askKeepScroll, askTweenHeights, closingAttr, stickAfterScroll, tweenStart } from "../web/src/ask-motion";
 import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
 import type { AskReplayIndex } from "../web/src/ask-api";
 import { setApiOrg } from "../web/src/api";
@@ -402,6 +402,71 @@ describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () 
     const [frames] = card.anims[0] as [Keyframe[], unknown];
     expect(frames.map((f) => f.overflowY)).toEqual(["clip", "clip"]);
     expect(frames.every((f) => f.overflow === undefined && f.overflowX === undefined)).toBe(true);
+  });
+
+  it("a glide's start (rule 4): the same target is no new glide; a new one starts where the eye is", () => {
+    expect(tweenStart(undefined, 48, null)).toBe(null);          // a first paint
+    expect(tweenStart(357, 48, null)).toBe(357);                 // the card swapped for its line
+    expect(tweenStart(48, 48, 200)).toBe(null);                  // a paint mid-glide, same target: it keeps running
+    expect(tweenStart(48, 49, 200)).toBe(null);                  // sub-2px: a rounding, not a change
+    expect(tweenStart(48, 357, 120)).toBe(120);                  // a new target mid-glide: from where it is now
+    expect(tweenStart(48, 357, 356)).toBe(null);                 // …already there
+  });
+
+  it("a paint mid-glide (Confirm's own paints, every streamed word) never starts a glide back from the glide's own height", () => {
+    // A height animation sets the element's offsetHeight: mid-glide it reads the glide's height, not the content's.
+    class Anim {
+      playState: "running" | "idle" = "running";
+      currentTime = 0;
+      constructor(public from: number, public to: number) {}
+      cancel(): void { this.playState = "idle"; }
+      at(): number | null { return this.playState === "running" && this.currentTime < 240 ? this.from + (this.to - this.from) * (this.currentTime / 240) : null; }
+    }
+    class TEl {
+      natural = 0;
+      anims: Anim[] = [];
+      constructor(public attrs: Record<string, string> = {}, public children: TEl[] = []) {}
+      get offsetHeight(): number { const a = this.anims[this.anims.length - 1]; return a?.at() ?? this.natural; }
+      getAttribute(n: string): string | null { return n in this.attrs ? this.attrs[n] : null; }
+      animate(frames: { height: string }[]): Anim { const a = new Anim(parseFloat(frames[0].height), parseFloat(frames[1].height)); this.anims.push(a); return a; }
+      querySelectorAll(): TEl[] { return this.children; }
+    }
+    const card = new TEl({ "data-ask-tween": "" });
+    const root = new TEl({}, [card]) as unknown as ParentNode;
+    card.natural = 357;
+    expect(askTweenHeights(root, false)).toBe(0);
+    card.natural = 48;                                             // Confirm: the card becomes its done line
+    expect(askTweenHeights(root, false)).toBe(1);
+    const glide = card.anims[0];
+    expect([glide.from, glide.to]).toEqual([357, 48]);
+    glide.currentTime = 10;                                        // the Confirm's second paint, 10ms in
+    expect(askTweenHeights(root, false)).toBe(0);
+    glide.currentTime = 120;                                       // a streamed word, half way
+    expect(askTweenHeights(root, false)).toBe(0);
+    expect(card.anims.length).toBe(1);
+    expect(glide.playState).toBe("running");                       // left alone…
+    expect(glide.currentTime).toBe(120);                           // …where it was (stepped past its end only to measure)
+    // The content changes again mid-glide (Edit opens): one new glide, from the height on screen.
+    card.natural = 300;
+    expect(askTweenHeights(root, false)).toBe(1);
+    expect(glide.playState).toBe("idle");
+    expect([card.anims[1].from, card.anims[1].to]).toEqual([202.5, 300]);
+  });
+
+  it("a paint's measuring layout never moves a conversation up (askHoldScroll → askKeepScroll)", () => {
+    const sc = Object.assign(new El({ "data-ask-scroll": "page" }), { scrollTop: 143 });
+    const root = new El({}, [sc]) as unknown as ParentNode;
+    askHoldScroll(root);
+    sc.scrollTop = 0;                                              // the swapped card measured short: clamped
+    expect(askKeepScroll(root)).toBe(1);
+    expect(sc.scrollTop).toBe(143);
+    askHoldScroll(root);
+    sc.scrollTop = 400;                                            // a paint that moves it DOWN is left alone
+    expect(askKeepScroll(root)).toBe(0);
+    expect(sc.scrollTop).toBe(400);
+    sc.scrollTop = 10;                                             // nothing held (no paint): nothing put back
+    expect(askKeepScroll(root)).toBe(0);
+    expect(sc.scrollTop).toBe(10);
   });
 
   it("the bottom (rule 7): only scrolling UP lets go; reaching the bottom holds on; the pins' own scrolls never let go", () => {

@@ -435,7 +435,7 @@ function ctxFor(s: AppState, o: { replay?: boolean; getItem?: (ref: string) => P
     openThread: () => undefined, reloadThreads: () => undefined, exit: (_k: string, apply: () => void) => apply(), cancelExit: () => undefined,
   };
 }
-const mount = { querySelector: () => null } as unknown as HTMLElement;
+const mount = { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement;
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("the part's reads and acts", () => {

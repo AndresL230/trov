@@ -359,7 +359,16 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   Auto result names its own write (`action_result { tool, kind, preview }`), so its line says what was done with no
   read back; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts
   `loadTickets`, only once the queue was loaded) so an open board drops a declined ticket with its exit. `saveButton` / `wrongButton` are the footer's and a block's
-  buttons (acts `askAcSaveForm`, `askAcWrong`). Tests: `test/render.ask-actions.test.ts` (every scenario from its
+  buttons (acts `askAcSaveForm`, `askAcWrong`). **The swap** (ask-motion.ts rule 4): a card becoming its line (or its
+  Edit form opening) glides ONCE from the height it had to its natural new one, whatever paints follow — the
+  Confirm's own, a toast, every streamed word. `askTweenHeights` measures natural heights (running glides stepped past
+  their end for the read; `tweenStart` decides): reading a glide's own height as the card's once started a glide back
+  on every paint, and the card swung 48 ↔ 336px under an answer still writing. The measuring layout sees the card
+  short before the glide holds it, which clamps a scroller near its end; `askHoldScroll` (main.ts `rerender` →
+  `beforePaint`, and the ⌘J repaint) / `askKeepScroll` (after the glides start, before the bottom) put it back, so the
+  view never jumps and `stick` holds (that clamp's scroll event once let go of a streaming answer). Scrolled up, the
+  clicked card stays put and the rows under it rise; at the bottom with `stick`, the bottom holds and the card glides
+  down by what it lost. Tests: `test/render.ask-actions.test.ts` (every scenario from its
   transcript) and `test/ask.actions-hookup.test.ts` (the real routes into the real screen, the §4 guards).
 - **Dev replay**: `http://localhost:<port>/<org>/?askReplay=<scenario>[&askSpeed=4]#ask` runs the screen on
   `GET …/ai/ask-replay` (above): fixtures for reads, the recorded transcript for each send, nothing written.

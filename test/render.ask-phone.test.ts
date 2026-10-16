@@ -35,7 +35,7 @@ function phoneState(over: (s: AppState) => void = () => undefined, plan: "pro" |
 /** The controller around a state, with no DOM (exits apply at once; nothing is fetched by these acts). */
 function ctxOf(s: AppState): AskCtx {
   const flashes: string[] = [];
-  const ctl = createAskController({ state: s, mount: { querySelector: () => null } as unknown as HTMLElement, rerender: () => undefined, flash: (m) => flashes.push(m), unauth: () => undefined, search: () => "" });
+  const ctl = createAskController({ state: s, mount: { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement, rerender: () => undefined, flash: (m) => flashes.push(m), unauth: () => undefined, search: () => "" });
   return Object.assign(ctl.ctx, { flashes });
 }
 const act = (ctx: AskCtx, name: string, arg: string | null = null) => phonePart.act!(ctx, name, arg, null);

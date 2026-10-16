@@ -295,7 +295,7 @@ describe("the thread contract — a normal thread with origin panel and the page
   it("the panel's send goes to POST /ask with origin panel and the item first in context; the stream's thread names it", async () => {
     const app = ticketState();
     let paints = 0;
-    const ctl = createAskController({ state: app, mount: { querySelector: () => null } as unknown as HTMLElement, rerender: () => { paints++; }, flash: () => undefined, unauth: () => undefined, search: () => "" });
+    const ctl = createAskController({ state: app, mount: { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement, rerender: () => { paints++; }, flash: () => undefined, unauth: () => undefined, search: () => "" });
     openPanel(ctl.ctx);
     const q = ASK_SCENARIO_QUESTION.cmdj!;
     ctl.ctx.send({ text: q.text, where: "panel", context: app.ask.composer.panel.context });
