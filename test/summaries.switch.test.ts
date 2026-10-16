@@ -10,13 +10,17 @@ import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { syncLeftoverText, syncSummariesText } from "@shared/sync";
 import { all, first, run } from "./helpers/db";
 import { ORG_A, systemCtx } from "./helpers/tenant";
-import { runBackfill } from "./helpers/org-config";
+import { addOrgRepo, handleGithubWebhook, runBackfill } from "./helpers/org-config";
+import { APP_WEBHOOK_SECRET, seedInstallation, signAppWebhook } from "./helpers/github-app";
+import { handleGithubAppWebhook } from "../src/github-app/webhook";
 import { orgSummarizers, summaryAllowance } from "../src/plans/summaries";
 import { captureDelivery } from "../src/webhook";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
 import { FAKE_ANTHROPIC_KEY, messageResponse } from "./helpers/anthropic";
 
+/** vitest.config.ts — the Worker's GITHUB_WEBHOOK_SECRET (the legacy hook's). */
+const LEGACY_WEBHOOK_SECRET = "test-webhook-secret";
 const keyed = (): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r" });
 const setSwitch = (on: boolean) => run(env.DB, `UPDATE orgs SET ai_automation = ? WHERE id = ?`, on ? 1 : 0, ORG_A);
 
@@ -145,5 +149,69 @@ describe("the Sync path (runBackfill)", () => {
     expect(res).toMatchObject({ ok: true, summarized: 3, summariesWritten: 3, summariesPending: 0 });
     expect(res.allowance?.status).toBe("on");
     expect(g.calls).toBe(3);
+  });
+});
+
+// Every way a delivery reaches capture — the GitHub App's ONE webhook and an org's per-repo (or legacy) webhook —
+// funnels into `captureDelivery`, so the switch holds on each. Driven end to end through the real handlers, signed
+// as GitHub signs, so a future entry point that skipped `orgSummarizers` would show up here (Terms §10's switch line).
+describe("every capture entry point (Terms §10: off = nothing sent, PR and issue summaries included)", () => {
+  const REPO = "SaplingLearn/sapling";
+  const INST = 611;
+  const appPayload = (p: Record<string, unknown>) => ({ ...p, repository: { full_name: REPO }, installation: { id: INST } });
+  const signed = async (url: string, name: string, payload: unknown, secret: string) => {
+    const body = JSON.stringify(payload);
+    return new Request(url, { method: "POST", body, headers: { "x-github-event": name, "content-type": "application/json", "x-hub-signature-256": await signAppWebhook(body, secret) } });
+  };
+  const viaApp = async (name: string, payload: unknown, g: { fetchImpl: typeof fetch }) =>
+    handleGithubAppWebhook(await signed("https://trov.test/webhook/github/app", name, appPayload(payload as Record<string, unknown>), APP_WEBHOOK_SECRET), keyed(), { ai: { fetchImpl: g.fetchImpl } });
+  const viaHook = async (name: string, payload: unknown, g: { fetchImpl: typeof fetch }) =>
+    handleGithubWebhook(await signed("https://trov.test/webhook/github", name, payload, LEGACY_WEBHOOK_SECRET), keyed(), { ai: { fetchImpl: g.fetchImpl } });
+  const appOrg = async () => {
+    await addOrgRepo(REPO, ORG_A, { id: "hook_switch_app" });
+    await run(env.DB, `UPDATE org_repos SET connection = 'app' WHERE org_id = ?`, ORG_A);
+    await seedInstallation(ORG_A, INST, "SaplingLearn");
+  };
+
+  it("the App's webhook, switch off: captured, zero summarizer calls, no summary row, no meter", async () => {
+    await appOrg();
+    await setSwitch(false);
+    const g = claude();
+    expect((await (await viaApp("pull_request", prMerged, g)).json() as { captured: number }).captured).toBe(1);
+    expect((await (await viaApp("issues", issueAssigned, g)).json() as { captured: number }).captured).toBe(1);
+    expect(g.calls).toBe(0);
+    expect([await prRows(), await issueRows(), await usage()]).toEqual([[], [], []]);
+  });
+
+  it("the App's webhook, switch on: the same stub IS called — the off case above is not a dead wire", async () => {
+    await appOrg();
+    await setSwitch(true);
+    const g = claude();
+    await viaApp("pull_request", prMerged, g);
+    await viaApp("issues", issueAssigned, g);
+    expect(g.calls).toBe(2);
+    expect([(await prRows()).length, (await issueRows()).length]).toEqual([1, 1]);
+  });
+
+  it("the per-repo (legacy) webhook, switch off then on: zero calls off, one each on", async () => {
+    await setSwitch(false);
+    const off = claude();
+    expect((await viaHook("pull_request", prMerged, off)).status).toBe(200);
+    expect((await viaHook("issues", issueAssigned, off)).status).toBe(200);
+    expect(off.calls).toBe(0);
+    expect([await prRows(), await issueRows(), await usage()]).toEqual([[], [], []]);
+    await setSwitch(true);
+    const on = claude();
+    const reassigned = { ...issueAssigned, issue: { ...issueAssigned.issue, updated_at: "2026-10-02T09:00:00Z" } };
+    await viaHook("issues", reassigned, on);
+    expect(on.calls).toBe(1);
+  });
+
+  it("the Claude summarizers are built in ONE place — orgSummarizers, which reads the switch first", () => {
+    const src = import.meta.glob("../src/**/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+    const builders = Object.entries(src)
+      .filter(([path, text]) => !path.endsWith("/tools/summarize.ts") && /\bclaude(Pr|Issue)Summarizer\b/.test(text))
+      .map(([path]) => path);
+    expect(builders).toEqual(["../src/plans/summaries.ts"]);
   });
 });

@@ -223,6 +223,9 @@
   `repo_theme_captions`); the monthly `ai_runs` and `ai_chat` (Ask Trov, per seat on Pro)
   allowances are in `PLANS`
   (not listed on the pricing page yet).
+  Then `0068_ask_pending` (Ask Trov, the owner's ruling Q60) [`chat_threads.pending`: the person's hidden holder of
+  attachments uploaded before their conversation existed; swept 24 h unsent by `src/deletion/ask-pending.ts` on the
+  hourly digest trigger; additive] — `ask.md` › Attachments.
   Then `0057_hosting_providers` [`org_environment_parts` / `org_hosting_connections` / `hosting_deploys` /
   `hosting_poll_state`, and `org_secrets` REBUILT only to widen its kind CHECK to the five hosting kinds; rollback
   `scripts/hosting/0057_hosting_providers.down.sql`, run before 0042's] — see `hosting-providers.md`.

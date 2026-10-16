@@ -396,13 +396,29 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
  * a number itself. An org OVER a limit (a downgrade, a lowered override) is refused additions of that
  * kind and nothing else: reads, removals and everything the limit does not govern keep working.
  */
+/**
+ * THE CAP TEST (owner ruling 2026-10-16, Q11): does `used` plus `adding` more pass `cap`? For the default one more it
+ * is `used >= cap` — an allowance is USED UP from the moment `used` reaches `cap`. Every refusal (`planRefusal`), every
+ * meter's "full" (`meterPct`), every "Used up" line and every `capped` state asks THIS, never its own comparison: a
+ * meter rounded to 100% at 99.5% once read full while nothing said used up. `cap` null = unlimited: never.
+ */
+export const capReached = (used: number, cap: number | null, adding = 1): boolean => cap !== null && used + adding > cap;
+
+/** A meter's fill, 0–100 (whole percent): 100 ONLY when `capReached` — short of the cap it stops at 99, however close
+ *  the rounding comes — and 0 for an unlimited cap. */
+export function meterPct(used: number, cap: number | null): number {
+  if (cap === null) return 0;
+  if (capReached(used, cap)) return 100;
+  return cap <= 0 ? 0 : Math.max(0, Math.min(99, Math.round((used / cap) * 100)));
+}
+
 export function planRefusal(state: OrgPlanState, limit: LimitKey, used: number, adding = 1): PlanRefusal | null {
   const cap = resolveEntitlements(state.plan, state.overrides, state.members)[limit];
   const plan = planDef(state.plan).id;
   const next = planNext(state, limit);
   const extra = { ...(state.source === "billing" ? { paid: true as const } : {}), ...(next ? { next } : {}) };
   if (state.status === "canceled") return { error: "plan_limit", limit, used, cap: cap ?? used, plan, status: state.status, message: refusalMessage(state, limit, cap ?? used), ...extra };
-  if (cap === null || used + adding <= cap) return null;
+  if (cap === null || !capReached(used, cap, adding)) return null;
   return { error: "plan_limit", limit, used, cap, plan, status: state.status, message: refusalMessage(state, limit, cap), ...extra };
 }
 

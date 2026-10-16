@@ -45,16 +45,24 @@ export async function saveOnlyWhenNeeded(ctx: TenantContext, userId: string, on:
     ctx.orgId, userId, on ? 1 : 0, at);
 }
 
+/** The kind whose ONE line (the Sprint line) rides every daily, whatever its own cadence (owner ruling Q45). */
+export const DAILY_SPRINT_KIND = "roadmap_plan";
+
 /**
  * The kinds one person's run of `cadence` carries, in registry order: every kind resolved to that cadence — and, on
  * the WEEKLY, the brief (`my_work`) when it resolves to daily and the weekly has anything else, so the weekly leads
  * with the brief too (Phase E: "Weekly: the brief, then This week…"). A weekly with nothing but the brief is not
- * sent to someone who gets the brief daily anyway.
+ * sent to someone who gets the brief daily anyway. On the DAILY, the Sprint line (`roadmap_plan`) rides along whatever
+ * `roadmap_plan` resolves to (owner ruling Q45; its own cadence governs the weekly only) — when the daily has anything
+ * else, and unless the org's policy turned the kind off for everyone.
  */
 export function selectKinds<K extends NotificationKindMeta>(registry: readonly K[], policies: PolicyMap, prefs: PrefMap, cadence: "daily" | "weekly"): K[] {
   const at = (k: K) => resolveWith(k, policies.get(k.id), prefs.get(k.id));
   const own = registry.filter((k) => at(k) === cadence);
-  if (cadence !== "weekly" || own.length === 0) return own;
+  if (own.length === 0) return own;
+  if (cadence === "daily") {
+    return registry.filter((k) => at(k) === "daily" || (k.id === DAILY_SPRINT_KIND && policies.get(k.id)?.enabled !== 0));
+  }
   return registry.filter((k) => at(k) === cadence || (k.id === "my_work" && at(k) === "daily"));
 }
 

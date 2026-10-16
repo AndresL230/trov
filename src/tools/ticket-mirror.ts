@@ -35,6 +35,7 @@ import { priorityOf, stripPriority } from "./mywork";
 import { resolvePersonForLogin } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
 import { routeAi } from "./ai-route";
+import { closingStmts } from "./tickets";
 
 /** The mirror's writer principal — a reserved handle with a persons row (0032). */
 export const MIRROR_ACTOR = "github-webhook";
@@ -215,6 +216,7 @@ async function forceStatus(ctx: TenantContext, id: number, from: TicketStatus, t
       ctx.orgId, id, MIRROR_ACTOR, from, to, now),
     stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ?, source_updated_at = ? WHERE id = ? AND org_id = ?`,
       to, now, sourceUpdatedAt, id, ctx.orgId),
+    ...closingStmts(ctx, id, from, to),
   ]);
 }
 

@@ -18,7 +18,7 @@
 // src/data/meter.ts): the attempt before the call, then its outcome and size after it. Sizes only —
 // the text never leaves the summarizer.
 import type { Env } from "../env";
-import { planRefusal, resolveEntitlements } from "@shared/plans";
+import { capReached, planRefusal, resolveEntitlements } from "@shared/plans";
 import type { SummariesStatus } from "@shared/sync";
 import { platform, type TenantContext } from "../data/context";
 import {
@@ -107,7 +107,7 @@ export async function orgSummarizers(env: Env, ctx: TenantContext, opts: OrgSumm
   const spend = (): boolean => {
     if (state.status !== "on") return false;
     const remaining = state.remaining === null ? null : state.remaining - 1;
-    state = { ...state, used: state.used + 1, remaining, status: remaining !== null && remaining <= 0 ? "capped" : "on" };
+    state = { ...state, used: state.used + 1, remaining, status: capReached(state.used + 1, state.cap) ? "capped" : "on" };
     return true;
   };
 

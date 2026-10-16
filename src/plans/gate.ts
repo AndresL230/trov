@@ -6,10 +6,11 @@
 // current use and throws `PlanLimitError` when shared/plans.ts `planRefusal` says no. A CAPABILITY a plan
 // may not include is the other question, `requireFeature(ctx, feature)` — `PlanFeatureError` when no.
 import { type TenantContext, first } from "../data/sql";
-import { LIMIT_KEYS, monthStartDay, overLimits, planDef, planFeatureRefusal, resolveEntitlements, type FeatureKey, type LimitKey, type OrgPlanView } from "@shared/plans";
+import { aiKeySet } from "../data/context";
+import { FREE_PLAN, LIMIT_KEYS, monthStartDay, planRefusal, overLimits, planDef, planFeatureRefusal, resolveEntitlements, type FeatureKey, type LimitKey, type OrgPlanView } from "@shared/plans";
 import { AI_RUN_METRIC_GLOB, METRIC_AI_CHAT, METRIC_AI_SUGGEST, METRIC_SUMMARY } from "../data/meter";
 import { PLAN_COLS, PlanFeatureError, assertWithinPlan, planOf, type OrgPlan, type OrgPlanRow } from "./state";
-import type { AiAllowanceKey } from "@shared/ai-core";
+import { nextMonthStart, type AiAllowanceKey } from "@shared/ai-core";
 
 /** The limits this file counts (everything but seats). */
 export type TenantLimit = Exclude<LimitKey, "seats">;
@@ -79,6 +80,33 @@ export async function planAndAiRuns(ctx: TenantContext, now: Date = new Date()):
   const row = await first<OrgPlanRow & { ai_automation: number; used: number }>(ctx,
     `SELECT ${PLAN_COLS}, ai_automation, (${AI_RUNS_USED}) AS used FROM orgs WHERE id = ?1`, ctx.orgId, monthStartDay(now));
   return { plan: planOf(row), enabled: !!row && Number(row.ai_automation) !== 0, used: Number(row?.used ?? 0) };
+}
+
+/** What THE read rule answers for one org (`aiShown`). `shown` false = every computed AI field is ABSENT (never an
+ *  "off" state); `capped` = the month's `ai_runs` are spent (or the plan ended): each surface shows its LAST version
+ *  as `capped`, `resumesOn` the 1st of next month (`AiMeta`), `upgrade` on Free. */
+export type AiShown =
+  | { shown: false }
+  | { shown: true; capped: boolean; resumesOn: string | null; upgrade: boolean };
+
+/**
+ * THE READ RULE of every computed AI surface (owner rulings 2026-10-16, Q17 / Q18 / Q13 / Q19; docs/architecture/ai.md
+ * › The read rule) — the brief, the repo state, the themes, the Roadmap's notes, drift and suggestions, the ticket /
+ * Unplaced / Review cards — and of every decision on one (Accept, Dismiss): a deployment with NO Anthropic key reads
+ * EXACTLY like the org's switch off (nothing read: no statement), else ONE statement (`planAndAiRuns`). Ingested
+ * records (Trov's feed entries, Sift's importance) are records, not computed surfaces: they keep showing.
+ */
+export async function aiShown(ctx: TenantContext, now: Date = new Date()): Promise<AiShown> {
+  if (!aiKeySet(ctx)) return { shown: false };
+  const { plan, enabled, used } = await planAndAiRuns(ctx, now);
+  if (!enabled) return { shown: false };
+  const refused = planRefusal(plan, "ai_runs", used, 1) !== null;
+  return {
+    shown: true,
+    capped: refused,
+    resumesOn: refused ? nextMonthStart(now) : null,
+    upgrade: refused && plan.plan === FREE_PLAN,
+  };
 }
 
 /** Ask Trov's questions since the 1st (a Thinking question counts as 5) — the same range read. */

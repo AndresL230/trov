@@ -14,6 +14,10 @@ import { runDigest } from "../src/notifications/run";
 import { localDelivery } from "../src/notifications/delivery";
 import { storeBrief } from "../src/data/person-brief";
 import { BUSY_LOGIN, BUSY_NOW, htmlWordCount, seedBusyDay, wordCount } from "./helpers/digest-fixture";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 async function daily() {
   await runDigest(systemCtx(), platformCtx(), "daily", BUSY_NOW, { delivery: localDelivery(systemCtx()), origin: "https://trov.dev" });
@@ -27,7 +31,9 @@ describe("the daily on a busy day (Phase E)", () => {
     await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = 'org_saplinglearn'`);
     const d = await daily();
     expect(d.subject).toBe("Netlify test failing, plus 2 more");
-    expect({ blocks: d.blocks, lines: d.lines }).toEqual({ blocks: 1, lines: 2 });
+    // Review, Tickets — and the Sprint line, which rides every daily since the owner's ruling Q45.
+    expect({ blocks: d.blocks, lines: d.lines }).toEqual({ blocks: 1, lines: 3 });
+    expect(d.html).toContain("Sprint:</span>");
     expect(d.words).toBeLessThanOrEqual(232 / 2);
     expect(d.htmlWords).toBeLessThanOrEqual(303 / 2);
     // Removed: the per-PR What / Why / Impact cards, issue rows and labels, the plan diff.

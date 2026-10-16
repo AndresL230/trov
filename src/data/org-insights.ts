@@ -4,14 +4,17 @@
 //
 // A TENANT module: every statement names `org_id`, bound from the caller's context. The READS are reachable from
 // src/mcp.ts (`get_roadmap`, `list_sprints`, `get_sprint` carry the notes and the drift), so this file imports
-// nothing from src/ai/ and calls no model. Every read is GATED BY THE ORG'S SWITCH in the same statement
-// (`orgs.ai_automation`): with AI off the fields are absent, never an "off" state.
+// nothing from src/ai/ and calls no model. Every read is GATED BY THE READ RULE (src/plans/gate.ts `aiShown`): the
+// org's switch in the same statement (`orgs.ai_automation`) and an Anthropic key on the deployment — with AI off or no
+// key the fields are absent, never an "off" state; at the month's cap a line is its last version, `state: "capped"`.
 import {
-  AI_DRIFT_WINDOW_DAYS, AI_ROADMAP_ITEM, AI_ROADMAP_SUGGESTION_KINDS, AiPlanDriftSchema, AiRoadmapLineSchema, aiItemRef,
-  type AiCite, type AiPlanDrift, type AiSprintNote, type AiSuggestion, type AiThemeShare,
+  AI_DRIFT_WINDOW_DAYS, AI_ROADMAP_ITEM, AI_ROADMAP_SUGGESTION_KINDS, AiPlanDriftSchema, AiRoadmapLineSchema,
+  type AiCite, type AiPlanDrift, type AiRoadmapLine, type AiSprintNote, type AiSuggestion, type AiThemeShare,
 } from "@shared/ai";
 import { all, batch, first, nowIso, stmt, type TenantContext } from "./sql";
 import { suggestionDto, type AiSuggestionRow } from "./ai";
+import { aiKeySet } from "./context";
+import { aiShown } from "../plans/gate";
 
 export type InsightKind = "sprint_note" | "plan_drift";
 /** How many versions of one insight are kept (the newest is what the Roadmap reads). */
@@ -38,32 +41,54 @@ export async function putInsight(
 
 interface InsightRow { key: string; generated_at: string; model: string | null; json: string }
 
-/** The newest version of each key of `kind` (one key when given) — only while the org's switch is on. */
-async function latest(ctx: TenantContext, kind: InsightKind, key?: string): Promise<InsightRow[]> {
-  return all<InsightRow>(ctx,
+/** What THE read rule (src/plans/gate.ts `aiShown`) adds to a line at the month's cap: the LAST version, said capped. */
+type LineCap = Pick<AiRoadmapLine, "state" | "resumesOn" | "upgrade">;
+
+/** The "Wrong?" ref of an insight row, in SQL — `aiItemRef.sprintNote` (`<sprint id>@<generatedAt>`) and
+ *  `aiItemRef.planDrift` (`<generatedAt>`), the refs the Roadmap's buttons send. */
+const FEEDBACK_REF: Record<InsightKind, string> = { sprint_note: `i.key || '@' || i.generated_at`, plan_drift: `i.generated_at` };
+
+/**
+ * The newest version of each key of `kind` (one key when given) — only under THE read rule: the org's switch on (the
+ * join, in the same statement) and an Anthropic key on the deployment (no key: nothing is read). When a row comes
+ * back, the rule's one statement says whether the month's `ai_runs` are spent (Q19: every surface says `capped`).
+ * A PERSON's context (not the pass's system one) never gets a version they pressed "Wrong?" on — in the same
+ * statement, so every surface leaves it out: the cookie Roadmap and `/sprints`, and MCP's `get_roadmap`,
+ * `list_sprints` and `get_sprint` (owner ruling Q-S2 / RM-14: "Wrong?" hides an item for that person everywhere).
+ */
+async function latest(ctx: TenantContext, kind: InsightKind, key?: string, now: Date = new Date()): Promise<{ rows: InsightRow[]; cap: LineCap }> {
+  if (!aiKeySet(ctx)) return { rows: [], cap: {} };
+  const viewer = ctx.role === "system" ? null : ctx.userId;
+  const rows = await all<InsightRow>(ctx,
     `SELECT i.key AS key, i.generated_at AS generated_at, i.model AS model, i.json AS json
        FROM org_insights i JOIN orgs o ON o.id = i.org_id AND o.ai_automation = 1
       WHERE i.org_id = ? AND i.kind = ?${key === undefined ? "" : " AND i.key = ?"}
-        AND i.version = (SELECT MAX(v.version) FROM org_insights v WHERE v.org_id = ? AND v.kind = i.kind AND v.key = i.key)`,
-    ...(key === undefined ? [ctx.orgId, kind, ctx.orgId] : [ctx.orgId, kind, key, ctx.orgId]));
+        AND i.version = (SELECT MAX(v.version) FROM org_insights v WHERE v.org_id = ? AND v.kind = i.kind AND v.key = i.key)${viewer === null ? "" : `
+        AND NOT EXISTS (SELECT 1 FROM ai_feedback f WHERE f.org_id = i.org_id AND f.handle = ? AND f.item_type = i.kind AND f.item_ref = ${FEEDBACK_REF[kind]})`}`,
+    ...(key === undefined ? [ctx.orgId, kind, ctx.orgId] : [ctx.orgId, kind, key, ctx.orgId]), ...(viewer === null ? [] : [viewer]));
+  if (!rows.length) return { rows, cap: {} };
+  const gate = await aiShown(ctx, now);
+  if (!gate.shown) return { rows: [], cap: {} };
+  return { rows, cap: gate.capped ? { state: "capped", resumesOn: gate.resumesOn, upgrade: gate.upgrade } : {} };
 }
 
 const parse = (json: string): unknown => { try { return JSON.parse(json); } catch { return null; } };
 
 /** One stored line as the screens get it, or null when the row does not read as one (never shown half-made). */
-function lineOf(r: InsightRow): AiSprintNote | null {
+function lineOf(r: InsightRow, cap: LineCap): AiSprintNote | null {
   const p = parse(r.json) as { text?: unknown; cites?: unknown } | null;
-  const ok = AiRoadmapLineSchema.safeParse({ text: p?.text, cites: p?.cites, generatedAt: r.generated_at, model: r.model });
+  const ok = AiRoadmapLineSchema.safeParse({ text: p?.text, cites: p?.cites, generatedAt: r.generated_at, model: r.model, ...cap });
   return ok.success ? ok.data : null;
 }
 
-/** The newest note per sprint id (as text), or for one sprint. Empty with the switch off. A read that fails is
+/** The newest note per sprint id (as text), or for one sprint. Empty under THE read rule's off. A read that fails is
  *  empty too: a note is never worth failing the Roadmap for. */
 export async function sprintNotes(ctx: TenantContext, sprintId?: number): Promise<Map<string, AiSprintNote>> {
   const out = new Map<string, AiSprintNote>();
   try {
-    for (const r of await latest(ctx, "sprint_note", sprintId === undefined ? undefined : String(sprintId))) {
-      const line = lineOf(r);
+    const { rows, cap } = await latest(ctx, "sprint_note", sprintId === undefined ? undefined : String(sprintId));
+    for (const r of rows) {
+      const line = lineOf(r, cap);
       if (line) out.set(r.key, line);
     }
   } catch (e) {
@@ -73,15 +98,15 @@ export async function sprintNotes(ctx: TenantContext, sprintId?: number): Promis
 }
 
 /** The newest drift line, while it still describes the window it was written for (`AI_DRIFT_WINDOW_DAYS`); null
- *  with the switch off, nothing written, or a drift that has aged out. */
+ *  under THE read rule's off, nothing written, or a drift that has aged out. */
 export async function planDrift(ctx: TenantContext, now: Date = new Date()): Promise<AiPlanDrift | null> {
   try {
-    const [r] = await latest(ctx, "plan_drift", "");
+    const { rows: [r], cap } = await latest(ctx, "plan_drift", "", now);
     if (!r) return null;
     const at = Date.parse(r.generated_at);
     if (!Number.isFinite(at) || now.getTime() - at > AI_DRIFT_WINDOW_DAYS * 86_400_000) return null;
     const p = parse(r.json) as Record<string, unknown> | null;
-    const ok = AiPlanDriftSchema.safeParse({ ...p, generatedAt: r.generated_at, model: r.model });
+    const ok = AiPlanDriftSchema.safeParse({ ...p, generatedAt: r.generated_at, model: r.model, ...cap });
     return ok.success ? ok.data : null;
   } catch (e) {
     console.error("org insights: drift read failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
@@ -102,9 +127,10 @@ function roadmapLabel(s: AiSuggestion): string {
   return "a new plan narrative";
 }
 
-/** The Roadmap's OPEN suggestions (newest first), only while the switch is on. The CALLER decides who sees them
+/** The Roadmap's OPEN suggestions (newest first), only under THE read rule (the switch, joined; the key). The CALLER decides who sees them
  *  (an admin, on the cookie read — never MCP). */
 export async function roadmapSuggestions(ctx: TenantContext): Promise<AiSuggestion[]> {
+  if (!aiKeySet(ctx)) return [];
   try {
     const rows = await all<AiSuggestionRow>(ctx,
       `SELECT s.id, s.item_type, s.item_ref, s.kind, s.value_json, s.confidence, s.reason, s.cites_json, s.model, s.prompt_version,
@@ -130,35 +156,11 @@ export async function lastRoadmapSuggestionAt(ctx: TenantContext, kind: string):
   return r ? { at: r.created_at, open: r.open === 1 } : null;
 }
 
-/** The Roadmap as ONE PERSON gets it on the cookie read: a note or drift they pressed "Wrong?" on is left out
- *  (for them only), and an ADMIN also gets the open suggestions. MCP never comes here (no suggestions there). */
-export async function roadmapForPerson<P extends { sprints: { id: number; note?: AiSprintNote }[]; drift?: AiPlanDrift; suggestions?: AiSuggestion[] }>(
-  ctx: TenantContext, handle: string, plan: P, o: { admin: boolean },
-): Promise<P> {
-  const hasNote = plan.sprints.some((s) => s.note);
-  const [notesHidden, driftHidden] = await Promise.all([
-    hasNote ? hiddenRefs(ctx, handle, "sprint_note") : Promise.resolve(new Set<string>()),
-    plan.drift ? hiddenRefs(ctx, handle, "plan_drift") : Promise.resolve(new Set<string>()),
-  ]);
-  const sprints = plan.sprints.map((s) => {
-    if (!s.note || !notesHidden.has(aiItemRef.sprintNote(s.id, s.note.generatedAt))) return s;
-    const { note: _hidden, ...rest } = s;
-    return rest;
-  });
-  const out: P = { ...plan, sprints };
-  if (plan.drift && driftHidden.has(aiItemRef.planDrift(plan.drift.generatedAt))) delete out.drift;
-  if (o.admin) {
-    const suggestions = await roadmapSuggestions(ctx);
-    if (suggestions.length) out.suggestions = suggestions;
-  }
-  return out;
-}
-
-async function hiddenRefs(ctx: TenantContext, handle: string, itemType: string): Promise<Set<string>> {
-  try {
-    const rows = await all<{ item_ref: string }>(ctx, `SELECT item_ref FROM ai_feedback WHERE org_id = ? AND handle = ? AND item_type = ?`, ctx.orgId, handle, itemType);
-    return new Set(rows.map((r) => r.item_ref));
-  } catch {
-    return new Set();
-  }
+/** The Roadmap as ONE PERSON gets it on the cookie read: an ADMIN also gets the open suggestions. MCP never comes here
+ *  (no suggestions there). What they pressed "Wrong?" on is already left out by the read itself (`latest`), on every
+ *  surface. */
+export async function roadmapForPerson<P extends { suggestions?: AiSuggestion[] }>(ctx: TenantContext, plan: P, o: { admin: boolean }): Promise<P> {
+  if (!o.admin) return plan;
+  const suggestions = await roadmapSuggestions(ctx);
+  return suggestions.length ? { ...plan, suggestions } : plan;
 }

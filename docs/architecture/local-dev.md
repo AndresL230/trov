@@ -40,7 +40,7 @@ kept.
 
 | Scenario | Org (`/slug/`) | What it is | Sign in as |
 | --- | --- | --- | --- |
-| `team` | SaplingLearn `/saplinglearn/` | A busy small team building Sapling (an ed-tech study app): the canonical dev fixtures (`fixtures/dev/*.json`), the RICH LAYER (`team-rich.mjs`: 73 more tickets in every status with comments, links and sub-tickets; four sprints — done, late, current, planned — and the fixture sprints re-dated to today; ten handoffs pending / claimed / expired; 41 feed entries over six weeks in every kind; seven docs with history and staged proposals; decisions, Unplaced items, prompts, artifacts; twelve weeks of repository activity — pushes, PRs, reviews, CI runs, deploys on staging and production, fresh health, hourly usage, product metrics, coverage, releases), then the AI SHOWCASE (`ai-showcase.mjs`: the brief, repo state, Trov's digests, Sift, the AI cards, Ask threads). **Every org-keyed table has rows here.** | `AndresL230` (owner), `Jose-Gael-Cruz-Lopez` (admin), `meilin`, `sanaok`, `priya-n`, `omar-h` (members) |
+| `team` | SaplingLearn `/saplinglearn/` | A busy small team building Sapling (an ed-tech study app): the canonical dev fixtures (`fixtures/dev/*.json`), the RICH LAYER (`team-rich.mjs`: 73 more tickets in every status with comments, links and sub-tickets; four sprints — done, late, current, planned — and the fixture sprints dated against today (`CANONICAL_SPRINT_DATES` / `datedRoadmap`: sprint 3 done, so 7002 "Gradebook export rework" is the ONE late sprint; every dev seed that loads `fixtures/dev/roadmap.json` dates it the same way, the e2e seed's base included, while the fixture file keeps the absolute dates the test seed pins); ten handoffs pending / claimed / expired; 41 feed entries over six weeks in every kind; seven docs with history and staged proposals; decisions, Unplaced items, prompts, artifacts; twelve weeks of repository activity — pushes, PRs, reviews, CI runs, deploys on staging and production, fresh health, hourly usage, product metrics, coverage, releases), then the AI SHOWCASE (`ai-showcase.mjs`: the brief, repo state, Trov's digests, Sift, the AI cards, Ask threads). **Every org-keyed table has rows here.** | `AndresL230` (owner), `Jose-Gael-Cruz-Lopez` (admin), `meilin`, `sanaok`, `priya-n`, `omar-h` (members) |
 | `empty` | Day One Labs `/dayone/` | Created two hours ago; nothing in it — every empty state and the setup checklist. | `robin-vale` (owner) |
 | `free-at-cap` | Pinecone Tutoring `/pinecone/` | On Free with EVERY limit reached: seats (2 members + a pending invite), 1 repository, 2 environments, 30 tags, 250 MB of artifacts (the bytes are not stored locally — the library counts them; opening one fails), 5 agent connections, this month's summaries / AI runs / Sift checks / Ask questions. | `kai-moreno` (owner), `lena-fox` (member) |
 | `pro` | Northwind Academy `/northwind/` | On Pro, well inside its limits; a little work of its own. Sana is an admin here AND a member of SaplingLearn — a person in two orgs. | `amara-osei` (owner), `sanaok` (admin), `theo-lind`, `jun-park` (members) |
@@ -81,6 +81,11 @@ cd ~/Projects/trov-preview-ai                          # the folder the running 
 node <this repo>/scripts/seed/team-rich.mjs            # the rich layer (or scripts/seed/team-rich.mjs once that checkout has it)
 node <this repo>/scripts/seed/ai-showcase.mjs --server http://localhost:8790   # then the AI rows, so they talk about it
 ```
+
+What Trov wrote (the brief, the repo state, the themes, the Roadmap's notes, drift and suggestions, the AI cards)
+shows only with an `ANTHROPIC_API_KEY` in `.dev.vars` — the AI read rule (`ai.md` › The read rule: no key reads
+exactly like the org's switch off). Any value shows the seeded rows; the AI pass will try it, and a fake one only
+fails its calls quietly. Trov's feed entries and Sift's ratings show either way.
 
 `team-rich.mjs` replaces SaplingLearn's environments, parts and deploys — the rows `scripts/seed/repo-setups.mjs` (the
 repo-setups e2e fixtures) writes for it; whichever runs last wins. Both print a per-surface check list.

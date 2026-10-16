@@ -56,8 +56,9 @@ those two writers, never at render.
 recently, what is next — by the AI pass's `brief.person` job (`src/ai/brief.ts`; `ai.md` › The brief), stored in
 `person_brief` (0063, the last 5 versions). `getMyWork` reads the NEWEST row (`storedBrief`, `src/tools/mywork.ts`,
 through `src/data/person-brief.ts` — plain D1, no model, nothing from `src/ai/`), so `/me/dashboard` and
-`get_my_work` carry the same one — and the digest e-mail will (Phase E). The field is ABSENT when the org's AI
-switch is off, nothing is stored, the stored row fails `AiBriefSchema`, or the person pressed "Wrong?" on that very
+`get_my_work` carry the same one — and the digest e-mail will (Phase E). The field is ABSENT under the AI read rule
+(`ai.md` › The read rule: the org's AI switch off, or no Anthropic key on the deployment), nothing is stored, the
+newest is older than `AI_STALE_DAYS` (7 days — never shown as current, owner ruling Q25), the stored row fails `AiBriefSchema`, or the person pressed "Wrong?" on that very
 version (`aiItemRef.brief(generatedAt)`; the next version shows again); `state` is `capped` (the last brief, its
 `resumesOn`, `upgrade` on Free) when the org's `ai_runs` are spent, `empty` for a version the pass wrote with no
 model when nothing was left to say. A failed brief read never degrades the rest of My Work. `GET /me/dashboard`
@@ -83,7 +84,8 @@ issue ever captured (`test/mywork.test.ts` pins the rule clause by clause).
 `todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
 a mirrored ticket's issue can therefore appear in both `todo` and `tickets` (`source: "github"` says so).
 The SCREEN (`web/src/mywork.ts`, composed by `myWorkView`) reads its other tiles off their own slices: Your
-sessions off `mwSessions` (`GET /feed?author=<me>&limit=2` — never the Feed screen's filtered `feed`), Docs
+sessions off `mwSessions` (`GET /feed?author=<me>&about=1&limit=2` — never the Feed screen's filtered `feed`; `about=1`
+adds the session digests Trov wrote about me, `subject = me`, each drawn with the AI mark — Q30), Docs
 you own off `mwDocs` (`GET /docs?fields=meta`, no bodies, stubs at `current_version = 0` skipped), the review
 tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sessions' pills and the library's
 Queued handoffs cell (count + the newest: its row opens it; **Claim & copy** (`mwHandoffClaim`,
@@ -108,8 +110,10 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 `model != 'excerpt' AND title IS NOT NULL`) — never truth, never generated at render.
 
 **Your brief** (`DashboardData.brief?`, `AiBrief` in `shared/ai-core.ts`; `briefTile` in `web/src/mywork.ts`) is
-a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off, no
-key, or nothing written: the field is absent and the bento is exactly its five tiles). With it the bento is laid out by AREA
+a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off or no
+key: the field is absent and the bento is exactly its five tiles). With a key and the switch on, someone with NO brief
+yet gets an `empty` one (`storedBrief`'s `emptyWhenNone`, `GET /me/dashboard` only — Q24), so the tile says when Trov
+writes it; `capped` instead once the month's runs are spent. With it the bento is laid out by AREA
 (`trov.css` `.mw-bento-brief`, `MyWorkLayout.bento`), each tile sized to what it holds and the whole closing as one
 rectangle: Brief on the left (8 of 12 columns) beside Needs your review over Docs you own; Your sessions beside
 Tickets for you (the wide slot, BR-OWNER-3); Repo wide beside Queued handoffs (`libraryTiles` gives the two small
@@ -142,8 +146,14 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   day (`projected`, `daysLate`). Null for a sprint not active, with no start, or with nothing closed yet. The card
   says "At this pace, done Nov 2, 3 days late" with no AI mark.
 - **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
-  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only while
-  the org's AI switch is on.
+  the week's entries naming them), with its cites, byline and "Wrong?" (which hides it for that person on the
+  Roadmap, `/sprints` and MCP's `get_roadmap` / `list_sprints` / `get_sprint` alike). `org_insights` (0065), present only under
+  the AI read rule (the switch on and a key); at the month's cap it is the last version with `state: "capped"`, and
+  the card adds the AI kit's capped line (so does the drift).
+- **The sprint page** (`#sprints/<id>`, `sprintScreen` in `web/src/sprints.ts`) draws the SAME forecast and note as
+  the sprint's Roadmap card — the same fields of `GET /sprints/:id` (`get_sprint`, as MCP reads it) through the same
+  pieces (`forecastLine`, `sprintNoteBlock`) — under the progress bar, rising with the page; none for a done sprint.
+  "Wrong?" there leaves by the kit's exit as on the Roadmap (Q39).
 - **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
   the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
 - **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4
@@ -159,6 +169,9 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   card an Accept / Dismiss took — and a note or the drift "Wrong?" took — is Review's `.cnpy-rv-row`: `data-verdict`
   + `inert`, collapsing over `AI_EXIT_MS` (= `REVIEW_EXIT_MS`), then not drawn (`state.ai.leaving` / `decided` in
   `ai-actions.ts`, which only HIDE rows of the read). The write goes on the click; a failure puts the card back with a
-  toast; the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
+  toast — a 400's own `message` as the server wrote it (the writer's refusal, e.g. "that sprint draft is not one Trov
+  can create"; Q21/Q40), a 403 `off` (the AI read rule: the switch off or no key) "Trov's AI is off for this
+  organization, so nothing was changed. An admin can turn it on in Org settings › AI." (`AI_OFF_REFUSAL`), else
+  "Couldn't do that. Try again." (`refusalText`, `ai-actions.ts`); the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
   Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
   (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).

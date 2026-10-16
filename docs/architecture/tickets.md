@@ -12,7 +12,9 @@ never reissued; a ticket MIRRORED from a GitHub issue is a 403, since the mirror
 gate, no confidence, no staged state. Every write bumps `tickets.updated_at` (the queue's sort key); the
 status machine is `canTransition` in `shared/tickets-core.ts` (re-exported by `shared/tickets.ts`) and is
 never re-declared server-side; an illegal move or a nesting-rule break is a 409 that writes nothing;
-tickets nest exactly ONE level (`set_ticket_parent`'s four rejections).
+tickets nest exactly ONE level (`set_ticket_parent`'s four rejections). A ticket that CLOSES (done / declined) closes
+Trov's OPEN suggestions about it in the same batch (`closingStmts`: superseded — owner ruling Q35), on all three
+status writers: `transition_ticket`, `move_ticket` and the mirror's forced status (`ai.md` › The kinds).
 
 **The ticket board** (the queue's DEFAULT view, `web/src/tickets.ts` `boardView`; the Table is the other).
 Statuses are `submitted` (Triage) / `in_progress` / `testing` / `done` / `declined` — `testing` (0033) is an

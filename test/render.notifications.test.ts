@@ -11,6 +11,7 @@ import { emailNotificationsSection, notificationsAdminSections, notifDropdowns }
 import { esc } from "../web/src/ui";
 import { STILL_SENT, STILL_SENT_SENTENCE, UNSUBSCRIBE_STOPS } from "@shared/email-unsubscribe";
 import css from "../web/src/trov.css?raw";
+import mainSrc from "../web/src/main.ts?raw";
 import type { PrefsView, PolicyKindView } from "@shared/notifications";
 import type { NotificationOutboxRow, NotificationSettingsRow } from "@shared/rows";
 
@@ -32,6 +33,21 @@ describe("Only when something needs me (Phase E)", () => {
     expect(off).toMatch(/data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="false"/);
     const on = emailNotificationsSection({ prefs: prefs({ onlyWhenNeeded: true }), loading: false, error: null, emailEditing: false, emailDraft: "" });
     expect(on).toMatch(/data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="true"/);
+  });
+
+  // Q46 (owner ruling 2026-10-16).
+  it("applies to the daily only, and says so; while unsubscribed it stays, dimmed, with the reason — aria-disabled, never hidden", () => {
+    const on = emailNotificationsSection({ prefs: prefs(), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    expect(on).toContain("Send the daily digest only when");
+    expect(on).toContain("The weekly always comes.");
+    expect(on).not.toContain("data-only-needed-why");
+    expect(on).toContain('data-only-needed-row="on"');
+    const unsub = emailNotificationsSection({ prefs: prefs({ unsubscribed: true, onlyWhenNeeded: true }), loading: false, error: null, emailEditing: false, emailDraft: "" });
+    expect(unsub).toMatch(/data-only-needed-row="unsubscribed" style="[^"]*opacity:\.45/);
+    expect(unsub).toMatch(/<div id="only-needed-why" data-only-needed-why[^>]*>Not in use while you(&#39;|')re unsubscribed from Trov email\.<\/div>|<div id="only-needed-why" data-only-needed-why[^>]*>Not in use while you're unsubscribed from Trov email\.<\/div>/);
+    expect(unsub).toMatch(/<button aria-disabled="true" aria-describedby="only-needed-why" data-act="toggleOnlyWhenNeeded"[^>]*aria-checked="true"/);
+    expect(unsub).not.toMatch(/data-act="toggleOnlyWhenNeeded"[^>]* disabled[ >]/);
+    expect(mainSrc).toContain("if (state.notifPrefs.data?.unsubscribed) return; // dimmed with its reason while unsubscribed");
   });
 
   it("moves like every switch: its knob slides and its track fades (inline .15s), and both stand still under reduced motion", () => {

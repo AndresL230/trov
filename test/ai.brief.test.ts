@@ -14,7 +14,7 @@ import { newBudget } from "../src/repo/dispatch";
 import { briefVersions, latestBrief, markMyWorkOpened, storeBrief, BRIEF_VERSIONS_KEPT } from "../src/data/person-brief";
 import { getMyWork, storedBrief } from "../src/tools/mywork";
 import { recordFeedback } from "../src/data/ai";
-import { aiItemRef } from "@shared/ai";
+import { AI_STALE_DAYS, aiItemRef } from "@shared/ai";
 import { first, run } from "./helpers/db";
 import { ORG_A, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
@@ -26,6 +26,10 @@ import tickets from "../fixtures/dev/tickets.json";
 import handoffs from "../fixtures/dev/handoffs.json";
 import roadmap from "../fixtures/dev/roadmap.json";
 import { dirtyRow, keyedEnv, markRow, stubProviders, type ClaudeReply, type Stub } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const REPO = "AndresL230/trov";
 const ME = "AndresL230";
@@ -313,8 +317,10 @@ describe("only for people who opened My Work in 14 days, or who get the digest",
 });
 
 describe("storage and the read", () => {
-  const put = (i: number) => storeBrief(ctx(), ME, {
-    generatedAt: `2026-10-15T0${i}:00:00.000Z`, model: "claude-haiku-5-5", promptVersion: "brief.1", inputHash: `h${i}`,
+  // Relative to now: a brief older than AI_STALE_DAYS is hidden (Q25), so a fixed date would age out of these tests.
+  const at = (i: number) => new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 - (10 - i) * 3_600_000).toISOString();
+  const put = (i: number, generatedAt = at(i)) => storeBrief(ctx(), ME, {
+    generatedAt, model: "claude-haiku-5-5", promptVersion: "brief.1", inputHash: `h${i}`,
     briefJson: JSON.stringify({ now: { text: `Version ${i}`, cites: [{ ref: "pr:12", label: "#12", href: null }] }, recently: null, next: { items: [] } }),
   });
 
@@ -328,17 +334,28 @@ describe("storage and the read", () => {
     await put(1);
     await put(2);
     const w = await getMyWork(ctx(), ME);
-    expect(w.brief).toMatchObject({ state: "ready", generatedAt: "2026-10-15T02:00:00.000Z", model: "claude-haiku-5-5", now: { text: "Version 2" } });
+    expect(w.brief).toMatchObject({ state: "ready", generatedAt: at(2), model: "claude-haiku-5-5", now: { text: "Version 2" } });
     await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = ?`, ORG_A);
     expect("brief" in (await getMyWork(ctx(), ME))).toBe(false);
     await run(env.DB, `UPDATE orgs SET ai_automation = 1 WHERE id = ?`, ORG_A);
-    await recordFeedback(ctx(), ME, { itemType: "brief", itemRef: aiItemRef.brief("2026-10-15T02:00:00.000Z"), kind: "brief", model: "claude-haiku-5-5", promptVersion: null });
+    await recordFeedback(ctx(), ME, { itemType: "brief", itemRef: aiItemRef.brief(at(2)), kind: "brief", model: "claude-haiku-5-5", promptVersion: null });
     expect("brief" in (await getMyWork(ctx(), ME))).toBe(false);
     await put(3); // the next version shows again
     expect((await getMyWork(ctx(), ME)).brief?.now?.text).toBe("Version 3");
     // A stored row that fails the schema is not shown (never a 500).
     await run(env.DB, `UPDATE person_brief SET brief_json = '{"now":7}' WHERE org_id = ? AND version = 3`, ORG_A);
     expect("brief" in (await getMyWork(ctx(), ME))).toBe(false);
+  });
+
+  it(`stale (Q25): a brief older than ${AI_STALE_DAYS} days is hidden — read as none, on My Work, get_my_work and the e-mail's read`, async () => {
+    const DAY = 86_400_000;
+    await put(1, new Date(Date.now() - (AI_STALE_DAYS * DAY + 60_000)).toISOString());
+    expect(await storedBrief(ctx(), ME)).toBeNull();
+    expect("brief" in (await getMyWork(ctx(), ME))).toBe(false);
+    // The e-mail reads it at its window's end: the same brief, read a day after it was written, is current there.
+    expect(await storedBrief(ctx(), ME, new Date(Date.now() - (AI_STALE_DAYS - 1) * DAY))).toMatchObject({ state: "ready" });
+    await put(2, new Date(Date.now() - (AI_STALE_DAYS * DAY - 3_600_000)).toISOString());
+    expect(await storedBrief(ctx(), ME)).toMatchObject({ state: "ready", now: { text: "Version 2" } });
   });
 
   it("capped: the last brief, with the day it resumes; Free says upgrade", async () => {
@@ -359,12 +376,13 @@ describe("storage and the read", () => {
 });
 
 describe("GET /me/dashboard", () => {
-  it("records that My Work was opened, carries the stored brief, and leaves the field OUT when there is none", async () => {
+  it("records that My Work was opened, carries the stored brief, and an `empty` one when there is none (Q24)", async () => {
     await run(env.DB, `UPDATE memberships SET mywork_opened_at = NULL WHERE org_id = ? AND user_id = ?`, ORG_A, ME);
     const cookie = await cookieFor(ME);
     const get = async () => (await (await app.request("/me/dashboard", { headers: { cookie } }, env)).json()) as Record<string, unknown>;
     const none = await get();
-    expect("brief" in none).toBe(false);
+    // None stored, under the read rule: the screen's read says `empty` (Q24 — the tile says when Trov writes it).
+    expect(none.brief).toMatchObject({ state: "empty", generatedAt: null, now: null });
     expect((await first<{ t: string | null }>(env.DB, `SELECT mywork_opened_at AS t FROM memberships WHERE org_id = ? AND user_id = ?`, ORG_A, ME))!.t).not.toBeNull();
     await markMe();
     await briefPass(stubProviders({ claude: answer() }));

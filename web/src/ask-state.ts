@@ -50,6 +50,8 @@ export interface AskUi {
   /** The thread whose ⋯ menu is open, and the one being renamed (with its draft). */
   threadMenu: number | null;
   renaming: { id: number; text: string } | null;
+  /** The thread whose Delete is asking first (`confirmModal`, QA-2): a hard delete with no undo. */
+  threadDelete: { id: number; title: string } | null;
   /** The two conversations. */
   page: AskConvo;
   panel: AskConvo;
@@ -81,7 +83,7 @@ export function initialAskUi(): AskUi {
   return {
     state: { status: "idle", data: null },
     threads: { status: "idle", data: [] },
-    threadQ: "", hits: null, threadMenu: null, renaming: null,
+    threadQ: "", hits: null, threadMenu: null, renaming: null, threadDelete: null,
     page: emptyConvo(), panel: emptyConvo(),
     refViews: {},
     threadsForced: null,

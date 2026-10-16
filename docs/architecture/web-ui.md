@@ -479,6 +479,13 @@ dashboard, retention windows to verify) are listed in the release's `ops` and in
   and the paths from `shared/legal-core.ts`. Change the code, change the text, bump `updated`.
   `test/render.legal.test.ts` holds the facts most likely to drift (cookies and lifetimes, retention, processors,
   no Vercel / Netlify, no `read:org`, the refund policy's four rules).
+- **DRAFT passages, one flag.** The server-side AI build's text (#178 Phase G: Ask Trov, the typed filter, the AI
+  pass's notes and suggestions, the widened provider rows) is not approved: each passage starts `${DRAFT}`, a
+  visible "DRAFT —" while `AI_LEGAL_DRAFT` (`shared/legal-core.ts`) is true. The same flag HOLDS Org settings › AI ›
+  What is sent (`AI_SENDS`, `shared/ai-core.ts`) to the approved lines — summaries and Sift — since the screen
+  repeats the Privacy rows' claims; `AI_SENDS_ALL` is the full list. Approving is ONE change (set the flag false,
+  bump `updated`), and the policy and the screen ship together (`test/render.legal.test.ts` › approve once, ship
+  both).
 - **Consent wherever an account can be made** — `consentHtml()`: "By continuing you agree to the Terms of Service
   and Privacy Policy, and confirm you are 16 or older." Under the landing's sign-in / Get started dialog (every
   mode and plan, `.site-signin-note`), on the refused-Google card, on the MCP OAuth sign-in page; onboarding (where
@@ -519,7 +526,8 @@ next. Nothing else changes — the `error` code, any `message`, the status and t
 were (the SPA and the tests read them).
 
 - **One table** (`shared/error-hints.ts`): `API_ERROR_HINTS` by the HTTP `error` code (the older sentence codes —
-  `"admin only"`, `"not found"`, `"invalid payload"` — included), `STATUS_HINTS` by status for any other code,
+  `"admin only"`, `"not found"`, `"invalid payload"` — included, and the AI routes' own refusals `off`, `no_key`,
+  `unreadable`, `auto_off`, `mode_unavailable`, so a 403 `off` no longer reads as a missing role), `STATUS_HINTS` by status for any other code,
   `MCP_ERROR_HINTS` by an MCP tool error's `code` (`not_found`, `forbidden`, `conflict`, `bad_request`,
   `too_large`, `gone`, `plan_limit`, `plan_feature`, and the connection's `repo_required`, `not_connected`,
   `ambiguous_org`, `org_unavailable`, `org_not_allowed`), and the two /mcp 401 hints. The MCP reference prints the
@@ -1070,6 +1078,8 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   say "Wrong?" and what pressing it does. It POSTs
   `/ai/feedback` and hides the item for that person at once (`state.ai.hidden`), back with a toast if the write
   fails; it leaves by the kit's one exit (› Motion below) — on the Roadmap too. Nothing written is ever shown without the mark.
+  An importance mark's "Wrong?" (`aiRatingWrongBtn`: 24px, borderless, after the mark in the byline) is the one that
+  hides nothing: it tells Trov, for the evals, and stays pressed; the rating stays as rated (Q34; `ai.md`).
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
   resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
   `upgrade` is true.
@@ -1239,10 +1249,11 @@ wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose w
 for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
 `requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
 left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
-each paint is one static frame. The ink is the theme's `--purple` (purple = Trov is working, the owner): `setInk` in
+each paint is one static frame. The ink is the theme's `--accent` (olive in dark; the owner, 2026-10-16: colour carries meaning only, so
+"working" has no hue of its own): `setInk` in
 `orbs/engine/core.ts` — the one local change to the vendored engine, marked — makes a dot's depth its opacity in that
 colour. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`), and the running sweep's highlight is
-`--purple` too.
+`--accent` too.
 `thinkingOrbTour(states, …)` is one canvas (`data-orb="tour"`, `data-orb-tour`) that shows each state in turn
 (`TOUR_SECONDS` each, on the same clock; its first under reduced motion).
 

@@ -12,7 +12,8 @@ import type { Env } from "../src/env";
 import { app } from "../src/routes";
 import { runAiPass, AI_JOBS } from "../src/ai/pass";
 import { newBudget } from "../src/repo/dispatch";
-import { create_ticket } from "../src/tools/tickets";
+import { create_ticket, move_ticket, transition_ticket } from "../src/tools/tickets";
+import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { ingestAdrDraft, ingestDocProposal } from "../src/consumer";
 import { route_triage } from "../src/tools/writes";
 import { putSuggestion } from "../src/data/ai";
@@ -20,11 +21,16 @@ import { ticketDecide, ticketRequest, wordsEvidence, type TicketCardInput } from
 import { unplacedDecide, type UnplacedCardInput } from "../src/ai/jobs/unplaced-card";
 import { reviewDecide, type ReviewCardInput } from "../src/ai/jobs/review-card";
 import type { TicketDetail } from "@shared/tickets";
+import { AI_PREVIEW_SUGGESTION_IDS, reviewRiskFixture, roadmapFixture, themesFixture, ticketSuggestionsFixture, unplacedSuggestionFixture } from "@shared/ai-fixtures";
 import type { NeedsTriageRow, AdrRow } from "@shared/rows";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
-import { ORG_A, systemCtx, tenantCtx } from "./helpers/tenant";
+import { ORG_A, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 import { keyedEnv } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const BASE = "/api/o/saplinglearn";
 const later = () => new Date(Date.now() + 60_000);
@@ -253,6 +259,50 @@ describe("Accept routes through the existing writer, as the person — and never
     expect(await state(badSection)).toBe("open");
   });
 
+  it("a ticket that CLOSES closes its open suggestions (Q35): superseded on every status writer — not shown, Accept refused", async () => {
+    const cookie = await cookieFor("meilin");
+    const put = (n: number, kind: string, value: unknown) =>
+      putSuggestion(systemCtx(ORG_A), { itemType: "ticket", itemRef: String(n), kind, value, confidence: 0.9, reason: "x", cites: [], model: "jev", promptVersion: "p" }) as Promise<number>;
+    const states = (n: number) => all<{ kind: string; state: string }>(env.DB, `SELECT kind, state FROM ai_suggestions WHERE org_id = ? AND item_type = 'ticket' AND item_ref = ? ORDER BY id`, ORG_A, String(n));
+    const detail = async (n: number) => (await (await app.request(`${BASE}/tickets/${n}`, { headers: { cookie } }, env as unknown as Env)).json()) as TicketDetail;
+    // transition_ticket → done, from the ticket's own page.
+    const a = await ticket("Blank page", "The page is blank.");
+    const cat = await put(a, "ticket.category", "bug");
+    const pri = await put(a, "ticket.priority", "high");
+    expect(await detail(a)).toHaveProperty("ai");
+    // A decided one keeps the person's choice.
+    await run(env.DB, `UPDATE ai_suggestions SET state = 'dismissed', decided_by = 'meilin' WHERE id = ?`, pri);
+    await transition_ticket(await tenantCtx("meilin"), a, "in_progress", "meilin");
+    expect((await states(a)).map((r) => r.state)).toEqual(["open", "dismissed"]); // moving is not closing
+    await transition_ticket(await tenantCtx("meilin"), a, "done", "meilin");
+    expect(await states(a)).toEqual([{ kind: "ticket.category", state: "superseded" }, { kind: "ticket.priority", state: "dismissed" }]);
+    expect(await detail(a)).not.toHaveProperty("ai");
+    expect(await call("POST", `${BASE}/ai/suggestions/${cat}/accept`, cookie, {})).toEqual({ status: 409, json: { error: "not_open" } });
+    // move_ticket (a board drop) → declined.
+    const b = await ticket("Slow search", "Search is slow.");
+    await put(b, "ticket.duplicate", { number: a, label: `#${a}` });
+    await move_ticket(await tenantCtx("meilin"), b, "declined", null, "meilin");
+    expect((await states(b)).map((r) => r.state)).toEqual(["superseded"]);
+    // The GitHub mirror's forced status: a mirrored ticket whose issue is closed.
+    const issue = (action: string, state: string, updatedAt: string) => ({
+      action, repository: { full_name: "SaplingLearn/sapling" },
+      issue: { number: 4242, title: "Login times out", body: "b", html_url: "https://github.com/SaplingLearn/sapling/issues/4242", state, state_reason: state === "closed" ? "completed" : null,
+        updated_at: updatedAt, user: { login: "AndresL230" }, assignees: [], labels: [], milestone: null },
+    });
+    await mirrorIssue(systemCtx(ORG_A), platformCtx(), "SaplingLearn/sapling", issue("opened", "open", "2026-10-16T10:00:00Z"));
+    const c = (await first<{ number: number }>(env.DB, `SELECT number FROM tickets WHERE org_id = ? AND source_ref = 'SaplingLearn/sapling#4242'`, ORG_A))!.number;
+    await put(c, "ticket.priority", "high");
+    await mirrorIssue(systemCtx(ORG_A), platformCtx(), "SaplingLearn/sapling", issue("closed", "closed", "2026-10-16T11:00:00Z"));
+    expect((await states(c)).map((r) => r.state)).toEqual(["superseded"]);
+    // One left OPEN on a closed ticket from before this rule is neither drawn nor accepted.
+    const d = await ticket("Old one", "b");
+    await transition_ticket(await tenantCtx("meilin"), d, "declined", "meilin");
+    const stale = await put(d, "ticket.category", "bug");
+    expect(await detail(d)).not.toHaveProperty("ai");
+    expect(await call("POST", `${BASE}/ai/suggestions/${stale}/accept`, cookie, {})).toEqual({ status: 409, json: { error: "not_available" } });
+    expect((await states(d)).map((r) => r.state)).toEqual(["open"]);
+  });
+
   it("a risk has no Accept (not_available) and Dismiss changes nothing in Review: no promote, no reject", async () => {
     const ctx = await tenantCtx("AndresL230");
     await ingestDocProposal(ctx, { slug: "auth-flow", section: "reference", body: "Sessions last 30 days.", change_summary: "longer sessions", confidence: "high" } as never, "AndresL230");
@@ -283,6 +333,34 @@ describe("the Review and Unplaced cards through the pass, and the screens' reads
     expect(adrs.find((a) => a.id === adrId)).not.toHaveProperty("ai");
   });
 
+  it("a decision closes its open risk (Q37): ratifying or rejecting an ADR, promoting or rejecting a doc proposal — superseded, gone from /adrs", async () => {
+    const ctx = await tenantCtx("AndresL230");
+    const cookie = await cookieFor("meilin");
+    const draft = async (title: string) => ((await ingestAdrDraft(ctx, { title, context: "c.", decision: `${title}.`, rationale: "r.", confidence: "high" } as never, "AndresL230")) as { id: number }).id;
+    const risk = (itemRef: string) => putSuggestion(systemCtx(ORG_A), { itemType: "proposal", itemRef, kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, confidence: 0.8, reason: "it changes a decision", cites: [], model: "jev", promptVersion: "p" }) as Promise<number>;
+    const state = async (id: number) => (await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state;
+    const adrAi = async (status: string, id: number) => (await call<{ adrs: (AdrRow & { ai?: unknown })[] }>("GET", `${BASE}/adrs?status=${status}`, cookie)).json.adrs.find((a) => a.id === id);
+    const ratified = await draft("Use D1 for search");
+    const rejected = await draft("Use KV for search");
+    const r1 = await risk(`adr:${ratified}`);
+    const r2 = await risk(`adr:${rejected}`);
+    expect(await adrAi("draft", ratified)).toHaveProperty("ai");
+    expect((await call("POST", `${BASE}/adr/${ratified}/ratify`, cookie, {})).status).toBe(200);
+    expect((await call("POST", `${BASE}/adr/${rejected}/reject`, cookie, {})).status).toBe(200);
+    expect([await state(r1), await state(r2)]).toEqual(["superseded", "superseded"]);
+    expect(await adrAi("ratified", ratified)).not.toHaveProperty("ai");
+    // Dismissing a closed risk is `not_open`.
+    expect(await call("POST", `${BASE}/ai/suggestions/${r1}/dismiss`, cookie, {})).toEqual({ status: 409, json: { error: "not_open" } });
+    // A doc proposal: promoted, and another rejected.
+    await ingestDocProposal(ctx, { slug: "sessions", section: "reference", body: "A session lasts 30 days.", change_summary: "longer", confidence: "high" } as never, "AndresL230");
+    await ingestDocProposal(ctx, { slug: "tokens", section: "reference", body: "Tokens last a year.", change_summary: "longer", confidence: "high" } as never, "AndresL230");
+    const r3 = await risk("doc:sessions@1");
+    const r4 = await risk("doc:tokens@1");
+    expect((await call("POST", `${BASE}/doc/sessions/promote`, cookie, { version: 1 })).status).toBe(200);
+    expect((await call("POST", `${BASE}/doc/tokens/reject`, cookie, { version: 1 })).status).toBe(200);
+    expect([await state(r3), await state(r4)]).toEqual(["superseded", "superseded"]);
+  });
+
   it("an Unplaced doc gets one Jev request over the sections and nearby docs; a free-form item gets none", async () => {
     const ctx = systemCtx(ORG_A);
     const doc = await route_triage(ctx, { raw: { slug: "deploy-checklist", section: "runbooks", title: "Deploy checklist", body: "Before a deploy, run the migrations.", change_summary: "new", confidence: "low" }, reason: "section 'runbooks' is not in the vocabulary", source_author: "AndresL230" });
@@ -310,6 +388,37 @@ describe("the Review and Unplaced cards through the pass, and the screens' reads
 });
 
 describe("LOCAL_AI_PREVIEW: the sample suggestions on the three screens' real rows (wrangler dev only)", () => {
+  it("every sample suggestion has its own id, on every screen (Q38)", () => {
+    const now = new Date("2026-10-14T12:00:00Z");
+    const ids = [
+      ...ticketSuggestionsFixture("ready", 2, { number: 1, title: "t" }),
+      unplacedSuggestionFixture("ready", 1),
+      reviewRiskFixture("ready", "doc:a@1", 0), reviewRiskFixture("ready", "doc:b@1", 1),
+      reviewRiskFixture("ready", "adr:1", 0, "adrs"), reviewRiskFixture("ready", "adr:2", 1, "adrs"),
+      ...roadmapFixture("ready", now)!.suggestions,
+    ].map((s) => s!.id).concat(themesFixture("proposed", "8w", now).lanes.map((l) => l.suggestionId!));
+    expect(ids.length).toBe(16);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort((a, b) => a - b)).toEqual([...AI_PREVIEW_SUGGESTION_IDS]);
+  });
+  it("Accept / Dismiss on a sample answers { ok, preview } under the preview and writes nothing; elsewhere not_found (Q5)", async () => {
+    const e = withVars({ LOCAL_AI_PREVIEW: "proposed" });
+    const post = async (origin: string, path: string, en: Env, body: unknown = {}) => {
+      const res = await app.request(`${origin}/api/o/saplinglearn${path}`, { method: "POST", headers: { cookie: await cookieFor("AndresL230"), "content-type": "application/json" }, body: JSON.stringify(body) }, en);
+      return { status: res.status, json: await res.json() };
+    };
+    const before = await all(env.DB, `SELECT id FROM ai_suggestions`);
+    for (const id of [905, 910]) {
+      expect(await post(LOCAL, `/ai/suggestions/${id}/accept`, e)).toEqual({ status: 200, json: { ok: true, preview: true } });
+      expect(await post(LOCAL, `/ai/suggestions/${id}/dismiss`, e)).toEqual({ status: 200, json: { ok: true, preview: true } });
+    }
+    expect(await post(LOCAL, `/ai/suggestions/911/accept`, e, { value: { name: "Billing" } })).toEqual({ status: 200, json: { ok: true, preview: true } });
+    expect(await all(env.DB, `SELECT id FROM ai_suggestions`)).toEqual(before);
+    // Not a sample, not the preview, not a loopback origin: the usual 404.
+    expect((await post(LOCAL, `/ai/suggestions/909/accept`, e)).status).toBe(404);
+    expect((await post(LOCAL, `/ai/suggestions/905/accept`, env as unknown as Env)).status).toBe(404);
+    expect((await post("https://trov.dev", `/ai/suggestions/905/dismiss`, e)).status).toBe(404);
+  });
   const LOCAL = "http://localhost:8787";
   const withVars = (over: Partial<Env>): Env => ({ ...(env as unknown as Env), ...over });
   async function get<T>(origin: string, path: string, e: Env): Promise<T> {
@@ -330,8 +439,14 @@ describe("LOCAL_AI_PREVIEW: the sample suggestions on the three screens' real ro
     const items = (await get<{ items: NeedsTriageRow[] }>(LOCAL, "/needs-triage", e)).items;
     expect(items.filter((i) => i.ai).map((i) => [i.id, i.ai?.[0].kind])).toEqual([[doc, "unplaced.destination"]]);
     await ingestDocProposal(await tenantCtx("AndresL230"), { slug: "p1", section: "reference", body: "b", change_summary: "c", confidence: "high" } as never, "AndresL230");
-    const proposals = (await get<{ proposals: { ai?: { label: string }[] }[] }>(LOCAL, "/proposals", e)).proposals;
+    const proposals = (await get<{ proposals: { ai?: { id: number; label: string }[] }[] }>(LOCAL, "/proposals", e)).proposals;
     expect(proposals[0].ai?.map((s) => s.label)).toEqual(["Changes a decision"]);
+    // A drafted decision gets its own sample, with its OWN id (Q38: proposals and drafts once shared 905/906, so
+    // "because…" on one opened the other too).
+    await ingestAdrDraft(await tenantCtx("AndresL230"), { title: "Use D1 for search", context: "c", decision: "Use FTS5.", rationale: "r", confidence: "high" } as never, "AndresL230");
+    const adrs = (await get<{ adrs: { ai?: { id: number; label: string }[] }[] }>(LOCAL, "/adrs?status=draft", e)).adrs;
+    expect(adrs[0].ai?.map((s) => s.label)).toEqual(["Changes a decision"]);
+    expect(adrs[0].ai![0].id).not.toBe(proposals[0].ai![0].id);
     // empty: none; a deployed origin, or no var: none.
     expect(await get<TicketDetail>(LOCAL, `/tickets/${b}`, withVars({ LOCAL_AI_PREVIEW: "empty" }))).not.toHaveProperty("ai");
     expect(await get<TicketDetail>("https://trov.dev", `/tickets/${b}`, e)).not.toHaveProperty("ai");

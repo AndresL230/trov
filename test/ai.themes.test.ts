@@ -31,6 +31,10 @@ import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
 import { themesDevStatements } from "../scripts/seed/themes-dev.mjs";
 import { dirtyRow, keyedEnv, markRow, stubProviders, succeededLine, type ClaudeReply, type Stub } from "./helpers/ai-pass";
+import { useAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const REPO = "SaplingLearn/sapling";
 const BASE = "/api/o/saplinglearn";
@@ -251,14 +255,38 @@ describe("accept, rename, merge, remove — an ADMIN's, through the cookie sugge
     const rows = await themesRows();
     expect(rows.map((t) => [t.id, t.name, t.status, t.decided_by])).toEqual([
       [ids[0], "Billing and plans", "active", FIXTURE_ADMIN], [ids[1], "Repo health", "active", FIXTURE_ADMIN], [ids[2], "Payments", "proposed", null]]);
-    // A name taken by a live theme is `invalid` and the suggestion stays open; so is an empty or a bad value.
-    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "billing and PLANS" } })).toEqual({ status: 400, json: { error: "invalid" } });
-    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "   " } })).toEqual({ status: 400, json: { error: "invalid" } });
-    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "x".repeat(41) } })).toEqual({ status: 400, json: { error: "invalid" } });
+    // A name taken by a live theme is `invalid` and the suggestion stays open; so is an empty or a bad value. Each
+    // refused NAME says what happened, in a sentence the screen shows as it is (Q20).
+    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "billing and PLANS" } })).toEqual({ status: 400, json: { error: "invalid", message: "A theme named billing and PLANS already exists." } });
+    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "   " } })).toEqual({ status: 400, json: { error: "invalid", message: "A theme needs a name." } });
+    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "x".repeat(41) } })).toEqual({ status: 400, json: { error: "invalid", message: "A theme name is at most 40 characters." } });
+    expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { name: "(none of these)" } })).toEqual({ status: 400, json: { error: "invalid", message: "A theme name can't be wrapped in parentheses." } });
     expect(await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: "Payments" })).toEqual({ status: 400, json: { error: "invalid" } });
     expect((await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, sugg[2]))!.state).toBe("open");
     // Decided once: a second accept is not_open.
     expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[0])}`, admin, {})).status).toBe(409);
+  });
+
+  it("an accepted theme KEEPS COUNTING its seed PRs (Q-S3): written into pr_themes at once — never a drop to 0 before the backfill", async () => {
+    for (const n of [1, 2, 3, 7, 8, 9]) await addPr(n, 3);
+    const { ids, sugg } = await proposed();
+    await setPersonPrTheme(systemCtx(), REPO, 3, null, FIXTURE_ADMIN); // a person said PR 3 has no theme
+    const laneOf = async (id: number) => (await readRepoThemes(systemCtx(), REPO))!["8w"]!.lanes.find((l) => l.id === String(id));
+    const sum = (c: number[] | undefined) => (c ?? []).reduce((a, b) => a + b, 0);
+    expect(sum((await laneOf(ids[0]))?.counts)).toBe(3); // proposed: counted from its seed PRs
+    const admin = await cookieFor(FIXTURE_ADMIN);
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[0])}`, admin, {})).status).toBe(200);
+    const lane = await laneOf(ids[0]);
+    expect(lane?.status).toBe("active");
+    expect(sum(lane?.counts)).toBe(2); // PRs 1 and 2 — the person's "no theme" on PR 3 stands
+    expect([await prTheme(1), await prTheme(2), await prTheme(3)]).toEqual([
+      expect.objectContaining({ theme_id: ids[0], source: "ai", set_by: null }), expect.objectContaining({ theme_id: ids[0], source: "ai" }),
+      expect.objectContaining({ theme_id: null, source: "person" }),
+    ]);
+    // Merged into that ACTIVE theme, a proposal's PRs count there at once too.
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { mergeInto: ids[0] } })).status).toBe(200);
+    expect(sum((await laneOf(ids[0]))?.counts)).toBe(5);
+    expect((await readRepoThemes(systemCtx(), REPO))!["8w"]!.prCount).toBe(5);
   });
 
   it("merge folds a proposed theme into another live one (its PRs join), and remove (dismiss) removes it — an admin's", async () => {

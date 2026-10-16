@@ -122,7 +122,9 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
 - ADRs: an ADR draft arrives in a batch — `adr_drafts` of MCP `record_session` or of `POST /ingest` — and
   the gate's `ingestAdrDraft` stages it as a `draft` through the writer `stage_adr` (`src/tools/writes.ts`;
   a function, NOT an MCP tool — there is no per-entry ADR tool). `POST /adr/:id/ratify` flips it to `ratified`.
-  Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains.
+  Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains. Ratifying or rejecting
+  a draft — and promoting or rejecting a doc proposal — closes Trov's open risk on it in the same batch (superseded;
+  owner ruling Q37, `ai.md` › The kinds).
 - Sprints: **nothing about a sprint is ever staged.** 0025 dropped `milestone_proposals` and with it
   the whole agent-proposed-roadmap surface — the gate fn, the contract schema, the promote/reject
   routes, and the `"milestone"` triage-assign kind. A sprint is created and edited by the admin plan

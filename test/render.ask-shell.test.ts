@@ -228,6 +228,43 @@ describe("the thread menu by keyboard", () => {
   });
 });
 
+describe("QA-2: thread Delete asks first (confirmModal), then deletes", () => {
+  it("Delete opens the app's confirm at the root; Cancel deletes nothing; Delete deletes and the row leaves", async () => {
+    const s = askState();
+    const t = s.ask.threads.data[0];
+    const deleted: number[] = [];
+    const flashes: string[] = [];
+    const ctx = {
+      ui: s.ask, app: s, replay: false, paint() {}, exit: (_k: string, apply: () => void) => apply(), cancelExit() {}, newThread() {}, reloadThreads() {},
+      flash: (m: string) => { flashes.push(m); }, fail() {},
+      api: { deleteThread: async (id: number) => { deleted.push(id); } },
+    } as unknown as AskCtx;
+    threadsPart.act!(ctx, "askThDelete", String(t.id), null);
+    expect(deleted).toEqual([]);
+    expect(s.ask.threadDelete).toEqual({ id: t.id, title: t.title });
+    const root = render(s);
+    expect(root).toMatch(/data-overlay="confirm-ask-th-delete"[\s\S]*role="alertdialog"/);
+    expect(root).toContain(`Delete “${t.title}”?`);
+    expect(root).toContain("The conversation and the files attached to it are deleted for good.");
+    expect(root).toMatch(new RegExp(`data-confirm-act="askThDeleteGo" data-confirm-cancel="askThDeleteCancel" data-arg="${t.id}"`));
+    // Closing plays the confirm's own exit (`data-closing` on its layer) before it goes.
+    s.ask.closing = { thdel: true };
+    expect(render(s)).toMatch(/data-overlay="confirm-ask-th-delete" data-confirm-layer data-confirm-tone="danger" class="cnpy-cmodal" data-closing/);
+    s.ask.closing = {};
+    threadsPart.act!(ctx, "askThDeleteCancel", String(t.id), null);
+    expect(s.ask.threadDelete).toBeNull();
+    expect(deleted).toEqual([]);
+    expect(render(s)).not.toContain("ask-th-delete");
+    threadsPart.act!(ctx, "askThDelete", String(t.id), null);
+    threadsPart.act!(ctx, "askThDeleteGo", String(t.id), null);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(deleted).toEqual([t.id]);
+    expect(s.ask.threadDelete).toBeNull();
+    expect(s.ask.threads.data.some((x) => x.id === t.id)).toBe(false);
+    expect(flashes.at(-1)).toBe(`Deleted ${t.title}`);
+  });
+});
+
 describe("the empty conversation — centred as the design draws it", () => {
   // e2e AU-2 (`live`): the design puts a flexible spacer UNDER the composer while the conversation is empty
   // (ask-trov.dc.html L770 `flex:1 1 0;min-height:24px`), so the mark, the heading, the starters and the composer sit

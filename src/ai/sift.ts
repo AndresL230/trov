@@ -25,19 +25,23 @@ const STALE_MS = 15 * 60 * 1000;
 
 export type FitStart =
   | { status: "started"; run: number }
-  | { status: "off" | "no_key" | "busy" | "capped" | "not_found" };
+  | { status: "off" | "org_off" | "no_key" | "busy" | "capped" | "not_found" };
 
 /**
  * Begin a run for `tag` — the checks a person waits on, and the run's row. Nothing is sent here; the
  * caller hands `continueTagFit` to the request's `waitUntil`. Refused (no row, no call) when the
- * platform has no key, the organization's AI switch or Sift's own is off, the tag is not live, the
+ * platform has no key, the organization's AI switch (`org_off`) or Sift's own (`off`) is off, the tag is not live, the
  * month's allowance is spent, or a run for the tag is already going.
  */
 export async function startTagFit(env: Pick<Env, "TYPESAFE_API_KEY">, ctx: TenantContext, rawTag: unknown): Promise<FitStart> {
   const tag = normalizeTagName(rawTag);
   if (!tag) return { status: "not_found" };
   if (!env.TYPESAFE_API_KEY) return { status: "no_key" };
-  if (!(await siftSwitches(ctx)).on) return { status: "off" };
+  // Which switch is off is said as it is (owner ruling Q9): the org's (`org_off` → Org settings › AI) or Sift's own
+  // (`off` → Tags).
+  const sw = await siftSwitches(ctx);
+  if (!sw.org) return { status: "org_off" };
+  if (!sw.sift) return { status: "off" };
   const row = await first<{ retired_at: string | null }>(ctx, `SELECT retired_at FROM org_tags WHERE org_id = ? AND name = ?`, ctx.orgId, tag);
   if (!row || row.retired_at !== null) return { status: "not_found" };
   if ((await suggestAllowance(ctx)).spent) return { status: "capped" };

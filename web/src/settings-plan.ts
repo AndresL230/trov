@@ -9,7 +9,7 @@
 //
 // Pure markup: nothing here reads the network, and a number that was not read is "—", never 0.
 
-import { LISTED_LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, formatLimit, limitNoun, type LimitKey, type OrgPlanView } from "@shared/plans";
+import { LISTED_LIMIT_KEYS, LIMITS, PLANS, UPGRADE_PLAN, capReached, formatLimit, limitNoun, meterPct, type LimitKey, type OrgPlanView } from "@shared/plans";
 import { PRICING, canPurchasePlan, formatPrice } from "@shared/pricing";
 import type { MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
 import { attr, esc } from "./ui";
@@ -134,11 +134,12 @@ function meterRow(v: OrgPlanView, key: LimitKey): string {
   const raw: unknown = (v.usage as Partial<Record<LimitKey, unknown>> | undefined)?.[key];
   const used = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
   const over = v.over.includes(key);
-  const spent = !!d.period && cap !== null && used !== null && used >= cap;
+  const spent = !!d.period && used !== null && capReached(used, cap);
   // What the number counts, in two words: mine (the one per-person limit), or the period.
   const scope = d.per === "person" ? "yours" : d.period === "month" ? "this month" : "";
-  const pct = cap === null || used === null ? null : cap <= 0 ? (used > 0 ? 100 : 0) : Math.max(0, Math.min(100, Math.round((used / cap) * 100)));
-  const tone = over ? "over" : pct !== null && pct >= 100 ? "full" : "ok";
+  // ONE cap test (Q11, shared/plans.ts): full exactly when `capReached`, never by rounding (99.5% is not full).
+  const pct = cap === null || used === null ? null : meterPct(used, cap);
+  const tone = over ? "over" : used !== null && capReached(used, cap) ? "full" : "ok";
   // The meter is the row's picture; its words are beside it, so it is described once, there.
   const meter = pct === null
     ? `<div class="cnpy-meter" data-meter="none" aria-hidden="true"></div>`

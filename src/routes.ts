@@ -72,11 +72,11 @@ import { aiApp } from "./ai/routes";
 import { askApp } from "./ai/ask/routes";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
-import { aiPreview, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { aiSwitchOn } from "./data/ai-cards";
 import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
-import { hideWrongFor } from "./tools/feed-ai";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -273,6 +273,8 @@ tenantRoot.get("/feed", async (c) => {
   const limit = c.req.query("limit");
   const filter = {
     author: c.req.query("author"),
+    // `about=1` with an author: also Trov's digests whose subject is that person (My Work › Your sessions, Q30).
+    aboutAuthor: c.req.query("about") === "1",
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
     limit: limit ? Number(limit) : undefined,
@@ -280,9 +282,14 @@ tenantRoot.get("/feed", async (c) => {
   // An entry written by Trov carries `ai` (shared/rows.ts, 0061_ai_digests). One this person flagged "Wrong?" is
   // hidden for them (and only them); the record stays. Under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries
   // are merged in (src/ai/preview.ts).
-  const feed = await hideWrongFor(c.var.ctx, c.get("principal").handle, await get_feed(c.var.ctx, filter));
-  const preview = aiPreview(c.env, c.req.url);
-  return c.json({ feed: preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed });
+  const feed = await get_feed(c.var.ctx, { ...filter, viewer: c.get("principal").handle });
+  const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
+  const rows = preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed;
+  // Trov's entries are records: they keep their mark whatever the switch says. Only the one-time note ("Trov now
+  // writes entries…") would be untrue with the switch off or no key — `aiOff` says so, and only on a page that has
+  // one of them (Q29). One more statement, only then (`aiSwitchOn` reads nothing without a key: the read rule).
+  const aiOff = rows.some((r) => r.ai?.origin === "ai") && !(await aiSwitchOn(c.var.ctx));
+  return c.json(aiOff ? { feed: rows, aiOff: true } : { feed: rows });
 });
 
 // The Feed aside's "This week": entry counts per day, people, top tags and authors over
@@ -761,8 +768,8 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
 tenantRoot.get("/roadmap", async (c) => {
   const ctx = c.var.ctx;
   const admin = hasRole(ctx, "admin");
-  const plan = await roadmapForPerson(ctx, c.get("principal").handle, await get_plan(ctx), { admin });
-  const preview = aiPreview(c.env, c.req.url);
+  const plan = await roadmapForPerson(ctx, await get_plan(ctx), { admin });
+  const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
   return c.json(preview ? withPreviewRoadmap(plan, preview.roadmap, { admin }) : plan);
 });
 
@@ -776,12 +783,13 @@ tenantRoot.get("/me/dashboard", async (c) => {
     // Opening My Work is what makes a person's brief worth writing (src/data/person-brief.ts `briefWanted`): one
     // timestamp, at most one write an hour, never a model call; a failed write never fails the read.
     const [data] = await Promise.all([
-      getMyWork(c.var.ctx, login) as Promise<DashboardData>,
+      // Under the AI read rule (a key, the switch on), someone with no brief yet reads `empty` (Q24): the tile says when Trov writes it.
+      getMyWork(c.var.ctx, login, new Date(), { emptyWhenNone: true }) as Promise<DashboardData>,
       markMyWorkOpened(c.var.ctx, login).catch((e) => console.error("mywork opened", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`)),
     ]);
     // `brief` is the newest stored one (src/tools/mywork.ts `storedBrief`), absent when there is none. LOCAL_AI_PREVIEW
     // shows the sample instead under `wrangler dev` only (src/ai/preview.ts); `get_my_work` never gets the sample.
-    const preview = aiPreview(c.env, c.req.url);
+    const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
     return c.json(preview ? { ...data, brief: preview.brief } : data);
   } catch {
     // Absolute backstop: never 500. Anything unexpected (D1) → empty degraded payload.
@@ -809,14 +817,15 @@ tenantRoot.get("/repo/dashboard", async (c) => {
     const app = c.req.query("app") || null;
     const [dash, state] = await Promise.all([
       getRepoDashboard(c.var.ctx, repo, Date.now(), envs, undefined, { app }),
-      // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when there
-      // is none, the switch is off, or this person flagged it "Wrong?" (src/tools/repo-state.ts).
-      readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle }),
+      // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when the
+      // switch is off or this person flagged it "Wrong?" (src/tools/repo-state.ts); with nothing written yet it is
+      // `empty` when the deployment has a key (Q23: Summary says when Trov writes it), else absent.
+      readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle, emptyWhenNone: true }),
     ]);
     const written = state ? { ...dash, state } : dash;
     // `themes` (not a section) is there when the repo has themes (src/tools/themes.ts). LOCAL_AI_PREVIEW shows the
     // samples under `wrangler dev` only (src/ai/preview.ts), over the real state.
-    const preview = aiPreview(c.env, c.req.url);
+    const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
     return c.json(preview ? { ...written, state: preview.repoState, themes: preview.themes } : written);
   } catch {
     await heldP.catch(() => undefined); // the repository's name, if its own read succeeded

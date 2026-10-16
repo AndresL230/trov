@@ -27,8 +27,13 @@ import type { FeedRow } from "@shared/rows";
 import type { RepoDashboard } from "@shared/repo";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
+import { run } from "./helpers/db";
 import { addOrgRepo } from "./helpers/org-config";
 import { keyedEnv, stubProviders, type ClaudeReply } from "./helpers/ai-pass";
+import { useAiKey, withoutAiKey } from "./helpers/ai-key";
+
+// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
+useAiKey();
 
 const mdMock = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 vi.mock("../web/src/markdown", () => ({
@@ -145,7 +150,9 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     await addOrgRepo(REPO, ORG_A);
     await append_feed(systemCtx(), { author: ME, summary: "Decision: hosting connections stay read-only", body: "b", tags: [] });
     const cookie = await cookieFor(ME);
-    const dash = await get<RepoDashboard>("/repo/dashboard", cookie);
+    // With a key, nothing written is an `empty` state on the screen's read (Q23); with none it is no field at all.
+    expect((await get<RepoDashboard>("/repo/dashboard", cookie)).state).toMatchObject({ state: "empty", generatedAt: null });
+    const dash = await withoutAiKey(() => get<RepoDashboard>("/repo/dashboard", cookie));
     expect(dash).not.toHaveProperty("state");
     const { feed } = await get<{ feed: FeedRow[] }>("/feed", cookie);
     expect(feed.some((r) => "ai" in r)).toBe(false);
@@ -197,6 +204,12 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect(AiFeedMetaSchema.parse(entry.ai)).toMatchObject({ origin: "ai", subject: ME, model: "claude-haiku-5-5" });
     expect(entry.ai!.sources.map((c) => c.ref)).toContain("pr:185");
     expect(feed.filter((r) => !r.ai).map((r) => r.summary)).toEqual(["Decision: hosting connections stay read-only"]);
+    // `?author=` stays literal (who wrote it: not Trov's digest); `about=1` adds the digests whose subject is that
+    // person — My Work › Your sessions (Q30). Another org's rows never come (the read binds the org).
+    expect((await get<{ feed: FeedRow[] }>(`/feed?author=${ME}`, cookie)).feed.map((r) => r.id)).not.toContain(entry.id);
+    const mine = (await get<{ feed: FeedRow[] }>(`/feed?author=${ME}&about=1`, cookie)).feed;
+    expect(mine.map((r) => r.id)).toContain(entry.id);
+    expect(mine.every((r) => r.author === ME || r.ai?.subject === ME)).toBe(true);
     // MCP get_feed carries the same rows, `ai` included.
     expect(await mcp<FeedRow[]>("get_feed", {})).toEqual(feed);
     // The repo state cites the digest by its feed id: the two producers are wired to each other.
@@ -211,6 +224,20 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect(feedHtml).toContain(`href="https://github.com/${REPO}/pull/185"`); // a source, linked to the digest's repo
     const feedWrong = wrongArg(w, feedHtml, `data-feed-id="${entry.id}"`);
     expect(feedWrong).toMatchObject({ itemType: "feed", itemRef: String(entry.id) });
+    // With the switch on and a key, the page says nothing more; switched OFF, the entry stays a record (its mark,
+    // the Source switch) and only the one-time note, no longer true, goes (Q29).
+    const keyedFeed = async () => (await (await api.request("https://trov.dev/api/o/saplinglearn/feed", { headers: { cookie } }, keyedEnv())).json()) as { feed: FeedRow[]; aiOff?: boolean };
+    expect(await keyedFeed()).not.toHaveProperty("aiOff");
+    expect((await withoutAiKey(() => get<{ aiOff?: boolean }>("/feed", cookie))).aiOff).toBe(true); // no key: nothing new is written either
+    await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = ?`, ORG_A);
+    const off = await keyedFeed();
+    expect(off.aiOff).toBe(true);
+    expect(off.feed.filter((r) => r.ai).map((r) => r.id)).toEqual([entry.id]);
+    const offHtml = w.render(appState(w, { screen: "feed", feedView: "reading", feed: { status: "ok", data: off.feed }, ai: { ...(w.initialState().ai as Record<string, unknown>), feedAiOff: true } }));
+    expect(offHtml).toContain(`data-ai="feed" data-feed-id="${entry.id}"`);
+    expect(offHtml).toContain('data-seg="feed-source"');
+    expect(offHtml).not.toContain(w.FEED_AI_NOTE.slice(0, 40));
+    await run(env.DB, `UPDATE orgs SET ai_automation = 1 WHERE id = ?`, ORG_A);
 
     // ── "Wrong?": the exact bodies the buttons carry, to the real route; the next reads leave each out ──
     for (const body of [stateWrong, feedWrong]) {

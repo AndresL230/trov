@@ -29,11 +29,21 @@ const ticketNumber = (ref: string): number => {
   return n;
 };
 
+/** The ticket a card is about, still OPEN: gone is `not_found`, done / declined a `conflict` — both `not_available`
+ *  (Q35: closing a ticket supersedes its suggestions; one left open from before is refused here). */
+async function openTicket(ctx: Parameters<AcceptHandler["apply"]>[0], number: number) {
+  const t = await ticketByNumber(ctx, number);
+  if (!t) throw new TicketError("not_found", `no such ticket: ${number}`);
+  if (t.status === "done" || t.status === "declined") throw new TicketError("conflict", `ticket ${number} is closed`);
+  return t;
+}
+
 const ticketCategory: AcceptHandler = {
   role: "member",
   async apply(ctx, s, value) {
     if (typeof value !== "string" || !(TICKET_CATEGORIES as readonly string[]).includes(value)) throw new TicketError("bad_request", "not a category");
-    await set_ticket_classification(ctx, ticketNumber(s.item_ref), { category: value as TicketCategory }, ctx.userId);
+    const number = (await openTicket(ctx, ticketNumber(s.item_ref))).number;
+    await set_ticket_classification(ctx, number, { category: value as TicketCategory }, ctx.userId);
   },
 };
 
@@ -41,7 +51,8 @@ const ticketPriority: AcceptHandler = {
   role: "member",
   async apply(ctx, s, value) {
     if (typeof value !== "string" || !(TICKET_PRIORITIES as readonly string[]).includes(value)) throw new TicketError("bad_request", "not a priority");
-    await set_ticket_classification(ctx, ticketNumber(s.item_ref), { priority: value as TicketPriority }, ctx.userId);
+    const number = (await openTicket(ctx, ticketNumber(s.item_ref))).number;
+    await set_ticket_classification(ctx, number, { priority: value as TicketPriority }, ctx.userId);
   },
 };
 
@@ -51,8 +62,8 @@ const ticketDuplicate: AcceptHandler = {
     const target = Number((value as { number?: unknown } | null)?.number);
     if (!Number.isInteger(target) || target <= 0) throw new TicketError("bad_request", "not a ticket");
     const number = ticketNumber(s.item_ref);
-    const [self, other] = await Promise.all([ticketByNumber(ctx, number), ticketByNumber(ctx, target)]);
-    if (!self || !other) throw new TicketError("not_found", `no such ticket: ${!self ? number : target}`);
+    const [self, other] = await Promise.all([openTicket(ctx, number), ticketByNumber(ctx, target)]);
+    if (!other) throw new TicketError("not_found", `no such ticket: ${target}`);
     // Already linked (by its address or the issue it mirrors): nothing to add.
     if (linksTicket(await ticketLinkUrls(ctx, self.id), target, other.source_ref)) return;
     // A mirrored ticket is linked by its GitHub issue; a native one by its address in this org's app.

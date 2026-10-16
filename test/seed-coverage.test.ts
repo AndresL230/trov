@@ -17,6 +17,7 @@ import identity from "../fixtures/dev/identity.json";
 import tickets from "../fixtures/dev/tickets.json";
 import ai from "../fixtures/dev/ai.json";
 import { readRepoState } from "../src/tools/repo-state";
+import { useAiKey } from "./helpers/ai-key";
 
 const fx = { docs, feed, adrs, triage, roadmap, events, identity, tickets };
 
@@ -174,6 +175,9 @@ describe("dev seed lights up every surface", () => {
 });
 
 describe("dev seed: what Trov wrote shows without LOCAL_AI_PREVIEW (fixtures/dev/ai.json)", () => {
+  // THE AI read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off — a local `.dev.vars`
+  // with a key is what shows the seeded state, so this block holds a fake one.
+  useAiKey();
   it("the Feed carries Trov's digests with `ai`, and Repo › Overview's state reads the newest repo_state version", async () => {
     for (const stmt of buildSeedStatements({ ...fx, ai })) await env.DB.prepare(stmt).run();
     const feed = await get_feed(systemCtx(), {});

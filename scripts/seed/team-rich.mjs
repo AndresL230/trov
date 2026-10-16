@@ -25,8 +25,9 @@
 //   • the org's plumbing rows marked `dev-seed` (placeholder MCP / OAuth token HASHES, spent upload links, the ingest
 //     ledger, mail it "sent"), and wholesale for the org: Sync runs, the AI pass's dirty list, notification policy /
 //     preferences, the GitHub App binding, the audit trails.
-// It also SETS, on rows it does not own: the canonical fixtures' sprints 3–7's dates (relative to today, their
-// statuses kept — otherwise they read months overdue) and the plan narrative (version 2, Sapling's own).
+// It also SETS, on rows it does not own: the canonical fixtures' sprints 3–7's dates and statuses
+// (`CANONICAL_SPRINT_DATES`, relative to today — otherwise they read months overdue; sprint 3 done) and the plan
+// narrative (version 2, Sapling's own).
 // Running scripts/seed/repo-setups.mjs afterwards puts its e2e hosting rows back (last one wins).
 import { createHash } from "node:crypto";
 import { targetsRemote } from "./build.mjs";
@@ -86,6 +87,31 @@ export function makeClock(now = new Date()) {
     date: (d) => new Date(t + d * DAY).toISOString().slice(0, 10),
     hourFloor: (ms) => new Date(Math.floor(ms / HOUR) * HOUR).toISOString(),
   };
+}
+
+// ── the canonical fixtures' sprints, against the clock ─────────────────────────────────────────────────────────
+/**
+ * fixtures/dev/roadmap.json's sprints 3–7 as every DEV seed loads them: [id, start, due (days from today), status,
+ * done (days ago it was completed)]. The fixture keeps its absolute June dates — it is the TEST seed's too, and tests
+ * pin them — so a dev seed dates it here instead (`datedRoadmap`), and the Roadmap never rots into months-overdue
+ * sprints. ONE late sprint in the dev data, on purpose: the rich layer's 7002 "Gradebook export rework" (owner ruling
+ * 2026-10-16) — so sprint 3 "Token rotation & audit log" is DONE (a person's act; a seed may set it, invariant 5),
+ * completed 3 days ago, after the showcase's Ask thread that asked whether its date was still realistic.
+ * Sprints 1 and 2 are done with their own (past) dates and stay as they are.
+ */
+export const CANONICAL_SPRINT_DATES = [[3, -40, -12, "done", 3], [4, -18, 3, "in_progress"], [5, 12, 40, "upcoming"], [6, 30, 60, "upcoming"], [7, 45, 75, "upcoming"]];
+/** `CANONICAL_SPRINT_DATES` against clock `c`: id → the fields a dev seed writes. */
+function datedSprints(c) {
+  return CANONICAL_SPRINT_DATES.map(([id, start, due, status, doneAgo]) => {
+    const a = c.date(start), b = c.date(due);
+    return [id, { start_date: a, target_date: b, dates: `${shortDay(a)} – ${shortDay(b)}`, status, updated_at: doneAgo === undefined ? null : c.days(doneAgo) }];
+  });
+}
+/** The roadmap fixture as a dev seed loads it (any path that builds the canonical fixtures for a person to look at):
+ *  a COPY with sprints 3–7 dated against `now`. The fixture object itself is left alone. */
+export function datedRoadmap(roadmap, now = new Date()) {
+  const by = new Map(datedSprints(makeClock(now)));
+  return { ...roadmap, sprints: (roadmap.sprints ?? []).map((sp) => (by.has(sp.id) ? { ...sp, ...by.get(sp.id), updated_at: by.get(sp.id).updated_at ?? sp.updated_at } : sp)) };
 }
 
 // ── what the layer owns ─────────────────────────────────────────────────────────────────────────────────────────
@@ -168,12 +194,11 @@ function workStatements(c) {
     }));
     for (const [url, kind, label, meta] of sp.resources) s.push(insert("sprint_resources", { org_id: ORG, sprint_id: sp.id, url, kind, label, meta }));
   }
-  // The canonical fixtures' sprints 3–7 carry fixed dates from June, so by now they read months overdue. Their
-  // statuses stay; their dates move relative to today (an idempotent UPDATE on rows the layer does not own — the AI
+  // The canonical fixtures' sprints 3–7 carry fixed dates from June, so by now they read months overdue: their dates
+  // and statuses come from `CANONICAL_SPRINT_DATES` (an idempotent UPDATE on rows the layer does not own — the AI
   // showcase reads sprint 3's date back, so run it after this layer, as the `team` scenario does).
-  for (const [id, start, due] of [[3, -40, -12], [4, -18, 3], [5, 12, 40], [6, 30, 60], [7, 45, 75]]) {
-    const a = c.date(start), b = c.date(due);
-    s.push(`UPDATE sprints SET start_date = ${q(a)}, target_date = ${q(b)}, dates = ${q(`${shortDay(a)} – ${shortDay(b)}`)} WHERE org_id = ${q(ORG)} AND id = ${id}`);
+  for (const [id, sp] of datedSprints(c)) {
+    s.push(`UPDATE sprints SET start_date = ${q(sp.start_date)}, target_date = ${q(sp.target_date)}, dates = ${q(sp.dates)}, status = ${q(sp.status)}${sp.updated_at ? `, updated_at = ${q(sp.updated_at)}` : ""} WHERE org_id = ${q(ORG)} AND id = ${id}`);
   }
   for (const [n, title, category, priority, requester, assignees, sprint, moves, body, extra = {}] of C.TICKETS) {
     const id = 7000 + n;

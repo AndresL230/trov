@@ -5,19 +5,18 @@
 // that backs a screen only reads rows.
 //
 // What a read returns (`AiRepoState`, shared/ai-core.ts):
-//   • ABSENT — no repository, the org's AI switch off (off is not a state), nothing written yet, the newest version
+//   • ABSENT — no repository, THE read rule (`aiShown`: the org's AI switch off, or no Anthropic key — off is not a
+//     state), nothing written yet, the newest version
 //     flagged "Wrong?" by the person reading it, a row that no longer parses, or any failed read (the dashboard
 //     never fails over it);
 //   • `ready` — the newest version, with when and by which model it was written and how many events it was
 //     written from (counted by the server);
 //   • `capped` — the same content, when the org has spent this month's `ai_runs`: `resumesOn` the 1st of next
 //     month, `upgrade` on Free.
-import { AiRepoStateSchema, AI_LIST_MAX, aiItemRef, nextMonthStart, type AiLine, type AiRepoState } from "@shared/ai";
-import { planRefusal } from "@shared/plans";
-import { FREE_PLAN } from "@shared/plans";
+import { AiRepoStateSchema, AI_LIST_MAX, aiItemRef, type AiLine, type AiRepoState } from "@shared/ai";
 import { batch, first, stmt, type TenantContext } from "../data/sql";
 import { hiddenFor } from "../data/ai";
-import { planAndAiRuns } from "../plans/gate";
+import { aiShown } from "../plans/gate";
 
 /** Versions kept per repository. */
 export const REPO_STATE_KEEP = 20;
@@ -76,32 +75,47 @@ export async function appendRepoState(ctx: TenantContext, repo: string, v: {
   ]);
 }
 
+/** Whole days since `at`, counted now — `{}` when `at` does not read as an instant (never a guessed 0). */
+function ageOf(at: string, now: Date): { ageDays?: number } {
+  const t = Date.parse(at);
+  return Number.isFinite(t) ? { ageDays: Math.max(0, Math.floor((now.getTime() - t) / 86_400_000)) } : {};
+}
+
 /**
  * `RepoDashboard.state` for `repo` — what the screen and `get_repo_dashboard` carry, or undefined (absent). Two
  * statements (the switch, plan and month's runs in one; the newest version), plus one for "Wrong?" when there is a
- * viewer. Never throws.
+ * viewer. Never throws. `emptyWhenNone` (the screens' — Q23; the key is the read rule's): shown and nothing written yet,
+ * an `empty` state (`capped` once the runs are spent) so the screen says when Trov writes it; MCP leaves it absent.
  */
-export async function readRepoState(ctx: TenantContext, repo: string, opts: { viewer?: string | null; now?: Date } = {}): Promise<AiRepoState | undefined> {
+export async function readRepoState(ctx: TenantContext, repo: string, opts: { viewer?: string | null; now?: Date; emptyWhenNone?: boolean } = {}): Promise<AiRepoState | undefined> {
   if (!repo) return undefined;
   try {
     const now = opts.now ?? new Date();
-    const [gate, row] = await Promise.all([planAndAiRuns(ctx, now), latestRepoState(ctx, repo)]);
-    if (!gate.enabled || !row) return undefined;
+    const [gate, row] = await Promise.all([aiShown(ctx, now), latestRepoState(ctx, repo)]);
+    if (!gate.shown) return undefined;
+    if (!row) {
+      if (!opts.emptyWhenNone) return undefined;
+      return {
+        state: gate.capped ? "capped" : "empty", generatedAt: null, model: null, resumesOn: gate.resumesOn, upgrade: gate.upgrade,
+        headline: null, shipped: [], inFlight: [], attention: [], eventCount: null,
+      };
+    }
     const stored = parseStoredState(row.state_json);
     if (!stored) return undefined;
     if (opts.viewer && (await hiddenFor(ctx, opts.viewer, "repo_state")).has(aiItemRef.repoState(repo, row.generated_at))) return undefined;
-    const capped = !!planRefusal(gate.plan, "ai_runs", gate.used, 1);
     const dto: AiRepoState = {
-      state: capped ? "capped" : "ready",
+      state: gate.capped ? "capped" : "ready",
       generatedAt: row.generated_at,
       model: row.model,
-      resumesOn: capped ? nextMonthStart(now) : null,
-      upgrade: capped && gate.plan.plan === FREE_PLAN,
+      resumesOn: gate.resumesOn,
+      upgrade: gate.upgrade,
       headline: stored.headline,
       shipped: stored.shipped.slice(0, AI_LIST_MAX),
       inFlight: stored.inFlight.slice(0, AI_LIST_MAX),
       attention: stored.attention.slice(0, AI_LIST_MAX),
       eventCount: row.event_count,
+      // Its age, plainly (Q25): an old state stays, and the card says how old.
+      ...ageOf(row.generated_at, now),
     };
     const parsed = AiRepoStateSchema.safeParse(dto);
     return parsed.success ? parsed.data : undefined;

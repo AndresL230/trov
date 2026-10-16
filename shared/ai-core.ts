@@ -15,6 +15,8 @@
 // key, gets NO field at all (or a `not_connected` section where the read already uses
 // `RepoSection`) — never `state: "off"`. A present field is always one of AI_STATES.
 
+import { AI_LEGAL_DRAFT } from "./legal-core";
+
 /** The model every kind runs on today (src/ai/client.ts `providerFor`). */
 export const AI_MODEL = "claude-haiku-5-5";
 
@@ -97,6 +99,11 @@ export const AI_BRIEF_NEXT_MAX = 3;
 /** Sources under one line: one row of them. */
 export const AI_BRIEF_CITES_MAX = 3;
 
+/** How many days what Trov wrote about NOW stays current (owner ruling Q25). A brief older than this is HIDDEN — read
+ *  as if there were none (a stale "Now" is a wrong claim); a repo state older than this stays and says its age
+ *  (`AiRepoState.ageDays`). */
+export const AI_STALE_DAYS = 7;
+
 // ── Repo › Overview › "State" ───────────────────────────────────────────────
 /** `RepoDashboard.state?`. Each list is at most AI_LIST_MAX long. `eventCount` is counted
  *  by the server ("Written by Trov from 6 events"); null when unknown, never a guessed 0. */
@@ -106,6 +113,10 @@ export interface AiRepoState extends AiMeta {
   inFlight: AiLine[];
   attention: AiLine[];
   eventCount: number | null;
+  /** Whole days since this version was written, counted by the SERVER at read time (owner ruling Q25: an old state
+   *  stays, and says its age plainly — the card adds "Written N days ago." from `AI_STALE_DAYS`). Absent when the
+   *  read has no written version (`empty`). */
+  ageDays?: number;
 }
 export const AI_LIST_MAX = 5;
 
@@ -201,7 +212,9 @@ export interface AiSuggestion {
 }
 
 /** What "Wrong?" can be pressed on. */
-export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion", "sprint_note", "plan_drift"] as const;
+/** `importance`: "Wrong?" on Sift's importance rating — feedback for the evals ONLY (Q34): it never hides the rating,
+ *  which is a computed fact, and nothing reads it to hide anything. */
+export const AI_ITEM_TYPES = ["brief", "repo_state", "feed", "themes", "suggestion", "sprint_note", "plan_drift", "importance"] as const;
 export type AiItemType = (typeof AI_ITEM_TYPES)[number];
 
 /** The `itemRef` "Wrong?" sends for each item type — ONE definition for the screen that sends it and
@@ -212,6 +225,8 @@ export const aiItemRef = {
   repoState: (repo: string, generatedAt: string): string => `${repo}@${generatedAt}`,
   themes: (repo: string, range: AiThemeRange, generatedAt: string): string => `${repo}:${range}@${generatedAt}`,
   feed: (id: number): string => String(id),
+  /** A feed entry's importance rating (Q34). */
+  importance: (feedId: number): string => `feed:${feedId}`,
   suggestion: (id: number): string => String(id),
   sprintNote: (sprintId: number, generatedAt: string): string => `${sprintId}@${generatedAt}`,
   planDrift: (generatedAt: string): string => generatedAt,
@@ -225,6 +240,11 @@ export interface AiRoadmapLine {
   cites: AiCite[];
   generatedAt: string;
   model: string | null;
+  /** Present ONLY when the org's month's `ai_runs` are spent (owner ruling Q19: every surface says `capped`): the
+   *  line is the LAST version, `resumesOn` the 1st of next month and `upgrade` true on Free (`AiMeta`). */
+  state?: "capped";
+  resumesOn?: string | null;
+  upgrade?: boolean;
 }
 /** `SprintView.note?` — one line per ACTIVE sprint ("Two of five done; the other three wait on hosting"). */
 export type AiSprintNote = AiRoadmapLine;
@@ -263,10 +283,11 @@ export interface AiFeedbackBody {
 /** `POST /ai/suggestions/:id/accept` — `value` replaces the suggested value (Rename). */
 export interface AiAcceptBody { value?: unknown }
 
-/** Refusal codes the suggestion routes answer with (`{ error }`): `not_found` 404, `not_open` and
- *  `not_available` 409 (no accept handler is registered for the suggestion's kind yet — every kind,
- *  today), `forbidden` 403, `invalid` 400 (a body the schema refuses). */
-export const AI_SUGGESTION_ERRORS = ["not_found", "not_open", "not_available", "forbidden", "invalid"] as const;
+/** Refusal codes the suggestion routes answer with (`{ error }`): `not_found` 404, `off` 403 (THE read rule hides
+ *  every suggestion — the org's AI switch is off, or the deployment has no Anthropic key, which reads exactly the
+ *  same — so nothing is decided: owner ruling Q18), `not_open` and `not_available` 409 (no accept handler for the
+ *  kind, or the item it was about is gone), `forbidden` 403, `invalid` 400 (a body or value the kind refuses). */
+export const AI_SUGGESTION_ERRORS = ["not_found", "off", "not_open", "not_available", "forbidden", "invalid"] as const;
 export type AiSuggestionError = (typeof AI_SUGGESTION_ERRORS)[number];
 
 /** Tenant routes (cookie only, under `/api/o/:slug`). */
@@ -293,11 +314,17 @@ export type AiProviderLabel = (typeof AI_PROVIDER_NAMES)[number];
 
 /** One line of "What is sent": to whom, what, and for which feature. Grows as features land. */
 export interface AiSendLine { provider: AiProviderLabel; what: string; for: string }
+const SEND_SUMMARIES: AiSendLine = { provider: "Anthropic", what: "Pull request and issue titles and descriptions (up to 8,000 characters each)", for: "Summaries" };
+const SEND_SIFT: AiSendLine = {
+  provider: "TypeSafe AI",
+  what: "A tag's name and description, and the title and first 400 characters of each feed entry, doc or decision that may fit it (code and anything shaped like a credential removed)",
+  for: "Sift",
+};
 //   One line per AI row of the Privacy Policy's service-provider table (web/src/legal.ts › sharing), in its words,
-//   shortened — test/render.ai.test.ts holds the two to the same count. The Ask Trov, filter, notes and sorting
-//   lines follow passages still marked DRAFT there; change both together.
-export const AI_SENDS: readonly AiSendLine[] = [
-  { provider: "Anthropic", what: "Pull request and issue titles and descriptions (up to 8,000 characters each)", for: "Summaries" },
+//   shortened, in its order — test/render.legal.test.ts holds the two to the same count. The Ask Trov, filter, notes
+//   and sorting lines follow rows still marked DRAFT there; change both together.
+export const AI_SENDS_ALL: readonly AiSendLine[] = [
+  SEND_SUMMARIES,
   {
     provider: "Anthropic",
     what: "The question and the conversation so far, the person's handle and role and what they said about how to answer them, the items Ask Trov reads to answer (only ones that person can see), and any file they attach",
@@ -313,17 +340,17 @@ export const AI_SENDS: readonly AiSendLine[] = [
     what: "The organization's name, tags, active themes, sprints and plan, and what is being written from: the summaries Trov already made, commit messages and pull request titles, check and deploy results, tickets, handoffs and feed entries, and a doc with the entries that may disagree with it",
     for: "Notes, briefs, the weekly email's highlights and suggestions",
   },
-  {
-    provider: "TypeSafe AI",
-    what: "A tag's name and description, and the title and first 400 characters of each feed entry, doc or decision that may fit it (code and anything shaped like a credential removed)",
-    for: "Sift",
-  },
+  SEND_SIFT,
   {
     provider: "TypeSafe AI",
     what: "One item at a time (a ticket, feed entry, pull request summary, doc proposal or unplaced item) as its title and a short excerpt, code and anything shaped like a credential removed, with the choices it is judged against; and, to decide whether something is worth writing about, commit messages, pull request titles and what changed in a repository",
     for: "Sorting and checking items",
   },
 ];
+/** What Org settings › AI › "What is sent" shows. HELD (owner ruling 2026-10-16) while the Privacy rows it repeats
+ *  are DRAFT (`AI_LEGAL_DRAFT`, shared/legal-core.ts): only the approved lines — summaries and Sift — until the one
+ *  flag flips, and then every line, with the policy. */
+export const AI_SENDS: readonly AiSendLine[] = AI_LEGAL_DRAFT ? [SEND_SUMMARIES, SEND_SIFT] : AI_SENDS_ALL;
 /** Never sent, whatever lands — except a file a person attaches to Ask Trov, which is sent as it is (owner ruling
  *  2026-10-15; the Privacy Policy says the same, web/src/legal.ts › Privacy 4). */
 export const AI_NEVER_SENT = "Source code (unless you attach a file to Ask), diffs, secrets, integration keys, and anything from another organization.";
@@ -349,6 +376,12 @@ export interface AiSettings {
   /** `orgs.ai_chat_auto` (0058) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
    *  may be used in this organization. */
   chatAuto: boolean;
+  /** Whether each provider's key is set on this deployment (owner ruling Q8): Org settings › AI says it per provider —
+   *  Anthropic for everything Trov writes, TypeSafe AI for Sift. A fact about the deployment, never a secret. */
+  keys: { anthropic: boolean; typesafe: boolean };
+  /** The plan's name when the organization's plan has ENDED (`plan_status = 'canceled'`): Trov's AI is paused until it
+   *  is renewed, not until a date (owner ruling Q10). Null otherwise. */
+  planEnded: string | null;
   sends: AiSendLine[];
   neverSent: string;
 }
@@ -360,15 +393,18 @@ export interface AiSettingsPut { enabled?: boolean; chatAuto?: boolean }
 /** `OrgUsage.ai?` / `PlatformUsageResponse.ai?`: AI runs and tokens in the window
  *  (`org_usage_daily`, metrics `ai_run:*`, `ai_run_failed:*`, `ai_run_capped:*`, `ai_tokens_*`). */
 export interface AiUsage {
-  runs: number;
-  failed: number;
-  capped: number;
-  tokensIn: number;
-  tokensOut: number;
-  tokensCached: number;
+  /** Anthropic's side — present only when the deployment has an Anthropic key (owner ruling Q7: each provider's
+   *  figures stand on that provider's key alone). */
+  runs?: number;
+  failed?: number;
+  capped?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  tokensCached?: number;
   /** TypeSafe AI's side (Phase B: token metrics per provider) — Jev requests (`ai_suggest`: Sift's and the AI
-   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Optional: a read from before
-   *  them (and the preview fixtures) leaves them out, and the screen then draws exactly what it did. */
+   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Present only when the
+   *  deployment has a TypeSafe AI key; a read from before them (and the preview fixtures) leaves them out, and the
+   *  screen then draws exactly what it did. */
   jevChecks?: number;
   jevTokensIn?: number;
   jevTokensOut?: number;

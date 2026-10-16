@@ -92,7 +92,9 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     the org's switch on, only that org's items, and it only ever ADDS that one tag — it never removes or changes
     anything else. Every other rule holds: never on a render path (the route starts the run and hands its work to
     `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement); metered
-    (`jev_checks`, one per request, `plans.md`).
+    (`jev_checks`, one per request, `plans.md`). A run refused for a switch names WHICH one (`startTagFit`):
+    `org_off` — the organization's AI switch ("…An admin turns it on in Org settings › AI.") — or `off`, Sift's own
+    on the Tags tab ("Sift is off. Turn it on above, in Tags, first.").
   - **Provenance**: each tag a run adds keeps an `org_tag_suggestions` row — `source = 'model'`, `confidence`,
     `reason`, `model` (the version Jev reports, e.g. `jev-1.13.0`), `prompt_version` `jev-fit-1`, `state =
     'accepted'`, `resolved_by = 'jev'` (a reserved handle) and the run's `run_id` — written in the SAME batch as
@@ -173,7 +175,9 @@ breaking an amber triangle, each with its word and a tooltip saying it is Sift's
 (`test/render.feed-importance.test.ts`). The mark has no motion of its own: it enters with its row (the Feed's
 `.cnpy-stagger` entrance, on a route change only, off under reduced motion), so a rerender never replays it.
 `LOCAL_AI_PREVIEW` merges two rated agent entries (`feedImportanceFixtures`)
-into `/feed`; the dev seed rates a few entries and PRs.
+into `/feed`; the dev seed rates a few entries and PRs. A stored rating is a RECORD, not a computed surface (owner
+ruling Q32): it keeps showing — the Feed's mark, `get_feed`, the daily e-mail's "Also" — with the org's AI switch
+off or no Anthropic key; off only stops NEW ratings (`test/ai.records-off.test.ts`).
 
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
 written for, its sources). The SESSION DIGESTS (`ai.md` › Session digests): a `Shipped:` / `Status:` entry the AI
@@ -183,11 +187,15 @@ read of the feed (`get_feed`: `/feed` and MCP) folds those three columns into `a
 `src/tools/feed-ai.ts`) — `subject`, `sources` (the server's cites built from the entry's own `artifacts`: PRs, then
 commits, linked to the digest's repository from `ai_sessions`; no repository = no link, never a guess), the
 first `AI_FEED_SOURCES_SHOWN` (3) and `moreCount` the rest, `generatedAt` (`created_at`) and `model` — and drops them
-from the row; an agent's entry carries no `ai`, exactly as before. `/feed` and MCP `get_feed` both leave out a
-Trov entry the caller flagged "Wrong?" (`hideWrongFor`: `ai_feedback` item type `feed`, ref = the entry's id —
-`aiItemRef.feed`, what the Feed's button sends; for them only; the record stays). Its `importance` is Phase C's `feed.importance` (Jev,
+from the row; an agent's entry carries no `ai`, exactly as before. The entry is a record (owner ruling Q29): it keeps
+its `ai` with the org's switch off or no key — off writes no new one; only the web's one-time "Trov now writes…"
+note goes (it reads `GET /ai/settings`' `enabled` / `eligibility`). `/feed` and MCP `get_feed` both leave out a
+Trov entry the caller flagged "Wrong?" (`ai_feedback` item type `feed`, ref = the entry's id — `aiItemRef.feed`, what
+the Feed's button sends; for them only; the record stays) IN SQL, before the LIMIT (`get_feed`'s `viewer`: a
+`NOT EXISTS` on the primary key, set by each caller to its own authenticated person, never by a client), so a page is
+never short (owner ruling Q28; `test/ai.feed-wrong.test.ts`) and the separate "Wrong?" read is gone. Its `importance` is Phase C's `feed.importance` (Jev,
 `card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
-sample entries into `/feed` by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler
+sample entries into `/feed` by `created_at` (respecting `author` / `about` / `tags` / `since` / `limit`) under `wrangler
 dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with
 their `ai_sessions`, a skipped session and two `repo_state` versions (`fixtures/dev/ai.json`,
 `scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Summary show them
@@ -195,14 +203,19 @@ without the preview. `test/ai.hookup.test.ts` proves the whole path on real rows
 
 **Entries written by Trov** (`FeedRow.ai?`, `AiFeedMeta`). An entry with no `ai`, or `ai.origin === "agent"`, is an
 agent's and renders as before. One with `origin: "ai"` takes the AI mark as its avatar, "Trov" as the name and
-"for <subject>" (the subject through `people.ts`), its brief, then "From #173, 65b9f1f, a1c04e2 and 2 more" and
+"for <subject>" (the subject through `people.ts`; a deleted account's is "Deleted user", plain text — Q31), its brief, then "From #173, 65b9f1f, a1c04e2 and 2 more" and
 "Wrong?" (hidden for that person at once). Only when at least one LOADED entry carries `ai` does the header gain a
 **Source** `segmented()` (All / Agents / Trov, `state.ai.feedSource`, client-side, beside For reading / For
 agents), and the list a one-time note above the first Trov entry on screen ("Trov now writes entries from your
 commits, about 45 minutes after your last push. Your agents can stick to decisions and findings." + AI settings
 → Org settings › AI), dismissed per person with "Got it" (`trov.aiFeedNote`, a JSON list of handles in this
-browser's localStorage). With no `ai` anywhere the Feed is byte-for-byte what it was
-(`test/render.ai-absent.test.ts`).
+browser's localStorage). Trov's entries are RECORDS: with the org's switch off (or no key) they keep their mark, byline
+and the Source switch; only the note, no longer true, is not drawn — `/feed` then answers `aiOff: true` beside a
+page that holds one (`getFeedPage`, `AiUi.feedAiOff`; Q29). Source = Trov over a page with no entry Trov wrote says "No Trov entries in this view."
+(`FEED_NO_TROV`, Q27) where any other filter says "No entries match this filter.". `?author=<handle>` is LITERAL —
+who wrote the entry, so never Trov's digest about them; `&about=1` (`FeedFilter.aboutAuthor`) adds the digests whose
+`subject` is that handle (one SQL clause, still bound to the org), which My Work › Your sessions reads (Q30). With no `ai` anywhere the Feed
+is byte-for-byte what it was (`test/render.ai-absent.test.ts`).
 
 ## Read side — FTS5 query engine
 

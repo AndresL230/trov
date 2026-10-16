@@ -25,6 +25,7 @@ import type { TicketRow } from "@shared/rows";
 import { type TenantContext, type Stmt, first, all, run, stmt, batch, nowIso } from "../data/sql";
 import { requireMember } from "../auth/persons";
 import { routeAi } from "./ai-route";
+import { supersedeOpenTicketSuggestions } from "../data/ai";
 
 /**
  * A typed failure the routes map onto an HTTP status:
@@ -178,6 +179,14 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
   return number;
 }
 
+/** What closing a ticket also writes, for the status writer's own batch: a ticket that becomes `done` / `declined`
+ *  closes Trov's OPEN suggestions about it (owner ruling Q35: superseded — not shown, an Accept refused). Every status
+ *  writer uses it: `transition_ticket`, `move_ticket` and the GitHub mirror's forced status (./ticket-mirror.ts). */
+export function closingStmts(ctx: TenantContext, ticketId: number, from: TicketStatus, to: TicketStatus): Stmt[] {
+  const closed = (s: TicketStatus) => s === "done" || s === "declined";
+  return closed(to) && !closed(from) ? [supersedeOpenTicketSuggestions(ctx, ticketId)] : [];
+}
+
 /**
  * Move a ticket's status. The move must be legal per `canTransition` (the ONE
  * table in shared/tickets.ts) — an illegal one throws and writes NOTHING, not
@@ -197,8 +206,11 @@ export async function transition_ticket(ctx: TenantContext, number: number, to: 
     ctx.orgId, id, who, t.status, to, now
   );
   // A move that is not a board drop clears the card's position: it lands at the
-  // TOP of its new column (`boardOrder`), where a person will see it.
-  await run(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId);
+  // TOP of its new column (`boardOrder`), where a person will see it. Closing it closes what Trov suggested about it.
+  await batch(ctx, [
+    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId),
+    ...closingStmts(ctx, id, t.status, to),
+  ]);
   await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
 
@@ -235,6 +247,7 @@ export async function move_ticket(ctx: TenantContext, number: number, to: Ticket
       ctx.orgId, id, who, t.status, to, now));
   }
   stmts.push(stmt(ctx, `UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ? AND org_id = ?`, to, rank, now, id, ctx.orgId));
+  stmts.push(...closingStmts(ctx, id, t.status, to));
   // D1 caps a batch well above a board column; chunk anyway so a huge Done column never trips it.
   for (let i = 0; i < stmts.length; i += 100) await batch(ctx, stmts.slice(i, i + 100));
   if (to !== t.status) await routeAi(ctx, { type: "ticket_changed", ticketId: id });

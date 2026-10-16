@@ -2981,13 +2981,13 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-conv { position:relative; flex:1; min-width:0; display:flex; flex-direction:column; }
 .ask-scroll { flex:1; min-height:0; overflow-y:auto; overflow-anchor:none; display:flex; flex-direction:column; }
 /* Jump to the latest (ask-conversation.ts `jumpButton`): a 0-height row stuck to the scroller's bottom edge holds the
-   arrow over the conversation's end; it shows once the person scrolled up (`data-away`), purple while an answer is
-   still coming below (`data-busy`). */
+   arrow over the conversation's end; it shows once the person scrolled up (`data-away`), in the accent while an
+   answer is still coming below (`data-busy`). */
 .ask-jump-w { position:sticky; bottom:0; height:0; flex:none; display:flex; justify-content:center; z-index:3; pointer-events:none; }
 .ask-jump { position:absolute; bottom:14px; display:grid; place-items:center; width:34px; height:34px; border-radius:50%; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg-70); box-shadow:0 4px 14px rgba(0,0,0,0.12); cursor:pointer; opacity:0; transform:translateY(8px); pointer-events:none; transition:opacity .18s var(--fx-ease), transform .18s var(--fx-ease), color .12s ease, border-color .12s ease; }
 .ask-jump[data-away="1"] { opacity:1; transform:none; pointer-events:auto; }
 .ask-jump:hover { color:var(--fg); border-color:color-mix(in srgb, var(--fg) 35%, transparent); }
-.ask-jump[data-busy="1"] { color:var(--purple); border-color:color-mix(in srgb, var(--purple) 45%, var(--border)); }
+.ask-jump[data-busy="1"] { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
 .ask-col { width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:28px 28px 8px; }
 [data-phone="1"] .ask-col, .ask-panel .ask-col { padding:20px 16px 8px; }
 .ask-insp-slot { display:contents; }
@@ -3053,7 +3053,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
-  .ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { animation:none !important; background:none; color:var(--fg-55); }
+  .ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { animation:none !important; background:none !important; color:var(--fg-55) !important; }
   /* the composer */
   .ask-input { transition:none !important; }
   .ask-jump { transition:none !important; }
@@ -3137,6 +3137,10 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-phone="1"] .ask-starters, .ask-panel .ask-starters { grid-template-columns:1fr; }
 .ask-starters > button { display:flex; align-items:center; gap:9px; padding:10px 13px; border:1px solid var(--border); border-radius:10px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease; }
 .ask-starters > button:hover { background:var(--surface); border-color:var(--border-strong); color:var(--fg); }
+/* Blocked (no key, off, the questions used — QA-6): readable, not pressable; the tooltip says why. */
+.ask-starters > button[aria-disabled="true"] { cursor:default; color:var(--fg-40); }
+.ask-starters > button[aria-disabled="true"]:hover { background:none; border-color:var(--border); color:var(--fg-40); }
+.ask-co-mi[aria-disabled="true"] { cursor:default; opacity:.55; }
 @keyframes ask-cv-rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes ask-grow-y { from { transform:scaleY(0); } to { transform:none; } }
 @keyframes ask-wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
@@ -3178,9 +3182,10 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 .ask-res-m { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--fg-55); }
 .ask-think { margin-bottom:2px; }
 /* What Trov is doing RIGHT NOW reads as thinking (the owner): a running step's label and "Thinking… Ns" carry a soft
-   sweep of light across the words — the ink at --fg-40, the sweep at --purple — while they run. Off under reduced
-   motion, where the words are plain. The sweep is the theme's --purple, like the orb (the owner: purple = working). */
-.ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:linear-gradient(90deg, var(--fg-40) 0%, var(--fg-40) 35%, var(--purple) 50%, var(--fg-40) 65%, var(--fg-40) 100%) 0 0 / 250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:ask-shimmer 1.8s linear infinite; }
+   sweep of light across the words — the ink at --fg-40, the sweep at --accent — while they run. Off under reduced
+   motion, where the words are plain. The sweep is the theme's --accent, like the orb (the owner: colour carries
+   meaning only — no new hue for "working"; olive in dark). */
+.ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:linear-gradient(90deg, var(--fg-40) 0%, var(--fg-40) 35%, var(--accent) 50%, var(--fg-40) 65%, var(--fg-40) 100%) 0 0 / 250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:ask-shimmer 1.8s linear infinite; }
 @keyframes ask-shimmer { from { background-position:100% 0; } to { background-position:0% 0; } }
 .ask-think-sum { margin:4px 0 6px 6px; padding:4px 0 4px 14px; border-left:1px solid var(--border); font-size:13px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; animation:ask-cv-rise .26s cubic-bezier(.2,.7,.2,1) both; }
 /* The answer's text: markdown, ref chips inline, the soft cursor at the end of the last line. */
@@ -3361,6 +3366,8 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-err { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:10px; padding:10px 12px; border:1px solid color-mix(in srgb, var(--red) 30%, var(--border)); border-radius:10px; background:color-mix(in srgb, var(--red) 5%, var(--surface)); }
 .ask-err-t { font-size:13px; font-weight:500; }
 .ask-err-s { font-size:12.5px; color:var(--fg-55); }
+/* Nothing written (Q-F2): not an error — the neutral frame, the same Try again. */
+.ask-err--none { border-color:var(--border); background:var(--surface); }
 .ask-btn--sm { padding:5px 12px; border-radius:7px; background:var(--surface); font-size:12px; }
 .ask-stopped { display:flex; align-items:center; gap:7px; margin:4px 0 6px; font-size:12.5px; color:var(--fg-55); }
 /* The footer: the mode word, N sources, Copy, Regenerate (+ Regenerate with), Save as artifact, Wrong?. */

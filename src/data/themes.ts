@@ -50,12 +50,6 @@ export function seedPrsOf(r: Pick<ThemeRow, "seed_prs">): number[] {
   }
 }
 
-/** Is the org's AI switch on? (Off: every AI field is MISSING.) A missing org reads as off. */
-export async function aiSwitchOn(ctx: TenantContext): Promise<boolean> {
-  const r = await first<{ enabled: number }>(ctx, `SELECT ai_automation AS enabled FROM orgs WHERE id = ?`, ctx.orgId);
-  return r?.enabled === 1;
-}
-
 /** A repository's themes in the given states, in lane order. */
 export function repoThemes(ctx: TenantContext, repo: string, statuses: readonly ThemeStatus[] = ["active"]): Promise<ThemeRow[]> {
   const st = statuses.length ? statuses : ["active"];
@@ -163,6 +157,23 @@ export async function putAiPrThemes(ctx: TenantContext, repo: string, rows: read
        prompt_version = excluded.prompt_version, set_by = NULL, set_at = excluded.set_at
      WHERE pr_themes.source <> 'person'`,
     ctx.orgId, repo, r.pr, r.themeId, r.confidence === null ? null : Math.min(1, Math.max(0, r.confidence)), r.model, r.promptVersion, at)));
+  return res.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+}
+
+/**
+ * An ACCEPTED proposal's seed PRs — the merged PRs its proposal cited — written as that theme's (`source = 'ai'`, the
+ * proposal's model and prompt version, no confidence), so the lane keeps counting them the moment it turns active
+ * (owner ruling Q-S3: never a misleading zero while the batch backfill has not run, or never runs without a key). A PR
+ * that already has a theme — a person's, or another AI pick — is left as it is (the backfill may reconsider an AI one).
+ * ONE batch; returns how many it wrote.
+ */
+export async function seedPrThemes(ctx: TenantContext, theme: Pick<ThemeRow, "repo" | "seed_prs" | "model" | "prompt_version">, themeId: number, at: string = nowIso()): Promise<number> {
+  const prs = seedPrsOf(theme);
+  if (!prs.length) return 0;
+  const res = await batch(ctx, prs.map((pr) => stmt(ctx,
+    `INSERT INTO pr_themes (org_id, repo, pr_number, theme_id, source, confidence, model, prompt_version, set_by, set_at)
+     VALUES (?, ?, ?, ?, 'ai', NULL, ?, ?, NULL, ?) ON CONFLICT(org_id, repo, pr_number) DO NOTHING`,
+    ctx.orgId, theme.repo, pr, themeId, theme.model, theme.prompt_version, at)));
   return res.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
 }
 

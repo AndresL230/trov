@@ -11,6 +11,8 @@ import { ORG_TABLES } from "../src/deletion/tables";
 import { app } from "../src/routes";
 import { devSignInAllowed } from "../src/auth/dev-signin";
 import { loadScenarios, scenarioNames, SCENARIOS, orgTablesInOrder, orgWipeStatements, ORG_TABLES_SQL, type SeedDb } from "../scripts/seed/scenarios.mjs";
+import { CANONICAL_SPRINT_DATES, datedRoadmap } from "../scripts/seed/team-rich.mjs";
+import roadmapFixture from "../fixtures/dev/roadmap.json";
 import { cookieFor } from "./helpers/persons";
 import { rows } from "./helpers/orgs";
 
@@ -40,6 +42,34 @@ describe("the team scenario", () => {
     expect(await count(`SELECT COUNT(*) AS n FROM needs_triage WHERE org_id = 'org_saplinglearn' AND resolved = 0`)).toBeGreaterThan(5);
     expect(await count(`SELECT COUNT(*) AS n FROM memberships WHERE org_id = 'org_saplinglearn' AND role = 'admin'`)).toBe(1);
     expect(await count(`SELECT COUNT(DISTINCT author) AS n FROM feed WHERE org_id = 'org_saplinglearn' AND created_at > ?`, new Date(NOW.getTime() - 42 * 86_400_000).toISOString())).toBeGreaterThan(5);
+  });
+
+  it("ONE late sprint (owner ruling 2026-10-16): Gradebook export rework (7002) — Token rotation & audit log (3) is done", async () => {
+    await loadScenarios(db, ["team"], { now: NOW });
+    const today = NOW.toISOString().slice(0, 10);
+    expect(await rows<{ id: number }>(`SELECT id FROM sprints WHERE org_id = 'org_saplinglearn' AND status = 'in_progress' AND target_date < '${today}' ORDER BY id`)).toEqual([{ id: 7002 }]);
+    expect(await rows<{ status: string }>(`SELECT status FROM sprints WHERE org_id = 'org_saplinglearn' AND id = 3`)).toEqual([{ status: "done" }]);
+    // Nothing planned reads as already started, and nothing open as months overdue.
+    expect(await count(`SELECT COUNT(*) AS n FROM sprints WHERE org_id = 'org_saplinglearn' AND status = 'upcoming' AND start_date <= ?`, today)).toBe(0);
+    // The showcase's brief makes no "overdue" claim about a sprint that is done.
+    const brief = await rows<{ brief_json: string }>(`SELECT brief_json FROM person_brief WHERE org_id = 'org_saplinglearn' AND handle = 'AndresL230' ORDER BY version DESC LIMIT 1`);
+    expect(brief[0].brief_json).not.toContain("Token rotation");
+  });
+
+  it("the canonical roadmap fixture, as a dev seed loads it, is dated against the clock — it never rots (the TEST seed's fixture is untouched)", () => {
+    for (const now of [NOW, new Date("2028-03-01T09:00:00.000Z")]) {
+      const today = now.toISOString().slice(0, 10);
+      const rm = datedRoadmap(roadmapFixture, now);
+      expect(rm.sprints.map((sp) => sp.id)).toEqual(roadmapFixture.sprints.map((sp) => sp.id));
+      for (const sp of rm.sprints) {
+        if (sp.status !== "done") expect(sp.target_date >= today, `sprint ${sp.id} is not past due`).toBe(true);
+        if (sp.status === "upcoming") expect(sp.start_date > today, `sprint ${sp.id} has not started`).toBe(true);
+      }
+      expect(rm.sprints.find((sp) => sp.id === 3)).toMatchObject({ status: "done" });
+    }
+    expect(CANONICAL_SPRINT_DATES.map(([id]) => id)).toEqual([3, 4, 5, 6, 7]);
+    // The canonical fixture itself keeps its absolute dates: tests pin them (CLAUDE.md › the canonical seed).
+    expect(roadmapFixture.sprints.find((sp) => sp.id === 3)).toMatchObject({ status: "in_progress", target_date: "2026-06-10" });
   });
 
   it("rewrites only its own org: a rerun leaves the same rows, and another org's rows are untouched", async () => {

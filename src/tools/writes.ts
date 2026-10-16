@@ -7,6 +7,7 @@ import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql
 import type { PlatformContext } from "../data/platform-sql";
 import { memberPerson, resolvePersonForLogin } from "../auth/persons";
 import { routeAi } from "./ai-route";
+import { REVIEW_ITEM, reviewRef, supersedeOpenSuggestions } from "../data/ai";
 // NOTE: writes.ts ↔ consumer.ts is a deliberate circular import. consumer.ts
 // imports the low-level writers below; assign_triage imports the gate functions.
 // It is safe because every reference is INSIDE a function body (resolved lazily
@@ -330,7 +331,11 @@ export async function promote_doc(
   if (ver.status !== "staged") throw new Error(`doc version not staged: ${slug} v${version} is ${ver.status}`);
 
   const updated_at = nowIso();
-  await run(ctx, `UPDATE doc_versions SET status = 'promoted' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version);
+  // A decided proposal closes its risk (Q37): its open suggestions are superseded in the same batch.
+  await batch(ctx, [
+    stmt(ctx, `UPDATE doc_versions SET status = 'promoted' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version),
+    supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version)),
+  ]);
   await run(
     ctx,
     `UPDATE docs SET body = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND slug = ?`,
@@ -350,7 +355,11 @@ export async function ratify_adr(ctx: TenantContext, id: number): Promise<{ id: 
   const adr = await first<AdrRow>(ctx, `SELECT * FROM adrs WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!adr) throw new Error(`no such adr: ${id}`);
   if (adr.status === "ratified") throw new Error(`adr already ratified: ${id}`);
-  await run(ctx, `UPDATE adrs SET status = 'ratified' WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+  // Ratifying closes its open risk (owner ruling Q37): superseded in the same batch, gone from Review and /adrs.
+  await batch(ctx, [
+    stmt(ctx, `UPDATE adrs SET status = 'ratified' WHERE id = ? AND org_id = ?`, id, ctx.orgId),
+    supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.adr(id)),
+  ]);
   return { id, status: "ratified" };
 }
 
@@ -387,7 +396,10 @@ export async function reject_doc_version(
   if (!ver) throw new Error(`no such doc version: ${slug} v${version}`);
   if (ver.status === "rejected") return { slug, version, status: "rejected" }; // idempotent
   if (ver.status !== "staged") throw new Error(`cannot reject ${slug} v${version}: it is ${ver.status}`);
-  await run(ctx, `UPDATE doc_versions SET status = 'rejected' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version);
+  await batch(ctx, [
+    stmt(ctx, `UPDATE doc_versions SET status = 'rejected' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version),
+    supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version)),
+  ]);
   return { slug, version, status: "rejected" };
 }
 
@@ -400,7 +412,11 @@ export async function reject_adr(ctx: TenantContext, id: number): Promise<{ id: 
   if (!adr) throw new Error(`no such adr: ${id}`);
   if (adr.status === "rejected") return { id, status: "rejected" }; // idempotent
   if (adr.status !== "draft") throw new Error(`cannot reject adr ${id}: it is ${adr.status}`);
-  await run(ctx, `UPDATE adrs SET status = 'rejected' WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+  // Rejecting closes its open risk too (Q37).
+  await batch(ctx, [
+    stmt(ctx, `UPDATE adrs SET status = 'rejected' WHERE id = ? AND org_id = ?`, id, ctx.orgId),
+    supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.adr(id)),
+  ]);
   return { id, status: "rejected" };
 }
 

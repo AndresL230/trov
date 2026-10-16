@@ -157,6 +157,17 @@ describe("applied, and Undo", () => {
     expect(render(app({ screen: "feed", aiFilter: on({ applied: { feed: applied } }) }))).toContain('data-ai-filter-line="feed"');
   });
 
+  // Q4 (owner ruling 2026-10-16): a 200 whose filter has no words (e.g. "anyone") draws no line of "Undo" alone.
+  it("no line at all when the answer's labels are empty — applied or leaving", () => {
+    const empty = { labels: [], unmatched: ["overdue"], undo: {} };
+    for (const screen of SCREENS) {
+      expect(aiFilterLine(screen, on({ applied: { [screen]: empty } }), initialAiUi())).toBe("");
+      const ai = { ...initialAiUi(), leaving: [{ key: aiFilterLeaveKey(screen), at: 1000 }] };
+      expect(aiFilterLine(screen, on({ undone: { [screen]: empty } }), ai, 1100)).toBe("");
+    }
+    expect(render(app({ screen: "tickets", aiFilter: on({ applied: { tickets: empty } }) }))).not.toContain("data-ai-filter-line");
+  });
+
   it("after Undo the line leaves by the AI kit's one exit, then is gone", () => {
     const ui = on({ undone: { feed: applied } });
     const at = 1_000_000;
@@ -221,6 +232,67 @@ describe("the controller", () => {
     expect(calls).not.toContain("close:artifacts");
   });
 
+  // Q1 (owner ruling 2026-10-16): the row is drawn from a switch read once per org; an admin turned AI off since.
+  it("a 403 `off` (or 503 `no_key`) from Apply turns the row off at once: no box, no stale error, the menu shuts, the reason said once", async () => {
+    for (const [status, code, message] of [[403, "off", AI_FILTER_MESSAGES.off], [503, "no_key", AI_FILTER_MESSAGES.no_key]] as const) {
+      vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: code, message }), { status, headers: { "content-type": "application/json" } })));
+      const flashes: string[] = [];
+      const state = app({ screen: "tickets", aiFilter: on({ reveal: "tickets", drafts: { tickets: "my bugs", feed: "", artifacts: "" } }) });
+      state.qFilterOpen = true;
+      const calls: string[] = [];
+      const ctl = createAiFilterController({
+        state, rerender: () => calls.push("rerender"), unauth: () => calls.push("unauth"), role: () => "member",
+        snapshot: () => ({}), apply: () => calls.push("apply"), restore: () => calls.push("restore"), names: () => names,
+        closeMenu: (s) => calls.push(`close:${s}`), leave: () => 1, flash: (m) => flashes.push(m),
+      });
+      ctl.act("aiFilterRun", "tickets", null);
+      await vi.waitFor(() => expect(calls).toContain("close:tickets"));
+      expect(state.aiFilter.on).toBe(false);
+      expect(state.aiFilter.reveal).toBeNull();
+      expect(state.aiFilter.error.tickets).toBeUndefined();
+      expect(flashes).toEqual([message]);
+      expect(calls).not.toContain("apply");
+      // Drawn as off: no row in the menu, no line above the screen.
+      expect(aiFilterMenuTop("tickets", state.aiFilter)).toBe("");
+      expect(pop(render(state))).not.toContain("aiFilterReveal");
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // Q3 (owner ruling 2026-10-16): after a hand change the line no longer says what is set, and its Undo would
+  // overwrite the hand change.
+  it("a hand change to the filters after an apply drops the \"Filtered: …\" line and its Undo (by the kit's exit); none keeps it", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ filter: { status: "open" }, unmatched: [] }), { status: 200, headers: { "content-type": "application/json" } })));
+    const state = app({ screen: "tickets", aiFilter: on({ reveal: "tickets", drafts: { tickets: "open ones", feed: "", artifacts: "" } }) });
+    let filters: Record<string, unknown> = { qSeg: "closed" };
+    const calls: string[] = [];
+    const ctl = createAiFilterController({
+      state, rerender: () => {}, unauth: () => {}, role: () => "member",
+      snapshot: () => ({ ...filters }), apply: () => { filters = { qSeg: "open" }; }, restore: (_s, snap) => { filters = { ...snap }; },
+      names: () => names, closeMenu: () => {}, leave: (k) => { calls.push(`leave:${k}`); return 1; },
+    });
+    ctl.act("aiFilterRun", "tickets", null);
+    await vi.waitFor(() => expect(state.aiFilter.applied.tickets).toBeTruthy());
+    expect(state.aiFilter.applied.tickets?.after).toEqual({ qSeg: "open" });
+    // A paint with nothing changed keeps the line.
+    ctl.sync();
+    expect(state.aiFilter.applied.tickets?.labels).toEqual(["Open"]);
+    expect(calls).toEqual([]);
+    // The person switches the status by hand: the line goes, by the kit's one exit, and Undo with it.
+    filters = { qSeg: "all" };
+    ctl.sync();
+    expect(state.aiFilter.applied.tickets).toBeUndefined();
+    expect(state.aiFilter.undone.tickets?.labels).toEqual(["Open"]);
+    expect(calls).toEqual([`leave:${aiFilterLeaveKey("tickets")}`]);
+    ctl.act("aiFilterUndo", "tickets", null);
+    expect(filters).toEqual({ qSeg: "all" }); // Undo is gone: nothing overwrites the hand change
+  });
+
+  it("main.ts syncs the typed filters before every paint, and hands the controller its toast", () => {
+    expect(mainSrc).toMatch(/aiFilterCtl\.sync\(\);[^\n]*\n\s*paint\(mount, render\(state\)\);/);
+    expect(mainSrc).toContain("flash: (m) => flash(m),");
+  });
+
   it("an empty field is refused before any request", () => {
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
@@ -246,6 +318,16 @@ describe("main.ts wires the menus", () => {
     expect(mainSrc).toContain('[data-act="fmToggle"][data-arg="${id}"]');
     expect(mainSrc).toContain('if (menu?.querySelector(".fm-ai")?.contains(document.activeElement)) return;');
     expect(mainSrc).toContain('const AI_FILTER_MENU: Record<AiFilterScreen, string> = { tickets: "queue", feed: "feed", artifacts: "art" };');
+  });
+  // FL-final-2 (e2e final pass): Enter on a typed filter repaints the screen while the menu fades out; the repaint
+  // under a pointer resting on the popover fired a pointerover, and the hover rule ("re-entered while it was fading
+  // out: keep it") revived the menu — every second apply left it open over the "Filtered: …" line and its Undo.
+  // Only a close the hover started is revived by the pointer; one that was asked for (Apply, Escape, the backdrop,
+  // the Filter button) runs to its end.
+  it("a close that was asked for is not revived by a pointerover; only a hover's own close is", () => {
+    expect(mainSrc).toContain("hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id, false, true); }, 200);");
+    expect(mainSrc).toContain("if (!FILTER_MENUS[id].isOpen() || (fmClosing === id && fmClosingByHover)) {");
+    expect(mainSrc).not.toContain("if (!FILTER_MENUS[id].isOpen() || fmClosing === id) {");
   });
 });
 

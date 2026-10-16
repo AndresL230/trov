@@ -70,9 +70,9 @@ export function filterModelSchema(screen: AiFilterScreen) {
 const FIELDS: Record<AiFilterScreen, string> = {
   tickets: [
     `- status: ${TICKET_FILTER_STATUSES.join(" | ")} — open tickets; closed (done or declined) ones; or all, which is everything except declined — declined tickets are in closed`,
-    `- assignee: ${TICKET_FILTER_ASSIGNEES.join(" | ")} — "me" is the person asking`,
+    `- assignee: ${TICKET_FILTER_ASSIGNEES.join(" | ")} — "me" is the person asking: "my", "mine" and "assigned to me" mean me`,
     "- person: the handle of ONE member from the people list whose tickets to show (instead of assignee)",
-    `- category: ${AI_FILTER_VALUES.ticketCategories.join(" | ")}`,
+    `- category: ${AI_FILTER_VALUES.ticketCategories.join(" | ")} — the kind of ticket, plural or not: "bugs" is bug`,
     `- priority: ${AI_FILTER_VALUES.ticketPriorities.join(" | ")}`,
     '- sprint: a sprint id from the sprint list, or "backlog" for tickets in no sprint',
     "- text: words to search for in titles, only when the request asks to search for them",

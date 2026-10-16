@@ -8,3 +8,6 @@ export function makeClock(now?: Date): { t: number; days(d: number): string; dat
 export function deleteStatements(): string[];
 export function plumbingDeleteStatements(): string[];
 export function teamRichStatements(now?: Date): string[];
+export const CANONICAL_SPRINT_DATES: [id: number, start: number, due: number, status: string, doneAgo?: number][];
+export interface DatedSprint { id: number; start_date: string; target_date: string; status: string; dates: string | null; updated_at?: string | null }
+export function datedRoadmap<R extends { sprints?: unknown[] }>(roadmap: R, now?: Date): Omit<R, "sprints"> & { sprints: (DatedSprint & Record<string, unknown>)[] };

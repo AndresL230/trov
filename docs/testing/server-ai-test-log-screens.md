@@ -248,3 +248,116 @@ Screenshots: `docs/testing/server-ai-shots/screens/<case>.png`.
 - Matrix § 8 D-1…D-11 stand. Also: ST-16's Usage-tab wording (#186's own e2e; this run read the Overview's words);
   FD-8 has no fixture (Q27 open); RV-6 (Q38, preview id collision) seen only as "both marks drawn"; BR-20 (Q26) has no
   overdue fixture.
+
+## Final pass 2026-10-16
+
+**Run.** Branch `ai/e2e-final-screens` from `40d88ea6` (ai/screens with main's #187 perf merge: lazy chunks for
+Platform, Org settings, Artifacts and Repo; the landing booting alone; marked/DOMPurify lazy; minified Worker; 0075;
+My Work issues in SQL). One server, `wrangler dev --port 8852 --test-scheduled` in this worktree, plus the vite
+`--watch` build. Two data sets, one at a time in the same `.wrangler/state`:
+
+- **A — the showcase** (a copy of the :8790 preview's D1: every scenario + `ai-showcase`), LIVE model keys,
+  `DEV_LOGIN=AndresL230`, sign-in by `/auth/dev/as?handle=…`. Used for the brief's extra cases and every regression
+  check of the #187 merge, with real model calls only where a case needs one (the typed filter; one `*/10` AI pass).
+- **B — the e2e fixtures** (`node scripts/seed/server-ai-e2e.mjs` 121/121, then `scripts/seed/repo-setups.mjs`; the
+  showcase state was moved aside and put back after), keys BLANK, `DEV_LOGIN` unset, `NOTIFICATIONS_MODE=local`,
+  fixture cookies (`scripts/dev-cookie.mjs test-session-<handle>`; one added session `e2e-andres` → AndresL230). For
+  the refusal cases only, `K:dummy` keys; for the preview sweep, `LOCAL_AI_PREVIEW=ready|empty|capped|proposed`.
+
+Browser: headless Playwright Chromium, 1440×900 and 390×844, light / dark (the app's own `trov.theme`, not only
+`prefers-color-scheme` — the app does not follow the OS unless set to System), reduced motion emulated where named.
+Motion evidence is `document.getAnimations()` (running) sampled right after the act. Shots (≤ 1 per case, shrunk):
+`docs/testing/server-ai-shots/final-screens/`.
+
+Where the owner ruled after the first run, the newer ruling is the expected result: State lives on Repo › **Summary**
+(repo-overview-split), the brief's Next is ≤ 3, one per kind (BR-OWNER-1), Review LIST cards carry no risk mark
+(RV-OWNER-2).
+
+### The brief's extra cases (data set A unless named)
+
+| id | surface | state | expected | actual | result | evidence |
+|---|---|---|---|---|---|---|
+| RS-1 | Repo › Summary, cold `#repo/summary` | AI on, state written · 1440 | stays on Summary from the first paint (address never moves), the State card after the skeleton | trace: `#repo/summary` skeleton `repo` (65 ms) → Summary selected, `repo_state` ready (530 ms); the address never changed | pass (see Q-F1) | RS-on-summary-cold.png |
+| RS-2 | cold `#repo/overview` and `#repo` | same | Overview; Summary offered in the bar | `#repo/overview` canonicalises to `#repo`; tabs `overview,summary,code,ci,usage,planning` | pass | trace |
+| RS-3 | cold `#repo/summary` | AI switched OFF (Org settings › AI, then back on) | ends on Overview, the address moves, the switch's flash | skeleton → `#repo`, Overview, no Summary tab, `.cnpy-flash` on the panel | pass | RS-off-summary-cold.png |
+| RS-4 | warm `#repo/summary` from `#feed`, then the tabs | AI on | Summary; Overview ↔ Summary is one rerender: underline slides, the card flashes in | `#repo/summary` → click Overview `#repo` (`cnpy-tabs-ind` slide + `cnpy-rise`) → Summary (slide + `cnpy-rise@repo-ai`) | pass | animations |
+| RS-5 | `#repo/summary` with no repository / sample data | dayone (robin-vale) | Overview; Preview with sample data then `#repo/summary` → back to `#repo` with the flash | both: `#repo`, no Summary tab, `.cnpy-flash` | pass | RS-sample-fallback.png |
+| RS-6 | Wrong? on Summary | meilin | the card leaves by the kit's exit, then the screen and the address go to Overview; reload: no tab | `cnpy-ai-leave` at +80 ms, toast "Hidden for you…", `#repo` with the flash at 3 s; reload: no Summary tab (the `ai_feedback` row was deleted after) | pass | RS-wrong-exit.png |
+| RS-7 | e2e fixtures (B): ST-5/7/8/9/12 below | — | — | every "no state" case ends on `#repo` with no Summary tab | pass | ST rows |
+| MW-1 | My Work bento · 1440 light | AndresL230 | Brief 8/12 left beside Needs your review over Docs you own; Sessions beside Tickets (wide); Repo wide beside Queued handoffs; no tile scrolls; Review / Tickets ≤ 2 rows + "N more" | exactly: brief 740×406 at (270,146); review 364×257 over docs 364×137 (same bottom as the brief); sessions beside tickets 740 wide; repo 740 beside handoffs; 0 scrollers in any tile; "7 more in Review", "3 more in the queue" | pass | MW-1440-light.png |
+| MW-2 | same · 390 dark | — | full-width stack: Brief, Review, Tickets, Repo, then the rest; no scroller; no page h-scroll | order brief, review, tickets, repo, sessions, docs, handoffs; 0 scrollers; no h-scroll | pass | MW-390-dark.png |
+| MW-3 | Queued handoffs › Claim & copy | AndresL230 | copies the newest handoff as a prompt inside the click, then claims it | `POST /handoffs/17/claim` 200; clipboard "HANDOFF #17 · from @Darkest-Teddy · to @AndresL230…"; toast "Claimed #17 · copied as prompt"; the tile moves to the next (2 for you). #17 put back to pending after | pass | MW-claim-copy.png |
+| MW-4 | the brief tile | — | one shape: Now 1 sentence, Recently 1 sentence, Next ≤ 3 one per kind; byline + Wrong? | Now / Recently / Next = Failing · Overdue · Handoff; "Written by Trov, 39m ago" + thumbs-down | pass | MW-1440-light.png |
+| SB-1 | the global scrollbar | 9 screens × light / dark (Chromium without `--hide-scrollbars`) | one bar everywhere: 12px, thumb `--sb-thumb` (fg at 20 %), never `scrollbar-width` / `scrollbar-color` set in Chromium | every scroller found (`#cnpy-main`, Docs' `.cnpy-scroll` + `#cnpy-reader`, Review's two `.cnpy-scroll`): `::-webkit-scrollbar` 12px, thumb fg/0.2 (light ink in dark), `scrollbar-width: auto` | pass | SB-feed-light.png, SB-feed-dark.png |
+| FL-L1 | Tickets › Filter › Describe a filter (LIVE model) | "my open high-priority bugs" | the menu's first row; the field grows open and takes focus; Enter applies; the menu shuts; "Filtered: …" + Undo; the list re-reads | **before:** `200 {status:open, priority:high}` → "Filtered: Open · High priority." — the placeholder's own example lost "my" and "bugs" (3 live answers, once "bugs" as a title search). **After:** "Filtered: Open · Assigned to you · Bug · High priority." (3 of 3 live) | **fail → fixed** (FL-final-1) | FL-tickets-applied.png, FL-final-tickets-live.png |
+| FL-L2 | Tickets refusal through Apply | "what is the weather in paris" | 422 `unreadable`, the sentence under the field, `aria-invalid` | exactly, plus "Not a filter here: “what is the weather in paris”." | pass | FL-tickets-refusal.png |
+| FL-L3 | Feed (LIVE) | "my entries from the last 7 days"; refusal "hello" | "Filtered: By you · Last 7 days." + Undo; the line rises once (`.cnpy-flash`); Undo leaves by `cnpy-ai-leave`; refusal 422 | exactly; `GET /feed?author=AndresL230` re-read | pass | FL-feed-applied.png, FL-feed-refusal.png |
+| FL-L4 | Artifacts, COLD `#artifacts` (lazy chunk) | "published auth artifacts" | the row exists on a cold load; applied line; Undo | "Filtered: Area auth · Published." + Undo → `cnpy-ai-leave` | pass | FL-artifacts-applied.png |
+| FL-L5 | Artifacts · 390 dark · keyboard | ↓ then Enter; "   " + Enter; Escape | the field opens focused; no request; "Type what you want to see, in a sentence."; Escape shuts and focuses Filter | exactly (0 `/ai/filter` requests); no h-scroll | pass | FL-artifacts-empty-390-dark.png |
+| FL-L6 | repeated applies (fixtures, P:ready, then LIVE on A) | apply, reopen, apply… | the menu shuts after EVERY apply | **before:** every second apply left the menu open over the line and its Undo (the repaint under a still pointer fired a pointerover that revived the fading menu). **After:** 5 of 5 closed (fixtures), 2 of 2 live; hover open / re-enter during the fade / leave unchanged | **fail → fixed** (FL-final-2) | DOM trace |
+| OA-L1 | cold `#org/ai` (lazy chunk) | owner · 1440 light; member (meilin) · 390 dark | skeleton `org-settings` → the AI tab's skeleton → the tab; owner: two switches; member: the tab, "On" as words, "Only an admin or an owner can change this." | exactly; owner 9 tabs, member 6 (AI among them) | pass | OA-final-AndresL230-1440.png, OA-final-meilin-390-dark.png |
+| OA-L2 | owner flips the switch off and on | — | PUT 200, `enabled:false`, the words "Off"; back on | exactly (the switch drove RS-3) | pass | response |
+| AI-1 | Roadmap | AndresL230 (admin) | forecast on active sprints only (no AI mark), notes with byline + cites, drift, 2 suggestion cards | 4 forecasts (the 5 in-progress sprints, one with nothing closed), 3 notes, drift with shares, "2 sprints from 4 backlog tickets" + "a new plan narrative" | pass | RM-final-AndresL230.png |
+| AI-2 | Feed | — | Trov entries (AI avatar, "for @…", From …, Wrong?), importance marks, Source switch | 8 Trov entries; Notable / Breaking marks with their Sift tooltips; Source All / Agents / Trov | pass | FD-final-AndresL230.png |
+| AI-3 | Review | — | list cards without the risk mark; detail: "Trov: Changes a process, because… Dismiss" + "Flagged in Ask: It is out of date (2)" | exactly | pass | RV-final-list.png |
+| AI-4 | ticket #91 / #6 detail | — | duplicate chip above Linked work, category + priority chips under Properties | exactly; #6 priority only | pass | TC-final-91-AndresL230.png |
+| AI-5 | Unplaced | — | row mark "reference, next to “…”" + the chip in the detail | exactly | pass | DOM |
+| LZ-1 | Platform, cold `/platform/` | AndresL230 (superadmin) | skeleton `plat-organizations` → the list; Usage has the AI runs block | exactly; "AI RUNS Runs 642 Failed 1 …" | pass | PU-final-usage.png |
+| LZ-2 | the landing reopened in the app (`#site`) | signed in | the landing chunk paints the landing | h1 "Shared memory for your team and its coding agents." | pass | trace |
+| LZ-3 | signed-out `/` (data set B, no DEV_LOGIN) | — | boots ALONE: no `main-*.js` | scripts index, site-faq, favicon, morph, deletion-notice, pricing, landing — no main; 0 console errors | pass | request log |
+| LZ-4 | `GET /badges` vs the sidebar | AndresL230 | the sidebar's counts are the badge read's | `{proposals 5, decisions 4, unplaced 11, tickets 19, handoffs 3, prompts 2}` = Tickets 19, Handoffs 3, Prompt Library 2, Review 9, Unplaced 11 | pass | body + DOM |
+| LZ-5 | Help › What's new | — | the chunk's skeleton (`releases`) then the screen | exactly (its layout bug is #188, fixed elsewhere — not judged here) | pass | WN-final.png |
+| LZ-6 | every lazy screen cold, AI parts present | — | Repo (RS-1), Org settings (OA-L1), Artifacts (FL-L4), Platform (LZ-1), landing (LZ-2/3) | all drew their skeleton then the real screen with its AI parts; nothing AI-related missing after a cold load | pass | traces |
+| PASS-1 | the AI pass, `*/10` once | live keys | runs without an AI error | ran (`Ran scheduled event`); no `ai (…) failed` line; the only errors are the health poller's DNS failures for the seed's made-up `*.sapling.example.com` hosts | pass | wrangler log |
+
+**Environment (A).** 10 screens (My Work, Summary, Feed, ticket #91, Review, Roadmap, Org settings › AI, Artifacts,
+Unplaced, Tickets) × {1440 dark, 390 light, 390 dark, 1440 light reduced, 390 dark reduced} = 50 cells: no page or
+`#cnpy-main` horizontal scroll, nothing wider than the viewport outside its own scroller, no console error but the
+pre-existing P-F1 below; under reduced motion **0** running animations after every route change. Shots:
+`EV-repo-summary-*`, `EV-roadmap-*`, `EV-tickets-91-*`.
+
+### Tier 1 rerun (data set B)
+
+| ids | result | notes / evidence |
+|---|---|---|
+| BR-1 … BR-14 | pass | BR-1: Now (#1, #3), Recently (#115, #113), Next = Failing · Due soon · Handoff (≤ 3, one per kind — BR-OWNER-1), the injection title nowhere as markup (0 `img`/`b`/`script`); BR-10: `cnpy-ai-leave`, toast, hidden after reload; BR-6 (plan → personal): no "Upgrade to Pro"; BR-13: 5-min-old `mywork_opened_at` kept, 2-h-old set to now; BR-14 MCP `brief.state:"ready"`. BR-1.png |
+| BR-15 … BR-18 | pass | P:ready / empty / capped; BR-18 (Q13) the fixture shows on org-ai-off. P-*-brief.png |
+| ST-1 … ST-19 | pass | on the **Summary** tab: ST-1 "from 6 events", #115/#113 to GitHub in a new tab, the feed cite `#feed`; ST-11 no State on Overview / Planning; ST-5/7/8/9/12 → `#repo`, no Summary tab; ST-10 the exit then `#repo`; ST-13 MCP state with no tab / overview, absent with `ci`; ST-15 "Production backend" (Q-S1 moot: State is its own tab now); ST-16 "Healthy" only with passing checks; ST-17/18 no State. ST-1.png, ST-12.png, ST-15-16.png |
+| TH-1 … TH-21 | pass | TH-1 5 lanes + chip with Accept / Rename / Remove; TH-3 focus `repo-themes-proposed`; TH-4 accepted by test-admin, the chip's exit (lane drops 1 → 0: Q-S3 stands); TH-6 "" no request, "(x)" / taken 400, the markup name accepted and drawn as TEXT (0 `img`); TH-16 the written parts leave, "You marked this range wrong…"; TH-19 409 "Someone already answered…"; TH-20 `8w` + `quarter` (`8w` is hidden over MCP for test-member after their TH-16 Wrong? — the Q-S2 rule, consistent). TH-1.png |
+| FD-1 … FD-19, FI-1 … FI-6 | pass | FD-4 tooltip "Written by Trov. Not official…"; FD-11 the note's exit + `trov.aiFeedNote`; FD-12 storage throwing: no error; FD-14 / FI-3 (Q29 stands): org-ai-off still shows Trov entries, the Source switch AND the note; FD-17 / FI-6 MCP `ai` + `importance`. FD-1.png |
+| TC-1 … TC-15, UP-1 … UP-4 | pass | TC-3 no `ticket_events` row; TC-4 link `…/test-ent/#tickets/1`, `TROV · TICKET`, by test-member; TC-5 / UP-4 re-accept after a re-open: 200, still one link / one staged version; TC-9 409, TC-12 400 (Q36); UP-3 staged `test-runbook-netlify` v1 by test-member, nothing promoted. TC-1.png, UP-1.png |
+| RV-1 … RV-9 | pass | RV-1 no mark on list cards (RV-OWNER-2); RV-2 "Trov: Changes a decision / Contradicts a doc, because… Dismiss", 0 Accept; RV-4 `cnpy-ai-leave`; RV-8 "Flagged in Ask: A source is wrong (2) · It is out of date (1)". RV-final.png |
+| RM-1 … RM-17 | pass | RM-1 "done Nov 7, 18 days late", arithmetic tooltip, no AI mark; RM-7 plan v2 by test-admin; RM-8 / RM-9 two upcoming sprints, no dates; RM-13 the note's exit; **RM-14 MCP `get_roadmap`, `list_sprints` and `get_sprint` all carry the note (list_sprints reads them in parallel since #187) while it is hidden on the web**; RM-16 400. RM-1.png, P-ready-roadmap.png |
+| SG-1 … SG-7, SG-x, WR-1 … WR-5 | pass | SG-5 parallel dismiss 200 + 409; WR-3 one row for two posts; WR-4 offline: back on screen + "Couldn't send that…" |
+| EV-K | pass | because… keeps focus (Enter opens, Enter closes, `aria-expanded` follows); a lane keeps focus and `aria-pressed` |
+| MO (7) | pass | entrance once on My Work (13 rises), Summary, Planning, Feed, Roadmap, ticket; a palette open/close rerender replays nothing on any; every exit above is `cnpy-ai-leave` |
+
+### Fixes in this pass
+
+| case | what was wrong | cause | fix | test |
+|---|---|---|---|---|
+| FL-final-1 (FL-L1) | "my open high-priority bugs" → Open · High priority only, live | the ticket field list never said which words mean the assignee "me" or a category | each line says so (`src/ai/filter.ts` FIELDS.tickets) | e9774c5c · `test/ai.filter.test.ts` › which words they take |
+| FL-final-2 (FL-L6) | every second Apply left the Filter menu open over the line and Undo | the apply's repaint under a still pointer fired a pointerover; the hover rule revived the fading menu | only the hover's own close is revived (`fmClosingByHover`, `web/src/main.ts`) | f771e519 · `test/render.ai-filter.test.ts` › a close that was asked for |
+
+### Questions (not guessed)
+
+- **Q-F1 (RS-1).** A cold `#repo/summary` holds its tab and address, but its first paint is now the Repo CHUNK's
+  generic skeleton (four cards), not the State card's shape that `repo-dashboard.md` promises ("holds its tab and the
+  card's shape (`repoStateSkeleton`) until the read says") — the read usually lands before the chunk, so
+  `repoStateSkeleton` is never seen. Draw the summary skeleton in `repo-lazy.ts` for `tab === "summary"` (it would
+  pull `repo-ai.ts`'s skeleton into the eager part), or reword the doc? I'd reword the doc: ~0.5 s locally.
+- **Q-F2 (FL-L3).** The `unreadable` sentence is one for all three screens: "Try naming a person, a status, a priority
+  or a time." The Feed has no status or priority. Per-screen wording?
+- Unchanged and met again: Q5, Q10, Q12, Q13, Q15, Q20, Q23, Q24, Q25, Q28, Q29 (extended), Q30, Q32, Q35, Q36,
+  Q37, Q39, Q40, Q-S2, Q-S3, Q-S4.
+
+### Pre-existing / environment (recorded, not fixed)
+
+- **P-F1.** Opening Org settings as an admin logs a 404 for `GET /github/repositories` (no GitHub App installation
+  locally → `not_connected`); same code on origin/main.
+- The `*/10` tick's health poller logs DNS failures for the seed's made-up hosts (local only).
+
+### Not rerun here
+
+RV-6 (Q38), BR-20 (Q26), FD-8 (Q27) as before; the § 6 pairwise cells were rerun on data set A (above) rather than
+per fixture.

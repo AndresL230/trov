@@ -16,6 +16,9 @@ import { get_feed } from "../src/tools/reads";
 import { getMyWork } from "../src/tools/mywork";
 import { all, first, run } from "./helpers/db";
 import { ORG_A, ORG_B, systemCtx } from "./helpers/tenant";
+import { cookieFor } from "./helpers/persons";
+import { app } from "../src/routes";
+import { AI_ROUTES, aiItemRef } from "@shared/ai";
 import { dirtyRow, keyedEnv, markRow } from "./helpers/ai-pass";
 
 // The pass's clock: after BEFORE, and after the REAL clock too — the gate and the router stamp `marked_at` with it, and
@@ -218,6 +221,19 @@ describe("feed.importance on the reads: absent when unknown", () => {
     const pr = new Map(w.previousActivity.map((p) => [p.number, p]));
     expect(pr.get(501)?.importance).toBe("notable");
     expect(Object.prototype.hasOwnProperty.call(pr.get(502), "importance")).toBe(false);
+  });
+
+  it("\"Wrong?\" on a rating is feedback for the evals ONLY: recorded for the person, the rating untouched and still shown (Q34)", async () => {
+    const id = await entry("Breaking: sessions now last 30 days");
+    await run(env.DB, `UPDATE feed SET importance = 'breaking' WHERE org_id = ? AND id = ?`, ORG_A, id);
+    const cookie = await cookieFor(OWNER);
+    const body = { itemType: "importance", itemRef: aiItemRef.importance(id), kind: "feed.importance", model: null, promptVersion: null };
+    const res = await app.request(`https://trov.dev/api/o/saplinglearn${AI_ROUTES.feedback}`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env as unknown as Env);
+    expect(res.status).toBe(200);
+    expect(await all(env.DB, `SELECT handle, item_type, item_ref, kind FROM ai_feedback WHERE org_id = ?`, ORG_A)).toEqual([{ handle: OWNER, item_type: "importance", item_ref: `feed:${id}`, kind: "feed.importance" }]);
+    expect(await feedImportance(id)).toBe("breaking");
+    const page = await (await app.request("https://trov.dev/api/o/saplinglearn/feed", { headers: { cookie } }, env as unknown as Env)).json() as { feed: { id: number; importance?: string }[] };
+    expect(page.feed.find((r) => r.id === id)?.importance).toBe("breaking");
   });
 
   it("a re-summarized PR keeps its rating (the summary is an upsert of its own columns)", async () => {

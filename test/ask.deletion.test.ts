@@ -13,7 +13,7 @@ import { addressGlobs } from "../src/deletion/ask";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, platformCtx, tenantCtx } from "./helpers/tenant";
-import { BASE, KEYED, call } from "./helpers/ask";
+import { BASE, KEYED, call, threadOf } from "./helpers/ask";
 
 const ME = "ask-deleter";
 const png = (n: number) => new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, n, n + 1, n + 2, n + 3]);
@@ -22,7 +22,8 @@ interface Att { id: number; slug: string; sha256: string }
 async function upload(cookie: string, files: { name: string; bytes: Uint8Array }[], threadId?: number): Promise<{ threadId: number; attachments: Att[] }> {
   const form = new FormData();
   for (const f of files) form.append("file", new File([f.bytes], f.name, { type: "image/png" }));
-  if (threadId) form.append("threadId", String(threadId));
+  // With no thread given, a real one: an upload with no thread is PENDING (Q60), and these are a thread's files.
+  form.append("threadId", String(threadId ?? (await threadOf(cookie))));
   const res = await app.request(`${BASE}/ask/attachments`, { method: "POST", headers: { cookie }, body: form }, KEYED);
   expect(res.status).toBe(200);
   return res.json();

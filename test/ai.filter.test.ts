@@ -10,7 +10,7 @@ import { KIND_PROVIDER, providerFor } from "../src/ai/client";
 import { toClaudeSchema } from "../src/ai/schema";
 import { filterCandidates, filterInput, filterModelSchema, resolveFilter, runAiFilter } from "../src/ai/filter";
 import {
-  AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AI_FILTER_SCHEMAS, AiFilterAnswerSchema, type AiFilterAnswer,
+  AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AI_FILTER_SCHEMAS, AI_FILTER_TRY, AiFilterAnswerSchema, aiFilterUnreadable, type AiFilterAnswer,
 } from "@shared/ai-filter";
 import { aiFilterFixture, AI_PREVIEW_MODES } from "@shared/ai-fixtures";
 import { FAKE_ANTHROPIC_KEY, messageResponse, sentMessage, sentInput, type MessageOpts } from "./helpers/anthropic";
@@ -97,6 +97,16 @@ describe("the tickets' status field (declined is hidden from All — the owner's
   });
 });
 
+// FL-final-1 (e2e final pass): the placeholder's own example, "my open high-priority bugs", came back as open + high
+// only — the live model never read "my" as the assignee, and "bugs" became nothing or a title search.
+describe("the tickets' assignee and category fields say which words they take", () => {
+  it('"my" is assignee me, and a plural kind ("bugs") is the category', () => {
+    const input = filterInput("tickets", { people: [], sprints: [], tags: [] }, "my open high-priority bugs", "n");
+    expect(input).toContain('"me" is the person asking: "my", "mine" and "assigned to me" mean me');
+    expect(input).toContain('the kind of ticket, plural or not: "bugs" is bug');
+  });
+});
+
 describe("POST /ai/filter — the answer", () => {
   it("a readable request: the filter, checked, and one `ai_run:filter` counted before the call", async () => {
     const id = await sprint("Hosting screens");
@@ -175,8 +185,25 @@ describe("POST /ai/filter — the answer", () => {
     stubModel({ filter: {}, unmatched: ["the weather"] });
     const r = await post<{ error: string; message: string }>({ screen: "feed", text: "what's the weather" });
     expect(r.status).toBe(422);
-    expect(r.json).toEqual({ error: "unreadable", message: `${AI_FILTER_MESSAGES.unreadable} Not a filter here: “the weather”.` });
+    expect(r.json).toEqual({ error: "unreadable", message: `${aiFilterUnreadable("feed")} Not a filter here: “the weather”.` });
     expect(await runsCounted()).toBe(1); // the call was made: it counts
+  });
+
+  // Q-F2 (owner ruling 2026-10-16): the sentence names what THAT screen's schema filters by — the Feed has no
+  // status or priority, Tickets and Artifacts no time.
+  it("the unreadable sentence is worded per screen, from that screen's filter schema", async () => {
+    expect(aiFilterUnreadable("feed")).toBe("Trov couldn't turn that into a filter on this screen. Try naming a person, a tag or a time.");
+    expect(aiFilterUnreadable("tickets")).toBe("Trov couldn't turn that into a filter on this screen. Try naming a person, a status, a category, a priority or a sprint.");
+    expect(aiFilterUnreadable("artifacts")).toBe("Trov couldn't turn that into a filter on this screen. Try naming a person, a kind, an area, a status or a sprint.");
+    expect(AI_FILTER_TRY.feed).not.toMatch(/status|priority/);
+    for (const screen of ["tickets", "artifacts"] as const) expect(AI_FILTER_TRY[screen]).not.toMatch(/time/);
+    for (const screen of ["tickets", "artifacts"] as const) {
+      vi.unstubAllGlobals();
+      stubModel({ filter: {}, unmatched: [] });
+      const r = await post<{ error: string; message: string }>({ screen, text: "something unfilterable" });
+      expect(r.status).toBe(422);
+      expect(r.json.message).toBe(aiFilterUnreadable(screen));
+    }
   });
 
   for (const stop_reason of ["refusal", "max_tokens"] as const) {
@@ -272,8 +299,10 @@ describe("POST /ai/filter — the gates", () => {
   });
 });
 
-describe("LOCAL_AI_PREVIEW — the fixture, with no key and no call", () => {
-  const preview = (mode: string, over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), LOCAL_AI_PREVIEW: mode, ...over });
+describe("LOCAL_AI_PREVIEW — the fixture, with no call, under the real switch and key", () => {
+  // The preview honours the switch AND the key (owner ruling Q13): it answers from the fixture with no call and no
+  // count only where a real call could be made — a key is set (a fake one: it is never sent).
+  const preview = (mode: string, over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, LOCAL_AI_PREVIEW: mode, ...over });
 
   it("ready: each screen's fixture, checked like a model's answer (\"me\" is the caller; unmatched only when typed)", async () => {
     const m = stubModel({ filter: {} });
@@ -288,8 +317,10 @@ describe("LOCAL_AI_PREVIEW — the fixture, with no key and no call", () => {
     expect(await metrics()).toEqual([]);
   });
 
-  it("empty → unreadable; capped → the 402; the switch still holds", async () => {
+  it("empty → unreadable; capped → the 402; the switch and the key still hold", async () => {
     expect((await post({ screen: "tickets", text: "x" }, preview("empty"), { origin: LOCAL })).status).toBe(422);
+    const noKey = await post<{ error: string }>({ screen: "tickets", text: "x" }, preview("ready", { ANTHROPIC_API_KEY: "" }), { origin: LOCAL });
+    expect([noKey.status, noKey.json.error]).toEqual([503, "no_key"]);
     const capped = await post<{ error: string; limit: string }>({ screen: "tickets", text: "x" }, preview("capped"), { origin: LOCAL });
     expect(capped.status).toBe(402);
     expect(capped.json).toMatchObject({ error: "plan_limit", limit: "ai_runs" });
@@ -299,7 +330,7 @@ describe("LOCAL_AI_PREVIEW — the fixture, with no key and no call", () => {
 
   it("not honoured off `wrangler dev`: a deployed origin, https, or a live Stripe key — the real path (no key: 503)", async () => {
     for (const [origin, over] of [[DEPLOYED, {}], ["https://localhost:8787", {}], [LOCAL, { STRIPE_SECRET_KEY: "sk_live_x" }]] as const) {
-      const r = await post<{ error: string }>({ screen: "tickets", text: "x" }, preview("ready", over), { origin });
+      const r = await post<{ error: string }>({ screen: "tickets", text: "x" }, preview("ready", { ...over, ANTHROPIC_API_KEY: "" }), { origin });
       expect(r.status, origin).toBe(503);
       expect(r.json.error).toBe("no_key");
     }

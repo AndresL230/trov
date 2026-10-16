@@ -6,7 +6,6 @@
 import { AI_FEED_SOURCES_SHOWN, type AiFeedMeta } from "@shared/ai-core";
 import type { FeedRow } from "@shared/rows";
 import { fanOut, type TenantContext } from "../data/sql";
-import { hiddenFor } from "../data/ai";
 import { citesOfArtifacts } from "./ai-cites";
 
 /** A feed row as `SELECT f.*` reads it since 0061: the three provenance columns ride along. */
@@ -24,15 +23,6 @@ export function aiFeedMeta(r: FeedDbRow, repo: string | null): AiFeedMeta | null
     generatedAt: r.created_at,
     model: r.model ?? null,
   };
-}
-
-/** The rows less the entries Trov wrote that `viewer` flagged "Wrong?" (`ai_feedback`, item type `feed`, ref = the
- *  entry's id — what the Feed's button sends, `aiItemRef.feed`): hidden for that person only, the record stays. The
- *  Feed's route and MCP `get_feed` make the same cut. A failed read hides nothing. */
-export async function hideWrongFor<R extends Pick<FeedRow, "id" | "ai">>(ctx: TenantContext, viewer: string | null, rows: R[]): Promise<R[]> {
-  if (!viewer || !rows.some((r) => r.ai)) return rows;
-  const hidden = await hiddenFor(ctx, viewer, "feed").catch(() => new Set<string>());
-  return hidden.size ? rows.filter((r) => !r.ai || !hidden.has(String(r.id))) : rows;
 }
 
 /** The rows as every read returns them: the provenance columns folded into `ai` (on Trov's entries only) and

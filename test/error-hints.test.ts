@@ -90,6 +90,23 @@ describe("HTTP: the API's JSON errors gain a hint, and keep their code and statu
     expect(await withErrorHint(new Request("https://trov.test/x", { method: "HEAD" }), head)).toBe(head);
   });
 
+  // F-1 (owner ruling 2026-10-16): a 403 `off` used to carry the generic role hint ("needs a role you do not have").
+  it("the AI routes' own codes carry their own hints: off, no_key, unreadable, auto_off, mode_unavailable", async () => {
+    expect(API_ERROR_HINTS.off).toMatch(/^This organization's AI switch is off \(Org settings › AI\): nothing was sent/);
+    for (const code of ["off", "no_key", "unreadable", "auto_off", "mode_unavailable"]) expect(API_ERROR_HINTS[code], code).toBeTruthy();
+    expect(apiErrorHint(403, "off")).toBe(API_ERROR_HINTS.off);
+    expect(apiErrorHint(503, "no_key")).toBe(API_ERROR_HINTS.no_key);
+    expect(apiErrorHint(422, "unreadable")).toBe(API_ERROR_HINTS.unreadable);
+    // Through the Worker: the filter refused by the switch keeps its code and message and gains the AI hint.
+    await env.DB.prepare(`UPDATE orgs SET ai_automation = 0 WHERE id = 'org_saplinglearn'`).run();
+    const r = await fetchAt("/api/o/saplinglearn/ai/filter", {
+      method: "POST", headers: { cookie: await cookieFor("AndresL230"), "content-type": "application/json" },
+      body: JSON.stringify({ screen: "tickets", text: "my open bugs" }),
+    });
+    expect(r.status).toBe(403);
+    expect(await r.json()).toEqual({ error: "off", message: "AI is switched off for this organization.", hint: API_ERROR_HINTS.off });
+  });
+
   it("every hint is chosen by code and status alone and names no organization, slug or secret", () => {
     const all = [...Object.values(API_ERROR_HINTS), ...Object.values(STATUS_HINTS), ...Object.values(MCP_ERROR_HINTS), MCP_FALLBACK_HINT, MCP_UNAUTHORIZED_HINT, MCP_INVALID_TOKEN_HINT];
     for (const h of all) {

@@ -9,6 +9,7 @@
 // what Jev may pick from is exactly what these return.
 import type { AiSuggestion } from "@shared/ai";
 import { all, first, type TenantContext } from "./sql";
+import { aiKeySet } from "./context";
 import { suggestionDto, type AiSuggestionRow } from "./ai";
 
 const SUGGESTION_COLS = `s.id, s.item_type, s.item_ref, s.kind, s.value_json, s.confidence, s.reason, s.cites_json, s.model, s.prompt_version, s.state, s.created_at, s.decided_by, s.decided_at`;
@@ -24,12 +25,13 @@ export async function decidedKinds(ctx: TenantContext, itemType: string, itemRef
 }
 
 /**
- * The OPEN suggestions of `kinds` for these items, as the screens show them — ONLY while the org's AI switch is on
- * (the join on `orgs.ai_automation`, in the same statement): off, nothing comes back and the screen draws what it
+ * The OPEN suggestions of `kinds` for these items, as the screens show them — ONLY under THE read rule
+ * (src/plans/gate.ts `aiShown`): the org's switch on (the join on `orgs.ai_automation`, in the same statement) and an
+ * Anthropic key on the deployment (no key: nothing is read). Off, nothing comes back and the screen draws what it
  * drew before. Oldest first, so a screen keeps a stable order.
  */
 export async function openSuggestions(ctx: TenantContext, itemType: string, refs: readonly string[], kinds: readonly string[]): Promise<AiSuggestion[]> {
-  if (!refs.length || !kinds.length) return [];
+  if (!refs.length || !kinds.length || !aiKeySet(ctx)) return [];
   const out: AiSuggestion[] = [];
   // D1 binds at most 100 parameters: refs go in chunks.
   for (let i = 0; i < refs.length; i += 80) {
@@ -45,8 +47,10 @@ export async function openSuggestions(ctx: TenantContext, itemType: string, refs
   return out;
 }
 
-/** Is the org's AI switch on (`orgs.ai_automation`)? A failed read is off. */
+/** Is the org's AI shown — its switch on (`orgs.ai_automation`) AND an Anthropic key on the deployment (THE read rule,
+ *  src/plans/gate.ts `aiShown`)? No key reads nothing. A failed read is off. */
 export async function aiSwitchOn(ctx: TenantContext): Promise<boolean> {
+  if (!aiKeySet(ctx)) return false;
   const r = await first<{ enabled: number }>(ctx, `SELECT ai_automation AS enabled FROM orgs WHERE id = ?`, ctx.orgId).catch(() => null);
   return r?.enabled === 1;
 }

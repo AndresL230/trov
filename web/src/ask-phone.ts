@@ -34,7 +34,7 @@ import { askIcon } from "./ask-icons";
 import { threadsView } from "./ask-threads";
 import { closingAttr } from "./ask-motion";
 import { segmented } from "./segmented";
-import { composerAuto, composerMode, setAuto, setMode } from "./ask-composer";
+import { composerAuto, composerMode, modeCanSend, setAuto, setMode } from "./ask-composer";
 
 export interface PhoneUi {
   /** The thread list's drawer is open. */
@@ -101,7 +101,8 @@ function plusMenu(v: AskView): string {
   const modeGroup = switchable(v) && st ? `<div class="ask-ph-group" role="group" aria-labelledby="ask-ph-mode-${w}">
       <div class="ask-ph-label" id="ask-ph-mode-${w}">Mode</div>
       ${segmented({ id: `ph-mode-${w}`, ariaLabel: "Mode", value: mode ?? "", act: "askPhMode", fill: true, className: "ask-ph-seg", inertOn: true,
-        options: st.modes.map((m) => ({ value: m.id, label: m.label, arg: `${w}:${m.id}` })) })}
+        options: st.modes.map((m) => ({ value: m.id, label: m.label, arg: `${w}:${m.id}`,
+          ...(modeCanSend(m) ? {} : { locked: true, title: `Needs ${m.countsAs} questions; fewer are left this month.` }) })) })}
       ${hint ? `<div class="ask-ph-hint">${esc(hint)}</div>` : ""}
     </div>` : "";
   return `<div class="ask-ph-plus" id="ask-ph-plus-${w}" role="group" aria-label="More options" data-ask-plus="${w}"${closingAttr(v.ui.closing, "plus")}>

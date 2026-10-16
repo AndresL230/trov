@@ -115,3 +115,10 @@ export async function ask(cookie: string, body: Record<string, unknown>, e: Env 
 }
 
 export const eventsOf = (events: AskEventRead[], name: AskEventName) => events.filter((x) => x.event === name).map((x) => x.data);
+
+/** A real (visible) thread of the cookie's person, made through the route with no model call (a `/search`). An
+ *  upload with no `threadId` is PENDING (0068_ask_pending, Q60), so a test about a thread's files uploads into this. */
+export async function threadOf(cookie: string): Promise<number> {
+  const r = await ask(cookie, { text: "setup", command: "search" });
+  return eventsOf(r.events, "thread")[0].id as number;
+}

@@ -19,7 +19,7 @@ import {
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getFeedPage, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
@@ -226,6 +226,7 @@ const aiFilterCtl = createAiFilterController({
   restore: (screen, snap) => restoreAiFilter(screen, snap),
   closeMenu: (screen) => closeFilterMenu(AI_FILTER_MENU[screen]),
   leave: (key) => aiCtl.leave(key),
+  flash: (m) => flash(m),
   names: () => ({
     me: state.me?.handle ?? "",
     person: (h) => state.persons.data.find((p) => p.handle.toLowerCase() === h.toLowerCase())?.name || h,
@@ -576,6 +577,7 @@ function paintApp(): void {
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
   const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
   askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
+  aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));
   syncReviewDetail(rvFocus);
   syncSegments(mount);
@@ -1153,9 +1155,10 @@ function loadFeed(): void {
   rerender();
   const author = state.feedAuthor !== "all" ? state.feedAuthor : undefined;
   const tags = state.feedTag !== "all" ? [state.feedTag] : undefined;
-  getFeed({ author, tags })
-    .then((rows) => {
+  getFeedPage({ author, tags })
+    .then(({ feed: rows, aiOff }) => {
       state.feed = { status: "ok", data: rows };
+      state.ai.feedAiOff = aiOff;
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
       if (!author && !tags) state.feedAuthors = [...new Set(rows.map((r) => r.author))];
       rerenderSoon();
@@ -1211,13 +1214,13 @@ function loadMyWork(): void {
       rerenderSoon();
     });
 }
-/** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
- *  screen's author/tag filters (which shape `state.feed`) never reach it. */
+/** Your sessions: MY two latest feed entries, and the session digests Trov wrote about me (Q30) — My Work's own
+ *  read, so the Feed screen's author/tag filters (which shape `state.feed`) never reach it. */
 function loadMwSessions(): void {
   const me = state.me?.handle;
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
-  getFeed({ author: me, limit: 2 })
+  getFeed({ author: me, about: true, limit: 2 })
     .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
@@ -4041,6 +4044,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "toggleOnlyWhenNeeded": {
+      if (state.notifPrefs.data?.unsubscribed) return; // dimmed with its reason while unsubscribed (notifications.ts)
       const next = !(state.notifPrefs.data?.onlyWhenNeeded ?? false);
       writePrefs({ onlyWhenNeeded: next }, next ? "Digests only when something needs you" : "Every digest again");
       return;
@@ -4345,6 +4349,10 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
 };
 const FM_CLOSE_MS = 130;
 let fmClosing: string | null = null;
+/** The close in progress is the hover's own (the pointer left): only that one is revived when the pointer comes back.
+ *  A close that was asked for — Apply, Escape, the backdrop, the Filter button — runs to its end, even when the screen
+ *  repaints under a pointer still resting on the fading popover (that fires a pointerover without a move). */
+let fmClosingByHover = false;
 let hoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
 const HOVER_INTENT_MS = 60;
 let hoverIntentTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4372,7 +4380,7 @@ function openFilterMenu(id: string): void {
   state.fmOpening = null;
 }
 /** `refocus`: the keyboard was in the menu (Escape) — focus goes back to its Filter button once it is shut. */
-function closeFilterMenu(id: string, refocus = false): void {
+function closeFilterMenu(id: string, refocus = false, byHover = false): void {
   const spec = FILTER_MENUS[id];
   if (!spec || !spec.isOpen() || fmClosing === id) return;
   cancelHoverClose();
@@ -4383,6 +4391,7 @@ function closeFilterMenu(id: string, refocus = false): void {
   const pop = livePopover(id);
   if (!pop || reducedMotion()) { finish(); return; }
   fmClosing = id;
+  fmClosingByHover = byHover;
   pop.classList.remove("is-opening");
   pop.classList.add("is-closing");
   setTimeout(() => { if (fmClosing === id) finish(); }, FM_CLOSE_MS);
@@ -4442,7 +4451,7 @@ mount.addEventListener("pointerover", (e) => {
   const id = menu?.dataset.hoverMenu ?? "";
   if (FILTER_MENUS[id]) {
     cancelHoverClose();
-    if (!FILTER_MENUS[id].isOpen() || fmClosing === id) { hoverOpenedAt = performance.now(); openFilterMenu(id); }
+    if (!FILTER_MENUS[id].isOpen() || (fmClosing === id && fmClosingByHover)) { hoverOpenedAt = performance.now(); openFilterMenu(id); }
   }
   // Hover intent: a row acts only once the pointer RESTS on it (~60 ms), so sweeping
   // across the categories toward the options doesn't flip through every one on the way.
@@ -4465,7 +4474,7 @@ mount.addEventListener("pointerout", (e) => {
   // the Filter button close it.
   if (menu?.querySelector(".fm-ai")?.contains(document.activeElement)) return;
   cancelHoverClose();
-  hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id); }, 200);
+  hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id, false, true); }, 200);
 });
 // `data-hover-blur` (the ticket queue's search + Filter pair): once a MOUSE leaves
 // it, it lets go — the search box drops its focus (and so its selected outline),

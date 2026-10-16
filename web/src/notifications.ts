@@ -129,12 +129,17 @@ export function emailNotificationsSection(p: NotifSettingsProps): string {
         ${switchBtn("toggleAllOff", null, v.unsubscribed)}
       </div>
     </div>
-    <div style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px;${listStyle}">
+    <div data-only-needed-row="${v.unsubscribed ? "unsubscribed" : "on"}" style="${TILE_ROW};display:flex;align-items:flex-start;justify-content:space-between;gap:16px;${listStyle}">
       <div style="min-width:0">
         <div style="font-size:13.5px;font-weight:500">Only when something needs me</div>
-        <div data-only-needed style="font-size:12px;color:var(--fg-55);margin-top:3px;line-height:1.5">Send a digest only when your brief has something next for you, or something notable or breaking touched your work.</div>
+        <div data-only-needed style="font-size:12px;color:var(--fg-55);margin-top:3px;line-height:1.5">Send the daily digest only when your brief has something next for you, or something notable or breaking touched your work. The weekly always comes.</div>
+        ${v.unsubscribed ? `<div id="only-needed-why" data-only-needed-why style="font-size:12px;color:var(--fg-70);margin-top:3px;line-height:1.5">Not in use while you're unsubscribed from Trov email.</div>` : ""}
       </div>
-      ${switchBtn("toggleOnlyWhenNeeded", null, v.onlyWhenNeeded, "Only when something needs me")}
+      ${v.unsubscribed
+        // Dimmed with its reason, never hidden (owner ruling Q46): it keeps its place and its state; `aria-disabled`
+        // (focus stays), and main.ts refuses the toggle.
+        ? switchBtn("toggleOnlyWhenNeeded", null, v.onlyWhenNeeded, "Only when something needs me").replace("<button ", '<button aria-disabled="true" aria-describedby="only-needed-why" ')
+        : switchBtn("toggleOnlyWhenNeeded", null, v.onlyWhenNeeded, "Only when something needs me")}
     </div>
     <div class="cnpy-set-pairs" style="${listStyle}">${rows ||`<div style="${TILE_ROW};font-size:12.5px;color:var(--fg-40)">No digests are enabled org-wide right now.</div>`}</div>
     <div style="padding-top:12px;border-top:1px solid var(--border)">

@@ -61,6 +61,7 @@ export const AiRepoStateSchema = z.object({
   inFlight: z.array(AiLineSchema).max(AI_LIST_MAX),
   attention: z.array(AiLineSchema).max(AI_LIST_MAX),
   eventCount: z.number().int().min(0).nullable(),
+  ageDays: z.number().int().min(0).optional(),
 }) satisfies z.ZodType<AiRepoState>;
 
 export const AiFeedMetaSchema = z.object({
@@ -109,9 +110,10 @@ export const AiFeedbackBodySchema = z.object({
   itemType: z.enum(AI_ITEM_TYPES),
   itemRef: z.string().min(1).max(200),
   kind: z.string().min(1).max(60),
-  model: z.string().max(80).nullable(),
-  promptVersion: z.string().max(40).nullable(),
-}) satisfies z.ZodType<AiFeedbackBody>;
+  // Nullable, and an OMITTED one is null (Q15): a client that does not know how the item was written leaves them out.
+  model: z.string().max(80).nullish().transform((v) => v ?? null),
+  promptVersion: z.string().max(40).nullish().transform((v) => v ?? null),
+}) satisfies z.ZodType<AiFeedbackBody, unknown>;
 
 export const AiAcceptBodySchema = z.object({ value: z.unknown().optional() }) satisfies z.ZodType<AiAcceptBody>;
 
@@ -131,17 +133,19 @@ export const AiSettingsSchema = z.object({
     ai_summaries: AiAllowanceUseSchema, ai_runs: AiAllowanceUseSchema, jev_checks: AiAllowanceUseSchema, ai_chat: AiAllowanceUseSchema,
   }),
   chatAuto: z.boolean(),
+  keys: z.object({ anthropic: z.boolean(), typesafe: z.boolean() }),
+  planEnded: z.string().nullable(),
   sends: z.array(z.object({ provider: z.enum(AI_PROVIDER_NAMES), what: z.string(), for: z.string() })),
   neverSent: z.string(),
 }) satisfies z.ZodType<AiSettings>;
 
 export const AiUsageSchema = z.object({
-  runs: z.number().int().min(0),
-  failed: z.number().int().min(0),
-  capped: z.number().int().min(0),
-  tokensIn: z.number().int().min(0),
-  tokensOut: z.number().int().min(0),
-  tokensCached: z.number().int().min(0),
+  runs: z.number().int().min(0).optional(),
+  failed: z.number().int().min(0).optional(),
+  capped: z.number().int().min(0).optional(),
+  tokensIn: z.number().int().min(0).optional(),
+  tokensOut: z.number().int().min(0).optional(),
+  tokensCached: z.number().int().min(0).optional(),
   jevChecks: z.number().int().min(0).optional(),
   jevTokensIn: z.number().int().min(0).optional(),
   jevTokensOut: z.number().int().min(0).optional(),
@@ -153,6 +157,9 @@ export const AiRoadmapLineSchema = z.object({
   cites: z.array(AiCiteSchema).min(1).max(10),
   generatedAt: z.string().min(1),
   model: z.string().nullable(),
+  state: z.literal("capped").optional(),
+  resumesOn: z.string().nullable().optional(),
+  upgrade: z.boolean().optional(),
 }) satisfies z.ZodType<AiRoadmapLine>;
 
 export const AiPlanDriftSchema = AiRoadmapLineSchema.extend({

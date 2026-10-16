@@ -103,13 +103,24 @@ export interface AiFilterError {
   message: string;
 }
 
-/** The plain-words answer for each refusal (the server sends it as `message`). */
+/** The plain-words answer for each refusal (the server sends it as `message`). `unreadable` is said per screen
+ *  (`aiFilterUnreadable`): this is its first sentence. */
 export const AI_FILTER_MESSAGES: Record<AiFilterErrorCode, string> = {
   invalid: "Type what you want to see, in a sentence.",
-  unreadable: "Trov couldn't turn that into a filter on this screen. Try naming a person, a status, a priority or a time.",
+  unreadable: "Trov couldn't turn that into a filter on this screen.",
   off: "AI is switched off for this organization.",
   no_key: "AI isn't available right now.",
 };
+
+/** What each screen CAN be filtered by, in its schema's words (the interfaces above): the hint an `unreadable`
+ *  refusal ends with. The Feed has no status, priority or search; Tickets and Artifacts have no time. */
+export const AI_FILTER_TRY: Record<AiFilterScreen, string> = {
+  tickets: "Try naming a person, a status, a category, a priority or a sprint.",
+  feed: "Try naming a person, a tag or a time.",
+  artifacts: "Try naming a person, a kind, an area, a status or a sprint.",
+};
+/** The `unreadable` refusal's sentence on `screen`. */
+export const aiFilterUnreadable = (screen: AiFilterScreen): string => `${AI_FILTER_MESSAGES.unreadable} ${AI_FILTER_TRY[screen]}`;
 
 /** The input's example, per screen. The field opens under the Filter menu's "Describe a filter" option, which
  *  already says what it is, so the example is only the sentence. */
