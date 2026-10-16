@@ -371,6 +371,18 @@ describe("settleTail — a streaming answer never shows half-written markdown (t
   });
 });
 
+describe("bold around inline code (Final pass 2026-10-16, AU-F-MD1)", () => {
+  it("**`file.ts`:** renders bold with the code inside — no raw marks, finished or streaming", () => {
+    const md = "What's left:\n1. **`quiz.spec.ts`:** it passes a string. And **the `Streak` type** lacks a field.";
+    for (const busy of [false, true]) {
+      const html = view("answer", { events: [{ event: "text", data: { delta: md } }], busy }).html;
+      expect(html).toContain(`<strong><code class="ask-code">quiz.spec.ts</code>:</strong>`);
+      expect(html).toContain(`<strong>the <code class="ask-code">Streak</code> type</strong>`);
+      expect(text(html)).not.toContain("**");
+    }
+  });
+});
+
 describe("the latest step stays running while Trov works with what it found (the owner)", () => {
   it("held running until the next step or the answer's first part; then it shows its results", () => {
     const events: AskEvent[] = [

@@ -195,16 +195,16 @@ export function settleTail(md: string): string {
 
 /** Bold, italics, code and links on ESCAPED text (placeholders for the chips pass through untouched). */
 function emphasis(html: string): string {
+  // Code spans first, as placeholders, so a mark AROUND code (`**\`a.ts\`:**`) still pairs — splitting on them left
+  // the `**` on either side raw (Final pass 2026-10-16, AU-F-MD1); what is inside a code span is never emphasis.
+  const codes: string[] = [];
   return html
-    .split(/(`[^`]+`)/)
-    .map((p) => (p.length > 2 && p.startsWith("`") && p.endsWith("`")
-      ? `<code class="ask-code">${p.slice(1, -1)}</code>`
-      : p
-        .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
-        .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>")
-        .replace(/(^|[^\w])_(?!\s)([^_]+?)_(?!\w)/g, "$1<em>$2</em>")
-        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>`)))
-    .join("");
+    .replace(/`([^`]+)`/g, (_, c: string) => `\u0001${codes.push(`<code class="ask-code">${c}</code>`) - 1}\u0001`)
+    .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*(?!\s)([^*]+?)\*(?!\*)/g, "$1<em>$2</em>")
+    .replace(/(^|[^\w])_(?!\s)([^_]+?)_(?!\w)/g, "$1<em>$2</em>")
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, `<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>`)
+    .replace(/\u0001(\d+)\u0001/g, (_, n: string) => codes[Number(n)] ?? "");
 }
 
 /** A run of answer text: its ref tokens as chips (status tokens as the item's live mark), its markdown inline. */
