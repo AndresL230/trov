@@ -3047,7 +3047,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   /* the inspector's */
   .ask-iv-fill, .ask-iv-barfill, .ask-iv-table { animation:none !important; }
   /* the write cards' */
-  .ask-act-form, .ask-diff textarea, .ask-line, .ask-wrong, .ask-wrong[data-closing] { animation:none !important; }
+  .ask-act-form, .ask-asg-pick, .ask-diff textarea, .ask-line, .ask-wrong, .ask-wrong[data-closing] { animation:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
@@ -3278,9 +3278,12 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 [data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
 [data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-qfile { position:relative; }
 [data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-qfile::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
-/* …and a write card's Cancel / Confirm / Edit and a line's Undo / Open (actions part). */
-[data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-edit { position:relative; }
-[data-phone="1"] .ask-col .ask-btn::after, [data-phone="1"] .ask-act-edit::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
+/* …and a write card's Cancel / Confirm / Edit, an assignment's item and person picker, and a line's link and Undo / Open
+   (actions part). */
+[data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-edit, [data-phone="1"] button.ask-asg-item, [data-phone="1"] .ask-act .cnpy-dd,
+[data-phone="1"] .ask-undo, [data-phone="1"] .ask-line-link { position:relative; }
+[data-phone="1"] .ask-col .ask-btn::after, [data-phone="1"] .ask-act-edit::after, [data-phone="1"] button.ask-asg-item::after, [data-phone="1"] .ask-act .cnpy-dd::after,
+[data-phone="1"] .ask-undo::after, [data-phone="1"] .ask-line-link::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 
 /* ── Ask: composer ── (ask-composer.ts; ask-trov.dc.html L658–780) */
 .ask-composer { flex:none; width:100%; box-sizing:border-box; padding:0 28px; }
@@ -3422,6 +3425,31 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 .ask-act-ver { font-family:var(--label); font-size:12px; color:var(--fg-55); }
 .ask-act-more { margin:-4px 0 10px; }
 .ask-act-ul { margin:8px 0 10px; padding-left:18px; font-size:12.5px; line-height:1.6; color:var(--fg-55); }
+/* An assignment (assign_ticket; a handoff's claim): the item — its number, title (a click opens it) and status mark —
+   then who it goes to: avatars and names, from → to for a replacement, "Adds" / "Removes" beside the people who stay.
+   While editing, the person is the app's dropdown (it fades in where the name was). */
+.ask-asg { padding-bottom:14px; }
+.ask-asg-t + .ask-asg-t { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+.ask-asg-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
+.ask-asg-item { flex:1 1 240px; min-width:0; display:flex; align-items:baseline; gap:8px; padding:0; font:inherit; color:var(--fg); text-align:left; }
+button.ask-asg-item { cursor:pointer; }
+button.ask-asg-item:hover .ask-asg-title { text-decoration:underline; text-decoration-color:var(--border-strong); text-underline-offset:3px; }
+.ask-asg-num { flex:none; font-family:var(--label); font-size:13px; color:var(--fg-55); }
+.ask-asg-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; overflow-wrap:anywhere; }
+.ask-asg-st { flex:none; }
+.ask-asg-who { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; min-height:30px; margin-top:12px; font-size:13px; color:var(--fg-70); }
+.ask-asg-p { display:inline-flex; align-items:center; gap:7px; min-width:0; max-width:100%; color:var(--fg-70); }
+.ask-asg-p.is-strong { font-weight:500; color:var(--fg); }
+.ask-asg-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-asg-none { font-style:italic; color:var(--fg-55); }
+.ask-asg-w { color:var(--fg-55); }
+.ask-asg-to { display:inline-flex; align-items:center; }
+.ask-asg-stays { font-size:12px; color:var(--fg-55); }
+.ask-asg-stays::before { content:"·"; margin-right:8px; color:var(--fg-40); }
+/* A phone or the ⌘J panel: the people who stay (or the claim's note) take their own line, with no dot to hang from. */
+[data-phone="1"] .ask-asg-stays, .ask-panel .ask-asg-stays { flex-basis:100%; }
+[data-phone="1"] .ask-asg-stays::before, .ask-panel .ask-asg-stays::before { content:none; }
+.ask-asg-pick { display:inline-flex; max-width:100%; animation:ask-fade-in .14s ease both; }
 /* Edit: the form fades in where the card's text was; the card's height glides (data-ask-tween). */
 .ask-act-form { display:flex; flex-direction:column; gap:14px; padding:14px 16px 8px; animation:ask-fade-in .14s ease both; }
 .ask-act-form--in { padding:0; margin-top:12px; gap:12px; }

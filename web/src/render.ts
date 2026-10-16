@@ -85,6 +85,7 @@ import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
 import { askScreenView, askHeader, askOverlays } from "./ask-screen";
+import { actionDropdowns } from "./ask-actions";
 import { phoneHeaderControls } from "./ask-phone";
 import { cmdjHeaderButton } from "./ask-cmdj";
 
@@ -3052,6 +3053,7 @@ export function render(real: AppState): string {
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${askOverlays(s)}
+    ${s.view === "app" && s.dd.open ? dropdownMenu(actionDropdowns(s), s.dd) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}

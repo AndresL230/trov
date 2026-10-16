@@ -255,6 +255,50 @@ describe("Undo", () => {
     }
   });
 
+  it("an assignment card says which ticket and who (`fields`); Edit changes the person; a replacement's ONE Undo reverses both writes", async () => {
+    const cookie = await cookieFor(ME);
+    const n = await create_ticket(await tenantCtx(ME), { title: "Reassign me", body: "", category: "other", priority: "normal", assignees: ["AndresL230"] }, ME);
+    const model = fakeModel([[
+      { type: "tool_use", name: "assign_ticket", input: { id: n, login: "meilin", on: true } },
+      { type: "tool_use", name: "assign_ticket", input: { id: n, login: "AndresL230", on: false } },
+    ], answer()]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "give it to Meilin instead" }));
+    const [add, remove] = eventsOf(r.events, "action");
+    expect(add.groupId).toBe(remove.groupId);
+    expect(add).toMatchObject({ tool: "assign_ticket", editable: ["login"], fields: { id: n, login: "meilin", on: true } });
+    expect(remove.fields).toEqual({ id: n, login: "AndresL230", on: false });
+    expect(add.preview.item).toMatchObject({ ref: `ticket:${n}`, extra: { assignees: ["AndresL230"] } }); // who is on it now
+    // Only the person may change; the agent's other args are not editable.
+    expect((await call("POST", `${BASE}/ask/actions/${add.id}/confirm`, cookie, { args: { on: false } })).status).toBe(400);
+    const edited = await call("POST", `${BASE}/ask/actions/${add.id}/confirm`, cookie, { args: { login: "sanaok" } });
+    expect(edited.json.results).toEqual([expect.objectContaining({ id: add.id, state: "confirmed", undo: true })]);
+    const stored = await first<{ args_json: string; preview_json: string }>(env.DB, `SELECT args_json, preview_json FROM chat_actions WHERE id = ?`, add.id);
+    expect(JSON.parse(stored!.args_json).login).toBe("sanaok");
+    expect(JSON.parse(stored!.preview_json).lines).toContainEqual({ label: "Assignee", value: "Add @sanaok" });
+    expect((await call("POST", `${BASE}/ask/actions/${remove.id}/confirm`, cookie, {})).json.results[0].state).toBe("confirmed");
+    const who = async () => (await all<{ login: string }>(env.DB, `SELECT a.login FROM ticket_assignees a JOIN tickets t ON t.id = a.ticket_id AND t.org_id = a.org_id WHERE t.org_id = ? AND t.number = ? ORDER BY a.login`, ORG_A, n)).map((x) => x.login);
+    expect(await who()).toEqual(["sanaok"]);
+    // Two writes to one ticket: undoing the first touches it, and the second still undoes (it checks the person's
+    // assignment, not the ticket's stamp).
+    const undo = await call("POST", `${BASE}/ask/actions/${add.id}/undo`, cookie, {});
+    expect(undo.status).toBe(200);
+    expect(undo.json.results.map((x: { state: string }) => x.state)).toEqual(["undone", "undone"]);
+    expect(await who()).toEqual(["AndresL230"]);
+  });
+
+  it("an assignment's Undo refuses once someone changed THAT person's assignment since", async () => {
+    const cookie = await cookieFor(ME);
+    const n = await create_ticket(await tenantCtx(ME), { title: "Assign then change", body: "", category: "other", priority: "normal", assignees: [] }, ME);
+    const model = fakeModel([[{ type: "tool_use", name: "assign_ticket", input: { id: n, login: "meilin", on: true } }], answer()]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "assign meilin" }));
+    const card = eventsOf(r.events, "action")[0];
+    expect((await call("POST", `${BASE}/ask/actions/${card.id}/confirm`, cookie, {})).json.results[0].state).toBe("confirmed");
+    await run(env.DB, `DELETE FROM ticket_assignees WHERE org_id = ? AND login = 'meilin' AND ticket_id = (SELECT id FROM tickets WHERE org_id = ? AND number = ?)`, ORG_A, ORG_A, n);
+    const refused = await call("POST", `${BASE}/ask/actions/${card.id}/undo`, cookie, {});
+    expect(refused.status).toBe(409);
+    expect(refused.json).toMatchObject({ error: "changed", ref: `ticket:${n}` });
+  });
+
   it("a sent handoff is expired; a staged prompt version is dropped", async () => {
     const cookie = await cookieFor(ME);
     const model = fakeModel([[

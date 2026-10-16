@@ -13,7 +13,7 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { initialState, type AppState } from "../web/src/render";
 import { askView, type AskCtx, type AskView } from "../web/src/ask-state";
 import {
-  actionGroupView, actionsPart, saveFormView, feedbackView, wrongButton, saveButton, editedArgs, doneText, proposedText, listNumbers, toolOf,
+  actionGroupView, actionsPart, actionDropdowns, saveFormView, feedbackView, wrongButton, saveButton, editedArgs, doneText, proposedText, listNumbers, toolOf,
   replayPriorExchange,
 } from "../web/src/ask-actions";
 import { foldAskEvent, foldThreadEvent, newTurn, shownParts, withLastTurn, type AskAnswer, type AskConvo, type AskActionVm } from "../web/src/ask-stream";
@@ -562,7 +562,111 @@ describe("motion — collapses glide, entrances play once, all off under reduced
   const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── the site on a phone")).replace(/\/\*[\s\S]*?\*\//g, "");
   const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
   const block = reduce.slice(0, reduce.indexOf("\n}\n"));
-  it.each([".ask-act-form", ".ask-diff textarea", ".ask-line", ".ask-wrong", ".ask-wrong[data-closing]"])("%s's animation is off under reduced motion", (sel) => {
+  it.each([".ask-act-form", ".ask-asg-pick", ".ask-diff textarea", ".ask-line", ".ask-wrong", ".ask-wrong[data-closing]"])("%s's animation is off under reduced motion", (sel) => {
     expect(block).toContain(sel);
+  });
+});
+
+// ── assignments ─────────────────────────────────────────────────────────────
+// assign_ticket (and a handoff's claim) read as an ASSIGNMENT: the item with its status mark, the people (avatar +
+// name through people.ts), from → to for a replacement, "Adds" beside the people who stay; Edit is the app's
+// dropdown; the line says what happened in names.
+
+describe("assignment cards — the item, the people, the change", () => {
+  const ITEM = (assignees: string[], num = 87) => ({ ref: `ticket:${num}`, type: "ticket" as const, num, title: "Fix the Railway deploy", href: `#tickets/${num}`,
+    status: { mark: "half" as const, tone: "accent" as const, word: "In progress", tip: "Someone is on it." }, extra: { assignees } });
+  const asg = (id: number, num: number, login: string, on: boolean, before: string[], extra: Partial<AskActionVm> = {}): AskActionVm => ({
+    id, groupId: "g1", tool: "assign_ticket", kind: "ticket", state: "proposed", fields: { id: num, login, on }, editable: ["login"], note: null,
+    preview: { title: on ? `Assign @${login} to #${num}` : `Remove @${login} from #${num}`, lines: [{ label: "Assignee", value: `${on ? "Add" : "Remove"} @${login}` }], item: ITEM(before, num) },
+    result: null, ref: null, undo: false, at: NOW.toISOString(), ...extra,
+  });
+  function withCards(vms: AskActionVm[]): AppState {
+    const s = app(null);
+    const turn = { ...newTurn("smart"), messageId: 9, done: true, parts: vms.map((x) => ({ kind: "action" as const, id: x.id })), actions: Object.fromEntries(vms.map((x) => [x.id, x])) };
+    s.ask.page = { uid: "c1", threadId: 1, thread: null, draft: "", title: "", status: "ok", busy: false,
+      messages: [{ role: "user", key: "q1", id: null, text: "Q", context: [], attachments: [], command: null }, { role: "assistant", key: "a1", turn }] };
+    return s;
+  }
+
+  it("an add beside someone: the ticket (number, title, status mark, a click opens it), \"Adds\" the person, who stays", () => {
+    const [h] = cards(withCards([asg(70, 87, "maya", true, ["andres"])]));
+    expect(text(h)).toMatch(/^Assignment Draft, not done yet Edit #87 Fix the Railway deploy In progress Adds MC Maya Chen Andres Lopez stays on it Cancel Confirm$/);
+    expect(h).toContain('data-act="askShOpen" data-arg="ticket:87"');
+    expect(h).toContain('data-mtip="Someone is on it."');          // the status is a mark with its meaning, not a pill
+    expect(h).not.toMatch(/<select|text-transform:uppercase/);
+  });
+
+  it("an add to an unassigned ticket reads Unassigned → the person; a last removal the person → Unassigned (no Edit: nobody else to pick)", () => {
+    expect(text(cards(withCards([asg(71, 90, "priya", true, [])]))[0])).toContain("#90 Fix the Railway deploy In progress Unassigned to PR Priya Raman Cancel");
+    const [rm] = cards(withCards([asg(72, 7, "maya", false, ["maya"])]));
+    expect(text(rm)).toContain("MC Maya Chen to Unassigned");
+    expect(rm).not.toContain("askAcEdit");
+    expect(text(cards(withCards([asg(73, 7, "maya", false, ["maya", "andres"])]))[0])).toContain("Removes MC Maya Chen Andres Lopez stays on it");
+  });
+
+  it("a replacement (a group of two writes on one ticket) is ONE card: from → to, one Confirm", () => {
+    const [h] = cards(withCards([asg(74, 6, "maya", false, ["maya"]), asg(75, 6, "priya", true, ["maya"])]));
+    expect(text(h)).toMatch(/#6 Fix the Railway deploy In progress MC Maya Chen to PR Priya Raman Cancel Confirm$/);
+    expect(h.match(/data-act="askAcConfirm" data-arg="74,75"/g)).toHaveLength(1);
+  });
+
+  it("Edit is the app's dropdown (avatars, names; never a native select); its menu's props are the trigger's (actionDropdowns)", () => {
+    const s = withCards([asg(76, 87, "maya", true, ["andres"])]);
+    const { ctx } = ctxOf(s, {});
+    actionsPart.act!(ctx, "askAcEdit", "76", null);
+    const [h] = cards(s);
+    expect(h).toContain('id="ask-ac-asg-76"');
+    expect(h).toContain('aria-haspopup="listbox"');
+    expect(h).toContain('aria-label="Assign to: Maya Chen"');
+    expect(h).not.toContain("<select");
+    const [dd] = actionDropdowns(s);
+    expect(dd).toMatchObject({ id: "ask-ac-asg-76", act: "askAcPick", arg: "76|login", value: "maya" });
+    // Everyone who could take it — not Andres, already on it.
+    expect(dd.options.map((o) => o.label)).toEqual(["Maya Chen", "Priya Raman"]);
+    expect(dd.options[0].icon).toContain("MC");
+  });
+
+  it("a pick changes the person; Confirm sends { login } alone and the line names who it went to, with Undo", async () => {
+    const s = withCards([asg(77, 87, "maya", true, ["andres"])]);
+    const confirmAction = vi.fn(async (id: number) => ({ results: [result(id, "confirmed", "ticket:87", { assignees: ["andres", "priya"] })] } satisfies AskActionAnswer));
+    const { ctx, flashes } = ctxOf(s, { confirmAction });
+    actionsPart.act!(ctx, "askAcEdit", "77", null);
+    actionsPart.act!(ctx, "askAcPick", "77|login", "priya");
+    expect(text(cards(s)[0])).toContain("Adds PR Priya Raman");
+    actionsPart.act!(ctx, "askAcConfirm", "77", null);
+    await flush();
+    expect(confirmAction).toHaveBeenCalledWith(77, { args: { login: "priya" } });
+    expect(text(cards(s)[0])).toBe("Assigned ticket #87 to Priya Raman Just now Undo");
+    expect(flashes).toEqual(["Assigned ticket #87 to Priya Raman"]);
+  });
+
+  it("the lines' words: assigned, took off, reassigned, several tickets — and cancelled / undone / failed say the same change", () => {
+    const look = { persons: PERSONS };
+    expect(doneText([asg(1, 87, "maya", true, [])], look)).toBe("Assigned ticket #87 to Maya Chen");
+    expect(doneText([asg(1, 87, "maya", false, ["maya"])], look)).toBe("Took Maya Chen off ticket #87");
+    expect(doneText([asg(1, 6, "maya", false, ["maya"]), asg(2, 6, "priya", true, ["maya"])], look)).toBe("Reassigned ticket #6 from Maya Chen to Priya Raman");
+    expect(doneText([asg(1, 6, "maya", true, []), asg(2, 7, "maya", true, [])], look)).toBe("Assigned tickets #6 and #7 to Maya Chen");
+    expect(doneText([asg(1, 87, "maya", true, [])])).toBe("Assigned ticket #87 to @maya");      // no directory: the handle
+    expect(proposedText([asg(1, 87, "maya", true, [])], look)).toBe("Assign ticket #87 to Maya Chen");
+    const line = (state: AskActionVm["state"]) => text(cards(withCards([asg(78, 87, "maya", true, [], { state, result: state === "failed" ? { error: "Ticket #87 was closed." } : null })]))[0]);
+    expect(line("cancelled")).toBe("Cancelled: assign ticket #87 to Maya Chen");
+    expect(line("undone")).toBe("Undone: assigned ticket #87 to Maya Chen");
+    expect(line("failed")).toBe("Didn&#39;t work: assign ticket #87 to Maya Chen Ticket #87 was closed.");
+  });
+
+  it("a card stored before the fields existed still reads from its preview line", () => {
+    const old = asg(79, 87, "maya", true, [], { fields: {}, editable: [] });
+    expect(doneText([old], { persons: PERSONS })).toBe("Assigned ticket #87 to Maya Chen");
+  });
+
+  it("a handoff's claim is drawn as an assignment: the handoff, its sender → you", () => {
+    const vm: AskActionVm = { id: 80, groupId: null, tool: "claim_handoff", kind: "handoff", state: "proposed", fields: {}, editable: [], note: null, result: null, ref: null, undo: false, at: NOW.toISOString(),
+      preview: { title: "Claim handoff #17", lines: [{ label: "From", value: "@maya" }], item: { ref: "handoff:17", type: "handoff", num: 17, title: "Quiz agent fails validation", href: "#handoffs/17",
+        status: { mark: "ring", tone: "blue", word: "Pending", tip: "Waiting for a session to claim it." }, extra: { from: "maya", to: "andres" } } } };
+    expect(text(cards(withCards([vm]))[0])).toMatch(/^Claim handoff Draft, not done yet #17 Quiz agent fails validation Pending MC Maya Chen to AL Andres Lopez No one else can claim it after Cancel Confirm$/);
+  });
+
+  it("phone: the picker, the item, Undo and the line's link get the 44px hit area", () => {
+    for (const sel of [".ask-act .cnpy-dd::after", "button.ask-asg-item::after", ".ask-undo::after", ".ask-line-link::after"]) expect(css).toContain(`[data-phone="1"] ${sel}`);
   });
 });

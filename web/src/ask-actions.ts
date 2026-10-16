@@ -7,7 +7,10 @@
 //     fields the tool's input takes (`editable` — ticket: title, category, priority, assignee; handoff: recipient,
 //     task; doc edit: the `+` text of each hunk), and Cancel / Confirm. `confirm { args }` sends ONLY the edited
 //     fields; the server re-validates them and rebuilds the card. A Publish card never runs in Auto (it waits with
-//     the server's note) and offers Confirm only when `preview.canPublish` — else "Open in Review".
+//     the server's note) and offers Confirm only when `preview.canPublish` — else "Open in Review". An ASSIGNMENT
+//     (`assign_ticket`, a group of them, or a handoff's claim) draws the item with its status mark and the people:
+//     from → to, "Adds" / "Removes" beside who stays; Edit picks the person with the app's dropdown (`askAcPick`,
+//     its menu among the root overlays through `actionDropdowns`).
 //   • A LINE (after the decision): done (linked to `ref`, a time, Undo while the server offers it), "Cancelled: …",
 //     "Undone: …", "Expired: …" or "Didn't work: …". Consecutive cards of one `groupId` are ONE card / ONE line
 //     ("Filed tickets #30, #31 and #32") with one Confirm and one Undo for the group. Undo refused because the item
@@ -30,6 +33,7 @@
 // Acts and their args (`|` separates; an answer is named by its key `a…` / `m…`, or by its stored message id):
 //   askAcConfirm / askAcCancel / askAcUndo  "<id>[,<id>…]"   (the card's / group's ids)
 //   askAcEdit "<id>"   askAcField "<id>|<field>[|<value>]" (value from the input when absent)   askAcHunk "<id>|<index>"
+//   askAcPick "<id>|<field>" with the dropdown's option as `value` (an assignment's person)
 //   askAcSaveForm "<answer>[|<block>]"   askAcSaveTitle / askAcSaveKind / askAcSaveVis / askAcSave "<answer>|<index>[|<value>]"
 //   askAcWrong "<answer>"   askAcWrongReason "<answer>|<reason>"
 // MOTION (ask-motion.ts): every card / line / form sits in a `data-ask-tween` wrapper, so a card collapsing to its
@@ -44,7 +48,9 @@ import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type As
 import { AskApiError } from "./ask-api";
 import { segmented } from "./segmented";
 import { glyph, markShape, priorityIcon, PRIORITY_LABEL } from "./marks";
-import { personName, personOf, refAvatar, refStatusMark } from "./ask-refs";
+import { personName, personOf, refAvatar, refStatusMark, type RefLook } from "./ask-refs";
+import { dropdown, type DropdownProps } from "./dropdown";
+import type { AppState } from "./render";
 import { askIcon } from "./ask-icons";
 import { closingAttr } from "./ask-motion";
 import {
@@ -85,6 +91,65 @@ export function listNumbers(ns: string[]): string {
   return xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`;
 }
 const line = (vm: AskActionVm, label: string): string | null => vm.preview?.lines.find((l) => l.label === label)?.value ?? null;
+/** "Jose", "Jose and Luke", "Jose, Luke and Meilin". */
+const listWords = (xs: string[]): string => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
+type Look = Pick<RefLook, "persons">;
+/** A person in a sentence: the directory's name when the screen knows it, else the handle. */
+const who = (look: Look | undefined, h: string): string => (look ? personName(look, h) : `@${h}`);
+
+// ── assignments (assign_ticket; claim_handoff draws the same frame) ──────────
+
+/** One assignment write: the ticket, the person, adds or removes. From the card's fields (since the server sent
+ *  them), else its preview's "Assignee: Add @h" line (a card stored before). */
+export interface AssignOne { vm: AskActionVm; num: string | null; login: string; on: boolean }
+export function assignOf(vm: AskActionVm, login?: string): AssignOne | null {
+  const m = /^(Add|Remove) @(.+)$/.exec(line(vm, "Assignee") ?? "");
+  const h = login ?? str(vm.fields.login) ?? m?.[2] ?? null;
+  if (!h) return null;
+  const on = typeof vm.fields.on === "boolean" ? vm.fields.on : m ? m[1] === "Add" : true;
+  const id = vm.fields.id;
+  const num = typeof id === "number" ? String(id) : vm.preview?.item?.num != null ? String(vm.preview.item.num) : keyOf(vm.ref);
+  return { vm, num, login: h, on };
+}
+const sameH = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+const without = (xs: string[], ys: string[]) => xs.filter((x) => !ys.some((y) => sameH(x, y)));
+const handles = (x: unknown): string[] => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string" && !!s) : []);
+/** Who is on the ticket now (the card's item, read when the card was made). */
+const assigneesBefore = (vm: AskActionVm): string[] => handles(vm.preview?.item?.extra.assignees);
+
+/** The writes of a group, ticket by ticket (consecutive assign_ticket calls share one card). */
+function byTicket(xs: AssignOne[]): { num: string | null; adds: AssignOne[]; removes: AssignOne[] }[] {
+  const out: { num: string | null; adds: AssignOne[]; removes: AssignOne[] }[] = [];
+  for (const x of xs) {
+    let t = out.find((o) => o.num === x.num);
+    if (!t) out.push(t = { num: x.num, adds: [], removes: [] });
+    (x.on ? t.adds : t.removes).push(x);
+  }
+  return out;
+}
+
+/** What an assignment group did / would do, in product words: "Assigned ticket #87 to Jose", "Reassigned ticket #87
+ *  from Andres to Jose", "Took Luke off ticket #87", "Assigned tickets #87 and #6 to Jose". null: not one sentence. */
+function assignWords(vms: AskActionVm[], look: Look | undefined, done: boolean): string | null {
+  const xs = vms.map((x) => assignOf(x)).filter((x): x is AssignOne => !!x);
+  if (!xs.length || xs.length !== vms.length) return null;
+  const ts = byTicket(xs);
+  const names = (ys: AssignOne[]) => listWords(ys.map((y) => who(look, y.login)));
+  const tk = (n: string | null) => (n ? `ticket #${n}` : "the ticket");
+  if (ts.length > 1) {
+    // Several tickets: one sentence only when it is the same person, all added (or all removed).
+    const one = xs.every((x) => sameH(x.login, xs[0].login) && x.on === xs[0].on);
+    const nums = ts.map((t) => t.num).filter((n): n is string => !!n);
+    if (!one || nums.length !== ts.length) return null;
+    return xs[0].on
+      ? `${done ? "Assigned" : "Assign"} tickets ${listNumbers(nums)} to ${who(look, xs[0].login)}`
+      : `${done ? "Took" : "Take"} ${who(look, xs[0].login)} off tickets ${listNumbers(nums)}`;
+  }
+  const t = ts[0];
+  if (t.adds.length && t.removes.length) return `${done ? "Reassigned" : "Reassign"} ${tk(t.num)} from ${names(t.removes)} to ${names(t.adds)}`;
+  if (t.adds.length) return `${done ? "Assigned" : "Assign"} ${tk(t.num)} to ${names(t.adds)}`;
+  return `${done ? "Took" : "Take"} ${names(t.removes)} off ${tk(t.num)}`;
+}
 const docTitle = (vm: AskActionVm): string => vm.preview?.item?.title ?? line(vm, "Doc") ?? str(vm.fields.title) ?? str(vm.fields.slug) ?? "the doc";
 const refWord = (ref: string): string => {
   const p = parseAskRef(ref);
@@ -109,8 +174,9 @@ export function toolOf(vm: AskActionVm): string | null {
   return null;
 }
 
-/** What a done line says ("Created ticket #30", "Filed tickets #30, #31 and #32", "Moved ticket #14 to In progress"). */
-export function doneText(vms: AskActionVm[]): string {
+/** What a done line says ("Created ticket #30", "Filed tickets #30, #31 and #32", "Moved ticket #14 to In progress",
+ *  "Assigned ticket #87 to Jose"). `look` names people by their names (else their handles). */
+export function doneText(vms: AskActionVm[], look?: Look): string {
   const vm = vms[0];
   const tool = toolOf(vm);
   const nums = vms.map((x) => keyOf(x.ref)).filter((x): x is string => x !== null);
@@ -128,7 +194,7 @@ export function doneText(vms: AskActionVm[]): string {
     case "add_ticket_link": return more(`Linked work to ${ticket}`);
     case "set_ticket_sprint": return more(`Moved ${ticket} to ${str(rec(r.sprint).label) ?? "the backlog"}`);
     case "set_ticket_parent": return more(`Nested a sub-ticket under ${ticket}`);
-    case "assign_ticket": return more(`Changed who is on ${ticket}`);
+    case "assign_ticket": return assignWords(vms, look, true) ?? more(`Changed who is on ${ticket}`);
     case "send_handoff": {
       const to = str(r.recipient) ?? str(vm.fields.recipient);
       return more(`Sent ${handoff} to ${!to || to === "anyone" ? "anyone" : `@${to}`}`);
@@ -148,9 +214,10 @@ export function doneText(vms: AskActionVm[]): string {
 }
 
 /** What was proposed, for "Cancelled: …" / "Expired: …" ("new ticket", "move ticket #14 to Testing"). */
-export function proposedText(vms: AskActionVm[]): string {
+export function proposedText(vms: AskActionVm[], look?: Look): string {
   const vm = vms[0];
   switch (toolOf(vm)) {
+    case "assign_ticket": { const w = assignWords(vms, look, false); if (w) return w; break; }
     case "create_ticket": return vms.length > 1 ? `${vms.length} new tickets` : "New ticket";
     case "send_handoff": return "New handoff";
     case "propose_doc_update": return `Doc edit to ${docTitle(vm)}`;
@@ -161,7 +228,9 @@ export function proposedText(vms: AskActionVm[]): string {
   return vm.preview?.item?.type === "ticket" || vm.kind === "move" ? t.replace(/(^|\s)#(\d+)/g, "$1ticket #$2") : t;
 }
 
-const EYEBROW: Record<string, string> = { create_ticket: "New ticket", send_handoff: "New handoff", propose_doc_update: "Doc edit", publish_doc: "Publish doc" };
+const EYEBROW: Record<string, string> = {
+  create_ticket: "New ticket", send_handoff: "New handoff", propose_doc_update: "Doc edit", publish_doc: "Publish doc", assign_ticket: "Assignment", claim_handoff: "Claim handoff",
+};
 const KIND_WORD: Record<string, string> = { ticket: "Ticket", handoff: "Handoff", doc_edit: "Doc edit", move: "Move", publish: "Publish doc", sprint: "Sprint", other: "Change" };
 const CREATES = new Set(["create_ticket", "send_handoff", "propose_doc_update", "create_sprint", "save_prompt", "append_feed"]);
 
@@ -298,6 +367,102 @@ function publishBody(vm: AskActionVm): string {
   </div>`;
 }
 
+/** A person on an assignment card: their avatar and name (people.ts through `refAvatar`). `strong`: the one who comes
+ *  or goes — the change the card is about. */
+const personTag = (v: AskView, h: string, strong = false, key = `p:${h.toLowerCase()}`): string =>
+  `<span class="ask-asg-p${strong ? " is-strong" : ""}" data-morph-key="${attr(key)}">${refAvatar(v.look, h, 20)}<span class="ask-asg-n">${esc(personName(v.look, h))}</span></span>`;
+const NOBODY = `<span class="ask-asg-none" data-morph-key="none">Unassigned</span>`;
+const toArrow = () => `<span class="ask-asg-to" data-morph-key="to">${askIcon("arrow", 14, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span></span>`;
+
+/** The Edit picker for one assignment write: the app's dropdown (never a native select), every member who could
+ *  take it (an add) or everyone on it now (a removal), each with their avatar. Its menu is a root overlay
+ *  (`actionDropdowns`, render.ts) — the same props on both sides. */
+function assignPickProps(v: AskView, one: AssignOne): DropdownProps {
+  const vm = one.vm;
+  const cur = personOf(v.look, one.login)?.handle ?? one.login;
+  const before = assigneesBefore(vm);
+  const me = v.app.me?.handle ?? null;
+  const pool = one.on
+    ? v.look.persons.map((p) => p.handle).filter((h) => sameH(h, cur) || !before.some((b) => sameH(b, h)))
+    : [...before];
+  if (!pool.some((h) => sameH(h, cur))) pool.unshift(cur);
+  const options = pool
+    .map((h) => ({ value: personOf(v.look, h)?.handle ?? h, label: personName(v.look, h), icon: refAvatar(v.look, h, 18), ...(me && sameH(h, me) ? { hint: "You" } : {}) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  return { id: `ask-ac-asg-${vm.id}`, act: "askAcPick", arg: `${vm.id}|login`, value: cur, options, ariaLabel: one.on ? "Assign to" : "Take off", size: "sm" };
+}
+
+/** May Edit change this write's person? An add: any member. A removal: only when someone else is on it to pick. */
+const pickable = (one: AssignOne): boolean => canEdit(one.vm, "login") && (one.on || assigneesBefore(one.vm).length > 1);
+
+/** The writes a card shows, with the person's Edit pick in place of the proposed one. */
+const assignsOf = (v: AskView, vms: AskActionVm[]): AssignOne[] =>
+  vms.map((x) => assignOf(x, str(fieldOf(v, x, "login")) ?? undefined)).filter((x): x is AssignOne => !!x);
+
+/** An assignment card's body: per ticket, the item (number, title, its status mark — a click opens it) and the
+ *  change in people. A replacement reads from → to ("Andres → Jose"), an add to an unassigned ticket "Unassigned →
+ *  Jose", a removal of the last one "Luke → Unassigned"; an add beside others "Adds Jose · Andres stays on it", a
+ *  removal beside others "Removes Luke · Jose stays on it". While editing, the person who comes (or goes) is a picker. */
+function assignBody(v: AskView, vms: AskActionVm[], editing: boolean): string {
+  const ts = byTicket(assignsOf(v, vms));
+  const pick = (one: AssignOne, strong: boolean) => (editing && pickable(one)
+    ? `<span class="ask-asg-pick" data-morph-key="pick:${one.vm.id}">${dropdown(assignPickProps(v, one), v.app.dd)}</span>`
+    : personTag(v, one.login, strong, `p:${one.vm.id}`));
+  return `<div class="ask-act-body ask-asg" data-morph-list>${ts.map((t) => {
+    const vm = (t.adds[0] ?? t.removes[0]).vm;
+    const item = vm.preview?.item ?? null;
+    const ref = item?.ref ?? (t.num ? `ticket:${t.num}` : null);
+    const before = assigneesBefore(vm);
+    const gone = t.removes.map((x) => x.login), come = t.adds.map((x) => x.login);
+    const stays = without(without(before, gone), come);
+    const adds = t.adds.map((x) => pick(x, true)).join(""), removes = (strong: boolean) => t.removes.map((x) => pick(x, strong)).join("");
+    const word = (w: string) => `<span class="ask-asg-w" data-morph-key="w">${w}</span>`;
+    const change = t.adds.length && t.removes.length ? `${removes(false)}${toArrow()}${adds}`
+      : t.adds.length ? (stays.length ? `${word("Adds")}${adds}` : `${NOBODY}${toArrow()}${adds}`)
+      : stays.length ? `${word("Removes")}${removes(true)}` : `${removes(true)}${toArrow()}${NOBODY}`;
+    const staysNote = stays.length ? `<span class="ask-asg-stays" data-morph-key="stays">${esc(listWords(stays.map((h) => personName(v.look, h))))} ${stays.length === 1 ? "stays" : "stay"} on it</span>` : "";
+    const title = item?.title ?? (t.num ? `Ticket #${t.num}` : "The ticket");
+    const itemInner = `${t.num ? `<span class="ask-asg-num">#${esc(t.num)}</span>` : ""}<span class="ask-asg-title">${esc(title)}</span>`;
+    return `<div class="ask-asg-t" data-morph-key="t:${attr(t.num ?? String(vm.id))}">
+      <div class="ask-asg-head">${ref ? `<button type="button" class="ask-asg-item" data-act="askShOpen" data-arg="${attr(ref)}">${itemInner}</button>` : `<span class="ask-asg-item">${itemInner}</span>`}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
+      <div class="ask-asg-who">${change}${staysNote}</div>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+/** Claiming a handoff is an assignment too: the handoff, and it moving from its sender to you. */
+function claimBody(v: AskView, vm: AskActionVm): string {
+  const item = vm.preview?.item ?? null;
+  const num = item?.num != null ? String(item.num) : keyOf(vm.ref ?? item?.ref ?? null);
+  const from = str(item?.extra.from) ?? ((line(vm, "From") ?? "").replace(/^@/, "") || null);
+  const me = v.app.me?.handle ?? null;
+  const title = item?.title ?? line(vm, "Title") ?? (num ? `Handoff #${num}` : "The handoff");
+  const ref = item?.ref ?? (num ? `handoff:${num}` : null);
+  const itemInner = `${num ? `<span class="ask-asg-num">#${esc(num)}</span>` : ""}<span class="ask-asg-title">${esc(title)}</span>`;
+  return `<div class="ask-act-body ask-asg"><div class="ask-asg-t" data-morph-key="t:${attr(num ?? String(vm.id))}">
+    <div class="ask-asg-head">${ref ? `<button type="button" class="ask-asg-item" data-act="askShOpen" data-arg="${attr(ref)}">${itemInner}</button>` : `<span class="ask-asg-item">${itemInner}</span>`}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
+    <div class="ask-asg-who">${from ? personTag(v, from) : ""}${toArrow()}${me ? personTag(v, me, true) : `<span class="ask-asg-p is-strong">You</span>`}<span class="ask-asg-stays">No one else can claim it after</span></div>
+  </div></div>`;
+}
+
+/** Every open card's dropdowns (the assignment pickers), for the root overlays: render.ts draws the open one's menu
+ *  — over the Ask screen and over any page under the ⌘J panel. The props are the trigger's own (`assignPickProps`). */
+export function actionDropdowns(app: AppState): DropdownProps[] {
+  const out: DropdownProps[] = [];
+  for (const where of ["page", "panel"] as AskWhere[]) {
+    const v: AskView = { app, ui: app.ask, where, look: { views: app.ask.refViews, persons: app.persons.data } };
+    for (const m of app.ask[where].messages) {
+      if (m.role !== "assistant") continue;
+      for (const vm of Object.values(m.turn.actions)) {
+        if (toolOf(vm) !== "assign_ticket" || (vm.state !== "proposed" && vm.state !== "waiting")) continue;
+        const one = assignsOf(v, [vm])[0];
+        if (one && pickable(one)) out.push(assignPickProps(v, one));
+      }
+    }
+  }
+  return out;
+}
+
 /** Any other write (a move, a sprint, a comment…): the server's title and its lines. */
 function genericBody(vm: AskActionVm): string {
   const lines = (vm.preview?.lines ?? []).filter((l) => l.label !== "What it does");
@@ -313,6 +478,8 @@ function bodyOf(v: AskView, vm: AskActionVm, editing: boolean): string {
     case "send_handoff": return handoffBody(v, vm, editing);
     case "propose_doc_update": return docBody(v, vm, editing);
     case "publish_doc": return publishBody(vm);
+    case "assign_ticket": return assignBody(v, [vm], editing);
+    case "claim_handoff": return claimBody(v, vm);
     default: return genericBody(vm);
   }
 }
@@ -324,7 +491,10 @@ function cardView(v: AskView, vms: AskActionVm[]): string {
   const tool = toolOf(vm) ?? "";
   const waiting = vms.some((x) => x.state === "waiting");
   const busy = vms.some((x) => v.ui.actions.busy[x.id] === true || x.state === "running");
-  const editable = vms.length === 1 && vm.editable.length > 0 && ["create_ticket", "send_handoff", "propose_doc_update"].includes(tool);
+  const assign = tool === "assign_ticket";
+  // An assignment group edits each of its writes' person (one Edit for the card, a picker per person).
+  const editable = assign ? assignsOf(v, vms).some(pickable)
+    : vms.length === 1 && vm.editable.length > 0 && ["create_ticket", "send_handoff", "propose_doc_update"].includes(tool);
   const editing = editable && v.ui.actions.editing[vm.id] === true;
   const eyebrow = vms.length > 1 && tool === "create_ticket" ? `${vms.length} new tickets` : EYEBROW[tool] ?? KIND_WORD[vm.kind ?? "other"] ?? "Change";
   const draftWord = CREATES.has(tool) ? "Draft, not created yet" : "Draft, not done yet";
@@ -338,7 +508,8 @@ function cardView(v: AskView, vms: AskActionVm[]): string {
   const confirm = publishBlocked
     ? `<a class="ask-btn ask-btn--accent" href="#review">Open in Review</a>`
     : `<button type="button" class="ask-btn ask-btn--accent ask-act-confirm" data-act="askAcConfirm" data-arg="${arg}"${busy ? " disabled" : ""}>${I_CHECK}${busy ? "Working…" : "Confirm"}</button>`;
-  const bodies = vms.length > 1
+  const bodies = assign ? assignBody(v, vms, editing)
+    : vms.length > 1
     ? `<div class="ask-act-stack" data-morph-list>${vms.map((x) => `<div data-morph-key="g${x.id}">${bodyOf(v, x, false)}</div>`).join("")}</div>`
     : bodyOf(v, vm, editing);
   return `<div class="ask-act" data-morph-key="act:${ids[0]}" data-ask-tween${busy ? ` aria-busy="true"` : ""}>
@@ -368,10 +539,10 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
   const busy = vms.some((x) => v.ui.actions.busy[x.id] === true);
   const key = `ln:${ids[0]}:${cat}`;
   if (cat !== "done") {
-    const text = cat === "cancelled" ? `Cancelled: ${lowerFirst(proposedText(vms))}`
-      : cat === "undone" ? `Undone: ${lowerFirst(doneText(vms))}`
-      : cat === "expired" ? `Expired: ${lowerFirst(proposedText(vms))}`
-      : `Didn't work: ${lowerFirst(proposedText(vms))}`;
+    const text = cat === "cancelled" ? `Cancelled: ${lowerFirst(proposedText(vms, v.look))}`
+      : cat === "undone" ? `Undone: ${lowerFirst(doneText(vms, v.look))}`
+      : cat === "expired" ? `Expired: ${lowerFirst(proposedText(vms, v.look))}`
+      : `Didn't work: ${lowerFirst(proposedText(vms, v.look))}`;
     const why = cat === "failed" ? str(rec(vm.result).error) ?? str(rec(vm.result).message) : cat === "expired" ? "This card expired with its turn. Ask again." : null;
     return `<div class="ask-line is-off" data-morph-key="${key}">${cat === "failed" ? SHAPE.bad() : SHAPE.off()}<span class="ask-line-t">${esc(text)}</span>${why ? `<span class="ask-line-why">${esc(why)}</span>` : ""}</div>`;
   }
@@ -389,7 +560,7 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
       ${refusedHtml || `<span class="ask-line-at">${esc(timeWord(vm.at))}</span>`}
       ${vm.ref ? `<button type="button" class="ask-undo" data-act="askShOpen" data-arg="${attr(vm.ref)}">Open${I_OPEN}</button>` : ""}${undo}</div>`;
   }
-  const text = doneText(vms);
+  const text = doneText(vms, v.look);
   const link = vm.ref ?? vm.preview?.item?.ref ?? null;
   return `<div class="ask-line" data-morph-key="${key}">${SHAPE.done()}${link
     ? `<button type="button" class="ask-line-link" data-act="askShOpen" data-arg="${attr(link)}">${esc(text)}</button>`
@@ -498,6 +669,12 @@ function actionVm(ctx: Pick<AskCtx, "ui">, id: number): AskActionVm | null {
   for (const where of WHERES) for (const m of ctx.ui[where].messages) if (m.role === "assistant" && m.turn.actions[id]) return m.turn.actions[id];
   return null;
 }
+function setFields(ctx: AskCtx, id: number, args: Record<string, unknown>): void {
+  const { hunks: _h, ...plain } = args;
+  for (const where of WHERES) {
+    ctx.ui[where] = withTurnOfAction(ctx.ui[where], id, (t) => ({ ...t, actions: { ...t.actions, [id]: { ...t.actions[id], fields: { ...t.actions[id].fields, ...plain } } } }));
+  }
+}
 function setActionState(ctx: AskCtx, id: number, state: AskActionVm["state"]): void {
   for (const where of WHERES) {
     ctx.ui[where] = withTurnOfAction(ctx.ui[where], id, (t) => ({ ...t, actions: { ...t.actions, [id]: { ...t.actions[id], state } } }));
@@ -576,7 +753,10 @@ export async function confirmCards(ctx: AskCtx, ids: number[]): Promise<void> {
       const vm = actionVm(ctx, id);
       const args = vm ? editedArgs(vm, ctx.ui.actions.drafts[id]) : null;
       if (!args) continue;
-      applyResults(ctx, await ctx.api.confirmAction(id, { args }));
+      const ans = await ctx.api.confirmAction(id, { args });
+      // The card's fields become what was confirmed, so its line names the edit ("Assigned ticket #87 to Luke").
+      setFields(ctx, id, args);
+      applyResults(ctx, ans);
     }
     const rest = pendingOf(ctx, live);
     // The rest of the card in ONE call: the server runs every still-pending card of the group.
@@ -585,7 +765,7 @@ export async function confirmCards(ctx: AskCtx, ids: number[]): Promise<void> {
     const failed = live.map((id) => actionVm(ctx, id)).find((x) => x?.state === "failed");
     for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.editing[id]; }
     if (failed) ctx.flash(str(rec(failed.result).error) ?? "That change didn't work. Nothing else was changed.");
-    else if (done.length) ctx.flash(doneText(done));
+    else if (done.length) ctx.flash(doneText(done, ctx.look()));
   } catch (e) {
     onRefusal(ctx, live, e, "Couldn't make that change.");
   } finally {
@@ -788,6 +968,15 @@ export const actionsPart: AskPart = {
         setDraft(ctx, n, (d) => ({ ...d, [field]: val }));
         // A typed field repaints nothing (the input holds it); a pick moves its switch.
         if (picked !== undefined) ctx.paint();
+        return;
+      }
+      case "askAcPick": {
+        // A dropdown's pick (an assignment's person): the option is `value`.
+        const [id, field] = a.split("|");
+        const n = Number(id);
+        if (!(n > 0) || !field || !value) return;
+        setDraft(ctx, n, (d) => ({ ...d, [field]: value }));
+        ctx.paint();
         return;
       }
       case "askAcHunk": {
