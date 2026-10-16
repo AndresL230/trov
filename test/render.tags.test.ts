@@ -12,6 +12,7 @@ vi.mock("../web/src/markdown", () => ({
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
 import css from "../web/src/trov.css?raw";
+import tagsActionsSrc from "../web/src/tags-actions.ts?raw";
 import { render, initialState, feedTagNames, type AppState } from "../web/src/render";
 import { tagMark, tagSquare, tagWords } from "../web/src/marks";
 import { tagsTab, tagPageView, tagWeeks, isTagPageTab, type TagPageTab, itemTagsRow, tagConfirmModal, initialTagsUi, tagDraftProblem, countsPhrase, aiSection, jevCell, tagAddModal, nextTagColor, type TagsUi } from "../web/src/tags";
@@ -694,5 +695,14 @@ describe("tags added by Jev, on the Tags tab (the owner's call: no review step)"
     expect(member).not.toContain("data-fitrun");
     expect(member).not.toContain("Added by Sift");
     noPill(html);
+  });
+});
+
+// Q9 (owner ruling 2026-10-16): Find items said "Suggestions are off…" even when the ORG's switch was the cause.
+describe("Find items names the switch that is off", () => {
+  it("the org's switch → Org settings › AI; Sift's own → Tags", () => {
+    expect(tagsActionsSrc).toContain(`org_off: "Trov's AI is off for this organization. An admin turns it on in Org settings › AI.",`);
+    expect(tagsActionsSrc).toContain(`off: "Sift is off. Turn it on above, in Tags, first.",`);
+    expect(tagsActionsSrc).not.toContain("Suggestions are off. Turn them on above first.");
   });
 });

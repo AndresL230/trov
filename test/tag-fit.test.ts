@@ -301,8 +301,9 @@ describe("a run", () => {
     expect(await siftSwitches(systemCtx())).toEqual({ org: false, sift: true, on: false });
     expect((await listTags(admin, { aiAvailable: true })).ai).toMatchObject({ enabled: true, org: false }); // the Tags tab says so
     const j = jev(fitsIf("Invoice"));
-    expect((await startTagFit(KEYED, systemCtx(), "billing")).status).toBe("off");
-    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("off");
+    // Q9 (owner ruling 2026-10-16): the refusal names the switch that is off — the org's, not Sift's.
+    expect((await startTagFit(KEYED, systemCtx(), "billing")).status).toBe("org_off");
+    expect(await runTagFit(KEYED, systemCtx(), "billing", { classifier: j.classifier })).toBe("org_off");
     expect(j.sent).toEqual([]);
     expect(await calls()).toBe(0);
     expect(await all(env.DB, `SELECT 1 FROM org_tag_runs`)).toEqual([]);

@@ -92,7 +92,9 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
     the org's switch on, only that org's items, and it only ever ADDS that one tag — it never removes or changes
     anything else. Every other rule holds: never on a render path (the route starts the run and hands its work to
     `waitUntil`); a fixed set of answers (a `noul` must be a number 0–1, anything else is no judgement); metered
-    (`jev_checks`, one per request, `plans.md`).
+    (`jev_checks`, one per request, `plans.md`). A run refused for a switch names WHICH one (`startTagFit`):
+    `org_off` — the organization's AI switch ("…An admin turns it on in Org settings › AI.") — or `off`, Sift's own
+    on the Tags tab ("Sift is off. Turn it on above, in Tags, first.").
   - **Provenance**: each tag a run adds keeps an `org_tag_suggestions` row — `source = 'model'`, `confidence`,
     `reason`, `model` (the version Jev reports, e.g. `jev-1.13.0`), `prompt_version` `jev-fit-1`, `state =
     'accepted'`, `resolved_by = 'jev'` (a reserved handle) and the run's `run_id` — written in the SAME batch as
