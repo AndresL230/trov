@@ -267,6 +267,8 @@ export function createAskController(host: AskHost): AskController {
       if (!stored || stored.role !== "assistant" || !stored.stopped || counts(d.messages) !== counts(now.messages)) continue;
       setConvo(where, withLastTurn(withQuestionId(now, asked?.role === "user" ? asked.id : undefined), (t) => ({ ...t, messageId: stored.id, cites: stored.cites })));
       paint();
+      // The server named a new thread once it stored the answer — after the list was last read.
+      if (d.thread.title && d.thread.title !== now.title) reloadThreads();
       return;
     }
   }

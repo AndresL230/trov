@@ -50,7 +50,7 @@ import { shortDay } from "./charts";
 import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
-export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number } = {};
+export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number } = {};
 
 type C = Context<AppEnv>;
 const nowMs = () => (askDeps.now ? askDeps.now() : Date.now());
@@ -292,16 +292,23 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   if (!st.modes.includes(req.mode)) return c.json({ error: "mode_unavailable", message: `${askMode(req.mode).label} is not on this organization's plan.`, modes: st.modes }, 403);
   const settings = await getAskSettings(ctx, handle);
 
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
   const enc = new TextEncoder();
   const gone = new AbortController();
   // The client going away (the request's own signal) stops the model stream.
   c.req.raw.signal?.addEventListener?.("abort", () => gone.abort());
   let open = true;
+  // The events are QUEUED on the response's own stream, never awaited: a browser that dropped the connection may
+  // leave the stream unread rather than cancelled, and an awaited write then never settles — the runtime cancelled
+  // the request as hung and the answer was never stored (seen under wrangler dev after Stop). Queued, the turn always
+  // reaches its end and stores what it has; the client CANCELLING the stream ends the turn as stopped.
+  let out: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const readable = new ReadableStream<Uint8Array>({
+    start(ctl) { out = ctl; },
+    cancel() { open = false; gone.abort(); },
+  });
   const emit: Emit = async (event, data) => {
     if (!open) return;
-    try { await writer.write(enc.encode(sse(event, data))); } catch { open = false; gone.abort(); }
+    try { out!.enqueue(enc.encode(sse(event, data))); } catch { open = false; gone.abort(); }
   };
   const work = (async () => {
     try {
@@ -311,10 +318,10 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
       await emit("error", { code: "failed", message: "Something went wrong. Nothing was changed. Try again." });
     } finally {
       open = false;
-      await writer.close().catch(() => undefined);
+      try { out!.close(); } catch { /* cancelled already */ }
     }
   })();
-  try { c.executionCtx.waitUntil(work); } catch { /* no ExecutionContext (a test): the stream drives the work */ }
+  try { c.executionCtx.waitUntil(work); } catch { /* no ExecutionContext (a test): the work runs on its own */ }
   return new Response(readable, { headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store", "x-accel-buffering": "no" } });
 });
 
@@ -447,7 +454,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
     }),
     history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
-    fetchImpl: askDeps.fetchImpl, now: nowMs,
+    fetchImpl: askDeps.fetchImpl, now: nowMs, stopPollMs: askDeps.stopPollMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);
 

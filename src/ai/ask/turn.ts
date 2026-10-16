@@ -64,6 +64,8 @@ export interface TurnInput {
   notices?: readonly AttachmentNotice[];
   fetchImpl?: typeof fetch;
   now: () => number;
+  /** How often (ms) the Stop flag is read WHILE the model streams (default STOP_POLL_MS; a test passes 0). */
+  stopPollMs?: number;
 }
 
 export interface TurnActivity { step: number; tool: string; icon: AskActivityIcon; label: string; results: string[]; resultLine: string | null }
@@ -116,6 +118,9 @@ interface TurnState {
   lastWrite: { tool: string; groupId: string } | null;
   groups: number;
 }
+
+/** How often the Stop flag is read while the model streams. */
+export const STOP_POLL_MS = 1_000;
 
 export async function runTurn(t: TurnInput): Promise<TurnResult> {
   const def = askMode(t.mode);
@@ -180,7 +185,15 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
       let blockType: string | null = null;
       let thinkingStart = 0;
       let thinkingText = "";
+      let polled = t.now();
       for await (const ev of stream) {
+        // Stop while the model streams: the flag `POST /ask/threads/:id/stop` sets is read every STOP_POLL_MS too, not
+        // only between steps — the request's own signal does not fire when a browser drops the connection (no
+        // `enable_request_signal`), so without this a long answer ran to its end after Stop.
+        if (t.now() - polled >= (t.stopPollMs ?? STOP_POLL_MS)) {
+          polled = t.now();
+          if (await stopRequested(t.ctx, t.tool.threadId)) { stop("stopped"); break; }
+        }
         if (ev.type === "content_block_start") {
           blockType = ev.content_block.type;
           if (blockType === "thinking" && def.thinking) {

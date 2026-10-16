@@ -150,23 +150,31 @@ function download(url: string, name: string): void {
 // The menu's keyboard (the composer's mode menu does the same): opening it focuses its first item, ↑↓ move, and
 // Escape hands focus back to the row's ⋯. Set by an act, applied by the next paint.
 let focusMenu = false;
+let focusConfirm = false;
 let focusMore: number | null = null;
 const MENU_ITEM = ".ask-th-menu [role='menuitem']";
 
 /** Delete's confirmation (QA-2): a root `data-overlay` (ask-screen.ts `askOverlays`), the app's ONE confirm. */
-export function threadDeleteModal(ui: Pick<AskUi, "threadDelete">): string {
+export function threadDeleteModal(ui: Pick<AskUi, "threadDelete" | "closing">): string {
   const d = ui.threadDelete;
   if (!d) return "";
+  // Its exit is the confirm's own (`data-closing` on the layer, trov.css), played through `ctx.exit("thdel")`.
   return confirmModal({
     id: "ask-th-delete", title: `Delete “${d.title || "this thread"}”?`,
     body: "The conversation and the files attached to it are deleted for good. A file a ticket or a doc refers to, or one published to the org, stays in Artifacts.",
     confirmAct: "askThDeleteGo", cancelAct: "askThDeleteCancel", arg: String(d.id),
-  });
+  }).replace(`class="cnpy-cmodal"`, `class="cnpy-cmodal"${closingAttr(ui.closing, "thdel")}`);
 }
+/** Delete's confirm out: its exit, then gone. */
+const closeDelete = (ctx: AskCtx) => ctx.exit("thdel", () => { ctx.ui.threadDelete = null; }, DELETE_OUT_MS);
+const DELETE_OUT_MS = 140;
 
 export const threadsPart: AskPart = {
   code: "Th",
   afterPaint(_ctx, mount) {
+    // Delete's confirm takes the focus on its destructive button (Enter confirms, Escape cancels — main.ts's one
+    // keyboard contract for every `[data-confirm-dialog]`).
+    if (focusConfirm) { focusConfirm = false; mount.querySelector<HTMLElement>("#ask-th-delete [data-confirm-focus]")?.focus(); }
     if (focusMenu) { focusMenu = false; mount.querySelector<HTMLElement>(MENU_ITEM)?.focus(); }
     if (focusMore !== null) { const id = focusMore; focusMore = null; mount.querySelector<HTMLElement>(`[data-act="askThMore"][data-arg="${id}"]`)?.focus(); }
   },
@@ -211,18 +219,20 @@ export const threadsPart: AskPart = {
       case "askThDelete": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
-        if (t) ctx.ui.threadDelete = { id, title: t.title };
+        if (t) { ctx.cancelExit("thdel"); ctx.ui.threadDelete = { id, title: t.title }; focusConfirm = true; }
         ctx.paint();
         return;
       }
       case "askThDeleteCancel":
-        ctx.ui.threadDelete = null;
+        if (!ctx.ui.threadDelete) return;
+        closeDelete(ctx);
         if (id > 0) focusMore = id; // focus back on the row's ⋯, where the menu was
         ctx.paint();
         return;
       case "askThDeleteGo": {
         const t = threadById(ctx, id);
-        ctx.ui.threadDelete = null;
+        if (!ctx.ui.threadDelete) return;
+        closeDelete(ctx);
         ctx.ui.threadMenu = null;
         if (!t) { ctx.paint(); return; }
         if (ctx.ui.page.threadId === id) ctx.newThread("page");

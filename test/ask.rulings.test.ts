@@ -1,7 +1,7 @@
 // The owner's rulings on Ask Trov (2026-10-16, PR #178's open questions), server side — one describe per ruling id.
 // docs/architecture/ask.md carries each rule; the ids are the owner list's (Q57 confirm-time rights, Q55 the
 // waiting note, …).
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
@@ -13,7 +13,7 @@ import { askExportName } from "@shared/ai-ask-core";
 import { all, first, run } from "./helpers/db";
 import { FIXTURE_ADMIN, cookieFor } from "./helpers/persons";
 import { ORG_A, platformCtx, tenantCtx } from "./helpers/tenant";
-import { BASE, KEYED, ask, call, eventsOf, fakeModel, threadOf, withAsk, type StreamBlock } from "./helpers/ask";
+import { BASE, KEYED, ask, call, eventsOf, fakeModel, streamBody, threadOf, withAsk, type StreamBlock } from "./helpers/ask";
 
 const ME = "ask-rulings";
 const final = "\n<trov-meta>{\"title\": \"Rulings\", \"followups\": []}</trov-meta>";
@@ -370,5 +370,67 @@ describe("Q-F2: an answer with no words, no block and no card does not count as 
     // Words: counts.
     await withAsk({ fetchImpl: fakeModel([answer("Here it is.")]).fetchImpl }, () => ask(cookie, { text: "again" }));
     expect(await chatUsed()).toBe(before + 1);
+  });
+});
+
+describe("POST /ask when the client goes quiet or Stops mid-answer (ERR_ABORTED follow-up)", () => {
+  it("an answer is stored even when nobody reads the stream: a write is queued, never awaited (the runtime once cancelled the hung turn)", async () => {
+    const cookie = await cookieFor(ME);
+    const model = fakeModel([answer("Stored though unread.")]);
+    const res = await withAsk({ fetchImpl: model.fetchImpl }, async () => {
+      const r = await app.request(`${BASE}/ask`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ mode: "smart", text: "anyone there?" }) }, KEYED);
+      // The body is never read. The turn still runs to its end and stores the answer.
+      await vi.waitFor(async () => {
+        const row = await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.org_id = ? AND t.handle = ? AND m.role = 'assistant'`, ORG_A, ME);
+        expect(row?.n).toBe(1);
+      }, { timeout: 3000 });
+      return r;
+    });
+    expect(res.status).toBe(200);
+    await res.body?.cancel();
+  });
+
+  it("Stop while the model is still writing (no step to stop between): the flag is read during the stream, and the partial answer is stored as stopped", async () => {
+    const cookie = await cookieFor(ME);
+    const sseOf = (blocks: StreamBlock[]) => streamBody(blocks).split("\n\n").filter(Boolean).map((x) => `${x}\n\n`);
+    const words = Array.from({ length: 40 }, (_, i) => `word${i} `).join("");
+    const events = sseOf([{ type: "text", text: `${words}${final}` }]);
+    let sent = 0;
+    const slow = () => new Response(new ReadableStream<Uint8Array>({
+      async pull(c) {
+        if (sent >= events.length) { c.close(); return; }
+        // A third of the way in, the person presses Stop (the route's flag).
+        if (sent === Math.floor(events.length / 3)) await run(env.DB, `UPDATE chat_threads SET stop_requested = 1 WHERE org_id = ? AND handle = ?`, ORG_A, ME);
+        await new Promise((r) => setTimeout(r, 5));
+        c.enqueue(new TextEncoder().encode(events[sent++]));
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } });
+    const model = fakeModel([() => slow()]);
+    const r = await withAsk({ fetchImpl: model.fetchImpl, stopPollMs: 0 }, () => ask(cookie, { text: "count" }));
+    const done = eventsOf(r.events, "done")[0];
+    expect(done.stopped).toBe(true);
+    const row = await first<{ stopped: number; content_json: string }>(env.DB, `SELECT stopped, content_json FROM chat_messages WHERE id = ?`, done.messageId);
+    expect(row?.stopped).toBe(1);
+    const text = JSON.parse(row!.content_json).text as string;
+    expect(text.length).toBeGreaterThan(0);
+    expect(text).not.toContain("word39");
+  });
+});
+
+describe("POST /ask when the client cancels the stream mid-answer", () => {
+  it("the turn ends as stopped and stores what it has; nothing is left unhandled", async () => {
+    const cookie = await cookieFor(ME);
+    const n = await ticketFor("Cancel mid-answer", [ME]);
+    const model = fakeModel([[{ type: "text", text: "Looking. " }, { type: "tool_use", name: "get_ticket", input: { id: n } }], answer("Never seen.")]);
+    await withAsk({ fetchImpl: model.fetchImpl }, async () => {
+      const r = await app.request(`${BASE}/ask`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ mode: "smart", text: "go" }) }, KEYED);
+      const reader = r.body!.getReader();
+      await reader.read();          // the first event arrived…
+      await reader.cancel();        // …then the browser went away
+      await vi.waitFor(async () => {
+        const row = await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM chat_messages m JOIN chat_threads t ON t.id = m.thread_id WHERE t.org_id = ? AND t.handle = ? AND m.role = 'assistant'`, ORG_A, ME);
+        expect(row?.n).toBe(1);
+      }, { timeout: 3000 });
+    });
   });
 });

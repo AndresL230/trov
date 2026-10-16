@@ -60,8 +60,13 @@ live order — a row stored before it has none and reads as text, blocks, cards.
 - **Commands**: `/search` answers with item cards from Trov's own quick search, no model (its step says "No
   results" / "1 result" / "N results" — `resultLine`, the one wording, streamed and stored; Q51); `/ticket`, `/handoff`,
   `/summarize`, `/brief` add one instruction in front of the person's words.
-- **Stop**: the request's own abort signal (the client went away) or `POST /ask/threads/:id/stop` (a flag read
-  between steps) ends the turn; the partial answer is stored with `stopped = 1`; tools that ran stay done. On the
+- **Stop**: the client cancelling the response stream, the request's own abort signal (which a dropped browser
+  connection does NOT fire without `enable_request_signal`), or `POST /ask/threads/:id/stop` — a flag read between
+  steps AND every `STOP_POLL_MS` (1 s) while the model streams — ends the turn; the partial answer is stored with
+  `stopped = 1`; tools that ran stay done. The events are QUEUED on the response's own `ReadableStream` (`enqueue`,
+  its `cancel` ends the turn), never an awaited write: an awaited write on a stream nobody reads never settles, and
+  under wrangler dev the runtime cancelled such a turn as hung after Stop — nothing was stored and the question had
+  counted (`test/ask.rulings.test.ts`). On the
   screen the footer draws AT ONCE for what was written (Copy works on what is shown); Regenerate, Save and Wrong? need
   the stored id, which the controller reads back from the thread a moment later (`readBackStopped`, a few spaced tries;
   QA-4).

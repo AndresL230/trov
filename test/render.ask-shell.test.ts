@@ -247,6 +247,10 @@ describe("QA-2: thread Delete asks first (confirmModal), then deletes", () => {
     expect(root).toContain(`Delete “${t.title}”?`);
     expect(root).toContain("The conversation and the files attached to it are deleted for good.");
     expect(root).toMatch(new RegExp(`data-confirm-act="askThDeleteGo" data-confirm-cancel="askThDeleteCancel" data-arg="${t.id}"`));
+    // Closing plays the confirm's own exit (`data-closing` on its layer) before it goes.
+    s.ask.closing = { thdel: true };
+    expect(render(s)).toMatch(/data-overlay="confirm-ask-th-delete" data-confirm-layer data-confirm-tone="danger" class="cnpy-cmodal" data-closing/);
+    s.ask.closing = {};
     threadsPart.act!(ctx, "askThDeleteCancel", String(t.id), null);
     expect(s.ask.threadDelete).toBeNull();
     expect(deleted).toEqual([]);
