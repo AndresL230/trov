@@ -76,6 +76,11 @@ node <this repo>/scripts/seed/team-rich.mjs            # the rich layer (or scri
 node <this repo>/scripts/seed/ai-showcase.mjs --server http://localhost:8790   # then the AI rows, so they talk about it
 ```
 
+What Trov wrote (the brief, the repo state, the themes, the Roadmap's notes, drift and suggestions, the AI cards)
+shows only with an `ANTHROPIC_API_KEY` in `.dev.vars` — the AI read rule (`ai.md` › The read rule: no key reads
+exactly like the org's switch off). Any value shows the seeded rows; the AI pass will try it, and a fake one only
+fails its calls quietly. Trov's feed entries and Sift's ratings show either way.
+
 `team-rich.mjs` replaces SaplingLearn's environments, parts and deploys — the rows `scripts/seed/repo-setups.mjs` (the
 repo-setups e2e fixtures) writes for it; whichever runs last wins. Both print a per-surface check list.
 
