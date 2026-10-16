@@ -204,6 +204,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "handle": return ALICE;
     case "sha": return fx.imgSha;
     case "ver": return "v1";
+    case "version": return "1"; // a doc's first version (its body carries the canary)
     case "key": return under("/repos/") ? "web" : fx.envKey;
     case "kind": return "github_token";
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
@@ -235,7 +236,7 @@ const TENANT: Record<string, Row> = {
   // src/routes.ts — tenantRoot
   "GET /img/:sha": {},
   "POST /ingest": J({}),
-  "GET /docs": {}, "GET /doc/:slug": {}, "GET /feed": { query: `?author=${ALICE}` }, "GET /feed/stats": {},
+  "GET /docs": {}, "GET /doc/:slug": {}, "GET /doc/:slug/versions/:version": {}, "GET /feed": { query: `?author=${ALICE}` }, "GET /feed/stats": {},
   "GET /search": { query: "?q=CANARY" }, "GET /search/quick": { query: "?q=CANARY" },
   "GET /needs-triage": {}, "GET /adrs": {}, "GET /proposals": {},
   "POST /doc/:slug/promote": J({ version: 2 }), "POST /doc/:slug/reject": J({ version: 2 }),
@@ -249,6 +250,8 @@ const TENANT: Record<string, Row> = {
   // Sync GitHub's status (0046_sync_runs, src/sync/runs.ts): the PATH's org's runs, repository and summaries allowance only.
   "GET /sync": {},
   "POST /tickets": J({ title: "from the matrix" }), "GET /tickets": { query: "?seg=all" }, "GET /tickets/badge": {}, "GET /tickets/:id": {},
+  // The sidebar's counts (src/tools/badges.ts): numbers only, every COUNT binds the PATH's org.
+  "GET /badges": {},
   "POST /tickets/:id/edit": J({ title: "hijacked" }), "POST /tickets/:id/status": J({ to: "in_progress" }),
   "POST /tickets/:id/move": J({ to: "in_progress", after_id: null }), "POST /tickets/:id/assignees": J({ login: "bob", on: true }),
   "POST /tickets/:id/links": J({ raw: "https://example.com/x" }), "POST /tickets/:id/links/:linkId/remove": J({}),
@@ -570,7 +573,7 @@ describe("controls", () => {
       if (r.raw.includes(CANARY)) seen.push(suffix);
     }
     expect(seen).toEqual(expect.arrayContaining([
-      "/img/:sha", "/docs", "/doc/:slug", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
+      "/img/:sha", "/docs", "/doc/:slug", "/doc/:slug/versions/:version", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
       "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id",
       "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
     ]));

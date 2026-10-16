@@ -49,10 +49,11 @@ import type { Screen } from "./render";
 import { isRepoTab, type RepoTab } from "@shared/repo";
 import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
-import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
-import { PLAT_TABS, type PlatTab } from "./platform";
+import type { ReleasePage } from "./releases";
+import { LATEST_RELEASE } from "./release-latest";
+import { PLAT_TABS, type PlatTab } from "./platform-core";
 import { ORG_SLUG_RE } from "@shared/orgs";
-import { isOrgTab, type OrgTab } from "./org-settings";
+import { isOrgTab, type OrgTab } from "./org-core";
 import { isWelcomeStep, type WelcomeStep } from "./welcome";
 import { normalizeTagName } from "@shared/tags-core";
 
@@ -241,7 +242,7 @@ export function parseHash(hash: string): Route {
     // `#releases/patches` the NEWEST release's patch notes.
     if (parts.length === 2 && parts[1] === "notes") return { screen: "releases", ...base };
     if (parts.length === 2 && parts[1] === "patches") {
-      return RELEASES[0] ? { screen: "releases", ...base, releaseVersion: releaseSlug(RELEASES[0]), releasePage: "patches" } : { screen: "releases", ...base };
+      return { screen: "releases", ...base, releaseVersion: LATEST_RELEASE.slug, releasePage: "patches" };
     }
     // A version segment; an unknown one still routes here and renders a friendly not-found.
     const v = parts.length === 2 || parts.length === 3 ? seg(parts[1])?.toLowerCase() ?? null : null;

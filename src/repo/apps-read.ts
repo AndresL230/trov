@@ -36,12 +36,12 @@ export const sourceOf = (v: string): AppSource => (v === "migrated" || v === "su
  * the caller already read them (`listAllParts`), so they are not read twice.
  */
 export async function listRepoApps(ctx: TenantContext, repo?: string, parts?: PartRow[]): Promise<RepoApp[]> {
-  const [rows, allParts, primary] = [
-    await all<AppRow>(ctx, `SELECT key, repo, label, folder, kind, watch, release_signal, source, position
+  const [rows, allParts, primary] = await Promise.all([
+    all<AppRow>(ctx, `SELECT key, repo, label, folder, kind, watch, release_signal, source, position
       FROM repo_apps WHERE org_id = ? ORDER BY position, key`, ctx.orgId),
-    parts ?? await listAllParts(ctx),
-    await primaryRepo(ctx),
-  ];
+    parts ?? listAllParts(ctx),
+    primaryRepo(ctx),
+  ]);
   const out: RepoApp[] = [];
   for (const r of rows) {
     if (!isAppKind(r.kind)) continue; // a kind the code no longer knows is skipped, never guessed

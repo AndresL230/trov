@@ -65,14 +65,20 @@ updated, each carrying its own stored summary), and `tickets` (their OPEN assign
 any more and a mirrored ticket reaches it only as a ticket — 6 most recently updated, with the sprint label,
 plus `ticketsTotal`, the UNCAPPED count of that same rule, which the "N open" figure and the greeting use) —
 built from `events` (+ `pr_summaries`, `issue_summaries`, `persons`, `identities`) and from `tickets` +
-`ticket_assignees`, no live GitHub. `todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
+`ticket_assignees`, no live GitHub. `todo` is `listOpenAssignedIssues` (also the my_work digest's list, uncapped): each captured issue's LATEST
+snapshot, kept when its `issue.state` is `open`, its `action` is not one that means it left the repository
+(`ISSUE_GONE_ACTIONS`) and one of its `assignees[].login` is exactly one of the person's logins — all filtered in
+D1 (`json_extract` / `json_each`), so only the person's open issues' raw JSON leaves the database, not every
+issue ever captured (`test/mywork.test.ts` pins the rule clause by clause).
+`todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
 a mirrored ticket's issue can therefore appear in both `todo` and `tickets` (`source: "github"` says so).
 The SCREEN (`web/src/mywork.ts`, composed by `myWorkView`) reads its other tiles off their own slices: Your
 sessions off `mwSessions` (`GET /feed?author=<me>&limit=2` — never the Feed screen's filtered `feed`), Docs
 you own off `mwDocs` (`GET /docs?fields=meta`, no bodies, stubs at `current_version = 0` skipped), the review
 tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sessions' pills and the library's
 Queued handoffs cell (count + the newest, opened, never claimed from here) — off `handoffsForMe`, the ONE
-definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded).
+definition the sidebar badge uses too (pending, recipient = me, self-sent included, `anyone` excluded;
+`GET /badges` counts the same set in SQL, held to it by `test/badges.routes.test.ts`).
 `person` resolves via the github `identities` row (`resolvePersonForLogin`, see Identity above); an
 unmapped login yields an empty EVENT projection (`degraded:false`) — but the ticket list is read BEFORE the
 identity fork and is keyed on the person HANDLE (`COLLATE NOCASE`, like `persons.handle`), so a person with

@@ -121,8 +121,8 @@ describe("no template re-declares the look (web/src/*.ts)", () => {
   });
 
   it("the old tinted card background survives only on the non-card spots that keep it on purpose", () => {
-    // prompt-box: the scroll well inside the surface; artifacts / tickets: inline link chips.
-    const allowed: Record<string, number> = { "../web/src/prompt-box.ts": 1, "../web/src/artifacts.ts": 1, "../web/src/tickets.ts": 1 };
+    // prompt-box: the scroll well inside the surface; artifacts (the ticket page's block, artifacts-state.ts) / tickets: inline link chips.
+    const allowed: Record<string, number> = { "../web/src/prompt-box.ts": 1, "../web/src/artifacts-state.ts": 1, "../web/src/tickets.ts": 1 };
     for (const [file, src] of Object.entries(sources)) {
       const n = src.split(OLD_TINT).length - 1;
       expect(n, `${file} still uses the old tinted card background`).toBeLessThanOrEqual(allowed[file] ?? 0);

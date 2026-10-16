@@ -35,6 +35,10 @@ import { setApiOrg } from "../web/src/api";
 beforeEach(() => { setApiOrg("acme"); });
 afterEach(() => { setApiOrg(null); });
 import artifactsSrc from "../web/src/artifacts.ts?raw";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 import mainSrc from "../web/src/main.ts?raw";
 
 /** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */

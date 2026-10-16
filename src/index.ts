@@ -1,5 +1,4 @@
 import { app, isAppRoute } from "./routes";
-import { handleMcp } from "./mcp";
 import { handleGithubWebhook, webhookPath } from "./github-hook";
 import { STRIPE_WEBHOOK_PATH, handleStripeWebhook } from "./billing/webhook";
 import { pruneEvents } from "./billing/store";
@@ -46,6 +45,10 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
     }
     // usage: a tool call is counted in the org it resolves to (src/mcp.ts); a request with none, here.
     ctx.waitUntil(meterMcp(env, bearer.conn.current?.ctx ?? null, request));
+    // Loaded on the first /mcp request, not at startup: the bundler wraps a dynamically imported module in a
+    // lazy initialiser, so the MCP server, its SDK and the tool modules only it reaches are evaluated by the
+    // isolate that first answers /mcp, never by one that only serves the app (docs/architecture/env.md › Bundle).
+    const { handleMcp } = await import("./mcp");
     return handleMcp(request, env, ctx, bearer.conn);
   }
   // Trov's OWN app metrics endpoint (contract v3, src/internal-metrics.ts): the SAME bearer class as /mcp — a Trov MCP

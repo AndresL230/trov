@@ -22,9 +22,14 @@ export async function getSessionUser(p: PlatformContext, id: string): Promise<st
   const row = await first<{ person: string; expires_at: string }>(
     p, `SELECT person, expires_at FROM sessions WHERE id = ?`, id);
   if (!row) return null;
-  if (new Date(row.expires_at).getTime() <= Date.now()) return null;
+  if (!sessionLive(row.expires_at)) return null;
   return row.person;
 }
+
+/** A session row is good until its `expires_at` — the ONE expiry rule, for `getSessionUser` and for the
+ *  session gate's merged read on `/api/o/:slug/*` (src/data/context.ts `resolveSessionTenant`). */
+// (Written as "not expired" rather than "> now", exactly as the check it was lifted from.)
+export const sessionLive = (expiresAt: string): boolean => !(new Date(expiresAt).getTime() <= Date.now());
 
 export async function deleteSession(p: PlatformContext, id: string): Promise<void> {
   await run(p, `DELETE FROM sessions WHERE id = ?`, id);

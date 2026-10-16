@@ -41,11 +41,12 @@ const parseSettings = (json: string): Record<string, string> => {
 
 /** Every part of every environment of the org: environments in drift order, parts by position. */
 export async function listAllParts(ctx: TenantContext): Promise<PartRow[]> {
-  const [envs, stored] = [
-    await all<EnvRow>(ctx, `SELECT key, label, branch, position FROM org_environments WHERE org_id = ? ORDER BY position`, ctx.orgId),
-    await all<StoredRow>(ctx, `SELECT env_key, part_key, position, label, role, provider, settings, updated_at, updated_by
+  // Two independent reads, side by side.
+  const [envs, stored] = await Promise.all([
+    all<EnvRow>(ctx, `SELECT key, label, branch, position FROM org_environments WHERE org_id = ? ORDER BY position`, ctx.orgId),
+    all<StoredRow>(ctx, `SELECT env_key, part_key, position, label, role, provider, settings, updated_at, updated_by
       FROM org_environment_parts WHERE org_id = ? ORDER BY env_key, position, part_key`, ctx.orgId),
-  ];
+  ]);
   const out: PartRow[] = [];
   for (const e of envs) {
     for (const s of stored) {

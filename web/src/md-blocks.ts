@@ -8,8 +8,12 @@
 //
 // Pure: no DOM, nothing rendered, nothing sanitized here — a block's `raw` is markdown SOURCE and
 // must reach the page only through `renderMarkdown`.
+//
+// marked is the Markdown chunk (markdown-load.ts): the caller draws a placeholder until it is in
+// (review-rendered.ts `renderedDoc`), so this is only reached once it is.
 
-import { marked, type Tokens } from "marked";
+import type { Tokens } from "marked";
+import { markdownLib } from "./markdown-load";
 
 export interface MdBlock {
   /** marked's token type: "heading", "paragraph", "table", "list", "code", "blockquote", "html", "hr", … */
@@ -30,6 +34,9 @@ export interface MdBlocks {
 }
 
 export function markdownBlocks(body: string): MdBlocks {
+  const lib = markdownLib();
+  if (!lib) throw new Error("md-blocks: the Markdown chunk is not loaded (markdown-load.ts)");
+  const marked = lib.marked;
   const blocks: MdBlock[] = [];
   const defs: string[] = [];
   for (const tok of marked.lexer(body ?? "")) {

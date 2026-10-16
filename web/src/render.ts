@@ -5,10 +5,11 @@
 
 import { trovMark } from "@shared/mark";
 import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile } from "./api";
-import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
+import type { FeedRow, DocRow, DocMetaRow, DocListRow, DocVersionMetaRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
+import type { SidebarBadges } from "@shared/badges";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { agentMark, authorityMark, markShape, stateMark, tagWords } from "./marks";
 import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
@@ -31,15 +32,16 @@ import { tagPageView, itemTagsRow, itemTagDropdown, initialTagsUi, type TagsUi }
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
 import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
-import { releasesScreen, findRelease, type ReleasePage } from "./releases";
+import type { ReleasePage } from "./releases";
+import { releasesView, releaseCrumb } from "./releases-lazy";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
-import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
-import { landingView } from "./landing";
+// The landing is its own chunk in the app (landing-lazy.ts); the signed-out page `/` boots it alone (landing-page.ts).
+import { landingView } from "./landing-lazy";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
@@ -53,19 +55,28 @@ import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
-import { repoView, repoControls, repoCrumb, repoDropdowns, type RepoProps, type RepoPollState } from "./repo";
+// The Repo screen is its own chunk (repo-lazy.ts draws a skeleton until it is in).
+import { repoView, repoControls, repoCrumb, repoDropdowns } from "./repo-lazy";
+import type { RepoProps } from "./repo";
+import type { RepoPollState } from "./repo-core";
 import type { GroupBy } from "@shared/repo-layout-core";
 import type { ScenarioKey } from "./repo-sample-keys";
+// Artifacts is its own chunk (artifacts-lazy.ts draws a skeleton until it is in); its state is artifacts-state.ts.
+import { artifactsView, artifactsHeader, artifactsDialogs } from "./artifacts-lazy";
 import {
-  artifactsView, artifactsHeader, artifactsDialogs, ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
+  ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
-} from "./artifacts";
+} from "./artifacts-state";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
+// Platform is its own chunk (platform-lazy.ts draws a skeleton until it is in); its state is platform-core.ts.
+import { platformView, platformOrgView, platformDialogs, platformPage } from "./platform-lazy";
+import { platformHeaderControls, platformCrumb, initialPlat, type PlatState } from "./platform-core";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
-import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+// Org settings is its own chunk (org-lazy.ts draws a skeleton until it is in); its state is org-core.ts.
+import { orgSettingsView, orgOverlays } from "./org-lazy";
+import { initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-core";
 import { settingsPlanTile, settingsLimitsTile, settingsOrgsTile } from "./settings-plan";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
@@ -77,6 +88,7 @@ import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, 
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
+import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } from "./app-root";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -216,8 +228,8 @@ export interface AppState {
   /** The Feed aside's "This week" (`GET /feed/stats`): the WHOLE team's last 7 days,
    *  unfiltered — refreshed on each entry to the Feed, never by a filter change. */
   feedStats: Loadable<FeedStats | null>;
-  docsList: Loadable<DocRow[]>;
-  docDetail: Loadable<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] } | null>;
+  docsList: Loadable<DocListRow[]>;
+  docDetail: Loadable<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] } | null>;
   /** The organization's tag list (`GET /api/tags`): the Feed's filter, the Unplaced picker, a doc's
    *  Tags row and Org settings › Tags all draw from it. Read once per org, again after a write. */
   tags: Loadable<TagListDTO | null>;
@@ -315,6 +327,10 @@ export interface AppState {
   ticketId: number | null;
   /** Unassigned + open, org-wide — the sidebar badge AND the queue's footer count. */
   ticketBadge: number;
+  /** The sidebar's counts before their lists are read: `GET /badges` at boot, and each list writes its
+   *  own count here when it lands, so a list's reload never flashes 0. A list that has answered (`ok`)
+   *  counts itself — `badgeCount` is the one place that picks. */
+  badges: Partial<SidebarBadges>;
   qSeg: TicketSeg;
   qAssignee: TicketAssigneeFilter;
   qCategory: TicketCategory | "all";
@@ -557,6 +573,7 @@ export function initialState(): AppState {
     ticketDetail: { status: "idle", data: null },
     ticketId: null,
     ticketBadge: 0,
+    badges: {},
     qSeg: "all", qAssignee: "anyone", qCategory: "all", qView: "board",
     qQ: "", qPrio: "all", qSprint: "all", qPerson: "", qFilterOpen: false, qFilterCat: "assignee",
     fTitle: "", fCat: null, fPrio: "normal", fDesc: "", fAsgs: [], fLink: "", fSpr: null,
@@ -633,27 +650,35 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
 
 /** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
  *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
+/** A sidebar count: its list's own once the list has answered, else the last count known for it
+ *  (`s.badges`), else the list as it stands (empty before anything is read). */
+function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, list: Loadable<T[]>, count: (rows: T[]) => number): number {
+  return list.status === "ok" ? count(list.data) : s.badges[key] ?? count(list.data);
+}
+const length = <T>(rows: T[]): number => rows.length;
+export const stagedPrompts = (rows: readonly { status: string }[]): number => rows.filter((p) => p.status === "staged").length;
+
 export function triageCounts(s: AppState): { review: number; maintenance: number } {
   // An item a verdict was just given to is not waiting any more: the badge drops with the card,
   // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
   // `reviewLeaving` and the count is back; the refetch then replaces the reads it is derived from.
   const left = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => s.reviewLeaving[it.id]).length;
   return {
-    review: s.proposals.data.length + s.draftAdrs.data.length - left,
-    maintenance: s.needsTriage.data.length,
+    review: badgeCount(s, "proposals", s.proposals, length) + badgeCount(s, "decisions", s.draftAdrs, length) - left,
+    maintenance: badgeCount(s, "unplaced", s.needsTriage, length),
   };
 }
 
 /** How many logins wait to be matched to a person — an ADMIN's count (Org settings › Members,
  *  and the org switcher that leads there). 0 for everyone else: they cannot act on it. */
 export function identityCount(s: AppState): number {
-  return viewerIsAdmin(s) ? s.identityTasks.data.length : 0;
+  return viewerIsAdmin(s) ? badgeCount(s, "logins", s.identityTasks, length) : 0;
 }
 
 /** Sidebar count for Handoffs: pending handoffs left for ME — `handoffsForMe`, the
  *  ONE definition My Work's Your sessions tile counts too. */
 export function handoffBadge(s: AppState): number {
-  return handoffsForMe(s.handoffs.data, s.me?.handle ?? "").length;
+  return badgeCount(s, "handoffs", s.handoffs, (rows) => handoffsForMe(rows, s.me?.handle ?? "").length);
 }
 
 /** The org on screen with MY role in it — `currentOrg` is the one place that picks it. */
@@ -664,9 +689,7 @@ export const viewerIsAdmin = (s: Pick<AppState, "orgSlug" | "myOrgs" | "me">): b
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>`;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function resolved(s: AppState): "dark" | "light" {
-  return s.theme === "system" ? (s.systemDark ? "dark" : "light") : s.theme;
-}
+const resolved = (s: AppState): "dark" | "light" => resolvedTheme(s);
 // esc / attr live in ./ui (shared with the componentized surfaces).
 // Defense-in-depth: external URLs from captured payloads must be http(s) — never javascript:/data:/etc.
 const safeUrl = (u: string): string => (/^https?:\/\//i.test(u) ? u : "#");
@@ -814,7 +837,8 @@ function verifyingCard(): string {
 // ── app shell ────────────────────────────────────────────────────────────────
 /** The rail is collapsed when the person collapsed it OR the viewport forces it. On a phone
  *  it is neither: it is the full rail, in a drawer (trov.css `[data-phone="1"]`). */
-export const railCollapsed = (s: AppState): boolean => !s.phone && (s.collapsed || s.narrow);
+// The rail renders collapsed below 900px (app-root.ts).
+export { railCollapsed };
 
 function sidebar(s: AppState): string {
   const counts = triageCounts(s);
@@ -827,7 +851,7 @@ function sidebar(s: AppState): string {
     docSpace: s.docSpace,
     docSpaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
-    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: s.promptList.data.filter((p) => p.status === "staged").length },
+    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
@@ -838,11 +862,7 @@ function sidebar(s: AppState): string {
 
 /** The "›" crumb text for the three child screens (empty on a top-level screen). */
 function headerCrumb(s: AppState): string {
-  if (s.screen === "releases") {
-    const r = s.releaseVersion ? findRelease(s.releaseVersion) : null;
-    const name = r ? (r.unreleased ? "Unreleased" : `v${r.version}`) : (s.releaseVersion ?? "");
-    return s.releasePage === "patches" ? `${name} · Patch notes` : name;
-  }
+  if (s.screen === "releases") return releaseCrumb(s.releaseVersion, s.releasePage);
   if (s.screen === "newticket") return "New ticket";
   if (s.screen === "handoff") return s.handoffDetail.data ? firstLine(s.handoffDetail.data.body) : "";
   if (s.screen === "newhandoff") return "New handoff";
@@ -1085,7 +1105,7 @@ function feedWeekBox(s: AppState): string {
 
 /**
  * Box 2, "Waiting on review": what sessions staged that no one has confirmed — the
- * Review queue, from the boot-loaded proposals + draft ADR slices, as the cheap no-diff
+ * Review queue, from the proposals + draft ADR slices (the Feed loads them), as the cheap no-diff
  * heads (`reviewHeadsFromReads`). Each row opens the Review screen on that item (My
  * Work's `mwOpenReview`). Data on hand wins over a refetch (mwLoad), a failed slice is
  * never papered over as "nothing waiting".
@@ -1257,7 +1277,7 @@ export const spaceLabel = (k: string): string => (k ? k.charAt(0).toUpperCase() 
 
 /** First doc of a space in tree display order (section rank, then title) — the
  *  page opened by default when the docs list loads or the space toggles. */
-export function firstDocForSpace(docs: DocRow[], space: string): DocRow | undefined {
+export function firstDocForSpace(docs: DocListRow[], space: string): DocListRow | undefined {
   return docs
     .filter((d) => d.space === space)
     .sort((a, b) => sectionRank(a.section) - sectionRank(b.section) || a.title.localeCompare(b.title))[0];
@@ -1265,9 +1285,9 @@ export function firstDocForSpace(docs: DocRow[], space: string): DocRow | undefi
 
 // One tree row: the page button (opens the doc) with a chevron that toggles its
 // in-page outline, plus the outline itself (scroll-to-heading links) when open.
-function docTreeRow(s: AppState, doc: DocRow): string {
+function docTreeRow(s: AppState, doc: DocListRow): string {
   const active = doc.slug === s.docSlug;
-  const outline = extractOutline(doc.body);
+  const outline = doc.outline;
   const open = !!s.docOutlineOpen[doc.slug];
   const chevron = outline.length
     ? `<span class="cnpy-treechev${open ? " is-open" : ""}" data-act="toggleOutline" data-arg="${attr(doc.slug)}" role="button" aria-expanded="${open ? "true" : "false"}" aria-label="Toggle outline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></span>`
@@ -1307,7 +1327,7 @@ function docsView(s: AppState): string {
       // The space has no doc: one section group of page rows, drawn empty (the reader says the rest).
       treeHtml = emptyLayout("docs-tree", { text: `No ${spaceLabel(s.docSpace)} docs yet.`, plain: true, sayStyle: "padding:2px 8px 14px", shapes: docTreeGroupShape(0, 4) });
     } else {
-      const grouped = new Map<string, DocRow[]>();
+      const grouped = new Map<string, DocListRow[]>();
       for (const doc of spaceDocs) {
         if (!grouped.has(doc.section)) grouped.set(doc.section, []);
         grouped.get(doc.section)!.push(doc);
@@ -1806,7 +1826,7 @@ function searchView(s: AppState): string {
 }
 
 // ── get started / guide ──────────────────────────────────────────────────────
-/** What each Guide screenshot shows (web/public/guide/<name>-<theme>.png), as its text alternative. Generic
+/** What each Guide screenshot shows (web/public/guide/<name>-<theme>[-1720].webp), as its text alternative. Generic
  *  on purpose: the screen, not what one capture holds — the captures will be retaken. */
 export const GUIDE_ALT: Record<string, string> = {
   mywork: "The My Work screen: your open tickets, what needs your review, and recent activity",
@@ -1832,6 +1852,15 @@ export const GUIDE_ALT: Record<string, string> = {
   releases: "The What's new screen",
 };
 export const guideAlt = (name: string): string => GUIDE_ALT[name] ?? "A screenshot of Trov";
+/** The column-sized capture's width: twice the guide column's 860 px. scripts/guide-images.mjs
+ *  (`GUIDE_COLUMN_W`) writes `<name>-<theme>-1720.webp` beside the full 2560-wide `<name>-<theme>.webp`. */
+const GUIDE_SHOT_W = 1720;
+/** One Guide figure's image: the column-sized WebP, the full one offered for a 3× screen, decoded off the
+ *  main thread; `data-full` is what the lightbox opens (main.ts `guideZoom`). */
+export function guideImg(name: string, theme: string): string {
+  const base = `/guide/${name}-${theme}`;
+  return `<img src="${base}-${GUIDE_SHOT_W}.webp" srcset="${base}-${GUIDE_SHOT_W}.webp ${GUIDE_SHOT_W}w, ${base}.webp 2560w" sizes="(max-width: 860px) 100vw, 860px" data-full="${base}.webp" alt="${attr(guideAlt(name))}" loading="lazy" decoding="async" width="2560" height="1600" />`;
+}
 
 function guideView(s: AppState): string {
   // Screenshots are captured per theme (dark/light) by scripts/capture-guide.mjs;
@@ -1854,7 +1883,7 @@ function guideView(s: AppState): string {
   // will be retaken, so it never describes what one capture happens to hold); the button's name repeats it.
   const gFig = (name: string, cap: string) => `<figure style="margin:18px 0 4px">
       <button data-act="guideZoom" data-arg="${name}" class="cnpy-guide-shot" aria-label="${attr(`Expand screenshot: ${guideAlt(name)}`)}">
-        <img src="/guide/${name}-${th}.png" alt="${attr(guideAlt(name))}" loading="lazy" width="2560" height="1600" />
+        ${guideImg(name, th)}
       </button>
       <figcaption style="font-size:12px;color:var(--fg-40);margin-top:8px">${cap}</figcaption>
     </figure>`;
@@ -2722,7 +2751,7 @@ function screenBody(s: AppState): string {
     case "search": return searchView(s);
     case "settings": return settingsView(s);
     case "guide": return guideView(s);
-    case "releases": return releasesScreen(s.releaseVersion, s.releasePage);
+    case "releases": return releasesView(s.releaseVersion, s.releasePage);
     case "tickets": return ticketsScreen(s);
     case "newticket": return newTicketScreen(s);
     case "ticketdetail": return ticketDetailScreen(s);
@@ -2852,22 +2881,14 @@ function firstRunBackdrop(s?: AppState): string {
   return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(behind)}</div>`;
 }
 
-// The toast pops in, then fades out over its last 400ms. Both delays are offset by the time
-// already elapsed (negative = joined mid-way), so a rerender while it is up never replays the pop.
-// Centered with auto margins, not translateX(-50%): cnpy-pop animates `transform` to none.
-const TOAST_FADE_MS = 400;
-/** A toast's one button: `Undo` on a delete. Dispatched like any `data-act`. */
-export interface ToastAction { label: string; act: string; arg: string }
+// The toast and its one button are app-root.ts (the landing page draws them too).
+export type { ToastAction } from "./app-root";
+
 /** Whether the signed-in person may delete the open prompt: its author, or an admin (the server re-checks). */
 export function canDeletePrompt(s: Pick<AppState, "me" | "promptDetail" | "orgSlug" | "myOrgs">): boolean {
   const p = s.promptDetail.data?.prompt;
   if (!p || !s.me) return false;
   return viewerIsAdmin(s) || s.me.handle.toLowerCase() === p.author.toLowerCase();
-}
-function toastBlock(msg: string, elapsed: number, ms: number, action: ToastAction | null = null): string {
-  return `<div class="cnpy-toast" role="status" aria-live="polite" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(msg)}</span>${action ? `<span aria-hidden="true" style="color:var(--fg-40)">·</span><button type="button" data-act="${attr(action.act)}" data-arg="${attr(action.arg)}" class="cnpy-toast-act" style="font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap">${esc(action.label)}</button>` : ""}
-  </div>`;
 }
 
 /** The state a paint draws: the real one, or — while a preview is on, inside an organization or
@@ -2879,8 +2900,7 @@ export function shownState(s: AppState): AppState {
 
 export function render(real: AppState): string {
   const s = shownState(real);
-  const themeAttr = resolved(s);
-  return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+  return appRoot(s, `
     ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
@@ -2903,5 +2923,5 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
     ${real.preview && s !== real ? previewBanner(real.preview) : ""}
-  </div>`;
+  `);
 }

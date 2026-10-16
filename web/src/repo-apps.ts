@@ -78,9 +78,8 @@ export interface RepoAppsUi {
   removeParts: boolean;
 }
 
-export function initialRepoAppsUi(): RepoAppsUi {
-  return { repo: null, setup: { status: "idle", data: null }, draft: null, add: null, scanning: false, busy: [], removeParts: false };
-}
+// The first value lives in org-core.ts (the app's state is made before this chunk loads).
+export { initialRepoAppsUi } from "./org-core";
 
 // ── words ────────────────────────────────────────────────────────────────────
 

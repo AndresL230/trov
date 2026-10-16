@@ -33,6 +33,8 @@ import { MCP_TOOL_GROUPS, commonParams, groupProblems, isCommonParam, mcpToolCou
 import { MCP_ERROR_HINTS } from "../shared/error-hints";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import landingPageSrc from "../web/src/landing-page.ts?raw";
+import { landingPageHtml } from "../web/src/landing-root";
 
 const page = (path: string): SitePage => SITE_PAGES.find((p) => p.path === path) as SitePage;
 const indexed = SITE_PAGES.filter((p) => p.indexed);
@@ -158,7 +160,7 @@ describe("the built documents", () => {
       "/docs/changelog": ['<h1 class="site-legal-h">Changelog</h1>'],
     };
     const boot: Record<string, string | null> = {
-      "/": "/src/main.ts", "/pricing": "/src/pricing-page.ts", "/terms": "/src/legal-page.ts", "/privacy": "/src/legal-page.ts", "/refunds": "/src/legal-page.ts", "/404": null,
+      "/": "/src/landing-page.ts", "/pricing": "/src/pricing-page.ts", "/terms": "/src/legal-page.ts", "/privacy": "/src/legal-page.ts", "/refunds": "/src/legal-page.ts", "/404": null,
       ...Object.fromEntries(DOCS_PAGES.map((p) => [p.path, "/src/docs-page.ts"])),
     };
     for (const p of SITE_PAGES) {
@@ -181,11 +183,15 @@ describe("the built documents", () => {
     const app = render(initialState());
     expect(html).toContain(`<div id="app">${withThemeBoot(app)}</div>`);
     expect(app).toContain('data-morph="landing"');
-    // main.ts: on that markup it paints the landing at once — no "Signing you in…", no /auth/me
-    expect(mainSrc).toContain(`} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {`);
-    const branch = mainSrc.slice(mainSrc.indexOf(`} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {`), mainSrc.indexOf("} else {\n  // Show \"verifying\""));
-    expect(branch).toContain("showSignedOut();");
-    expect(branch).not.toContain("getMe(");
+    // landing-page.ts (the page's own script): on that markup it paints the landing at once — no "Signing
+    // you in…", no /auth/me, and none of the app's bundle (main.ts loads only for what the page hands it).
+    expect(landingPageSrc).toContain(`!mount.querySelector(':scope > * > [data-morph="landing"]')`);
+    expect(landingPageSrc).toContain('if (appOnly) void import("./main");');
+    expect(landingPageSrc).not.toContain("getMe(");
+    expect(landingPageSrc).not.toMatch(/^import[^;]*from "\.\/(main|render)"/m);
+    // …and what it paints is the app's signed-out paint, tag for tag (landing-root.ts; whitespace aside).
+    const tags = (s: string) => s.replace(/>\s+</g, "><").trim();
+    expect(tags(landingPageHtml(initialState()))).toBe(tags(app));
   });
 
   it("the hero's words are on the page from the first paint: settled, never waiting on the script", () => {
@@ -252,6 +258,33 @@ describe("what the assets binding is told", () => {
     const h = assetHeaders();
     for (const rule of ["https://:version.:account.workers.dev/*", APP_SHELL_PATH, NOT_FOUND_PAGE.path]) expect(h).toContain(`\n${rule}\n  X-Robots-Tag: noindex`);
     for (const p of indexed) expect(h).not.toContain(`\n${p.path}\n`);
+  });
+
+  it("_headers: hashed /assets/* are immutable for a year, /guide/* kept a week, and no other rule says Cache-Control", () => {
+    const h = assetHeaders();
+    expect(h).toContain("\n/assets/*\n  Cache-Control: public, max-age=31536000, immutable\n");
+    expect(h).toContain("\n/guide/*\n  Cache-Control: public, max-age=604800\n");
+    // Read the file the way the binding does: a rule line, then its indented headers. A path matching several
+    // rules gets every rule's headers (a header set twice is joined with a comma), so at most ONE rule may set
+    // Cache-Control on any path — and none on a page, the app shell, the fonts or the text files.
+    const rules: { pattern: string; headers: string[] }[] = [];
+    for (const line of h.split("\n")) {
+      if (!line || line.startsWith("#")) continue;
+      if (line.startsWith("  ")) rules[rules.length - 1].headers.push(line.trim());
+      else rules.push({ pattern: line, headers: [] });
+    }
+    const matches = (pattern: string, path: string): boolean => {
+      const rel = pattern.replace(/^https:\/\/[^/]+/, ""); // a host rule's path (workers.dev: every path)
+      return rel.endsWith("*") ? path.startsWith(rel.slice(0, -1)) : path === rel;
+    };
+    const cacheOf = (path: string): string[] =>
+      rules.filter((r) => matches(r.pattern, path)).flatMap((r) => r.headers.filter((x) => x.startsWith("Cache-Control:")));
+    expect(cacheOf("/assets/main-AbC123.js")).toEqual(["Cache-Control: public, max-age=31536000, immutable"]);
+    expect(cacheOf("/assets/trov-9f8e7d.css")).toEqual(["Cache-Control: public, max-age=31536000, immutable"]);
+    expect(cacheOf("/guide/board-dark-1720.webp")).toEqual(["Cache-Control: public, max-age=604800"]);
+    for (const path of ["/", APP_SHELL_PATH, NOT_FOUND_PAGE.path, LLMS_TXT, LLMS_FULL_TXT, "/fonts/x.woff2", "/favicon.svg", ...SITE_PAGES.map((p) => p.path)])
+      expect(cacheOf(path), path).toEqual([]);
+    expect(rules.filter((r) => r.headers.some((x) => x.startsWith("Cache-Control:"))).map((r) => r.pattern)).toEqual(["/assets/*", "/guide/*"]);
   });
 
   it("_headers: each page's Markdown is UTF-8 text/markdown whose canonical is the page; llms.txt and llms-full.txt are UTF-8 text", () => {

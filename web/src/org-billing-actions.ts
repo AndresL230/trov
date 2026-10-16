@@ -11,7 +11,7 @@
 import type { AppState } from "./render";
 import { isPurchasablePlan, type PurchasablePlan } from "@shared/billing";
 import { ApiError, OrgApiError, Unauthorized, openBillingCancel, openBillingPortal, openBillingSeats, rateLimitText, upgradeBilling } from "./api";
-import { currentOrg } from "./org-settings";
+import { currentOrg } from "./org-core";
 
 export interface OrgBillingHost {
   state: AppState;

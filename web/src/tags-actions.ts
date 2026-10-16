@@ -8,7 +8,8 @@ import {
   listOrgTags, getTagPage, addOrgTag, editOrgTag, mergeOrgTag, retireOrgTag, restoreOrgTag, resolveTagSuggestion, setItemTags,
   findTagItems, undoTagRun, setTagSuggestions, getTagRun, settleTagReview,
 } from "./api";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg } from "./org-core";
+import { roleAtLeast } from "./org-ui";
 import { isTagPageTab, nextTagColor, tagDraftProblem, type TagPageTab } from "./tags";
 import { isTagColor, isTagItemType, normalizeTagName } from "@shared/tags-core";
 import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";
@@ -17,6 +18,8 @@ export interface TagsHost {
   state: AppState;
   mount: HTMLElement;
   rerender(): void;
+  /** A read landed: paint with whatever else lands before the next frame (main.ts `rerenderSoon`). */
+  rerenderSoon?(): void;
   flash(msg: string, ms?: number): void;
   /** The session expired: back to sign-in. */
   unauth(e: unknown): void;
@@ -67,6 +70,7 @@ export function createTagsController(host: TagsHost): TagsController {
   const { state, mount } = host;
   const ui = () => state.tagsUi;
   const rerender = () => host.rerender();
+  const rerenderSoon = () => (host.rerenderSoon ?? host.rerender)();
   const admin = (): boolean => roleAtLeast(currentOrg(state)?.role, "admin");
   const fail = (e: unknown): boolean => { if (e instanceof Unauthorized) { host.unauth(e); return true; } return false; };
   const errorText = (e: unknown, fallback: string): string => {
@@ -198,9 +202,9 @@ export function createTagsController(host: TagsHost): TagsController {
         state.tags = { status: "ok", data };
         // A run that is going (started here, or by another admin): draw it live.
         for (const [tag, r] of Object.entries(data.runs ?? {})) if (r.status === "running" && !ui().live[tag]) watch(tag);
-        rerender();
+        rerenderSoon();
       })
-      .catch((e) => { if (fail(e) || mine !== seq) return; state.tags = { status: "error", data: state.tags.data, error: String(e) }; rerender(); });
+      .catch((e) => { if (fail(e) || mine !== seq) return; state.tags = { status: "error", data: state.tags.data, error: String(e) }; rerenderSoon(); });
   }
   function loadIfNeeded(): void {
     if (state.tags.status === "idle" || state.tags.status === "error") load();

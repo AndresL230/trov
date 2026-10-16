@@ -103,7 +103,8 @@ export interface AccessState {
   /** "End now" is being confirmed. */
   giftEnd: { busy: boolean } | null;
 }
-export const initialAccess = (): AccessState => ({ grants: { status: "idle", data: [] }, grant: null, revokeArm: null, revokeBusy: false, plan: null, gift: null, giftEnd: null });
+// The empty state lives in platform-core.ts (the app's state is made before this chunk loads).
+export { initialAccess } from "./platform-core";
 
 // ── the limit fields (pure; the server re-checks) ────────────────────────────
 const GB = 1024 ** 3;

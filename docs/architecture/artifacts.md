@@ -83,7 +83,21 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   so an artifact opened in its own tab still runs at an opaque origin; image/pdf/file get
   `default-src 'none'; frame-ancestors 'self'`; always nosniff, `X-Frame-Options: SAMEORIGIN`,
   `Cache-Control: private`; html alone gets the injected `trov:height` postMessage script (never on
-  `?download=1`). The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
+  `?download=1`).
+  **Caching.** A 200 for a NUMBERED version on the PER-ORG route — `/api/o/<org>/raw/a/<slug>@v<n>` or `/v<n>`, with
+  or without `?download=1`, which is what the SPA frames (`rawUrl`) — is `Cache-Control: private, max-age=31536000,
+  immutable` + `Vary: Cookie` (`RAW_IMMUTABLE`): a version is never rewritten and the org is in the path, so the
+  browser keeps it and never asks again. Everything else stays `private` (revalidated every time): the latest
+  version (`/raw/a/<slug>`, whose answer moves with each new version), every error (a `v<n>` that does not exist
+  YET is a 404 that must not stick), and the one-org alias `/raw/a/…` even when numbered — it resolves the
+  caller's ONE org, which can change. `private` keeps every shared cache out. **The trade-off, accepted:** the
+  access check runs only when the browser asks, so a person who LOSES access (the page made private or deleted,
+  removed from the org) keeps whatever their own browser already cached while their session lasts, for up to a
+  year — exactly the bytes they were once allowed to see, never anything new. `Vary: Cookie` keeps a copy cached
+  under one sign-in from answering another (a sign-out, or a second person on the same browser, sends a
+  different `Cookie` and goes back to the Worker). Also: a change to the served headers (`RAW_CSP_*`) or to
+  `HEIGHT_SCRIPT` does not reach a cached copy — to make one land everywhere, change the SPA's raw URL too (e.g. a
+  query parameter in `rawUrl`), which misses the old entries. The SPA frames html as `<iframe src="/raw/…" sandbox="allow-scripts">` — never `srcdoc`, never
   `allow-same-origin` — and inlines svg ONLY through `sanitizeSvg` (DOMPurify, `web/src/markdown.ts`).
   A mermaid page is drawn in the SPA itself (`renderPendingMermaid`, `securityLevel: "strict"`) by the `mermaid`
   npm dependency, pinned to an EXACT version in `package.json` and loaded with a dynamic `import()`: Vite splits it

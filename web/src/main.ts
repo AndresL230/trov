@@ -11,10 +11,12 @@ import { syncSegments } from "./segmented";
 import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
-import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
+import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
+import type { SidebarBadges } from "@shared/badges";
 import {
   render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
+  stagedPrompts,
 } from "./render";
 import {
   getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
@@ -30,7 +32,7 @@ import {
   listPersons, updateMe, unlinkIdentity, renameHandle,
   getPersonProfile, uploadAvatar, removeAvatar,
   getMyOrgs, getOrgMe, listMcpTokens, revokeMcpToken, setApiOrg, setOrgLostHandler, tenantHref,
-  listTickets, getTicket, getTicketBadge, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
+  listTickets, getTicket, getTicketBadge, getBadges, createTicket, transitionTicket, moveTicket, toggleTicketAssignee,
   addTicketLink, editTicket, removeTicketLink, deleteTicket, setTicketSprint, setTicketParent, addTicketComment, listSprints,
   getSprint, createSprint, setSprintActive, addSprintResource,
   type TicketDetail,
@@ -48,11 +50,9 @@ import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
-import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
-import { createFeatureCtl } from "./site-feature";
-import { createMenuCtl } from "./site-menu";
-import { initSiteViewport } from "./site-viewport";
-import { TOUR_KEYS } from "./landing";
+import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { createLandingController } from "./landing-actions";
+import { landingChunk } from "./landing-lazy";
 import { initFaqAccordion } from "./site-faq";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
@@ -73,29 +73,36 @@ import { setWriteBlock } from "./api";
 import { isGroupBy } from "@shared/repo-layout-core";
 import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
-import { ALL_APPS } from "./repo-header";
+import { ALL_APPS } from "./repo-core";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
-import { createPlatform } from "./platform-actions";
+import { platformChunk } from "./platform-lazy";
+import type { LazyChunk } from "./lazy-chunk";
 import { createTagsController } from "./tags-actions";
-import { PLATFORM_PATH, isPlatformPath } from "./platform";
+import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
-import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
+import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo-core";
+import { repoChunk } from "./repo-lazy";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
+// Artifacts is its own chunk (artifacts-lazy.ts): the reducer and the file pickers run once it is in.
 import {
-  artifactsAct, artAcceptFile, artAcceptNvFile, renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
-  type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
-} from "./artifacts";
+  renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
+  type ArtScreen, type ArtRoute, type ArtFilterKey, type ArtFile,
+} from "./artifacts-state";
+import type { ArtEffect, ArtWrite } from "./artifacts";
+import { artifactsChunk } from "./artifacts-lazy";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
-import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
-import { RELEASES } from "./releases";
+import { LATEST_RELEASE } from "./release-latest";
+import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg, isOrgTab } from "./org-core";
+import { roleAtLeast } from "./org-ui";
+import { orgChunk } from "./org-lazy";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
@@ -110,12 +117,26 @@ import { setPrimaryRepo } from "./github";
 import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
 import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
+import { createPaintQueue } from "./paint-queue";
+import { onMarkdownLib, prefetchMarkdownLib } from "./markdown-load";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
 const mount = root;
 
 const state: AppState = initialState();
+
+// When a paint runs (web/src/paint-queue.ts; web-ui.md › Paints: now, batched, or once a frame).
+// `rerender()` paints NOW — its callers focus or measure right after it. `rerenderSoon()` is a read
+// landing: every one that lands before the next frame shares one paint. `batchRender(fn)` folds the
+// paints `fn` asks for into one, made before it returns (the boot, a screen's loaders).
+const paints = createPaintQueue(() => paintApp());
+function rerender(): void { paints.now(); }
+function rerenderSoon(): void { paints.soon(); }
+function batchRender<T>(fn: () => T): T { return paints.batch(fn); }
+// marked + DOMPurify are their own chunk (markdown-load.ts): a body drawn before it is in is a
+// placeholder, and its arrival repaints — a read landing, so it shares the next frame's paint.
+onMarkdownLib(() => rerenderSoon());
 
 // The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
 // and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
@@ -144,13 +165,28 @@ const syncCtl = createSyncController({
 });
 
 // Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
-const orgCtl = createOrgController({
-  state, mount, rerender: () => rerender(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
-  reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
-});
+// Its own chunk (org-lazy.ts): the controller is made when the chunk lands, and a load or an act asked
+// for before then runs once it has (`withChunk`). Before it is made there is no form to tidy after a paint.
+type OrgCtl = import("./org-actions").OrgController;
+let orgCtlMade: OrgCtl | null = null;
+function withOrgCtl(fn: (c: OrgCtl) => void): void {
+  withChunk(orgChunk, (m) => {
+    orgCtlMade ??= m.createOrgController({
+      state, mount, rerender: () => rerender(), flash: (msg, ms, a) => flash(msg, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+      reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
+    });
+    fn(orgCtlMade);
+  });
+}
+const orgCtl: OrgCtl = {
+  act: (act, arg, value) => withOrgCtl((c) => c.act(act, arg, value)),
+  load: () => withOrgCtl((c) => c.load()),
+  loadPlan: () => withOrgCtl((c) => c.loadPlan()),
+  afterPaint: () => { orgCtlMade?.afterPaint(); },
+};
 // The organization's tag list (web/src/tags-actions.ts): every `tag…` act, the list's read, a tag's page.
 const tagsCtl = createTagsController({
-  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   search: (q) => { openSearchScreen(q); }, planChanged: () => orgCtl.loadPlan(), goList: () => dispatch("orgGo", "tags", null),
 });
 // Organizations as a person meets them (web/src/org-picker-actions.ts): the switcher's menu, the
@@ -187,7 +223,7 @@ const supportCtl = createSupport({
   signedIn: () => state.view !== "auth",
   context: () => (state.view === "auth"
     ? { route: `${location.pathname}${location.hash}`, org: null, version: "", userAgent: navigator.userAgent }
-    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: RELEASES[0]?.version ?? "", userAgent: navigator.userAgent }),
+    : { route: location.hash, org: state.view === "app" ? state.orgSlug : null, version: LATEST_RELEASE.version, userAgent: navigator.userAgent }),
 });
 
 // Deleting one's account (Settings) and an organization (Org settings › General, its owner) — web/src/deletion-actions.ts.
@@ -342,10 +378,59 @@ let drawerRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
-function rerender(): void {
+// ── lazy chunks (lazy-chunk.ts; web-ui.md › The app's bundles) ───────────────
+// A screen whose module is its own chunk draws its skeleton until the chunk is in. `withChunk` starts
+// (or joins) the load and, once it lands, runs what was waiting for it — a controller's first read,
+// an act — and repaints, all in ONE paint (`batchRender`). A paint that needs a chunk calls it with no
+// `fn`; a chunk that failed is then not retried in a loop (its screen says to reload), but an act asked
+// for again tries again.
+const chunkWaiters = new Map<LazyChunk<unknown>, ((m: unknown) => void)[]>();
+function withChunk<M>(chunk: LazyChunk<M>, fn?: (m: M) => void): void {
+  const ready = chunk.get();
+  if (ready) { fn?.(ready); return; }
+  if (chunk.failed() && !fn) return;
+  const key = chunk as LazyChunk<unknown>;
+  const waiting = chunkWaiters.get(key);
+  if (waiting) { if (fn) waiting.push(fn as (m: unknown) => void); return; }
+  chunkWaiters.set(key, fn ? [fn as (m: unknown) => void] : []);
+  chunk.load().then(
+    (m) => {
+      const fns = chunkWaiters.get(key) ?? [];
+      chunkWaiters.delete(key);
+      batchRender(() => { for (const f of fns) f(m); rerenderSoon(); });
+    },
+    () => { chunkWaiters.delete(key); rerenderSoon(); },
+  );
+}
+
+let releasesWanted = false;
+function wantReleases(): void {
+  if (releasesWanted) return;
+  releasesWanted = true;
+  loadReleases().catch(() => undefined).finally(() => { releasesWanted = false; rerenderSoon(); });
+}
+
+/** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
+function paintApp(): void {
   // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
   // The held paint runs when the drag ends (clearBoardDrag).
   if (boardDrag) { rerenderHeld = true; return; }
+  // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
+  // it draws the skeleton and starts the load, and its arrival paints again.
+  if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // The landing is its own chunk in the app (the signed-out page `/` boots it alone, landing-page.ts):
+  // a signed-out paint, or the landing reopened by the sidebar logo, starts the load.
+  if (state.view === "auth" ? state.authStep === "login" : state.view === "app" && state.screen === "site") withChunk(landingChunk);
+  // Org settings is its own chunk: painting it without it starts the load.
+  if (state.view === "app" && state.screen === "org") withChunk(orgChunk);
+  // The Repo screen is its own chunk: painting it without it starts the load.
+  if (state.view === "app" && state.screen === "repo") withChunk(repoChunk);
+  // Artifacts' screens are their own chunk: painting one without it starts the load.
+  if (state.view === "app" && (state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact")) withChunk(artifactsChunk);
+  // Platform's screens are their own chunk: painting one without it starts the load.
+  if ((state.view === "platform" || state.view === "app") && (state.screen === "platform" || state.screen === "platformorg")) withChunk(platformChunk);
+  // Signed in: the Markdown chunk starts loading beside the first reads (once).
+  if (state.view === "app" || state.view === "platform") prefetchMarkdownLib();
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
   const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
   if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
@@ -413,7 +498,7 @@ function rerender(): void {
     pendingFlash = null;
   }
   const onLanding = state.view === "auth" ? state.authStep === "login" : state.screen === "site";
-  if (onLanding) mountLandingMotion(mount, state.landingSeen);
+  if (onLanding && landingChunk.get()) mountLandingMotion(mount, state.landingSeen);
   else unmountLandingMotion();
   if (field) {
     const el = mount.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${field}"]`);
@@ -630,10 +715,14 @@ function applyRoute(r: Route): void {
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
-// Kick off the data load for a screen (mirrors the go* dispatch cases).
+// Kick off the data load for a screen (mirrors the go* dispatch cases). Batched: a screen that
+// starts several reads (My Work starts eight) paints once, before this returns — not once per read.
 function loadForScreen(screen: Screen): void {
+  batchRender(() => startScreenLoads(screen));
+}
+function startScreenLoads(screen: Screen): void {
   switch (screen) {
-    case "feed": loadFeedIfNeeded(); loadFeedStats(); break;
+    case "feed": loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); break;
     case "docs": loadDocsIfNeeded(); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
@@ -680,7 +769,7 @@ function loadHandoffs(): void {
   state.handoffs = { status: "loading", data: state.handoffs.data };
   rerender();
   listHandoffs("mine")
-    .then((data) => { state.handoffs = { status: "ok", data }; rerender(); })
+    .then((data) => { state.handoffs = { status: "ok", data }; listed("handoffs", handoffsForMe(data, state.me?.handle ?? "").length); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.handoffs = { status: "error", data: state.handoffs.data, error: String(e) }; rerender(); });
 }
 function openHandoff(id: number): void {
@@ -692,37 +781,38 @@ function openHandoff(id: number): void {
   state.handoffDetail = { status: "loading", data: known };
   rerender();
   getHandoff(id)
-    .then((h) => { if (state.handoffId !== id) return; state.handoffDetail = { status: "ok", data: h }; rerender(); })
+    .then((h) => { if (state.handoffId !== id) return; state.handoffDetail = { status: "ok", data: h }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (state.handoffId !== id) return;
       const missing = e instanceof ApiError && e.status === 404;
       state.handoffDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadPrompts(): void {
   state.promptList = { status: "loading", data: state.promptList.data };
   rerender();
   listPrompts()
-    .then((data) => { state.promptList = { status: "ok", data }; rerender(); })
+    .then((data) => { state.promptList = { status: "ok", data }; listed("prompts", stagedPrompts(data)); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.promptList = { status: "error", data: state.promptList.data, error: String(e) }; rerender(); });
 }
 function openPrompt(slug: string): void {
   state.promptSlug = slug;
   state.promptDiffV = null; state.promptTagMenu = false; state.promptTagDraft = ""; state.promptExpanded = false;
   state.promptDeleteArm = false; state.promptDeleteBusy = false;
+  if (state.promptList.status === "idle") loadPrompts(); // the tag picker suggests the library's tags
   const same = state.promptDetail.data?.prompt.slug === slug;
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
   rerender();
   Promise.all([getPrompt(slug), getPromptVersions(slug)])
-    .then(([prompt, versions]) => { if (state.promptSlug !== slug) return; state.promptDetail = { status: "ok", data: { prompt, versions } }; rerender(); })
+    .then(([prompt, versions]) => { if (state.promptSlug !== slug) return; state.promptDetail = { status: "ok", data: { prompt, versions } }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (state.promptSlug !== slug) return;
       const missing = e instanceof ApiError && e.status === 404;
       state.promptDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** The editor: blank for a new prompt, else seeded from the prompt it edits (or versions). */
@@ -736,7 +826,7 @@ function openEditor(mode: "new" | "edit" | "version", slug: string | null): void
   state.promptEd = null;
   rerender();
   getPrompt(slug)
-    .then((p) => { if (state.screen !== "promptedit" || state.promptSlug !== slug) return; state.promptEd = draftFromPrompt(p, mode); rerender(); })
+    .then((p) => { if (state.screen !== "promptedit" || state.promptSlug !== slug) return; state.promptEd = draftFromPrompt(p, mode); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't load that prompt"); state.screen = "prompts"; loadPrompts(); });
 }
 function startNewDoc(): void {
@@ -761,13 +851,13 @@ function loadMyOrgs(): Promise<MyOrgsResponse | null> {
       if (state.me) { state.me.orgs = data.orgs; state.me.superadmin = data.superadmin; state.me.pending_invites = data.invites.length; }
       // The org on screen is no longer mine (removed, or it was suspended): the picker.
       if (state.view === "app" && state.orgSlug && !data.orgs.some((o) => o.slug === state.orgSlug)) showPicker(state.orgSlug);
-      else rerender();
+      else rerenderSoon();
       return data;
     })
     .catch((e): null => {
       if (e instanceof Unauthorized) { unauth(e); return null; }
       state.myOrgs = { status: "error", data: state.myOrgs.data, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
       return null;
     })
     .finally(() => { orgsLoad = null; });
@@ -788,14 +878,14 @@ function loadOrgMe(): void {
       // Forms opened before this landed pick the repo up now, unless something was typed.
       if (!state.art.c.repo) state.art.c.repo = data.repos.all[0] ?? "";
       if (!state.nh.repo) state.nh.repo = data.repos.primary ?? "";
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (state.orgSlug !== slug) return;
       if (e instanceof ApiError && e.status === 404) { showPicker(slug); return; }
       state.orgMe = { status: "error", data: state.orgMe.data, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -847,7 +937,12 @@ function enterPlatform(hash: string): void {
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 /** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
 let enteredAnOrg = false;
+/** Batched: the boot starts a dozen and a half reads here, and their "loading" paints are ONE paint,
+ *  made before this returns (each read's landing is a `rerenderSoon`). */
 function enterOrg(slug: string, hash: string): void {
+  batchRender(() => enterOrgNow(slug, hash));
+}
+function enterOrgNow(slug: string, hash: string): void {
   enteredAnOrg = true;
   const query = new URLSearchParams(location.search);
   const link = query.get("link");
@@ -892,25 +987,18 @@ function enterOrg(slug: string, hash: string): void {
     flash("Nothing was connected: only an admin or an owner of this organization can connect a host.", 7000);
   }
   loadOrgMe();
-  void loadMyOrgs();
+  // No `GET /api/orgs` here: /auth/me already brought my orgs, my role in each and the invites count —
+  // all the rail and the switcher show. The full list (plans, grants, invites) is read where it is
+  // used: the switcher's menu, the picker, Settings and a connection's scope dialog.
   syncCtl.load(); // a sync in progress shows in the header on every screen, also after a reload
   loadForScreen(state.screen);
   // A conflicting Link redirect lands here directly (full page load to
   // /?link=conflict#settings), not through the goSettings dispatch case.
   checkLinkConflict(link);
-  // Boot-time loads for the sidebar triage badges — the counts must be
-  // right on every screen, not just after visiting Review/Maintenance.
-  // Guarded: the screen's own loader (My Work, Review) may have just started
-  // these — a second unconditional call would fetch each twice.
-  if (state.proposals.status === "idle") loadProposals();
-  if (state.draftAdrs.status === "idle") loadDraftAdrs();
-  loadNeedsTriage();
-  loadIdentityTasks();
-  // The Tickets badge shows on every screen too — unassigned + open, org-wide.
-  loadTicketBadge();
-  // Handoffs (pending for me) and the Prompt Library (staged) badges.
-  if (state.handoffs.status === "idle") loadHandoffs();
-  if (state.promptList.status === "idle") loadPrompts();
+  // The sidebar's badges show on every screen: ONE read of their counts (Review, Unplaced, Tickets,
+  // Handoffs, Prompts, and the admin's unmatched logins), not the seven lists they count. A screen
+  // that needs a list (My Work, Review, …) loads it itself, and its count then replaces the badge's.
+  loadBadges();
   // The persons directory backs every colored chip (sidebar, feed, docs,
   // Settings › Profile, Org settings › Members) — load it on every screen too.
   loadPersons();
@@ -960,12 +1048,12 @@ function loadFeed(): void {
       state.feed = { status: "ok", data: rows };
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
       if (!author && !tags) state.feedAuthors = [...new Set(rows.map((r) => r.author))];
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.feed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadFeedIfNeeded(): void {
@@ -988,13 +1076,13 @@ function loadFeedStats(): void {
     .then((data) => {
       if (seq !== feedStatsSeq) return;
       state.feedStats = { status: "ok", data };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (seq !== feedStatsSeq) return;
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.feedStats = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1004,12 +1092,12 @@ function loadMyWork(): void {
   getMyDashboard()
     .then((data) => {
       state.mywork = { status: "ok", data };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.mywork = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
@@ -1019,11 +1107,11 @@ function loadMwSessions(): void {
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
   getFeed({ author: me, limit: 2 })
-    .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mwSessions = { status: "error", data: state.mwSessions.data, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Docs you own: the doc list WITHOUT bodies — never `loadDocs`, which also opens
@@ -1031,11 +1119,11 @@ function loadMwSessions(): void {
 function loadMwDocs(): void {
   state.mwDocs = { status: "loading", data: state.mwDocs.data };
   listDocMeta()
-    .then((rows) => { state.mwDocs = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { state.mwDocs = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mwDocs = { status: "error", data: state.mwDocs.data, error: String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** My Work reads its own DTO plus the slices its tiles and rail are built on —
@@ -1071,12 +1159,12 @@ function loadRepo(): void {
       if (sample !== state.repoSample) return; // switched source mid-flight — the newer load wins
       state.repo = { status: "ok", data };
       state.repoFetchedAt = Date.now();
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.repo = { status: "error", data: state.repo.data, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 // "Poll now" (admins, the Repo top bar — every tab): refresh the sources the
@@ -1136,11 +1224,11 @@ function loadNotifPrefs(): void {
   state.notifPrefs = { status: "loading", data: state.notifPrefs.data };
   rerender();
   getNotificationPrefs()
-    .then((data) => { state.notifPrefs = { status: "ok", data }; rerender(); })
+    .then((data) => { state.notifPrefs = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.notifPrefs = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 // Settings › MCP access › Connected apps. No rerender of its own on entry: every caller
@@ -1148,11 +1236,11 @@ function loadNotifPrefs(): void {
 function loadGrants(): void {
   state.grants = { status: "loading", data: state.grants.data };
   listOAuthGrants()
-    .then((data) => { state.grants = { status: "ok", data }; rerender(); })
+    .then((data) => { state.grants = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Everything personal Settings reads: my connections, my digest preferences, the plan of the org on
@@ -1226,11 +1314,11 @@ function loadGrantsIfNeeded(): void {
 function loadMcpTokens(): void {
   state.mcpTokens = { status: "loading", data: state.mcpTokens.data };
   listMcpTokens()
-    .then((data) => { state.mcpTokens = { status: "ok", data }; rerender(); })
+    .then((data) => { state.mcpTokens = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mcpTokens = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadNotifPrefsIfNeeded(): void {
@@ -1254,14 +1342,14 @@ function loadNotifAdmin(): void {
   rerender();
   const unauth = (e: unknown) => { if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); } };
   getNotificationPolicy()
-    .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerender(); })
-    .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerender(); });
+    .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerenderSoon(); })
+    .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
   getNotificationSettings()
-    .then((data) => { state.notifSettings = { status: "ok", data }; rerender(); })
-    .catch((e) => { unauth(e); state.notifSettings = { status: "error", data: null, error: String(e) }; rerender(); });
+    .then((data) => { state.notifSettings = { status: "ok", data }; rerenderSoon(); })
+    .catch((e) => { unauth(e); state.notifSettings = { status: "error", data: null, error: String(e) }; rerenderSoon(); });
   listNotificationOutbox()
-    .then(({ rows }) => { state.notifOutbox = { status: "ok", data: rows }; rerender(); })
-    .catch((e) => { unauth(e); state.notifOutbox = { status: "error", data: [], error: String(e) }; rerender(); });
+    .then(({ rows }) => { state.notifOutbox = { status: "ok", data: rows }; rerenderSoon(); })
+    .catch((e) => { unauth(e); state.notifOutbox = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
 }
 /** What Org settings shows an ADMIN beyond the org controller's own reads: the e-mail digests
  *  (its Notifications tab) and the logins to match (Members). Both are no-ops once loaded, and
@@ -1290,13 +1378,13 @@ function loadDoc(slug: string): void {
       state.docDetail = { status: "ok", data: result };
       state.docSpace = result.doc.space;
       state.docOutlineOpen[result.doc.slug] = true;
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerender(); return; }
+      if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.docDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1391,13 +1479,13 @@ function loadDocs(): void {
         state.docOutlineOpen[first.slug] = true;
         loadDoc(first.slug);
       } else {
-        rerender();
+        rerenderSoon();
       }
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.docsList = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1416,12 +1504,12 @@ function loadSearch(): void {
   search(state.searchQuery)
     .then((result) => {
       state.searchResults = { status: "ok", data: result };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.searchResults = { status: "error", data: EMPTY_QUERY_RESULT, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1449,7 +1537,7 @@ function loadRoadmap(): void {
   getRoadmap()
     .then((planView) => {
       state.roadmap = { status: "ok", data: planView };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
@@ -1458,7 +1546,7 @@ function loadRoadmap(): void {
         data: { narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] },
         error: e instanceof Error ? e.message : String(e),
       };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1483,13 +1571,13 @@ function loadRoadmapFeed(): void {
     .then((rows) => {
       if (seq !== roadmapFeedSeq) return;
       state.roadmapFeed = { status: "ok", data: rows };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (seq !== roadmapFeedSeq) return;
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.roadmapFeed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1504,14 +1592,20 @@ function loadProposals(after?: () => void): void {
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
       state.proposals = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
-      rerender();
+      rerenderSoon();
     });
+}
+/** The Feed's "Waiting on review" box lists Review's two reads — the boot no longer loads them
+ *  (the sidebar counts come from GET /badges), so the Feed asks for them when they are not on hand. */
+function loadFeedReview(): void {
+  if (state.proposals.status === "idle") loadProposals();
+  if (state.draftAdrs.status === "idle") loadDraftAdrs();
 }
 function loadProposalsIfNeeded(): void {
   if (state.proposals.status === "idle" || state.proposals.status === "error") loadProposals();
@@ -1524,13 +1618,13 @@ function loadDraftAdrs(after?: () => void): void {
   state.draftAdrs = { status: "loading", data: state.draftAdrs.data };
   rerender();
   listAdrs("draft")
-    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; after?.(); pruneReviewLeaving(); rerender(); })
+    .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; listed("decisions", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== draftAdrsSeq) return;
       state.draftAdrs = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1627,12 +1721,12 @@ function loadNeedsTriage(): void {
   state.needsTriage = { status: "loading", data: state.needsTriage.data };
   rerender();
   listNeedsTriage()
-    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== needsTriageSeq) return;
       state.needsTriage = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadNeedsTriageIfNeeded(): void {
@@ -1649,15 +1743,16 @@ function loadIdentityTasks(): void {
     .then((r) => {
       if (seq !== identityTasksSeq) return;
       state.identityTasks = { status: "ok", data: r.tasks };
+      listed("logins", r.tasks.length);
       state.identityDiscarded = r.discarded;
       if (r.discarded.length === 0) state.identityShowDiscarded = false;
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== identityTasksSeq) return;
       state.identityTasks = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1678,12 +1773,12 @@ function loadTickets(): void {
   if (!ticketsLanded) state.tickets = { status: "loading", data: state.tickets.data };
   rerender();
   listTickets({ seg: state.qSeg, assignee: state.qAssignee, category: state.qCategory })
-    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerender(); })
+    .then((rows) => { if (seq !== ticketsSeq) return; state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== ticketsSeq) return;
       state.tickets = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadTicketsIfNeeded(): void {
@@ -1700,22 +1795,44 @@ function loadTicketDetail(id: number): void {
   loadTicketArtifacts(id);            // the Artifacts block under Linked work
   rerender();
   getTicket(id)
-    .then((t) => { if (seq !== ticketDetailSeq) return; state.ticketDetail = { status: "ok", data: t }; rerender(); })
+    .then((t) => { if (seq !== ticketDetailSeq) return; state.ticketDetail = { status: "ok", data: t }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== ticketDetailSeq) return;
       // A deleted/unknown id is "no such ticket", not a failure to load.
-      if (e instanceof ApiError && e.status === 404) { state.ticketDetail = { status: "ok", data: null }; rerender(); return; }
+      if (e instanceof ApiError && e.status === 404) { state.ticketDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.ticketDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
 /** The sidebar badge — loaded at boot (it shows on EVERY screen) and after every
  *  ticket write. A failure leaves the previous count rather than flashing 0. */
+/** The counts that landed from their own list (or the ticket badge's read) since `GET /badges` was
+ *  asked: a later-landing badges answer is older than these and must not overwrite them. */
+const landed = new Set<keyof SidebarBadges>();
+/** A list landed: its count is now the sidebar's, also while that list reloads. */
+function listed(key: keyof SidebarBadges, n: number): void {
+  state.badges = { ...state.badges, [key]: n };
+  landed.add(key);
+}
+/** The boot's ONE read for the sidebar (src/tools/badges.ts), in place of the seven lists it counts.
+ *  A failure leaves the badges as they are — each screen still loads its own list. */
+function loadBadges(): void {
+  landed.clear();
+  getBadges()
+    .then((b) => {
+      const next = { ...state.badges };
+      for (const k of Object.keys(b) as (keyof SidebarBadges)[]) if (!landed.has(k)) next[k] = b[k];
+      state.badges = next;
+      if (!landed.has("tickets")) state.ticketBadge = b.tickets;
+      rerenderSoon();
+    })
+    .catch((e) => { if (e instanceof Unauthorized) unauth(e); });
+}
 function loadTicketBadge(): void {
   getTicketBadge()
-    .then((count) => { state.ticketBadge = count; rerender(); })
+    .then((count) => { state.ticketBadge = count; listed("tickets", count); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) unauth(e); });
 }
 
@@ -1724,12 +1841,12 @@ function loadSprints(): void {
   const seq = ++sprintsSeq;
   state.sprints = { status: "loading", data: state.sprints.data };
   listSprints()
-    .then((rows) => { if (seq !== sprintsSeq) return; state.sprints = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== sprintsSeq) return; state.sprints = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== sprintsSeq) return;
       state.sprints = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Unlike the other IfNeeded loaders this one never rerenders on a hit — its
@@ -1747,14 +1864,14 @@ function loadSprintDetail(id: number): void {
   state.sprintDetail = { status: "loading", data: keep };
   rerender();
   getSprint(id)
-    .then((sp) => { if (seq !== sprintDetailSeq) return; state.sprintDetail = { status: "ok", data: sp }; rerender(); })
+    .then((sp) => { if (seq !== sprintDetailSeq) return; state.sprintDetail = { status: "ok", data: sp }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== sprintDetailSeq) return;
       // A deleted/unknown id is "no such sprint", not a failure to load.
-      if (e instanceof ApiError && e.status === 404) { state.sprintDetail = { status: "ok", data: null }; rerender(); return; }
+      if (e instanceof ApiError && e.status === 404) { state.sprintDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.sprintDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 
@@ -1823,11 +1940,11 @@ function loadPersons(): void {
   const seq = ++personsSeq;
   state.persons = { status: "loading", data: state.persons.data };
   listPersons()
-    .then((rows) => { if (seq !== personsSeq) return; state.persons = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== personsSeq) return; state.persons = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } if (seq !== personsSeq) return; state.persons = { status: "error", data: state.persons.data, error: String(e) }; rerender(); });
 }
 function refreshMe(): void {
-  getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerender(); }).catch(() => undefined);
+  getMe().then((me) => { state.me = me; state.displayName = me.name ?? me.handle; rerenderSoon(); }).catch(() => undefined);
 }
 
 // ── The person card (a click on a name), and Settings › Profile's photo ──
@@ -1843,12 +1960,12 @@ function openPersonCard(handle: string): void {
   rerender();
   mount.querySelector<HTMLElement>("[data-person-card]")?.focus();
   getPersonProfile(handle)
-    .then((pr) => { if (seq !== personSeq) return; state.personDetail = { status: "ok", data: pr }; rerender(); })
+    .then((pr) => { if (seq !== personSeq) return; state.personDetail = { status: "ok", data: pr }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== personSeq) return;
       state.personDetail = { status: e instanceof NotFound ? "ok" : "error", data: null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Close Settings › MCP access's by-hand setup modal; focus goes back to the link that opened it. */
@@ -1898,12 +2015,12 @@ function loadArtifactList(force = false): void {
   const seq = nextArtSeq("list");
   state.art.list = { status: "loading", data: cur.data };
   listArtifacts()
-    .then((rows) => { if (seq !== artSeq.get("list")) return; state.art.list = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== artSeq.get("list")) return; state.art.list = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get("list")) return;
       state.art.list = { status: "error", data: state.art.list.data, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadArtifactDetail(slug: string, v: number | null, force = false): void {
@@ -1913,12 +2030,12 @@ function loadArtifactDetail(slug: string, v: number | null, force = false): void
   const seq = nextArtSeq(`d:${key}`);
   state.art.details[key] = { status: "loading", data: cur?.data ?? null };
   getArtifact(slug, v)
-    .then((d) => { if (seq !== artSeq.get(`d:${key}`)) return; state.art.details[key] = { status: "ok", data: d }; rerender(); })
+    .then((d) => { if (seq !== artSeq.get(`d:${key}`)) return; state.art.details[key] = { status: "ok", data: d }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get(`d:${key}`)) return;
       state.art.details[key] = e instanceof NotFound ? { status: "missing", data: null } : { status: "error", data: null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 function loadArtifactDiff(slug: string, a: number, b: number, force = false): void {
@@ -1928,12 +2045,12 @@ function loadArtifactDiff(slug: string, a: number, b: number, force = false): vo
   const seq = nextArtSeq(`x:${key}`);
   state.art.diffs[key] = { status: "loading", data: cur?.data ?? null };
   getArtifactDiff(slug, a, b)
-    .then((d) => { if (seq !== artSeq.get(`x:${key}`)) return; state.art.diffs[key] = { status: "ok", data: d }; rerender(); })
+    .then((d) => { if (seq !== artSeq.get(`x:${key}`)) return; state.art.diffs[key] = { status: "ok", data: d }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get(`x:${key}`)) return;
       state.art.diffs[key] = { status: e instanceof NotFound ? "missing" : "error", data: null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** The ticket detail's Artifacts block: `GET /api/artifacts?ticket=<id>`. */
@@ -1942,12 +2059,12 @@ function loadTicketArtifacts(id: number): void {
   const cur = state.art.ticketArts[id];
   state.art.ticketArts[id] = { status: "loading", data: cur?.data ?? null };
   listArtifacts({ ticket: id })
-    .then((rows) => { if (seq !== artSeq.get(`t:${id}`)) return; state.art.ticketArts[id] = { status: "ok", data: rows }; rerender(); })
+    .then((rows) => { if (seq !== artSeq.get(`t:${id}`)) return; state.art.ticketArts[id] = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get(`t:${id}`)) return;
       state.art.ticketArts[id] = { status: "error", data: state.art.ticketArts[id]?.data ?? null, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Every ticket (seg=all) — the attach dialog's list and the library's ticket search. */
@@ -1960,13 +2077,13 @@ function loadAttachTickets(): void {
     .then((rows) => {
       if (seq !== artSeq.get("tix")) return;
       state.art.attachTickets = { status: "ok", data: rows.map((t) => ({ id: t.id, title: t.title, status: t.status })) };
-      rerender();
+      rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (seq !== artSeq.get("tix")) return;
       state.art.attachTickets = { status: "error", data: state.art.attachTickets.data, error: errMsg(e) };
-      rerender();
+      rerenderSoon();
     });
 }
 /** Load what the current Artifacts screen reads. `fresh` refetches (keeping what is
@@ -2156,14 +2273,14 @@ function runArtEffect(fx: ArtEffect): void {
  *  artAcceptNvFile refuses a file from the other side of it. */
 function readArtFile(file: File | undefined | null, target: "create" | "nv" = "create"): void {
   if (!file) return;
-  const accept = (f: ArtFile) => {
-    if (target === "create") artAcceptFile(state.art, f);
+  const accept = (f: ArtFile) => withChunk(artifactsChunk, (art) => {
+    if (target === "create") art.artAcceptFile(state.art, f);
     else {
       const d = state.art.details[detailKey(state.artRoute.slug ?? "", state.artRoute.v)]?.data;
-      if (d) artAcceptNvFile(state.art, d.kind, f);
+      if (d) art.artAcceptNvFile(state.art, d.kind, f);
     }
     rerender();
-  };
+  });
   if (isBinaryKind(kindForFilename(file.name))) {
     accept({ name: file.name, size: file.size, text: null, blob: file });
     return;
@@ -2214,12 +2331,25 @@ function confirmOut(then: () => void): void {
 }
 
 // ── Platform (superadmin): its loads and acts live in platform-actions.ts ────
-const platform = createPlatform({
-  state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
-  // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
-  // On the standalone page there is no My Work to fall back to: the picker.
-  leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
-});
+// Its own chunk (platform-lazy.ts): the controller is made when the chunk lands, and a load or an
+// act asked for before then runs once it has (`withChunk`).
+type PlatformCtl = ReturnType<typeof import("./platform-actions").createPlatform>;
+let platformCtl: PlatformCtl | null = null;
+const platform = {
+  run(fn: (c: PlatformCtl) => void): void {
+    withChunk(platformChunk, (m) => {
+      platformCtl ??= m.createPlatform({
+        state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
+        // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
+        // On the standalone page there is no My Work to fall back to: the picker.
+        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
+      });
+      fn(platformCtl);
+    });
+  },
+  load(): void { platform.run((c) => c.load()); },
+  act(act: string, arg: string | null, value: string | null): void { platform.run((c) => c.act(act, arg, value)); },
+};
 
 
 // Copy text to the clipboard. Prefers the async Clipboard API (available on
@@ -2290,6 +2420,9 @@ function scheduleRenameCheck(): void {
 // delegate passes `selectionStart` for inputs/textareas). Only the @mention
 // picker needs it; every other case ignores it.
 function dispatch(act: string, arg: string | null, value: string | null, caret: number | null = null): void {
+  // The landing page's acts — Sign in, the tour, the menu, the jumps (landing-actions.ts, shared with the
+  // signed-out page's own boot, landing-page.ts).
+  if (landingCtl.act(act, arg)) return;
   switch (act) {
     // The state preview's banner: switch to the other state, or close it ("" = off). The flag
     // lives in the address bar, so it is rewritten there; nothing is loaded or sent.
@@ -2300,26 +2433,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     // auth state navigation (how the screens become reachable)
-    case "signIn":
-      // Return-to: the hash never reaches the server, so stash it for the boot
-      // after /auth/callback lands on "/" (an email deep link survives sign-in).
-      // Not #site: that IS the landing page, and returning to it strands them outside the app.
-      // The org they were on (`/<slug>/`) is stashed the same way: the callback lands on "/".
-      try {
-        if (location.hash && location.hash !== "#site") sessionStorage.setItem(RETURN_HASH_KEY, location.hash);
-        const from = orgSlugFromPath(location.pathname);
-        if (from) sessionStorage.setItem(RETURN_ORG_KEY, from);
-      } catch { /* ignore */ }
-      window.location.href = "/auth/login";
-      return;
-    case "signInGoogle":
-      try {
-        if (location.hash && location.hash !== "#site") sessionStorage.setItem(RETURN_HASH_KEY, location.hash);
-        const from = orgSlugFromPath(location.pathname);
-        if (from) sessionStorage.setItem(RETURN_ORG_KEY, from);
-      } catch { /* ignore */ }
-      window.location.href = "/auth/google/login";
-      return;
     case "signInGoogleSwitch": window.location.href = "/auth/google/login?prompt=select_account"; return;
     case "onbHandle": {
       state.onboard.handle = (value ?? "").trim();
@@ -2402,21 +2515,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
-    // Landing page (signed out): the Sign in dialog, and in-page jumps. The jumps
-    // scroll instead of setting location.hash — the hash is the route and the
-    // sign-in return-to, and must survive a browse of the landing page.
-    case "openSignIn": {
-      // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
-      // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
-      const switching = state.signInOpen;
-      menuCtl.close({ instant: true, refocus: false }); // opened from the menu: the sign-in sheet takes its place
-      state.signInMode = arg === "signup" ? "signup" : "signin";
-      state.signInOpen = true;
-      rerender();
-      mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
-      return;
-    }
-    case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
     // After payment, "Set up your organization": on to the welcome card IN PLACE (the card morphs into
     // it), not by loading `/?setup=…`. Anything unexpected falls back to that page load.
     case "billingSetup": {
@@ -2432,40 +2530,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // The payment page's fallback (billing-checkout.ts): Stripe's hosted checkout, when its form would not open here.
     case "billingHosted": void billingCheckoutHosted(billingCheckoutHost); return;
-    case "closeSignIn": state.signInOpen = false; break;
-    // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
-    // The menu the nav offers under 900px (site-menu.ts).
-    case "openSiteMenu": menuCtl.open(); return;
-    case "closeSiteMenu": menuCtl.close(); return;
-    case "openFeature": if (arg) featureCtl.open(arg); return;
-    case "closeFeature": featureCtl.close(); return;
-    case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
-    // The landing's "Get started": signed in, straight to the guide; signed out, the
-    // guide becomes the sign-in return-to (replaceState: no hashchange, no route) and
-    // the Sign in dialog opens.
-    case "siteGuide":
-      if (state.me) {
-        state.siteReturn = null;
-        const guide = parseHash("#guide");
-        applyRoute(guide);
-        loadForScreen(guide.screen);
-        window.scrollTo(0, 0);
-        return;
-      }
-      history.replaceState(null, "", `${location.pathname}#guide`);
-      dispatch("openSignIn", null, null);
-      return;
-    case "siteJump": {
-      const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-      // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
-      // passed on the way settle without their entrance (landing-motion.ts).
-      // From the menu: it closes (unlocking the page's scroll at once) and the page scrolls under it as it leaves.
-      menuCtl.close({ refocus: false });
-      noteJump();
-      if (arg === "top") window.scrollTo({ top: 0, behavior });
-      else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
-      return;
-    }
     case "backToLogin":
       state.authStep = "login";
       history.replaceState({}, "", "/");
@@ -2493,14 +2557,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       rerender();
       window.scrollTo(0, 0);
       return;
-    case "siteBack": {
-      menuCtl.close({ instant: true, refocus: false });
-      const back = state.siteReturn ?? parseHash("");
-      state.siteReturn = null;
-      applyRoute(back);
-      loadForScreen(back.screen);
-      return;
-    }
 
     // primary navigation
     case "goMyWork":
@@ -2719,7 +2775,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       mount.querySelector<HTMLInputElement>('[data-field="sideSearch"]')?.focus();
       return;
     }
-    case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); return;
+    case "goFeed": state.screen = "feed"; loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); return;
 
     // ── The person card: a click on anyone's name (the rail, the Feed, quick search,
     // Org settings › Members) opens it over the page; the backdrop, × and Escape close it.
@@ -3252,7 +3308,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
-    // Help › What's new (static data, nothing to load). `arg` "patches" opens Patch notes.
+    // Help › What's new (its chunk is loaded by the paint: releases-lazy.ts). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
     // One release's page (arg = its slug, "0.14" / "unreleased"), and its notes / patches switch.
     case "openRelease": if (!arg) return; state.screen = "releases"; state.releaseVersion = arg.toLowerCase(); state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -3398,7 +3454,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const cap = btn.closest("figure")?.querySelector("figcaption");
       const title = cap?.querySelector("strong")?.textContent?.trim() || "Screenshot";
       const rest = cap ? cap.innerHTML.replace(/^\s*<strong[^>]*>[\s\S]*?<\/strong>\s*:?\s*/, "") : "";
-      openLightbox({ src: img.getAttribute("src") ?? "", alt: cap?.textContent?.trim() ?? title, title, captionHtml: rest });
+      // The full-size capture (`data-full`, render.ts `guideImg`), not the column-sized one on the page.
+      openLightbox({ src: img.getAttribute("data-full") ?? img.getAttribute("src") ?? "", alt: cap?.textContent?.trim() ?? title, title, captionHtml: rest });
       return;
     }
 
@@ -4067,11 +4124,20 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
-      if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
+      if (act.startsWith("org")) {
+        if (act === "orgGo") {
+          loadOrgAdminExtras();
+          // Org settings is its own chunk: until it is in, the screen opens at once on its skeleton
+          // (what orgGo itself sets, org-actions.ts), and the act runs again — with its reads — once it lands.
+          if (!orgChunk.get()) { state.screen = "org"; state.personCard = null; if (isOrgTab(arg)) state.org.tab = arg; state.org.repoPage = null; rerender(); }
+        }
+        orgCtl.act(act, arg, value);
+        return;
+      }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
-        const run = () => runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: viewerIsAdmin(state), host: `${location.origin}${orgBase(state.orgSlug).replace(/\/$/, "")}`, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value));
+        const run = () => withChunk(artifactsChunk, (art) => runArtEffect(art.artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: viewerIsAdmin(state), host: `${location.origin}${orgBase(state.orgSlug).replace(/\/$/, "")}`, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value)));
         // The delete confirm plays its exit before it closes (Escape, the backdrop, Cancel).
         if (act === "artDeleteCancel" && state.art.deleteArm && !state.art.deleteBusy) confirmOut(run);
         else run();
@@ -4772,41 +4838,25 @@ mount.addEventListener("mouseleave", () => railTip(null));
 // A status mark's tooltip (`data-mtip`, marks.ts): one styled bubble on <body>, placed by tip.ts.
 installMarkTips(mount);
 
-// The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
-const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
-document.addEventListener("keydown", (e) => featureCtl.onKey(e));
-// A phone steps through the tour's dialog by swiping it left or right (site-feature.ts `onSwipe*`).
-mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));
-mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));
-mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());
 
-// The landing's menu (under 900px): Escape, Tab kept inside it, and gone when the window outgrows it.
-const menuCtl = createMenuCtl({ mount, get: () => state.siteMenu, set: (v) => { state.siteMenu = v; }, rerender: () => rerender() });
-document.addEventListener("keydown", (e) => menuCtl.onKey(e));
-window.addEventListener("resize", () => menuCtl.onResize());
-// The on-screen keyboard: the site's sheets stay above it (site-viewport.ts sets `--site-kb`).
-initSiteViewport();
-
-// Escape closes the landing page's sign-in dialog, wherever focus is.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
-  state.signInOpen = false;
-  rerender();
-});
-// …and Tab stays inside it (it is `aria-modal`): from the last stop — the consent's links — back to the
-// first, and the reverse, so a keyboard never wanders onto the page behind (the compliance pass's keyboard check).
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Tab" || !state.signInOpen || state.view !== "auth") return;
-  const dialog = document.querySelector<HTMLElement>('[data-overlay="signin"] [role="dialog"]');
-  if (!dialog) return;
-  const stops = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
-    .filter((el) => el.offsetParent !== null || el === document.activeElement);
-  if (!stops.length) return;
-  const first = stops[0], last = stops[stops.length - 1];
-  const at = document.activeElement as HTMLElement | null;
-  if (!at || !dialog.contains(at)) { e.preventDefault(); first.focus(); return; }
-  if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
-  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+// The landing page (landing-actions.ts): the Sign in dialog, the tour's dialog, the menu under 900px, the
+// in-page jumps and their keyboard. Signed in (the landing reopened by the sidebar logo, `#site`), "Get
+// started" opens the Guide and the nav's way back returns to where the logo was clicked from.
+const landingCtl = createLandingController({
+  state, mount, rerender: () => rerender(),
+  guide: () => {
+    state.siteReturn = null;
+    const guide = parseHash("#guide");
+    applyRoute(guide);
+    loadForScreen(guide.screen);
+    window.scrollTo(0, 0);
+  },
+  back: () => {
+    const back = state.siteReturn ?? parseHash("");
+    state.siteReturn = null;
+    applyRoute(back);
+    loadForScreen(back.screen);
+  },
 });
 
 // The payment page (`/billing/checkout`, embedded checkout). Stripe.js is loaded from here and nowhere
@@ -4867,14 +4917,10 @@ if (params.get("denied") === "1") {
       history.replaceState(null, "", "/");
       rerender();
     });
-} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {
-  // The PRERENDERED landing page: the Worker sends it for `/` only to a request with no session cookie
-  // (src/site.ts — the app shell otherwise, and always with the local DEV_LOGIN), and the build made it
-  // from this very render (web/src/site-prerender.ts). So there is nobody to ask about: no "Signing you
-  // in…" card and no /auth/me, which could only answer unauthorized. This paint MORPHS the markup already
-  // on screen (`data-morph="landing"`, morph.ts): nothing is rebuilt or flashes, and the reveals play.
-  showSignedOut();
 } else {
+  // (The PRERENDERED landing page — `/` with no session cookie — is booted by its own script,
+  // landing-page.ts, which hands the page to this one only for what it does not answer: `?denied=`,
+  // `#onboard`, and a page without the prerendered markup.)
   // Show "verifying" while we check if a session cookie exists
   state.view = "auth";
   state.authStep = "verifying";

@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import landingActionsSrc from "../web/src/landing-actions.ts?raw";
 import menuSrc from "../web/src/site-menu.ts?raw";
 import legalPageSrc from "../web/src/legal-page.ts?raw";
 import { landingView } from "../web/src/landing";
@@ -21,6 +22,10 @@ import { featureMock } from "../web/src/landing-mocks";
 import { FX_EXIT_MS, SWIPE_MAX_MS, SWIPE_MIN_PX, swipeStep } from "../web/src/site-feature-core";
 import { MENU_EXIT_MS, MENU_MAX_WIDTH } from "../web/src/site-menu";
 import { coveredBottom } from "../web/src/site-viewport";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const page = (over: Partial<Parameters<typeof landingView>[0]> = {}) =>
   landingView({ dark: false, signInOpen: false, seen: new Set(), ...over });
@@ -91,15 +96,17 @@ describe("the site's menu — what the bar drops under 900px", () => {
   });
 
   it("its acts: open, close, a section link closes it before the ONE scroll, and Sign in takes its place", () => {
-    expect(mainSrc).toContain('case "openSiteMenu": menuCtl.open(); return;');
-    expect(mainSrc).toContain('case "closeSiteMenu": menuCtl.close(); return;');
-    const jump = mainSrc.slice(mainSrc.indexOf('case "siteJump": {'), mainSrc.indexOf('case "backToLogin":'));
+    // The landing's acts are landing-actions.ts (main.ts and the signed-out page's own boot both run them).
+    expect(landingActionsSrc).toContain('case "openSiteMenu": menuCtl.open(); return true;');
+    expect(landingActionsSrc).toContain('case "closeSiteMenu": menuCtl.close(); return true;');
+    const jump = landingActionsSrc.slice(landingActionsSrc.indexOf('case "siteJump": {'), landingActionsSrc.indexOf('case "siteBack":'));
     expect(jump.indexOf("menuCtl.close({ refocus: false })")).toBeGreaterThan(0);
     expect(jump.indexOf("menuCtl.close({ refocus: false })")).toBeLessThan(jump.indexOf("scrollIntoView"));
-    const signIn = mainSrc.slice(mainSrc.indexOf('case "openSignIn": {'), mainSrc.indexOf('case "signInPlan":'));
+    const signIn = landingActionsSrc.slice(landingActionsSrc.indexOf('case "openSignIn": {'), landingActionsSrc.indexOf('case "signInPlan":'));
     expect(signIn).toContain("menuCtl.close({ instant: true, refocus: false })");
-    expect(mainSrc).toContain('document.addEventListener("keydown", (e) => menuCtl.onKey(e));');
-    expect(mainSrc).toContain('window.addEventListener("resize", () => menuCtl.onResize());');
+    expect(landingActionsSrc).toContain('document.addEventListener("keydown", (e) => menuCtl.onKey(e));');
+    expect(landingActionsSrc).toContain('window.addEventListener("resize", () => menuCtl.onResize());');
+    expect(mainSrc).toContain("if (landingCtl.act(act, arg)) return;");
   });
 
   it("the controller: Esc, a Tab trap, a scroll lock undone at once on close, focus back on the button, an exit on the site's clock", () => {
@@ -226,9 +233,9 @@ describe("sheets on a phone — the tour's dialog, sign-in, Contact", () => {
 
   it("a swipe steps it: pan-y on the panel AND its scroller, pointer events in the controller, a scroll never a step", () => {
     expect(phone).toContain(".site-fx-panel, .site-fx-main { touch-action:pan-y; }");
-    expect(mainSrc).toContain('mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));');
-    expect(mainSrc).toContain('mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));');
-    expect(mainSrc).toContain('mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());');
+    expect(landingActionsSrc).toContain('mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));');
+    expect(landingActionsSrc).toContain('mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));');
+    expect(landingActionsSrc).toContain('mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());');
     expect(swipeStep(-SWIPE_MIN_PX, 0, 200)).toBe(1);    // left: the next feature comes in from the right
     expect(swipeStep(SWIPE_MIN_PX, 10, 200)).toBe(-1);   // right: the previous one
     expect(swipeStep(-(SWIPE_MIN_PX - 1), 0, 200)).toBe(0); // too short
@@ -256,7 +263,7 @@ describe("sheets on a phone — the tour's dialog, sign-in, Contact", () => {
     expect(coveredBottom(844, 508, 20)).toBe(316); // the page was panned: less of the bottom is covered
     expect(coveredBottom(844, 844, 0)).toBe(0);
     expect(coveredBottom(844, 820, 0)).toBe(0);
-    expect(mainSrc).toContain("initSiteViewport();");
+    expect(landingActionsSrc).toContain("initSiteViewport();");
   });
 });
 

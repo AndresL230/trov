@@ -4,6 +4,8 @@
 //
 // Pure data + a pure renderer, no backend: RELEASES below is the whole record, and
 // `releasesScreen` turns it into the screen's markup. Every string goes through `esc`.
+// The app loads this file as its own chunk when the screen opens (releases-lazy.ts) — never
+// import it as a value from an app module; the newest version is release-latest.ts.
 //
 // ── How to add the next release ──────────────────────────────────────────────
 // Every PR that ships something adds its lines to the FIRST entry, "Unreleased":
@@ -21,7 +23,9 @@
 //   • `prs`        — the pull requests the release carries (listed on the patch notes).
 // A merge to `main` IS a production deploy, so the PR that merges a batch also cuts it:
 // set `version` to the next `0.N`, `date` to the merge day (YYYY-MM-DD) and drop
-// `unreleased` — main never carries an "Unreleased" entry. A small follow-up with too
+// `unreleased` — main never carries an "Unreleased" entry. Keep `LATEST_VERSION` in
+// release-latest.ts equal to the first entry's version ("Unreleased" while there is one,
+// then the `0.N` it is cut into); test/releases.test.ts fails until it is. A small follow-up with too
 // little for its own 3–6 highlights adds its patch lines (and PR) to the newest version
 // instead. Newest first; dates never increase down the list
 // (test/releases.test.ts checks the order, unique versions, and that every release has
@@ -98,6 +102,11 @@ export const RELEASES: Release[] = [
       "Usage families (Phase G): no migration, no new secret, no trigger change. A Cloudflare part's poll now makes one more request every hour (its cron runs) and two more once a day (the day's CPU / wall-time quantiles and, when the part names D1 database ids, D1) — Cloudflare's `pollCost` is 6 (+1 rollback compare), inside the `:40` budget; the existing token's Account Analytics Read covers all of it. To see D1 on a Cloudflare part, set its D1 database ids in the part editor (the repo scan proposes them).",
       "Optional — Trov's own Product block: in the org that runs Trov's repository, set the Production environment's API URL to Trov's origin and paste a member's `trov_mcp_` token as its app metrics token (a Production part's editor, opened from Org settings › Repositories › a repo › Apps); the `:00` poll then reads `GET /api/internal/metrics` (contract v3, `docs/superpowers/specs/2026-10-15-app-metrics-v3.md`).",
       "Apply `migrations/0073_commit_paths.sql` (merging to main applies it): ADDITIVE — `commit_paths`, `pr_files`, `pr_file_reads` (which files a commit and a pull request touched; 100-day retention in `pruneRepoCapture`). Rollback: `DROP TABLE pr_file_reads; DROP TABLE pr_files; DROP TABLE commit_paths;`. No new secret, no trigger change, no new App permission (Pull requests: read already covers `/pulls/{n}/files`). Reconcile's worst case grows by 9 requests (the PR-files arm; the cron and Sync GitHub read up to 30), so Poll now's `refreshSubrequests` is 45 for two environments and fits `SUBREQUEST_CAP` (100) up to 11 environments (was 12).",
+      "Smart Placement (`[placement] mode = \"smart\"` in `wrangler.toml`) takes effect with the normal Workers Builds deploy. Cloudflare needs some traffic before it places the Worker near D1 (ENAM), so the gain may show gradually. To undo it, remove the `[placement]` block and deploy.",
+      "After the deploy, check that a hashed script is cached for a year and HTML is not: `curl -sI https://trov.dev$(curl -s https://trov.dev/ | grep -o '/assets/[^\"]*\\.js' | head -1) | grep -i cache-control` says `public, max-age=31536000, immutable`; then compare Workers Observability wall time for `/api/o/:slug/repo/dashboard`, `/auth/me` and a tenant route with the days before.",
+      "From now on, the PR that opens an Unreleased entry or cuts a version also sets `LATEST_VERSION` in `web/src/release-latest.ts` to match (`test/releases.test.ts` fails until it does).",
+      "Apply `migrations/0075_identities_person_nocase.sql` (merging to main applies it): ADDITIVE — one index, `idx_identities_person_nocase` on `identities(person COLLATE NOCASE)`. Rollback: `DROP INDEX IF EXISTS idx_identities_person_nocase;`.",
+      "The Worker now deploys minified with its source map uploaded (`minify`, `upload_source_maps` in `wrangler.toml`), so Workers Logs stacks map back to the TypeScript. No secret, var or trigger change.",
     ],
     headsUp: [
       "Hosting tokens moved from Integrations to Hosting, and each environment's app metrics token to its parts' editor (Org settings › Repositories › a repository › Apps). Nothing was reset: every token you saved is still there.",
@@ -159,6 +168,9 @@ export const RELEASES: Release[] = [
         "The App menu narrows Code and CI (`src/tools/repo-scope.ts`, `src/repo/app-scope.ts`, `shared/repo-scope-core.ts`): `RepoPr.touches` / `packages`, `RepoCiFailure.apps` / `approx`, `RepoDeployRow.envLabel` / `host`; under an app the tiles (nullable `RepoCodeStat.value`), bars, PR list and CI failures are its own; `__repo` = touching no app; unknown is never counted into one. `FactsApp.openPrs` per app and a Package's `usedBy` (from the scan's workspace graph). `web/src/repo-scope.ts`: the scope line + Show all apps, the touches cell, failures' apps, strips per app; the sample's `sampleScopes` (scenario E, the design's `CODE_E_API` / `CI_E`).",
         "Tests: `test/repo-monorepo.capture.test.ts`, `test/repo-monorepo.scope.test.ts` (incl. the watch-path filtering guard), `test/render.repo-monorepo.test.ts`.",
         "`docs/architecture/repo-apps.md`: the area reference for apps, the Overview's facts and layout, detection and Repositories › Apps, releases, their costs and guards (a row in CLAUDE.md's table); `repo-dashboard.md` and `hosting-providers.md` point to it instead of repeating it",
+        "`GET /api/o/:slug/badges` (`src/tools/badges.ts`, `shared/badges.ts`): the sidebar's seven counts in one D1 batch, each its list's own WHERE clause, held to the list it stands for by `test/badges.routes.test.ts`; `badges` is a reserved org slug (#187)",
+        "Paint queue (`web/src/paint-queue.ts`): `rerender()` stays synchronous; `batchRender` wraps `enterOrg` and `loadForScreen`; loader completions use `rerenderSoon()` (one paint per animation frame, at least `SOON_GAP_MS` = 100 ms after the last landing or batch paint; a timeout when the tab is hidden). My Work boot: 27 full-app paints → 4–5 (#187)",
+        "`test/helpers/d1-count.ts` and `test/perf.round-trips.test.ts`: serial D1 round trips per path, pinned (#187)",
       ],
       changed: [
         "`listConnections` returns ONE org-wide row per provider; a scoped hosting credential is a leftover, never a connection, never counted.",
@@ -181,6 +193,25 @@ export const RELEASES: Release[] = [
         "A captured workflow run keeps its `run_number` in `raw` (a workflow release's tag)",
         "`putRepoApp` accepts a `release_signal` only as `tag:<glob>` (≤ 100 characters, ≤ 10 wildcards) or `workflow:<file>@<branch>` (`parseReleaseSignal`, `shared/repo-apps-core.ts`), else 400 on `release_signal` — shown beside the field on Repositories › Apps",
         "Org settings › Integrations' hosting line: an app's metrics token is set in its part's editor (Repositories › a repository › Apps), not on Hosting",
+        "`assetHeaders()` (`shared/site-pages.ts`) writes `/assets/*` → `public, max-age=31536000, immutable` and `/guide/*` → `public, max-age=604800` (`ASSET_CACHE`); HTML keeps ETag revalidation (#187)",
+        "`[placement] mode = \"smart\"` in `wrangler.toml`; `env.md` records the D1 region (ENAM) (#187)",
+        "`getRepoDashboard` (`src/tools/repo.ts`) starts each read as soon as what it depends on is known: 42 → 6 serial round trips (`GET /repo/dashboard` 40 → 7), same 58 statements, same answer; `listRepoApps` and `readRepoFacts` read side by side (#187)",
+        "`/auth/me`: `getPerson`, `listIdentities` and `soleTitle` run in the existing `Promise.all`, 5 → 2 serial round trips (#187)",
+        "`sessionGate` reads the session and the membership for `/api/o/:slug/*` in ONE statement (`resolveSessionTenant` in `src/data/context.ts`, `resolveTenant`'s statement joined to the session row); `tenantGate` uses that `tenantHint` only for the same person and slug. Every tenant request: 2 → 1 round trip before its handler (#187)",
+        "`resolveToken` (`src/auth/tokens.ts`) writes `last_used_at` at most once a minute, best-effort, as OAuth already did (#187)",
+        "The boot reads `GET /badges` instead of the proposals, draft ADRs, Unplaced, identity tasks, ticket badge, handoffs and prompts lists, and no longer reads `GET /api/orgs` (`/auth/me`'s orgs back the rail until the switcher, the picker or Settings reads the full list). A list that lands writes its count into `state.badges`; `badgeCount` (`render.ts`) picks. The Feed's review box and a prompt's tag picker load what they show (#187)",
+        "Help › What's new renders from `import(\"./releases\")` (`web/src/releases-lazy.ts`) with skeletons; the newest version moves to `web/src/release-latest.ts` (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). Main bundle 486 → 396 kB gz (#187)",
+        "Guide screenshots are WebP: `<name>-<theme>-1720.webp` with the full `<name>-<theme>.webp` in `srcset` (`sizes` for the 860 px column) and as the lightbox's `data-full`, `decoding=\"async\"`; `scripts/capture-guide.mjs` writes both via `scripts/guide-images.mjs` (which also converts stray PNGs); the 42 PNGs (10.3 MB) are gone, the column files are 3.1 MB (#187)",
+        "`GET /docs` sends each doc's outline, built on the Worker (`shared/doc-outline.ts`), instead of its body (dev seed 119.9 KB → 12.4 KB); `GET /doc/:slug` sends its versions without bodies (250 KB → 125 KB over 15 docs); new `GET /doc/:slug/versions/:version` reads one version's body; all three answer 503 `{ error }` on a failed read; MCP `list_docs` / `get_doc` are unchanged (#187)",
+        "`renderMarkdown` / `renderMarkdownInline` are cached in an LRU (`web/src/lru.ts`) keyed by repository, org and text; the Docs tree draws the outline the server sends (#187)",
+        "Repo readers in `src/repo/reads.ts` / `src/repo/store.ts` `return await` their statement, so a parallel wave's failure never surfaces as an unhandled rejection (#187)",
+        "Worker bundle minified with uploaded source maps: 4.5 MB / 939 KB gz → 2.4 MB / 670 KB (`wrangler deploy --dry-run`) (#187)",
+        "`src/mcp.ts` loads on the first `/mcp` request (`import(\"./mcp\")` in `src/index.ts`), not at isolate startup — about 18% less startup CPU locally; `test/apply-migrations.ts` preloads it for the pool (#187)",
+        "Raw artifact previews: a numbered version on the per-org route (`/api/o/<org>/raw/a/<slug>@v<n>`) is `private, max-age=31536000, immutable` with `Vary: Cookie`; the latest version, errors and the one-org `/raw/a/…` alias are unchanged (`artifacts.md` records the trade-off) (#187)",
+        "`listOpenAssignedIssues` filters open, assigned issues in D1 (`json_extract` / `json_each` on each issue's latest snapshot) instead of reading every captured issue's raw JSON (#187)",
+        "`0075_identities_person_nocase`: `/auth/me` and every read of a person's identities search a NOCASE index instead of scanning `identities` (`test/perf.indexes.test.ts`) (#187)",
+        "Web: the signed-out landing (`/`) boots from its own script, `web/src/landing-page.ts`, with none of the app; its actions are `landing-actions.ts`, shared with `main.ts`; its markup is `landing-root.ts` / `app-root.ts`, held to `render()` by `test/site-pages.test.ts`. Signed-out `/` script 453 → 59 kB gz (#187)",
+        "Web: lazy chunks via `web/src/lazy-chunk.ts` for the landing (in the app), Platform, Org settings, Artifacts, the Repo screen and marked + DOMPurify, each behind a skeleton facade with a small eager part (`platform-core`, `org-core` / `org-invite`, `artifacts-state`, `repo-core`, `markdown-load`); `withChunk` (`main.ts`) repaints once when one lands. App main bundle 437 → 218 kB gz; first app download 453 → 253 kB gz (#187)",
       ],
       fixed: [
         "A `github` part got deploys only from live webhook deliveries — never from the check runs and workflow runs reconcile backfills, nor from signals captured before the part (or its setting) existed: reconcile's `github_deploys` arm and `putPart` now replay the captured signals of 30 days through `signalMatchesPart` (`backfillGithubDeploys`, D1 only, no GitHub request)",
@@ -192,6 +223,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
+    prs: [186, 187],
   },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {

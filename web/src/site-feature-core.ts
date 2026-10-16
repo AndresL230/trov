@@ -2,6 +2,10 @@
 // around it. Its own module so render.ts and landing.ts can name the state without pulling the
 // controller (and the DOM types) into a program that has none.
 
+/** The landing's product tour, in its order (landing.ts draws a card for each; the dialog steps through them). */
+export const TOUR_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
+export type TourKey = (typeof TOUR_KEYS)[number];
+
 export type FxMode = "vt" | "css" | "none";
 /** `dir`: how the feature on screen was reached — 0 opened, 1 next, -1 previous. */
 export interface FeatureState { key: string; dir: -1 | 0 | 1; mode: FxMode }

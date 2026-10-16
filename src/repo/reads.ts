@@ -1,4 +1,8 @@
 // Every SELECT over the repo capture tables. D1 only — nothing here may fetch.
+// An async reader AWAITS its statement (`return await all(…)`), never hands its promise back: the Repo
+// dashboard starts these side by side, and a statement that fails at once (a binding that throws on
+// `prepare`) must be settled by THIS function, not left to a promise the runtime reports as unhandled
+// before the caller's handler is attached (`data-layer.md` › Round trips).
 import { type TenantContext, all, first, fanOut, ph } from "../data/sql";
 import { getSnapshot } from "./store";
 import type { RepoEventKind, RepoEventRow, RepoPrRow, RepoReviewRow, RepoRunRow } from "./types";
@@ -34,7 +38,7 @@ export async function recordingSince(ctx: TenantContext, kind: RepoEventKind): P
  *  open PRs must still resolve correctly, so this is NEVER time-bound; only
  *  its columns are narrowed. */
 export async function prStatesAsOf(ctx: TenantContext, asOfIso: string): Promise<RepoPrRow[]> {
-  return all<RepoPrRow>(ctx,
+  return await all<RepoPrRow>(ctx,
     `SELECT ${PR_ROW_COLS} FROM (
        SELECT ${PR_ROW_COLS}, ROW_NUMBER() OVER (PARTITION BY number ORDER BY occurred_at DESC, id DESC) AS rn
          FROM repo_events WHERE org_id = ? AND kind = 'pr' AND occurred_at <= ?
@@ -50,7 +54,7 @@ export async function recentPrRows(ctx: TenantContext, limit: number, sinceIso: 
   // the base table); the middle filters to the latest row per PR and orders/
   // limits by it (so `id` must still be a selected column there); the outer
   // finally drops `id`, leaving exactly the narrow row type.
-  return all<RepoPrRow>(ctx,
+  return await all<RepoPrRow>(ctx,
     `SELECT ${PR_ROW_COLS} FROM (
        SELECT id, ${PR_ROW_COLS} FROM (
          SELECT id, ${PR_ROW_COLS}, ROW_NUMBER() OVER (PARTITION BY number ORDER BY occurred_at DESC, id DESC) AS rn
@@ -67,7 +71,7 @@ export async function commitsByDay(ctx: TenantContext, sinceIso: string): Promis
 }
 
 export async function pushRowsSince(ctx: TenantContext, sinceIso: string): Promise<RepoEventRow[]> {
-  return all<RepoEventRow>(ctx,
+  return await all<RepoEventRow>(ctx,
     `SELECT * FROM repo_events WHERE org_id = ? AND kind = 'push' AND occurred_at > ? ORDER BY occurred_at DESC, id DESC`, ctx.orgId, sinceIso);
 }
 
@@ -97,17 +101,19 @@ const FAIL_STATES = ["failure", "error", "timed_out"];
  *  The snapshot wins only when it is NEWER than that branch's latest push (or
  *  when no push was ever captured for it) — a Sync is a point-in-time read, and
  *  a push that landed after it is the better answer. Two D1 statements whatever
- *  the branch count. */
+ *  the branch count, side by side (one round trip's wait). */
 export async function branchHeads(ctx: TenantContext, branches: string[]): Promise<Map<string, string>> {
   const refs = [...new Set(branches.filter(Boolean))];
   if (!refs.length) return new Map();
-  const rows = await fanOut<{ ref: string; sha: string; at: string }>(ctx, refs, (p) =>
-    `SELECT ref, sha, at FROM (
-       SELECT ref, sha, occurred_at AS at, ROW_NUMBER() OVER (PARTITION BY ref ORDER BY occurred_at DESC, id DESC) AS rn
-         FROM repo_events WHERE org_id = ? AND kind = 'push' AND ref IN (${p})
-     ) WHERE rn = 1 AND sha IS NOT NULL`, [ctx.orgId]);
+  const [rows, snap] = await Promise.all([
+    fanOut<{ ref: string; sha: string; at: string }>(ctx, refs, (p) =>
+      `SELECT ref, sha, at FROM (
+         SELECT ref, sha, occurred_at AS at, ROW_NUMBER() OVER (PARTITION BY ref ORDER BY occurred_at DESC, id DESC) AS rn
+           FROM repo_events WHERE org_id = ? AND kind = 'push' AND ref IN (${p})
+       ) WHERE rn = 1 AND sha IS NOT NULL`, [ctx.orgId]),
+    getSnapshot<Record<string, unknown>>(ctx, "env_heads"),
+  ]);
   const out = new Map(rows.map((r) => [r.ref, r.sha] as const));
-  const snap = await getSnapshot<Record<string, unknown>>(ctx, "env_heads");
   if (snap) {
     for (const ref of refs) {
       const sha = snap.data?.[ref];
@@ -174,7 +180,7 @@ export async function approvedPrs(ctx: TenantContext, numbers: number[]): Promis
 
 /** The most recent failed workflow runs in the window. */
 export async function ciFailureRows(ctx: TenantContext, sinceIso: string, limit: number): Promise<RepoRunRow[]> {
-  return all<RepoRunRow>(ctx,
+  return await all<RepoRunRow>(ctx,
     `SELECT name, ref, title, url, occurred_at FROM repo_events
       WHERE org_id = ? AND kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?
       ORDER BY occurred_at DESC, id DESC LIMIT ?`, ctx.orgId, sinceIso, limit);
@@ -217,7 +223,7 @@ export async function ciDailyRates(ctx: TenantContext, now: number): Promise<{ d
 }
 
 export async function reviewRowsSince(ctx: TenantContext, sinceIso: string): Promise<RepoReviewRow[]> {
-  return all<RepoReviewRow>(ctx,
+  return await all<RepoReviewRow>(ctx,
     `SELECT number, state, actor_login, url, occurred_at FROM repo_events
       WHERE org_id = ? AND kind = 'review' AND occurred_at > ? ORDER BY occurred_at DESC, id DESC`, ctx.orgId, sinceIso);
 }

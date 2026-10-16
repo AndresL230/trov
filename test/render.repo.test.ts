@@ -14,6 +14,10 @@ import { QUICK_SCREENS } from "../web/src/quicksearch";
 import mainSrc from "../web/src/main.ts?raw";
 import hashSrc from "../web/src/hash.ts?raw";
 import { REPO_TABS, type RepoDashboard, type RepoPerson, type RepoProductCount, type RepoProductEnv, type RepoRefreshResult } from "@shared/repo";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const NC = { status: "not_connected" } as const;
 const EMPTY = { status: "empty" } as const;

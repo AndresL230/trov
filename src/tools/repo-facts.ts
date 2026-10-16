@@ -186,10 +186,10 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
   const twoWeeksAgo = new Date(i.now - 14 * DAY).toISOString();
   const previewSince = new Date(i.now - FACTS_PREVIEW_DAYS * DAY).toISOString();
 
-  const repos = await all<{ repo_full_name: string; is_primary: number }>(ctx,
+  // The org's repositories: of the reads below, only the CI counts wait on it (the primary repository's alone).
+  const reposP = all<{ repo_full_name: string; is_primary: number }>(ctx,
     `SELECT repo_full_name, is_primary FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id`, ctx.orgId);
-  const primary = repos[0]?.repo_full_name ?? "";
-  const isPrimary = i.repo.toLowerCase() === primary.toLowerCase();
+  const primaryOf = (repos: { repo_full_name: string }[]) => i.repo.toLowerCase() === (repos[0]?.repo_full_name ?? "").toLowerCase();
 
   const envIndex = new Map(i.envs.map((e, n) => [e.key, n]));
   const appIndex = new Map(i.apps.map((a, n) => [a.key, n]));
@@ -200,13 +200,14 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
   // The release block reads the repository's releases (`releases`, per repository — so any connected one), narrowed by
   // the app's own release signal when the App menu names an app of this repository.
   const releaseApp = i.app && i.app !== REPO_WIDE && appIndex.has(i.app) ? i.app : null;
-  const [rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings, release, releasesWeek, found, unseen] = await Promise.all([
+  const [repos, rows, weekRows, nsSnap, oosSnap, chainSnap, runs, settings, release, releasesWeek, found, unseen] = await Promise.all([
+    reposP,
     mine.length ? factsDeploys(ctx, previewSince) : Promise.resolve([] as FactsDeployRow[]),
     mine.length ? deployWeekCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve([]),
     getSnapshot<NotShippedSnapshot>(ctx, "not_shipped"),
     getSnapshot<OutOfStepSnapshot>(ctx, "out_of_step"),
     getSnapshot<DriftChainSnapshot>(ctx, "drift_chain"),
-    isPrimary && i.runs.captured ? runCounts(ctx, weekAgo, twoWeeksAgo) : Promise.resolve(null),
+    reposP.then((repos) => (primaryOf(repos) && i.runs.captured ? runCounts(ctx, weekAgo, twoWeeksAgo) : null)),
     i.repo ? readRepoSettings(ctx, i.repo) : Promise.resolve(null),
     i.repo ? readRelease(ctx, i.repo, releaseApp) : Promise.resolve(null),
     i.repo ? releaseWeekFigure(ctx, i.repo, i.now) : Promise.resolve(null),
@@ -215,6 +216,7 @@ export async function readRepoFacts(ctx: TenantContext, i: FactsInputs): Promise
     i.repo ? readFound(ctx, i.repo, i.now) : Promise.resolve(null),
     i.repo ? readUnseen(ctx, i.repo, i.now) : Promise.resolve(null),
   ]);
+  const isPrimary = primaryOf(repos);
   const of = (p: PartRow) => (r: { env: string; part: string; provider: string }) => r.env === p.env && r.part === p.key && r.provider === p.provider;
 
   // ── parts ──────────────────────────────────────────────────────────────────

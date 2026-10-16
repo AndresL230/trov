@@ -19,7 +19,8 @@ import {
   startHostingConnect, testHosting, testOrgIntegration,
 } from "./api";
 import { notConnectedSentence } from "@shared/hosting-status-core";
-import { currentOrg, effectiveOrgTab, roleAtLeast } from "./org-settings";
+import { currentOrg, effectiveOrgTab } from "./org-core";
+import { roleAtLeast } from "./org-ui";
 import {
   bestMethod, connKey, connectionOf, draftKey, fieldOptions, hostingData, isHostingSampleKey, isHostingStackKey, leftoversOf, partDraftProblems, providerOf, providerStatusOf, scopeFor,
   tokenFormOk, tokenMethod, tokenWord, type HostingUi, type PartDraft,

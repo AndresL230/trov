@@ -14,7 +14,7 @@ import { morphStep } from "./transition";
 import type { AppState } from "./render";
 import type { OAuthGrantSummary } from "@shared/rows";
 import { agentStepState, effectiveWelcomeStep, isWelcomeStep, welcomeStepsFor, type WelcomeStep } from "./welcome";
-import { currentOrg } from "./org-settings";
+import { currentOrg } from "./org-core";
 
 /** The session key of "I left for GitHub from the wizard". A slug, a reason and a time — nothing secret. */
 export const WELCOME_RETURN_KEY = "trov.welcomeReturn";

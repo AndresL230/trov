@@ -26,6 +26,10 @@ import type { Screen } from "../web/src/render";
 import { skeleton, skBar, skBox, skLine, skLines, skRow, skList, skCard, skRows, skForm, skTable, skProse, skDetail, skKey, skW, SKEL_DELAY_MS } from "../web/src/skeleton";
 import { loadingNote } from "../web/src/org-ui";
 import { ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip } from "../web/src/mywork";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 type State = ReturnType<typeof initialState>;
 const app = (screen: Screen, over: Partial<State> = {}): State => ({
@@ -164,7 +168,7 @@ describe("Docs — loading", () => {
     expect(html).toContain('data-empty="doc"');
     expect(html).not.toContain("Select a doc from the tree.");
     // Docs exist in the space, none is picked: the prompt to pick.
-    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", body: "", current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
+    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", outline: [], current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
     expect(body(render(app("docs", { docsList: { status: "ok", data: [doc as never] }, docDetail: { status: "ok", data: null } })))).toContain("Select a doc from the tree.");
   });
 });

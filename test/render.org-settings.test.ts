@@ -21,6 +21,10 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import type { IntegrationDTO, IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO, OrgAuditDTO } from "@shared/integrations";
 import type { MyOrg, MyOrgsResponse, OrgInvite, OrgMember, OrgRole } from "@shared/orgs";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const SECRET = "ghp_THIS_IS_THE_SECRET_VALUE_1a2b";
 const HOOK = "hook_0123456789abcdef0123456789abcdef01234567";

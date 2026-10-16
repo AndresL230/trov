@@ -24,6 +24,10 @@ import { render, initialState, type AppState } from "../web/src/render";
 import { previewState } from "../web/src/preview";
 import { HOSTING_CONNECT_OUTCOMES, type HostingProviderDTO, type HostingProviderId, type HostingSetupDTO } from "@shared/hosting";
 import type { MyOrg, OrgRole } from "@shared/orgs";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const SECRET = "rnd_THIS_IS_THE_SECRET_VALUE_9z8y";
 const org = (role: OrgRole = "owner"): MyOrg => ({ slug: "acme", name: "Acme Robotics", role });

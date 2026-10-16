@@ -21,6 +21,15 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
   The bearer resolver is two reads: the credential by hash, then `liveTenants` for what it can reach now.
 - `c.var.ctx` / `c.var.p` are set by `src/data/gate.ts`. `tenantGate` is mounted ONCE, on `/api/o/:slug/*` in
   `src/routes.ts`, and meters the request — a sub-app never applies it again. See "Routes and gates" below.
+- **The session and the membership are ONE read on `/api/o/:slug/*`.** `sessionGate` (`src/auth/principal.ts`)
+  sees the path's slug (`tenantPathSlug`) and reads the session with `resolveSessionTenant` (`context.ts`):
+  the session row by id, LEFT JOINed to `resolveTenant`'s own statement for that slug with the session's
+  person as the user. The session half answers exactly as `getSessionUser` (no row or expired — `sessionLive`,
+  the one expiry rule — is the 401, whatever the org half says); the org half is left on `c.var.tenantHint`,
+  and `tenantGate` uses it ONLY when it is for the same person and the same `:slug` it resolves — otherwise
+  (DEV_LOGIN, which reads no session; a path the hint parsed differently) it calls `resolveTenant` itself.
+  Unknown slug, non-member, removed member and suspended org are the same 404; a superadmin is no member
+  (`test/data-layer.context.test.ts` › the merged read).
 - A repository never builds a context. A module that touches both kinds takes the tenant ctx and receives
   `p` as a parameter. (One exception: `createOrg` writes the new org's seed rows as `systemTenant(p, newId)`.)
 - `src/data/secrets.ts` reads its key through `kekOf(ctx)`; no other module can reach a context's `Env`.
@@ -312,7 +321,8 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 - **Raw artifact bytes** (`src/artifacts/raw.ts`) are ONE sub-app mounted at `/api/o/:slug/raw/a/…` and, as
   its alias, at `/raw/a/…`: the same lock-down headers, sandbox / CSP and access rules on both, wrapped by
   `rawHeaders` BEFORE the gates so the session gate's 401 and the tenant gate's 404 carry them too. Another
-  org's slug is the same 404 as an unknown one. Still the app's own origin — moving them off it is §8.6.
+  org's slug is the same 404 as an unknown one. One difference: a numbered version is browser-cacheable for a
+  year only on the per-org mount — the alias's org can change under the same URL (`artifacts.md` › caching). Still the app's own origin — moving them off it is §8.6.
 - **The SPA shell** is answered by `src/index.ts` for `GET /<slug>/` (a valid org slug that is not in `RESERVED_ORG_SLUGS`; the old `/o/<slug>/…` is a 301 to it) and `GET /platform*` (the superadmin's area
   outside any org); neither path reaches the session gate, and both hold no data.
 - **Roles** (§5.2): admin means `hasRole(ctx, "admin")` (admin or owner of the request's org) — in the repository
@@ -376,6 +386,55 @@ things that predate orgs:
 
 Also cut-over, with no org named: the legacy `POST /webhook/github` (`legacyHookRepo`, the `legacy_hook` flag),
 and `resolveSoleTenant` / `soleTenantGate` behind the old-path aliases.
+
+## Round trips
+
+Every `first` / `all` / `run` and every `batch` is a round trip to the D1 primary (region ENAM — `env.md` ›
+Placement), and a request's latency is set by the longest CHAIN of them, not by their number. So a handler
+starts every read it can at once (`Promise.all`, or a promise chained on exactly the read it needs) and awaits
+in series only what truly depends on an earlier answer. D1 queries do not count against the Worker's
+six-connection limit (fetch / KV / R2 / Cache do), so a wide `Promise.all` of reads is not throttled; a
+`batch` is also one trip, but runs as one transaction and takes prepared statements, so it suits a fixed set
+of statements rather than the repository functions a projection calls.
+
+A reader that may run beside others AWAITS its statement inside an `async` function (`return await all(…)`),
+never returns the helper's promise: when a statement fails at once (a binding whose `prepare` throws — the
+tests' "D1 is down" fakes), a promise handed back out of an `async` function is already rejected before the
+caller's handler reaches it, and workerd reports it as an unhandled rejection (`npm test` then exits 1). A
+plain (non-`async`) function that returns the helper's promise is fine (`getPerson`).
+
+- **`getRepoDashboard`** (`src/tools/repo.ts`) is a dataflow: each read starts once what it depends on is
+  known, and the projection waits once. The chains: `prs_reconciled` → the PR states (+ `recordingSince`, or
+  the ticket counts) → approvals and checks (checks also wait for the branch heads); a captured run → its
+  recording start + failure rows → the daily rate / the uncapped count; the usage points + the parts → the
+  usage "ever?" read (and the extras read, once the parts say a provider has extras); the parts → the
+  repository's apps (`listRepoApps`, its own reads side by side) → the narrowed part infos. Then the steps that
+  need the whole wave: the App menu's scope (`readScope`, multi-app repositories only) and the Overview's facts
+  (`readRepoFacts`, one `Promise.all` with the org's repositories read beside it — only the CI counts wait on
+  that). Conditional reads are still taken only on the path that needs them: the statements run, and the
+  answer, are the ones a serial run gave. `ticketCounts`, `listAllParts`, `branchHeads` and `list_sprints` read
+  their own parts side by side.
+- **`/auth/me`**: the session, then everything else in one `Promise.all`.
+- **`/api/o/:slug/*`**: the session and the membership in one statement (above).
+
+| Request (test seed) | Serial before → after | Statements before → after |
+|---|---|---|
+| `getRepoDashboard`, everything captured | 42 → 6 | 58 → 58 |
+| `getRepoDashboard`, environments but nothing captured | 34 → 7 | 48 → 48 |
+| `GET /api/o/:slug/repo/dashboard`, everything captured (gates + the repository and environments side by side + dashboard) | 40 → 7 | 54 → 53 |
+| `GET /auth/me` | 5 → 2 | 8 → 8 |
+| any `/api/o/:slug/*` request: the gates | 2 → 1 | 2 → 1 |
+| `/mcp` with a pasted token: the `last_used_at` write | every call → at most once a minute | |
+
+**A trip's own cost is its query plan.** A statement that compares without case (`person = ? COLLATE NOCASE`,
+like every handle) needs an index with THAT collation — SQLite cannot use a BINARY one for it. `identities` has
+`idx_identities_person_nocase` (0075) for every read of a person's identities (`listIdentities` on `/auth/me`,
+`memberGithubLogins`, the profile, the deletion): each was a full scan before. `test/perf.indexes.test.ts` holds
+those plans with EXPLAIN QUERY PLAN; a new hot read that must stay a search goes there.
+
+`test/helpers/d1-count.ts` wraps the D1 binding and counts both numbers (every trip waits the same short
+delay, so `serial` is the longest chain of trips that each waited for an earlier one); `test/perf.round-trips.test.ts`
+pins the table. A change that puts a read back in series fails there.
 
 ## Tests
 

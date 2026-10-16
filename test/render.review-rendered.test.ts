@@ -32,6 +32,11 @@ import { DEL_OPEN, INS_OPEN, htmlTokens, innersOf, mergeInline, replaced, withou
 import { diffViewer } from "../web/src/review";
 import { proposalReviewItem } from "../web/src/triage-map";
 import reviewRenderedSrc from "../web/src/review-rendered.ts?raw";
+import { setMarkdownLib } from "../web/src/markdown-load";
+import * as markdownLibModule from "../web/src/markdown-lib";
+
+// The Markdown chunk (marked's lexer, which md-blocks.ts cuts with) as if it had loaded.
+setMarkdownLib(markdownLibModule);
 import css from "../web/src/trov.css?raw";
 
 beforeEach(() => { md.calls.length = 0; });
