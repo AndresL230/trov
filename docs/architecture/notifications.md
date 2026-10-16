@@ -166,7 +166,7 @@ assembler to the org's address (`<origin>/<slug>/#…`).
     that ticket, a PR in their repository → its Repo dashboard (`#repo?repo=`), a feed entry → the Feed. Ratings made
     while the switch was on still count with it off (stored facts; nothing new is sent).
   - **One line per queue, only when it has something**: "Review: 3 waiting, 1 changes a decision" (the "changes a
-    decision" count is Sift's open `review.risk`, only with the AI switch on; with none the clause is dropped —
+    decision" count is Sift's open `review.risk`, only under the AI read rule (the switch on and a key — `ai.md` › The read rule); with none the clause is dropped —
     "Review: 3 waiting". Sent only to someone who can promote, `REVIEW_CONFIRMERS` — every role today,
     organizations.md §4; owner ruling Q44), "Sprint: Hosting, due Fri, 2 of 5
     done" (the person's sprint in progress, else the org's due soonest; "due Fri" within 6 days, "due Nov 2" past
@@ -178,7 +178,7 @@ assembler to the org's address (`<origin>/<slug>/#…`).
 - **Weekly** — the brief (it rides along on the weekly even for someone who gets it daily, when the weekly has
   anything else: `selectKinds`), then **This week** (`week_recap`, `renderers/week-recap.ts`): at most 3 cited
   highlights the AI pass's `digest.week` job stored for the week (`digest_highlights`, 0067; `ai.md` › The weekly
-  highlights) — shown only while the AI switch is on, a row failing its schema is not shown — then ONE numbers line
+  highlights) — shown only under the AI read rule (the switch on and a key), a row failing its schema is not shown — then ONE numbers line
   the server computes: "12 pull requests merged, 4 tickets done, 9 entries in the Feed" (zero parts left out; the
   PR count only with a repository connected — unknown is left out, never 0). Then the queue lines.
 

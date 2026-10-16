@@ -22,7 +22,7 @@ import { SprintCreate } from "@shared/sprints";
 import type { Window } from "@shared/notifications";
 import { aiItemRef } from "@shared/ai";
 import type { CapturedEvent } from "@shared/contract";
-import { useAiKey } from "./helpers/ai-key";
+import { useAiKey, withoutAiKey } from "./helpers/ai-key";
 
 // THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
 useAiKey();
@@ -278,6 +278,8 @@ describe("review_queue renderer: one line", () => {
     expect(off.text).toBe("Review: 2 waiting");
     await aiOn();
     expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.text).toBe("Review: 2 waiting, 1 changes a decision");
+    // No key reads like the switch off (the AI read rule): the clause goes, as the Review card's risk does.
+    expect((await withoutAiKey(() => kind().render(systemCtx(), LOGIN, WINDOW)))!.text).toBe("Review: 2 waiting");
     // Q44: with no risk suggestion the clause is dropped — never "0 change a decision".
     await run(env.DB, `UPDATE ai_suggestions SET state = 'dismissed'`);
     expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.text).toBe("Review: 2 waiting");

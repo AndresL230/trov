@@ -1,8 +1,8 @@
 // week_recap — the weekly e-mail's "This week" (Phase E; notifications.md › The weekly). A PURE READ:
 //
 //   • THE HIGHLIGHTS — at most 3 cited lines the AI pass's `digest.week` job stored for this week
-//     (src/data/digest-highlights.ts; ONE batch request per org per week, shared by every member). Shown only while
-//     the org's AI switch is on; a row that fails its schema is not shown. No row → no highlights (never a guess).
+//     (src/data/digest-highlights.ts; ONE batch request per org per week, shared by every member). Shown only under
+//     THE AI read rule (`aiShown`: the switch on and a key); a row that fails its schema is not shown. No row → no highlights (never a guess).
 //   • ONE NUMBERS LINE — computed by the server from D1, never by the model: pull requests merged (only when the org
 //     has a repository connected — unknown is left out, never 0), tickets a person marked done, entries in the Feed.
 //
@@ -13,7 +13,7 @@ import type { NotificationKind, Section, Window } from "@shared/notifications";
 import { type TenantContext, first } from "../../data/sql";
 import { weekHighlights } from "../../data/digest-highlights";
 import { primaryRepo } from "../../integrations/settings";
-import { planAndAiRuns } from "../../plans/gate";
+import { aiShown } from "../../plans/gate";
 import { escapeHtml, isoOf } from "../html";
 import { EMAIL_STYLE as S, EMAIL_SPACE as SP, appHref } from "../assemble";
 
@@ -22,7 +22,7 @@ const Highlights = z.array(AiLineSchema).max(3);
 
 /** The stored highlights for the window's week, or [] (none, AI off, or a row that fails its schema). */
 export async function storedHighlights(ctx: TenantContext, window: Window): Promise<AiLine[]> {
-  if (!(await planAndAiRuns(ctx, window.end)).enabled) return [];
+  if (!(await aiShown(ctx, window.end)).shown) return [];
   const row = await weekHighlights(ctx, window.id);
   if (!row) return [];
   try {

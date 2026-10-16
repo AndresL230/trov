@@ -26,6 +26,12 @@ import { all, first, run } from "./helpers/db";
 import { ORG_A, ORG_B, platformCtx, systemCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
 import { keyedEnv, markRow, stubProviders, succeededLine, type Stub } from "./helpers/ai-pass";
+import { useAiKey, withoutAiKey } from "./helpers/ai-key";
+import { storedHighlights } from "../src/notifications/renderers/week-recap";
+
+// THE AI read rule (src/plans/gate.ts `aiShown`): the weekly's highlights show only with a key, so these tests hold a
+// fake one on the pool's env (the pass is handed its own keyed env and stub providers).
+useAiKey();
 
 const REPO = "SaplingLearn/sapling";
 const TZ = "America/New_York";
@@ -178,6 +184,11 @@ describe("digest.week — one Batch API request per org per week, its cites chec
     expect(body.html).not.toContain("data-week-highlights");
     expect(body.html).not.toContain("Stored before the switch went off.");
     expect(body.text).toContain("2 pull requests merged, 1 ticket done, 1 entry in the Feed");
+    // No key reads exactly like the switch off (the read rule): switched back on, still none without a key.
+    await run(env.DB, `UPDATE orgs SET ai_automation = 1 WHERE id = ?`, ORG_A);
+    const window = computeWindow("weekly", SEND, TZ);
+    expect((await storedHighlights(systemCtx(ORG_A), window)).map((h) => h.text)).toEqual(["Stored before the switch went off."]);
+    expect(await withoutAiKey(() => storedHighlights(systemCtx(ORG_A), window))).toEqual([]);
   });
 
   it("the input is the org's own week only, in the server's order (breaking first), read up to the send", async () => {

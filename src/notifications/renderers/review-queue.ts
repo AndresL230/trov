@@ -1,7 +1,7 @@
 import type { NotificationKind, Section } from "@shared/notifications";
 import { type TenantContext, all, first, ph } from "../../data/sql";
 import { list_proposals, list_adrs } from "../../tools/reads";
-import { planAndAiRuns } from "../../plans/gate";
+import { aiShown } from "../../plans/gate";
 import { queueLine } from "../assemble";
 
 const DEEP_LINK = "/#review";
@@ -12,10 +12,11 @@ const decisionRef = (id: number) => `adr:${id}`;
 
 /**
  * How many of the waiting items Sift rated "changes a decision" (Phase C's `review.risk`, the open suggestion the
- * Review card shows). Only while the org's AI switch is on; unknown is left out of the line, never 0.
+ * Review card shows). Only under THE AI read rule (`aiShown`: the switch on AND a key — no key reads like off, as on
+ * the Review card itself); unknown is left out of the line, never 0.
  */
 async function changesADecision(ctx: TenantContext, refs: string[]): Promise<number | null> {
-  if (!refs.length || !(await planAndAiRuns(ctx)).enabled) return null;
+  if (!refs.length || !(await aiShown(ctx)).shown) return null;
   const rows = await all<{ item_ref: string }>(ctx,
     `SELECT DISTINCT item_ref FROM ai_suggestions
       WHERE org_id = ? AND item_type = 'proposal' AND kind = 'review.risk' AND state = 'open'
