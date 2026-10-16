@@ -74,8 +74,8 @@ input, select { font-family: inherit; }
    closes as one rectangle — Brief tall beside Needs your review over Tickets; Your sessions tall beside
    Repo over Docs you own and Queued handoffs. */
 .mw-bento-brief { grid-template-areas:
-  "brief brief brief brief brief brief brief brief review review review review"
-  "brief brief brief brief brief brief brief brief tickets tickets tickets tickets"
+  "brief brief brief brief brief brief brief review review review review review"
+  "brief brief brief brief brief brief brief tickets tickets tickets tickets tickets"
   "sessions sessions sessions sessions repo repo repo repo repo repo repo repo"
   "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }
 /* NO tile scrolls (the owner, BR-OWNER-1 — replacing the fixed-height rows of earlier on 2026-10-15): the rows
@@ -83,6 +83,21 @@ input, select { font-family: inherit; }
    below), Needs your review and Tickets show at most three rows, Your sessions two, Repo keeps its own floor.
    Brief = rows 1 + 2, Your sessions = rows 3 + 4. */
 .mw-bento-brief > [data-mw="brief"] { grid-area:brief; }
+/* Beside the brief (BR-OWNER-2; mywork.ts `MW_BESIDE_ROWS`): Needs your review and Tickets for you, five columns
+   wide, two rows each in fixed boxes — a two-line title (its whole text the tooltip when longer), one line under
+   it — then the "N more" line, its place kept when there is none; unused rows are kept empty. Every state of the
+   tile fills the same body (`.mw-side-body`), so the pair is one height and lines up with the brief. */
+.mw-side-body { display:flex; flex-direction:column; flex:1 1 auto; }
+.mw-side-body[data-side="review"] { min-height:259px; }
+.mw-side-body[data-side="tickets"] { min-height:239px; }
+.mw-side-rows { display:flex; flex-direction:column; flex:1 1 auto; }
+.mw-side-row { box-sizing:border-box; height:84px; flex:none; overflow:hidden; }
+.mw-side-pad { border-top:1px solid transparent; }
+.mw-side-title { display:-webkit-box !important; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; height:40px; line-height:20px !important; overflow:hidden; overflow-wrap:anywhere; }
+.mw-side-meta { flex-wrap:nowrap !important; height:20px; line-height:20px; white-space:nowrap; overflow:hidden; }
+.mw-side-sub { box-sizing:border-box; height:32px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mw-side-foot { box-sizing:border-box; height:39px; line-height:20px; margin-top:auto; flex:none; }
+.mw-side-foot-pad { border-top:1px solid transparent; }
 .mw-bento-brief > [data-mw="review"] { grid-area:review; }
 .mw-bento-brief > [data-mw="tickets"] { grid-area:tickets; }
 .mw-bento-brief > [data-mw="sessions"] { grid-area:sessions; }
@@ -111,6 +126,7 @@ input, select { font-family: inherit; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
   .mw-bento-brief { grid-template-areas:none; }
+  .mw-side-body[data-side] { min-height:0; }
   .mw-bento-brief > .mw-tile { grid-area:auto; grid-column:span 12; }
   .mw-bento-brief > .cnpy-ai-leave { grid-area:auto; grid-column:span 12; }
   .mw-lib { grid-template-columns:minmax(0,1fr); }
@@ -122,34 +138,41 @@ input, select { font-family: inherit; }
    already scales); nothing here declares one. */
 .mw-brief-grid { display:grid; grid-template-columns:76px minmax(0,1fr); column-gap:14px; row-gap:12px; min-width:0; }
 /* Your brief's ONE shape (BR-OWNER-1; mywork.ts `briefTile`, shared/ai-core.ts `AI_BRIEF_*`): every box has a fixed
-   height, so every brief is the same height — a sentence is a two-line box (a 160-character sentence fits it at a
-   1440px window) over its one-line row of sources, and Next is three rows of a one-line title over a one-line why
-   (80 characters fit). Now 44+6+20, Recently the same, Next 3×40 + 2×8, with the grid's two 12px gaps: 300px, which
-   the empty and capped states hold too (`.mw-brief-body`). Anything longer (an older brief) is clamped, its whole
-   text the tooltip; nothing scrolls. Narrower bentos (≤1040px) give the sentence three lines and the why two (404px);
-   once the bento is one column (700px) the boxes take their text's height up to a clamp. */
-.mw-brief-body { min-height:300px; display:flex; flex-direction:column; gap:8px; }
-.mw-brief-text { margin:0; font-size:14px; line-height:22px; height:44px; overflow:hidden; overflow-wrap:anywhere; text-wrap:pretty; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+   height, so every brief is the same height — a sentence and its one-line row of sources right under it fill one
+   box that has room for three lines of text (a 160-character sentence takes two at a 1440px window), and Next is three rows of a one-line title over a two-line why
+   (an 80-character why). Now 66+6+20, Recently the same, Next 3×60 + 2×8, with the grid's two 12px gaps: 404px,
+   which the empty and capped states hold too (`.mw-brief-body`), as an unwritten one holds the byline's place.
+   Beside it Needs your review and Tickets for you are fixed too (`.mw-side-*`, BR-OWNER-2); the brief's three parts
+   share out what the row has over them (`align-content:space-between`), so the three tiles line up with no gap left
+   ragged. Anything longer (an older brief) is clamped, its whole text the tooltip; nothing scrolls. A narrow bento
+   (≤860px) gives the sentence four lines and the why three (508px); once it is one column (700px) the boxes take
+   their text's height up to a clamp. */
+.mw-brief-main { flex:1 1 auto; }
+.mw-brief-body { min-height:404px; flex:1 1 auto; display:flex; flex-direction:column; gap:8px; }
+.mw-brief-body > .mw-brief-grid { flex:1 1 auto; align-content:space-between; }
+.mw-brief-line { height:92px; }
+.mw-brief-text { margin:0; font-size:14px; line-height:22px; max-height:66px; overflow:hidden; overflow-wrap:anywhere; text-wrap:pretty; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; }
 .mw-brief-cites { display:flex; align-items:center; gap:6px; height:20px; font-size:12.5px; line-height:20px; white-space:nowrap; overflow:hidden; min-width:0; }
 .mw-brief-none { color:var(--fg-55); }
 .mw-brief-list { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; min-width:0; }
-.mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:40px; }
+.mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:60px; }
 .mw-brief-mark { flex:0 0 auto; min-width:76px; line-height:20px; }
 .mw-brief-item { display:flex; flex-direction:column; flex:1 1 auto; min-width:0; }
-.mw-brief-title, .mw-brief-why { display:block; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
-.mw-brief-title { font-size:14px; }
-.mw-brief-why { font-size:13px; color:var(--fg-55); }
+.mw-brief-title { display:block; font-size:14px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.mw-brief-why { font-size:13px; line-height:20px; height:40px; color:var(--fg-55); overflow:hidden; overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; min-width:0; }
 /* The byline's place when nothing is written yet (its height: 8 + 28 + 8 and the 1px rule). */
 .mw-brief-footpad { flex:none; height:45px; margin-top:auto; }
-@container mwmain (max-width: 1040px) {
-  .mw-brief-body { min-height:404px; }
-  .mw-brief-text { height:66px; -webkit-line-clamp:3; line-clamp:3; }
-  .mw-brief-next { height:60px; }
-  .mw-brief-why { white-space:normal; height:40px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+@container mwmain (max-width: 860px) {
+  .mw-brief-body { min-height:508px; }
+  .mw-brief-line { height:114px; }
+  .mw-brief-text { max-height:88px; -webkit-line-clamp:4; line-clamp:4; }
+  .mw-brief-next { height:80px; }
+  .mw-brief-why { height:60px; -webkit-line-clamp:3; line-clamp:3; }
 }
 @container mwmain (max-width: 700px) {
   .mw-brief-body { min-height:0; }
-  .mw-brief-text { height:auto; -webkit-line-clamp:4; line-clamp:4; }
+  .mw-brief-line { height:auto; }
+  .mw-brief-text { max-height:none; -webkit-line-clamp:4; line-clamp:4; }
   .mw-brief-cites { height:auto; flex-wrap:wrap; white-space:normal; }
   .mw-brief-next { height:auto; }
   .mw-brief-pad, .mw-brief-footpad { display:none; }

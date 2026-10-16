@@ -104,12 +104,12 @@ export interface MwDue { label: string; soon: boolean; overdue?: boolean }
 
 /** One ticket assigned to me. The row NAVIGATES (a ticket is a D1 row on this
  *  origin, never the GitHub issue itself — ADR-007), and shows no numeric id. */
-export function mwTicketRow(t: MyWorkTicket, due: MwDue | null = null): string {
-  return `<button data-act="openTicket" data-arg="${t.id}" class="mw-row" style="${ROW}">
+export function mwTicketRow(t: MyWorkTicket, due: MwDue | null = null, beside = false): string {
+  return `<button data-act="openTicket" data-arg="${t.id}" class="mw-row${beside ? " mw-side-row" : ""}" style="${ROW}">
     ${prioLabel(t.priority === "normal" ? "Normal" : t.priority === "high" ? "High" : "Low", PRIO_COLOR[t.priority])}
     <span style="flex:1;min-width:0;display:block">
-      <span style="${ROW_TITLE}">${esc(t.title)}</span>
-      <span style="${META}">
+      <span${beside ? ` class="mw-side-title"${sideTip(t.title)}` : ""} style="${ROW_TITLE}">${esc(t.title)}</span>
+      <span${beside ? ` class="mw-side-meta"` : ""} style="${META}">
         <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${ticketStatusIcon(t.status, 12, false)}${esc(TICKET_STATUS_LABEL[t.status])}</span>
         ${sep}<span style="white-space:nowrap">${esc(t.sprint?.label ?? "Backlog")}</span>
         ${due ? `${sep}<span style="white-space:nowrap;color:${due.overdue ? "var(--red)" : due.soon ? "var(--amber)" : "var(--fg-40)"}">${due.overdue ? "overdue" : "due"} ${esc(due.label)}</span>` : ""}
@@ -125,6 +125,19 @@ export interface MwListSlice<T> { load: MwLoad; rows: T[]; total?: number; expan
 
 /** The design's tile height: at most this many rows until the person asks for more. */
 export const MW_ROWS = 3;
+
+// ── beside Your brief (owner, BR-OWNER-2) ────────────────────────────────────
+// With the brief, Needs your review and Tickets for you sit beside it, wider (trov.css `.mw-bento-brief`), and hold
+// TWO rows each in fixed boxes — a two-line title, one line under it — then their "N more" line, its place kept when
+// there is none, and unused rows kept empty: so each tile is one height whatever it holds, the pair lines up with
+// the brief, and nothing scrolls. Without the brief they are exactly as before.
+export const MW_BESIDE_ROWS = 2;
+/** A title that may not fit its two lines: its whole text is the tooltip. */
+const sideTip = (title: string): string => (title.length > 40 ? ` data-mtip="${attr(title)}"` : "");
+const sidePads = (n: number): string =>
+  Array.from({ length: Math.max(0, MW_BESIDE_ROWS - n) }, () => `<div class="mw-side-row mw-side-pad" aria-hidden="true"></div>`).join("");
+/** The "N more" line's place: the line itself, or kept empty. */
+const sideFoot = (line: string): string => line || `<div class="mw-side-foot mw-side-foot-pad" aria-hidden="true"></div>`;
 const FOOT_BTN = "padding:9px 16px;font-size:12.5px;color:var(--fg-40);text-align:left";
 /** "Show N more" reveals only rows already loaded (N is what a click can actually
  *  show); what lies past the capped read is a link to where it lives. */
@@ -153,7 +166,7 @@ export const MW_EMPTY = {
   repo: "No repository is connected. Pull requests, CI and deploys show here at a glance once one is.",
 } as const;
 
-export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, span: number, dueOf: (t: MyWorkTicket) => MwDue | null = () => null): string {
+export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, span: number, dueOf: (t: MyWorkTicket) => MwDue | null = () => null, beside = false): string {
   const total = Math.max(sl.total ?? 0, sl.rows.length);
   const soon = sl.rows.filter((t) => dueOf(t)?.soon).length;
   const late = sl.rows.filter((t) => dueOf(t)?.overdue).length;
@@ -162,30 +175,45 @@ export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, sp
     : "";
   const body = degraded ? tileNote("Couldn't load your assigned tickets right now.")
     : sl.load === "pending" ? tileSkeleton("tickets", MW_ROWS, { lead: 32 })
-    : sl.rows.length === 0 ? tileEmpty("tickets", MW_EMPTY.tickets, { label: "Submit a ticket", act: "newTicket" }, 2, { lead: 32 })
+    // Beside the brief its empty layout draws one row, so it fits the tile's one height (`.mw-side-body`).
+    : sl.rows.length === 0 ? tileEmpty("tickets", MW_EMPTY.tickets, { label: "Submit a ticket", act: "newTicket" }, beside ? 1 : 2, { lead: 32 })
     : capped(sl, "tickets", (t) => mwTicketRow(t, dueOf(t)), { act: "mwAllTickets", label: (n) => `${n} more in the queue` });
+  if (beside) {
+    // Two rows, then "N more in the queue" (the queue, filtered to mine), as the capped list's own link reads.
+    const shown = sl.rows.slice(0, MW_BESIDE_ROWS);
+    const past = total - shown.length;
+    const rows = degraded || sl.load === "pending" || !sl.rows.length ? body
+      : `<div class="mw-side-rows">${shown.map((t) => mwTicketRow(t, dueOf(t), true)).join("")}${sidePads(shown.length)}${sideFoot(past > 0
+        ? `<button data-act="mwAllTickets" class="mw-more mw-side-foot" style="${FOOT_BTN};display:flex;align-items:center;justify-content:flex-end;gap:4px;width:100%">${esc(`${past} more in the queue`)}${ARROW}</button>`
+        : "")}</div>`;
+    const line = sub ? sub.replace(`<div style="`, `<div class="mw-side-sub" style="`) : `<div class="mw-side-sub" aria-hidden="true"></div>`;
+    return tile("tickets", span, "Tickets for you", `${tileHead("Tickets for you", { act: "goTickets", label: "Queue" })}<div class="mw-side-body" data-side="tickets">${line}${rows}</div>`);
+  }
   return tile("tickets", span, "Tickets for you", `${tileHead("Tickets for you", { act: "goTickets", label: "Queue" })}${sub}${body}`);
 }
 
 /** Needs your review: the Review queue's top three, each with its verdict buttons (the
  *  same reviewAccept / reviewReject acts the Review screen dispatches). */
-export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): string {
+export function reviewTile(items: ReviewHead[], load: MwLoad, span: number, beside = false): string {
   const head = tileHead(`<span style="display:inline-flex;align-items:center;gap:7px">${dot("var(--accent)")}Needs your review</span>`, { act: "goReview", label: "View all" });
-  if (load === "pending") return tile("review", span, "Needs your review", `${head}${tileSkeleton("review", 2, { trail: 96, top: 12 })}`);
-  if (load !== "ok") return tile("review", span, "Needs your review", `${head}${tileNote("Couldn't load the review queue.")}`);
+  // Beside the brief every state sits in the one fixed body (trov.css `.mw-side-body`), so the tile never changes height.
+  const body = (inner: string): string => (beside ? `<div class="mw-side-body" data-side="review">${inner}</div>` : inner);
+  if (load === "pending") return tile("review", span, "Needs your review", `${head}${body(tileSkeleton("review", 2, { trail: 96, top: 12 }))}`);
+  if (load !== "ok") return tile("review", span, "Needs your review", `${head}${body(tileNote("Couldn't load the review queue."))}`);
   if (items.length === 0) {
     // Clear: the tile keeps its place (and its header) and draws its rows empty.
-    return tile("review", span, "Needs your review", `${head}${tileEmpty("review", MW_EMPTY.review, null, 2, { trail: 96, top: 12 })}`);
+    return tile("review", span, "Needs your review", `${head}${body(tileEmpty("review", MW_EMPTY.review, null, 2, { trail: 96, top: 12 }))}`);
   }
   const staged = items.filter((i) => i.kind === "proposal").length;
   const decide = items.length - staged;
   // The big number is the total, so the sentence names counts only when it splits it: "to promote" under a
   // lone 1, "1 to promote, 2 to ratify" under a 3.
   const sentence = staged && decide ? `${staged} to promote, ${decide} to ratify` : staged ? "to promote" : "to ratify";
-  const rows = items.slice(0, 3).map((it) => `<div class="mw-row" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
+  const n = beside ? MW_BESIDE_ROWS : 3;
+  const rows = items.slice(0, n).map((it) => `<div class="mw-row${beside ? " mw-side-row" : ""}" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
       <button data-act="mwOpenReview" data-arg="${attr(it.id)}" style="flex:1;min-width:0;display:block;text-align:left;padding:0">
-        <span style="${ROW_TITLE}">${esc(it.title)}</span>
-        <span style="${META};margin-top:4px">
+        <span${beside ? ` class="mw-side-title"${sideTip(it.title)}` : ""} style="${ROW_TITLE}">${esc(it.title)}</span>
+        <span${beside ? ` class="mw-side-meta"` : ""} style="${META};margin-top:4px">
           <span style="white-space:nowrap;color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
           ${sep}<span style="white-space:nowrap">${esc(it.time)}</span>
         </span>
@@ -195,14 +223,16 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
         <button data-act="reviewAccept" data-arg="${attr(it.id)}" class="cnpy-accentbtn" style="height:26px;padding:0 10px;border-radius:6px;background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:500">${it.kind === "decision" ? "Ratify" : "Promote"}</button>
       </div>
     </div>`).join("");
-  const more = items.length > 3
-    ? `<button data-act="goReview" class="mw-more" style="padding:9px 16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40);margin-top:auto;text-align:left">${items.length - 3} more in Review</button>`
+  const more = items.length > n
+    ? `<button data-act="goReview" class="mw-more${beside ? " mw-side-foot" : ""}" style="padding:9px 16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40);margin-top:auto;text-align:left">${items.length - n} more in Review</button>`
     : "";
-  return tile("review", span, "Needs your review", `${head}
-    <div style="display:flex;align-items:baseline;gap:10px;padding:8px 16px 12px;flex-wrap:wrap">
+  const count = `<div${beside ? ` class="mw-side-count"` : ""} style="display:flex;align-items:baseline;gap:10px;padding:8px 16px 12px;flex-wrap:wrap">
       <span style="font-size:32px;font-weight:500;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">${items.length}</span>
       <span style="font-size:13.5px;color:var(--fg-55);white-space:nowrap">${sentence}</span>
-    </div>
+    </div>`;
+  if (beside) return tile("review", span, "Needs your review", `${head}${body(`${count}<div class="mw-side-rows">${rows}${sidePads(Math.min(items.length, n))}${sideFoot(more)}</div>`)}`);
+  return tile("review", span, "Needs your review", `${head}
+    ${count}
     <div class="mw-scroll" style="display:flex;flex-direction:column;flex:1">${rows}${more}</div>`);
 }
 
@@ -433,8 +463,8 @@ export function briefNextMark(it: AiBriefNextItem): string {
 // at phone width they clamp instead. The producer holds the caps; the clamps are for anything older or longer,
 // whose full text is then the box's tooltip (`data-mtip`).
 
-/** A title longer than this may not fit its one line on desktop: its whole text is the row's tooltip. */
-const BRIEF_TITLE_TIP = 70;
+/** A title longer than this may not fit its one line in a narrower bento: its whole text is the row's tooltip. */
+const BRIEF_TITLE_TIP = 40;
 const NOTHING_NEW = "Nothing new.";
 const tipIf = (text: string, max: number): string => (text.length > max ? ` data-mtip="${attr(text)}"` : "");
 
@@ -443,7 +473,7 @@ function briefLine(line: AiLine | null, i: number): string {
     ? `<p class="mw-brief-text"${tipIf(line.text, AI_BRIEF_LINE_MAX)}>${esc(line.text)}</p>`
     : `<p class="mw-brief-text mw-brief-none">${NOTHING_NEW}</p>`;
   const cites = line?.cites.length ? aiCites(line.cites.slice(0, AI_BRIEF_CITES_MAX)) : "";
-  return `<div class="cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
+  return `<div class="mw-brief-line cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
       ${text}<div class="mw-brief-cites"${cites ? "" : ` aria-hidden="true"`}>${cites}</div>
     </div>`;
 }
@@ -501,7 +531,7 @@ export function briefTile(b: AiBrief, hidden = false, span = 7): string {
   const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>`
     // Nothing written yet has no byline: its place is kept, so even this tile is the one height.
     : `<div class="mw-brief-footpad" aria-hidden="true"></div>`;
-  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
+  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-brief-main" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────

@@ -2723,8 +2723,9 @@ function myWorkView(s: AppState): string {
       : mwSpans(order, strips);
   const libTiles = brief ? libraryTiles(library) : null;
   const tile: Record<string, () => string> = {
-    tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf),
-    review: () => reviewTile(reviewItems, reviewLoad, span.review),
+    // Beside the brief, Needs your review and Tickets for you hold two rows each in fixed boxes (BR-OWNER-2).
+    tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf, !!brief),
+    review: () => reviewTile(reviewItems, reviewLoad, span.review, !!brief),
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
     repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
     library: () => libraryStrip(library, span.library),

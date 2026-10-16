@@ -131,7 +131,7 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     expect(tile).toContain('data-settle-with="mw-tickets"');
     // The one shape (BR-OWNER-1): Recently is empty here, so it says "Nothing new." in its slot; Next has two
     // items and keeps its third row, empty; the byline keeps its step.
-    expect([...tile.matchAll(/class="(?:mw-brief-next )?cnpy-rise" style="--i:(\d+)[;"]/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 3, 4, 6]);
+    expect([...tile.matchAll(/class="(?:mw-brief-(?:next|line) )?cnpy-rise" style="--i:(\d+)[;"]/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 3, 4, 6]);
     expect(t).toContain("Recently Nothing new.");
     expect(tile).toContain('<li class="mw-brief-next mw-brief-pad" aria-hidden="true"></li>');
     expect(tile).not.toContain("mw-scroll");

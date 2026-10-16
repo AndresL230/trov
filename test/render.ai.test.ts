@@ -229,9 +229,10 @@ describe("My Work › Your brief", () => {
     expect(slots(noNext)).toBe(AI_BRIEF_NEXT_MAX);
     // Every state holds the ready brief's height: the body box (trov.css `.mw-brief-body`).
     for (const st of ["ready", "empty", "capped"] as const) expect(briefTile(briefFixture(st, NOW))).toContain('<div class="mw-brief-body">');
-    expect(css).toContain(".mw-brief-body { min-height:300px;");
-    expect(css).toContain(".mw-brief-text { margin:0; font-size:14px; line-height:22px; height:44px;");
-    expect(css).toContain(".mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:40px; }");
+    // Fixed boxes: a sentence and its sources 92px (three lines of room), a Next row 60px; the body 404px.
+    expect(css).toContain(".mw-brief-body { min-height:404px;");
+    expect(css).toContain(".mw-brief-line { height:92px; }");
+    expect(css).toContain(".mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:60px; }");
   });
   it("clamps an older, longer brief: three Next rows at most, the whole text as the box's tooltip, never cut in the markup", () => {
     const b = briefFixture("ready", NOW);
