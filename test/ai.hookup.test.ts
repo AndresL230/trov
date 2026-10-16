@@ -2,7 +2,7 @@
 // real webhook path → the AI pass (both providers stubbed at the `Response` level) writes a session digest through
 // the gate and a `repo_state` version → the REAL reads (`GET /repo/dashboard` and MCP `get_repo_dashboard`, `GET
 // /feed` and MCP `get_feed`) carry `RepoDashboard.state` and `FeedRow.ai` → the EXISTING screens render them: Repo ›
-// Overview › State (`web/src/repo-ai.ts` `repoStateSection`, via `web/src/repo.ts` `repoAiSection`) and the Feed's
+// Summary › State (`web/src/repo-ai.ts` `repoStateSection`, the Repo screen's Summary tab in `web/src/repo.ts`) and the Feed's
 // Trov entry, Source switch and note (`web/src/render.ts`). Then "Wrong?" — the body the rendered button carries,
 // posted to the real route — hides exactly that item on the next read, for that person only.
 //
@@ -144,7 +144,7 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect(dash).not.toHaveProperty("state");
     const { feed } = await get<{ feed: FeedRow[] }>("/feed", cookie);
     expect(feed.some((r) => "ai" in r)).toBe(false);
-    const repoHtml = w.render(appState(w, { screen: "repo", repoTab: "overview", repo: { status: "ok", data: dash } }));
+    const repoHtml = w.render(appState(w, { screen: "repo", repoTab: "summary", repo: { status: "ok", data: dash } }));
     expect(repoHtml).not.toContain('data-ai="repo_state"');
     const feedHtml = w.render(appState(w, { screen: "feed", feed: { status: "ok", data: feed } }));
     expect(feedHtml).not.toContain('data-ai="feed"');
@@ -164,7 +164,7 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect([s.jev, s.haiku]).toEqual([2, 2]);
 
     const cookie = await cookieFor(ME);
-    // ── Repo › Overview › State ──
+    // ── Repo › Summary (State) ──
     const dash = await get<RepoDashboard>("/repo/dashboard", cookie);
     const state = AiRepoStateSchema.parse(dash.state);
     expect(state).toMatchObject({ state: "ready", model: "claude-haiku-5-5", headline: "Hosting providers landed on main.", inFlight: [], attention: [] });
@@ -174,7 +174,7 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect((await mcp<{ state?: unknown }>("get_repo_dashboard", { tab: "overview" })).state).toEqual(dash.state);
     expect((await mcp<{ state?: unknown }>("get_repo_dashboard", {})).state).toEqual(dash.state);
 
-    const repoHtml = w.render(appState(w, { screen: "repo", repoTab: "overview", repo: { status: "ok", data: dash } }));
+    const repoHtml = w.render(appState(w, { screen: "repo", repoTab: "summary", repo: { status: "ok", data: dash } }));
     expect(repoHtml).toContain('data-ai="repo_state" data-ai-state="ready"');
     expect(repoHtml).toContain("Hosting providers landed on main.");
     expect(repoHtml).toContain("Hosting providers connect to a repository.");

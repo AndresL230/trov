@@ -47,7 +47,7 @@
 // had for a junk hash.
 
 import type { Screen } from "./render";
-import { isRepoTab, type RepoTab } from "@shared/repo";
+import { isRepoScreenTab, type RepoScreenTab } from "@shared/repo";
 import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
 import { RELEASES, releaseSlug, type ReleasePage } from "./releases";
@@ -71,7 +71,7 @@ export interface Route {
   /** Set only on `sprint`. */
   sprintId: number | null;
   /** Set only on `repo` (absent everywhere else, so older routes compare equal). */
-  repoTab?: RepoTab;
+  repoTab?: RepoScreenTab;
   /** Set only on `repo`, when it reads a repository other than the primary (`?repo=owner/name`). */
   repoSlug?: string;
   /** Set only on `repo`, when the App menu narrows it (`?app=<key>`). */
@@ -205,7 +205,7 @@ export function parseHash(hash: string): Route {
     if (path[0] !== "repo") return none;
     if (path.length === 1) return { screen: "repo", ticketId: null, sprintId: null, repoTab: "overview", ...scope };
     // `#repo/overview` is not canonical (the bare `#repo` is), but it still resolves.
-    if (path.length === 2 && isRepoTab(path[1])) return { screen: "repo", ticketId: null, sprintId: null, repoTab: path[1], ...scope };
+    if (path.length === 2 && isRepoScreenTab(path[1])) return { screen: "repo", ticketId: null, sprintId: null, repoTab: path[1], ...scope };
     return none;
   }
   if (parts[0] === "artifacts") {

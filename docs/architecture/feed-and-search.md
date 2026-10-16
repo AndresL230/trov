@@ -190,7 +190,7 @@ Trov entry the caller flagged "Wrong?" (`hideWrongFor`: `ai_feedback` item type 
 sample entries into `/feed` by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler
 dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with
 their `ai_sessions`, a skipped session and two `repo_state` versions (`fixtures/dev/ai.json`,
-`scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Overview show them
+`scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Summary show them
 without the preview. `test/ai.hookup.test.ts` proves the whole path on real rows.
 
 **Entries written by Trov** (`FeedRow.ai?`, `AiFeedMeta`). An entry with no `ai`, or `ai.origin === "agent"`, is an

@@ -61,7 +61,7 @@ import {
   artifactsView, artifactsHeader, artifactsDialogs, ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
-import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
+import type { RepoDashboard, RepoScreenTab, RepoRange } from "@shared/repo";
 import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
@@ -195,7 +195,7 @@ export interface AppState {
   navOpen: NavOpen;
   // ── Repo dashboard ─────────────────────────────────────────────────────────
   repo: Loadable<RepoDashboard | null>;
-  repoTab: RepoTab;
+  repoTab: RepoScreenTab;
   repoRange: RepoRange;
   /** Usage › Product: the environment picked this session (null = the default one). */
   repoProductEnv: string | null;
@@ -2939,7 +2939,7 @@ function orgProps(s: AppState): OrgSettingsProps {
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */
-function repoProps(s: AppState): RepoProps {
+export function repoProps(s: AppState): RepoProps {
   return {
     tab: s.repoTab, range: s.repoRange, driftOpen: s.repoDriftOpen, repo: s.repo, fetchedAt: s.repoFetchedAt, sample: s.repoSample,
     admin: viewerIsAdmin(s), noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, poll: s.repoPoll, productEnv: s.repoProductEnv, persons: s.persons.data,

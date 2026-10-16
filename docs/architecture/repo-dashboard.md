@@ -640,9 +640,9 @@ files a commit touched (`commit_paths`, by the commit's own `at`) and a PR's fil
 the read's `fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read
 again.
 
-**Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
-block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
-does not name them, and absent means off / nothing written — never a `not_connected` section. **`state` is the
+**Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): the screen's Summary
+tab ("State") and Planning's first block ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
+does not name them (Summary is a SCREEN tab, `REPO_SCREEN_TABS`, never a `RepoTab`: MCP's `tab` has no `summary`), and absent means off / nothing written — never a `not_connected` section. **`state` is the
 newest `repo_state` version** (0062; written by the AI pass's `repo.state` job — `ai.md` › Repo state), read by
 `readRepoState` (`src/tools/repo-state.ts`) beside the projection — `GET /repo/dashboard` (`src/routes.ts`) and
 `get_repo_dashboard` (`getRepoDashboardForAgent`) make the same read, never a model call. It is ABSENT with no
@@ -657,10 +657,10 @@ proposal waiting on an admin; a failed read leaves it out and sets `degraded` (`
 fills both from the fixtures under `wrangler dev` only, over the real state, never over MCP (`ai.md`).
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab);
 the `load-context` skill reads it FIRST, before any query. The screen is `web/src/repo-ai.ts` `repoStateSection`
-(via `repoAiSection` in `repo.ts`); its "Wrong?" sends `itemRef = <repo>@<generatedAt>` (`aiItemRef.repoState`), the
+(the Summary tab, `summaryTab` in `repo.ts`); its "Wrong?" sends `itemRef = <repo>@<generatedAt>` (`aiItemRef.repoState`), the
 same ref the read checks, so the next read leaves that version out for that person only (`test/ai.hookup.test.ts`,
 real rows). The local seed writes the primary repository (`SaplingLearn/sapling`) and two versions
-(`fixtures/dev/ai.json`), so Overview shows a real State on localhost.
+(`fixtures/dev/ai.json`), so Repo › Summary shows a real State on localhost.
 
 **The Overview from facts** — whenever the payload carries `facts` (every Worker payload now, and the sample) the
 Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview: the composition, the
@@ -697,11 +697,30 @@ generatedAt, degraded, tab, range, sections, facts?, layout? }`.
 ## Written by Trov: State and Where the work went (`web/src/repo-ai.ts`)
 
 Two OPTIONAL fields of the dashboard read, not `RepoSection`s (`shared/repo.ts`): `state?` (`AiRepoState`) and
-`themes?` (`Partial<Record<AiThemeRange, AiThemes>>`). Each is drawn as its own card ABOVE the tab's one panel (the
-mock's layout), only on a live dashboard (never on sample data, never with no repository connected), and only
-when present — absent, the tab is byte-for-byte what it was (`test/render.ai-absent.test.ts`).
+`themes?` (`Partial<Record<AiThemeRange, AiThemes>>`). Each is drawn as its own card, only on a live dashboard (never
+on sample data, never with no repository connected), and only when present — absent, the screen is byte-for-byte
+what it was (`test/render.ai-absent.test.ts`): State is the **Summary** tab's whole content, Where the work went sits
+ABOVE Planning's one panel (the mock's layout).
 
-- **Overview › State**: an 18px headline; three wrapping columns — Shipped recently (the done glyph, green), In
+**Summary — the repository's state as Trov wrote it, on its own tab** (the owner, 2026-10-15: "split up the
+overview for the repo state and the ai overview into different screens in the switcher"). The Overview is the
+computed dashboard only; Summary is the SECOND tab of `repoTabBar` (`REPO_SCREEN_TABS` in `shared/repo.ts`: Overview,
+Summary, Code, CI & Deploys, Usage, Team & Planning), its label followed by the AI mark (`aiMark`), at
+`#repo/summary` (`isRepoScreenTab`, `hash.ts`; quick search's "Repo › Summary"). It is offered only while
+`repoSummaryShown` (`web/src/repo.ts`): the LIVE read carries `state` and this person's "Wrong?" exit on it is not
+over — or, while the first read is still out, the address asks for it, so a deep link or a reload holds its tab
+and the card's shape (`repoStateSkeleton`, `data-ai-state="loading"`) until the read says; a failed first read
+draws the dashboard's error block there. With the field absent — the org's AI off, no key so nothing written,
+nothing written yet, the version flagged "Wrong?", a failed state read — there is NO tab (the AI kit's rule: off is
+no row, never an "off" state, as the Filter menu's "Describe a filter"), and sample data never has one. An address
+that asks for Summary when there is none draws the Overview, and `rerender()` (`main.ts`) moves `state.repoTab` —
+and so the address — to `overview` with the tab switch's flash: a read landing without `state`, Preview with sample
+data, or the end of "Wrong?"'s exit on the tab. Summary holds no panel: no Group by, no not-connected footer; the
+sample / degraded banner sits above the card as on every tab, and "Poll now"'s strip in a panel of its own above
+it. A switch to or from it is the bar's one rerender (`setRepoTab`), the underline sliding and the card flashing
+in (`.repo-ai` is in the switch's `pendingFlash`); the card rises with the page's entrance on a deep link.
+
+- **Summary › State**: an 18px headline; three wrapping columns — Shipped recently (the done glyph, green), In
   flight (the half glyph, blue), Needs attention (the warning glyph, amber) — each line with its sources; "Written
   by Trov from N events, 2h ago" (no "from N events" when `eventCount` is null) and "Wrong?". Empty: "Trov writes
   this after your next merge: what shipped, what is in flight, and what needs attention, each linked to its

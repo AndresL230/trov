@@ -313,9 +313,9 @@ describe("My Work › Your brief", () => {
   });
 });
 
-// ── Repo › Overview › State ─────────────────────────────────────────────────
+// ── Repo › Summary › State ──────────────────────────────────────────────────
 
-describe("Repo › Overview › State", () => {
+describe("Repo › Summary › State", () => {
   it("ready: an 18px headline, three columns with their marks and cites, 'from 6 events', Wrong?", () => {
     const h = repoStateSection(repoStateFixture("ready", NOW), rp());
     expect(h).toContain("font-size:18px");
@@ -345,12 +345,13 @@ describe("Repo › Overview › State", () => {
     expect(c).toContain("Release 0.30 is live");
     expect(c).toContain("Monthly AI allowance used; this state is from Oct 5 and resumes Nov 1. Upgrade to Pro");
   });
-  it("is the Overview's first section, above the panel — only with `state` on a live dashboard", () => {
+  it("is the Summary tab's whole content — only with `state` on a live dashboard, never on the Overview", () => {
     const data = { ...repoSample(NOW.getTime()), state: repoStateFixture("ready", NOW) };
-    const props = (o: Partial<RepoProps> = {}): RepoProps => ({ tab: "overview", range: "7d", driftOpen: false, repo: { status: "ok", data }, fetchedAt: NOW.getTime(), sample: false, admin: true, poll: null, productEnv: null, ai: rp(), ...o });
+    const props = (o: Partial<RepoProps> = {}): RepoProps => ({ tab: "summary", range: "7d", driftOpen: false, repo: { status: "ok", data }, fetchedAt: NOW.getTime(), sample: false, admin: true, poll: null, productEnv: null, ai: rp(), ...o });
     const html = repoView(props());
     expect(html.indexOf('data-ai="repo_state"')).toBeGreaterThan(-1);
-    expect(html.indexOf('data-ai="repo_state"')).toBeLessThan(html.indexOf("repo-panel"));
+    expect(html).not.toContain("repo-panel");
+    expect(repoView(props({ tab: "overview" }))).not.toContain('data-ai="repo_state"');
     expect(repoView(props({ sample: true }))).not.toContain('data-ai="repo_state"');
     expect(repoView(props({ tab: "code" }))).not.toContain('data-ai="repo_state"');
     expect(repoView(props({ ai: rp({ ui: ui({ hidden: [`repo_state:AndresL230/trov@${data.state.generatedAt}`] }) }) }))).not.toContain('data-ai="repo_state"');
