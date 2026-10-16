@@ -332,6 +332,34 @@ describe("the Review and Unplaced cards through the pass, and the screens' reads
     expect(adrs.find((a) => a.id === adrId)).not.toHaveProperty("ai");
   });
 
+  it("a decision closes its open risk (Q37): ratifying or rejecting an ADR, promoting or rejecting a doc proposal — superseded, gone from /adrs", async () => {
+    const ctx = await tenantCtx("AndresL230");
+    const cookie = await cookieFor("meilin");
+    const draft = async (title: string) => ((await ingestAdrDraft(ctx, { title, context: "c.", decision: `${title}.`, rationale: "r.", confidence: "high" } as never, "AndresL230")) as { id: number }).id;
+    const risk = (itemRef: string) => putSuggestion(systemCtx(ORG_A), { itemType: "proposal", itemRef, kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, confidence: 0.8, reason: "it changes a decision", cites: [], model: "jev", promptVersion: "p" }) as Promise<number>;
+    const state = async (id: number) => (await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state;
+    const adrAi = async (status: string, id: number) => (await call<{ adrs: (AdrRow & { ai?: unknown })[] }>("GET", `${BASE}/adrs?status=${status}`, cookie)).json.adrs.find((a) => a.id === id);
+    const ratified = await draft("Use D1 for search");
+    const rejected = await draft("Use KV for search");
+    const r1 = await risk(`adr:${ratified}`);
+    const r2 = await risk(`adr:${rejected}`);
+    expect(await adrAi("draft", ratified)).toHaveProperty("ai");
+    expect((await call("POST", `${BASE}/adr/${ratified}/ratify`, cookie, {})).status).toBe(200);
+    expect((await call("POST", `${BASE}/adr/${rejected}/reject`, cookie, {})).status).toBe(200);
+    expect([await state(r1), await state(r2)]).toEqual(["superseded", "superseded"]);
+    expect(await adrAi("ratified", ratified)).not.toHaveProperty("ai");
+    // Dismissing a closed risk is `not_open`.
+    expect(await call("POST", `${BASE}/ai/suggestions/${r1}/dismiss`, cookie, {})).toEqual({ status: 409, json: { error: "not_open" } });
+    // A doc proposal: promoted, and another rejected.
+    await ingestDocProposal(ctx, { slug: "sessions", section: "reference", body: "A session lasts 30 days.", change_summary: "longer", confidence: "high" } as never, "AndresL230");
+    await ingestDocProposal(ctx, { slug: "tokens", section: "reference", body: "Tokens last a year.", change_summary: "longer", confidence: "high" } as never, "AndresL230");
+    const r3 = await risk("doc:sessions@1");
+    const r4 = await risk("doc:tokens@1");
+    expect((await call("POST", `${BASE}/doc/sessions/promote`, cookie, { version: 1 })).status).toBe(200);
+    expect((await call("POST", `${BASE}/doc/tokens/reject`, cookie, { version: 1 })).status).toBe(200);
+    expect([await state(r3), await state(r4)]).toEqual(["superseded", "superseded"]);
+  });
+
   it("an Unplaced doc gets one Jev request over the sections and nearby docs; a free-form item gets none", async () => {
     const ctx = systemCtx(ORG_A);
     const doc = await route_triage(ctx, { raw: { slug: "deploy-checklist", section: "runbooks", title: "Deploy checklist", body: "Before a deploy, run the migrations.", change_summary: "new", confidence: "low" }, reason: "section 'runbooks' is not in the vocabulary", source_author: "AndresL230" });

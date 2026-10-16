@@ -392,7 +392,10 @@ so the eval runner and the recorded-response test build exactly what the pass se
   a ticket that becomes done / declined supersedes its OPEN card suggestions in the status write's own batch (every
   status writer — `transition_ticket`, `move_ticket`, the mirror's forced status; `closingStmts`), so they are not
   shown and an Accept answers `not_open`; one left open on a closed ticket from before is not drawn (`attach.ts`) and
-  its Accept is `not_available`. A decided suggestion keeps the person's choice.
+  its Accept is `not_available`. Likewise a decided Review item: ratifying or rejecting a drafted decision, and
+  promoting or rejecting a doc proposal, supersedes its open `review.risk` in the same batch (`ratify_adr`,
+  `reject_adr`, `promote_doc`, `reject_doc_version`), so `/adrs?status=ratified` no longer carries it. A decided
+  suggestion keeps the person's choice.
 - **Candidates only.** A duplicate or a destination is only ever one of the options OFFERED; anything else counts
   for nothing (the parser already refuses an option outside the question).
 - **Thresholds** (chosen on the eval sets): category 0.7, priority 0.75, duplicate 0.9, risk 0.6, destination 0.55.

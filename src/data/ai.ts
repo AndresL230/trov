@@ -99,13 +99,21 @@ export async function decideSuggestion(ctx: TenantContext, id: number, state: "a
  * person's choice. ONE statement, for the deciding writer's own batch (or a `run` right after it):
  *   • a ticket that closes (done / declined) — `ticket` + its NUMBER, the card kinds' item (src/ai/jobs/cards.ts
  *     `CARD_ITEM_TYPES`), named by the ticket's row id so every status writer can use it;
- *   • a drafted decision ratified or rejected — `proposal` + `adr:<id>`, its risk (Review's own id).
+ *   • a drafted decision ratified or rejected, or a doc proposal promoted or rejected — `proposal` + Review's own id
+ *     (`reviewRef`), its risk.
  */
 export function supersedeOpenTicketSuggestions(ctx: TenantContext, ticketId: number): Stmt {
   return stmt(ctx,
     `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ?1 AND item_type = 'ticket' AND state = 'open'
         AND item_ref = (SELECT CAST(number AS TEXT) FROM tickets WHERE id = ?2 AND org_id = ?1)`, ctx.orgId, ticketId);
 }
+/** A Review item's suggestions (`review.risk`): item type `proposal`, and Review's own ids (web/src/triage-map.ts;
+ *  src/ai/jobs/cards.ts writes them, src/ai/attach.ts reads them). */
+export const REVIEW_ITEM = "proposal";
+export const reviewRef = {
+  doc: (slug: string, version: number): string => `doc:${slug}@${version}`,
+  adr: (id: number): string => `adr:${id}`,
+} as const;
 export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string): Stmt {
   return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'`,
     ctx.orgId, itemType, itemRef);
