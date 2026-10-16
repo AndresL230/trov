@@ -551,7 +551,7 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   only PR numbers from the input; ≥ 3 of them or the theme is not written. Each written theme is a `proposed` row and an
   `ai_suggestions` row (item `theme` / `<repo>#<id>`, kind `themes.propose`, reason = its description, cites = its PRs).
 - **The admin's answers** (cookie routes, `src/ai/themes-accept.ts`; the handler's `role` and `dismissRole` are
-  `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid`), Merge
+  `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid` with "A theme named … already exists."), Merge
   `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
   Accept, Rename and a Merge into an active theme route `themes_accepted` → `theme_backfill:<repo>`.
 - **`pr.theme`** (Jev, `card:pr:<n>`, `pr-theme-1`): once the repo has an active theme, ONE `choice` request per merged PR
@@ -683,7 +683,9 @@ API (`batch: true`, half the price), the pass's last stage.
   handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
   gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`); a Roadmap writer refusing
   (`SprintError` / `TicketError` / `PersonError`) is a 400 `invalid` with the writer's message. Theme accept / rename /
-  remove go through the same two routes.
+  remove go through the same two routes; a refused theme NAME is a 400 `invalid` whose `message` says what happened
+  (a handler's `refusal(value)` before the claim, `AcceptRefused(code, sentence)` after it — `themeNameRefusal`, and
+  the clash "A theme named Billing already exists."; Q20). The screens show a refusal's `message` as it is (Q21/Q40).
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
   producer reads) and never edits the record.

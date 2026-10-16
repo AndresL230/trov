@@ -28,10 +28,11 @@ export const AI_ACCEPT_HANDLERS: Readonly<Record<string, AcceptHandler>> = {
 
 export type SuggestionAnswer =
   | { ok: true; suggestion: AiSuggestion }
-  | { ok: false; status: 400 | 403 | 404 | 409; error: AiSuggestionError };
+  | { ok: false; status: 400 | 403 | 404 | 409; error: AiSuggestionError; message?: string };
 
 const STATUS: Record<AiSuggestionError, 400 | 403 | 404 | 409> = { not_found: 404, not_open: 409, not_available: 409, forbidden: 403, invalid: 400 };
-const refuse = (error: AiSuggestionError): SuggestionAnswer => ({ ok: false, status: STATUS[error], error });
+const refuse = (error: AiSuggestionError, message?: string | null): SuggestionAnswer =>
+  (message ? { ok: false, status: STATUS[error], error, message } : { ok: false, status: STATUS[error], error });
 
 /**
  * Accept suggestion `id` (its global row id) as `ctx`'s person. In this order: an id that is not this org's
@@ -56,14 +57,14 @@ export async function acceptSuggestion(
   if (value === undefined) {
     try { value = JSON.parse(row.value_json); } catch { value = null; }
   }
-  if (handler.valid && !handler.valid(value)) return refuse("invalid");
+  if (handler.valid && !handler.valid(value)) return refuse("invalid", handler.refusal?.(value));
   const at = nowIso();
   if (!(await decideSuggestion(ctx, id, "accepted", ctx.userId, at))) return refuse("not_open");
   try {
     await handler.apply(ctx, row, value, req);
   } catch (e) {
     await reopenSuggestion(ctx, id, ctx.userId, at);
-    if (e instanceof AcceptRefused) return refuse(e.code);
+    if (e instanceof AcceptRefused) return refuse(e.code, e.sentence);
     throw e;
   }
   return { ok: true, suggestion: suggestionDto({ ...row, state: "accepted", decided_by: ctx.userId, decided_at: at }) };

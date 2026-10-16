@@ -83,7 +83,8 @@ const suggestionId = (c: Context<AppEnv>): number | null => {
   const raw = c.req.param("id") ?? "";
   return /^[1-9]\d{0,15}$/.test(raw) ? Number(raw) : null;
 };
-const answer = (c: Context<AppEnv>, a: SuggestionAnswer) => (a.ok ? c.json({ ok: true, suggestion: a.suggestion }) : c.json({ error: a.error }, a.status));
+const answer = (c: Context<AppEnv>, a: SuggestionAnswer) =>
+  a.ok ? c.json({ ok: true, suggestion: a.suggestion }) : c.json(a.message ? { error: a.error, message: a.message } : { error: a.error }, a.status);
 
 aiApp.post("/ai/suggestions/:id/accept", async (c) => {
   const id = suggestionId(c);
