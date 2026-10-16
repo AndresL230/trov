@@ -426,6 +426,12 @@ plain (non-`async`) function that returns the helper's promise is fine (`getPers
 | any `/api/o/:slug/*` request: the gates | 2 → 1 | 2 → 1 |
 | `/mcp` with a pasted token: the `last_used_at` write | every call → at most once a minute | |
 
+**A trip's own cost is its query plan.** A statement that compares without case (`person = ? COLLATE NOCASE`,
+like every handle) needs an index with THAT collation — SQLite cannot use a BINARY one for it. `identities` has
+`idx_identities_person_nocase` (0075) for every read of a person's identities (`listIdentities` on `/auth/me`,
+`memberGithubLogins`, the profile, the deletion): each was a full scan before. `test/perf.indexes.test.ts` holds
+those plans with EXPLAIN QUERY PLAN; a new hot read that must stay a search goes there.
+
 `test/helpers/d1-count.ts` wraps the D1 binding and counts both numbers (every trip waits the same short
 delay, so `serial` is the longest chain of trips that each waited for an earlier one); `test/perf.round-trips.test.ts`
 pins the table. A change that puts a read back in series fails there.

@@ -217,6 +217,9 @@
   Then `0074_releases` (Phase F) [`releases`: a repository's releases and bare tags, PK `(org_id, repo, tag)`;
   additive]. (`0071_repo_settings` is below, with the Repo screen; `0073` is reserved for Phase E's `commit_paths`.)
   All of 0070–0074: `repo-apps.md` › Migrations.
+  Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
+  `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
+  `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
