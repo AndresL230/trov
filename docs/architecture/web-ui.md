@@ -1062,6 +1062,28 @@ regress silently:
 - Rules use `:focus-visible`, so a mouse click on a button draws nothing new; a text field shows its ring on
   click too, as browsers do for fields.
 
+## Scrollbars — one for the whole app (`trov.css`, top of the file)
+
+Every scroller draws the same bar: no track, no arrows, a slim thumb (12px gutter, 4px of it transparent border) in
+`--sb-thumb` (the theme's `--fg` at 20%), `--sb-thumb-hover` / `--sb-thumb-active` under the pointer, where it also
+fills out to 6px. Chromium and Safari draw it from `::-webkit-scrollbar*`; Firefox from `scrollbar-width:thin` +
+`scrollbar-color`, declared ONLY inside `@supports (-moz-appearance:none)` — in Chromium either property on an
+element switches its pseudo-elements off, so never use them elsewhere (two Ask scrollers did; removed). A scroller
+that hides its bar on purpose (the sidebar list, tab bars, the composer, the tag menu…) sets
+`scrollbar-width:none` + `::-webkit-scrollbar { display:none }` after the global rule and wins. The thumb's radius
+goes through the corners block like any other, so at `.4` it reads square-ended. Headless Chromium hides
+scrollbars unless launched without `--hide-scrollbars`.
+
+## The thinking orb (`web/src/thinking-orb.ts`, engine in `web/src/orbs/`)
+
+thinking-orbs (Jakub Antalik, MIT; `web/src/orbs/LICENSE`) is vendored WITHOUT its Vue wrapper: `orbs/` is the
+upstream canvas engine and presets as they ship (six states × the 20 and 64 px presets), `thinking-orb.ts` the
+wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose width/height are set in the template
+for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
+`requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
+left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
+each paint is one static frame. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`).
+
 ## Corners — tighter than the design file
 
 Every radius renders at `--corner-scale` (`.4`) of its authored value: ONE block at the end of

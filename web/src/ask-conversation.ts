@@ -31,7 +31,7 @@ import {
   refChip, splitRefTokens, statusCell, viewOf, isHiddenRef, refFallbackText, refLabel, refShort, refTypeWord, refStatusMark,
   repoFactsOf, repoHeadEnv, repoMark, personName, refAvatar,
 } from "./ask-refs";
-import { askIcon, askSpinner, ACTIVITY_ICON, REF_ICON, trovMark } from "./ask-icons";
+import { askIcon, ACTIVITY_ICON, REF_ICON, trovMark } from "./ask-icons";
 import { shownParts, turnLive, type AskAnswer, type AskQuestion, type AskStep, type AskTurn, type AskShownPart } from "./ask-stream";
 import { actionGroupView, feedbackView, saveFormArg, saveFormView, wrongIsOpen } from "./ask-actions";
 import {
@@ -44,6 +44,7 @@ import { ciLine } from "./repo-verdict";
 import { aiDay } from "./ai-ui";
 import { closingAttr } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
+import { thinkingOrb, type OrbState } from "./thinking-orb";
 import { parseCommand } from "./ask-composer";
 
 export interface ConversationUi {
@@ -422,6 +423,9 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
 
 // ── the answer ───────────────────────────────────────────────────────────────
 
+/** What a running step's orb shows (thinking-orb.ts): looking things up searches, anything else works. */
+const STEP_ORB: Partial<Record<AskStep["icon"], OrbState>> = { search: "searching", docs: "searching", feed: "searching", read: "searching", review: "searching" };
+
 /** The show tools and the save form's step are what the answer SHOWS — the design lists no step for them. */
 export const quietStep = (s: Pick<AskStep, "tool">): boolean => /^show_/.test(s.tool) || s.tool === "save_artifact";
 
@@ -431,7 +435,8 @@ function stepView(v: AskView, a: AskAnswer, s: AskStep): string {
   const has = results.length > 0;
   const open = has && v.ui.conversation.open[key] === true;
   const run = s.state === "run" ? " is-run" : "";
-  const icon = s.state === "run" ? askSpinner(13) : askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
+  // A running step's icon is a thinking orb (its words say the same, so the orb is decorative).
+  const icon = s.state === "run" ? thinkingOrb(STEP_ORB[s.icon] ?? "working", 20, null) : askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
   const found = s.resultLine ?? (has ? `${results.length} ${results.length === 1 ? "result" : "results"}` : null);
   const line = found ? `<span class="ask-step-n">· ${esc(found)}</span>` : "";
   const head = has
@@ -449,7 +454,8 @@ function thinkView(v: AskView, a: AskAnswer): string {
   if (!th) return "";
   const clock = `<span class="ask-step-i">${askIcon("clock", 14, "var(--fg-40)")}</span>`;
   if (th.state === "run") {
-    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run">${clock}<span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
+    // While it thinks the clock is a thinking orb ("solving"); "Thought for Ns" keeps the clock.
+    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run"><span class="ask-step-i">${thinkingOrb("solving", 20, null)}</span><span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
   }
   const key = `${a.key}:think`;
   const open = v.ui.conversation.open[key] === true;
@@ -528,7 +534,9 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   const kids: [string, string][] = [
     ["steps", steps || think ? `<div class="ask-steps" data-morph-list data-ask-enter="fade">${steps}${think ? `<div data-morph-key="think">${think}</div>` : ""}</div>` : ""],
     ["parts", `<div class="ask-parts" data-morph-list data-ask-enter="rise">${body}</div>`],
-    ["cursor", curAlone ? `<div class="ask-cur-alone">${CURSOR}</div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
+    // Live with no text streaming: a thinking orb holds the place where the words will come — working before
+    // anything has arrived, writing once a block has.
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${thinkingOrb(parts.length ? "composing" : "working", 20, parts.length ? "Writing…" : "Working…")}</div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }

@@ -33,9 +33,24 @@ html, body { margin: 0; padding: 0; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input, select { font-family: inherit; }
 ::selection { background: var(--accent, #2BFF88); color: var(--accent-fg, #000); }
-.cnpy-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
-.cnpy-scroll::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 3px solid transparent; background-clip: content-box; }
-.cnpy-scroll::-webkit-scrollbar-track { background: transparent; }
+/* THE scrollbar — every scroller in the app and the site (web-ui.md › Scrollbars): no track, no arrows, a slim
+   thumb in the theme's ink that darkens and fills out under the pointer. Chromium and Safari draw it from the
+   pseudo-elements; Firefox, which has none, from the standard properties (thin, the same ink). A scroller that
+   hides its bar on purpose (`scrollbar-width:none` + `::-webkit-scrollbar { display:none }`) comes later and wins.
+   NEVER `scrollbar-width` / `scrollbar-color` outside the Firefox block: in Chromium either one switches the
+   pseudo-elements off for that element. */
+[data-cnpy-theme] { --sb-thumb:color-mix(in srgb, var(--fg) 20%, transparent); --sb-thumb-hover:color-mix(in srgb, var(--fg) 38%, transparent); --sb-thumb-active:color-mix(in srgb, var(--fg) 50%, transparent); }
+::-webkit-scrollbar { width:12px; height:12px; background:transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background:transparent; }
+::-webkit-scrollbar-button { display:none; width:0; height:0; }
+::-webkit-scrollbar-thumb { min-width:32px; min-height:32px; background-color:var(--sb-thumb, rgba(128,128,128,0.35)); background-clip:padding-box; border:4px solid transparent; border-radius:8px; }
+::-webkit-scrollbar-thumb:hover { border-width:3px; background-color:var(--sb-thumb-hover, rgba(128,128,128,0.55)); }
+::-webkit-scrollbar-thumb:active { border-width:3px; background-color:var(--sb-thumb-active, rgba(128,128,128,0.7)); }
+@supports (-moz-appearance:none) {
+  * { scrollbar-width:thin; scrollbar-color:var(--sb-thumb, rgba(128,128,128,0.35)) transparent; }
+}
+/* The thinking orb (thinking-orb.ts): a canvas the loop paints; it takes its box and nothing else. */
+.cnpy-orb { display:block; flex:none; }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
    crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
 #cnpy-main { scrollbar-gutter: stable; }
@@ -3158,7 +3173,7 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 [data-phone="1"] .ask-tools { display:none; }
 .ask-tool { display:grid; place-items:center; width:26px; height:26px; border-radius:6px; color:var(--fg-55); cursor:pointer; }
 .ask-tool:hover { background:var(--hover); color:var(--fg); }
-.ask-tbl-scroll { overflow-x:auto; scrollbar-width:thin; }
+.ask-tbl-scroll { overflow-x:auto; }
 .ask-tbl { width:100%; border-collapse:collapse; font-size:13.5px; }
 .ask-tbl th { padding:8px 12px 8px 2px; border-bottom:1.5px solid var(--border-strong); text-align:left; font-family:var(--label); font-size:11.5px; font-weight:600; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-55); white-space:nowrap; }
 .ask-tbl td { padding:8px 12px 8px 2px; border-bottom:1px solid var(--border); text-align:left; vertical-align:middle; color:var(--fg-70); white-space:nowrap; }
@@ -3176,7 +3191,7 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 .ask-fig-cap { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; margin-bottom:12px; }
 .ask-fig-t { font-size:13px; font-weight:600; }
 .ask-fig-s { font-size:12px; color:var(--fg-55); }
-.ask-fig-scroll { overflow-x:auto; scrollbar-width:thin; }
+.ask-fig-scroll { overflow-x:auto; }
 .ask-fig-foot { display:flex; align-items:center; gap:6px; margin-top:10px; font-size:12px; color:var(--fg-55); }
 .ask-bars { display:flex; align-items:flex-end; gap:10px; min-width:400px; box-sizing:border-box; padding-top:6px; border-bottom:1px solid var(--border); }
 .ask-bar { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; height:100%; }
@@ -4051,7 +4066,7 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .cnpy-md .cnpy-code pre { border-radius:0 !important; }
 [data-cnpy-theme] .cnpy-selbar { border-radius:inherit !important; }
 /* A rule of its own: an engine that rejects the pseudo-element drops only this one. */
-[data-cnpy-theme] .cnpy-scroll::-webkit-scrollbar-thumb { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] ::-webkit-scrollbar-thumb { border-radius:calc(8px * var(--corner-scale)) !important; }
 /* Inline styles, by value. AFTER the classes on purpose: equal specificity, so an
    inline radius beats its element's class radius here exactly as it does unscaled. */
 [data-cnpy-theme] [style*="border-radius:2px"] { border-radius:calc(2px * var(--corner-scale)) !important; }

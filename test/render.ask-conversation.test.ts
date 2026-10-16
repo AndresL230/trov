@@ -181,11 +181,15 @@ describe("`streaming` — mid-answer", () => {
     const upToChart = events.slice(0, events.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
     expect(view("answer", { events: upToChart, busy: true }).html).toContain(`<div data-morph-key="cursor" class="ask-cur-alone">`);
     expect(view("answer", { events: [], busy: true }).html).toContain(`ask-cur-alone`);
+    // The place the words will come holds a thinking orb: working before anything arrived, writing after a block.
+    expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working" data-orb-size="20" width="20" height="20" role="img" aria-label="Working…"/);
+    expect(view("answer", { events: upToChart, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*aria-label="Writing…"/);
   });
-  it("a running step spins", () => {
+  it("a running step's icon is a thinking orb, decorative (its words say what it does)", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event).slice(0, 2);
     const { html: h } = view("answer", { events, busy: true });
-    expect(h).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><svg class="ask-spin"/);
+    expect(h).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><canvas class="cnpy-orb" data-orb="(searching|working)" data-orb-size="20" width="20" height="20" aria-hidden="true"/);
+    expect(h).not.toContain("ask-spin");
   });
 });
 
@@ -195,6 +199,8 @@ describe("`thinking` — Thinking… Ns, then Thought for Ns", () => {
     const upTo = events.slice(0, events.findIndex((e) => e.event === "thinking") + 1);
     const { html } = view("thinking", { events: upTo, busy: true });
     expect(html).toMatch(/<span class="ask-think-l" data-ask-think="\d+">Thinking… \d+s<\/span>/);
+    // Its icon is the "solving" orb while it thinks.
+    expect(html).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><canvas class="cnpy-orb" data-orb="solving"[^>]*aria-hidden="true"/);
     expect(thinkingLabel(1000, 15_400)).toBe("Thinking… 14s");
     expect(thinkingLabel(1000, 500)).toBe("Thinking… 0s");
   });

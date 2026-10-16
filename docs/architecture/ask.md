@@ -282,6 +282,11 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
+  20px thinking orb says what Trov is doing — a running step's icon (`STEP_ORB`: search / docs / feed / read / review
+  steps "searching", the rest "working", decorative beside the step's words), the thinking row's icon ("solving";
+  "Thought for Ns" keeps the clock), and the lone-cursor slot ("working" before anything arrived, "composing" once a
+  block has). The text cursor inside streaming words is unchanged.
 - **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
   is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another
