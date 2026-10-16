@@ -96,6 +96,14 @@ gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actio
 
 ## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/outline.ts`, `web/src/lru.ts`)
 
+marked and DOMPurify are their own chunk (`markdown-lib.ts`, loaded by `markdown-load.ts`; › The app's bundles):
+`markdown.ts` keeps the renderers and their caches, and a body asked for before the chunk is in is a placeholder
+— a block is a few skeleton lines (invisible for `SKEL_DELAY_MS`), an inline summary its text, escaped; a
+sanitized SVG a block too — which is NEVER cached; the chunk's arrival repaints (`onMarkdownLib` → `rerenderSoon`),
+and only when a placeholder was drawn. Signed in, `paintApp` starts the load once beside the first reads
+(`prefetchMarkdownLib`), so it is usually in before any body is. `md-blocks.ts` reads marked's lexer from the same
+chunk (Review's Rendered view draws the body's placeholder until it is in, never memoized).
+
 Because every paint rebuilds the whole app's markup, `renderMarkdown` (marked → DOMPurify → `enhance`) and
 `renderMarkdownInline` ran for every doc, ticket and feed summary on screen on EVERY paint — the slowest part of
 a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block bodies, 300 inline summaries (so
@@ -123,6 +131,50 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
   support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
   to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
   and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+
+## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
+
+The signed-out landing and the app are separate bundles, and the app's screens that most people never open
+are chunks of their own, loaded when a screen first needs them. Measured with `npm run build:web` (gzip,
+2026-10-16): before, `/` and every app page downloaded the same 453 kB of script (main 437, with What's new
+already a chunk); after, the signed-out `/` downloads 59 kB (the landing 26, what it shares with the app 15,
+morph 8, pricing 5, the rest small) and an app page 253 kB (main 218, the shared 15, the support controller 9,
+morph 8), then marked + DOMPurify (24) beside the first reads and each chunk below when it is first needed:
+Org settings 62, Repo 43, Platform 30, the landing 26, Artifacts 20, What's new 104.
+
+- **The signed-out page boots alone.** `index.html`'s script is `landing-page.ts` (site-prerender.ts): the
+  landing, its dialogs, the tour, the menu and the Contact form, with no app module. Its acts and keyboard are
+  `landing-actions.ts` (`createLandingController`), the ONE definition main.ts runs too (a signed-out visit to
+  an app address, `#site` reopened from the sidebar logo). It paints `landing-root.ts` — the app's root element
+  and toast are `app-root.ts`, which `render()` uses — so the two cannot drift. The Contact form's controller,
+  and the API client it sends with, load when the form first opens. The page hands itself to main.ts
+  (`import("./main")`) only for what the app answers: `?denied=`, `#onboard`, a page without the prerendered
+  markup. Keep app modules out of its static graph: the sprint state's mark is `sprint-state.ts` and the
+  deletion notice's words `deletion-notice.ts` for that reason.
+- **The lazy chunks.** Each is a `lazyChunk(() => import("./x"))` (lazy-chunk.ts) behind a facade that render.ts
+  draws through — the real screen once the chunk is in, a skeleton in the screen's own frame until then, and
+  `chunkFailedView` ("did not load. Reload the page") when the load failed (an old page after a deploy):
+
+  | Chunk | Facade | Eager part (in the first download) |
+  |---|---|---|
+  | the landing (in the app) | `landing-lazy.ts` | `landing-actions.ts`, `site-feature-core.ts` (`TOUR_KEYS`) |
+  | Platform (views + controller, `platform-chunk.ts`) | `platform-lazy.ts` | `platform-core.ts`: the state, the add-organization rules, `/platform/`, the page's shell |
+  | Org settings (views + `org-actions` / `hosting-actions` / `repo-apps-actions`, `org-chunk.ts`) | `org-lazy.ts` | `org-core.ts` (`OrgUi` and its first value, tabs, `currentOrg`), `org-invite.ts` (the invite form the first-run setup shares) |
+  | Artifacts (`artifacts.ts`) | `artifacts-lazy.ts` | `artifacts-state.ts`: state, routes, a frame's height, the Mermaid pass, the ticket page's block |
+  | the Repo screen (`repo.ts` + its blocks) | `repo-lazy.ts` | `repo-core.ts`: the poll's lifetime, the updated label, the count-up, `ALL_APPS` |
+  | marked + DOMPurify (`markdown-lib.ts`) | `markdown.ts` / `markdown-load.ts` | the renderers and their LRU |
+  | What's new (`releases.ts`) | `releases-lazy.ts` | `release-latest.ts` |
+
+  The heavy module re-exports its eager part unchanged, so its importers and the tests that import it are
+  untouched. A new eager need goes in the eager part, never a static import of the chunk from an eager module.
+- **Loading and painting.** `paintApp` calls `withChunk(chunk)` when it paints a screen without its chunk;
+  a controller that lives in a chunk (Platform's, Org settings') is made when it lands, and a load or an act
+  asked for before then runs once it has (`withChunk(chunk, fn)`). The landing runs everything that waited and
+  repaints in ONE batched paint (`batchRender`), like a read landing. A failed chunk is not retried by a paint
+  (its screen says to reload); an act asked for again tries again. Opening Org settings before its chunk is in
+  shows the screen's skeleton at once (main.ts sets what `orgGo` sets), and the act runs again with its reads.
+- **Tests** that draw a lazy screen through `render()` hand the chunks in first (`test/helpers/web-chunks.ts`
+  `loadWebChunks()`); the build does the same for the landing (`site-prerender.ts`).
 
 ## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
 
@@ -254,11 +306,12 @@ script then takes over the SAME markup. Everything else is the app, and is never
   typed (Free $0, Pro $10 per seat / month as a `UnitPriceSpecification`; Enterprise has no price, so no
   Offer; no rating or review, which Trov does not have). `test/site-pages.test.ts` holds each to the render.
 - **Prerendered from the code that boots it** (`web/src/site-prerender.ts`, loaded in Node through Vite's own
-  module server at build time). The landing is `render(initialState())` — exactly main.ts's signed-out paint —
-  so its first paint MORPHS it (`data-morph="landing"`); `/pricing`, `/terms` and `/privacy` are `siteRoot(…)` of
-  their boot script's own render and patch in place too (`paintRoot`, morph.ts). On the prerendered landing
-  main.ts paints the landing at once and asks nothing: no "Signing you in…" card, no `/auth/me` (the Worker only
-  sends that page to a request with no session cookie). Pages are built in the light theme; `THEME_BOOT`, an
+  module server at build time). The landing is `render(initialState())` — the app's signed-out paint — and its
+  script is `landing-page.ts`, which paints the same markup (`landing-root.ts`, held to `render()` tag for tag
+  by `test/site-pages.test.ts`), so its first paint MORPHS it (`data-morph="landing"`); `/pricing`, `/terms` and
+  `/privacy` are `siteRoot(…)` of their boot script's own render and patch in place too (`paintRoot`, morph.ts).
+  On the prerendered landing nothing is asked: no "Signing you in…" card, no `/auth/me` (the Worker only sends
+  that page to a request with no session cookie), and none of the app's bundle (› The app's bundles). Pages are built in the light theme; `THEME_BOOT`, an
   inline script that is each root's first child (and in the app shell's head), paints `<html>` and the root in
   the stored theme before the rest of the page is parsed; the boot's first paint drops it, and main.ts keeps
   `<html>`'s background in step (`syncPageBackground`).
@@ -428,7 +481,7 @@ dashboard, retention windows to verify) are listed in the release's `ops` and in
 - **Accessibility basics.** Every page starts with a skip link (`skipLink`, `.site-skip`: out of sight until
   focused) to `#site-main` (the app: `#cnpy-main`), followed WITHOUT writing the hash (`followSkipLink`; the hash is
   the route and the sign-in return-to). Site navs are labelled landmarks; links inside legal and docs text are
-  underlined (WCAG 1.4.1); the sign-in dialog traps Tab (`main.ts`); onboarding's fields have `<label for>`s,
+  underlined (WCAG 1.4.1); the sign-in dialog traps Tab (`landing-actions.ts`); onboarding's fields have `<label for>`s,
   their help as `aria-describedby` and the colours as a named radiogroup; Guide screenshots carry `GUIDE_ALT`.
   Checked 2026-10-12 with axe-core 4.10 (WCAG 2.0/2.1 A + AA and best practice) in Playwright's Chromium against
   `wrangler dev`: `/`, `/pricing`, `/terms`, `/privacy`, `/refunds`, `/docs/setup`, the 404, the sign-in dialog

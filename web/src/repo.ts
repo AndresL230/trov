@@ -18,7 +18,7 @@ import {
   REPO_RANGES, REPO_TABS, REPO_TAB_SECTIONS,
   type RepoActivity, type RepoActivityKind, type RepoDashboard, type RepoDeployRow, type RepoPerson, type RepoPr, type RepoPrState,
   type RepoProductEnv, type RepoRange, type RepoSection, type RepoTab, type RepoTone, type RepoTrend,
-  type PollOutcome, type RepoRefreshGithub, type RepoRefreshResult, type RepoSectionName, type UsagePollSource,
+  type PollOutcome, type RepoRefreshGithub, type RepoSectionName, type UsagePollSource,
 } from "@shared/repo";
 import type { HostingPollOutcome, HostingProviderId } from "@shared/hosting";
 import type { Loadable } from "./render";

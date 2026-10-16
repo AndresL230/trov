@@ -77,7 +77,7 @@ import { ALL_APPS } from "./repo-core";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
-import { lazyChunk, type LazyChunk } from "./lazy-chunk";
+import type { LazyChunk } from "./lazy-chunk";
 import { createTagsController } from "./tags-actions";
 import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";

@@ -17,19 +17,16 @@
 // main.ts hands to platform-actions.ts.
 
 import {
-  orgSlugProblem, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, ORG_NAME_MAX,
-  type PlatformOrgRow, type PlatformOrgDetail, type PlatformAdmin, type PlatformAuditRow, type PlatformUsageResponse,
-  type AdminAssignment, type AdminTarget, type OrgRole, type OrgInvite,
+  ORG_NAME_MAX,
+  type PlatformOrgRow, type PlatformAuditRow, type AdminAssignment, type OrgRole, type OrgInvite,
 } from "@shared/orgs";
 import { esc, attr, relTime, surface } from "./ui";
 import { kindMark } from "./marks";
-import { trovMark } from "@shared/mark";
 import { orgTile } from "./org-logo";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { segmented } from "./segmented";
 import { confirmModal } from "./confirm";
-import { accountDeleteModal, initialDeleteUi, orgDeleteModal, personDeleteSection, PERSON_DELETE_ID, type DeleteUi } from "./deletion";
-import type { AccountDeletionPreview, OrgDeletionPreview } from "@shared/deletion-core";
+import { accountDeleteModal, orgDeleteModal, personDeleteSection, PERSON_DELETE_ID } from "./deletion";
 
 /** The Platform org page's Delete confirmation (deletion.ts `orgDeleteModal`, with Platform's acts). */
 export const PLAT_ORG_DELETE_ID = "plat-org-delete-confirm";
@@ -37,7 +34,7 @@ import { usageView, orgUsageBlock } from "./platform-usage";
 import { tabLead, leadFlag, dangerLink, roleWord, YOU } from "./org-ui";
 import { emptyLayout, skRows, skRowsShape, skKey } from "./skeleton";
 // Plans and grants (shared/plans.ts): the Access tab, an org's Plan section, their dialogs.
-import { PLANS, type PlanId } from "@shared/plans";
+import { PLANS } from "@shared/plans";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownUi } from "./dropdown";
 import { accessTab, accessDialogs, orgPlanSection, planDropdown, planSourceWord, seatsCell } from "./platform-access";
 // Support reports (shared/support-core.ts): the Support tab and its count.
@@ -52,8 +49,8 @@ export {
   type PlatTab, type PlatSlice, type AdminKind, type AddOrgErrors, type AddOrgDraft, type OwnerDraft, type PlatState,
 } from "./platform-core";
 import {
-  PLAT_TABS, platformCrumb, platformPageShell, adminError, cleanHandle,
-  type PlatTab, type AdminKind, type AddOrgDraft, type OwnerDraft, type PlatState,
+  PLAT_TABS, platformPageShell, adminError, cleanHandle,
+  type PlatTab, type AdminKind, type AddOrgDraft, type PlatState,
 } from "./platform-core";
 const TAB_LABEL: Record<PlatTab, string> = { orgs: "Organizations", access: "Access", usage: "Usage", support: "Support", admins: "Admins", audit: "Audit" };
 

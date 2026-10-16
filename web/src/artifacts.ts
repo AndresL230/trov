@@ -30,14 +30,14 @@ import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW, skCard } from "./skeleton";
-import { ticketStatusMark, artifactStatusMark, stateMark } from "./marks";
+import { ticketStatusMark, stateMark } from "./marks";
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
 import type { PersonColor } from "@shared/rows";
 import {
   ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX, artifactKindLabel,
   artifactCap, isBinaryKind, isTextKind, kindForFilename, claudeOnlyHits, isBundledExport, canRatify, parseSlugVersion,
   type ArtifactKind, type ArtifactStatus, type ArtifactVisibility, type ArtifactLinkType,
-  type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO, type ArtifactDiffDTO,
+  type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO,
 } from "@shared/artifacts-core";
 
 export { ARTIFACT_AREAS, ARTIFACT_KINDS };
@@ -51,7 +51,7 @@ export {
   type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtRoute, type ArtPerson, type ArtProps,
 } from "./artifacts-state";
 import {
-  ART_FILTER_KEYS, initialArtCreate, detailKey, diffKey, NO_FILTERS, KIND_ICON, EYEBROW, frameHeight, mermaidSvgs, mermaidFailed, mermaidPending,
+  ART_FILTER_KEYS, detailKey, diffKey, NO_FILTERS, KIND_ICON, EYEBROW, frameHeight, mermaidSvgs, mermaidFailed, mermaidPending,
   type ArtSlice, type ArtFilterKey, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
   ART_ROUTE_NONE, type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtProps, type ArtPerson, type ArtRoute,
 } from "./artifacts-state";

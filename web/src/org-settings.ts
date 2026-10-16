@@ -25,33 +25,30 @@
 //
 // "The current org" is ONE function, `currentOrg`: the org the page's path names.
 
-import { planBlock, inviteGate, seatCapAction, seatsLead, initialOrgBillingUi, checkoutTerms, type OrgBillingUi } from "./org-plan";
-import { isSoloPlan, type OrgPlanView } from "@shared/plans";
+import { planBlock, inviteGate, seatsLead } from "./org-plan";
+import { isSoloPlan } from "@shared/plans";
 import { esc, attr, relTime, surface } from "./ui";
 import {
   O_LABEL, O_FIELD, O_HELP, O_ERR, YOU, accentBtn, quietBtn, dangerLink, goLink, orgHead, orgEmpty, orgBanner, loadingNote, failedNote,
-  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, fieldError, tabLead, leadFlag, openRow, type OrgSlice,
+  sliceNote, roleWord, ROLE_WORD, roleOption, roleAtLeast, sameHandle, textField, tabLead, leadFlag, openRow, type OrgSlice,
 } from "./org-ui";
 import { kindMark } from "./marks";
-import { tagsTab, tagConfirmModal, tagAddModal, initialTagsUi, type TagsTabProps } from "./tags";
+import { tagsTab, tagConfirmModal, tagAddModal, initialTagsUi } from "./tags";
 export { roleAtLeast };
 export type { OrgSlice };
 import { tabBar, tabPanelAttrs } from "./tabs";
-import { segmented } from "./segmented";
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { personChip, handleTag } from "./people";
 import { confirmModal } from "./confirm";
-import { initialDeleteUi, orgDeleteModal, orgDeleteTile, type DeleteUi } from "./deletion";
-import type { OrgDeletionPreview } from "@shared/deletion-core";
+import { orgDeleteModal, orgDeleteTile } from "./deletion";
 import { ROLE_MAX, RESPONSIBILITIES_MAX } from "@shared/people";
-import { ORG_NAME_MAX, INVITE_NAME_MAX, GITHUB_LOGIN_RE, INVITE_EMAIL_RE, type MyOrg, type MyOrgsResponse, type OrgInvite, type OrgMember, type OrgRole, type OrgSettings } from "@shared/orgs";
-import type { IntegrationDTO, IntegrationKind, IntegrationsListDTO, OrgAuditDTO, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
-import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFECT, type SecretFormState, type TestState } from "./integrations";
+import { ORG_NAME_MAX, type MyOrg, type OrgMember, type OrgRole } from "@shared/orgs";
+import type { IntegrationDTO, IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO } from "@shared/integrations";
+import { integrationsTab, secretFormModal, integrationLabel, SECRET_DELETE_EFFECT } from "./integrations";
 import { identitySection, type IdentityProps } from "./identity";
 import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from "./notifications";
-import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
-import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
-import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
+import { orgLogoSection } from "./org-logo";
+import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner } from "./github-app";
 import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingPartRow, hostingTab, hostingTodo, leftoversConfirmCopy, partConfirmCopy } from "./hosting";
 import { onIntegrationsTab } from "./integrations";
 import { githubInstallHref } from "./api";
@@ -70,7 +67,6 @@ import {
 export { inviteDraftOk, inviteRoleDropdown, inviteMailNote, inviteSection } from "./org-invite";
 import { inviteRoleDropdown, inviteMailNote, inviteSection } from "./org-invite";
 const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", hosting: "Hosting", members: "Members", tags: "Tags", notifications: "Notifications", general: "General" };
-import type { OrgRepoRoute } from "./hash";
 
 // ── setup checklist ──────────────────────────────────────────────────────────
 

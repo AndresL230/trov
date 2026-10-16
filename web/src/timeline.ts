@@ -57,7 +57,6 @@ import { isoDayKey, localDayKey, sprintDueState } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
 import { esc, attr, surface } from "./ui";
 import { personAvatarLink } from "./people";
-import { glyphMark, type Glyph } from "./marks";
 
 const DAY = 86_400_000;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];

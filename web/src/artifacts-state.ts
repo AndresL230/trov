@@ -9,7 +9,7 @@ import { skeleton, skLine } from "./skeleton";
 import { artifactStatusMark } from "./marks";
 import type { PersonColor } from "@shared/rows";
 import type {
-  ArtifactKind, ArtifactStatus, ArtifactVisibility, ArtifactLinkType,
+  ArtifactKind, ArtifactVisibility, ArtifactLinkType,
   ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactDiffDTO,
 } from "@shared/artifacts-core";
 
