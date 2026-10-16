@@ -13,7 +13,7 @@ vi.mock("../web/src/markdown", () => ({
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
 import { TROV_MARK_PATH } from "../shared/mark";
-import { render, initialState, feedShown, FEED_AI_NOTE, type AppState } from "../web/src/render";
+import { render, initialState, feedShown, FEED_AI_NOTE, FEED_NO_TROV, type AppState } from "../web/src/render";
 import { briefTile } from "../web/src/mywork";
 import { repoStateSection, themesSection, bandHeight, weekLabel, type RepoAiProps } from "../web/src/repo-ai";
 import { repoView, type RepoProps } from "../web/src/repo";
@@ -516,6 +516,14 @@ describe("Feed — entries written by Trov", () => {
     expect(render(feed({ ai: ui({ noteSeen: ["Andres"] }) }))).not.toContain("cnpy-ai-note");
     // Above the first Trov entry ON SCREEN: with Agents picked, there is none, so no note.
     expect(render(feed({ ai: ui({ feedSource: "agents" }) }))).not.toContain("cnpy-ai-note");
+  });
+  it("Source = Trov with no Trov entry on the page says so (Q27)", () => {
+    const tagged = { ...agent, ai: { origin: "agent" as const, subject: null, sources: [], moreCount: 0, generatedAt: null, model: null } };
+    const html = render(feed({ feed: { status: "ok", data: [tagged] }, ai: ui({ feedSource: "trov" }) }));
+    expect(text(html)).toContain(FEED_NO_TROV);
+    expect(text(html)).not.toContain("No entries match this filter.");
+    // Agents or All with nothing shown keep the filter's words.
+    expect(text(render(feed({ feed: { status: "ok", data: [rows()[0]] }, ai: ui({ feedSource: "agents" }) })))).toContain("No entries match this filter.");
   });
   it("Wrong? hides the entry for this person", () => {
     const html = render(feed({ ai: ui({ hidden: ["feed:990001"] }) }));

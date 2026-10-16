@@ -1288,6 +1288,8 @@ function feedSourceSeg(s: AppState): string {
     options: [{ value: "all", label: "All" }, { value: "agents", label: "Agents" }, { value: "trov", label: "Trov" }],
   });
 }
+/** Source = Trov with no entry Trov wrote on the page (Q27). */
+export const FEED_NO_TROV = "No Trov entries in this view.";
 /** Said once, above the first entry Trov wrote, until this person presses "Got it". */
 export const FEED_AI_NOTE = "Trov now writes entries from your commits, about 45 minutes after your last push. Your agents can stick to decisions and findings.";
 function feedAiNote(): string {
@@ -1372,7 +1374,9 @@ function feedView(s: AppState): string {
   if (s.feed.status === "ok" && s.feed.data.length === 0 && s.feedAuthor === "all" && s.feedTag === "all") {
     return wrapFeed(s, emptyLayout("feed", { text: FEED_EMPTY, action: CONNECT_AGENT, sayStyle: "margin-bottom:12px", shapes: skList(3, feedCardShape) }), false);
   }
-  const empty = s.feed.status === "ok" && shown.length === 0 ? notice("No entries match this filter.") : "";
+  // Source = Trov over a page with no entry Trov wrote says so, not "match this filter" (Q27).
+  const empty = s.feed.status === "ok" && shown.length === 0
+    ? notice(feedHasAi(s) && s.ai.feedSource === "trov" ? FEED_NO_TROV : "No entries match this filter.") : "";
   return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 
