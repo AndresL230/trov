@@ -17,7 +17,7 @@ import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, type EmptyAction } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
-import { aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
+import { AI_BRIEF_CITES_MAX, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
 import { AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiWrongBtn } from "./ai-ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
@@ -423,19 +423,41 @@ export function briefNextMark(it: AiBriefNextItem): string {
   return kindWord(TICKET_BOX, it.cites[0]?.label ?? "Ticket");
 }
 
-function briefLine(line: AiLine, i: number): string {
+// THE ONE SHAPE (owner, BR-OWNER-1; shared/ai-core.ts `AI_BRIEF_*`): Now, Recently and Next are ALWAYS drawn —
+// a part with nothing in it says "Nothing new." in its own slot — each sentence in a two-line box with its one-line
+// row of sources, and Next as three one-line-title / one-line-why rows (an unused row kept, empty). trov.css
+// `.mw-brief-*` fixes those boxes at a desktop width, so the tile is the same height every time and never scrolls;
+// at phone width they clamp instead. The producer holds the caps; the clamps are for anything older or longer,
+// whose full text is then the box's tooltip (`data-mtip`).
+
+/** A title longer than this may not fit its one line on desktop: its whole text is the row's tooltip. */
+const BRIEF_TITLE_TIP = 70;
+const NOTHING_NEW = "Nothing new.";
+const tipIf = (text: string, max: number): string => (text.length > max ? ` data-mtip="${attr(text)}"` : "");
+
+function briefLine(line: AiLine | null, i: number): string {
+  const text = line
+    ? `<p class="mw-brief-text"${tipIf(line.text, AI_BRIEF_LINE_MAX)}>${esc(line.text)}</p>`
+    : `<p class="mw-brief-text mw-brief-none">${NOTHING_NEW}</p>`;
+  const cites = line?.cites.length ? aiCites(line.cites.slice(0, AI_BRIEF_CITES_MAX)) : "";
   return `<div class="cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
-      <p style="margin:0;line-height:1.55;overflow-wrap:anywhere">${esc(line.text)}</p>
-      ${line.cites.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px">${aiCites(line.cites)}</div>` : ""}
+      ${text}<div class="mw-brief-cites"${cites ? "" : ` aria-hidden="true"`}>${cites}</div>
     </div>`;
 }
 function briefNextRow(it: AiBriefNextItem, i: number): string {
   const c = it.cites[0];
   const title = c ? aiCite({ ...c, label: it.title }, "color:var(--fg);font-weight:500") : `<span style="color:var(--fg);font-weight:500">${esc(it.title)}</span>`;
-  return `<li class="mw-brief-next cnpy-rise" style="--i:${i};display:flex;gap:12px;align-items:baseline;min-width:0">
-      <span style="flex:0 0 auto;min-width:76px">${briefNextMark(it)}</span>
-      <div style="display:flex;flex-direction:column;min-width:0">${title}<span style="color:var(--fg-55);font-size:13px;line-height:1.5">${esc(it.why)}</span></div>
+  return `<li class="mw-brief-next cnpy-rise" style="--i:${i}">
+      <span class="mw-brief-mark">${briefNextMark(it)}</span>
+      <div class="mw-brief-item"><span class="mw-brief-title"${tipIf(it.title, BRIEF_TITLE_TIP)}>${title}</span><span class="mw-brief-why"${tipIf(it.why, AI_BRIEF_WHY_MAX)}>${esc(it.why)}</span></div>
     </li>`;
+}
+/** Next: at most three rows, always three slots — "Nothing new." in the first when there is none, unused ones empty. */
+function briefNext(items: AiBriefNextItem[], i: number): string {
+  const shown = items.slice(0, AI_BRIEF_NEXT_MAX);
+  const rows = shown.length ? shown.map((it, k) => briefNextRow(it, i + k)) : [`<li class="mw-brief-next cnpy-rise" style="--i:${i}"><span class="mw-brief-none">${NOTHING_NEW}</span></li>`];
+  while (rows.length < AI_BRIEF_NEXT_MAX) rows.push(`<li class="mw-brief-next mw-brief-pad" aria-hidden="true"></li>`);
+  return `<ol class="mw-brief-list">${rows.join("")}</ol>`;
 }
 
 /** The dashboard read's skeleton (the Tickets tile's, `tileSkeleton("tickets")`): the brief comes in that read. */
@@ -454,26 +476,20 @@ export function briefTile(b: AiBrief, hidden = false, span = 7): string {
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 0">
       <h2 id="mw-brief-h" style="margin:0;font-size:14px;font-weight:500;white-space:nowrap">Your brief</h2>
     </div>`;
-  const line = (l: AiLine, color = "var(--fg)") => `<p style="margin:0;font-size:14px;line-height:1.55;color:${color};overflow-wrap:anywhere;text-wrap:pretty">${esc(l.text)}</p>`;
   let body: string;
-  let riseLast = 1;
   if (b.state === "empty" || (b.state !== "capped" && !b.now && !b.recently && !b.next.items.length)) body = aiEmpty(AI_EMPTY.brief);
-  else if (b.state === "capped") body = `${b.now ? line(b.now, "var(--fg-70)") : ""}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}`;
+  else if (b.state === "capped") body = `${b.now ? `<p class="mw-brief-text" style="color:var(--fg-70)"${tipIf(b.now.text, AI_BRIEF_LINE_MAX)}>${esc(b.now.text)}</p>` : ""}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}`;
   else {
-    const rows: string[] = [];
-    // A row's label and its content rise together (one `--i`); Next's items follow one step apart.
+    // The one shape: all three parts, always. A part's label and its content rise together (one `--i`); Next's rows
+    // follow one step apart, then the byline — the same steps for every brief.
     const label = (i: number, word: string) => `<div class="cnpy-rise" style="--i:${i};${BRIEF_LABEL}">${word}</div>`;
-    if (b.now) rows.push(`${label(rows.length + 1, "Now")}${briefLine(b.now, rows.length + 1)}`);
-    if (b.recently) rows.push(`${label(rows.length + 1, "Recently")}${briefLine(b.recently, rows.length + 1)}`);
-    if (b.next.items.length) {
-      const r = rows.length + 1;
-      rows.push(`${label(r, "Next")}<ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;min-width:0">${b.next.items.map((it, k) => briefNextRow(it, r + k)).join("")}</ol>`);
-    }
-    riseLast = rows.length + Math.max(0, b.next.items.length - 1) + 1;
-    body = `<div class="mw-brief-grid">${rows.join("")}</div>`;
+    body = `<div class="mw-brief-grid">${label(1, "Now")}${briefLine(b.now, 1)}${label(2, "Recently")}${briefLine(b.recently, 2)}${label(3, "Next")}${briefNext(b.next.items, 3)}</div>`;
   }
+  // Empty and capped hold the ready brief's height (trov.css `.mw-brief-body`), so the tile never changes size.
+  body = `<div class="mw-brief-body">${body}</div>`;
+  const riseLast = 3 + AI_BRIEF_NEXT_MAX;
   const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
-  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-scroll" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
+  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────

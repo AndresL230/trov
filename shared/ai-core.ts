@@ -82,6 +82,17 @@ export interface AiBrief extends AiMeta {
   next: { items: AiBriefNextItem[] };
 }
 
+/** The brief's ONE shape (owner, BR-OWNER-1): Now and Recently each one sentence and its ref line, Next at most three
+ *  items, each a mark, its title and a one-line why — so the tile is the same height every time, and never scrolls.
+ *  The producer holds them (src/ai/brief-core.ts: the prompt asks for them; an answer past a cap is DROPPED, never cut)
+ *  and the renderers clamp to them (mywork.ts `briefTile`; the e-mail shows Now and the same three). Sized so the
+ *  sentence fits two lines and the why one line of the tile at a 1440px window. */
+export const AI_BRIEF_LINE_MAX = 160;
+export const AI_BRIEF_WHY_MAX = 80;
+export const AI_BRIEF_NEXT_MAX = 3;
+/** Sources under one line: one row of them. */
+export const AI_BRIEF_CITES_MAX = 3;
+
 // ── Repo › Overview › "State" ───────────────────────────────────────────────
 /** `RepoDashboard.state?`. Each list is at most AI_LIST_MAX long. `eventCount` is counted
  *  by the server ("Written by Trov from 6 events"); null when unknown, never a guessed 0. */
