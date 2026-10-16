@@ -99,14 +99,14 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { jobs: [briefJob], now: new Date(Date.now() + 31 * MIN) });
     expect(s.haiku).toBe(1);
     const row = (await latestBrief(ctx(), ME))!;
-    expect(row).toMatchObject({ version: 1, model: "claude-haiku-5-5", prompt_version: "brief.1" });
+    expect(row).toMatchObject({ version: 1, model: "claude-haiku-5-5", prompt_version: "brief.2" });
 
     // The real read: the same brief on the cookie route and on MCP's getMyWork, generatedAt = the row's.
     const data = await dashboard(cookie);
     const brief = data.brief!;
     expect(brief).toMatchObject({ state: "ready", generatedAt: row.generated_at, model: "claude-haiku-5-5", now: { text: NOW_TEXT }, recently: null });
     expect(brief.next.items.map((i) => [i.ref, i.kind, i.title])).toEqual([
-      ["ticket:3", "due", "Netlify connect flow"], // overdue first (the server's rule order)…
+      ["ticket:3", "overdue", "Netlify connect flow"], // overdue first (the server's rule order) — its own kind…
       ["handoff:7", "handoff", "Finish the Render provider"], // …then someone waiting; the server's own fallback why
     ]);
     expect(brief.next.items[0].why).toBe(WHY_TICKET);
@@ -123,11 +123,18 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     expect(t.indexOf("Netlify connect flow")).toBeGreaterThan(-1);
     expect(t.indexOf("Finish the Render provider")).toBeGreaterThan(t.indexOf("Netlify connect flow"));
     expect(t).toContain(WHY_TICKET);
+    expect(t).toContain("Overdue"); // past its sprint's date: the Overdue mark, never "Due soon" (BR-OWNER-1)
+    expect(t).not.toContain("Due soon");
     expect(tile).not.toContain("mock-live-md"); // nothing rendered as markdown
     // The app's motion hooks on the real tile: the rows rise in order on the entrance; landing later, the tile
     // fades with the dashboard read's skeleton (test/render.brief-motion.test.ts pins the mechanics).
     expect(tile).toContain('data-settle-with="mw-tickets"');
-    expect([...tile.matchAll(/class="(?:mw-brief-next )?cnpy-rise" style="--i:(\d+);/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 4]);
+    // The one shape (BR-OWNER-1): Recently is empty here, so it says "Nothing new." in its slot; Next has two
+    // items and keeps its third row, empty; the byline keeps its step.
+    expect([...tile.matchAll(/class="(?:mw-brief-(?:next|line) )?cnpy-rise" style="--i:(\d+)[;"]/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 3, 4, 6]);
+    expect(t).toContain("Recently Nothing new.");
+    expect(tile).toContain('<li class="mw-brief-next mw-brief-pad" aria-hidden="true"></li>');
+    expect(tile).not.toContain("mw-scroll");
 
     // "Wrong?": exactly what the button carries, sent as the web client sends it.
     const arg = /data-act="aiWrong" data-arg="([^"]+)"/.exec(tile)?.[1];

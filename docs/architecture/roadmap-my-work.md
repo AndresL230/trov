@@ -105,18 +105,25 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off, no
 key, or nothing written: the field is absent and the bento is exactly its five tiles). With it the bento is laid out by AREA
 (`trov.css` `.mw-bento-brief`, `MyWorkLayout.bento`), each tile sized to what it holds and the whole closing as one
-rectangle: Brief tall on the left (8 of 12 columns) beside Needs your review over Tickets for you; Your sessions tall on the left
-beside Repo over two small tiles (`libraryTiles`: Docs you own, Queued handoffs; Artifacts is not drawn here — the
-owner's call; the strip without a brief keeps it). The bento fits one screen:
-its height follows the window (`clamp(704px, 100dvh − 162px, 796px)`), only the top two rows give (each at least
-150px), Repo keeps 248px and the small tiles 120px, and the page's padding tightens. Every tile keeps that
-height whatever it holds (the brief 8 columns wide; the owner's call): what does not fit scrolls inside
-the tile (`.mw-scroll`) under a header that stays put. Below the 700px container breakpoint every tile is full
-width at its natural height, in that order. Without a brief the page is unchanged (7/5,
+rectangle: Brief tall on the left (8 of 12 columns) beside Needs your review over Repo; Your sessions tall on the
+left beside Tickets for you (the wide slot) over two small tiles (`libraryTiles`: Docs you own, Queued handoffs;
+Artifacts is not drawn here — the owner's call; the strip without a brief keeps it). That is the owner's swap of
+Repo and Tickets (BR-OWNER-3); the tiles are in that visual order, and the entrance follows it. **Nothing in the
+bento scrolls** (BR-OWNER-1/2): the rows size to what the tiles hold, and all of it is bounded. The brief is ONE
+shape (`ai.md` › The brief; fixed boxes, `web-ui.md` › The AI kit); Needs your review, Repo and Tickets for you
+hold TWO rows each in fixed boxes (`MW_BESIDE_ROWS`; a review or ticket title clamped to two lines, a Repo row one
+truncated line) then "N more in Review" / "N more in Repo" / "N more in the queue" (that one opens the queue
+filtered to me), the line's place and unused rows kept, every state (loading, empty, failed, no repository) in the
+same fixed body — so Needs your review over Repo is one height and lines up with the brief, whose three parts share
+out any height the row has over them. Below the 700px container breakpoint every tile is full width at its natural
+height, stacked Brief, Needs your review, Tickets for you, Repo, then the rest (CSS `order`, the entrance's steps
+with it). Without a brief the page is unchanged (7/5,
 then `mwSpans`, then the library strip across the page). Ready: Now / Recently (each a sentence and its sources) and Next — rows that are real items
-(Failing = the app's failing mark, Handoff = an arrow, a ticket = its `#N`, Due soon = the warning mark), the title
+(Failing = the app's failing mark, Overdue = the danger mark, Due soon = the warning mark, Handoff = an arrow, a
+ticket = its `#N`; one of each, three at most), the title
 the item's own and linked to `cites[0]`, the model's one muted "why" — over a footer with the "Written by Trov"
-byline and the thumbs-down "Wrong?" at the bottom right. Empty: "Trov writes your brief after your next push or when something is
+byline and the thumbs-down "Wrong?" at the bottom right. Now, Recently and Next are ALWAYS drawn, an empty part
+saying "Nothing new." in its slot. Empty: "Trov writes your brief after your next push or when something is
 assigned to you. It reads your sessions, pull requests, tickets and handoffs." Capped: the last `now`, then the
 allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `get_my_work` carries the same `brief?`.
 

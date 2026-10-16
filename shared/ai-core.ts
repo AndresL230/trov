@@ -59,8 +59,12 @@ export const TROV_SYSTEM_HANDLE = "trov";
 // ── My Work › "Your brief" ──────────────────────────────────────────────────
 /** What a Next row is; picks its state mark (Failing = red dot, Handoff = arrow, a ticket
  *  shows its `#N`, a sprint ticket due soon = the due mark). */
-export const AI_NEXT_KINDS = ["failing", "handoff", "ticket", "due"] as const;
+/** A Next row's kind, which is its mark: `overdue` is past its date (its sprint's), `due` is due soon (BR-OWNER-1). */
+export const AI_NEXT_KINDS = ["failing", "handoff", "ticket", "due", "overdue"] as const;
 export type AiNextKind = (typeof AI_NEXT_KINDS)[number];
+/** Next carries at most ONE item per group (the owner, BR-OWNER-1: "one of each"): Overdue and Due soon are one
+ *  group — a brief never has both — and every other kind is its own. */
+export const AI_NEXT_GROUP: Record<AiNextKind, string> = { failing: "failing", handoff: "handoff", ticket: "ticket", due: "due", overdue: "due" };
 
 export interface AiBriefNextItem {
   /** The real item this row is (one of the items the server offered the model). */
@@ -81,6 +85,17 @@ export interface AiBrief extends AiMeta {
   recently: AiLine | null;
   next: { items: AiBriefNextItem[] };
 }
+
+/** The brief's ONE shape (owner, BR-OWNER-1): Now and Recently each one sentence and its ref line, Next at most three
+ *  items, each a mark, its title and a one-line why — so the tile is the same height every time, and never scrolls.
+ *  The producer holds them (src/ai/brief-core.ts: the prompt asks for them; an answer past a cap is DROPPED, never cut)
+ *  and the renderers clamp to them (mywork.ts `briefTile`; the e-mail shows Now and the same three). Sized so the
+ *  sentence fits two lines and the why one line of the tile at a 1440px window. */
+export const AI_BRIEF_LINE_MAX = 160;
+export const AI_BRIEF_WHY_MAX = 80;
+export const AI_BRIEF_NEXT_MAX = 3;
+/** Sources under one line: one row of them. */
+export const AI_BRIEF_CITES_MAX = 3;
 
 // ── Repo › Overview › "State" ───────────────────────────────────────────────
 /** `RepoDashboard.state?`. Each list is at most AI_LIST_MAX long. `eventCount` is counted

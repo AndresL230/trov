@@ -59,10 +59,11 @@ function meta(state: AiState, now: Date, writtenAgo: number | null) {
 }
 
 // ── My Work › Your brief ────────────────────────────────────────────────────
+// The one shape (BR-OWNER-1, `AI_BRIEF_*`): one sentence each for Now and Recently, three Next items, short whys.
 export function briefFixture(state: AiState, now: Date): AiBrief {
   if (state === "empty") return { ...meta("empty", now, null), now: null, recently: null, next: { items: [] } };
   const nowLine = {
-    text: "You are partway through the hosting screens on feat/hosting-screens. The last push failed CI on the Netlify connect test.",
+    text: "You are partway through the hosting screens on feat/hosting-screens, and the last push failed CI on the Netlify connect test.",
     cites: [branch("feat/hosting-screens"), run(4812)],
   };
   if (state === "capped") return { ...meta("capped", now, 9 * DAY), now: nowLine, recently: null, next: { items: [] } };
@@ -70,7 +71,7 @@ export function briefFixture(state: AiState, now: Date): AiBrief {
     ...meta("ready", now, 12 * MIN),
     now: nowLine,
     recently: {
-      text: "Shipped status marks across the app, site and digests, and release 0.30 with public docs and account deletion. Trov now connects to Claude on the web.",
+      text: "You shipped status marks across the app, site and digests, and release 0.30 with public docs and account deletion.",
       cites: [pr(173), pr(172), pr(171)],
     },
     next: {

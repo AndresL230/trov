@@ -31,8 +31,8 @@ const SUBJECT_TITLE_MAX = 60;
 
 const STATUS_WORDS: Record<MyWorkTicket["status"], string> = { in_progress: "In progress", testing: "In testing", submitted: "Not started" };
 
-/** One Next row: the item's own title (linked) and one plain line under it. */
-export interface NextRow { title: string; href: string | null; line: string }
+/** One Next row: the item's own title (linked) and one plain line under it; `overdue` draws My Work's "Overdue" word. */
+export interface NextRow { title: string; href: string | null; line: string; overdue?: boolean }
 /** One Also row. */
 export interface AlsoRow { title: string; href: string; importance: Exclude<FeedImportance, "routine">; at: string }
 
@@ -58,7 +58,7 @@ function fromBrief(b: AiBrief | null): Omit<BriefContent, "also"> | null {
   return {
     source: "brief",
     now: b.now?.text ?? null,
-    next: items.slice(0, BRIEF_NEXT_SHOWN).map((i) => ({ title: i.title, href: linkOf(i.cites[0]?.href), line: i.why })),
+    next: items.slice(0, BRIEF_NEXT_SHOWN).map((i) => ({ title: i.title, href: linkOf(i.cites[0]?.href), line: i.why, ...(i.kind === "overdue" ? { overdue: true } : {}) })),
     nextTotal: items.length,
   };
 }
@@ -157,9 +157,9 @@ export function renderBrief(c: BriefContent): Section | null {
   if (c.next.length) {
     html.push(LABEL(c.source === "brief" ? "NEXT" : "ASSIGNED TO YOU", !c.now));
     html.push(`<table data-brief-next ${S.table}>` + c.next.map((n) =>
-      `<tr><td style="${S.body}">${linked(n.title, n.href)}<div style="${S.muted}">${escapeHtml(n.line)}</div></td></tr>`).join("") + `</table>`);
+      `<tr><td style="${S.body}">${linked(n.title, n.href)}${n.overdue ? `<span style="padding-left:10px;">${K.mark("Overdue", "amber")}</span>` : ""}<div style="${S.muted}">${escapeHtml(n.line)}</div></td></tr>`).join("") + `</table>`);
     text.push(c.source === "brief" ? "  NEXT" : "  ASSIGNED TO YOU");
-    for (const n of c.next) text.push(`  - ${n.title}${n.href ? ` <${n.href}>` : ""}`, `    ${n.line}`);
+    for (const n of c.next) text.push(`  - ${n.title}${n.overdue ? " (Overdue)" : ""}${n.href ? ` <${n.href}>` : ""}`, `    ${n.line}`);
   }
   if (c.also.length) {
     // With no brief the section's own heading is "Also" (below): no second label under it.
