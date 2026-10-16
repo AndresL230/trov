@@ -21,6 +21,7 @@ import { segmented } from "./segmented";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { confirmModal } from "./confirm";
+import { capReached, meterPct } from "@shared/plans";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -129,7 +130,7 @@ function inlineField(e: TagEdit): string {
 // ── Jev tagging existing items (issues #154–#158; no review step, the owner's call) ──
 
 const meter = (used: number, cap: number | null, label: string): string => cap === null || cap <= 0 ? ""
-  : `<div class="cnpy-tagshead-meter" role="meter" aria-label="${attr(label)}" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${Math.min(used, cap)}"${used >= cap ? ' data-full="1"' : ""}><span style="transform:scaleX(${Math.min(1, used / cap).toFixed(4)})"></span></div>`;
+  : `<div class="cnpy-tagshead-meter" role="meter" aria-label="${attr(label)}" aria-valuemin="0" aria-valuemax="${cap}" aria-valuenow="${Math.min(used, cap)}"${capReached(used, cap) ? ' data-full="1"' : ""}><span style="transform:scaleX(${(meterPct(used, cap) / 100).toFixed(2)})"></span></div>`;
 
 /** Sift stops with the organization's AI switch (Org settings › AI), whatever its own switch says. */
 const ORG_OFF = "Trov's AI is off for this organization (Org settings › AI), so nothing is sent.";
@@ -301,7 +302,7 @@ export function tagsTab(org: MyOrg, p: TagsTabProps): string {
   const ui = p.ui;
   const live = list.tags.filter((t) => !t.retired);
   const retired = list.tags.filter((t) => t.retired);
-  const full = list.cap !== null && list.used >= list.cap;
+  const full = capReached(list.used, list.cap);
   // The header: how full the list is, what agents suggested (admins), and Jev (admins) — one card of cells.
   const waiting = admin ? list.suggestions.length : 0;
   const head0 = `<section aria-label="Tags in ${attr(org.name)}"${surface("", { cls: "cnpy-tagshead" })}>

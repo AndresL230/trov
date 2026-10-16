@@ -107,7 +107,11 @@ make an org smaller.
 ## One question, one refusal
 
 `planRefusal(state, limit, used, adding)` (`shared/plans.ts`) answers "may this org add this now?" — `null`,
-or the typed refusal. Nothing else compares a count to a cap. The Worker throws it as `PlanLimitError`
+or the typed refusal. Nothing else compares a count to a cap: its comparison is THE cap test `capReached(used, cap,
+adding = 1)` (owner ruling Q11 — for one more, `used >= cap`), and every meter and "used up" line reads the same
+helper (`meterPct` is full ONLY at the cap, never by rounding: 99.6% draws 99 and no "Used up" line) — Org settings ›
+AI, the Plan tile, Settings › Plan, the Tags header, the summaries' spend. (Ask Trov's composer and its state route
+still compare on their own: `web/src/ask-composer.ts`, `src/ai/ask/routes.ts`.) The Worker throws it as `PlanLimitError`
 (`src/plans/state.ts`); a tenant write path calls `requirePlan(ctx, limit, adding)` (`gate.ts`), a seat is
 taken through `seatGate(p, orgId, "reserve" | "accept")` (`state.ts`).
 

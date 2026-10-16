@@ -14,7 +14,7 @@ import { orgHead, tabLead, sliceNote, type OrgSlice } from "./org-ui";
 import { switchBtn } from "./notifications";
 import { kindMark, aiMark } from "./marks";
 import { aiDay } from "./ai-ui";
-import { formatCount } from "@shared/plans";
+import { capReached, formatCount, meterPct } from "@shared/plans";
 
 const LIST = "overflow:hidden;list-style:none;margin:0;padding:0";
 const ROW = "display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);margin-bottom:-1px";
@@ -49,9 +49,10 @@ export function allowanceLine(key: AiAllowanceKey, r: AiAllowanceUse): string {
 function allowanceRow(key: AiAllowanceKey, r: AiAllowanceUse): string {
   const a = ALLOWANCE[key];
   const line = allowanceLine(key, r);
-  const pct = r.cap ? Math.min(100, Math.round((r.used / Math.max(1, r.cap)) * 100)) : 0;
-  const meter = r.cap === null ? "" : `<div class="cnpy-meter" data-meter="${pct >= 100 ? "full" : "ok"}" role="meter" aria-label="${attr(`${a.name} this month`)}" aria-valuemin="0" aria-valuemax="${r.cap}" aria-valuenow="${Math.min(r.used, r.cap)}" aria-valuetext="${attr(line)}"><span style="width:${pct}%"></span></div>`;
-  const used = r.cap !== null && r.used >= r.cap;
+  // ONE cap test (Q11, shared/plans.ts `capReached`): the meter is full exactly when the "Used up" line shows.
+  const used = capReached(r.used, r.cap);
+  const pct = meterPct(r.used, r.cap);
+  const meter = r.cap === null ? "" : `<div class="cnpy-meter" data-meter="${used ? "full" : "ok"}" role="meter" aria-label="${attr(`${a.name} this month`)}" aria-valuemin="0" aria-valuemax="${r.cap}" aria-valuenow="${Math.min(r.used, r.cap)}" aria-valuetext="${attr(line)}"><span style="width:${pct}%"></span></div>`;
   const resume = used && r.resumesOn
     ? `<div style="font-size:12.5px;color:var(--amber);margin-top:8px">Used up for this month: ${esc(a.stops)} until ${esc(aiDay(r.resumesOn))}.</div>` : "";
   return `<li style="${ROW};flex-direction:column;gap:0" data-ai-allowance="${key}">

@@ -34,6 +34,7 @@ import type { DashboardData } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
 import { loadWebChunks } from "./helpers/web-chunks";
+import { capReached, meterPct } from "@shared/plans";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
 loadWebChunks();
@@ -574,6 +575,17 @@ describe("Org settings › AI", () => {
     expect(capped).toContain("Used up for this month: Trov writes nothing new until Nov 1.");
     expect(capped).toContain("Used up for this month: Ask Trov pauses until Nov 1.");
     expect(capped).not.toContain("excerpt until"); // summaries are not used up
+  });
+  it("ONE cap test (Q11, `capReached`: used >= cap): 99.6% is neither a full meter nor used up; the cap itself is both", () => {
+    const meterOf = (html: string, key: string) => html.match(new RegExp(`data-ai-allowance="${key}"[\\s\\S]*?data-meter="(\\w+)"[\\s\\S]*?<span style="width:(\\d+)%`))!.slice(1);
+    const almost = tab(settings({ allowances: { ...settings().allowances, ai_runs: use(2988, 3000, null) } }));
+    expect(meterOf(almost, "ai_runs")).toEqual(["ok", "99"]);
+    expect(text(almost)).not.toContain("Used up for this month: Trov writes nothing new");
+    const full = tab(settings({ allowances: { ...settings().allowances, ai_runs: use(3000, 3000, "2026-11-01") } }));
+    expect(meterOf(full, "ai_runs")).toEqual(["full", "100"]);
+    expect(text(full)).toContain("Used up for this month: Trov writes nothing new until Nov 1.");
+    expect([capReached(2999, 3000), capReached(3000, 3000), capReached(3001, 3000), capReached(5, null)]).toEqual([false, true, true, false]);
+    expect([meterPct(2988, 3000), meterPct(2999, 3000), meterPct(3000, 3000), meterPct(1, null)]).toEqual([99, 99, 100, 0]);
   });
   it("what is sent names BOTH providers — Anthropic and TypeSafe AI — and what each receives, with what is never sent; the model is Sift, never named", () => {
     const html = tab(settings());
