@@ -4345,6 +4345,10 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
 };
 const FM_CLOSE_MS = 130;
 let fmClosing: string | null = null;
+/** The close in progress is the hover's own (the pointer left): only that one is revived when the pointer comes back.
+ *  A close that was asked for — Apply, Escape, the backdrop, the Filter button — runs to its end, even when the screen
+ *  repaints under a pointer still resting on the fading popover (that fires a pointerover without a move). */
+let fmClosingByHover = false;
 let hoverCloseTimer: ReturnType<typeof setTimeout> | null = null;
 const HOVER_INTENT_MS = 60;
 let hoverIntentTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4372,7 +4376,7 @@ function openFilterMenu(id: string): void {
   state.fmOpening = null;
 }
 /** `refocus`: the keyboard was in the menu (Escape) — focus goes back to its Filter button once it is shut. */
-function closeFilterMenu(id: string, refocus = false): void {
+function closeFilterMenu(id: string, refocus = false, byHover = false): void {
   const spec = FILTER_MENUS[id];
   if (!spec || !spec.isOpen() || fmClosing === id) return;
   cancelHoverClose();
@@ -4383,6 +4387,7 @@ function closeFilterMenu(id: string, refocus = false): void {
   const pop = livePopover(id);
   if (!pop || reducedMotion()) { finish(); return; }
   fmClosing = id;
+  fmClosingByHover = byHover;
   pop.classList.remove("is-opening");
   pop.classList.add("is-closing");
   setTimeout(() => { if (fmClosing === id) finish(); }, FM_CLOSE_MS);
@@ -4442,7 +4447,7 @@ mount.addEventListener("pointerover", (e) => {
   const id = menu?.dataset.hoverMenu ?? "";
   if (FILTER_MENUS[id]) {
     cancelHoverClose();
-    if (!FILTER_MENUS[id].isOpen() || fmClosing === id) { hoverOpenedAt = performance.now(); openFilterMenu(id); }
+    if (!FILTER_MENUS[id].isOpen() || (fmClosing === id && fmClosingByHover)) { hoverOpenedAt = performance.now(); openFilterMenu(id); }
   }
   // Hover intent: a row acts only once the pointer RESTS on it (~60 ms), so sweeping
   // across the categories toward the options doesn't flip through every one on the way.
@@ -4465,7 +4470,7 @@ mount.addEventListener("pointerout", (e) => {
   // the Filter button close it.
   if (menu?.querySelector(".fm-ai")?.contains(document.activeElement)) return;
   cancelHoverClose();
-  hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id); }, 200);
+  hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id, false, true); }, 200);
 });
 // `data-hover-blur` (the ticket queue's search + Filter pair): once a MOUSE leaves
 // it, it lets go — the search box drops its focus (and so its selected outline),
