@@ -51,7 +51,7 @@ import type { ArtRoute } from "./artifacts";
 import { parseSlugVersion } from "@shared/artifacts-core";
 import type { ReleasePage } from "./releases";
 import { LATEST_RELEASE } from "./release-latest";
-import { PLAT_TABS, type PlatTab } from "./platform";
+import { PLAT_TABS, type PlatTab } from "./platform-core";
 import { ORG_SLUG_RE } from "@shared/orgs";
 import { isOrgTab, type OrgTab } from "./org-settings";
 import { isWelcomeStep, type WelcomeStep } from "./welcome";

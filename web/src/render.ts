@@ -63,7 +63,9 @@ import {
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
 } from "./artifacts";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
+// Platform is its own chunk (platform-lazy.ts draws a skeleton until it is in); its state is platform-core.ts.
+import { platformView, platformOrgView, platformDialogs, platformPage } from "./platform-lazy";
+import { platformHeaderControls, platformCrumb, initialPlat, type PlatState } from "./platform-core";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";

@@ -47,11 +47,8 @@ export interface SupportTabState {
   actionError: string | null;
 }
 
-export const initialSupportTab = (): SupportTabState => ({
-  list: { status: "idle", data: [] }, open: null, next: null, more: "idle",
-  status: "open", kind: "all",
-  reportId: null, detail: { status: "idle", data: null }, missing: false, busy: false, actionError: null,
-});
+// The empty state lives in platform-core.ts (the app's state is made before this chunk loads).
+export { initialSupportTab } from "./platform-core";
 
 export const SUPPORT_STATUS_FILTERS: readonly SupportStatusFilter[] = ["open", "resolved", "all"];
 const STATUS_LABEL: Record<SupportStatusFilter, string> = { open: "Open", resolved: "Resolved", all: "All" };

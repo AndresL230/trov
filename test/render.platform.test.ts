@@ -21,6 +21,11 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { render, initialState, type AppState } from "../web/src/render";
 import { parseHash, hashForRoute, sameRoute } from "../web/src/hash";
 import type { OrgUsage, PlatformOrgRow, PlatformOrgDetail, PlatformUsageResponse, UsageActivity, UsageSizes, PlatformAuditRow } from "@shared/orgs";
+import { platformChunk } from "../web/src/platform-lazy";
+import * as platformChunkModule from "../web/src/platform-chunk";
+
+// Platform is its own chunk (platform-lazy.ts): render() draws it as if it had loaded.
+platformChunk.set(platformChunkModule);
 
 const org = (over: Partial<PlatformOrgRow> = {}): PlatformOrgRow => ({
   slug: "acme", name: "Acme", status: "active", created_at: "2026-09-01T10:00:00.000Z", created_by: "andres",

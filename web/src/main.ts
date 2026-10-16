@@ -78,9 +78,10 @@ import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-header";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
-import { createPlatform } from "./platform-actions";
+import { platformChunk } from "./platform-lazy";
+import { lazyChunk, type LazyChunk } from "./lazy-chunk";
 import { createTagsController } from "./tags-actions";
-import { PLATFORM_PATH, isPlatformPath } from "./platform";
+import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
@@ -359,6 +360,31 @@ let drawerRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
+// ── lazy chunks (lazy-chunk.ts; web-ui.md › The app's bundles) ───────────────
+// A screen whose module is its own chunk draws its skeleton until the chunk is in. `withChunk` starts
+// (or joins) the load and, once it lands, runs what was waiting for it — a controller's first read,
+// an act — and repaints, all in ONE paint (`batchRender`). A paint that needs a chunk calls it with no
+// `fn`; a chunk that failed is then not retried in a loop (its screen says to reload), but an act asked
+// for again tries again.
+const chunkWaiters = new Map<LazyChunk<unknown>, ((m: unknown) => void)[]>();
+function withChunk<M>(chunk: LazyChunk<M>, fn?: (m: M) => void): void {
+  const ready = chunk.get();
+  if (ready) { fn?.(ready); return; }
+  if (chunk.failed() && !fn) return;
+  const key = chunk as LazyChunk<unknown>;
+  const waiting = chunkWaiters.get(key);
+  if (waiting) { if (fn) waiting.push(fn as (m: unknown) => void); return; }
+  chunkWaiters.set(key, fn ? [fn as (m: unknown) => void] : []);
+  chunk.load().then(
+    (m) => {
+      const fns = chunkWaiters.get(key) ?? [];
+      chunkWaiters.delete(key);
+      batchRender(() => { for (const f of fns) f(m); rerenderSoon(); });
+    },
+    () => { chunkWaiters.delete(key); rerenderSoon(); },
+  );
+}
+
 let releasesWanted = false;
 function wantReleases(): void {
   if (releasesWanted) return;
@@ -374,6 +400,8 @@ function paintApp(): void {
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // Platform's screens are their own chunk: painting one without it starts the load.
+  if ((state.view === "platform" || state.view === "app") && (state.screen === "platform" || state.screen === "platformorg")) withChunk(platformChunk);
   // Signed in: the Markdown chunk starts loading beside the first reads (once).
   if (state.view === "app" || state.view === "platform") prefetchMarkdownLib();
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
@@ -2276,12 +2304,25 @@ function confirmOut(then: () => void): void {
 }
 
 // ── Platform (superadmin): its loads and acts live in platform-actions.ts ────
-const platform = createPlatform({
-  state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
-  // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
-  // On the standalone page there is no My Work to fall back to: the picker.
-  leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
-});
+// Its own chunk (platform-lazy.ts): the controller is made when the chunk lands, and a load or an
+// act asked for before then runs once it has (`withChunk`).
+type PlatformCtl = ReturnType<typeof import("./platform-actions").createPlatform>;
+let platformCtl: PlatformCtl | null = null;
+const platform = {
+  run(fn: (c: PlatformCtl) => void): void {
+    withChunk(platformChunk, (m) => {
+      platformCtl ??= m.createPlatform({
+        state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
+        // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
+        // On the standalone page there is no My Work to fall back to: the picker.
+        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
+      });
+      fn(platformCtl);
+    });
+  },
+  load(): void { platform.run((c) => c.load()); },
+  act(act: string, arg: string | null, value: string | null): void { platform.run((c) => c.act(act, arg, value)); },
+};
 
 
 // Copy text to the clipboard. Prefers the async Clipboard API (available on
