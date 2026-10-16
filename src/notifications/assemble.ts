@@ -361,6 +361,8 @@ export function assembleMessage(opts: {
   // Phase E: the blocks (the brief, This week) first, then every queue's ONE line together.
   const blocks = sections.filter((s) => s.layout !== "line");
   const lines = sections.filter((s) => s.layout === "line");
+  // A section's one footer line (the brief paused, for an admin), above who the mail is for.
+  const footnotes = sections.map((s) => s.footnote).filter((f): f is string => !!f);
 
   const heading = `${SANS}font-size:15px;line-height:20px;font-weight:600;letter-spacing:-0.01em;color:${C.fg};`;
   const button = `display:inline-block;${SANS}font-size:13px;line-height:20px;font-weight:500;color:${C.accentText};text-decoration:none;padding:6px 12px;border:1px solid ${C.borderStrong};border-radius:8px;`;
@@ -394,6 +396,7 @@ export function assembleMessage(opts: {
     header(window.cadence, range) +
     rows.join("") +
     `<tr><td style="padding:${SP.l}px 28px ${SP.l}px 28px;border-top:1px solid ${C.border};${SANS}font-size:12px;line-height:20px;color:${C.fg40};">` +
+    footnotes.map((f) => `<div data-footnote style="padding-bottom:${SP.xs}px;">${escapeHtml(f)}</div>`).join("") +
     `You're getting the ${window.cadence} Trov digest for ${escapeHtml(login)}. <a href="${escapeHtml(unsubscribeUrl)}" style="color:${C.fg40};text-decoration:underline;text-underline-offset:2px;">Unsubscribe</a><br>` +
     `Sent by Trov &middot; ${escapeHtml(host)}</td></tr>` +
     EMAIL_CARD_CLOSE + `</td></tr></table></body></html>`
@@ -415,6 +418,7 @@ export function assembleMessage(opts: {
     ...lines.map((s) => `${s.text} -> ${link(s)}`),
     ...(lines.length ? [""] : []),
     "-".repeat(title.length),
+    ...footnotes,
     `You're getting the ${window.cadence} Trov digest for ${login}.`,
     `Unsubscribe: ${unsubscribeUrl}`,
     `Sent by Trov — ${host}`,

@@ -3,9 +3,11 @@
 //
 //   • YOUR BRIEF — the SAME stored brief My Work's `briefTile` shows (`storedBrief`, src/tools/mywork.ts: the
 //     `DashboardData.brief` shape): its "Now" line and up to 3 "Next" items, each the item's own title linked, with
-//     its one-line why. With no brief to show (the org's AI switch off, none written yet, or "Wrong?" on it), the 3
-//     most recently updated tickets assigned to the person (`listAssignedTickets`, the read My Work uses), in plain
-//     words.
+//     its one-line why — only a brief that is `ready`. EVERY missing brief (owner ruling Q42) — none stored, an empty
+//     one, "Wrong?" on it, the org's switch off or no key (storedBrief's null), the allowance used up (`capped`), or
+//     any other state that is not `ready` (a stale one) — falls back to the 3 most recently updated tickets assigned
+//     to the person (`listAssignedTickets`, the read My Work uses), in plain words. A capped brief adds ONE footer
+//     line, for an admin or owner only: why briefs are paused.
 //   • ALSO (the daily only) — at most 3 notable or breaking items that touched the person's work in the window, as a
 //     title and a link: their merged pull requests as My Work maps them (`toMyWorkPr`, Sift's `importance`), and feed
 //     entries as the Feed reads them (`get_feed`: `importance`, and `ai.subject` on an entry Trov wrote for them).
@@ -15,7 +17,9 @@
 import { isFeedImportance, type AiBrief, type FeedImportance } from "@shared/ai";
 import type { NotificationKind, Section, Window } from "@shared/notifications";
 import type { MyWorkTicket } from "@shared/dashboard";
-import { type TenantContext, all, ph } from "../../data/sql";
+import { type TenantContext, all, first, ph } from "../../data/sql";
+import { planAndAiRuns } from "../../plans/gate";
+import { planDef } from "@shared/plans";
 import { countAssignedTickets, listAssignedTickets, storedBrief, toMyWorkPr, type PrEventJoinRow } from "../../tools/mywork";
 import { get_feed } from "../../tools/reads";
 import { memberGithubLogins, memberPerson } from "../../auth/persons";
@@ -44,15 +48,19 @@ export interface BriefContent {
   /** How many Next items there are in all (the subject's "plus N more"). */
   nextTotal: number;
   also: AlsoRow[];
+  /** The mail's one footer line about the brief (paused: the allowance is used up, or the plan ended) — set only for
+   *  an admin or owner. */
+  footnote?: string | null;
 }
 
 const clip = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max - 1).trimEnd()}…` : s);
 /** A cite's link as an absolute one: an in-app route (`#tickets/14`) hangs off the org's app address. */
 const linkOf = (href: string | null | undefined): string | null => (!href ? null : href.startsWith("#") ? appHref(href) : href);
 
-/** The brief's content, or null when there is no brief WITH something to show (then the assigned tickets stand in). */
+/** The brief's content, or null when there is no brief WITH something to show (then the assigned tickets stand in):
+ *  only a `ready` brief is shown — a capped, empty or stale one is a missing brief (Q42). */
 function fromBrief(b: AiBrief | null): Omit<BriefContent, "also"> | null {
-  if (!b) return null;
+  if (!b || b.state !== "ready") return null;
   const items = b.next.items;
   if (!b.now && !items.length) return null;
   return {
@@ -117,6 +125,19 @@ async function alsoFor(ctx: TenantContext, handle: string, window: Window): Prom
   return rows.sort((a, b) => rank(a) - rank(b) || Date.parse(b.at) - Date.parse(a.at)).slice(0, ALSO_MAX);
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "Nov 1" from `2026-11-01`. */
+const shortDay = (iso: string): string => { const [, m, d] = iso.split("-").map(Number); return `${MONTHS[m - 1]} ${d}`; };
+
+/** Why a capped brief is paused — the mail's one footer line, for an admin or owner (Q42); null for anyone else. */
+async function pausedNote(ctx: TenantContext, handle: string, brief: AiBrief, now: Date): Promise<string | null> {
+  const m = await first<{ role: string }>(ctx, `SELECT role FROM memberships WHERE org_id = ? AND user_id = ? COLLATE NOCASE`, ctx.orgId, handle);
+  if (m?.role !== "owner" && m?.role !== "admin") return null;
+  const { plan } = await planAndAiRuns(ctx, now);
+  if (plan.status === "canceled") return `Your brief is paused: this organization's ${planDef(plan.plan).name} plan has ended, so Trov's AI is paused until it is renewed (Org settings › General).`;
+  return `Your brief is paused: this organization has used this month's AI allowance${brief.resumesOn ? `; it resumes ${shortDay(brief.resumesOn)}` : ""} (Org settings › AI).`;
+}
+
 /** The section's content for one person and window, or null (not a member). Pure read. */
 export async function briefContent(ctx: TenantContext, handle: string, window: Window): Promise<BriefContent | null> {
   const me = await memberPerson(ctx, handle);
@@ -124,7 +145,8 @@ export async function briefContent(ctx: TenantContext, handle: string, window: W
   const brief = await storedBrief(ctx, me.handle, window.end).catch(() => null);
   const head = fromBrief(brief) ?? (await fromAssigned(ctx, me.handle));
   const also = window.cadence === "daily" ? await alsoFor(ctx, me.handle, window) : [];
-  return { ...head, also };
+  const footnote = brief?.state === "capped" ? await pausedNote(ctx, me.handle, brief, window.end) : null;
+  return { ...head, also, footnote };
 }
 
 /** "Only when something needs me": the brief has a Next item, or a notable or breaking item touched their work. */
@@ -172,6 +194,7 @@ export function renderBrief(c: BriefContent): Section | null {
   }
   const subject = briefSubject(c);
   return {
+    ...(c.footnote ? { footnote: c.footnote } : {}),
     heading: hasBrief ? "Your brief" : "Also",
     summary: subject ?? undefined,
     html: html.join(""),

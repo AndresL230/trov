@@ -20,6 +20,7 @@ import { seedPerson } from "./helpers/persons";
 import { TicketCreate } from "@shared/tickets";
 import { SprintCreate } from "@shared/sprints";
 import type { Window } from "@shared/notifications";
+import { aiItemRef } from "@shared/ai";
 import type { CapturedEvent } from "@shared/contract";
 
 // Window under test: the 24h ending 2026-09-11T12:00Z (a Friday).
@@ -108,6 +109,55 @@ describe("my_work renderer: Your brief and Also", () => {
     expect(s.html).toContain("{{trov-app}}/#tickets/9"); // resolved by the assembler to the org's address
     expect(s.html).not.toContain("Assigned but not in the brief");
     expect(s.subject).toBe("From the brief");
+  });
+
+  // Q42 (owner ruling 2026-10-16): every missing brief falls back to the 3 most recent assigned items.
+  it("every missing brief falls back to the assigned tickets: none stored, an empty one, Wrong? on it, the allowance used up", async () => {
+    await aiOn();
+    await ticket("Assigned one", [LOGIN]);
+    const fallsBack = async (why: string) => {
+      const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
+      expect(s.html, why).toContain("ASSIGNED TO YOU");
+      expect(s.html, why).toContain("Assigned one");
+      expect(s.html, why).not.toContain("From the brief");
+      expect(s.subject, why).toBe("Assigned one");
+    };
+    await fallsBack("no row");
+    // An empty one: the pass stored a row with no model (nothing written).
+    await storeBrief(systemCtx(), LOGIN, { generatedAt: "2026-09-11T10:00:00.000Z", model: null, promptVersion: "brief.1", inputHash: "e", briefJson: JSON.stringify({ now: null, recently: null, next: { items: [] } }) });
+    await fallsBack("empty");
+    // Wrong? on the stored one.
+    await storeTheBrief();
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.html).toContain("From the brief"); // shown until…
+    await run(env.DB, `INSERT INTO ai_feedback (org_id, handle, item_type, item_ref, kind, model, prompt_version, created_at) VALUES (?, ?, 'brief', ?, 'brief', NULL, NULL, ?)`,
+      ORG, LOGIN, aiItemRef.brief("2026-09-11T11:00:00.000Z"), IN_WINDOW);
+    await fallsBack("Wrong?");
+    await run(env.DB, `DELETE FROM ai_feedback`);
+    // Capped: the org's month of runs used up — the last brief is NOT mailed (a missing brief).
+    await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-09-05', 'ai_run:brief', 'x', 250, ?)`, ORG, IN_WINDOW);
+    await fallsBack("capped");
+  });
+
+  it("a capped brief adds ONE footer line, for an admin or owner only — why briefs are paused, and when they resume", async () => {
+    await aiOn();
+    await seedPerson("lpcooper-arch");
+    await storeTheBrief();
+    await storeBrief(systemCtx(), "lpcooper-arch", { generatedAt: "2026-09-11T11:00:00.000Z", model: "claude-haiku-5-5", promptVersion: "brief.1", inputHash: "h", briefJson: JSON.stringify(BRIEF) });
+    await ticket("Mine", [LOGIN]);
+    await ticket("Luke's", ["lpcooper-arch"]);
+    await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-09-05', 'ai_run:brief', 'x', 250, ?)`, ORG, IN_WINDOW);
+    const owner = (await kind().render(systemCtx(), LOGIN, WINDOW))!; // AndresL230 is the seed org's owner
+    expect(owner.footnote).toBe("Your brief is paused: this organization has used this month's AI allowance; it resumes Oct 1 (Org settings › AI).");
+    const member = (await kind().render(systemCtx(), "lpcooper-arch", WINDOW))!;
+    expect(member.footnote).toBeUndefined();
+    // An ended plan says so instead of a date.
+    await run(env.DB, `UPDATE orgs SET plan = 'team', plan_status = 'canceled' WHERE id = ?`, ORG);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.footnote).toBe("Your brief is paused: this organization's Pro plan has ended, so Trov's AI is paused until it is renewed (Org settings › General).");
+    // Not capped: no line.
+    await run(env.DB, `UPDATE orgs SET plan = 'enterprise', plan_status = 'active' WHERE id = ?`, ORG);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.footnote).toBeUndefined();
   });
 
   it("a Google-only member (no GitHub identity) still gets their assigned tickets", async () => {

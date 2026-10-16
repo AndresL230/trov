@@ -143,10 +143,15 @@ assembler to the org's address (`<origin>/<slug>/#…`).
     no brief to show, the same rule over the assigned tickets ("Login page is blank, plus 2 more"); with nothing next
     at all, "Your Trov digest". The weekly keeps `Trov weekly, <range>`.
   - **Your brief** (`my_work`) — the SAME stored brief My Work's `briefTile` shows (`storedBrief`, the
-    `DashboardData.brief` shape, so the AI switch, "Wrong?" and staleness rules are My Work's): its Now line and up
-    to 3 Next items, each its own title linked to its first cite, with its one-line why. With no brief to show (AI
-    off, none written, or dismissed): the 3 most recently updated tickets assigned to the person
-    (`listAssignedTickets`), "In progress, in the Hosting sprint, high priority" — under ASSIGNED TO YOU.
+    `DashboardData.brief` shape, so the AI switch, the key, "Wrong?" and staleness rules are My Work's): its Now line
+    and up to 3 Next items, each its own title linked to its first cite, with its one-line why — only a `ready`
+    brief. EVERY missing brief (owner ruling Q42) — none stored, an empty one, "Wrong?" on it, the switch off or no
+    key, the allowance used up (`capped`: its last version is NOT mailed), a stale one, any state but `ready` — gives
+    the 3 most recently updated tickets assigned to the person (`listAssignedTickets`), "In progress, in the Hosting
+    sprint, high priority" — under ASSIGNED TO YOU. A capped brief adds ONE footer line, to an admin or owner only
+    (`Section.footnote`, drawn above "You're getting…" in both parts): "Your brief is paused: this organization has
+    used this month's AI allowance; it resumes Nov 1 (Org settings › AI)." — or, for an ended plan, that the plan
+    has ended and AI is paused until it is renewed.
   - **Also** (daily only) — at most 3 items Sift rated notable or breaking that touched the person's work in the
     window, a title and a link with its mark: their merged PRs (`toMyWorkPr`'s `importance`) and feed entries as
     the Feed reads them (`get_feed`: `importance`; theirs = their own, `ai.subject` = them, or naming one of their

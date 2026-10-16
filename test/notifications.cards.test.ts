@@ -86,6 +86,13 @@ describe("the assembled message", () => {
     expect(assemble([renderBrief(assigned)!]).subject).toBe("Login page is blank, plus 2 more");
   });
 
+  it("a section's footnote is ONE line in the footer, above who the mail is for, in both parts (Q42)", () => {
+    const m = assemble([{ ...renderBrief(brief())!, footnote: "Your brief is paused: this organization has used this month's AI allowance; it resumes Oct 1 (Org settings › AI)." }]);
+    expect(m.html).toMatch(/<div data-footnote[^>]*>Your brief is paused: this organization has used this month&#39;s AI allowance; it resumes Oct 1 \(Org settings › AI\)\.<\/div>You&#39;re getting|<div data-footnote[^>]*>Your brief is paused[\s\S]*?<\/div>You're getting/);
+    expect(m.text).toMatch(/-+\nYour brief is paused: [^\n]+\nYou're getting the daily Trov digest for andres\./);
+    expect(assemble([renderBrief(brief())!]).html).not.toContain("data-footnote");
+  });
+
   it("the weekly keeps its dated subject even when the brief offers one", () => {
     const m = assemble([renderBrief(brief())!], { cadence: "weekly", start: new Date("2026-09-07T12:00:00Z"), end: new Date("2026-09-14T12:00:00Z"), id: "2026-W38" });
     expect(m.subject).toMatch(/^Trov weekly, Sep 7 to 11$/);
