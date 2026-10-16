@@ -54,6 +54,8 @@ agents SDKs, the tool modules) in a lazy initialiser, so an isolate evaluates th
 never at startup. `wrangler check startup`, 15 alternating local runs: startup CPU about 24 ms (≈ 18 %) lower at
 the median, for about 12 KB more gzip (the wrappers). `src/mcp-catalog.ts` imports it statically, but the Worker
 never imports the catalog (it runs at build time and in the tests). Invariant 12 is unchanged — what `src/mcp.ts` itself reaches (`test/secrets.mcp.test.ts`).
+The test pool loads `src/mcp.ts` in its setup file (`test/apply-migrations.ts`): there a first dynamic import costs
+seconds inside whichever test sends the file's first `/mcp` call, against its 5 s timeout.
 
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
