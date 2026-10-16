@@ -825,15 +825,14 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   // ── My Work › Your brief (brief-dev's v1 kept as the older version) ──
   s.push(...briefDevStatements(new Date(c.t - 26 * 60 * MIN)).filter((x) => x.startsWith("INSERT")));
   const D = tk("D");
-  // The brief's fixed shape (the owner's rulings): Now and Recently ONE short sentence each; Next AT MOST 3 and one per
-  // kind — the failing build, the overdue ticket, ONE handoff. AI_NEXT_KINDS has no `overdue` kind yet (only
-  // failing / handoff / ticket / due, and `due` draws "Due soon"), so the overdue ticket is a plain `ticket` row whose
-  // why says it is overdue; switch the kind when the schema and the renderer gain one.
+  // The brief's fixed shape (the owner's rulings; shared/ai-core.ts AI_BRIEF_*): Now and Recently ONE sentence each,
+  // at most 160 characters and 3 cites, no ISO date; Next AT MOST 3, one per kind group — the failing build, the
+  // overdue ticket, ONE handoff — each why at most 80 characters.
   const h16 = handoff(16);
   const due3 = snap.sprints.find((x) => x.id === 3)?.target_date ?? "2026-06-10";
   const nextItems = [
     { ref: `ticket:${N.D}`, kind: "failing", title: D.title, why: "The Production backend deploy is failing at its build step.", cites: [ticketCite(N.D)] },
-    { ref: "ticket:3", kind: "ticket", title: byNum(3)?.title ?? "Ticket #3", why: `Overdue: its sprint, Token rotation & audit log, was due ${shortDay(due3)}.`, cites: [ticketCite(3)] },
+    { ref: "ticket:3", kind: "overdue", title: byNum(3)?.title ?? "Ticket #3", why: `Its sprint, Token rotation & audit log, was due ${shortDay(due3)}.`, cites: [ticketCite(3)] },
     ...(h16 ? [{ ref: "handoff:16", kind: "handoff", title: clip(firstLine(h16.body), 140), why: "Jose left it for you, with the backend half done.", cites: [handoffCite(16)] }] : []),
   ].slice(0, 3);
   const brief = {
@@ -841,7 +840,7 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
     recently: { text: "You shipped hosting providers behind one interface and shared GitHub installs across orgs.", cites: [prCite(185), prCite(171), feedCite(IDS.feed.hosting, "Shipped: hosting providers behind one interface")] },
     next: { items: nextItems },
   };
-  s.push(insert("person_brief", { org_id: ORG, handle: ME, version: 2, generated_at: c.ago(9), model: HAIKU, prompt_version: "brief.1", input_hash: "ai-showcase", brief_json: brief }));
+  s.push(insert("person_brief", { org_id: ORG, handle: ME, version: 2, generated_at: c.ago(9), model: HAIKU, prompt_version: "brief.2", input_hash: "ai-showcase", brief_json: brief }));
   s.push(`UPDATE memberships SET mywork_opened_at = ${q(c.ago(2))} WHERE org_id = '${ORG}' AND user_id = '${ME}'`);
 
   // ── Repo › Overview › State: three versions, the newest drawn ──
