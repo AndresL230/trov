@@ -13,7 +13,7 @@ import {
   ASK_SCENARIOS, askRefFixtures, askSearchFixture, askSettingsFixture, askStateFixture, askThreadsFixture, askTranscript, askTranscriptSse,
 } from "@shared/ai-fixtures";
 import { MetaSplitter } from "../src/ai/ask/prompt";
-import { chainOrder } from "../src/ai/ask/tools";
+import { chainOrder, diagramDrawable } from "../src/ai/ask/tools";
 import { applyHunkEdits, docHunks } from "../src/ai/ask/diff";
 import { chartSvg, markdownHtml, tokensToMarkdown } from "../src/ai/ask/render";
 import { snippetOffsets, threadGroup } from "../src/ai/ask/routes";
@@ -117,6 +117,10 @@ describe("the pieces", () => {
     const nodes = ["a", "b", "c"].map((id) => ({ id }));
     expect(chainOrder(nodes, [["b", "c"], ["a", "b"]])).toEqual(["a", "b", "c"]);
     expect(chainOrder(nodes, [["a", "b"], ["a", "c"]])).toBeNull();
+    // …but the client draws any graph without a loop; only a loop or an edge to nowhere is a list
+    expect(diagramDrawable(nodes, [["a", "b"], ["a", "c"]])).toBe(true);
+    expect(diagramDrawable(nodes, [["a", "b"], ["b", "c"], ["c", "a"]])).toBe(false);
+    expect(diagramDrawable(nodes, [["a", "zz"]])).toBe(false);
     const live = "# Doc\n\n## Tokens\n\nRefresh is automatic.\n\nEnd.";
     const proposed = "# Doc\n\n## Tokens\n\nRefresh is manual for now.\n\nEnd.";
     const hunks = docHunks(live, proposed);
