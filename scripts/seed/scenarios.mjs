@@ -162,9 +162,10 @@ function teamSetupStatements() {
  *  rich layer. (`buildSeedStatements` opens with the reset; the scenario drops that prefix and writes `teamSetup`.) */
 export function teamBaseStatements(now = new Date(), { reset = false } = {}) {
   const fx = DEV_FIXTURES;
-  const platform = platformDevStatements(now)
-    // Acme's demo rows are the reset's business: on a rerun without --reset they would pile up.
-    .filter((x) => reset || !(x.startsWith("INSERT INTO org_admin_audit") || x.includes("'org_b', 'sanaok', 'owner'")));
+  // Acme's demo rows (its owner, its usage, the admin trail) are the reset's business: Acme (`org_b`) exists only
+  // after the reset — a freshly migrated D1 has SaplingLearn alone, and its usage rows would trip the foreign key
+  // (#189) — and on a rerun without --reset the trail would pile up.
+  const platform = platformDevStatements(now, { acme: reset });
   return [
     ...teamSetupStatements(),
     ...buildSeedStatements(fx).slice(RESET_STATEMENTS.length),

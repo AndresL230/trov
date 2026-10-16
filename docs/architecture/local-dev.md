@@ -54,6 +54,12 @@ npm run seed -- --list                    # the scenarios and who to sign in as
 npm run seed -- --server http://localhost:8787   # see Ask chips below
 ```
 
+**With or without `--reset`, on any local D1.** A scenario writes everything it depends on (its org, its people, the
+global rows it names), so the plain `npm run seed` loads on a freshly migrated D1 too — one that holds SaplingLearn's
+org row alone (`test/seed-scenarios.test.ts` › "a freshly migrated D1"). Acme (`org_b`, the test seed's empty
+neighbour) and its Platform demo rows (an owner, a little usage, the admin trail; `platform-dev.mjs`) are the reset's:
+only `--reset` writes them. `npm run dev` passes `--reset` when the local D1 has no members yet.
+
 **Ask chips.** The showcase stores each item an Ask answer cites as the RUNNING server's RefView (`POST
 /ask/peek`). `npm run seed` asks the dev server at `:8787` (or `--server`) and uses it when it answers; when nothing
 answers (the seed `npm run dev` runs before `wrangler dev` starts), the answers keep their words without chips — run

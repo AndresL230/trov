@@ -140,10 +140,11 @@ export const RELEASES: Release[] = [
         "Deploys reported by GitHub were missing from the Repo dashboard's deploy lists (#186)",
         "Railway's old tokens no longer show as two connected cards, and a disconnected host reads the same on its card and its parts (#186)",
         "What's new: a release's notes run beside the whole page, so its highlights or patch lines start right under the title (#188)",
+        "The local dev seed now loads on a brand-new local database without --reset (#189)",
       ],
       removed: [],
     },
-    prs: [186, 187, 188, 190],
+    prs: [186, 187, 188, 189, 190],
   },
   // Trov writes for you (#178): Ask Trov, the AI pass, My Work's brief, the shorter digest.
   {
