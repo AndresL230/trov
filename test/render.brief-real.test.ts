@@ -30,7 +30,7 @@ import { first, run } from "./helpers/db";
 import { ORG_A, systemCtx } from "./helpers/tenant";
 import { cookieFor } from "./helpers/persons";
 import { keyedEnv, markRow, stubProviders } from "./helpers/ai-pass";
-import { useAiKey } from "./helpers/ai-key";
+import { useAiKey, withoutAiKey } from "./helpers/ai-key";
 
 // THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
 useAiKey();
@@ -91,8 +91,10 @@ beforeEach(async () => {
 describe("My Work › Your brief, from a stored person_brief row through the real read", () => {
   it("the job's row fills DashboardData.brief on /me/dashboard and get_my_work; the tile renders it; its Wrong? hides it server-side", async () => {
     const cookie = await cookieFor(ME);
-    // Before any brief: the field is absent and the screen is the plain layout.
-    const before = await dashboard(cookie);
+    // Before any brief: with a key the screen's read says `empty` (Q24); with no key the field is absent and the
+    // screen is the plain layout.
+    expect((await dashboard(cookie)).brief).toMatchObject({ state: "empty" });
+    const before = await withoutAiKey(() => dashboard(cookie));
     expect("brief" in before).toBe(false);
     expect(screen(before)).not.toContain("mw-bento-brief");
 

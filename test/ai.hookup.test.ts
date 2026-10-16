@@ -30,7 +30,7 @@ import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
 import { run } from "./helpers/db";
 import { addOrgRepo } from "./helpers/org-config";
 import { keyedEnv, stubProviders, type ClaudeReply } from "./helpers/ai-pass";
-import { useAiKey } from "./helpers/ai-key";
+import { useAiKey, withoutAiKey } from "./helpers/ai-key";
 
 // THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
 useAiKey();
@@ -150,7 +150,9 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     await addOrgRepo(REPO, ORG_A);
     await append_feed(systemCtx(), { author: ME, summary: "Decision: hosting connections stay read-only", body: "b", tags: [] });
     const cookie = await cookieFor(ME);
-    const dash = await get<RepoDashboard>("/repo/dashboard", cookie);
+    // With a key, nothing written is an `empty` state on the screen's read (Q23); with none it is no field at all.
+    expect((await get<RepoDashboard>("/repo/dashboard", cookie)).state).toMatchObject({ state: "empty", generatedAt: null });
+    const dash = await withoutAiKey(() => get<RepoDashboard>("/repo/dashboard", cookie));
     expect(dash).not.toHaveProperty("state");
     const { feed } = await get<{ feed: FeedRow[] }>("/feed", cookie);
     expect(feed.some((r) => "ai" in r)).toBe(false);
@@ -226,7 +228,7 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     // the Source switch) and only the one-time note, no longer true, goes (Q29).
     const keyedFeed = async () => (await (await api.request("https://trov.dev/api/o/saplinglearn/feed", { headers: { cookie } }, keyedEnv())).json()) as { feed: FeedRow[]; aiOff?: boolean };
     expect(await keyedFeed()).not.toHaveProperty("aiOff");
-    expect((await get<{ aiOff?: boolean }>("/feed", cookie)).aiOff).toBe(true); // no key: nothing new is written either
+    expect((await withoutAiKey(() => get<{ aiOff?: boolean }>("/feed", cookie))).aiOff).toBe(true); // no key: nothing new is written either
     await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = ?`, ORG_A);
     const off = await keyedFeed();
     expect(off.aiOff).toBe(true);
