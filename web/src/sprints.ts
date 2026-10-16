@@ -358,6 +358,9 @@ export interface SprintScreenProps {
   resourceDraft: string;
   /** "Delete sprint" was clicked once — the rail shows the inline confirm instead. */
   deleteArmed?: boolean;
+  /** The AI kit's state (`state.ai`): a note this person pressed "Wrong?" on leaves by the kit's exit, as on the
+   *  Roadmap. */
+  ai?: Pick<AiUi, "hidden"> & Partial<Pick<AiUi, "leaving">>;
 }
 
 /**
@@ -419,6 +422,16 @@ export function sprintSkeleton(): string {
     </div>`, DETAIL_SHELL);
 }
 
+/** The Roadmap row's forecast and Trov's note, drawn from the SAME fields of the same read (`SprintView.forecast` /
+ *  `note`, `get_sprint` — Q39) with the Roadmap's own pieces (roadmap-ai.ts): under the progress bar, above the
+ *  tickets; nothing for a done sprint (as on its card) or without them. */
+function sprintAi(sp: SprintDetail, ui: SprintScreenProps["ai"] | null): string {
+  if (sp.status === "done") return "";
+  const forecast = forecastLine(sp.forecast);
+  const note = sprintNoteBlock(sp, sp.note, ui ?? null);
+  return forecast || note ? `<div class="sprint-ai cnpy-rise" style="--i:1;margin:-14px 0 22px;max-width:640px">${forecast}${note}</div>` : "";
+}
+
 export function sprintScreen(p: SprintScreenProps): string {
   const sp = p.detail;
   const activeChip = sp.active ? stateMark("Active", "var(--accent)", "dot", 12, "The sprint the team is working in now.") : "";
@@ -461,6 +474,7 @@ export function sprintScreen(p: SprintScreenProps): string {
           <div style="flex:1;height:6px;border-radius:999px;background:var(--border);overflow:hidden"><div style="height:100%;border-radius:999px;width:${sp.progress.pct}%;background:var(--accent)"></div></div>
           <span style="font-size:11.5px;color:var(--fg-55);font-family:var(--label);white-space:nowrap;flex:none">${sp.progress.closed}/${sp.progress.total} done</span>
         </div>
+        ${sprintAi(sp, p.ai ?? null)}
         <div style="display:flex;align-items:baseline;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--border-strong)">
           <div style="font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--fg-55);white-space:nowrap;flex:none">TICKETS IN THIS SPRINT</div>
         </div>

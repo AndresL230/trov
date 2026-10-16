@@ -147,6 +147,10 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
 - **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
   the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only while
   the org's AI switch is on.
+- **The sprint page** (`#sprints/<id>`, `sprintScreen` in `web/src/sprints.ts`) draws the SAME forecast and note as
+  the sprint's Roadmap card — the same fields of `GET /sprints/:id` (`get_sprint`, as MCP reads it) through the same
+  pieces (`forecastLine`, `sprintNoteBlock`) — under the progress bar, rising with the page; none for a done sprint.
+  "Wrong?" there leaves by the kit's exit as on the Roadmap (Q39).
 - **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
   the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
 - **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4

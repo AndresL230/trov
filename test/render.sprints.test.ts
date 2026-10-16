@@ -38,6 +38,7 @@ import { sprintCard, newSprintPanel, newSprintToggle, sprintScreen, sprintTags, 
 import { priorityMark, stateMark, PRIORITY_LABEL } from "../web/src/marks";
 import { sprintDueState } from "@shared/sprints-core";
 import { placeSprint } from "../web/src/timeline";
+import { forecastLine, sprintNoteBlock } from "../web/src/roadmap-ai";
 import { render, initialState, type AppState } from "../web/src/render";
 import { parseHash } from "../web/src/hash";
 import { avatarStack } from "../web/src/tickets";
@@ -408,6 +409,26 @@ describe("newSprintPanel", () => {
 
 describe("sprintScreen", () => {
   const base = () => detail({ id: 3, label: "Sprint 13 — Tickets" });
+
+  it("draws the Roadmap row's forecast and Trov's note from the same fields, with the same pieces (Q39)", () => {
+    const forecast = { remaining: 3, perDay: 0.5, projected: "2026-11-02", daysLate: 3 };
+    const note = { text: "Two of five done; the other three wait on the Netlify test.", cites: [{ ref: "ticket:21", label: "#21", href: "#tickets/21" }], generatedAt: "2026-10-15T08:00:00Z", model: "claude-haiku-5-5" };
+    const sp = detail({ id: 3, label: "S", status: "in_progress", active: true, forecast, note });
+    const page = sprintScreen({ detail: sp, persons: PERSONS, resourceDraft: "" });
+    expect(page).toContain(forecastLine(forecast));
+    expect(page).toContain(sprintNoteBlock(sp, note, null));
+    expect(page).toContain("At this pace, done Nov 2");
+    // The same as on the sprint's Roadmap card.
+    const card = sprintCard(sp, PERSONS);
+    expect(card).toContain(forecastLine(forecast));
+    expect(card).toContain(sprintNoteBlock(sp, note, null));
+    // A done sprint, or one with neither: nothing. "Wrong?" on the note (its exit over): the forecast alone.
+    expect(sprintScreen({ detail: { ...sp, status: "done", active: false }, persons: PERSONS, resourceDraft: "" })).not.toContain("sprint-ai");
+    expect(sprintScreen({ detail: base(), persons: PERSONS, resourceDraft: "" })).not.toContain("sprint-ai");
+    const hidden = sprintScreen({ detail: sp, persons: PERSONS, resourceDraft: "", ai: { hidden: [`sprint_note:3@${note.generatedAt}`], leaving: [] } });
+    expect(hidden).toContain("rm-forecast");
+    expect(hidden).not.toContain("rm-note");
+  });
 
   it("the DATES property prefers the real start/due span, else the authored label", () => {
     const real = sprintScreen({ detail: detail({ id: 3, label: "S", dates: "SEP 8 – 19", start: "2026-10-06", due: "2026-11-02" }), persons: PERSONS, resourceDraft: "" });

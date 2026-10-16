@@ -2888,7 +2888,7 @@ function sprintScreenBody(s: AppState): string {
   if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return sprintSkeleton();
   if (slice.status === "error") return notice("Couldn't load this sprint.");
   if (!slice.data) return notice("That sprint doesn't exist.");
-  return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });
+  return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed, ai: s.ai });
 }
 
 /** The person card for `handle`: painted from the `GET /persons` summary, completed by the
