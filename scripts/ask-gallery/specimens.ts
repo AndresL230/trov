@@ -582,9 +582,9 @@ function cards(): Section {
     if (field) s.ask.actions.inline = { [cid]: { field, was: null, had: false } };
   };
   return {
-    id: "cards", title: "Write cards", intro: "A write never runs when the model calls it: the server builds a card from Trov's rows and it waits for Confirm (or runs at once on Auto). After the decision the card becomes a line. Consecutive calls to one tool are one card, one Confirm, one Undo.",
+    id: "cards", title: "Write cards", intro: "A write never runs when the model calls it: the server builds a card from Trov's rows and it waits for Confirm (or runs at once on Auto). Cancel / Confirm float outside the card, under its bottom-right edge. After the decision the card becomes a line. Consecutive calls to one tool are one card, one Confirm, one Undo.",
     specs: [
-      cardSpec("c-ticket", "New ticket", "Pending: “Draft, not created yet”, Edit, Cancel, Confirm", [ticket]),
+      cardSpec("c-ticket", "New ticket", "Pending: “Draft, not created yet”; Cancel / Confirm float under the card", [ticket]),
       cardSpec("c-ticket-edit", "New ticket — edited inline", "Priority cycled to Normal, the assignee picked, the title open as an input (no Edit mode)", [ticket], { over: editedOf(31, { priority: "normal", assignee: "maya" }, "title") }),
       cardSpec("c-ticket-run", "New ticket — confirming", "Confirm pressed: “Working…”, every button disabled", [ticket], { over: (s) => { s.ask.actions.busy = { 31: true }; } }),
       cardSpec("c-handoff", "New handoff", "Pending: from → to, the task, Done / Next, files", [handoff]),
@@ -593,7 +593,7 @@ function cards(): Section {
       cardSpec("c-doc-edit", "Doc edit — edited inline", "The + text clicked: a textarea that looks like it", [doc], { over: editedOf(33, {}, "hunk:0") }),
       cardSpec("c-publish", "Publish a staged doc", "Waiting (Auto never publishes): the note, Confirm", [publish]),
       cardSpec("c-publish-no", "Publish — not allowed", "canPublish false: “Open in Review” instead of Confirm", [blocked]),
-      cardSpec("c-move", "Move a ticket", "Pending: one row — the ticket, In progress → Testing, Cancel / Confirm", [move]),
+      cardSpec("c-move", "Move a ticket", "Pending: one row — the ticket, In progress → Testing at its right", [move]),
       cardSpec("c-move-sprint", "Move a ticket to a sprint", "Pending: the ticket, Hosting → Billing", [moveSprint]),
       cardSpec("c-edit-ticket", "Edit a ticket", "Pending: the ticket, its new title (edits in place)", [editTicket]),
       cardSpec("c-sprint", "New sprint", "Pending", [sprint]),
@@ -663,7 +663,7 @@ function assignments(): Section {
     return placed(`${keep(cv(s), ".ask-parts .ask-part")}${dropdownMenu(actionDropdowns(s), s.dd)}`, s.dd, 720, h);
   };
   return {
-    id: "assign", title: "Assignment cards", intro: "Assigning a ticket (assign_ticket — consecutive calls are one card) or claiming a handoff reads as an assignment: the item with its status mark, then the people with their avatars — from → to for a replacement, “Unassigned” at either end, “Adds” / “Removes” beside whoever stays. Edit picks the person with the app's dropdown; the line says what happened in names.",
+    id: "assign", title: "Assignment cards", intro: "Assigning a ticket (assign_ticket — consecutive calls are one card) or claiming a handoff reads as an assignment: the item with its status mark, then the people with their avatars — from → to for a replacement, “Unassigned” at either end, “Adds” / “Removes” beside whoever stays. The person is the app's dropdown, in place; the line says what happened in names.",
     specs: [
       cardSpec("a-add", "Add beside someone", "Pending: “Adds Maya Chen · Andres Lopez stays on it”", [add]),
       cardSpec("a-add-none", "Add to an unassigned ticket", "Pending: Unassigned → Jon Park", [addNone]),

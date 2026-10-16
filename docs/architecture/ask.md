@@ -430,15 +430,28 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   elements — measured: no animation restarts while typing or opening the sources); off under reduced motion.
 - **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame). **Every
   kind has the same frame** (the owner, 2026-10-16): the head — the eyebrow, the draft / waiting mark and, for a waiting
-  card, its reason in words — then the body, which ENDS on one row with Cancel / Confirm at its end (`endRow`): never a
-  row or a footer band of their own. That row is the card's facts (a new ticket's Category · Priority · Assignee ·
-  Sprint, four columns across; a new sprint's dates as the app writes them — `sprintDatesLabel`, "Nov 2 – 20" — its
-  lead with avatar and its urgency; any other write's short lines as "Label value" facts, its long ones the card's
-  text), its people from → to (a handoff, an assignment, a claim), the item and its move (a move is ONE row: "#87
-  Title · In progress → Testing", the status marks, Cancel / Confirm — also a sprint started or completed), or a hint
-  ("Goes to Review before it is live", what publishing does). Narrow (a phone, the ⌘J panel) the controls wrap under
-  the row's content as a right-aligned group, beside its trailing hint when it has one (`.ask-act-break`). A group's
-  earlier rows keep the controls' room (`.ask-act-ghost`) so its columns line up.
+  card, its reason in words — then the body, designed ON ITS OWN, as if the card had no buttons: it fills the card's
+  width (no dead space on the right, not left-heavy). Fields are label-over-value columns that share a ruled row
+  (`fieldsRow`: a new ticket's Category · Priority · Assignee · Sprint, weighted; a new sprint's Dates · Lead ·
+  Urgency — `sprintDatesLabel`, "Nov 2 – 20"; any other write's short lines; one field fills the row, and narrow they
+  flow two to a line); people read from → to (a handoff, an assignment, a claim) with the quiet note ("Andres Lopez
+  stays on it", "Any agent session can claim it") at the row's right edge (`aside`); a move is ONE row — "#87 Title"
+  on the left, the status marks from → to at its right (also a sprint started or completed); a doc edit's "Goes to
+  Review before it is live" sits at its doc row's right, the hunks across the card; a Publish ends on what publishing
+  does. Narrow (a phone, the ⌘J panel) a row's right-hand part takes the next line, left-aligned.
+  **The floating pair**: Cancel / Confirm (a group's ONE pair; "Open in Review" in place of Confirm for a Publish that
+  can't publish) are never inside the frame. They sit OUTSIDE it, a compact right-aligned pair just under its
+  bottom-right edge (8px), no band and no background of their own — closer to their card than to what follows (the
+  unit's 14px) — the same for every kind, a group, a phone and ⌘J. They come right after the card's content in the
+  DOM (Tab from its last control reaches Cancel, then Confirm; `role="group"` named for the card), with the app's
+  focus ring; on a phone the 44px comes from their hit areas (`.ask-col .ask-btn::after`), not a bigger button. The
+  card and its pair share one wrapper (`.ask-act-w`, `act:<id>`, `data-ask-tween`), which is what a decision swaps for
+  the line — so the pair leaves in the card's one glide.
+  **One control height** (the owner): everything that sits together on a card, its line and the Save form is the app's
+  small control, 30px (`--ask-ctl` on `.ask-acts`, = `.cnpy-dd.is-sm`): the floating pair, Undo / Open, the Save
+  form's title field and Save (same top and bottom), its Kind / Who can see it switches, a card's person dropdown, a
+  word a click cycles — and a field's value line, so a dropdown, a cycled word and plain text share a baseline. Pinned
+  by `test/render.ask-actions.test.ts`.
   **There is no Edit mode**: every `editable` field is edited IN PLACE — text (a title, a task, a doc hunk's `+`
   text, an edit's new title) reads as text and a click (`askAcText`) turns it into an input that looks the same,
   focused; Enter or leaving it keeps the edit (a hunk's textarea: ⌘/Ctrl+Enter), Escape puts back what it held (an
@@ -462,7 +475,9 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   preview }`), so its line says what was done with no read back; nothing on the client ever decides a card. An Undo of
   a ticket write calls `ctx.refreshTickets` (main.ts `loadTickets`, only once the queue was loaded) so an open board
   drops a declined ticket with its exit. The Save as artifact form carries Kind and Who can see it as compact switches
-  at its head's right (their options are their labels), the title with Save at its end, the hint under them.
+  at its head's right (their options are their labels), the title with Save at its end, the hint under them. Save
+  stays beside the title (no floating pair): the form is not a proposed write waiting for a yes / no — there is no
+  Cancel, and Save is the submit of the field it sits next to.
   `saveButton` / `wrongButton` are the footer's and a block's
   buttons (acts `askAcSaveForm`, `askAcWrong`). **The swap** (ask-motion.ts rule 4): a card becoming its line glides ONCE from the height it had to its natural new one, whatever paints follow — the
   Confirm's own, a toast, every streamed word. `askTweenHeights` measures natural heights (running glides stepped past

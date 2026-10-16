@@ -98,17 +98,23 @@ describe("actions-ask — draft cards for a ticket, a handoff and a doc edit", (
     expect(text(handoff)).toMatch(/AL Andres Lopez to Anyone Any agent session can claim it Cancel Confirm$/);
     expect(text(handoff)).toMatch(/Done .*Traced the failure.* Next .*Update the test to assert on the new marks/);
     expect(handoff).toContain("test/netlify-connect.test.ts");
-    expect(text(doc)).toMatch(/^Doc edit Draft, not created yet Hosting connections v4 → v5/);
+    expect(text(doc)).toMatch(/^Doc edit Draft, not created yet Hosting connections v4 → v5 Goes to Review before it is live ## Tokens/);
     expect(text(doc)).toContain("## Tokens − Trov refreshes hosting tokens automatically before they expire. + Token refresh is manual for now.");
-    expect(text(doc)).toMatch(/Goes to Review before it is live Cancel Confirm$/);
+    expect(text(doc)).toMatch(/Org settings › Integrations\. Cancel Confirm$/);
     for (const [card, id] of [[ticket, 31], [handoff, 32], [doc, 33]] as const) {
       expect(card).toContain(`data-act="askAcConfirm" data-arg="${id}"`);
       expect(card).toContain(`data-act="askAcCancel" data-arg="${id}"`);
       expect(card).not.toContain("askAcUndo");
-      // No Edit mode, no footer band: the controls end the card's last row.
+      // No Edit mode, no footer band, no controls in a row of the card: the frame holds the content alone, and the
+      // pair floats after it — outside the frame, inside the wrapper the decision swaps (so it leaves in the one glide).
       expect(card).not.toContain("askAcEdit");
       expect(card).not.toContain("ask-act-foot");
-      expect(card).toMatch(/<div class="ask-act-end[^"]*" data-morph-key="end" data-morph-list>(?:(?!<div class="ask-act-end).)*<div class="ask-act-btns" data-morph-key="btns">\s*<button type="button" class="ask-btn" data-act="askAcCancel"/s);
+      expect(card).not.toMatch(/ask-act-(end|ghost|break)/);
+      expect(card).toMatch(new RegExp(`^<div class="ask-acts" data-ask-tween data-morph-list><div class="ask-act-w" data-morph-key="act:${id}" data-ask-tween>\\s*<div class="ask-act">`));
+      const frame = card.slice(card.indexOf('<div class="ask-act">'), card.indexOf('<div class="ask-act-btns"'));
+      expect(frame).not.toContain("askAcConfirm");
+      expect(frame).not.toContain("askAcCancel");
+      expect(card).toMatch(/<\/div>\s*<div class="ask-act-btns" role="group" aria-label="[^"]+: confirm or cancel">\s*<button type="button" class="ask-btn" data-act="askAcCancel"[^>]*>Cancel<\/button>\s*<button type="button" class="ask-btn ask-btn--accent ask-act-confirm" data-act="askAcConfirm"[^>]*>.*Confirm<\/button>\s*<\/div>\s*<\/div><\/div>$/s);
     }
   });
 
@@ -629,6 +635,65 @@ describe("motion — collapses glide, entrances play once, all off under reduced
   });
 });
 
+describe("the floating pair, and one control height (the owner)", () => {
+  const plain = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  /** The declarations of the rule whose selector list is exactly `sel`. */
+  const rule = (sel: string): string => {
+    const i = plain.indexOf(`\n${sel} {`);
+    expect(i, `no rule for ${sel}`).toBeGreaterThan(-1);
+    return plain.slice(plain.indexOf("{", i) + 1, plain.indexOf("}", i));
+  };
+
+  it("Cancel / Confirm float outside the frame: right-aligned under it, no band or background of their own", () => {
+    const btns = rule(".ask-act-btns");
+    expect(btns).toMatch(/justify-content:flex-end/);
+    expect(btns).toMatch(/margin-top:\d+px/);
+    expect(btns).not.toMatch(/background|border|padding/);
+    // The frame keeps no outer margin: the wrapper (card + pair) spaces the unit, so the pair sits closer to its card
+    // than to whatever follows.
+    expect(rule(".ask-act")).not.toMatch(/margin/);
+    const gap = Number(/margin-top:(\d+)px/.exec(btns)![1]);
+    const after = Number(/margin:0 0 (\d+)px/.exec(rule(".ask-act-w"))![1]);
+    expect(gap).toBeLessThan(after);
+  });
+
+  it("a Publish that cannot publish puts Open in Review in the pair; the pair comes right after the content", () => {
+    const s2 = app("actions-auto");
+    const a = answerOf(s2);
+    a.turn.actions[46] = { ...a.turn.actions[46], preview: { ...a.turn.actions[46].preview!, canPublish: false } };
+    const pub = cards(s2)[3];
+    const pair = pub.slice(pub.indexOf('<div class="ask-act-btns"'));
+    expect(pair).toMatch(/data-act="askAcCancel"[\s\S]*<a class="ask-btn ask-btn--accent" href="#review">Open in Review<\/a>/);
+    expect(pub.indexOf("ask-act-btns")).toBeGreaterThan(pub.lastIndexOf("ask-act-body"));
+  });
+
+  it("one control height for everything that sits together — the app's small control (`.cnpy-dd.is-sm`)", () => {
+    const small = /height:(\d+px)/.exec(rule(".cnpy-dd.is-sm"))![1];
+    expect(rule(".ask-acts")).toContain(`--ask-ctl:${small}`);
+    for (const sel of [
+      ".ask-act-btns > .ask-btn",                                // the floating Cancel / Confirm / Open in Review
+      ".ask-save-row > .ask-input-line", ".ask-save-row > .ask-btn",   // the Save form's title and Save
+      ".ask-save-opts .cnpy-seg",                                // its Kind / Who can see it switches
+      ".ask-act-pick .cnpy-dd.is-sm",                            // a card's person dropdown
+      ".ask-act-cyc",                                            // a word a click cycles
+      ".ask-undo",                                               // Undo / Open on a line
+    ]) {
+      expect(rule(sel), sel).toMatch(/(^|;)\s*height:var\(--ask-ctl\)/);
+    }
+    // A field's value sits on that line too, so a dropdown, a cycled word and plain text share a baseline.
+    expect(rule(".ask-act-field .ask-act-iv")).toContain("min-height:var(--ask-ctl)");
+    // On a phone the look stays; the 44px comes from the hit area.
+    for (const m of plain.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      for (const sel of m[1].split(",").map((x) => x.trim())) {
+        if (sel.startsWith('[data-phone="1"]') && /\.ask-(act-btns|save-row|undo|act-pick|act-cyc)/.test(sel) && !sel.endsWith("::after")) {
+          expect(m[2], sel).not.toMatch(/(^|;)\s*(min-)?height:/);
+        }
+      }
+    }
+    expect(plain).toContain('[data-phone="1"] .ask-col .ask-btn::after');
+  });
+});
+
 // ── assignments ─────────────────────────────────────────────────────────────
 // assign_ticket (and a handoff's claim) read as an ASSIGNMENT: the item with its status mark, the people (avatar +
 // name through people.ts), from → to for a replacement, "Adds" beside the people who stay; Edit is the app's
@@ -670,6 +735,9 @@ describe("assignment cards — the item, the people, the change", () => {
     const [h] = cards(withCards([asg(74, 6, "maya", false, ["maya"]), asg(75, 6, "priya", true, ["maya"])]));
     expect(text(h)).toMatch(/#6 Fix the Railway deploy In progress MC Maya Chen to PR Priya Raman Cancel Confirm$/);
     expect(h.match(/data-act="askAcConfirm" data-arg="74,75"/g)).toHaveLength(1);
+    // A group's ONE pair floats under the whole frame, after its last write.
+    expect(h.match(/class="ask-act-btns"/g)).toHaveLength(1);
+    expect(h).toMatch(/<\/div>\s*<div class="ask-act-btns"[^>]*>[\s\S]*<\/div>\s*<\/div><\/div>$/);
   });
 
   it("the person is the app's dropdown in place (avatars, names; never a native select, no Edit); its menu's props are the trigger's (actionDropdowns)", () => {
