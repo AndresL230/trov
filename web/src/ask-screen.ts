@@ -1,7 +1,8 @@
 // Ask Trov — the screen's shell (FOUNDATION; inventory §1, ask-trov.dc.html L106–1003). Pure markup.
 //
 //   askScreenView(app)   the page under the header: thread list | conversation + composer | inspector
-//   askHeader(app)       the header's pieces: the threads toggle, "Trov" (a button: a new thread), "› title"
+//   askHeader(app)       the header's pieces: "Ask Trov" (plain text) and "› title" (the threads toggle is the
+//                        threads column's "Hide threads" and the conversation's "Threads ›")
 //   inspectorFrame(v)    the inspector's frame (Back, type word, "from …" trail, Open in page, Close, the resize
 //                        edge, the phone sheet) around ask-inspector.ts's `inspectorBody`
 //   askOverlays(app)     the root-level overlays: the hover card and the ⌘J panel (over any screen)
@@ -68,6 +69,7 @@ export function askScreenView(app: AppState): string {
   return `<div class="ask-screen" data-ask-root data-threads="${lay.threads}" data-insp="${lay.inspector}" data-empty="${empty ? "1" : "0"}">
     <aside class="ask-threads" aria-label="Threads"${shut ? ` inert aria-hidden="true"` : ""}>${app.phone ? "" : threadsView(v)}</aside>
     <section class="ask-conv" aria-label="Conversation" data-ask-drop="page">
+      ${app.phone ? "" : `<button type="button" class="ask-th-show" data-act="askShThreads" aria-label="Show threads" data-tip="Show threads"${shut ? "" : ` tabindex="-1" aria-hidden="true"`}>Threads${askIcon("chevRight", 12, null, 2.2)}</button>`}
       <div class="ask-scroll" data-ask-scroll="page">${empty ? emptyView(v) : conversationView(v)}</div>
       ${composerView(v)}${empty ? EMPTY_TAIL : ""}
     </section>
@@ -77,18 +79,16 @@ export function askScreenView(app: AppState): string {
 }
 
 export interface AskHeaderParts { lead: string; title: string; crumb: string }
-/** The header on the Ask screen: the threads toggle (desktop), "Trov" — a button that starts a new thread — and
- *  "› <thread title>" once a thread is open or named. */
+/** The header on the Ask screen (AU-OWNER-3): "Ask Trov" — plain text, not a button (New thread is the threads
+ *  column's) — and "› <thread title>" once a thread is open or named. The threads toggle lives in the threads column
+ *  ("Hide threads", beside New thread) and at the conversation's leading edge ("Threads ›"), never in the header. */
 export function askHeader(app: AppState): AskHeaderParts {
   const ui = app.ask;
   const c = ui.page;
   const title = c.title || c.thread?.title || (c.messages[0]?.role === "user" ? c.messages[0].text.slice(0, 48) : "");
-  const lay = askLayout({ vw: ui.vw, phone: app.phone, threadsForced: ui.threadsForced, inspectorOpen: inspectorRef(ui) !== null && ui.inspector.where === "page" });
-  const shown = lay.threads === "column";
-  const lead = app.phone ? "" : `<button type="button" class="ask-iconbtn ask-th-toggle" data-act="askShThreads" aria-label="${shown ? "Hide threads" : "Show threads"}" aria-pressed="${shown}" data-tip="${shown ? "Hide threads" : "Show threads"}">${askIcon("panel", 16)}</button>`;
   return {
-    lead,
-    title: `<h1 class="ask-h1"><button type="button" data-act="askShNew" class="ask-h1-b${title ? " is-parent" : ""}">Trov</button></h1>`,
+    lead: "",
+    title: `<h1 class="ask-h1"><span class="ask-h1-t${title ? " is-parent" : ""}">Ask Trov</span></h1>`,
     crumb: title ? `<span class="ask-crumb"><span class="ask-crumb-sep">›</span><span class="ask-crumb-t">${esc(title)}</span></span>` : "",
   };
 }

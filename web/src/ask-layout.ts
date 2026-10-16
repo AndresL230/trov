@@ -1,7 +1,8 @@
 // Ask Trov — the three columns' rules (FOUNDATION; #12 §3 › Ask screen, ask-trov.dc.html L1488–1504, L1807–1830).
 // Pure, so the breakpoints are unit-tested (test/render.ask-shell.test.ts):
 //   • thread list 260px — hidden under 1180px of window width, and while the inspector is open under 1640px;
-//     the header's toggle overrides either way (`threadsForced`), and opening the inspector drops the override
+//     Hide threads / Threads › override either way (`threadsForced`; AU-OWNER-3 moved them out of the header), and
+//     opening the inspector drops the override
 //   • conversation max 720px (the column, not the section)
 //   • inspector 480px, resizable 380–720, closed by default; a full-height sheet on a phone
 //   • on a phone the thread list is a drawer (ask-phone.ts) instead of a column
@@ -15,7 +16,7 @@ export interface AskLayoutIn {
   /** The window's width (px). */
   vw: number;
   phone: boolean;
-  /** The header toggle's override: true shown, false hidden, null = the rules. */
+  /** Hide threads / Threads ›'s override: true shown, false hidden, null = the rules. */
   threadsForced: boolean | null;
   inspectorOpen: boolean;
 }

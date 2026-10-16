@@ -275,6 +275,8 @@ export function createAskController(host: AskHost): AskController {
   };
 
   // ── the shell's own acts (`askSh…`) ──────────────────────────────────────
+  /** AU-OWNER-3: after Hide threads / Threads ›, the next paint focuses the other control. */
+  let focusThreadsCtl: "show" | "hide" | null = null;
   function shellAct(name: string, arg: string | null): void {
     switch (name) {
       case "askShNew": newThread("page"); return;
@@ -284,6 +286,8 @@ export function createAskController(host: AskHost): AskController {
       case "askShThreads": {
         const shown = askLayout({ vw: ui().vw, phone: s.phone, threadsForced: ui().threadsForced, inspectorOpen: inspectorRef(ui()) !== null && ui().inspector.where === "page" }).threads === "column";
         ui().threadsForced = !shown;
+        // Keyboard: focus moves to the control that undoes it (the one pressed is now hidden / inert).
+        focusThreadsCtl = shown ? "show" : "hide";
         paint();
         return;
       }
@@ -454,6 +458,7 @@ export function createAskController(host: AskHost): AskController {
     if (bootReplay && !replayStarted && s.view === "app" && replayPlan(bootReplay.scenario).where === "panel") void startReplay(bootReplay);
     if (!askOnScreen()) return;
     for (const p of PARTS) p.afterPaint?.(ctx, host.mount);
+    if (focusThreadsCtl) { const which = focusThreadsCtl; focusThreadsCtl = null; host.mount.querySelector<HTMLElement>(which === "show" ? ".ask-th-show" : ".ask-th-hide")?.focus(); }
     // Motion (ask-motion.ts): new rows / messages / parts enter once; swapped cards tween their height.
     askEnterNew(host.mount);
     askTweenHeights(host.mount);
