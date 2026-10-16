@@ -553,8 +553,9 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // running step's kind, else working; writing once a block is out.
   const running = holdLast ? shownSteps.at(-1) : shownSteps.filter((s) => s.state === "run").at(-1);
   const curAlone = live && !cursorIn && t.thinking?.state !== "run";
-  // Thinking (nothing running) is the cube; a running step its kind; writing once a block is out.
-  const waitOrb: OrbState = parts.length ? "composing" : running ? stepOrb(running) : "solving";
+  // A running step's kind wins — before the answer AND after a block is out (the owner, Q-F1); the ribbon ("Writing…")
+  // only once a block is out and no step runs; the cube (thinking) before anything.
+  const waitOrb: OrbState = running ? stepOrb(running) : parts.length ? "composing" : "solving";
   const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   // Something written: words, a block or a card. A finished answer with none (the model spent its calls on lookups)
@@ -577,7 +578,7 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
     // Live with no text streaming: a thinking orb and its word, in the sweep of light (the owner: the wait must read
     // as thinking — most of a turn's wait is here, its steps run for a few ms), hold the place where the words will
     // come — "Thinking…" before the words, "Writing…" once a block is out and the words are not.
-    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, waitOrb, null)}<span class="ask-wait-l">${parts.length ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["none", unwritten], ["stopped", stopped], ["foot", foot], ["follow", follow],
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, waitOrb, null)}<span class="ask-wait-l">${waitOrb === "composing" ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["none", unwritten], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }

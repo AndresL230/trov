@@ -227,6 +227,18 @@ describe("`streaming` — mid-answer", () => {
     // …below the steps: the wait row comes after the steps list.
     expect(during.indexOf("ask-cur-alone")).toBeGreaterThan(during.indexOf("ask-step is-run"));
   });
+  it("Q-F1: a block is out and a step runs — the running step's orb, not the ribbon; the ribbon once no step runs", () => {
+    const ev = askTranscript("answer", NOW).map((s) => s.event);
+    const upToChart = ev.slice(0, ev.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
+    const step = (n: number, state: "run" | "done"): AskEvent => state === "run"
+      ? { event: "activity", data: { step: n, tool: "search_docs", icon: "search", label: "Searched docs for 'more'", state: "run" } }
+      : { event: "activity", data: { step: n, state: "done" } };
+    const n = 90;
+    const during = view("answer", { events: [...upToChart, step(n, "run")], busy: true }).html;
+    expect(during).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
+    const after = view("answer", { events: [...upToChart, step(n, "run"), step(n, "done")], busy: true }).html;
+    expect(after).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*><\/canvas><span class="ask-wait-l">Writing…<\/span>/);
+  });
   it("a running step keeps its own icon (the one orb is the wait row's) and its label carries the sweep", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event).slice(0, 2);
     const { html: h } = view("answer", { events, busy: true });

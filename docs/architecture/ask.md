@@ -364,7 +364,7 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   and their breakpoints, the inspector's frame), `ask-threads.ts` (the thread list), `ask-escape.ts`,
   `ask-icons.ts`, `ask-motion.ts` (the motion hooks: inventory §12), `ask-replay.ts` (the dev replay).
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
-  `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
+  `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over any ORG page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
 - **Jump to the latest** (`jumpButton`, ask-conversation.ts): scrolled up more than 160px (and not following the
   bottom), an arrow shows on the scroller's bottom edge — a 0-height sticky row, so it changes no height; the scroll
@@ -376,17 +376,19 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `[[ref` waits — so no raw marks flash before they render (the owner). A finished part is parsed as it came.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
   20px thinking orb says what Trov is doing, in ONE place under the steps (the owner, 2026-10-16): the wait row — the
-  orb beside "Thinking…" ("Writing…" once a block is out) in the sweep of light — is there for the whole wait, before
+  orb beside "Thinking…" ("Writing…" once a block is out and no step runs) in the sweep of light — is there for the whole wait, before
   anything, while the steps appear and after them, gone only while words stream or the Thinking row runs (that row
   keeps its "solving" orb; "Thought for Ns" keeps the clock). Its orb is the running step's kind (`STEP_ORB`: search /
   docs / feed / read / review steps and anything labelled "Searched …" are "searching", the rest "working"), else
-  "solving" (the cube = thinking), "composing" once a block is out.
+  "solving" (the cube = thinking), "composing" (the ribbon, "Writing…") once a block is out AND no step runs — a step
+  running after a block still shows its own orb (the owner, Q-F1).
   A step keeps its own icon; its label carries the sweep while it runs. Steps APPEAR AS THEY GO: the tools run in a
   few ms, so the pacer (`ask-pace.ts`, `stepMs` 350) shows each running for 350 ms, then done, then the next — what
   comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. **Each orb means one thing** (the owner, 2026-10-16:
   the picker is gone) — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the
   orbits for other work; all of them in the theme's purple.
-- **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
+- **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any org page (full screen on a phone; ⌘J does nothing on
+  Platform, which sits outside every org while Ask is per org — the owner kept it so, Q-F3), its own conversation
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
   is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another
   item starts a fresh panel thread; the same item reopens the same one. "Open as thread" moves the conversation, the
