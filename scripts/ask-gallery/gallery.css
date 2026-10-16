@@ -1,79 +1,50 @@
-/* The gallery's own chrome (the specimens are the app's CSS, inlined before this). Quiet: the specimens are the point. */
+/* The gallery's own chrome — a plain scroll: a title, short headings, a one-line caption per specimen. The specimens
+   are the app's CSS (inlined before this) and follow the viewer's theme. */
 :root {
-  --gx-bg: #f3f3f4; --gx-panel: #ffffff; --gx-fg: #17171b; --gx-muted: #5d5d66; --gx-faint: #85858f;
-  --gx-line: rgba(20, 20, 30, 0.10); --gx-line-strong: rgba(20, 20, 30, 0.18); --gx-accent: #525cc3; --gx-on: #ffffff;
+  --gx-bg: #f3f3f4; --gx-panel: #ffffff; --gx-fg: #17171b; --gx-muted: #5d5d66; --gx-line: rgba(20, 20, 30, 0.10);
   --gx-sans: 'Geist', 'Geist Fallback', system-ui, -apple-system, sans-serif;
-  --gx-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --gx-bg: #141311; --gx-panel: #1c1a17; --gx-fg: #ece8e1; --gx-muted: #aaa49a; --gx-faint: #857f76;
-    --gx-line: rgba(237, 233, 226, 0.10); --gx-line-strong: rgba(237, 233, 226, 0.20); --gx-accent: #9aab65; --gx-on: #131a07;
+    --gx-bg: #141311; --gx-panel: #1c1a17; --gx-fg: #ece8e1; --gx-muted: #aaa49a; --gx-line: rgba(237, 233, 226, 0.10);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --gx-bg: #141311; --gx-panel: #1c1a17; --gx-fg: #ece8e1; --gx-muted: #aaa49a; --gx-faint: #857f76;
-  --gx-line: rgba(237, 233, 226, 0.10); --gx-line-strong: rgba(237, 233, 226, 0.20); --gx-accent: #9aab65; --gx-on: #131a07;
+  --gx-bg: #141311; --gx-panel: #1c1a17; --gx-fg: #ece8e1; --gx-muted: #aaa49a; --gx-line: rgba(237, 233, 226, 0.10);
   color-scheme: dark;
 }
 body { background: var(--gx-bg); color: var(--gx-fg); font-family: var(--gx-sans); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 .gx-wrap {
-  max-width: 1720px; margin: 0 auto; box-sizing: border-box;
+  max-width: 1480px; margin: 0 auto; box-sizing: border-box;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-  padding-block: 28px 80px;
+  padding-block: 32px 80px;
 }
-.gx-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px 24px; padding-bottom: 18px; }
 .gx-top h1 { margin: 0; font-size: 22px; font-weight: 640; letter-spacing: -0.01em; }
 .gx-top p { margin: 4px 0 0; max-width: 72ch; color: var(--gx-muted); font-size: 13.5px; }
-.gx-modes { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--gx-line-strong); border-radius: 9px; background: var(--gx-panel); }
-.gx-modes button { padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 520; color: var(--gx-muted); background: none; }
-.gx-modes button[aria-pressed="true"] { background: var(--gx-fg); color: var(--gx-bg); }
-.gx-modes button:focus-visible, .gx-actual:focus-visible, .gx-nav a:focus-visible { outline: 2px solid var(--gx-accent); outline-offset: 2px; }
-.gx-nav {
-  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50; margin: 0 -16px 8px; padding: 8px 16px;
-  background: color-mix(in srgb, var(--gx-bg) 92%, transparent); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--gx-line);
-}
-.gx-nav ul { list-style: none; margin: 0; padding: 0; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
-.gx-nav ul::-webkit-scrollbar { display: none; }
-.gx-nav a { display: block; white-space: nowrap; padding: 4px 9px; border-radius: 6px; color: var(--gx-muted); font-size: 12.5px; text-decoration: none; }
-.gx-nav a:hover { color: var(--gx-fg); background: var(--gx-line); }
-.gx-nav a .gx-n { color: var(--gx-faint); margin-left: 4px; font-variant-numeric: tabular-nums; }
-.gx-sec { padding-top: 34px; scroll-margin-top: 52px; }
-.gx-sec > h2 { margin: 0; font-size: 17px; font-weight: 620; }
-.gx-sec > p { margin: 4px 0 0; max-width: 90ch; color: var(--gx-muted); font-size: 13.5px; }
-.gx-specs { display: flex; flex-direction: column; gap: 22px; margin-top: 18px; }
-.gx-spec { min-width: 0; scroll-margin-top: 52px; }
-.gx-spec-h { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin-bottom: 8px; }
-.gx-spec-h h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
-.gx-spec-h h3 a { color: inherit; text-decoration: none; }
-.gx-spec-h h3 a:hover { text-decoration: underline; }
-.gx-state { color: var(--gx-muted); font-size: 13px; }
-.gx-meta { flex-basis: 100%; display: flex; flex-wrap: wrap; gap: 2px 14px; color: var(--gx-faint); font-size: 12px; }
-.gx-meta code { font-family: var(--gx-mono); font-size: 11.5px; }
-.gx-actual { margin-left: auto; padding: 2px 8px; border: 1px solid var(--gx-line-strong); border-radius: 6px; font-size: 12px; color: var(--gx-muted); background: var(--gx-panel); }
-.gx-actual[aria-pressed="true"] { color: var(--gx-fg); border-color: var(--gx-fg); }
-.gx-views { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-@media (min-width: 1240px) { .gx-both .gx-views { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.gx-view { min-width: 0; }
-.gx-view-l { display: none; margin-bottom: 4px; color: var(--gx-faint); font-size: 11.5px; }
-.gx-both .gx-view-l { display: block; }
-.gx-scroll { overflow-x: auto; border: 1px solid var(--gx-line); border-radius: 10px; background: var(--gx-panel); }
-.gx-spec[data-kind="desktop"]:not(.is-actual) .gx-scroll { overflow: hidden; }
+.gx-sec { padding-top: 40px; }
+.gx-sec > h2 { margin: 0; padding-bottom: 8px; border-bottom: 1px solid var(--gx-line); font-size: 17px; font-weight: 620; }
+.gx-specs { display: flex; flex-direction: column; gap: 24px; margin-top: 18px; }
+.gx-spec { min-width: 0; }
+.gx-cap { margin: 0 0 8px; font-size: 13px; color: var(--gx-muted); }
+.gx-cap b { color: var(--gx-fg); font-weight: 600; }
+.gx-scroll { display: inline-block; max-width: 100%; vertical-align: top; overflow-x: auto; border: 1px solid var(--gx-line); border-radius: 10px; background: var(--gx-panel); }
+.gx-spec[data-kind="desktop"] .gx-scroll { display: block; overflow: hidden; }
 
-/* An inline specimen's stage: the app's root look (render.ts), its theme set by the runtime. */
+/* An inline specimen's stage: the app's root look (render.ts); the runtime sets its theme. */
 .gx-stage { background: var(--bg); color: var(--fg); font-family: 'Geist', 'Geist Fallback', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; box-sizing: border-box; }
 .gx-stage.is-col { width: 720px; padding: 6px 0; }
 .gx-stage.gx-fixed { position: relative; display: flex; overflow: hidden; transform: translateZ(0); }
+.gx-block, .gx-ddbox { display: block !important; }
+.gx-ddbox { padding: 16px; }
 /* Room above for what pops up over the composer or the footer (a picker, the mode menu, Regenerate with). */
 .gx-pad-top-pick { padding-top: 370px !important; }
 .gx-pad-top-short { padding-top: 140px !important; }
 .gx-pad-top-menu { padding-top: 260px !important; }
+/* Hover-only controls, shown as on hover. */
 .gx-hover-edit .ask-q-edit { opacity: 1 !important; }
 .gx-show-tools .ask-tools { opacity: 1 !important; pointer-events: auto !important; transform: none !important; }
-.gx-ddbox { padding: 16px; display: block !important; }
 .gx-orbs { display: flex; flex-wrap: wrap; gap: 18px 28px; padding: 18px 22px; }
 .gx-orb { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; min-width: 64px; }
 .gx-orb figcaption { font-size: 12px; color: var(--fg-55); }
@@ -81,7 +52,4 @@ body { background: var(--gx-bg); color: var(--gx-fg); font-family: var(--gx-sans
 /* Frames: the whole app at 1440 (scaled to fit) or 390 (1:1). */
 .gx-frame { position: relative; overflow: hidden; width: calc(var(--w) * var(--k, 1) * 1px); height: calc(var(--h) * var(--k, 1) * 1px); }
 .gx-frame > iframe { display: block; border: 0; width: calc(var(--w) * 1px); height: calc(var(--h) * 1px); transform: scale(var(--k, 1)); transform-origin: 0 0; background: transparent; }
-.gx-fit, .gx-spec[data-kind="phone"] .gx-scroll { display: inline-block; max-width: 100%; vertical-align: top; }
-.gx-fit > .gx-stage { border-radius: 9px; }
-.gx-foot { margin-top: 48px; color: var(--gx-faint); font-size: 12px; }
-@media (prefers-reduced-motion: reduce) { .gx-nav { backdrop-filter: none; } }
+.gx-foot { margin-top: 48px; color: var(--gx-muted); font-size: 12px; }

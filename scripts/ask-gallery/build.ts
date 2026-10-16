@@ -8,7 +8,7 @@
 // headless Chromium (Playwright — the renderers are the SPA's, and the doc reader's markdown needs a DOM); it returns
 // the sections as HTML strings. This file lays them out with the app's real CSS (web/src/trov.css, its Geist fonts
 // inlined as data URIs), the gallery's chrome (gallery.css), the app's thinking-orb loop (orb.ts) and the page's
-// small runtime (runtime.ts: theme, Light / Dark / Side by side, frames, inert specimens). Never part of the suite.
+// small runtime (runtime.ts: the viewer's theme, frames, inert specimens). Never part of the suite.
 import { build } from "esbuild";
 import { chromium } from "playwright";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -39,36 +39,30 @@ function appCss(): string {
 }
 
 function specHtml(s: Spec): string {
-  const meta = `<div class="gx-meta"><span>Appears: ${esc(s.where)}</span>${s.sample ? `<span>Sample data (fixtures)</span>` : ""}<span><code>#${esc(s.id)}</code></span>${s.note ? `<span>${esc(s.note)}</span>` : ""}</div>`;
-  const actual = s.kind === "desktop" ? `<button type="button" class="gx-actual" data-gx-actual aria-pressed="false">Actual size</button>` : "";
-  const head = `<div class="gx-spec-h"><h3><a href="#${esc(s.id)}">${esc(s.title)}</a></h3><span class="gx-state">${esc(s.state)}</span>${actual}${meta}</div>`;
+  const cap = `<p class="gx-cap"><b>${esc(s.title)}</b> — ${esc(s.state)}</p>`;
   let view: string;
   if (s.kind === "inline") {
     const style = [s.w ? `width:${s.w}px` : "", s.h ? `height:${s.h}px` : "", s.minW ? `min-width:${s.minW}px` : ""].filter(Boolean).join(";");
     const cls = `gx-stage${s.w ? "" : " is-col"}${s.stage ? ` ${s.stage}` : ""}`;
-    view = `<div class="gx-scroll gx-fit"><div class="${cls}" data-cnpy-theme="light"${style ? ` style="${style}"` : ""}>${s.html}</div></div>`;
+    view = `<div class="gx-scroll"><div class="${cls}" data-cnpy-theme="light"${style ? ` style="${style}"` : ""}>${s.html}</div></div>`;
   } else {
     const w = s.kind === "phone" ? 390 : 1440;
     const h = s.h ?? (s.kind === "phone" ? 844 : 900);
-    view = `<div class="gx-scroll"><div class="gx-frame" data-w="${w}" data-h="${h}"${s.kind === "phone" ? ` data-fixed="1"` : ""} data-theme="light" style="--w:${w};--h:${h}"></div></div>`;
+    view = `<template class="gx-src">${s.html}</template><div class="gx-scroll"><div class="gx-frame" data-w="${w}" data-h="${h}"${s.kind === "phone" ? ` data-fixed="1"` : ""} style="--w:${w};--h:${h}"></div></div>`;
   }
-  const src = s.kind === "inline" ? "" : `<template class="gx-src">${s.html}</template>`;
-  return `<article class="gx-spec" id="${esc(s.id)}" data-kind="${s.kind}">${head}${src}<div class="gx-views"><div class="gx-view"><div class="gx-view-l">Light</div>${view}</div></div></article>`;
+  return `<article class="gx-spec" id="${esc(s.id)}" data-kind="${s.kind}">${cap}${view}</article>`;
 }
 
 function page(sections: Section[], css: string, gallery: string, orb: string, runtime: string): string {
   const n = sections.reduce((k, s) => k + s.specs.length, 0);
-  const nav = `<nav class="gx-nav" aria-label="Sections"><ul>${sections.map((s) => `<li><a href="#${esc(s.id)}">${esc(s.title)}<span class="gx-n">${s.specs.length}</span></a></li>`).join("")}</ul></nav>`;
-  const body = sections.map((s) => `<section class="gx-sec" id="${esc(s.id)}" aria-labelledby="${esc(s.id)}-h"><h2 id="${esc(s.id)}-h">${esc(s.title)}</h2><p>${esc(s.intro)}</p><div class="gx-specs">${s.specs.map(specHtml).join("")}</div></section>`).join("");
+  const body = sections.map((s) => `<section class="gx-sec" id="s-${esc(s.id)}"><h2>${esc(s.title)}</h2><div class="gx-specs">${s.specs.map(specHtml).join("")}</div></section>`).join("");
   const built = new Date().toISOString().slice(0, 16).replace("T", " ");
   return `<title>Ask Trov Gallery</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style id="gx-app-css">${css}</style>
 <style>${gallery}</style>
 <div class="gx-wrap">
-<header class="gx-top"><div><h1>Ask Trov Gallery</h1><p>Everything Ask Trov's chat can put on screen, in every state — ${sections.length} sections, ${n} specimens. Each one is the app's own renderer over the app's own fixtures (an org called Acme), not a mock-up; buttons do nothing here.</p></div>
-<div class="gx-modes" role="group" aria-label="Theme"><button type="button" data-gx-mode="auto" aria-pressed="true">Auto</button><button type="button" data-gx-mode="light" aria-pressed="false">Light</button><button type="button" data-gx-mode="dark" aria-pressed="false">Dark</button><button type="button" data-gx-mode="both" aria-pressed="false">Side by side</button></div></header>
-${nav}
+<header class="gx-top"><h1>Ask Trov Gallery</h1><p>Everything Ask Trov's chat can put on screen, in every state, in the order it appears in a conversation (${n} in all). Each is the app's own rendering of sample data (an org called Acme); buttons do nothing here.</p></header>
 <main>${body}</main>
 <p class="gx-foot">Built ${esc(built)} UTC by <code>npm run ask:gallery</code> (scripts/ask-gallery/).</p>
 </div>

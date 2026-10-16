@@ -22,7 +22,7 @@ import { createDropdowns, dropdown, dropdownMenu } from "../../web/src/dropdown"
 import { cmdjHeaderButton } from "../../web/src/ask-cmdj";
 import { askFlagsLine } from "../../web/src/review";
 import { emptyConvo, foldAskEvent, newTurn, type AskConvo, type AskMsg, type AskQuestion, type AskTurn } from "../../web/src/ask-stream";
-import { replayPriorExchange, REPLAY_WRITES } from "../../web/src/ask-actions";
+import { actionDropdowns, replayPriorExchange, REPLAY_WRITES } from "../../web/src/ask-actions";
 import { withRepoFacts } from "../../web/src/ask-replay";
 import { cvRef } from "../../web/src/ask-cvref";
 import { inspectorDetailFixture } from "../../web/src/ask-inspector-fixtures";
@@ -312,11 +312,12 @@ function steps(): Section {
     ev("activity", { step: 3, state: "done", results: [REPO], resultLine: "1 result" }),
   ]))]);
   const st = (s: AppState) => keep(cv(s), ".ask-steps");
+  const stw = (s: AppState) => keep(cv(s), [".ask-steps", ".ask-cur-alone"]);
   return {
-    id: "steps", title: "Steps", intro: "What Trov did, one line per tool call, above the answer. A running step's icon is a thinking orb (searching for look-ups, working for the rest) with a sweep of light over its words; a done step with results opens to rows that open in the inspector.",
+    id: "steps", title: "Steps", intro: "What Trov did, one line per tool call, above the answer. A step keeps its own icon; while it runs a sweep of light crosses its words and the wait row under the steps shows the ONE orb (searching for look-ups, working for the rest). A done step with results opens to rows that open in the inspector.",
     specs: [
-      inline("st-run", "Running", "Two done, the third running (orb: working)", "Above the answer", st(running)),
-      inline("st-search", "Running a search", "One step running (orb: searching)", "Above the answer", st(searching)),
+      inline("st-run", "Running", "Two done, the third running; the wait row under them (orb: working, for a CI read)", "Above the answer", stw(running)),
+      inline("st-search", "Running a search", "One step running; the wait row's orb: searching", "Above the answer", stw(searching)),
       inline("st-done", "Done", "Five steps with their result lines", "Above the answer", st(done)),
       inline("st-open", "Results open", "Steps 1 and 3 opened: their rows (the repository row is its CI line)", "Above the answer", st(openS)),
       inline("st-none", "No results", "Three searches that found nothing", "Above the answer", st(none)),
@@ -353,7 +354,7 @@ function waiting(): Section {
   ]))]);
   const cur = page(scenarioMsgs("streaming"));
   return {
-    id: "wait", title: "The wait", intro: "While a turn is live and no words are streaming, an orb and its word hold the answer's place in the sweep of light: “Thinking…” before anything is written, “Writing…” once a block is out. Inside streaming words the soft cursor blinks.",
+    id: "wait", title: "The wait", intro: "The wait row: while a turn is live and no words are streaming, the one orb and its word sit under the steps for the whole wait, in the sweep of light — “Thinking…” before anything is written (its orb follows the running step: searching for look-ups, else working), “Writing…” once a block is out. It steps aside while words stream (the soft cursor is in them) and while the Thinking row runs.",
     specs: [
       inline("w-first", "Thinking… (nothing yet)", "Sent, nothing back yet (orb: working)", "Under the question", keep(cv(nothing), [".ask-cur-alone"])),
       inline("w-steps", "Thinking… (steps done)", "Every step done, no words yet (orb: working)", "Under the steps", keep(cv(wait), [".ask-steps", ".ask-cur-alone"])),
@@ -568,6 +569,77 @@ function cards(): Section {
   };
 }
 
+// ── assignments (assign_ticket, claim_handoff) ───────────────────────────────
+
+/** An `assign_ticket` card as the server previews it (src/ai/ask/actions.ts: `Assign @h to #id`, the Assignee line,
+ *  the ticket's RefView — whose `extra.assignees` is who is on it now). */
+const asgCard = (id: number, group: string, num: number, login: string, on: boolean, item: RefView = R[`ticket:${num}`]): ActionEv => ({
+  id, groupId: group, tool: "assign_ticket", kind: "ticket", state: "proposed", note: null,
+  preview: { title: on ? `Assign @${login} to #${num}` : `Remove @${login} from #${num}`, lines: [{ label: "Assignee", value: `${on ? "Add" : "Remove"} @${login}` }], item },
+  fields: { id: num, login, on }, editable: ["login"],
+});
+/** What Confirm answers for it: the ticket, and who is on it after. */
+function asgWrite(c: ActionEv): void {
+  const f = c.fields as { id: number; login: string; on: boolean };
+  const before = (c.preview.item?.extra.assignees as string[] | undefined) ?? [];
+  DEFAULT_WRITES[c.id] = { ref: `ticket:${f.id}`, result: { assignees: f.on ? [...before, f.login] : before.filter((h) => h !== f.login) } };
+}
+
+function assignments(): Section {
+  const add = asgCard(91, "g-91", 18, "maya", true);                       // #18: Andres stays, Maya joins
+  const addNone = asgCard(92, "g-92", 19, "jon", true);                    // #19: nobody on it yet
+  const rmLast = asgCard(93, "g-93", 24, "priya", false);                  // #24: Priya was the only one
+  const rmOther = asgCard(94, "g-94", 14, "andres", false);                // #14: Maya stays
+  const rep = [asgCard(95, "g-95", 18, "andres", false), asgCard(96, "g-95", 18, "maya", true)];   // #18: Andres → Maya
+  const many = [asgCard(97, "g-97", 19, "priya", true), asgCard(98, "g-97", 29, "priya", true)];   // one person, two tickets
+  const handoff: RefView = { ...R["handoff:11"], extra: { ...R["handoff:11"].extra, from: "maya" } };
+  const claim: ActionEv = { id: 99, groupId: "g-99", tool: "claim_handoff", kind: "handoff", state: "proposed", note: null,
+    preview: { title: "Claim handoff #11", lines: [{ label: "Title", value: handoff.title }, { label: "From", value: "@maya" }], item: handoff }, fields: { id: 11 }, editable: [] };
+  for (const c of [add, addNone, rmLast, rmOther, ...rep, ...many]) asgWrite(c);
+  DEFAULT_WRITES[99] = { ref: "handoff:11", result: { id: 11, claimed_by: "andres" } };
+  const editing = (id: number) => (s: AppState) => { s.ask.actions.editing = { [id]: true }; };
+  // The picker open: the card's trigger and its menu (a root overlay in the app), placed by the app's dropdown code.
+  const picker = (c: ActionEv, h: number) => {
+    const s = page([question("Give #18 to Maya too."), answer(cardsAnswer([c]))]);
+    s.ask.actions.editing = { [c.id]: true };
+    s.dd = { open: `ask-ac-asg-${c.id}`, opening: false, closing: false };
+    return placed(`${keep(cv(s), ".ask-parts .ask-part")}${dropdownMenu(actionDropdowns(s), s.dd)}`, s.dd, 720, h);
+  };
+  return {
+    id: "assign", title: "Assignment cards", intro: "Assigning a ticket (assign_ticket — consecutive calls are one card) or claiming a handoff reads as an assignment: the item with its status mark, then the people with their avatars — from → to for a replacement, “Unassigned” at either end, “Adds” / “Removes” beside whoever stays. Edit picks the person with the app's dropdown; the line says what happened in names.",
+    specs: [
+      cardSpec("a-add", "Add beside someone", "Pending: “Adds Maya Chen · Andres Lopez stays on it”", [add]),
+      cardSpec("a-add-none", "Add to an unassigned ticket", "Pending: Unassigned → Jon Park", [addNone]),
+      cardSpec("a-rm-other", "Remove beside someone", "Pending: “Removes Andres Lopez · Maya Chen stays on it”", [rmOther]),
+      cardSpec("a-rm-last", "Remove the last one", "Pending: Priya Natarajan → Unassigned (no Edit: nobody else to pick)", [rmLast]),
+      cardSpec("a-replace", "Replace", "Pending: two writes on one ticket, one card — Andres Lopez → Maya Chen", rep),
+      cardSpec("a-many", "One person, two tickets", "Pending: a card per ticket in one frame, one Confirm", many),
+      cardSpec("a-edit", "Editing", "Edit open: the person is a dropdown trigger", [add], { over: editing(91) }),
+      inline("a-picker", "Editing, the picker open", "The menu: every member who could take it, with avatars (not Andres — already on it)", "The answer; the menu over it",
+        picker(add, 420), { w: 720, h: 420, stage: "gx-fixed gx-block" }),
+      inline("a-picker-rm", "Editing a removal, the picker open", "Only the people on it now", "The answer; the menu over it",
+        picker(rmOther, 360), { w: 720, h: 360, stage: "gx-fixed gx-block" }),
+      cardSpec("a-busy", "Confirming", "Confirm pressed: “Working…”", [add], { over: (s) => { s.ask.actions.busy = { 91: true }; } }),
+      cardSpec("a-done", "Done — added", "“Assigned ticket #18 to Maya Chen”, Undo", [add], { decide: { 91: "confirmed" } }),
+      cardSpec("a-done-none", "Done — added to an unassigned ticket", "Confirmed", [addNone], { decide: { 92: "confirmed" } }),
+      cardSpec("a-done-rm", "Done — removed", "“Took Priya Natarajan off ticket #24”", [rmLast], { decide: { 93: "confirmed" } }),
+      cardSpec("a-done-rep", "Done — replaced", "“Reassigned ticket #18 from Andres Lopez to Maya Chen”, one Undo for both halves", rep, { decide: { 95: "confirmed", 96: "confirmed" } }),
+      cardSpec("a-done-many", "Done — two tickets", "“Assigned tickets #19 and #29 to Priya Natarajan”", many, { decide: { 97: "confirmed", 98: "confirmed" } }),
+      cardSpec("a-auto", "Done on Auto", "Ran at once", [add], { decide: { 91: "auto" } }),
+      cardSpec("a-cancel", "Cancelled", "Cancel pressed", [add], { decide: { 91: "cancelled" } }),
+      cardSpec("a-cancel-rep", "Cancelled — a replacement", "One line for both halves", rep, { decide: { 95: "cancelled", 96: "cancelled" } }),
+      cardSpec("a-undone", "Undone", "Undo went through", [add], { decide: { 91: "undone" } }),
+      cardSpec("a-undone-rep", "Undone — a replacement", "Both halves undone", rep, { decide: { 95: "undone", 96: "undone" } }),
+      cardSpec("a-failed", "Didn't work", "The write was refused; the server's reason", [add], { decide: { 91: "failed" }, results: { 91: { error: "Maya Chen is not a member of this organization any more." } } }),
+      cardSpec("a-expired", "Expired", "The next turn started first", [add], { decide: { 91: "expired" } }),
+      cardSpec("a-claim", "Claim a handoff", "Pending: the handoff, Maya Chen → you, “No one else can claim it after”", [claim]),
+      cardSpec("a-claim-busy", "Claim — confirming", "“Working…”", [claim], { over: (s) => { s.ask.actions.busy = { 99: true }; } }),
+      cardSpec("a-claim-done", "Claim — done", "“Claimed handoff #11”", [claim], { decide: { 99: "confirmed" } }),
+      cardSpec("a-claim-cancel", "Claim — cancelled", "Cancel pressed", [claim], { decide: { 99: "cancelled" } }),
+    ],
+  };
+}
+
 function saving(): Section {
   const formT = fold(events("artifact"));
   const savedT = fold(events("artifact-saved"));
@@ -637,7 +709,7 @@ function endings(): Section {
     return page([question("What's blocking the hosting work?"), answer(fold([...evs, ev("error", { code, message: "" })]))]);
   };
   return {
-    id: "endings", title: "Follow-ups, Stopped, errors", intro: "How an answer ends: up to three follow-ups under the last answer; Stopped when the person pressed Stop; the error line when the stream ended early (every error code draws the same line — capped and off also block the composer, below).",
+    id: "endings", title: "How an answer ends", intro: "How an answer ends: up to three follow-ups under the last answer; Stopped when the person pressed Stop; the error line when the stream ended early (every error code draws the same line — capped and off also block the composer, below).",
     specs: [
       inline("e-follow", "Follow-ups", "Three suggestions under the last answer", "Under the footer", keep(cv(follow), ".ask-follow")),
       inline("e-stopped", "Stopped", "“Stopped. The answer above is partial.”", "Where the answer stopped", keep(cv(stopped), [".ask-stopped", ".ask-foot-w"])),
@@ -905,6 +977,8 @@ function phones(): Section {
 declare global { interface Window { __askGallery?: () => Section[] } }
 
 window.__askGallery = (): Section[] => [
-  screens(), emptyState(), questions(), steps(), thinking(), waiting(), markdown(), blocks(), cards(), saving(), footer(), endings(),
-  composerSpecs(), inspector(), hoverCards(), cmdj(), toasts(), threads(), orbs(), phones(),
+  // In the order they appear in a conversation: a new thread and its box, the question, the answer as it comes (steps,
+  // thinking, the wait, words, blocks, cards), how it ends, then what opens beside or over it; whole screens last.
+  emptyState(), composerSpecs(), questions(), steps(), thinking(), waiting(), markdown(), blocks(), cards(), assignments(), saving(), footer(),
+  endings(), toasts(), inspector(), hoverCards(), threads(), cmdj(), orbs(), screens(), phones(),
 ];
