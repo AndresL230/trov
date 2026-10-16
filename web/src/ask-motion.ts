@@ -28,12 +28,12 @@
 //      empty conversation's centre and its docked foot when that flips (below).
 //   6. SMOOTH OPEN / CLOSE of the columns: the thread list's width and the inspector's margin are CSS transitions /
 //      keyframes on attributes the shell sets (`data-threads`, `data-closing`, `data-dragging`), in trov.css.
-//   7. THE BOTTOM: a conversation scroller (`data-ask-scroll`) stays at its bottom while `stick` holds (an answer
-//      streams, a footer opens Wrong? or its sources). `askFollowBottom` runs LAST in a paint — after rules 2 and 4
-//      started their animations, so the height it reads is the glide's FIRST frame, not its last — and then follows
-//      the bottom frame by frame while a glide runs in the scroller. Pinning before the glides started is what
-//      jumped the thread: pinned to the final height, then the glide restored the old one under it. `stick` is the
-//      conversation part's (`stickAfterScroll`): only a person scrolling UP clears it; back at the bottom sets it.
+//   7. THE BOTTOM: only the CONVERSATION moves the view (the owner): an answer streaming, a message sent, an answer
+//      finishing EASE a scroller (`data-ask-scroll`) to its bottom frame by frame (no line-by-line jumps); a thread
+//      opening or its history landing JUMPS there. What a person opens themselves (Wrong?, the sources, a step's
+//      results) never moves it — the new rows push down. The controller decides per paint (`AskBottomMove`) and
+//      `askFollowBottom` runs LAST, after rules 2 and 4 started their animations. All of it only while `stick` holds:
+//      the conversation part's `stickAfterScroll` — a person scrolling UP lets go, back at the bottom holds on.
 
 /** The app's motion clock in ms (trov.css `:root` `--fx-fast` / `--fx-base` / `--fx-slow`), and the exit's wait. */
 export const ASK_FX = { fast: 180, base: 240, slow: 300, exit: 200 } as const;
@@ -129,28 +129,49 @@ export function stickAfterScroll(stick: boolean, prevTop: number, s: { top: numb
   return stick;
 }
 
-const following = new WeakSet<Element>();
 /** A Web Animation (`Animation`: rule 2's entrances, rule 4's glides) still running under `el` — not a CSS one (the
  *  cursor's blink never ends). */
 const gliding = (el: Element): boolean =>
   typeof Animation === "function" && el.getAnimations({ subtree: true }).some((an) => an.constructor === Animation && an.playState === "running");
-/** Rule 7: pin each `[data-ask-scroll]` under `root` to its bottom while `stick(scroller)`, and keep following it
- *  while a glide runs in it. Run AFTER `askEnterNew` / `askTweenHeights` in the same paint. Returns how many it pinned. */
-export function askFollowBottom(root: ParentNode, stick: (sc: HTMLElement) => boolean, reduce = reducedMotion()): number {
+
+/** How a scroller reaches its bottom this paint: at once (a thread opened, its history landed), easing (the
+ *  conversation grew: an answer streams, a message was sent, an answer finished), or not at all. */
+export type AskBottomMove = "jump" | "ease" | null;
+/** The ease: each frame covers `1 - e^(-dt/BOTTOM_TAU)` of the way, so a line of streamed text glides in. */
+const BOTTOM_TAU = 110;
+/** Keep easing this long after the last paint that asked (the gaps between streamed frames). */
+const BOTTOM_HOLD = 450;
+const easing = new WeakMap<Element, { until: number; last: number }>();
+
+/** Rule 7: bring each `[data-ask-scroll]` under `root` to its bottom as `move(scroller)` says, and keep easing it
+ *  there while the conversation grows or a glide runs, as long as `stick()` holds (a person scrolling up lets go).
+ *  Run AFTER `askEnterNew` / `askTweenHeights` in the same paint. Returns how many it moved. */
+export function askFollowBottom(root: ParentNode, move: (sc: HTMLElement) => AskBottomMove, stick: () => boolean, reduce = reducedMotion()): number {
   let n = 0;
   for (const sc of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) {
-    if (!stick(sc)) continue;
-    sc.scrollTop = sc.scrollHeight;
+    const m = move(sc);
+    if (!m) continue;
     n++;
-    if (reduce || following.has(sc) || typeof requestAnimationFrame !== "function" || typeof sc.getAnimations !== "function") continue;
-    following.add(sc);
-    const follow = (): void => {
-      if (!sc.isConnected) { following.delete(sc); return; }
-      if (stick(sc)) sc.scrollTop = sc.scrollHeight;
-      if (stick(sc) && gliding(sc)) requestAnimationFrame(follow);
-      else following.delete(sc);
+    if (m === "jump" || reduce || typeof requestAnimationFrame !== "function" || typeof sc.getAnimations !== "function") {
+      sc.scrollTop = sc.scrollHeight;
+      continue;
+    }
+    const now = performance.now();
+    const st = easing.get(sc);
+    if (st) { st.until = now + BOTTOM_HOLD; continue; }
+    const state = { until: now + BOTTOM_HOLD, last: now };
+    easing.set(sc, state);
+    const step = (): void => {
+      if (!sc.isConnected || !stick()) { easing.delete(sc); return; }
+      const t = performance.now();
+      const dt = Math.min(Math.max(t - state.last, 0), 64);
+      state.last = t;
+      const gap = sc.scrollHeight - sc.clientHeight - sc.scrollTop;
+      if (gap > 0.5) sc.scrollTop += Math.max(1, gap * (1 - Math.exp(-dt / BOTTOM_TAU)));
+      if (t < state.until || gap > 0.5 || gliding(sc)) requestAnimationFrame(step);
+      else easing.delete(sc);
     };
-    requestAnimationFrame(follow);
+    requestAnimationFrame(step);
   }
   return n;
 }

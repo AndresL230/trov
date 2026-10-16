@@ -419,12 +419,16 @@ describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () 
     expect(stickAfterScroll(false, 900, at(1000))).toBe(false);
   });
 
-  it("the bottom (rule 7): pins each scroller while stuck, also under reduced motion; leaves a scrolled-up one alone", () => {
+  it("the bottom (rule 7): moves a scroller only when the conversation says so — a jump, or (reduced motion) the ease at once", () => {
     const sc = Object.assign(new El({ "data-ask-scroll": "page" }), { scrollTop: 0, scrollHeight: 1800 });
     const root = new El({}, [sc]);
-    expect(askFollowBottom(root as unknown as ParentNode, () => false, true)).toBe(0);
+    // Nothing the conversation did (a person opened Wrong? or the sources): the view stays, the rows push down.
+    expect(askFollowBottom(root as unknown as ParentNode, () => null, () => true, true)).toBe(0);
     expect(sc.scrollTop).toBe(0);
-    expect(askFollowBottom(root as unknown as ParentNode, () => true, true)).toBe(1);
+    expect(askFollowBottom(root as unknown as ParentNode, () => "jump", () => true, false)).toBe(1);
+    expect(sc.scrollTop).toBe(1800);
+    sc.scrollTop = 0;
+    expect(askFollowBottom(root as unknown as ParentNode, () => "ease", () => true, true)).toBe(1);
     expect(sc.scrollTop).toBe(1800);
   });
 

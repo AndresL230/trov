@@ -343,11 +343,14 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   hidden so it is never peeked, resolved by `cvItem`, drawn bigger with `chartFigure` / `themesFigure` /
   `diagramFigure` / `tableView`. **The bottom** (ask-motion.ts rule 7): a conversation stays at its bottom while
   `conversation.stick` — set by a send, a thread opened or a new one, and by reaching the bottom; cleared ONLY by the
-  person scrolling up (`stickAfterScroll`, any distance). The controller pins LAST in a paint (`askFollowBottom`,
-  after the entrances and height glides started) and follows the bottom frame by frame while a glide runs, so a
-  footer opening Wrong? or its sources, or closing them, glides the thread instead of jumping it. Pinning before the
-  glides (and reading "far from the bottom" off the pin's own scroll event while a shrinking glide held the
-  conversation taller) let go of the bottom for the rest of an answer — its footer and follow-ups ended out of view.
+  person scrolling up (`stickAfterScroll`, any distance). ONLY THE CONVERSATION moves the view (the owner,
+  2026-10-16): the controller's `bottomMove` compares each scroller's conversation with its last paint — a thread
+  opened or its history landed JUMPS to the bottom; an answer streaming, a message sent or an answer finishing EASES
+  there frame by frame (`askFollowBottom`, each frame `1 - e^(-dt/110ms)` of the way, held 450ms past the last paint
+  that asked, and while a glide runs), so streamed lines glide in instead of jumping a line at a time (measured:
+  ≤13px a frame, ≤41px behind, at the bottom when it ends). What a person opens themselves — Wrong?, the sources, a
+  step's results — never moves the view: the clicked control stays put and the new rows push down. It runs LAST in
+  a paint, after the entrances and height glides started (pinning before them is what once jumped the thread).
 - **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame) with Edit
   of its `editable` fields only — Confirm sends just the changed ones as `args` (each edited card alone, then the
   rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never

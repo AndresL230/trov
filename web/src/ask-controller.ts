@@ -23,7 +23,7 @@ import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
 import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
-import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, reducedMotion } from "./ask-motion";
+import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, reducedMotion, type AskBottomMove } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
@@ -471,6 +471,21 @@ export function createAskController(host: AskHost): AskController {
     paint();
   }
 
+  // Rule 7's decision per scroller: what the conversation did since this scroller's last paint.
+  const seen = new WeakMap<HTMLElement, { uid: string; n: number; status: string; busy: boolean }>();
+  function bottomMove(sc: HTMLElement): AskBottomMove {
+    const c = ui()[sc.dataset.askScroll === "panel" ? "panel" : "page"];
+    const now = { uid: c.uid, n: c.messages.length, status: c.status, busy: c.busy };
+    const was = seen.get(sc);
+    seen.set(sc, now);
+    if (!ui().conversation.stick) return null;
+    // A thread opened (a new scroller, another conversation while idle) or its history landed: straight there.
+    if (!was || (was.status !== "ok" && now.status === "ok") || (was.uid !== now.uid && !now.busy)) return "jump";
+    // The conversation grew: streaming, a message sent, an answer finishing (its footer and follow-ups).
+    if (now.busy || was.n !== now.n || was.busy !== now.busy) return "ease";
+    return null;
+  }
+
   function after(): void {
     // The ⌘J scenario plays over another page (`?askReplay=cmdj#tickets/14`): the Ask screen never enters there.
     if (bootReplay && !replayStarted && s.view === "app" && replayPlan(bootReplay.scenario).where === "panel") void startReplay(bootReplay);
@@ -481,8 +496,8 @@ export function createAskController(host: AskHost): AskController {
     askEnterNew(host.mount);
     askTweenHeights(host.mount);
     askGlideDock(host.mount);
-    // Last: the bottom, read once this paint's glides have started (rule 7).
-    askFollowBottom(host.mount, () => ui().conversation.stick);
+    // Last: the bottom, read once this paint's glides have started (rule 7) — moved only by the conversation.
+    askFollowBottom(host.mount, bottomMove, () => ui().conversation.stick);
     // The ⌘J panel on any page: make sure its state is read once.
     if (ui().cmdj.open && ui().state.status === "idle" && !ui().replay) load();
   }
