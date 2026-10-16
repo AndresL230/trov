@@ -23,7 +23,7 @@
 
 import { esc, attr } from "./ui";
 import type { AskView } from "./ask-state";
-import { viewOf, refTypeWord, refStatusMark, repoFactsOf, repoMark } from "./ask-refs";
+import { viewOf, refTypeWord, refStatusMark, repoFactsOf, repoCiMark } from "./ask-refs";
 import { askIcon, REF_ICON } from "./ask-icons";
 import type { AskDiagram, RefView } from "@shared/ai-ask-core";
 
@@ -253,10 +253,11 @@ function edgePaths(L: DiagramLayout, mode: "lr" | "tb"): string {
 
 // ── the cards ────────────────────────────────────────────────────────────────
 
-/** An item's state as a mark: a repository's is the Overview's verdict, anything else its RefStatus. */
+/** An item's state as a mark: a repository's is its CI — the head environment's checks (QA-5) — anything else its
+ *  RefStatus. */
 function statusOf(view: RefView | null, size: number): string {
   if (!view) return "";
-  if (view.type === "repo") return repoMark(repoFactsOf(view), size);
+  if (view.type === "repo") return repoCiMark(repoFactsOf(view), size);
   return view.status ? refStatusMark(view.status, size) : "";
 }
 

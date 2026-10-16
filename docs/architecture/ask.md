@@ -472,7 +472,9 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `want − index`), in half-lane steps — a fan-out is parallel lanes with its parent centred on them. Shapes: `chain`,
   `graph`, `set` (no edges: a plain list), `list` (a loop or a broken edge: the timeline). **One set of nodes**: an
   `<ol>` in topological order (the text equivalent: each step's button names it, a hidden "Waits on …" says its
-  edges), each `<li>` absolutely placed by three coordinate sets carried as custom properties (`--lx/--ly/--lw`,
+  edges; a node's mark is its item's status — a REPOSITORY's is its CI, the head environment's checks in the checks'
+  words "Checks failing / passing / running", Unknown when none were captured, never the deploy verdict: `repoCiMark`,
+  the owner's QA-5), each `<li>` absolutely placed by three coordinate sets carried as custom properties (`--lx/--ly/--lw`,
   `--tx/--ty/--tw`, `--sy`). trov.css › Ask diagram sets `--lr` / `--tb` / `--ls` to 1 for the mode in use and every
   position is their weighted sum — so a mode is three numbers, not a second stylesheet. **The mode** is a container
   query on `.ask-dg-wrap`: top → bottom by default; left → right once `(layers + 0.36 × gaps) × 112px` fits (`data-l`,
