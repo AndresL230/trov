@@ -18,14 +18,15 @@ export const LEGAL_EMAIL = PLATFORM_FROM_ADDRESS;
 export const MIN_AGE = 16;
 
 /**
- * The server-side AI build's legal text (#178 Phase G) is NOT approved yet. While this is true, every such passage
+ * The server-side AI build's legal text (#178 Phase G) — APPROVED by the owner on 2026-10-16, so this is false. While
+ * it is true, every such passage
  * of web/src/legal.ts shows a visible "DRAFT —", AND Org settings › AI › "What is sent" (`AI_SENDS`,
  * shared/ai-core.ts) lists only the lines whose Privacy rows are approved — the same claim is never final on the
  * screen while it is a draft in the policy (owner ruling, 2026-10-16). Approval is ONE change: set it to false
  * (and bump `PROVIDERS_UPDATED` in web/src/legal.ts and the date test/render.legal.test.ts pins) — the markers drop
  * and the full list ships, together. test/render.legal.test.ts › "approve once, ship both" holds the two to it.
  */
-export const AI_LEGAL_DRAFT: boolean = true;
+export const AI_LEGAL_DRAFT: boolean = false;
 
 /** The legal pages, as paths (static pages of shared/site-pages.ts, readable signed out). */
 export const TERMS_PATH = "/terms";

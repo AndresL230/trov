@@ -32,7 +32,7 @@ describe("legal pages", () => {
         expect(html).toContain(`>${doc.title}</h1>`);
         expect(html).toContain(`Effective and last updated ${legalDate(doc.updated)}`);
         // Terms and Privacy were updated when summaries moved to Anthropic; Refunds is as rewritten.
-        expect(doc.updated).toBe(doc.kind === "refunds" ? "2026-10-12" : "2026-10-14");
+        expect(doc.updated).toBe(doc.kind === "refunds" ? "2026-10-12" : "2026-10-16");
         for (const s of doc.sections) {
           expect(html).toContain(`<section id="${s.id}" class="site-legal-sec">`);
           expect(html).toContain(`<a href="#${s.id}" data-legal-toc="${s.id}"><span class="site-legal-toc-n">`);
@@ -167,8 +167,8 @@ describe("legal pages", () => {
     expect(html).toContain('Also see the <a href="/privacy">Privacy Policy</a> and the <a href="/refunds">Refund and Cancellation Policy</a>.');
   });
 
-  it("the server-side AI passages (#178 Phase G) are visibly DRAFT until the owner approves them; the approved Sift passages are unchanged", () => {
-    const DRAFT = "<b>DRAFT —</b> ";
+  it("the server-side AI passages (#178 Phase G) carry the DRAFT marker exactly while AI_LEGAL_DRAFT is set (approved 2026-10-16: none); the Sift passages are unchanged", () => {
+    const DRAFT = AI_LEGAL_DRAFT ? "<b>DRAFT —</b> " : "";
     const ai = section(TERMS, "ai");
     // Approved 2026-10-14: the summaries and Sift paragraphs, word for word.
     expect(TERMS.sections.find((s) => s.id === "ai")!.body[0]).toBe("<p>Trov uses an AI model (Anthropic Claude) to summarize pull requests and issues when they are captured. Summaries can be wrong or incomplete: they are a convenience, not a record. Check the pull request or issue before relying on one.</p>");
@@ -232,22 +232,22 @@ describe("legal pages", () => {
   it("approve once, ship both: the DRAFT markers and Org settings › AI's \"What is sent\" follow ONE flag (AI_LEGAL_DRAFT)", async () => {
     // The Privacy table's provider rows, and which carry the marker.
     const providerRows = (doc: LegalDoc) => [...section(doc, "sharing").matchAll(/<td>(Anthropic|TypeSafe AI)<\/td><td>(<b>DRAFT —<\/b> )?/g)].map((m) => ({ provider: m[1], draft: !!m[2] }));
-    // Held (owner ruling 2026-10-16): the screen claims only what the policy states as final — summaries and Sift.
-    expect(AI_LEGAL_DRAFT).toBe(true);
-    const rows = providerRows(PRIVACY);
-    expect(rows.length).toBe(AI_SENDS_ALL.length);
-    expect(AI_SENDS.map((l) => [l.provider, l.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
-    expect(AI_SENDS.length).toBe(rows.filter((r) => !r.draft).length);
-    // Approved: the ONE flag flips — no marker on any page, and the full list on the screen, together.
+    // Approved (owner, 2026-10-16): no marker on any page, and the screen lists every line the Privacy table names.
+    expect(AI_LEGAL_DRAFT).toBe(false);
+    for (const doc of Object.values(LEGAL_DOCS)) expect(text(doc)).not.toContain("DRAFT");
+    expect(providerRows(PRIVACY).every((r) => !r.draft)).toBe(true);
+    expect(AI_SENDS).toEqual(AI_SENDS_ALL);
+    expect(AI_SENDS.length).toBe(providerRows(PRIVACY).length);
+    // The same ONE flag set back to true restores both together: the markers, and the screen held to summaries and Sift.
     vi.resetModules();
-    vi.doMock("@shared/legal-core", async (orig) => ({ ...(await orig<typeof import("@shared/legal-core")>()), AI_LEGAL_DRAFT: false }));
+    vi.doMock("@shared/legal-core", async (orig) => ({ ...(await orig<typeof import("@shared/legal-core")>()), AI_LEGAL_DRAFT: true }));
     try {
       const legal = await import("../web/src/legal");
       const core = await import("@shared/ai-core");
-      for (const doc of Object.values(legal.LEGAL_DOCS)) expect(text(doc)).not.toContain("DRAFT");
-      expect(providerRows(legal.PRIVACY).every((r) => !r.draft)).toBe(true);
-      expect(core.AI_SENDS).toEqual(core.AI_SENDS_ALL);
-      expect(core.AI_SENDS.length).toBe(providerRows(legal.PRIVACY).length);
+      const rows = providerRows(legal.PRIVACY);
+      expect(rows.length).toBe(core.AI_SENDS_ALL.length);
+      expect(core.AI_SENDS.map((l) => [l.provider, l.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
+      expect(core.AI_SENDS.length).toBe(rows.filter((r) => !r.draft).length);
     } finally {
       vi.doUnmock("@shared/legal-core");
       vi.resetModules();

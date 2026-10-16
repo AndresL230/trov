@@ -150,7 +150,7 @@ export const RELEASES: Release[] = [
         "Every deploy shows its commit or says it doesn't know, a failed one says why, and a rollback is marked as one (#186)",
         "Faster pages and a smaller first download: far fewer database round trips, and less used screens load when opened (#187)",
         "Help › What's new: 35 releases folded into 12, each with a few highlights and a short list of changes (#190)",
-        "Terms and Privacy: draft passages for Ask Trov and the AI features, marked DRAFT until approved (#178)",
+        "Terms and Privacy cover Ask Trov and the AI features, and say exactly what each AI provider receives (#178)",
         "Trov plugin 0.9.0: record-session records decisions, findings and incidents; load-context reads the repository's state first (#178)",
       ],
       fixed: [

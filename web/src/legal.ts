@@ -78,10 +78,11 @@ const FREE_SEATS = PLANS.free.entitlements.seats;
 /** The effective date of all three documents (they were rewritten together). */
 const EFFECTIVE = "2026-10-12";
 /** Terms and Privacy: summaries moved from Google Gemini to Anthropic Claude, and automatic tagging (Sift, on a
- *  TypeSafe AI model) was added — both approved by the owner on 2026-10-14. */
-const PROVIDERS_UPDATED = "2026-10-14";
+ *  TypeSafe AI model) was added — both approved by the owner on 2026-10-14; the server-side AI build's passages
+ *  (Ask Trov, the typed filter, notes, briefs and suggestions, the widened provider rows) approved on 2026-10-16. */
+const PROVIDERS_UPDATED = "2026-10-16";
 
-// DRAFT: awaiting Andres's approval (#178 Phase G). Every passage below that starts with `${DRAFT}` is new text for
+// APPROVED by Andres on 2026-10-16 (AI_LEGAL_DRAFT is false, so `${DRAFT}` renders nothing). Was: awaiting approval (#178 Phase G). Every passage below that starts with `${DRAFT}` is new text for
 // the server-side AI build — Ask Trov, the plain-language filter, the AI pass's notes, briefs and suggestions, the
 // weekly email's "This week", and the widened Anthropic and TypeSafe AI lists — and shows a visible "DRAFT —" so
 // nothing reads as final. The approved passages (summaries, Sift) are unchanged. The marker is ONE flag,

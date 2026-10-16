@@ -51,9 +51,9 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
       keys: { anthropic: false, typesafe: false }, planEnded: null, // Q8 / Q10
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
-    // Both providers, by their legal names, and what each receives — HELD to the approved Privacy rows while the AI
-    // passages are DRAFT (AI_LEGAL_DRAFT, shared/legal-core.ts; owner ruling 2026-10-16), then every line.
-    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
+    // Both providers, by their legal names, and what each receives: every line (the AI passages were approved on
+    // 2026-10-16, so AI_LEGAL_DRAFT no longer holds the list).
+    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual(AI_SENDS_ALL.map((s) => [s.provider, s.for]));
     expect(AI_SENDS_ALL.map((s) => [s.provider, s.for])).toEqual([
       ["Anthropic", "Summaries"], ["Anthropic", "Ask Trov"], ["Anthropic", "Filters typed in plain words"],
       ["Anthropic", "Notes, briefs, the weekly email's highlights and suggestions"],

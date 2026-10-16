@@ -642,18 +642,12 @@ describe("Org settings › AI", () => {
     expect(t).not.toMatch(/\bJev\b/);
     expect(html).not.toMatch(/\bJev\b/);
   });
-  it("what is sent is HELD to the approved Privacy rows (summaries, Sift) while the AI passages are DRAFT — and lists every one once they are (e2e OA-1 / LG-2; owner ruling 2026-10-16)", () => {
+  it("what is sent lists every line the Privacy Policy's provider table names — approved 2026-10-16, so nothing is held (e2e OA-1 / LG-2)", () => {
+    expect(AI_LEGAL_DRAFT).toBe(false);
+    expect(AI_SENDS).toEqual(AI_SENDS_ALL);
     const t = text(tab(settings()));
-    // Held: only what the Privacy Policy states as final. The flag and the full list: test/render.legal.test.ts.
-    expect(AI_LEGAL_DRAFT).toBe(true);
-    for (const line of ["For summaries", "For Sift"]) expect(t).toContain(line);
-    for (const line of ["For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For sorting and checking items"]) {
-      expect(t).not.toContain(line);
-    }
-    // Once approved, the screen renders every line the Privacy Policy's provider table names.
-    const full = text(tab(settings({ sends: [...AI_SENDS_ALL] })));
     for (const line of ["For summaries", "For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For Sift", "For sorting and checking items"]) {
-      expect(full).toContain(line);
+      expect(t).toContain(line);
     }
     const sharing = PRIVACY.sections.find((s) => s.id === "sharing")!.body.join(" ");
     const rows = (sharing.match(/<td>(Anthropic|TypeSafe AI)<\/td>/g) ?? []).length;

@@ -484,8 +484,9 @@ dashboard, retention windows to verify) are listed in the release's `ops` and in
   `test/render.legal.test.ts` holds the facts most likely to drift (cookies and lifetimes, retention, processors,
   no Vercel / Netlify, no `read:org`, the refund policy's four rules).
 - **DRAFT passages, one flag.** The server-side AI build's text (#178 Phase G: Ask Trov, the typed filter, the AI
-  pass's notes and suggestions, the widened provider rows) is not approved: each passage starts `${DRAFT}`, a
-  visible "DRAFT —" while `AI_LEGAL_DRAFT` (`shared/legal-core.ts`) is true. The same flag HOLDS Org settings › AI ›
+  pass's notes and suggestions, the widened provider rows) was APPROVED on 2026-10-16, so `AI_LEGAL_DRAFT`
+  (`shared/legal-core.ts`) is false and no page shows a marker. Each passage still starts `${DRAFT}`, a visible
+  "DRAFT —" only while the flag is true. The same flag HOLDS Org settings › AI ›
   What is sent (`AI_SENDS`, `shared/ai-core.ts`) to the approved lines — summaries and Sift — since the screen
   repeats the Privacy rows' claims; `AI_SENDS_ALL` is the full list. Approving is ONE change (set the flag false,
   bump `updated`), and the policy and the screen ship together (`test/render.legal.test.ts` › approve once, ship
