@@ -3035,7 +3035,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
-  .ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { animation:none !important; background:none; color:var(--fg-55); }
+  .ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { animation:none !important; background:none !important; color:var(--fg-55) !important; }
   /* the composer */
   .ask-input { transition:none !important; }
   .ask-jump { transition:none !important; }

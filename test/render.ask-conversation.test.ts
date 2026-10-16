@@ -215,6 +215,18 @@ describe("`streaming` — mid-answer", () => {
     expect(h.slice(h.indexOf("ask-step is-run"), h.indexOf("ask-cur-alone"))).not.toContain("cnpy-orb");
     expect(css).toContain(".ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:");
   });
+  it("under reduced motion the words are plain — the rule wins over the sweep that comes LATER in trov.css (AU-F-RM1)", () => {
+    const sweep = css.indexOf(".ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:linear-gradient");
+    const plain = css.indexOf(".ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { animation:none !important;");
+    expect(sweep).toBeGreaterThan(0);
+    expect(plain).toBeGreaterThan(0);
+    const rule = css.slice(plain, css.indexOf("}", plain));
+    // Same selector, earlier in the file: only !important lets it win (it lost before: transparent words on a static sweep).
+    if (plain < sweep) {
+      expect(rule).toMatch(/background:none !important/);
+      expect(rule).toMatch(/color:var\(--fg-55\) !important/);
+    }
+  });
 });
 
 describe("the thinking orbs mean one thing each — no picker (the owner)", () => {
