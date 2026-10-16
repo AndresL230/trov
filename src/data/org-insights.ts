@@ -8,7 +8,7 @@
 // org's switch in the same statement (`orgs.ai_automation`) and an Anthropic key on the deployment — with AI off or no
 // key the fields are absent, never an "off" state; at the month's cap a line is its last version, `state: "capped"`.
 import {
-  AI_DRIFT_WINDOW_DAYS, AI_ROADMAP_ITEM, AI_ROADMAP_SUGGESTION_KINDS, AiPlanDriftSchema, AiRoadmapLineSchema, aiItemRef,
+  AI_DRIFT_WINDOW_DAYS, AI_ROADMAP_ITEM, AI_ROADMAP_SUGGESTION_KINDS, AiPlanDriftSchema, AiRoadmapLineSchema,
   type AiCite, type AiPlanDrift, type AiRoadmapLine, type AiSprintNote, type AiSuggestion, type AiThemeShare,
 } from "@shared/ai";
 import { all, batch, first, nowIso, stmt, type TenantContext } from "./sql";
@@ -44,19 +44,28 @@ interface InsightRow { key: string; generated_at: string; model: string | null; 
 /** What THE read rule (src/plans/gate.ts `aiShown`) adds to a line at the month's cap: the LAST version, said capped. */
 type LineCap = Pick<AiRoadmapLine, "state" | "resumesOn" | "upgrade">;
 
+/** The "Wrong?" ref of an insight row, in SQL — `aiItemRef.sprintNote` (`<sprint id>@<generatedAt>`) and
+ *  `aiItemRef.planDrift` (`<generatedAt>`), the refs the Roadmap's buttons send. */
+const FEEDBACK_REF: Record<InsightKind, string> = { sprint_note: `i.key || '@' || i.generated_at`, plan_drift: `i.generated_at` };
+
 /**
  * The newest version of each key of `kind` (one key when given) — only under THE read rule: the org's switch on (the
  * join, in the same statement) and an Anthropic key on the deployment (no key: nothing is read). When a row comes
  * back, the rule's one statement says whether the month's `ai_runs` are spent (Q19: every surface says `capped`).
+ * A PERSON's context (not the pass's system one) never gets a version they pressed "Wrong?" on — in the same
+ * statement, so every surface leaves it out: the cookie Roadmap and `/sprints`, and MCP's `get_roadmap`,
+ * `list_sprints` and `get_sprint` (owner ruling Q-S2 / RM-14: "Wrong?" hides an item for that person everywhere).
  */
 async function latest(ctx: TenantContext, kind: InsightKind, key?: string, now: Date = new Date()): Promise<{ rows: InsightRow[]; cap: LineCap }> {
   if (!aiKeySet(ctx)) return { rows: [], cap: {} };
+  const viewer = ctx.role === "system" ? null : ctx.userId;
   const rows = await all<InsightRow>(ctx,
     `SELECT i.key AS key, i.generated_at AS generated_at, i.model AS model, i.json AS json
        FROM org_insights i JOIN orgs o ON o.id = i.org_id AND o.ai_automation = 1
       WHERE i.org_id = ? AND i.kind = ?${key === undefined ? "" : " AND i.key = ?"}
-        AND i.version = (SELECT MAX(v.version) FROM org_insights v WHERE v.org_id = ? AND v.kind = i.kind AND v.key = i.key)`,
-    ...(key === undefined ? [ctx.orgId, kind, ctx.orgId] : [ctx.orgId, kind, key, ctx.orgId]));
+        AND i.version = (SELECT MAX(v.version) FROM org_insights v WHERE v.org_id = ? AND v.kind = i.kind AND v.key = i.key)${viewer === null ? "" : `
+        AND NOT EXISTS (SELECT 1 FROM ai_feedback f WHERE f.org_id = i.org_id AND f.handle = ? AND f.item_type = i.kind AND f.item_ref = ${FEEDBACK_REF[kind]})`}`,
+    ...(key === undefined ? [ctx.orgId, kind, ctx.orgId] : [ctx.orgId, kind, key, ctx.orgId]), ...(viewer === null ? [] : [viewer]));
   if (!rows.length) return { rows, cap: {} };
   const gate = await aiShown(ctx, now);
   if (!gate.shown) return { rows: [], cap: {} };
@@ -147,35 +156,11 @@ export async function lastRoadmapSuggestionAt(ctx: TenantContext, kind: string):
   return r ? { at: r.created_at, open: r.open === 1 } : null;
 }
 
-/** The Roadmap as ONE PERSON gets it on the cookie read: a note or drift they pressed "Wrong?" on is left out
- *  (for them only), and an ADMIN also gets the open suggestions. MCP never comes here (no suggestions there). */
-export async function roadmapForPerson<P extends { sprints: { id: number; note?: AiSprintNote }[]; drift?: AiPlanDrift; suggestions?: AiSuggestion[] }>(
-  ctx: TenantContext, handle: string, plan: P, o: { admin: boolean },
-): Promise<P> {
-  const hasNote = plan.sprints.some((s) => s.note);
-  const [notesHidden, driftHidden] = await Promise.all([
-    hasNote ? hiddenRefs(ctx, handle, "sprint_note") : Promise.resolve(new Set<string>()),
-    plan.drift ? hiddenRefs(ctx, handle, "plan_drift") : Promise.resolve(new Set<string>()),
-  ]);
-  const sprints = plan.sprints.map((s) => {
-    if (!s.note || !notesHidden.has(aiItemRef.sprintNote(s.id, s.note.generatedAt))) return s;
-    const { note: _hidden, ...rest } = s;
-    return rest;
-  });
-  const out: P = { ...plan, sprints };
-  if (plan.drift && driftHidden.has(aiItemRef.planDrift(plan.drift.generatedAt))) delete out.drift;
-  if (o.admin) {
-    const suggestions = await roadmapSuggestions(ctx);
-    if (suggestions.length) out.suggestions = suggestions;
-  }
-  return out;
-}
-
-async function hiddenRefs(ctx: TenantContext, handle: string, itemType: string): Promise<Set<string>> {
-  try {
-    const rows = await all<{ item_ref: string }>(ctx, `SELECT item_ref FROM ai_feedback WHERE org_id = ? AND handle = ? AND item_type = ?`, ctx.orgId, handle, itemType);
-    return new Set(rows.map((r) => r.item_ref));
-  } catch {
-    return new Set();
-  }
+/** The Roadmap as ONE PERSON gets it on the cookie read: an ADMIN also gets the open suggestions. MCP never comes here
+ *  (no suggestions there). What they pressed "Wrong?" on is already left out by the read itself (`latest`), on every
+ *  surface. */
+export async function roadmapForPerson<P extends { suggestions?: AiSuggestion[] }>(ctx: TenantContext, plan: P, o: { admin: boolean }): Promise<P> {
+  if (!o.admin) return plan;
+  const suggestions = await roadmapSuggestions(ctx);
+  return suggestions.length ? { ...plan, suggestions } : plan;
 }

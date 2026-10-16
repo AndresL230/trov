@@ -643,9 +643,12 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
 - **Reads**: `org_insights` (newest of the last 10 versions per key) joins `orgs.ai_automation = 1` and reads nothing
   without a key (the read rule), so with the switch off or no key every field is ABSENT; at the cap a note and the
   drift carry `state: "capped"` with `resumesOn` / `upgrade`. `SprintView.note?` (active sprints only) and `PlanView.drift?` (until its
-  window passes) come with `GET /roadmap`, `GET /sprints` and MCP `get_roadmap`; `PlanView.suggestions?` (the open
-  Roadmap suggestions) only with the cookie `GET /roadmap`, only for an admin. "Wrong?" on a note or the drift
-  hides it for that person (`roadmapForPerson`, `src/data/org-insights.ts`).
+  window passes) come with `GET /roadmap`, `GET /sprints` and MCP `get_roadmap`, `list_sprints` and `get_sprint`;
+  `PlanView.suggestions?` (the open Roadmap suggestions) only with the cookie `GET /roadmap`, only for an admin
+  (`roadmapForPerson`). "Wrong?" on a note or the drift hides it for that person on EVERY surface, MCP included
+  (owner ruling Q-S2 / RM-14): the read itself leaves it out for a person's context — a `NOT EXISTS` against
+  `ai_feedback` in the same statement (`latest`, `src/data/org-insights.ts`), so no extra statement; the pass's
+  system context hides nothing.
 - **Accept** runs the existing writers AS the admin who pressed it: a draft → `create_sprint` per sprint (created
   upcoming), then `set_ticket_sprint` for each of its tickets still open in the backlog (never moved out of another
   sprint); a narrative → `write_plan` with the narrative and no sprint entries (versioned like any plan write).

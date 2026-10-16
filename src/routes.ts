@@ -761,7 +761,7 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
 tenantRoot.get("/roadmap", async (c) => {
   const ctx = c.var.ctx;
   const admin = hasRole(ctx, "admin");
-  const plan = await roadmapForPerson(ctx, c.get("principal").handle, await get_plan(ctx), { admin });
+  const plan = await roadmapForPerson(ctx, await get_plan(ctx), { admin });
   const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
   return c.json(preview ? withPreviewRoadmap(plan, preview.roadmap, { admin }) : plan);
 });

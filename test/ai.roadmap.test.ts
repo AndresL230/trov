@@ -27,6 +27,10 @@ import { markRow, stubProviders, succeededLine, type ClaudeReply } from "./helpe
 import { fencedBlocks, inputOf, tick, withThemes } from "./helpers/ai-roadmap";
 import { addOrgRepo } from "./helpers/org-config";
 import { useAiKey } from "./helpers/ai-key";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { buildTrovMcpServer } from "../src/mcp";
+import { bearerCtx } from "./helpers/tenant";
 
 // THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
 useAiKey();
@@ -420,6 +424,50 @@ describe("GET /roadmap — notes and drift for everyone (minus their own 'Wrong?
     const mcp = await get_plan(ctx());
     expect("suggestions" in mcp).toBe(false);
     expect(mcp.sprints.find((x) => x.id === id)!.note).toBeDefined();
+  });
+  // Owner ruling Q-S2 / RM-14: "Wrong?" hides an item for that person on EVERY surface — MCP's get_roadmap, list_sprints
+  // and get_sprint included, as get_feed and get_repo_dashboard already did.
+  it("MCP get_roadmap, list_sprints and get_sprint leave out the note and the drift the CALLER flagged — only theirs", async () => {
+    const { id } = await activeSprint();
+    const at = new Date(Date.now() - 3_600_000).toISOString();
+    await putInsight(ctx(), "sprint_note", String(id), { text: "Waiting on review.", cites: [{ ref: "ticket:1", label: "#1", href: "#tickets/1" }] }, { model: "m", promptVersion: "p" }, at);
+    await putInsight(ctx(), "plan_drift", "", { text: "Mostly billing.", cites: [{ ref: "theme:b", label: "Billing", href: null }], windowDays: 14, shares: [] }, { model: "m", promptVersion: "p" }, at);
+    const flagger = "roadmap-member";
+    const other = "roadmap-other";
+    const cookie = await cookieFor(flagger);
+    for (const [itemType, itemRef] of [["sprint_note", `${id}@${at}`], ["plan_drift", at]]) {
+      expect((await call("POST", `${BASE}${AI_ROUTES.feedback}`, cookie, { itemType, itemRef, kind: itemType, model: "m", promptVersion: null })).status).toBe(200);
+    }
+    const reads = async (handle: string) => {
+      const server = buildTrovMcpServer(e, await bearerCtx(handle));
+      const client = new Client({ name: "test", version: "1.0.0" });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      await server.connect(st);
+      await client.connect(ct);
+      const tool = async <T>(name: string, args: Record<string, unknown> = {}): Promise<T> => {
+        const res = (await client.callTool({ name, arguments: args })) as { content: { text: string }[]; isError?: boolean };
+        expect(res.isError, name).toBeFalsy();
+        return JSON.parse(res.content[0].text) as T;
+      };
+      try {
+        const roadmap = await tool<PlanView>("get_roadmap");
+        const sprints = await tool<PlanView["sprints"]>("list_sprints");
+        const sprint = await tool<PlanView["sprints"][number]>("get_sprint", { id });
+        return {
+          drift: roadmap.drift?.text ?? null,
+          roadmapNote: roadmap.sprints.find((x) => x.id === id)!.note?.text ?? null,
+          listNote: sprints.find((x) => x.id === id)!.note?.text ?? null,
+          sprintNote: sprint.note?.text ?? null,
+        };
+      } finally {
+        await client.close();
+        await server.close();
+      }
+    };
+    expect(await reads(flagger)).toEqual({ drift: null, roadmapNote: null, listNote: null, sprintNote: null });
+    expect(await reads(other)).toEqual({ drift: "Mostly billing.", roadmapNote: "Waiting on review.", listNote: "Waiting on review.", sprintNote: "Waiting on review." });
+    // The pass's own reads (a system context) are nobody's view: the note and the drift are still its input.
+    expect((await get_plan(ctx())).drift?.text).toBe("Mostly billing.");
   });
   // e2e RM-8 (Phase H): a sprint draft whose `sprints` was not a list threw in its label (TypeError), and the catch
   // dropped EVERY suggestion — the good draft beside it never reached the admin.

@@ -142,7 +142,8 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   day (`projected`, `daysLate`). Null for a sprint not active, with no start, or with nothing closed yet. The card
   says "At this pace, done Nov 2, 3 days late" with no AI mark.
 - **Sprint notes** — `SprintView.note?`: one line Trov wrote about an ACTIVE sprint (its tickets, the PRs they link,
-  the week's entries naming them), with its cites, byline and "Wrong?". `org_insights` (0065), present only under
+  the week's entries naming them), with its cites, byline and "Wrong?" (which hides it for that person on the
+  Roadmap, `/sprints` and MCP's `get_roadmap` / `list_sprints` / `get_sprint` alike). `org_insights` (0065), present only under
   the AI read rule (the switch on and a key); at the month's cap it is the last version with `state: "capped"`, and
   the card adds the AI kit's capped line (so does the drift).
 - **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
