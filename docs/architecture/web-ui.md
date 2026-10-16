@@ -551,7 +551,8 @@ the rail's rows and its short-window steps are unchanged. Both carry `data-suppo
 returns to them when the dialog closes (`support.md`).
 
 **Widths.** The rail is **228px** expanded and 64px collapsed (`.cnpy-aside` in `trov.css`; the phone drawer has
-its own, `min(292px, 100vw - 48px)`). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that
+its own, `min(292px, 100vw - 48px)`, opened by the header's `.cnpy-menubtn`: a 44×44 touch target whose negative
+margins keep the header laid out as around the old 40px button). 228 was measured, not chosen by eye (2026-10-08, was 244): the row that
 runs out first is `Prompt Library` with its count, which truncates under 223px with a one-digit count and under
 227px with a two-digit one, so 228 keeps every label, badge, the search box's shortcut hint and the account chip
 whole. Nothing else stores the number: `<main>` is the flex remainder, the collapsed tooltip and the org menu are

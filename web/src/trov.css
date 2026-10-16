@@ -337,7 +337,9 @@ input, select { font-family: inherit; }
    `visibility:hidden` (after the slide), which also takes its rows out of the tab order. */
 .cnpy-menubtn, .cnpy-scrim { display:none; }
 .cnpy-menubtn { border-radius:8px; }
-[data-phone="1"] .cnpy-menubtn { display:grid; place-items:center; flex:none; width:40px; height:40px; margin-left:-8px; color:var(--fg-70); }
+/* A 44×44 touch target (the glyph stays 18px); the negative margins hand back the extra 4px,
+   so the header lays out exactly as it did around a 40px button. */
+[data-phone="1"] .cnpy-menubtn { display:grid; place-items:center; flex:none; width:44px; height:44px; margin:-2px -2px -2px -10px; color:var(--fg-70); }
 [data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100vw - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
 [data-phone="1"][data-drawer="1"] .cnpy-aside { transform:none; visibility:visible; box-shadow:0 0 48px rgba(0,0,0,.32); transition:transform .26s var(--side-e); }
 [data-phone="1"] .cnpy-scrim { display:block; position:fixed; inset:0; z-index:85; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .26s ease; -webkit-tap-highlight-color:transparent; }

@@ -220,10 +220,11 @@ export const RELEASES: Release[] = [
         "Railway's old per-environment project tokens showed as two Connected \"workspace token\" cards while the org-wide connection the Backend parts need did not exist.",
         "A host disconnected by an admin read Removed on its parts but Not connected on its card.",
         "A deploy with no target (every GitHub-sourced deploy) was dropped from the Repo dashboard's deploy reads: `NOT (NULL AND …)` is NULL in SQL.",
+        "On a phone, the Open navigation button is a full 44×44 touch target (was 40px); the header around it does not move (#0)",
       ],
       removed: [],
     },
-    prs: [186, 187],
+    prs: [186, 187, 0],
   },
   // Hosting providers: Org settings › Hosting, the Repo dashboard's Hosting section, Detected, Vercel events.
   {
