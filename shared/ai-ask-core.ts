@@ -202,7 +202,9 @@ export interface AskThemesBlock {
   lanes: { theme: string; color: string; values: number[] }[];
 }
 
-/** A dependency chain (v1 draws chains; a branching graph falls back to a list: `layout: "list"`). */
+/** What waits on what: an edge [a, b] means b waits on a. `layout` is "chain" when the edges make one simple chain
+ *  (the server orders the nodes along it), else "list"; the client lays out ANY graph without a loop itself
+ *  (web/src/ask-diagram.ts) and keeps the list for a loop or a broken edge. */
 export interface AskDiagram {
   title: string;
   caption: string | null;

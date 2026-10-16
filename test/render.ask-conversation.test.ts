@@ -136,10 +136,11 @@ describe("`answer` — the whole answer, in stream order", () => {
     expect(html).toContain("var(--p-sky)");
   });
 
-  it("the dependency chain: nodes in order with arrows between, each with a ref opening it, its live mark", () => {
-    expect(html).toMatch(/data-fig="diagram" data-layout="chain"/);
-    expect(html.match(/class="ask-dn-arrow"/g)?.length).toBe(3);
-    expect(html).toMatch(/<button type="button" class="ask-dn" data-act="askShOpen" data-arg="pr:176"/);
+  it("the dependency chain: nodes in order with connectors between, each with a ref opening it, its live mark", () => {
+    expect(html).toMatch(/data-fig="diagram" data-shape="chain"/);
+    expect(html.match(/class="ask-dg-ah"/g)?.length).toBe(3);
+    expect(html).toMatch(/<svg class="ask-dg-e ask-dg-e--lr"[^>]*>(<path [^>]*><\/path>){3}<\/svg>/);
+    expect(html).toMatch(/<button type="button" class="ask-dg-c" data-act="askShOpen" data-arg="pr:176"/);
     expect(t).toContain("What waits on what Each step waits on the one before it");
   });
 
@@ -651,14 +652,19 @@ describe("markdown and refs", () => {
     expect(html).toMatch(/<strong>What <button type="button" class="ask-chip ask-chip--inline"[^>]*data-ask-ref="ticket:14"[\s\S]*?<\/button> is about:<\/strong> <code class="ask-code">netlify\.test<\/code> is <em>submitted<\/em> and <span class="ask-reftext">#999<\/span>/);
     expect(plainText({ look: { views: s.ask.refViews, persons: [] } }, "See [[ticket:14]] ([[ticket:14|status]]) and [[ticket:999]].")).toBe("See #14 (In progress) and #999.");
   });
-  it("a diagram draws a chain only when its edges make one; a branching graph is a list", () => {
+  it("a diagram is a chain only when its edges make one; a branching graph is drawn as a graph, a loop as a list", () => {
     const n = (id: string) => ({ id, label: id, eyebrow: null, ref: null, view: null });
     expect(chainOrder({ nodes: [n("a"), n("b"), n("c")], edges: [["b", "c"], ["a", "b"]] })?.map((x) => x.id)).toEqual(["a", "b", "c"]);
     expect(chainOrder({ nodes: [n("a"), n("b"), n("c")], edges: [["a", "b"], ["a", "c"]] })).toBeNull();
     const events: AskEvent[] = [{ event: "block", data: { kind: "diagram", diagram: { title: "Fan out", caption: null, layout: "chain", nodes: [n("a"), n("b"), n("c")], edges: [["a", "b"], ["a", "c"]] } } }];
     const { html } = view("answer", { events, busy: true });
-    expect(html).toMatch(/data-fig="diagram" data-layout="list"/);
-    expect(html).not.toContain("ask-dn-arrow");
+    expect(html).toMatch(/data-fig="diagram" data-shape="graph"/);
+    expect(html.match(/class="ask-dg-ah"/g)?.length).toBe(2);
+    const loop: AskEvent[] = [{ event: "block", data: { kind: "diagram", diagram: { title: "Loop", caption: null, layout: "list", nodes: [n("a"), n("b")], edges: [["a", "b"], ["b", "a"]] } } }];
+    const looped = view("answer", { events: loop, busy: true }).html;
+    expect(looped).toMatch(/data-fig="diagram" data-shape="list"/);
+    expect(looped).not.toContain("ask-dg-ah");
+    expect(looped).not.toContain("<svg class=\"ask-dg-e");
   });
   it("theme tooltips, quiet steps, and the local ref's round trip", () => {
     expect(themeTip("Hosting", "Sep 14", 0.7)).toBe("Hosting, week of Sep 14: 70% of capacity");
@@ -712,7 +718,7 @@ describe("motion — reduced motion and corners for the conversation's pieces", 
   const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── the site on a phone"));
   const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
   const block = reduce.slice(0, reduce.indexOf("\n}\n"));
-  it.each([".ask-step-det", ".ask-think-sum", ".ask-think-l", ".ask-src", ".ask-bar-b", ".ask-tl", ".ask-dn", ".ask-q-editbox", ".ask-q-edit", ".ask-chev", ".ask-tools", ".ask-ci"])("%s is off under prefers-reduced-motion", (cls) => {
+  it.each([".ask-step-det", ".ask-think-sum", ".ask-think-l", ".ask-src", ".ask-bar-b", ".ask-tl", ".ask-dg-n", ".ask-dg-e--lr", ".ask-dg-e--tb", ".ask-q-editbox", ".ask-q-edit", ".ask-chev", ".ask-tools", ".ask-ci"])("%s is off under prefers-reduced-motion", (cls) => {
     expect(block).toContain(cls);
   });
   it("the disclosures, the question and the footer are tweened (their height glides)", () => {

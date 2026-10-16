@@ -31,7 +31,7 @@ import {
   askRefFixtures, askSearchFixture, askStateFixture, askThreadsFixture, askTranscript, ASK_SCENARIO_QUESTION, type AskScenario,
 } from "@shared/ai-fixtures";
 import {
-  askRepoFacts, type AskAttachment, type AskEvent, type AskEventMap, type AskState, type PeekResult, type RefView,
+  askRepoFacts, type AskAttachment, type AskDiagram, type AskEvent, type AskEventMap, type AskState, type PeekResult, type RefView,
 } from "@shared/ai-ask-core";
 
 // ── what build.ts receives ───────────────────────────────────────────────────
@@ -415,16 +415,26 @@ function blocks(): Section {
   const hosting = page(HOSTING());
   const b = (kind: string) => keep(cv(hosting), `.ask-part[data-block="${kind}"]`);
   const items = (refs: string[]) => keep(cv(page([question("Show me"), answer(fold([ev("block", { kind: "items", items: refs.map((r) => R[r]) }), ev("done", { messageId: 2, questionId: 1, cites: [], tokens: { in: 1, out: 1, cached: 0 } })]))])), ".ask-part[data-block=items]");
-  const list = fold([ev("block", { kind: "diagram", diagram: {
-    title: "Who waits on the Netlify step", caption: "A branching graph is drawn as a list", layout: "chain",
-    nodes: [
-      { id: "pr", eyebrow: "Pull request", label: "#176 Netlify connect step", ref: "pr:176", view: R["pr:176"] },
-      { id: "t14", eyebrow: "Ticket", label: "#14 Guided repository setup", ref: "ticket:14", view: R["ticket:14"] },
-      { id: "t18", eyebrow: "Ticket", label: "#18 Hosting connections", ref: "ticket:18", view: R["ticket:18"] },
-      { id: "doc", eyebrow: null, label: "The Netlify section of the hosting doc", ref: null, view: null },
-    ],
-    edges: [["pr", "t14"], ["pr", "t18"], ["t18", "doc"]],
-  } }), ev("done", { messageId: 2, questionId: 1, cites: [], tokens: { in: 1, out: 1, cached: 0 } })]);
+  const diagram = (title: string, caption: string, nodes: AskDiagram["nodes"], edges: [string, string][]) => fold([ev("block", { kind: "diagram", diagram: {
+    title, caption, layout: "list", nodes, edges } }), ev("done", { messageId: 2, questionId: 1, cites: [], tokens: { in: 1, out: 1, cached: 0 } })]);
+  const dg = (t: ReturnType<typeof fold>) => keep(cv(page([question("Show me"), answer(t)])), ".ask-part[data-block=diagram]");
+  const N = (id: string, ref: string | null, label: string, eyebrow: string | null = null) => ({ id, eyebrow, label, ref, view: ref ? R[ref] : null });
+  const branch = diagram("Who waits on the Netlify step", "Both tickets wait on the PR", [
+    N("pr", "pr:176", "#176 Netlify connect step", "Pull request"), N("t14", "ticket:14", "#14 Guided repository setup", "Ticket"),
+    N("t18", "ticket:18", "#18 Hosting connections", "Ticket"), N("doc", null, "The Netlify section of the hosting doc", "Doc"),
+  ], [["pr", "t14"], ["pr", "t18"], ["t18", "doc"]]);
+  const wide = diagram("What the Hosting sprint waits on", "Two roots; #29 skips a layer", [
+    N("ci", REPO, "netlify-connect.test", "CI on main"), N("h12", "handoff:12", "Fix the connect test", null),
+    N("pr", "pr:176", "#176 Netlify connect step", "Pull request"), N("t14", "ticket:14", "#14 Guided repository setup", "Ticket"),
+    N("t18", "ticket:18", "#18 Hosting connections", "Ticket"), N("t29", "ticket:29", R["ticket:29"].title, "Ticket"), N("sprint", "sprint:7", "Hosting, due Oct 30", "Sprint"),
+  ], [["ci", "pr"], ["pr", "t14"], ["pr", "t18"], ["h12", "t18"], ["t14", "sprint"], ["t18", "sprint"], ["t29", "sprint"]]);
+  const fan = diagram("What #14 waits on", "Three things before it", [
+    N("t18", "ticket:18", "#18 Hosting connections", "Ticket"), N("pr", "pr:176", "#176 Netlify connect step", "Pull request"),
+    N("h12", "handoff:12", "Fix the connect test", null), N("t14", "ticket:14", "#14 Guided repository setup", "Ticket"),
+  ], [["t18", "t14"], ["pr", "t14"], ["h12", "t14"]]);
+  const cycle = diagram("A loop", "A cycle is always a list", [
+    N("a", "ticket:14", "#14 Guided repository setup", "Ticket"), N("b", "ticket:18", "#18 Hosting connections", "Ticket"), N("c", "pr:176", "#176 Netlify connect step", "Pull request"),
+  ], [["a", "b"], ["b", "c"], ["c", "a"]]);
   const chartFew = fold([ev("block", { kind: "chart", chart: { title: "Tickets by status", total: 31, unit: "tickets", query: "tickets_by_status", params: {},
     rows: [{ label: "Triage", value: 9 }, { label: "In progress", value: 7 }, { label: "Testing", value: 4 }, { label: "Done", value: 11 }, { label: "Declined", value: 0 }] } }),
     ev("done", { messageId: 2, questionId: 1, cites: [], tokens: { in: 1, out: 1, cached: 0 } })]);
@@ -438,8 +448,14 @@ function blocks(): Section {
       inline("b-chart", "Bar chart", "Merged PRs by week (8 weeks)", "The answer", b("chart")),
       inline("b-chart2", "Bar chart, not weekly", "Tickets by status, a zero bar", "The answer", keep(cv(page([question("Show me"), answer(chartFew)])), ".ask-part[data-block=chart]")),
       inline("b-themes", "Theme strip", "Four lanes × eight weeks, tinted by share", "The answer", b("themes")),
-      inline("b-chain", "Dependency chain", "Four nodes, each opens its item; the repository's node is its verdict", "The answer", b("diagram")),
-      inline("b-list", "Diagram as a list", "A branching graph falls back to a list", "The answer", keep(cv(page([question("Show me"), answer(list)])), ".ask-part[data-block=diagram]")),
+      inline("b-chain", "Dependency chain", "Left → right: four nodes, each opens its item; the root (the repository's verdict) is emphasised", "The answer", b("diagram")),
+      inline("b-graph", "Branching diagram", "A fan-out drawn as parallel lanes; the parent centres on its children", "The answer", dg(branch)),
+      inline("b-graph-wide", "A bigger graph", "Two roots, a fan-in, an edge that skips a layer (it routes through an empty slot)", "The answer", dg(wide)),
+      inline("b-fanin", "Fan-in", "Three things one ticket waits on", "The answer", dg(fan)),
+      inline("b-chain-panel", "Chain, narrow", "At the ⌘J panel's width the chain runs top → bottom", "The ⌘J panel", b("diagram"), { w: 380 }),
+      inline("b-graph-panel", "Branching, narrow", "Top → bottom with two lanes", "The ⌘J panel", dg(branch), { w: 380 }),
+      inline("b-list", "Diagram as a list", "Too narrow for its lanes (three, on a phone): a timeline in order", "A phone", dg(fan), { w: 340 }),
+      inline("b-cycle", "A cycle", "Can't be laid out: always the timeline", "The answer", dg(cycle)),
       inline("b-notfound", "Not found", "“I couldn't find that in Trov.”, the tries, What I searched", "The answer", keep(cv(nf), ".ask-part[data-block=not_found]")),
       inline("b-tools", "A block's toolbar", "Hovered (forced visible here)", "On a chart", b("chart"), { stage: "gx-show-tools" }),
     ],

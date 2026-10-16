@@ -160,7 +160,25 @@ const DiagramIn = z.object({
   edges: z.array(z.tuple([z.string(), z.string()])).max(ASK_DIAGRAM_NODES_MAX * 2).default([]),
 });
 
-/** A chain when the edges walk every node once, start to end (v1 draws only chains); anything else is a list. */
+/** Can the client draw it as a graph? Every edge names two different known nodes and nothing loops (the client lays any
+ *  such graph out in lanes, web/src/ask-diagram.ts); otherwise it is drawn as a list. */
+export function diagramDrawable(nodes: { id: string }[], edges: [string, string][]): boolean {
+  const ids = new Set(nodes.map((n) => n.id));
+  if (edges.some(([a, b]) => !ids.has(a) || !ids.has(b) || a === b)) return false;
+  const indeg = new Map(nodes.map((n) => [n.id, 0]));
+  for (const [, b] of edges) indeg.set(b, indeg.get(b)! + 1);
+  const ready = nodes.filter((n) => !indeg.get(n.id)).map((n) => n.id);
+  let seen = 0;
+  while (ready.length) {
+    const id = ready.pop()!;
+    seen++;
+    for (const [a, b] of edges) if (a === id) { indeg.set(b, indeg.get(b)! - 1); if (!indeg.get(b)) ready.push(b); }
+  }
+  return seen === nodes.length;
+}
+
+/** A chain when the edges walk every node once, start to end (`layout: "chain"`); anything else is `"list"` — which the
+ *  client still draws as a graph when `diagramDrawable`. */
 export function chainOrder(nodes: { id: string }[], edges: [string, string][]): string[] | null {
   const ids = new Set(nodes.map((n) => n.id));
   if (edges.some(([a, b]) => !ids.has(a) || !ids.has(b) || a === b)) return null;
@@ -274,7 +292,7 @@ const SHOWS: Record<string, ShowSpec<any>> = { // eslint-disable-line @typescrip
         return { id: n.id, label: n.label, eyebrow: n.eyebrow ?? null, ref: v ? ref : null, view: v };
       });
       const diagram: AskDiagram = { title: a.title, caption: a.caption ?? null, nodes, edges: a.edges, layout: order ? "chain" : "list" };
-      return { block: { kind: "diagram", diagram }, shown: nodes.flatMap((n) => (n.ref ? [n.ref] : [])), note: `Shown the diagram "${a.title}"${order ? "" : " as a list (only chains are drawn)"}.` };
+      return { block: { kind: "diagram", diagram }, shown: nodes.flatMap((n) => (n.ref ? [n.ref] : [])), note: `Shown the diagram "${a.title}"${order || diagramDrawable(a.nodes, a.edges) ? "" : " as a list (its edges loop or name a node that isn't there)"}.` };
     },
   },
   // "I couldn't find that in Trov": the server fills what this turn searched, with counts.
@@ -348,7 +366,7 @@ const ASK_ONLY_DEFS: { name: string; description: string; input_schema: Record<s
   },
   {
     name: "show_diagram",
-    description: `Show a small diagram of what waits on what: up to ${ASK_DIAGRAM_NODES_MAX} nodes, each { id, label, eyebrow? (a short kind word like "Ticket"), ref? (an item ref, so its live status shows) }, and edges [[from, to], …]. A chain (each step waits on the one before it) is drawn; anything that branches is shown as a list.`,
+    description: `Show a small diagram of what waits on what: up to ${ASK_DIAGRAM_NODES_MAX} nodes, each { id, label, eyebrow? (a short kind word like "Ticket"), ref? (an item ref, so its live status shows) }, and edges [[from, to], …]. An edge [a, b] means b waits on a. Any graph without a loop is drawn left to right, branches as parallel lanes and the roots (what nothing else waits before) emphasised as the blockers; a loop is shown as a list.`,
     input_schema: {
       type: "object",
       properties: {

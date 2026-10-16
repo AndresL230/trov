@@ -3043,7 +3043,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-ph-plusbtn > svg { transition:none !important; }
   /* the conversation's */
   .ask-q-edit, .ask-chev, .ask-tools, .ask-ci { transition:none !important; }
-  .ask-q-editbox, .ask-step-det, .ask-think-sum, .ask-think-l, .ask-src, .ask-bar-b, .ask-tl, .ask-dn { animation:none !important; }
+  .ask-q-editbox, .ask-step-det, .ask-think-sum, .ask-think-l, .ask-src, .ask-bar-b, .ask-tl, .ask-dg-n, .ask-dg-e--lr, .ask-dg-e--tb { animation:none !important; }
+  .ask-dg-c { transition:none !important; }
   /* the inspector's */
   .ask-iv-fill, .ask-iv-barfill, .ask-iv-table { animation:none !important; }
   /* the write cards' */
@@ -3222,15 +3223,70 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 .ask-tw { padding-bottom:3px; font-family:var(--label); font-size:10.5px; color:var(--fg-40); text-align:center; white-space:nowrap; }
 .ask-tl-n { display:flex; align-items:center; gap:7px; min-width:0; overflow:hidden; font-size:12px; color:var(--fg-70); white-space:nowrap; }
 .ask-tc { height:22px; border-radius:3px; }
-.ask-chain { display:flex; align-items:stretch; min-width:600px; }
-.ask-chain-i { flex:1; min-width:0; display:flex; }
-.ask-dn { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; padding:10px 11px; border:1px solid var(--border); border-radius:8px; background:var(--bg); text-align:left; animation:ask-cv-rise .4s cubic-bezier(.2,.7,.2,1) both; transition:border-color .14s ease; }
-button.ask-dn { cursor:pointer; }
-button.ask-dn:hover { border-color:var(--border-strong); }
-.ask-dn-arrow { flex:none; align-self:center; color:var(--fg-40); }
-.ask-dn-eb { font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
-.ask-dn-l { font-size:12.5px; font-weight:600; line-height:1.35; }
-.ask-dlist { display:flex; flex-direction:column; gap:6px; }
+/* ── Ask diagram (ask-diagram.ts): ONE set of nodes placed by three coordinate sets, one per mode, picked by the
+   figure's width. --lr / --tb / --ls are 1 for the mode in use, 0 for the others: every position below is a sum of the
+   three, so a mode is a few numbers, not a second stylesheet. Top → bottom is the default; a container query below
+   turns on left → right once its layers fit (`data-l`, (layers + 0.36 × gaps) × 112px) and the list once the lanes
+   no longer get 120px each (`data-s`, half-lanes); a cycle (`list`) and edge-less nodes (`set`) are always the list. */
+.ask-dg-wrap { container:ask-dg / inline-size; }
+.ask-dg { --lr:0; --tb:1; --ls:0; --ri:26; --dg-edge:color-mix(in srgb, var(--fg) 46%, var(--surface)); position:relative; margin:2px auto 0;
+  height:calc((var(--lr) * var(--lh) + var(--tb) * var(--th) + var(--ls) * var(--sh)) * 1px);
+  max-width:calc((var(--lr) * var(--lm) + var(--tb) * var(--tm) + var(--ls) * var(--sm)) * 1px); }
+.ask-dg[data-l="1"] { --lr:1; --tb:0; }
+@container ask-dg (width < 187.2px) { .ask-dg[data-s="1"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 254.4px) { .ask-dg[data-s="2"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 321.6px) { .ask-dg[data-s="3"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 388.8px) { .ask-dg[data-s="4"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 456px) { .ask-dg[data-s="5"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 523.2px) { .ask-dg[data-s="6"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 590.4px) { .ask-dg[data-s="7"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 657.6px) { .ask-dg[data-s="8"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 724.8px) { .ask-dg[data-s="9"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 792px) { .ask-dg[data-s="10"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 859.2px) { .ask-dg[data-s="11"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 926.4px) { .ask-dg[data-s="12"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 993.6px) { .ask-dg[data-s="13"] { --tb:0; --ls:1; } }
+@container ask-dg (width < 1060.8px) { .ask-dg[data-s="14"] { --tb:0; --ls:1; } }
+@container ask-dg (width >= 264.32px) { .ask-dg[data-l="2"] { --lr:1; --tb:0; --ls:0; } }
+@container ask-dg (width >= 416.64px) { .ask-dg[data-l="3"] { --lr:1; --tb:0; --ls:0; } }
+@container ask-dg (width >= 568.96px) { .ask-dg[data-l="4"] { --lr:1; --tb:0; --ls:0; } }
+@container ask-dg (width >= 721.28px) { .ask-dg[data-l="5"] { --lr:1; --tb:0; --ls:0; } }
+@container ask-dg (width >= 873.6px) { .ask-dg[data-l="6"] { --lr:1; --tb:0; --ls:0; } }
+@container ask-dg (width >= 1025.92px) { .ask-dg[data-l="7"] { --lr:1; --tb:0; --ls:0; } }
+@container ask-dg (width >= 1178.24px) { .ask-dg[data-l="8"] { --lr:1; --tb:0; --ls:0; } }
+.ask-fig .ask-dg[data-shape="list"], .ask-fig .ask-dg[data-shape="set"] { --lr:0; --tb:0; --ls:1; }
+.ask-fig .ask-dg[data-shape="set"] { --ri:0; }
+.ask-dg-ol { margin:0; padding:0; list-style:none; }
+.ask-dg-n { position:absolute; margin:0; height:calc((var(--lr) * var(--nh) + (1 - var(--lr)) * var(--nhs)) * 1px);
+  left:calc((var(--lr) * var(--lx) + var(--tb) * var(--tx)) * 1% + var(--ls) * var(--ri) * 1px);
+  width:calc((var(--lr) * var(--lw) + var(--tb) * var(--tw)) * 1% + var(--ls) * (100% - var(--ri) * 1px));
+  top:calc((var(--lr) * var(--ly) + var(--tb) * var(--ty) + var(--ls) * var(--sy)) * 1px);
+  animation:ask-cv-rise .4s cubic-bezier(.2,.7,.2,1) both; }
+.ask-dg-c { position:absolute; inset:0; z-index:1; display:flex; flex-direction:column; justify-content:center; gap:4px; box-sizing:border-box; padding:8px 11px; overflow:hidden; border:1px solid var(--border-strong); border-radius:8px; background:var(--bg); color:var(--fg); font:inherit; text-align:left; transition:border-color .14s ease, box-shadow .14s ease; }
+button.ask-dg-c { cursor:pointer; }
+button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--surface)); }
+/* a root — the blocker everything else waits on — stands forward: the surface, a darker edge */
+.ask-dg-n.is-root .ask-dg-c { border-color:color-mix(in srgb, var(--fg) 50%, var(--surface)); box-shadow:var(--shadow); background:var(--surface); }
+.ask-dg-k { display:flex; align-items:center; gap:5px; min-width:0; color:var(--fg-55); font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; line-height:13px; text-transform:uppercase; }
+.ask-dg-kw { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-dg-t { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; font-size:12.5px; font-weight:600; letter-spacing:-0.003em; line-height:16px; overflow-wrap:anywhere;
+  max-height:calc((2 + var(--lr)) * 16px); }
+.ask-dg-st { display:flex; min-width:0; margin-top:1px; overflow:hidden; }
+.ask-dg-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+.ask-dg-e { position:absolute; inset:0; width:100%; height:100%; overflow:visible; fill:none; stroke:var(--dg-edge); stroke-width:1.5; stroke-linecap:round; pointer-events:none; }
+.ask-dg-e path { vector-effect:non-scaling-stroke; }
+.ask-dg-e--lr { opacity:var(--lr); animation:ask-wipe .6s .12s cubic-bezier(.2,.7,.2,1) both; }
+.ask-dg-e--tb { opacity:var(--tb); animation:ask-dg-wipe-y .6s .12s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes ask-dg-wipe-y { from { clip-path:inset(0 0 100% 0); } to { clip-path:inset(0 0 0 0); } }
+/* every incoming edge meets its card at one point, under the card's own arrowhead (rotated for top → bottom) */
+.ask-dg-ah { position:absolute; width:9px; height:9px; background:var(--dg-edge); clip-path:polygon(0 0, 100% 50%, 0 100%);
+  left:calc(var(--lr) * -9px + var(--tb) * (50% - 4.5px)); top:calc(var(--lr) * (50% - 4.5px) + var(--tb) * -9px);
+  transform:rotate(calc(var(--tb) * 90deg)); opacity:calc(1 - var(--ls)); }
+/* the list: a rail with a dot per node (filled for a root) */
+.ask-dg-rail { position:absolute; left:8px; width:2px; top:calc(var(--nhs) * 0.5px); bottom:calc(var(--nhs) * 0.5px); background:var(--dg-edge); opacity:var(--ls); }
+.ask-dg-dot { position:absolute; left:-21.5px; top:calc(50% - 4.5px); width:9px; height:9px; box-sizing:border-box; border:2px solid var(--dg-edge); border-radius:50%; background:var(--surface); opacity:var(--ls); }
+.ask-dg-n.is-root .ask-dg-dot { background:var(--dg-edge); }
+.ask-dg[data-shape="set"] .ask-dg-dot { display:none; }
 .ask-nf-h { display:flex; align-items:center; gap:9px; margin:0 0 6px; font-size:15.5px; font-weight:600; letter-spacing:-0.006em; }
 .ask-nf-tries { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; }
 .ask-nf-try { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border:1px solid var(--border); border-radius:9px; font-size:13px; font-weight:500; color:var(--fg-70); text-align:left; cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
@@ -4227,6 +4283,7 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-ph-plus { border-radius:calc(14px * var(--corner-scale)) !important; }
 /* the conversation's (ask-conversation.ts) */
 [data-cnpy-theme] .ask-tc { border-radius:calc(3px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-dg-dot { border-radius:50% !important; }
 [data-cnpy-theme] .ask-bar-b { border-radius:calc(3px * var(--corner-scale)) calc(3px * var(--corner-scale)) 0 0 !important; }
 [data-cnpy-theme] .ask-code { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-tool { border-radius:calc(6px * var(--corner-scale)) !important; }
@@ -4240,7 +4297,7 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-qfile,
 [data-cnpy-theme] .ask-pre,
 [data-cnpy-theme] .ask-tools,
-[data-cnpy-theme] .ask-dn { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-dg-c { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-qimg,
 [data-cnpy-theme] .ask-nf-try { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-ci,

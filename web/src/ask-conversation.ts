@@ -47,6 +47,7 @@ import { cvRef, parseCvRef } from "./ask-cvref";
 import { thinkingOrb, type OrbState } from "./thinking-orb";
 import { askOrbState } from "./ask-orb";
 import { parseCommand } from "./ask-composer";
+import { diagramFigure } from "./ask-diagram";
 
 export interface ConversationUi {
   /** Disclosures by key (`<answerKey>:s<step>`, `<answerKey>:think`, `<answerKey>:src`). */
@@ -287,52 +288,8 @@ export function themesFigure(t: AskThemesBlock): string {
   </figure>`;
 }
 
-/** The nodes in chain order when the edges make one simple chain (a → b → c), else null (a branching graph). */
-export function chainOrder(d: Pick<AskDiagram, "nodes" | "edges">): AskDiagram["nodes"] | null {
-  if (d.nodes.length < 2 || d.edges.length !== d.nodes.length - 1) return d.nodes.length === 1 && !d.edges.length ? d.nodes : null;
-  const next = new Map<string, string>();
-  const into = new Set<string>();
-  for (const [a, b] of d.edges) {
-    if (next.has(a) || into.has(b) || a === b) return null;
-    next.set(a, b);
-    into.add(b);
-  }
-  const byId = new Map(d.nodes.map((n) => [n.id, n]));
-  let at = d.nodes.find((n) => !into.has(n.id))?.id;
-  const out: AskDiagram["nodes"] = [];
-  while (at !== undefined && out.length <= d.nodes.length) {
-    const n = byId.get(at);
-    if (!n) return null;
-    out.push(n);
-    at = next.get(at);
-  }
-  return out.length === d.nodes.length ? out : null;
-}
-
-const ARROW = `<svg class="ask-dn-arrow" width="30" height="16" viewBox="0 0 30 16" fill="none" aria-hidden="true"><path d="M3 8h22" stroke="currentColor" stroke-width="1.4"></path><path d="M21 4l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path></svg>`;
-
-/** The dependency chain (v1 draws chains; a branching graph, or `layout: "list"`, is a list). A node with a ref opens it. */
-export function diagramFigure(v: Pick<AskView, "look">, d: AskDiagram): string {
-  const order = d.layout === "chain" ? chainOrder(d) : null;
-  const nodes = order ?? d.nodes;
-  const node = (n: AskDiagram["nodes"][number], i: number): string => {
-    const view = n.view ?? (n.ref ? viewOf(v.look, n.ref) : null);
-    const st = statusOf(view, 11.5);
-    const eyebrow = n.eyebrow ?? (view ? refTypeWord(view) : "");
-    const inner = `${eyebrow ? `<span class="ask-dn-eb">${esc(eyebrow)}</span>` : ""}<span class="ask-dn-l">${esc(n.label)}</span>${st ? `<span class="ask-dn-st">${st}</span>` : ""}`;
-    const delay = `animation-delay:${i * 60}ms`;
-    return n.ref && view
-      ? `<button type="button" class="ask-dn" data-act="askShOpen" data-arg="${attr(n.ref)}" style="${delay}">${inner}</button>`
-      : `<div class="ask-dn" style="${delay}">${inner}</div>`;
-  };
-  const body = order
-    ? `<div class="ask-chain" role="list" aria-label="${attr(`${d.title}: ${nodes.map((n) => n.label).join(", then ")}`)}">${nodes.map((n, i) => `${i ? ARROW : ""}<div role="listitem" class="ask-chain-i">${node(n, i)}</div>`).join("")}</div>`
-    : `<div class="ask-dlist" role="list" aria-label="${attr(d.title)}">${nodes.map((n, i) => `<div role="listitem">${node(n, i)}</div>`).join("")}</div>`;
-  return `<figure class="ask-fig" data-fig="diagram" data-layout="${order ? "chain" : "list"}">
-    <figcaption class="ask-fig-cap"><span class="ask-fig-t">${esc(d.title)}</span>${d.caption ? `<span class="ask-fig-s">${esc(d.caption)}</span>` : ""}</figcaption>
-    <div class="ask-fig-scroll">${body}</div>
-  </figure>`;
-}
+// The diagram (`show_diagram`) is its own module: ask-diagram.ts. Re-exported for the inspector and the tests.
+export { chainOrder, diagramFigure } from "./ask-diagram";
 
 /** One item card (a `hitArea` card: the owner's avatar sits on it, the whole card opens the item). */
 function itemCard(v: AskView, it: RefView): string {

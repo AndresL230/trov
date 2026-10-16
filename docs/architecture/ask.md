@@ -115,7 +115,9 @@ Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt`
 `read_attachment`, `save_artifact`, `publish_doc`, `show_items`, `show_chart` (fixed queries: merged PRs by week,
 tickets by status, CI failures by week, theme shares — empty until themes exist —, sprint burn-down; the server's
 numbers), `show_themes` (empty until themes exist; caption "Share of merged PRs"), `show_diagram` (structured, ≤ 8
-nodes; a chain is drawn, anything else falls back to a list; saving writes server-generated Mermaid) and
+nodes, an edge [a, b] = b waits on a; `layout` is `chain` for one simple chain (nodes in its order) else `list`, but
+the client draws ANY graph without a loop — only a loop or an edge naming no node is a list, and only then does the
+tool's note say so (`diagramDrawable`); saving writes server-generated Mermaid) and
 `show_not_found`. `test/ask.parity.test.ts` fails while an MCP tool is neither wired nor excluded.
 
 Never reachable from Ask: secrets and integrations, billing, the audit log, other orgs, others' private items, source
@@ -373,6 +375,28 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   ≤13px a frame, ≤41px behind, at the bottom when it ends). What a person opens themselves — Wrong?, the sources, a
   step's results — never moves the view: the clicked control stays put and the new rows push down. It runs LAST in
   a paint, after the entrances and height glides started (pinning before them is what once jumped the thread).
+- **The diagram** (`ask-diagram.ts`, `test/render.ask-diagram.test.ts`; `diagramFigure` is the thread's AND the
+  inspector's bigger copy — the same figure, its mode picked by the width it gets). `layoutDiagram`: a node's layer is
+  its longest path from a root; an edge that skips layers gets a dummy slot in each (so a connector never crosses a
+  card); each layer is ordered by barycentres (two sweeps); each slot sits at the mean of its neighbours on both sides
+  (a dummy's pull ×3, so a long edge runs straight), a lane apart in its layer (pool-adjacent-violators on
+  `want − index`), in half-lane steps — a fan-out is parallel lanes with its parent centred on them. Shapes: `chain`,
+  `graph`, `set` (no edges: a plain list), `list` (a loop or a broken edge: the timeline). **One set of nodes**: an
+  `<ol>` in topological order (the text equivalent: each step's button names it, a hidden "Waits on …" says its
+  edges), each `<li>` absolutely placed by three coordinate sets carried as custom properties (`--lx/--ly/--lw`,
+  `--tx/--ty/--tw`, `--sy`). trov.css › Ask diagram sets `--lr` / `--tb` / `--ls` to 1 for the mode in use and every
+  position is their weighted sum — so a mode is three numbers, not a second stylesheet. **The mode** is a container
+  query on `.ask-dg-wrap`: top → bottom by default; left → right once `(layers + 0.36 × gaps) × 112px` fits (`data-l`,
+  a rule per layer count); the list once a top → bottom lane would get under 120px (`data-s` = the lane span in
+  half-lanes, a rule each) — left → right wins over the list. `DG` (ask-diagram.ts) holds every number and the test
+  recomputes each rule from it. Cards are a fixed height (100px left → right with a 3-line title, 84px otherwise),
+  capped in width (`--lm` / `--tm`) and centred. **Connectors**: one SVG per graph mode over the same unit grid,
+  `preserveAspectRatio="none"` (they stretch with the cards) and `vector-effect: non-scaling-stroke` (1.5px, crisp),
+  in `--dg-edge` (46% of the foreground mixed into the surface: solid, ≥ 3:1 in both themes); every incoming edge meets its card at one
+  point under the card's own arrowhead (`.ask-dg-ah`, rotated for top → bottom). A root (nothing before it, in a graph
+  with edges) is the blocker: the surface and a darker edge (a filled dot in the list). The list is a rail with a dot
+  per node. Motion: nodes rise by layer and each SVG wipes in its direction once, on insertion (a rerender keeps the
+  elements — measured: no animation restarts while typing or opening the sources); off under reduced motion.
 - **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame) with Edit
   of its `editable` fields only — Confirm sends just the changed ones as `args` (each edited card alone, then the
   rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never
