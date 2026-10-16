@@ -716,9 +716,8 @@ input, select { font-family: inherit; }
 
 /* ── What's new (web/src/releases.ts). The INDEX is a grid of release cards (.cnpy-surface).
    A release PAGE is one wide document: its header on the page background, then ONE
-   full-width surface card (.cnpy-reldoc-card) holding the body — two columns for the notes,
-   the patch groups side by side — split by hairlines, no box inside it; newer / older links
-   under it. No radius is declared here (the corners layer would need a rule for it). Long
+   surface card (.cnpy-reldoc-card) holding the body — split by hairlines, no box inside it —
+   with the page's note in a column beside it (.cnpy-reldoc-grid); newer / older links under it. No radius is declared here (the corners layer would need a rule for it). Long
    `code` runs wrap anywhere, so a phone never scrolls sideways; under 600px every page keeps
    a 16px gutter and stacks to one column. */
 .cnpy-relidx { max-width:1180px; margin:0 auto; padding:40px 32px 120px; }
@@ -736,21 +735,38 @@ input, select { font-family: inherit; }
 .cnpy-relcard:hover .cnpy-relcard-go { color:var(--accent); transform:translateX(2px); }
 
 .cnpy-reldoc { max-width:1180px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; gap:28px; container:reldoc / inline-size; }
-/* The page header: the title block, and — when the page has a note (the Heads-up on the
-   release notes, the Upgrade notes on the patch notes) — that note on the right, top-aligned
-   with the title; under 900px of page the note drops under the lede. The Release notes /
-   Patch notes switch is in the app's top bar. */
-.cnpy-reldoc-head { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
-.cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr) minmax(280px, 330px); }
+/* The release page is ONE grid (#188): the back link + switch across the top; down the left
+   column the title block, the body card and the newer / older links; down the right column the
+   page's note (the Heads-up on the release notes, the Upgrade notes on the patch notes), from
+   the title to the end of the page. The note spans the left column's rows and the LAST row is
+   1fr, so its height goes into that row and never into the title's or the body's: a note of any
+   length runs beside the body and never pushes it down. It flows with the page (no sticky box,
+   no inner scroller): it is reference text read once, and a 2,000px Upgrade notes list in a
+   nested scroller would hide most of itself. Under 900px of page it is one column in source
+   order — title, note, body, pager. */
+.cnpy-reldoc-grid { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
+@container reldoc (min-width: 900px) {
+  .cnpy-reldoc-grid.has-heads {
+    grid-template-columns:minmax(0, 1fr) minmax(280px, 330px);
+    grid-template-rows:auto auto auto 1fr;
+    grid-template-areas:"top top" "head side" "body side" "pager side";
+  }
+  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-toprow { grid-area:top; }
+  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-head { grid-area:head; }
+  .cnpy-reldoc-grid.has-heads > .cnpy-relheads { grid-area:side; }
+  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-card { grid-area:body; }
+  .cnpy-reldoc-grid.has-heads > .cnpy-relpager { grid-area:pager; }
+}
+/* The header row is 14px under the back link; the card and the pager keep 28px above them. */
+.cnpy-reldoc-grid > .cnpy-reldoc-card, .cnpy-reldoc-grid > .cnpy-relpager { margin-top:14px; }
+/* The header (the not-found page's, the loading skeleton's, and the real page's title block). */
+.cnpy-reldoc-head { display:flex; flex-direction:column; align-items:stretch; gap:14px; min-width:0; }
 .cnpy-reldoc-head-main { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-width:0; }
 /* The back link and, right-aligned on the same row, the Release notes / Patch notes switch —
-   the row spans the header, so the switch's right edge is the note's. It wraps under the back
+   the row spans the grid, so the switch's right edge is the note's. It wraps under the back
    link when both do not fit. */
-.cnpy-reldoc-toprow { grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
+.cnpy-reldoc-toprow { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
 .cnpy-reldoc-toprow .cnpy-rel-back { margin-bottom:0; }
-@container reldoc (max-width: 899px) {
-  .cnpy-reldoc-head.has-heads { grid-template-columns:minmax(0, 1fr); }
-}
 .cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; font-size:13px; font-weight:500; color:var(--fg-55); text-decoration:none; }
 .cnpy-rel-back:hover { color:var(--fg); }
 .cnpy-reldoc-title { margin:0; max-width:900px; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.15; color:var(--fg); text-wrap:balance; }
@@ -760,9 +776,9 @@ input, select { font-family: inherit; }
 .cnpy-reldoc-main { padding:30px 36px 34px; min-width:0; }
 .cnpy-reldoc-hl { font-size:15.5px; gap:14px; max-width:820px; }
 .cnpy-reldoc-hl li { break-inside:avoid; }
-/* The release notes' Heads-up, in the page header: compact and calm — a faint neutral fill (its
-   6px radius is inline), a small icon + label, the lines in --fg-70 at 13px. Its margin-top
-   (the meta row above the title) top-aligns it with the title. */
+/* The page's note (Heads-up / Upgrade notes) in the right column: compact and calm — a faint
+   neutral fill (its 6px radius is inline), a small icon + label, the lines in --fg-70 at 13px.
+   Its margin-top (the meta row above the title) top-aligns it with the title. */
 .cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:30px; }
 .cnpy-relheads-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
 .cnpy-relheads-one { margin:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; text-wrap:pretty; }
@@ -772,7 +788,8 @@ input, select { font-family: inherit; }
 @container reldoc (max-width: 899px) { .cnpy-relheads { margin-top:4px; } }
 /* Release notes' "At a glance": a full-width strip across the card's top — version and date as
    facts, the change counts as large figures (each a button to that patch group), then the
-   link to every patch line. Stacks under 760px of card (container query below). */
+   link to every patch line. Stacks under 640px of card (container query below) — the card beside
+   a Heads-up is about 740px wide at 1440px, room for the four figures on one row. */
 .cnpy-relglance { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; align-items:center; gap:14px 40px; padding:14px 32px 15px; border-bottom:1px solid var(--border); }
 .cnpy-relglance-fact { display:flex; flex-direction:column; gap:5px; min-width:0; }
 .cnpy-relglance-lab { font-size:12px; color:var(--fg-40); }
@@ -784,7 +801,6 @@ input, select { font-family: inherit; }
 .cnpy-relstat-n { font-size:26px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; color:var(--fg); font-variant-numeric:tabular-nums; }
 .cnpy-relstat-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); white-space:nowrap; }
 .cnpy-relglance-all { display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
-/* Beside the highlights, the Heads-up fills its column top to bottom. */
 /* Patch notes: the groups STACKED, full width, one row per line at a readable measure; a
    hairline between groups only; the PRs as one quiet line of chips. */
 .cnpy-relpatch-group { padding:26px 32px 28px; min-width:0; }
@@ -825,8 +841,9 @@ input, select { font-family: inherit; }
 .cnpy-relpager-name { font-size:15px; font-weight:500; line-height:1.4; color:var(--fg-70); overflow-wrap:anywhere; transition:color .12s ease; }
 .cnpy-relpager-i:hover .cnpy-relpager-name { color:var(--accent); }
 /* The body follows the CARD's width (a container query — the rail collapses, so the
-   viewport lies about the room): the notes' two columns from 760px; a LONG patch group
-   (.is-long) flows into two balanced columns only on a very wide card (1040px+). */
+   viewport lies about the room): At a glance's figures on one row from 640px; LONG highlights
+   or a LONG patch group (.is-long) flow into two balanced columns only on a very wide card
+   (1040px+, so only on a page with no note beside the card). */
 .cnpy-reldoc-card { container-type:inline-size; }
 @container (min-width: 1040px) {
   .cnpy-reldoc-hl.is-long { display:block; max-width:none; columns:2; column-gap:56px; }
@@ -840,7 +857,7 @@ input, select { font-family: inherit; }
   .cnpy-relglance-stats { grid-column:1 / -1; grid-row:2; }
   .cnpy-relglance-all { justify-self:end; }
 }
-@container (max-width: 759px) {
+@container (max-width: 639px) {
   .cnpy-relglance { grid-template-columns:1fr 1fr; gap:16px 20px; }
   .cnpy-relglance-stats { grid-column:1 / -1; grid-row:auto; grid-template-columns:repeat(2, minmax(0, 1fr)); }
   .cnpy-relglance-all { grid-column:1 / -1; justify-self:start; }
@@ -848,6 +865,7 @@ input, select { font-family: inherit; }
 @media (max-width: 600px) {
   .cnpy-relidx { padding:24px 16px 80px; }
   .cnpy-reldoc { padding:20px 16px 80px; gap:22px; }
+  .cnpy-reldoc-grid > .cnpy-reldoc-card, .cnpy-reldoc-grid > .cnpy-relpager { margin-top:8px; }
   .cnpy-reldoc-title { font-size:25px; }
   .cnpy-reldoc-lede { font-size:15.5px; }
   .cnpy-reldoc-main, .cnpy-relpatch-group { padding:20px 16px 22px; }

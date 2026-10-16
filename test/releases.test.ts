@@ -20,6 +20,7 @@ import { parseHash, hashForRoute } from "../web/src/hash";
 import { render, initialState } from "../web/src/render";
 import { LATEST_RELEASE, LATEST_VERSION } from "../web/src/release-latest";
 import { releasesView, releaseCrumb, setReleasesModule, releasesLoaded } from "../web/src/releases-lazy";
+import css from "../web/src/trov.css?raw";
 
 // Every web module as text: which of them import releases.ts, and how.
 const webSources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
@@ -167,13 +168,13 @@ describe("one release — its notes page and its patches page", () => {
     expect(html).toContain("All releases");
     expect(html).toContain(">v0.14<");
     expect(html).toContain(`>${r.title}</h1>`);
-    // The switch sits on the back link's row in the PAGE header, right after the back link.
-    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow"'), html.indexOf('class="cnpy-reldoc-head-main"'));
+    // The switch sits on the back link's row, right after the back link.
+    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow'), html.indexOf('class="cnpy-reldoc-head-main"'));
     expect(row).toContain('class="cnpy-rel-back"');
     expect(row).toContain('data-seg="release-page"');
     expect(row).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Release notes</);
     expect(row).toContain('data-act="releasePage" data-arg="patches"');
-    expect(releasePageView("0.13", "notes")).toContain('class="cnpy-reldoc-toprow"'); // no note: still there
+    expect(releasePageView("0.13", "notes")).toContain('class="cnpy-reldoc-toprow'); // no note: still there
     expect(releasePageView("0.99", "notes")).not.toContain('data-seg="release-page"'); // not-found: none
     expect(html).toContain(">Highlights<");
     expect(html).toContain("Heads-up");
@@ -207,21 +208,21 @@ describe("one release — its notes page and its patches page", () => {
         expect(html.indexOf("cnpy-reldoc-head")).toBeLessThan(html.indexOf('class="cnpy-surface'));
       }
     }
-    // Notes: the Heads-up lives in the PAGE HEADER (beside the title block, before the switch),
+    // Notes: the Heads-up is in the page's right column (after the title block, before the card),
     // never inside the card; the card is the At a glance strip, then the highlights.
     const notes = releasePageView("0.14", "notes");
     expect(notes).not.toMatch(/cnpy-reldoc-split|cnpy-reldoc-side/);
     const at = (h: string, k: string) => h.indexOf(k);
     const card = at(notes, 'class="cnpy-surface');
-    expect(notes).toContain("cnpy-reldoc-head cnpy-rise has-heads");
-    expect(at(notes, 'class="cnpy-reldoc-head-main"')).toBeLessThan(at(notes, 'class="cnpy-relheads"'));
-    expect(at(notes, 'class="cnpy-relheads"')).toBeLessThan(card);
+    expect(notes).toContain('class="cnpy-reldoc-grid has-heads"');
+    expect(at(notes, 'class="cnpy-reldoc-head-main"')).toBeLessThan(at(notes, 'class="cnpy-relheads'));
+    expect(at(notes, 'class="cnpy-relheads')).toBeLessThan(card);
     expect(notes.slice(card)).not.toContain("cnpy-relheads");
     expect(at(notes, 'class="cnpy-relglance"')).toBeLessThan(at(notes, "cnpy-reldoc-hl"));
-    // The patch notes page puts its Upgrade notes in the same header spot — never in the card.
+    // The patch notes page puts its Upgrade notes in the same spot — never in the card.
     const p14 = releasePageView("0.14", "patches");
-    expect(p14).toContain("cnpy-reldoc-head cnpy-rise has-heads");
-    expect(p14).toContain('class="cnpy-relheads" aria-label="Upgrade notes"');
+    expect(p14).toContain('class="cnpy-reldoc-grid has-heads"');
+    expect(p14).toContain('class="cnpy-relheads cnpy-rise" aria-label="Upgrade notes"');
     expect(p14).not.toContain('aria-label="Heads-up"');
     expect(p14.slice(p14.indexOf('class="cnpy-surface'))).not.toContain("cnpy-relheads");
     // One heads-up item is one line; several are a compact list; none renders nothing.
@@ -254,9 +255,52 @@ describe("one release — its notes page and its patches page", () => {
     expect(patches.slice(patches.indexOf('class="cnpy-surface')).search(/<[a-z]+ class="cnpy-relpatch-group"/))
       .toBeLessThan(200);
     expect(patches).toContain('class="cnpy-relpr-chip"');
-    const row = notes.slice(notes.indexOf('class="cnpy-relheads"'), notes.indexOf("</aside>", notes.indexOf('class="cnpy-relheads"')));
+    const row = notes.slice(notes.indexOf('class="cnpy-relheads'), notes.indexOf("</aside>", notes.indexOf('class="cnpy-relheads')));
     expect(row).toContain("Heads-up");
     expect(row).not.toMatch(/--amber|color-mix/);
+  });
+
+  // #188: the page's note (Heads-up / Upgrade notes) once sat in the HEADER grid beside the title, so
+  // the body started under the note — 2,000px down on a long Upgrade notes list. It is now a SIBLING
+  // of the body in one two-column grid, and trov.css puts it in a column that spans the body's rows.
+  it("the note and the body are siblings in ONE two-column grid, never body-after-header (#188)", () => {
+    const VOID = new Set(["br", "img", "input", "hr", "meta", "link", "source", "wbr"]);
+    /** The direct children of the first element whose class list has `cls`: "tag.firstClass". */
+    const childrenOf = (html: string, cls: string): string[] => {
+      const start = html.search(new RegExp(`<[a-z]+ [^>]*class="${cls}[" ]`));
+      const out: string[] = [];
+      let depth = 0;
+      for (const m of html.slice(start).matchAll(/<(\/?)([a-z][a-z0-9]*)([^>]*)>/g)) {
+        const [, close, tag, rest] = m;
+        if (close) { if (--depth === 0) break; continue; }
+        if (depth === 1) out.push(`${tag}.${/class="([^" ]+)/.exec(rest)?.[1] ?? ""}`);
+        if (!VOID.has(tag) && !rest.endsWith("/")) depth++;
+      }
+      return out;
+    };
+    for (const [slug, page, label] of [["0.14", "notes", "Heads-up"], ["0.14", "patches", "Upgrade notes"]] as const) {
+      const html = releasePageView(slug, page);
+      expect(html).toContain('class="cnpy-reldoc-grid has-heads"');
+      expect(childrenOf(html, "cnpy-reldoc-grid"), `${slug} ${page}`)
+        .toEqual(["div.cnpy-reldoc-toprow", "header.cnpy-reldoc-head", "aside.cnpy-relheads", "article.cnpy-surface", "nav.cnpy-relpager"]);
+      // The header is the title block only: no note, no body inside it.
+      const head = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+      expect(head).not.toContain("cnpy-relheads");
+      expect(head).not.toContain(label);
+      expect(head).not.toContain("cnpy-surface");
+    }
+    // No note: the same grid, one column, no aside.
+    expect(childrenOf(releasePageView("0.13", "notes"), "cnpy-reldoc-grid"))
+      .toEqual(["div.cnpy-reldoc-toprow", "header.cnpy-reldoc-head", "article.cnpy-surface", "nav.cnpy-relpager"]);
+    // The CSS: from 900px of page the note's area spans the title, body and pager rows, and the LAST
+    // row is the flexible one, so the note's height never grows the title's or the body's row.
+    const block = css.slice(css.indexOf("@container reldoc (min-width: 900px)"));
+    expect(block).toMatch(/grid-template-rows:auto auto auto 1fr;/);
+    expect(block).toMatch(/grid-template-areas:"top top" "head side" "body side" "pager side";/);
+    expect(block).toMatch(/\.cnpy-reldoc-grid\.has-heads > \.cnpy-relheads \{ grid-area:side; \}/);
+    expect(block).toMatch(/\.cnpy-reldoc-grid\.has-heads > \.cnpy-reldoc-card \{ grid-area:body; \}/);
+    // And nothing sticks or scrolls inside itself: the note flows with the page.
+    expect(css).not.toMatch(/\.cnpy-relheads[^{]*\{[^}]*(position:sticky|overflow(-y)?:auto)/);
   });
 
   it("inline code: a short token is marked to stay on one line, a long path is not", () => {
@@ -398,7 +442,7 @@ describe("the What's new screen in the app", () => {
     // The switch is in the PAGE header's back-link row — never in the app's top bar.
     const top = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
     expect(top).not.toContain('data-seg="release-page"');
-    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow"'), html.indexOf('class="cnpy-reldoc-head-main"'));
+    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow'), html.indexOf('class="cnpy-reldoc-head-main"'));
     expect(row).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Patch notes</);
     expect(row).toContain('data-act="releasePage" data-arg="notes"');
     expect((html.match(/data-seg="release-page"/g) ?? []).length).toBe(1);

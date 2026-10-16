@@ -2332,14 +2332,14 @@ export function releasesIndex(releases: readonly Release[] = RELEASES): string {
 }
 
 // ── one release ──────────────────────────────────────────────────────────────
-// A release's two pages are ONE wide document: the header (back link, version /
-// date / tag, title, lede, the Release notes / Patch notes switch) on the page
-// background, then the whole body in a SINGLE full-width surface card — two columns
-// for the notes (highlights | Heads-up + at a glance), the four patch groups side by
-// side — with hairlines between sections and no box inside it. Newer / older links
-// sit under the card. Everything stacks to one column on a narrow page.
+// A release's two pages are ONE two-column grid (`releasePageView`, #188): the back link
+// and the Release notes / Patch notes switch across the top; down the left column the
+// header (version / date / tag, title, lede) on the page background, the whole body in a
+// SINGLE surface card (hairlines between sections, no box inside it), then the newer /
+// older links; down the right column the page's note (Heads-up / Upgrade notes), beside
+// the title and the body. Everything stacks to one column on a narrow page.
 
-/** A release page's Release notes / Patch notes switch — on the page header's back-link row. */
+/** A release page's Release notes / Patch notes switch — on the page's back-link row. */
 export function releasePageSwitch(page: ReleasePage): string {
   return segmented({
     id: "release-page", ariaLabel: "Release page", act: "releasePage", value: page, inertOn: true,
@@ -2353,37 +2353,33 @@ const dot = (tone: string): string =>
 function docHead(r: Release, page: ReleasePage): string {
   // The PR count shows on the patch notes only (release notes are for users).
   const facts = `${plural(r.highlights.length, "highlight")} · ${plural(patchCount(r), "patch line")}${page === "patches" && r.prs?.length ? ` · ${plural(r.prs.length, "pull request")}` : ""}`;
-  // The page's note sits in the header, to the right of the title block: the Heads-up on the
-  // release notes, the Upgrade notes on the patch notes. Below ~900px of page it drops under
-  // the lede (trov.css, a container query). The Release notes / Patch notes switch sits on
-  // the back link's row, right-aligned — its right edge on the note's.
-  const note = page === "notes" ? headsUp(r) : upgradeNotes(r);
-  return `<header class="cnpy-reldoc-head cnpy-rise${note ? " has-heads" : ""}">
-    <div class="cnpy-reldoc-toprow">
-      <a href="#releases" class="cnpy-rel-back">${ARROW_L}All releases</a>
-      ${releasePageSwitch(page)}
-    </div>
+  return `<header class="cnpy-reldoc-head cnpy-rise">
     <div class="cnpy-reldoc-head-main">
       ${metaRow(r)}
       <h1 class="cnpy-reldoc-title">${esc(r.title)}</h1>
       <p class="cnpy-reldoc-lede">${releaseLine(r.headline)}</p>
       <span class="cnpy-reldoc-facts">${facts}</span>
     </div>
-    ${note}
   </header>`;
 }
+
+/** The back link and, right-aligned on the same row, the Release notes / Patch notes switch. */
+const docTopRow = (page: ReleasePage): string => `<div class="cnpy-reldoc-toprow cnpy-rise">
+      <a href="#releases" class="cnpy-rel-back">${ARROW_L}All releases</a>
+      ${releasePageSwitch(page)}
+    </div>`;
 
 const INFO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 7.5v.5"></path></svg>`;
 const WRENCH = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>`;
 
-/** A note in the page header, right of the title block: a small icon + label over a short list
- *  (one item is one paragraph) — compact and calm. Omitted when there are no lines. */
+/** The page's note, in the right column beside the title block and the body: a small icon + label
+ *  over a short list (one item is one paragraph) — compact and calm. Omitted when there are no lines. */
 function headerNote(label: string, icon: string, lines: readonly string[]): string {
   if (!lines.length) return "";
   const body = lines.length === 1
     ? `<p class="cnpy-relheads-one">${releaseLine(lines[0])}</p>`
     : `<ul class="cnpy-relheads-list">${lines.map((h) => `<li>${releaseLine(h)}</li>`).join("")}</ul>`;
-  return `<aside class="cnpy-relheads" aria-label="${attr(label)}" style="border-radius:6px"><span class="cnpy-relheads-l">${icon}${esc(label)}</span>${body}</aside>`;
+  return `<aside class="cnpy-relheads cnpy-rise" aria-label="${attr(label)}" style="border-radius:6px"><span class="cnpy-relheads-l">${icon}${esc(label)}</span>${body}</aside>`;
 }
 
 /** The release notes' Heads-up (user-facing changes). */
@@ -2401,7 +2397,7 @@ function prChips(r: Release): string {
 
 /** Release notes, one column in one card: the "At a glance" strip (version, date, and the
  *  change counts as large figures — each opens that group on the patch notes), then the
- *  highlights (the Heads-up lives in the page header, `docHead`) —
+ *  highlights (the Heads-up is in the right column, `releasePageView`) —
  *  in two balanced columns when there are LONG_HIGHLIGHTS or more and the card is very
  *  wide (trov.css, a container query). */
 const LONG_HIGHLIGHTS = 5;
@@ -2427,7 +2423,7 @@ function notesDoc(r: Release): string {
     </section>`;
 }
 
-/** Patch notes (the Upgrade notes live in the page header, `docHead`): each non-empty group as a STACKED
+/** Patch notes (the Upgrade notes are in the right column, `releasePageView`): each non-empty group as a STACKED
  *  full-width section (Added, Changed, Fixed, Removed) — one row per line, a quiet heading
  *  (dot, label, count), hairlines only between groups — then the PRs as one line of chips.
  *  A long group (LONG_GROUP lines or more) may flow into two balanced columns on a very
@@ -2475,12 +2471,23 @@ export function releasePageView(slug: string, page: ReleasePage, releases: reado
       </header>
     </div>`;
   }
+  // ONE grid (#188): the back-link row across the top; then the title block, the body card and
+  // the newer / older links down the LEFT column, and the page's note (the Heads-up on the release
+  // notes, the Upgrade notes on the patch notes) down the RIGHT one, top-aligned with the title.
+  // The note is a sibling of the body, never part of the header, so a long note runs beside the
+  // body instead of pushing it down. Under 900px of page it is one column in source order:
+  // title, note, body (trov.css).
+  const note = page === "notes" ? headsUp(r) : upgradeNotes(r);
   return `<div class="cnpy-reldoc">
+    <div class="cnpy-reldoc-grid${note ? " has-heads" : ""}">
+    ${docTopRow(page)}
     ${docHead(r, page)}
+    ${note}
     <article${surface("--i:1", { cls: "cnpy-reldoc-card cnpy-rise" })} aria-label="${attr(page === "patches" ? "Patch notes" : "Release notes")}">
       ${page === "patches" ? patchesDoc(r) : notesDoc(r)}
     </article>
     ${pager(r, page, releases)}
+    </div>
   </div>`;
 }
 
