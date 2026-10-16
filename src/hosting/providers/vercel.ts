@@ -12,9 +12,11 @@
 //                when the org's config names a team (without it Vercel looks in the personal account and a
 //                team's project reads as a 404). vercel.com is the BROWSER host of the install page only —
 //                no credential is ever sent there, so it is not in `apiHosts`.
-//   deploys      ONE `GET /v7/deployments` per poll (`pollCost` 1): the 20 newest of the project, filtered to
-//                the part's target. Vercel's list is the record of what shipped where, with the commit it
-//                built — so unlike Cloudflare / Railway nothing here waits on a GitHub delivery.
+//   deploys      `GET /v7/deployments`: the 20 newest of the project, filtered to the part's target. Vercel's
+//                list is the record of what shipped where, with the commit it built — so unlike Cloudflare /
+//                Railway nothing here waits on a GitHub delivery. A PRODUCTION part also reads the project's
+//                previews (repo setups: previews are `target = 'preview'` rows of the production part, matched to
+//                open PRs by branch at read time) — a second list without `target` (`pollCost` 2).
 //   metrics      NONE. Vercel has no documented public usage API: the `vercel metrics` CLI calls an
 //                undocumented `POST /v2/observability/query` that needs Observability Plus (Pro /
 //                Enterprise). So every web metric is `unavailable` with that reason, `covered` is null, and
@@ -31,9 +33,9 @@
 //
 // Pure apart from `pc.fetch` (the fixed-host fetch) — no D1, no env, no logging, no src/data/secrets.ts.
 import { metricsForRole, type DeployState, type DeployTarget, type HostingMetric, type PartRole } from "@shared/hosting";
-import type { HostingDeploy, HostingProvider, InstallGrant, ProviderContext } from "../types";
+import type { DescribedProject, HostingDeploy, HostingProvider, InstallGrant, ProviderContext } from "../types";
 import {
-  HostingError, asHostingError, instant, probeFailure, readJson, record, refuse, str,
+  HostingError, asHostingError, describedFolder, githubRepoOf, instant, probeFailure, readJson, record, refuse, str,
   type HostFetch, type Revealed, type SecretLike,
 } from "../http";
 
@@ -245,6 +247,9 @@ function toDeploy(raw: unknown, want: "production" | "preview", branch: string |
     readyAt: IN_FLIGHT.has(state) ? null : instant(d.ready),
     url: httpsUrl(d.url),
     inspectUrl: httpsUrl(d.inspectorUrl),
+    // Why it failed: `errorMessage` (the SDK's deployment field; UNCONFIRMED that the LIST carries it), else the
+    // alias error's `message` (a deploy that built but could not be assigned its domain). Kept for `error` only.
+    reason: str(d.errorMessage) ?? str(record(d.aliasError).message),
   };
 }
 
@@ -288,7 +293,8 @@ export const vercel: HostingProvider = {
   ],
   capabilities: { deploys: true, metrics: [] },
   planNote: "Vercel exposes no public usage API (its Observability Query needs Observability Plus and is undocumented), so a Vercel part shows deploys only.",
-  pollCost: 1,
+  // The production (or preview) list, and — for a production part — the previews list.
+  pollCost: 2,
 
   // Where the grant is managed. An installed integration: the team's integrations page when the install told
   // Trov the team (`team_id` + `team_slug`) — `vercel.com/<team-slug>/~/integrations`, UNCONFIRMED (the
@@ -354,19 +360,47 @@ export const vercel: HostingProvider = {
     const branch = want === "preview" ? part.settings.branch || null : null;
     const params: Record<string, string> = { projectId: project, limit: String(DEPLOYS_LIMIT) };
     if (want === "production") params.target = "production";
-    const body = await getJson(pc, "vercel deployments", apiUrl("/v7/deployments", pc.credential.config, params), PROJECT_HINTS);
-    if (!Array.isArray(body.deployments)) throw new HostingError("vercel deployments: the response has no deployments list");
-    const seen = new Set<string>();
-    const deploys: HostingDeploy[] = [];
-    for (const item of body.deployments) {
-      const d = toDeploy(item, want, branch);
-      if (!d || seen.has(d.id)) continue;
-      seen.add(d.id);
-      deploys.push(d);
+    const list = async (p: Record<string, string>, w: "production" | "preview", b: string | null): Promise<HostingDeploy[]> => {
+      const body = await getJson(pc, "vercel deployments", apiUrl("/v7/deployments", pc.credential.config, p), PROJECT_HINTS);
+      if (!Array.isArray(body.deployments)) throw new HostingError("vercel deployments: the response has no deployments list");
+      const seen = new Set<string>();
+      const out: HostingDeploy[] = [];
+      for (const item of body.deployments) {
+        const d = toDeploy(item, w, b);
+        if (!d || seen.has(d.id)) continue;
+        seen.add(d.id);
+        out.push(d);
+      }
+      // Newest first, whatever order the page came in (ISO strings of one format sort as instants).
+      out.sort((x, y) => (x.createdAt < y.createdAt ? 1 : x.createdAt > y.createdAt ? -1 : 0));
+      return out.slice(0, DEPLOYS_LIMIT);
+    };
+    const deploys = await list(params, want, branch);
+    // A production part also reads the project's previews: the same list without `target`, previews kept.
+    const previews = want === "production" ? await list({ projectId: project, limit: String(DEPLOYS_LIMIT) }, "preview", null) : [];
+    return { deploys: [...deploys, ...previews], points: [], unavailable: unavailableFor(part.role), covered: null };
+  },
+
+  // ONE fetch (repo setups, Phase D — the repo scan only): `GET /v9/projects?limit=100[&teamId=…]` → the projects
+  // whose Git link is this GitHub repository (`link.type` github, `link.org`/`link.repo`), each with the folder it
+  // builds (`rootDirectory`, null = the root). Shape from Vercel's API reference; UNCONFIRMED against a live team
+  // (fixtures/hosting/vercel/README.md). A team with more than 100 projects may leave some out — the scan then
+  // simply has less evidence.
+  async describe(pc, repo) {
+    const body = await getJson(pc, "vercel projects", apiUrl("/v9/projects", pc.credential.config, { limit: "100" }), PROJECT_HINTS);
+    const want = repo.toLowerCase();
+    const out: DescribedProject[] = [];
+    for (const item of Array.isArray(body.projects) ? body.projects : []) {
+      const p = record(item);
+      const link = record(p.link);
+      const name = str(p.name);
+      if (!name || str(link.type) !== "github") continue;
+      const linked = githubRepoOf(str(link.org) && str(link.repo) ? `${str(link.org)}/${str(link.repo)}` : null);
+      const folder = describedFolder(p.rootDirectory);
+      if (linked !== want || !folder) continue;
+      out.push({ name, folder, settings: { project: name }, kind: "Site" });
     }
-    // Newest first, whatever order the page came in (ISO strings of one format sort as instants).
-    deploys.sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
-    return { deploys: deploys.slice(0, DEPLOYS_LIMIT), points: [], unavailable: unavailableFor(part.role), covered: null };
+    return out;
   },
 
   install: {

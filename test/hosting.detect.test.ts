@@ -51,6 +51,19 @@ describe("detectProviders — what each host looks like from GitHub", () => {
     expect(detect([row({ kind: "deploy", actor_login: "someone", url: "https://fly.io/apps/acme/monitoring" })])).toMatchObject([{ provider: "fly", evidence: "GitHub deployments that link to fly.io" }]);
   });
 
+  it("a commit status by its context (repo setups: non-canopy statuses are captured again) — Render now detectable", () => {
+    expect(detect([row({ kind: "deploy", signal: "status", name: "Render", actor_login: "octocat" })])).toMatchObject([{ provider: "render", evidence: "GitHub commit statuses named Render" }]);
+    expect(detect([row({ kind: "deploy", signal: "status", name: "Vercel", actor_login: "vercel[bot]" })])).toMatchObject([{ provider: "vercel", evidence: "GitHub commit statuses named Vercel" }]);
+    expect(detect([row({ kind: "deploy", signal: "status", name: "netlify/acme-docs/deploy-preview" })])).toMatchObject([{ provider: "netlify" }]);
+    expect(detect([row({ kind: "deploy", signal: "deployment", actor_login: "render[bot]", name: "main - api" })])).toMatchObject([{ provider: "render", evidence: "GitHub deployments created by render[bot]" }]);
+    // Narrow: a CI status, a context that merely CONTAINS a host's name, and a status's sender are not signs.
+    for (const r of [
+      row({ kind: "deploy", signal: "status", name: "ci/circleci: build" }),
+      row({ kind: "deploy", signal: "status", name: "Render docs" }),
+      row({ kind: "deploy", signal: "status", name: "coverage", actor_login: "vercel[bot]" }),
+    ]) expect(detect([r]), JSON.stringify(r)).toEqual([]);
+  });
+
   it("is narrow on purpose: an ordinary CI job is nobody's sign, and a look-alike host or name is not one either", () => {
     for (const r of [
       row({ app: "github-actions", name: "test", url: "https://github.com/acme/web/actions/runs/1" }),
@@ -93,10 +106,10 @@ describe("the read — this org's captured check runs and deployments of the las
     await event({ kind: "check", name: "old", app: "netlify", at: at(DETECT_WINDOW_MS / 86_400_000 + 1) });
     await event({ org: ORG_B, kind: "check", name: "theirs", app: "netlify", at: at(1) });
     const rows = await listDetectRows(systemCtx(ORG_A), now);
-    expect(rows.map((r) => [r.kind, r.name, r.app, r.actor_login, r.n, r.last_at])).toEqual([
-      ["check", "Vercel Preview Comments", "vercel", null, 2, at(1)],
-      ["check", "test", "github-actions", null, 1, at(3)],
-      ["deploy", "acme / staging", null, "railway-app[bot]", 1, at(4)],
+    expect(rows.map((r) => [r.kind, r.name, r.app, r.actor_login, r.n, r.last_at, r.signal ?? null])).toEqual([
+      ["check", "Vercel Preview Comments", "vercel", null, 2, at(1), null],
+      ["check", "test", "github-actions", null, 1, at(3), null],
+      ["deploy", "acme / staging", null, "railway-app[bot]", 1, at(4), null],
     ]);
     expect((await listDetectRows(systemCtx(ORG_B), now)).map((r) => r.name)).toEqual(["theirs"]);
   });

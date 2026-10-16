@@ -52,6 +52,12 @@ at all is the one `unauthorized` (`/mcp` → 401 `invalid_token`): an unknown / 
 token whose person left its org or whose org is suspended; a manual grant none of whose allowed orgs is live
 for its person; a `repo` grant whose person is in no org. There is no 409 on `/mcp`.
 
+**The one other bearer path** — Trov's own app metrics endpoint, `GET /api/internal/metrics` (repo setups, Phase G;
+`src/internal-metrics.ts`): the SAME credentials, resolved by `resolveBearerTenant` (a token's org, a manual grant's
+current one; a `repo` grant names none without a `repo`, so it is a 401 there), read-only, D1-only
+(`src/data/own-metrics.ts`, every statement bound to that org — counts only), dispatched in `src/index.ts` before the
+cookie-only app like `/mcp`. It is not a fourth auth class: no new credential, no new resolver.
+
 **Per tool call** — `resolveCall(conn, { repo, org })`. Every org tool takes these two OPTIONAL arguments
 (`src/mcp.ts` adds them in front of the tool's own; a tool body never sees `org`). A refusal is an MCP tool
 error `{ error, code, orgs? }` and has read and written nothing; `orgs` is only ever slugs of the person's own
@@ -259,11 +265,17 @@ credential comes from `resolveGithubCredential(ctx, env, { repo })` (`src/github
 `github-app.md`): the org's live App installation → an installation token, else its stored `github_token`,
 else SaplingLearn's legacy secret. Every other credential comes from
 `resolveCredential(ctx, env, kind, scope)`: `github_webhook` (the hook id),
-`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and `metrics_endpoint` (the
-environment key). Both are resolved ONLY in modules that `src/mcp.ts` cannot reach — `src/repo/cron.ts`,
-`src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`, `src/github-app/*` — and the revealed value is passed down as a parameter
+`cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and the other hosting kinds (`""`, ONE
+org-wide each — a scoped one is a leftover, `hosting-providers.md`) and `metrics_endpoint` (the environment key).
+Both are resolved ONLY in modules that
+`src/mcp.ts` cannot reach — `src/repo/cron.ts`, `src/github-hook.ts`, `src/tools/backfill.ts`, `src/integrations/*`,
+`src/github-app/*`, `src/hosting/poll.ts` (the poll, and the rollback compare's GitHub token), `src/repo/scan-store.ts`
+(Scan again, and the scan's `describe` hosts) — and the revealed value is passed down as a parameter
 (`src/webhook.ts` and `src/repo/github.ts` ARE reachable from MCP; `test/secrets.mcp.test.ts`). Every log
-line and stored `last_error` is scrubbed of every credential the unit revealed.
+line and stored `last_error` is scrubbed of every credential the unit revealed. Whether a credential EXISTS is not a
+secret: the Repo dashboard's `hostingReads` (`src/repo/store.ts`, MCP-reachable) selects `org_secrets` METADATA only —
+`kind`, `last_error`, scope `''`, never `ciphertext` / `iv` / `key_version` — so the one hosting status function
+(`shared/hosting-status-core.ts`) says the same "connected / not connected" there as on Org settings › Hosting.
 
 **Webhooks.** `POST /webhook/github/:hookId`: look the row up, verify the HMAC against that repo's secret,
 require the payload to name that repo (else 202 ignored), then `captureDelivery` as the org. Every refusal —
@@ -394,17 +406,21 @@ plain (non-`async`) function that returns the helper's promise is fine (`getPers
   known, and the projection waits once. The chains: `prs_reconciled` → the PR states (+ `recordingSince`, or
   the ticket counts) → approvals and checks (checks also wait for the branch heads); a captured run → its
   recording start + failure rows → the daily rate / the uncapped count; the usage points + the parts → the
-  usage "ever?" read. Three statements deep, whatever the rest costs. Conditional reads are still taken only
-  on the path that needs them: the statements run, and the answer, are the ones a serial run gave.
-  `ticketCounts`, `listAllParts`, `branchHeads` and `list_sprints` read their own parts side by side.
+  usage "ever?" read (and the extras read, once the parts say a provider has extras); the parts → the
+  repository's apps (`listRepoApps`, its own reads side by side) → the narrowed part infos. Then the steps that
+  need the whole wave: the App menu's scope (`readScope`, multi-app repositories only) and the Overview's facts
+  (`readRepoFacts`, one `Promise.all` with the org's repositories read beside it — only the CI counts wait on
+  that). Conditional reads are still taken only on the path that needs them: the statements run, and the
+  answer, are the ones a serial run gave. `ticketCounts`, `listAllParts`, `branchHeads` and `list_sprints` read
+  their own parts side by side.
 - **`/auth/me`**: the session, then everything else in one `Promise.all`.
 - **`/api/o/:slug/*`**: the session and the membership in one statement (above).
 
 | Request (test seed) | Serial before → after | Statements before → after |
 |---|---|---|
-| `getRepoDashboard`, everything captured | 39 → 3 | 43 → 43 |
-| `getRepoDashboard`, environments but nothing captured | 28 → 2 | 32 → 32 |
-| `GET /api/o/:slug/repo/dashboard`, everything captured (gates + org repo/envs + dashboard) | 40 → 5 | 44 → 43 |
+| `getRepoDashboard`, everything captured | 42 → 6 | 58 → 58 |
+| `getRepoDashboard`, environments but nothing captured | 34 → 7 | 48 → 48 |
+| `GET /api/o/:slug/repo/dashboard`, everything captured (gates + the repository and environments side by side + dashboard) | 40 → 7 | 54 → 53 |
 | `GET /auth/me` | 5 → 2 | 8 → 8 |
 | any `/api/o/:slug/*` request: the gates | 2 → 1 | 2 → 1 |
 | `/mcp` with a pasted token: the `last_used_at` write | every call → at most once a minute | |

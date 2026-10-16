@@ -1,0 +1,6 @@
+{
+  "name": "storefront",
+  "private": true,
+  "scripts": { "build": "turbo build" },
+  "devDependencies": { "turbo": "^2.0.0" }
+}

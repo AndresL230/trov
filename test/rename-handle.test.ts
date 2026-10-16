@@ -157,6 +157,14 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     VALUES (?, 'staging', 'web', 0, 'Web', 'web', 'vercel', '{}', ?, ?, ?)`, org, nowIso(), nowIso(), handle);
   await run(env.DB, `INSERT INTO org_hosting_connections (org_id, provider, scope, method, status, connected_by, connected_at, revoked_by)
     VALUES (?, 'vercel', '', 'install', 'revoked', ?, ?, ?)`, org, handle, nowIso(), handle);
+  // 0070_repo_apps: an app the person created and last changed.
+  await run(env.DB, `INSERT INTO repo_apps (org_id, key, label, kind, created_at, created_by, updated_at, updated_by)
+    VALUES (?, 'web', 'Web', 'Site', ?, ?, ?, ?)`, org, nowIso(), handle, nowIso(), handle);
+  // 0071_repo_settings: who set a repository's Overview default.
+  await run(env.DB, `INSERT INTO repo_settings (org_id, repo, overview_group, updated_at, updated_by) VALUES (?, 'rename/repo', 'env', ?, ?)`, org, nowIso(), handle);
+  // 0072_repo_scans: who accepted (or ignored) a suggestion.
+  await run(env.DB, `INSERT INTO repo_app_suggestions (org_id, repo, id, key, folder, kind, state, decided_at, decided_by, created_at)
+    VALUES (?, 'rename/repo', 'sg_00000000000000000001', 'web', 'apps/web', 'Site', 'accepted', ?, ?, ?)`, org, nowIso(), handle, nowIso());
   // 0044_plans: orgs.plan_changed_by, and a grant the person holds, made, used and revoked (two rows: a
   // grant is used OR revoked, never both).
   await run(env.DB, `UPDATE orgs SET plan_changed_at = ?, plan_changed_by = ? WHERE id = 'org_b'`, nowIso(), handle);

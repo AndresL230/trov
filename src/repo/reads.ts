@@ -227,3 +227,14 @@ export async function reviewRowsSince(ctx: TenantContext, sinceIso: string): Pro
     `SELECT number, state, actor_login, url, occurred_at FROM repo_events
       WHERE org_id = ? AND kind = 'review' AND occurred_at > ? ORDER BY occurred_at DESC, id DESC`, ctx.orgId, sinceIso);
 }
+
+/** Workflow runs captured in each of the last two weeks (by `occurred_at`) — the Overview's "CI runs" figure.
+ *  ONE statement. */
+export async function runCounts(ctx: TenantContext, weekAgoIso: string, twoWeeksAgoIso: string): Promise<{ thisWeek: number; lastWeek: number }> {
+  const row = await first<{ this_week: number | null; last_week: number | null }>(ctx,
+    `SELECT SUM(CASE WHEN occurred_at > ? THEN 1 ELSE 0 END) AS this_week,
+            SUM(CASE WHEN occurred_at > ? AND occurred_at <= ? THEN 1 ELSE 0 END) AS last_week
+       FROM repo_events WHERE org_id = ? AND kind = 'run' AND occurred_at > ?`,
+    weekAgoIso, twoWeeksAgoIso, weekAgoIso, ctx.orgId, twoWeeksAgoIso);
+  return { thisWeek: row?.this_week ?? 0, lastWeek: row?.last_week ?? 0 };
+}

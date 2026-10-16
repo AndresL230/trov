@@ -19,12 +19,16 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
 - **Connection** — how an org is connected: `install` (Vercel's Integration: projects picked at install, uninstall
   webhook), `oauth` (Netlify — no scopes on Netlify's side), `token` (every provider; the narrowest scope it has,
   said plainly — Render keys have none, Fly's is a READ-ONLY org token, Vercel has no read-only token, Railway's is a
-  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read), `assume_role`
+  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read, and optionally Workers CI Read for each deploy's commit), `assume_role`
   (AWS, later). The secret is an ordinary write-only `org_secrets` row (kinds `vercel` / `render` / `netlify` / `fly` /
   `aws`; Cloudflare and Railway keep `cloudflare_analytics` / `railway` — `HOSTING_INTEGRATION_KIND`); an install / OAuth
   grant also writes `org_hosting_connections` (method, provider-side installation id, account). EVERY provider is
   connected ONCE for the org (scope ""; the per-environment Railway project token is gone — a project token reads
-  one environment only, so it cannot serve the org-wide connection). An install / OAuth
+  one environment only, so it cannot serve the org-wide connection). A hosting credential stored under a NON-EMPTY
+  scope (0057 left SaplingLearn's per-environment Railway project tokens in place, unread) is a **leftover**, never a
+  connection: `listConnections` returns ONE org-wide row per provider, `HostingSetupDTO.leftovers` lists the
+  leftovers (`listLeftovers` — labelled by how they were stored, "Project token", never by the provider's current
+  method), they are never counted or called Connected, and "Remove old tokens" deletes them (below). An install / OAuth
   method needs Trov-side Worker vars (its `requires`) — absent, it is listed `available: false` and the token method is
   offered. Pasting a token over an install supersedes it (`supersedeConnection`).
 - **Part** — one deployable of one environment, with a ROLE: `web` (requests, 5xx errors, latency, bandwidth) or
@@ -61,20 +65,26 @@ whose provider reads no usage at all), `resources` for a service part (latest �
 zero-filled), `seen`, `unavailable`, `status`, `tone`, `last_poll`, `console_url` (org config read directly — the
 projection never touches the secrets module). The SAME reads feed the environment cards (each part's newest deploy),
 the CI tab's deploy strips (each part's settled deploys) and the Usage compare (requests / error rate summed over
-each environment's web parts) — nothing on the dashboard reads `cf_*`, `rw_*`, `cf_polled` or GitHub deployments any
-more. Three extra statements; a failed read costs what it feeds (`providers` and `deploys` `not_connected`, no parts
+each environment's web parts) — nothing on the dashboard reads `cf_*`, `rw_*` or `cf_polled` any more, and a GitHub
+deployment reaches a card only as a `github` part's own `hosting_deploys` row (`repo-apps.md`). Three extra statements; a failed read costs what it feeds (`providers` and `deploys` `not_connected`, no parts
 on the cards, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to the range and, without
 `include_trends`, drops trends and keeps the newest 2 deploys per part (+ `deployCount`).
 
 **Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
 `/api/o/:slug` with NO old-path alias: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
 connections — each with `manage_url`, where the grant is managed on the provider (`HostingProvider.manageUrl`) —, a
-checklist generated from what the parts use, and `detected`, below), `GET /hosting/providers` (any member), `PUT|DELETE
+checklist generated from what the parts use, `detected`, below, `leftovers`, and each environment's `app_metrics` — its
+app metrics token's metadata, never the value), `GET /hosting/providers` (any member), `PUT|DELETE
 /environments/:key/parts/:part` (audited `part.set` / `part.delete` in `org_admin_audit`; deleting an environment
 deletes its stored parts, poll state and deploys in the same batch), `POST /hosting/:provider/connect` (→ `{ url }`;
 an org already connected — a pasted token, or another install / OAuth grant — is not refused: the callback replaces
 it), `POST /hosting/:provider/disconnect` (best-effort provider-side revoke; always succeeds
-locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part). **An
+locally), `POST /hosting/:provider/test` (the integrations `testConnection`, optionally against one part; a provider
+that is NOT connected — the one status function, below — is answered `{ ok: false, detail: "<Provider> isn't connected." }`
+without probing, never "No secret is set"), `DELETE /hosting/:provider/leftovers` ("Remove old tokens": the provider's
+credentials under a non-empty scope deleted as the admin, ONE batch — each a `secret.delete` with reason `leftover` in
+`org_audit`, and one `hosting.leftovers_removed` in `org_admin_audit`; the org-wide credential is never touched; none →
+404). **An
 installed connection has the GitHub App binding's guarantees** (`src/hosting/connections.ts`): the provider is handed
 only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMAC-sealed with `hosting-connect:<COOKIE_SECRET>`
 — is the HttpOnly `trov_hx` cookie (Secure, SameSite=Lax, Path `/hosting/`, 10 minutes, spent by the first callback
@@ -102,7 +112,20 @@ install / OAuth credential (`HostingError.status`, set by `refuse`). The last tw
 provider id — audited `hosting.revoked`); a POLL's 401 only stores the fixed "<Provider> refused the token — the grant
 may have been removed; Test connection to confirm" in `last_error`. `revoked_reason` is a CHECKed code (`disconnected`
 / `uninstalled` / `superseded` / `refused`); the DTO derives its sentence (`hostingRevokedReasonText`).
-Org settings › Integrations lists a hosting kind only once a stored part uses it (the five original slots are unchanged).
+The Integrations API (`GET /integrations`) still lists a hosting kind once a stored part uses it (never `github`, which
+has no credential of its own), and the token form
+writes through it — but Org settings › Integrations does not SHOW hosting credentials or app metrics tokens: they are
+Hosting's (`onIntegrationsTab`, `web/src/integrations.ts`), with one line linking there.
+
+**One status function** (`shared/hosting-status-core.ts`, zod-free — the SPA, `src/hosting/` and the MCP-reachable
+`src/tools/repo.ts` all import it). `hostingStatus(connection, label)` answers for a provider's ORG-WIDE connection:
+`connected` (stored, or SaplingLearn's legacy Worker secret), `error` (stored, last use failed), `not_connected`
+(nothing answers — an admin's own Disconnect included) or `revoked` (ended on the provider's side), with its word and
+whether it is `live` (the parts read) / `stored`. The provider's card, every part row (`EnvironmentPartDTO.connection`,
+`setup.ts` `partConnection`), the checklist's connect / test steps, the lead's counts, the tab's badge, Test this part
+(server and SPA) and the Repo dashboard's not-connected copy (`RepoProviderPart.connection`, from `hostingReads`'
+`org_secrets` METADATA and `org_hosting_connections` arms — never a value; SaplingLearn's legacy secret, which that
+projection may not resolve, is evidenced by a poll that found a credential) all read it, so none can disagree.
 
 **Deployment and project events, and the Configuration URL** (Vercel). The same `POST /webhook/hosting/vercel`
 that takes the uninstall notice takes `deployment.created` / `ready` / `succeeded` / `error` / `canceled` / `promoted` /
@@ -133,20 +156,28 @@ matched narrowly (a false "Detected" is worse than none):
 - **check runs** — every check run is captured (`fromCheckRun`) with its name, its details URL and, in `raw.app`,
   the slug of the GitHub App that posted it: `vercel`, `netlify`, `cloudflare-workers-and-pages` (also a details
   link to the host, or a name only that host uses — `netlify/…`, `Workers Builds: …`, `Vercel …`);
-- **deployments** — GitHub `deployment_status` deliveries are NOT captured any more (an environment's deploys come
-  from its provider); rows captured before 0057, with the creator's login (`railway-app[bot]`, `render[bot]`,
-  `vercel[bot]`) and log link, still count while inside the window.
+- **deployments** — GitHub `deployment` / `deployment_status` deliveries, captured again (repo setups, Phase A) as
+  UNTAGGED `deploy` rows (`raw.signal = 'deployment'`; rows from before 0057 count too): the creator's login
+  (`railway-app[bot]`, `render[bot]`, `vercel[bot]`) and the log / environment link;
+- **commit statuses** — every context other than `canopy/*`, captured as untagged `deploy` rows
+  (`raw.signal = 'status'`), matched by CONTEXT only (`Vercel…`, `netlify/…`, exactly `Render`, `Workers Builds…`) —
+  never by who posted it.
 
-So it is exactly as good as that capture: Vercel, Netlify and Cloudflare Workers Builds are seen as soon as GitHub
-is connected and a check run arrives; Render, Railway and Fly.io report to GitHub through deployments (or not at
-all), which are not captured — they are NOT detected. Closing that gap needs NEW capture, none of it built: (a)
-capture `deployment_status` deliveries again, untagged (creator login + environment name, no env key — and a
-retention for them); (b) keep commit `status` contexts other than `canopy/*` (`Vercel`,
-`netlify/…`, `Render`); (c) a root-file probe in the reconcile (`vercel.json`, `netlify.toml`, `fly.toml`,
-`render.yaml`, `wrangler.toml` — one contents read each, in the cron, never on a render path). The screen shows a
+So Vercel, Netlify and Cloudflare Workers Builds are seen as soon as a check run or status arrives, and Render,
+Railway (and Fly.io, by a link to its hosts) as soon as they report a deployment. This is PROVIDER-level detection;
+which APPS a repository holds (its deploy files — `vercel.json`, `netlify.toml`, `fly.toml`, … — and the deploy names
+GitHub has seen) is the repo scan, below. The screen shows a
 suggestion only for an `available` provider no part uses yet (`shownDetections`); it preselects the provider in
 the part editor and connects nothing — the credential is still the admin's to give. A dismissal is per browser
 (`localStorage` `trov.hosting.dismissed.<slug>`).
+
+### The repo scan and app suggestions (repo setups)
+
+APP-level detection — the repo scan (a guarded reconcile arm, ≤ `SCAN_COST` = 5, skipped past the tree read when the
+default branch's root tree sha is unchanged), the detector registry (`src/repo/detect/`), the optional provider
+`describe()` (Vercel, Render, Netlify: which folder a project builds — one list call each, in the scan only), seen
+signals, the suggestion lifecycle (accept / ignore / undo, `repo_scans` and `repo_app_suggestions`, 0072) and the
+read side the facts use — is `repo-apps.md` › Detection. A suggestion changes nothing until an admin accepts it.
 
 **Where detection stands** (`HostingSetupDTO.detection`, `readDetectionStatus`): so a new org sees what Trov is doing
 instead of nothing. `no_repo` (no repository connected) → `no_environment` (a repository, but no environment names a
@@ -158,10 +189,88 @@ repository, Add an environment, Sync GitHub now (the Sync panel, which an admin 
 `looking` the tab re-reads itself every 20 s (hosting-actions.ts `afterPaint`).
 
 **The sample preview's two switchers** (web/src/hosting-keys.ts, `hostingScenario` in web/src/hosting-sample.ts):
-a FLOW — New org, Looking, Found, Parts added, Connecting, Live, Broken, Locked — × a STACK — Vercel + Render,
-Netlify + Fly.io, Cloudflare + Railway, All on Render, All on Railway, Vercel only, Five hosts. Every combination is
+a FLOW — New org, Looking, Found, Parts added, Connecting, Live, Broken, Leftover tokens, Locked — × a STACK — Vercel +
+Render, Netlify + Fly.io, Cloudflare + Railway, All on Render, All on Railway, Vercel only, Five hosts. Every combination is
 a whole `HostingSetupDTO` built from the real catalogue; detection follows what Trov can see (a stack of only Render
-/ Railway / Fly.io finds nothing). `test/hosting.sample.test.ts` holds every combination to the providers' own checks.
+/ Railway / Fly.io finds nothing). Leftover tokens is Live with Railway NOT connected and its two old per-environment
+project tokens still stored. `test/hosting.sample.test.ts` holds every combination to the providers' own checks, and
+`test/render.hosting.test.ts` › "ONE status, everywhere" holds the card, the part rows, the payload's part status, the
+checklist and Test this part to the same status for every combination.
+
+## GitHub deployments, the commit on every deploy, rollbacks, previews (repo setups)
+
+The full reference is `repo-apps.md` › The `github` provider, GitHub deploy signals and deploy provenance. In short,
+for this layer:
+- **The `github` provider** (`src/hosting/providers/github.ts`, "GitHub deployments"): `credential: "github_app"`
+  (no connection method, no card, no checklist step, no Integrations slot; `via_github: true`; always live in
+  `hostingStatus`), `capabilities: { deploys: true, metrics: [] }`, `pollCost` 0 — the framework never resolves a
+  credential for it and never runs its `poll`. Part settings: EXACTLY one of `environment`, `check_app` +
+  `check_name`, `workflow` (`checkSettings`). Its deploys are written from the webhook capture
+  (`src/hosting/github-deploys.ts`, `source = 'github'`) only through the part's own setting (`signalMatchesPart`).
+- **`hosting_deploys` columns (0070)**: `source`, `reason` (scrubbed BEFORE the cut to 140, an `error` deploy only —
+  `validatePoll`), `sha_source` (`provider` | `joined` | NULL), `rolled_back_from`; ONE upsert,
+  `src/hosting/deploy-store.ts` (secret-free; a provider sha replaces a joined one, never the reverse).
+- **After a poll**: the one-candidate commit join (`src/hosting/sha-join.ts`) and, for a new production `ready` sha,
+  the one-compare rollback check (`src/hosting/rollback.ts`, `ROLLBACK_COMPARE_COST` in `providerPollCost`).
+  Cloudflare reads the commit from the Workers Builds API (`builds?version_ids=`; refused → the note "commit: the
+  token needs Workers CI Read" in `PollResult.notes`, and the join).
+- **Previews**: a Vercel or Netlify PRODUCTION part also reads its previews (a second list, `pollCost` 2 each),
+  stored as `target = 'preview'` rows of that part with their branch; Render's previews are separate services.
+  `hostingReads` leaves a production part's previews out of its strips (a previews-only part keeps them; a deploy with
+  NO target is never a preview — the test is `COALESCE`d).
+
+## Usage families: outcomes, runtime, D1, crons (repo setups, Phase G)
+
+**Families** (`shared/usage-families-core.ts`, zod-free): `HOSTING_METRICS` cut into three CORE families — traffic
+(requests, errors, bandwidth), latency (p50, p95), compute (CPU, memory) — and four EXTRA families a provider declares
+in `capabilities.families` only when it really reads them: outcomes, runtime, storage, schedules. A part's families
+are `familiesOf(capabilities)` (`RepoProviderPart.families`); the Usage tab reads them, its states and its capabilities,
+never the provider id. Today only Cloudflare Workers declares the extra four (step 0 of the build confirmed each
+dataset live, Account Analytics Read).
+
+**What the Cloudflare poll adds** (`src/hosting/providers/cloudflare.ts`): the hourly analytics query now groups by
+`status` — the invocation OUTCOME (`success`, `clientDisconnected`, `scriptThrewException`, `exceededResources`, …),
+NOT an HTTP status — and sums `subrequests`; requests / errors stay the hour's sums, and each (hour, outcome) is its own
+`hx_outcome_<status>` point (no 4xx / 5xx split exists in the dataset and none is invented). ONE more query reads
+`workersInvocationsScheduled` for the script over the same window: per (hour, cron) `hx_cron_runs:<expr>`,
+`hx_cron_failed:<expr>` (a status other than `success`), `hx_cron_last:<expr>` (the epoch ms of the hour's last run;
+the expression stored with `_` for its spaces); a refusal, or an answer that fills its 1000-row limit, is the family's
+reason, never a failed poll. **Once a day** (`ProviderContext.daily`): the framework (`src/hosting/poll.ts`) hands a
+provider with a daily family (runtime, storage) the newest completed UTC day that ended ≥ 15 minutes ago
+(`dailyDay`) — only while that day's `hx_daily_read` marker is not stored (`dailyRead`, one indexed read; THE
+once-a-day rule): the day's quantiles (`hx_cpu_time_p50_us` / `_p99_us`, `hx_wall_time_p50_us`, µs, at 00:00 UTC of the
+day, with the marker even on a day with no invocation — a failed read writes no marker, so the next poll asks again),
+then, when the part names D1 databases (its optional `d1_database_ids` setting, up to 5, the first 3 read — the repo
+scan's wrangler detector proposes it), ONE query of `d1AnalyticsAdaptiveGroups` / `d1StorageAdaptiveGroups` for the
+day: `hx_d1_<read_queries|write_queries|rows_read|rows_written|size_bytes>:<id>`. A part with no D1 id says so every
+poll ("no D1 database is named for this part"), never zero. The optional `crons` setting (the detector's
+`triggers.crons`) lists expressions the screen shows even when one never ran. `pollCost` 3 → **6** (deployments,
+the build, analytics, cron runs, and once a day the quantiles and D1). Fixtures: `fixtures/hosting/cloudflare/`
+(`analytics.json` grouped by status, `scheduled.json`, `runtime.json`, `d1.json` — the README marks what is hand-shaped).
+
+**Validated like every point** (`validatePoll`'s `extraPoints`): a name one of the builders makes (`parseExtraMetric`),
+of a family the provider DECLARES and the part's role reads; an hourly point at a complete hour, a daily one at 00:00
+UTC of a completed day; a finite value ≥ 0 under its ceiling (a cron's `last` inside its own hour); one per (name,
+instant), ≤ 1000 a poll. Each family a poll ATTEMPTED comes back in `PollResult.families` with its reason (null =
+read); `hosting_poll_state.unavailable` keeps `{ family, reason }` entries beside the metric entries
+(`mergeFamilies`: a family not attempted this poll — a daily one between days — keeps its last reason; one read
+cleanly drops it). Every extra point is `hx_*`, pruned at 100 days with the rest.
+
+**The projection** (`src/tools/repo-extras.ts`, through `projectProviders`; `RepoProviderPart.extras`): ONE more
+statement (`extraMetricsSince`, GLOB index ranges) only when some part's provider declares an extra family. Per
+family a state — `ok`, `stale`, `unavailable` (its reason), `none` (never read, not drawn): outcomes per range (the
+buckets that exist, largest first; `[]` = covered and quiet), runtime (the newest completed day's quantiles in ms while
+≤ 2 days old, subrequests per range, the CPU p99 line), storage per database (sums of the range's last 1 / 7 / 30
+completed days, the size while current, the reads line) and schedules per cron (runs, failures, the last run; a
+configured cron with no point listed). An hourly range figure with no point is 0 ONLY inside the covered interval of a
+family that was read; a daily one with no point is null; a range that starts before the family's first point says
+"since …". MCP collapses the extras to the asked range (`extrasForRange`). Tests: `test/hosting.provider.cloudflare.test.ts`,
+`test/hosting.poll.families.test.ts`, `test/repo-dashboard.extras.test.ts`.
+
+**Apps** (`repo_apps`, 0070) — an app is a part key with a home (repository, folder, kind, watch paths, release
+signal); a part key with no row reads as an app at the primary repository's root. The writers, the Apps read and its
+routes, and the signal ↔ `github` setting rules: `repo-apps.md` › Apps and › Org settings › Repositories › a repo ›
+Apps.
 
 ## The screens
 
@@ -175,15 +284,26 @@ a toast instead; one title + body per outcome in `hostingNoticeCopy`, tone ok / 
 banner); the "credentials can't be saved" banner (`secrets_available: false` — connect / rotate / paste are
 disabled with the reason; parts stay editable, since a part is not a credential); the LEAD, whose one accent action
 is the checklist's next step; the checklist the server generated (steps to do listed, done ones folded); "Detected";
-**Environments** — a tile per environment side by side (`.cnpy-hx-envs`), its parts as `openRow`s (the ORG's tile
-— a part is the org's own app; the host is named in the metadata — label, role as plain text, a status mark; host · identifying setting as metadata; Edit as the one action; a failed last poll
-and a test's answer always visible; key, settings, last poll, the provider's "not available" reasons, Open in
-<provider>, Test this part and Remove behind the row); **Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at
-phone width, every card the same height) in registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io), then
-**Later** — AWS. A card is
+**Providers** — ONE grid of cards (`.cnpy-hx-cards`, two a row, one at phone width, every card the same height), ONE
+card per provider (its org-wide connection — `connectionsFor`; a scoped row in an old payload never makes a card) in
+registry order (Cloudflare, Railway, Vercel, Render, Netlify, Fly.io; `github` has none); **Parts** — they are set per
+app in Repositories › a repo › Apps (`repo-apps.md`), so here ONE line per environment (`envParts`): its name, branch,
+how many parts, and "Parts are set per app in Repositories › <primary repo> › Apps" (`orgAppsGo`; "connect a
+repository first" while there is none).
+Hosting is the home of connections; nothing on it edits a part any more (the checklist's add / edit steps still open
+the part editor). A part's ROW (`hostingPartRow` → `partRow`) is drawn on its app's page: label, role as plain text,
+its provider's status mark (THE status function); host · identifying setting as metadata; Edit (the part editor, which
+holds Remove part) as the one action; a failed last poll and a test's answer always visible; key, settings, last poll,
+the provider's "not available" reasons, Open in <provider> and Test this part behind the row. Test this part on a
+provider that is not connected sends nothing and answers "<Provider> isn't connected." with a Connect <provider> button
+(`notConnectedAnswer`); then **Later** — AWS.
+A card is
 NOT a dropdown: it shows its logo (`web/src/host-logos.ts`, Simple Icons, CC0), name and status, the metadata (how it is
-connected, how many parts use it), the provider's one-line summary (every summary reads "A <thing> on <host>. Trov
-reads its …"), what Trov reads (`capabilityChips`), a last error or a test's answer — and ONE button at its top right,
+connected — a token named by how it was stored —, then what uses it as plain words: "Backend in Staging and Production",
+`usedByLine`), the provider's one-line summary (every summary reads "A <thing> on <host>. Trov
+reads its …"), its leftover tokens as ONE quiet line ("2 old per-environment tokens from before Oct 15 aren't used.
+Connect Railway once with a workspace token." — `leftoverLine`, count and wording generated) with "Review old tokens"
+(the Manage dialog), what Trov reads (`capabilityChips`), a last error or a test's answer — and ONE button at its top right,
 one width on every card: **Connect** (the provider's own dialog: its install / OAuth confirmation, or the token form)
 or **Manage** once connected. The plan note ("Vercel has no public usage API…") is in the Manage dialog and the part
 editor. Nothing on a card says how a host connects (no "Recommended" / "Paste a…" hint): which method a host
@@ -191,8 +311,10 @@ offers is not a reason to pick it. **Manage** opens a dialog (`manageModal`, `h.
 by whom it was connected, what uses it, its settings, what it can do (`grants`), "Sent only to <api_hosts>", Test
 connection, Manage on <provider>, Connect a different account, Rotate / Edit settings, Disconnect as quiet text (it
 closes the dialog under the page's confirmation), and — for an install / OAuth connection — a quiet "Manual connection"
-block with the paste-a-token form (the GitHub App's pattern). Saving a token returns to the Manage dialog, on Test
-connection.
+block with the paste-a-token form (the GitHub App's pattern); while it is not connected, Connect <provider>; and its
+**Old tokens** — each "Project token (no longer used) · <environment> · ••••<last 4> · saved by …" — with **Remove old
+tokens** behind the page's confirmation (`OrgConfirm` `leftovers`, `leftoversConfirmCopy`). Saving a token returns to
+the Manage dialog, on Test connection.
 
 Three dialogs, each a root-level `data-overlay` (so a keystroke patches it — Org settings is `data-morph`), one at
 a time, Escape closes, Tab stays inside, focus returns to the control that opened it:
@@ -201,7 +323,16 @@ a time, Escape closes, Tab stays inside, focus returns to the control that opene
   and a form generated from `part_settings` — a setting whose pattern is a short
   list of words (`^(?:production|preview)$`, `fieldOptions`) is a `segmented()`, anything else a text field checked
   against its pattern (`partDraftProblems`, the server's own rules; the server's refusal lands beside its field).
-  Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`.
+  Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`. Under the form, the
+  environment's **app metrics token** (`appMetricsBlock` — it moved here from Integrations): its status (Set · ends in
+  … / Not set / the legacy credential / an error), where it is read from (`<API URL>/api/internal/metrics`), an optional
+  password field with NO `value` in any state (the draft is `metricsDraft`, private to hosting-actions.ts), Test token
+  and Delete token (the page's confirmation, `OrgConfirm` `secret`). A typed token is saved WITH the part, after it,
+  through the same write-only Integrations API (`PUT /integrations/metrics_endpoint/<env>`, or `…/rotate` when one is
+  stored) — the storage is unchanged (`metrics_endpoint`, scoped to the ENVIRONMENT, so the `:00` usage poller reads
+  it as before), and every part of the environment shows the same token: contract v3 (Phase G) lets the endpoint's body
+  NAME the part it reports (`part`), but the token and the API URL stay one per environment. A
+  part saved whose token is refused keeps the editor open on the token field.
 - **connect** (`connectModal`) — for the provider's best AVAILABLE method when that is an install / OAuth: what the
   provider will ask (`grants`), its `how_to`, "This replaces …" when something is connected, then
   `POST …/hosting/:provider/connect` and a full navigation to its `url`.
@@ -215,10 +346,10 @@ After Disconnect the toast says what is left to do upstream (`upstream`: `failed
 
 **Skeleton, empty layouts and the state preview** (`web-ui.md` › Empty layouts). ONE set of shape builders per
 screen is behind both its loading skeleton and its empty layouts, so the two cannot drift: the tab's
-`envTilesShape` / `partRowsShape` (`hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`). The
-tab's read being out is `skeleton("org-hosting", …)`; no environment is `emptyLayout("org-hosting-envs", …)` — one
-sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the tiles drawn empty; an environment with no part is a plain
-layout inside its tile (`HOSTING_PARTS_EMPTY`; the tile's Add part is the action). On the dashboard,
+`partsListShape` (one environment line each, `hosting.ts`), the dashboard section's `hostingShapes` (`repo-hosting.ts`).
+The tab's read being out is `skeleton("org-hosting", …)`; no environment is `emptyLayout("org-hosting-envs", …)` — one
+sentence (`HOSTING_ENVS_EMPTY`), Open Environments, the lines drawn empty; an environment with no part says "No parts"
+on its line. On the dashboard,
 `not_connected` and `empty` are `emptyLayout("repo-hosting", …)` (`HOSTING_NOT_CONNECTED`, with Open Org settings ›
 Hosting for an admin; `HOSTING_EMPTY`), and with no repository at all the section is `emptyShapes` under the
 dashboard's own sentence. `?preview=empty|loading` covers both: the tab's read lives one level down
@@ -228,12 +359,18 @@ suggestion. Its dialogs and return notice are not drawn under a preview, and no 
 
 "Preview with sample data" (the tab's footer) — still the way to see a FULL screen, and it keeps working under the
 state preview — loads `web/src/hosting-sample.ts` by dynamic import — never in the
-main bundle — and shows any of its five states (mid-setup, no parts, new org, removed, locked) with a switch; while
+main bundle — and shows any Flow × Stack of its two switchers (above); while
 it is on NOTHING is sent (a save, a connect, a test and a disconnect each answer from the sample and say so). The
 sample's provider catalogue is pinned to the registry by `test/hosting.sample.test.ts`.
 
+**Org settings › Repositories › a repo › Apps** (`web/src/repo-apps.ts`, `web/src/repo-apps-actions.ts`) is where an
+app's parts are set — suggestions, apps, a target row per environment (a part on a host is the part row above,
+`hostingPartRow`; a `github` part is the deploy-signal picker) and #185's part editor opened over it, prefilled with
+the app key: `repo-apps.md` › Org settings › Repositories › a repo › Apps.
+
 **Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
-from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP).
+from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP), below the targets
+and the extra families (`web/src/repo-usage.ts`, `repo-dashboard.md` › On screen).
 Environments side by side on the `.repo-cells` lattice, parts stacked: a tone dot, the label, the provider's glyph
 and name, the role, Open in <provider>; the last deploy (state pill — in flight pulses —, short sha when there is
 one, branch, the message's first line, who, when, "ready in 1m 42s", Open / Log) and a strip of the last ≤ 10 as
@@ -242,7 +379,9 @@ dots (newest right; green landed, red failed, hollow canceled); then traffic for
 errors, following the range switch (`repo-swap`) — or resources for a service (CPU, memory, a 24-hour line each
 whose missing hours are GAPS, `gapPath`). **A figure the payload does not carry is "—" with one of three calm
 reasons, never 0** (`absentHint`): "not available from <provider>: <its reason>" (`unavailable[]`), "no recent
-reading" (`seen`), "not connected"; a web part whose provider reads no usage at all (`traffic: null`) is ONE line
+reading" (`seen`, or a host that IS connected and has not reported yet — `connection`), "not connected"; a part never
+read says it in its provider card's words (`neverReadLine`: "Railway isn't connected." or "Connected, not read yet");
+a web part whose provider reads no usage at all (`traffic: null`) is ONE line
 with the reason instead of an empty grid. `not_connected` and `empty` are empty layouts (below; the footer keeps
 "Preview with sample data"). Links out are https
 only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.test.ts`.
@@ -251,7 +390,8 @@ only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.tes
 
 The `hosting` job (`src/repo/cron.ts`; the cron itself is described in `repo-dashboard.md` › The repo cron): one
 unit per (org, environment, STORED part) from `listPartUnits` (`src/platform/jobs.ts`), each costing its provider's
-`pollCost` (≤ 6), served by rotation like the other jobs; health keeps half the budget on this tick only when some
+`pollCost` (≤ 6 — Cloudflare's 6 counts its cron-runs query and its once-a-day quantile and D1 reads; the contract
+test allows 10) + 1 for the possible rollback compare (a `github` part: 0), served by rotation like the other jobs; health keeps half the budget on this tick only when some
 org has a stored part. Cloudflare and Railway are polled here like every other provider; the `:00` usage job reads
 only the app-metrics endpoint. Background-job tenancy (the
 unit runs as its org's system tenant) is in `data-layer.md`.

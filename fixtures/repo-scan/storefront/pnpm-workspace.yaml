@@ -1,0 +1,5 @@
+# the workspace
+packages:
+  - 'apps/*'
+  - "packages/*"
+  - '!**/test/**'

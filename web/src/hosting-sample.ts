@@ -11,8 +11,9 @@ import {
   HOSTING_CONNECT_OUTCOMES, HOSTING_PROVIDERS, metricsForRole,
   type ConnectStartDTO, type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectOutcome, type HostingConnectionDTO,
   type HostingDetectionDTO, type HostingDetectionStatusDTO, type HostingEnvironmentDTO, type HostingPollOutcome, type HostingProviderDTO,
-  type HostingProviderId, type HostingSetupDTO, type HostingTestDTO, type PartRole,
+  type HostingLeftoverDTO, type HostingProviderId, type HostingSetupDTO, type HostingTestDTO, type PartRole,
 } from "@shared/hosting";
+import { LEFTOVER_TOKEN_LABEL, hostingStatus } from "@shared/hosting-status-core";
 import type { HostingSampleKey, HostingStackKey } from "./hosting-keys";
 
 export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
@@ -39,10 +40,11 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste an API token",
-        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Under Account Resources, pick only the account your Workers live under.\n4. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
+        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
         "grants": [
           "Account Analytics: Read on one account",
-          "Workers Scripts: Read on that account (its Workers' deployments)"
+          "Workers Scripts: Read on that account (its Workers' deployments)",
+          "Optional — Workers CI: Read (the commit each deploy was built from)"
         ],
         "available": true,
         "unavailable_reason": null
@@ -66,6 +68,22 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "required": true,
         "placeholder": "frontend-staging",
         "pattern": "^[A-Za-z0-9_-]{1,63}$"
+      },
+      {
+        "key": "d1_database_ids",
+        "label": "D1 database ids",
+        "description": "Optional. The ids of the D1 databases this Worker binds (wrangler's d1_databases), comma-separated — up to 5; the first 3 are read.",
+        "required": false,
+        "placeholder": "6c71838c-18f7-4f68-8513-b58e86c237b9",
+        "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:, ?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}){0,4}$"
+      },
+      {
+        "key": "crons",
+        "label": "Cron triggers",
+        "description": "Optional. The Worker's cron expressions (wrangler's triggers.crons), separated by ;. Runs are read either way; a listed cron that never ran in a range reads as none.",
+        "required": false,
+        "placeholder": "*/10 * * * *;0 13 * * *",
+        "pattern": "^[0-9A-Za-z*/,?#\\- ]{1,80}(?:;[0-9A-Za-z*/,?#\\- ]{1,80}){0,9}$"
       }
     ],
     "docs_url": "https://developers.cloudflare.com/analytics/graphql-api/"
@@ -498,6 +516,54 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       }
     ],
     "docs_url": "https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_create_for-user_externalid.html"
+  },
+  {
+    "id": "github",
+    "label": "GitHub deployments",
+    "status": "available",
+    "summary": "An app deployed from GitHub. Trov reads its deploys from GitHub: a deployment environment, a check run or a workflow.",
+    "roles": ["web", "service"],
+    "capabilities": { "deploys": true, "metrics": [] },
+    "plan_note": "GitHub reports deploys only: no traffic, CPU or memory.",
+    "api_hosts": ["api.github.com"],
+    "connection_methods": [],
+    "org_config_fields": [],
+    "part_settings": [
+      {
+        "key": "environment",
+        "label": "Deployment environment",
+        "description": "A GitHub deployment environment, exactly as GitHub names it (Repository › Deployments), e.g. Production – web.",
+        "required": false,
+        "placeholder": "Production – web",
+        "pattern": "^[^\\u0000-\\u001f\\u007f]{1,200}$"
+      },
+      {
+        "key": "check_app",
+        "label": "Check run app",
+        "description": "With Check run name: the GitHub App that posts the check (its slug), e.g. cloudflare-workers-and-pages.",
+        "required": false,
+        "placeholder": "cloudflare-workers-and-pages",
+        "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+      },
+      {
+        "key": "check_name",
+        "label": "Check run name",
+        "description": "With Check run app: the check's name as the commit's checks list shows it.",
+        "required": false,
+        "placeholder": "Workers Builds: web",
+        "pattern": "^[^\\u0000-\\u001f\\u007f]{1,200}$"
+      },
+      {
+        "key": "workflow",
+        "label": "Workflow file",
+        "description": "A GitHub Actions workflow whose completed runs on the environment's branch are the deploys, e.g. .github/workflows/deploy.yml.",
+        "required": false,
+        "placeholder": ".github/workflows/deploy.yml",
+        "pattern": "^(?:\\.github\\/workflows\\/)?[A-Za-z0-9._-]{1,100}\\.ya?ml$"
+      }
+    ],
+    "docs_url": "https://docs.github.com/en/actions/deployment/about-deployments",
+    "via_github": true
   }
 ];
 
@@ -2120,7 +2186,7 @@ const STACKS: Record<HostingStackKey, (env: EnvKey) => StackPart[]> = {
 };
 
 /** What a CONNECTED connection of each provider looks like (the way it is usually connected). */
-const CONNECTED: Record<Exclude<HostingProviderId, "aws">, Pick<HostingConnectionDTO, "method" | "account" | "external_id" | "config" | "hint_last4" | "manage_url">> = {
+const CONNECTED: Record<Exclude<HostingProviderId, "aws" | "github">, Pick<HostingConnectionDTO, "method" | "account" | "external_id" | "config" | "hint_last4" | "manage_url">> = {
   vercel: { method: "install", account: { id: "team_a1B2c3D4e5F6g7H8", label: "Acme" }, external_id: "icfg_9Xy8Wv7Ut6Sr5Qp4", config: { team_id: "team_a1B2c3D4e5F6g7H8", team_slug: "acme" }, hint_last4: "", manage_url: "https://vercel.com/acme/~/integrations" },
   netlify: { method: "oauth", account: { id: "5f1a2b3c4d5e6f7a8b9c0d1e", label: "Acme" }, external_id: null, config: {}, hint_last4: "", manage_url: "https://app.netlify.com/user/applications" },
   render: { method: "token", account: null, external_id: null, config: {}, hint_last4: "b2e4", manage_url: "https://dashboard.render.com/u/settings#api-keys" },
@@ -2141,6 +2207,12 @@ const CHECKED = "2026-10-07T12:35:00.000Z";
 const REPO = "acme/web";
 const label = (id: HostingProviderId): string => HOSTING_SAMPLE_PROVIDERS.find((p) => p.id === id)?.label ?? id;
 
+/** Railway's old per-environment PROJECT tokens, as 0057 left them in an org that had them (the "Leftover tokens" flow). */
+const LEFTOVERS: HostingLeftoverDTO[] = [
+  { provider: "railway", scope: "staging", scope_label: "Staging", label: LEFTOVER_TOKEN_LABEL, hint_last4: "5024", created_by: "andres", created_at: "2026-09-02T10:12:00.000Z" },
+  { provider: "railway", scope: "production", scope_label: "Production", label: LEFTOVER_TOKEN_LABEL, hint_last4: "51b1", created_by: "andres", created_at: "2026-09-02T10:14:00.000Z" },
+];
+
 export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey): HostingSetupDTO {
   const envKeys: EnvKey[] = flow === "start" ? [] : ["staging", "production"];
   const withParts = !["start", "looking", "found"].includes(flow);
@@ -2150,37 +2222,23 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
     .sort((a, b) => HOSTING_PROVIDERS.indexOf(a) - HOSTING_PROVIDERS.indexOf(b));
   const first = used[0];
 
-  // Each provider's connection status in this flow.
+  // Each provider's STORED connection status in this flow (what the server's `connectionStatusOf` would say).
   const statusOf = (id: HostingProviderId): ConnectionStatus => {
     if (!withParts || flow === "parts" || flow === "locked") return "not_connected";
     if (flow === "connecting") return id === first ? "connected" : "not_connected";
     if (flow === "broken" && id === first) return id === "vercel" || id === "netlify" ? "revoked" : "error";
+    // Leftover tokens: Railway was never connected once for the org — only its old per-environment tokens remain.
+    if (flow === "leftovers" && id === "railway") return "not_connected";
     return "connected";
   };
-  const polled = (id: HostingProviderId): boolean => (flow === "live" || flow === "broken") && statusOf(id) === "connected";
+  const polled = (id: HostingProviderId): boolean => (flow === "live" || flow === "broken" || flow === "leftovers") && statusOf(id) === "connected";
 
-  const environments: HostingEnvironmentDTO[] = envKeys.map((e) => ({
-    key: e, label: e === "staging" ? "Staging" : "Production", branch: e === "staging" ? "main" : "production",
-    parts: withParts ? STACKS[stack](e).map((p, i): EnvironmentPartDTO => {
-      const prov = HOSTING_SAMPLE_PROVIDERS.find((x) => x.id === p.provider)!;
-      const unread = metricsForRole(p.role).filter((m) => !prov.capabilities.metrics.includes(m));
-      return {
-        env: e, key: p.key, label: p.label, role: p.role, provider: p.provider, settings: clean(p.settings), position: i,
-        connection: statusOf(p.provider), console_url: null,
-        last_poll: polled(p.provider) ? {
-          at: AT, status: "ok", detail: null, last_ok_at: AT, covered: { from: "2026-10-07T09:00:00.000Z", to: "2026-10-07T12:00:00.000Z" },
-          unavailable: unread.map((m) => ({ metric: m, reason: `${prov.label} does not report it through its API` })),
-        } : null,
-        updated_at: "2026-10-06T16:20:00.000Z", updated_by: "andres",
-      };
-    }) : [],
-  }));
-
-  const usedBy = (id: HostingProviderId) => environments.flatMap((e) => e.parts.filter((p) => p.provider === id).map((p) => ({ env: e.key, part: p.key })));
+  const ENV_LABEL: Record<EnvKey, string> = { staging: "Staging", production: "Production" };
+  const usedBy = (id: HostingProviderId) => withParts ? envParts.flatMap((e) => e.parts.filter((p) => p.provider === id).map((p) => ({ env: e.env, part: p.key }))) : [];
   const connections: HostingConnectionDTO[] = (withParts ? used : []).map((id) => {
     const status = statusOf(id);
     const live = status === "connected" || status === "error";
-    const c = CONNECTED[id as Exclude<HostingProviderId, "aws">];
+    const c = CONNECTED[id as Exclude<HostingProviderId, "aws" | "github">];
     return {
       provider: id, scope: "", scope_label: null, status,
       method: live ? c.method : null, account: live || status === "revoked" ? c.account : null, external_id: live || status === "revoked" ? c.external_id : null,
@@ -2192,6 +2250,32 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
       manage_url: live || status === "revoked" ? c.manage_url : null, used_by: usedBy(id),
     };
   });
+  // What every surface says about a provider — THE status function, as the server's part DTOs and checklist use it.
+  const statusFor = (id: HostingProviderId) => hostingStatus(connections.find((c) => c.provider === id) ?? null, label(id));
+
+  const environments: HostingEnvironmentDTO[] = envKeys.map((e) => ({
+    key: e, label: ENV_LABEL[e], branch: e === "staging" ? "main" : "production",
+    parts: withParts ? STACKS[stack](e).map((p, i): EnvironmentPartDTO => {
+      const prov = HOSTING_SAMPLE_PROVIDERS.find((x) => x.id === p.provider)!;
+      const unread = metricsForRole(p.role).filter((m) => !prov.capabilities.metrics.includes(m));
+      return {
+        env: e, key: p.key, label: p.label, role: p.role, provider: p.provider, settings: clean(p.settings), position: i,
+        connection: statusFor(p.provider).state, console_url: null,
+        last_poll: polled(p.provider) ? {
+          at: AT, status: "ok", detail: null, last_ok_at: AT, covered: { from: "2026-10-07T09:00:00.000Z", to: "2026-10-07T12:00:00.000Z" },
+          unavailable: unread.map((m) => ({ metric: m, reason: `${prov.label} does not report it through its API` })),
+        } : null,
+        updated_at: "2026-10-06T16:20:00.000Z", updated_by: "andres",
+      };
+    }) : [],
+    // The app metrics token: production's is set once the org is live; staging's never is in the sample.
+    app_metrics: {
+      configured: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers"), legacy_fallback: false,
+      hint_last4: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers") ? "7f3c" : "",
+      last_used_at: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers") ? AT : null, last_error: null,
+      api_url: e === "staging" ? "https://api.staging.acme.dev" : "https://api.acme.dev",
+    },
+  }));
 
   const detected: HostingDetectionDTO[] = flow === "start" || flow === "looking" ? [] : stackProviders
     .filter((id) => DETECTABLE[id])
@@ -2200,7 +2284,8 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
     : flow === "looking" ? { state: "looking", repo: REPO, checked_at: null }
     : { state: detected.length ? "found" : "none", repo: REPO, checked_at: CHECKED };
 
-  // The checklist, as src/hosting/setup.ts `buildChecklist` words it.
+  // The checklist, as src/hosting/setup.ts `buildChecklist` words it — each connect step done exactly when THE status
+  // function says the provider is live, and a failing one asking to be fixed.
   const checklist: HostingChecklistItem[] = [
     { id: "environments", title: "Add an environment", detail: envKeys.length ? null : "An environment is a branch that deploys somewhere — staging, production.", done: envKeys.length > 0, action: envKeys.length ? { kind: "none" } : { kind: "add_environment" } },
     ...environments.map((e): HostingChecklistItem => ({
@@ -2209,15 +2294,19 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
     })),
     ...connections.flatMap((c): HostingChecklistItem[] => {
       const users = c.used_by.map((u) => `${environments.find((e) => e.key === u.env)!.label} › ${environments.find((e) => e.key === u.env)!.parts.find((p) => p.key === u.part)!.label}`).join(", ");
-      if (c.status === "error") return [{ id: `test:${c.provider}`, title: `Fix the ${label(c.provider)} connection`, detail: `The last poll was refused: ${c.last_error}.`, done: false, action: { kind: "test", provider: c.provider, scope: "" } }];
-      const done = c.status === "connected";
-      return [{
-        id: `connect:${c.provider}`, title: c.status === "revoked" ? `Reconnect ${label(c.provider)}` : `Connect ${label(c.provider)}`,
-        detail: done ? null : c.status === "revoked" ? `${c.revoked_reason}. Used by ${users}.` : `${users} read nothing until ${label(c.provider)} is connected.`,
-        done, action: done ? { kind: "none" } : { kind: "connect", provider: c.provider, scope: "" },
+      const st = statusFor(c.provider);
+      const items: HostingChecklistItem[] = [{
+        id: `connect:${c.provider}`, title: st.state === "revoked" ? `Reconnect ${label(c.provider)}` : `Connect ${label(c.provider)}`,
+        detail: st.live ? null : st.state === "revoked" ? `${c.revoked_reason}. Used by ${users}.` : `${users} read nothing until ${label(c.provider)} is connected.`,
+        done: st.live, action: st.live ? { kind: "none" } : { kind: "connect", provider: c.provider, scope: "" },
       }];
+      if (st.state === "error") items.push({ id: `test:${c.provider}`, title: `Fix the ${label(c.provider)} connection`, detail: `The last poll was refused: ${c.last_error}.`, done: false, action: { kind: "test", provider: c.provider, scope: "" } });
+      return items;
     }),
   ];
 
-  return { providers: HOSTING_SAMPLE_PROVIDERS, environments, connections, checklist, detected, detection, secrets_available: flow !== "locked" };
+  return {
+    providers: HOSTING_SAMPLE_PROVIDERS, environments, connections, checklist, detected, detection, secrets_available: flow !== "locked",
+    leftovers: flow === "leftovers" ? LEFTOVERS.map((l) => ({ ...l })) : [],
+  };
 }

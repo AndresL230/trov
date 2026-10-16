@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="border-top:1px solid var(--border)">
+  <sc-if value="{{ single }}" hint-placeholder-val="{{ true }}">
+    <button type="button" onClick="{{ toggleFirst }}" aria-expanded="{{ firstOpen }}" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px 22px;font-size:13px;color:var(--fg-70);background:none;border:none" style-hover="background:var(--hover)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" style="flex:none" aria-hidden="true"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+      <span style="white-space:nowrap"><span style="font-family:var(--code);font-size:12.5px">{{ first.from }}</span> is <span style="font-weight:600;color:var(--fg)">{{ first.n }}</span> commits ahead of <span style="font-family:var(--code);font-size:12.5px">{{ first.to }}</span></span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="2.4" style="flex:none;transform:rotate({{ chevDeg }})" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </button>
+  </sc-if>
+  <sc-if value="{{ chain }}" hint-placeholder-val="{{ false }}">
+    <div style="display:flex;align-items:center;justify-content:center;gap:4px 10px;padding:12px 22px;flex-wrap:wrap;font-size:13px;color:var(--fg-70)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--fg-40)" stroke-width="1.8" style="flex:none" aria-hidden="true"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>
+      <sc-for list="{{ steps }}" as="st" hint-placeholder-count="2">
+        <span style="display:inline-flex;align-items:center;gap:8px">
+          <span style="font-family:var(--code);font-size:12.5px;color:var(--fg)">{{ st.from }}</span>
+          <button type="button" onClick="{{ st.toggle }}" aria-expanded="{{ st.open }}" style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid {{ st.border }};border-radius:2.8px;background:{{ st.bg }};font-size:12.5px;color:var(--fg-70)" style-hover="border-color:var(--border-strong);color:var(--fg)"><span style="font-weight:600;color:var(--fg)">{{ st.n }}</span> ahead<svg width="14" height="10" viewBox="0 0 14 10" fill="none" stroke="var(--fg-40)" stroke-width="1.6" aria-hidden="true"><path d="M1 5h11M8.5 1.5 12 5 8.5 8.5"></path></svg></button>
+          <sc-if value="{{ st.last }}"><span style="font-family:var(--code);font-size:12.5px;color:var(--fg)">{{ st.to }}</span></sc-if>
+        </span>
+      </sc-for>
+    </div>
+  </sc-if>
+  <sc-if value="{{ anyOpen }}" hint-placeholder-val="{{ false }}">
+    <div>
+      <sc-if value="{{ chain }}"><div style="padding:9px 22px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-55)">On <span style="font-family:var(--code);font-size:11.5px">{{ cur.from }}</span>, not yet on <span style="font-family:var(--code);font-size:11.5px">{{ cur.to }}</span></div></sc-if>
+      <sc-for list="{{ cur.groups }}" as="g" hint-placeholder-count="2">
+        <div>
+          <div style="display:flex;align-items:center;gap:9px;padding:10px 22px;border-top:1px solid var(--border);background:color-mix(in srgb,var(--fg) 2%,transparent)">
+            <span style="font-size:11.5px;font-weight:600;color:{{ g.tone }};flex:none">{{ g.tag }}</span>
+            <span style="font-size:13px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.title }}</span>
+            <span style="font-size:11.5px;color:var(--fg-40);flex:none;margin-left:auto;white-space:nowrap">{{ g.meta }}</span>
+          </div>
+          <sc-for list="{{ g.commits }}" as="c" hint-placeholder-count="2">
+            <div style="display:grid;grid-template-columns:84px minmax(0,1fr) 64px;gap:10px;align-items:center;padding:7px 22px 7px 30px;border-top:1px solid var(--border)">
+              <span style="font-size:11.5px;color:var(--fg-55);font-family:var(--code)">{{ c.sha }}</span>
+              <span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.msg }}</span>
+              <span style="font-size:11px;color:var(--fg-40);text-align:right">{{ c.at }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:900,&quot;height&quot;:300},&quot;drift&quot;:{&quot;editor&quot;:null,&quot;tsType&quot;:&quot;DriftModel&quot;},&quot;open&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;openStep&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:0,&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { open: null };
+  componentDidMount() { if (this.props.open) this.setState({ open: this.props.openStep ?? 0 }); }
+  renderVals() {
+    const d = this.props.drift || { chain: false, steps: [] };
+    const steps = d.steps || [];
+    const open = this.state.open;
+    const tog = (i) => () => this.setState((s) => ({ open: s.open === i ? null : i }));
+    const cur = open !== null && steps[open] ? steps[open] : { groups: [] };
+    const tone = (g) => (g.pr ? 'var(--accent)' : 'var(--fg-55)');
+    return {
+      single: !d.chain, chain: !!d.chain,
+      first: steps[0] || { from: '', to: '', n: 0 },
+      toggleFirst: tog(0), firstOpen: open === 0, chevDeg: open === 0 ? '90deg' : '0deg',
+      steps: steps.map((st, i) => ({ ...st, toggle: tog(i), open: open === i, last: i === steps.length - 1, border: open === i ? 'var(--border-strong)' : 'var(--border)', bg: open === i ? 'var(--hover)' : 'transparent' })),
+      anyOpen: open !== null,
+      cur: { ...cur, groups: (cur.groups || []).map((g) => ({ ...g, tone: tone(g) })) },
+    };
+  }
+}
+</script>
+</body>
+</html>

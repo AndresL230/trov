@@ -78,9 +78,9 @@ const statuses =(d: object): Record<string, unknown> =>
   Object.fromEntries(Object.entries(d).filter(([, v]) => typeof v === "object" && v !== null).map(([k, v]) => [k, (v as { status: string }).status]));
 
 describe("D1 round trips", () => {
-  // Before the reads ran as a dataflow: 39 serial of 43 (busy), 28 of 32 (nothing captured). The SAME
+  // Before the reads ran as a dataflow: 42 serial of 58 (busy), 34 of 48 (nothing captured). The SAME
   // statements run — only their order changed — and the answer is the same bytes (the repo-dashboard suites).
-  it("the Repo dashboard, everything captured: 43 statements, a chain of 3", async () => {
+  it("the Repo dashboard, everything captured: 58 statements, a chain of 6", async () => {
     await seedBusyRepo();
     const c = countingEnv();
     const d = await getRepoDashboard(systemCtx(ORG_A, "system", c.env), "o/r", NOW, ENVS);
@@ -89,8 +89,8 @@ describe("D1 round trips", () => {
       prs: "ok", activity: "ok", ciFailures: "ok", environments: "ok", deploys: "ok", providers: "ok", health: "ok",
       sprint: "ok", coverage: "ok", branches: "ok", drift: "ok", contributors: "ok", bars: "ok",
     });
-    expect(c.total).toBe(43);
-    expect(c.serial).toBeLessThanOrEqual(3);
+    expect(c.total).toBe(58);
+    expect(c.serial).toBeLessThanOrEqual(6);
     // The same answer as through the plain binding.
     expect(JSON.stringify(d)).toBe(JSON.stringify(await getRepoDashboard(systemCtx(), "o/r", NOW, ENVS)));
   });
@@ -112,16 +112,16 @@ describe("D1 round trips", () => {
     const res = await app.request("/api/o/saplinglearn/repo/dashboard", { headers: { cookie } }, c.env);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ degraded: false, prs: { status: "ok" }, environments: { status: "ok" } });
-    // Was 40 of 44 before the dashboard's reads ran as a dataflow and the session gate read the membership in its own statement.
-    expect(c.total).toBe(43);
-    expect(c.serial).toBe(GATE + 1 + 3);
+    // Was 40 of 54 before the dashboard's reads ran as a dataflow and the session gate read the membership in its own statement.
+    expect(c.total).toBe(53);
+    expect(c.serial).toBe(GATE + 1 + 5);
   });
 
-  it("the Repo dashboard, nothing captured: 32 statements, a chain of 2", async () => {
+  it("the Repo dashboard, nothing captured: 48 statements, a chain of 7", async () => {
     await setOrgEnvironments(ENVS, ORG_A);
     const c = countingEnv();
     await getRepoDashboard(systemCtx(ORG_A, "system", c.env), "o/r", NOW, ENVS);
-    expect(c.total).toBe(32);
-    expect(c.serial).toBeLessThanOrEqual(2);
+    expect(c.total).toBe(48);
+    expect(c.serial).toBeLessThanOrEqual(7);
   });
 });

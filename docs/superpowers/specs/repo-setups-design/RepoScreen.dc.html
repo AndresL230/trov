@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><style>button, input, select, textarea { font-family:inherit; font-size:inherit; cursor:pointer; } input { cursor:text; } button:focus-visible, a:focus-visible, input:focus-visible { outline:2px solid var(--accent); outline-offset:2px; } @keyframes trov-grow { from { transform:scaleY(0); } to { transform:none; } } @keyframes trov-growx { from { transform:scaleX(0); } to { transform:none; } } @keyframes trov-spin { to { transform:rotate(360deg); } } @keyframes trov-rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } } @keyframes trov-pulse { 0%, 100% { opacity:1; } 50% { opacity:.35; } } @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }</style></helmet>
+<sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}"><div style="min-height:880px;background:var(--bg)"></div></sc-if>
+<sc-if value="{{ ready }}" hint-placeholder-val="{{ false }}">
+<div data-screen-label="{{ label }}" style="position:relative;display:flex;align-items:stretch;height:{{ rootH }};overflow:{{ rootOv }};min-height:100%;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:14px;line-height:1.4">
+  <sc-if value="{{ desktop }}"><div style="height:{{ sideH }};display:flex;flex:none;align-self:stretch"><dc-import name="Sidebar" org="{{ v.org }}" me="{{ v.org.me }}" orgs="{{ orgs }}" onOrg="{{ pickOrg }}" onNav="{{ nav }}" active="repo" hint-size="228px,100%" style="height:100%"></dc-import></div></sc-if>
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;background:var(--bg)">
+    <header style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:0 16px;padding:{{ hdrPad }};min-height:57px;border-bottom:1px solid var(--border);flex:none;position:relative;z-index:5">
+      <div style="display:flex;align-items:center;gap:12px;min-width:0;min-height:56px">
+        <sc-if value="{{ phone }}"><button type="button" aria-label="Open navigation" onClick="{{ openDrawer }}" style="display:grid;place-items:center;flex:none;width:40px;height:40px;margin-left:-8px;color:var(--fg-70);border-radius:3.2px;background:none;border:none"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button></sc-if>
+        <h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Repo</h1>
+        <sc-if value="{{ scopeInline }}">
+          <div style="display:flex;align-items:center;gap:8px;min-width:0">
+            <sc-if value="{{ v.multiRepo }}"><dc-import name="ScopeMenu" kind="repo" items="{{ v.repos }}" label="{{ v.repo }}" open="{{ openRepo }}" admin="{{ admin }}" onPick="{{ pickRepo }}" hint-size="200px,30px"></dc-import></sc-if>
+            <sc-if value="{{ singleRepo }}"><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">{{ v.repo }}</span></sc-if>
+            <sc-if value="{{ v.appMenu }}"><span style="color:var(--fg-40);font-size:13px" aria-hidden="true">/</span><dc-import name="ScopeMenu" kind="app" items="{{ v.appMenu }}" label="{{ v.appLabel }}" open="{{ openApp }}" onPick="{{ pickApp }}" hint-size="120px,30px"></dc-import></sc-if>
+          </div>
+        </sc-if>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex:none">
+        <sc-if value="{{ desktop }}">
+          <div style="display:flex;align-items:center;gap:14px">
+            <sc-for list="{{ v.pills }}" as="pl" hint-placeholder-count="2"><span title="{{ pl.tip }}" style="display:inline-flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap;color:var(--fg-70)"><span style="width:7px;height:7px;border-radius:25%;background:{{ pl.tone }};box-shadow:0 0 0 3px color-mix(in srgb,{{ pl.tone }} 16%,transparent);animation:{{ pl.anim }}"></span>{{ pl.name }}</span></sc-for>
+          </div>
+          <sc-if value="{{ hasPills }}"><div style="width:1px;height:20px;background:var(--border);margin:0 2px"></div></sc-if>
+          <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">{{ updated }}</span>
+          <sc-if value="{{ admin }}"><button type="button" title="Poll now" onClick="{{ poll }}" style="height:32px;padding:0 12px;border-radius:3.2px;border:1px solid var(--border);display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:500;white-space:nowrap;color:var(--fg-55);background:none" style-hover="background:var(--hover);color:var(--fg)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex:none" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"></path></svg>{{ pollLabel }}</button></sc-if>
+        </sc-if>
+        <button type="button" title="Refresh" aria-label="Refresh" onClick="{{ refresh }}" style="width:{{ ib }};height:{{ ib }};border-radius:3.2px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55);background:none" style-hover="background:var(--hover);color:var(--fg-70)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="animation:{{ spin }}"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"></path><path d="M21 3v5h-5"></path></svg></button>
+        <sc-if value="{{ desktop }}"><button type="button" title="Report a bug" aria-label="Report a bug" onClick="{{ bug }}" style="width:32px;height:32px;border-radius:3.2px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55);background:none" style-hover="background:var(--hover);color:var(--fg-70)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg></button></sc-if>
+        <button type="button" title="Toggle theme" aria-label="Toggle theme" onClick="{{ toggleTheme }}" style="width:{{ ib }};height:{{ ib }};border-radius:3.2px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55);background:none" style-hover="background:var(--hover);color:var(--fg-70)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="{{ themeIcon }}"></path></svg></button>
+      </div>
+      <sc-if value="{{ scopeBelow }}">
+        <div style="display:flex;align-items:center;gap:8px;width:100%;padding:0 0 12px;flex-wrap:wrap">
+          <sc-if value="{{ v.multiRepo }}"><dc-import name="ScopeMenu" kind="repo" items="{{ v.repos }}" label="{{ v.repo }}" open="{{ openRepo }}" admin="{{ admin }}" onPick="{{ pickRepo }}" hint-size="200px,30px"></dc-import></sc-if>
+          <sc-if value="{{ singleRepo }}"><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">{{ v.repo }}</span></sc-if>
+          <sc-if value="{{ v.appMenu }}"><dc-import name="ScopeMenu" kind="app" items="{{ v.appMenu }}" label="{{ v.appLabel }}" open="{{ openApp }}" onPick="{{ pickApp }}" hint-size="120px,30px"></dc-import></sc-if>
+        </div>
+      </sc-if>
+    </header>
+    <div style="flex:1;min-height:0;overflow-x:hidden;overflow-y:{{ scrollY }}">
+    <div style="width:100%;max-width:1180px;margin:0 auto;padding:{{ framePad }};box-sizing:border-box">
+      <div role="tablist" aria-label="Repo sections" style="position:relative;display:flex;align-items:stretch;gap:22px;overflow-x:auto;scrollbar-width:none;box-shadow:inset 0 -1px 0 var(--border)">
+        <sc-for list="{{ v.tabs }}" as="t" hint-placeholder-count="5"><button type="button" role="tab" aria-selected="{{ t.on }}" onClick="{{ t.go }}" style="position:relative;flex:none;display:inline-flex;align-items:center;gap:7px;height:40px;padding:0 2px;font-size:13.5px;font-weight:500;white-space:nowrap;color:{{ t.color }};box-shadow:{{ t.line }};background:none;border:none" style-hover="color:var(--fg)">{{ t.label }}</button></sc-for>
+      </div>
+      <div role="tabpanel" style="padding-top:20px">
+        <sc-if value="{{ showGroup }}">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+            <div style="display:flex;align-items:center;gap:8px"><span style="font-size:12px;color:var(--fg-55);white-space:nowrap">Group by</span>
+              <div role="group" aria-label="Group by" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:3.6px">
+                <sc-for list="{{ groupOpts }}" as="o" hint-placeholder-count="2"><button type="button" aria-pressed="{{ o.on }}" onClick="{{ o.pick }}" style="display:inline-flex;align-items:center;padding:4px 12px;border-radius:2.8px;font-size:12px;font-weight:500;white-space:nowrap;color:{{ o.color }};background:{{ o.bg }};border:none" style-hover="color:var(--fg)">{{ o.label }}</button></sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:4px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden">
+
+          <sc-if value="{{ isOverview }}" hint-placeholder-val="{{ true }}">
+            <div>
+              <sc-if value="{{ hasAttention }}"><div style="animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) both"><dc-import name="NeedsAttention" items="{{ v.attention }}" hint-size="100%,90px"></dc-import></div></sc-if>
+              <sc-if value="{{ v.connect }}">
+                <div style="padding:18px 22px;border-bottom:1px solid var(--border)">
+                  <div style="border:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);border-radius:4.4px;padding:18px 20px;background:color-mix(in srgb,var(--accent) 4%,transparent);display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap">
+                    <div style="flex:1 1 360px;min-width:0"><div style="font-size:13.5px;font-weight:600">Deploys not connected</div><div style="font-size:12.5px;color:var(--fg-55);margin-top:4px;line-height:1.55;max-width:72ch">{{ v.connect.text }}</div></div>
+                    <sc-if value="{{ admin }}"><button type="button" style="height:32px;padding:0 14px;border-radius:3.2px;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;font-size:12.5px;font-weight:600;white-space:nowrap" style-hover="filter:brightness(1.06)" onClick="{{ connectHost }}">{{ connectLabel }}</button></sc-if>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ v.envCards }}">
+                <div style="overflow:hidden;animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) .05s both">
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min({{ cardMin }},100%),1fr));margin:-1px 0 0 -1px">
+                    <sc-for list="{{ v.envCards }}" as="e" hint-placeholder-count="2"><div style="border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><dc-import name="EnvCard" env="{{ e }}" hint-size="100%,280px"></dc-import></div></sc-for>
+                  </div>
+                </div>
+              </sc-if>
+              <sc-if value="{{ v.drift }}"><dc-import name="DriftStrip" drift="{{ v.drift }}" open="{{ driftOpen }}" openStep="{{ driftStep }}" hint-size="100%,46px"></dc-import></sc-if>
+              <sc-if value="{{ v.table }}"><div style="animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) .05s both"><dc-import name="AppsTable" table="{{ v.table }}" large="{{ tableLarge }}" groupKind="{{ groupKind }}" hint-size="100%,320px"></dc-import></div></sc-if>
+              <sc-if value="{{ v.production }}"><div style="animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) .05s both"><dc-import name="ProductionCard" p="{{ v.production }}" hint-size="100%,300px"></dc-import></div></sc-if>
+              <sc-if value="{{ v.notShipped }}"><dc-import name="NotShipped" ns="{{ v.notShipped }}" hint-size="100%,160px"></dc-import></sc-if>
+              <sc-if value="{{ v.previews }}"><dc-import name="PreviewsList" pv="{{ v.previews }}" hint-size="100%,200px"></dc-import></sc-if>
+              <sc-if value="{{ v.release }}"><div style="animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) .05s both"><dc-import name="ReleaseBlock" r="{{ v.release }}" hint-size="100%,420px"></dc-import></div></sc-if>
+              <sc-if value="{{ v.found }}"><div style="animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) .05s both"><dc-import name="FoundApps" f="{{ v.found }}" repo="{{ v.repo }}" admin="{{ admin }}" onReview="{{ goSetup }}" hint-size="100%,260px"></dc-import></div></sc-if>
+              <sc-if value="{{ v.unseen }}">
+                <div style="padding:20px 22px 16px">
+                  <div style="font-size:16.5px;font-weight:600;letter-spacing:-0.01em">Trov does not see deploys for this repository</div>
+                  <p style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55);max-width:76ch">It looked for {{ v.unseen.looked }}, and found none. No host has reported a deploy to GitHub in 30 days. Everything else on this page works without one.</p>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:0 28px;margin-top:14px">
+                    <sc-for list="{{ unseenSees }}" as="x" hint-placeholder-count="4"><div style="padding:10px 0;border-top:1px solid var(--border)"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">{{ x.k }}</div><div style="font-size:13px;color:var(--fg-70);margin-top:4px">{{ x.v }}</div></div></sc-for>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px">
+                    <sc-if value="{{ admin }}"><button type="button" style="height:32px;padding:0 13px;border-radius:3.2px;font-size:12.5px;font-weight:600;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;white-space:nowrap" style-hover="filter:brightness(1.06)" onClick="{{ goSetup }}">Add an app by hand</button></sc-if>
+                    <sc-if value="{{ admin }}"><button type="button" style="height:32px;padding:0 13px;border-radius:3.2px;font-size:12.5px;font-weight:500;border:1px solid var(--border);color:var(--fg-70);background:transparent;white-space:nowrap" style-hover="border-color:var(--border-strong);color:var(--fg)">Treat tags as releases</button></sc-if>
+                  </div>
+                </div>
+                <div style="border-top:1px solid var(--border);padding:14px 22px 8px">
+                  <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:4px">Latest tags</div>
+                  <sc-for list="{{ unseenTags }}" as="tg" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:120px minmax(0,1fr) 60px;gap:12px;padding:8px 0;border-top:1px solid var(--border);align-items:center"><span style="font-family:var(--label);font-size:12.5px;font-weight:600">{{ tg.tag }}</span><span style="font-size:12px;color:var(--fg-55)">by {{ tg.by }}</span><span style="font-size:11.5px;color:var(--fg-40);text-align:right">{{ tg.at }}</span></div></sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ todayPrs }}">
+                <div style="border-top:1px solid var(--border)">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:13px 20px;border-bottom:1px solid var(--border)"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">Pull requests — open &amp; recent</span><span style="font-size:11px;color:var(--fg-40)">no setup needed</span></div>
+                  <sc-for list="{{ code.prs }}" as="pr" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border)" style-hover="background:var(--hover)">
+                      <div title="{{ pr.who.name }}" style="width:22px;height:22px;border-radius:25%;background:var(--p-{{ pr.who.color }});display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none">{{ pr.who.initials }}</div>
+                      <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500">{{ pr.t }} <span style="font-size:11px;font-weight:400;color:var(--fg-40)">#{{ pr.n }} · {{ pr.br }}</span></span>
+                      <span style="flex:none"><dc-import name="Mark" m="{{ pr.m }}" size="12" hint-size="80px,16px"></dc-import></span>
+                      <span style="width:16px;text-align:center;flex:none;font-size:12px;font-weight:600;color:{{ pr.ckTone }}">{{ pr.ck }}</span>
+                      <span style="width:30px;text-align:right;flex:none;font-size:11.5px;color:var(--fg-40)">{{ pr.at }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <div style="overflow:hidden;border-top:1px solid var(--border);animation:trov-rise .42s cubic-bezier(.2,.7,.2,1) .1s both">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min({{ tileMin }},100%),1fr));margin:-1px 0 0 -1px">
+                  <sc-for list="{{ cur.stats }}" as="w" hint-placeholder-count="4">
+                    <div style="padding:16px 22px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0">
+                      <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">{{ w.label }}</div>
+                      <div style="display:flex;align-items:baseline;gap:6px 10px;margin-top:8px;flex-wrap:wrap"><span style="font-size:27px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ w.value }}</span><span style="font-size:11.5px;font-weight:600;color:{{ w.tone }}">{{ w.delta }}</span><span style="font-size:11px;color:var(--fg-40)">vs last week</span></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <sc-if value="{{ hasHealth }}">
+                <div style="border-top:1px solid var(--border);padding:16px 22px 14px">
+                  <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;margin-bottom:4px">Health checks</div>
+                  <sc-for list="{{ cur.health }}" as="h" hint-placeholder-count="4">
+                    <div style="display:grid;grid-template-columns:minmax(120px,170px) minmax(0,1fr) auto 70px;gap:14px;align-items:center;padding:12px 0;border-bottom:1px solid var(--border)">
+                      <span style="font-size:12.5px;font-weight:600;color:var(--fg-70);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ h.env }}</span>
+                      <a href="#" style="font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg-55);text-decoration:none" style-hover="color:var(--accent)">{{ h.url }}</a>
+                      <dc-import name="Mark" m="{{ h.m }}" size="11.5" hint-size="60px,14px"></dc-import>
+                      <span style="font-size:12px;color:var(--fg-55);text-align:right;font-variant-numeric:tabular-nums">{{ h.ms }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isCode }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <sc-if value="{{ code.scope }}"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:11px 20px;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--accent) 4%,var(--surface));font-size:12.5px;color:var(--fg-70)"><span>{{ code.scope }}</span><button type="button" onClick="{{ clearApp }}" style="margin-left:auto;font-size:12.5px;font-weight:500;color:var(--accent);background:none;border:none;padding:0" style-hover="text-decoration:underline;text-underline-offset:3px">Show all apps</button></div></sc-if>
+              <div style="overflow:hidden">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min({{ tileMin }},100%),1fr));margin:-1px 0 0 -1px">
+                  <sc-for list="{{ code.tiles }}" as="ct" hint-placeholder-count="4"><div style="padding:14px 20px 12px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">{{ ct.label }}</div><div style="display:flex;align-items:baseline;gap:9px;margin-top:6px;flex-wrap:wrap"><span style="font-size:24px;font-weight:600;letter-spacing:-0.02em">{{ ct.value }}</span><span style="font-size:11px;color:{{ ct.tone }};white-space:nowrap">{{ ct.sub }}</span></div></div></sc-for>
+                </div>
+              </div>
+              <div style="border-top:1px solid var(--border);padding:14px 20px 12px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Commit activity — last 14 days</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">{{ cur.barsNote }}</span></div>
+                <div style="display:flex;align-items:flex-end;gap:5px;height:74px;margin-top:10px">
+                  <sc-for list="{{ cur.bars }}" as="b" hint-placeholder-count="14"><div title="{{ b.tip }}" style="flex:1;height:{{ b.h }};background:var(--accent);opacity:.85;border-radius:1px;transform-origin:50% 100%;animation:trov-grow .5s cubic-bezier(.2,.7,.2,1) both" style-hover="opacity:1"></div></sc-for>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:var(--fg-40)"><span>Oct 1</span><span>Oct 7</span><span>Oct 14</span></div>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:13px 20px;border-top:1px solid var(--border);border-bottom:1px solid var(--border)"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Pull requests — open &amp; recent</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">sorted by last updated</span></div>
+              <div style="overflow-x:auto;overflow-y:hidden"><div style="min-width:680px">
+                <sc-for list="{{ code.prs }}" as="pr" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:12px;padding:8px 20px;border-bottom:1px solid var(--border)" style-hover="background:var(--hover)">
+                    <div title="{{ pr.who.name }}" style="width:22px;height:22px;border-radius:25%;background:var(--p-{{ pr.who.color }});display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none">{{ pr.who.initials }}</div>
+                    <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:500">{{ pr.t }} <span style="font-size:11px;font-weight:400;color:var(--fg-40)">#{{ pr.n }} · {{ pr.br }}</span></span>
+                    <sc-if value="{{ code.showTouches }}"><span style="width:170px;flex:none;display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pr.touches }}</span><span style="font-family:var(--code);font-size:10.5px;color:var(--fg-40);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ pr.shared }}</span></span></sc-if>
+                    <span style="flex:none;width:92px"><dc-import name="Mark" m="{{ pr.m }}" size="12" hint-size="80px,16px"></dc-import></span>
+                    <span style="width:16px;text-align:center;flex:none;font-size:12px;font-weight:600;color:{{ pr.ckTone }}">{{ pr.ck }}</span>
+                    <span style="width:30px;text-align:right;flex:none;font-size:11.5px;color:var(--fg-40)">{{ pr.at }}</span>
+                  </div>
+                </sc-for>
+              </div></div>
+              <div style="padding:14px 20px 10px">
+                <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Branches</span><span style="font-size:11px;color:var(--fg-40)">14 active · 2 stale</span></div>
+                <div style="overflow-x:auto;overflow-y:hidden"><div style="min-width:520px">
+                  <sc-for list="{{ cur.branches }}" as="br" hint-placeholder-count="6">
+                    <div style="display:grid;grid-template-columns:minmax(0,1.4fr) 90px 130px 64px;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+                      <span style="font-family:var(--code);font-size:12px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ br.name }}</span>
+                      <span style="font-size:11.5px;color:var(--fg-40);white-space:nowrap">{{ br.at }}</span>
+                      <span style="font-size:11.5px;color:var(--fg-55);white-space:nowrap">{{ br.ab }}</span>
+                      <span style="text-align:right"><sc-if value="{{ br.stale }}"><dc-import name="Mark" m="{{ br.sm }}" size="11.5" hint-size="50px,14px"></dc-import></sc-if></span>
+                    </div>
+                  </sc-for>
+                </div></div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isCI }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <sc-if value="{{ ci.deploys }}">
+                <div style="padding:18px 20px 6px">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;flex-wrap:wrap"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Deploy history — last 10 per target</span><span style="display:inline-flex;gap:14px;font-size:10.5px;color:var(--fg-40)"><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:var(--green)"></span>live</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:var(--red)"></span>failed</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:var(--blue)"></span>building</span><span style="display:inline-flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:var(--fg-40)"></span>cancelled</span></span></div>
+                  <sc-for list="{{ ci.groups }}" as="g" hint-placeholder-count="3">
+                    <div style="border-top:1px solid var(--border);padding:10px 0 4px">
+                      <div style="display:flex;align-items:baseline;gap:9px"><span style="font-size:13.5px;font-weight:600">{{ g.app }}</span><span style="font-size:11.5px;color:var(--fg-40)">{{ g.host }}</span></div>
+                      <sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="2">
+                        <div style="display:flex;align-items:center;gap:8px 16px;padding:8px 0;flex-wrap:wrap">
+                          <span style="width:96px;font-size:12px;font-weight:500;color:var(--fg-70);flex:none">{{ r.env }}</span>
+                          <div style="display:flex;align-items:center;gap:9px"><sc-for list="{{ r.dots }}" as="d" hint-placeholder-count="10"><span style="width:15px;height:15px;border-radius:3.75px;background:{{ d.color }};display:block;animation:{{ d.anim }}"></span></sc-for></div>
+                          <span style="margin-left:auto;font-size:11.5px;color:var(--fg-40);white-space:nowrap">{{ r.note }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ ci.noDeploys }}"><div style="padding:18px 20px;border-bottom:1px solid var(--border)"><div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">Deploys</div><div style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:6px;max-width:80ch">{{ ci.noDeploys }}</div></div></sc-if>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(420px,100%),1fr));border-top:{{ ciTop }}">
+                <div style="padding:18px 20px;min-width:0">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">CI failures — 7-day rate</span><span style="font-size:16px;font-weight:600;color:var(--amber)">{{ cur.ciRate }}</span></div>
+                  <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:40px;display:block;margin-top:10px"><polyline points="{{ cur.ciTrend }}" fill="none" stroke="var(--amber)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>
+                  <div style="margin-top:10px">
+                    <sc-for list="{{ ciFails }}" as="f" hint-placeholder-count="3">
+                      <div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr) 92px;gap:10px;align-items:center;padding:10px 4px;border-top:1px solid var(--border)">
+                        <span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><span style="font-size:12px;font-weight:600;color:var(--red);flex:none">✕</span><span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.wf }}</span></span>
+                        <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.br }}</span>
+                        <span style="font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ f.job }}</span>
+                        <span style="text-align:right;white-space:nowrap"><span style="font-size:11px;color:var(--fg-40)">{{ f.at }} · </span><a href="#" style="font-size:11.5px;color:var(--accent);text-decoration:none">Logs ↗</a></span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="margin-top:8px;font-size:12px;color:var(--fg-40)">{{ ci.runs }}</div>
+                </div>
+                <div style="border-left:1px solid var(--border);min-width:0;display:flex;flex-direction:column">
+                  <div style="padding:18px 20px">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Test coverage</span><span style="font-size:16px;font-weight:600;white-space:nowrap">{{ cur.coverage.value }}</span></div>
+                    <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:44px;display:block;margin-top:10px"><polyline points="{{ cur.coverage.pts }}" fill="none" stroke="var(--green)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>
+                    <div style="font-size:11.5px;color:var(--fg-40);margin-top:6px"><span style="color:{{ cur.coverage.tone }}">{{ cur.coverage.delta }}</span> {{ cur.coverage.note }}</div>
+                  </div>
+                  <div style="padding:18px 20px;border-top:1px solid var(--border);flex:1">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Bundle size — {{ bundleApp }}</span><span style="font-size:16px;font-weight:600;white-space:nowrap">{{ cur.bundle.value }}</span></div>
+                    <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:44px;display:block;margin-top:10px"><polyline points="{{ cur.bundle.pts }}" fill="none" stroke="var(--fg-55)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>
+                    <div style="font-size:11.5px;color:var(--fg-40);margin-top:6px"><span style="color:{{ cur.bundle.tone }}">{{ cur.bundle.delta }}</span> {{ cur.bundle.note }}</div>
+                  </div>
+                </div>
+              </div>
+              <div style="border-top:1px solid var(--border);padding:14px 20px 10px">
+                <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;margin-bottom:6px">Activity — last 20 events</div>
+                <div style="max-height:236px;overflow-y:auto">
+                  <sc-for list="{{ cur.activity }}" as="ev" hint-placeholder-count="6">
+                    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 4px;border-top:1px solid var(--border)">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="{{ ev.c }}" stroke-width="2" aria-hidden="true" style="flex:none;margin-top:3px"><path d="{{ ev.d }}"></path></svg>
+                      <span style="font-size:12.5px;color:var(--fg-70);min-width:0;flex:1;line-height:1.5"><span style="font-weight:500;color:var(--fg)">{{ ev.by }}</span> {{ ev.text }}</span>
+                      <span style="font-size:11px;color:var(--fg-40);flex:none">{{ ev.at }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isUsage }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:14px 20px;border-bottom:1px solid var(--border)">
+                <span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">App usage</span>
+                <div role="group" aria-label="Range" style="display:inline-flex;align-items:center;gap:2px;padding:3px;border:1px solid var(--border);border-radius:3.6px"><sc-for list="{{ ranges }}" as="rg" hint-placeholder-count="3"><button type="button" aria-pressed="{{ rg.on }}" onClick="{{ rg.pick }}" style="padding:4px 12px;border-radius:2.8px;font-size:12px;font-weight:500;color:{{ rg.color }};background:{{ rg.bg }};border:none" style-hover="color:var(--fg)">{{ rg.label }}</button></sc-for></div>
+              </div>
+              <sc-if value="{{ usage.blank }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:14px 20px"><div style="border:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);border-radius:4.4px;padding:18px 24px;text-align:center;background:color-mix(in srgb,var(--accent) 4%,transparent)"><div style="font-size:13.5px;font-weight:600">Source not connected</div><div style="font-size:12.5px;color:var(--fg-55);margin-top:4px;line-height:1.55">{{ usage.text }}</div></div></div>
+              </sc-if>
+              <sc-if value="{{ hasTraffic }}" hint-placeholder-val="{{ true }}">
+                <div style="overflow:hidden"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));margin:-1px 0 0 -1px">
+                  <sc-for list="{{ usage.traffic }}" as="c" hint-placeholder-count="2">
+                    <div style="padding:18px 20px 4px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border)">
+                      <div style="display:flex;align-items:center;gap:9px;margin-bottom:10px"><span style="font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.head }}</span><span style="font-size:10px;color:var(--fg-40);white-space:nowrap">{{ c.host }}</span></div>
+                      <sc-if value="{{ c.ok }}" hint-placeholder-val="{{ true }}">
+                        <div style="overflow:hidden;margin:{{ c.wrapMx }};border-top:{{ c.singleTop }}"><div style="display:grid;grid-template-columns:{{ c.mcols }};margin:{{ c.inMargin }}">
+                        <sc-for list="{{ c.metrics }}" as="m" hint-placeholder-count="2">
+                          <div style="border-top:1px solid var(--border);border-left:{{ c.cellLeft }};padding:{{ c.cellPad }};min-width:0">
+                            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px"><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">{{ m.label }}</span><span style="font-size:17px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;color:{{ m.color }}">{{ m.value }}</span></div>
+                            <sc-if value="{{ m.pts }}"><svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:40px;display:block;margin-top:8px"><polyline points="{{ m.pts }}" fill="none" stroke="{{ m.stroke }}" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg></sc-if>
+                            <sc-if value="{{ m.share }}"><div style="height:4px;border-radius:1px;background:var(--hover);overflow:hidden;margin-top:26px"><div style="height:100%;min-width:2px;border-radius:1px;background:{{ m.share.fill }};width:{{ m.share.w }}"></div></div><div style="font-size:11px;color:var(--fg-40);margin-top:6px">{{ m.sub }}</div></sc-if>
+                          </div>
+                        </sc-for>
+                        </div></div>
+                      </sc-if>
+                      <sc-if value="{{ c.stale }}" hint-placeholder-val="{{ false }}">
+                        <sc-for list="{{ c.metrics }}" as="m" hint-placeholder-count="2">
+                          <div style="border-top:1px solid var(--border);padding:12px 0"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">{{ m.label }}</span><span style="font-size:11.5px;color:var(--fg-40)">{{ m.absent }}</span></div></div>
+                        </sc-for>
+                      </sc-if>
+                      <sc-if value="{{ c.nc }}" hint-placeholder-val="{{ false }}">
+                        <sc-for list="{{ c.metrics }}" as="m" hint-placeholder-count="2">
+                          <div style="border-top:1px solid var(--border);padding:12px 0"><div style="display:flex;align-items:baseline;justify-content:space-between"><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">{{ m.label }}</span><span style="font-size:11.5px;color:var(--fg-40)">{{ m.absent }}</span></div></div>
+                        </sc-for>
+                      </sc-if>
+                      <sc-if value="{{ c.na }}" hint-placeholder-val="{{ false }}">
+                        <div style="border-top:1px solid var(--border);padding:12px 0 16px">
+                          <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55)">{{ c.naText }}</div>
+                          <div style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:3px">{{ c.naSub }}</div>
+                        </div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div></div>
+              </sc-if>
+              <sc-if value="{{ ux }}" hint-placeholder-val="{{ false }}">
+                <div style="border-top:1px solid var(--border);padding:16px 20px 18px">
+                  <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Requests by outcome · {{ ux.target }}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">from Cloudflare · last {{ range }}</span></div>
+                  <div role="img" aria-label="Requests by outcome" style="display:flex;height:10px;border-radius:2px;overflow:hidden;background:var(--hover);gap:2px">
+                    <sc-for list="{{ ux.outcome }}" as="o" hint-placeholder-count="4"><span title="{{ o.label }}: {{ o.value }}" style="display:block;height:100%;width:{{ o.w }};background:{{ o.fill }};transform-origin:0 50%;animation:trov-growx .7s cubic-bezier(.2,.7,.2,1) both"></span></sc-for>
+                  </div>
+                  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:12px 24px;margin-top:14px">
+                    <sc-for list="{{ ux.outcome }}" as="o" hint-placeholder-count="4"><div style="display:flex;align-items:baseline;gap:8px;min-width:0"><span style="align-self:center;display:flex"><dc-import name="Mark" m="{{ o.m }}" size="12" hint-size="9px,9px"></dc-import></span><span style="font-size:17px;font-weight:600;font-variant-numeric:tabular-nums">{{ o.value }}</span><span style="font-size:12px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.label }}</span></div></sc-for>
+                  </div>
+                  <div style="font-size:11px;color:var(--fg-40);margin-top:10px">{{ ux.outcomeNote }}</div>
+                </div>
+                <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));margin:-1px 0 0 -1px">
+                  <div style="padding:18px 20px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border);display:flex;flex-direction:column">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Worker · {{ ux.target }}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">from Cloudflare</span></div>
+                    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px"><sc-for list="{{ ux.perf }}" as="st" hint-placeholder-count="4"><div style="min-width:0"><div style="font-size:21px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ st.fig }}<span style="font-size:11.5px;font-weight:500;letter-spacing:0;color:var(--fg-55);margin-left:5px">{{ st.unit }}</span></div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.label }}</div></div></sc-for></div>
+                    <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:40px;display:block;margin-top:auto;padding-top:14px"><polyline points="{{ ux.perfPts }}" fill="none" stroke="var(--accent)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>
+                    <div style="font-size:11px;color:var(--fg-40);margin-top:6px">{{ ux.perfNote }}</div>
+                  </div>
+                  <sc-if value="{{ ux.d1 }}" hint-placeholder-val="{{ false }}">
+                    <div style="padding:18px 20px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border);display:flex;flex-direction:column">
+                      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:12px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">D1 database · {{ ux.d1.name }}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">from Cloudflare</span></div>
+                      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px"><sc-for list="{{ ux.d1.stats }}" as="st" hint-placeholder-count="6"><div style="min-width:0"><div style="font-size:21px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ st.fig }}<span style="font-size:11.5px;font-weight:500;letter-spacing:0;color:var(--fg-55);margin-left:5px">{{ st.unit }}</span></div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ st.label }}</div></div></sc-for></div>
+                      <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:40px;display:block;margin-top:auto;padding-top:14px"><polyline points="{{ ux.d1.pts }}" fill="none" stroke="var(--blue)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>
+                      <div style="font-size:11px;color:var(--fg-40);margin-top:6px">{{ ux.d1.note }}</div>
+                    </div>
+                  </sc-if>
+                </div></div>
+                <sc-if value="{{ hasCrons }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid var(--border);padding:16px 20px 8px">
+                    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:4px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Scheduled runs</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">cron triggers · from Cloudflare · last {{ range }}</span></div>
+                    <div style="overflow-x:auto;overflow-y:hidden"><div style="min-width:680px">
+                      <div style="display:grid;grid-template-columns:14px 110px minmax(260px,1fr) 60px 60px 72px;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)"><span></span><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Schedule</span><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Job</span><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;text-align:right">Runs</span><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;text-align:right">Failed</span><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;text-align:right">Last run</span></div>
+                      <sc-for list="{{ crons }}" as="c" hint-placeholder-count="3">
+                        <div style="display:grid;grid-template-columns:14px 110px minmax(260px,1fr) 60px 60px 72px;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);align-items:center">
+                          <span style="display:flex"><dc-import name="Mark" m="{{ c.m }}" size="12" hint-size="9px,9px"></dc-import></span>
+                          <span style="font-family:var(--code);font-size:11.5px;color:var(--fg-70);white-space:nowrap">{{ c.expr }}</span>
+                          <span style="min-width:0;font-size:12.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.what }} <span style="font-family:var(--code);font-size:11px;color:var(--fg-40)">{{ c.src }}</span></span>
+                          <span style="font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums">{{ c.runs }}</span>
+                          <span style="font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums;color:{{ c.failColor }};font-weight:{{ c.failWeight }}">{{ c.failed }}</span>
+                          <span style="font-size:11.5px;color:var(--fg-40);text-align:right;white-space:nowrap">{{ c.last }}</span>
+                        </div>
+                      </sc-for>
+                    </div></div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ ux.product }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid var(--border)">
+                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:16px 20px 14px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Product · trov</span><span style="font-size:11.5px;color:var(--fg-40)">{{ ux.product.source }}</span></div>
+                    <div style="padding:0 20px 16px;overflow:hidden"><div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 0;margin-left:-15px">
+                      <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;padding:0 14px;border-left:1px solid var(--border)">Right now</span>
+                      <sc-for list="{{ ux.product.now }}" as="t" hint-placeholder-count="5"><span style="display:inline-flex;align-items:baseline;gap:6px;padding:0 14px;border-left:1px solid var(--border);white-space:nowrap"><span style="font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums">{{ t.value }}</span><span style="font-size:12.5px;color:var(--fg-55)">{{ t.label }}</span></span></sc-for>
+                    </div></div>
+                    <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(380px,100%),1fr));margin:-1px 0 0 -1px">
+                      <div style="padding:18px 20px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border)">
+                        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px"><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">MCP tool calls</span><span style="font-size:11px;color:var(--fg-40)">last {{ range }}</span></div>
+                        <sc-for list="{{ ux.product.tools }}" as="r" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:minmax(0,156px) minmax(0,1fr) 60px;gap:14px;align-items:center;padding:5.5px 0"><span style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.label }}</span><span style="display:block;height:5px;border-radius:1.25px;background:var(--hover);overflow:hidden"><span style="display:block;height:100%;border-radius:1.25px;background:var(--accent);width:{{ r.w }};transform-origin:0 50%;animation:trov-growx .7s cubic-bezier(.2,.7,.2,1) both"></span></span><span style="font-size:12.5px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums">{{ r.value }}</span></div></sc-for>
+                      </div>
+                      <div style="padding:18px 20px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border);display:flex;flex-direction:column">
+                        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px"><span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Agent writes through the gate</span><span style="font-size:11px;color:var(--fg-40)">last {{ range }}</span></div>
+                        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px"><sc-for list="{{ ux.product.gate }}" as="g" hint-placeholder-count="5"><div style="min-width:0"><div style="font-size:19px;font-weight:600;font-variant-numeric:tabular-nums">{{ g.value }}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">{{ g.label }}</div></div></sc-for></div>
+                        <div style="height:1px;background:var(--border);margin:16px 0 14px"></div>
+                        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px"><sc-for list="{{ ux.product.people }}" as="g" hint-placeholder-count="3"><div style="min-width:0"><div style="font-size:19px;font-weight:600;font-variant-numeric:tabular-nums">{{ g.value }}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">{{ g.label }}</div></div></sc-for></div>
+                        <div style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:auto;padding-top:14px">{{ ux.product.gateNote }}</div>
+                      </div>
+                    </div></div>
+                  </div>
+                </sc-if>
+              </sc-if>
+              <sc-if value="{{ cur.hasProduct }}">
+                <div style="border-top:1px solid var(--border)">
+                  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;padding:16px 20px 14px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Product · web</span><span style="font-size:11.5px;color:var(--fg-40)">Production · from the app’s own metrics endpoint</span></div>
+                  <div style="padding:0 20px 16px;overflow:hidden"><div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 0;margin-left:-15px">
+                    <span style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);padding:0 14px;border-left:1px solid var(--border)">Right now</span>
+                    <sc-for list="{{ cur.totals }}" as="t" hint-placeholder-count="6"><span style="display:inline-flex;align-items:baseline;gap:6px;padding:0 14px;border-left:1px solid var(--border);white-space:nowrap"><span style="font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums">{{ t.value }}</span><span style="font-size:12.5px;color:var(--fg-55)">{{ t.label }}</span></span></sc-for>
+                  </div></div>
+                  <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));margin:-1px 0 0 -1px">
+                    <sc-for list="{{ cur.kpis }}" as="k" hint-placeholder-count="4"><div style="padding:16px 20px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.label }}</div><div style="display:flex;align-items:baseline;gap:9px;margin-top:8px"><span style="font-size:27px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;color:{{ k.color }}">{{ k.value }}</span><span style="font-size:11px;color:var(--fg-40)">last {{ range }}</span></div><svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:34px;display:block;margin-top:10px"><polyline points="{{ k.pts }}" fill="none" stroke="{{ k.stroke }}" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg></div></sc-for>
+                  </div></div>
+                  <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(440px,100%),1fr));margin:-1px 0 0 -1px">
+                    <div style="padding:18px 20px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0">
+                      <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:12px">Learning activity</div>
+                      <sc-for list="{{ cur.learning }}" as="r" hint-placeholder-count="7"><div style="display:grid;grid-template-columns:minmax(0,156px) minmax(0,1fr) 60px;gap:14px;align-items:center;padding:5.5px 0"><span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.label }}</span><span style="display:block;height:5px;border-radius:1.25px;background:var(--hover);overflow:hidden"><span style="display:block;height:100%;border-radius:1.25px;background:var(--accent);width:{{ r.w }};transform-origin:0 50%;animation:trov-growx .7s cubic-bezier(.2,.7,.2,1) both"></span></span><span style="font-size:12.5px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums">{{ r.value }}</span></div></sc-for>
+                      <div style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:12px">{{ cur.learningNote }}</div>
+                    </div>
+                    <div style="padding:18px 20px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0">
+                      <div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:12px">Reliability</div>
+                      <sc-for list="{{ cur.reliability }}" as="r" hint-placeholder-count="4"><div style="display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid var(--border)"><span style="width:10px;display:flex;justify-content:center;flex:none"><sc-if value="{{ r.m }}"><dc-import name="Mark" m="{{ r.m }}" size="12" hint-size="9px,9px"></dc-import></sc-if></span><span style="flex:1;min-width:0;font-size:12.5px;color:var(--fg-70)">{{ r.label }}</span><span style="font-size:13px;font-weight:600;color:{{ r.color }};font-variant-numeric:tabular-nums">{{ r.value }}</span></div></sc-for>
+                      <div style="font-size:12px;color:var(--fg-55);padding:8px 0 0;border-top:1px solid var(--border)">{{ cur.relZeros }}</div>
+                      <div style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:12px">{{ cur.relNote }}</div>
+                    </div>
+                  </div></div>
+                  <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));margin:-1px 0 0 -1px">
+                    <div style="padding:18px 20px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">AI spend</div><div style="font-size:27px;font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums">{{ cur.ai.lead }}</div><div style="font-size:12px;color:var(--fg-55);margin-top:4px">{{ cur.ai.rest }}</div><div style="font-size:11px;line-height:1.5;color:var(--fg-40);margin-top:12px">{{ cur.ai.note }}</div></div>
+                    <div style="padding:18px 20px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Growth</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px"><sc-for list="{{ cur.growth }}" as="g" hint-placeholder-count="3"><div><div style="font-size:19px;font-weight:600;font-variant-numeric:tabular-nums">{{ g.value }}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">{{ g.label }}</div></div></sc-for></div></div>
+                    <div style="padding:18px 20px;border-left:1px solid var(--border);border-top:1px solid var(--border);min-width:0"><div style="font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Community</div><div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px"><sc-for list="{{ cur.community }}" as="g" hint-placeholder-count="3"><div><div style="font-size:19px;font-weight:600;font-variant-numeric:tabular-nums">{{ g.value }}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">{{ g.label }}</div></div></sc-for></div></div>
+                  </div></div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ hasInfra }}" hint-placeholder-val="{{ true }}">
+                <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));margin:-1px 0 0 -1px">
+                  <sc-for list="{{ usage.infra }}" as="b" hint-placeholder-count="2">
+                    <div style="padding:18px 20px 20px;display:flex;flex-direction:column;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border)">
+                      <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);line-height:1.5;margin-bottom:12px">{{ b.title }}</div>
+                      <sc-if value="{{ b.nc }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;align-items:center;justify-content:center;flex:1"><div style="border:1px dashed color-mix(in srgb,var(--accent) 45%,transparent);border-radius:4.4px;padding:18px 24px;text-align:center;width:100%;box-sizing:border-box;background:color-mix(in srgb,var(--accent) 4%,transparent)">
+                          <div style="font-size:13.5px;font-weight:600">Source not connected</div>
+                          <div style="font-size:12.5px;color:var(--fg-55);margin-top:4px;line-height:1.55">{{ b.ncText }}</div>
+                          <sc-if value="{{ admin }}"><button type="button" onClick="{{ connectHost }}" style="margin-top:12px;height:30px;padding:0 13px;border-radius:3.2px;background:var(--accent);color:var(--accent-fg);border:1px solid transparent;font-size:12.5px;font-weight:600;white-space:nowrap" style-hover="filter:brightness(1.06)">{{ b.ncAction }}</button></sc-if>
+                        </div></div>
+                      </sc-if>
+                      <sc-if value="{{ b.live }}" hint-placeholder-val="{{ true }}">
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(190px,100%),1fr));gap:18px 28px;margin-top:4px">
+                          <sc-for list="{{ b.cols }}" as="col" hint-placeholder-count="2">
+                            <div style="min-width:0">
+                              <div style="font-size:11.5px;font-weight:600;color:var(--fg-70);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ col.env }}</div>
+                              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px;align-items:end">
+                                <sc-for list="{{ col.stats }}" as="st" hint-placeholder-count="2"><div style="min-width:0"><div style="font-size:{{ st.size }};font-weight:600;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;white-space:nowrap;color:{{ st.color }}">{{ st.fig }}<span style="font-size:11.5px;font-weight:500;letter-spacing:0;color:var(--fg-55);margin-left:5px">{{ st.unit }}</span></div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis">{{ st.label }}</div></div></sc-for>
+                              </div>
+                              <sc-if value="{{ col.share }}" hint-placeholder-val="{{ false }}"><div title="Workers errors as a share of Workers requests" style="height:4px;border-radius:1px;background:var(--hover);overflow:hidden;margin-top:12px"><div style="height:100%;min-width:2px;border-radius:1px;background:{{ col.share.fill }};width:{{ col.share.w }}"></div></div><div style="font-size:11px;color:var(--fg-40);margin-top:6px">errors as a share of requests</div></sc-if>
+                              <sc-if value="{{ col.staleText }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:var(--fg-40);margin-top:8px">{{ col.staleText }}</div></sc-if>
+                            </div>
+                          </sc-for>
+                        </div></div>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div></div>
+              </sc-if>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isPlanning }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="overflow:hidden"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));margin:-1px 0 0 -1px">
+                <div style="padding:20px 22px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border);display:flex;flex-direction:column">
+                  <div style="display:flex;align-items:center;gap:10px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Current sprint</span><span style="margin-left:auto;font-size:12px;color:var(--fg-55);white-space:nowrap">{{ cur.sprint.due }}</span></div>
+                  <button type="button" onClick="{{ openSprint }}" style="margin-top:12px;font-size:16.5px;font-weight:600;letter-spacing:-0.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left;padding:0;background:none;border:none;color:var(--fg)" style-hover="color:var(--accent)">{{ cur.sprint.label }}</button>
+                  <div style="display:flex;align-items:baseline;gap:10px;margin-top:auto;padding-top:16px"><span style="font-size:27px;font-weight:600;letter-spacing:-0.02em;color:var(--accent)">{{ cur.sprint.pct }}%</span><span style="font-size:12px;color:var(--fg-40);white-space:nowrap">{{ cur.sprint.counts }}</span></div>
+                  <div style="height:9px;border-radius:2.25px;background:var(--hover);overflow:hidden;margin-top:10px"><div style="height:100%;width:{{ cur.sprint.w }};background:var(--accent);border-radius:2.25px;transform-origin:0 50%;animation:trov-growx .7s cubic-bezier(.2,.7,.2,1) both"></div></div>
+                </div>
+                <div style="padding:20px 22px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border);display:flex;flex-direction:column">
+                  <div style="display:flex;align-items:center;gap:10px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">TODO / FIXME in source</span><span style="margin-left:auto;font-size:11px;color:var(--fg-40);white-space:nowrap">counted by CI on each push</span></div>
+                  <div style="display:flex;align-items:baseline;gap:12px;margin-top:12px"><span style="font-size:27px;font-weight:600;letter-spacing:-0.02em">{{ cur.todos.count }}</span><span style="font-size:11.5px;font-weight:600;color:var(--green)">{{ cur.todos.delta }}</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">{{ cur.todos.since }}</span></div>
+                  <svg viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:46px;display:block;margin-top:auto;padding-top:10px"><polyline points="{{ cur.todos.pts }}" fill="none" stroke="var(--fg-55)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>
+                </div>
+              </div></div>
+              <div style="overflow:hidden;border-top:1px solid var(--border)"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));margin:-1px 0 0 -1px">
+                <div style="padding:16px 22px 14px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border)">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Contributors this week</span><span title="pushes · merged PRs · reviews" style="font-size:10px;color:var(--fg-40);letter-spacing:.04em;white-space:nowrap">P · M · R</span></div>
+                  <sc-for list="{{ contribRows }}" as="c" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:120px minmax(0,1fr) 74px;gap:12px;align-items:center;height:36px;border-top:1px solid var(--border)"><span style="display:inline-flex;align-items:center;gap:7px;min-width:0"><div title="{{ c.who.name }}" style="width:20px;height:20px;border-radius:25%;background:var(--p-{{ c.who.color }});display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--p-ink);flex:none">{{ c.who.initials }}</div><span style="font-size:12px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ c.who.handle }}</span></span><span style="display:block;height:6px;border-radius:1.5px;background:var(--hover);overflow:hidden"><span style="display:block;height:100%;border-radius:1.5px;background:var(--p-{{ c.who.color }});width:{{ c.w }};transform-origin:0 50%;animation:trov-growx .7s cubic-bezier(.2,.7,.2,1) both"></span></span><span style="font-size:11.5px;color:var(--fg-55);text-align:right;font-variant-numeric:tabular-nums">{{ c.nums }}</span></div></sc-for>
+                  <button type="button" onClick="{{ toggleContrib }}" style="display:block;width:100%;height:32px;border:none;border-top:1px solid var(--border);background:none;text-align:left;padding:0;font-size:12px;font-weight:500;color:var(--accent)" style-hover="text-decoration:underline;text-underline-offset:3px">{{ contribMore }}</button>
+                </div>
+                <div style="padding:16px 22px 14px;min-width:0;border-left:1px solid var(--border);border-top:1px solid var(--border)">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px"><span style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap">Open issues by label</span><span style="font-size:11px;color:var(--fg-40);white-space:nowrap">24 open</span></div>
+                  <sc-for list="{{ cur.labels }}" as="lb" hint-placeholder-count="5"><div style="display:grid;grid-template-columns:120px minmax(0,1fr) 30px;gap:12px;align-items:center;height:36px;border-top:1px solid var(--border)"><span style="font-size:12px;color:var(--fg-70)">{{ lb.name }}</span><span style="display:block;height:6px;border-radius:1.5px;background:var(--hover);overflow:hidden"><span style="display:block;height:100%;border-radius:1.5px;background:{{ lb.fill }};width:{{ lb.w }};transform-origin:0 50%;animation:trov-growx .7s cubic-bezier(.2,.7,.2,1) both"></span></span><span style="font-size:12px;font-weight:600;text-align:right;color:{{ lb.color }}">{{ lb.n }}</span></div></sc-for>
+                  <button type="button" onClick="{{ openIssues }}" style="display:block;width:100%;height:32px;border:none;border-top:1px solid var(--border);background:none;text-align:left;padding:0;font-size:12px;font-weight:500;color:var(--accent)" style-hover="text-decoration:underline;text-underline-offset:3px">All open issues on GitHub ↗</button>
+                </div>
+              </div></div>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+    </div>
+  </main>
+  <sc-if value="{{ drawer }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;display:flex">
+      <div style="position:relative;z-index:1;display:flex;height:100%;background:var(--bg);box-shadow:0 0 40px rgba(0,0,0,.3);animation:trov-rise .2s ease both"><div style="height:100%;display:flex;flex:none;align-self:stretch"><dc-import name="Sidebar" org="{{ v.org }}" me="{{ v.org.me }}" orgs="{{ orgs }}" onOrg="{{ pickOrg }}" onNav="{{ nav }}" active="repo" hint-size="228px,100%" style="height:100%"></dc-import></div></div>
+      <div onClick="{{ closeDrawer }}" style="flex:1;background:rgba(0,0,0,.45)"></div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position:absolute;left:50%;bottom:24px;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:14px;max-width:calc(100% - 32px);padding:10px 14px 10px 16px;background:var(--fg);color:var(--bg);border-radius:3.2px;font-size:13px;line-height:1.45;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:trov-rise .25s ease both"><span>{{ toast }}</span><button type="button" onClick="{{ closeToast }}" aria-label="Dismiss" style="flex:none;font-size:12.5px;font-weight:600;color:var(--bg);background:none;border:none;padding:2px 4px;opacity:.8">Dismiss</button></div>
+  </sc-if>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:1000},&quot;scenario&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;A&quot;,&quot;B&quot;,&quot;C&quot;,&quot;D&quot;,&quot;E&quot;,&quot;F&quot;,&quot;G&quot;,&quot;H&quot;,&quot;I&quot;,&quot;J&quot;,&quot;K&quot;,&quot;L&quot;,&quot;M&quot;,&quot;N&quot;],&quot;default&quot;:&quot;A&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;variant&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;tab&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;overview&quot;,&quot;code&quot;,&quot;ci&quot;,&quot;usage&quot;,&quot;planning&quot;],&quot;default&quot;:&quot;overview&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;phone&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;dark&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;admin&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;},&quot;app&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;group&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;&quot;,&quot;env&quot;,&quot;app&quot;],&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;menu&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;&quot;,&quot;repo&quot;,&quot;app&quot;],&quot;default&quot;:&quot;&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;driftOpen&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;},&quot;groupKind&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  state = { allContrib: false, M: null, tab: null, group: null, app: undefined, range: '7d', toast: '', drawer: false, updated: 'updated 2m ago', spin: false, polling: false };
+  componentDidMount() {
+    window.__trovData = window.__trovData || import((window.__resources && window.__resources.trovData) || './repo-data.js');
+    window.__trovData.then((M) => this.setState({ M }));
+  }
+  renderVals() {
+    const M = this.state.M;
+    if (!M) return { loading: true, ready: false };
+    const phone = !!this.props.phone;
+    const admin = this.props.admin ?? true;
+    const app = this.state.app !== undefined ? this.state.app : (this.props.app || null);
+    const o = { scenario: this.props.scenario || 'A', variant: this.state.connected && (this.props.scenario === 'G') ? 'after' : this.props.variant, tab: this.state.tab || this.props.tab || 'overview', app, group: this.state.group || this.props.group };
+    const v = M.buildScreen(o);
+    const say = (t) => { clearTimeout(this._tt); this.setState({ toast: t }); this._tt = setTimeout(() => this.setState({ toast: '' }), 4200); };
+    const fill = !!this.props.fill;
+    v.tabs = v.tabs.map((t) => ({ ...t, go: () => this.setState({ tab: t.value }), color: t.on ? 'var(--fg)' : 'var(--fg-55)', line: t.on ? 'inset 0 -2px 0 var(--accent)' : 'none' }));
+    v.pills = v.pills.map((p) => ({ ...p, anim: p.pulse ? 'trov-pulse 1.8s ease-in-out infinite' : 'none' }));
+    const tab = v.tab;
+    const cur = M.currentTabs({ ...o, range: this.state.range });
+    const code = o.scenario === 'E' && app === 'api' ? M.buildCode(o) : { scope: null, tiles: cur.codeStats, prs: cur.prs, showTouches: false };
+    const ci = tab === 'ci' ? M.buildCI(o) : { groups: [], fails: [] };
+    const usage0 = tab === 'usage' ? M.usageView({ ...o, range: this.state.range }) : { traffic: [], infra: [] };
+    const ux = tab === 'usage' ? M.usageExtras({ ...o, range: this.state.range }) : null;
+    const usage = { ...usage0, traffic: (usage0.traffic || []).map((c) => ({ ...c, singleTop: usage0.single ? '1px solid var(--border)' : '0' })) };
+    const nEnv = (v.envCards || []).length;
+    const pick = (g) => () => this.setState({ group: g });
+    const opt = (g, label) => ({ label, on: v.group === g, color: v.group === g ? 'var(--fg)' : 'var(--fg-55)', bg: v.group === g ? 'var(--hover)' : 'transparent', pick: pick(g) });
+    const rows = v.table ? v.table.rows.length : 0;
+    return {
+      rootH: fill ? '100vh' : 'auto', sideH: fill ? '100%' : 'auto', rootOv: fill ? 'hidden' : 'visible', scrollY: fill ? 'auto' : 'visible',
+      orgs: this.props.orgs || null, pickOrg: (k) => this.props.onOrg && this.props.onOrg(k),
+      nav: (label) => { if (label === 'Repo') return; if (this.props.onNav && label === 'Org settings') return this.props.onNav(label); say(`${label} is outside this prototype. It covers the Repo screen and Org settings › Repositories.`); },
+      goSetup: () => (this.props.onNav ? this.props.onNav('Org settings') : say('Opens Org settings › Repositories › Apps.')),
+      connectHost: () => { if (this.state.connecting) return; this.setState({ connecting: true }); say('Connecting Railway…'); setTimeout(() => { this.setState({ connecting: false, connected: true }); say('Railway connected. Deploys, CPU and memory now come from Railway.'); }, 1400); },
+      connectLabel: this.state.connecting ? 'Connecting…' : (v.connect ? v.connect.action : ''),
+      pickRepo: (r) => { if (this.props.onRepo) { this.setState({ tab: null, app: undefined, group: null, drawer: false }); this.props.onRepo(r); } },
+      openDrawer: () => this.setState({ drawer: true }), closeDrawer: () => this.setState({ drawer: false }), drawer: phone && this.state.drawer,
+      toast: this.state.toast, closeToast: () => this.setState({ toast: '' }),
+      updated: this.state.spin ? 'refreshing…' : this.state.updated, spin: this.state.spin ? 'trov-spin .8s linear infinite' : 'none',
+      refresh: () => { this.setState({ spin: true }); setTimeout(() => this.setState({ spin: false, updated: 'updated just now' }), 700); },
+      pollLabel: this.state.polling ? 'Polling…' : 'Poll now',
+      poll: () => { if (this.state.polling) return; this.setState({ polling: true }); setTimeout(() => { this.setState({ polling: false, updated: 'updated just now' }); say(v.connect ? 'Polled GitHub. Railway is not connected, so deploys stay unknown.' : 'Polled GitHub and every connected host. Nothing new since 2 minutes ago.'); }, 1100); },
+      bug: () => say('Report a bug opens the support dialog in the app.'),
+      toggleTheme: () => this.props.onTheme && this.props.onTheme(),
+      ranges: ['24h', '7d', '30d'].map((r) => ({ label: r, on: this.state.range === r, color: this.state.range === r ? 'var(--fg)' : 'var(--fg-55)', bg: this.state.range === r ? 'var(--hover)' : 'transparent', pick: () => this.setState({ range: r }) })),
+      loading: false, ready: true, v, phone, desktop: !phone, admin, label: `${v.letter} · ${v.title}`,
+      hdrPad: phone ? '0 16px' : '0 24px', framePad: phone ? '14px 16px 28px' : '22px 32px 36px', ib: phone ? '40px' : '32px',
+      scopeInline: !phone, scopeBelow: phone, singleRepo: !v.multiRepo,
+      openRepo: this.props.menu === 'repo', openApp: this.props.menu === 'app',
+      pickApp: (val) => this.setState({ app: val || null }), clearApp: () => this.setState({ app: null }),
+      themeIcon: this.props.dark ? 'M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z' : 'M12 7.8a4.2 4.2 0 1 1 0 8.4a4.2 4.2 0 1 1 0-8.4zM12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8',
+      hasPills: v.pills.length > 0,
+      isOverview: tab === 'overview', isCode: tab === 'code', isCI: tab === 'ci', isUsage: tab === 'usage', isPlanning: tab === 'planning',
+      showGroup: tab === 'overview' && v.canGroup && !phone,
+      ruleLine: v.group === 'app' ? 'One row per app' : 'One card per environment',
+      groupOpts: [opt('env', 'Environment'), opt('app', 'App')],
+      hasAttention: v.attention.length > 0,
+      cardMin: nEnv >= 3 ? '300px' : '340px', tileMin: '200px', usageMin: '480px',
+      driftOpen: !!this.props.driftOpen, driftStep: this.props.driftStep || 0,
+      tableLarge: rows >= 8, groupKind: !!this.props.groupKind,
+      unseenSees: v.unseen ? v.unseen.sees.map(([k, val]) => ({ k, v: val })) : [],
+      unseenTags: v.unseen ? v.unseen.tags.map(([tag, at, by]) => ({ tag, at, by })) : [],
+      todayPrs: tab === 'overview' && !!(v.found || v.unseen),
+      ux, hasCrons: !!(ux && ux.crons && ux.crons.length), crons: ux && ux.crons ? ux.crons.map((c) => ({ ...c, failColor: c.failed !== '0' ? 'var(--red)' : 'var(--fg-40)', failWeight: c.failed !== '0' ? 600 : 400 })) : [],
+      hasTraffic: usage.traffic.length > 0, hasInfra: usage.infra.length > 0,
+      cur, range: this.state.range, hasHealth: tab === 'overview' && cur.health.length > 0, bundleApp: (v.s.apps && v.s.apps[0] && v.s.apps[0].name) || 'web',
+      ciFails: (ci.fails && ci.fails.length ? ci.fails : cur.ciFails),
+      openSprint: () => say('Opens the sprint on the Roadmap.'),
+      contribRows: this.state.allContrib ? cur.contributors : cur.contributors.slice(0, 5),
+      contribMore: this.state.allContrib ? 'Show fewer' : `Show all ${cur.contributors.length}`,
+      toggleContrib: () => this.setState({ allContrib: !this.state.allContrib }),
+      openIssues: () => say('Opens the repo’s open issues on GitHub.'),
+      code, ci: { ...ci, groups: (ci.groups || []).map((g) => ({ ...g, rows: g.rows.map((r) => ({ ...r, dots: r.dots.map((d) => ({ ...d, anim: d.pulse ? 'trov-pulse 1.6s ease-in-out infinite' : 'none' })) })) })) },
+      ciTop: ci.deploys ? '1px solid var(--border)' : '0', ciNoFails: !(ci.fails || []).length,
+      usage, links: v.links.map((l) => ({ ...l, go: () => { const t = v.tabs.find((x) => x.label === l.tab); if (t) this.setState({ tab: t.value }); } })),
+      hasLinks: v.links.length > 0,
+    };
+  }
+}
+</script>
+</body>
+</html>

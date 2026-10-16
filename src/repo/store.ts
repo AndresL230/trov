@@ -1,5 +1,6 @@
 import { type TenantContext, type Stmt, all, first, run, stmt, batch, nowIso, ph, chunked } from "../data/sql";
 import { PRODUCT_PREFIX } from "./product";
+import { EXTRA_METRIC_GLOBS } from "@shared/usage-families-core";
 import type { RepoMetric } from "./types";
 
 // An async reader here AWAITS its statement (`return await all(…)`) — see the note atop ./reads.ts.
@@ -12,6 +13,10 @@ export const DAY = 86_400_000;
 export const FAST_METRICS = ["health_up", "health_ms"];
 export const FAST_KINDS = ["check"];
 export const FAST_RETENTION_DAYS = 45;
+/** GitHub deploy signals (repo setups, Phase A): `deploy` rows captured UNTAGGED (`env IS NULL`) — deployments,
+ *  deployment statuses and non-`canopy/*` commit statuses (src/repo/capture.ts). They feed detection (a 90-day
+ *  window, src/hosting/detect.ts), the `github` provider's parts and the commit join; 90 days is all of that. */
+export const DEPLOY_SIGNAL_RETENTION_DAYS = 90;
 /** Hourly usage series — the active-user gauges (`active_users_*`) and the
  *  hosting providers' normalised points (`hx_*`, shared/hosting.ts — one per
  *  part per metric per complete hour; 0057_hosting_providers renamed the legacy
@@ -35,14 +40,16 @@ const PRODUCT_METRIC_GLOB = `${PRODUCT_PREFIX}*`;
  *  an index range on `idx_repo_metrics_series`, but only when it can see the
  *  pattern: a bound `GLOB ?` is a scan of the whole table. Inlining is safe
  *  ONLY because every caller passes a module constant — and this refuses, at
- *  module load, anything but `[a-z_]` plus one trailing `*`, so a pattern that
+ *  module load, anything but `[a-z0-9_]` plus one trailing `*`, so a pattern that
  *  could close the quote can never be written here by mistake. */
 const globLiteral = (pattern: string): string => {
-  if (!/^[a-z_]+\*$/.test(pattern)) throw new Error(`not a constant prefix glob: ${pattern}`);
+  if (!/^[a-z0-9_]+\*$/.test(pattern)) throw new Error(`not a constant prefix glob: ${pattern}`);
   return `'${pattern}'`;
 };
 export const USAGE_GLOB_SQL = USAGE_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
 export const PRODUCT_GLOB_SQL = `metric GLOB ${globLiteral(PRODUCT_METRIC_GLOB)}`;
+/** The extra usage families' names (Phase G) — all under `hx_`, so the usage pruning rule already covers them. */
+const EXTRA_GLOB_SQL = EXTRA_METRIC_GLOBS.map((g) => `metric GLOB ${globLiteral(g)}`).join(" OR ");
 export const PRODUCT_HOURLY_RETENTION_DAYS = 7;
 export const PRODUCT_DAILY_RETENTION_DAYS = 100;
 export const MIDNIGHT_TAIL = "T00:00:00.000Z";
@@ -63,10 +70,28 @@ export async function putSnapshot(ctx: TenantContext, kind: string, data: unknow
     ctx.orgId, kind, JSON.stringify(data), now);
 }
 
+/** Remove one snapshot (a no-op when there is none) — what a producer that stopped describing itself leaves. */
+export async function deleteSnapshot(ctx: TenantContext, kind: string): Promise<void> {
+  await run(ctx, `DELETE FROM repo_snapshots WHERE org_id = ? AND kind = ?`, ctx.orgId, kind);
+}
+
 export async function getSnapshot<T>(ctx: TenantContext, kind: string): Promise<{ data: T; computedAt: string } | null> {
   const row = await first<{ json: string; computed_at: string }>(ctx, `SELECT json, computed_at FROM repo_snapshots WHERE org_id = ? AND kind = ?`, ctx.orgId, kind);
   if (!row) return null;
   try { return { data: JSON.parse(row.json) as T, computedAt: row.computed_at }; } catch { return null; }
+}
+
+/** Every snapshot whose kind starts with `prefix` (e.g. `app_metrics:` — one per environment), in ONE statement: a
+ *  range on the primary key (`kind >= prefix AND kind < prefix` with its last character bumped), never a LIKE. A row
+ *  whose JSON does not parse is left out. */
+export async function snapshotsByPrefix<T>(ctx: TenantContext, prefix: string): Promise<{ kind: string; data: T; computedAt: string }[]> {
+  if (!prefix) return [];
+  const upper = prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+  const rows = await all<{ kind: string; json: string; computed_at: string }>(ctx,
+    `SELECT kind, json, computed_at FROM repo_snapshots WHERE org_id = ? AND kind >= ? AND kind < ?`, ctx.orgId, prefix, upper);
+  return rows.flatMap((r) => {
+    try { return [{ kind: r.kind, data: JSON.parse(r.json) as T, computedAt: r.computed_at }]; } catch { return []; }
+  });
 }
 
 /** THE format of `repo_metrics.at`, enforced at the one write seam. Every read
@@ -169,6 +194,18 @@ export async function metricsSince(ctx: TenantContext, groups: MetricGroup[]): P
   return await all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
     `SELECT metric, env, part, at, value FROM repo_metrics WHERE org_id = ? AND (${clauses.join(" OR ")}) ORDER BY at ASC, id ASC`,
     ctx.orgId, ...binds);
+}
+
+/** The EXTRA usage families' points (repo setups, Phase G — shared/usage-families-core.ts: outcomes, subrequests,
+ *  the daily quantiles, D1, cron runs) since `sinceIso`, every env and part, ascending. ONE statement; each family a
+ *  GLOB literal SQLite turns into an index range on `idx_repo_metrics_series` (`globLiteral`), never a scan. An
+ *  unparseable bound answers []. */
+export async function extraMetricsSince(ctx: TenantContext, sinceIso: string): Promise<{ metric: string; env: string; part: string; at: string; value: number }[]> {
+  const since = normaliseAt(sinceIso);
+  if (since === null) return [];
+  return all<{ metric: string; env: string; part: string; at: string; value: number }>(ctx,
+    `SELECT metric, env, part, at, value FROM repo_metrics WHERE org_id = ? AND (${EXTRA_GLOB_SQL}) AND at >= ? ORDER BY at ASC, id ASC`,
+    ctx.orgId, since);
 }
 
 /** Which of `metrics` have EVER landed — any env, any part, any age. ONE
@@ -305,9 +342,14 @@ export interface HostingReads {
   states: HostingPollStateRow[];
   /** Per (env, part, provider) the newest `perPart`, NEWEST FIRST. */
   deploys: HostingDeployRow[];
-  /** The org-wide (`scope = ''`) `org_integration_config` of every kind, by kind — NOT a secret (the
-   *  secrets are `org_secrets`, which this never names): a provider's console link is built from it. */
+  /** The org-wide (`scope = ''`) `org_integration_config` of every kind, by kind — NOT a secret: a provider's
+   *  console link is built from it. */
   config: Map<string, Record<string, string>>;
+  /** Which kinds have an org-wide (`scope = ''`) credential STORED, by kind, with its last error — `org_secrets`
+   *  METADATA only (never `ciphertext` / `iv`): what the one status function needs to say "connected". */
+  secrets: Map<string, { last_error: string | null }>;
+  /** The org-wide install / OAuth connection rows (`org_hosting_connections`, scope ''), by provider. */
+  connections: Map<string, { status: string; revoked_reason: string | null }>;
 }
 
 const jsonRecord = (text: string | null): Record<string, unknown> => {
@@ -328,6 +370,10 @@ const strOrNull = (v: unknown): string | null => (typeof v === "string" ? v : nu
  *           built from. Read HERE, by a tenant statement, rather than through src/data/secrets.ts's
  *           `getIntegrationConfig`: the projection is reachable from src/mcp.ts, and nothing reachable from
  *           there may import the decrypt path (test/secrets.mcp.test.ts). It is configuration, not a secret.
+ *   secret  which kinds have an org-wide credential stored, and its `last_error` — `org_secrets` METADATA,
+ *           never `ciphertext` / `iv` / `key_version` — and
+ *   conn    the org-wide install / OAuth rows (`org_hosting_connections`): together what the ONE status
+ *           function (shared/hosting-status-core.ts) reads to tell "not connected" from "not read yet".
  * The metric points themselves ride `metricsSince` (the Usage read) — so the whole section costs the render
  * this one statement beyond the parts list. An unparseable bound reads no deploys rather than all of them.
  */
@@ -345,11 +391,22 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
                           'by', actor, 'at', created_at, 'ready_at', ready_at, 'url', url, 'inspect_url', inspect_url) AS j,
               ROW_NUMBER() OVER (PARTITION BY env, part, provider ORDER BY created_at DESC, id DESC) AS rn
          FROM hosting_deploys WHERE org_id = ? AND created_at >= ?
+          -- A production part's PREVIEWS (repo setups) are not its deploys: a preview row is left out of a part that
+          -- has any non-preview row. A part that reads only previews (a staging = previews-of-main part) keeps them.
+          -- COALESCE: a row with NO target (a GitHub-sourced deploy, a Netlify deploy with no context) makes
+          -- the preview test NULL, and NOT (NULL AND true) is NULL — it would drop the row. It is not a preview.
+          AND NOT COALESCE(target = 'preview' AND EXISTS (
+            SELECT 1 FROM hosting_deploys h2 WHERE h2.org_id = ? AND h2.env = hosting_deploys.env AND h2.part = hosting_deploys.part
+              AND h2.provider = hosting_deploys.provider AND (h2.target IS NULL OR h2.target <> 'preview')), 0)
      ) WHERE rn <= ?
      UNION ALL
-     SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''`,
-    ctx.orgId, ctx.orgId, since, perPart, ctx.orgId);
-  const out: HostingReads = { states: [], deploys: [], config: new Map() };
+     SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''
+     UNION ALL
+     SELECT 'secret', kind, scope, '', json_object('last_error', last_error) FROM org_secrets WHERE org_id = ? AND scope = ''
+     UNION ALL
+     SELECT 'conn', provider, scope, '', json_object('status', status, 'revoked_reason', revoked_reason) FROM org_hosting_connections WHERE org_id = ? AND scope = ''`,
+    ctx.orgId, ctx.orgId, since, ctx.orgId, perPart, ctx.orgId, ctx.orgId, ctx.orgId);
+  const out: HostingReads = { states: [], deploys: [], config: new Map(), secrets: new Map(), connections: new Map() };
   for (const r of rows) {
     const j = jsonRecord(r.j);
     if (r.src === "state") {
@@ -368,6 +425,10 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
       });
     } else if (r.src === "config") {
       out.config.set(r.a, Object.fromEntries(Object.entries(j).filter((e): e is [string, string] => typeof e[1] === "string")));
+    } else if (r.src === "secret") {
+      out.secrets.set(r.a, { last_error: strOrNull(j.last_error) });
+    } else if (r.src === "conn") {
+      if (typeof j.status === "string") out.connections.set(r.a, { status: j.status, revoked_reason: strOrNull(j.revoked_reason) });
     }
   }
   // The arms come back in no promised order: newest first within each part, the order the DTO carries.

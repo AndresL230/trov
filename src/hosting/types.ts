@@ -21,9 +21,13 @@
 //   - A metric the provider cannot read for this part (plan, add-on, not enabled) goes in `unavailable`
 //     with a reason, never as a zero.
 //   - `pollCost` is the worst-case number of fetches one `poll` makes — the cron budgets with it.
+//   - A provider with no credential of its own (`credential: "github_app"` — `github`, whose deploys come from
+//     the GitHub capture) offers NO connection method and has `pollCost` 0; every other provider offers at
+//     least one and costs at least 1.
 import type {
   ConnectionMethod, DeployState, DeployTarget, HostingMetric, HostingProviderId, PartRole,
 } from "@shared/hosting";
+import type { ExtraFamily } from "@shared/usage-families-core";
 import type { HostFetch, SecretLike } from "./http";
 
 /** A field an admin fills (an org-wide provider setting or a part setting). `pattern` is anchored. */
@@ -70,6 +74,10 @@ export interface ProviderContext {
   credential: ProviderCredential;
   /** The current instant (ms). Windows key on its hour floor, so a re-poll asks for the same hours. */
   now: number;
+  /** The completed UTC day (`YYYY-MM-DD`) whose DAILY figures this poll should read (quantiles, D1) — handed only to a
+   *  provider that declares a daily family (`runtime` / `storage`), and only while that day has not been read yet
+   *  (./poll.ts, the once-a-day rule). Absent or null: read no daily figure. */
+  daily?: string | null;
 }
 
 export interface ProbeResult {
@@ -95,6 +103,9 @@ export interface HostingDeploy {
   readyAt: string | null;
   url: string | null;
   inspectUrl: string | null;
+  /** Why it failed, in the provider's own words (Netlify `error_message`, …), when it did and the provider says.
+   *  The framework scrubs it, keeps one line and cuts it to 140 characters; ignored for a deploy that did not fail. */
+  reason?: string | null;
 }
 
 export interface HostingPoint {
@@ -111,6 +122,16 @@ export interface PollResult {
   /** The hours the metric read covered [from, to) — inside it an hour with no point is a true zero.
    *  null when no metric was read (deploys only, or every metric unavailable). */
   covered: { from: string; to: string } | null;
+  /** Short fixed notes about what this poll could NOT read that is not a metric ("commit: the token needs
+   *  Workers CI Read") — scrubbed and appended to the poll state's detail. */
+  notes?: string[];
+  /** Points of the provider's EXTRA usage families (shared/usage-families-core.ts — outcomes, runtime, storage,
+   *  schedules), named by its builders: hourly ones at a complete hour's start, daily ones at 00:00 UTC of a
+   *  completed day. Validated by the framework like every point; only for families the provider declares. */
+  extraPoints?: { metric: string; at: string; value: number }[];
+  /** Each extra family this poll ATTEMPTED: `reason` null = read, else why it could not be (scrubbed, ≤ 200). A
+   *  family not listed was not attempted this poll (a daily one between days) and keeps its last state. */
+  families?: { family: ExtraFamily; reason: string | null }[];
 }
 
 /** What an install / OAuth code exchange yields — stored as the org's secret + connection row. */
@@ -159,6 +180,19 @@ export interface InstallSpec {
   };
 }
 
+/** One project / service / site a connected host builds from a repository (`describe`, repo setups Phase D). */
+export interface DescribedProject {
+  /** The host's name for it ("storefront-web"). */
+  name: string;
+  /** The repository folder it builds: '/' for the root, else a path without leading / trailing '/'. */
+  folder: string;
+  /** The part settings that would name it (`project`, `service_id`, `site_id`…) — checked by the scan with
+   *  `checkFields` before any is proposed. */
+  settings: Record<string, string>;
+  /** What the host says it is, when it says (a Render cron job is a Job, a static site a Site). */
+  kind?: "Site" | "Service" | "Worker" | "Job";
+}
+
 export interface HostingProvider {
   id: HostingProviderId;
   label: string;
@@ -172,7 +206,8 @@ export interface HostingProvider {
   connectionMethods: readonly ConnectionMethodSpec[];
   orgConfigFields: readonly HostingField[];
   partSettings: readonly HostingField[];
-  capabilities: { deploys: boolean; metrics: readonly HostingMetric[] };
+  /** `families`: the EXTRA usage families it reads (shared/usage-families-core.ts) — absent = none. */
+  capabilities: { deploys: boolean; metrics: readonly HostingMetric[]; families?: readonly ExtraFamily[] };
   planNote: string | null;
   /** Worst-case fetches of one `poll`. */
   pollCost: number;
@@ -190,4 +225,19 @@ export interface HostingProvider {
   poll(pc: ProviderContext, part: PartRef): Promise<PollResult>;
   /** Present when `connectionMethods` offers `install` or `oauth`. */
   install?: InstallSpec;
+  /** `github_app`: the provider has NO credential of its own (repo setups, Phase A — `github`). It offers no
+   *  connection method, the poll framework never resolves a credential for it and never runs its `poll`
+   *  (`pollCost` 0), and anything it reads from GitHub goes through `resolveGithubCredential`. Absent: the
+   *  provider's own credential (`HOSTING_INTEGRATION_KIND`), as for every other provider. */
+  credential?: "github_app";
+  /** Cross-field checks `checkFields` cannot express ("set exactly one of…"), run on a part write after it:
+   *  the field and a fixed message, or null. */
+  checkSettings?(values: Readonly<Record<string, string>>): { field: string; message: string } | null;
+  /** Optional (repo setups, Phase D): for a CONNECTED host, the projects it builds from `repo` (`owner/name`) and
+   *  the folder each builds — ONE list call (`DESCRIBE_COST`), run only by the repo scan (src/repo/scan.ts), never
+   *  on a render path. Throws `HostingError` (scrubbed) like `poll`; the scan then goes on without it. */
+  describe?(pc: ProviderContext, repo: string): Promise<DescribedProject[]>;
 }
+
+/** The fetches one `describe` makes — the scan's cost counts one per connected provider that has it. */
+export const DESCRIBE_COST = 1;

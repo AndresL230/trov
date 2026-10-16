@@ -16,9 +16,22 @@ section has a capture path** — the old list of uncaptured sections is gone fro
 each one waits on: a setting or secret by NAME, a webhook event, the target repo's CI, or Sync GitHub. There
 is no connect button or flow. "Preview with sample data" swaps in `repo-sample.ts` client-side
 (session-only, labelled on screen); it never touches the Worker.
+The Repo-setups design's scenarios A–N live in `repo-sample.ts` too, as `RepoFacts` (`repo-apps.md` › The sample
+scenarios A–N).
+
+**Apps, the Overview's facts and its blocks** (repo setups) are `repo-apps.md`: an app is a part key (`repo_apps`);
+`facts: RepoFacts` rides every `GET /repo/dashboard?repo=&app=` payload and MCP `get_repo_dashboard`, assembled
+INSIDE this one projection by `readRepoFacts` (`src/tools/repo-facts.ts`) from the reads `getRepoDashboard` already
+made, then narrowed by `narrowFacts` — a throw there costs the facts alone (`emptyRepoFacts`, `degraded: true`).
+`?repo=` is checked against `org_repos` (unknown → 404 `{ error: "unknown repository" }`; MCP reads the primary);
+`?app=` (an app key or `__repo`) ALSO narrows the per-part sections — environments' parts, `deploys`, `usage`,
+`providers` — to that key's parts; the other sections stay the org's capture. The layout is
+`layoutOf(layoutInputOf(facts), group)` (`shared/repo-layout-core.ts`), the same on the screen and over MCP.
 
 Three capture shapes feed it: `repo_events` rows (through the `ingestRepoEvent` gate — see Core invariant),
-`repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches` —
+`repo_snapshots` (one JSON row per kind: `prs_reconciled`, `env_heads`, `drift`, `branches`, and the Overview
+facts' `drift_chain`, `not_shipped`, `out_of_step` (`src/repo/facts-store.ts`), the releases arm's
+`releases_reconciled` marker and contract v3's `app_metrics:<env>` descriptions —
 plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no section) and
 `repo_metrics` points (`putMetric`). Every section, its source, and what triggers the capture:
 
@@ -28,15 +41,16 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `environments` | every part of the environment (`org_environment_parts`, any host) with its newest `hosting_deploys` row, a part's successful poll (`hosting_poll_state`), head checks, fresh `health_*` metrics | cron `:40` — `pollPart` per part; webhook `check_run`; reconcile `env_heads` / `checks` arms; cron health ping |
 | `drift` | snapshot `drift` | webhook `push` to a configured environment branch; reconcile `drift` arm |
 | `health` | metrics `health_up` / `health_ms` | cron, every tick |
-| `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
+| `codeStats`, `bars`, `prs` (Code) | `repo_events` `pr` / `push`; merged/closed PRs in `events` as the fallback; under the App menu `pr_files` / `commit_paths` (Phase E) | webhook `pull_request` / `push`; reconcile open + closed PR lists and the pre-capture commit window |
 | `branches` (+ the Active branches tile) | snapshot `branches` | reconcile `branches` arm only |
 | `deploys` (CI) | each part's settled `hosting_deploys` rows (a dot strip per part); checks and health excluded | cron `:40` — `pollPart` per part |
-| `ciFailures` | `run` rows | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
+| `ciFailures` | `run` rows (by app: the run's workflow file and head commit's `commit_paths`, Phase E) | webhook `workflow_run` (+ `fillFailedJob`); reconcile `runs` + `job_titles` arms |
 | `coverage`, `bundle` (CI); `todos` (Planning) | metrics `coverage` / `bundle_kb` / `todo_count` | a `canopy/*` commit status the target repo's CI posts — webhook `status`; reconcile `statuses` arm |
 | `activity` | PR closes + issue moves from `events`; webhook `push` rows, `review` rows, landed deploys | the captures above |
-| `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
-| `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
-| `providers` (Usage — the tab's ONE Hosting section, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics, `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
+| `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` — on screen only the active users (on the environment's first web target) | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
+| `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports; contract v3's self-description is the `app_metrics:<env>` snapshot | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
+| `providers` (Usage — the targets, the extra families and the Hosting section: `web/src/repo-usage.ts`, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics (the extra families' `hx_outcome_*` / `hx_subrequests` / `hx_cpu_time_*` / `hx_wall_time_*` / `hx_d1_*` / `hx_cron_*` in one more read), `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
+| `release` (Overview R3), `unseen.tags`, week `releases` | `releases` (0074): `readRelease` / `readTags` / `releaseWeekFigure`, `src/repo/releases.ts`; `since` / `waiting` from `repo_events` `push` / `pr` | webhook `release` / `create` (gate: `ingestRepoRelease`); reconcile `releases` arm |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
 "Reconcile" is `reconcileRepo` (`src/repo/github.ts`), run by an admin's Sync GitHub and by the cron's
@@ -47,13 +61,25 @@ used to be webhook-only (`canopy/*` commit statuses, PR reviews). What stays web
 feeds `events` (My Work's capture, refreshed by Sync GitHub). The capture names a PR's AUTHOR and an
 issue's subject, not who merged/closed, so the feed never claims an actor it does not have.
 
+**Releases and tags** (`releases`, 0074; `src/repo/releases.ts`) feed R3, the unseen card's tags and the week tile
+`releases`: gated capture of `release` / `create`, reconcile's backfill, and the reads `readRelease` / `readTags` /
+`releaseWeekFigure` — `repo-apps.md` › Releases.
+
+**Monorepos — the App menu on Code and CI** (repo setups, Phase E; `0073_commit_paths`): which files a commit and a
+pull request touched (`commit_paths`, `pr_files`), and how the Code tiles, bars and PR list and the CI failures narrow
+to one app — `repo-apps.md` › Monorepos.
+
 **Owner prerequisites — what must be true OUTSIDE this repo** (the one place they are listed):
 - **The target repo's GitHub webhook must be SUBSCRIBED to every name in `REPO_EVENT_NAMES`**
   (`src/webhook.ts`; for an org connected through the GitHub App the subscription is the App's own event
   list, set once on the App — `github-app.md`): `pull_request`, `push`, `pull_request_review`, `check_run`,
-  `workflow_run`, `status`. Every capture arm exists, but GitHub delivers only what the hook subscribes to.
-  (`deployment_status` is no longer read — a delivery is verified and ignored: an environment's deploys come
-  from its hosting provider, `hosting-providers.md`.) Without `check_run` / `workflow_run`, reconcile is the
+  `workflow_run`, `status`, `deployment_status`, `deployment`. Every capture arm exists, but GitHub delivers only
+  what the hook subscribes to. It must ALSO carry `release` and `create` (`RELEASE_EVENT_NAMES`: releases and
+  tags — `repo-apps.md` › Releases); the App is also subscribed to `workflow_job` (`LATER_EVENT_NAMES`: verified,
+  acknowledged, not captured yet). The `deployment` / `deployment_status` deliveries and every non-`canopy/*`
+  status are captured as UNTAGGED GitHub deploy signals (`repo_events` kind `deploy`, `raw.signal`, kept 90 days)
+  that feed Detected, the repo scan's seen signals, a `github` part's deploys and the commit join — never an
+  environment's deploys by name (`repo-apps.md` › The `github` provider). Without `check_run` / `workflow_run`, reconcile is the
   ONLY source of checks and runs (up to 6 hours late). The same now holds for `pull_request_review` and `status`: without them the
   reconcile's `reviews` and `statuses` arms are the only source (up to 6 hours late, or an admin's Poll now),
   and a review on a PR outside the 30 most recently updated OPEN ones, or older than that PR's last 10, is
@@ -73,9 +99,10 @@ issue's subject, not who merged/closed, so the feed never claims an actor it doe
   more (`data-layer.md` › Configuration and credentials). The org needs a PRIMARY repository (Org settings ›
   Repositories, `org_repos`) and its environments (Org settings › Environments, `org_environments`, in
   `position` order); a GitHub credential — its App installation, else a stored `github_token`
-  (`resolveGithubCredential`, `github-app.md`); and, optionally, on Org settings › Integrations, an app-metrics
-  token per environment (`resolveCredential`). What HOSTS an environment — Cloudflare, Railway, Vercel, … — is
-  its parts, each provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). The
+  (`resolveGithubCredential`, `github-app.md`); and, optionally, an app-metrics token per environment
+  (`resolveCredential`; set in a part's editor — Org settings › Repositories › a repo › Apps). What HOSTS an
+  environment — Cloudflare, Railway, Vercel, … — is its parts (set per app on that Apps page, `repo-apps.md`), each
+  provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). The
   Worker secrets of the same purpose (`GITHUB_SERVICE_TOKEN`, `CF_ANALYTICS_*`, `SAPLING_METRICS_TOKEN`)
   answer for SaplingLearn ALONE, only until it stores each (`env.md` › Legacy); the vars `GITHUB_REPO` /
   `REPO_ENVIRONMENTS` are read by nothing.
@@ -101,8 +128,8 @@ on. An org with no environment and no primary repository has no unit and costs n
   failures). A HOST's usage (Cloudflare, Railway, …) is not read here: it is the `:40` `hosting` job's.
 - **every 6th hour** (UTC hour % 6 = 0) — `:10` `progress`: `recomputeAllProgress` per org, UNBOUNDED (one
   request per issue number of every array-ref sprint; budgeted as an estimate, `PROGRESS_COST_ESTIMATE`);
-  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, 18 + 2N worst case for N environments,
-  below — plus one request when an App installation token has to be minted, and the org image's import that
+  `:20` `reconcile`: `runReconcileJob` per org (`reconcileRepo`, `reconcileRequests(N)` worst case for N environments (its releases arm included),
+  below, + the repo scan's `SCAN_COST` — plus one request when an App installation token has to be minted, and the org image's import that
   rides the same unit: `reconcileCost`; logs `failed` when non-empty); `:30` `pruneRepoCapture` + `pruneOAuth`
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
@@ -120,9 +147,8 @@ goes first and, on a tick that also has a heavy job, may use at most HALF, so ne
 unit is started only while its worst-case cost still fits, what it really spent is counted through the
 budget's own `fetch`, and each job resumes after the unit its previous invocation stopped at (`cron_cursor`)
 — so more orgs than one invocation can serve lengthen the cycle; they never overrun it. With few orgs every
-tick serves every unit and the cursor is never written. The free plan's 50-subrequest cap is NOT what the
-cron is sized against any more; it survives only as `SUBREQUEST_CAP`, the ceiling ONE org's on-demand
-"Poll now" still honours (below).
+tick serves every unit and the cursor is never written. ONE org's on-demand "Poll now" has its own, smaller
+ceiling, `SUBREQUEST_CAP` = 100 (below; it was the free plan's 50 until repo setups' compares outgrew it).
 `src/index.ts` dispatches by EXACT string equality on `controller.cron`, so `REPO_CRON` and the expression
 in `wrangler.toml` must stay identical (pinned by a test).
 
@@ -179,11 +205,15 @@ cards, the strips, the Usage compare and the providers section. The CI tab's str
 part with a SETTLED deploy, labelled "<environment> · <part label>", oldest first) and the cards' lines are
 `deployDots` / `envPartOf` (`shared/repo.ts` — the sample uses the same two): a deploy still queued or
 building is not a dot; canceled is abandoned, never a failure. Nothing here reads GitHub's deployments or
-Workers Builds checks any more. **The pill is a verdict about CHECKS, with health as an override**:
+Workers Builds checks directly: a GitHub signal reaches a card only as a `github` part's own `hosting_deploys` row
+(`repo-apps.md` › The `github` provider). **The section's pill is a verdict about CHECKS, with health as an override**:
 `HEALTHY` needs checks captured on the branch head, none failing, and no failed part; a deploy that landed
 with NO checks captured reads `UNKNOWN`; a part whose newest deploy errored is a fact on its own, so
 `FAILING` does not wait for checks; failing head checks read `DEGRADED`; `DOWN` OUTRANKS everything — a fresh
-health ping saying the environment is unreachable is the headline. On screen the verdict is a status mark,
+health ping saying the environment is unreachable is the headline. `RepoEnv.pill` is still computed and served
+over MCP, but the screen draws it only for a payload WITHOUT `facts` — every Worker payload carries them now, and
+then the header pills and cards draw `envVerdict` (`repo-apps.md` › The Overview: Healthy only on passing checks,
+else Live). Without facts the verdict is a status mark,
 never a pill (`ENV_VERDICT` in `web/src/repo.ts` over `kindMark`: Healthy / Degraded / Failing / Down /
 Unknown, with what each means in its tooltip — `web-ui.md` › Status marks); a part's line is its label, the
 sha (when there is one), "<ago> ago · by <who> · <host>", FAILED in red or a quiet "deploying"; a part with no
@@ -236,11 +266,14 @@ instant and exclude it; an unparseable bound returns `[]`, not every row ever wr
 `INSERT OR IGNORE` — **first write wins, forever** — and returns whether it wrote a NEW row. That permanence
 is why every poller below stores only values that can no longer change.
 
-**Drift and branches are snapshots, computed off the render path.** `computeDrift` (`src/repo/github.ts`)
-compares `envs[0]`'s branch (the head, e.g. `main`) against `envs[last]`'s (the base, e.g. `production`) via
-TWO `GET /compare/<base>...<head>` calls (compare returns only the AHEAD side's commits, so the BEHIND side
-needs its own), groups the ahead commits by the PR that landed them (a squash merge's trailing `(#123)`) or
-as a direct push, and stores one `RepoDrift` snapshot. The PR-title lookup fans out in chunks (`fanOut`,
+**Drift and branches are snapshots, computed off the render path.** `computeDrift` (`src/repo/github.ts`) first
+stores the PROMOTION CHAIN (`computeDriftChain`, `src/repo/facts-compute.ts`: one `GET /compare/<next>...<earlier>`
+per ADJACENT pair of environments whose branches differ, the ahead commits grouped by PR — the `drift_chain`
+snapshot the facts read), then the `drift` section's `RepoDrift` from the chain's LAST step (head = that step's
+earlier branch, base = the last environment's — for two environments exactly the old first↔last pair, request for
+request): the step's compare, plus a second `GET /compare/<head>...<base>` for the BEHIND side (compare returns only
+the AHEAD side's commits), grouped by the PR that landed them (a squash merge's trailing `(#123)`) or as a direct
+push. ≤ `driftCompares(N)` = max(2, N) requests. The PR-title lookup fans out in chunks (`fanOut`,
 `src/data/sql.ts`) — a compare returns up to 250 commits and D1 caps a statement at 100 bound parameters.
 `ahead`/`behind` are GitHub's own TOTALS while `groups` is built from the commits actually returned, so past
 the 250 cap the strip's HEADER stays truthful and only the expanded breakdown is partial. Two triggers: a
@@ -267,7 +300,11 @@ a GitHub credential (`resolveGithubCredential`: its App installation's token, el
 Its arms, each in its own `safely`
 block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window,
 completed workflow runs, the failing-job label pass, the environment heads, each environment's head checks,
-the `canopy/*` commit statuses, PR reviews, branches, drift. It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
+the `canopy/*` commit statuses, PR reviews, branches, drift (the promotion chain), and the Overview facts'
+`not_shipped` and `out_of_step` (below), releases (below) — and, when the caller asks (`runReconcileJob`'s
+`scan`: the cron and Sync GitHub, not Poll now), the repo scan (`scan`: one tree read, and only when the default
+branch's root tree sha changed, one GraphQL file batch + ≤ 1 describe per connected host; ≤ `SCAN_COST` = 5 —
+`repo-apps.md` › Detection). It returns `{ written, unchanged, failed: string[] }` — `failed` NAMES every arm that threw
 (`"runs"`, `"checks"`, …); `/admin/backfill` passes that through as its `repo` object and the cron logs
 it.
 - **The failing-job label pass reads the BACKLOG, not this run's writes**: the ≤5 newest `run` rows of the
@@ -296,10 +333,22 @@ it.
   the webhook's `dismissed` action only (key `…:dismissed`) — its state at submission is no longer knowable,
   and a guessed `…:submitted` row would shadow the real one forever. PENDING reviews and ones with no author
   or no `submittedAt` are skipped.
-- Worst case **18 + 2N outbound requests** for N environments (22 for two): 2 PR lists + 1 commit window + 1
-  workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5 branch pages + ≤2 drift
-  compares + 2 per environment (head commit, head checks). Under an admin Sync it shares the invocation with
-  `runBackfill`'s ~13 (35 for two environments).
+- **The facts arms** (`not_shipped`, `out_of_step`, after drift — the promotion chain is the `drift` arm; each its
+  own `safely`, also run on a push to an environment branch; `FACTS_COMPARE_CAP` = 6 shared): `repo-apps.md` › The
+  reconcile's facts arms.
+- **The `releases` arm** (`reconcileReleases`, `src/repo/releases.ts`; ≤ `RELEASES_RECONCILE_COST` = 2 — the releases
+  list, and the tags query only when there is no release; every row through the gate's release arm; writes the
+  `releases_reconciled` marker): `repo-apps.md` › Releases.
+- **The `pr_files` arm (Phase E, `reconcilePrFiles` in `src/repo/pr-files.ts`)**: in a repository with two or more
+  apps, the open PRs and the PRs merged in the last 14 days whose files were never read for their current head
+  (`pr_file_reads.head_sha`) — open first, then merged, newest first — each `GET /pulls/{n}/files` ≤ 3 pages of 100,
+  started only while a whole PR (3 requests) still fits the allowance: `PR_FILES_REQUESTS` = 9 (counted in
+  `reconcileRequests` — Poll now), `PR_FILES_SYNC_REQUESTS` = 30 for the cron's unit and Sync GitHub
+  (`ReconcileLimits`; `reconcileCost` counts the difference). Every list through the gate's PR-files arm.
+- Worst case **`reconcileRequests(N)` = 16 + 2N + max(2, N) + 6 + 2 + 9** outbound requests for N environments (39 for two):
+  2 PR lists + 1 commit window + 1 workflow-run list + ≤5 job lookups + 1 status list + 1 GraphQL reviews + ≤5
+  branch pages + 2 per environment (head commit, head checks), the chain's max(2, N), the facts arms' 6, the releases arm's 2
+  and the PR-files arm's 9. Under an admin Sync it shares the invocation with `runBackfill`'s ~13.
 - **`/admin/backfill` runs it once per Sync, on the batch that ENDS the loop**: the batch whose
   `summaryBudgetExhausted` reads `false`, OR the one that hits the SPA's own cap while still exhausted —
   `isFinalBackfillBatch(result, batch?, of?)` (`src/tools/backfill.ts`); `runAdminBackfillLoop`
@@ -336,18 +385,20 @@ CALLER's org — its repo, environments and stored credentials — which runs it
 its OWN guarded arm** (a failure in one never skips another): **health** (`pingHealth`), **usage**
 (`runUsagePolls` — the app's metrics), **hosting** (every part, through the hosting providers — present only when
 the org has a part; `hosting-providers.md`), **github** (`runReconcileJob` → `reconcileRepo`
-with the org's GitHub credential: checks, runs, branches, drift, open PRs, env heads, the `canopy/*` commit statuses
-and PR reviews). The result is
+with the org's GitHub credential: checks, runs, branches, drift, open PRs, env heads, the `canopy/*` commit statuses,
+PR reviews, the facts arms and releases — NOT the repo scan, which an admin runs with Scan again). The result is
 `RepoRefreshResult` (`shared/repo.ts`, types only): `UsagePollResult`'s `sapling`, plus `health` — one `PollOutcome` per TARGET (`part` set; `ok` = up, `failed` = down with FIXED
 words `timeout` / `HTTP <status>` / `unreachable`; `"not_configured"` with no environment) — and `github`:
 `{ written, unchanged, failed }` (`failed` = reconcile's ARM NAMES), `"not_configured"` without a primary
 repository and a GitHub credential, `failed: ["unexpected error"]` on an unexpected throw. **The cron
-does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile (18 + 2N) =
-18 + 5N subrequests — 28 for two environments, and `SUBREQUEST_CAP` = 50 (the free plan's per-invocation cap,
-which this ONE-org refresh is still held to; the cron's own budget is 900) caps it at N ≤ 6** (48; 53 at seven); past that the
+does NOT call it** — its per-tick spreading stands. **Budget: health 2N + usage N + reconcile
+(`reconcileRequests(N)`) = `refreshSubrequests(N)` — 45 for two environments, and `SUBREQUEST_CAP` = 100 (a tenth of
+Workers Paid's 1,000 an invocation; the cron's own budget is 900 — it was the free plan's 50 until the promotion chain,
+the facts arms and releases pushed a five-environment org past it) caps it at N ≤ 11** (99; 105 at twelve — the PR-files
+arm's 9 took it from twelve); past that the
 github arm is SKIPPED and says so (`failed: ["skipped: would exceed the subrequest budget"]`) rather than
 risk the invocation, while health and usage still run. The hosting arm runs only when the WHOLE refresh still
-fits (18 + 5N + a mint + Σ `pollCost` ≤ 50), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
+fits (`refreshSubrequests(N)` + a mint + Σ `providerPollCost` ≤ `SUBREQUEST_CAP` — 54 left for two environments), else every part reads `skipped`. **Deliberately excluded**: `recomputeAllProgress`
 (UNBOUNDED — the reason it has a tick of its own — and it feeds the Roadmap, not this dashboard),
 `pruneRepoCapture` (maintenance, not a refresh) and `runBackfill` / summaries (that is Sync GitHub: My Work's
 capture, with its own summary allowance). **That last exclusion has a visible cost**: `runBackfill` is also
@@ -456,7 +507,9 @@ says `empty` — whose copy is "No current usage reading — the hourly polls ha
 
 **Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <token>` — the org's
-`metrics_endpoint` secret stored for that environment (SaplingLearn's fallback: `SAPLING_METRICS_TOKEN`) —
+`metrics_endpoint` secret stored for that environment (set from a part's editor — opened from Org settings ›
+Repositories › a repo › Apps, or Hosting's checklist — since repo-setups Phase 0; SaplingLearn's fallback:
+`SAPLING_METRICS_TOKEN`) —
 (user-agent `canopy-metrics`, the 8s timeout) per environment and expects `200` → `{ "active_users": {
 "24h": n, "7d": n, "30d": n } }`. **The token goes to ONE place**: a non-`https:` `apiUrl` is never fetched,
 trailing slashes are normalised, and `redirect: "manual"` + "only a 200 is an answer" means a 3xx is a
@@ -509,8 +562,43 @@ each midnight by equality), because the plain `metric GLOB 'sap_*'` form walks e
 (~33k at steady state for two environments) to return ~3k. The shape saves rows READ, not the sort — the
 `UNION ALL … ORDER BY` still costs a temp b-tree in both arms.
 
-**On screen the Usage tab is a hierarchy, not tables** (`web/src/repo.ts`): APP USAGE compare (side by side —
-comparing environments is its job) → ONE **Product** section → infrastructure. Product shows ONE environment,
+**Contract v3 — self-described groups** (repo setups, Phase G; `docs/superpowers/specs/2026-10-15-app-metrics-v3.md`).
+A body with `version: 3` may name the `part` it reports and a `label`, leave `active_users` out, and carry `groups` —
+each with its id, label, SHAPE (`ranked` / `stats` / `figure` / `status`), note, and metrics all windowed (`values`) or
+all point-in-time (`value`), each with its own label, `format: "cents"` and (status) `tone: "neutral"`.
+`appMetricsV3` (`src/repo/poll.ts`, pure) judges them per group and per metric under v2's key pattern, value rules and
+shared caps; values are stored exactly as v2's (`sap_c_*` / `sap_t_*`), the DESCRIPTION (never a value) as the
+environment's `app_metrics:<env>` snapshot — rewritten by every v3 body, DELETED by a v1 / v2 one. v1 and v2 parse
+unchanged. `projectProduct` puts the described groups FIRST, in the body's order, with `shape` / `now` / `note` / `tone`
+(`RepoProductGroup`, `RepoProductCount`) and the body's `version` / `part` / `label` on the environment; a key a v3
+group names leaves the v2 grouping. One more statement: `snapshotsByPrefix` (a key range over `app_metrics:`).
+**Trov's own `GET /api/internal/metrics`** answers v3 for ONE organization (`src/internal-metrics.ts`,
+`src/data/own-metrics.ts`): the bearer class — a Trov MCP credential, the organization chosen only by
+`resolveBearerTenant` (`src/data/bearer.ts`); anything else a bare 401, `GET` / `HEAD` only, `Cache-Control: no-store`,
+D1 only, counts only (people, live docs, awaiting review, in triage, open tickets, agents connected; MCP tool calls
+ranked; doc proposals staged / promoted / rejected and items sent to triage; sessions recorded, people active — the
+meter's windows are whole UTC days and say so). Tests: `test/repo-poll.v3.test.ts`, `test/internal-metrics.test.ts`.
+
+**On screen the Usage tab is a hierarchy, not tables** (`web/src/repo.ts`): the TARGETS (repo setups, Phase G — the
+design's UsageTarget, `web/src/repo-usage.ts`) → the EXTRA families of the parts that carry them → ONE **Product**
+section → the Hosting section. **A target is a part** (an app in an environment), narrowed by the App menu (Repo-wide
+only has none, and says so); with facts (every Worker payload now, and the sample) the targets are the facts' parts, each with its providers
+figures when the section carries it, else `partFromFacts` (no figure). A card is in exactly ONE of four states
+(`targetState`), read from the part's role, `families` (what its provider reads — shared/usage-families-core.ts),
+`connection` (THE status function) and figures — NEVER its provider id: figures for the range (`ok`: requests and
+error rate with their lines, p95 latency and bandwidth only when the payload carries them, Active users on the
+environment's FIRST web target when the app's endpoint has ever reported them; a service's CPU and memory with their
+24-hour gap lines); "No recent reading" (`stale` — read before, or connected and not read yet, with the last poll's
+age); "Not connected" (`nc` — the host is not connected; an admin outside the sample gets Connect <host> → Org settings ›
+Hosting, a member reads who does it); "Not available from <host>" with its reason (`na` — the host has nothing Trov can
+read for the role: Vercel, Netlify, GitHub deployments). A repository never reads "not connected" for a thing it does
+not have (`test/render.repo-usage.test.ts`, every scenario × variant). Then, per target whose card is `ok` / `stale`,
+the blocks of its EXTRA families (`usageExtras`): requests by OUTCOME (a bar and a legend in Cloudflare's own outcome
+names, shape marks, "not an HTTP status" — no 4xx / 5xx, ever), the Worker's runtime (CPU time p50 / p99, wall time p50
+of the last completed UTC day, subrequests in range, the CPU p99 daily line), each D1 database (read / write queries,
+rows read / written over the range's completed days, the size, the reads-per-day line), and the cron triggers (runs,
+failed — red when any —, last run). A family never read is not drawn; one the provider could not read says "Not
+available from <host>: <reason>" (a Worker with no D1 id: "no D1 database is named for this part"). Product shows ONE environment,
 picked by a segmented control (`state.repoProductEnv`, session-only; default = the LAST configured environment
 that has reported anything, else the first; the pressed button carries no `data-act`, so re-pressing it never
 replays the cross-fade; `repoProductEnv` flashes only `.repo-pswap`, a range switch flashes every `.repo-swap`).
@@ -526,16 +614,25 @@ block's `min-height` is its tallest form across every range and environment so a
 it), `growth` / `community` stat pairs, and `other` or ANY unrecognised group id as quiet rows at the end — no
 shape may depend on a key existing. `data-count` now takes an optional `data-count-fmt` (`compact` / `usd`,
 `formatCount`): `countUp` formats the in-between frames and LANDS on the element's own rendered text, so a
-compacted or dollar figure counts up without the browser ever re-deriving the Worker's string. Infrastructure
-is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboard › Usage › Hosting).
+compacted or dollar figure counts up without the browser ever re-deriving the Worker's string. A contract-v3 group is
+drawn BY ITS SHAPE, never by id or key (`shapedGroups`): a point-in-time `stats` group as a strip titled by the group,
+`ranked` as the bar list, `stats` as stat pairs, `figure` with its FIRST metric as the feature figure, `status` with its
+metrics' own tones; they come first, two to a row, then the v2 groups as above; the header reads "Product · <label>".
+Infrastructure is the ONE Hosting section (`providers`, `hosting-providers.md` › Repo dashboard › Usage › Hosting).
 
-**Pruning** (`pruneRepoCapture`, `src/repo/store.ts`, the cron's 6-hourly `:30` tick): `health_*` metrics
+**Pruning** (`pruneRepoCapture`, `src/platform/sweeps.ts` — the retention constants in `src/repo/store.ts` —, the
+cron's 6-hourly `:30` tick): `health_*` metrics
 and `check` rows older than 45 days — the `check` deletion ONLY `WHERE part IS NULL`, because a FRONTEND
 deploy record IS a `check` row (`part = 'frontend'`) and must be kept forever like `deploy` rows; and the
 HOURLY usage metrics (`hx_*` / `active_users_*`) older than 100 days; and `sap_*` product metrics
 older than **7 days, EXCEPT the rows stamped exactly 00:00 UTC, kept 100 days** (the daily totals the trend
-reads — `sap_*` and the usage globs never match each other's names). `pr` / `push` / `deploy` /
-`run` / `review` rows and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever.
+reads — `sap_*` and the usage globs never match each other's names); UNTAGGED `deploy` rows (`env IS NULL`: the
+GitHub deploy signals) older than 90 days (`DEPLOY_SIGNAL_RETENTION_DAYS`); and `hosting_deploys` older than 180
+days by the provider's creation instant. `pr` / `push` / `run` / `review` rows, a `deploy` row tagged with an
+environment (from before 0057) and `coverage` / `bundle_kb` / `todo_count` match no rule and are kept forever. Which
+files a commit touched (`commit_paths`, by the commit's own `at`) and a PR's files (`pr_files` / `pr_file_reads`, by
+the read's `fetched_at`) go after 100 days (`COMMIT_PATHS_RETENTION_DAYS`, Phase E); a PR still open past that is read
+again.
 
 **Written by Trov — `state` and `themes`** (`shared/repo.ts`, typed in `shared/ai-core.ts`): Overview's first
 block ("State") and Planning's ("Where the work went", per range). They are NOT sections, so `REPO_TAB_SECTIONS`
@@ -543,6 +640,12 @@ does not name them, and absent means off / nothing written — never a `not_conn
 them yet: production omits both** (`GET /repo/dashboard` and `get_repo_dashboard`); `LOCAL_AI_PREVIEW` fills
 them from the fixtures under `wrangler dev` only, never over MCP (`ai.md`). When the dashboard has them,
 `get_repo_dashboard` carries `state` with `tab: overview` (or no tab) and `themes` with `planning` (or no tab).
+
+**The Overview from facts** — whenever the payload carries `facts` (every Worker payload now, and the sample) the
+Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview: the composition, the
+blocks, the verdict, Needs attention, the connect card, week tiles, the header's repository / App menus and Group by,
+the address `#repo[/<tab>]?repo=&app=`, the admin's default Group by (`repo_settings`) and the sample's scenario switch
+are `repo-apps.md` › The Overview.
 
 **`get_repo_dashboard` is the Repo dashboard's read over MCP, for every principal too** — it exposes nothing
 a signed-in member cannot see at `#repo`, and nothing per-user. `src/tools/repo-agent.ts` is a VIEW over
@@ -560,5 +663,12 @@ touched — `not_connected` / `empty` pass through, never coerced to zeros — a
 the same of a `null` INSIDE an `ok` section (`usage[].requests`, a `product` value, `contributors[].reviews`,
 `ciFailures.rate`, `prs.openCount`, a delta): unknown, never zero, with `usage[].seen` saying whether the source ever
 reported. A projection throw is the degraded empty payload, not an MCP error. The view is per-call and only
-serialized — it SHARES structure with the projection, it is not a deep copy. Output: `{ repo, generatedAt,
-degraded, tab, range, sections }`.
+serialized — it SHARES structure with the projection, it is not a deep copy. **`repo` and `app`** (repo setups)
+pick the repository and narrow as the route does (an unknown `repo` reads the primary — see the facts above). With
+`tab` overview or no tab the view carries **`facts`** and **`layout`** = `layoutOf(layoutInputOf(facts),
+facts.groupDefault)` — the shared core the screen runs (`web/src/repo.ts` `factsView`), so the same facts draw the
+same opener on both (`test/repo-facts.parity.test.ts`, every scenario × variant × App × default Group by, is THE
+parity guard). Without `include_trends` each commit group in `facts` (not shipped, drift) carries `commitCount`
+(first 20, `groupCount` beside) and each part's `history` its newest 2 (`historyCount`); apps, environments and
+parts are never cut. The pure view is `src/tools/repo-agent-view.ts` (shared types only). Output: `{ repo,
+generatedAt, degraded, tab, range, sections, facts?, layout? }`.

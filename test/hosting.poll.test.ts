@@ -237,7 +237,7 @@ describe("pollPart — never trust a provider", () => {
     expect(clean.dropped).toEqual({ points: 0, deploys: 10, unavailable: 0 });
     // Snapped INWARD, its end clamped to the current hour.
     expect(clean.covered).toEqual({ from: Date.parse("2026-09-20T09:00:00Z"), to: Date.parse("2026-09-20T12:00:00Z") });
-    expect(validatePoll(null, { env: "s", key: "w", role: "service" }, NOW)).toEqual({ points: [], deploys: [], unavailable: [], covered: null, dropped: { points: 0, deploys: 0, unavailable: 0 } });
+    expect(validatePoll(null, { env: "s", key: "w", role: "service" }, NOW)).toEqual({ points: [], deploys: [], unavailable: [], covered: null, extra: [], families: [], dropped: { points: 0, deploys: 0, unavailable: 0 } });
   });
 });
 

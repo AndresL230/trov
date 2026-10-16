@@ -12,6 +12,9 @@ import { contentHash } from "./hash";
 import { changeKind } from "./diff";
 import type { Principal } from "./auth/principal";
 import type { RepoEvent } from "./repo/types";
+import { type ReleaseCapture, RELEASE_NOTES_MAX, releaseRow, removeRelease, writeRelease } from "./repo/release-store";
+import { type CommitPathRow, writeCommitPaths } from "./repo/commit-paths";
+import { type PrFilesCapture, prFileRead, touchPrFileRead, writePrFiles } from "./repo/pr-files-store";
 import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-agent";
 import { docImageProblems } from "./tools/doc-images";
 import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
@@ -288,6 +291,73 @@ export async function ingestRepoEvent(ctx: TenantContext, ev: RepoEvent): Promis
     ev.raw, ev.provenance, ev.occurred_at, nowIso()
   );
   return { outcome: (res.meta.changes ?? 0) > 0 ? "written" : "unchanged" };
+}
+
+/**
+ * Repo capture's RELEASE arm (Repo setups, Phase F) — a sibling of `ingestRepoEvent` for the `release` /
+ * `create` deliveries and reconcile's `releases` arm, reached from nowhere else (never `/ingest`). A release is
+ * a row that CHANGES (edited, deleted), not an append-only fact, so its identity is (repo, tag) and its dedupe
+ * is the gate's content hash: the settled row is hashed and compared with the stored one, and only a
+ * difference writes (`releases`, through src/repo/release-store.ts — the computed write). Rules:
+ *   - `upsert` (a published release) replaces whatever holds the tag; a bare tag's sha is kept when the
+ *     release names none.
+ *   - `tag` writes only where no RELEASE holds the tag (a release is never downgraded); over a tag row it
+ *     refreshes the date / sha when the source said something new.
+ *   - `remove` deletes a release row; a bare tag row is left alone.
+ * Without a tag, or an `upsert` / `tag` without GitHub's own instant, nothing is written (never guessed).
+ */
+export async function ingestRepoRelease(ctx: TenantContext, ev: ReleaseCapture): Promise<{ outcome: "written" | "unchanged" }> {
+  if (!ev.repo || !ev.tag) return { outcome: "unchanged" };
+  if (ev.op === "remove") return { outcome: (await removeRelease(ctx, ev.repo, ev.tag)) ? "written" : "unchanged" };
+  if (!ev.publishedAt) return { outcome: "unchanged" };
+  const existing = await releaseRow(ctx, ev.repo, ev.tag);
+  if (ev.op === "tag" && existing?.source === "release") return { outcome: "unchanged" };
+  const settled = {
+    repo: ev.repo, tag: ev.tag, name: ev.name ?? null, publishedAt: ev.publishedAt, author: ev.author ?? null,
+    notes: ev.notes ? ev.notes.slice(0, RELEASE_NOTES_MAX) : null, prerelease: ev.prerelease === true,
+    sha: ev.sha ?? existing?.sha ?? null, source: ev.op === "upsert" ? ("release" as const) : ("tag" as const),
+  };
+  const hash = await contentHash(JSON.stringify([
+    settled.tag, settled.name, settled.publishedAt, settled.author, settled.notes, settled.prerelease, settled.sha, settled.source,
+  ]));
+  if (existing?.content_hash === hash) return { outcome: "unchanged" };
+  await writeRelease(ctx, { ...settled, hash });
+  return { outcome: "written" };
+}
+
+/**
+ * Repo capture's COMMIT-PATHS arm (Repo setups, Phase E) — which files a commit touched, from a `push` delivery's own
+ * lists and the ONE compare that fills in what the delivery cut short (src/repo/commit-paths.ts derives both). Reached
+ * from the HMAC-verified webhook only, never `/ingest`. Identity is (org, repo, sha, path) and the write is INSERT OR
+ * IGNORE: a redelivery writes nothing. A row's `scope` says how precise it is (`commit` exact; `push*` the whole
+ * push's, under its head commit) — the derivation decides it, the gate never upgrades it.
+ */
+export async function ingestCommitPaths(ctx: TenantContext, repo: string, rows: CommitPathRow[]): Promise<{ written: number; unchanged: number }> {
+  if (!repo || !rows.length) return { written: 0, unchanged: rows.length };
+  const written = await writeCommitPaths(ctx, repo, rows);
+  return { written, unchanged: rows.length - written };
+}
+
+/**
+ * Repo capture's PR-FILES arm (Repo setups, Phase E) — a pull request's changed files (`GET /pulls/{n}/files`, ≤ 3
+ * pages, src/repo/pr-files.ts), from the `pull_request` webhook and reconcile's `pr_files` arm only. A PR's list
+ * CHANGES as it is pushed to, so its identity is (repo, number) and its dedupe the gate's content hash over the
+ * sorted list and its completeness: the same list read again writes nothing but the head it was read for (so the
+ * reconcile does not read it again); a different one replaces the PR's rows whole. Without a number nothing is
+ * written.
+ */
+export async function ingestPrFiles(ctx: TenantContext, cap: PrFilesCapture): Promise<{ outcome: "written" | "unchanged" }> {
+  if (!cap.repo || !Number.isInteger(cap.number) || cap.number <= 0) return { outcome: "unchanged" };
+  const files = [...new Set(cap.files)].sort();
+  const settled = { ...cap, files };
+  const hash = await contentHash(JSON.stringify([files, cap.complete]));
+  const existing = await prFileRead(ctx, cap.repo, cap.number);
+  if (existing?.content_hash === hash) {
+    if (existing.head_sha !== cap.headSha) await touchPrFileRead(ctx, settled, hash);
+    return { outcome: "unchanged" };
+  }
+  await writePrFiles(ctx, settled, hash);
+  return { outcome: "written" };
 }
 
 /**

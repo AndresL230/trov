@@ -1,0 +1,5 @@
+{
+  // a comment and a trailing comma must not cost the scan its evidence
+  "framework": "nextjs",
+  "rewrites": [{ "source": "/api/(.*)", "destination": "https://api.storefront.acme.com/$1" }],
+}

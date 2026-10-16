@@ -1,6 +1,6 @@
 import {
   REPO_RANGES, deployDots, envPartOf,
-  type RepoActivity, type RepoBars, type RepoBranches, type RepoCodeStat, type RepoContributor,
+  type RepoActivity, type RepoBars, type RepoBranches, type RepoCiFailure, type RepoCodeStat, type RepoContributor,
   type RepoDashboard, type RepoDeployRow, type RepoDrift, type RepoEnv,
   type RepoHealth, type RepoLabels, type RepoPerson, type RepoPr, type RepoProductCount, type RepoProductEnv,
   type RepoProductGroup, type RepoProductTotal, type RepoRange, type RepoSection, type RepoSprint,
@@ -8,14 +8,24 @@ import {
 } from "@shared/repo";
 import type { PersonColor } from "@shared/rows";
 import {
-  HOSTING_INTEGRATION_KIND, hostingMetricName, isDeployState, isHostingMetric, metricsForRole,
+  HOSTING_INTEGRATION_KIND, hostingMetricName, hostingRevokedReasonText, isDeployState, isHostingMetric, isHostingRevokedReason, metricsForRole,
   type DeployState, type HostingMetric, type HostingProviderId, type ProviderDeployDTO, type ProviderResources,
   type ProviderTrafficRange, type RepoProviderPart, type RepoProvidersSection,
 } from "@shared/hosting";
+import { hostingStatus, storedConnectionStatus } from "@shared/hosting-status-core";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
+import { isLegacyOrg } from "../data/legacy";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 import { list_sprints } from "./sprints";
+import { emptyRepoFacts, readRepoFacts } from "./repo-facts";
+import {
+  commitTouch, countIn, failureOf, prTouch, pushedCommits, readScope, scoped, scopedBars, scopedCi, scopedCodeStats, touchWire, type RunTouch,
+} from "./repo-scope";
+import { runRowsSince, runTouch } from "../repo/app-scope";
+import { REPO_WIDE, type RepoFacts } from "@shared/repo-facts-core";
+import type { RepoApp } from "@shared/repo-apps-core";
+import { listRepoApps } from "../repo/apps-read";
 import {
   approvedPrs, branchHeads, checkState, ciDailyRates, ciFailureRows, commitsByDay,
   hasCaptured, latestChecks, prStatesAsOf, pushRowsSince, recentPrRows, recordingSince, reviewRowsSince,
@@ -23,9 +33,12 @@ import {
 import type { RepoEnvConfig } from "../repo/config";
 import { PRODUCT_GROUPS, PRODUCT_PREFIX, type ProductFormat, compareProductKeys, parseProductMetric, productKeyInfo } from "../repo/product";
 import {
-  type HostingPollStateRow, type HostingReads, MIDNIGHT_TAIL, type MetricGroup, getSnapshot, hostingReads, latestHealth, latestMetric,
+  type HostingPollStateRow, type HostingReads, MIDNIGHT_TAIL, type MetricGroup, extraMetricsSince, getSnapshot, hostingReads, latestHealth, latestMetric, snapshotsByPrefix,
   metricSeries, metricsEver, metricsSince, productReadings,
 } from "../repo/store";
+import { familiesOf } from "@shared/usage-families-core";
+import { APP_METRICS_SNAPSHOT_PREFIX, type AppMetricsDescriptor } from "../repo/poll";
+import { type ExtraRow, familyReasons, projectExtras } from "./repo-extras";
 import type { RepoEventRow, RepoPrRow } from "../repo/types";
 // The hosting layer's READ side only: the parts list (tenant statements) and the provider registry (pure
 // metadata — labels, capabilities, console links). Never src/hosting/poll.ts, which resolves credentials:
@@ -71,6 +84,8 @@ import type { HostingProvider } from "../hosting/types";
 
 const DAY = 86_400_000;
 const PR_LIMIT = 8;
+/** Under one app, the PR list picks its 8 from this many most recently touched PRs (90 days). */
+const SCOPED_PR_CANDIDATES = 100;
 const ACTIVITY_LIMIT = 20;
 const CONTRIBUTOR_LIMIT = 8;
 const LABEL_LIMIT = 6;
@@ -91,7 +106,7 @@ const NOT_CONNECTED = { status: "not_connected" } as const;
 
 export function emptyRepoDashboard(repo: string, degraded: boolean): RepoDashboard {
   return {
-    repo, generatedAt: nowIso(), degraded,
+    repo, generatedAt: nowIso(), degraded, facts: emptyRepoFacts(repo),
     usage: NOT_CONNECTED, providers: NOT_CONNECTED, product: NOT_CONNECTED,
     environments: NOT_CONNECTED, deploys: NOT_CONNECTED, ciFailures: NOT_CONNECTED, drift: NOT_CONNECTED,
     branches: NOT_CONNECTED, health: NOT_CONNECTED, coverage: NOT_CONNECTED, bundle: NOT_CONNECTED, todos: NOT_CONNECTED,
@@ -182,19 +197,16 @@ const isBug = (i: OpenIssue): boolean => i.labels.some((l) => l.toLowerCase() ==
  *  NATIVE tickets only: the tile sits beside the open-ISSUE tiles, and a ticket
  *  mirrored from an issue (0032) is already counted there. */
 async function ticketCounts(ctx: TenantContext, since: string): Promise<{ open: number; delta: number }> {
-  // Three independent counts, side by side (one round trip's wait, not three).
-  const [open, filed, moves] = await Promise.all([
-    first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND status IN ${OPEN_STATUS_SQL} AND source = 'canopy'`, ctx.orgId),
-    first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND created_at > ? AND source = 'canopy'`, ctx.orgId, since),
-    first<{ resolved: number | null; reopened: number | null }>(
-      ctx,
-      `SELECT SUM(CASE WHEN e.to_status IN ('done','declined') AND (e.from_status IS NULL OR e.from_status NOT IN ('done','declined')) THEN 1 ELSE 0 END) AS resolved,
-              SUM(CASE WHEN e.from_status IN ('done','declined') AND e.to_status NOT IN ('done','declined') THEN 1 ELSE 0 END) AS reopened
-         FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ? AND t.source = 'canopy'
-        WHERE e.org_id = ? AND e.created_at > ?`,
-      ctx.orgId, ctx.orgId, since
-    ),
-  ]);
+  const open = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND status IN ${OPEN_STATUS_SQL} AND source = 'canopy'`, ctx.orgId);
+  const filed = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND created_at > ? AND source = 'canopy'`, ctx.orgId, since);
+  const moves = await first<{ resolved: number | null; reopened: number | null }>(
+    ctx,
+    `SELECT SUM(CASE WHEN e.to_status IN ('done','declined') AND (e.from_status IS NULL OR e.from_status NOT IN ('done','declined')) THEN 1 ELSE 0 END) AS resolved,
+            SUM(CASE WHEN e.from_status IN ('done','declined') AND e.to_status NOT IN ('done','declined') THEN 1 ELSE 0 END) AS reopened
+       FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ? AND t.source = 'canopy'
+      WHERE e.org_id = ? AND e.created_at > ?`,
+    ctx.orgId, ctx.orgId, since
+  );
   return { open: open?.n ?? 0, delta: (filed?.n ?? 0) - (moves?.resolved ?? 0) + (moves?.reopened ?? 0) };
 }
 
@@ -509,7 +521,9 @@ const productValue = (v: number, format: ProductFormat): string =>
  * `anyProduct` = some figure is current somewhere (the caller's `ok`).
  */
 function projectProduct(
-  rows: { metric: string; env: string; at: string; value: number }[], envs: RepoDashboardEnv[], now: number
+  rows: { metric: string; env: string; at: string; value: number }[], envs: RepoDashboardEnv[], now: number,
+  /** Contract v3: what each environment's last body DESCRIBED (`app_metrics:<env>` snapshots, src/repo/poll.ts). */
+  descriptors: ReadonlyMap<string, AppMetricsDescriptor> = new Map(),
 ): { product: RepoProductEnv[]; anyProduct: boolean } {
   interface Reading { t: number; value: number }
   interface Series { latest: Partial<Record<RepoRange | "total", Reading>>; trend: number[] }
@@ -533,8 +547,31 @@ function projectProduct(
       if ((name.kind === "total" || name.range === "24h") && t >= trendFrom && r.at.endsWith(MIDNIGHT_TAIL)) series.trend.push(r.value);
     }
 
+    // Contract v3 first: the groups the body described, in its order, each drawn by its own shape. A key it named
+    // with no row in the read is absent (never reported, or silent past the trend); one with a row but no current
+    // reading is listed with null figures ("no recent reading"). Every key a v3 group named leaves the v2 grouping.
+    const desc = descriptors.get(cfg.key);
+    const v3 = desc && desc.version === 3 ? desc : null;
+    const named = new Set<string>();
+    const v3Groups: RepoProductGroup[] = (v3?.groups ?? []).flatMap((g): RepoProductGroup[] => {
+      const metrics = g.metrics.flatMap((m): RepoProductCount[] => {
+        named.add(m.key);
+        const series = g.window === "now" ? totals.get(m.key) : counts.get(m.key);
+        if (!series) return [];
+        const values = {} as Record<RepoRange, string | null>;
+        const raw = {} as Record<RepoRange, number | null>;
+        for (const range of REPO_RANGES) {
+          raw[range] = current(g.window === "now" ? series.latest.total : series.latest[range]);
+          values[range] = raw[range] === null ? null : productValue(raw[range], m.format);
+          if (raw[range] !== null) anyProduct = true;
+        }
+        return [{ key: m.key, label: m.label, values, raw, trend: series.trend, ...(m.tone ? { tone: m.tone } : {}) }];
+      });
+      return metrics.length ? [{ id: g.id, title: g.label, metrics, shape: g.shape, ...(g.window === "now" ? { now: true } : {}), ...(g.note ? { note: g.note } : {}) }] : [];
+    });
+
     const byGroup = new Map<string, RepoProductCount[]>();
-    for (const key of [...counts.keys()].sort(compareProductKeys)) {
+    for (const key of [...counts.keys()].filter((k) => !named.has(k)).sort(compareProductKeys)) {
       const series = counts.get(key)!;
       const info = productKeyInfo(key);
       const values = {} as Record<RepoRange, string | null>;
@@ -548,18 +585,18 @@ function projectProduct(
       list.push({ key, label: info.label, values, raw, trend: series.trend, ...(info.note ? { note: info.note } : {}) });
       byGroup.set(info.group, list);
     }
-    const groups: RepoProductGroup[] = PRODUCT_GROUPS.flatMap(([id, title]) => {
+    const groups: RepoProductGroup[] = [...v3Groups, ...PRODUCT_GROUPS.flatMap(([id, title]) => {
       const metrics = byGroup.get(id);
       return metrics ? [{ id, title, metrics }] : [];
-    });
-    const totalRows: RepoProductTotal[] = [...totals.keys()].sort(compareProductKeys).map((key) => {
+    })];
+    const totalRows: RepoProductTotal[] = [...totals.keys()].filter((k) => !named.has(k)).sort(compareProductKeys).map((key) => {
       const series = totals.get(key)!;
       const info = productKeyInfo(key);
       const raw = current(series.latest.total);
       if (raw !== null) anyProduct = true;
       return { key, label: info.label, value: raw === null ? null : productValue(raw, info.format), raw, trend: series.trend, ...(info.note ? { note: info.note } : {}) };
     });
-    return { name: cfg.label, groups, totals: totalRows };
+    return { name: cfg.label, groups, totals: totalRows, ...(v3 ? { version: 3 as const, part: v3.part, label: v3.label } : {}) };
   });
   return { product, anyProduct };
 }
@@ -716,6 +753,25 @@ const isHttps = (u: string | null): u is string => {
 };
 
 /**
+ * A part's provider's org-wide connection as EVERY surface says it — the ONE status function
+ * (shared/hosting-status-core.ts `hostingStatus`), fed from `hostingReads`' metadata arms: the stored credential
+ * (`org_secrets`, scope '', never its value) and the install / OAuth row. The only fact this projection cannot
+ * read is SaplingLearn's legacy Worker secret (the decrypt path is off limits here — test/secrets.mcp.test.ts):
+ * for that org alone, a poll that found a credential (ok or failed — never `skipped`) is the evidence of it.
+ */
+function partConnectionOf(info: PartInfo, reads: HostingReads, legacyOrg: boolean): RepoProviderPart["connection"] {
+  const label = info.provider?.label ?? info.part.provider;
+  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: always live.
+  if (info.provider?.credential === "github_app") return hostingStatus(null, label, true).state;
+  const secret = reads.secrets.get(HOSTING_INTEGRATION_KIND[info.part.provider] ?? "") ?? null;
+  const row = reads.connections.get(info.part.provider) ?? null;
+  const status = storedConnectionStatus(secret, row);
+  const reason = status === "revoked" && isHostingRevokedReason(row?.revoked_reason) ? hostingRevokedReasonText(row!.revoked_reason, label) : null;
+  const legacy = legacyOrg && !secret && info.state !== undefined && info.state.status !== "skipped";
+  return hostingStatus({ status, legacy_fallback: legacy, revoked_reason: reason }, label).state;
+}
+
+/**
  * The `providers` section: EVERY part of every environment (`listAllParts`, any provider), each as one
  * `RepoProviderPart`, derived IN MEMORY from reads the render already makes: the metric points ride the
  * Usage read (`metricsSince`, `hx_*`); deploys, every part's last poll and the org's provider settings are
@@ -740,16 +796,18 @@ const isHttps = (u: string | null): u is string => {
  *               else `neutral` (an in-flight or canceled newest deploy says nothing either way).
  *   console_url the provider's own `consoleUrl(part settings, org settings)`, https only, or null — the org
  *               settings come from `hostingReads` (scope ''), never through the secrets module.
+ *   connection  the part's provider's org-wide connection, as Org settings › Hosting says it (`partConnectionOf`).
  * Section: `ok` when any part is ok; `empty` when parts exist but none is; `not_connected` with no part.
  */
-function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number): RepoProvidersSection {
+function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingReads, endExcl: number, now: number, legacyOrg = false, extraRows: readonly ExtraRow[] = []): RepoProvidersSection {
   if (!infos.length) return NOT_CONNECTED;
   const series = (metric: string, envKey: string, part: string): UsagePoint[] =>
     rows.filter((r) => r.metric === metric && r.env === envKey && r.part === part)
       .map((r) => ({ t: Date.parse(r.at), value: r.value })).filter((p) => Number.isFinite(p.t));
   const complete = (pts: UsagePoint[]) => pts.filter((p) => p.t < endExcl);
 
-  const out: RepoProviderPart[] = infos.map(({ part, provider, state, unavailable, reads: reads_, covered, deploys }) => {
+  const out: RepoProviderPart[] = infos.map((info) => {
+    const { part, provider, state, unavailable, reads: reads_, covered, deploys } = info;
     let traffic: RepoProviderPart["traffic"] = null;
     let resources: RepoProviderPart["resources"] = null;
     let seenTraffic = false, seenResources = false;
@@ -783,12 +841,7 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
       : state?.status === "failed" || (rate !== null && rate >= ERROR_RATE_WARN) ? "warn"
       : newest === "ready" ? "good" : "neutral";
 
-    let consoleUrl: string | null = null;
-    try {
-      // Provider code, on the render path: a throw or a non-https answer is simply no link.
-      const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider]) ?? {}) ?? null;
-      consoleUrl = isHttps(u) ? u : null;
-    } catch { consoleUrl = null; }
+    const consoleUrl = consoleUrlOf(part, provider, reads);
 
     return {
       env: part.env, env_label: part.envLabel, part: part.key, label: part.label, role: part.role,
@@ -797,9 +850,36 @@ function projectProviders(infos: PartInfo[], rows: MetricRow[], reads: HostingRe
       seen: { traffic: seenTraffic, resources: seenResources, deploys: deploys.length > 0 },
       unavailable, status, tone,
       last_poll: state ? { at: state.polled_at, status: state.status, detail: state.detail } : null,
+      connection: partConnectionOf(info, reads, legacyOrg),
+      // Repo setups, Phase G: the usage families the part's provider reads, and what its EXTRA families say.
+      ...(provider ? { families: familiesOf(provider.capabilities) } : {}),
+      ...extrasOf(info, extraRows, endExcl, now),
     };
   });
   return out.some((p) => p.status === "ok") ? ok(out) : EMPTY;
+}
+
+/** A part's console link on its provider: the provider's own `consoleUrl(part settings, org settings)`, https only,
+ *  or null — the org settings come from `hostingReads` (scope ''), never through the secrets module. */
+function consoleUrlOf(part: PartRow, provider: HostingProvider | undefined, reads: HostingReads): string | null {
+  try {
+    // Provider code, on the render path: a throw or a non-https answer is simply no link.
+    const u = provider?.consoleUrl({ settings: part.settings }, reads.config.get(HOSTING_INTEGRATION_KIND[part.provider] ?? "") ?? {}) ?? null;
+    return isHttps(u) ? u : null;
+  } catch { return null; }
+}
+
+/** Does any of these parts' providers declare an extra usage family? (Only then is the extra read made.) */
+const readsExtras = (infos: PartInfo[]): boolean => infos.some((i) => (i.provider?.capabilities.families ?? []).length > 0);
+
+/** A part's `extras` — its provider's EXTRA families (src/tools/repo-extras.ts), or nothing when it declares none. */
+function extrasOf(info: PartInfo, rows: readonly ExtraRow[], endExcl: number, now: number): { extras?: RepoProviderPart["extras"] } {
+  const families = info.provider?.capabilities.families ?? [];
+  if (!families.length) return {};
+  const extras = projectExtras({
+    env: info.part.env, part: info.part.key, families, covered: info.covered, reasons: familyReasons(info.state?.unavailable), settings: info.part.settings,
+  }, rows, endExcl, now);
+  return extras ? { extras } : {};
 }
 
 /** A part's host as the screen names it: the registry's label, else (a provider the registry lost) its id. */
@@ -851,22 +931,21 @@ export async function getRepoDashboard(
   envs: RepoDashboardEnv[] = [],
   /** The hosting provider registry — a parameter only so a test can hand the `providers` section a fake. */
   providers: ProviderMap = PROVIDERS,
+  /** `app`: the App menu's narrowing (an app key of `repo`, or `REPO_WIDE`; null / unknown = every app). It
+   *  narrows the facts (`narrowFacts`) and the per-part sections — environments' parts, deploys, usage,
+   *  providers: an app IS a part key. */
+  opts: { app?: string | null } = {},
 ): Promise<RepoDashboard> {
   const nowAt = new Date(now).toISOString();
   const weekAgo = new Date(now - 7 * DAY).toISOString();
   const twoWeeksAgo = new Date(now - 14 * DAY).toISOString();
   const ninetyDaysAgo = new Date(now - RECENT_PR_DAYS * DAY).toISOString();
 
-  // ── every read, as a dataflow ─────────────────────────────────────────────
-  // Each read below starts as soon as what it depends on is known, and the projection waits ONCE for all of
-  // them: a read that needs nothing starts at once, one that needs a gate (`prs_reconciled`, a captured
-  // run, any push) starts the moment that gate's own read is back, and the two reads that need two others
-  // (the checks: the environment heads AND the listed PRs' heads; the usage "ever?" read: the usage points
-  // AND the parts) wait for exactly those. The longest chain is three statements, whatever the rest costs
-  // (`test/perf.round-trips.test.ts`; `data-layer.md` › Round trips). Every conditional read is still taken
-  // only on the path that needs it, so the statements run are the same as when they ran one by one, and so
-  // is the answer. A failed read fails the whole projection exactly as before (the route answers its empty
-  // dashboard); the hosting read alone fails by itself (below).
+  // ── the reads: a dataflow, not a sequence ────────────────────────────────
+  // Every read starts as soon as what it depends on is known (most depend on nothing), and they are awaited
+  // together below — so the dashboard waits on its longest CHAIN of reads, not on their sum. The statements
+  // are the same ones, with the same conditions, as when they ran one after the other; only the order moved.
+  // test/perf.round-trips.test.ts pins the chain.
 
   // Never on the render path: GitHub's GraphQL refs query is called off
   // reconcileRepo only — this only reads back the snapshot it wrote. No
@@ -891,32 +970,42 @@ export async function getRepoDashboard(
   // "any pr row exists" — a single webhook delivery must not claim a complete
   // open-PR count. Same field name/shape as before; only what it gates on
   // changed.
+  // Every PR's latest state now — the open ones count once `prCaptured`; the facts' previews match branches to
+  // them whatever the marker says (a captured PR row is a fact about its branch).
   // A delta is only real once capture was RECORDING for the whole comparison
   // window — otherwise "now vs a week ago" is really "now vs whenever capture
   // began", which reads as a spurious spike. `tickets` is the fallback tile's
   // own read, so skip it entirely once PR capture makes that tile unreachable.
-  const isOpen = (r: RepoPrRow) => r.state === "draft" || r.state === "review";
+  // The facts' Merged PRs figure compares this week with LAST week, so its delta needs PR capture recording since
+  // before last week began (`twoWeeksAgo`), like the Commits tile's.
+  const prStatesNowP = prStatesAsOf(ctx, nowAt);
   const prP = getSnapshot(ctx, "prs_reconciled").then(async (snap) => {
     if (snap === null) {
-      return { prCaptured: false, prsNow: [] as RepoPrRow[], prsThen: [] as RepoPrRow[], prRows: [] as RepoPrRow[], prRecordingSince: null as string | null, tickets: await ticketCounts(ctx, weekAgo) };
+      const [tickets, latest] = await Promise.all([ticketCounts(ctx, weekAgo), latestPrsP]);
+      return {
+        prCaptured: false, prsThen: [] as RepoPrRow[], prRows: [] as RepoPrRow[], prRecordingSince: null as string | null,
+        mergedSince: latest.length ? await recordingSince(ctx, "pr") : null, tickets,
+      };
     }
-    const [statesNow, statesThen, recentRows, since] = await Promise.all([
-      prStatesAsOf(ctx, nowAt), prStatesAsOf(ctx, weekAgo), recentPrRows(ctx, PR_LIMIT, ninetyDaysAgo), recordingSince(ctx, "pr"),
+    const [statesThen, recentRows, since] = await Promise.all([
+      prStatesAsOf(ctx, weekAgo), recentPrRows(ctx, PR_LIMIT, ninetyDaysAgo), recordingSince(ctx, "pr"),
     ]);
     return {
-      prCaptured: true, prsNow: statesNow.filter(isOpen), prsThen: statesThen.filter(isOpen),
+      prCaptured: true, prsThen: statesThen.filter(isOpen),
       // The PR list: the latest state per PR, unknown states dropped (never guessed).
       prRows: recentRows.filter((r) => isKnownPrState(r.state)),
-      prRecordingSince: since, tickets: { open: 0, delta: 0 },
+      prRecordingSince: since, mergedSince: since, tickets: { open: 0, delta: 0 },
     };
   });
+  const isOpen = (r: RepoPrRow) => r.state === "draft" || r.state === "review";
   // ONE approval read for both consumers below — the listed PRs and the open-PR
   // tile. An approved PR is no longer "awaiting review".
-  const approvedP = prP.then((pr) => approvedPrs(ctx, [...pr.prsNow, ...pr.prRows].filter((r) => r.state === "review").map((r) => r.number ?? 0)));
+  const approvedP = Promise.all([prP, prStatesNowP]).then(([pr, statesNow]) =>
+    approvedPrs(ctx, [...(pr.prCaptured ? statesNow.filter(isOpen) : []), ...pr.prRows].filter((r) => r.state === "review").map((r) => r.number ?? 0)));
 
+  // Commits once pushes are captured; merges (what `events` has always had) until then.
   const pushP = pushRowsSince(ctx, twoWeeksAgo).then(async (pushes) => {
     if (!pushes.length) return { pushes, pushRecordingSince: null as string | null, commitDays: null as Map<string, number> | null };
-    // Commits once pushes are captured; merges (what `events` has always had) until then.
     const [since, commitDays] = await Promise.all([recordingSince(ctx, "push"), commitsByDay(ctx, twoWeeksAgo)]);
     return { pushes, pushRecordingSince: since, commitDays };
   });
@@ -942,15 +1031,31 @@ export async function getRepoDashboard(
     }
   };
   const hostingP = envs.length ? hostingRead() : Promise.resolve([[] as PartRow[], null] as const);
+  // The repository's apps (an app IS a part key) — what the App menu narrows to, and the facts' apps. A failed
+  // read costs the facts (and the narrowing), never the other sections.
+  const repoAppsP = hostingP.then(([allParts]) => listRepoApps(ctx, repo, allParts)).catch((e: unknown): RepoApp[] | null => {
+    console.error("repo dashboard", "apps", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+    return null;
+  });
+  // The App menu's narrowing: an app key of the repository, `REPO_WIDE`, or null (every app; an unknown key too).
+  const narrowOf = (apps: RepoApp[] | null) =>
+    opts.app == null ? null : opts.app === REPO_WIDE ? REPO_WIDE : apps?.some((a) => a.key === opts.app) ? opts.app : null;
+  const inViewOf = (narrow: string | null, p: PartRow) => narrow === null || (narrow !== REPO_WIDE && p.key === narrow);
+  // Only the environments this projection reports on: the parts list reads the org's rows, the rest of the
+  // dashboard reads `envs` — in production they are the same rows (src/routes.ts, src/tools/repo-agent.ts).
+  const infosP = Promise.all([hostingP, repoAppsP]).then(([[allParts, hosted], apps]) => {
+    const narrow = narrowOf(apps);
+    return hosted ? partInfos(allParts.filter((p) => envKeys.has(p.env) && inViewOf(narrow, p)), hosted, providers) : [];
+  });
   const headsP = envs.length ? branchHeads(ctx, envs.map((e) => e.branch)) : Promise.resolve(new Map<string, string>());
   const checksP = Promise.all([headsP, prP]).then(([heads, pr]) => latestChecks(ctx, [...heads.values(), ...pr.prRows.map((r) => r.sha ?? "")]));
   // Environment health: ONE query for every environment half (read below).
   const healthP = envs.length ? latestHealth(ctx) : Promise.resolve(new Map<string, { at: string; value: number }>());
 
   // CI is `not_connected` until a workflow run has ever been captured; the seven-day rate waits for capture
-  // to cover the week (read below).
+  // to cover the week (both read below).
   const runsP = hasCaptured(ctx, "run").then(async (runCaptured) => {
-    if (!runCaptured) return { runCaptured, ciRates: null, failureRows: [] as Awaited<ReturnType<typeof ciFailureRows>>, failureTotal: 0 };
+    if (!runCaptured) return { runCaptured, runRecordingSince: null as string | null, ciRates: null, failureRows: [] as Awaited<ReturnType<typeof ciFailureRows>>, failureTotal: 0 };
     const [runRecordingSince, failureRows] = await Promise.all([recordingSince(ctx, "run"), ciFailureRows(ctx, weekAgo, CI_FAILURE_LIMIT)]);
     const [ciRates, failureTotal] = await Promise.all([
       runRecordingSince !== null && runRecordingSince <= weekAgo ? ciDailyRates(ctx, now) : null,
@@ -962,7 +1067,7 @@ export async function getRepoDashboard(
             `SELECT COUNT(*) AS n FROM repo_events WHERE org_id = ? AND kind = 'run' AND state IN ('failure', 'timed_out') AND occurred_at > ?`, ctx.orgId, weekAgo)
           .then((row) => row?.n ?? failureRows.length),
     ]);
-    return { runCaptured, ciRates, failureRows, failureTotal };
+    return { runCaptured, runRecordingSince, ciRates, failureRows, failureTotal };
   });
 
   const issueEventsP = all<IssueRow>(
@@ -1018,12 +1123,27 @@ export async function getRepoDashboard(
         productReadings(ctx, [...envKeys], new Date(now - HOSTING_STALE_MS).toISOString(), new Date(now - PRODUCT_TREND_DAYS * DAY).toISOString()),
       ])
     : Promise.resolve([[], []] as [Awaited<ReturnType<typeof metricsSince>>, Awaited<ReturnType<typeof productReadings>>]);
-  // Only the environments this projection reports on: the parts list reads the org's rows, the rest of the
-  // dashboard reads `envs` — in production they are the same rows (src/routes.ts, src/tools/repo-agent.ts).
-  const infosP = hostingP.then(([allParts, hosted]) => (hosted ? partInfos(allParts.filter((p) => envKeys.has(p.env)), hosted, providers) : []));
-  const usageP = Promise.all([usageReadP, infosP]).then(async ([[usageRows, productRows], infos]) => {
+  // Contract v3's descriptions — ONE statement, a key range over the environments' `app_metrics:<env>` snapshots;
+  // a failed read costs only the v3 shapes (the values still show, grouped as v2 groups them).
+  const descriptorsP = envs.length
+    ? snapshotsByPrefix<AppMetricsDescriptor>(ctx, APP_METRICS_SNAPSHOT_PREFIX).catch(() => [])
+    : Promise.resolve([]);
+  // Repo setups, Phase G: the extra usage families (outcomes, runtime, storage, schedules) — ONE more statement, made
+  // only when some part's provider declares one. 31 days back: the 30-day hourly ranges and the last 30 completed days.
+  // A failed read costs only the extras (logged), never the section.
+  const extraRowsP = Promise.all([hostingP, infosP]).then(([[, hosted], infos]) => hosted && readsExtras(infos)
+    ? extraMetricsSince(ctx, new Date(Math.floor(now / DAY) * DAY - 31 * DAY).toISOString()).catch((e: unknown) => {
+        console.error("repo dashboard", "extras", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+        return [] as ExtraRow[];
+      })
+    : [] as ExtraRow[]);
+  const usageP = Promise.all([usageReadP, descriptorsP, infosP]).then(async ([[usageRows, productRows], snaps, infos]) => {
     const used = projectUsage(usageRows, envs, infos, usageEnd, now);
-    const produced = projectProduct(productRows, envs, now);
+    const descriptors = new Map<string, AppMetricsDescriptor>();
+    for (const s of snaps) {
+      if (s.data && typeof s.data === "object") descriptors.set(s.kind.slice(APP_METRICS_SNAPSHOT_PREFIX.length), s.data);
+    }
+    const produced = projectProduct(productRows, envs, now, descriptors);
     const ever = envs.length && (!used.anyUsage || !produced.anyProduct)
       ? await metricsEver(ctx, USAGE_METRICS, [PRODUCT_PREFIX])
       : new Set<string>();
@@ -1031,37 +1151,42 @@ export async function getRepoDashboard(
   });
 
   const [
-    branchSnap, people, recentPrs, latestPrs, openNow, openThen, pr, approved, push,
-    [, hosted], infos, heads, checks, healthRows, runs, reviews, issueEvents, sprints,
+    branchSnap, people, recentPrs, latestPrs, openNow, openThen, prStatesNow, pr, approved, push,
+    [allParts, hosted], repoApps, infos, heads, checks, healthRows, runs, reviews, issueEvents, sprints,
     // Never on the render path: GitHub's compare API is called off a push
     // webhook or reconcileRepo, never here — this only reads back what one of
     // those already wrote. No snapshot yet → not_connected; a stale one is
     // still shown, with nothing on screen saying how old it is (see `branches`).
-    driftSnap, cov, bun, todo, usage, hasReviewCapture,
+    driftSnap, cov, bun, todo, extraRows, usage,
+    // See the review gate below (Team & Planning).
+    hasReviewCapture,
   ] = await Promise.all([
     branchSnapP, personsByLogin(ctx), recentPrsP, latestPrsP, openIssuesAsOf(ctx, nowAt), openIssuesAsOf(ctx, weekAgo),
-    prP, approvedP, pushP, hostingP, infosP, headsP, checksP, healthP, runsP,
+    prStatesNowP, prP, approvedP, pushP, hostingP, repoAppsP, infosP, headsP, checksP, healthP, runsP,
     reviewRowsSince(ctx, twoWeeksAgo), issueEventsP, list_sprints(ctx), getSnapshot<RepoDrift>(ctx, "drift"),
-    trendP("coverage", monthAgo), trendP("bundle_kb", monthAgo), trendP("todo_count", todoWindowStart), usageP,
-    // See the review gate below (Team & Planning).
+    trendP("coverage", monthAgo), trendP("bundle_kb", monthAgo), trendP("todo_count", todoWindowStart), extraRowsP, usageP,
     hasCaptured(ctx, "review", "webhook"),
   ]);
 
-  const { prCaptured, prsNow, prsThen, prRows, prRecordingSince, tickets } = pr;
-  const { pushes, pushRecordingSince, commitDays } = push;
   const listPrs = latestPrs.slice(0, PR_LIMIT);
   const merged = recentPrs.filter((p) => p.event_type === "pr_merged");
   const mergedThisWeek = merged.filter((p) => p.at > weekAgo);
   const mergedLastWeek = merged.filter((p) => p.at <= weekAgo && p.at > twoWeeksAgo);
   const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo);
+
+  const { prCaptured, prsThen, prRows, prRecordingSince, mergedSince, tickets } = pr;
+  const prsNow = prCaptured ? prStatesNow.filter(isOpen) : [];
   const awaiting = (rows: RepoPrRow[], done: Set<number> = new Set()) =>
     rows.filter((r) => r.state === "review" && !done.has(r.number ?? -1)).length;
   const prDeltaOk = prRecordingSince !== null && prRecordingSince <= weekAgo;
+  const mergedDeltaOk = mergedSince !== null && mergedSince <= twoWeeksAgo;
+  const { pushes, pushRecordingSince, commitDays } = push;
   const pushesThisWeek = pushes.filter((p) => p.occurred_at > weekAgo);
   const sum = (rows: RepoEventRow[]) => rows.reduce((n, r) => n + (r.count ?? 0), 0);
   const commitsThisWeek = sum(pushesThisWeek);
   const commitsLastWeek = sum(pushes.filter((p) => p.occurred_at <= weekAgo));
   const pushDeltaOk = pushRecordingSince !== null && pushRecordingSince <= twoWeeksAgo;
+  const narrowTo = narrowOf(repoApps);
 
   // Environment health: 10-minute pings the repo cron writes (src/repo/poll.ts).
   // A row older than HEALTH_STALE_MS means the cron has stopped — never guess
@@ -1090,7 +1215,7 @@ export async function getRepoDashboard(
       const dots = deployDots(i.deploys);
       // A part with no settled deploy gets no dot strip at all — an empty one would
       // read as "nothing has deployed", which is not what is known.
-      if (dots.length) deployRows.push({ env: cfg.key, part: i.part.key, label: `${cfg.label} · ${i.part.label}`, deploys: dots });
+      if (dots.length) deployRows.push({ env: cfg.key, part: i.part.key, label: `${cfg.label} · ${i.part.label}`, deploys: dots, envLabel: cfg.label, host: providerLabel(i.part, i.provider) });
       return envPartOf({ part: i.part.key, label: i.part.label, provider: i.part.provider, provider_label: providerLabel(i.part, i.provider) }, i.deploys);
     });
     // Deploy CAPTURE for this environment: a deploy on record (in flight included), or a part whose
@@ -1142,8 +1267,7 @@ export async function getRepoDashboard(
   // commit deltas use: until `run` capture predates the whole week, a day with
   // no captured runs is a day capture was not running, not a green day. The
   // failures LIST is not gated — those rows are facts.
-  // (Read above, in `runsP`.)
-  const { runCaptured, ciRates, failureRows, failureTotal } = runs;
+  const { runCaptured, runRecordingSince, ciRates, failureRows, failureTotal } = runs;
 
   const issuesThisWeek = issueEvents.filter((e) => e.at > weekAgo);
   const openedThisWeek = issuesThisWeek.filter((e) => e.action === "opened");
@@ -1194,7 +1318,7 @@ export async function getRepoDashboard(
       : { label: "Issues closed", value: closedThisWeek.length, sub: "this week", tone: "neutral" },
   ];
 
-  // Commits once pushes are captured; merges (what `events` has always had) until then.
+  // Commits once pushes are captured (`commitDays`, read above); merges (what `events` has always had) until then.
   const perDay = new Map<string, number>();
   for (const p of merged) perDay.set(p.at.slice(0, 10), (perDay.get(p.at.slice(0, 10)) ?? 0) + 1);
   const days = lastDays(now, BAR_DAYS).map((date) => ({ date, count: (commitDays ?? perDay).get(date) ?? 0 }));
@@ -1304,12 +1428,8 @@ export async function getRepoDashboard(
     : listPrs.map((p) => prOf(people, p));
 
   const some = <T>(rows: T[]): RepoSection<T[]> => (rows.length ? ok(rows) : EMPTY);
-
-  // ── coverage / bundle / TODO count (read above, in `trendP`: the three series, and each empty one's
-  // "ever?" read — I2).
-  const { pts: covPts, ifEmpty: covEmpty } = cov;
-  const { pts: bunPts, ifEmpty: bunEmpty } = bun;
-  const { pts: todoPts, ifEmpty: todoEmpty } = todo;
+  // ── coverage / bundle / TODO count (read above, in `trendP`).
+  const [covPts, bunPts, todoPts] = [cov.pts, bun.pts, todo.pts];
   // windowDelta's baseline is the window's FIRST point — once a series holds
   // more than 10 readings, that baseline can lie to the LEFT of the 10-point
   // sparkline drawn below (`.slice(-10)`): the delta and the drawn trend may
@@ -1323,7 +1443,7 @@ export async function getRepoDashboard(
         tone: covDelta === null ? "neutral" : covDelta >= 0 ? "good" : "warn",
         note: "over 30 days",
       })
-    : covEmpty;
+    : cov.ifEmpty;
   const bunDelta = windowDelta(bunPts);
   const bundle: RepoSection<RepoTrend> = bunPts.length
     ? ok({
@@ -1333,7 +1453,7 @@ export async function getRepoDashboard(
         tone: bunDelta === null ? "neutral" : bunDelta > 0 ? "warn" : "good",
         note: "over 30 days · gzip",
       })
-    : bunEmpty;
+    : bun.ifEmpty;
   const todoDelta = windowDelta(todoPts);
   const todos: RepoSection<RepoTodos> = todoPts.length
     ? ok({
@@ -1342,15 +1462,117 @@ export async function getRepoDashboard(
         since: todoDelta === null ? "" : new Date(todoPts[0].at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
         trend: todoPts.slice(-10).map((p) => p.value),
       })
-    : todoEmpty;
+    : todo.ifEmpty;
 
   // ── usage (read above, in `usageP` — `metricsEver` only on the not-ok path).
   const { usageRows, used, produced, ever } = usage;
-  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now) : NOT_CONNECTED;
+  // MT: SaplingLearn's legacy Worker secret is evidence only for org #1 (src/data/legacy.ts).
+  const providerSection = hosted ? projectProviders(infos, usageRows, hosted, usageEnd, now, isLegacyOrg(ctx), extraRows) : NOT_CONNECTED;
   const everAny = (metrics: string[]) => metrics.some((m) => ever.has(m));
 
+  // ── the App menu's narrowing of Code and CI (Repo setups, Phase E — ./repo-scope.ts) ──────────────────────
+  // Only in a repository with two or more apps. Under All apps each listed PR says which apps it touches and each
+  // failure which apps its run belongs to; under one app (or "Repo-wide only") the tiles, the bars, the PR list and
+  // the CI failures are that app's — what is unknown (files never read) is never counted into one. A throw here
+  // costs the narrowing alone: the narrowed sections read empty and the dashboard says it is `degraded`.
+  const multi = (repoApps?.length ?? 0) >= 2;
+  let codeStatsOut = codeStats, barsOut: RepoBars | null = barTotal > 0 ? bars : null, prRowsOut = capturedPrs;
+  let openCountOut: number | null = prCaptured ? prsNow.length : null;
+  let failuresOut: RepoCiFailure[] = failureRows.map((r) => ({ workflow: r.name ?? "workflow", branch: r.ref ?? "", job: r.title ?? "—", at: r.occurred_at, url: r.url ?? "" }));
+  let failureTotalOut = failureTotal, rateOut = ciRates?.rate ?? null, trendOut = ciRates?.days ?? [];
+  let openPrsByApp: Record<string, number | null> | undefined;
+  let packageUsedBy: Map<string, string[] | null> | undefined;
+  let scopeFailed = false;
+  if (multi && repoApps) {
+    try {
+      const apps = repoApps;
+      const scopedList = narrowTo !== null && prCaptured
+        ? (await recentPrRows(ctx, SCOPED_PR_CANDIDATES, ninetyDaysAgo)).filter((r) => isKnownPrState(r.state)) : [];
+      const allCommits = pushes.flatMap(pushedCommits);
+      const weekCommits = allCommits.filter((c) => c.at > weekAgo);
+      const runs = runCaptured ? await runRowsSince(ctx, weekAgo) : [];
+      const s = await readScope(ctx, repo, apps, {
+        prs: [...prsNow, ...prRows, ...scopedList].map((r) => r.number ?? 0)
+          .concat(recentPrs.map((p) => p.ref_number), latestPrs.map((p) => p.ref_number)),
+        commits: allCommits.map((c) => c.sha ?? "").filter(Boolean),
+        runs: runs.map((r) => r.sha ?? "").filter(Boolean),
+      });
+      packageUsedBy = s.users;
+      const runTouches: RunTouch[] = runs.map((run) => ({ run, t: runTouch(run, run.sha ? s.runHeads.get(run.sha.toLowerCase()) : undefined, apps, allParts) }));
+      const failedRuns = runTouches.filter((r) => r.run.state === "failure" || r.run.state === "timed_out");
+      if (prCaptured) openPrsByApp = Object.fromEntries(apps.map((a) => [a.key, countIn(s, a.key, prsNow.map((r) => prTouch(s, r.number)))]));
+      if (narrowTo === null) {
+        prRowsOut = capturedPrs.map((pr) => ({ ...pr, ...touchWire(prTouch(s, pr.number)) }));
+        failuresOut = failedRuns.slice(0, CI_FAILURE_LIMIT).map((r) => failureOf(r, true));
+      } else {
+        const app = narrowTo;
+        const label = app === REPO_WIDE ? "" : apps.find((a) => a.key === app)?.label ?? app;
+        codeStatsOut = scopedCodeStats(s, {
+          app, prCaptured,
+          open: prsNow.map((r) => ({ number: r.number, awaiting: r.state === "review" && !approved.has(r.number ?? -1) })),
+          merged: mergedThisWeek.map((p) => ({ number: p.ref_number, author: p.subject_login })),
+          closedUnmerged: closedUnmerged.map((p) => ({ number: p.ref_number })),
+          commits: weekCommits, pushesCaptured: pushes.length > 0,
+        }, openedThisWeek.length);
+        const dayList = lastDays(now, BAR_DAYS);
+        barsOut = pushes.length
+          ? scopedBars(s, app, label, dayList, allCommits.map((c) => ({ at: c.at, t: commitTouch(s, c.sha) })), true)
+          : scopedBars(s, app, label, dayList, merged.map((p) => ({ at: p.at, t: prTouch(s, p.ref_number) })), false);
+        if (prCaptured) {
+          // The app's PRs among the 90-day list, newest first — their checks and approvals read for just those.
+          const mine = scopedList.filter((r) => scoped(s, app, prTouch(s, r.number)) === true).slice(0, PR_LIMIT);
+          const [mineChecks, mineApproved] = await Promise.all([
+            latestChecks(ctx, mine.map((r) => r.sha ?? "")),
+            approvedPrs(ctx, mine.filter((r) => r.state === "review").map((r) => r.number ?? 0)),
+          ]);
+          prRowsOut = mine.map((r) => ({
+            number: r.number ?? 0, title: r.title ?? `PR #${r.number}`, url: r.url ?? "",
+            author: personOf(people, r.actor_login ?? "unknown"), branch: r.ref,
+            state: r.state === "review" && mineApproved.has(r.number ?? -1) ? "approved" : (r.state as RepoPr["state"]),
+            checks: checkState(mineChecks.get(r.sha ?? "")), at: r.occurred_at, ...touchWire(prTouch(s, r.number)),
+          }));
+          openCountOut = codeStatsOut[0]?.value ?? null;
+        } else {
+          prRowsOut = latestPrs.filter((p) => scoped(s, app, prTouch(s, p.ref_number)) === true).slice(0, PR_LIMIT)
+            .map((p) => ({ ...prOf(people, p), ...touchWire(prTouch(s, p.ref_number)) }));
+        }
+        const ci = scopedCi(s, app, runTouches, weekAgo, now, CI_FAILURE_LIMIT, ciRates !== null);
+        failuresOut = ci.rows; failureTotalOut = ci.total; rateOut = ci.rate; trendOut = ci.trend;
+      }
+    } catch (e) {
+      scopeFailed = true;
+      console.error("repo dashboard", "scope", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+      if (narrowTo !== null) { codeStatsOut = []; barsOut = null; prRowsOut = []; openCountOut = null; failuresOut = []; failureTotalOut = 0; rateOut = null; trendOut = []; }
+    }
+  }
+
+  // ── the Overview's facts (src/tools/repo-facts.ts) — from the reads above; a throw there costs the facts
+  // alone (the empty facts, and `degraded`), never the sections.
+  let facts: RepoFacts = emptyRepoFacts(repo);
+  let factsFailed = false;
+  try {
+    if (!repoApps) throw new Error("the apps read failed");
+    // MT: the same evidence rule as the providers section — SaplingLearn's legacy Worker secret, org #1 only.
+    const legacy = isLegacyOrg(ctx);
+    facts = await readRepoFacts(ctx, {
+      repo, app: opts.app ?? null, now, envs, parts: allParts, apps: repoApps, providers,
+      pollState: (p) => hosted?.states.find((st) => st.env === p.env && st.part === p.key && st.provider === p.provider),
+      connectionOf: (p) => (hosted ? partConnectionOf(partInfos([p], hosted, providers)[0], hosted, legacy) ?? "not_connected" : "not_connected"),
+      consoleUrlOf: (p) => (hosted ? consoleUrlOf(p, providers[p.provider], hosted) : null),
+      heads, checks, healthRows,
+      pr: { captured: prCaptured, states: prStatesNow, openNow: prsNow.length, openThen: prsThen.length, deltaOk: prDeltaOk },
+      merged: { any: latestPrs.length > 0, thisWeek: mergedThisWeek.length, lastWeek: mergedLastWeek.length, deltaOk: mergedDeltaOk },
+      commits: { captured: pushes.length > 0, thisWeek: commitsThisWeek, lastWeek: commitsLastWeek, deltaOk: pushDeltaOk },
+      runs: { captured: runCaptured, recordingSince: runRecordingSince },
+      openPrsByApp, packageUsedBy,
+    });
+  } catch (e) {
+    factsFailed = true;
+    console.error("repo dashboard", "facts", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
+  }
+
   return {
-    repo, generatedAt: nowAt, degraded: hostingFailed,
+    repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed || scopeFailed, facts,
     usage: used.anyUsage ? ok(used.usage) : everAny(USAGE_METRICS) ? EMPTY : NOT_CONNECTED,
     providers: providerSection,
     product: produced.anyProduct ? ok(produced.product) : ever.has(`${PRODUCT_PREFIX}*`) ? EMPTY : NOT_CONNECTED,
@@ -1369,23 +1591,17 @@ export async function getRepoDashboard(
     // hosting read knows nothing about deploys either — never "No deploys recorded" off it.
     deploys: deployRows.length ? ok(deployRows) : envs.length && anyDeployCapture ? EMPTY : NOT_CONNECTED,
     ciFailures: runCaptured
-      ? ok({
-          // null / [] until the week is covered — never a rate over a partial window.
-          rate: ciRates?.rate ?? null, trend: ciRates?.days ?? [],
-          rows: failureRows.map((r) => ({
-            workflow: r.name ?? "workflow", branch: r.ref ?? "", job: r.title ?? "—",
-            at: r.occurred_at, url: r.url ?? "",
-          })),
-          total: failureTotal,
-        })
+      // null / [] until the week is covered — never a rate over a partial window (narrowed: nor over a window
+      // with a run nobody can attribute).
+      ? ok({ rate: rateOut, trend: trendOut, rows: failuresOut, total: failureTotalOut })
       : NOT_CONNECTED,
     stats: ok(stats),
-    codeStats: ok(codeStats),
-    bars: barTotal > 0 ? ok(bars) : EMPTY,
-    // `openCount` is the "Open PRs" tile's own figure (`prsNow`), so the list's
+    codeStats: codeStatsOut.length ? ok(codeStatsOut) : EMPTY,
+    bars: barsOut ? ok(barsOut) : EMPTY,
+    // `openCount` is the "Open PRs" tile's own figure (`prsNow`, narrowed: the app's), so the list's
     // consumers never count open PRs off the capped rows — and it is `null`
     // until the `prs_reconciled` marker makes it a complete count.
-    prs: capturedPrs.length || prCaptured ? ok({ rows: capturedPrs, openCount: prCaptured ? prsNow.length : null }) : EMPTY,
+    prs: prRowsOut.length || prCaptured ? ok({ rows: prRowsOut, openCount: openCountOut }) : EMPTY,
     activity: some(activity),
     sprint: sprint ? ok(sprint) : EMPTY,
     contributors: some(contributors),
