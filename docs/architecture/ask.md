@@ -348,7 +348,14 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
   allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
   the UI. Files upload ON ATTACH (`POST /ask/attachments`; a new conversation's first upload makes its thread, and
-  the question goes there); a file over `maxBytes` stays as a red "Too large" chip and is never sent. `@` searches
+  the question goes there); a file over `maxBytes` stays as a red "Too large" chip and is never sent. **What is
+  attached sits ABOVE the box** (the owner): the file chips (every state, an image's thumbnail) then the context chips
+  are one keyed row (`.ask-co-chips`, `data-ask-enter="pop"` + `data-ask-tween`) between the notes and the box, on the
+  box's edges; the box holds only the words and the toolbar. The row wraps; on a phone past two rows it is one line
+  that scrolls sideways (`fitChips` measures after a paint → `ComposerUi.chipScroll` / `data-scroll`) and each × has
+  a 44px hit area. A chip pops in once and leaves through `ctx.exit`; the row's height glides; it is inside the
+  composer, so `askGlideDock` carries it; a conversation keeping to its bottom moves up as the composer area grows
+  (`askKeepBottom`, rule 7). DOM order is focus order: the context line's clear, the chips' ×, then the box. `@` searches
   the org through the app's quick search (`AskApi.searchRefs`; PRs are not in it — only PRs Trov already shows
   are offered), rows drawn from RefViews; `/` is the five commands, sent as `command` with the rest as the text.
   The mode (only when the plan offers more than one) and the Auto switch are remembered per thread

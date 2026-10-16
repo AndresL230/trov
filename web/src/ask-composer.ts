@@ -7,7 +7,10 @@
 //     each file is checked against `ask/state.attach` (count, bytes, kinds) and UPLOADED ON ATTACH
 //     (`POST /ask/attachments`, which makes the thread when there is none yet); a file over the cap stays as a red
 //     "Too large" chip with its note; a failed upload says "Something went wrong. Try again"
-//   • chips for the files and the context refs, and the context line ("About ticket #14 · 1 file") with its clear
+//   • chips for the files and the context refs in ONE row ABOVE the box (the owner: "attached chips should show up
+//     above the text box, not inside it") — the box holds only the words and the toolbar; the row wraps, and on a
+//     phone past two rows it is one line that scrolls sideways — and the context line ("About ticket #14 · 1 file")
+//     with its clear
 //   • `@` opens the picker (grouped by type; the app's quick search, rows drawn from RefViews), `/` the commands
 //     (ticket, handoff, search, summarize, brief — sent as `command`); ↑↓ wrap, Enter / Tab picks, Esc closes
 //   • the mode menu (only when `ask/state.modes` offers more than one: Pro), the Ask before changes / Auto switch
@@ -25,7 +28,8 @@
 // `forced` is the dev replay's `composer:<state>` (ask-replay.ts); `composerReplaySetup` fills that state.
 //
 // MOTION (ask-motion.ts): the chips are a keyed list that pops new ones in (rule 2) and pops removed ones out
-// through `ctx.exit` (rule 3); the picker, the mode menu and the + menu pop / rise in on insertion and out on
+// through `ctx.exit` (rule 3); their row glides to its new height (rule 4, `data-ask-tween`), and while the
+// conversation keeps to its bottom a taller composer area pushes it up, never over it (`askKeepBottom`); the picker, the mode menu and the + menu pop / rise in on insertion and out on
 // `data-closing`; the drop overlay fades in and out; the input's height is a CSS transition. All off under
 // reduced motion (trov.css › Ask: motion). Every conditional piece sits in a keyed list (`data-morph-list`), so
 // the box — and its focus and caret — is never replaced when a note, a picker or a chip comes or goes.
@@ -39,7 +43,7 @@ import { askIcon, askSpinner, trovMark, REF_ICON } from "./ask-icons";
 import { phoneComposerBar } from "./ask-phone";   // the phone's bottom row and its + menu (the ONE + menu)
 import { segmented } from "./segmented";
 import { markShape } from "./marks";
-import { closingAttr } from "./ask-motion";
+import { askKeepBottom, closingAttr, reducedMotion } from "./ask-motion";
 import { lastAnswer } from "./ask-stream";
 import { AskApiError, isAbort, isUnauthorized, type AskRefHit } from "./ask-api";
 import {
@@ -102,12 +106,15 @@ export interface ComposerUi {
   h: number | null;
   /** Its words are taller than the 220px cap: only then may it scroll (AU-OWNER-2 — no scrollbar while it grows). */
   full: boolean;
+  /** A phone: the chips would take more than two rows, so their row is one line that scrolls sideways (measured
+   *  after a paint, like `full`). */
+  chipScroll: boolean;
   /** Where to put the caret after the next paint (a pick, a mention, a command). */
   caret: number | null;
 }
 export const initialComposerUi = (): ComposerUi => ({
   text: "", context: [], attachments: [], mode: null, auto: null, forced: null,
-  files: [], picker: null, modeMenu: false, drag: false, error: false, notice: null, h: null, full: false, caret: null,
+  files: [], picker: null, modeMenu: false, drag: false, error: false, notice: null, h: null, full: false, chipScroll: false, caret: null,
 });
 
 // ── what the composer reads from `ask/state` (never a constant) ──────────────
@@ -380,11 +387,20 @@ function sendButton(v: AskView, big: boolean): string {
     : askIcon("send", big ? 18 : 16, null, 2.2)}</button>`;
 }
 
+/** Everything attached to the message — the file chips (an image's with its thumbnail), then the context chips — in
+ *  one row above the box, on the box's edges. Always there while the box is (empty, it has no height), so its keyed
+ *  list pops each new chip in once (rule 2) and its height glides as chips come, go or wrap (rule 4). */
+function chipsRow(v: AskView): string {
+  const ui = v.ui.composer[v.where];
+  const chips = [...ui.files.map((f) => fileChip(v, f)), ...ui.context.map((r) => ctxChip(v, r))].join("");
+  const scroll = v.app.phone && ui.chipScroll ? ` data-scroll="1"` : "";
+  return `<div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop" data-ask-tween role="group" aria-label="Attached"${scroll}>${chips}</div>`;
+}
+
 function boxView(v: AskView): string {
   const ui = v.ui.composer[v.where];
   const phone = v.app.phone;
   const p = ui.picker;
-  const chips = [...ui.files.map((f) => fileChip(v, f)), ...ui.context.map((r) => ctxChip(v, r))].join("");
   const style = ui.h !== null ? ` style="height:${ui.h}px"` : "";
   const full = ui.full ? ` data-full="1"` : "";
   const ta = `<textarea rows="1" class="ask-input" data-morph-key="ta" data-act="askCoText" data-arg="${v.where}" data-field="${fieldOf(v.where)}" data-ask-input="${v.where}" placeholder="${attr(placeholderOf(v))}" aria-label="Message Ask Trov"${p ? ` aria-controls="ask-co-pick-${v.where}" aria-expanded="true"` : ""}${full}${style}>${esc(ui.text)}</textarea>`;
@@ -398,7 +414,7 @@ function boxView(v: AskView): string {
         <button type="button" class="ask-co-tool" data-morph-key="sl" data-act="askCoSlash" data-arg="${v.where}" aria-label="Commands" data-mtip="Commands">${askIcon("cmd", 15, null, 2)}</button>
         <span class="ask-co-grow" data-morph-key="sp"></span>${modeControl(v)}${autoSwitch(v, false)}${sendButton(v, false)}
       </div>`;
-  return `<div class="ask-box" data-morph-key="box" data-morph-list><div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop">${chips}</div>${ta}${bar}</div>`;
+  return `<div class="ask-box" data-morph-key="box" data-morph-list>${ta}${bar}</div>`;
 }
 
 function blockView(v: AskView, b: Exclude<ComposerBlock, null>): string {
@@ -436,6 +452,7 @@ export function composerView(v: AskView): string {
       : ` was not attached. A message can carry up to ${st?.attach.maxFiles ?? ""} files.`;
     inner.push(`<div class="ask-co-note" data-morph-key="note:${note.kind}" role="status">${badMark()}<span><b>${esc(note.name)}</b>${what}</span></div>`);
   }
+  if (!block) inner.push(chipsRow(v));
   inner.push(block ? blockView(v, block) : boxView(v));
   const usage = block ? null : usageLine(st);
   const foot = (!phone ? `<span>Enter to send · Shift+Enter for a new line</span>` : "") + (usage ? `<span class="ask-co-usage">${esc(usage)}</span>` : "");
@@ -880,6 +897,35 @@ function grow(el: HTMLTextAreaElement, ui: ComposerUi): void {
   if (full && document.activeElement === el && el.selectionEnd === el.value.length) el.scrollTop = el.scrollHeight;
 }
 
+const chipKeysSeen = new WeakMap<Element, Set<string>>();
+/** A phone: the chips' row wraps up to two rows; past that it is one line that scrolls sideways (`data-scroll`), and
+ *  a chip just added is scrolled into view. Measured in the wrapping form (offsetTop ignores the chips' pop
+ *  transform), all within this task, so nothing paints in between. */
+function fitChips(mount: HTMLElement, where: AskWhere, ui: ComposerUi): void {
+  const row = mount.querySelector<HTMLElement>(`[data-ask-composer="${where}"] .ask-co-chips`);
+  if (!row) return;
+  const kids = Array.from(row.children) as HTMLElement[];
+  const n = kids.length;
+  const keys = kids.map((k) => k.getAttribute("data-morph-key") ?? "");
+  const was = chipKeysSeen.get(row);
+  chipKeysSeen.set(row, new Set(keys));
+  // The last chip new since the last paint (a file lands before the context chips, so it is not always the last).
+  const fresh = was ? kids.filter((_, i) => !was.has(keys[i])).pop() ?? null : null;
+  if (!n || !row.closest('[data-phone="1"]')) { ui.chipScroll = false; row.removeAttribute("data-scroll"); return; }
+  const left = row.scrollLeft;
+  row.removeAttribute("data-scroll");
+  const scroll = new Set(kids.map((k) => k.offsetTop)).size > 2;
+  ui.chipScroll = scroll;
+  if (!scroll) return;
+  row.setAttribute("data-scroll", "1");
+  row.scrollLeft = left;           // a keystroke's paint never moves the row
+  if (!fresh) return;
+  const l = fresh.offsetLeft;                // the row is the chips' offsetParent (position:relative)
+  const r = l + fresh.offsetWidth;
+  const to = r > left + row.clientWidth ? r - row.clientWidth : l < left ? l : null;
+  if (to !== null) row.scrollTo({ left: to, behavior: reducedMotion() ? "auto" : "smooth" });
+}
+
 function afterPaintWhere(ctx: AskCtx, mount: HTMLElement, where: AskWhere): void {
   if (syncThread(ctx, where)) ctx.paint();
   const el = mount.querySelector<HTMLTextAreaElement>(`[data-ask-input="${where}"]`);
@@ -901,7 +947,8 @@ function afterPaintWhere(ctx: AskCtx, mount: HTMLElement, where: AskWhere): void
     if (document.activeElement === el) el.setSelectionRange(c, c);
   }
   grow(el, ui);
-  const opt = ui.picker ? mount.querySelector<HTMLElement>(`#ask-co-opt-${where}-${ui.picker.sel}`) : null;
+  fitChips(mount, where, ui);
+  const opt =ui.picker ? mount.querySelector<HTMLElement>(`#ask-co-opt-${where}-${ui.picker.sel}`) : null;
   opt?.scrollIntoView?.({ block: "nearest" });
 }
 
@@ -998,6 +1045,9 @@ export const composerPart: AskPart = {
   ],
   afterPaint(ctx, mount) {
     wire(ctx, mount);
+    // The composer area grows (a chip row, more lines): a conversation keeping to its bottom moves up with it, so
+    // nothing ends hidden under it (rule 7).
+    askKeepBottom(mount, () => ctx.ui.conversation.stick);
     afterPaintWhere(ctx, mount, "page");
     afterPaintWhere(ctx, mount, "panel");
   },
