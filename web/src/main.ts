@@ -75,7 +75,7 @@ import { setWriteBlock } from "./api";
 import { isGroupBy } from "@shared/repo-layout-core";
 import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
-import { ALL_APPS } from "./repo-header";
+import { ALL_APPS } from "./repo-core";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
@@ -83,7 +83,8 @@ import { lazyChunk, type LazyChunk } from "./lazy-chunk";
 import { createTagsController } from "./tags-actions";
 import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
-import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
+import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo-core";
+import { repoChunk } from "./repo-lazy";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
 // Artifacts is its own chunk (artifacts-lazy.ts): the reducer and the file pickers run once it is in.
 import {
@@ -403,6 +404,8 @@ function paintApp(): void {
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // The Repo screen is its own chunk: painting it without it starts the load.
+  if (state.view === "app" && state.screen === "repo") withChunk(repoChunk);
   // Artifacts' screens are their own chunk: painting one without it starts the load.
   if (state.view === "app" && (state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact")) withChunk(artifactsChunk);
   // Platform's screens are their own chunk: painting one without it starts the load.

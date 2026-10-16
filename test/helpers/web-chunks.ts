@@ -5,8 +5,11 @@ import { platformChunk } from "../../web/src/platform-lazy";
 import * as platformChunkModule from "../../web/src/platform-chunk";
 import { artifactsChunk } from "../../web/src/artifacts-lazy";
 import * as artifactsModule from "../../web/src/artifacts";
+import { repoChunk } from "../../web/src/repo-lazy";
+import * as repoModule from "../../web/src/repo";
 
 export function loadWebChunks(): void {
   platformChunk.set(platformChunkModule);
   artifactsChunk.set(artifactsModule);
+  repoChunk.set(repoModule);
 }

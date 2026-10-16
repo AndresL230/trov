@@ -26,6 +26,10 @@ import type { Screen } from "../web/src/render";
 import { skeleton, skBar, skBox, skLine, skLines, skRow, skList, skCard, skRows, skForm, skTable, skProse, skDetail, skKey, skW, SKEL_DELAY_MS } from "../web/src/skeleton";
 import { loadingNote } from "../web/src/org-ui";
 import { ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip } from "../web/src/mywork";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 type State = ReturnType<typeof initialState>;
 const app = (screen: Screen, over: Partial<State> = {}): State => ({

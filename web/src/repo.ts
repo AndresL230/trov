@@ -38,6 +38,10 @@ import { overviewFacts } from "./repo-overview";
 import { ALL_APPS, envPillsHtml, groupByHtml, repoHeaderDropdowns, repoScopeHtml } from "./repo-header";
 import { REPO_SCENARIOS, SCENARIO_KEYS, variantLabel, type ScenarioKey } from "./repo-sample-keys";
 import { failureApps, groupDeployRows, isMulti, scopeStrip, touchCell } from "./repo-scope";
+// What the app's first download needs (main.ts: the poll's lifetime, the "updated" tick, the count-up)
+// is repo-core.ts; this module is the lazy Repo chunk (repo-lazy.ts) and re-exports it unchanged.
+export { ago, repoUpdatedLabel, formatCount, repoPollFor, type RepoPollState } from "./repo-core";
+import { ago, repoUpdatedLabel, type RepoPollState } from "./repo-core";
 
 export interface RepoProps {
   tab: RepoTab;
@@ -79,8 +83,6 @@ export interface RepoProps {
   now?: number;
 }
 
-/** "Poll now" (POST /admin/poll): in flight, its per-source outcomes, a 409 (another refresh holds the lock), or a failed request. */
-export type RepoPollState = { status: "polling" } | { status: "done"; result: RepoRefreshResult } | { status: "busy" } | { status: "error" };
 
 // ── design tokens (verbatim from the .dc.html) ───────────────────────────────
 const LABEL = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
@@ -103,16 +105,6 @@ const rise = (i: number, style = "", cls = ""): string => `class="cnpy-rise${cls
 // Defense-in-depth: a captured URL must be http(s) — never javascript:/data:.
 const safeUrl = (u: string | null): string => (u && /^https?:\/\//i.test(u) ? u : "#");
 
-/** Short age: "just now" is "0m" in a dense column, so floor at 1m. */
-export function ago(iso: string, now: number = Date.now()): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "";
-  const mins = Math.max(1, Math.round((now - then) / 60000));
-  if (mins < 60) return `${mins}m`;
-  const h = Math.round(mins / 60);
-  if (h < 24) return `${h}h`;
-  return `${Math.round(h / 24)}d`;
-}
 
 /** Polyline points for a sparkline in a 100×26 box (the design's `pts()`). */
 export function sparkPoints(arr: number[], w = 100, h = 26, pad = 3): string {
@@ -232,13 +224,6 @@ export function repoCrumb(p: RepoProps): string {
     : "";
 }
 
-/** "updated just now" / "updated 4m ago" — main.ts re-ticks this node in place. */
-export function repoUpdatedLabel(p: Pick<RepoProps, "repo" | "fetchedAt">, now: number = Date.now()): string {
-  if (p.repo.status === "loading") return p.repo.data ? "refreshing…" : "loading…";
-  if (p.fetchedAt === null) return "";
-  const mins = Math.max(0, Math.round((now - p.fetchedAt) / 60000));
-  return mins < 1 ? "updated just now" : `updated ${mins}m ago`;
-}
 
 /** An environment's verdict (`RepoEnv.pill`, upper case on the wire) as a mark: its word, its kind's
  *  shape and tone (marks.ts `kindMark`), and what it means — the repo-dashboard.md verdict rules. */
@@ -616,16 +601,6 @@ const HEADLINE_KEYS = ["signups", "tutor_sessions", "llm_cost_cents", "errors_5x
 const AI_LEAD = "llm_cost_cents";
 type Count = RepoProductEnv["groups"][number]["metrics"][number];
 
-/** A figure as `countUp` (main.ts) writes it mid-animation — it mirrors the
- *  Worker's `compact` / `productValue` for the frames in between only: the last
- *  frame restores the DTO's own string, so the two can never disagree on screen. */
-export function formatCount(n: number, fmt: string | undefined): string {
-  const compact = (v: number): string =>
-    v >= 999_995_000_000 ? `${(v / 1e12).toFixed(2)}T` : v >= 999_995_000 ? `${(v / 1e9).toFixed(2)}B`
-    : v >= 999_950 ? `${(v / 1e6).toFixed(2)}M` : v >= 1_000 ? `${(v / 1e3).toFixed(1)}K` : String(Math.round(v));
-  if (fmt === "usd") return n >= 1_000_000 ? `$${compact(n / 100)}` : (n / 100).toLocaleString("en-US", { style: "currency", currency: "USD" });
-  return fmt === "compact" ? compact(n) : String(Math.round(n));
-}
 
 /** The exact integer behind a compacted figure ("1.2K") — not behind a dollar amount. */
 const exactTitle = (value: string | null, raw: number | null): string =>
@@ -908,11 +883,6 @@ const REFRESH_TITLE = "Reload from Trov's database";
 // TRUE, not tidy: the issue-derived blocks (open issues / bugs, issues by label,
 // the feed's issue lines) read `events`, which only Sync GitHub refreshes.
 const POLL_TITLE = "Poll deploys, CI, usage and health now (admin) — issues refresh with Sync GitHub";
-/** The poll result belongs to the Repo SCREEN, not to one of its tabs: it is kept
- *  while the person is anywhere on Repo and dropped the moment they are not
- *  (main.ts applies this on every rerender, so an in-flight poll's answer is
- *  dropped on arrival too). */
-export const repoPollFor = (poll: RepoPollState | null, onRepoScreen: boolean): RepoPollState | null => (onRepoScreen ? poll : null);
 /** Admins only, and never in sample mode (which never touches the Worker). Nothing else decides it. */
 const canPollRepo = (p: Pick<RepoProps, "admin" | "sample">): boolean => p.admin && !p.sample;
 

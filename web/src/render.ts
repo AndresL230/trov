@@ -55,7 +55,10 @@ import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
-import { repoView, repoControls, repoCrumb, repoDropdowns, type RepoProps, type RepoPollState } from "./repo";
+// The Repo screen is its own chunk (repo-lazy.ts draws a skeleton until it is in).
+import { repoView, repoControls, repoCrumb, repoDropdowns } from "./repo-lazy";
+import type { RepoProps } from "./repo";
+import type { RepoPollState } from "./repo-core";
 import type { GroupBy } from "@shared/repo-layout-core";
 import type { ScenarioKey } from "./repo-sample-keys";
 // Artifacts is its own chunk (artifacts-lazy.ts draws a skeleton until it is in); its state is artifacts-state.ts.
