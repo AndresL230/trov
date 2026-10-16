@@ -137,6 +137,16 @@ never twice), applies edited fields (only `editable` ones; re-validated; preview
 through the same lane-scoped writers MCP uses. Cancel drops it. A card expires when the next turn starts or its answer
 is replaced.
 
+- **Rights are checked at Confirm** (the owner, Q57): a card is a proposal and never carries the rights it was made
+  under. Confirm runs with the CONFIRMER's context as it is now, as if they called the tool themselves —
+  `assertMayRunNow` (actions.ts: an admin-only tool needs the admin role now; an excluded tool never runs), then each
+  writer's own rule inside `run` (the ticket lane and the assignment rule re-read on the write, a handoff's sender /
+  recipient, Publish's `mayPromote`, `update_plan`'s admin check). Refused → the card is `failed` with the
+  writer's `forbidden` and nothing is written (`test/ask.rulings.test.ts`). The turn asks the same before it builds a
+  card.
+- **A waiting card's note** is rebuilt by the thread read (`waitingNote`: a Confirm-only write's own note, else the
+  Auto cap's — the only two reasons a card waits), so it survives a reload (Q55).
+
 - **Kinds**: ticket, handoff, doc_edit (≤ 3 changed hunks with their heading; editing a hunk rebuilds the body), move,
   publish, sprint, other. **Groups**: consecutive calls to the same tool in one answer share a `groupId` — one card,
   one Confirm, one Undo.

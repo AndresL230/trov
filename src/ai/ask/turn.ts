@@ -21,7 +21,7 @@ import {
 } from "@shared/ai-ask-core";
 import { askChatClient } from "../client";
 import { ASK_TOOLS, WRITE_ICON, activityLabel, offeredTools, type ToolSpec } from "./tools";
-import { autoAllowedFor, cardFields, ChangedSince } from "./actions";
+import { assertMayRunNow, autoAllowedFor, cardFields, ChangedSince } from "./actions";
 import type { AskToolCtx } from "./context";
 import { refsFromResult, normalRef } from "./refs";
 import { ASK_SYSTEM_RULES, MetaSplitter, fence } from "./prompt";
@@ -325,6 +325,7 @@ async function runTool(
     }
 
     // A WRITE. The card is built from Trov's rows first: a write that cannot apply is refused here, with no card.
+    assertMayRunNow(t.ctx, use.name); // not this person's to make (an admin-only tool to a member): no card (Q57)
     const preview = await spec.preview(t.tool, args);
     const { fields, editable } = cardFields(use.name, args);
     const groupId = st.lastWrite?.tool === use.name ? st.lastWrite.groupId : `${t.tool.threadId}-${t.turn}-${++st.groups}`;

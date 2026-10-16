@@ -36,7 +36,7 @@ import { createPage, deletePage, getPage } from "../../tools/artifacts";
 import { getHandoff } from "../../tools/handoffs";
 import { artifactOrigin, artifactsForTicket } from "../../tools/artifacts-agent";
 import { listAssignedTickets } from "../../tools/mywork";
-import { WRITES, ChangedSince } from "./actions";
+import { WRITES, ChangedSince, assertMayRunNow, waitingNote } from "./actions";
 import { errorBody, runTurn, type Emit, type TurnResult } from "./turn";
 import type { AskToolCtx } from "./context";
 import { assetsDocs, type DocsSource } from "./docs";
@@ -647,7 +647,7 @@ const actionOf = (a: ChatActionRow): AskAction => {
   return {
     id: a.id, groupId: a.group_id, tool: a.tool, kind: a.kind as AskAction["kind"], state: a.state as AskAction["state"],
     preview: parseJson(a.preview_json, { title: a.tool, lines: [], item: null }),
-    ...cardFieldsOf(a), note: null, result,
+    ...cardFieldsOf(a), note: waitingNote(a.tool, a.state), result,
     ref: refOfAction(a.tool, a.state, parseJson<unknown>(a.args_json, {}), result),
     undo: a.undo_json !== null && (a.state === "confirmed" || a.state === "auto"),
     createdAt: a.created_at, decidedAt: a.decided_at,
@@ -827,6 +827,9 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
       }
     }
     try {
+      // The CONFIRMER's rights now, as if they called the tool themselves — never the rights the card was made
+      // under (Q57); each writer's own rule (the lane, the assignment rule…) runs again inside `run`.
+      assertMayRunNow(c.var.ctx, one.tool);
       const ran = await spec.run(tc, spec.input.parse(args));
       await finishAction(c.var.ctx, one.id, "confirmed", ran.result, ran.undo);
       results.push(result(one, "confirmed", ran.result, ran.ref, ran.undo !== null));
