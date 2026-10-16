@@ -45,6 +45,7 @@ import { aiDay } from "./ai-ui";
 import { closingAttr } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
 import { thinkingOrb, type OrbState } from "./thinking-orb";
+import { askOrbState } from "./ask-orb";
 import { parseCommand } from "./ask-composer";
 
 export interface ConversationUi {
@@ -426,6 +427,10 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
 /** What a running step's orb shows (thinking-orb.ts): looking things up searches, anything else works. */
 const STEP_ORB: Partial<Record<AskStep["icon"], OrbState>> = { search: "searching", docs: "searching", feed: "searching", read: "searching", review: "searching" };
 
+/** Every orb in an answer: the person's pick (Settings › Trov, `AskUi.orb`), else — on "match" — `natural`, what that
+ *  place means. The label (when the orb is not decorative) still says what Trov is doing, whatever it looks like. */
+const orb = (v: AskView, natural: OrbState, label: string | null): string => thinkingOrb(askOrbState(v.ui.orb, natural), 20, label);
+
 /** The show tools and the save form's step are what the answer SHOWS — the design lists no step for them. */
 export const quietStep = (s: Pick<AskStep, "tool">): boolean => /^show_/.test(s.tool) || s.tool === "save_artifact";
 
@@ -436,7 +441,7 @@ function stepView(v: AskView, a: AskAnswer, s: AskStep): string {
   const open = has && v.ui.conversation.open[key] === true;
   const run = s.state === "run" ? " is-run" : "";
   // A running step's icon is a thinking orb (its words say the same, so the orb is decorative).
-  const icon = s.state === "run" ? thinkingOrb(STEP_ORB[s.icon] ?? "working", 20, null) : askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
+  const icon = s.state === "run" ? orb(v, STEP_ORB[s.icon] ?? "working", null) : askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
   const found = s.resultLine ?? (has ? `${results.length} ${results.length === 1 ? "result" : "results"}` : null);
   const line = found ? `<span class="ask-step-n">· ${esc(found)}</span>` : "";
   const head = has
@@ -455,7 +460,7 @@ function thinkView(v: AskView, a: AskAnswer): string {
   const clock = `<span class="ask-step-i">${askIcon("clock", 14, "var(--fg-40)")}</span>`;
   if (th.state === "run") {
     // While it thinks the clock is a thinking orb ("solving"); "Thought for Ns" keeps the clock.
-    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run"><span class="ask-step-i">${thinkingOrb("solving", 20, null)}</span><span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
+    return `<div class="ask-think" data-ask-tween><div class="ask-step is-run"><span class="ask-step-i">${orb(v, "solving", null)}</span><span class="ask-think-l" data-ask-think="${th.startedAt}">${thinkingLabel(th.startedAt)}</span></div></div>`;
   }
   const key = `${a.key}:think`;
   const open = v.ui.conversation.open[key] === true;
@@ -536,7 +541,7 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
     ["parts", `<div class="ask-parts" data-morph-list data-ask-enter="rise">${body}</div>`],
     // Live with no text streaming: a thinking orb holds the place where the words will come — working before
     // anything has arrived, writing once a block has.
-    ["cursor", curAlone ? `<div class="ask-cur-alone">${thinkingOrb(parts.length ? "composing" : "working", 20, parts.length ? "Writing…" : "Working…")}</div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, parts.length ? "composing" : "working", parts.length ? "Writing…" : "Working…")}</div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }

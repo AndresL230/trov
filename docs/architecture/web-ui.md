@@ -1083,6 +1083,19 @@ for the device's pixel ratio, so a morph never rewrites them (setting either cle
 `requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
 left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
 each paint is one static frame. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`).
+`thinkingOrbTour(states, …)` is one canvas (`data-orb="tour"`, `data-orb-tour`) that shows each state in turn
+(`TOUR_SECONDS` each, on the same clock; its first under reduced motion).
+
+**Which orb Ask shows is the person's pick** (`web/src/ask-orb.ts`): Settings › Trov › "While it works" is a
+`dropdown()` (`trovOrbDropdown`) of "Match what it's doing" (the default: each place shows what it means) and the six
+animations by name — Orbits (working), Globe (searching), Cube (solving), Wave (listening), Ribbon (composing),
+Shapes (shaping). Each row and the trigger show their orb animating at 20px through the dropdown's option `icon`
+(trusted markup before the label, `.cnpy-dd-lead` / `.cnpy-dd-icon`); Match previews itself as a tour of the four
+states Ask uses. A pick (`trovSetOrb`) sets `AskUi.orb` at once — every orb in Ask follows on the next paint, an
+answer that is still streaming included — and is kept PER BROWSER in localStorage `trov.askOrb` (read once at
+start in main.ts, parsed by `parseAskOrb`, every access in try/catch); it is not server state because
+`person_ask_settings` has fixed columns and a look is not worth a migration. Ask's own screen has no switch for it
+(none of its menus is about how it looks).
 
 ## Corners — tighter than the design file
 

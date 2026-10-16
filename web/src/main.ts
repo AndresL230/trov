@@ -99,6 +99,7 @@ import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
 import { createTrovPrefs } from "./ask-settings-actions";
+import { ASK_ORB_KEY, parseAskOrb } from "./ask-orb";
 import { RELEASES } from "./releases";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
@@ -304,6 +305,7 @@ try {
   state.ai.noteSeen = readNoteSeen();
   const fv = localStorage.getItem("trov.feedView");
   if (fv === "reading" || fv === "agents") state.feedView = fv;
+  state.ask.orb = parseAskOrb(localStorage.getItem(ASK_ORB_KEY)); // Ask's thinking orb (ask-orb.ts), per browser
   const pv = localStorage.getItem("trov.promptView");
   if (pv === "raw" || pv === "rendered") state.promptView = pv;
   const c = localStorage.getItem("trov.collapsed");

@@ -26,6 +26,20 @@ const base: DropdownProps = {
 /** The opening tag of the element carrying `marker`. */
 const tag = (html: string, marker: string): string => { const at = html.indexOf(marker); const from = html.lastIndexOf("<", at); return html.slice(from, html.indexOf(">", at) + 1); };
 
+describe("dropdown — an option's icon (a preview, trusted markup)", () => {
+  const withIcons: DropdownProps = { ...base, options: base.options.map((o) => (o.value === "<fig>" ? o : { ...o, icon: `<i data-ico="${o.value}"></i>` })) };
+  it("is drawn before the label in its row, and in the trigger while it is picked", () => {
+    const t = dropdown(withIcons, closed());
+    expect(t).toContain('<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true"><i data-ico="pear"></i></span><span class="cnpy-dd-v">A pear</span></span>');
+    const menu = dropdownMenu([withIcons], ui({ open: "fruit" }));
+    expect(menu).toContain('<span class="cnpy-dd-icon" aria-hidden="true"><i data-ico="apple"></i></span><span class="cnpy-dd-optt">');
+    // An option without one is drawn as before; so is a trigger whose pick has none.
+    expect(menu).toContain('<span class="cnpy-dd-optt"><span class="cnpy-dd-optl">Fig &amp; &lt;jam&gt;</span>');
+    expect(dropdown({ ...withIcons, value: "<fig>" }, closed())).not.toContain("cnpy-dd-lead");
+    expect(dropdown(base, closed())).not.toContain("cnpy-dd-icon");
+  });
+});
+
 describe("dropdown — the trigger", () => {
   it("is a real button showing the current choice and a caret, named for what it is", () => {
     const html = dropdown(base, closed());
