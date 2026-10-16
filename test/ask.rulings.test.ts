@@ -330,3 +330,45 @@ describe("Q60: an upload with no thread is PENDING — bound on send, swept afte
     expect(await env.ARTIFACTS_BUCKET.head(`artifacts/${p.sha256}`)).toBeNull();
   });
 });
+
+const today = () => new Date().toISOString().slice(0, 10);
+const chatUsed = async () => Number((await first<{ n: number }>(env.DB, `SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ? AND metric = 'ai_chat'`, ORG_A))?.n ?? 0);
+
+describe("Q50: /ask/state says per mode whether it can send", () => {
+  it("with fewer than 5 questions left, Thinking cannot while Smart and Fast can; at the cap none can", async () => {
+    await run(env.DB, `UPDATE orgs SET plan = 'team', plan_source = 'granted', plan_status = 'active', plan_overrides = '{"ai_chat":10}' WHERE id = ?`, ORG_A);
+    const cookie = await cookieFor(ME);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, ?, 'ai_chat', 'x', 7, ?)`, ORG_A, today(), new Date().toISOString());
+    const st = (await call("GET", `${BASE}/ask/state`, cookie)).json;
+    expect(st.eligibility).toBe("ok");
+    expect(Object.fromEntries(st.modes.map((m: { id: string; canSend: boolean }) => [m.id, m.canSend]))).toEqual({ fast: true, smart: true, thinking: false });
+    await run(env.DB, `UPDATE org_usage_daily SET count = 10 WHERE org_id = ? AND actor = 'x'`, ORG_A);
+    const capped = (await call("GET", `${BASE}/ask/state`, cookie)).json;
+    expect(capped.modes.every((m: { canSend: boolean }) => m.canSend === false)).toBe(true);
+  });
+
+  it("with no key, no mode can send", async () => {
+    const cookie = await cookieFor(ME);
+    const st = (await call("GET", `${BASE}/ask/state`, cookie, undefined, { ...KEYED, ANTHROPIC_API_KEY: "" } as Env)).json;
+    expect(st.eligibility).toBe("no_key");
+    expect(st.modes.every((m: { canSend: boolean }) => m.canSend === false)).toBe(true);
+  });
+});
+
+describe("Q-F2: an answer with no words, no block and no card does not count as a question", () => {
+  it("is stored with 0 units and taken back off the allowance; an answer with words still counts", async () => {
+    const cookie = await cookieFor(ME);
+    const n = await ticketFor("Empty answer lookups", [ME]);
+    // The model spends its calls on a lookup, then writes nothing but the meta line.
+    const model = fakeModel([[{ type: "tool_use", name: "get_ticket", input: { id: n } }], [{ type: "text", text: final.trimStart() }]]);
+    const before = await chatUsed();
+    const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "look it all up" }));
+    const done = eventsOf(r.events, "done")[0];
+    expect(done.stopped).toBeUndefined();
+    expect(await chatUsed()).toBe(before);
+    expect((await first<{ units: number; stopped: number }>(env.DB, `SELECT units, stopped FROM chat_messages WHERE id = ?`, done.messageId))).toEqual({ units: 0, stopped: 0 });
+    // Words: counts.
+    await withAsk({ fetchImpl: fakeModel([answer("Here it is.")]).fetchImpl }, () => ask(cookie, { text: "again" }));
+    expect(await chatUsed()).toBe(before + 1);
+  });
+});

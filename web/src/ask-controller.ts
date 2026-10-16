@@ -56,6 +56,9 @@ export interface AskController {
 /** Every part, in Escape order of no importance (ask-escape.ts orders the layers). Add a part HERE once. */
 export const PARTS: readonly AskPart[] = [conversationPart, composerPart, inspectorPart, actionsPart, cmdjPart, phonePart, threadsPart];
 
+/** When to look for a stopped answer's stored row after Stop (ms between tries). */
+const STOP_READBACK_MS = [250, 600, 1200, 2500];
+
 export function createAskController(host: AskHost): AskController {
   const s = host.state;
   const ui = () => s.ask;
@@ -206,7 +209,15 @@ export function createAskController(host: AskHost): AskController {
       if (streams[where] === ctl) setConvo(where, withLastTurn(ui()[where], (t) => failTurn(t)));
     } catch (e) {
       pacer.flush();
-      if (isAbort(e) || ctl.signal.aborted) setConvo(where, withLastTurn(ui()[where], stopTurn));
+      if (isAbort(e) || ctl.signal.aborted) {
+        setConvo(where, withLastTurn(ui()[where], stopTurn));
+        // Stop ends the request before `done` can name the stored answer: the footer draws at once (Copy works on what
+        // is on screen), and the stored id — Regenerate, Save, Wrong? — is read back as soon as the server has it (QA-4).
+        const tid = ui()[where].threadId;
+        const last = ui()[where].messages.at(-1);
+        // (An abort after `done` changed nothing above — that answer is finished, and nothing is read back.)
+        if (tid !== null && !ui().replay && last?.role === "assistant" && last.key === `a${key}` && last.turn.stopped) void readBackStopped(where, `a${key}`, tid);
+      }
       else if (isUnauthorized(e)) { host.unauth(e); }
       else {
         const message = e instanceof AskApiError ? e.message : "Something went wrong.";
@@ -217,6 +228,30 @@ export function createAskController(host: AskHost): AskController {
       if (streams[where] === ctl) { delete streams[where]; setConvo(where, { ...ui()[where], busy: false }); }
       paint();
       if (wasNew || where === "page") reloadThreads();
+    }
+  }
+
+  /** After a Stop: the stored partial answer's id (and the question's), read back from the thread — the server stores
+   *  it once it has noticed the stop, a moment later, so a few tries spaced out. Only when this answer is still the
+   *  conversation's last and has no id; the stored one must be the thread's last message, an answer, stopped. */
+  async function readBackStopped(where: AskWhere, aKey: string, tid: number): Promise<void> {
+    for (const wait of STOP_READBACK_MS) {
+      await new Promise((r) => setTimeout(r, wait));
+      const c = ui()[where];
+      const last = c.messages.at(-1);
+      if (c.threadId !== tid || !last || last.role !== "assistant" || last.key !== aKey || last.turn.messageId !== null || c.busy) return;
+      let d;
+      try { d = await api.getThread(tid); } catch { continue; }
+      const stored = d.messages.at(-1);
+      const asked = d.messages.at(-2);
+      const now = ui()[where];
+      const mine = now.messages.at(-1);
+      if (!mine || mine.role !== "assistant" || mine.key !== aKey || mine.turn.messageId !== null || now.busy) return;
+      const counts = (ms: { role: string }[]) => ms.filter((m) => m.role === "assistant").length;
+      if (!stored || stored.role !== "assistant" || !stored.stopped || counts(d.messages) !== counts(now.messages)) continue;
+      setConvo(where, withLastTurn(withQuestionId(now, asked?.role === "user" ? asked.id : undefined), (t) => ({ ...t, messageId: stored.id, cites: stored.cites })));
+      paint();
+      return;
     }
   }
 

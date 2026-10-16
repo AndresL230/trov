@@ -43,11 +43,13 @@ const html = (s: AppState, where: AskWhere = "page") => composerView(askView(s, 
 interface TestCtx extends AskCtx { sent: AskSendInput[]; stopped: AskWhere[]; patches: [number, unknown][]; uploads: { names: string[]; threadId: number | null | undefined }[]; searches: string[] }
 function makeCtx(s: AppState, api: Partial<AskApi> = {}): TestCtx {
   const sent: AskSendInput[] = [], stopped: AskWhere[] = [], patches: [number, unknown][] = [], uploads: TestCtx["uploads"] = [], searches: string[] = [];
+  let seq = 0;
   const base: Partial<AskApi> = {
     patchThread: async (id, p) => { patches.push([id, p]); return askThreadsFixture(NOW)[0]; },
     uploadAttachments: async (files, threadId) => {
       uploads.push({ names: files.map((f) => f.name), threadId });
-      return { threadId: threadId ?? 77, attachments: files.map((f, i) => ({ id: 500 + i, slug: `a-${i}`, title: f.name, kind: "text" as const, contentType: f.type, size: f.size, sha256: "" })) };
+      // No thread: PENDING (Q60) — the server answers threadId null. Each file is its own request; ids count up.
+      return { threadId: threadId ?? null, attachments: files.map((f) => ({ id: 500 + seq++, slug: `a-${seq}`, title: f.name, kind: "text" as const, contentType: f.type, size: f.size, sha256: "" })) };
     },
     searchRefs: async (q) => { searches.push(q); return [] as AskRefHit[]; },
   };
@@ -203,6 +205,64 @@ describe("composer:quota and composer:off — the blocks", () => {
   });
 });
 
+describe("the owner's rulings (2026-10-16) on a blocked composer and the modes", () => {
+  it("Q58: no key reads like off — the sentence in place of the box, no Enter hint (Q-F4); a `no_key` stream error blocks too", () => {
+    const s = askState("pro", (st) => withState(st, (x) => ({ ...x, eligibility: "no_key", modes: x.modes.map((m) => ({ ...m, canSend: false })) })));
+    const h = html(s);
+    expect(composerBlock(askView(s))).toBe("no_key");
+    expect(h).toContain("Ask Trov is not set up on this deployment.");
+    expect(h).not.toContain(`data-ask-input`);
+    expect(h).not.toContain("Enter to send");
+    const err = askState("pro", (st) => { st.ask.page = { ...emptyConvo(), messages: [{ role: "assistant", key: "a", turn: { ...newTurn("smart"), error: { code: "no_key", message: "" } } }] }; });
+    expect(composerBlock(askView(err))).toBe("no_key");
+    s.ask.composer.page.text = "hello";
+    const ctx = makeCtx(s);
+    sendFrom(ctx, "page");
+    expect(ctx.sent).toEqual([]);
+  });
+
+  it("Q-F4: at the cap and when off there is no Enter hint either; unblocked it shows", () => {
+    expect(html(askState("pro", (st) => withState(st, (x) => ({ ...x, allowance: { ...x.allowance, used: 1500 } }))))).not.toContain("Enter to send");
+    expect(html(askState("pro", (st) => withState(st, (x) => ({ ...x, enabled: false }))))).not.toContain("Enter to send");
+    expect(html(askState("pro"))).toContain("Enter to send · Shift+Enter for a new line");
+  });
+
+  it("Q50: a mode the allowance can't cover is shown but not pickable, says why, and is never the mode sent", () => {
+    const s = askState("pro", (st) => withState(st, (x) => ({ ...x, defaultMode: "thinking", modes: x.modes.map((m) => ({ ...m, canSend: m.id !== "thinking" })) })));
+    // The default is Thinking, but Thinking can't send: the question goes in Smart (Ask's own default).
+    expect(composerMode(askView(s))).toBe("smart");
+    s.ask.composer.page.mode = "fast";
+    expect(composerMode(askView(s))).toBe("fast");
+    s.ask.composer.page.mode = "smart";
+    s.ask.composer.page.modeMenu = true;
+    const h = html(s);
+    expect(h).toMatch(/<button type="button" role="menuitemradio" aria-checked="false" class="ask-co-mi" aria-disabled="true" data-co-mi-off><span class="ask-co-mi-t"><span class="ask-co-mi-l">Thinking<\/span><span class="ask-co-mi-h">Needs 5 questions; fewer are left this month.<\/span>/);
+    expect(h).not.toContain(`data-arg="page|thinking"`);
+    // Picking it anyway (a stale click) changes nothing.
+    const ctx = makeCtx(s);
+    composerPart.act!(ctx, "askCoMode", "page|thinking", null);
+    expect(s.ask.composer.page.mode).toBe("smart");
+    // Every mode out: the quota block.
+    const none = askState("pro", (st) => withState(st, (x) => ({ ...x, modes: x.modes.map((m) => ({ ...m, canSend: false })) })));
+    expect(composerBlock(askView(none))).toBe("quota");
+  });
+
+  it("Q60: each file is its own request — one failing is that chip's failure alone", async () => {
+    const s = askState();
+    const ctx = makeCtx(s, {
+      uploadAttachments: async (files, threadId) => {
+        if (files[0].name === "bad.png") throw new Error("network");
+        return { threadId: threadId ?? null, attachments: files.map((f) => ({ id: 900, slug: "ok", title: f.name, kind: "image" as const, contentType: f.type, size: f.size, sha256: "" })) };
+      },
+    });
+    addFiles(ctx, "page", [file("good.png", 10, "image/png"), file("bad.png", 10, "image/png")]);
+    await flush();
+    expect(s.ask.composer.page.files.map((f) => [f.name, f.state])).toEqual([["good.png", "ready"], ["bad.png", "failed"]]);
+    expect(s.ask.composer.page.attachments.map((a) => a.id)).toEqual([900]);
+    expect(s.ask.page.threadId).toBeNull();
+  });
+});
+
 describe("composer:free and composer:low — the usage line, the switcher", () => {
   it("Free: no mode switcher (one mode), every question in Smart, and what is left once under a fifth", () => {
     const s = askState("free");
@@ -284,17 +344,17 @@ describe("composer:autoOff — the Ask before changes / Auto switch", () => {
 });
 
 describe("attaching — upload on attach, limits from ask/state", () => {
-  it("uploads at once (a new thread: the upload makes it, and the question goes there), then sends the ids", async () => {
+  it("uploads at once, ONE request per file (a new thread: they are pending until the question names them — Q60), then sends the ids", async () => {
     const s = askState();
     const ctx = makeCtx(s);
     addFiles(ctx, "page", [bigFile("deploys-october.csv", 18432, "text/csv"), bigFile("netlify-api.pdf", 1258291, "application/pdf")]);
-    expect(ctx.uploads).toEqual([{ names: ["deploys-october.csv", "netlify-api.pdf"], threadId: null }]);
+    expect(ctx.uploads).toEqual([{ names: ["deploys-october.csv"], threadId: null }, { names: ["netlify-api.pdf"], threadId: null }]);
     expect(s.ask.composer.page.files.map((f) => f.state)).toEqual(["uploading", "uploading"]);
     expect(html(s)).toContain(">Uploading<");
     expect(canSend(askView(s))).toBe(false);
     await flush();
     expect(s.ask.composer.page.files.map((f) => f.state)).toEqual(["ready", "ready"]);
-    expect(s.ask.page.threadId).toBe(77);
+    expect(s.ask.page.threadId).toBeNull(); // no visible thread until the question is sent
     const h = html(s);
     expect(h).toContain(`class="ask-co-clear"`);
     expect(h).toMatch(/class="ask-co-chip" data-morph-key="f:u\d+"><span class="ask-co-ico"[^>]*>.*?<\/span><span class="ask-co-chip-t"><span class="ask-co-chip-n">deploys-october.csv<\/span><span class="ask-co-chip-m">18 KB<\/span>/);
@@ -332,7 +392,7 @@ describe("attaching — upload on attach, limits from ask/state", () => {
     expect(ctx.uploads).toEqual([]);
     expect(html(s)).toContain("<b>notes.md</b> can't be attached. Images only.");
     addFiles(ctx, "page", [file("a.png", 10, "image/png"), file("b.png", 10, "image/png"), file("c.png", 10, "image/png")]);
-    expect(ctx.uploads[0].names).toEqual(["a.png", "b.png"]);
+    expect(ctx.uploads.map((u) => u.names)).toEqual([["a.png"], ["b.png"]]);
     expect(html(s)).toContain("<b>c.png</b> was not attached. A message can carry up to 2 files.");
     expect(kindsPhrase(["image", "pdf", "text"])).toBe("Images, PDFs and text files");
   });

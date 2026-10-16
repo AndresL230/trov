@@ -321,7 +321,7 @@ export function askRefFixtures(now: Date): Record<string, RefView> {
 
 /** `GET /ask/state` on Pro (all modes) and on Free (Smart only, no switcher; 9 of 50 questions left). */
 export function askStateFixture(plan: "pro" | "free", now: Date): AskState {
-  const modes = ASK_MODES.filter((m) => plan === "pro" || m.id === "smart").map((m) => ({ id: m.id, label: m.label, hint: m.hint, countsAs: m.countsAs }));
+  const modes = ASK_MODES.filter((m) => plan === "pro" || m.id === "smart").map((m) => ({ id: m.id, label: m.label, hint: m.hint, countsAs: m.countsAs, canSend: true }));
   return {
     enabled: true, eligibility: "ok", plan: plan === "pro" ? "team" : "free", modes, defaultMode: "smart",
     allowance: plan === "pro" ? { used: 412, cap: 1500, resetsAt: nextMonthStart(now), low: false } : { used: 41, cap: 50, resetsAt: nextMonthStart(now), low: true },

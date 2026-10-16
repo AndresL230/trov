@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { AppEnv } from "../../auth/principal";
 import { platform, type TenantContext } from "../../data/context";
 import { all, first } from "../../data/sql";
-import { meterBy, METRIC_AI_CHAT, METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT } from "../../data/meter";
+import { meterBy, unmeterBy, METRIC_AI_CHAT, METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT } from "../../data/meter";
 import { planAndAiSettings } from "../../plans/gate";
 import { PLANS, planRefusal, resolveEntitlements } from "@shared/plans";
 import { nextMonthStart } from "@shared/ai-core";
@@ -125,7 +125,12 @@ askApp.get(ASK_ROUTES.state, async (c) => {
       enabled: st.enabled,
       eligibility: !c.env.ANTHROPIC_API_KEY ? "no_key" : !st.enabled ? "off" : planRefusal(st.plan, "ai_chat", st.used, 1) ? "capped" : "ok",
       plan: st.plan.plan,
-      modes: ASK_MODES.filter((m) => st.modes.includes(m.id)).map((m) => ({ id: m.id, label: m.label, hint: m.hint, countsAs: m.countsAs })),
+      // Per mode, whether a question in it can be sent NOW (Q50): the gate weighs a question by what its mode counts as,
+      // so with 1–4 left Thinking (5) cannot while Smart can. No key or the switch off: none can.
+      modes: ASK_MODES.filter((m) => st.modes.includes(m.id)).map((m) => ({
+        id: m.id, label: m.label, hint: m.hint, countsAs: m.countsAs,
+        canSend: !!c.env.ANTHROPIC_API_KEY && st.enabled && !planRefusal(st.plan, "ai_chat", st.used, m.countsAs),
+      })),
       defaultMode: defaultModeOf(st.modes, s.default_mode),
       allowance: allowanceOf(st),
       autoAllowed: st.chatAuto,
@@ -413,7 +418,8 @@ async function converse(c: C, outer: Conversation): Promise<void> {
 
   // The question counts BEFORE the model is called (an attempt, like every AI allowance) — and still counts if stopped.
   const p = platform(env, handle);
-  await meterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]]);
+  const meteredAt = nowDate().toISOString();
+  await meterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
 
   const nonce = newNonce();
   const compacted = await maybeCompact(env, ctx, thread, earlier, askDeps.fetchImpl);
@@ -448,7 +454,12 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   const failed = out.ended === "failed" || out.ended === "refused";
   const cites = failed ? [] : await linkAnswer(ctx, handle, out.text, seen, nowDate());
   const stopped = out.ended === "stopped" || out.ended === "timeout";
-  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, def.countsAs, rec.parts, lastAnswerWithContent(earlier));
+  // An answer that finished with nothing in it — no words, no block, no card (the model spent its calls on lookups) —
+  // is not a question answered: it is taken back off the allowance and stored with 0 units (the owner, Q-F2). A
+  // stopped one still counts, as before.
+  const empty = out.ended === "done" && isEmptyAnswer(out, rec.parts);
+  if (empty) await unmeterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
+  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, empty ? 0 : def.countsAs, rec.parts, lastAnswerWithContent(earlier));
   if (failed) return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : "Something went wrong. Nothing was changed. Try again." });
 
   const title = thread.title || out.title || fallbackTitle(qc.text ?? "");
@@ -463,6 +474,11 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   if (out.ended === "timeout") return v.emit("error", { code: "timeout", message: "Ask Trov ran out of time for this answer. What it said so far is kept." });
   if (out.followups.length && !stopped) await v.emit("followups", { items: out.followups });
   await v.emit("done", { messageId, questionId: question.id, cites, tokens: out.tokens, ...(stopped ? { stopped: true } : {}) });
+}
+
+/** No words, no block, no card: what Trov wrote is nothing (Q-F2). */
+export function isEmptyAnswer(out: Pick<TurnResult, "text" | "blocks">, parts: readonly AskMessagePart[]): boolean {
+  return !out.text.trim() && !out.blocks.length && !parts.some((x) => x.kind === "action");
 }
 
 /** The most recent earlier answer that has content (text or a block other than a save form), or null. */

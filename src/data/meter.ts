@@ -140,6 +140,21 @@ export async function meterBy(p: PlatformContext, orgId: string, actor: string, 
   }
 }
 
+/** Take back what `meterBy` added at `at` (same day, same actor), never below 0 — Ask's answer that wrote nothing
+ *  (no words, no block, no card) does not count as a question (the owner, Q-F2). Never rejects. */
+export async function unmeterBy(p: PlatformContext, orgId: string, actor: string, entries: [metric: string, n: number][], at: string): Promise<void> {
+  try {
+    const rows = entries.filter(([, n]) => Number.isFinite(n) && n > 0);
+    if (rows.length) {
+      await batch(p, rows.map(([metric, n]) => stmt(p,
+        `UPDATE org_usage_daily SET count = MAX(0, count - ?) WHERE org_id = ? AND day = ? AND metric = ? AND actor = ?`,
+        Math.round(n), orgId, at.slice(0, 10), metric, actor)));
+    }
+  } catch {
+    // metering is never the caller's problem
+  }
+}
+
 /** The daily cron: drop counters past the retention window. */
 export async function pruneUsage(p: PlatformContext, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - USAGE_RETENTION_DAYS * 86_400_000).toISOString().slice(0, 10);

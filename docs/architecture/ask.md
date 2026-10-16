@@ -31,7 +31,10 @@ the allowances and the switches: `ai.md`.
 - `askModesFor(plan)`: Free and Personal get Smart only (no switcher); Pro (`team`) and Enterprise all three. A mode the
   plan does not offer is refused BEFORE anything runs: `403 { error: "mode_unavailable" }`.
 - `ai_chat` counts QUESTIONS by the mode's "counts as", metered BEFORE the model is called (an attempt — a stopped
-  answer still counts); `/search` calls no model and counts nothing. Caps live in `shared/plans.ts` (the master's;
+  answer still counts); `/search` calls no model and counts nothing. An answer that FINISHED having written nothing — no
+  words, no block, no card (the model spent its calls on lookups) — is taken back off (`unmeterBy`, the same day and
+  actor) and stored with 0 units; the screen says "Trov didn't write an answer." with Try again and no Copy / Save
+  (the owner, Q-F2; `isEmptyAnswer`). Caps live in `shared/plans.ts` (the master's;
   `resolveEntitlements` makes Pro's per seat). Tokens go to `ai_tokens_in` / `_out` / `_cached` (actor: the person).
 - Each thread has a mode (`chat_threads.mode`); a new one starts in Settings › Trov's default (Pro), else Smart.
 
@@ -58,7 +61,15 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   results" / "1 result" / "N results" — `resultLine`, the one wording, streamed and stored; Q51); `/ticket`, `/handoff`,
   `/summarize`, `/brief` add one instruction in front of the person's words.
 - **Stop**: the request's own abort signal (the client went away) or `POST /ask/threads/:id/stop` (a flag read
-  between steps) ends the turn; the partial answer is stored with `stopped = 1`; tools that ran stay done.
+  between steps) ends the turn; the partial answer is stored with `stopped = 1`; tools that ran stay done. On the
+  screen the footer draws AT ONCE for what was written (Copy works on what is shown); Regenerate, Save and Wrong? need
+  the stored id, which the controller reads back from the thread a moment later (`readBackStopped`, a few spaced tries;
+  QA-4).
+- **A close after `done` is never a Stop** (the `net::ERR_ABORTED` Chromium reports for `POST /ask` under wrangler dev,
+  after its last event): the server stores the answer — and decides `stopped` — BEFORE it writes `done`, and only an
+  abort DURING the turn (`runTurn`'s listener, removed when it returns) can mark it; on the client the pacer is
+  flushed before the catch reads the error, so `done` has landed and `stopTurn` / `failTurn` leave a finished turn
+  alone (`turnLive`), whatever the browser calls the close (`test/render.ask-controller.test.ts`).
 - **Replace** (`replaceFrom`): the last question (edit-and-resend, with the new text) or the last answer
   (regenerate, in any mode). The replaced messages get `replaced_at` (hidden, out of search) and their undecided cards
   expire.
@@ -243,7 +254,10 @@ is replaced.
   can see" is the design's copy, held to this file's Tools section — change one, check the other. Where something is
   connected links its Org settings tab (`orgGo`: Integrations, Repositories, Hosting, Environments; the off line, AI).
 - `GET /ask/state`: `{ enabled, eligibility, plan, modes, defaultMode, allowance { used, cap, resetsAt, low }, autoAllowed,
-  attach { maxFiles, maxBytes, kinds }, starters }` — starters by plain rules (the person's top assigned ticket, the
+  attach { maxFiles, maxBytes, kinds }, starters }` — each mode carries `canSend` (the key, the switch and the
+  allowance left covering what it counts as: with 1–4 left Thinking cannot; Q50), and the composer never sends a
+  mode that cannot (its menu shows it disabled with "Needs 5 questions; fewer are left this month."; the question goes
+  in the default, else Smart); every mode out reads as the quota block; starters by plain rules (the person's top assigned ticket, the
   active sprint, what is waiting on them), the design's four as the fallback. `allowance.cap` is the cap the gate
   enforces (`resolveEntitlements` with the org's members): on Pro 300 × the paid seats, or × the members (at least
   1) when there is no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap, never multiplied.
@@ -273,7 +287,9 @@ no row anywhere still points at the same sha (`src/deletion/r2.ts`).
   link in ONE batch, re-checked inside it; R2 after the commit when nothing else holds the bytes). Refused with nothing
   deleted: not the person's (404), already sent (`sent`), published (`published`), or referred to by a ticket or a doc
   (`referenced`) — 409 each. A never-sent attachment also goes with its thread (`deleteAskThread`).
-- **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`) deletes the thread and its attachments,
+- **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`; the thread menu's Delete asks first through the
+  app's `confirmModal` — "Delete “<title>”?", what goes and what stays — a root overlay, `threadDeleteModal`; QA-2)
+  deletes the thread and its attachments,
   EXCEPT a file something still refers to (`planThreadAttachments`). "Referenced" is what the schema actually links:
   - **a ticket** — an `artifact_links` row to a ticket (the library's Links, MCP `artifact_update`, `record_session`'s
     `artifact_links`); or the artifact's address in a ticket's body, a comment, or the ticket's own links
@@ -383,6 +399,11 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   the panel; closing hands focus back to its opener. The Tickets page's one change is the header's "Ask about
   this ⌘J" (`cmdjHeaderButton`). `?askReplay=cmdj#tickets/14` plays the scenario over the ticket (the replay starts
   from the controller's after-paint for a panel plan, since the Ask screen never enters there).
+- **A blocked composer** (`composerBlock`, in the server gate's order): no key (`eligibility: no_key`, or a `no_key`
+  stream error) shows "Ask Trov is not set up on this deployment." in place of the box, as `off` does (Q58); off and
+  the quota have their cards. While blocked there is no Enter hint (Q-F4), and the starters stay to read but send
+  nothing — `aria-disabled`, the block's reason in their tooltip (`composerBlockReason`; QA-6). A starter or a
+  follow-up goes in the composer's own mode and Auto (`composerMode` / `composerAuto`).
 - **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
   allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
   the UI. Files upload ON ATTACH, one request per file (`POST /ask/attachments`; in a new conversation they are

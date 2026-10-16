@@ -399,7 +399,9 @@ export interface AskState {
   enabled: boolean;
   eligibility: AiEligibility;
   plan: string;
-  modes: (Pick<AskModeDef, "id" | "label" | "hint" | "countsAs">)[];
+  /** `canSend`: a question in this mode can go now — the allowance left covers what it counts as, the key is set and
+   *  the switch is on (Q50: with fewer than 5 left, Thinking cannot). Absent on an older server: read as true. */
+  modes: (Pick<AskModeDef, "id" | "label" | "hint" | "countsAs"> & { canSend?: boolean })[];
   defaultMode: AskMode;
   allowance: { used: number; cap: number | null; resetsAt: string; low: boolean };
   autoAllowed: boolean;

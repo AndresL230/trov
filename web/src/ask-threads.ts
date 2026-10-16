@@ -6,11 +6,12 @@
 // Acts `askTh…`; reads and writes through `ctx.api` (the controller loads the list on entering Ask).
 
 import { esc, attr } from "./ui";
-import type { AskCtx, AskPart, AskView } from "./ask-state";
+import type { AskCtx, AskPart, AskUi, AskView } from "./ask-state";
 import { askIcon } from "./ask-icons";
 import { closingAttr } from "./ask-motion";
 import { skeleton, skList, skLine, skW } from "./skeleton";
-import type { AskSearchHit, AskThreadGroup, AskThreadSummary } from "@shared/ai-ask-core";
+import { askExportName, type AskSearchHit, type AskThreadGroup, type AskThreadSummary } from "@shared/ai-ask-core";
+import { confirmModal } from "./confirm";
 
 const GROUP_LABEL: Record<AskThreadGroup, string> = { pinned: "Pinned", today: "Today", week: "This week", earlier: "Earlier" };
 const GROUPS: AskThreadGroup[] = ["pinned", "today", "week", "earlier"];
@@ -152,6 +153,17 @@ let focusMenu = false;
 let focusMore: number | null = null;
 const MENU_ITEM = ".ask-th-menu [role='menuitem']";
 
+/** Delete's confirmation (QA-2): a root `data-overlay` (ask-screen.ts `askOverlays`), the app's ONE confirm. */
+export function threadDeleteModal(ui: Pick<AskUi, "threadDelete">): string {
+  const d = ui.threadDelete;
+  if (!d) return "";
+  return confirmModal({
+    id: "ask-th-delete", title: `Delete “${d.title || "this thread"}”?`,
+    body: "The conversation and the files attached to it are deleted for good. A file a ticket or a doc refers to, or one published to the org, stays in Artifacts.",
+    confirmAct: "askThDeleteGo", cancelAct: "askThDeleteCancel", arg: String(d.id),
+  });
+}
+
 export const threadsPart: AskPart = {
   code: "Th",
   afterPaint(_ctx, mount) {
@@ -191,14 +203,28 @@ export const threadsPart: AskPart = {
         ctx.paint();
         if (!t) return;
         if (ctx.replay) { ctx.flash("Replay: nothing was exported."); return; }
-        download(ctx.api.exportUrl(id), `${(t.title || "thread").replace(/[^\w .-]+/g, "").trim() || "thread"}.md`);
+        download(ctx.api.exportUrl(id), `${askExportName(t.title)}.md`); // the server's name too (Q56)
         ctx.flash(`Exported ${t.title || "the thread"}.md`);
         return;
       }
+      // Delete asks first (QA-2): it is a hard delete of the thread and its files, with no undo.
       case "askThDelete": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
-        if (!t) return;
+        if (t) ctx.ui.threadDelete = { id, title: t.title };
+        ctx.paint();
+        return;
+      }
+      case "askThDeleteCancel":
+        ctx.ui.threadDelete = null;
+        if (id > 0) focusMore = id; // focus back on the row's ⋯, where the menu was
+        ctx.paint();
+        return;
+      case "askThDeleteGo": {
+        const t = threadById(ctx, id);
+        ctx.ui.threadDelete = null;
+        ctx.ui.threadMenu = null;
+        if (!t) { ctx.paint(); return; }
         if (ctx.ui.page.threadId === id) ctx.newThread("page");
         // The row collapses first (its exit), then leaves the list; the write goes out at once.
         ctx.exit(`th:${id}`, () => {

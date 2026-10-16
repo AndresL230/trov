@@ -146,7 +146,7 @@ export const AskStateSchema = z.object({
   enabled: z.boolean(),
   eligibility: z.enum(["ok", "off", "no_key", "capped"]),
   plan: z.string(),
-  modes: z.array(z.object({ id: AskModeSchema, label: z.string(), hint: z.string(), countsAs: z.number().int().min(1) })).min(1),
+  modes: z.array(z.object({ id: AskModeSchema, label: z.string(), hint: z.string(), countsAs: z.number().int().min(1), canSend: z.boolean().optional() })).min(1),
   defaultMode: AskModeSchema,
   allowance: z.object({ used: z.number(), cap: z.number().nullable(), resetsAt: z.string(), low: z.boolean() }),
   autoAllowed: z.boolean(),

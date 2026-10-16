@@ -83,6 +83,25 @@ describe("`live` — a new thread", () => {
   });
 });
 
+describe("QA-6: a blocked composer's starters send nothing and say why", () => {
+  for (const [name, set, why] of [
+    ["at the cap", (s: AppState) => { s.ask.state = { status: "ok", data: { ...s.ask.state.data!, allowance: { ...s.ask.state.data!.allowance, used: 1500 } } }; }, "You've used this month's questions."],
+    ["off", (s: AppState) => { s.ask.state = { status: "ok", data: { ...s.ask.state.data!, enabled: false } }; }, "Ask Trov is off for this org."],
+    ["no key", (s: AppState) => { s.ask.state = { status: "ok", data: { ...s.ask.state.data!, eligibility: "no_key" } }; }, "Ask Trov is not set up on this deployment."],
+  ] as const) {
+    it(name, () => {
+      const s = base();
+      set(s);
+      const html = emptyView(askView(s, "page"));
+      expect(html).not.toContain(`data-act="askCvSend"`);
+      expect(html).toContain(`aria-disabled="true" data-mtip="${why.replace(/'/g, "&#39;")}"`);
+      const { ctx, sent } = fakeCtx(s);
+      act(ctx, "askCvSend", "What shipped this week?"); // a stale click
+      expect(sent).toEqual([]);
+    });
+  }
+});
+
 describe("`answer` — the whole answer, in stream order", () => {
   const { html } = view("answer");
   const t = text(html);
@@ -567,10 +586,11 @@ describe("acts — edit-and-resend and regenerate go through replaceFrom", () =>
     s.ask.composer.panel.context = ["person:maya", "ticket:14"];
     const { ctx, sent } = fakeCtx(s);
     act(ctx, "askCvSend", "What's left before this can close?");
-    expect(sent).toEqual([{ text: "What's left before this can close?", where: "panel", context: ["ticket:14", "person:maya"] }]);
+    // With the composer's own mode and switch (Q50: never a mode the allowance can't cover).
+    expect(sent).toEqual([{ text: "What's left before this can close?", where: "panel", context: ["ticket:14", "person:maya"], mode: "smart", auto: false }]);
     s.screen = "ask";
     act(ctx, "askCvSend", "What shipped this week?");
-    expect(sent[1]).toEqual({ text: "What shipped this week?", where: "page" });
+    expect(sent[1]).toEqual({ text: "What shipped this week?", where: "page", mode: "smart", auto: false });
   });
 
   it("disclosures open at once and close through their exit; Copy says Copied", () => {

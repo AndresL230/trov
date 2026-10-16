@@ -3119,6 +3119,10 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 [data-phone="1"] .ask-starters, .ask-panel .ask-starters { grid-template-columns:1fr; }
 .ask-starters > button { display:flex; align-items:center; gap:9px; padding:10px 13px; border:1px solid var(--border); border-radius:10px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease; }
 .ask-starters > button:hover { background:var(--surface); border-color:var(--border-strong); color:var(--fg); }
+/* Blocked (no key, off, the questions used — QA-6): readable, not pressable; the tooltip says why. */
+.ask-starters > button[aria-disabled="true"] { cursor:default; color:var(--fg-40); }
+.ask-starters > button[aria-disabled="true"]:hover { background:none; border-color:var(--border); color:var(--fg-40); }
+.ask-co-mi[aria-disabled="true"] { cursor:default; opacity:.55; }
 @keyframes ask-cv-rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes ask-grow-y { from { transform:scaleY(0); } to { transform:none; } }
 @keyframes ask-wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
@@ -3343,6 +3347,8 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-err { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:10px; padding:10px 12px; border:1px solid color-mix(in srgb, var(--red) 30%, var(--border)); border-radius:10px; background:color-mix(in srgb, var(--red) 5%, var(--surface)); }
 .ask-err-t { font-size:13px; font-weight:500; }
 .ask-err-s { font-size:12.5px; color:var(--fg-55); }
+/* Nothing written (Q-F2): not an error — the neutral frame, the same Try again. */
+.ask-err--none { border-color:var(--border); background:var(--surface); }
 .ask-btn--sm { padding:5px 12px; border-radius:7px; background:var(--surface); font-size:12px; }
 .ask-stopped { display:flex; align-items:center; gap:7px; margin:4px 0 6px; font-size:12.5px; color:var(--fg-55); }
 /* The footer: the mode word, N sources, Copy, Regenerate (+ Regenerate with), Save as artifact, Wrong?. */

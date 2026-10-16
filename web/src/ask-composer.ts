@@ -140,10 +140,16 @@ export function composerMode(v: ComposerSee): AskMode {
   const st = stateOf(v);
   const ui = v.ui.composer[v.where];
   const want = ui.mode ?? convoOf(v).thread?.mode ?? st?.defaultMode ?? ASK_DEFAULT_MODE;
-  const ids = (st?.modes ?? []).map((m) => m.id);
+  // Only a mode that can send now (Q50: with fewer than 5 questions left Thinking cannot): else the default, else the
+  // first that can. When none can, the composer is blocked anyway and the pick does not matter.
+  const ok = (st?.modes ?? []).filter(modeCanSend).map((m) => m.id);
+  const ids = ok.length ? ok : (st?.modes ?? []).map((m) => m.id);
   if (!ids.length || ids.includes(want)) return want;
-  return st && ids.includes(st.defaultMode) ? st.defaultMode : ids[0];
+  return st && ids.includes(st.defaultMode) ? st.defaultMode : ids.includes(ASK_DEFAULT_MODE) ? ASK_DEFAULT_MODE : ids[0];
 }
+
+/** Can a question in this mode go now? `ask/state` says per mode (Q50); an older answer without it: yes. */
+export const modeCanSend = (m: AskState["modes"][number]): boolean => m.canSend !== false;
 
 /** Auto as an admin allows it: off whenever `autoAllowed` is false. */
 export const autoAllowed = (v: ComposerSee): boolean => (stateOf(v)?.autoAllowed ?? false) && v.ui.composer[v.where].forced !== "autoOff";
@@ -177,17 +183,26 @@ export function kindsPhrase(kinds: readonly AskAttachKind[]): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-/** What stops the box: "off" (Ask is off for the org) or "quota" (this month's questions are used), else null. */
-export type ComposerBlock = "off" | "quota" | null;
+/** What stops the box, in the server gate's order: "no_key" (this deployment has no Anthropic key — handled like
+ *  off, Q58), "off" (Ask is off for the org) or "quota" (this month's questions are used), else null. */
+export type ComposerBlock = "no_key" | "off" | "quota" | null;
 export function composerBlock(v: ComposerSee): ComposerBlock {
   const f = v.ui.composer[v.where].forced;
   if (f === "off" || f === "quota") return f;
   const st = stateOf(v);
+  if (st?.eligibility === "no_key") return "no_key";
   if (st && !st.enabled) return "off";
   if (st && st.allowance.cap !== null && st.allowance.used >= st.allowance.cap) return "quota";
+  if (st && st.modes.length && !st.modes.some(modeCanSend)) return "quota";
   const code = lastAnswer(convoOf(v))?.turn.error?.code;
-  return code === "off" ? "off" : code === "capped" ? "quota" : null;
+  return code === "no_key" ? "no_key" : code === "off" ? "off" : code === "capped" ? "quota" : null;
 }
+
+/** The block's reason in one sentence — the blocked box's headline, and the starters' tooltip (QA-6). */
+export function composerBlockReason(b: Exclude<ComposerBlock, null>): string {
+  return b === "no_key" ? NO_KEY_LINE : b === "off" ? "Ask Trov is off for this org." : "You've used this month's questions.";
+}
+const NO_KEY_LINE = "Ask Trov is not set up on this deployment.";
 
 /** "41 of 300 questions left this month · Resets Nov 1" while less than a fifth is left (`allowance.low`), else null. */
 export function usageLine(st: AskState | null): string | null {
@@ -360,7 +375,12 @@ function modeControl(v: AskView): string {
   const cur = composerMode(v);
   const word = modes.find((m) => m.id === cur)?.label ?? cur;
   const menu = ui.modeMenu
-    ? `<div class="ask-co-menu" role="menu" aria-label="Mode" data-morph-key="mm" data-co-menu${closingAttr(v.ui.closing, chipKey(v.where, "mode"))}>${modes.map((m) => `<button type="button" role="menuitemradio" aria-checked="${m.id === cur}" class="ask-co-mi" data-act="askCoMode" data-arg="${v.where}|${m.id}"><span class="ask-co-mi-t"><span class="ask-co-mi-l">${esc(m.label)}</span><span class="ask-co-mi-h">${esc(modeHint(m))}</span></span>${m.id === cur ? askIcon("check", 14, "var(--accent)", 2.4) : ""}</button>`).join("")}</div>`
+    ? `<div class="ask-co-menu" role="menu" aria-label="Mode" data-morph-key="mm" data-co-menu${closingAttr(v.ui.closing, chipKey(v.where, "mode"))}>${modes.map((m) => {
+      // A mode the allowance left can't cover (Q50): shown, not pickable, and it says why.
+      const can = modeCanSend(m);
+      const hint = can ? modeHint(m) : `Needs ${m.countsAs} questions; fewer are left this month.`;
+      return `<button type="button" role="menuitemradio" aria-checked="${m.id === cur}" class="ask-co-mi"${can ? ` data-act="askCoMode" data-arg="${v.where}|${m.id}"` : ` aria-disabled="true" data-co-mi-off`}><span class="ask-co-mi-t"><span class="ask-co-mi-l">${esc(m.label)}</span><span class="ask-co-mi-h">${esc(hint)}</span></span>${m.id === cur ? askIcon("check", 14, "var(--accent)", 2.4) : ""}</button>`;
+    }).join("")}</div>`
     : "";
   return `<div class="ask-co-modewrap" data-morph-key="mode" data-morph-list><button type="button" class="ask-co-modebtn" data-morph-key="mb" data-act="askCoModeMenu" data-arg="${v.where}" data-co-modebtn aria-haspopup="menu" aria-expanded="${ui.modeMenu}" aria-label="${attr(`Mode: ${word}`)}">${esc(word)}${askIcon("chevron", 10, null, 2.6)}</button>${menu}</div>`;
 }
@@ -424,6 +444,9 @@ function boxView(v: AskView): string {
 }
 
 function blockView(v: AskView, b: Exclude<ComposerBlock, null>): string {
+  if (b === "no_key") {
+    return `<div class="ask-blocked" data-morph-key="nokey" role="status"><span class="ask-blocked-m">${markShape("square", "var(--fg-40)", 9)}</span><div><div class="ask-blocked-h">${esc(NO_KEY_LINE)}</div></div></div>`;
+  }
   if (b === "off") {
     return `<div class="ask-blocked" data-morph-key="off" role="status"><span class="ask-blocked-m">${markShape("square", "var(--fg-40)", 9)}</span><div><div class="ask-blocked-h">Ask Trov is off for this org.</div><div class="ask-blocked-s">An admin can turn it on in Org settings › AI.</div></div></div>`;
   }
@@ -461,7 +484,8 @@ export function composerView(v: AskView): string {
   if (!block) inner.push(chipsRow(v));
   inner.push(block ? blockView(v, block) : boxView(v));
   const usage = block ? null : usageLine(st);
-  const foot = (!phone ? `<span>Enter to send · Shift+Enter for a new line</span>` : "") + (usage ? `<span class="ask-co-usage">${esc(usage)}</span>` : "");
+  // No Enter hint while blocked: there is no box to type in (Q-F4).
+  const foot = (!phone && !block ? `<span>Enter to send · Shift+Enter for a new line</span>` : "") + (usage ? `<span class="ask-co-usage">${esc(usage)}</span>` : "");
   inner.push(`<div class="ask-co-foot" data-morph-key="foot">${foot}</div>`);
   if (empty && v.where === "page") inner.push(`<p class="ask-disclaimer" data-morph-key="disc">Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.</p>`);
   const accept = st ? acceptOf(st) : "";
@@ -816,7 +840,7 @@ function retry(ctx: AskCtx, where: AskWhere): void {
 export function setMode(ctx: AskCtx, where: AskWhere, id: string): void {
   const modes = ctx.ui.state.data?.modes ?? [];
   const m = modes.find((x) => x.id === id);
-  if (!m) return;
+  if (!m || !modeCanSend(m)) return; // Q50: not pickable while the allowance can't cover it
   ctx.ui.composer[where] = { ...ctx.ui.composer[where], mode: m.id };
   closeModeMenu(ctx, where);
   rt(ctx).focus[where] = "input";
