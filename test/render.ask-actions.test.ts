@@ -407,20 +407,22 @@ describe("actions-auto — done lines with Undo and a time, one grouped line, on
 describe("GUARD — a replaced answer's actions expire", () => {
   it("Confirm on a card whose turn was replaced: the server's 409 expired collapses it to its line, with nothing left to press", async () => {
     const s = app("actions-ask");
-    const err = new AskApiError(409, "expired", "This card expired with its turn. Ask again.");
+    const err = new AskApiError(409, "expired", "This card expired with its turn.");
     const confirmAction = vi.fn(async () => { throw err; });
     const { ctx, flashes } = ctxOf(s, { confirmAction });
     actionsPart.act!(ctx, "askAcConfirm", "31", null);
     await flush();
     const t = cards(s)[0];
-    expect(text(t)).toBe("Expired: new ticket This card expired with its turn. Ask again.");
+    expect(text(t)).toBe("Expired: new ticket This card expired with its turn.");
     expect(t).not.toContain("askAcConfirm");
-    expect(flashes).toEqual(["This card expired with its turn. Ask again."]);
+    expect(flashes).toEqual(["This card expired with its turn."]);
   });
   it("a stored card the server already expired is drawn as its line", () => {
     const s = app("actions-ask");
     answerOf(s).turn.actions[32] = { ...answerOf(s).turn.actions[32], state: "expired" };
-    expect(text(cards(s)[1])).toBe("Expired: new handoff This card expired with its turn. Ask again.");
+    expect(text(cards(s)[1])).toBe("Expired: new handoff This card expired with its turn.");
+    // F-AA1: no "Ask again" in words while there is no control for it (the owner: no words that do nothing).
+    expect(cards(s)[1]).not.toContain("Ask again");
   });
 });
 

@@ -821,12 +821,12 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
   if (a instanceof Response) return a;
   const parsed = AskConfirmBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
   if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
-  if (a.state === "expired") return c.json({ error: "expired", message: "This card expired with its turn. Ask again." }, 409);
+  if (a.state === "expired") return c.json({ error: "expired", message: "This card expired with its turn." }, 409);
   if (a.state !== "proposed" && a.state !== "waiting") return c.json({ error: "already", message: `This card was already ${a.state}.` }, 409);
   // A card lives only as long as its turn.
   if (a.turn !== a.thread_turn) {
     await moveAction(c.var.ctx, a.id, ["proposed", "waiting"], "expired");
-    return c.json({ error: "expired", message: "This card expired with its turn. Ask again." }, 409);
+    return c.json({ error: "expired", message: "This card expired with its turn." }, 409);
   }
   const org = await orgIdentityOf(c.var.ctx);
   const tc = toolCtxFor(c, a.thread_id, org?.slug ?? "");

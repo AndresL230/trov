@@ -729,7 +729,7 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
       : cat === "undone" ? `Undone: ${lowerFirst(doneText(vms, v.look))}`
       : cat === "expired" ? `Expired: ${lowerFirst(proposedText(vms, v.look))}`
       : `Didn't work: ${lowerFirst(proposedText(vms, v.look))}`;
-    const reason = cat === "failed" ? str(rec(vm.result).error) ?? str(rec(vm.result).message) : cat === "expired" ? "This card expired with its turn. Ask again." : null;
+    const reason = cat === "failed" ? str(rec(vm.result).error) ?? str(rec(vm.result).message) : cat === "expired" ? "This card expired with its turn." : null;
     // Didn't work: the item it was about, to see why.
     const item = cat === "failed" ? vm.preview?.item?.ref ?? null : null;
     return `<div class="ask-line is-off" data-morph-key="${key}">${cat === "failed" ? SHAPE.bad() : SHAPE.off()}<span class="ask-line-main"><span class="ask-line-t">${esc(text)}</span>${reason ? why(reason) : ""}</span>${item ? openBtn(item) : ""}</div>`;
@@ -925,7 +925,7 @@ const pendingOf = (ctx: AskCtx, ids: number[]) => ids.filter((id) => { const s =
 function onRefusal(ctx: AskCtx, ids: number[], e: unknown, fallback: string): void {
   if (e instanceof AskApiError && e.code === "expired") {
     for (const id of pendingOf(ctx, ids)) setActionState(ctx, id, "expired");
-    ctx.flash(e.message || "This card expired with its turn. Ask again.");
+    ctx.flash(e.message || "This card expired with its turn.");
     return;
   }
   ctx.fail(e, fallback);
