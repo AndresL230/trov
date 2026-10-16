@@ -13,7 +13,8 @@ import { FONT_PRELOAD, appShellHtml, sitePageHtml } from "../web/src/site-preren
 import { shell } from "../src/auth/oauth-pages";
 import css from "../web/src/trov.css?raw";
 import oauthRoutesSrc from "../src/auth/oauth-routes.ts?raw";
-import artifactsSrc from "../web/src/artifacts.ts?raw";
+// Mermaid's loader and post-paint pass live in artifacts-state.ts (the Artifacts screens are their own chunk).
+import artifactsSrc from "../web/src/artifacts-state.ts?raw";
 import geistLicense from "../web/src/fonts/Geist-OFL.txt?raw";
 import archivoLicense from "../web/src/fonts/ArchivoNarrow-OFL.txt?raw";
 import pkg from "../package.json";

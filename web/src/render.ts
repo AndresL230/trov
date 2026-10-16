@@ -58,10 +58,12 @@ import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 import { repoView, repoControls, repoCrumb, repoDropdowns, type RepoProps, type RepoPollState } from "./repo";
 import type { GroupBy } from "@shared/repo-layout-core";
 import type { ScenarioKey } from "./repo-sample-keys";
+// Artifacts is its own chunk (artifacts-lazy.ts draws a skeleton until it is in); its state is artifacts-state.ts.
+import { artifactsView, artifactsHeader, artifactsDialogs } from "./artifacts-lazy";
 import {
-  artifactsView, artifactsHeader, artifactsDialogs, ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
+  ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
-} from "./artifacts";
+} from "./artifacts-state";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
 // Platform is its own chunk (platform-lazy.ts draws a skeleton until it is in); its state is platform-core.ts.
 import { platformView, platformOrgView, platformDialogs, platformPage } from "./platform-lazy";

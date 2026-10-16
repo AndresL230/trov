@@ -37,6 +37,10 @@ import type { SprintView, SprintDetail } from "@shared/sprints";
 import type { HandoffView } from "@shared/handoffs";
 import type { PromptSummary } from "@shared/handoffs";
 import type { ArtifactSummaryDTO } from "@shared/artifacts-core";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 const T0 = "2026-09-14T10:00:00Z";

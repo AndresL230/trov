@@ -85,10 +85,13 @@ import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
 import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
+// Artifacts is its own chunk (artifacts-lazy.ts): the reducer and the file pickers run once it is in.
 import {
-  artifactsAct, artAcceptFile, artAcceptNvFile, renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
-  type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
-} from "./artifacts";
+  renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
+  type ArtScreen, type ArtRoute, type ArtFilterKey, type ArtFile,
+} from "./artifacts-state";
+import type { ArtEffect, ArtWrite } from "./artifacts";
+import { artifactsChunk } from "./artifacts-lazy";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
 import { createOrgController } from "./org-actions";
@@ -400,6 +403,8 @@ function paintApp(): void {
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // Artifacts' screens are their own chunk: painting one without it starts the load.
+  if (state.view === "app" && (state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact")) withChunk(artifactsChunk);
   // Platform's screens are their own chunk: painting one without it starts the load.
   if ((state.view === "platform" || state.view === "app") && (state.screen === "platform" || state.screen === "platformorg")) withChunk(platformChunk);
   // Signed in: the Markdown chunk starts loading beside the first reads (once).
@@ -2246,14 +2251,14 @@ function runArtEffect(fx: ArtEffect): void {
  *  artAcceptNvFile refuses a file from the other side of it. */
 function readArtFile(file: File | undefined | null, target: "create" | "nv" = "create"): void {
   if (!file) return;
-  const accept = (f: ArtFile) => {
-    if (target === "create") artAcceptFile(state.art, f);
+  const accept = (f: ArtFile) => withChunk(artifactsChunk, (art) => {
+    if (target === "create") art.artAcceptFile(state.art, f);
     else {
       const d = state.art.details[detailKey(state.artRoute.slug ?? "", state.artRoute.v)]?.data;
-      if (d) artAcceptNvFile(state.art, d.kind, f);
+      if (d) art.artAcceptNvFile(state.art, d.kind, f);
     }
     rerender();
-  };
+  });
   if (isBinaryKind(kindForFilename(file.name))) {
     accept({ name: file.name, size: file.size, text: null, blob: file });
     return;
@@ -4174,7 +4179,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
-        const run = () => runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: viewerIsAdmin(state), host: `${location.origin}${orgBase(state.orgSlug).replace(/\/$/, "")}`, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value));
+        const run = () => withChunk(artifactsChunk, (art) => runArtEffect(art.artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: viewerIsAdmin(state), host: `${location.origin}${orgBase(state.orgSlug).replace(/\/$/, "")}`, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value)));
         // The delete confirm plays its exit before it closes (Escape, the backdrop, Cancel).
         if (act === "artDeleteCancel" && state.art.deleteArm && !state.art.deleteBusy) confirmOut(run);
         else run();
