@@ -33,6 +33,7 @@
 import { createHash } from "node:crypto";
 import { RESET_STATEMENTS } from "./reset.mjs";
 import { buildSeedStatements, targetsRemote } from "./build.mjs";
+import { datedRoadmap } from "./team-rich.mjs";
 
 // ── literals ─────────────────────────────────────────────────────────────────────────────────────────────────────
 const q = (v) => (v === null || v === undefined ? "NULL" : `'${String(v).replace(/'/g, "''")}'`);
@@ -788,7 +789,9 @@ export function serverAiE2eStatements(schema, { now = new Date(), base = true, f
   const resetText = RESET_STATEMENTS.join("\n");
   const unreset = [...schema.entries()].filter(([t, cols]) => cols.has("org_id") && !/_fts($|_)/.test(t) && !new RegExp(`\\b${t}\\b`).test(resetText)).map(([t]) => t);
   for (const t of unreset) statements.push(`DELETE FROM ${t} WHERE org_id LIKE 'org_test_%'`);
-  statements.push(...(base && fx ? buildSeedStatements(fx) : RESET_STATEMENTS));
+  // The dev base's roadmap is dated against the clock (team-rich.mjs `datedRoadmap`): its June sprints would otherwise
+  // read months overdue on every screen and in every brief.
+  statements.push(...(base && fx ? buildSeedStatements(fx.roadmap ? { ...fx, roadmap: datedRoadmap(fx.roadmap, now) } : fx) : RESET_STATEMENTS));
   const sections = [];
   const fixtures = [];
   for (const sec of SECTIONS) {

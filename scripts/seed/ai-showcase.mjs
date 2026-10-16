@@ -826,13 +826,12 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   s.push(...briefDevStatements(new Date(c.t - 26 * 60 * MIN)).filter((x) => x.startsWith("INSERT")));
   const D = tk("D");
   // The brief's fixed shape (the owner's rulings; shared/ai-core.ts AI_BRIEF_*): Now and Recently ONE sentence each,
-  // at most 160 characters and 3 cites, no ISO date; Next AT MOST 3, one per kind group — the failing build, the
-  // overdue ticket, ONE handoff — each why at most 80 characters.
+  // at most 160 characters and 3 cites, no ISO date; Next AT MOST 3, one per kind group — the failing build and ONE
+  // handoff — each why at most 80 characters. No "overdue" item: the one late sprint (7002, Gradebook export rework)
+  // holds none of Andres's tickets, and sprint 3 is done (owner ruling 2026-10-16; team-rich.mjs CANONICAL_SPRINT_DATES).
   const h16 = handoff(16);
-  const due3 = snap.sprints.find((x) => x.id === 3)?.target_date ?? "2026-06-10";
   const nextItems = [
     { ref: `ticket:${N.D}`, kind: "failing", title: D.title, why: "The Production backend deploy is failing at its build step.", cites: [ticketCite(N.D)] },
-    { ref: "ticket:3", kind: "overdue", title: byNum(3)?.title ?? "Ticket #3", why: `Its sprint, Token rotation & audit log, was due ${shortDay(due3)}.`, cites: [ticketCite(3)] },
     ...(h16 ? [{ ref: "handoff:16", kind: "handoff", title: clip(firstLine(h16.body), 140), why: "Jose left it for you, with the backend half done.", cites: [handoffCite(16)] }] : []),
   ].slice(0, 3);
   const brief = {
@@ -951,7 +950,7 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
 
   // ── Roadmap: sprint notes, the drift line, and an admin's two suggestion cards ──
   const ins = (kind, key, version, at, json, pv) => s.push(insert("org_insights", { org_id: ORG, kind, key, version, generated_at: at, model: HAIKU, prompt_version: pv, json }));
-  ins("sprint_note", "3", 1, c.days(1, 60), { text: "#3 and #7 are in progress and #1 has no assignee; the sprint is past its date.", cites: [ticketCite(3), ticketCite(7), ticketCite(1)] }, "note-1");
+  // No note on sprint 3: it is done (team-rich.mjs CANONICAL_SPRINT_DATES), and a note shows on an active sprint only.
   ins("sprint_note", "4", 1, c.days(1, 60), { text: "Its one ticket, #2, is in progress with Luke; nothing in the feed names it this week.", cites: [ticketCite(2)] }, "note-1");
   ins("sprint_note", String(IDS.sprint), 1, c.days(1, 60), { text: `#${N.A}, #${N.B} and #${N.C} are done; #${N.F} is in testing, and #${N.E} and #${N.G} have no assignee.`, cites: [ticketCite(N.A), ticketCite(N.B), ticketCite(N.C), ticketCite(N.F), ticketCite(N.E), ticketCite(N.G)] }, "note-1");
   ins("sprint_note", String(IDS.sprint), 2, c.ago(30), { text: `#${N.D}, the failed Production backend build, is in progress with a handoff to Jose; #${N.E} and #${N.G} still have no assignee.`, cites: [ticketCite(N.D), handoffCite(HN), ticketCite(N.E), ticketCite(N.G)] }, "note-1");
@@ -985,7 +984,7 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   if (draft.length) s.push(insert("ai_suggestions", { id: 9520, org_id: ORG, item_type: "roadmap", item_ref: "org", kind: "sprint_draft", value_json: { sprints: draft }, confidence: null,
     reason: "these open tickets sit outside every sprint and group cleanly by what they touch.", cites_json: draft.flatMap((d) => d.tickets).map(ticketCite), model: HAIKU, prompt_version: "draft-1", state: "open", created_at: c.days(1, 30) }));
   s.push(insert("ai_suggestions", { id: 9521, org_id: ORG, item_type: "roadmap", item_ref: "org", kind: "plan_narrative", confidence: null,
-    value_json: { narrative: "**Now:** hosting providers rolled out across every environment, and the token rotation and audit log work that is past its date.\n\n**Next:** reports and exports that finish, and the roadmap reading itself against what shipped.\n\n**Later:** semantic search ranking and the self-host guide." },
+    value_json: { narrative: "**Now:** hosting providers rolled out across every environment, and the gradebook export rework that is past its date.\n\n**Next:** reports and exports that finish, and the roadmap reading itself against what shipped.\n\n**Later:** semantic search ranking and the self-host guide." },
     reason: "the narrative predates the Hosting providers rollout sprint and this month's hosting work.", cites_json: [{ ref: `sprint:${IDS.sprint}`, label: "Hosting providers rollout", href: `#sprints/${IDS.sprint}` }, prCite(185)],
     model: HAIKU, prompt_version: "narrative-1", state: "open", created_at: c.days(2, 90) }));
 
