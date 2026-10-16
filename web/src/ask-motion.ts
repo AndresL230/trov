@@ -28,6 +28,12 @@
 //      empty conversation's centre and its docked foot when that flips (below).
 //   6. SMOOTH OPEN / CLOSE of the columns: the thread list's width and the inspector's margin are CSS transitions /
 //      keyframes on attributes the shell sets (`data-threads`, `data-closing`, `data-dragging`), in trov.css.
+//   7. THE BOTTOM: a conversation scroller (`data-ask-scroll`) stays at its bottom while `stick` holds (an answer
+//      streams, a footer opens Wrong? or its sources). `askFollowBottom` runs LAST in a paint — after rules 2 and 4
+//      started their animations, so the height it reads is the glide's FIRST frame, not its last — and then follows
+//      the bottom frame by frame while a glide runs in the scroller. Pinning before the glides started is what
+//      jumped the thread: pinned to the final height, then the glide restored the old one under it. `stick` is the
+//      conversation part's (`stickAfterScroll`): only a person scrolling UP clears it; back at the bottom sets it.
 
 /** The app's motion clock in ms (trov.css `:root` `--fx-fast` / `--fx-base` / `--fx-slow`), and the exit's wait. */
 export const ASK_FX = { fast: 180, base: 240, slow: 300, exit: 200 } as const;
@@ -101,8 +107,48 @@ export function askTweenHeights(root: ParentNode, reduce = reducedMotion()): num
     const was = heights.get(el);
     heights.set(el, h);
     if (was === undefined || reduce || Math.abs(was - h) < 2 || typeof el.animate !== "function") continue;
-    el.animate([{ height: `${was}px`, overflow: "hidden" }, { height: `${h}px`, overflow: "hidden" }], { duration: ASK_FX.base, easing: ASK_EASE.fx });
+    // `clip`, not `hidden`: hidden makes the box a block formatting context, so its first child's top margin (the
+    // footer's 8px) stopped collapsing through it for the glide and the row snapped up 8px when the glide ended.
+    el.animate([{ height: `${was}px`, overflow: "clip" }, { height: `${h}px`, overflow: "clip" }], { duration: ASK_FX.base, easing: ASK_EASE.fx });
     n++;
+  }
+  return n;
+}
+
+/** Within this many px of the end a scroller counts as AT its bottom (sub-pixel layout, a rounding scrollTop). */
+export const ASK_BOTTOM_SLACK = 4;
+
+/** Rule 7's `stick` after a scroll event: a person scrolling UP (the top went down and the bottom is out of reach)
+ *  lets go; reaching the bottom again holds on; anything else keeps it. A glide shrinking the conversation clamps the
+ *  top down too, but it lands AT the bottom, so it never lets go — and the pins' own scrolls only ever go down. */
+export function stickAfterScroll(stick: boolean, prevTop: number, s: { top: number; height: number; client: number }): boolean {
+  if (s.height - s.top - s.client <= ASK_BOTTOM_SLACK) return true;
+  if (s.top < prevTop) return false;
+  return stick;
+}
+
+const following = new WeakSet<Element>();
+/** A Web Animation (`Animation`: rule 2's entrances, rule 4's glides) still running under `el` — not a CSS one (the
+ *  cursor's blink never ends). */
+const gliding = (el: Element): boolean =>
+  typeof Animation === "function" && el.getAnimations({ subtree: true }).some((an) => an.constructor === Animation && an.playState === "running");
+/** Rule 7: pin each `[data-ask-scroll]` under `root` to its bottom while `stick(scroller)`, and keep following it
+ *  while a glide runs in it. Run AFTER `askEnterNew` / `askTweenHeights` in the same paint. Returns how many it pinned. */
+export function askFollowBottom(root: ParentNode, stick: (sc: HTMLElement) => boolean, reduce = reducedMotion()): number {
+  let n = 0;
+  for (const sc of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) {
+    if (!stick(sc)) continue;
+    sc.scrollTop = sc.scrollHeight;
+    n++;
+    if (reduce || following.has(sc) || typeof requestAnimationFrame !== "function" || typeof sc.getAnimations !== "function") continue;
+    following.add(sc);
+    const follow = (): void => {
+      if (!sc.isConnected) { following.delete(sc); return; }
+      if (stick(sc)) sc.scrollTop = sc.scrollHeight;
+      if (stick(sc) && gliding(sc)) requestAnimationFrame(follow);
+      else following.delete(sc);
+    };
+    requestAnimationFrame(follow);
   }
   return n;
 }

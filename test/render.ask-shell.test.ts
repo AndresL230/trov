@@ -11,7 +11,7 @@ import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
 import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
-import { askEnterNew, askGlideDock, askTweenHeights, closingAttr } from "../web/src/ask-motion";
+import { ASK_BOTTOM_SLACK, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, closingAttr, stickAfterScroll } from "../web/src/ask-motion";
 import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
 import type { AskReplayIndex } from "../web/src/ask-api";
 import { setApiOrg } from "../web/src/api";
@@ -391,6 +391,40 @@ describe("motion — the hooks every part inherits (web/src/ask-motion.ts)", () 
     expect(askTweenHeights(root as unknown as ParentNode, false)).toBe(1);
     card.offsetHeight = 120;
     expect(askTweenHeights(root as unknown as ParentNode, true)).toBe(0);
+  });
+
+  it("a height glide clips with overflow:clip — hidden would stop a first child's margin collapsing, and it snapped at the end", () => {
+    const card = new El({ "data-ask-tween": "" });
+    card.offsetHeight = 40;
+    askTweenHeights(new El({}, [card]) as unknown as ParentNode, false);
+    card.offsetHeight = 90;
+    askTweenHeights(new El({}, [card]) as unknown as ParentNode, false);
+    const [frames] = card.anims[0] as [Keyframe[], unknown];
+    expect(frames.map((f) => f.overflow)).toEqual(["clip", "clip"]);
+  });
+
+  it("the bottom (rule 7): only scrolling UP lets go; reaching the bottom holds on; the pins' own scrolls never let go", () => {
+    const at = (top: number, height = 2000, client = 600) => ({ top, height, client });
+    // At the bottom (a pin, or a glide clamping the top down as the conversation shrinks): held.
+    expect(stickAfterScroll(false, 1400, at(1400))).toBe(true);
+    expect(stickAfterScroll(true, 1400, at(1350, 1950))).toBe(true);
+    expect(stickAfterScroll(true, 1400, at(1400 - ASK_BOTTOM_SLACK + 1, 2000))).toBe(true);
+    // The person scrolled up, even a little: let go (the old 60px slack yanked a short scroll back down).
+    expect(stickAfterScroll(true, 1400, at(1370))).toBe(false);
+    // A pin's own scroll event, read while a glide under it still holds the conversation taller: it went DOWN, so
+    // it keeps holding — the old rule read "290px from the bottom" there and let go for the rest of the answer.
+    expect(stickAfterScroll(true, 1110, at(1400, 2290))).toBe(true);
+    // Scrolling down without reaching the bottom changes nothing.
+    expect(stickAfterScroll(false, 900, at(1000))).toBe(false);
+  });
+
+  it("the bottom (rule 7): pins each scroller while stuck, also under reduced motion; leaves a scrolled-up one alone", () => {
+    const sc = Object.assign(new El({ "data-ask-scroll": "page" }), { scrollTop: 0, scrollHeight: 1800 });
+    const root = new El({}, [sc]);
+    expect(askFollowBottom(root as unknown as ParentNode, () => false, true)).toBe(0);
+    expect(sc.scrollTop).toBe(0);
+    expect(askFollowBottom(root as unknown as ParentNode, () => true, true)).toBe(1);
+    expect(sc.scrollTop).toBe(1800);
   });
 
   it("an exit is an attribute the renderer emits from state", () => {

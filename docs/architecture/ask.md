@@ -320,7 +320,13 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `<answerKey>[|<block>]`) and `askAcWrong` `<answerKey>`. A block or a question's file
   opens in the inspector as a conversation-held ref, `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`): primed as
   hidden so it is never peeked, resolved by `cvItem`, drawn bigger with `chartFigure` / `themesFigure` /
-  `diagramFigure` / `tableView`.
+  `diagramFigure` / `tableView`. **The bottom** (ask-motion.ts rule 7): a conversation stays at its bottom while
+  `conversation.stick` — set by a send, a thread opened or a new one, and by reaching the bottom; cleared ONLY by the
+  person scrolling up (`stickAfterScroll`, any distance). The controller pins LAST in a paint (`askFollowBottom`,
+  after the entrances and height glides started) and follows the bottom frame by frame while a glide runs, so a
+  footer opening Wrong? or its sources, or closing them, glides the thread instead of jumping it. Pinning before the
+  glides (and reading "far from the bottom" off the pin's own scroll event while a shrinking glide held the
+  conversation taller) let go of the bottom for the rest of an answer — its footer and follow-ups ended out of view.
 - **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame) with Edit
   of its `editable` fields only — Confirm sends just the changed ones as `args` (each edited card alone, then the
   rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never

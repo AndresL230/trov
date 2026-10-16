@@ -23,7 +23,7 @@ import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
 import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
-import { ASK_FX, askEnterNew, askGlideDock, askTweenHeights, reducedMotion } from "./ask-motion";
+import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, reducedMotion } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskEvent, type RefView } from "@shared/ai-ask-core";
@@ -211,6 +211,7 @@ export function createAskController(host: AskHost): AskController {
   function newThread(where: AskWhere = "page"): void {
     if (streams[where]) streams[where]!.abort();
     delete streams[where];
+    ui().conversation.stick = true;
     setConvo(where, emptyConvo());
     ui().composer[where] = { ...initialComposerUi(), forced: ui().composer[where].forced };
     if (ui().inspector.where === where) ui().inspector = { ...ui().inspector, stack: [], idx: -1 };
@@ -222,6 +223,7 @@ export function createAskController(host: AskHost): AskController {
   function openThread(id: number): void {
     s.screen = "ask";
     closeDrawer(ctx);                                 // the phone drawer slides out (its exit), the thread opens under it
+    if (ui().page.threadId !== id) ui().conversation.stick = true;     // another thread opens at its latest answer
     if (ui().panel.threadId === id) {                 // ⌘J's "Open as thread": the panel's conversation moves over
       setConvo("page", ui().panel);
       setConvo("panel", emptyConvo());
@@ -463,6 +465,8 @@ export function createAskController(host: AskHost): AskController {
     askEnterNew(host.mount);
     askTweenHeights(host.mount);
     askGlideDock(host.mount);
+    // Last: the bottom, read once this paint's glides have started (rule 7).
+    askFollowBottom(host.mount, () => ui().conversation.stick);
     // The ⌘J panel on any page: make sure its state is read once.
     if (ui().cmdj.open && ui().state.status === "idle" && !ui().replay) load();
   }
