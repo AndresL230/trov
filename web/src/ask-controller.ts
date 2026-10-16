@@ -1,7 +1,7 @@
 // Ask Trov — the controller (FOUNDATION). main.ts creates ONE (`createAskController`) and hands it:
 //   • every `ask…` act            → `act()`, routed by the act's two-letter part code (ask-state.ts)
 //   • the screen's arrival         → `enter(threadId)` (loadForScreen "ask")
-//   • every paint                  → `afterPaint()`
+//   • every paint                  → `beforePaint()` (before the swap) and `afterPaint()`
 // and it wires its own DOM listeners (keys, paste, drop, hover cards, the inspector's resize edge, ⌘J, Escape,
 // the window's width). It owns the reads, the streams (one per conversation, with Stop), the ref views (one
 // batched peek for what is not known yet), the inspector stack and the hover card; the PARTS own the rest.
@@ -23,7 +23,7 @@ import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
 import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
-import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, reducedMotion, type AskBottomMove } from "./ask-motion";
+import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askKeepScroll, askTweenHeights, reducedMotion, type AskBottomMove } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
@@ -46,6 +46,8 @@ export interface AskController {
   act(name: string, arg: string | null, value: string | null): boolean;
   /** The Ask screen came up (a route, the sidebar row): load what it needs; `threadId` from `#ask/<id>`. */
   enter(threadId: number | null): void;
+  /** Before every paint's swap: where the conversations' scrollers are (ask-motion.ts `askHoldScroll`). */
+  beforePaint(): void;
   afterPaint(): void;
   /** The context parts get (tests drive parts through it). */
   readonly ctx: AskCtx;
@@ -68,7 +70,7 @@ export function createAskController(host: AskHost): AskController {
     paintQueued = true;
     // Away from the Ask screen only Ask's root overlays (the ⌘J panel, the hover card) change: they repaint alone,
     // so the page behind is never rebuilt per keystroke or streamed word (ask-cmdj.ts `cmdjRepaint`).
-    raf(() => { paintQueued = false; if (cmdjRepaint(host.mount, s)) after(); else host.rerender(); });
+    raf(() => { paintQueued = false; askHoldScroll(host.mount); if (cmdjRepaint(host.mount, s)) after(); else host.rerender(); });
   }
 
   /** The answer's pace (ask-pace.ts) runs on the page's frames; none without a window (tests) or under reduced motion
@@ -496,6 +498,8 @@ export function createAskController(host: AskHost): AskController {
     askEnterNew(host.mount);
     askTweenHeights(host.mount);
     askGlideDock(host.mount);
+    // A scroller this paint's measuring clamped up (a card shorter for one layout before its glide held it) goes back.
+    askKeepScroll(host.mount);
     // Last: the bottom, read once this paint's glides have started (rule 7) — moved only by the conversation.
     askFollowBottom(host.mount, bottomMove, () => ui().conversation.stick);
     // The ⌘J panel on any page: make sure its state is read once.
@@ -514,6 +518,7 @@ export function createAskController(host: AskHost): AskController {
       return true;
     },
     enter,
+    beforePaint: () => askHoldScroll(host.mount),
     afterPaint: () => after(),
   };
 }

@@ -490,6 +490,7 @@ function rerender(): void {
   const scroll = captureScroll(mount, state.screen);
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
   const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
+  askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
   paint(mount, render(state));
   syncReviewDetail(rvFocus);
   syncSegments(mount);

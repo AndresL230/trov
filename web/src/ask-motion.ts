@@ -21,7 +21,10 @@
 //      "menu" (any open menu or picker), "drawer", "plus", `th:<id>` (a deleted thread's row). A part adds its own.
 //   4. HEIGHT TWEEN: `data-ask-tween` on an element whose CONTENT is swapped (an action card collapsing to its done /
 //      cancelled line, a save form to its saved line): `askTweenHeights` animates its height from the last paint's to
-//      this paint's, so the conversation under it glides instead of jumping.
+//      this paint's, so the conversation under it glides instead of jumping. Heights are NATURAL ones (a glide's own
+//      height is never read as the content's): a paint mid-glide with the same target leaves the glide running.
+//      `askHoldScroll` (before the paint) / `askKeepScroll` (after the glides start) undo the clamp the measuring
+//      layout puts on a scroller near its end, so a shrinking card never jumps the view.
 //   5. SKELETON → CONTENT: skeleton.ts `skeleton(key, …)` for anything still being read (the thread list, a thread);
 //      main.ts `syncSkeletons` gives what replaces it the settle fade.
 //   8. THE COMPOSER'S PLACE: `data-ask-dock="center" | "dock"` on the composer; `askGlideDock` glides it between the
@@ -98,20 +101,78 @@ export function askGlideDock(root: ParentNode, reduce = reducedMotion()): number
   return n;
 }
 
+/** Rule 4's decision for one element: the height its glide starts from, or null for no new glide. `was` is the height
+ *  it settled to at the last paint (its NATURAL height then — never a mid-glide one), `now` its natural height this
+ *  paint, `shown` the height on screen this instant (mid-glide; null when nothing runs). The same target is no new
+ *  glide: a paint mid-glide (the confirm's own paints, every streamed word) leaves the running one alone. A new target
+ *  starts from where the eye is, not from where the last glide began. */
+export function tweenStart(was: number | undefined, now: number, shown: number | null): number | null {
+  if (was === undefined || Math.abs(was - now) < 2) return null;
+  const from = shown ?? was;
+  return Math.abs(from - now) < 2 ? null : from;
+}
+
 const heights = new WeakMap<Element, number>();
-/** Rule 4: tween each `[data-ask-tween]` element's height from the last paint's to this one's. */
+const tweens = new WeakMap<Element, Animation>();
+const runningTween = (el: Element): Animation | null => {
+  const an = tweens.get(el);
+  return an && an.playState === "running" ? an : null;
+};
+/** Rule 4: tween each `[data-ask-tween]` element's height from the last paint's to this one's.
+ *
+ *  Its heights are NATURAL heights. A glide animates `height`, so an element's offsetHeight mid-glide is the glide's,
+ *  not its content's: reading that as "this paint's height" (as this once did) made every paint during a glide — the
+ *  Confirm's second paint, a toast, each streamed word — start a glide BACK towards the old height, and the card under
+ *  a Confirm swung between its old and new heights for as long as the answer was writing (measured: 48 ↔ 336px, the
+ *  text under it jumping ~290px a frame). So the running glides are stepped past their end for the measurement (no
+ *  effect: the content's own height) and put back, all within this task. */
 export function askTweenHeights(root: ParentNode, reduce = reducedMotion()): number {
+  const els = Array.from(root.querySelectorAll<HTMLElement>("[data-ask-tween]"));
+  // Where each running glide has it now (nested glides: an outer one's height includes the inner one's).
+  const shown = els.map((el) => (runningTween(el) ? el.offsetHeight : null));
+  const live = els.map(runningTween).filter((an): an is Animation => an !== null);
+  const at = live.map((an) => an.currentTime);
+  for (const an of live) an.currentTime = ASK_FX.base + 1;
+  const natural = els.map((el) => el.offsetHeight);
+  live.forEach((an, i) => { an.currentTime = at[i]; });
   let n = 0;
-  for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-tween]"))) {
-    const h = el.offsetHeight;
+  els.forEach((el, i) => {
+    const h = natural[i];
     const was = heights.get(el);
     heights.set(el, h);
-    if (was === undefined || reduce || Math.abs(was - h) < 2 || typeof el.animate !== "function") continue;
+    if (reduce) { runningTween(el)?.cancel(); return; }
+    const from = tweenStart(was, h, shown[i]);
+    if (from === null || typeof el.animate !== "function") return;
+    runningTween(el)?.cancel();
     // `clip`, not `hidden`: hidden makes the box a block formatting context, so its first child's top margin (the
     // footer's 8px) stopped collapsing through it for the glide and the row snapped up 8px when the glide ended. And
     // only the Y axis: clipping X cut what overhangs the column's left edge (the footer's mark, a step's hover
     // background) for the glide and showed it again after.
-    el.animate([{ height: `${was}px`, overflowY: "clip" }, { height: `${h}px`, overflowY: "clip" }], { duration: ASK_FX.base, easing: ASK_EASE.fx });
+    const an = el.animate([{ height: `${from}px`, overflowY: "clip" }, { height: `${h}px`, overflowY: "clip" }], { duration: ASK_FX.base, easing: ASK_EASE.fx });
+    if (an) tweens.set(el, an);
+    n++;
+  });
+  return n;
+}
+
+const tops = new WeakMap<Element, number>();
+/** Before a paint: where each `[data-ask-scroll]` is (main.ts `rerender`, the ⌘J panel's own repaint). */
+export function askHoldScroll(root: ParentNode): void {
+  for (const sc of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) tops.set(sc, sc.scrollTop);
+}
+/** After a paint, once its glides started (rule 4) and before the bottom (rule 7): a scroller this paint pulled UP
+ *  goes back to where it was. A swapped card is shorter for the one layout that measures it, before its glide holds
+ *  the old height again, and a scroller near its end is clamped up at that instant — the view jumped by the whole
+ *  difference (measured: 143px in a frame) and the clamp's scroll event let go of `stick`, so the answer still writing
+ *  stopped being followed. Put back, the browser clamps it only as the glide really shrinks the conversation. A paint
+ *  never moves a view up on purpose (a thread opening jumps DOWN, after this). Returns how many it put back. */
+export function askKeepScroll(root: ParentNode): number {
+  let n = 0;
+  for (const sc of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) {
+    const was = tops.get(sc);
+    tops.delete(sc);
+    if (was === undefined || sc.scrollTop >= was - 0.5) continue;
+    sc.scrollTop = was;
     n++;
   }
   return n;
