@@ -27,7 +27,9 @@ describe("the daily on a busy day (Phase E)", () => {
     await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = 'org_saplinglearn'`);
     const d = await daily();
     expect(d.subject).toBe("Netlify test failing, plus 2 more");
-    expect({ blocks: d.blocks, lines: d.lines }).toEqual({ blocks: 1, lines: 2 });
+    // Review, Tickets — and the Sprint line, which rides every daily since the owner's ruling Q45.
+    expect({ blocks: d.blocks, lines: d.lines }).toEqual({ blocks: 1, lines: 3 });
+    expect(d.html).toContain("Sprint:</span>");
     expect(d.words).toBeLessThanOrEqual(232 / 2);
     expect(d.htmlWords).toBeLessThanOrEqual(303 / 2);
     // Removed: the per-PR What / Why / Impact cards, issue rows and labels, the plan diff.

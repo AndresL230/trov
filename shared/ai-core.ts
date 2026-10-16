@@ -361,6 +361,12 @@ export interface AiSettings {
   /** `orgs.ai_chat_auto` (0058) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
    *  may be used in this organization. */
   chatAuto: boolean;
+  /** Whether each provider's key is set on this deployment (owner ruling Q8): Org settings › AI says it per provider —
+   *  Anthropic for everything Trov writes, TypeSafe AI for Sift. A fact about the deployment, never a secret. */
+  keys: { anthropic: boolean; typesafe: boolean };
+  /** The plan's name when the organization's plan has ENDED (`plan_status = 'canceled'`): Trov's AI is paused until it
+   *  is renewed, not until a date (owner ruling Q10). Null otherwise. */
+  planEnded: string | null;
   sends: AiSendLine[];
   neverSent: string;
 }
@@ -372,15 +378,18 @@ export interface AiSettingsPut { enabled?: boolean; chatAuto?: boolean }
 /** `OrgUsage.ai?` / `PlatformUsageResponse.ai?`: AI runs and tokens in the window
  *  (`org_usage_daily`, metrics `ai_run:*`, `ai_run_failed:*`, `ai_run_capped:*`, `ai_tokens_*`). */
 export interface AiUsage {
-  runs: number;
-  failed: number;
-  capped: number;
-  tokensIn: number;
-  tokensOut: number;
-  tokensCached: number;
+  /** Anthropic's side — present only when the deployment has an Anthropic key (owner ruling Q7: each provider's
+   *  figures stand on that provider's key alone). */
+  runs?: number;
+  failed?: number;
+  capped?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  tokensCached?: number;
   /** TypeSafe AI's side (Phase B: token metrics per provider) — Jev requests (`ai_suggest`: Sift's and the AI
-   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Optional: a read from before
-   *  them (and the preview fixtures) leaves them out, and the screen then draws exactly what it did. */
+   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Present only when the
+   *  deployment has a TypeSafe AI key; a read from before them (and the preview fixtures) leaves them out, and the
+   *  screen then draws exactly what it did. */
   jevChecks?: number;
   jevTokensIn?: number;
   jevTokensOut?: number;

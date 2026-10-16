@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { ORG_B as ORG_B_ID, platformCtx, systemCtx } from "./helpers/tenant";
 import { first, run } from "./helpers/db";
 import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer";
 import { promote_doc } from "../src/tools/writes";
@@ -20,6 +20,7 @@ import { seedPerson } from "./helpers/persons";
 import { TicketCreate } from "@shared/tickets";
 import { SprintCreate } from "@shared/sprints";
 import type { Window } from "@shared/notifications";
+import { aiItemRef } from "@shared/ai";
 import type { CapturedEvent } from "@shared/contract";
 
 // Window under test: the 24h ending 2026-09-11T12:00Z (a Friday).
@@ -29,16 +30,16 @@ const BEFORE_WINDOW = "2026-09-09T03:00:00Z";
 const LOGIN = "AndresL230";
 const ORG = "org_saplinglearn";
 
-function prEvent(number: number, login: string, occurredAt: string, title = `PR ${number}`): CapturedEvent {
+function prEvent(number: number, login: string, occurredAt: string, title = `PR ${number}`, repo = "o/r"): CapturedEvent {
   return {
     semantic_key: `gh:pr:${number}:merged`, event_type: "pr_merged", ref_number: number, subject_login: login,
-    raw: JSON.stringify({ pr: { number, title, body: "b", html_url: `https://github.com/o/r/pull/${number}`, merged: true, merged_at: occurredAt, user: { login }, base: { ref: "main" } } }),
+    raw: JSON.stringify({ pr: { number, title, body: "b", html_url: `https://github.com/${repo}/pull/${number}`, merged: true, merged_at: occurredAt, user: { login }, base: { ref: "main" } } }),
     provenance: "webhook", occurred_at: occurredAt,
   };
 }
 const stub = (s: PrSummary): Summarizer<PrSummary> => ({ model: "stub", summarize: async () => s });
-async function merged(n: number, login: string, at: string, importance: string | null, title = `PR ${n}`): Promise<void> {
-  await ingestEvent(systemCtx(), platformCtx(), prEvent(n, login, at, title), "github-webhook");
+async function merged(n: number, login: string, at: string, importance: string | null, title = `PR ${n}`, repo = "o/r"): Promise<void> {
+  await ingestEvent(systemCtx(), platformCtx(), prEvent(n, login, at, title, repo), "github-webhook");
   await storePrSummary(systemCtx(), stub({ title, what: "w", why: "y", impact: "i" }), { semantic_key: `gh:pr:${n}:merged`, pr_number: n, title, body: "b" });
   if (importance) await run(env.DB, `UPDATE pr_summaries SET importance = ? WHERE semantic_key = ?`, importance, `gh:pr:${n}:merged`);
 }
@@ -110,28 +111,126 @@ describe("my_work renderer: Your brief and Also", () => {
     expect(s.subject).toBe("From the brief");
   });
 
+  // Q42 (owner ruling 2026-10-16): every missing brief falls back to the 3 most recent assigned items.
+  it("every missing brief falls back to the assigned tickets: none stored, an empty one, Wrong? on it, the allowance used up", async () => {
+    await aiOn();
+    await ticket("Assigned one", [LOGIN]);
+    const fallsBack = async (why: string) => {
+      const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
+      expect(s.html, why).toContain("ASSIGNED TO YOU");
+      expect(s.html, why).toContain("Assigned one");
+      expect(s.html, why).not.toContain("From the brief");
+      expect(s.subject, why).toBe("Assigned one");
+    };
+    await fallsBack("no row");
+    // An empty one: the pass stored a row with no model (nothing written).
+    await storeBrief(systemCtx(), LOGIN, { generatedAt: "2026-09-11T10:00:00.000Z", model: null, promptVersion: "brief.1", inputHash: "e", briefJson: JSON.stringify({ now: null, recently: null, next: { items: [] } }) });
+    await fallsBack("empty");
+    // Wrong? on the stored one.
+    await storeTheBrief();
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.html).toContain("From the brief"); // shown until…
+    await run(env.DB, `INSERT INTO ai_feedback (org_id, handle, item_type, item_ref, kind, model, prompt_version, created_at) VALUES (?, ?, 'brief', ?, 'brief', NULL, NULL, ?)`,
+      ORG, LOGIN, aiItemRef.brief("2026-09-11T11:00:00.000Z"), IN_WINDOW);
+    await fallsBack("Wrong?");
+    await run(env.DB, `DELETE FROM ai_feedback`);
+    // Capped: the org's month of runs used up — the last brief is NOT mailed (a missing brief).
+    await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-09-05', 'ai_run:brief', 'x', 250, ?)`, ORG, IN_WINDOW);
+    await fallsBack("capped");
+  });
+
+  it("a capped brief adds ONE footer line, for an admin or owner only — why briefs are paused, and when they resume", async () => {
+    await aiOn();
+    await seedPerson("lpcooper-arch");
+    await storeTheBrief();
+    await storeBrief(systemCtx(), "lpcooper-arch", { generatedAt: "2026-09-11T11:00:00.000Z", model: "claude-haiku-5-5", promptVersion: "brief.1", inputHash: "h", briefJson: JSON.stringify(BRIEF) });
+    await ticket("Mine", [LOGIN]);
+    await ticket("Luke's", ["lpcooper-arch"]);
+    await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, metric, actor, count, last_at) VALUES (?, '2026-09-05', 'ai_run:brief', 'x', 250, ?)`, ORG, IN_WINDOW);
+    const owner = (await kind().render(systemCtx(), LOGIN, WINDOW))!; // AndresL230 is the seed org's owner
+    expect(owner.footnote).toBe("Your brief is paused: this organization has used this month's AI allowance; it resumes Oct 1 (Org settings › AI).");
+    const member = (await kind().render(systemCtx(), "lpcooper-arch", WINDOW))!;
+    expect(member.footnote).toBeUndefined();
+    // An ended plan says so instead of a date.
+    await run(env.DB, `UPDATE orgs SET plan = 'team', plan_status = 'canceled' WHERE id = ?`, ORG);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.footnote).toBe("Your brief is paused: this organization's Pro plan has ended, so Trov's AI is paused until it is renewed (Org settings › General).");
+    // Not capped: no line.
+    await run(env.DB, `UPDATE orgs SET plan = 'enterprise', plan_status = 'active' WHERE id = ?`, ORG);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.footnote).toBeUndefined();
+  });
+
   it("a Google-only member (no GitHub identity) still gets their assigned tickets", async () => {
     await seedPerson("priya", { github: false, email: "p@example.com" });
     await ticket("Priya's", ["priya"]);
     expect((await kind().render(systemCtx(), "priya", WINDOW))!.html).toContain("Priya&#39;s");
   });
 
-  it("ALSO: their notable / breaking merged PRs and feed entries in the window — not routine, not unrated, not someone else's, not before the window", async () => {
+  // Q43 (owner ruling 2026-10-16): what touches the person's work, since when, which 3 win, where each links.
+  it("ALSO: notable / breaking items that touch their tickets, their pull requests or a repository they pushed to — each linking into Trov", async () => {
     await seedPerson("lpcooper-arch");
-    await merged(10, LOGIN, IN_WINDOW, "breaking", "Breaking change of mine");
+    const REPO = "SaplingLearn/sapling";
+    // A PR they authored → My Work.
+    await merged(10, LOGIN, IN_WINDOW, "notable", "Mine, notable");
+    // Luke's PR linked to a ticket they REQUESTED (assigned to Luke) → that ticket.
+    const t = await ticket("Their request", ["lpcooper-arch"]);
+    await run(env.DB, `UPDATE tickets SET requester = ? WHERE id = ?`, LOGIN, t);
+    const tn = (await first<{ number: number }>(env.DB, `SELECT number FROM tickets WHERE id = ?`, t))!.number;
+    await merged(20, "lpcooper-arch", "2026-09-11T04:00:00Z", "breaking", "On their ticket");
+    await run(env.DB, `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at) VALUES (?, ?, 'https://github.com/o/r/pull/20', 'github', '#20', '{}', ?, ?)`, ORG, t, LOGIN, IN_WINDOW);
+    // Luke's PR in a repository they pushed to this week → its Repo dashboard.
+    await merged(30, "lpcooper-arch", "2026-09-11T05:00:00Z", "notable", "In their repo", "Other/elsewhere");
+    await run(env.DB, `INSERT INTO repo_events (org_id, repo, semantic_key, kind, actor_login, raw, provenance, occurred_at, recorded_at) VALUES (?, ?, 'push:1', 'push', ?, '{}', 'webhook', '2026-09-05T00:00:00Z', '2026-09-05T00:00:00Z')`, ORG, "Other/elsewhere", LOGIN);
+    // A push older than 14 days does not make a repository theirs.
+    await run(env.DB, `INSERT INTO repo_events (org_id, repo, semantic_key, kind, actor_login, raw, provenance, occurred_at, recorded_at) VALUES (?, ?, 'push:2', 'push', ?, '{}', 'webhook', '2026-08-20T00:00:00Z', '2026-08-20T00:00:00Z')`, ORG, "Luke/solo", LOGIN);
+    // Not theirs: Luke's PR in a repository they did not push to lately, on no ticket of theirs.
+    await merged(40, "lpcooper-arch", IN_WINDOW, "breaking", "Luke's own", "Luke/solo");
+    // Rated routine or not at all, or merged before the window: never.
     await merged(11, LOGIN, IN_WINDOW, "routine", "Routine of mine");
     await merged(12, LOGIN, IN_WINDOW, null, "Unrated of mine");
-    await merged(13, "lpcooper-arch", IN_WINDOW, "notable", "Luke's notable");
     await merged(14, LOGIN, BEFORE_WINDOW, "notable", "Old notable of mine");
-    await note(LOGIN, "My notable note", "notable");
-    await note("lpcooper-arch", "Luke's note about my PR", "notable", IN_WINDOW, ["14"]);
-    await note("lpcooper-arch", "Luke's own note", "breaking");
+    const before = await tableCounts();
     const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
-    expect(s.heading).toBe("Also"); // nothing assigned, no brief: Also alone
-    expect(s.html).toMatch(/Breaking change of mine[\s\S]*My notable note|Breaking change of mine[\s\S]*Luke&#39;s note about my PR/);
-    expect(s.html).toContain("Luke&#39;s note about my PR"); // it names one of THEIR pull requests
-    for (const no of ["Routine of mine", "Unrated of mine", "Luke&#39;s notable", "Old notable of mine", "Luke&#39;s own note"]) expect(s.html).not.toContain(no);
-    expect((s.html.match(/data-mark/g) ?? []).length).toBeLessThanOrEqual(3);
+    expect(await tableCounts()).toEqual(before); // pure read
+    expect(s.heading).toBe("Also"); // nothing assigned to them, no brief: Also alone
+    // Breaking first, then newest; at most 3.
+    const titles = [...s.html.matchAll(/<a href="[^"]*"[^>]*>([^<]+)<\/a>/g)].map((m) => m[1]);
+    expect(titles).toEqual(["On their ticket", "In their repo", "Mine, notable"]);
+    // Each links INTO Trov, never GitHub.
+    expect(s.html).toContain(`href="{{trov-app}}/#tickets/${tn}"`);
+    expect(s.html).toContain(`href="{{trov-app}}/#repo?repo=Other%2Felsewhere"`);
+    expect(s.html).toContain(`href="{{trov-app}}/#mywork"`);
+    expect(s.html).not.toContain("github.com");
+    for (const no of ["Luke&#39;s own", "Routine of mine", "Unrated of mine", "Old notable of mine"]) expect(s.html).not.toContain(no);
+  });
+
+  it("ALSO from the Feed: an entry naming their PR, an issue of their ticket, or a session in their repo — not one that only has them as author", async () => {
+    await seedPerson("lpcooper-arch");
+    await merged(14, LOGIN, BEFORE_WINDOW, null, "Their older PR"); // named below; not itself a line
+    await note("lpcooper-arch", "Luke on my PR", "notable", "2026-09-11T01:00:00Z", ["#14"]);
+    const t = await ticket("Mirrored", [LOGIN], { status: "done" });
+    await run(env.DB, `UPDATE tickets SET source = 'github', source_ref = 'o/r#77' WHERE id = ?`, t);
+    await run(env.DB, `INSERT INTO feed (org_id, author, summary, artifacts, created_at, importance) VALUES (?, 'lpcooper-arch', 'About issue 77', ?, '2026-09-11T02:00:00Z', 'breaking')`, ORG, JSON.stringify({ prs: [], commits: [], issues: [77] }));
+    await run(env.DB, `INSERT INTO repo_events (org_id, repo, semantic_key, kind, actor_login, raw, provenance, occurred_at, recorded_at) VALUES (?, 'O/r', 'push:9', 'push', ?, '{}', 'webhook', '2026-09-10T00:00:00Z', '2026-09-10T00:00:00Z')`, ORG, LOGIN);
+    const f = await run(env.DB, `INSERT INTO feed (org_id, author, summary, artifacts, created_at, importance) VALUES (?, 'trov', 'Shipped: the repo work', '{}', '2026-09-11T00:30:00Z', 'notable')`, ORG);
+    await run(env.DB, `INSERT INTO ai_sessions (org_id, repo, actor_login, started_at, ended_at, status, feed_id, created_at) VALUES (?, 'O/r', 'someone', 'a', 'b', 'done', ?, 'c')`, ORG, f.meta.last_row_id);
+    await note(LOGIN, "Mine, about nothing of theirs", "breaking"); // authored by them, but touches none of the three
+    const s = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
+    const also = s.html.slice(s.html.indexOf("data-brief-also"));
+    const titles = [...also.matchAll(/<a href="([^"]*)"[^>]*>([^<]+)<\/a>/g)].map((m) => [m[2], m[1]]);
+    expect(titles).toEqual([["About issue 77", "{{trov-app}}/#feed"], ["Luke on my PR", "{{trov-app}}/#feed"], ["Shipped: the repo work", "{{trov-app}}/#feed"]]);
+    expect(s.html).not.toContain("Mine, about nothing of theirs");
+  });
+
+  it("ALSO looks back to their last daily SENT in this org (a test send is not one), not only the window", async () => {
+    await merged(10, LOGIN, "2026-09-09T20:00:00Z", "notable", "Since the last send"); // before WINDOW.start
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))).toBeNull();
+    await run(env.DB, `INSERT INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at, sent_at) VALUES (?, 'k1', ?, 'daily', '2026-09-08', '[]', 'sent', '2026-09-08T12:00:00Z', '2026-09-08T12:00:01Z')`, ORG, LOGIN);
+    await run(env.DB, `INSERT INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at, sent_at) VALUES (?, 'k2', ?, 'daily', '2026-09-10 (test)', '[]', 'sent', '2026-09-10T00:00:00Z', '2026-09-10T00:00:01Z')`, ORG, LOGIN);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.html).toContain("Since the last send");
+    // A send in another org is not this org's.
+    await run(env.DB, `UPDATE notification_outbox SET status = 'skipped' WHERE idempotency_key = 'k1'`);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))).toBeNull();
   });
 
   it("the weekly carries the brief but no Also", async () => {
@@ -141,9 +240,9 @@ describe("my_work renderer: Your brief and Also", () => {
 
   it("needsMe: a Next item, or something notable that touched their work — else false", async () => {
     expect(await needsMe(systemCtx(), LOGIN, WINDOW)).toBe(false);
-    await note(LOGIN, "Notable", "notable");
+    await merged(10, LOGIN, IN_WINDOW, "notable");
     expect(await needsMe(systemCtx(), LOGIN, WINDOW)).toBe(true);
-    await run(env.DB, `DELETE FROM feed`);
+    await run(env.DB, `DELETE FROM pr_summaries`);
     await ticket("Mine", [LOGIN]);
     expect(await needsMe(systemCtx(), LOGIN, WINDOW)).toBe(true);
   });
@@ -175,6 +274,22 @@ describe("review_queue renderer: one line", () => {
     expect(off.text).toBe("Review: 2 waiting");
     await aiOn();
     expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.text).toBe("Review: 2 waiting, 1 changes a decision");
+    // Q44: with no risk suggestion the clause is dropped — never "0 change a decision".
+    await run(env.DB, `UPDATE ai_suggestions SET state = 'dismissed'`);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.text).toBe("Review: 2 waiting");
+  });
+
+  // Q44 (owner ruling 2026-10-16): only to people who can promote — every role may today (organizations.md §4).
+  it("goes only to someone who can promote: each role of the org does; a non-member does not", async () => {
+    await ingestAdrDraft(systemCtx(), { title: "Pending", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await seedPerson("an-admin", { member: false });
+    await run(env.DB, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, 'an-admin', 'admin', 'now', 'seed')`, ORG);
+    for (const who of [LOGIN /* owner */, "an-admin", "lpcooper-arch" /* member */]) {
+      expect((await kind().render(systemCtx(), who, WINDOW))?.text, who).toBe("Review: 1 waiting");
+    }
+    await seedPerson("outsider", { member: false });
+    expect(await kind().render(systemCtx(), "outsider", WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(ORG_B_ID), LOGIN, WINDOW)).toBeNull(); // not a member of the other org
   });
 });
 
@@ -203,10 +318,13 @@ describe("roadmap_plan renderer: the Sprint line", () => {
     expect((await kind().render(systemCtx(), "Darkest-Teddy", WINDOW))!.text).toBe("Sprint: Other, due Sat");
   });
 
-  it("due words: today, a weekday within the week, a date beyond it, days late; nothing for no date", () => {
-    const now = new Date("2026-09-11T12:00:00Z");
+  it("due words: today, a weekday within the week, a date beyond it, days late; nothing for no date (Q45)", () => {
+    const now = new Date("2026-09-11T12:00:00Z"); // a Friday
     expect(dueWords("2026-09-11", now)).toBe("due today");
     expect(dueWords("2026-09-14", now)).toBe("due Mon");
+    expect(dueWords("2026-09-17", now)).toBe("due Thu"); // 6 days: still a weekday
+    expect(dueWords("2026-09-18", now)).toBe("due Sep 18"); // 7 days: a date — "due Fri" on a Friday would read as today
+    expect(dueWords("2026-11-02", now)).toBe("due Nov 2");
     expect(dueWords("2026-10-01", now)).toBe("due Oct 1");
     expect(dueWords("2026-09-10", now)).toBe("1 day late");
     expect(dueWords("2026-09-08", now)).toBe("3 days late");

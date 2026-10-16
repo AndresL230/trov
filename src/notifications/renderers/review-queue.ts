@@ -1,5 +1,5 @@
 import type { NotificationKind, Section } from "@shared/notifications";
-import { type TenantContext, all, ph } from "../../data/sql";
+import { type TenantContext, all, first, ph } from "../../data/sql";
 import { list_proposals, list_adrs } from "../../tools/reads";
 import { planAndAiRuns } from "../../plans/gate";
 import { queueLine } from "../assemble";
@@ -24,12 +24,19 @@ async function changesADecision(ctx: TenantContext, refs: string[]): Promise<num
   return rows.length;
 }
 
+/** The roles that may confirm staged content in Review — promote a doc, ratify a decision (organizations.md §4: every
+ *  role today). The Review line goes only to them (owner ruling Q44). */
+export const REVIEW_CONFIRMERS: readonly string[] = ["owner", "admin", "member"];
+
 /**
- * review_queue — ONE line (Phase E): "Review: 3 waiting, 1 changes a decision". What waits for a person: open
- * proposals (staged doc versions newer than the live doc) and draft decisions. Org-wide, so the person is not
- * consulted. Null when both queues are empty.
+ * review_queue — ONE line (Phase E): "Review: 3 waiting, 1 changes a decision", or "Review: 3 waiting" with no risk
+ * suggestion (owner ruling Q44: no clause, never "0 change a decision"). What waits for a person: open proposals
+ * (staged doc versions newer than the live doc) and draft decisions — org-wide, said only to someone who can promote
+ * (`REVIEW_CONFIRMERS`). Null when both queues are empty, or for anyone else.
  */
-async function render(ctx: TenantContext): Promise<Section | null> {
+async function render(ctx: TenantContext, handle: string): Promise<Section | null> {
+  const m = await first<{ role: string }>(ctx, `SELECT role FROM memberships WHERE org_id = ? AND user_id = ? COLLATE NOCASE`, ctx.orgId, handle);
+  if (!m || !REVIEW_CONFIRMERS.includes(m.role)) return null;
   const proposals = await list_proposals(ctx);
   const decisions = await list_adrs(ctx, "draft");
   const waiting = proposals.length + decisions.length;

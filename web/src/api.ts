@@ -1223,7 +1223,7 @@ export function resolveTagSuggestion(name: string, body: { resolution: TagT.Sugg
   return orgSend("POST", `/api/tags/suggestions/${encodeURIComponent(name)}/resolve`, body);
 }
 /** Look for existing items that fit a tag (admin; a model run in the background). `status` says whether it started. */
-export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
+export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "org_off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
 /** The latest run for a tag, live (admin): what the Tags tab polls while it goes. */
 export function getTagRun(name: string): Promise<TagT.TagRunDTO | null> { return orgSend<{ run: TagT.TagRunDTO | null }>("GET", tagPath(name, "/run")).then((r) => r.run); }
 /** Undo a tag's latest run (admin): take the tag off exactly the items that run tagged. */

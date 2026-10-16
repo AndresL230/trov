@@ -9,7 +9,9 @@
 //                                      `org.ai_chat_auto`); → `AiSettings`
 //   POST /ai/suggestions/:id/accept    the kind's handler's role (./suggestions.ts) — writes AS the caller
 //   POST /ai/suggestions/:id/dismiss   any member
-//   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent
+//   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent; an
+//                                      omitted `model` / `promptVersion` is null. A failed write (here and
+//                                      on PUT /ai/settings) is 503 `{ error }`, never a 500
 //   POST /ai/filter { screen, text }   any member — the plain-language filter (#162, ./filter.ts): the screen's
 //                                      own filter fields, checked against the org's rows; never results
 import { Hono, type Context } from "hono";
@@ -30,8 +32,8 @@ import {
 } from "@shared/ai-fixtures";
 import { acceptSuggestion, dismissSuggestion, type SuggestionAnswer } from "./suggestions";
 import { isPreviewSuggestionId } from "@shared/ai-fixtures";
-import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, type AiFilterAnswer, type AiFilterErrorCode } from "@shared/ai-filter";
-import { planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
+import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, aiFilterUnreadable, type AiFilterAnswer, type AiFilterErrorCode, type AiFilterScreen } from "@shared/ai-filter";
+import { planDef, planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
 import { PLAN_LIMIT_STATUS } from "../plans/state";
 import { aiRunCappedMetric, meterBy } from "../data/meter";
 import { rateLimited } from "../platform/limits";
@@ -40,7 +42,7 @@ import { AI_FILTER_ACTOR, isEmptyFilter, previewAiFilter, runAiFilter } from "./
 /** What Org settings › AI shows, from ONE statement: both switches, the eligibility, this month's use of all
  *  four AI allowances, and what is sent to whom. Any member reads it; `canEdit` says whether the switches
  *  are theirs. Nothing here calls a model. */
-export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<AiSettings> {
+export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY" | "TYPESAFE_API_KEY">, ctx: TenantContext, now: Date = new Date()): Promise<AiSettings> {
   const a = await planAndAiSettings(ctx, now);
   return {
     enabled: a.enabled,
@@ -48,6 +50,8 @@ export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY">, ctx: Tenan
     eligibility: eligibilityOf(env, a.enabled, a.plan, a.used.ai_runs),
     allowances: Object.fromEntries(AI_ALLOWANCE_KEYS.map((k) => [k, allowanceUse(a.plan, k, a.used[k], now)])) as AiSettings["allowances"],
     chatAuto: a.chatAuto,
+    keys: { anthropic: !!env.ANTHROPIC_API_KEY, typesafe: !!env.TYPESAFE_API_KEY },
+    planEnded: a.plan.status === "canceled" ? planDef(a.plan.plan).name : null,
     sends: [...AI_SENDS],
     neverSent: AI_NEVER_SENT,
   };
@@ -74,8 +78,14 @@ aiApp.put(AI_ROUTES.settings, async (c) => {
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "forbidden" }, 403);
   const parsed = AiSettingsPutSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid", message: "Send { enabled: true | false }, { chatAuto: true | false }, or both." }, 400);
-  if (parsed.data.enabled !== undefined) await setAiAutomation(c.var.ctx, parsed.data.enabled);
-  if (parsed.data.chatAuto !== undefined) await setAiChatAuto(c.var.ctx, parsed.data.chatAuto);
+  // A failed write is 503 `{ error }`, never a 500 (invariant 7).
+  try {
+    if (parsed.data.enabled !== undefined) await setAiAutomation(c.var.ctx, parsed.data.enabled);
+    if (parsed.data.chatAuto !== undefined) await setAiChatAuto(c.var.ctx, parsed.data.chatAuto);
+  } catch (e) {
+    console.error("ai settings write", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`);
+    return c.json({ error: "Couldn't save the AI settings" }, 503);
+  }
   return settingsOr503(c);
 });
 
@@ -120,7 +130,12 @@ aiApp.post("/ai/suggestions/:id/dismiss", async (c) => {
 aiApp.post(AI_ROUTES.feedback, async (c) => {
   const parsed = AiFeedbackBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
-  await recordFeedback(c.var.ctx, c.var.ctx.userId, parsed.data);
+  try {
+    await recordFeedback(c.var.ctx, c.var.ctx.userId, parsed.data);
+  } catch (e) {
+    console.error("ai feedback", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`);
+    return c.json({ error: "Couldn't save that" }, 503);
+  }
   return c.json({ ok: true });
 });
 
@@ -133,10 +148,12 @@ aiApp.post(AI_ROUTES.feedback, async (c) => {
 const filterRefusal = (c: Context<AppEnv>, code: AiFilterErrorCode, status: 400 | 403 | 422 | 503, message: string = AI_FILTER_MESSAGES[code]) =>
   c.json({ error: code, message }, status);
 
-const filterAnswer = (c: Context<AppEnv>, a: AiFilterAnswer | null) => {
+/** An answer that sets nothing is `unreadable`, said in the words of THAT screen's filter schema (Q-F2: the Feed
+ *  has no status or priority to suggest). */
+const filterAnswer = (c: Context<AppEnv>, screen: AiFilterScreen, a: AiFilterAnswer | null) => {
   if (a && !isEmptyFilter(a)) return c.json(a);
   const not = a?.unmatched.length ? ` Not a filter here: ${a.unmatched.map((u) => `“${u}”`).join(", ")}.` : "";
-  return filterRefusal(c, "unreadable", 422, AI_FILTER_MESSAGES.unreadable + not);
+  return filterRefusal(c, "unreadable", 422, aiFilterUnreadable(screen) + not);
 };
 
 /** The preview's `capped`: the refusal a Free org at its month's runs would get. */
@@ -155,7 +172,7 @@ aiApp.post(AI_FILTER_ROUTE, async (c) => {
     // LOCAL DEVELOPMENT ONLY (./preview.ts): the fixture, checked exactly as a model's answer is.
     const preview = aiPreviewMode(c.env, c.req.url);
     if (preview === "capped") return c.json(previewCapped(a), PLAN_LIMIT_STATUS);
-    if (preview) return filterAnswer(c, await previewAiFilter(ctx, parsed.data, preview));
+    if (preview) return filterAnswer(c, parsed.data.screen, await previewAiFilter(ctx, parsed.data, preview));
     if (a.eligibility === "no_key") return filterRefusal(c, "no_key", 503);
     // THE allowance (shared/plans.ts `ai_runs`): one call is one run.
     const refusal = planRefusal(a.plan, "ai_runs", a.used, 1);
@@ -165,7 +182,7 @@ aiApp.post(AI_FILTER_ROUTE, async (c) => {
     }
     const limited = await rateLimited(c, "ai_filter");
     if (limited) return limited;
-    return filterAnswer(c, await runAiFilter(ctx, c.env, parsed.data));
+    return filterAnswer(c, parsed.data.screen, await runAiFilter(ctx, c.env, parsed.data));
   } catch (e) {
     console.error("ai filter", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
     return c.json({ error: "Couldn't read what the filter needs." }, 503);

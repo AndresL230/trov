@@ -304,7 +304,7 @@ describe("Platform › Usage — AI runs and tokens per provider (OrgUsage.ai, P
     for (let i = 1; i <= 2; i++) await markRow(ORG_A, "card", `ticket:${i}`, BEFORE);
     await pass(stub(), [job(), jevCardJob()]);
     const p = platformCtx();
-    const on = await platformUsage(p, 30, NOW, { aiEnabled: true });
+    const on = await platformUsage(p, 30, NOW, { aiEnabled: true, siftEnabled: true });
     const a = on.orgs.find((o) => o.slug === "saplinglearn")!;
     const b = on.orgs.find((o) => o.slug === "acme")!;
     // ORG_A: two failed Haiku runs (their scopes were retried on the second pass: two more runs), two Jev checks.
@@ -318,5 +318,12 @@ describe("Platform › Usage — AI runs and tokens per provider (OrgUsage.ai, P
     const off = await platformUsage(p, 30, NOW);
     expect(off).not.toHaveProperty("ai");
     expect(off.orgs.every((o) => !("ai" in o))).toBe(true);
+    // Q7 (owner ruling 2026-10-16): each provider's figures stand on its own key. Only a TypeSafe key: Sift's alone.
+    const siftOnly = await platformUsage(p, 30, NOW, { siftEnabled: true });
+    expect(siftOnly.ai).toEqual({ jevChecks: 2, jevTokensIn: 100, jevTokensOut: 2 });
+    expect(siftOnly.orgs.find((o) => o.slug === "saplinglearn")!.ai).toEqual({ jevChecks: 2, jevTokensIn: 100, jevTokensOut: 2 });
+    // Only an Anthropic key: no Sift figures.
+    const claudeOnly = await platformUsage(p, 30, NOW, { aiEnabled: true });
+    expect(claudeOnly.ai).toEqual({ runs: 254, failed: 2, capped: 1, tokensIn: 200, tokensOut: 14, tokensCached: 80 });
   });
 });

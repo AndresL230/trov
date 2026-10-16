@@ -102,17 +102,18 @@ export const SUMMARIES_OFF = "AI summaries are off on this deployment (no ANTHRO
 /** AI runs in the window — attempted, failed, refused at the allowance — and the tokens they used
  *  (`OrgUsage.ai` / `PlatformUsageResponse.ai`). Counts only. Absent `ai` draws nothing, never zeros. */
 export function aiFigures(a: AiUsage): string {
-  // Sift's side (TypeSafe AI) only when the read carries it — a read without it draws exactly what it did.
-  const jev = a.jevChecks !== undefined
-    ? `${FIGURE("Sift checks", formatNumber(a.jevChecks))}${a.jevTokensIn !== undefined ? FIGURE("Sift tokens in", formatNumber(a.jevTokensIn)) : ""}${a.jevTokensOut !== undefined ? FIGURE("Sift tokens out", formatNumber(a.jevTokensOut)) : ""}`
-    : "";
-  return `${FIGURE("Runs", formatNumber(a.runs))}${FIGURE("Failed", formatNumber(a.failed))}${FIGURE("Capped", formatNumber(a.capped))}${FIGURE("Tokens in", formatNumber(a.tokensIn))}${FIGURE("Tokens out", formatNumber(a.tokensOut))}${FIGURE("Cached", formatNumber(a.tokensCached))}${jev}`;
+  // Each provider's side only when the read carries it (each stands on its own key, owner ruling Q7) — a read
+  // without Sift's draws exactly what it did.
+  const opt = (label: string, v: number | undefined) => (v !== undefined ? FIGURE(label, formatNumber(v)) : "");
+  return `${opt("Runs", a.runs)}${opt("Failed", a.failed)}${opt("Capped", a.capped)}${opt("Tokens in", a.tokensIn)}${opt("Tokens out", a.tokensOut)}${opt("Cached", a.tokensCached)}${opt("Sift checks", a.jevChecks)}${opt("Sift tokens in", a.jevTokensIn)}${opt("Sift tokens out", a.jevTokensOut)}`;
 }
+/** The line's label: "AI runs" — or "Sift" when only TypeSafe AI's figures are there (no Anthropic key). */
+export const aiLabel = (a: AiUsage): string => (a.runs === undefined ? "Sift" : "AI runs");
 /** The AI runs line under the summaries line — only when the read carries `ai`. */
 const aiLine = (a: AiUsage | undefined, attrs: string): string => a
   ? `
     <div class="plat-breakdown-foot" ${attrs} style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding-top:10px;border-top:1px solid var(--border);${QUIET}">
-      <span style="${LABEL}">AI runs</span>${aiFigures(a)}
+      <span style="${LABEL}">${aiLabel(a)}</span>${aiFigures(a)}
     </div>`
   : "";
 
@@ -259,7 +260,7 @@ export function usageView(p: UsageProps): string {
     </div>`;
   // AI runs and tokens, all organizations — only when the read carries them.
   const ai = u.ai ? `<div data-usage-ai="totals" style="display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:12px 20px;border-top:1px solid var(--border);${QUIET}">
-      <span style="${LABEL}">AI runs</span>${aiFigures(u.ai)}<span>last ${u.days} days, all organizations</span>
+      <span style="${LABEL}">${aiLabel(u.ai)}</span>${aiFigures(u.ai)}<span>last ${u.days} days, all organizations</span>
     </div>` : "";
   return `${head}<div${surface("overflow:hidden", { cls: `plat-cq${p.status === "loading" ? " plat-busy" : ""}` })}>${top}${summaries}${ai}</div>${empty}${table}`;
 }

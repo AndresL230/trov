@@ -99,7 +99,7 @@ function fullUi(over: Partial<OrgUi> = {}): OrgUi {
       { id: "s2", actor: "mira", action: "secret.rotate", target: "github_token:", detail: { hint_last4: "1a2b", key_version: 1 }, at: "2026-10-05T11:00:00.000Z" },
       { id: "s1", actor: "andres", action: "secret.set", target: "github_token:", detail: { hint_last4: "0000", key_version: 1 }, at: "2026-10-05T10:00:00.000Z" },
     ]),
-    ai: ok<AiSettings>({ enabled: true, canEdit: true, eligibility: "ok", allowances: aiSettingsFixture("ready", new Date()).allowances, chatAuto: true, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT }),
+    ai: ok<AiSettings>({ enabled: true, canEdit: true, eligibility: "ok", allowances: aiSettingsFixture("ready", new Date()).allowances, chatAuto: true, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT }),
     ...over,
   });
 }

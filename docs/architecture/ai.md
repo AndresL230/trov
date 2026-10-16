@@ -297,8 +297,8 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
 
 | Route (`/api/o/:slug…`) | Who | Does |
 |---|---|---|
-| `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `canEdit` (admin+), `eligibility`, `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
-| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings` |
+| `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `canEdit` (admin+), `eligibility`, `keys` (`{ anthropic, typesafe }`: is each provider's key set on this deployment), `planEnded` (the plan's name when it is canceled — AI paused until renewed — else null), `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
+| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings`. A failed write is 503 `{ error }`, never a 500 |
 
 On the screen, TypeSafe AI's model is **Sift** — never its own name; the providers' legal names appear only where
 the tab says what is SENT (`web-ui.md`, the Privacy Policy).
@@ -319,8 +319,9 @@ Per provider, per org per UTC day in `org_usage_daily`. Counts only.
 
 Platform › Usage reads them into `OrgUsage.ai` and `PlatformUsageResponse.ai` (`src/platform/usage.ts`) — runs,
 failed, capped, Claude's tokens, and `jevChecks` / `jevTokensIn` / `jevTokensOut` (drawn as Sift checks and tokens
-only when the read carries them) — when a key is set, left out without one, as summaries say they are off. None of
-them is a person's request (not "active people", not "last activity").
+only when the read carries them). Each provider's figures stand on ITS key alone: Anthropic's with an Anthropic key,
+Sift's with a TypeSafe AI key (a TypeSafe key alone draws a "Sift" line), the field left out with neither, as
+summaries say they are off. None of them is a person's request (not "active people", not "last activity").
 
 ## Jobs: importance and Sift on new items (Jev, Phase C)
 
@@ -695,6 +696,7 @@ API (`batch: true`, half the price), the pass's last stage.
   `feed:<id>`) — "Wrong?" on a rating is feedback for the evals ONLY (Q34): the rating is a computed fact, so nothing
   reads that row to hide anything and nothing edits it; the Feed draws a small thumbs-down after a notable or breaking
   mark (`aiRatingWrongBtn`, act `aiRatingWrong`, pressed for the session in `AiUi.ratedWrong`) and no Dismiss.
+  `model` and `promptVersion` are nullable, and an omitted one is null; a failed write is 503 `{ error }`, never a 500.
 - Both tables are in `ORG_TABLES` and the reset seed; `ai_suggestions.decided_by` and `ai_feedback.handle` are in
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
   tool and none has an old-path alias.
@@ -724,7 +726,9 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   by likeness — or it is dropped. `unmatched` keeps only phrases quoted from the request (a dropped name too, when
   the request said it): the screen shows them as "Not a filter here: “overdue”", never model prose.
 - **Unreadable**: nothing left to set, a `refusal`, an answer cut at `max_tokens`, no JSON, or an error → 422
-  `{ error: "unreadable", message }` in plain words (naming the request's words that were no filter here).
+  `{ error: "unreadable", message }` in plain words, said per screen from that screen's schema (`aiFilterUnreadable`:
+  the Feed suggests a person, a tag or a time — never a status or priority it does not have), naming the request's
+  words that were no filter here.
 - **In the Filter menu** (`web/src/ai-filter.ts`, acts in `web/src/ai-filter-actions.ts`; `web-ui.md`): each
   screen's own Filter menu (`filter-menu.ts`; Tickets' `queue`, the Feed's `feed`, Artifacts' `art`) opens on a
   first row, "Describe a filter" with the AI mark (`aiFilterMenuTop`, passed as `FilterMenuProps.top`), shown only
@@ -738,7 +742,13 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   revives only a close the hover started (`fmClosingByHover` in `main.ts`), never this one, though the apply's repaint
   under a resting pointer fires a pointerover. A line above the toolbar (`aiFilterLine`) says what was set and what was
   not a filter here, with Undo back to the filters set by hand; after Undo it leaves by the kit's one exit
-  (`AiController.leave`, key `filter:<screen>`).
+  (`AiController.leave`, key `filter:<screen>`). An answer whose filter has no words (labels empty) draws no line —
+  never "Undo" alone. A hand change to the screen's filters after an apply drops the line and its Undo by the same
+  exit (`AiFilterController.sync`, called before every paint, compares the screen's state with the one the apply
+  left), so the line never describes filters that no longer hold and Undo never overwrites the hand change. An
+  Apply refused with 403 `off` (or 503 `no_key`, which reads exactly like off) — the switch went off after the row
+  was drawn — turns the row off at once (no row, as off is drawn), shuts the menu and says the server's sentence
+  once as a toast; no reload needed.
 - **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
   model's answer, with no key, no call and no count; `empty` is unreadable, `capped` the 402. The switch still holds.
 - Tests: `test/ai.filter.test.ts` (the call, the gates, the checks, the preview), `test/render.ai-filter.test.ts`.
