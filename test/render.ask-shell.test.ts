@@ -82,10 +82,12 @@ describe("layout — the three columns' rules", () => {
 });
 
 describe("the screen — renders end to end with the parts' stubs", () => {
-  it("a new thread: the header's Trov is a New thread button, the three columns, the starters and the composer", () => {
+  it("a new thread: the header reads 'Ask Trov' (plain text), the three columns, the starters and the composer", () => {
     const html = render(askState());
     expect(html).toContain(`data-morph="ask"`);
-    expect(html).toMatch(/<h1 class="ask-h1"><button type="button" data-act="askShNew"[^>]*>Trov<\/button><\/h1>/);
+    // AU-OWNER-3: "Ask Trov" is a title, not a button; New thread is the threads column's.
+    expect(html).toMatch(/<h1 class="ask-h1"><span class="ask-h1-t">Ask Trov<\/span><\/h1>/);
+    expect(html).not.toMatch(/<h1 class="ask-h1"><button/);
     expect(html).toContain(`class="ask-screen"`);
     expect(html).toMatch(/<aside class="ask-threads" aria-label="Threads">/);
     expect(html).toContain(`data-ask-scroll="page"`);
@@ -101,6 +103,28 @@ describe("the screen — renders end to end with the parts' stubs", () => {
     const html = render(askState((s) => { s.ask.vw = 1000; }));
     expect(html).toContain(`data-threads="hidden"`);
     expect(html).toMatch(/<aside class="ask-threads" aria-label="Threads" inert aria-hidden="true"><div class="ask-threads-in">/);
+  });
+
+  // AU-OWNER-3: no panel toggle in the header. "Hide threads" sits on the threads column's New thread row; when the
+  // list is shut, "Threads ›" at the conversation's leading edge brings it back (focusable only then). Same state
+  // (`threadsForced`), same automatic hiding.
+  it("AU-OWNER-3: Hide threads beside New thread; Threads › at the conversation's edge while the list is shut", () => {
+    const open = render(askState());
+    const header = open.slice(open.indexOf('<header class="cnpy-hdr"'), open.indexOf("</header>"));
+    expect(header).not.toContain(`data-act="askShThreads"`);
+    expect(header).toContain("Ask Trov");
+    expect(open).toMatch(/<div class="ask-th-newrow">\s*<button type="button" class="ask-th-new" data-act="askShNew">[\s\S]*?New thread<\/button>\s*<button type="button" class="ask-th-hide" data-act="askShThreads" aria-label="Hide threads" data-tip="Hide threads">/);
+    expect(open).toMatch(/<button type="button" class="ask-th-show" data-act="askShThreads" aria-label="Show threads" data-tip="Show threads" tabindex="-1" aria-hidden="true">Threads/);
+    const shut = render(askState((s) => { s.ask.threadsForced = false; }));
+    expect(shut).toContain(`data-threads="hidden"`);
+    expect(shut).toMatch(/<button type="button" class="ask-th-show" data-act="askShThreads" aria-label="Show threads" data-tip="Show threads">Threads/);
+    // It fades in (the app's clock) and nothing moves under reduced motion.
+    expect(css).toMatch(/\.ask-screen\[data-threads="hidden"\] \.ask-th-show \{ opacity:1; visibility:visible;/);
+    expect(css).toMatch(/\.ask-th-show, \.ask-th-hide \{ transition:none !important; \}/);
+    // A phone keeps its drawer: neither control.
+    const phone = render(askState((s) => { s.phone = true; s.ask.vw = 360; }));
+    expect(phone).not.toContain(`class="ask-th-show"`);
+    expect(phone).not.toContain(`class="ask-th-hide"`);
   });
 
   it("a thread being read is a skeleton inside the conversation's own column, keyed by the conversation", () => {

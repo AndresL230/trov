@@ -11,15 +11,20 @@
 //                 an item it returns that was not offered is dropped, a missing or bad "why" is the server's own
 //                 plain sentence, and every title is the item's own.
 //
+// ONE SHAPE (owner, BR-OWNER-1; shared/ai-core.ts `AI_BRIEF_*`): Now and Recently are ONE sentence each (at most 160
+// characters), Next at most THREE items (the server offers no more), each why at most 80 — so My Work's tile is the
+// same height every time and never scrolls. The server's fallback whys are built to fit that line too.
+//
 // NEVER GUESS: a cite that is not in the input is dropped and a line with no valid cite is not written; a line or a
-// "why" with a number the input does not have, or over its length, is dropped (never cut); a `refusal` or an answer
-// cut at `max_tokens` writes nothing (the client returns no answer). ONLY FOR PEOPLE who opened My Work in the last 14
-// days or who receive the digest (src/data/person-brief.ts `briefWanted`). An unchanged input calls nothing.
+// "why" with a number the input does not have, over its length, or (Now / Recently) more than one sentence, is dropped
+// (never cut); a `refusal` or an answer cut at `max_tokens` writes nothing (the client returns no answer). ONLY FOR
+// PEOPLE who opened My Work in the last 14 days or who receive the digest (src/data/person-brief.ts `briefWanted`).
+// An unchanged input calls nothing.
 //
 // The stored brief (`person_brief`, 0063) is what My Work, MCP `get_my_work` and — from Phase E — the e-mail read
 // (src/tools/mywork.ts `storedBrief`): none of them calls a model, and none imports this file. The pure half — the
 // input's shape, the order, the prompt, the answer's checks — is ./brief-core.ts.
-import { AI_LIST_MAX, TROV_SYSTEM_HANDLE, type AiBrief, type AiCite } from "@shared/ai";
+import { TROV_SYSTEM_HANDLE, type AiBrief, type AiCite } from "@shared/ai";
 import { sprintDueState } from "@shared/sprints-core";
 import { all, nowIso, ph, type TenantContext } from "../data/sql";
 import { briefAudience, briefWanted, latestBrief, storeBrief } from "../data/person-brief";
@@ -30,7 +35,7 @@ import type { DirtyScope } from "../data/ai-dirty";
 import type { ClaudeJob, JobItem } from "./jobs";
 import { keep } from "./sections";
 import {
-  BRIEF_JOB, BRIEF_PROMPT_VERSION, BRIEF_RECENT_DAYS, BRIEF_SYSTEM, BriefAnswerSchema, briefFromAnswer, briefIsEmpty, briefPromptInput, orderNext,
+  BRIEF_JOB, BRIEF_PROMPT_VERSION, pickNext, shortDay, BRIEF_RECENT_DAYS, BRIEF_SYSTEM, BriefAnswerSchema, briefFromAnswer, briefIsEmpty, briefPromptInput, orderNext,
   type BriefAnswer, type BriefCard, type BriefInput, type BriefNote, type BriefPr, type NextOffer, type NextRule,
 } from "./brief-core";
 
@@ -125,7 +130,7 @@ export async function buildBriefInput(ctx: TenantContext, handle: string, now: D
         const name = clip(r.title ?? r.name, 200) || `CI run ${r.number}`;
         failingOffers.push({
           ref: `run:${r.number}`, kind: "failing", rule: "blocked", title: name,
-          facts: `its last run failed on ${day(r.occurred_at)}, on your pull request #${p.number} "${title}"`,
+          facts: `its last run failed on ${shortDay(day(r.occurred_at))}, on your pull request #${p.number} "${title}"`,
           fallback: `It is failing on your pull request #${p.number}.`,
           cites: [runCite(r.number, r.url), pc], order: [-Date.parse(r.occurred_at) || 0, 0, String(r.number)],
         });
@@ -185,16 +190,19 @@ export async function buildBriefInput(ctx: TenantContext, handle: string, now: D
     const due = s && s.status !== "done" ? sprintDueState(s.target_date, now) : null;
     const rule: NextRule = due?.overdue ? "overdue" : due?.soon ? "due soon" : "assigned";
     const facts = [
-      s ? `in sprint "${clip(s.title, 80)}"${s.target_date ? `, due ${s.target_date}` : ""}${due?.overdue ? " (passed)" : ""}` : "in no sprint",
+      s ? `in sprint "${clip(s.title, 80)}"${s.target_date ? `, due ${shortDay(s.target_date)}` : ""}${due?.overdue ? " (passed)" : ""}` : "in no sprint",
       STATUS_WORD[t.status] ?? t.status,
       `priority ${t.priority}`,
       t.requester.toLowerCase() !== me.handle.toLowerCase() ? `requested by ${t.requester}` : "filed by you",
     ].join("; ");
-    const fallback = due?.overdue ? `Its sprint, ${clip(s!.title, 60)}, was due ${s!.target_date}.`
-      : due?.soon ? `Its sprint, ${clip(s!.title, 60)}, is due ${s!.target_date}.`
+    // Every fallback fits one line of the tile (BRIEF_WHY_MAX): the names in it are clipped to keep it there.
+    // Dates as the app writes them ("Jun 10"), never ISO.
+    const fallback = due?.overdue ? `Its sprint, ${clip(s!.title, 36)}, was due ${shortDay(s!.target_date)}.`
+      : due?.soon ? `Its sprint, ${clip(s!.title, 36)}, is due ${shortDay(s!.target_date)}.`
         : t.status === "in_progress" ? "You have it in progress." : "It is assigned to you.";
     offers.push({
-      ref: `ticket:${t.id}`, kind: rule === "assigned" ? "ticket" : "due", rule, title: clip(t.title, 300) || `#${t.id}`, facts, fallback,
+      // Past its sprint's date is OVERDUE (its own mark), never "Due soon"; `due` is only what is still ahead.
+      ref: `ticket:${t.id}`, kind: rule === "overdue" ? "overdue" : rule === "due soon" ? "due" : "ticket", rule, title: clip(t.title, 300) || `#${t.id}`, facts, fallback,
       cites: [cite(ticketCite(t.id))],
       order: rule === "assigned"
         ? [STATUS_RANK[t.status] ?? 9, PRIORITY_RANK[t.priority] ?? 9, String(9e15 - (Date.parse(t.updatedAt) || 0)).padStart(16, "0")]
@@ -214,8 +222,8 @@ export async function buildBriefInput(ctx: TenantContext, handle: string, now: D
       // Someone else's handoff is someone waiting; one you left for yourself is your own queue.
       ref: `handoff:${h.number}`, kind: "handoff", rule: fromYou ? "assigned" : "waiting",
       title: clip(firstLine(h.body) || h.prompt_title || `Handoff #${h.number}`, 300),
-      facts: `left by ${fromYou ? "you" : h.sender} for ${fromYou ? "yourself" : forYou ? "you" : "anyone"} on ${day(h.created_at)}; nobody has claimed it`,
-      fallback: fromYou ? "You left it for yourself to pick up." : forYou ? `${h.sender} left it for you.` : `${h.sender} left it for anyone to pick up.`,
+      facts: `left by ${fromYou ? "you" : h.sender} for ${fromYou ? "yourself" : forYou ? "you" : "anyone"} on ${shortDay(day(h.created_at))}; nobody has claimed it`,
+      fallback: fromYou ? "You left it for yourself to pick up." : forYou ? `${clip(h.sender, 40)} left it for you.` : `${clip(h.sender, 40)} left it for anyone to pick up.`,
       cites: [cite(handoffCite(h.number))], order: fromYou ? [1, 0, h.created_at] : [forYou ? 0 : 1, Date.parse(h.created_at) || 0, String(h.number)],
     });
   }
@@ -224,7 +232,7 @@ export async function buildBriefInput(ctx: TenantContext, handle: string, now: D
   return {
     handle: me.handle, name: me.name ?? null, today: day(nowIsoStr),
     now: { prs, status }, recently: { cards, notes },
-    next: orderNext(offers).slice(0, AI_LIST_MAX),
+    next: pickNext(offers),
     cites,
   };
 }

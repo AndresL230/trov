@@ -839,9 +839,9 @@ describe("Review — the exit's CSS (trov.css)", () => {
 
 // e2e RV-OWNER-1 (Phase H, the owner): "the bottom rows with tags are confusing and are inconsistent in size and
 // length being one or two lines". Every card's meta row is ONE line with the same slots in the same order; the path
-// is sentence case and the only part that gives way (an ellipsis, the whole path in its tooltip); Trov's risk is a
-// MARK up-right on the title row (where Low confidence sits), never a word in the meta row.
-describe("Review cards: one meta row, the same slots, the risk as a mark (RV-OWNER-1)", () => {
+// is sentence case and the only part that gives way (an ellipsis, the whole path in its tooltip). RV-OWNER-2: Trov's
+// risk is not on the list card at all — only in the item's detail.
+describe("Review cards: one meta row, the same slots; the risk only in the detail (RV-OWNER-1, RV-OWNER-2)", () => {
   const risk = [{ id: 7, itemType: "proposal", itemRef: "doc:x@2", kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, label: "Changes a decision", reason: "it changes ADR-1", confidence: 0.8, cites: [], state: "open" as const }] as unknown as ReviewItem["ai"];
   const meta = (html: string) => html.slice(html.indexOf('class="cnpy-rv-meta"'), html.indexOf("</div>", html.indexOf('data-slot="time"')));
   const proposal = () => makeItem({ eyebrow: "PROPOSAL · TECHNICAL / ARCHITECTURE" });
@@ -863,16 +863,19 @@ describe("Review cards: one meta row, the same slots, the risk as a mark (RV-OWN
     expect(m).toMatch(/data-slot="author" data-mtip="@[^"]+" style="flex:none/);
     expect(meta(reviewCard(makeItem({ kind: "decision", eyebrow: "DECISION · ADR-005" }), false))).toContain(">ADR-005</span>");
   });
-  it("the risk is a mark on the title row, never in the meta row; with and without it the meta row is the same", () => {
+  // RV-OWNER-2 (the owner): "remove the contradicts a doc thing from the cards, those are fine in the thing itself".
+  it("a card with a risk looks exactly like one without: no risk mark on the list card", () => {
     const withRisk = reviewCard({ ...proposal(), ai: risk }, false);
-    const without = reviewCard(proposal(), false);
-    expect(meta(withRisk)).toBe(meta(without));
-    expect(meta(withRisk)).not.toContain("Changes a decision");
-    const marks = withRisk.slice(withRisk.indexOf('class="cnpy-rv-marks"'), withRisk.indexOf('class="cnpy-rv-meta"'));
-    expect(marks).toContain('class="cnpy-ai-risk"');
-    expect(marks).toMatch(/data-mtip="Suggested by Trov\.[^"]*Because it changes ADR-1\."/);
-    expect(marks).toContain("Changes a decision");
-    expect(without).not.toContain("cnpy-rv-marks");
+    expect(withRisk).toBe(reviewCard(proposal(), false));
+    expect(withRisk).not.toContain("Changes a decision");
+    expect(withRisk).not.toContain("cnpy-ai-risk");
+    expect(withRisk).not.toContain("cnpy-rv-marks");
+  });
+  it("the risk stays in the item's detail: its line, its reason one tap away, Dismiss", () => {
+    const d = reviewDetail({ ...proposal(), ai: risk }, "unified");
+    expect(d).toContain('class="cnpy-ai-risk-line"');
+    expect(d).toContain("Changes a decision");
+    expect(d).toMatch(/data-act="aiDismiss" data-arg="7"/);
   });
   it("the author is their avatar alone: no handle text in the row, the handle in its tooltip and accessible name", () => {
     const unmapped = meta(reviewCard(makeItem({ agent: "trov" }), false));
@@ -882,19 +885,12 @@ describe("Review cards: one meta row, the same slots, the risk as a mark (RV-OWN
     expect(mapped).toContain('data-act="openPerson" data-arg="maya-k"');
     expect(mapped.replace(/<[^>]+>/g, " ")).not.toContain("@maya-k");
   });
-  it("the title takes the room left of the marks and wraps there; the marks never shrink", () => {
+  it("Low confidence stays up-right on the title row; the title takes the room left of it and never shrinks it", () => {
     const html = reviewCard({ ...proposal(), flagged: true, ai: risk }, false);
-    expect(html).toMatch(/<div style="flex:1 1 auto;[^"]*min-width:0">[^<]*<\/div>\s*<div class="cnpy-rv-marks" style="flex:none;[^"]*flex-direction:column;align-items:flex-end/);
-  });
-  it("Low confidence and a risk share the title row's marks, Low confidence first", () => {
-    const html = reviewCard({ ...proposal(), flagged: true, ai: risk }, false);
+    expect(html).toMatch(/<div style="flex:1 1 auto;[^"]*min-width:0">[^<]*<\/div>\s*<div class="cnpy-rv-marks" style="flex:none;margin-top:1px">/);
     const marks = html.slice(html.indexOf('class="cnpy-rv-marks"'), html.indexOf('class="cnpy-rv-meta"'));
-    expect(marks.indexOf("Low confidence")).toBeLessThan(marks.indexOf("Changes a decision"));
-  });
-  it("a dismissed risk still leaves by the AI kit's one exit, from the title row", () => {
-    const html = reviewCard({ ...proposal(), ai: risk }, false, null, [{ key: "suggestion:7", at: Date.now() - 20 }]);
-    const marks = html.slice(html.indexOf('class="cnpy-rv-marks"'), html.indexOf('class="cnpy-rv-meta"'));
-    expect(marks).toMatch(/<span class="cnpy-ai-leave" data-inline data-ai-leaving inert style="--leave-t:-\d+ms"><span class="cnpy-ai-leave-in"><span class="cnpy-ai-risk">/);
+    expect(marks).toContain("Low confidence");
+    expect(marks).not.toContain("Changes a decision");
   });
 });
 

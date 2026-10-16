@@ -27,8 +27,9 @@ import { aiMark, AI_NOT_OFFICIAL } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
 import { PRIVACY } from "../web/src/legal";
+import css from "../web/src/trov.css?raw";
 import { briefFixture, repoStateFixture, themesFixture, feedFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
-import { aiItemRef, AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
+import { aiItemRef, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
@@ -168,7 +169,8 @@ describe("My Work › Your brief", () => {
   it("ready: the first tile — Now / Recently / Next, the byline, the thumbs-down", () => {
     const html = mw("ready");
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Docs you own", "Queued handoffs"]);
+    // The visual order (BR-OWNER-3): Brief, then Needs your review over Repo; Your sessions beside Tickets for you.
+    expect(labels).toEqual(["Your brief", "Needs your review", "Repo monitor", "Your sessions", "Tickets for you", "Docs you own", "Queued handoffs"]);
     const card = html.slice(html.lastIndexOf("<section", html.indexOf('data-mw="brief"')), html.lastIndexOf("<section", html.indexOf('data-mw="review"')));
     const t = text(card);
     expect(t).toContain("Your brief");
@@ -196,18 +198,92 @@ describe("My Work › Your brief", () => {
     const html = mw("ready");
     expect(html).toContain('class="mw-bento mw-bento-brief cnpy-stagger"');
     const tiles = [...html.matchAll(/data-mw="(\w+)"/g)].map((m) => m[1]);
-    expect(tiles).toEqual(["brief", "review", "tickets", "sessions", "repo", "docs", "handoffs"]);
+    expect(tiles).toEqual(["brief", "review", "repo", "sessions", "tickets", "docs", "handoffs"]);
+    // The owner's swap (BR-OWNER-3): Repo stacks under Needs your review beside the brief; Tickets for you takes the
+    // wide slot beside Your sessions; the bottom row is unchanged.
+    expect(css).toContain(`.mw-bento-brief { grid-template-areas:
+  "brief brief brief brief brief brief brief brief review review review review"
+  "brief brief brief brief brief brief brief brief repo repo repo repo"
+  "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
+  "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }`);
+    // A phone stacks Brief, Needs your review, Tickets for you, Repo, then the rest — and the entrance follows it.
+    for (const [k, n] of [["brief", 1], ["review", 2], ["tickets", 3], ["repo", 4], ["sessions", 5], ["docs", 6], ["handoffs", 7]] as const) {
+      expect(css).toContain(`  .mw-bento-brief > [data-mw="${k}"]${k === "brief" ? ", .mw-bento-brief > .cnpy-ai-leave" : ""} { order:${n}; }`);
+    }
+    expect(css).toContain('  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="tickets"] { --n:2; }');
+    expect(css).toContain('  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="repo"] { --n:3; }');
+    // In the brief's bento the three list tiles are in their two-row mode; without it they are not.
+    for (const k of ["review", "repo", "tickets"]) {
+      const open2 = html.lastIndexOf("<section", html.indexOf(`data-mw="${k}"`));
+      expect(html.slice(open2, html.indexOf("</section>", open2)), k).toMatch(/mw-side-(body|swap)/);
+    }
     expect(text(html.slice(html.indexOf('data-mw="handoffs"')))).toContain("Queued handoffs");
-    // Each tile keeps one height: what does not fit scrolls inside it (trov.css `.mw-bento-brief .mw-scroll`).
-    for (const k of ["brief", "sessions", "docs", "handoffs"]) { // (this fixture's Tickets and Review are empty: no list)
-      const open = html.lastIndexOf("<section", html.indexOf(`data-mw="${k}"`));
-      const end = html.indexOf("</section>", open);
-      expect(html.slice(open, end), k).toContain('class="mw-scroll"');
+    // NO tile scrolls (BR-OWNER-1): the rows size to what the tiles hold — no fixed height, no fixed rows, no
+    // scrolling region in the brief bento — and the brief tile has no scrolling region at all.
+    const open = html.lastIndexOf("<section", html.indexOf('data-mw="brief"'));
+    expect(html.slice(open, html.indexOf("</section>", open))).not.toContain("mw-scroll");
+    const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const m of rules.matchAll(/([^{}]*\.mw-bento-brief[^{}]*)\{([^{}]*)\}/g)) {
+      expect(m[2], m[1].trim()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)|(^|[;\s])height:(?!100%)|grid-template-rows:(?!none)/);
     }
     // Without a brief: the strip across the page, all three parts in one tile, no area layout.
     const plain = render(app({ screen: "mywork", mywork: { status: "ok", data: dash({}) } }));
     expect(plain).not.toContain("mw-bento-brief");
     expect(plain).toContain('data-mw="library"');
+  });
+  it("one shape (BR-OWNER-1): Now, Recently and Next always drawn, three Next slots, 'Nothing new.' where a part is empty", () => {
+    const b = briefFixture("ready", NOW);
+    const labels = (h: string) => [...h.matchAll(/>(Now|Recently|Next)<\/div>/g)].map((m) => m[1]);
+    const slots = (h: string) => (h.match(/<li class="mw-brief-next/g) ?? []).length;
+    expect(labels(briefTile(b))).toEqual(["Now", "Recently", "Next"]);
+    expect(slots(briefTile(b))).toBe(AI_BRIEF_NEXT_MAX);
+    // A part with nothing in it keeps its slot and says so; unused Next rows are kept, empty.
+    const thin = briefTile({ ...b, recently: null, next: { items: b.next.items.slice(0, 1) } });
+    expect(labels(thin)).toEqual(["Now", "Recently", "Next"]);
+    expect(thin).toContain('<p class="mw-brief-text mw-brief-none">Nothing new.</p>');
+    expect(slots(thin)).toBe(AI_BRIEF_NEXT_MAX);
+    expect(thin.match(/<li class="mw-brief-next mw-brief-pad" aria-hidden="true"><\/li>/g)).toHaveLength(2);
+    const noNext = briefTile({ ...b, next: { items: [] } });
+    expect(text(noNext.slice(noNext.indexOf(">Next</div>") + 1))).toMatch(/^Next Nothing new\./);
+    expect(slots(noNext)).toBe(AI_BRIEF_NEXT_MAX);
+    // Every state holds the ready brief's height: the body box (trov.css `.mw-brief-body`).
+    for (const st of ["ready", "empty", "capped"] as const) expect(briefTile(briefFixture(st, NOW))).toContain('<div class="mw-brief-body">');
+    // Fixed boxes: a sentence and its sources 92px (three lines of room), a Next row 60px; the body 404px.
+    expect(css).toContain(".mw-brief-body { min-height:404px;");
+    expect(css).toContain(".mw-brief-line { height:92px; }");
+    expect(css).toContain(".mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:60px; }");
+  });
+  it("clamps an older, longer brief: three Next rows at most, the whole text as the box's tooltip, never cut in the markup", () => {
+    const b = briefFixture("ready", NOW);
+    const long = "You are partway through the hosting screens, " + "and the Netlify connect step still waits on the token check, ".repeat(4) + "so it is not merged.";
+    const why = "It blocks the hosting pull request you are working on, and nothing else can land before it does.";
+    const extra = b.next.items.map((it, k) => ({ ...it, ref: `ticket:${90 + k}`, title: `An older fourth-or-later item ${k}` }));
+    const card = briefTile({ ...b, now: { ...b.now!, text: long }, next: { items: [{ ...b.next.items[0], why }, ...b.next.items.slice(1), ...extra] } });
+    expect(long.length).toBeGreaterThan(AI_BRIEF_LINE_MAX);
+    expect(why.length).toBeGreaterThan(AI_BRIEF_WHY_MAX);
+    expect(card).toContain(`<p class="mw-brief-text" data-mtip="${long}">${long}</p>`);
+    expect(card).toContain(`<span class="mw-brief-why" data-mtip="${why}">${why}</span>`);
+    expect(card.match(/<li class="mw-brief-next cnpy-rise"/g)).toHaveLength(AI_BRIEF_NEXT_MAX);
+    expect(card).not.toContain("An older fourth-or-later item");
+    // Within the caps there is nothing to clamp, so no tooltip.
+    expect(briefTile(b)).not.toMatch(/class="mw-brief-(text|why)" data-mtip/);
+  });
+  it("Next: an overdue item is marked Overdue in the danger tone; one row per kind's group, even from an older brief", () => {
+    const b = briefFixture("ready", NOW);
+    const od = { ref: "ticket:3", kind: "overdue" as const, title: "Lesson duration field", why: "Its sprint, Token rotation, was due Jun 10.", cites: [{ ref: "ticket:3", label: "#3", href: "#tickets/3" }] };
+    const card = briefTile({ ...b, next: { items: [od, ...b.next.items.slice(1)] } });
+    const row = card.split(/class="mw-brief-next[ "]/)[1];
+    expect(text(row)).toContain("Overdue");
+    expect(text(row)).not.toContain("Due soon");
+    expect(row).toContain("var(--red)");
+    // An older brief with three handoffs and a due beside an overdue: one handoff, one of the two, three rows at most.
+    const h = (n: number) => ({ ref: `handoff:${n}`, kind: "handoff" as const, title: `Handoff ${n}`, why: "Left for you.", cites: [{ ref: `handoff:${n}`, label: `handoff #${n}`, href: `#handoffs/${n}` }] });
+    const due = { ...od, ref: "ticket:4", kind: "due" as const, title: "Due-soon ticket" };
+    const old = briefTile({ ...b, next: { items: [od, h(1), h(2), h(3), due] } });
+    expect(text(old)).toContain("Handoff 1");
+    expect(text(old)).not.toContain("Handoff 2");
+    expect(text(old)).not.toContain("Due-soon ticket");
+    expect(old.match(/<li class="mw-brief-next cnpy-rise"/g)).toHaveLength(2);
   });
   it("empty: the mock's sentence, no grid, no Wrong?", () => {
     const card = briefTile(briefFixture("empty", NOW));

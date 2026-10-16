@@ -483,19 +483,31 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
     their open PR), **waiting** (a pending, unexpired handoff someone else left for them, then one left for anyone),
     **due soon** (an assigned ticket whose sprint is due within 7 days), then **assigned** (handoffs they left for
     themselves, then their other assigned open tickets of both sources: in progress → testing → not started, high
-    priority first, most recently updated). The top `AI_LIST_MAX` (5) are offered, each with its own title (a
-    ticket's title, a handoff's first line, a run's job title) and the server's plain facts.
+    priority first, most recently updated). **One per kind, three at most** (`pickNext`, the owner's BR-OWNER-1: "one of
+    each"): the top item of each kind's group (`AI_NEXT_GROUP`: one failing run, one handoff, one ticket, one
+    overdue-or-due item) in that order, then the first `BRIEF_NEXT_MAX` (3) — so a brief never shows several
+    handoffs, and the model, which only writes whys, cannot add one. Each is offered with its own title (a ticket's
+    title, a handoff's first line, a run's job title), its KIND — `overdue` for anything past its sprint's date (drawn
+    "Overdue", danger tone), `due` only for what is still ahead ("Due soon"), `failing`, `handoff`, `ticket` — and the
+    server's plain facts, dates written as the app writes them ("Jun 10", `shortDay`), never ISO.
   - Every citable ref carries the cite the SERVER built (`#12` → the PR's URL, `CI run 4812`, `#14` →
     `#tickets/14`, `handoff #3`, a feed entry → `#feed`); headings carry the server's counts ("Open pull
     requests (2)") — the only counts the model may use.
+- **ONE SHAPE** (the owner, BR-OWNER-1; `AI_BRIEF_*` in `shared/ai-core.ts`): Now and Recently are ONE sentence each
+  of at most 160 characters with at most 3 sources, Next at most 3 items (one per kind), each why at most 80 — so My
+  Work's tile is the same height every time and never scrolls (`web-ui.md` › The AI kit). Prompt `brief.2` asks for
+  exactly that; the server below drops what is past it. **The recorded eval answers are for `brief.1`**: the CI
+  replay (`test/ai-evals.brief.test.ts`) fails until `scripts/ai-evals/brief-live.ts` is run live once for `brief.2`
+  (the eval set now offers three, one per kind, and grades `one_shape`).
 - **The answer and the server's checks** (`briefFromAnswer`): `now` and `recently` are kept only when the input
-  has something for them, their text is ≤ `BRIEF_LINE_MAX` (400) — dropped, never cut — has NO ref written into it
+  has something for them, their text is ONE sentence (`oneSentence`) ≤ `BRIEF_LINE_MAX` (160) — dropped, never cut —
+  has no ISO date (the app writes "Jun 10"), has NO ref written into it
   (`REF_IN_TEXT`) and no number the input does not have (`numbersGrounded`: a whole date only if the input has it,
   digits only if the input has them outside a date and a feed ref, a count in words only if the input says it in
   words or digits), and at least one cite that is a ref of the input (an invented cite is dropped). **Next is the
   server's list**: an item the model names that was not offered is dropped, its order is ignored, and each offered
-  item's "why" is the model's when it passes the same checks (≤ `BRIEF_WHY_MAX`, 160) — else the server's own
-  plain sentence ("Its sprint, Hosting, was due 2026-10-12."). Nothing valid at all writes nothing (a failed
+  item's "why" is the model's when it passes the same checks (≤ `BRIEF_WHY_MAX`, 80) — else the server's own
+  plain sentence ("Its sprint, Hosting, was due Oct 12."), built to fit that line too. Nothing valid at all writes nothing (a failed
   attempt); a `refusal` or `max_tokens` is no answer (the client's rule): nothing written, `attempts + 1`.
 - **Only for people who need it** (`briefWanted`, `src/data/person-brief.ts`): a MEMBER who opened My Work in the
   last 14 days (`memberships.mywork_opened_at`, written by `GET /me/dashboard` at most once an hour — never a model
@@ -511,7 +523,10 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
 - **The read** (`storedBrief`, `src/tools/mywork.ts`, plain D1 — reachable from MCP, so it imports nothing from
   `src/ai/`): the newest row → `AiBrief`; ABSENT when the switch is off, there is none, it fails `AiBriefSchema`,
   or the person pressed "Wrong?" on that version; `capped` (with `resumesOn`, `upgrade` on Free) when `ai_runs` are
-  spent; `empty` for a no-model version. `GET /me/dashboard`, `get_my_work` and — Phase E — the e-mail read it.
+  spent; `empty` for a no-model version. `GET /me/dashboard`, `get_my_work` and — Phase E — the e-mail read it. An
+  OLDER stored brief may be longer, carry more than three or several of a kind, or mark a past-due item `due`: it
+  still renders — the tile keeps one per group and three, and clamps the rest with its whole text as the tooltip —
+  and the e-mail shows its Now and first three. The e-mail marks an `overdue` item with the same word, "Overdue".
 
 ## Themes — "Where the work went" (Phase D; `src/ai/themes.ts`, `src/ai/themes-accept.ts`, `src/tools/themes.ts`, `src/data/themes.ts`, `0064_repo_themes`)
 

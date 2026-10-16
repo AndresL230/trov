@@ -2,9 +2,12 @@
 // localhost shows a real brief — read through the real path (src/tools/mywork.ts `storedBrief`), no
 // LOCAL_AI_PREVIEW needed (which, when set, still shows its own sample instead). Appended by scripts/seed-dev.mjs
 // AFTER the shared seed; never part of the test reset. Every item is a real row of fixtures/dev/*: ticket #3 in the
-// overdue sprint "Token rotation & audit log", the handoff Jose left for Andres, and his merged PRs #162 and #158 —
-// in the brief's fixed shape (the owner's rulings: Now and Recently one sentence each, Next at most 3, one per kind),
-// in the order the server gives Next (overdue, then someone waiting, oldest first), with the titles the rows have (test/ai.brief.test.ts holds the two to each other). The words are written in the brief's style, as the model would; `model` and `prompt_version`
+// overdue sprint "Token rotation & audit log" (an `overdue` item: its date has passed), the older of the two handoffs
+// Jose and Jack left for Andres, and his merged PRs #162 and #158 — in the order the server gives Next (overdue, then
+// someone waiting), ONE per kind (BR-OWNER-1: so the second handoff is not offered), with the titles the rows have
+// (test/ai.brief.test.ts holds the two to each other). It keeps the brief's one shape (shared/ai-core.ts
+// `AI_BRIEF_*`): Now and Recently one sentence of at most 160 characters, Next at most 3 items and one per kind, each
+// why at most 80, at most 3 sources a line, dates as the app writes them ("Jun 10"). The words are written in the brief's style, as the model would; `model` and `prompt_version`
 // say what the pass would record. Stamped against the clock at seed time, so it reads "12 min ago".
 
 const q = (v) => `'${String(v).replace(/'/g, "''")}'`;
@@ -24,14 +27,14 @@ export function briefDevStatements(now = new Date()) {
     },
     next: {
       items: [
-        { ref: "ticket:3", kind: "due", title: "Add a “lesson duration” field to the curriculum planner", why: "Overdue: its sprint, Token rotation & audit log, was due Jun 10.", cites: [ticket(3)] },
+        { ref: "ticket:3", kind: "overdue", title: "Add a “lesson duration” field to the curriculum planner", why: "Its sprint, Token rotation & audit log, was due Jun 10.", cites: [ticket(3)] },
         { ref: "handoff:16", kind: "handoff", title: "Resume tokens are wired on the backend, but the Next.js reader still drops the stream on reconnect.", why: "Jose left it for you, with the backend half already done.", cites: [handoff(16)] },
       ],
     },
   };
   const at = new Date(now.getTime() - 12 * 60_000).toISOString();
   return [
-    `INSERT INTO person_brief (org_id, handle, version, generated_at, model, prompt_version, input_hash, brief_json) VALUES ('org_saplinglearn', 'AndresL230', 1, ${q(at)}, 'claude-haiku-5-5', 'brief.1', 'dev-seed', ${q(JSON.stringify(brief))})`,
+    `INSERT INTO person_brief (org_id, handle, version, generated_at, model, prompt_version, input_hash, brief_json) VALUES ('org_saplinglearn', 'AndresL230', 1, ${q(at)}, 'claude-haiku-5-5', 'brief.2', 'dev-seed', ${q(JSON.stringify(brief))})`,
     // He opened My Work just now: the pass may rewrite his brief when something marks him (with a key set).
     `UPDATE memberships SET mywork_opened_at = ${q(now.toISOString())} WHERE org_id = 'org_saplinglearn' AND user_id = 'AndresL230'`,
   ];

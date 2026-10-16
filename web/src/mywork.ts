@@ -17,7 +17,7 @@ import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, type EmptyAction } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
-import { aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
+import { AI_BRIEF_CITES_MAX, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, AI_NEXT_GROUP, aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
 import { AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiWrongBtn } from "./ai-ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
@@ -104,12 +104,12 @@ export interface MwDue { label: string; soon: boolean; overdue?: boolean }
 
 /** One ticket assigned to me. The row NAVIGATES (a ticket is a D1 row on this
  *  origin, never the GitHub issue itself — ADR-007), and shows no numeric id. */
-export function mwTicketRow(t: MyWorkTicket, due: MwDue | null = null): string {
-  return `<button data-act="openTicket" data-arg="${t.id}" class="mw-row" style="${ROW}">
+export function mwTicketRow(t: MyWorkTicket, due: MwDue | null = null, beside = false): string {
+  return `<button data-act="openTicket" data-arg="${t.id}" class="mw-row${beside ? " mw-side-row" : ""}" style="${ROW}">
     ${prioLabel(t.priority === "normal" ? "Normal" : t.priority === "high" ? "High" : "Low", PRIO_COLOR[t.priority])}
     <span style="flex:1;min-width:0;display:block">
-      <span style="${ROW_TITLE}">${esc(t.title)}</span>
-      <span style="${META}">
+      <span${beside ? ` class="mw-side-title"${sideTip(t.title)}` : ""} style="${ROW_TITLE}">${esc(t.title)}</span>
+      <span${beside ? ` class="mw-side-meta"` : ""} style="${META}">
         <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">${ticketStatusIcon(t.status, 12, false)}${esc(TICKET_STATUS_LABEL[t.status])}</span>
         ${sep}<span style="white-space:nowrap">${esc(t.sprint?.label ?? "Backlog")}</span>
         ${due ? `${sep}<span style="white-space:nowrap;color:${due.overdue ? "var(--red)" : due.soon ? "var(--amber)" : "var(--fg-40)"}">${due.overdue ? "overdue" : "due"} ${esc(due.label)}</span>` : ""}
@@ -125,6 +125,19 @@ export interface MwListSlice<T> { load: MwLoad; rows: T[]; total?: number; expan
 
 /** The design's tile height: at most this many rows until the person asks for more. */
 export const MW_ROWS = 3;
+
+// ── beside Your brief (owner, BR-OWNER-2) ────────────────────────────────────
+// With the brief, Needs your review and Tickets for you sit beside it, wider (trov.css `.mw-bento-brief`), and hold
+// TWO rows each in fixed boxes — a two-line title, one line under it — then their "N more" line, its place kept when
+// there is none, and unused rows kept empty: so each tile is one height whatever it holds, the pair lines up with
+// the brief, and nothing scrolls. Without the brief they are exactly as before.
+export const MW_BESIDE_ROWS = 2;
+/** A title that may not fit its two lines: its whole text is the tooltip. */
+const sideTip = (title: string): string => (title.length > 40 ? ` data-mtip="${attr(title)}"` : "");
+const sidePads = (n: number): string =>
+  Array.from({ length: Math.max(0, MW_BESIDE_ROWS - n) }, () => `<div class="mw-side-row mw-side-pad" aria-hidden="true"></div>`).join("");
+/** The "N more" line's place: the line itself, or kept empty. */
+const sideFoot = (line: string): string => line || `<div class="mw-side-foot mw-side-foot-pad" aria-hidden="true"></div>`;
 const FOOT_BTN = "padding:9px 16px;font-size:12.5px;color:var(--fg-40);text-align:left";
 /** "Show N more" reveals only rows already loaded (N is what a click can actually
  *  show); what lies past the capped read is a link to where it lives. */
@@ -153,7 +166,7 @@ export const MW_EMPTY = {
   repo: "No repository is connected. Pull requests, CI and deploys show here at a glance once one is.",
 } as const;
 
-export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, span: number, dueOf: (t: MyWorkTicket) => MwDue | null = () => null): string {
+export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, span: number, dueOf: (t: MyWorkTicket) => MwDue | null = () => null, beside = false): string {
   const total = Math.max(sl.total ?? 0, sl.rows.length);
   const soon = sl.rows.filter((t) => dueOf(t)?.soon).length;
   const late = sl.rows.filter((t) => dueOf(t)?.overdue).length;
@@ -162,30 +175,45 @@ export function ticketsTile(sl: MwListSlice<MyWorkTicket>, degraded: boolean, sp
     : "";
   const body = degraded ? tileNote("Couldn't load your assigned tickets right now.")
     : sl.load === "pending" ? tileSkeleton("tickets", MW_ROWS, { lead: 32 })
-    : sl.rows.length === 0 ? tileEmpty("tickets", MW_EMPTY.tickets, { label: "Submit a ticket", act: "newTicket" }, 2, { lead: 32 })
+    // Beside the brief its empty layout draws one row, so it fits the tile's one height (`.mw-side-body`).
+    : sl.rows.length === 0 ? tileEmpty("tickets", MW_EMPTY.tickets, { label: "Submit a ticket", act: "newTicket" }, beside ? 1 : 2, { lead: 32 })
     : capped(sl, "tickets", (t) => mwTicketRow(t, dueOf(t)), { act: "mwAllTickets", label: (n) => `${n} more in the queue` });
+  if (beside) {
+    // Two rows, then "N more in the queue" (the queue, filtered to mine), as the capped list's own link reads.
+    const shown = sl.rows.slice(0, MW_BESIDE_ROWS);
+    const past = total - shown.length;
+    const rows = degraded || sl.load === "pending" || !sl.rows.length ? body
+      : `<div class="mw-side-rows">${shown.map((t) => mwTicketRow(t, dueOf(t), true)).join("")}${sidePads(shown.length)}${sideFoot(past > 0
+        ? `<button data-act="mwAllTickets" class="mw-more mw-side-foot" style="${FOOT_BTN};display:flex;align-items:center;justify-content:flex-end;gap:4px;width:100%">${esc(`${past} more in the queue`)}${ARROW}</button>`
+        : "")}</div>`;
+    const line = sub ? sub.replace(`<div style="`, `<div class="mw-side-sub" style="`) : `<div class="mw-side-sub" aria-hidden="true"></div>`;
+    return tile("tickets", span, "Tickets for you", `${tileHead("Tickets for you", { act: "goTickets", label: "Queue" })}<div class="mw-side-body" data-side="tickets">${line}${rows}</div>`);
+  }
   return tile("tickets", span, "Tickets for you", `${tileHead("Tickets for you", { act: "goTickets", label: "Queue" })}${sub}${body}`);
 }
 
 /** Needs your review: the Review queue's top three, each with its verdict buttons (the
  *  same reviewAccept / reviewReject acts the Review screen dispatches). */
-export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): string {
+export function reviewTile(items: ReviewHead[], load: MwLoad, span: number, beside = false): string {
   const head = tileHead(`<span style="display:inline-flex;align-items:center;gap:7px">${dot("var(--accent)")}Needs your review</span>`, { act: "goReview", label: "View all" });
-  if (load === "pending") return tile("review", span, "Needs your review", `${head}${tileSkeleton("review", 2, { trail: 96, top: 12 })}`);
-  if (load !== "ok") return tile("review", span, "Needs your review", `${head}${tileNote("Couldn't load the review queue.")}`);
+  // Beside the brief every state sits in the one fixed body (trov.css `.mw-side-body`), so the tile never changes height.
+  const body = (inner: string): string => (beside ? `<div class="mw-side-body" data-side="review">${inner}</div>` : inner);
+  if (load === "pending") return tile("review", span, "Needs your review", `${head}${body(tileSkeleton("review", 2, { trail: 96, top: 12 }))}`);
+  if (load !== "ok") return tile("review", span, "Needs your review", `${head}${body(tileNote("Couldn't load the review queue."))}`);
   if (items.length === 0) {
     // Clear: the tile keeps its place (and its header) and draws its rows empty.
-    return tile("review", span, "Needs your review", `${head}${tileEmpty("review", MW_EMPTY.review, null, 2, { trail: 96, top: 12 })}`);
+    return tile("review", span, "Needs your review", `${head}${body(tileEmpty("review", MW_EMPTY.review, null, 2, { trail: 96, top: 12 }))}`);
   }
   const staged = items.filter((i) => i.kind === "proposal").length;
   const decide = items.length - staged;
   // The big number is the total, so the sentence names counts only when it splits it: "to promote" under a
   // lone 1, "1 to promote, 2 to ratify" under a 3.
   const sentence = staged && decide ? `${staged} to promote, ${decide} to ratify` : staged ? "to promote" : "to ratify";
-  const rows = items.slice(0, 3).map((it) => `<div class="mw-row" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
+  const n = beside ? MW_BESIDE_ROWS : 3;
+  const rows = items.slice(0, n).map((it) => `<div class="mw-row${beside ? " mw-side-row" : ""}" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
       <button data-act="mwOpenReview" data-arg="${attr(it.id)}" style="flex:1;min-width:0;display:block;text-align:left;padding:0">
-        <span style="${ROW_TITLE}">${esc(it.title)}</span>
-        <span style="${META};margin-top:4px">
+        <span${beside ? ` class="mw-side-title"${sideTip(it.title)}` : ""} style="${ROW_TITLE}">${esc(it.title)}</span>
+        <span${beside ? ` class="mw-side-meta"` : ""} style="${META};margin-top:4px">
           <span style="white-space:nowrap;color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
           ${sep}<span style="white-space:nowrap">${esc(it.time)}</span>
         </span>
@@ -195,14 +223,16 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number): str
         <button data-act="reviewAccept" data-arg="${attr(it.id)}" class="cnpy-accentbtn" style="height:26px;padding:0 10px;border-radius:6px;background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:500">${it.kind === "decision" ? "Ratify" : "Promote"}</button>
       </div>
     </div>`).join("");
-  const more = items.length > 3
-    ? `<button data-act="goReview" class="mw-more" style="padding:9px 16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40);margin-top:auto;text-align:left">${items.length - 3} more in Review</button>`
+  const more = items.length > n
+    ? `<button data-act="goReview" class="mw-more${beside ? " mw-side-foot" : ""}" style="padding:9px 16px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-40);margin-top:auto;text-align:left">${items.length - n} more in Review</button>`
     : "";
-  return tile("review", span, "Needs your review", `${head}
-    <div style="display:flex;align-items:baseline;gap:10px;padding:8px 16px 12px;flex-wrap:wrap">
+  const count = `<div${beside ? ` class="mw-side-count"` : ""} style="display:flex;align-items:baseline;gap:10px;padding:8px 16px 12px;flex-wrap:wrap">
       <span style="font-size:32px;font-weight:500;letter-spacing:-0.03em;line-height:1;font-variant-numeric:tabular-nums">${items.length}</span>
       <span style="font-size:13.5px;color:var(--fg-55);white-space:nowrap">${sentence}</span>
-    </div>
+    </div>`;
+  if (beside) return tile("review", span, "Needs your review", `${head}${body(`${count}<div class="mw-side-rows">${rows}${sidePads(Math.min(items.length, n))}${sideFoot(more)}</div>`)}`);
+  return tile("review", span, "Needs your review", `${head}
+    ${count}
     <div class="mw-scroll" style="display:flex;flex-direction:column;flex:1">${rows}${more}</div>`);
 }
 
@@ -235,7 +265,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
 }
 
 // ── repo monitor ─────────────────────────────────────────────────────────────
-interface RepoPanel { head: string; headColor: string; sub: string; rows: { tone: string; title: string; ref: string; time: string; href?: string }[]; note?: string }
+interface RepoPanel { head: string; headColor: string; sub: string; rows: { tone: string; title: string; ref: string; time: string; href?: string }[]; note?: string; /** How many there are in all, when the rows are capped. */ total?: number }
 
 const NOT_CONNECTED = "Not connected yet — the Repo dashboard says what it waits on.";
 const NOTHING = "Nothing captured in this window.";
@@ -254,6 +284,7 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
       head: total ? String(total) : "No", headColor: total ? "var(--red)" : "var(--green)",
       sub: `CI failure${total === 1 ? "" : "s"} this week${s.data.rate !== null ? ` · ${s.data.rate.toFixed(1)}% of runs` : ""}`,
       rows: rows.slice(0, 3).map((r) => ({ tone: "var(--red)", title: r.job ? `${r.workflow} · ${r.job}` : r.workflow, ref: r.branch, time: relTime(r.at), href: r.url })),
+      total,
     };
   }
   if (tab === "deploys") {
@@ -268,6 +299,7 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
       head: String(envs.length), headColor: down || failing ? "var(--red)" : "var(--fg)",
       sub: `environment${envs.length === 1 ? "" : "s"}${down ? ` · ${down} down` : ""}${failing ? ` · ${failing} failing` : ""}`,
       rows: envs.map((e) => { const p = latest(e); return { tone: TONE[e.tone], title: `${e.name} · ${e.pill.toLowerCase()}`, ref: p?.sha ? p.sha.slice(0, 7) : "", time: p?.deployedAt ? relTime(p.deployedAt) : "" }; }),
+      total: envs.length,
     };
   }
   const s = d.prs;
@@ -281,21 +313,25 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
   const tone = { review: "var(--blue)", approved: "var(--green)", draft: "var(--fg-40)", merged: "var(--accent)", closed: "var(--fg-40)" } as const;
   const shown = list.slice(0, 3).map((p) => ({ tone: tone[p.state], title: p.title, ref: `#${p.number}`, time: relTime(p.at), href: p.url }));
   if (openCount === null) {
-    return { head: "", headColor: "", sub: "Open PRs not captured yet — showing recent merged/closed", rows: shown };
+    return { head: "", headColor: "", sub: "Open PRs not captured yet — showing recent merged/closed", rows: shown, total: list.length };
   }
   return {
+    total: open.length ? Math.max(openCount, open.length) : list.length,
     head: String(openCount), headColor: "var(--fg)",
     sub: `open pull request${openCount === 1 ? "" : "s"}${open.length || !rows.length ? "" : " · latest below"}`,
     rows: shown,
   };
 }
 
-export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number, o: { noRepo?: boolean; admin?: boolean } = {}): string {
+export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number, o: { noRepo?: boolean; admin?: boolean; beside?: boolean } = {}): string {
+  // In the brief's bento (BR-OWNER-3) Repo is the narrow tile under Needs your review: TWO rows (titles truncate), then
+  // "N more in Repo" (its place kept when there is none), in one fixed body (`.mw-side-swap`) whatever the panel holds.
+  const nRows = o.beside ? MW_BESIDE_ROWS : 3;
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show
   // instead — so it stays on the tile, but never unlabelled.
   const sampleTag = repo?.sample ? `<span class="mw-repo-sample">${kindMark("Sample data", "warn", 11.5, "Placeholder values from the Repo screen's preview, not this repository's.")}</span>` : "";
-  const name = repo?.repo || sampleTag ? `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${sampleTag}${repo?.repo ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40)">${esc(repo.repo)}</span>` : ""}</span>` : "";
+  const name = repo?.repo || sampleTag ? `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${sampleTag}${repo?.repo ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40)${o.beside ? ";min-width:0;overflow:hidden;text-overflow:ellipsis" : ""}"${o.beside ? ` title="${attr(repo.repo)}"` : ""}>${esc(repo.repo)}</span>` : ""}</span>` : "";
   const head = tileHead("Repo", { act: "goRepo", label: "Dashboard" }, name);
   const tabs = `<div style="padding:10px 16px 12px">${segmented({
     id: "mw-repo", ariaLabel: "Repo view", value: tab, act: "mwRepoTab", size: "xs", inertOn: true,
@@ -306,18 +342,20 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
   // The organization has no repository (`GET /me` said so — read, not guessed): nothing to monitor yet.
   // Only an admin can connect one, so only an admin is offered the way there.
   if (o.noRepo && !repo?.sample) {
-    return tile("repo", span, "Repo monitor", `${head}${tabs}${emptyLayout("mw-repo", { text: MW_EMPTY.repo, action: o.admin ? { label: "Connect a repository", act: "orgGo", arg: "repos" } : null, plain: true, shapes: skList(3, row), sayStyle: "padding:10px 16px 14px;border-top:1px solid var(--border)" })}`);
+    const empty = emptyLayout("mw-repo", { text: MW_EMPTY.repo, action: o.admin ? { label: "Connect a repository", act: "orgGo", arg: "repos" } : null, plain: true, shapes: skList(o.beside ? 1 : 3, row), sayStyle: "padding:10px 16px 14px;border-top:1px solid var(--border)" });
+    return tile("repo", span, "Repo monitor", `${head}${tabs}${o.beside ? `<div class="mw-side-swap">${empty}</div>` : empty}`);
   }
   if (!repo && load !== "error") {
     // The summary line, then the three rows.
-    return tile("repo", span, "Repo monitor", `${head}${tabs}${skeleton("mw-repo", "Loading&hellip;", `<div style="padding:10px 16px;border-top:1px solid var(--border)">${skLine("46%", 13.5, 1.5)}</div>${skList(3, row)}`)}`);
+    const sk = skeleton("mw-repo", "Loading&hellip;", `<div style="padding:10px 16px;border-top:1px solid var(--border)">${skLine("46%", 13.5, 1.5)}</div>${skList(nRows, row)}`);
+    return tile("repo", span, "Repo monitor", `${head}${tabs}${o.beside ? `<div class="mw-side-swap">${sk}</div>` : sk}`);
   }
-  if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${tileNote("Couldn't load the Repo dashboard.")}`);
+  if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${o.beside ? `<div class="mw-side-swap">${tileNote("Couldn't load the Repo dashboard.")}</div>` : tileNote("Couldn't load the Repo dashboard.")}`);
   const p = repoPanel(repo, tab);
   const inner = p.note
     ? tileNote(p.note)
     : `<div class="mw-repo-sum" style="display:flex;align-items:baseline;gap:6px;padding:10px 16px;border-top:1px solid var(--border);font-size:13.5px">${p.head ? `<span style="font-weight:500;color:${p.headColor};font-variant-numeric:tabular-nums;flex:none">${esc(p.head)}</span>` : ""}<span style="color:var(--fg-55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.sub)}</span></div>
-      ${p.rows.map((r) => {
+      ${(o.beside ? p.rows.slice(0, nRows) : p.rows).map((r) => {
         const open = r.href ? `<a href="${attr(safeUrl(r.href))}" target="_blank" rel="noopener" class="mw-row mw-repo-row" style="text-decoration:none;color:inherit;` : `<div class="mw-repo-row" style="`;
         const close = r.href ? "</a>" : "</div>";
         return `${open}display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 16px;border-top:1px solid var(--border)">
@@ -326,6 +364,11 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
           <span style="font-size:12.5px;color:var(--fg-40);white-space:nowrap">${esc(r.time)}</span>
         ${close}`;
       }).join("")}`;
+  if (o.beside) {
+    const more = p.note ? 0 : Math.max(0, (p.total ?? p.rows.length) - Math.min(p.rows.length, nRows));
+    const foot = p.note ? "" : sideFoot(more > 0 ? `<button data-act="goRepo" class="mw-more mw-side-foot" style="${FOOT_BTN};border-top:1px solid var(--border);width:100%">${more} more in Repo</button>` : "");
+    return tile("repo", span, "Repo monitor", `${head}${tabs}<div class="mw-repo-swap mw-side-swap" style="flex:1;display:flex;flex-direction:column">${inner}${foot}</div>`);
+  }
   return tile("repo", span, "Repo monitor", `${head}${tabs}<div class="mw-repo-swap" style="flex:1;display:flex;flex-direction:column">${inner}</div>`);
 }
 
@@ -415,27 +458,59 @@ const TICKET_BOX = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" 
 const kindWord = (icon: string, word: string): string =>
   `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg-70);white-space:nowrap">${icon}${esc(word)}</span>`;
 
-/** A Next row's lead: Failing (the app's failing mark), Handoff (an arrow), the ticket's `#N`, or Due soon. */
+/** A Next row's lead: Failing (the app's failing mark), Overdue (the danger tone: its date has passed), Due soon,
+ *  Handoff (an arrow), or the ticket's `#N`. An older stored brief may carry `due` on an item already past its date
+ *  (before the `overdue` kind, BR-OWNER-1): it still renders, as Due soon — the row carries no date to tell. */
 export function briefNextMark(it: AiBriefNextItem): string {
   if (it.kind === "failing") return kindMark("Failing", "bad", 12.5, "Its last CI run failed.");
+  if (it.kind === "overdue") return kindMark("Overdue", "bad", 12.5, "In a sprint whose date has passed.");
   if (it.kind === "due") return kindMark("Due soon", "warn", 12.5, "In a sprint that is due within the week.");
   if (it.kind === "handoff") return kindWord(ARROW_MARK, "Handoff");
   return kindWord(TICKET_BOX, it.cites[0]?.label ?? "Ticket");
 }
 
-function briefLine(line: AiLine, i: number): string {
-  return `<div class="cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
-      <p style="margin:0;line-height:1.55;overflow-wrap:anywhere">${esc(line.text)}</p>
-      ${line.cites.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;font-size:12.5px">${aiCites(line.cites)}</div>` : ""}
+// THE ONE SHAPE (owner, BR-OWNER-1; shared/ai-core.ts `AI_BRIEF_*`): Now, Recently and Next are ALWAYS drawn —
+// a part with nothing in it says "Nothing new." in its own slot — each sentence in a two-line box with its one-line
+// row of sources, and Next as three one-line-title / one-line-why rows (an unused row kept, empty). trov.css
+// `.mw-brief-*` fixes those boxes at a desktop width, so the tile is the same height every time and never scrolls;
+// at phone width they clamp instead. The producer holds the caps; the clamps are for anything older or longer,
+// whose full text is then the box's tooltip (`data-mtip`).
+
+/** A title longer than this may not fit its one line in a narrower bento: its whole text is the row's tooltip. */
+const BRIEF_TITLE_TIP = 40;
+const NOTHING_NEW = "Nothing new.";
+const tipIf = (text: string, max: number): string => (text.length > max ? ` data-mtip="${attr(text)}"` : "");
+
+function briefLine(line: AiLine | null, i: number): string {
+  const text = line
+    ? `<p class="mw-brief-text"${tipIf(line.text, AI_BRIEF_LINE_MAX)}>${esc(line.text)}</p>`
+    : `<p class="mw-brief-text mw-brief-none">${NOTHING_NEW}</p>`;
+  const cites = line?.cites.length ? aiCites(line.cites.slice(0, AI_BRIEF_CITES_MAX)) : "";
+  return `<div class="mw-brief-line cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
+      ${text}<div class="mw-brief-cites"${cites ? "" : ` aria-hidden="true"`}>${cites}</div>
     </div>`;
 }
 function briefNextRow(it: AiBriefNextItem, i: number): string {
   const c = it.cites[0];
   const title = c ? aiCite({ ...c, label: it.title }, "color:var(--fg);font-weight:500") : `<span style="color:var(--fg);font-weight:500">${esc(it.title)}</span>`;
-  return `<li class="mw-brief-next cnpy-rise" style="--i:${i};display:flex;gap:12px;align-items:baseline;min-width:0">
-      <span style="flex:0 0 auto;min-width:76px">${briefNextMark(it)}</span>
-      <div style="display:flex;flex-direction:column;min-width:0">${title}<span style="color:var(--fg-55);font-size:13px;line-height:1.5">${esc(it.why)}</span></div>
+  return `<li class="mw-brief-next cnpy-rise" style="--i:${i}">
+      <span class="mw-brief-mark">${briefNextMark(it)}</span>
+      <div class="mw-brief-item"><span class="mw-brief-title"${tipIf(it.title, BRIEF_TITLE_TIP)}>${title}</span><span class="mw-brief-why"${tipIf(it.why, AI_BRIEF_WHY_MAX)}>${esc(it.why)}</span></div>
     </li>`;
+}
+/** Next: at most three rows, always three slots — "Nothing new." in the first when there is none, unused ones empty. */
+function briefNext(items: AiBriefNextItem[], i: number): string {
+  // At most one per kind's group and three in all (BR-OWNER-1) — the producer keeps both; an older brief may not.
+  const groups = new Set<string>();
+  const shown = items.filter((it) => {
+    const g = AI_NEXT_GROUP[it.kind] ?? it.kind;
+    if (groups.has(g)) return false;
+    groups.add(g);
+    return true;
+  }).slice(0, AI_BRIEF_NEXT_MAX);
+  const rows = shown.length ? shown.map((it, k) => briefNextRow(it, i + k)) : [`<li class="mw-brief-next cnpy-rise" style="--i:${i}"><span class="mw-brief-none">${NOTHING_NEW}</span></li>`];
+  while (rows.length < AI_BRIEF_NEXT_MAX) rows.push(`<li class="mw-brief-next mw-brief-pad" aria-hidden="true"></li>`);
+  return `<ol class="mw-brief-list">${rows.join("")}</ol>`;
 }
 
 /** The dashboard read's skeleton (the Tickets tile's, `tileSkeleton("tickets")`): the brief comes in that read. */
@@ -454,26 +529,22 @@ export function briefTile(b: AiBrief, hidden = false, span = 7): string {
   const head = `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 0">
       <h2 id="mw-brief-h" style="margin:0;font-size:14px;font-weight:500;white-space:nowrap">Your brief</h2>
     </div>`;
-  const line = (l: AiLine, color = "var(--fg)") => `<p style="margin:0;font-size:14px;line-height:1.55;color:${color};overflow-wrap:anywhere;text-wrap:pretty">${esc(l.text)}</p>`;
   let body: string;
-  let riseLast = 1;
   if (b.state === "empty" || (b.state !== "capped" && !b.now && !b.recently && !b.next.items.length)) body = aiEmpty(AI_EMPTY.brief);
-  else if (b.state === "capped") body = `${b.now ? line(b.now, "var(--fg-70)") : ""}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}`;
+  else if (b.state === "capped") body = `${b.now ? `<p class="mw-brief-text" style="color:var(--fg-70)"${tipIf(b.now.text, AI_BRIEF_LINE_MAX)}>${esc(b.now.text)}</p>` : ""}${aiCapped(b, `your brief resumes ${aiDay(b.resumesOn)}`)}`;
   else {
-    const rows: string[] = [];
-    // A row's label and its content rise together (one `--i`); Next's items follow one step apart.
+    // The one shape: all three parts, always. A part's label and its content rise together (one `--i`); Next's rows
+    // follow one step apart, then the byline — the same steps for every brief.
     const label = (i: number, word: string) => `<div class="cnpy-rise" style="--i:${i};${BRIEF_LABEL}">${word}</div>`;
-    if (b.now) rows.push(`${label(rows.length + 1, "Now")}${briefLine(b.now, rows.length + 1)}`);
-    if (b.recently) rows.push(`${label(rows.length + 1, "Recently")}${briefLine(b.recently, rows.length + 1)}`);
-    if (b.next.items.length) {
-      const r = rows.length + 1;
-      rows.push(`${label(r, "Next")}<ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;min-width:0">${b.next.items.map((it, k) => briefNextRow(it, r + k)).join("")}</ol>`);
-    }
-    riseLast = rows.length + Math.max(0, b.next.items.length - 1) + 1;
-    body = `<div class="mw-brief-grid">${rows.join("")}</div>`;
+    body = `<div class="mw-brief-grid">${label(1, "Now")}${briefLine(b.now, 1)}${label(2, "Recently")}${briefLine(b.recently, 2)}${label(3, "Next")}${briefNext(b.next.items, 3)}</div>`;
   }
-  const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
-  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-scroll" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
+  // Empty and capped hold the ready brief's height (trov.css `.mw-brief-body`), so the tile never changes size.
+  body = `<div class="mw-brief-body">${body}</div>`;
+  const riseLast = 3 + AI_BRIEF_NEXT_MAX;
+  const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>`
+    // Nothing written yet has no byline: its place is kept, so even this tile is the one height.
+    : `<div class="mw-brief-footpad" aria-hidden="true"></div>`;
+  return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div class="mw-brief-main" style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 
 // ── the page ─────────────────────────────────────────────────────────────────

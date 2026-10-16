@@ -71,27 +71,38 @@ input, select { font-family: inherit; }
 .mw-lib { display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr); }
 .mw-libdiv { width:1px; height:100%; }
 /* With Your brief (render.ts): the bento by AREA, so each tile is sized to what it holds and the whole
-   closes as one rectangle — Brief tall beside Needs your review over Tickets; Your sessions tall beside
-   Repo over Docs you own and Queued handoffs. */
+   closes as one rectangle — Brief tall beside Needs your review over Repo (the owner's swap, BR-OWNER-3); Your
+   sessions tall beside Tickets for you over Docs you own and Queued handoffs. On a phone it stacks Brief, Needs
+   your review, Tickets for you, Repo, then the rest (`order`, and the entrance's steps with it). */
 .mw-bento-brief { grid-template-areas:
   "brief brief brief brief brief brief brief brief review review review review"
-  "brief brief brief brief brief brief brief brief tickets tickets tickets tickets"
-  "sessions sessions sessions sessions repo repo repo repo repo repo repo repo"
+  "brief brief brief brief brief brief brief brief repo repo repo repo"
+  "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
   "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }
-/* Every tile keeps ONE height whatever it holds (the owner's call, 2026-10-15): fixed rows, sized from the
-   tiles' content at the time — the brief's three parts at 8 columns, Repo's own floor — and what
-   does not fit scrolls inside its tile (`.mw-scroll`) under a header that stays put. Brief = rows 1 + 2,
-   Your sessions = rows 3 + 4. */
-.mw-bento-brief {
-  /* The whole bento fits one screen: its height follows the window — the window less the top bar (57), the
-     page's own top and bottom padding (20 + 16) and the greeting (~53 + 16) — between the least it can take
-     (704: rows at their floors) and its natural height (796). Only the top two rows give; Repo keeps its
-     floor and the small tiles their height, so nothing is clipped — what does not fit scrolls in its tile. */
-  height:clamp(704px, calc(100dvh - 162px), 796px);
-  grid-template-rows:minmax(150px, 1fr) minmax(150px, 1fr) 248px 120px; }
-.mw-bento-brief > .mw-tile { min-height:0; }
-.mw-bento-brief .mw-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+/* NO tile scrolls (the owner, BR-OWNER-1 — replacing the fixed-height rows of earlier on 2026-10-15): the rows
+   size to what the tiles hold, and everything they hold is bounded — the brief is ONE shape (`.mw-brief-*`
+   below), Needs your review and Tickets show at most three rows, Your sessions two, Repo keeps its own floor.
+   Brief = rows 1 + 2, Your sessions = rows 3 + 4. */
 .mw-bento-brief > [data-mw="brief"] { grid-area:brief; }
+/* In the brief's bento (BR-OWNER-2/3; mywork.ts `MW_BESIDE_ROWS`): Needs your review, Tickets for you and Repo hold
+   two rows each in fixed boxes — a review or ticket row a two-line title (its whole text the tooltip when longer)
+   over one line, a Repo row one truncated line — then the "N more" line, its place kept when there is none; unused
+   rows are kept empty. Every state of a tile fills the same body (`.mw-side-body`, `.mw-side-swap`), so Needs your
+   review over Repo is one height and lines up with the brief beside it. */
+.mw-side-body { display:flex; flex-direction:column; flex:1 1 auto; }
+.mw-side-body[data-side="review"] { min-height:259px; }
+.mw-side-body[data-side="tickets"] { min-height:239px; }
+.mw-side-rows { display:flex; flex-direction:column; flex:1 1 auto; }
+.mw-side-row { box-sizing:border-box; height:84px; flex:none; overflow:hidden; }
+.mw-side-pad { border-top:1px solid transparent; }
+.mw-side-title { display:-webkit-box !important; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; max-height:40px; line-height:20px !important; overflow:hidden; overflow-wrap:anywhere; }
+.mw-side-meta { flex-wrap:nowrap !important; height:20px; line-height:20px; white-space:nowrap; overflow:hidden; }
+.mw-side-sub { box-sizing:border-box; height:32px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mw-side-foot { box-sizing:border-box; height:39px; line-height:20px; margin-top:auto; flex:none; }
+.mw-side-foot-pad { border-top:1px solid transparent; }
+/* Repo: its summary line (41), two rows (39 each) and the "N more" line (39) — 158px — and +2 for a 1px rule at
+   fractional display scaling, as `.mw-repo-swap` measures. */
+.mw-repo-swap.mw-side-swap, .mw-side-swap { min-height:calc(41px + 2 * 39px + 39px + 2px); display:flex; flex-direction:column; flex:1 1 auto; }
 .mw-bento-brief > [data-mw="review"] { grid-area:review; }
 .mw-bento-brief > [data-mw="tickets"] { grid-area:tickets; }
 .mw-bento-brief > [data-mw="sessions"] { grid-area:sessions; }
@@ -119,8 +130,19 @@ input, select { font-family: inherit; }
 .mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
-  .mw-bento-brief { grid-template-areas:none; grid-template-rows:none; height:auto; }
-  .mw-bento-brief .mw-scroll { overflow-y:visible; }
+  .mw-bento-brief { grid-template-areas:none; }
+  .mw-bento-brief > [data-mw="brief"], .mw-bento-brief > .cnpy-ai-leave { order:1; }
+  .mw-bento-brief > [data-mw="review"] { order:2; }
+  .mw-bento-brief > [data-mw="tickets"] { order:3; }
+  .mw-bento-brief > [data-mw="repo"] { order:4; }
+  .mw-bento-brief > [data-mw="sessions"] { order:5; }
+  .mw-bento-brief > [data-mw="docs"] { order:6; }
+  .mw-bento-brief > [data-mw="handoffs"] { order:7; }
+  /* The entrance follows what is seen: Tickets for you rises third, Repo fourth. */
+  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="tickets"] { --n:2; }
+  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="repo"] { --n:3; }
+  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="sessions"] { --n:4; }
+  .mw-side-body[data-side] { min-height:0; }
   .mw-bento-brief > .mw-tile { grid-area:auto; grid-column:span 12; }
   .mw-bento-brief > .cnpy-ai-leave { grid-area:auto; grid-column:span 12; }
   .mw-lib { grid-template-columns:minmax(0,1fr); }
@@ -131,6 +153,48 @@ input, select { font-family: inherit; }
    Drawn only when a read carries its AI field. Every radius is inline (values the corners block
    already scales); nothing here declares one. */
 .mw-brief-grid { display:grid; grid-template-columns:76px minmax(0,1fr); column-gap:14px; row-gap:12px; min-width:0; }
+/* Your brief's ONE shape (BR-OWNER-1; mywork.ts `briefTile`, shared/ai-core.ts `AI_BRIEF_*`): every box has a fixed
+   height, so every brief is the same height — a sentence and its one-line row of sources right under it fill one
+   box that has room for three lines of text (a 160-character sentence takes two at a 1440px window), and Next is three rows of a one-line title over a two-line why
+   (an 80-character why). Now 66+6+20, Recently the same, Next 3×60 + 2×8, with the grid's two 12px gaps: 404px,
+   which the empty and capped states hold too (`.mw-brief-body`), as an unwritten one holds the byline's place.
+   Beside it Needs your review and Tickets for you are fixed too (`.mw-side-*`, BR-OWNER-2); the brief's three parts
+   share out what the row has over them (`align-content:space-between`), so the three tiles line up with no gap left
+   ragged. Anything longer (an older brief) is clamped, its whole text the tooltip; nothing scrolls. A narrow bento
+   (≤860px) gives the sentence four lines and the why three (508px); once it is one column (700px) the boxes take
+   their text's height up to a clamp. */
+.mw-brief-main { flex:1 1 auto; }
+.mw-brief-body { min-height:404px; flex:1 1 auto; display:flex; flex-direction:column; gap:8px; }
+.mw-brief-body > .mw-brief-grid { flex:1 1 auto; align-content:space-between; }
+.mw-brief-line { height:92px; }
+.mw-brief-text { margin:0; font-size:14px; line-height:22px; max-height:66px; overflow:hidden; overflow-wrap:anywhere; text-wrap:pretty; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:3; line-clamp:3; }
+.mw-brief-cites { display:flex; align-items:center; gap:6px; height:20px; font-size:12.5px; line-height:20px; white-space:nowrap; overflow:hidden; min-width:0; }
+.mw-brief-none { color:var(--fg-55); }
+.mw-brief-list { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; min-width:0; }
+.mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:60px; }
+.mw-brief-mark { flex:0 0 auto; min-width:76px; line-height:20px; }
+.mw-brief-item { display:flex; flex-direction:column; flex:1 1 auto; min-width:0; }
+.mw-brief-title { display:block; font-size:14px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.mw-brief-why { font-size:13px; line-height:20px; height:40px; color:var(--fg-55); overflow:hidden; overflow-wrap:anywhere; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; min-width:0; }
+/* The byline's place when nothing is written yet (its height: 8 + 28 + 8 and the 1px rule). */
+.mw-brief-footpad { flex:none; height:45px; margin-top:auto; }
+@container mwmain (max-width: 860px) {
+  .mw-brief-body { min-height:508px; }
+  .mw-brief-line { height:114px; }
+  .mw-brief-text { max-height:88px; -webkit-line-clamp:4; line-clamp:4; }
+  .mw-brief-next { height:80px; }
+  .mw-brief-why { height:60px; -webkit-line-clamp:3; line-clamp:3; }
+}
+@container mwmain (max-width: 700px) {
+  .mw-brief-body { min-height:0; }
+  .mw-brief-line { height:auto; }
+  .mw-brief-text { max-height:none; -webkit-line-clamp:4; line-clamp:4; }
+  .mw-brief-cites { height:auto; flex-wrap:wrap; white-space:normal; }
+  .mw-brief-next { height:auto; }
+  .mw-brief-pad, .mw-brief-footpad { display:none; }
+  .mw-brief-title { white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+  .mw-brief-why { height:auto; -webkit-line-clamp:3; line-clamp:3; }
+}
 @container mwmain (max-width: 560px) {
   .mw-brief-grid { grid-template-columns:minmax(0,1fr); row-gap:4px; }
   .mw-brief-grid > :nth-child(2n):not(:last-child) { margin-bottom:10px; }
@@ -2878,11 +2942,9 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-insp-slot { display:contents; }
 .ask-drawer-slot { display:contents; }
 .ask-h1 { margin:0; font-size:15px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; flex:none; }
-.ask-h1-b { padding:0; font:inherit; color:var(--fg); cursor:pointer; transition:color .12s ease; }
-.ask-h1-b.is-parent { color:var(--fg-55); }
-.ask-h1-b:hover { color:var(--fg); }
-/* A phone's touch floor: the title (a New thread button) is 44px tall and at least as wide. */
-[data-phone="1"] .ask-h1-b { display:inline-flex; align-items:center; min-height:44px; min-width:44px; }
+/* "Ask Trov" — plain text, not a button (AU-OWNER-3); muted while a thread's title follows it. */
+.ask-h1-t { color:var(--fg); }
+.ask-h1-t.is-parent { color:var(--fg-55); }
 .ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
 .ask-crumb-sep { color:var(--fg-40); font-size:15px; }
 .ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
@@ -2891,7 +2953,6 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-iconbtn:disabled { color:var(--fg-40); opacity:.5; cursor:default; background:none; }
 .ask-iconbtn--40 { width:40px; height:40px; border-radius:8px; }
 .ask-iconbtn--outline { border:1px solid var(--border-strong); }
-.ask-th-toggle[aria-pressed="false"] { color:var(--fg-40); }
 .ask-kbd { display:inline-block; padding:0 5px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; line-height:16px; color:var(--fg-40); }
 .ask-ghostbtn { display:inline-flex; align-items:center; gap:6px; padding:5px 9px; border-radius:7px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; white-space:nowrap; transition:background .12s ease, color .12s ease; }
 .ask-ghostbtn:hover { background:var(--hover); color:var(--fg); }
@@ -2937,7 +2998,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-menu { animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 @media (prefers-reduced-motion: reduce) {
-  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button { transition:none !important; }
+  .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button, .ask-th-show, .ask-th-hide { transition:none !important; }
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
@@ -2959,6 +3020,16 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
 .ask-threads-in { display:flex; flex-direction:column; width:260px; height:100%; min-height:0; box-sizing:border-box; }
 .ask-th-top { display:flex; flex-direction:column; gap:8px; padding:12px 12px 6px; }
+/* AU-OWNER-3: Hide threads sits on the New thread row (the header no longer holds a panel toggle). */
+.ask-th-newrow { display:flex; gap:6px; }
+.ask-th-newrow > .ask-th-new { flex:1; min-width:0; }
+.ask-th-hide { display:grid; place-items:center; flex:none; width:34px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); color:var(--fg-55); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
+.ask-th-hide:hover { color:var(--fg); border-color:var(--border-input); }
+/* …and "Threads ›" brings the list back from the conversation's leading edge, fading in once the list is shut. */
+.ask-th-show { position:absolute; top:12px; left:12px; z-index:2; display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 8px 0 10px; border:1px solid var(--border-strong); border-radius:8px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer;
+  opacity:0; visibility:hidden; pointer-events:none; transition:opacity var(--fx-base) var(--fx-ease), visibility 0s linear var(--fx-base), color .12s ease; }
+.ask-th-show:hover { color:var(--fg); }
+.ask-screen[data-threads="hidden"] .ask-th-show { opacity:1; visibility:visible; pointer-events:auto; transition:opacity var(--fx-base) var(--fx-ease), visibility 0s, color .12s ease; }
 .ask-th-new { display:flex; align-items:center; justify-content:center; gap:7px; height:34px; border:1px solid var(--border-strong); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:color .12s ease, border-color .12s ease; }
 .ask-th-new:hover { color:var(--fg); border-color:var(--border-input); }
 .ask-th-search { display:flex; align-items:center; gap:7px; height:34px; padding:0 8px 0 10px; border:1px solid var(--border); border-radius:9px; color:var(--fg-40); }
@@ -4045,11 +4116,13 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-iconbtn--40,
 [data-cnpy-theme] .ask-ghostbtn--outline,
 [data-cnpy-theme] .ask-btn,
+[data-cnpy-theme] .ask-th-show,
 [data-cnpy-theme] .ask-th-b,
 [data-cnpy-theme] .ask-th-rename,
 [data-cnpy-theme] .ask-send,
 [data-cnpy-theme] .ask-chip--tag { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-th-new,
+[data-cnpy-theme] .ask-th-hide,
 [data-cnpy-theme] .ask-th-search { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-menu,
 [data-cnpy-theme] .ask-starters > button,

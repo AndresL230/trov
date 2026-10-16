@@ -93,7 +93,10 @@ export function threadsView(v: AskView): string {
   }
   return `<div class="ask-threads-in">
     <div class="ask-th-top">
-      <button type="button" class="ask-th-new" data-act="askShNew">${askIcon("plus", 14, null, 2.2)}New thread</button>
+      <div class="ask-th-newrow">
+        <button type="button" class="ask-th-new" data-act="askShNew">${askIcon("plus", 14, null, 2.2)}New thread</button>
+        ${v.app.phone ? "" : `<button type="button" class="ask-th-hide" data-act="askShThreads" aria-label="Hide threads" data-tip="Hide threads">${askIcon("chevsLeft", 14, null, 2)}</button>`}
+      </div>
       <div class="ask-th-search">${askIcon("search", 14)}<input class="ask-th-q" data-act="askThQ" data-field="askThQ" value="${attr(ui.threadQ)}" placeholder="Search threads" aria-label="Search threads" spellcheck="false" autocomplete="off" />${q ? `<button type="button" class="ask-th-clear" data-act="askThClear" aria-label="Clear search">${askIcon("close", 11, null, 2.4)}</button>` : ""}</div>
     </div>
     <div class="ask-th-scroll">${body}</div>
