@@ -130,6 +130,23 @@ export function createAiController(host: AiHost): AiController {
       });
   }
 
+  /** "Wrong?" on an importance rating (Q34): tells Trov, for the evals; hides NOTHING — the rating is a computed fact
+   *  and stays as rated. The button shows pressed at once, and unpressed again if the write fails. */
+  function ratingWrong(body: AiFeedbackBody): void {
+    const key = aiHiddenKey(body.itemType, body.itemRef);
+    if (ui().ratedWrong.includes(key)) return;
+    ui().ratedWrong = [...ui().ratedWrong, key];
+    rerender();
+    sendAiFeedback(body)
+      .then(() => host.flash("Thanks: Trov is told this rating looks wrong. It stays as rated."))
+      .catch((e) => {
+        ui().ratedWrong = ui().ratedWrong.filter((k) => k !== key);
+        if (e instanceof Unauthorized) { host.unauth(e); return; }
+        if (!(e instanceof PreviewBlocked)) host.flash("Couldn't send that. Try again.", 5000);
+        rerender();
+      });
+  }
+
   /** Accept (with a renamed value) or dismiss one suggestion. Optimistic: the write goes out on the click and the
    *  suggestion leaves at once by the kit's one exit (every chip, the risk line, a row's mark, a Roadmap card, a
    *  proposed theme alike); a failed write stops the exit and it is back exactly as it was. */
@@ -191,6 +208,7 @@ export function createAiController(host: AiHost): AiController {
     const u = ui();
     switch (name) {
       case "aiWrong": { const b = parseFeedbackArg(arg); if (b) wrong(b); return; }
+      case "aiRatingWrong": { const b = parseFeedbackArg(arg); if (b && b.itemType === "importance") ratingWrong(b); return; }
       case "aiFeedSource":
         if (!(AI_FEED_SOURCES as readonly string[]).includes(arg ?? "") || arg === u.feedSource) return;
         u.feedSource = arg as AiFeedSource;

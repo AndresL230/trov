@@ -90,7 +90,7 @@ import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
-import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiRatingWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
 import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
@@ -1256,10 +1256,14 @@ function feedBrief(brief: string | null): string {
 }
 
 /** Sift's rating in a byline (`feed.importance`): a dot and the mark for notable or breaking; NOTHING for routine or an
- *  unrated entry, so a row without one is exactly what it was. */
-function feedImportance(e: FeedRow): string {
+ *  unrated entry, so a row without one is exactly what it was. After the mark, "Wrong?" (Q34): feedback for the evals
+ *  only — the rating is a computed fact, never edited, dismissed or hidden. */
+function feedImportance(s: AppState, e: FeedRow): string {
   const m = importanceMark(e.importance);
-  return m ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span><span data-importance="${e.importance}" style="display:inline-flex;align-items:center">${m}</span>` : "";
+  if (!m) return "";
+  const body = aiFeedback("importance", aiItemRef.importance(e.id), "feed.importance", null);
+  const wrong = aiRatingWrongBtn(body, s.ai.ratedWrong.includes(aiHiddenKey("importance", body.itemRef)));
+  return `<span style="font-size:12px;color:var(--fg-40)">&middot;</span><span data-importance="${e.importance}" style="display:inline-flex;align-items:center;gap:2px">${m}${wrong}</span>`;
 }
 
 /** A feed entry's `@author`: a link to their person card when the author is a known person. */
@@ -1316,7 +1320,7 @@ function feedTrovCard(s: AppState, e: FeedRow & { ai: NonNullable<FeedRow["ai"]>
             <span style="font-size:12px;font-weight:600;color:var(--fg)">Trov</span>
             ${subject}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
-            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>${feedImportance(e)}
+            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>${feedImportance(s, e)}
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">
             ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", aiItemRef.feed(e.id), "feed", a.model), 12.5)}
@@ -1361,7 +1365,7 @@ function feedView(s: AppState): string {
             ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
-            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}${feedImportance(e)}
+            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}${feedImportance(s, e)}
             <div style="flex:1"></div>
           </div>
           ${artifactRow}

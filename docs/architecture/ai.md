@@ -691,7 +691,10 @@ API (`batch: true`, half the price), the pass's last stage.
   the clash "A theme named Billing already exists."; Q20). The screens show a refusal's `message` as it is (Q21/Q40).
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
-  producer reads) and never edits the record.
+  producer reads) and never edits the record. ONE exception: `importance` (Sift's rating, `aiItemRef.importance`,
+  `feed:<id>`) — "Wrong?" on a rating is feedback for the evals ONLY (Q34): the rating is a computed fact, so nothing
+  reads that row to hide anything and nothing edits it; the Feed draws a small thumbs-down after a notable or breaking
+  mark (`aiRatingWrongBtn`, act `aiRatingWrong`, pressed for the session in `AiUi.ratedWrong`) and no Dismiss.
 - Both tables are in `ORG_TABLES` and the reset seed; `ai_suggestions.decided_by` and `ai_feedback.handle` are in
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
   tool and none has an old-path alias.
