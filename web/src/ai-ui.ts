@@ -46,13 +46,16 @@ export interface AiUi {
   unavailable: number[];
   /** The suggestion chip whose reason is open (its key), or null. */
   reasonOpen: string | null;
+  /** Sample suggestions decided under `LOCAL_AI_PREVIEW` (the server answered `preview: true`; Q5): nothing was
+   *  saved, so the decision lives here — the item stays gone (held at its exit's end) for this session. */
+  previewDecided: number[];
   /** Items on their way out (`aiHiddenKey`; `AI_NOTE_LEAVING` for the Feed's note; `aiSuggestionKey` for a decided
    *  suggestion) and when they started: drawn collapsing for `AI_EXIT_MS`, then gone (› Leaving). Never under
    *  reduced motion. */
   leaving: { key: string; at: number }[];
 }
 export function initialAiUi(): AiUi {
-  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, leaving: [] };
+  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, previewDecided: [], leaving: [] };
 }
 /** The localStorage key "Got it" is remembered under: a JSON list of handles (per person, per browser). */
 export const AI_NOTE_KEY = "trov.aiFeedNote";

@@ -166,6 +166,11 @@ const LANES: { id: string; name: string; colorKey: AiThemeLane["colorKey"]; w: n
 /** The proposed themes' suggestion ids: one per lane from here (Q38: clear of the card samples' 901–908). */
 const PREVIEW_THEME_ID = 910;
 
+/** Every made-up suggestion id the preview draws (› Phase C below; Q38). An Accept / Dismiss on one of them, with no
+ *  real row behind it, answers `{ ok: true, preview: true }` under the preview and changes nothing (Q5). */
+export const AI_PREVIEW_SUGGESTION_IDS: readonly number[] = [901, 902, 903, 904, 905, 906, 907, 908, 910, 911, 912, 913, 914, 915, 9101, 9102];
+export const isPreviewSuggestionId = (id: number): boolean => AI_PREVIEW_SUGGESTION_IDS.includes(id);
+
 export function themesFixture(mode: AiPreviewMode, range: AiThemeRange, now: Date): AiThemes {
   const n = AI_THEME_RANGE_WEEKS[range];
   const weeks = Array.from({ length: n }, (_, i) => monday(now, n - 1 - i));

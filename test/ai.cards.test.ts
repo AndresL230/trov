@@ -20,7 +20,7 @@ import { ticketDecide, ticketRequest, wordsEvidence, type TicketCardInput } from
 import { unplacedDecide, type UnplacedCardInput } from "../src/ai/jobs/unplaced-card";
 import { reviewDecide, type ReviewCardInput } from "../src/ai/jobs/review-card";
 import type { TicketDetail } from "@shared/tickets";
-import { reviewRiskFixture, roadmapFixture, themesFixture, ticketSuggestionsFixture, unplacedSuggestionFixture } from "@shared/ai-fixtures";
+import { AI_PREVIEW_SUGGESTION_IDS, reviewRiskFixture, roadmapFixture, themesFixture, ticketSuggestionsFixture, unplacedSuggestionFixture } from "@shared/ai-fixtures";
 import type { NeedsTriageRow, AdrRow } from "@shared/rows";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
@@ -322,6 +322,25 @@ describe("LOCAL_AI_PREVIEW: the sample suggestions on the three screens' real ro
     ].map((s) => s!.id).concat(themesFixture("proposed", "8w", now).lanes.map((l) => l.suggestionId!));
     expect(ids.length).toBe(16);
     expect(new Set(ids).size).toBe(ids.length);
+    expect([...ids].sort((a, b) => a - b)).toEqual([...AI_PREVIEW_SUGGESTION_IDS]);
+  });
+  it("Accept / Dismiss on a sample answers { ok, preview } under the preview and writes nothing; elsewhere not_found (Q5)", async () => {
+    const e = withVars({ LOCAL_AI_PREVIEW: "proposed" });
+    const post = async (origin: string, path: string, en: Env, body: unknown = {}) => {
+      const res = await app.request(`${origin}/api/o/saplinglearn${path}`, { method: "POST", headers: { cookie: await cookieFor("AndresL230"), "content-type": "application/json" }, body: JSON.stringify(body) }, en);
+      return { status: res.status, json: await res.json() };
+    };
+    const before = await all(env.DB, `SELECT id FROM ai_suggestions`);
+    for (const id of [905, 910]) {
+      expect(await post(LOCAL, `/ai/suggestions/${id}/accept`, e)).toEqual({ status: 200, json: { ok: true, preview: true } });
+      expect(await post(LOCAL, `/ai/suggestions/${id}/dismiss`, e)).toEqual({ status: 200, json: { ok: true, preview: true } });
+    }
+    expect(await post(LOCAL, `/ai/suggestions/911/accept`, e, { value: { name: "Billing" } })).toEqual({ status: 200, json: { ok: true, preview: true } });
+    expect(await all(env.DB, `SELECT id FROM ai_suggestions`)).toEqual(before);
+    // Not a sample, not the preview, not a loopback origin: the usual 404.
+    expect((await post(LOCAL, `/ai/suggestions/909/accept`, e)).status).toBe(404);
+    expect((await post(LOCAL, `/ai/suggestions/905/accept`, env as unknown as Env)).status).toBe(404);
+    expect((await post("https://trov.dev", `/ai/suggestions/905/dismiss`, e)).status).toBe(404);
   });
   const LOCAL = "http://localhost:8787";
   const withVars = (over: Partial<Env>): Env => ({ ...(env as unknown as Env), ...over });

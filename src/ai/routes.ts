@@ -29,6 +29,7 @@ import {
   isAskScenario,
 } from "@shared/ai-fixtures";
 import { acceptSuggestion, dismissSuggestion, type SuggestionAnswer } from "./suggestions";
+import { isPreviewSuggestionId } from "@shared/ai-fixtures";
 import { AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AiFilterBodySchema, type AiFilterAnswer, type AiFilterErrorCode } from "@shared/ai-filter";
 import { planRefusal, resolveEntitlements, type PlanRefusal } from "@shared/plans";
 import { PLAN_LIMIT_STATUS } from "../plans/state";
@@ -83,6 +84,11 @@ const suggestionId = (c: Context<AppEnv>): number | null => {
   const raw = c.req.param("id") ?? "";
   return /^[1-9]\d{0,15}$/.test(raw) ? Number(raw) : null;
 };
+/** LOCAL_AI_PREVIEW (Q5): a sample suggestion has no row (its id is made up), so its Accept / Dismiss would be
+ *  `not_found`. Under the preview it answers `{ ok: true, preview: true }` instead, and nothing is written: the screen
+ *  takes the decision locally and says "Not saved in preview". A REAL row with that id wins (it is answered as usual). */
+const previewDecision = (c: Context<AppEnv>, id: number, a: SuggestionAnswer): boolean =>
+  !a.ok && a.error === "not_found" && isPreviewSuggestionId(id) && aiPreviewMode(c.env, c.req.url) !== null;
 const answer = (c: Context<AppEnv>, a: SuggestionAnswer) =>
   a.ok ? c.json({ ok: true, suggestion: a.suggestion }) : c.json(a.message ? { error: a.error, message: a.message } : { error: a.error }, a.status);
 
@@ -92,7 +98,8 @@ aiApp.post("/ai/suggestions/:id/accept", async (c) => {
   // An empty or unreadable body is `{}`; one the contract refuses is answered only after the id is found.
   const parsed = AiAcceptBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
   try {
-    return answer(c, await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null, undefined, { origin: new URL(c.req.url).origin }));
+    const a = await acceptSuggestion(c.var.ctx, id, parsed.success ? parsed.data : null, undefined, { origin: new URL(c.req.url).origin });
+    return previewDecision(c, id, a) ? c.json({ ok: true, preview: true }) : answer(c, a);
   } catch (e) {
     // A handler's writer refused (a bad date, an over-long narrative, a ticket gone): the suggestion is open again
     // (./suggestions.ts) and the person is told why, in the writer's own words. Anything else stays a 500.
@@ -106,7 +113,8 @@ const HANDLER_REFUSALS = new Set(["SprintError", "TicketError", "PersonError"]);
 aiApp.post("/ai/suggestions/:id/dismiss", async (c) => {
   const id = suggestionId(c);
   if (id === null) return c.json({ error: "not_found" }, 404);
-  return answer(c, await dismissSuggestion(c.var.ctx, id));
+  const a = await dismissSuggestion(c.var.ctx, id);
+  return previewDecision(c, id, a) ? c.json({ ok: true, preview: true }) : answer(c, a);
 });
 
 aiApp.post(AI_ROUTES.feedback, async (c) => {

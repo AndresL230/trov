@@ -8,12 +8,13 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-/** A pending call is answered with true (200), false (a bare 400 `invalid`) or the error to reject with. */
-type Answer = (ok: boolean | Error) => void;
+/** A pending call is answered with true (200), false (a bare 400 `invalid`), the error to reject with, or a 200's
+ *  body (`{ body }`). */
+type Answer = (ok: boolean | Error | { body: unknown }) => void;
 const calls = vi.hoisted(() => ({ accept: [] as Array<Answer>, dismiss: [] as Array<Answer>, feedback: [] as Array<Answer> }));
 vi.mock("../web/src/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../web/src/api")>();
-  const pending = (list: Array<Answer>) => new Promise<unknown>((res, rej) => list.push((ok) => (ok === true ? res({}) : rej(ok === false ? new real.ApiError(400, "invalid") : ok))));
+  const pending = (list: Array<Answer>) => new Promise<unknown>((res, rej) => list.push((ok) => (ok === true ? res({}) : ok instanceof Error ? rej(ok) : ok === false ? rej(new real.ApiError(400, "invalid")) : res(ok.body))));
   return {
     ...real,
     acceptAiSuggestion: () => pending(calls.accept),
@@ -28,7 +29,7 @@ import { OrgApiError } from "../web/src/api";
 import { AI_EXIT_MS, aiSuggestionKey } from "../web/src/ai-ui";
 import { initialState, type AppState } from "../web/src/render";
 import { roadmapSuggestionCards } from "../web/src/roadmap-ai";
-import { roadmapFixture } from "@shared/ai-fixtures";
+import { roadmapFixture, themesFixture } from "@shared/ai-fixtures";
 import { aiItemRef } from "@shared/ai-core";
 
 const fx = roadmapFixture("ready", new Date("2026-10-14T12:00:00Z"))!;
@@ -145,6 +146,45 @@ describe("a Roadmap card leaves by the AI kit's one exit", () => {
     h.ctl.act("aiAccept", String(A.id), null);
     expect(h.state.ai.busy).toEqual([A.id]);
     expect(h.state.ai.leaving).toEqual([{ key: aiSuggestionKey(A.id), at: NOW }]);
+  });
+});
+
+describe("LOCAL_AI_PREVIEW: a sample's decision is taken locally, with 'Not saved in preview' (Q5)", () => {
+  const PREVIEW = { body: { ok: true, preview: true } };
+  it("a Roadmap card leaves and STAYS gone (no re-read would bring the sample back), whatever exits follow", async () => {
+    vi.setSystemTime(NOW);
+    const h = harness();
+    h.ctl.act("aiAccept", String(A.id), null);
+    calls.accept[0](PREVIEW);
+    await flush();
+    expect(h.log.flashes).toEqual(["Not saved in preview"]);
+    expect(h.state.ai.busy).toEqual([]);
+    expect(h.state.ai.previewDecided).toEqual([A.id]);
+    vi.advanceTimersByTime(20_000);
+    expect(h.log.afterDecide).toEqual([]); // nothing was saved: nothing to re-read
+    h.ctl.act("aiDismiss", String(B.id), null); // a later exit does not drop A's held one
+    expect(h.state.ai.leaving.map((l) => l.key)).toEqual([aiSuggestionKey(A.id), aiSuggestionKey(B.id)]);
+    expect(h.cards()).toMatch(leavingCard(A.id));
+  });
+  it("a proposed theme: Accept (renamed) makes the lane active under its name, Remove takes it off the chart", async () => {
+    const now = new Date(NOW);
+    const h = harness("repo");
+    h.state.repo = { status: "ok", data: { themes: { "8w": themesFixture("proposed", "8w", now), quarter: themesFixture("proposed", "quarter", now) } } as never };
+    const [l0, l1] = h.state.repo.data!.themes!["8w"]!.lanes;
+    h.state.ai.rename = { id: l0.suggestionId!, draft: "Org work" };
+    h.ctl.act("aiRenameSave", null, null);
+    calls.accept[0](PREVIEW);
+    await flush();
+    h.ctl.act("aiDismiss", String(l1.suggestionId), null);
+    calls.dismiss[0](PREVIEW);
+    await flush();
+    for (const range of ["8w", "quarter"] as const) {
+      const lanes = h.state.repo.data!.themes![range]!.lanes;
+      expect(lanes.find((l) => l.id === l0.id)).toMatchObject({ name: "Org work", status: "active", suggestionId: null });
+      expect(lanes.find((l) => l.id === l1.id)).toBeUndefined();
+    }
+    expect(h.state.ai.rename).toBeNull();
+    expect(h.log.flashes).toEqual(["Not saved in preview", "Not saved in preview"]);
   });
 });
 

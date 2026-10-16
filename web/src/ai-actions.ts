@@ -56,6 +56,9 @@ export function refusalText(e: unknown): string {
   return "Couldn't do that. Try again.";
 }
 
+/** The server's answer to a SAMPLE suggestion's decision under `LOCAL_AI_PREVIEW` (src/ai/routes.ts; Q5). */
+const isPreviewAnswer = (r: unknown): boolean => !!r && typeof r === "object" && (r as { preview?: unknown }).preview === true;
+
 /** The handles that pressed "Got it" on this browser. */
 export function readNoteSeen(): string[] {
   try {
@@ -79,7 +82,9 @@ export function createAiController(host: AiHost): AiController {
   function leave(key: string, hold = false, after?: () => void): number | null {
     if (reduced() && !hold) return null;
     const at = Date.now();
-    ui().leaving = [...ui().leaving.filter((l) => l.key !== key && at - l.at < 10_000), { key, at }];
+    // A sample decided in the preview is never re-read away, so its held exit is kept (Q5).
+    const kept = (k: string) => ui().previewDecided.some((id) => aiSuggestionKey(id) === k);
+    ui().leaving = [...ui().leaving.filter((l) => l.key !== key && (at - l.at < 10_000 || kept(l.key))), { key, at }];
     if (hold) return reduced() ? null : at;
     setTimeout(() => {
       if (!ui().leaving.some((l) => l.key === key && l.at === at)) return;
@@ -138,7 +143,8 @@ export function createAiController(host: AiHost): AiController {
     rerender();
     const call = how === "accept" ? acceptAiSuggestion(id, value) : dismissAiSuggestion(id);
     call
-      .then(() => {
+      .then((r) => {
+        if (isPreviewAnswer(r)) { previewDecided(id, how, value, theme); return; }
         u.busy = without(u.busy, id);
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
@@ -155,6 +161,30 @@ export function createAiController(host: AiHost): AiController {
         } else if (!(e instanceof PreviewBlocked)) host.flash(refusalText(e), 5000);
         rerender();
       });
+  }
+
+  /** Q5 — `LOCAL_AI_PREVIEW`: the server took a SAMPLE's decision without saving it. The screen takes it locally:
+   *  the item stays gone (its held exit is kept, `previewDecided`), a proposed theme becomes active under its (new)
+   *  name or is removed from the chart, and no re-read follows (it would draw the sample again). */
+  function previewDecided(id: number, how: "accept" | "dismiss", value: unknown, theme: boolean): void {
+    const u = ui();
+    u.busy = without(u.busy, id);
+    if (!u.previewDecided.includes(id)) u.previewDecided = [...u.previewDecided, id];
+    if (u.rename?.id === id) u.rename = null;
+    const data = host.state.repo.data;
+    if (theme && data?.themes) {
+      const name = value && typeof value === "object" && typeof (value as { name?: unknown }).name === "string" ? (value as { name: string }).name : null;
+      const themes: typeof data.themes = {};
+      for (const [range, t] of Object.entries(data.themes) as [keyof typeof data.themes, NonNullable<(typeof data.themes)[keyof typeof data.themes]>][]) {
+        const lanes = how === "dismiss"
+          ? t.lanes.filter((l) => l.suggestionId !== id)
+          : t.lanes.map((l) => (l.suggestionId === id ? { ...l, status: "active" as const, suggestionId: null, name: name ?? l.name } : l));
+        themes[range] = { ...t, lanes };
+      }
+      host.state.repo = { ...host.state.repo, data: { ...data, themes } };
+    }
+    host.flash("Not saved in preview");
+    rerender();
   }
 
   function act(name: string, arg: string | null, value: string | null): void {

@@ -782,6 +782,11 @@ from its fixtures (above). And it puts Phase C's sample suggestions on the REAL 
 Review (`ticketSuggestionsFixture`, `unplacedSuggestionFixture`, `reviewRiskFixture` — per list: the proposals and
 the drafted decisions are read apart) while the switch is on, in `ready` / `proposed`. Every sample suggestion has
 its OWN made-up id (Q38; the list is in `shared/ai-fixtures.ts`), so no two "because…" open together.
+No row has one, so an Accept / Dismiss on a sample (`isPreviewSuggestionId`, `AI_PREVIEW_SUGGESTION_IDS`) that would
+be `not_found` answers `{ ok: true, preview: true }` under the preview and writes nothing; the screen takes the
+decision LOCALLY (`ai-actions.ts`: the item leaves by the kit's exit and stays gone this session —
+`AiUi.previewDecided` — a proposed theme turns active under its name or leaves the chart, no re-read) and says "Not
+saved in preview" (Q5). A real row with that id is answered as usual.
 
 ## Evals (`test/ai-evals/<kind>/`)
 
