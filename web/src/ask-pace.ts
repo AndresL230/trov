@@ -5,7 +5,7 @@
 // call — so an answer that follows a search can arrive as ONE burst (hundreds of characters in a few milliseconds),
 // and painting it as it lands puts the whole answer on screen at once. The pacer sits between the stream and the
 // fold: text goes out a few words per frame, faster when a lot is waiting, but never under `minCps` nor over `maxCps`
-// characters a second (the owner: a steady reading pace, so a 2,000-character burst takes ~13s to write out); whatever came after the text (a
+// characters a second (the owner: a steady reading pace, so a 2,000-character burst takes ~17s to write out); whatever came after the text (a
 // block, a card, `followups`, `done`) waits its turn, so the answer keeps the order it streamed in and the footer
 // comes once the words are out.
 //
@@ -32,7 +32,7 @@ export interface PaceOpts {
   /** The ceiling, in characters a second (the owner: never faster than a steady read, however big the burst). */
   maxCps: number;
 }
-export const ASK_PACE: PaceOpts = { tauMs: 600, minCps: 90, maxCps: 160 };
+export const ASK_PACE: PaceOpts = { tauMs: 600, minCps: 70, maxCps: 120 };
 
 type Item = { text: string } | { e: AskEvent };
 

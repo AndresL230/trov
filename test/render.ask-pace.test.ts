@@ -49,9 +49,9 @@ describe("the pace — a burst becomes a stream", () => {
     while (p.pending && frames < 1000) { c.step(); frames++; }
     expect(got.at(-1)).toBe(done);
     expect(got.filter((e) => e.event === "text").map((e) => (e as Extract<AskEvent, { event: "text" }>).data.delta).join("")).toBe(BURST);
-    // Spread out — and still over within a couple of seconds for an answer this size.
+    // Spread out at the reading pace: about the burst's length at maxCps, never much longer.
     expect(frames).toBeGreaterThan(20);
-    expect(frames * 16).toBeLessThan(2500);
+    expect(frames * 16).toBeLessThan((BURST.length / ASK_PACE.maxCps) * 1000 * 1.15 + 100);
   });
 
   it("a delta paints before done: folded as it goes out, the answer has words while it is still live", () => {
@@ -147,8 +147,8 @@ describe("the pace — a burst becomes a stream", () => {
     expect(hiddenGot).toEqual([text(BURST), done]);
   });
 
-  it("the defaults: a backlog drains on a 600 ms curve, between 90 and 160 characters a second", () => {
-    expect(ASK_PACE).toEqual({ tauMs: 600, minCps: 90, maxCps: 160 });
+  it("the defaults: a backlog drains on a 600 ms curve, between 70 and 120 characters a second", () => {
+    expect(ASK_PACE).toEqual({ tauMs: 600, minCps: 70, maxCps: 120 });
   });
 });
 
