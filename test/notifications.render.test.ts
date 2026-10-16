@@ -5,7 +5,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { ORG_B as ORG_B_ID, platformCtx, systemCtx } from "./helpers/tenant";
 import { first, run } from "./helpers/db";
 import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer";
 import { promote_doc } from "../src/tools/writes";
@@ -274,6 +274,22 @@ describe("review_queue renderer: one line", () => {
     expect(off.text).toBe("Review: 2 waiting");
     await aiOn();
     expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.text).toBe("Review: 2 waiting, 1 changes a decision");
+    // Q44: with no risk suggestion the clause is dropped — never "0 change a decision".
+    await run(env.DB, `UPDATE ai_suggestions SET state = 'dismissed'`);
+    expect((await kind().render(systemCtx(), LOGIN, WINDOW))!.text).toBe("Review: 2 waiting");
+  });
+
+  // Q44 (owner ruling 2026-10-16): only to people who can promote — every role may today (organizations.md §4).
+  it("goes only to someone who can promote: each role of the org does; a non-member does not", async () => {
+    await ingestAdrDraft(systemCtx(), { title: "Pending", context: "c", decision: "d", rationale: "r", confidence: "high" }, "agent");
+    await seedPerson("an-admin", { member: false });
+    await run(env.DB, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, 'an-admin', 'admin', 'now', 'seed')`, ORG);
+    for (const who of [LOGIN /* owner */, "an-admin", "lpcooper-arch" /* member */]) {
+      expect((await kind().render(systemCtx(), who, WINDOW))?.text, who).toBe("Review: 1 waiting");
+    }
+    await seedPerson("outsider", { member: false });
+    expect(await kind().render(systemCtx(), "outsider", WINDOW)).toBeNull();
+    expect(await kind().render(systemCtx(ORG_B_ID), LOGIN, WINDOW)).toBeNull(); // not a member of the other org
   });
 });
 

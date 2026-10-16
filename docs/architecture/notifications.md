@@ -163,7 +163,9 @@ assembler to the org's address (`<origin>/<slug>/#…`).
     that ticket, a PR in their repository → its Repo dashboard (`#repo?repo=`), a feed entry → the Feed. Ratings made
     while the switch was on still count with it off (stored facts; nothing new is sent).
   - **One line per queue, only when it has something**: "Review: 3 waiting, 1 changes a decision" (the "changes a
-    decision" count is Sift's open `review.risk`, only with the AI switch on), "Sprint: Hosting, due Fri, 2 of 5
+    decision" count is Sift's open `review.risk`, only with the AI switch on; with none the clause is dropped —
+    "Review: 3 waiting". Sent only to someone who can promote, `REVIEW_CONFIRMERS` — every role today,
+    organizations.md §4; owner ruling Q44), "Sprint: Hosting, due Fri, 2 of 5
     done" (the person's sprint in progress, else the org's due soonest; declined tickets do not count), "Tickets: 2
     waiting for someone, 3 assigned to you".
   - **Removed**: the per-PR What / Why / Impact cards, the issue rows and labels, the full plan diff.
