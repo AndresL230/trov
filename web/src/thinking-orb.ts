@@ -10,7 +10,8 @@
 //                             Rendering an orb starts it. A canvas that is not laid out is skipped; a hidden tab
 //                             pauses it (rAF does).
 //   the theme                 read on every frame from the nearest [data-cnpy-theme]; the ink is that theme's
-//                             --purple (purple = "Trov is working"), a dot's depth its opacity (orbs/engine/core.ts setInk).
+//                             --accent (olive in dark), a dot's depth its opacity (orbs/engine/core.ts setInk). Colour
+//                             carries meaning only (the owner, 2026-10-16): no hue of its own for "working".
 //   reduced motion            one static frame per paint and no loop (the upstream's frame at 0.6s).
 
 import { MODE_DRAWS } from "./orbs/engine/registry";
@@ -31,10 +32,10 @@ const reduced = (): boolean => browser && typeof matchMedia === "function" && ma
 
 let raf = 0;
 
-/** The orb's ink: its theme's `--purple` (#rgb / #rrggbb / rgb()), read off the canvas; null when it has none. */
+/** The orb's ink: its theme's `--accent` (#rgb / #rrggbb / rgb()), read off the canvas; null when it has none. */
 const inks = new Map<string, readonly [number, number, number] | null>();
 function inkOf(c: HTMLCanvasElement): readonly [number, number, number] | null {
-  const raw = getComputedStyle(c).getPropertyValue("--purple").trim();
+  const raw = getComputedStyle(c).getPropertyValue("--accent").trim();
   if (inks.has(raw)) return inks.get(raw) ?? null;
   let rgb: [number, number, number] | null = null;
   const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)?.[1];
@@ -63,7 +64,7 @@ function paint(c: HTMLCanvasElement, tSec: number): void {
   const dark = c.closest("[data-cnpy-theme]")?.getAttribute("data-cnpy-theme") === "dark";
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
   ctx.clearRect(0, 0, size, size);
-  // Purple means "Trov is working" (the owner): the orb draws in the theme's --purple, depth as its opacity.
+  // The orb draws in the theme's --accent (the owner: colour carries meaning only), depth as its opacity.
   setInk(inkOf(c));
   MODE_DRAWS[mode](ctx, size, tSec * speed, dark, opts);
   setInk(null);

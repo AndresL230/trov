@@ -374,7 +374,7 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Jump to the latest** (`jumpButton`, ask-conversation.ts): scrolled up more than 160px (and not following the
   bottom), an arrow shows on the scroller's bottom edge — a 0-height sticky row, so it changes no height; the scroll
   listener flips its `data-away` without a repaint and the render writes the same from `conversation.away`. It is
-  purple while an answer is still coming (`data-busy`). A click (`askCvJump`) glides to the bottom and holds on there.
+  in the accent while an answer is still coming (`data-busy`). A click (`askCvJump`) glides to the bottom and holds on there.
 - **Half-written markdown** (`settleTail`, ask-conversation.ts): while a text part streams, its last line is settled
   before it is parsed — a bare heading / list / fence marker or a table row not yet closed by its bar waits, an unclosed
   `**` / `*` / backtick is closed for now (the words show bold as they arrive), a half `[link](…` shows its text, a half
@@ -391,7 +391,8 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   few ms, so the pacer (`ask-pace.ts`, `stepMs` 350) shows each running for 350 ms, then done, then the next — what
   comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. **Each orb means one thing** (the owner, 2026-10-16:
   the picker is gone) — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the
-  orbits for other work; all of them in the theme's purple.
+  orbits for other work; all of them in the theme's `--accent` (olive in dark — the owner: colour carries meaning only,
+  no hue of its own for "working").
 - **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any org page (full screen on a phone; ⌘J does nothing on
   Platform, which sits outside every org while Ask is per org — the owner kept it so, Q-F3), its own conversation
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)

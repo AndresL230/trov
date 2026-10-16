@@ -162,7 +162,7 @@ describe("QA-1: a reopened thread re-reads what it shows — the stored citation
     const ctl = controller(s);
     const R = askRefFixtures(NOW);
     const t14 = R["ticket:14"], pr = R["pr:176"];
-    const was: RefView = { ...t14, status: { mark: "progress", tone: "accent", word: "In progress", tip: "In progress." } as RefView["status"] };
+    const was: RefView = { ...t14, status: { mark: "half", tone: "accent", word: "In progress", tip: "In progress." } };
     const msg = (o: Partial<AskMessage>): AskMessage => ({ id: 0, role: "assistant", mode: "smart", text: "", command: null, context: [], blocks: [], activity: [], followups: [], thinking: null, cites: [], attachments: [], actions: [], stopped: false, model: "m", units: 1, createdAt: NOW.toISOString(), ...o } as AskMessage);
     const detail: AskThreadDetail = {
       thread: { ...askThreadsFixture(NOW)[0], id: 44, draft: "" },

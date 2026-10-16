@@ -260,6 +260,18 @@ describe("`streaming` — mid-answer", () => {
   });
 });
 
+describe("colour carries meaning only (the owner, 2026-10-16): Ask's \"working\" is the accent, never a hue of its own", () => {
+  it("the orb's ink, the running sweep and the busy jump arrow are --accent (olive in dark); no Ask rule uses --purple", async () => {
+    const orbSrc = (await import("../web/src/thinking-orb.ts?raw")).default as string;
+    expect(orbSrc).toContain(`getPropertyValue("--accent")`);
+    expect(orbSrc).not.toContain("--purple");
+    expect(css).toContain(".ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:linear-gradient(90deg, var(--fg-40) 0%, var(--fg-40) 35%, var(--accent) 50%,");
+    expect(css).toContain('.ask-jump[data-busy="1"] { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }');
+    const askRules = css.split("}").filter((r) => /(^|\n|,)\s*\.ask-/.test(r.split("{")[0] ?? ""));
+    expect(askRules.filter((r) => r.includes("--purple"))).toEqual([]);
+  });
+});
+
 describe("the thinking orbs mean one thing each — no picker (the owner)", () => {
   const orbs = (html: string): string[] => [...html.matchAll(/<canvas class="cnpy-orb" data-orb="(\w+)"/g)].map((m) => m[1]);
   const answerEvents = () => askTranscript("answer", NOW).map((s) => s.event);
@@ -367,7 +379,7 @@ describe("the error, Stopped, and the oversized-image notice", () => {
 });
 
 describe("jump to the latest (the owner)", () => {
-  it("rendered with the conversation, hidden until the person scrolled away; purple while an answer streams; the act holds on to the bottom", () => {
+  it("rendered with the conversation, hidden until the person scrolled away; in the accent while an answer streams; the act holds on to the bottom", () => {
     const s = base();
     const idle = jumpButton(askView(s, "page"));
     expect(idle).toMatch(/^<div class="ask-jump-w"><button type="button" class="ask-jump" data-act="askCvJump" data-arg="page" aria-label="Jump to the latest"[^>]*data-away="0" data-busy="0" tabindex="-1" aria-hidden="true">/);

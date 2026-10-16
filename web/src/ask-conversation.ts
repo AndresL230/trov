@@ -71,8 +71,8 @@ const AWAY_PX = 160;
 
 /** The jump-to-latest arrow (the owner): it sits on the scroller's bottom edge (a 0-height sticky row, so it changes no
  *  height), shows once the person scrolled up — the scroll listener flips `data-away` without a repaint; the render
- *  writes the same from `ui.conversation.away`, so a morph keeps it — and while an answer streams below it is purple
- *  (`data-busy`). A click glides to the bottom and holds on there (`askCvJump`). */
+ *  writes the same from `ui.conversation.away`, so a morph keeps it — and while an answer streams below it is in the
+ *  accent (`data-busy`). A click glides to the bottom and holds on there (`askCvJump`). */
 export function jumpButton(v: AskView): string {
   const away = v.ui.conversation.away[v.where] === true;
   return `<div class="ask-jump-w"><button type="button" class="ask-jump" data-act="askCvJump" data-arg="${v.where}" aria-label="Jump to the latest" data-tip="Jump to the latest" data-away="${away ? "1" : "0"}" data-busy="${convoOf(v).busy ? "1" : "0"}"${away ? "" : ` tabindex="-1" aria-hidden="true"`}>${askIcon("chevDown", 16, null, 2.2)}</button></div>`;
