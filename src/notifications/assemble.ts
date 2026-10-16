@@ -201,7 +201,8 @@ function dayLabel(d: Date, timeZone: string): { month: string; day: number } {
   return { month: MONTHS[l.month - 1], day: l.day };
 }
 
-/** `Trov daily, Sep 11` / `Trov weekly, Sep 7 to 11` (start to the last weekday before the send). */
+/** `Trov weekly, Sep 7 to 11` (start to the last weekday before the send); `Trov daily, Sep 11` is no subject any
+ *  more (`subjectOf`), but names a daily elsewhere. */
 export function subjectFor(window: Window, timeZone: string): string {
   return `Trov ${window.cadence}, ${dateRange(window, timeZone)}`;
 }
@@ -327,10 +328,15 @@ function header(cadence: Window["cadence"], range: string): string {
   return emailBanner(`${label} <span style="color:${BAND.dot};">&middot;</span> ${escapeHtml(range)}`);
 }
 
-/** The subject: on a daily, the first section's offer (the brief's top Next item); else `subjectFor`. */
+/** The daily's subject when nothing is next for the person (owner ruling Q41). */
+export const DAILY_SUBJECT_FALLBACK = "Your Trov digest";
+
+/** The subject (owner ruling Q41): on a daily, the first section's offer — the top Next item of the brief, or (no brief
+ *  to show) of the assigned tickets, "plus N more" for the OTHER Next items, no suffix with one — and with nothing
+ *  next, "Your Trov digest". The weekly keeps `subjectFor`'s dated one. */
 export function subjectOf(sections: readonly Section[], window: Window, timeZone: string): string {
-  const offer = window.cadence === "daily" ? sections.find((s) => s.subject)?.subject : undefined;
-  return offer ?? subjectFor(window, timeZone);
+  if (window.cadence !== "daily") return subjectFor(window, timeZone);
+  return sections.find((s) => s.subject)?.subject ?? DAILY_SUBJECT_FALLBACK;
 }
 
 export function assembleMessage(opts: {

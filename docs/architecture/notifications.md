@@ -138,8 +138,10 @@ assembler to the org's address (`<origin>/<slug>/#…`).
 
 - **Daily** (aim: read in 20 seconds; `test/notifications.digest-length.test.ts` holds it under half the old
   daily's words on one busy day):
-  - **Subject** — the brief's top Next item, "Netlify test failing, plus 1 more" (`briefSubject`); with no brief,
-    the first assigned ticket; with neither, `Trov daily, <date>`. The weekly keeps `Trov weekly, <range>`.
+  - **Subject** (`subjectOf`, owner ruling Q41) — the brief's top Next item, "Netlify test failing, plus 1 more"
+    (`briefSubject`: N is the OTHER Next items, all of them, not only the 3 shown; no suffix when there is one); with
+    no brief to show, the same rule over the assigned tickets ("Login page is blank, plus 2 more"); with nothing next
+    at all, "Your Trov digest". The weekly keeps `Trov weekly, <range>`.
   - **Your brief** (`my_work`) — the SAME stored brief My Work's `briefTile` shows (`storedBrief`, the
     `DashboardData.brief` shape, so the AI switch, "Wrong?" and staleness rules are My Work's): its Now line and up
     to 3 Next items, each its own title linked to its first cite, with its one-line why. With no brief to show (AI

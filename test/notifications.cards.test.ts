@@ -74,6 +74,18 @@ describe("the assembled message", () => {
     expect(m.text).toContain("<https://trov.dev/acme/#tickets/2>");
   });
 
+  // Q41 (owner ruling 2026-10-16).
+  it("the daily's subject: the top Next item plus the OTHER Next items; none with one; \"Your Trov digest\" with nothing next; the same over assigned tickets", () => {
+    expect(assemble([renderBrief(brief({ nextTotal: 5 }))!]).subject).toBe("Netlify test failing, plus 4 more");
+    expect(assemble([renderBrief(brief({ next: [brief().next[0]], nextTotal: 1 }))!]).subject).toBe("Netlify test failing");
+    // No Next (a Now alone, Also alone, or queue lines alone): no date subject any more.
+    expect(assemble([renderBrief(brief({ next: [], nextTotal: 0 }))!]).subject).toBe("Your Trov digest");
+    expect(assemble([queueLine({ label: "Review", rest: "3 waiting", deepLink: "/#review", linkLabel: "Review" })]).subject).toBe("Your Trov digest");
+    // AI off (or no brief to show): the same rule over the assigned tickets.
+    const assigned = brief({ source: "assigned", now: null, next: [{ title: "Login page is blank", href: appHref("#tickets/4"), line: "Not started" }], nextTotal: 3 });
+    expect(assemble([renderBrief(assigned)!]).subject).toBe("Login page is blank, plus 2 more");
+  });
+
   it("the weekly keeps its dated subject even when the brief offers one", () => {
     const m = assemble([renderBrief(brief())!], { cadence: "weekly", start: new Date("2026-09-07T12:00:00Z"), end: new Date("2026-09-14T12:00:00Z"), id: "2026-W38" });
     expect(m.subject).toMatch(/^Trov weekly, Sep 7 to 11$/);
