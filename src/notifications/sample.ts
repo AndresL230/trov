@@ -34,7 +34,8 @@ const BRIEF_AI: BriefContent = {
   ],
   nextTotal: 4,
   also: [
-    { title: "Repository setups", href: `${GH}/pull/172`, importance: "breaking", at: "2026-09-11T08:00:00Z" },
+    // Also links into Trov, never GitHub (Q43): their own pull request opens My Work.
+    { title: "Repository setups", href: appHref("#mywork"), importance: "breaking", at: "2026-09-11T08:00:00Z" },
     { title: "Hosting deploys now poll every hour", href: appHref("#feed"), importance: "notable", at: "2026-09-11T06:00:00Z" },
   ],
 };

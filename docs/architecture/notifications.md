@@ -152,10 +152,16 @@ assembler to the org's address (`<origin>/<slug>/#…`).
     (`Section.footnote`, drawn above "You're getting…" in both parts): "Your brief is paused: this organization has
     used this month's AI allowance; it resumes Nov 1 (Org settings › AI)." — or, for an ended plan, that the plan
     has ended and AI is paused until it is renewed.
-  - **Also** (daily only) — at most 3 items Sift rated notable or breaking that touched the person's work in the
-    window, a title and a link with its mark: their merged PRs (`toMyWorkPr`'s `importance`) and feed entries as
-    the Feed reads them (`get_feed`: `importance`; theirs = their own, `ai.subject` = them, or naming one of their
-    PRs). Breaking first.
+  - **Also** (daily only; owner ruling Q43) — at most 3 items Sift rated notable or breaking SINCE THE PERSON'S LAST
+    SEND (their last `sent` daily in this org — a test send is not one — else the window's start; at most 14 days
+    back) that touch their work: a ticket they are assigned to or requested (a PR linked to it in `ticket_links`, or
+    a mirrored ticket's issue named by an entry), a pull request they authored, or a repository they pushed to in
+    the last 14 days (`repo_events` pushes; a PR's repository is read from its `html_url`, a Trov session digest's
+    from `ai_sessions.repo`). Merged PRs as `toMyWorkPr` maps them (`importance`) and feed entries as the Feed reads
+    them (`get_feed`: `importance`); merely being an entry's author is not a touch. Breaking first, then newest.
+    Each is a title with its mark and a link INTO Trov, never GitHub: their own PR → My Work, a PR on their ticket →
+    that ticket, a PR in their repository → its Repo dashboard (`#repo?repo=`), a feed entry → the Feed. Ratings made
+    while the switch was on still count with it off (stored facts; nothing new is sent).
   - **One line per queue, only when it has something**: "Review: 3 waiting, 1 changes a decision" (the "changes a
     decision" count is Sift's open `review.risk`, only with the AI switch on), "Sprint: Hosting, due Fri, 2 of 5
     done" (the person's sprint in progress, else the org's due soonest; declined tickets do not count), "Tickets: 2

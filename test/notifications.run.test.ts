@@ -301,7 +301,12 @@ describe("\"Only when something needs me\" (0067, Phase E)", () => {
   it("something notable that touched their work in the window sends it, even with nothing next", async () => {
     await user("AndresL230", "andres@example.com");
     await needed("AndresL230");
-    await run(env.DB, `INSERT INTO feed (org_id, author, summary, created_at, importance) VALUES ('org_saplinglearn', 'AndresL230', 'Hosting deploys now poll every hour', '2026-09-11T03:00:00Z', 'notable')`);
+    // Q43: an entry that names a pull request THEY authored touches their work (being its author alone does not).
+    await ingestEvent(systemCtx(), platformCtx(), {
+      semantic_key: "gh:pr:5:merged", event_type: "pr_merged", ref_number: 5, subject_login: "AndresL230", provenance: "webhook", occurred_at: "2026-09-01T00:00:00Z",
+      raw: JSON.stringify({ pr: { number: 5, title: "Poll", body: "", html_url: "https://github.com/o/r/pull/5", merged: true, user: { login: "AndresL230" }, base: { ref: "main" } } }),
+    } as CapturedEvent, "github-webhook");
+    await run(env.DB, `INSERT INTO feed (org_id, author, summary, artifacts, created_at, importance) VALUES ('org_saplinglearn', 'lpcooper-arch', 'Hosting deploys now poll every hour', '{"prs":["#5"],"commits":[],"issues":[]}', '2026-09-11T03:00:00Z', 'notable')`);
     await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
     const [row] = await outbox();
     expect(row.status).toBe("sent");

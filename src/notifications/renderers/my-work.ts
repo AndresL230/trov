@@ -8,9 +8,10 @@
 //     any other state that is not `ready` (a stale one) — falls back to the 3 most recently updated tickets assigned
 //     to the person (`listAssignedTickets`, the read My Work uses), in plain words. A capped brief adds ONE footer
 //     line, for an admin or owner only: why briefs are paused.
-//   • ALSO (the daily only) — at most 3 notable or breaking items that touched the person's work in the window, as a
-//     title and a link: their merged pull requests as My Work maps them (`toMyWorkPr`, Sift's `importance`), and feed
-//     entries as the Feed reads them (`get_feed`: `importance`, and `ai.subject` on an entry Trov wrote for them).
+//   • ALSO (the daily only; owner ruling Q43) — at most 3 notable or breaking items since the person's last send that
+//     touch their work: a ticket they are assigned to or requested, a pull request they authored, a repository they
+//     pushed to in the last 14 days. Merged pull requests as My Work maps them (`toMyWorkPr`, Sift's `importance`) and
+//     feed entries as the Feed reads them (`get_feed`: `importance`). Breaking first, then newest; each links into Trov.
 //
 // The section offers the mail's SUBJECT: the top Next item ("Netlify test failing, plus 1 more"), or the first
 // assigned ticket with no brief. `needsMe` is what "Only when something needs me" asks (src/notifications/run.ts).
@@ -86,40 +87,148 @@ async function fromAssigned(ctx: TenantContext, handle: string): Promise<Omit<Br
   };
 }
 
-/** What touched the person's work in the window and Sift rated notable or breaking — newest breaking first. */
+/** "Also" looks back to the person's last daily digest sent in this org (a test send is not one) — else the window's
+ *  start — and never further than this. */
+export const ALSO_LOOKBACK_DAYS = 14;
+/** A repository the person pushed to in this many days is part of their work. */
+export const PUSHED_DAYS = 14;
+const DAY_MS = 86_400_000;
+
+/** Since when "Also" looks (owner ruling Q43): the person's last SENT daily digest in this org, else the window's
+ *  start; at most `ALSO_LOOKBACK_DAYS` back, never after the window's end. */
+async function alsoSince(ctx: TenantContext, handle: string, window: Window): Promise<number> {
+  const r = await first<{ at: string | null }>(ctx,
+    `SELECT MAX(sent_at) AS at FROM notification_outbox
+      WHERE org_id = ? AND user_id = ? COLLATE NOCASE AND cadence = 'daily' AND status = 'sent' AND window_id NOT LIKE '%(test)'`,
+    ctx.orgId, handle);
+  const last = r?.at ? Date.parse(r.at) : NaN;
+  const since = Number.isFinite(last) && last < window.end.getTime() ? last : window.start.getTime();
+  return Math.max(since, window.end.getTime() - ALSO_LOOKBACK_DAYS * DAY_MS);
+}
+
+/** A GitHub pull request's address, as a key (`ticket_links` and the PR's `html_url` agree on it). */
+const prKey = (url: string | null | undefined): string => (url ?? "").trim().toLowerCase().replace(/\/+$/, "");
+/** The repository a pull request belongs to, from its address (`owner/name`, lowercased) — the captured event's own
+ *  `repo` column is not filled per repository, its `html_url` is. */
+const repoOfPr = (url: string | null | undefined): string | null => prKey(url).match(/github\.com\/([^/]+\/[^/]+)\/pull\/\d+/)?.[1] ?? null;
+/** A feed entry's PR reference ("#173", "173", "owner/repo#173") → its number and, when named, its repository. */
+function prRef(x: unknown): { n: number; repo: string | null } | null {
+  const m = String(x).trim().match(/^(?:([\w.-]+\/[\w.-]+))?#?(\d+)$/);
+  return m ? { n: Number(m[2]), repo: m[1] ?? null } : null;
+}
+
+/**
+ * "Also" (owner ruling Q43): at most 3 items Sift rated notable or breaking since the last send that touch the person's
+ * work — a ticket they are assigned to or requested, a pull request they authored, or a repository they pushed to in
+ * the last 14 days. Breaking first, then newest. Each links INTO Trov, never to GitHub: their own pull request to My
+ * Work, one on their ticket to that ticket, one in their repository to its Repo dashboard, a feed entry to the Feed.
+ * Ratings made while the AI switch was on still count with it off (they are stored facts; nothing new is sent).
+ */
 async function alsoFor(ctx: TenantContext, handle: string, window: Window): Promise<AlsoRow[]> {
+  const since = await alsoSince(ctx, handle, window);
+  const end = window.end.getTime();
   const logins = await memberGithubLogins(ctx, handle);
-  const rows: AlsoRow[] = [];
-  const mine = new Set<number>(); // the person's pull requests (merged), which an entry may name
-  const listed = new Set<number>();
+  const lower = new Set(logins.map((l) => l.toLowerCase()));
+
+  // Their repositories: pushed to in the last PUSHED_DAYS days.
+  const repos = new Set<string>();
   if (logins.length) {
-    const prs = await all<PrEventJoinRow>(ctx,
-      `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact, s.importance AS s_importance
-         FROM events e LEFT JOIN pr_summaries s ON s.semantic_key = e.semantic_key AND s.org_id = ?
-        WHERE e.org_id = ? AND e.event_type = 'pr_merged' AND e.subject_login IN (${ph(logins.length)})
-        ORDER BY COALESCE(e.occurred_at, e.recorded_at) DESC, e.id DESC LIMIT 200`,
-      ctx.orgId, ctx.orgId, ...logins);
-    for (const r of prs) {
-      let pr;
-      try { pr = toMyWorkPr(r); } catch { continue; }
-      mine.add(pr.number);
-      const at = Date.parse(pr.occurredAt);
-      if (!(at >= window.start.getTime() && at < window.end.getTime())) continue;
-      if (pr.importance !== "notable" && pr.importance !== "breaking") continue;
-      listed.add(pr.number);
-      rows.push({ title: pr.displayTitle ?? pr.title, href: pr.url, importance: pr.importance, at: pr.occurredAt });
-    }
+    const rows = await all<{ repo: string }>(ctx,
+      `SELECT DISTINCT repo FROM repo_events
+        WHERE org_id = ? AND kind = 'push' AND lower(actor_login) IN (${ph(logins.length)}) AND occurred_at >= ? AND occurred_at < ?`,
+      ctx.orgId, ...[...lower], isoOf(new Date(end - PUSHED_DAYS * DAY_MS)), isoOf(window.end));
+    for (const r of rows) repos.add(r.repo.toLowerCase());
   }
-  const feed = await get_feed(ctx, { since: isoOf(window.start), limit: 200 });
-  for (const f of feed) {
-    if (!(Date.parse(f.created_at) < window.end.getTime())) continue;
-    if (!isFeedImportance(f.importance) || f.importance === "routine") continue;
-    let prs: number[] = [];
-    try { prs = ((JSON.parse(f.artifacts ?? "{}") as { prs?: unknown[] }).prs ?? []).map((x) => Number(x)).filter(Number.isFinite); } catch { /* no artifacts */ }
-    const yours = f.author.toLowerCase() === handle.toLowerCase() || f.ai?.subject?.toLowerCase() === handle.toLowerCase() || prs.some((n) => mine.has(n));
-    if (!yours) continue;
-    if (prs.length && prs.every((n) => listed.has(n))) continue; // the pull request is already a line
-    rows.push({ title: f.summary, href: appHref("#feed"), importance: f.importance, at: f.created_at });
+
+  // Their tickets: assigned to them, or requested by them — the pull requests linked to each, and a mirrored one's issue.
+  const tickets = await all<{ id: number; number: number | null; source_ref: string | null }>(ctx,
+    `SELECT t.id, t.number, t.source_ref FROM tickets t
+      WHERE t.org_id = ? AND (t.requester = ? COLLATE NOCASE
+        OR EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = t.org_id AND a.ticket_id = t.id AND a.login = ? COLLATE NOCASE))`,
+    ctx.orgId, handle, handle);
+  const ticketOfPr = new Map<string, number>(); // PR address → the ticket's number
+  const ticketOfIssue = new Map<number, number>(); // issue number → the ticket's number
+  if (tickets.length) {
+    const byId = new Map(tickets.map((t) => [t.id, t.number ?? t.id]));
+    for (const t of tickets) {
+      const m = t.source_ref?.match(/#(\d+)$/);
+      if (m) ticketOfIssue.set(Number(m[1]), byId.get(t.id)!);
+    }
+    const links = await all<{ ticket_id: number; url: string }>(ctx,
+      `SELECT ticket_id, url FROM ticket_links WHERE org_id = ? AND kind = 'github' AND ticket_id IN (${ph(tickets.length)})`,
+      ctx.orgId, ...tickets.map((t) => t.id));
+    for (const l of links) if (/\/pull\/\d+/.test(l.url)) ticketOfPr.set(prKey(l.url), byId.get(l.ticket_id)!);
+  }
+
+  // Merged pull requests rated notable or breaking since the last send; and every PR's number → author, repository.
+  const prs = await all<PrEventJoinRow>(ctx,
+    `SELECT e.*, s.title AS s_title, s.what AS s_what, s.why AS s_why, s.impact AS s_impact, s.importance AS s_importance
+       FROM events e JOIN pr_summaries s ON s.semantic_key = e.semantic_key AND s.org_id = e.org_id
+      WHERE e.org_id = ? AND e.event_type = 'pr_merged' AND s.importance IN ('notable', 'breaking')
+        AND COALESCE(e.occurred_at, e.recorded_at) >= ? AND COALESCE(e.occurred_at, e.recorded_at) < ?
+      ORDER BY COALESCE(e.occurred_at, e.recorded_at) DESC, e.id DESC LIMIT 200`,
+    ctx.orgId, isoOf(new Date(since)), isoOf(window.end));
+  const rows: AlsoRow[] = [];
+  const listed = new Set<number>();
+  for (const r of prs) {
+    let pr;
+    try { pr = toMyWorkPr(r); } catch { continue; }
+    if (pr.importance !== "notable" && pr.importance !== "breaking") continue;
+    const ticket = ticketOfPr.get(prKey(pr.url));
+    const repo = repoOfPr(pr.url);
+    const href = lower.has(r.subject_login.toLowerCase()) ? appHref("#mywork")
+      : ticket !== undefined ? appHref(`#tickets/${ticket}`)
+      : repo && repos.has(repo) ? appHref(`#repo?repo=${encodeURIComponent(pr.url.match(/github\.com\/([^/]+\/[^/]+)\/pull/i)![1])}`)
+      : null;
+    if (!href) continue;
+    listed.add(pr.number);
+    rows.push({ title: pr.displayTitle ?? pr.title, href, importance: pr.importance, at: pr.occurredAt });
+  }
+
+  // Feed entries rated notable or breaking since the last send, that name one of those — or were written about a
+  // burst of work in one of their repositories (a Trov session digest's `ai_sessions.repo`).
+  const feed = (await get_feed(ctx, { since: isoOf(new Date(since)), limit: 200 }))
+    .filter((f) => Date.parse(f.created_at) < end && isFeedImportance(f.importance) && f.importance !== "routine");
+  if (feed.length) {
+    const refs = new Map<number, { prs: { n: number; repo: string | null }[]; issues: number[] }>();
+    for (const f of feed) {
+      let a: { prs?: unknown[]; issues?: unknown[] } = {};
+      try { a = JSON.parse(f.artifacts ?? "{}") as typeof a; } catch { /* no artifacts */ }
+      refs.set(f.id, {
+        prs: (a.prs ?? []).map(prRef).filter((x): x is NonNullable<typeof x> => !!x),
+        issues: (a.issues ?? []).map(Number).filter(Number.isFinite),
+      });
+    }
+    const numbers = [...new Set([...refs.values()].flatMap((r) => r.prs.map((p) => p.n)))];
+    const prInfo = new Map<number, { authors: Set<string>; repos: Set<string>; urls: Set<string> }>();
+    if (numbers.length) {
+      const named = await all<{ ref_number: number; subject_login: string; raw: string }>(ctx,
+        `SELECT ref_number, subject_login, raw FROM events WHERE org_id = ? AND event_type IN ('pr_merged', 'pr_closed') AND ref_number IN (${ph(numbers.length)})`,
+        ctx.orgId, ...numbers);
+      for (const e of named) {
+        const i = prInfo.get(e.ref_number) ?? { authors: new Set<string>(), repos: new Set<string>(), urls: new Set<string>() };
+        i.authors.add(e.subject_login.toLowerCase());
+        let url: string | undefined;
+        try { url = (JSON.parse(e.raw) as { pr?: { html_url?: string } }).pr?.html_url; } catch { /* no url */ }
+        if (url) { i.urls.add(prKey(url)); const repo = repoOfPr(url); if (repo) i.repos.add(repo); }
+        prInfo.set(e.ref_number, i);
+      }
+    }
+    const sessions = await all<{ feed_id: number; repo: string }>(ctx,
+      `SELECT feed_id, repo FROM ai_sessions WHERE org_id = ? AND feed_id IN (${ph(feed.length)})`, ctx.orgId, ...feed.map((f) => f.id));
+    const sessionRepo = new Map(sessions.map((x) => [x.feed_id, x.repo.toLowerCase()]));
+    for (const f of feed) {
+      const r = refs.get(f.id)!;
+      const named = r.prs.map((p) => ({ p, i: prInfo.get(p.n) }));
+      const touches = named.some(({ p, i }) => !!i && (
+          (!p.repo || i.repos.has(p.repo.toLowerCase())) && ([...i.authors].some((a) => lower.has(a)) || [...i.urls].some((u) => ticketOfPr.has(u)))))
+        || named.some(({ p, i }) => (p.repo ? repos.has(p.repo.toLowerCase()) : !!i && [...i.repos].some((x) => repos.has(x))))
+        || r.issues.some((n) => ticketOfIssue.has(n))
+        || (sessionRepo.has(f.id) && repos.has(sessionRepo.get(f.id)!));
+      if (!touches) continue;
+      if (r.prs.length && r.prs.every((p) => listed.has(p.n))) continue; // the pull request is already a line
+      rows.push({ title: f.summary, href: appHref("#feed"), importance: f.importance as AlsoRow["importance"], at: f.created_at });
+    }
   }
   const rank = (r: AlsoRow) => (r.importance === "breaking" ? 0 : 1);
   return rows.sort((a, b) => rank(a) - rank(b) || Date.parse(b.at) - Date.parse(a.at)).slice(0, ALSO_MAX);
