@@ -21,7 +21,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { AppEnv, Principal } from "../auth/principal";
-import { resolveSessionPrincipal } from "../auth/principal";
+import { resolveSessionPrincipal, resolvePrincipalOrDev } from "../auth/principal";
 import { randomToken } from "../auth/crypto";
 import { PAGE_CSP } from "../auth/oauth-routes";
 import { setReturnTo } from "../auth/return-to";
@@ -61,7 +61,7 @@ function returnOrigin(reqUrl: string): string {
   return `${local ? u.protocol : "https:"}//${u.host}`;
 }
 /** The session of a PUBLIC route, read by hand (`sessionGate` lets the path through). */
-const caller = async (c: Context<AppEnv>): Promise<Principal | null> => (c.env.DEV_LOGIN ? { handle: c.env.DEV_LOGIN } : resolveSessionPrincipal(c));
+const caller = (c: Context<AppEnv>): Promise<Principal | null> => resolvePrincipalOrDev(c);
 /** Where Stripe may send a browser: https (Stripe's own pages), or the loopback stand-in of a test. */
 const redirectable = (cfg: BillingConfig, url: unknown): url is string => {
   if (typeof url !== "string") return false;

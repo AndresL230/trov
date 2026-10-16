@@ -37,7 +37,7 @@ import type { GithubConnectOutcome } from "@shared/github-app";
 import { b64uDecode, b64uEncode, hmacSeal, hmacUnseal, randomToken } from "../auth/crypto";
 import { buildAuthorizeUrl, exchangeCode, getUser } from "../auth/github";
 import { findIdentity } from "../auth/persons";
-import { resolveSessionPrincipal, type AppEnv, type Principal } from "../auth/principal";
+import { resolveSessionPrincipal, resolvePrincipalOrDev, type AppEnv, type Principal } from "../auth/principal";
 import { OAUTH_TX_COOKIE, beginTx, callbackUrl } from "../auth/tx";
 import { hasRole, resolveTenantById, type TenantContext } from "../data/context";
 import { importLogoForOrg } from "../integrations/logo";
@@ -98,8 +98,7 @@ const back = (c: C, slug: string, outcome: GithubConnectOutcome, extra = ""): Re
 
 /** The signed-in person on a path the session gate lets through unauthenticated (`/auth/callback`). */
 async function currentPerson(c: C): Promise<Principal | null> {
-  if (c.env.DEV_LOGIN) return { handle: c.env.DEV_LOGIN }; // local dev only, as in `sessionGate`
-  return resolveSessionPrincipal(c);
+  return resolvePrincipalOrDev(c); // the session, else (local dev only) DEV_LOGIN, as in `sessionGate`
 }
 
 /** Where a signed-in person lands when the return names no org of ours: the Repositories tab of the

@@ -36,6 +36,12 @@ export const HOSTING_CALLBACK_PATH = /^\/hosting\/[a-z0-9_-]+\/(?:callback|confi
 const isPublicPath = (path: string): boolean =>
   PUBLIC_PATHS.has(path) || path.startsWith("/oauth/") || path.startsWith("/.well-known/oauth-") || HOSTING_CALLBACK_PATH.test(path);
 
+/** The signed-in person for a route that reads the session itself: the session cookie's, else — LOCAL DEV ONLY —
+ *  `DEV_LOGIN`'s (as `sessionGate`). In production (no DEV_LOGIN) exactly `resolveSessionPrincipal`. */
+export async function resolvePrincipalOrDev(c: Context<AppEnv>): Promise<Principal | null> {
+  return (await resolveSessionPrincipal(c)) ?? (c.env.DEV_LOGIN ? { handle: c.env.DEV_LOGIN } : null);
+}
+
 export async function resolveSessionPrincipal(c: Context<AppEnv>): Promise<Principal | null> {
   const id = await readSessionCookie(c, c.env.COOKIE_SECRET);
   if (!id) return null;
@@ -53,8 +59,9 @@ export const sessionGate: MiddlewareHandler<AppEnv> = async (c, next) => {
   // secrets), so this branch is inert in prod. When set, skip the OAuth/session check
   // and act as that seeded user — lets the UI be exercised over `wrangler dev` without
   // the real GitHub flow. Mirrors scripts/dev-cookie.mjs, but with zero cookie fuss.
+  // A session cookie still wins over it, so the local dev sign-in (src/auth/dev-signin.ts) can switch person.
   if (c.env.DEV_LOGIN) {
-    c.set("principal", { handle: c.env.DEV_LOGIN });
+    c.set("principal", (await resolveSessionPrincipal(c)) ?? { handle: c.env.DEV_LOGIN });
     return next();
   }
   const principal = await resolveSessionPrincipal(c);

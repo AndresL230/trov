@@ -15,7 +15,7 @@
 // mail TO the address typed: it is only the Reply-To of the notice the operator gets.
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { resolveSessionPrincipal, type AppEnv } from "../auth/principal";
+import { resolveSessionPrincipal, resolvePrincipalOrDev, type AppEnv } from "../auth/principal";
 import { resolveTenant } from "../data/context";
 import { cookieOnly } from "../orgs/routes";
 import { welcomeRecipient } from "../orgs/repo";
@@ -112,7 +112,7 @@ supportApp.post("/public", async (c) => {
 
   // Signed in after all (the site is readable with a session too): the signed-in path. The PRINCIPAL is
   // the reporter and the typed address is ignored — exactly as `POST /api/support` would have it.
-  const principal = c.env.DEV_LOGIN ? { handle: c.env.DEV_LOGIN } : await resolveSessionPrincipal(c);
+  const principal = await resolvePrincipalOrDev(c);
   if (principal) {
     c.set("principal", principal);
     const refused = await rateLimited(c, "support");
