@@ -436,8 +436,9 @@ function authority(): string {
 }
 
 // ── 5 · product tour ─────────────────────────────────────────────────────────
-export const TOUR_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
-export type TourKey = (typeof TOUR_KEYS)[number];
+// The tour's order is site-feature-core.ts's (the dialog's controller steps through it before this module loads).
+export { TOUR_KEYS, type TourKey } from "./site-feature-core";
+import { TOUR_KEYS, type TourKey } from "./site-feature-core";
 
 /** What the dialog says about each feature: three or four statements, each one taken from Help › Guide
  *  (render.ts `guideView`: "How it works" for Docs, the Tour's own section for the rest). Nothing here

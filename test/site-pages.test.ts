@@ -33,6 +33,8 @@ import { MCP_TOOL_GROUPS, commonParams, groupProblems, isCommonParam, mcpToolCou
 import { MCP_ERROR_HINTS } from "../shared/error-hints";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import landingPageSrc from "../web/src/landing-page.ts?raw";
+import { landingPageHtml } from "../web/src/landing-root";
 
 const page = (path: string): SitePage => SITE_PAGES.find((p) => p.path === path) as SitePage;
 const indexed = SITE_PAGES.filter((p) => p.indexed);
@@ -158,7 +160,7 @@ describe("the built documents", () => {
       "/docs/changelog": ['<h1 class="site-legal-h">Changelog</h1>'],
     };
     const boot: Record<string, string | null> = {
-      "/": "/src/main.ts", "/pricing": "/src/pricing-page.ts", "/terms": "/src/legal-page.ts", "/privacy": "/src/legal-page.ts", "/refunds": "/src/legal-page.ts", "/404": null,
+      "/": "/src/landing-page.ts", "/pricing": "/src/pricing-page.ts", "/terms": "/src/legal-page.ts", "/privacy": "/src/legal-page.ts", "/refunds": "/src/legal-page.ts", "/404": null,
       ...Object.fromEntries(DOCS_PAGES.map((p) => [p.path, "/src/docs-page.ts"])),
     };
     for (const p of SITE_PAGES) {
@@ -181,11 +183,15 @@ describe("the built documents", () => {
     const app = render(initialState());
     expect(html).toContain(`<div id="app">${withThemeBoot(app)}</div>`);
     expect(app).toContain('data-morph="landing"');
-    // main.ts: on that markup it paints the landing at once — no "Signing you in…", no /auth/me
-    expect(mainSrc).toContain(`} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {`);
-    const branch = mainSrc.slice(mainSrc.indexOf(`} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {`), mainSrc.indexOf("} else {\n  // Show \"verifying\""));
-    expect(branch).toContain("showSignedOut();");
-    expect(branch).not.toContain("getMe(");
+    // landing-page.ts (the page's own script): on that markup it paints the landing at once — no "Signing
+    // you in…", no /auth/me, and none of the app's bundle (main.ts loads only for what the page hands it).
+    expect(landingPageSrc).toContain(`!mount.querySelector(':scope > * > [data-morph="landing"]')`);
+    expect(landingPageSrc).toContain('if (appOnly) void import("./main");');
+    expect(landingPageSrc).not.toContain("getMe(");
+    expect(landingPageSrc).not.toMatch(/^import[^;]*from "\.\/(main|render)"/m);
+    // …and what it paints is the app's signed-out paint, tag for tag (landing-root.ts; whitespace aside).
+    const tags = (s: string) => s.replace(/>\s+</g, "><").trim();
+    expect(tags(landingPageHtml(initialState()))).toBe(tags(app));
   });
 
   it("the hero's words are on the page from the first paint: settled, never waiting on the script", () => {

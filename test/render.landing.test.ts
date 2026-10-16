@@ -8,8 +8,14 @@ import { initialState, render } from "../web/src/render";
 import css from "../web/src/trov.css?raw";
 import motionSrc from "../web/src/landing-motion.ts?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import landingActionsSrc from "../web/src/landing-actions.ts?raw";
+import landingPageSrc from "../web/src/landing-page.ts?raw";
 import featureSrc from "../web/src/site-feature.ts?raw";
 import { jumping, noteJump, revealClass } from "../web/src/landing-motion";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const out = (signInOpen = false, signedIn = false, seen: string[] = []) =>
   landingView({ dark: false, signInOpen, signedIn, seen: new Set(seen) });
@@ -114,6 +120,7 @@ describe("landing — the banner carried through the page", () => {
     expect(pro).not.toContain("Continue with Pro");
     // A signed-out buyer the billing route sends back (`/?start=team`) lands on this same dialog, on Pro.
     expect(mainSrc).toContain('if (params.get("start") === "team") {');
+    expect(landingPageSrc).toContain('if (params.get("start") === "team") {'); // the signed-out page's own boot too
     expect(pro).not.toContain('data-act="signIn"'); // not the plain sign-in: that would lose the purchase
     expect(html).not.toContain("site-signin-plans");   // signing in: nothing to choose
     expect(signup).not.toContain(">Sign in to Trov<");
@@ -208,7 +215,7 @@ describe("landing — moving through the page", () => {
   });
   it("a nav jump is ONE scroll that lands its heading under the sticky nav, instant under reduced motion", () => {
     expect(rules).toContain('.cnpy-site section[id^="site-"] { scroll-margin-top:-58px; }');
-    const jump = mainSrc.slice(mainSrc.indexOf('case "siteJump"'), mainSrc.indexOf('case "backToLogin"'));
+    const jump = landingActionsSrc.slice(landingActionsSrc.indexOf('case "siteJump"'), landingActionsSrc.indexOf('case "siteBack"'));
     expect(jump).toContain('matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"');
     expect(jump).toContain("noteJump();");
     expect(jump.match(/scrollTo\(|scrollIntoView\(/g)?.length).toBe(2); // top, or one target: never both
