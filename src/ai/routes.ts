@@ -23,7 +23,7 @@ import {
 import { hasRole, platform, type TenantContext } from "../data/context";
 import { recordFeedback, setAiAutomation, setAiChatAuto } from "../data/ai";
 import { cookieOnly } from "../orgs/routes";
-import { planAndAiSettings } from "../plans/gate";
+import { aiShown, planAndAiSettings } from "../plans/gate";
 import { aiAllowance, allowanceUse, eligibilityOf } from "./eligibility";
 import { aiPreview, aiPreviewMode } from "./preview";
 import {
@@ -195,14 +195,21 @@ aiApp.post(AI_FILTER_ROUTE, async (c) => {
 
 // ── Ask Trov's replay (LOCAL DEVELOPMENT ONLY; docs/architecture/ask.md › Fixtures) ──────────────────────────────
 // Under `wrangler dev` with LOCAL_AI_PREVIEW set (the same guard as every preview: a loopback http origin, no live
-// Stripe key — ./preview.ts), the Ask frontend can be built and screenshotted without a key:
+// Stripe key — ./preview.ts — and the read rule: the switch on and a key, any value, never sent), the Ask frontend can be
+// built and screenshotted with no real model call:
 //   GET /ai/ask-replay                 the scenarios, and the fixtures the screens read beside the stream
 //   GET /ai/ask-replay/:scenario       that scenario's recorded SSE transcript, streamed at real pacing
 //                                      (`?speed=4` plays it four times as fast; `?speed=0` all at once)
 // Anywhere else both are 404, as if they did not exist. It lives here, not in src/ai/ask/, because the preview's
 // guard reads the billing config — and nothing under src/ai/ask/ imports src/billing/.
-aiApp.get("/ai/ask-replay", (c) => {
-  if (!aiPreviewMode(c.env, c.req.url)) return c.json({ error: "not_found" }, 404);
+/** The replay is a preview like the others: only under `LOCAL_AI_PREVIEW` AND THE AI read rule (the org's switch on and
+ *  an Anthropic key in `.dev.vars` — any value, nothing is sent), so with either off the Ask screen shows its real off
+ *  state (`/ask/state`), as production would. */
+const replayOn = async (c: Context<AppEnv>): Promise<boolean> =>
+  aiPreviewMode(c.env, c.req.url) !== null && (await aiShown(c.var.ctx)).shown;
+
+aiApp.get("/ai/ask-replay", async (c) => {
+  if (!(await replayOn(c))) return c.json({ error: "not_found" }, 404);
   const now = new Date();
   return c.json({
     scenarios: ASK_SCENARIOS, questions: ASK_SCENARIO_QUESTION,
@@ -212,9 +219,9 @@ aiApp.get("/ai/ask-replay", (c) => {
   });
 });
 
-aiApp.get("/ai/ask-replay/:scenario", (c) => {
+aiApp.get("/ai/ask-replay/:scenario", async (c) => {
   const scenario = c.req.param("scenario");
-  if (!aiPreviewMode(c.env, c.req.url) || !isAskScenario(scenario)) return c.json({ error: "not_found" }, 404);
+  if (!isAskScenario(scenario) || !(await replayOn(c))) return c.json({ error: "not_found" }, 404);
   const speed = Math.min(50, Math.max(0, Number(c.req.query("speed") ?? "1") || 0));
   const steps = askTranscript(scenario, new Date());
   const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();

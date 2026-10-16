@@ -332,7 +332,9 @@ no row anywhere still points at the same sha (`src/deletion/r2.ts`).
 `cmdj`, `ticket`, `settings`, `phone`, `phone-plus`, `phone-insp`), built from the design's sample content (its org
 renamed "Acme"); `askStateFixture`, `askSettingsFixture`, `askThreadsFixture`, `askSearchFixture`, `askRefFixtures`.
 Under `wrangler dev` with `LOCAL_AI_PREVIEW` set, `GET /api/o/:slug/ai/ask-replay/:scenario?speed=1` streams one at
-real pacing and `GET …/ai/ask-replay` lists the rest; anywhere else both are 404.
+real pacing and `GET …/ai/ask-replay` lists the rest; anywhere else both are 404 — and so they are with the org's AI
+switch off or no `ANTHROPIC_API_KEY` in `.dev.vars` (the AI read rule, `ai.md`; any value works, nothing is sent), so
+the screen shows its real off state there, as every other preview does.
 
 **The gallery** (for reviewing how Ask looks): `npm run ask:gallery [-- <out.html>]` writes ONE self-contained page
 (default `.ask-gallery/ask-gallery.html`, gitignored) with every surface Ask can put on screen in every state — one

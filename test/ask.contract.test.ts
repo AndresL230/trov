@@ -19,6 +19,7 @@ import { chartSvg, markdownHtml, tokensToMarkdown } from "../src/ai/ask/render";
 import { snippetOffsets, threadGroup } from "../src/ai/ask/routes";
 import { cookieFor } from "./helpers/persons";
 import { readSse } from "./helpers/ask";
+import { FAKE_ANTHROPIC_KEY } from "./helpers/anthropic";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
 
@@ -153,12 +154,23 @@ describe("the pieces", () => {
 
 describe("the dev-only replay route", () => {
   const LOCAL = "http://127.0.0.1:8787/api/o/saplinglearn/ai/ask-replay";
-  const previewEnv = { ...(env as unknown as Env), LOCAL_AI_PREVIEW: "ready" } as Env;
+  // The replay keeps THE AI read rule like every preview: a key (a fake one — nothing is sent) and the switch on.
+  const previewEnv = { ...(env as unknown as Env), LOCAL_AI_PREVIEW: "ready", ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY } as Env;
 
   it("is 404 without LOCAL_AI_PREVIEW, and 404 off a loopback origin even with it", async () => {
     const cookie = await cookieFor("ask-dev");
     expect((await app.request(`${LOCAL}/answer`, { headers: { cookie } }, env as unknown as Env)).status).toBe(404);
     expect((await app.request("https://trov.dev/api/o/saplinglearn/ai/ask-replay/answer", { headers: { cookie } }, previewEnv)).status).toBe(404);
+  });
+
+  it("honours the read rule: no key, or the org's switch off, is 404 — the Ask screen then shows its real off state", async () => {
+    const cookie = await cookieFor("ask-dev");
+    const noKey = { ...previewEnv, ANTHROPIC_API_KEY: "" } as Env;
+    expect((await app.request(`${LOCAL}/answer?speed=0`, { headers: { cookie } }, noKey)).status).toBe(404);
+    expect((await app.request(LOCAL, { headers: { cookie } }, noKey)).status).toBe(404);
+    await env.DB.prepare(`UPDATE orgs SET ai_automation = 0 WHERE slug = 'saplinglearn'`).run();
+    expect((await app.request(`${LOCAL}/answer?speed=0`, { headers: { cookie } }, previewEnv)).status).toBe(404);
+    expect((await app.request(LOCAL, { headers: { cookie } }, previewEnv)).status).toBe(404);
   });
 
   it("under `wrangler dev` with the preview on, streams a scenario's transcript and lists the fixtures", async () => {
