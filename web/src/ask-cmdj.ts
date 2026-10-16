@@ -28,7 +28,7 @@ import type { AppState } from "./render";
 import type { AskCtx, AskPart } from "./ask-state";
 import { askView, inspectorRef } from "./ask-state";
 import { askIcon, trovMark } from "./ask-icons";
-import { conversationView, emptyView } from "./ask-conversation";
+import { conversationView, emptyView, jumpButton } from "./ask-conversation";
 import { composerFocus, composerView, initialComposerUi } from "./ask-composer";
 import { EMPTY_TAIL, askOverlays, inspectorFrame } from "./ask-screen";
 import { closingAttr } from "./ask-motion";
@@ -97,7 +97,7 @@ export function cmdjOverlay(app: AppState): string {
         <button type="button" class="ask-ghostbtn" data-act="askCjOpenThread">Open as thread${askIcon("openNew", 12, null, 2)}</button>
         <button type="button" class="ask-iconbtn" data-act="askCjClose" aria-label="Close" data-tip="Close (Esc)">${askIcon("close", 13, null, 2.2)}</button>
       </div>
-      <div class="ask-scroll" data-ask-scroll="panel">${empty ? emptyView(v) : conversationView(v)}</div>
+      <div class="ask-scroll" data-ask-scroll="panel">${empty ? emptyView(v) : `${conversationView(v)}${jumpButton(v)}`}</div>
       ${composerView(v)}${empty ? EMPTY_TAIL : ""}
     </section>
   </div>`;

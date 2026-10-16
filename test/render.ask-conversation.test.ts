@@ -11,7 +11,7 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import { askView, type AskCtx, type AskSendInput, type AskWhere } from "../web/src/ask-state";
 import {
-  conversationView, emptyView, conversationPart, parseMd, splitRow, chainOrder, cvItem, themeTip, thinkingLabel, quietStep, plainText, settleTail,
+  conversationView, emptyView, conversationPart, parseMd, splitRow, chainOrder, cvItem, themeTip, thinkingLabel, quietStep, plainText, settleTail, jumpButton,
 } from "../web/src/ask-conversation";
 import { cvRef, parseCvRef, cvRefWord, isCvRef } from "../web/src/ask-cvref";
 import { refFallbackText } from "../web/src/ask-refs";
@@ -423,6 +423,26 @@ describe("the error, Stopped, and the oversized-image notice", () => {
     ];
     const { html } = view("answer", { events, busy: true });
     expect(html).toMatch(/<div class="ask-step"><span class="ask-step-i"><svg[^>]*>[\s\S]*?<\/svg><\/span><span class="ask-step-l">Read standup\.png<\/span><span class="ask-step-n">· Not read<\/span><\/div>/);
+  });
+});
+
+describe("jump to the latest (the owner)", () => {
+  it("rendered with the conversation, hidden until the person scrolled away; purple while an answer streams; the act holds on to the bottom", () => {
+    const s = base();
+    const idle = jumpButton(askView(s, "page"));
+    expect(idle).toMatch(/^<div class="ask-jump-w"><button type="button" class="ask-jump" data-act="askCvJump" data-arg="page" aria-label="Jump to the latest"[^>]*data-away="0" data-busy="0" tabindex="-1" aria-hidden="true">/);
+    s.ask.conversation.away = { page: true };
+    s.ask.page = { ...s.ask.page, busy: true };
+    const away = jumpButton(askView(s, "page"));
+    expect(away).toContain(`data-away="1" data-busy="1">`);
+    expect(away).not.toMatch(/<button[^>]*aria-hidden/);
+    const ctx = { ui: s.ask } as unknown as Parameters<NonNullable<typeof conversationPart.act>>[0];
+    s.ask.conversation.stick = false;
+    conversationPart.act!(ctx, "askCvJump", "page", null);
+    expect(s.ask.conversation.stick).toBe(true);
+    expect(s.ask.conversation.away.page).toBe(false);
+    expect(css).toMatch(/\.ask-jump-w \{ position:sticky; bottom:0; height:0;/);
+    expect(css).toContain('.ask-jump[data-away="1"] { opacity:1;');
   });
 });
 

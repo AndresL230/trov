@@ -18,7 +18,7 @@ import { askLayout } from "./ask-layout";
 import { askIcon } from "./ask-icons";
 import { hoverCard, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
 import { threadsView } from "./ask-threads";
-import { conversationView, emptyView } from "./ask-conversation";
+import { conversationView, emptyView, jumpButton } from "./ask-conversation";
 import { composerView } from "./ask-composer";
 import { inspectorBody, inspectorLocalHead } from "./ask-inspector";
 import { cmdjOverlay } from "./ask-cmdj";
@@ -70,7 +70,7 @@ export function askScreenView(app: AppState): string {
     <aside class="ask-threads" aria-label="Threads"${shut ? ` inert aria-hidden="true"` : ""}>${app.phone ? "" : threadsView(v)}</aside>
     <section class="ask-conv" aria-label="Conversation" data-ask-drop="page">
       ${app.phone ? "" : `<button type="button" class="ask-th-show" data-act="askShThreads" aria-label="Show threads" data-tip="Show threads"${shut ? "" : ` tabindex="-1" aria-hidden="true"`}>Threads${askIcon("chevRight", 12, null, 2.2)}</button>`}
-      <div class="ask-scroll" data-ask-scroll="page">${empty ? emptyView(v) : conversationView(v)}</div>
+      <div class="ask-scroll" data-ask-scroll="page">${empty ? emptyView(v) : `${conversationView(v)}${jumpButton(v)}`}</div>
       ${composerView(v)}${empty ? EMPTY_TAIL : ""}
     </section>
     <div class="ask-insp-slot">${lay.inspector === "closed" ? "" : inspectorFrame(v)}</div>

@@ -62,8 +62,28 @@ export interface ConversationUi {
   regen: string | null;
   /** Edit-and-resend: the question being edited and its draft. */
   editing: { where: AskWhere; key: string; text: string } | null;
+  /** Scrolled up away from the bottom (per scroller): the jump-to-latest arrow shows (`jumpButton`). */
+  away: Partial<Record<AskWhere, boolean>>;
 }
-export const initialConversationUi = (): ConversationUi => ({ open: {}, stick: true, copied: null, regen: null, editing: null });
+export const initialConversationUi = (): ConversationUi => ({ open: {}, stick: true, copied: null, regen: null, editing: null, away: {} });
+
+/** Past this far from the bottom, the jump-to-latest arrow shows. */
+const AWAY_PX = 160;
+
+/** The jump-to-latest arrow (the owner): it sits on the scroller's bottom edge (a 0-height sticky row, so it changes no
+ *  height), shows once the person scrolled up — the scroll listener flips `data-away` without a repaint; the render
+ *  writes the same from `ui.conversation.away`, so a morph keeps it — and while an answer streams below it is purple
+ *  (`data-busy`). A click glides to the bottom and holds on there (`askCvJump`). */
+export function jumpButton(v: AskView): string {
+  const away = v.ui.conversation.away[v.where] === true;
+  return `<div class="ask-jump-w"><button type="button" class="ask-jump" data-act="askCvJump" data-arg="${v.where}" aria-label="Jump to the latest" data-tip="Jump to the latest" data-away="${away ? "1" : "0"}" data-busy="${convoOf(v).busy ? "1" : "0"}"${away ? "" : ` tabindex="-1" aria-hidden="true"`}>${askIcon("chevDown", 16, null, 2.2)}</button></div>`;
+}
+const setAway = (sc: HTMLElement, away: boolean): void => {
+  const b = sc.querySelector<HTMLElement>(".ask-jump");
+  if (!b) return;
+  b.dataset.away = away ? "1" : "0";
+  if (away) { b.removeAttribute("tabindex"); b.removeAttribute("aria-hidden"); } else { b.setAttribute("tabindex", "-1"); b.setAttribute("aria-hidden", "true"); }
+};
 
 // ── markdown (the answer's text: headings, lists, tables, code; tolerant of a half-streamed line) ─────────────
 
@@ -711,6 +731,19 @@ export const conversationPart: AskPart = {
         ctx.openRef(arg, p.where);
         return;
       }
+      case "askCvJump": {
+        // Back to the latest: glide down and hold on there (a streaming answer keeps it in view again).
+        const where: AskWhere = arg === "panel" ? "panel" : "page";
+        const sc = typeof document !== "undefined" ? document.querySelector<HTMLElement>(`[data-ask-scroll="${where}"]`) : null;
+        ui.stick = true;
+        ui.away = { ...ui.away, [where]: false };
+        if (sc) {
+          setAway(sc, false);
+          const smooth = typeof matchMedia === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+          sc.scrollTo({ top: sc.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+        }
+        return;
+      }
       case "askCvCopy": {
         const ex = key ? exchange(ctx, whereOf(w), key) : null;
         if (!ex || !arg) return;
@@ -804,9 +837,13 @@ export const conversationPart: AskPart = {
       if (wired.has(sc)) continue;
       wired.add(sc);
       let top = sc.scrollTop;
+      const where: AskWhere = sc.dataset.askScroll === "panel" ? "panel" : "page";
       sc.addEventListener("scroll", () => {
         ctx.ui.conversation.stick = stickAfterScroll(ctx.ui.conversation.stick, top, { top: sc.scrollTop, height: sc.scrollHeight, client: sc.clientHeight });
         top = sc.scrollTop;
+        // The arrow: away from the bottom and not following it. Flipped here, without a repaint.
+        const away = !ctx.ui.conversation.stick && sc.scrollHeight - sc.scrollTop - sc.clientHeight > AWAY_PX;
+        if ((ctx.ui.conversation.away[where] === true) !== away) { ctx.ui.conversation.away = { ...ctx.ui.conversation.away, [where]: away }; setAway(sc, away); }
       }, { passive: true });
     }
     // "Thinking… Ns" counts between paints (the label alone; the next paint writes the same number).

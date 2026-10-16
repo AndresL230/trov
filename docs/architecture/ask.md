@@ -324,6 +324,10 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Jump to the latest** (`jumpButton`, ask-conversation.ts): scrolled up more than 160px (and not following the
+  bottom), an arrow shows on the scroller's bottom edge — a 0-height sticky row, so it changes no height; the scroll
+  listener flips its `data-away` without a repaint and the render writes the same from `conversation.away`. It is
+  purple while an answer is still coming (`data-busy`). A click (`askCvJump`) glides to the bottom and holds on there.
 - **Half-written markdown** (`settleTail`, ask-conversation.ts): while a text part streams, its last line is settled
   before it is parsed — a bare heading / list / fence marker or a table row not yet closed by its bar waits, an unclosed
   `**` / `*` / backtick is closed for now (the words show bold as they arrive), a half `[link](…` shows its text, a half
