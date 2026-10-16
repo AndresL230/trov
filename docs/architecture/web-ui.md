@@ -505,7 +505,8 @@ next. Nothing else changes — the `error` code, any `message`, the status and t
 were (the SPA and the tests read them).
 
 - **One table** (`shared/error-hints.ts`): `API_ERROR_HINTS` by the HTTP `error` code (the older sentence codes —
-  `"admin only"`, `"not found"`, `"invalid payload"` — included), `STATUS_HINTS` by status for any other code,
+  `"admin only"`, `"not found"`, `"invalid payload"` — included, and the AI routes' own refusals `off`, `no_key`,
+  `unreadable`, `auto_off`, `mode_unavailable`, so a 403 `off` no longer reads as a missing role), `STATUS_HINTS` by status for any other code,
   `MCP_ERROR_HINTS` by an MCP tool error's `code` (`not_found`, `forbidden`, `conflict`, `bad_request`,
   `too_large`, `gone`, `plan_limit`, `plan_feature`, and the connection's `repo_required`, `not_connected`,
   `ambiguous_org`, `org_unavailable`, `org_not_allowed`), and the two /mcp 401 hints. The MCP reference prints the
