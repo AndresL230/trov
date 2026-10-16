@@ -596,8 +596,8 @@ describe("repoView — product metrics", () => {
     expect(html).toContain('data-penv="staging"');
     // The shared segmented switch; the one showing takes no action (no data-act, no data-arg).
     expect(html).toContain('data-seg="repo-product-env"');
-    expect(html).toMatch(/<button type="button" class="cnpy-seg-btn is-on" aria-pressed="true">staging<\/button>/);
-    expect(html).toContain('<button type="button" class="cnpy-seg-btn" data-act="repoProductEnv" data-arg="production" aria-pressed="false">production</button>');
+    expect(html).toMatch(/<button type="button" tabindex="0" data-field="seg:repo-product-env:staging" class="cnpy-seg-btn is-on" aria-pressed="true">staging<\/button>/);
+    expect(html).toContain('<button type="button" tabindex="-1" data-field="seg:repo-product-env:production" class="cnpy-seg-btn" data-act="repoProductEnv" data-arg="production" aria-pressed="false">production</button>');
     expect(html).toContain("reported by the app · counts over 7d");
     for (const title of ["Growth", "AI spend", "Right now"]) expect(html).toContain(`>${title}<`);
     // Groups the environment did not report are not drawn as empty boxes.
@@ -1332,8 +1332,8 @@ describe("repo — the range selector is the shared segmented switch", () => {
   it("every range keeps its act (the picked one included); the picked one is pressed", () => {
     const html = repoView(props({ tab: "usage", range: "30d" }));
     expect(html).toContain('data-seg="repo-range"');
-    expect(html).toContain('<button type="button" class="cnpy-seg-btn is-on" data-act="repoRange" data-arg="30d" aria-pressed="true">30d</button>');
-    for (const r of ["24h", "7d"]) expect(html).toContain(`<button type="button" class="cnpy-seg-btn" data-act="repoRange" data-arg="${r}" aria-pressed="false">${r}</button>`);
+    expect(html).toContain('<button type="button" tabindex="0" data-field="seg:repo-range:30d" class="cnpy-seg-btn is-on" data-act="repoRange" data-arg="30d" aria-pressed="true">30d</button>');
+    for (const r of ["24h", "7d"]) expect(html).toContain(`<button type="button" tabindex="-1" data-field="seg:repo-range:${r}" class="cnpy-seg-btn" data-act="repoRange" data-arg="${r}" aria-pressed="false">${r}</button>`);
     expect(html).not.toContain("repo-seg\"");
   });
 });

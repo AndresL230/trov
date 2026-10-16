@@ -704,7 +704,7 @@ describe("artifacts — segmented switches", () => {
   it("a ratified option that cannot be ratified is locked — no act, disabled, with its hint", () => {
     const seg = segOf(artifactsView(viewer(detail("a", "html", { status: "draft" }))), "art-status");
     expect(seg).not.toContain('data-arg="ratified"');
-    expect(seg).toMatch(/<button type="button" class="cnpy-seg-btn" disabled data-tone="accent" aria-pressed="false" title="[^"]+">/);
+    expect(seg).toMatch(/<button type="button" tabindex="-1" data-field="seg:art-status:ratified" class="cnpy-seg-btn" disabled data-tone="accent" aria-pressed="false" title="[^"]+">/);
     expect(seg).toContain('data-act="artStatus" data-arg="published"');
   });
 
