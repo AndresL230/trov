@@ -103,6 +103,22 @@ describe("segmented() — one Tab stop, on the picked option (a roving tabindex)
     expect(segKeyTarget("ArrowRight", 0, [false, true, true])).toBe(0);
   });
 
+  it("each option names itself for the repaint's focus restore (data-field), unique per switch and option", () => {
+    const html = segmented({ id: "x", ariaLabel: "X", act: "pick", value: "b", options: opts })
+      + segmented({ id: "y", ariaLabel: "Y", act: "pick", value: "a", options: opts });
+    const fields = [...html.matchAll(/<button type="button" tabindex="-?\d" data-field="([^"]+)"/g)].map((m) => m[1]);
+    expect(fields).toEqual(["seg:x:a", "seg:x:b", "seg:x:c", "seg:y:a", "seg:y:b", "seg:y:c"]);
+    expect(new Set(fields).size).toBe(fields.length);
+    // Enter / Space on an option repaints; focus comes back to the same option — now the picked one.
+    const after = segmented({ id: "x", ariaLabel: "X", act: "pick", value: "c", options: opts });
+    expect(after).toMatch(/<button type="button" tabindex="0" data-field="seg:x:c" class="cnpy-seg-btn is-on"/);
+  });
+
+  it("rerender() puts focus back on whatever element carries the focused data-field (not only text fields)", () => {
+    expect(mainSrc).toContain('const field = active?.getAttribute?.("data-field") ?? null;');
+    expect(mainSrc).toMatch(/if \(field\) \{\s*const el = mount\.querySelector<[^>]+>\(`\[data-field="\$\{field\}"\]`\);[\s\S]{0,200}el\.focus\(\);/);
+  });
+
   it("the keyboard is wired once, for every switch on the page", () => {
     expect(mainSrc).toContain('document.addEventListener("keydown", onSegmentedKey);');
   });

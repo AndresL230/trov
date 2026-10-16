@@ -342,8 +342,8 @@ describe("newSprintPanel", () => {
     // Inline styles can't express `:hover`; the class is what trov.css hooks,
     // and `is-on` is what keeps the hover off the chip that is already picked.
     const html = newSprintPanel({ ...NS, open: true, urgency: "high", lead: "sanaok", domain: "tickets" }, PERSONS);
-    expect(html).toContain('<button type="button" tabindex="0" class="cnpy-seg-btn is-on" data-act="nsUrg" data-arg="high" aria-pressed="true"');
-    expect(html).toContain('<button type="button" tabindex="-1" class="cnpy-seg-btn" data-act="nsUrg" data-arg="low" aria-pressed="false"');
+    expect(html).toContain('<button type="button" tabindex="0" data-field="seg:ns-urgency:high" class="cnpy-seg-btn is-on" data-act="nsUrg" data-arg="high" aria-pressed="true"');
+    expect(html).toContain('<button type="button" tabindex="-1" data-field="seg:ns-urgency:low" class="cnpy-seg-btn" data-act="nsUrg" data-arg="low" aria-pressed="false"');
     expect(html).toContain('data-act="nsLead" data-arg="sanaok" class="cnpy-pickchip is-on"');
     expect(html).toContain('data-act="nsLead" data-arg="jose-a" class="cnpy-pickchip"');
     expect(html).toContain('data-act="nsDom" data-arg="tickets" class="cnpy-pickchip is-on"');

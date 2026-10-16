@@ -589,7 +589,8 @@ does not slide in. Sizes `md` (header) / `sm` / `xs`, plus `cnpy-seg--bar` (a 34
 -1; nothing picked or the picked one locked → the first open option). It is a `role="group"` of `aria-pressed`
 toggle buttons, so ←/→ move focus (skipping locked options, wrapping) and Home/End jump, without picking —
 Enter / Space picks (`onSegmentedKey`, wired once on the document in `main.ts`; an option's act may save, so an
-arrow press is never a choice). Two-state colored toggles (an artifact's visibility) and chip pickers are other idioms.
+arrow press is never a choice). Each option carries `data-field="seg:<id>:<value>"`, so the repaint a pick
+causes puts focus back on that option (rerender's focus restore, as for a tab bar). Two-state colored toggles (an artifact's visibility) and chip pickers are other idioms.
 
 Screen entrances are `[data-enter]` (set by `markEnter()` in `main.ts` only when the ROUTE changed — never
 on a keystroke, and never because a read landed: see Loading skeletons below). `--enter-t` is a NEGATIVE animation-delay, so a rerender

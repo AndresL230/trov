@@ -17,7 +17,9 @@
 // so ←/→ move FOCUS between its options (skipping locked ones, wrapping) and Home/End jump —
 // Enter / Space picks, as on any button. A move never picks: an option's act may save (an
 // artifact's status, a notification cadence), and one arrow press is not a choice.
-// `onSegmentedKey` is wired once in main.ts.
+// `onSegmentedKey` is wired once in main.ts. Each option carries `data-field="seg:<id>:<value>"`,
+// so the repaint a pick causes puts focus back on that option (rerender's focus restore, as
+// for a tab bar) — now the picked one — instead of dropping it to <body>.
 //
 // Pure markup plus `segKeyTarget`; `syncSegments` and `onSegmentedKey` are the only DOM
 // code, the styles live in trov.css.
@@ -70,7 +72,7 @@ export function segmented(p: SegmentedProps): string {
     const on = o.value === p.value;
     const act = o.act ?? p.act;
     const live = !o.locked && !(on && p.inertOn);
-    return `<button type="button" tabindex="${i === stop ? 0 : -1}" class="cnpy-seg-btn${on ? " is-on" : ""}"${live ? ` data-act="${attr(act)}" data-arg="${attr(o.arg ?? o.value)}"` : ""}${o.locked ? " disabled" : ""}${o.tone ? ` data-tone="${o.tone}"` : ""} aria-pressed="${on}"${o.title ? ` title="${attr(o.title)}"` : ""}>${o.icon ?? ""}${esc(o.label)}${o.trail ?? ""}</button>`;
+    return `<button type="button" tabindex="${i === stop ? 0 : -1}" data-field="seg:${attr(p.id)}:${attr(o.value)}" class="cnpy-seg-btn${on ? " is-on" : ""}"${live ? ` data-act="${attr(act)}" data-arg="${attr(o.arg ?? o.value)}"` : ""}${o.locked ? " disabled" : ""}${o.tone ? ` data-tone="${o.tone}"` : ""} aria-pressed="${on}"${o.title ? ` title="${attr(o.title)}"` : ""}>${o.icon ?? ""}${esc(o.label)}${o.trail ?? ""}</button>`;
   }).join("");
   return `<div class="cnpy-seg cnpy-seg--${size}${p.fill ? " cnpy-seg--fill" : ""}${p.className ? ` ${attr(p.className)}` : ""}" data-seg="${attr(p.id)}" data-morph-key="seg:${attr(p.id)}" role="group" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span>${btns}</div>`;
 }
