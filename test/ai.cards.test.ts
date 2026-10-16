@@ -12,7 +12,8 @@ import type { Env } from "../src/env";
 import { app } from "../src/routes";
 import { runAiPass, AI_JOBS } from "../src/ai/pass";
 import { newBudget } from "../src/repo/dispatch";
-import { create_ticket } from "../src/tools/tickets";
+import { create_ticket, move_ticket, transition_ticket } from "../src/tools/tickets";
+import { mirrorIssue } from "../src/tools/ticket-mirror";
 import { ingestAdrDraft, ingestDocProposal } from "../src/consumer";
 import { route_triage } from "../src/tools/writes";
 import { putSuggestion } from "../src/data/ai";
@@ -23,7 +24,7 @@ import type { TicketDetail } from "@shared/tickets";
 import type { NeedsTriageRow, AdrRow } from "@shared/rows";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
-import { ORG_A, systemCtx, tenantCtx } from "./helpers/tenant";
+import { ORG_A, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 import { keyedEnv } from "./helpers/ai-pass";
 import { useAiKey } from "./helpers/ai-key";
 
@@ -255,6 +256,50 @@ describe("Accept routes through the existing writer, as the person — and never
     const badSection = await put("unplaced.destination", "unplaced", "999997", { type: "doc", section: "runbooks", near: null, label: "runbooks" });
     expect(await call("POST", `${BASE}/ai/suggestions/${badSection}/accept`, cookie, {})).toEqual({ status: 400, json: { error: "invalid" } });
     expect(await state(badSection)).toBe("open");
+  });
+
+  it("a ticket that CLOSES closes its open suggestions (Q35): superseded on every status writer — not shown, Accept refused", async () => {
+    const cookie = await cookieFor("meilin");
+    const put = (n: number, kind: string, value: unknown) =>
+      putSuggestion(systemCtx(ORG_A), { itemType: "ticket", itemRef: String(n), kind, value, confidence: 0.9, reason: "x", cites: [], model: "jev", promptVersion: "p" }) as Promise<number>;
+    const states = (n: number) => all<{ kind: string; state: string }>(env.DB, `SELECT kind, state FROM ai_suggestions WHERE org_id = ? AND item_type = 'ticket' AND item_ref = ? ORDER BY id`, ORG_A, String(n));
+    const detail = async (n: number) => (await (await app.request(`${BASE}/tickets/${n}`, { headers: { cookie } }, env as unknown as Env)).json()) as TicketDetail;
+    // transition_ticket → done, from the ticket's own page.
+    const a = await ticket("Blank page", "The page is blank.");
+    const cat = await put(a, "ticket.category", "bug");
+    const pri = await put(a, "ticket.priority", "high");
+    expect(await detail(a)).toHaveProperty("ai");
+    // A decided one keeps the person's choice.
+    await run(env.DB, `UPDATE ai_suggestions SET state = 'dismissed', decided_by = 'meilin' WHERE id = ?`, pri);
+    await transition_ticket(await tenantCtx("meilin"), a, "in_progress", "meilin");
+    expect((await states(a)).map((r) => r.state)).toEqual(["open", "dismissed"]); // moving is not closing
+    await transition_ticket(await tenantCtx("meilin"), a, "done", "meilin");
+    expect(await states(a)).toEqual([{ kind: "ticket.category", state: "superseded" }, { kind: "ticket.priority", state: "dismissed" }]);
+    expect(await detail(a)).not.toHaveProperty("ai");
+    expect(await call("POST", `${BASE}/ai/suggestions/${cat}/accept`, cookie, {})).toEqual({ status: 409, json: { error: "not_open" } });
+    // move_ticket (a board drop) → declined.
+    const b = await ticket("Slow search", "Search is slow.");
+    await put(b, "ticket.duplicate", { number: a, label: `#${a}` });
+    await move_ticket(await tenantCtx("meilin"), b, "declined", null, "meilin");
+    expect((await states(b)).map((r) => r.state)).toEqual(["superseded"]);
+    // The GitHub mirror's forced status: a mirrored ticket whose issue is closed.
+    const issue = (action: string, state: string, updatedAt: string) => ({
+      action, repository: { full_name: "SaplingLearn/sapling" },
+      issue: { number: 4242, title: "Login times out", body: "b", html_url: "https://github.com/SaplingLearn/sapling/issues/4242", state, state_reason: state === "closed" ? "completed" : null,
+        updated_at: updatedAt, user: { login: "AndresL230" }, assignees: [], labels: [], milestone: null },
+    });
+    await mirrorIssue(systemCtx(ORG_A), platformCtx(), "SaplingLearn/sapling", issue("opened", "open", "2026-10-16T10:00:00Z"));
+    const c = (await first<{ number: number }>(env.DB, `SELECT number FROM tickets WHERE org_id = ? AND source_ref = 'SaplingLearn/sapling#4242'`, ORG_A))!.number;
+    await put(c, "ticket.priority", "high");
+    await mirrorIssue(systemCtx(ORG_A), platformCtx(), "SaplingLearn/sapling", issue("closed", "closed", "2026-10-16T11:00:00Z"));
+    expect((await states(c)).map((r) => r.state)).toEqual(["superseded"]);
+    // One left OPEN on a closed ticket from before this rule is neither drawn nor accepted.
+    const d = await ticket("Old one", "b");
+    await transition_ticket(await tenantCtx("meilin"), d, "declined", "meilin");
+    const stale = await put(d, "ticket.category", "bug");
+    expect(await detail(d)).not.toHaveProperty("ai");
+    expect(await call("POST", `${BASE}/ai/suggestions/${stale}/accept`, cookie, {})).toEqual({ status: 409, json: { error: "not_available" } });
+    expect((await states(d)).map((r) => r.state)).toEqual(["open"]);
   });
 
   it("a risk has no Accept (not_available) and Dismiss changes nothing in Review: no promote, no reject", async () => {

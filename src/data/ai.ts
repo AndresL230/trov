@@ -4,7 +4,7 @@
 // caller's context (test/data-layer.static.test.ts). Nothing here calls a model, and nothing reachable
 // from src/mcp.ts imports it.
 import type { AiCite, AiFeedbackBody, AiSuggestion, AiSuggestionState } from "@shared/ai";
-import { all, batch, first, nowIso, run, stmt, type TenantContext } from "./sql";
+import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
@@ -91,6 +91,24 @@ export async function decideSuggestion(ctx: TenantContext, id: number, state: "a
   const res = await run(ctx, `UPDATE ai_suggestions SET state = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND state = 'open'`,
     state, by, at, id, ctx.orgId);
   return (res.meta.changes ?? 0) > 0;
+}
+
+/**
+ * A decision about the ITEM closes what Trov suggested about it (owner rulings Q35, Q37): its OPEN suggestions are
+ * `superseded` — not shown again, and an Accept answers `not_open`. A decided one (accepted / dismissed) keeps the
+ * person's choice. ONE statement, for the deciding writer's own batch (or a `run` right after it):
+ *   • a ticket that closes (done / declined) — `ticket` + its NUMBER, the card kinds' item (src/ai/jobs/cards.ts
+ *     `CARD_ITEM_TYPES`), named by the ticket's row id so every status writer can use it;
+ *   • a drafted decision ratified or rejected — `proposal` + `adr:<id>`, its risk (Review's own id).
+ */
+export function supersedeOpenTicketSuggestions(ctx: TenantContext, ticketId: number): Stmt {
+  return stmt(ctx,
+    `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ?1 AND item_type = 'ticket' AND state = 'open'
+        AND item_ref = (SELECT CAST(number AS TEXT) FROM tickets WHERE id = ?2 AND org_id = ?1)`, ctx.orgId, ticketId);
+}
+export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string): Stmt {
+  return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'`,
+    ctx.orgId, itemType, itemRef);
 }
 
 /** Undo an accept whose handler failed: back to open, only if it is still the accept `by` just made. */

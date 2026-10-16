@@ -33,10 +33,12 @@ async function guarded<T>(what: string, c: C, rows: T, f: () => Promise<T>): Pro
 /** `TicketDetail` with its open ticket suggestions (category, priority, a possible duplicate) as `ai`. */
 export function withTicketSuggestions(c: C, t: TicketDetail): Promise<TicketDetail> {
   return guarded("ticket", c, t, async () => {
+    // A closed ticket carries none (Q35): closing supersedes them, and one left open from before is not drawn either.
+    if (t.status === "done" || t.status === "declined") return t;
     const preview = aiPreviewMode(c.env, c.req.url);
     let ai: AiSuggestion[];
     if (preview) {
-      if (!(await aiSwitchOn(c.var.ctx)) || t.status === "done" || t.status === "declined") return t;
+      if (!(await aiSwitchOn(c.var.ctx))) return t;
       const other = t.id > 1 ? await ticketByNumber(c.var.ctx, t.id - 1) : null;
       ai = ticketSuggestionsFixture(preview, t.id, other ? { number: other.number, title: other.title } : null);
     } else {

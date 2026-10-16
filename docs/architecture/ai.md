@@ -388,6 +388,11 @@ so the eval runner and the recorded-response test build exactly what the pass se
   is `normal` (what the form files when nobody picks; a person who picked either is indistinguishable and is left
   alone); a kind a person already accepted or dismissed for the item (`decidedKinds`) is never asked again; a
   closed ticket, a gone item, an Unplaced item that is not a doc (no slug and body) is not asked about at all.
+- **A decision about the item closes its suggestions** (owner rulings Q35, Q37; `supersedeOpen*`, `src/data/ai.ts`):
+  a ticket that becomes done / declined supersedes its OPEN card suggestions in the status write's own batch (every
+  status writer — `transition_ticket`, `move_ticket`, the mirror's forced status; `closingStmts`), so they are not
+  shown and an Accept answers `not_open`; one left open on a closed ticket from before is not drawn (`attach.ts`) and
+  its Accept is `not_available`. A decided suggestion keeps the person's choice.
 - **Candidates only.** A duplicate or a destination is only ever one of the options OFFERED; anything else counts
   for nothing (the parser already refuses an option outside the question).
 - **Thresholds** (chosen on the eval sets): category 0.7, priority 0.75, duplicate 0.9, risk 0.6, destination 0.55.
