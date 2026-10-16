@@ -161,7 +161,8 @@ is replaced.
 
 - **Kinds**: ticket, handoff, doc_edit (≤ 3 changed hunks with their heading; editing a hunk rebuilds the body), move,
   publish, sprint, other. **Groups**: consecutive calls to the same tool in one answer share a `groupId` — one card,
-  one Confirm, one Undo.
+  one Confirm, one Undo; each item inside the group keeps its OWN in-place fields, and Confirm sends every edited
+  item alone with its edits, then the rest of the group in one call (QA-3; `test/render.ask-actions.test.ts`).
 - **Assignments** (`assign_ticket`): the card's `fields` are `{ id, login, on }` and `login` is the one editable field
   (the agent tool's args are unchanged); the preview's `item` is the ticket's RefView, whose `extra.assignees` is who
   was on it when the card was made — the card draws the change from those two. A replacement is two writes (remove,

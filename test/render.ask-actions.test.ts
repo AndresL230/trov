@@ -802,3 +802,51 @@ describe("assignment cards — the item, the people, the change", () => {
     for (const sel of [".ask-act .cnpy-dd::after", "button.ask-asg-item::after", ".ask-undo::after", ".ask-line-link::after"]) expect(css).toContain(`[data-phone="1"] ${sel}`);
   });
 });
+
+describe("QA-3: each card of a grouped draft edits on its own", () => {
+  const draft = (id: number, title: string): AskEventMap["action"] => ({
+    id, groupId: "g-new", tool: "create_ticket", kind: "ticket", state: "proposed", note: null,
+    preview: { title, lines: [{ label: "Title", value: title }, { label: "Category", value: "bug" }, { label: "Priority", value: "normal" }, { label: "Assignee", value: "Unassigned" }, { label: "Sprint", value: "Backlog" }], item: null },
+    fields: { title, body: "", category: "bug", priority: "normal", assignee: null, sprint_id: null }, editable: ["title", "category", "priority", "assignee"],
+  });
+  function grouped(): AppState {
+    const s = app(null);
+    let c: AskConvo = { uid: "c1", threadId: 5, thread: null, draft: "", title: "", status: "ok", busy: false,
+      messages: [{ role: "user", key: "q1", id: 1, text: "Q", context: [], attachments: [], command: null }, { role: "assistant", key: "a1", turn: newTurn("smart") }] };
+    for (const d of [draft(71, "First draft"), draft(72, "Second draft")]) c = withLastTurn(c, (t) => foldAskEvent(t, { event: "action", data: d }, 0));
+    s.ask.page = c;
+    return s;
+  }
+  it("the group is one card (one Confirm) whose every item has its own in-place fields", () => {
+    const s = grouped();
+    const all = cards(s);
+    expect(all).toHaveLength(1);
+    const card = all[0];
+    expect(card).toContain("2 new tickets");
+    expect(card).toMatch(/data-act="askAcText" data-arg="71\|title"[^>]*>First draft</);
+    expect(card).toMatch(/data-act="askAcText" data-arg="72\|title"[^>]*>Second draft</);
+    expect(card).toMatch(/data-act="askAcField" data-arg="71\|priority\|/);
+    expect(card).toMatch(/data-act="askAcField" data-arg="72\|category\|/);
+    expect(card.match(/data-act="askAcConfirm"/g)).toHaveLength(1);
+  });
+  it("Confirm sends each edited card alone with ITS edits, then the rest of the group in one call", async () => {
+    const s = grouped();
+    const calls: [number, unknown][] = [];
+    const confirmAction = vi.fn(async (id: number, body?: unknown): Promise<AskActionAnswer> => {
+      calls.push([id, body]);
+      return { results: [result(id, "confirmed", `ticket:${id}`)] };
+    });
+    const { ctx } = ctxOf(s, { confirmAction });
+    actionsPart.act!(ctx, "askAcText", "72|title", null);
+    actionsPart.act!(ctx, "askAcField", "72|title", "Second, renamed");
+    const input = { tagName: "INPUT", getAttribute: (n: string) => (n === "data-ask-inline" ? "72" : null) } as unknown as HTMLElement;
+    expect(actionsPart.onKeyDown!(ctx, { key: "Enter", isComposing: false, metaKey: false, ctrlKey: false, target: input, preventDefault: vi.fn() } as unknown as KeyboardEvent)).toBe(true);
+    expect(cards(s)[0]).toMatch(/data-arg="72\|title"[^>]*>Second, renamed</);
+    expect(cards(s)[0]).toMatch(/data-arg="71\|title"[^>]*>First draft</);
+    actionsPart.act!(ctx, "askAcConfirm", "71,72", null);
+    await flush();
+    expect(calls[0]).toEqual([72, { args: { title: "Second, renamed" } }]);
+    expect(calls[1][0]).toBe(71);
+    expect(calls[1][1]).toBeUndefined();
+  });
+});
