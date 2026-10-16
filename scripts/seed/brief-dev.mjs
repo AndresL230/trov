@@ -2,8 +2,8 @@
 // localhost shows a real brief — read through the real path (src/tools/mywork.ts `storedBrief`), no
 // LOCAL_AI_PREVIEW needed (which, when set, still shows its own sample instead). Appended by scripts/seed-dev.mjs
 // AFTER the shared seed; never part of the test reset. Every item is a real row of fixtures/dev/*: ticket #3 in the
-// overdue sprint "Token rotation & audit log", the two handoffs Jose and Jack left for Andres, and his merged PRs
-// #162 and #158 — in the brief's fixed shape (the owner's ruling: Now and Recently one sentence each, Next at most 3),
+// overdue sprint "Token rotation & audit log", the handoff Jose left for Andres, and his merged PRs #162 and #158 —
+// in the brief's fixed shape (the owner's rulings: Now and Recently one sentence each, Next at most 3, one per kind),
 // in the order the server gives Next (overdue, then someone waiting, oldest first), with the titles the rows have (test/ai.brief.test.ts holds the two to each other). The words are written in the brief's style, as the model would; `model` and `prompt_version`
 // say what the pass would record. Stamped against the clock at seed time, so it reads "12 min ago".
 
@@ -24,9 +24,8 @@ export function briefDevStatements(now = new Date()) {
     },
     next: {
       items: [
-        { ref: "ticket:3", kind: "due", title: "Add a “lesson duration” field to the curriculum planner", why: "Its sprint, Token rotation & audit log, was due 2026-06-10.", cites: [ticket(3)] },
+        { ref: "ticket:3", kind: "due", title: "Add a “lesson duration” field to the curriculum planner", why: "Overdue: its sprint, Token rotation & audit log, was due Jun 10.", cites: [ticket(3)] },
         { ref: "handoff:16", kind: "handoff", title: "Resume tokens are wired on the backend, but the Next.js reader still drops the stream on reconnect.", why: "Jose left it for you, with the backend half already done.", cites: [handoff(16)] },
-        { ref: "handoff:17", kind: "handoff", title: "Quiz agent still fails validation on ~4% of calls. Parser is fixed; prompt and eval aren't.", why: "Jack left it for you; the prompt and the eval are what remain.", cites: [handoff(17)] },
       ],
     },
   };

@@ -825,12 +825,15 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   // ── My Work › Your brief (brief-dev's v1 kept as the older version) ──
   s.push(...briefDevStatements(new Date(c.t - 26 * 60 * MIN)).filter((x) => x.startsWith("INSERT")));
   const D = tk("D");
-  // The brief's fixed shape (the owner's ruling): Now and Recently ONE short sentence each, Next AT MOST 3 — in the
-  // server's order: the overdue ticket, the blocked one (its deploy is failing), then the first handoff waiting.
+  // The brief's fixed shape (the owner's rulings): Now and Recently ONE short sentence each; Next AT MOST 3 and one per
+  // kind — the failing build, the overdue ticket, ONE handoff. AI_NEXT_KINDS has no `overdue` kind yet (only
+  // failing / handoff / ticket / due, and `due` draws "Due soon"), so the overdue ticket is a plain `ticket` row whose
+  // why says it is overdue; switch the kind when the schema and the renderer gain one.
   const h16 = handoff(16);
+  const due3 = snap.sprints.find((x) => x.id === 3)?.target_date ?? "2026-06-10";
   const nextItems = [
-    { ref: "ticket:3", kind: "due", title: byNum(3)?.title ?? "Ticket #3", why: `Its sprint, Token rotation & audit log, was due ${snap.sprints.find((x) => x.id === 3)?.target_date ?? "2026-06-10"}.`, cites: [ticketCite(3)] },
     { ref: `ticket:${N.D}`, kind: "failing", title: D.title, why: "The Production backend deploy is failing at its build step.", cites: [ticketCite(N.D)] },
+    { ref: "ticket:3", kind: "ticket", title: byNum(3)?.title ?? "Ticket #3", why: `Overdue: its sprint, Token rotation & audit log, was due ${shortDay(due3)}.`, cites: [ticketCite(3)] },
     ...(h16 ? [{ ref: "handoff:16", kind: "handoff", title: clip(firstLine(h16.body), 140), why: "Jose left it for you, with the backend half done.", cites: [handoffCite(16)] }] : []),
   ].slice(0, 3);
   const brief = {
