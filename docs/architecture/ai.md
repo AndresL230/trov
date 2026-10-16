@@ -591,7 +591,10 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
 - **The admin's answers** (cookie routes, `src/ai/themes-accept.ts`; the handler's `role` and `dismissRole` are
   `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid`), Merge
   `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
-  Accept, Rename and a Merge into an active theme route `themes_accepted` → `theme_backfill:<repo>`.
+  Accept, Rename and a Merge into an active theme write the proposal's seed PRs into `pr_themes` for the active
+  theme (`seedPrThemes`: `source='ai'`, the proposal's model and prompt version; a PR that already has a theme — a
+  person's or another AI pick — is left alone), so the lane keeps counting them at once instead of dropping to 0
+  until the backfill runs (owner ruling Q-S3), and route `themes_accepted` → `theme_backfill:<repo>`.
 - **`pr.theme`** (Jev, `card:pr:<n>`, `pr-theme-1`): once the repo has an active theme, ONE `choice` request per merged PR
   — the active themes (described) plus `(none of these)`; the state is the PR's card (title, what, why, impact), each part through `excerptOf` (no code, no link targets,
   nothing shaped like a credential — what the Privacy Policy says TypeSafe AI is sent). A pick

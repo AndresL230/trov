@@ -160,6 +160,23 @@ export async function putAiPrThemes(ctx: TenantContext, repo: string, rows: read
   return res.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
 }
 
+/**
+ * An ACCEPTED proposal's seed PRs — the merged PRs its proposal cited — written as that theme's (`source = 'ai'`, the
+ * proposal's model and prompt version, no confidence), so the lane keeps counting them the moment it turns active
+ * (owner ruling Q-S3: never a misleading zero while the batch backfill has not run, or never runs without a key). A PR
+ * that already has a theme — a person's, or another AI pick — is left as it is (the backfill may reconsider an AI one).
+ * ONE batch; returns how many it wrote.
+ */
+export async function seedPrThemes(ctx: TenantContext, theme: Pick<ThemeRow, "repo" | "seed_prs" | "model" | "prompt_version">, themeId: number, at: string = nowIso()): Promise<number> {
+  const prs = seedPrsOf(theme);
+  if (!prs.length) return 0;
+  const res = await batch(ctx, prs.map((pr) => stmt(ctx,
+    `INSERT INTO pr_themes (org_id, repo, pr_number, theme_id, source, confidence, model, prompt_version, set_by, set_at)
+     VALUES (?, ?, ?, ?, 'ai', NULL, ?, ?, NULL, ?) ON CONFLICT(org_id, repo, pr_number) DO NOTHING`,
+    ctx.orgId, theme.repo, pr, themeId, theme.model, theme.prompt_version, at)));
+  return res.reduce((n, r) => n + (r.meta.changes ?? 0), 0);
+}
+
 /** A person's choice for a PR's theme (`themeId` null = "no theme"). It always wins over the model's. */
 export async function setPersonPrTheme(ctx: TenantContext, repo: string, pr: number, themeId: number | null, by: string, at: string = nowIso()): Promise<void> {
   await run(ctx,

@@ -7,12 +7,14 @@
 //   POST /ai/suggestions/:id/accept { value: { mergeInto } } Merge — folded into another live theme of the repo
 //   POST /ai/suggestions/:id/dismiss                         Remove — the theme is removed (an admin's, too)
 //
-// Accept, Rename and a Merge into an ACTIVE theme mark `theme_backfill:<repo>` (the router's `themes_accepted`),
-// so the batch backfill classifies the window's earlier PRs. Everything is written AS the admin who pressed it.
+// Accept, Rename and a Merge into an ACTIVE theme write the proposal's seed PRs into `pr_themes` for the active
+// theme (`seedPrThemes`: the lane keeps counting them — never a drop to 0, Q-S3) and mark `theme_backfill:<repo>`
+// (the router's `themes_accepted`), so the batch backfill classifies the window's earlier PRs. Everything is written
+// AS the admin who pressed it.
 import { AI_THEME_COLORS, AI_THEME_NAME_MAX } from "@shared/ai-core";
 import type { TenantContext } from "../data/context";
 import type { AiSuggestionRow } from "../data/ai";
-import { activateTheme, getTheme, mergeTheme, removeTheme, THEME_ITEM_TYPE, THEME_SUGGESTION_KIND } from "../data/themes";
+import { activateTheme, getTheme, mergeTheme, removeTheme, seedPrThemes, THEME_ITEM_TYPE, THEME_SUGGESTION_KIND } from "../data/themes";
 import { nowIso } from "../data/sql";
 import { routeAi } from "./router";
 import { AcceptRefused, type AcceptHandler } from "./accept";
@@ -60,7 +62,11 @@ export const themeAcceptHandler: AcceptHandler = {
       const into = await getTheme(ctx, v.mergeInto);
       if (!into || into.id === id || into.status === "removed" || into.repo.toLowerCase() !== theme.repo.toLowerCase()) throw new AcceptRefused("invalid");
       if (!(await mergeTheme(ctx, id, into.id, ctx.userId, at))) throw new AcceptRefused("not_open");
-      if (into.status === "active") await routeAi(ctx, { type: "themes_accepted" });
+      if (into.status === "active") {
+        // Its PRs join an active lane, which counts from pr_themes: they count there at once (Q-S3).
+        await seedPrThemes(ctx, theme, into.id, at);
+        await routeAi(ctx, { type: "themes_accepted" });
+      }
       return;
     }
     const rename = v.name === theme.name ? undefined : v.name;
@@ -72,6 +78,8 @@ export const themeAcceptHandler: AcceptHandler = {
       throw e;
     }
     if (!ok) throw new AcceptRefused("not_open");
+    // The lane keeps the PRs its proposal was drawn from (Q-S3): an active lane counts from pr_themes.
+    await seedPrThemes(ctx, theme, id, at);
     await routeAi(ctx, { type: "themes_accepted" });
   },
   async dismissed(ctx: TenantContext, s: AiSuggestionRow): Promise<void> {

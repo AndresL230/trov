@@ -265,6 +265,28 @@ describe("accept, rename, merge, remove — an ADMIN's, through the cookie sugge
     expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[0])}`, admin, {})).status).toBe(409);
   });
 
+  it("an accepted theme KEEPS COUNTING its seed PRs (Q-S3): written into pr_themes at once — never a drop to 0 before the backfill", async () => {
+    for (const n of [1, 2, 3, 7, 8, 9]) await addPr(n, 3);
+    const { ids, sugg } = await proposed();
+    await setPersonPrTheme(systemCtx(), REPO, 3, null, FIXTURE_ADMIN); // a person said PR 3 has no theme
+    const laneOf = async (id: number) => (await readRepoThemes(systemCtx(), REPO))!["8w"]!.lanes.find((l) => l.id === String(id));
+    const sum = (c: number[] | undefined) => (c ?? []).reduce((a, b) => a + b, 0);
+    expect(sum((await laneOf(ids[0]))?.counts)).toBe(3); // proposed: counted from its seed PRs
+    const admin = await cookieFor(FIXTURE_ADMIN);
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[0])}`, admin, {})).status).toBe(200);
+    const lane = await laneOf(ids[0]);
+    expect(lane?.status).toBe("active");
+    expect(sum(lane?.counts)).toBe(2); // PRs 1 and 2 — the person's "no theme" on PR 3 stands
+    expect([await prTheme(1), await prTheme(2), await prTheme(3)]).toEqual([
+      expect.objectContaining({ theme_id: ids[0], source: "ai", set_by: null }), expect.objectContaining({ theme_id: ids[0], source: "ai" }),
+      expect.objectContaining({ theme_id: null, source: "person" }),
+    ]);
+    // Merged into that ACTIVE theme, a proposal's PRs count there at once too.
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(sugg[2])}`, admin, { value: { mergeInto: ids[0] } })).status).toBe(200);
+    expect(sum((await laneOf(ids[0]))?.counts)).toBe(5);
+    expect((await readRepoThemes(systemCtx(), REPO))!["8w"]!.prCount).toBe(5);
+  });
+
   it("merge folds a proposed theme into another live one (its PRs join), and remove (dismiss) removes it — an admin's", async () => {
     const { ids, sugg } = await proposed();
     const admin = await cookieFor(FIXTURE_ADMIN);
