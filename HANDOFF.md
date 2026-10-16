@@ -20,7 +20,7 @@ another account your login reaches.
 
 1. `npm test` and `npm run typecheck` are green locally (typecheck is not part of `npm test`), and CI is
    green on the pull request.
-2. The pull request's lines are in the top entry of `web/src/releases.ts`, with an `ops` line for every
+2. The pull request's one patch line is in the top entry of `web/src/releases.ts`, with an `ops` line for every
    migration, secret, var or trigger change it carries. The merging PR cuts the version (that file's header).
 3. A new migration is **additive and safe beside the Worker already running** (a new table, a nullable
    column, a column with a default), and its header says how to undo it by hand. See section 3 for why this
@@ -170,7 +170,8 @@ Cloudflare cron weekdays are 1–7 or SUN–SAT, never 0. `REPO_CRON` in `src/re
 
 ## 8. Live state as of release 0.25 (2026-10-09)
 
-Facts from `wrangler.toml`, `web/src/releases.ts` (0.25 `ops`) and the checks in section 6. Re-check before
+Facts from `wrangler.toml`, `web/src/releases.ts` (0.25's `ops`, folded into the 0.25–0.29 entry by #190; the
+full pre-#190 notes are in git history) and the checks in section 6. Re-check before
 relying on any of them.
 
 - **Release:** 0.25 is served.

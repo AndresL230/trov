@@ -14,7 +14,8 @@ export const publicReleases = (releases: readonly Release[] = RELEASES): Release
 function release(r: Release): string {
   return [
     `## ${r.version}: ${r.title}`,
-    `Released ${r.date}. ${r.headline}`,
+    // A consolidated entry (#190) names the versions it folds in, so 0.1–0.3 are not simply missing.
+    `Released ${r.date}${r.covers?.length ? ` (versions ${r.covers[r.covers.length - 1]} to ${r.version})` : ""}. ${r.headline}`,
     r.highlights.map((h) => `- ${h}`).join("\n"),
     r.headsUp?.length ? `**You will notice:**\n\n${r.headsUp.map((h) => `- ${h}`).join("\n")}` : "",
   ].filter(Boolean).join("\n\n");

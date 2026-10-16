@@ -13,7 +13,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import {
   RELEASES, releasesIndex, releasePageView, releasesScreen, releaseLine, releaseDate, releaseSlug, releaseHash,
-  findRelease, prUrl, TROV_REPO_URL, type Release,
+  findRelease, releaseName, prUrl, TROV_REPO_URL, RELEASE_CAPS, type Release,
 } from "../web/src/releases";
 import * as releasesModule from "../web/src/releases";
 import { parseHash, hashForRoute } from "../web/src/hash";
@@ -42,28 +42,51 @@ describe("RELEASES — the data", () => {
     RELEASES.forEach((r, i) => { if (r.unreleased) expect(i).toBe(0); });
   });
 
-  it("has unique versions and slugs, real ISO dates, and 0.N versions counting down to 0.1", () => {
+  it("has unique versions and slugs, real ISO dates, and 0.N versions (with what each entry covers) counting down to 0.1", () => {
     expect(new Set(RELEASES.map((r) => r.version)).size).toBe(RELEASES.length);
     expect(new Set(RELEASES.map(releaseSlug)).size).toBe(RELEASES.length);
     for (const r of RELEASES) {
       expect(r.date, r.version).toMatch(ISO);
       expect(Number.isNaN(Date.parse(`${r.date}T00:00:00Z`)), r.version).toBe(false);
     }
-    const shipped = RELEASES.filter((r) => !r.unreleased).map((r) => r.version);
+    // Every version ever cut is either an entry's own or folded into one (`covers`, newest first),
+    // so 0.N … 0.1 runs without a gap or a repeat, and no old link is orphaned.
+    const shipped = RELEASES.filter((r) => !r.unreleased).flatMap((r) => [r.version, ...(r.covers ?? [])]);
     for (const v of shipped) expect(v).toMatch(/^0\.\d+$/);
     const minors = shipped.map((v) => Number(v.split(".")[1]));
     for (let i = 1; i < minors.length; i++) expect(minors[i]).toBe(minors[i - 1] - 1);
     expect(minors[minors.length - 1]).toBe(1);
+    expect(RELEASES.find((r) => r.unreleased)?.covers).toBeUndefined();
   });
 
-  it("every release has a title, a headline, 3–6 highlights and at least one patch line", () => {
+  it("every release has a title, a headline, highlights and at least one patch line, within RELEASE_CAPS", () => {
+    const C = RELEASE_CAPS;
     for (const r of RELEASES) {
-      expect(r.title.trim(), r.version).not.toBe("");
-      expect(r.headline.trim(), r.version).not.toBe("");
-      expect(r.highlights.length, r.version).toBeGreaterThanOrEqual(3);
-      expect(r.highlights.length, r.version).toBeLessThanOrEqual(6);
-      const lines = r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
-      expect(lines, r.version).toBeGreaterThan(0);
+      const v = r.version;
+      expect(r.title.trim(), v).not.toBe("");
+      expect(r.title.length, `${v} title`).toBeLessThanOrEqual(C.titleChars);
+      expect(r.headline.trim(), v).not.toBe("");
+      expect(r.headline.length, `${v} headline`).toBeLessThanOrEqual(C.headlineChars);
+      expect(r.highlights.length, `${v} highlights`).toBeGreaterThanOrEqual(C.highlights.min);
+      expect(r.highlights.length, `${v} highlights`).toBeLessThanOrEqual(C.highlights.max);
+      for (const h of r.highlights) expect(h.length, `${v} highlight: ${h.slice(0, 50)}`).toBeLessThanOrEqual(C.highlights.chars);
+      expect((r.headsUp ?? []).length, `${v} headsUp`).toBeLessThanOrEqual(C.headsUp.max);
+      for (const h of r.headsUp ?? []) expect(h.length, `${v} heads-up: ${h.slice(0, 50)}`).toBeLessThanOrEqual(C.headsUp.chars);
+      expect((r.ops ?? []).length, `${v} ops`).toBeLessThanOrEqual(C.ops.max);
+      for (const o of r.ops ?? []) expect(o.length, `${v} ops: ${o.slice(0, 50)}`).toBeLessThanOrEqual(C.ops.chars);
+      const lines = [...r.patches.added, ...r.patches.changed, ...r.patches.fixed, ...r.patches.removed];
+      expect(lines.length, v).toBeGreaterThan(0);
+      expect(lines.length, `${v}: ${lines.length} patch lines`).toBeLessThanOrEqual(C.patches.max);
+      for (const l of lines) expect(l.length, `${v} patch: ${l.slice(0, 50)}`).toBeLessThanOrEqual(C.patches.chars);
+    }
+  });
+
+  it("patch lines are product words, not an engineering log: no file paths, test files or function calls", () => {
+    const LOG = /\b(src|web\/src|shared|test|scripts|migrations)\/|\.test\.ts|\w\(\)/;
+    for (const r of RELEASES) {
+      for (const l of [...r.patches.added, ...r.patches.changed, ...r.patches.fixed, ...r.patches.removed]) {
+        expect(l, r.version).not.toMatch(LOG);
+      }
     }
   });
 
@@ -78,8 +101,20 @@ describe("RELEASES — the data", () => {
   it("names the migration an admin must run for 0.15 — in ops, not the users' heads-up", () => {
     const next = findRelease("0.15")!;
     expect(next.ops?.join(" ")).toMatch(/0035_library_and_sprint_dates/);
-    expect(next.ops?.join(" ")).not.toMatch(/0036/);
+    expect(next.headsUp?.join(" ")).not.toMatch(/0035/);
     expect(next.headsUp?.join(" ")).toMatch(/800 characters/);
+  });
+
+  it("keeps the deploy steps of the batches not yet deployed (Unreleased, 0.34): every migration, the App events, the plugin", () => {
+    const ops = (v: string) => findRelease(v)!.ops!.join(" ");
+    if (RELEASES[0].unreleased) {
+      for (const m of ["0070_repo_apps", "0071_repo_settings", "0072_repo_scans", "0073_commit_paths", "0074_releases", "0075_identities_person_nocase"]) {
+        expect(ops("unreleased")).toContain(m);
+      }
+      expect(ops("unreleased")).toMatch(/deployment, release, create and workflow_job/);
+    }
+    expect(ops("0.34")).toMatch(/0058_ai_dirty.*0067_digest_email/);
+    expect(ops("0.34")).toMatch(/plugin 0\.9\.0/);
   });
 
   it("release notes are for users: highlights, headlines and heads-ups carry no code, PRs, migrations or deploy steps", () => {
@@ -117,6 +152,28 @@ describe("releaseLine / releaseDate / slugs", () => {
     expect(releaseHash("0.14", "patches")).toBe("#releases/0.14/patches");
     expect(findRelease("UNRELEASED", withNext)?.unreleased).toBe(true);
     expect(findRelease("0.99")).toBeNull();
+    expect(releaseName({ version: "0.33" })).toBe("v0.33");
+    expect(releaseName({ version: "0.4", covers: ["0.3", "0.2", "0.1"] })).toBe("v0.1–0.4");
+    expect(releaseName({ version: "Unreleased", unreleased: true })).toBe("Unreleased");
+  });
+
+  it("an old version folded into a consolidated entry still resolves: its link opens that entry", () => {
+    const folded = RELEASES.flatMap((r) => (r.covers ?? []).map((v) => [v, r] as const));
+    expect(folded.length).toBeGreaterThan(0);
+    for (const [v, r] of folded) {
+      expect(findRelease(v), v).toBe(r);
+      expect(findRelease(v.toUpperCase()), v).toBe(r);
+    }
+    // `#releases/0.3` and `#releases/0.3/patches`: the route keeps the old slug, the page draws Foundations.
+    const r = findRelease("0.3")!;
+    expect(r.covers).toContain("0.3");
+    expect(parseHash("#releases/0.3")).toEqual({ screen: "releases", ticketId: null, sprintId: null, releaseVersion: "0.3", releasePage: "notes" });
+    const notes = releasePageView("0.3", "notes");
+    expect(notes).not.toContain("No release called");
+    expect(notes).toContain(`>${r.title}</h1>`);
+    expect(notes).toContain(`>${releaseName(r)}<`);
+    expect(releasePageView("0.3", "patches")).toContain('aria-label="Patch notes"');
+    expect(releasesScreen("0.3", "patches")).toBe(releasePageView(releaseSlug(r), "patches"));
   });
 });
 
@@ -161,11 +218,11 @@ describe("the index — a grid of release cards", () => {
 
 describe("one release — its notes page and its patches page", () => {
   it("the notes page: back link, header, Release notes picked, highlights, Heads-up, PRs, newer/older", () => {
-    const html = releasePageView("0.14", "notes");
-    const r = findRelease("0.14")!;
+    const html = releasePageView("0.30", "notes");
+    const r = findRelease("0.30")!;
     expect(html).toContain('href="#releases" class="cnpy-rel-back"');
     expect(html).toContain("All releases");
-    expect(html).toContain(">v0.14<");
+    expect(html).toContain(">v0.30<");
     expect(html).toContain(`>${r.title}</h1>`);
     // The switch sits on the back link's row in the PAGE header, right after the back link.
     const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow"'), html.indexOf('class="cnpy-reldoc-head-main"'));
@@ -180,9 +237,9 @@ describe("one release — its notes page and its patches page", () => {
     expect(html).not.toContain("/pull/");        // release notes carry no PR links
     expect(html).not.toContain("Upgrade notes");
     expect(html).not.toContain("cnpy-relpatch-group");       // no patch groups on the notes page
-    // Newer = 0.15, older = 0.13, each keeping the page kind.
-    expect(html).toContain('href="#releases/0.15"');
-    expect(html).toContain('href="#releases/0.13"');
+    // Newer = 0.32, older = 0.29, each keeping the page kind.
+    expect(html).toContain('href="#releases/0.32"');
+    expect(html).toContain('href="#releases/0.29"');
   });
 
   it("the patches page: Added / Changed / Fixed / Removed with counts; empty groups left out", () => {
@@ -209,7 +266,7 @@ describe("one release — its notes page and its patches page", () => {
     }
     // Notes: the Heads-up lives in the PAGE HEADER (beside the title block, before the switch),
     // never inside the card; the card is the At a glance strip, then the highlights.
-    const notes = releasePageView("0.14", "notes");
+    const notes = releasePageView("0.34", "notes");
     expect(notes).not.toMatch(/cnpy-reldoc-split|cnpy-reldoc-side/);
     const at = (h: string, k: string) => h.indexOf(k);
     const card = at(notes, 'class="cnpy-surface');
@@ -219,31 +276,33 @@ describe("one release — its notes page and its patches page", () => {
     expect(notes.slice(card)).not.toContain("cnpy-relheads");
     expect(at(notes, 'class="cnpy-relglance"')).toBeLessThan(at(notes, "cnpy-reldoc-hl"));
     // The patch notes page puts its Upgrade notes in the same header spot — never in the card.
-    const p14 = releasePageView("0.14", "patches");
+    const p14 = releasePageView("0.34", "patches");
     expect(p14).toContain("cnpy-reldoc-head cnpy-rise has-heads");
     expect(p14).toContain('class="cnpy-relheads" aria-label="Upgrade notes"');
     expect(p14).not.toContain('aria-label="Heads-up"');
     expect(p14.slice(p14.indexOf('class="cnpy-surface'))).not.toContain("cnpy-relheads");
     // One heads-up item is one line; several are a compact list; none renders nothing.
-    expect(notes).toContain('class="cnpy-relheads-one"');
-    expect(releasePageView("0.15", "notes")).toContain('class="cnpy-relheads-list"');
+    expect(releasePageView("0.2", "notes", hostile)).toContain('class="cnpy-relheads-one"');
+    expect(notes).toContain('class="cnpy-relheads-list"');
     expect(releasePageView("0.13", "notes")).not.toContain("cnpy-relheads");
     expect(releasePageView("0.13", "notes")).not.toContain("has-heads");
-    // Five or more highlights may flow into two columns (a very wide card only).
-    expect(notes).toContain("cnpy-reldoc-hl is-long");
-    expect(releasePageView("0.2", "notes")).not.toContain("is-long");
+    // Five or more highlights may flow into two columns (a very wide card only) — the data stays
+    // under RELEASE_CAPS, so only a fixture has that many.
+    const five: Release[] = [{ ...hostile[1], highlights: ["a", "b", "c", "d", "e"] }];
+    expect(releasePageView("0.1", "notes", five)).toContain("cnpy-reldoc-hl is-long");
+    expect(notes).not.toContain("cnpy-reldoc-hl is-long");
     // At a glance: a full-width strip ABOVE the columns — version, date, one large figure per
     // non-empty group (each opening that group on the patch notes), the all-lines link.
     expect(notes).toContain('class="cnpy-relglance" aria-label="At a glance"');
     expect(notes.indexOf("cnpy-relglance")).toBeLessThan(notes.indexOf("cnpy-reldoc-hl"));
-    const r14 = findRelease("0.14")!;
+    const r14 = findRelease("0.34")!;
     for (const k of ["added", "changed", "fixed", "removed"] as const) {
       expect(notes).toMatch(new RegExp(`data-act="releaseGroup" data-arg="${k}"[\\s\\S]*?<span class="cnpy-relstat-n">${r14.patches[k].length}</span>`));
-      expect(releasePageView("0.14", "patches")).toContain(`id="relgroup-${k}"`);
+      expect(releasePageView("0.34", "patches")).toContain(`id="relgroup-${k}"`);
     }
-    expect(releasePageView("0.12", "notes")).not.toContain('data-arg="fixed"'); // 0.12 has no fixes
-    expect(notes).toContain('href="#releases/0.14/patches"');
-    const patches = releasePageView("0.14", "patches");
+    expect(releasePageView("0.33", "notes")).not.toContain('data-arg="fixed"'); // 0.33 has no fixes
+    expect(notes).toContain('href="#releases/0.34/patches"');
+    const patches = releasePageView("0.34", "patches");
     // Patches: the groups STACKED in order (no side-by-side columns), a long group marked for
     // two balanced columns at most, PRs as chips; the card STARTS with the groups.
     const order = ["Added", "Changed", "Fixed", "Removed"].map((g) => patches.indexOf(`<span>${g}</span>`));
@@ -374,6 +433,7 @@ describe("the release record loads lazily (release-latest.ts, releases-lazy.ts)"
     expect(releasesView(null, "notes")).toBe(releasesScreen(null, "notes"));
     expect(releasesView("0.14", "notes")).toBe(releasesScreen("0.14", "notes"));
     expect(releaseCrumb("0.99", "notes")).toBe("0.99"); // not a release: the slug as typed
+    expect(releaseCrumb("0.3", "patches")).toBe(`${releaseName(findRelease("0.3")!)} · Patch notes`); // folded: the entry's name
   });
 });
 
@@ -394,7 +454,7 @@ describe("the What's new screen in the app", () => {
   });
 
   it("a release page: the title is a back button, the crumb names the release, the entry stays lit", () => {
-    const html = app("0.14", "patches");
+    const html = app("0.33", "patches");
     // The switch is in the PAGE header's back-link row — never in the app's top bar.
     const top = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
     expect(top).not.toContain('data-seg="release-page"');
@@ -404,7 +464,8 @@ describe("the What's new screen in the app", () => {
     expect((html.match(/data-seg="release-page"/g) ?? []).length).toBe(1);
     expect(app("0.99")).not.toContain('data-seg="release-page"'); // not-found: no switch
     expect(html).toContain('data-act="goReleases"');
-    expect(html).toContain("v0.14 · Patch notes");
+    expect(html).toContain("v0.33 · Patch notes");
+    expect(app("0.3")).toContain(`${releaseName(findRelease("0.3")!)}<`); // an old link's crumb names the entry
     expect(html).toContain('class="cnpy-navrow n-releases is-active"');
     expect(html).toContain(">Added<");
   });
