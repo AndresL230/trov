@@ -24,7 +24,7 @@ vi.mock("../web/src/api", async (importOriginal) => {
 });
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
 
-import { createAiController } from "../web/src/ai-actions";
+import { AI_OFF_REFUSAL, createAiController } from "../web/src/ai-actions";
 import { OrgApiError } from "../web/src/api";
 import { AI_EXIT_MS, aiSuggestionKey } from "../web/src/ai-ui";
 import { initialState, type AppState } from "../web/src/render";
@@ -127,6 +127,13 @@ describe("a Roadmap card leaves by the AI kit's one exit", () => {
     calls.dismiss[0](new OrgApiError(409, "not_open", null, null));
     await flush();
     expect(n.log.flashes).toEqual(["Someone already answered that suggestion."]);
+    // A 403 `off` (the AI read rule: the switch off, or no key) says so — never "Couldn't do that".
+    const o = harness();
+    o.ctl.act("aiAccept", String(A.id), null);
+    calls.accept[2](new OrgApiError(403, "off", null, null));
+    await flush();
+    expect(o.log.flashes).toEqual([AI_OFF_REFUSAL]);
+    expect(AI_OFF_REFUSAL).toBe("Trov's AI is off for this organization, so nothing was changed. An admin can turn it on in Org settings › AI.");
   });
 
   it("reduced motion: gone at once (the exit's class is display:none there), and the re-read goes at once", async () => {

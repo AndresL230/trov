@@ -50,9 +50,15 @@ export function parseFeedbackArg(arg: string | null): AiFeedbackBody | null {
 
 /** What a refused Accept / Dismiss says: a 400's own sentence as the server wrote it (a theme name that is taken, a
  *  Roadmap writer's refusal — Q20, Q21/Q40), else what is known, else the generic line. */
+/** What a refused Accept / Dismiss says when Trov's AI is off here (403 `off`). */
+export const AI_OFF_REFUSAL = "Trov's AI is off for this organization, so nothing was changed. An admin can turn it on in Org settings › AI.";
+
 export function refusalText(e: unknown): string {
   if (e instanceof OrgApiError && e.status === 400 && e.detail) return e.detail;
   if (e instanceof ApiError && e.message === "not_open") return "Someone already answered that suggestion.";
+  // The AI read rule's off (the org's switch off, or no key on the deployment — one code, 403 `off`): nothing changed,
+  // and the suggestion is gone on the next read.
+  if (e instanceof ApiError && e.message === "off") return AI_OFF_REFUSAL;
   return "Couldn't do that. Try again.";
 }
 

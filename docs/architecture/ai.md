@@ -310,14 +310,16 @@ Off means the field is MISSING on every screen — never an `"off"` state (`shar
 ONE rule for every COMPUTED AI surface — the brief, the repo state, the themes, the Roadmap's notes, drift and
 suggestions, the ticket / Unplaced / Review cards — on the screens AND over MCP:
 
-- **No Anthropic key reads EXACTLY like the switch off**: every one of those fields is ABSENT (`not_connected` in the
+- **No Anthropic key reads EXACTLY like the switch off** (in the e-mails too: the weekly's highlights and the Review
+  line's risk clause; and in Ask's dev replay): every one of those fields is ABSENT (`not_connected` in the
   spec's words: no field, never an "off" state). With no key nothing is read at all (`aiKeySet(ctx)`,
   `src/data/context.ts` — the one bit of the key a context hands out, so MCP's reads keep importing nothing from
   `src/ai/`); else ONE statement (`planAndAiRuns`: the plan, the switch, the month's runs). The reads that already
   join `orgs.ai_automation` in their own statement (`openSuggestions`, `org_insights`' `latest`,
   `roadmapSuggestions`) check the bit first and keep their join.
 - **Off refuses every decision**: Accept and Dismiss answer 403 `off` (after `not_found`, before anything else) —
-  theme and Roadmap decisions included: a suggestion nobody is shown is decided by nobody.
+  theme and Roadmap decisions included: a suggestion nobody is shown is decided by nobody. The AI kit says so
+  (`AI_OFF_REFUSAL`, `web/src/ai-actions.ts`); an agent reads `shared/error-hints.ts`' `off` line.
 - **At the cap every surface sends `capped` with its LAST version** (`resumesOn` the 1st of next month, `upgrade` on
   Free): the brief and the state as before, the themes (both ranges — "Planning" sent `ready` before), and the
   Roadmap's note and drift (`AiRoadmapLine.state?: "capped"`, present only then; `web/src/roadmap-ai.ts` adds the
