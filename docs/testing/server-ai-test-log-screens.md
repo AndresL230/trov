@@ -85,3 +85,166 @@ Screenshots: `docs/testing/server-ai-shots/screens/<case>.png`.
 | FI-3 | Feed | feed-importance-ai-off | marks STILL drawn | matrix FI-3 (Q32) | drawn | pass (Q32 open) | FD-14.png | |
 | FI-4 | Trov entry | 701020 set notable | the mark on the Trov card too | matrix FI-4 | "· Notable" with its tooltip on the Trov card | pass | FI-4.png | |
 | FI-6 | MCP `get_feed` | bearer | same `importance` field | matrix FI-6 | breaking / notable / routine as on `/feed` | pass | MCP body | |
+| TH-1 | Repo › Planning › Where the work went | themes-active-and-proposed · admin | header "Themes and caption written by Trov from N pull requests, <rel>"; the caption; 5 lanes (4 active + test-Emails proposed); first lane picked, others .55; "Band height is merged pull requests per week."; chip "Suggested: test-Emails, because…" Accept / Rename / Remove; Edit themes | matrix TH-1 | exactly that ("…from 10 pull requests, 1h ago"); lanes `aria-pressed` true + false ×4 at opacity .55 | pass | TH-1.png | |
+| TH-2 | same | member | no Edit themes; "Waiting for an admin to accept themes", no buttons | matrix TH-2 | that; the chip has only "because…" | pass | TH-2.png | |
+| TH-3 | Edit themes | admin | focuses `#repo-themes-proposed` | matrix TH-3 | `activeElement.id = repo-themes-proposed` | pass | DOM | |
+| TH-4 | Accept 5401 | admin | 200; "Accepted"; the dashboard re-reads; test-Emails active, chip gone; `status='active'`, `decided_by='test-admin'`; `ai_dirty theme_backfill` | matrix TH-4 | all of it; the chip leaves by the kit's exit (`cnpy-ai-leave` at +80 ms). The lane then reads "test-Emails: 0 merged pull requests" (1 while proposed), the byline "from 9 pull requests" — Q-S3 | pass (Q-S3) | MO-26-theme-leaving.png, TH-4.png; DB | |
+| TH-5 | Rename 5401 → "test-Mail" (Enter) | admin | 200; lane test-Mail, active | matrix TH-5 | name test-Mail, active, decided_by test-admin; lane drawn | pass | TH-5.png | |
+| TH-6 | Rename with bad input | admin · "", 45 chars, "(x)", "test-Hosting", `<img src=x onerror=alert(1)>` | "": nothing sent; 41+ / "(x)" / taken: 400 → "Couldn't do that. Try again." (Q20) | matrix TH-6 | "": nothing sent; the field is `maxlength=40` now (Q20's 60 ≠ 40 is gone), so 45 chars types as 40 and is accepted; "(x)" and "test-Hosting": 400 `invalid` → "Couldn't do that. Try again.", field kept; the markup name is accepted and drawn as text (0 `<img>`, aria-label literal) | pass (Q20: words stay generic) | TH-6.png, TH-6-markup-name.png | |
+| TH-7 | Remove 5401 | admin | 200; "Removed"; theme `removed` | matrix TH-7 | that; lane gone | pass | DB, DOM | |
+| TH-8 | `POST …/5401/dismiss` | member | 403 `forbidden` | matrix TH-8 | 403 | pass | API | |
+| TH-9 | accept `{value:{mergeInto:<test-Hosting>}}` | admin · API | 200; proposed → removed, `merged_into`, seeds unioned | matrix TH-9 | 200; theme 27 removed, `merged_into 23`; test-Hosting `seed_prs [] → [100,104,108]` | pass | DB | |
+| TH-10 | Planning | themes-proposed-only · org-pro · admin | one proposed lane + chip; no caption | matrix TH-10 | that; byline "Themes written by Trov from 0 pull requests" (Q-S4) | pass (Q-S4) | TH-10.png | |
+| TH-11 | Planning | themes-at-8 · org-free | 8 lanes, no proposal | matrix TH-11 | lanes A–H, no chip | pass | TH-11.png | |
+| TH-12 | Planning | themes-malformed · org-pro-gifted | bad-seeds lane empty; removed theme not drawn; its caption hidden | matrix TH-12 | "test-Bad seeds: 0 …, proposed" + "test-Live"; no removed lane; no caption | pass | TH-12.png | |
+| TH-13 | Planning | themes-ai-off | no section | matrix TH-13 | none | pass | TH-13.png | |
+| TH-15 | range → Quarter | admin | 13 weeks; no caption | matrix TH-15 | 13 columns; "Themes written by Trov from 16 pull requests"; only the segmented slide animates | pass | TH-15.png | |
+| TH-16 | Wrong? on 8 weeks, reload | member | hidden on the next read; Quarter still shows; leaves by the kit's exit (ruling) | matrix TH-16 | **before:** the card swapped AT ONCE to "You marked this range wrong…" (0 animations). **After:** caption, byline, proposals, chart and detail collapse inside the card (`cnpy-ai-leave` ×2 at +80 ms), heading + switch kept, then the sentence; reload: hidden; Quarter draws; reduced motion: at once | fail → fixed | MO-26-themes-wrong-leaving.png | 994dd1dd (`test/render.ai-motion.test.ts` › Where the work went…) |
+| TH-17 | P:proposed · admin · Accept a fixture chip | | 404 → "Couldn't do that. Try again." (Q5) | matrix TH-17 | that toast | pass (Q5 open) | P-proposed-themes.png | |
+| TH-18 | P:ready / empty / capped / proposed | admin | the four states; empty "Themes appear once this repo has 15 merged pull requests."; capped "…themes resume <day>." + Upgrade | matrix TH-18 | ready: 6 lanes + caption; empty: that sentence; capped: "…themes resume Nov 1. Upgrade to Pro"; proposed: 6 chips | pass | P-*-themes.png | |
+| TH-19 | Accept on a stale page | admin (5401 decided meanwhile) | 409 → "Someone already answered that suggestion." | matrix TH-19 | that toast | pass | DOM | |
+| TH-20 | MCP `get_repo_dashboard {tab:"planning"}` | bearer | carries `themes` | matrix TH-20 | `themes.8w` with lanes | pass | MCP | |
+| TH-21 | lane buttons | member | `aria-pressed`, aria-label "<name>: N merged pull request(s)[, proposed]"; ≤ 8 PR cites | matrix TH-21 | that; Billing lists 3 cites; the pick re-enters nothing | pass | DOM | |
+| TC-1 | ticket chips | ticket-with-suggestions · member · `#tickets/2` | "Suggested: bug category, because…" / "…high priority…" under Properties after OPENED; "possible duplicate of #1 …" above Linked work, `href="#tickets/1"` | matrix TC-1 | **first run:** "Suggested: null category" / "null priority" — the SEED stored `value_json` as bare `bug`, not JSON. After the seed fix: exactly as expected | fail → fixed (seed) | TC-1.png | 65d6b8db (`test/seed-server-ai-e2e.test.ts`) |
+| TC-2 | because… | member | `aria-expanded` toggles; the reason | matrix TC-2 | false → true; "because both mention “login”, “blank” and “safari” #1" | pass | TC-2.png | |
+| TC-3 | Accept 5101 | member | 200; "Accepted"; category bug; no `ticket_events` row; chip gone | matrix TC-3 | (after the seed fix) that; events 1 → 1; the chip leaves by the exit | pass | MO-34-chip-leaving.png | |
+| TC-4 | Accept 5103 | member | `ticket_links` `#1` (url `<origin>/test-ent/#tickets/1`, meta `TROV · TICKET`) by test-member; both stay open | matrix TC-4 | exactly that; #1 in_progress, #2 submitted | pass | TC-4.png; DB | |
+| TC-5 | Accept 5103 again | member | 200 no-op | matrix TC-5 | 200; one link | pass | API, DB | |
+| TC-6 | Dismiss 5102 | member | "Removed"; chip gone; ticket unchanged | matrix TC-6 | that | pass | DB | |
+| TC-7 | ticket-suggestion-decided | member | no chips | matrix TC-7 | none | pass | DOM | |
+| TC-8 | ticket-done-with-suggestion | member | open chip on a done ticket (Q35) | matrix TC-8 | "Suggested: request category" on done #5 | pass (Q35 open) | TC-8.png | |
+| TC-9 | Accept 5115 (#99) | member · API | Q36: 500 today | matrix TC-9 | **409 `not_available`** (no 500) | pass (Q36 changed) | API | |
+| TC-10 | org-ai-off | member | no `ai`, no chips | matrix TC-10 | none; `ai` absent | pass | DOM, API | |
+| TC-11 | org-free | member | chips drawn | matrix TC-11 | the three chips | pass | DOM | |
+| TC-12 | accept 5114 `{value:"nope"}` | member · API | Q36: 500 today | matrix TC-12 | **400 `invalid`** (no 500) | pass (Q36 changed) | API | |
+| TC-14 | P:ready · `#tickets/3` | member | 901 bug, 902 high, 903 duplicate of #2; Accept → "Couldn't do that." | matrix TC-14 | exactly that | pass | P-ready-ticket3.png | |
+| TC-15 | P:ready · `#tickets/1`, `#tickets/5` | member | no duplicate on #1; nothing on #5 | matrix TC-15 | that | pass | DOM | |
+| UP-1 | Unplaced | unplaced-with-suggestion | row "· [mark] reference, next to “test-Deploy checklist”" (no button); chip above "File it as" | matrix UP-1 | that; the mark's words were cut off on narrow rows → fixed under EV-UP-chip-P | pass | UP-1.png, UP-1-detail.png | |
+| UP-2 | Unplaced | free-form item | no mark, no chip | matrix UP-2 | none | pass | DOM | |
+| UP-3 | Accept 5116 | member | filed as a staged doc proposal in `reference` by test-member through the gate; nothing promoted; the queue re-reads | matrix UP-3 | `test-runbook-netlify v1 staged, created_by test-member, change_kind new`; test-deploy-checklist still v1; item resolved `assigned → doc:test-runbook-netlify@1`; queue 2 → 1 | pass | DB | |
+| UP-4 | Accept again | member | 200 | matrix UP-4 | 200 | pass | API | |
+| RV-1 | Review list | review-with-risk | "· [mark] Changes a decision" on the proposal; "· Contradicts a doc" on the draft ADR; no buttons | matrix RV-1 | that | pass | RV-1.png | |
+| RV-2 | Review detail | same | "Trov: Changes a decision, because…" + Dismiss only; Promote / Reject unchanged | matrix RV-2 | that, on both; 0 Accept | pass | RV-8.png | |
+| RV-3 | accept 5118 | member · API | 409 `not_available` | matrix RV-3 | 409 | pass | API | |
+| RV-4 | Dismiss 5117 | member | 200; only the line changes | matrix RV-4 | "Removed"; line + list mark leave by the exit; 4 rows before and after | pass | DOM | |
+| RV-5 | `GET /adrs?status=ratified` | adr-ratified-with-risk | 5119 still attached (Q37) | matrix RV-5 | attached | pass (Q37 open) | API | |
+| RV-7 | Review | doc-drift-proposal | test-webhook-retries v2 by **trov**, low confidence, "Trov: …"; Promote / Reject | matrix RV-7 | "Low confidence · Trov: the retry queue table exists now. From feed entries…", @trov | pass | RV-7.png | |
+| RV-8 | Review detail | ask-flags-review | "Flagged in Ask": reasons + counts; never question / answer / asker | matrix RV-8; handoff #12 § 2.14 | **before:** NO line — the reads carry `askFlags`, the SPA dropped them. **After:** "Flagged in Ask: A source is wrong (2) · It is out of date (1)" on the staged doc, "…A source is wrong (1)" on the draft ADR | fail → fixed | RV-8.png | 376ffb1e (`test/render.review.test.ts` › Flagged in Ask) |
+| RV-OWNER-1 | Review list cards | the owner's report + layout (coordinator, 2026-10-15) · desktop / 360 · light / dark | footer ALWAYS one line: author avatar only (handle in tooltip + accessible name, still opens the person), kind, where (section path in sentence case or ADR number — the part that truncates, full text on hover), time; the AI risk a mark top-right of the header (Low confidence first, the risk under it); the title wraps left of the marks; same meta height with or without a risk; the risk keeps the kit's exit | the owner | **before** (owner's screenshot, RV-1.png, EV-RV-*): "Proposal · TECHNICAL / ARCHITECTURE · TR @trov · 12h ago · Changes a decision" wrapping to 1–2 lines, the risk a dotted word in the byline, the path UPPERCASE. **After (code + render tests):** the card is a surface with a hit area (`hitArea("reviewSelect")`) so the avatar can be its own `openPerson` button (never a button in a button); `.cnpy-rv-meta` is one nowrap line of fixed height with slots author · kind · where · time, only "where" ellipsizes (`data-mtip` = full path); the path is sentence case (also in the detail header); the risk is `aiStateMark` (marks.ts) in `.cnpy-rv-marks` beside the title, stacked under Low confidence, still leaving by `aiLeaving` | fail → fixed in code; **browser retest NOT run** (the owner stopped all test runs, RULES § 9) | RV-1.png (before) | this commit (`test/render.review.test.ts` › Review cards: one meta row…; snapshot `render.ai-cards` Review updated on purpose) |
+| RV-9 | `GET /proposals`, `/adrs?status=draft` | same | `askFlags[{ref, reason, count, lastAt}]` | matrix RV-9 | doc: out_of_date 1, source_wrong 2; `decision:701002` source_wrong 1 | pass | API | |
+| RM-1 | Roadmap | sprint-active-forecast · member | "At this pace, done <date>, N days late/early", arithmetic tooltip, NO AI mark | matrix RM-1 | "At this pace, done Nov 6, 18 days late", tooltip "Arithmetic, not a prediction…", no mark | pass | RM-1.png | |
+| RM-2 | Roadmap | same | no forecast on upcoming / done | matrix RM-2 | one forecast only | pass | DOM | |
+| RM-3 | sprint note | sprint-note | note + "Written by Trov, 5h ago" + cites + Wrong? on the ACTIVE sprint only | matrix RM-3 | that; `#1 #2 #5` | pass | RM-1.png | |
+| RM-4 | drift | plan-drift | the line + "test-Search 48% (in no sprint) · test-Hosting 32% · test-Auth 20% (in no sprint)" + "…from the last 14 days, 4h ago" | matrix RM-4 | exactly that | pass | RM-1.png | |
+| RM-5 | cards | roadmap-suggestions · admin | "Suggested: a new plan narrative, because…" + the markdown | matrix RM-5 | that | pass | RM-5.png | |
+| RM-6 | cards | member | none | matrix RM-6 | none | pass | DOM | |
+| RM-7 | Accept 5501 | admin | `write_plan` as test-admin; "Accepted"; the narrative reloads | matrix RM-7 | plan v2 by test-admin; "Accepted"; the card's exit; the narrative on screen | pass | RM-7.png | |
+| RM-8 | cards | org-pro · admin | 5502 "Suggested: 2 sprints from 4 backlog tickets" with names, goals, #7 #8 #9 #12; 5503 skipped | matrix RM-8 | **before:** NO card — 5503's `sprints:"not a list"` threw in `roadmapLabel` and the read's catch dropped every suggestion (server log "suggestions read failed TypeError"). **After:** the 5502 card as expected; 5503 not drawn | fail → fixed | RM-8.png | a1ce308d (`test/ai.roadmap.test.ts`) |
+| RM-9 | Accept 5502 | org-pro · admin | two UPCOMING sprints, no dates, by test-admin; #7 #8 #9 #12 moved | matrix RM-9 | "test-Draft: Exports" / "…Hardening", upcoming, `start_date` null, `target_date` "", by test-admin; the four tickets in them | pass | RM-9.png; DB | |
+| RM-10 | drift | org-pro (15 days old) | none | matrix RM-10 | none | pass | DOM | |
+| RM-11 | note | sprint-note-malformed | none | matrix RM-11 | none | pass | DOM | |
+| RM-12 | Roadmap | roadmap-ai-off · admin | no notes / drift / cards; forecast shows | matrix RM-12 | that | pass | RM-12.png | |
+| RM-13 | Wrong? on the note, reload | member | hidden for test-member | matrix RM-13 | the exit; reload: hidden; `ai_feedback sprint_note 100101@…` | pass | MO-38-note-leaving.png | |
+| RM-14 | MCP `get_roadmap` / `get_sprint` / `list_sprints` | bearer | forecast, notes, drift; never suggestions; a web-hidden note still shows | matrix RM-14 | all of it | pass | MCP | |
+| RM-15 | `#sprints/<id>` | member | Q39 | matrix RM-15 | no note, no forecast there | pass (Q39 open) | RM-15.png | |
+| RM-16 | accept 5503 | admin · API | 400 `invalid`, "that sprint draft is not one Trov can create"; reopened | matrix RM-16 | exactly that; still open | pass (Q40 open) | API, DB | |
+| RM-17 | P:ready · admin | | notes, drift "The last two weeks went mostly to Billing and plans…", 9101 / 9102 (Accept → 404) | matrix RM-17 | that; Accept → "Couldn't do that. Try again." | pass | P-ready-roadmap.png | |
+| SG-1 | `/ai/suggestions/abc`, `/0` | member | 404 | matrix SG-1 | 404 ×2 | pass | API | |
+| SG-2 | accept 5001 | member | 409 `not_available` | matrix SG-2 | 409 | pass | API | |
+| SG-3 | dismiss 5001 | member | 200, dismissed by test-member, `decided_at` | matrix SG-3 | that | pass | DB | |
+| SG-4 | accept / dismiss 5002 | member | 409 `not_open` ×2 | matrix SG-4 | 409 ×2 | pass | API | |
+| SG-5 | dismiss 5001 twice in parallel | member | one 200, one 409 | matrix SG-5 | 200 + 409 | pass | API | |
+| SG-6 | accept 5401 with `"x"` / `[]` | admin (5401 is admin-only; a member gets 403 first — SG-7) | 400 `invalid` | matrix SG-6 | 400 ×2 (and `{value:{name:""}}`); still open | pass | API | |
+| SG-7 | accept 5401 | member | 403 | matrix SG-7 | 403 | pass | API | |
+| SG-x | accept 5003 (other org) | member | 404 | matrix § 3 | 404 | pass | API | |
+| WR-1 | feedback without `model` / `promptVersion` | member | 400 (Q15) | matrix WR-1 | 400 with both issues | pass (Q15 open) | API | |
+| WR-2 | bad itemType / 201-char ref / 61-char kind | member | 400 each | matrix WR-2 | 400 ×3 | pass | API | |
+| WR-3 | a valid body twice | member | 200 ×2; ONE row | matrix WR-3 | that | pass | DB | |
+| WR-4 | Wrong? offline | member · Feed | it comes back + "Couldn't send that. It is back on screen; try again." | matrix WR-4 | that | pass | WR-4.png | |
+| WR-5 | Wrong? | member | hidden at once + "Hidden for you. Thanks: Trov is told it was wrong." | matrix WR-5 | that, on the brief, State, a Trov entry, themes | pass | toasts | |
+| BR-15 | brief | P:ready | the fixture brief | matrix BR-15 | Now / Recently / Next = the fixture's (= `mywork-brief-ready-*.png`) | pass | P-ready-brief.png | |
+| BR-16 | brief | P:empty | the empty sentence | matrix BR-16 | that | pass | P-empty-brief.png | |
+| BR-17 | brief | P:capped | capped line | matrix BR-17 | "…resumes Nov 1. Upgrade to Pro" | pass | P-capped-brief.png | |
+| BR-18 | brief | P:ready · org-ai-off | fixture still shows (Q13) | matrix BR-18 | it shows, every mode | pass (Q13 open) | P-*-brief-ai-off.png | |
+| ST-14 | State | P:ready / empty / capped | fixtures replace the real one | matrix ST-14 | ready "Release 0.30 is live…"; empty "Written by Trov" + the sentence (= the design shot); capped "…from Oct 6 and resumes Nov 1. Upgrade to Pro" | pass | P-*-state.png | |
+| ST-19 | State | P:ready over sapling-live | fixture State; RepoFacts blocks unchanged | matrix ST-19 | blocks `attention, connect, envCards, week, links` unchanged | pass | P-ready-state-sapling.png | |
+| FD-16 | Feed | P:ready | 990001 / 990002 merged; not with another author or a tag | matrix FD-16 | merged; `?author=test-owner` / `?tags=auth` carry no 99000x | pass | P-ready-feed.png | |
+
+### § 6 environment (pairwise: each surface's main states at desktop dark, 360 light, 360 dark) and keyboard
+
+| id | surface | state | expected | actual | result | evidence | fix |
+|---|---|---|---|---|---|---|---|
+| EV-BR-{ready,capped,one}-{D,P,PD} | brief | BR-1 / BR-5 / BR-3 | no page h-scroll, nothing clipped, readable, no console error | 9 clean (full-width tile under 700 px of container) | pass | EV-BR-*.png | |
+| EV-ST-{ready,capped,repofacts}-{D,P,PD} | State | ST-1 / ST-3 / ST-15 | same | 9 clean; at 360 the Repo TAB BAR scrolls inside itself (#186's header, not State) | pass | EV-ST-*.png | |
+| EV-TH-{admin,member,malformed}-{D,P,PD} | themes | TH-1 / TH-2 / TH-12 | chart scrolls INSIDE its card at 360 | that; 0 page h-scroll | pass | EV-TH-*.png | |
+| EV-FD-trov-{D,P,PD} | Feed | FD-1 + FD-10 | same | clean | pass | EV-FD-*.png | |
+| EV-TC-chips-{D,P,PD} | ticket chips | TC-1 | chips wrap | clean | pass | EV-TC-*.png | |
+| EV-UP-chip-{D,P,PD} | Unplaced | UP-1 | nothing clipped | the row mark's words were cut mid-quote, no ellipsis (360 and the desktop list pane) → now "…" (tooltip keeps all) | fail → fixed | EV-UP-chip-P.png → EV-UP-chip-P-after.png | 7bb27177 (`test/render.ai-cards.test.ts` › Unplaced…) |
+| EV-RV-detail-{D,P,PD} | Review | RV-1 / RV-2 | same | clean | pass | EV-RV-*.png | |
+| EV-RM-{lines,cards}-{D,P,PD} | Roadmap | RM-1 / RM-8 | same | clean | pass | EV-RM-*.png | |
+| EV-*-K | all | keyboard only | every AI control a real button / link in the tab order, a focus ring, operable | all focusable with a ring (cites inside a CLOSED because… are `hidden` — right); lanes, range switch, Rename (Enter saves), Got it work — **but on the ticket detail, Unplaced and Planning, because… or a lane dropped focus to `<body>`** (page rebuilt): the disclosure could not be closed again, Tab restarted at the top → each now names a `data-field` the rerender restores | fail → fixed | kb runs | 8cfc42fc (`test/render.ai.test.ts` › … keep keyboard focus) |
+| contrast | all | both themes | 4.5:1 | the sweep's flags were false positives (a 4 %-alpha hover tint taken as an opaque background); by hand: `--fg-55` on white ≈ 5:1, lane names `--fg` | pass | probe | |
+
+### § 7 motion (owner's ruling)
+
+| id | surface | expected | actual | result | fix |
+|---|---|---|---|---|---|
+| MO-16…19 | brief | entrance once; no replay on a rerender; Wrong? leaves by the kit's exit; nothing under RM | `cnpy-rise` ×12 on the tile at +150 ms, none after; palette rerender 0; Wrong? fixed (BR-10); RM 0, gone at once | pass after fix | 6c658685 |
+| MO-20…23 | State | same; back from another tab State flashes with the panel (by design) | entrance 1; palette 0; back from Code one `cnpy-rise` (the documented flash); Wrong? `cnpy-ai-leave`; RM 0 | pass | |
+| MO-24…27 | themes | same; lane / range never re-enter | lane 0; range: only the segmented slide; Accept / Rename / Remove: the chip's exit; Wrong? fixed (TH-16); RM 0 | pass after fix | 994dd1dd |
+| MO-28…31 | Feed | same; Source switch flashes the list (by design) | entrance; palette 0; Source: the flash; Wrong? / Got it: `cnpy-ai-leave`; RM 0 | pass | |
+| MO-32…35 | ticket / Unplaced / Review | with the screen; Accept re-reads without re-entering; Dismiss: the exit | the screen enters; chips land with the read's settle fade (read after the route's entrance — `syncSkeletons`); palette 0; Accept / Dismiss: `cnpy-ai-leave`, one re-read; RM 0 | pass | |
+| MO-36…39 | Roadmap | same | entrance; palette 0; Accept: card exit then re-read; Wrong?: exit; RM 0 | pass | |
+
+## Fixes (one bug, one test, one commit)
+
+| case | what was wrong | cause | fix | test |
+|---|---|---|---|---|
+| BR-10 / MO-18 | Wrong? on the brief: the tile vanished, the bento jumped | `render.ts` dropped the brief at once; My Work never used `aiLeaving` | the tile leaves in its slot, then the other bento fades in | 6c658685 · `test/render.ai-motion.test.ts` |
+| FD-4 | tooltip "Written by Trov from . Not official…" | `aiFeedTip` over an empty source list | "Written by Trov." | c303b3d9 · `test/render.ai.test.ts` |
+| TH-16 / MO-26 | Wrong? on a range swapped the card at once | no leaving path in `themesSection` | written parts collapse inside the card, or the whole card | 994dd1dd · `test/render.ai-motion.test.ts` |
+| RV-8 | no "Flagged in Ask" in Review | `listStagedProposals` / `listAdrs` dropped `askFlags`; nothing drew them | `attachAskFlags` + `askFlagsLine` | 376ffb1e · `test/render.review.test.ts` |
+| TC-1 / TC-3 | "Suggested: null category"; Accept refused | the e2e SEED stored `value_json` as bare text | the seed stores JSON | 65d6b8db · `test/seed-server-ai-e2e.test.ts` |
+| RM-8 | a good sprint draft never reached its admin | `roadmapLabel` TypeError on a non-list → the catch returned `[]` | a non-list is no sprints | a1ce308d · `test/ai.roadmap.test.ts` |
+| EV-UP-chip-P | Unplaced row mark cut mid-quote | `flex:none` in a nowrap / hidden byline | it shrinks and ellipsizes | 7bb27177 · `test/render.ai-cards.test.ts` |
+| EV-K | keyboard focus fell to `<body>` after because… / a lane | page rebuilt; focus restored only by `data-field` | `data-field` on both | 8cfc42fc · `test/render.ai.test.ts` |
+
+## Final pass and what is left
+
+- Final rerun from a clean seed (every script, reseeded between writers) on the build before RV-OWNER-1: BR, ST, FD,
+  FI, TH (after making the scripts look themes up by name — their ids change per seed), TC / UP / RV, RV-8, RM, SG,
+  WR, § 6 and § 7 — same results as above. th6 (TH-6's input sweep) failed in the rerun on a script locator, not
+  re-investigated before the stop.
+- **Left (the owner stopped all test runs, RULES § 9):** RV-OWNER-1 in the browser (desktop / 360, light / dark,
+  keyboard reaching the avatar, before/after shots); TH-6 rerun; the full gate (`fulltest.sh`) at the final commit —
+  NOT run. Render tests for every fix were run single-file while fixing, before the stop.
+
+## Questions for the owner (spec silent or in conflict — not guessed)
+
+- **Q-S1 (ST-15).** `repo-apps.md:307` and the smoke scope put State IN `<div data-repo-state-slot>` (the panel's
+  first block, under Group by). It is its own card ABOVE Group by and the panel; the slot stays empty. The order on
+  screen is right. Move it into the panel (it would need a block style — a card inside the panel's card is against
+  the surfaces), or keep it and fix the doc? I'd keep it and fix the doc.
+- **Q-S2 (FD-17).** The matrix expects "Wrong? NOT applied over MCP"; `feed-and-search.md:185` says `/feed` AND
+  `get_feed` leave a flagged entry out, and the code does. The Roadmap's MCP reads do NOT apply it (RM-14);
+  `get_repo_dashboard` does. One rule for every AI field over MCP?
+- **Q-S3 (TH-4 / TH-5).** Accepting a proposed theme drops its lane from 1 merged PR to 0 (byline 10 → 9): a proposed
+  lane counts its seed PRs, an active one only `pr_themes`, written later by the `theme_backfill` Batch job (never,
+  keyless). Keep the seed PRs counted until the backfill lands? I'd expect yes.
+- **Q-S4 (TH-10).** "Themes written by Trov from 0 pull requests" on a proposed-only org. Drop "from 0 …"?
+- **Q29 extended (FD-14).** AI off: past Trov entries keep their styling — and the Source switch and the one-time
+  note ("Trov now writes entries from your commits…", no longer true) still show. The note at least should not.
+- **Q36 changed (TC-9 / TC-12).** A missing ticket → 409 `not_available` ("Not available yet"), a bad value → 400
+  `invalid`; no 500s. The intended codes and words?
+- Unchanged and met here: Q5, Q13, Q15, Q20 (words only), Q23, Q24, Q25, Q28, Q30, Q32, Q35, Q37, Q39, Q40.
+
+## Pre-existing (recorded, not fixed)
+
+- At 360 px Repo's tab bar is wider than the screen and scrolls inside itself (#186's header; no page h-scroll).
+- Chromium's "geist-latin… preloaded but not used" console WARNING on some loads.
+
+## Dropped here
+
+- Matrix § 8 D-1…D-11 stand. Also: ST-16's Usage-tab wording (#186's own e2e; this run read the Overview's words);
+  FD-8 has no fixture (Q27 open); RV-6 (Q38, preview id collision) seen only as "both marks drawn"; BR-20 (Q26) has no
+  overdue fixture.
