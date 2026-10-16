@@ -15,6 +15,7 @@ import type { AskApi, AskRefHit } from "../web/src/ask-api";
 import { quickHitsToRefs } from "../web/src/ask-api";
 import { replayPlan } from "../web/src/ask-replay";
 import { phonePart } from "../web/src/ask-phone";
+import { askKeepBottom } from "../web/src/ask-motion";
 import {
   composerView, composerPart, composerReplaySetup, composerMode, composerAuto, composerBlock, canSend, parseCommand, usageLine, modeHint,
   kindsPhrase, atRows, addFiles, typeText, pick, sendFrom, initialComposerUi, COMPOSER_STATES,
@@ -131,7 +132,8 @@ describe("the box — a new thread on Pro", () => {
     const h = html(askState());
     expect(h).toMatch(/<div class="ask-composer" data-ask-composer="page" data-ask-dock="(center|dock)" data-morph-list>/);
     expect(h).toMatch(/<div class="ask-co-in" data-morph-key="in" data-morph-list>/);
-    expect(h).toMatch(/<div class="ask-box" data-morph-key="box" data-morph-list><div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop"><\/div><textarea[^>]*data-morph-key="ta"/);
+    // The chips' row is its own keyed list just above the box; the box opens on the words.
+    expect(h).toMatch(/<div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop" data-ask-tween role="group" aria-label="Attached"><\/div><div class="ask-box" data-morph-key="box" data-morph-list><textarea[^>]*data-morph-key="ta"/);
   });
 
   it("Enter sends (mode and switch as shown, words trimmed); Shift+Enter and IME composition do not", () => {
@@ -411,6 +413,77 @@ describe("composer:files — chips and the context line", () => {
     expect(html(s)).toMatch(/data-morph-key="c:ticket:14" data-closing="1">/);
     const all = askState("pro", (st) => { st.ask.composer.page.context = ["ticket:14"]; st.ask.closing = { "co:page:*": true }; });
     expect(html(all)).toMatch(/data-morph-key="c:ticket:14" data-closing="1">/);
+  });
+});
+
+describe("the chips sit ABOVE the box, not in it (the owner)", () => {
+  const box = (h: string) => h.slice(h.indexOf(`<div class="ask-box"`));
+  const row = (h: string) => h.slice(h.indexOf(`<div class="ask-co-chips"`), h.indexOf(`<div class="ask-box"`));
+  it("every file chip (an image's thumb), the context chip and the notes come before the box; the box holds the words and the toolbar only", () => {
+    const s = askState();
+    composerReplaySetup(makeCtx(s), "page", "files");
+    const h = html(s);
+    expect(row(h).match(/class="ask-co-chip"/g)).toHaveLength(4);
+    for (const k of ["f:f0", "f:f1", "f:f2", "c:ticket:14"]) expect(row(h)).toContain(`data-morph-key="${k}"`);
+    expect(box(h)).not.toContain("ask-co-chip");
+    expect(box(h)).toMatch(/^<div class="ask-box" data-morph-key="box" data-morph-list><textarea/);
+    // DOM order is the focus order: the chips' × come before the box (and the context line's clear before them).
+    expect(h.indexOf("askCoClear")).toBeLessThan(h.indexOf("askCoRemove"));
+    expect(h.lastIndexOf("askCoRemove")).toBeLessThan(h.indexOf(`data-ask-input="page"`));
+  });
+  it("too large, not attached, uploading: each chip and its note sit above the box", () => {
+    const s = askState();
+    composerReplaySetup(makeCtx(s), "page", "tooLarge");
+    const h = html(s);
+    expect(row(h)).toMatch(/class="ask-co-chip is-bad"[^>]*>.*?Too large/);
+    expect(h.indexOf(`class="ask-co-note"`)).toBeLessThan(h.indexOf(`class="ask-co-chips"`));
+    const up = askState("pro", (st) => { st.ask.composer.page.files = [{ key: "u1", name: "a.png", size: 9, kind: "image", state: "uploading", att: null, preview: "blob:x" }, { key: "u2", name: "b.md", size: 9, kind: "text", state: "failed", att: null, preview: null }]; });
+    const u = html(up);
+    expect(row(u)).toContain(`<img class="ask-co-thumb" src="blob:x" alt="">`);
+    expect(row(u)).toContain(">Uploading<");
+    expect(row(u)).toContain(">Not attached<");
+    expect(box(u)).not.toContain("ask-co-chip");
+  });
+  it("the ⌘J panel's context chip is above its box too; a block has no chips' row", () => {
+    const s = askState("pro", (st) => { st.ask.composer.panel.context = ["ticket:14"]; });
+    const h = html(s, "panel");
+    expect(row(h)).toContain(`data-morph-key="c:ticket:14"`);
+    expect(box(h)).not.toContain("ask-co-chip");
+    const off = askState("pro", (st) => { st.ask.composer.page.forced = "off"; });
+    expect(html(off)).not.toContain(`class="ask-co-chips"`);
+  });
+  it("a phone: past two rows the row scrolls sideways (data-scroll, measured after a paint); never on a desktop", () => {
+    const on = (phone: boolean) => askState("pro", (st) => { st.phone = phone; st.ask.composer.page.context = ["ticket:14"]; st.ask.composer.page.chipScroll = true; });
+    expect(html(on(true))).toMatch(/aria-label="Attached" data-scroll="1">/);
+    expect(html(on(false))).not.toContain("data-scroll");
+  });
+  it("CSS: on the box's edges with no box padding, a gap under it only when it has chips; the phone's scroll and 44px ×", async () => {
+    const css = (await import("../web/src/trov.css?raw")).default as string;
+    expect(css).toMatch(/\n\.ask-co-chips \{ position:relative; display:flex; flex-wrap:wrap; gap:6px; \}/);
+    expect(css).toMatch(/\n\.ask-co-chips:not\(:empty\) \{ padding-bottom:8px; \}/);
+    expect(css).not.toMatch(/\.ask-co-chips:empty \{ display:none/);   // it stays laid out, so its height glides
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-co-chips\[data-scroll="1"\] \{ flex-wrap:nowrap; overflow-x:auto;/);
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-co-x::after \{ content:""; position:absolute; left:50%; top:50%; width:44px; height:44px;/);
+    // Reduced motion: the chips' pop is in the one switch (the row's glide and entrances check it in ask-motion.ts).
+    expect(css).toMatch(/\.ask-co-chip, \.ask-co-menu, \.ask-co-pick, \.ask-co-ctx, \.ask-co-note, \.ask-co-drop, \.ask-blocked \{ animation:none !important; \}/);
+  });
+  it("askKeepBottom: a conversation keeping to its bottom moves down by what the composer area took; scrolled up, it stays", () => {
+    let cb: () => void = () => undefined;
+    const Ro = class { constructor(f: () => void) { cb = f; } observe() { /* stub */ } disconnect() { /* stub */ } };
+    vi.stubGlobal("ResizeObserver", Ro);
+    try {
+      const sc = { clientHeight: 700, scrollTop: 300, isConnected: true };
+      const root = { querySelectorAll: () => [sc] } as unknown as ParentNode;
+      let stick = true;
+      expect(askKeepBottom(root, () => stick)).toBe(1);
+      expect(askKeepBottom(root, () => stick)).toBe(0);              // wired once
+      sc.clientHeight = 660; cb();
+      expect(sc.scrollTop).toBe(340);
+      sc.clientHeight = 700; cb();                                      // taller: the browser clamps, nothing here
+      expect(sc.scrollTop).toBe(340);
+      stick = false; sc.clientHeight = 650; cb();
+      expect(sc.scrollTop).toBe(340);
+    } finally { vi.unstubAllGlobals(); }
   });
 });
 

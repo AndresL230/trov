@@ -37,6 +37,8 @@
 //      results) never moves it — the new rows push down. The controller decides per paint (`AskBottomMove`) and
 //      `askFollowBottom` runs LAST, after rules 2 and 4 started their animations. All of it only while `stick` holds:
 //      the conversation part's `stickAfterScroll` — a person scrolling UP lets go, back at the bottom holds on.
+//      The composer area growing under it (a chip row, another line) shortens the scroller: `askKeepBottom` moves
+//      the view down with it, so nothing ends up under the composer.
 
 /** The app's motion clock in ms (trov.css `:root` `--fx-fast` / `--fx-base` / `--fx-slow`), and the exit's wait. */
 export const ASK_FX = { fast: 180, base: 240, slow: 300, exit: 200 } as const;
@@ -173,6 +175,32 @@ export function askKeepScroll(root: ParentNode): number {
     tops.delete(sc);
     if (was === undefined || sc.scrollTop >= was - 0.5) continue;
     sc.scrollTop = was;
+    n++;
+  }
+  return n;
+}
+
+const kept = new WeakMap<Element, number>();
+/** Rule 7, from below: the composer area under a conversation grows (a chip row arrives or wraps and glides open,
+ *  the box takes another line) and the scroller above it gets SHORTER — its scrollTop stays, so what was at its
+ *  bottom would end up out of view under the composer. While `stick()` holds, each shrink moves the view down by
+ *  what it lost, frame by frame with the glide, so the bottom stays where the eye was. A scroller getting taller
+ *  needs nothing (the browser clamps it at its end). Wires a ResizeObserver per `[data-ask-scroll]` once; it lets
+ *  go when the scroller leaves the page. Returns how many it wired. */
+export function askKeepBottom(root: ParentNode, stick: () => boolean): number {
+  if (typeof ResizeObserver !== "function") return 0;
+  let n = 0;
+  for (const sc of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) {
+    if (kept.has(sc)) continue;
+    kept.set(sc, sc.clientHeight);
+    const ro = new ResizeObserver(() => {
+      if (!sc.isConnected) { ro.disconnect(); return; }
+      const was = kept.get(sc) ?? sc.clientHeight;
+      const now = sc.clientHeight;
+      kept.set(sc, now);
+      if (now < was && stick()) sc.scrollTop += was - now;
+    });
+    ro.observe(sc);
     n++;
   }
   return n;
