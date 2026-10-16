@@ -957,11 +957,12 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   style, which is Geist outside the sidebar (Archivo Narrow stays the sidebar's face only).
 - Radii are inline, at values the corners block already scales; nothing new needed a line there.
 - **The brief's one shape** (BR-OWNER-1; `trov.css` `.mw-brief-*`, the caps `AI_BRIEF_*`): Now, Recently and Next
-  are always drawn ("Nothing new." in an empty part), in boxes of a FIXED height — a sentence and its one row of
-  sources in room for three lines (92px), Next three rows of a one-line title over a two-line why (60px each), unused
-  rows kept — so the body is 404px for every brief, and the empty and capped states hold it (an unwritten brief holds
-  the byline's place too). A narrow bento (≤860px) gives four lines and three (508px); one column (≤700px) lets each
-  box take its text's height. Text past a box is clamped (`line-clamp`) with its whole text as the tooltip
+  are always drawn ("Nothing new." in an empty part), in boxes of a FIXED height — a sentence in a two-line box (44px)
+  over its one row of sources, Next three rows of a one-line title over a one-line why (40px each), unused rows kept —
+  so the body is 300px for every brief, and the empty and capped states hold it (an unwritten brief holds the
+  byline's place too). It takes its own height, never the row's (the owner, 2026-10-16: the BR-OWNER-3 layout had
+  stretched it to 555px; Docs you own now sits under Needs your review so the sides match). A narrower bento
+  (≤1040px) gives three lines and two (404px); one column (≤700px) lets each box take its text's height. Text past a box is clamped (`line-clamp`) with its whole text as the tooltip
   (`data-mtip`), so even an older, longer brief never overflows; the producer's caps mean a new one never needs it.
   Next keeps one row per kind's group (`AI_NEXT_GROUP`) whatever an older brief stored, and an `overdue` item is
   "Overdue" in the danger tone. Measured in Chromium through the real render, without a dev server: one height at

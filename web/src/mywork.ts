@@ -324,8 +324,9 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
 }
 
 export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number, o: { noRepo?: boolean; admin?: boolean; beside?: boolean } = {}): string {
-  // In the brief's bento (BR-OWNER-3) Repo is the narrow tile under Needs your review: TWO rows (titles truncate), then
-  // "N more in Repo" (its place kept when there is none), in one fixed body (`.mw-side-swap`) whatever the panel holds.
+  // `beside`: Repo as a narrow tile beside the brief (BR-OWNER-3): TWO rows (titles truncate), then "N more in Repo"
+  // (its place kept when there is none), in one fixed body (`.mw-side-swap`). Unused since the owner moved Repo to the
+  // last row (2026-10-16); kept for a layout that puts it back.
   const nRows = o.beside ? MW_BESIDE_ROWS : 3;
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show

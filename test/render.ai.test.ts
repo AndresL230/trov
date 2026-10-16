@@ -169,8 +169,9 @@ describe("My Work › Your brief", () => {
   it("ready: the first tile — Now / Recently / Next, the byline, the thumbs-down", () => {
     const html = mw("ready");
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    // The visual order (BR-OWNER-3): Brief, then Needs your review over Repo; Your sessions beside Tickets for you.
-    expect(labels).toEqual(["Your brief", "Needs your review", "Repo monitor", "Your sessions", "Tickets for you", "Docs you own", "Queued handoffs"]);
+    // The visual order: Brief, then Needs your review over Docs you own; Your sessions beside Tickets for you; Repo
+    // beside Queued handoffs.
+    expect(labels).toEqual(["Your brief", "Needs your review", "Docs you own", "Your sessions", "Tickets for you", "Repo monitor", "Queued handoffs"]);
     const card = html.slice(html.lastIndexOf("<section", html.indexOf('data-mw="brief"')), html.lastIndexOf("<section", html.indexOf('data-mw="review"')));
     const t = text(card);
     expect(t).toContain("Your brief");
@@ -198,25 +199,24 @@ describe("My Work › Your brief", () => {
     const html = mw("ready");
     expect(html).toContain('class="mw-bento mw-bento-brief cnpy-stagger"');
     const tiles = [...html.matchAll(/data-mw="(\w+)"/g)].map((m) => m[1]);
-    expect(tiles).toEqual(["brief", "review", "repo", "sessions", "tickets", "docs", "handoffs"]);
-    // The owner's swap (BR-OWNER-3): Repo stacks under Needs your review beside the brief; Tickets for you takes the
-    // wide slot beside Your sessions; the bottom row is unchanged.
+    expect(tiles).toEqual(["brief", "review", "docs", "sessions", "tickets", "repo", "handoffs"]);
+    // Docs you own (short) stacks under Needs your review beside the brief, so the brief keeps its own height (the
+    // owner, 2026-10-16); Tickets for you is wide beside Your sessions (BR-OWNER-3); Repo wide beside Queued handoffs.
     expect(css).toContain(`.mw-bento-brief { grid-template-areas:
   "brief brief brief brief brief brief brief brief review review review review"
-  "brief brief brief brief brief brief brief brief repo repo repo repo"
+  "brief brief brief brief brief brief brief brief docs docs docs docs"
   "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
-  "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }`);
+  "repo repo repo repo repo repo repo repo hand hand hand hand"; }`);
     // A phone stacks Brief, Needs your review, Tickets for you, Repo, then the rest — and the entrance follows it.
     for (const [k, n] of [["brief", 1], ["review", 2], ["tickets", 3], ["repo", 4], ["sessions", 5], ["docs", 6], ["handoffs", 7]] as const) {
       expect(css).toContain(`  .mw-bento-brief > [data-mw="${k}"]${k === "brief" ? ", .mw-bento-brief > .cnpy-ai-leave" : ""} { order:${n}; }`);
     }
     expect(css).toContain('  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="tickets"] { --n:2; }');
     expect(css).toContain('  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="repo"] { --n:3; }');
-    // In the brief's bento the three list tiles are in their two-row mode; without it they are not.
-    for (const k of ["review", "repo", "tickets"]) {
-      const open2 = html.lastIndexOf("<section", html.indexOf(`data-mw="${k}"`));
-      expect(html.slice(open2, html.indexOf("</section>", open2)), k).toMatch(/mw-side-(body|swap)/);
-    }
+    // In the brief's bento Needs your review and Tickets for you are in their two-row mode; Repo, wide, is not.
+    const tileOf = (k: string) => { const o = html.lastIndexOf("<section", html.indexOf(`data-mw="${k}"`)); return html.slice(o, html.indexOf("</section>", o)); };
+    for (const k of ["review", "tickets"]) expect(tileOf(k), k).toMatch(/mw-side-(body|swap)/);
+    expect(tileOf("repo")).not.toMatch(/mw-side-(body|swap)/);
     expect(text(html.slice(html.indexOf('data-mw="handoffs"')))).toContain("Queued handoffs");
     // NO tile scrolls (BR-OWNER-1): the rows size to what the tiles hold — no fixed height, no fixed rows, no
     // scrolling region in the brief bento — and the brief tile has no scrolling region at all.
@@ -248,10 +248,12 @@ describe("My Work › Your brief", () => {
     expect(slots(noNext)).toBe(AI_BRIEF_NEXT_MAX);
     // Every state holds the ready brief's height: the body box (trov.css `.mw-brief-body`).
     for (const st of ["ready", "empty", "capped"] as const) expect(briefTile(briefFixture(st, NOW))).toContain('<div class="mw-brief-body">');
-    // Fixed boxes: a sentence and its sources 92px (three lines of room), a Next row 60px; the body 404px.
-    expect(css).toContain(".mw-brief-body { min-height:404px;");
-    expect(css).toContain(".mw-brief-line { height:92px; }");
-    expect(css).toContain(".mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:60px; }");
+    // Fixed boxes: a sentence two lines (44px) over its sources, a Next row 40px; the body 300px — its own height,
+    // never stretched to the row's (the owner, 2026-10-16).
+    expect(css).toContain(".mw-brief-body { min-height:300px;");
+    expect(css).toContain(".mw-brief-text { margin:0; font-size:14px; line-height:22px; height:44px;");
+    expect(css).toContain(".mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:40px; }");
+    expect(css).not.toContain("align-content:space-between");
   });
   it("clamps an older, longer brief: three Next rows at most, the whole text as the box's tooltip, never cut in the markup", () => {
     const b = briefFixture("ready", NOW);
