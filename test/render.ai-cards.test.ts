@@ -117,6 +117,11 @@ describe("field present — Trov's suggestions on the three screens", () => {
     expect(html).toContain("file it as a doc in reference");
     expect(html.indexOf("cnpy-ai-unplaced")).toBeLessThan(html.indexOf("File it as"));
     expect(html.match(/cnpy-ai-row-mark/g)).toHaveLength(1);
+    // e2e EV-UP-chip-P (Phase H): at 360px the row's one-line byline cut the mark's words off mid-quote, no ellipsis.
+    // The mark may shrink, and its words end in an ellipsis.
+    const mark = html.slice(html.indexOf('class="cnpy-ai-row-mark"'));
+    expect(mark).toMatch(/^class="cnpy-ai-row-mark"[^>]*style="[^"]*flex:0 1 auto;min-width:0/);
+    expect(mark).toMatch(/<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">[^<]+<\/span><\/span>/);
     expect(html.match(/data-act="aiAccept"/g)).toHaveLength(1);
     expect(nestedButtons(html)).toBe(false);
   });

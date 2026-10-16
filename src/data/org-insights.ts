@@ -92,8 +92,11 @@ export async function planDrift(ctx: TenantContext, now: Date = new Date()): Pro
 /** The kind's own words for a Roadmap suggestion's label (`suggestionDto` would print its JSON). */
 function roadmapLabel(s: AiSuggestion): string {
   if (s.kind === "sprint_draft") {
-    const sprints = (s.value as { sprints?: { tickets?: unknown[] }[] } | null)?.sprints ?? [];
-    const tickets = sprints.reduce((n, sp) => n + (Array.isArray(sp.tickets) ? sp.tickets.length : 0), 0);
+    // A stored value is not trusted to be the shape: one that is not a list labels as none (the screen skips the
+    // card), never a throw that would take every other suggestion with it.
+    const raw = (s.value as { sprints?: unknown } | null)?.sprints;
+    const sprints = Array.isArray(raw) ? (raw as ({ tickets?: unknown[] } | null)[]) : [];
+    const tickets = sprints.reduce((n, sp) => n + (Array.isArray(sp?.tickets) ? sp.tickets.length : 0), 0);
     return `${sprints.length} ${sprints.length === 1 ? "sprint" : "sprints"} from ${tickets} backlog ${tickets === 1 ? "ticket" : "tickets"}`;
   }
   return "a new plan narrative";

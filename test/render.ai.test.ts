@@ -19,11 +19,11 @@ import { repoStateSection, themesSection, bandHeight, weekLabel, type RepoAiProp
 import { repoView, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
 import {
-  AI_EMPTY, initialAiUi, aiCite, aiCapped, aiDay, aiSuggestionChip, aiWrongBtn, aiFeedback, aiFromLine, type AiUi,
+  AI_EMPTY, initialAiUi, aiCite, aiCapped, aiDay, aiSuggestionChip, aiWrongBtn, aiFeedback, aiFromLine, aiFeedTip, type AiUi,
 } from "../web/src/ai-ui";
 import { parseFeedbackArg } from "../web/src/ai-actions";
 import { aiHiddenKey } from "../web/src/ai-ui";
-import { aiMark } from "../web/src/marks";
+import { aiMark, AI_NOT_OFFICIAL } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
 import { PRIVACY } from "../web/src/legal";
@@ -78,6 +78,13 @@ describe("the kit (ai-ui.ts)", () => {
     const g = feedFixtures(NOW)[1].ai!;
     expect(text(aiFromLine(g.sources, g.moreCount))).toBe("From feat/hosting-screens and run 4812");
   });
+  // e2e FD-4 (Phase H): an entry whose sources could not be read had the tooltip "Written by Trov from . Not official…".
+  it("the entry's tooltip names its sources, and with none it says only that Trov wrote it", () => {
+    const f = feedFixtures(NOW)[0].ai!;
+    expect(aiFeedTip(f.sources, f.moreCount)).toBe(`Written by Trov from #173, 65b9f1f, a1c04e2 and 2 more. ${AI_NOT_OFFICIAL}`);
+    expect(aiFeedTip([], 0)).toBe(`Written by Trov. ${AI_NOT_OFFICIAL}`);
+    expect(aiFeedTip([], 2)).toBe(`Written by Trov from 2 sources. ${AI_NOT_OFFICIAL}`);
+  });
   it("Wrong? carries the item it is about, and only a well-formed body is ever sent back", () => {
     const b = aiFeedback("feed", "990001", "feed", "claude-haiku-5-5");
     const btn = aiWrongBtn(b);
@@ -122,6 +129,16 @@ describe("the suggestion chip (#157)", () => {
     expect(open).not.toMatch(/id="ai-why-s-7" class="cnpy-ai-why" hidden/);
     expect(text(open)).toContain("because it touches checkout and the plan block.");
     expect(open).toContain(">#136</a>");
+  });
+  // e2e § 6 K (Phase H): pressed from the keyboard, the screen's rebuild dropped focus to <body> (ticket detail,
+  // Unplaced, the themes' lanes) — a keyboard user could not press it again or move on from it. The rerender puts
+  // focus back on the element with the same `data-field` (main.ts), so each such control names one.
+  it("the because… disclosure and a theme lane keep keyboard focus across the rebuild (a data-field each)", () => {
+    expect(chip()).toMatch(/data-act="aiReason" data-arg="s-7" aria-expanded="false" aria-controls="ai-why-s-7" data-field="aiReason:s-7"/);
+    const h = themesSection(themes("ready"), rp());
+    const lanes = [...h.matchAll(/data-act="aiThemesLane" data-arg="([^"]+)"[^>]*data-field="aiThemesLane:([^"]+)"/g)];
+    expect(lanes.length).toBeGreaterThan(1);
+    for (const m of lanes) expect(m[2]).toBe(m[1]);
   });
   it("Accept and Dismiss for whoever may act; a busy write holds them; 'Not available yet' after a 409", () => {
     expect(chip()).toContain('data-act="aiAccept" data-arg="7"');

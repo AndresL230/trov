@@ -79,7 +79,7 @@ import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
-import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
 import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
@@ -2707,7 +2707,10 @@ function myWorkView(s: AppState): string {
   // `.mw-bento-brief`): Brief tall on the left beside Needs your review over Tickets; Your sessions tall
   // on the left beside Repo over two small tiles, Docs you own and Queued handoffs.
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
-  const brief = d?.brief && !aiIsHidden(s.ai, "brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")) ? d.brief : null;
+  // "Wrong?" on it: the tile leaves by the AI kit's one exit IN its slot (`aiLeaving`), and only then does the bento
+  // take its other layout (ai-actions.ts fades that one in).
+  const briefKey = d?.brief ? aiHiddenKey("brief", aiItemRef.brief(d.brief.generatedAt ?? "brief")) : "";
+  const brief = d?.brief && (!s.ai.hidden.includes(briefKey) || aiLeavingT(s.ai, briefKey) !== null) ? d.brief : null;
   const strips = brief ? [] : ["library"];
   const order = brief
     ? ["brief", "review", "tickets", "sessions", "repo", "docs", "handoffs"]
@@ -2727,7 +2730,7 @@ function myWorkView(s: AppState): string {
     library: () => libraryStrip(library, span.library),
     docs: () => libTiles?.docs ?? "",
     handoffs: () => libTiles?.handoffs ?? "",
-    brief: () => (brief ? briefTile(brief, false, span.brief) : ""),
+    brief: () => (brief ? aiLeaving(s.ai, briefKey, briefTile(brief, false, span.brief)) : ""),
   };
 
   return myWorkLayout({

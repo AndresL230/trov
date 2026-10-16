@@ -273,7 +273,8 @@ export function listNeedsTriage(): Promise<NeedsTriageRow[]> {
   return getJson<{ items: NeedsTriageRow[] }>("/needs-triage").then((r) => r.items);
 }
 export function listAdrs(status?: string): Promise<AdrRow[]> {
-  return getJson<{ adrs: AdrRow[] }>(`/adrs${status ? `?status=${encodeURIComponent(status)}` : ""}`).then((r) => r.adrs);
+  return getJson<{ adrs: AdrRow[]; askFlags?: AskFlag[] }>(`/adrs${status ? `?status=${encodeURIComponent(status)}` : ""}`)
+    .then((r) => attachAskFlags(r.adrs, r.askFlags, (a) => `decision:${a.id}`));
 }
 export interface MeIdentity { provider: "github" | "google"; label: string; linked_at: string }
 /** `avatar_url` is already resolved (`avatarSrc`: an uploaded photo, else the provider's
@@ -334,6 +335,7 @@ import { isPlanRefusal, planRefusalSentence, type PlanRefusal, type OrgPlanView,
 import type * as IntT from "@shared/integrations";
 import type { BillingCheckoutRequest, BillingCheckoutResponse, BillingConfigResponse, BillingStatusResponse, PurchasablePlan } from "@shared/billing";
 import type * as GhT from "@shared/github-app";
+import type { AskFlag } from "@shared/ai-ask-core";
 import { AI_ROUTES, type AiAcceptBody, type AiFeedbackBody, type AiSettings, type AiSettingsPut, type AiPlanDrift, type AiSuggestion } from "@shared/ai-core";
 import { AI_FILTER_ROUTE, type AiFilterAnswer, type AiFilterBody } from "@shared/ai-filter-core";
 import { ASK_ROUTES, type AskSettings, type AskSettingsPut, type AskState } from "@shared/ai-ask-core";
@@ -673,9 +675,21 @@ export interface StagedProposal {
   promotedBody: string;
   /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
   ai?: AiSuggestion[];
+  /** "Flagged in Ask" on it: each reason and how often (never the thread). Absent when nobody flagged it. */
+  askFlags?: AskFlag[];
+}
+/** Review's reads carry the org's "Flagged in Ask" counts beside the rows (`askFlags`, handoff #12 § 2.14): give each
+ *  row its own (a proposal is `doc:<slug>`, a decision `decision:<id>`). A row with none is left as it was. */
+export function attachAskFlags<T extends object>(rows: T[], flags: AskFlag[] | undefined, refOf: (r: T) => string): (T & { askFlags?: AskFlag[] })[] {
+  if (!flags?.length) return rows;
+  return rows.map((r) => {
+    const mine = flags.filter((f) => f.ref === refOf(r));
+    return mine.length ? { ...r, askFlags: mine } : r;
+  });
 }
 export function listStagedProposals(): Promise<StagedProposal[]> {
-  return getJson<{ proposals: StagedProposal[] }>("/proposals").then((r) => r.proposals);
+  return getJson<{ proposals: StagedProposal[]; askFlags?: AskFlag[] }>("/proposals")
+    .then((r) => attachAskFlags(r.proposals, r.askFlags, (p) => `doc:${p.slug}`));
 }
 
 // Org settings › Members · Unmatched logins: pending unknown-login tasks, each with a small LIVE

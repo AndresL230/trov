@@ -8,6 +8,7 @@ export type {
   TicketCategory, TicketPriority, TicketStatus, TicketLinkKind,
 } from "./tickets";
 import type { AiFeedMeta, AiSuggestion, FeedImportance } from "./ai-core";
+import type { AskFlag } from "./ai-ask-core";
 
 // Sprints (the table 0025_sprints.sql renamed in place) are defined ONCE, as Zod
 // schemas in shared/sprints.ts, and re-exported here for the same reason.
@@ -90,6 +91,8 @@ export interface AdrRow {
   /** Review's read only (`GET /adrs`, src/ai/attach.ts): Trov's open `review.risk` for a drafted decision. Absent when
    *  there is none, or the org's AI is off. */
   ai?: AiSuggestion[];
+  /** Review's read only: "Flagged in Ask" on it (the reason and how often, never the thread). Absent with none. */
+  askFlags?: AskFlag[];
 }
 
 export interface EntryTagRow {

@@ -68,7 +68,7 @@ export function createAiController(host: AiHost): AiController {
    *  re-read drops it (`aiLeaving`'s `hold`), so its entry is not cleared on a timer (entries older than 10 s are
    *  dropped on the next exit); it is recorded under reduced motion too, where `.cnpy-ai-leave` is `display:none`,
    *  so it is gone at once. */
-  function leave(key: string, hold = false): number | null {
+  function leave(key: string, hold = false, after?: () => void): number | null {
     if (reduced() && !hold) return null;
     const at = Date.now();
     ui().leaving = [...ui().leaving.filter((l) => l.key !== key && at - l.at < 10_000), { key, at }];
@@ -76,6 +76,7 @@ export function createAiController(host: AiHost): AiController {
     setTimeout(() => {
       if (!ui().leaving.some((l) => l.key === key && l.at === at)) return;
       stopLeaving(key);
+      after?.();
       rerender();
     }, AI_EXIT_MS);
     return at;
@@ -102,7 +103,8 @@ export function createAiController(host: AiHost): AiController {
     const key = aiHiddenKey(body.itemType, body.itemRef);
     if (ui().hidden.includes(key)) return;
     ui().hidden = [...ui().hidden, key];
-    leave(key);
+    // My Work's brief: once its tile has left, the bento takes its other layout — that one fades in, never a jump.
+    leave(key, false, body.itemType === "brief" ? () => host.flashNext?.(".mw-bento") : undefined);
     rerender();
     sendAiFeedback(body)
       .then(() => host.flash("Hidden for you. Thanks: Trov is told it was wrong."))

@@ -417,4 +417,15 @@ describe("GET /roadmap — notes and drift for everyone (minus their own 'Wrong?
     expect("suggestions" in mcp).toBe(false);
     expect(mcp.sprints.find((x) => x.id === id)!.note).toBeDefined();
   });
+  // e2e RM-8 (Phase H): a sprint draft whose `sprints` was not a list threw in its label (TypeError), and the catch
+  // dropped EVERY suggestion — the good draft beside it never reached the admin.
+  it("a malformed sprint draft does not take the others with it: the good one is listed (the screen skips the bad one)", async () => {
+    const at = new Date().toISOString();
+    await run(env.DB, `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, reason, cites_json, state, created_at) VALUES (?, 'roadmap', 'org', 'sprint_draft', ?, 'because.', '[]', 'open', ?)`,
+      ORG_A, JSON.stringify({ sprints: [{ name: "Exports", goal: "CSV.", tickets: [7, 8] }] }), at);
+    await run(env.DB, `INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, reason, cites_json, state, created_at) VALUES (?, 'roadmap', 'org', 'sprint_draft', '{"sprints":"not a list"}', 'because.', '[]', 'open', ?)`, ORG_A, at);
+    const admin = await call<PlanView>("GET", `${BASE}/roadmap`, await cookieFor(FIXTURE_ADMIN));
+    expect(admin.json.suggestions?.map((s) => s.label)).toContain("1 sprint from 2 backlog tickets");
+    expect(admin.json.suggestions).toHaveLength(2);
+  });
 });

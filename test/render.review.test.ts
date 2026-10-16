@@ -23,6 +23,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
+import { attachAskFlags } from "../web/src/triage-map";
 import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
@@ -172,7 +173,9 @@ describe("reviewView — populated", () => {
 describe("reviewView — surface cards", () => {
   it("queue cards are clickable surfaces; every diff mode and the ADR record is one surface", () => {
     const list = reviewView(makeReviewProps());
-    expect(list).toContain('class="cnpy-titem cnpy-surface cnpy-card"');
+    // RV-OWNER-1: the card is a surface with a hit area (the author's avatar is its own button inside it).
+    expect(list).toContain('class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox"');
+    expect(list).toMatch(/<button( aria-current="true")? data-act="reviewSelect" data-arg="[^"]+" class="cnpy-hit" aria-label="[^"]+"><\/button>/);
     for (const diffView of ["unified", "split", "rendered"] as const) {
       const html = reviewDetail(makeItem(), diffView);
       expect(html.match(/cnpy-surface/g)?.length, diffView).toBe(1);
@@ -666,10 +669,13 @@ describe("personPicker — two-step confirm guard", () => {
 });
 
 describe("Review and Unplaced — the detail's author opens their person card", () => {
-  it("a mapped proposer is one chip in the detail byline; the list card (a select button) keeps a plain pair", () => {
+  it("a mapped proposer is one chip in the detail byline; on the list card their avatar alone opens their card", () => {
     const it0 = makeItem({ agent: "maya-k", agentColor: "plum", agentHandle: "maya-k", agentName: "Maya K" });
     expect(reviewDetail(it0, "unified")).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personchip"/);
-    expect(reviewCard(it0, false)).not.toContain('data-act="openPerson"');
+    // RV-OWNER-1: the card is no longer a button (a hit area), so the avatar can be one — never a button in a button.
+    const card = reviewCard(it0, false);
+    expect(card).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personav"[^>]*aria-label="@maya-k \(Maya K\) — person card"/);
+    expect(card).not.toContain("cnpy-personchip");
   });
 
   it("an unmapped proposer stays plain in the detail", () => {
@@ -740,7 +746,7 @@ describe("Review — All / Proposals / Decisions is a segmented switch with coun
   });
   it("a selection the filter still shows stays selected; one it hides keeps its detail", () => {
     const shown = reviewView(makeReviewProps({ items, filter: "proposal", selectedId: "p2" }));
-    expect(shown).toMatch(/data-arg="p2" class="cnpy-titem cnpy-surface cnpy-card" aria-current="true"/);
+    expect(shown).toMatch(/class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="p2" aria-current="true">\s*<button aria-current="true" data-act="reviewSelect" data-arg="p2"/);
     const hidden = reviewView(makeReviewProps({ items, filter: "decision", selectedId: "p2" }));
     expect(hidden).toContain('data-morph-key="rvd:p2"');
   });
@@ -759,7 +765,7 @@ describe("Review — the list is keyed, and a card with a verdict leaves it", ()
   });
 
   it("a card's structure is the same selected or not, with or without a verdict (only attributes differ)", () => {
-    const shape = (h: string) => h.replace(/ aria-current="true"| data-verdict="\w+" inert/g, "").replace(/<span class="cnpy-rv-verdict" aria-hidden="true">.*?<\/span>\s*<\/button>/s, "<V/></button>");
+    const shape = (h: string) => h.replace(/ aria-current="true"| data-verdict="\w+" inert/g, "").replace(/<span class="cnpy-rv-verdict" aria-hidden="true">.*?<\/span>/s, "<V/>");
     const plain = reviewCard(items[0], false);
     expect(shape(reviewCard(items[0], true))).toBe(shape(plain));
     expect(shape(reviewCard(items[0], false, "promoted"))).toBe(shape(plain));
@@ -773,7 +779,7 @@ describe("Review — the list is keyed, and a card with a verdict leaves it", ()
     expect(html).toMatch(/data-morph-key="rv:p1" data-verdict="promoted" inert/);
     expect(html).toMatch(/<span class="cnpy-rv-verdict" aria-hidden="true"><svg[^>]*>.*?<\/svg>Promoted<\/span>/);
     expect(html).toContain('data-morph-key="rvd:p2"');             // the detail moved on
-    expect(html).toMatch(/data-arg="p2" class="cnpy-titem cnpy-surface cnpy-card" aria-current="true"/);
+    expect(html).toMatch(/class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="p2" aria-current="true">\s*<button aria-current="true" data-act="reviewSelect" data-arg="p2"/);
     expect(html).toMatch(/>All<span class="cnpy-seg-n">2<\/span>/);
     expect(reviewCard(items[0], false, "ratified")).toContain(">Ratified</span>");
     expect(reviewCard(items[0], false, "rejected")).toContain(">Rejected</span>");
@@ -828,5 +834,94 @@ describe("Review — the exit's CSS (trov.css)", () => {
   it("the verdict's tone is the diff's: green for promoted and ratified, red for rejected", () => {
     expect(css).toContain('.cnpy-rv-row[data-verdict="promoted"], .cnpy-rv-row[data-verdict="ratified"] { --rv-tone:var(--green); }');
     expect(css).toContain('.cnpy-rv-row[data-verdict="rejected"] { --rv-tone:var(--red); }');
+  });
+});
+
+// e2e RV-OWNER-1 (Phase H, the owner): "the bottom rows with tags are confusing and are inconsistent in size and
+// length being one or two lines". Every card's meta row is ONE line with the same slots in the same order; the path
+// is sentence case and the only part that gives way (an ellipsis, the whole path in its tooltip); Trov's risk is a
+// MARK up-right on the title row (where Low confidence sits), never a word in the meta row.
+describe("Review cards: one meta row, the same slots, the risk as a mark (RV-OWNER-1)", () => {
+  const risk = [{ id: 7, itemType: "proposal", itemRef: "doc:x@2", kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, label: "Changes a decision", reason: "it changes ADR-1", confidence: 0.8, cites: [], state: "open" as const }] as unknown as ReviewItem["ai"];
+  const meta = (html: string) => html.slice(html.indexOf('class="cnpy-rv-meta"'), html.indexOf("</div>", html.indexOf('data-slot="time"')));
+  const proposal = () => makeItem({ eyebrow: "PROPOSAL · TECHNICAL / ARCHITECTURE" });
+  it("ONE line: no wrap, a fixed height, overflow hidden", () => {
+    const m = meta(reviewCard(proposal(), false));
+    expect(m).toMatch(/^class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;[^"]*height:20px;/);
+  });
+  it("the slots, in the owner's order on every card: author (avatar), kind, where, time", () => {
+    for (const it of [proposal(), makeItem({ kind: "decision", eyebrow: "DECISION · ADR-005", diff: undefined, adr: [] })]) {
+      const slots = [...meta(reviewCard(it, false)).matchAll(/data-slot="(\w+)"/g)].map((x) => x[1]);
+      expect(slots).toEqual(["author", "kind", "where", "time"]);
+    }
+  });
+  it("the path is sentence case and the one part that truncates, the whole of it in the tooltip; an ADR number stays", () => {
+    const m = meta(reviewCard(proposal(), false));
+    expect(m).toContain('data-slot="where" data-mtip="Technical / Architecture" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">Technical / Architecture</span>');
+    expect(m).not.toContain("TECHNICAL");
+    for (const s of ["kind", "time"]) expect(m).toMatch(new RegExp(`data-slot="${s}" style="flex:none`));
+    expect(m).toMatch(/data-slot="author" data-mtip="@[^"]+" style="flex:none/);
+    expect(meta(reviewCard(makeItem({ kind: "decision", eyebrow: "DECISION · ADR-005" }), false))).toContain(">ADR-005</span>");
+  });
+  it("the risk is a mark on the title row, never in the meta row; with and without it the meta row is the same", () => {
+    const withRisk = reviewCard({ ...proposal(), ai: risk }, false);
+    const without = reviewCard(proposal(), false);
+    expect(meta(withRisk)).toBe(meta(without));
+    expect(meta(withRisk)).not.toContain("Changes a decision");
+    const marks = withRisk.slice(withRisk.indexOf('class="cnpy-rv-marks"'), withRisk.indexOf('class="cnpy-rv-meta"'));
+    expect(marks).toContain('class="cnpy-ai-risk"');
+    expect(marks).toMatch(/data-mtip="Suggested by Trov\.[^"]*Because it changes ADR-1\."/);
+    expect(marks).toContain("Changes a decision");
+    expect(without).not.toContain("cnpy-rv-marks");
+  });
+  it("the author is their avatar alone: no handle text in the row, the handle in its tooltip and accessible name", () => {
+    const unmapped = meta(reviewCard(makeItem({ agent: "trov" }), false));
+    expect(unmapped).toMatch(/data-slot="author" data-mtip="@trov"[^>]*><span role="img" aria-label="@trov"/);
+    expect(unmapped.replace(/<[^>]+>/g, " ")).not.toContain("@trov");
+    const mapped = meta(reviewCard(makeItem({ agent: "maya-k", agentColor: "plum", agentHandle: "maya-k", agentName: "Maya K" }), false));
+    expect(mapped).toContain('data-act="openPerson" data-arg="maya-k"');
+    expect(mapped.replace(/<[^>]+>/g, " ")).not.toContain("@maya-k");
+  });
+  it("the title takes the room left of the marks and wraps there; the marks never shrink", () => {
+    const html = reviewCard({ ...proposal(), flagged: true, ai: risk }, false);
+    expect(html).toMatch(/<div style="flex:1 1 auto;[^"]*min-width:0">[^<]*<\/div>\s*<div class="cnpy-rv-marks" style="flex:none;[^"]*flex-direction:column;align-items:flex-end/);
+  });
+  it("Low confidence and a risk share the title row's marks, Low confidence first", () => {
+    const html = reviewCard({ ...proposal(), flagged: true, ai: risk }, false);
+    const marks = html.slice(html.indexOf('class="cnpy-rv-marks"'), html.indexOf('class="cnpy-rv-meta"'));
+    expect(marks.indexOf("Low confidence")).toBeLessThan(marks.indexOf("Changes a decision"));
+  });
+  it("a dismissed risk still leaves by the AI kit's one exit, from the title row", () => {
+    const html = reviewCard({ ...proposal(), ai: risk }, false, null, [{ key: "suggestion:7", at: Date.now() - 20 }]);
+    const marks = html.slice(html.indexOf('class="cnpy-rv-marks"'), html.indexOf('class="cnpy-rv-meta"'));
+    expect(marks).toMatch(/<span class="cnpy-ai-leave" data-inline data-ai-leaving inert style="--leave-t:-\d+ms"><span class="cnpy-ai-leave-in"><span class="cnpy-ai-risk">/);
+  });
+});
+
+// e2e RV-8 (Phase H): `GET /proposals` and `GET /adrs` carry `askFlags` (handoff #12 § 2.14), but nothing drew them —
+// Review showed no "Flagged in Ask" line. The line: the reasons and how often, never the question, answer or asker.
+describe("Flagged in Ask (handoff #12 § 2.14)", () => {
+  const flags = [
+    { ref: "doc:auth", reason: "out_of_date" as const, count: 1, lastAt: "2026-10-15T10:00:00Z" },
+    { ref: "doc:auth", reason: "source_wrong" as const, count: 2, lastAt: "2026-10-15T10:00:00Z" },
+  ];
+  it("the detail draws one line of reasons and counts, most flagged first", () => {
+    const html = reviewDetail(makeItem({ askFlags: flags }), "unified");
+    const at = html.indexOf("cnpy-rv-askflags");
+    expect(at).toBeGreaterThan(0);
+    const line = html.slice(at, html.indexOf("</p>", at)).replace(/<[^>]+>/g, "").replace(/&middot;/g, "·").replace(/\s+/g, " ");
+    expect(line).toContain("Flagged in Ask: A source is wrong (2) · It is out of date (1)");
+  });
+  it("no flags, no line (the detail as before)", () => {
+    expect(reviewDetail(makeItem(), "unified")).not.toContain("Flagged in Ask");
+    expect(reviewDetail(makeItem({ askFlags: [] }), "unified")).not.toContain("Flagged in Ask");
+  });
+  it("each read's flags go to their own item: a proposal by `doc:<slug>`, a decision by `decision:<id>`", () => {
+    const rows = [{ slug: "auth" }, { slug: "other" }];
+    const out = attachAskFlags(rows, flags, (r) => `doc:${r.slug}`);
+    expect(out[0].askFlags).toEqual(flags);
+    expect("askFlags" in out[1]).toBe(false);
+    expect(attachAskFlags([{ id: 7 }], [{ ...flags[0], ref: "decision:7" }], (r) => `decision:${r.id}`)[0].askFlags).toHaveLength(1);
+    expect(attachAskFlags(rows, undefined, (r) => `doc:${r.slug}`)).toEqual(rows);
   });
 });

@@ -105,39 +105,41 @@ exports[`field absent — each screen renders exactly what it did before Phase C
         <div style="font-size:12.5px;color:var(--fg-55)">Agent-produced changes waiting for a verdict.</div>
         <div style="margin:12px 0 12px"><div class="cnpy-seg cnpy-seg--sm" data-seg="review-filter" data-morph-key="seg:review-filter" role="group" aria-label="Show"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" class="cnpy-seg-btn is-on" aria-pressed="true">All<span class="cnpy-seg-n">2</span></button><button type="button" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="proposal" aria-pressed="false">Proposals<span class="cnpy-seg-n">1</span></button><button type="button" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="decision" aria-pressed="false">Decisions<span class="cnpy-seg-n">1</span></button></div></div>
       </div>
-      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px"><div class="cnpy-rv-row" data-morph-key="rv:doc:auth-flow@3"><div class="cnpy-rv-row-in"><button data-act="reviewSelect" data-arg="doc:auth-flow@3" class="cnpy-titem cnpy-surface cnpy-card" aria-current="true">
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px"><div class="cnpy-rv-row" data-morph-key="rv:doc:auth-flow@3"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="doc:auth-flow@3" aria-current="true">
+    <button aria-current="true" data-act="reviewSelect" data-arg="doc:auth-flow@3" class="cnpy-hit" aria-label="Auth flow"></button>
     <span class="cnpy-selbar"></span>
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Auth flow</div>
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Auth flow</div>
         
       </div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Sessions now last 30 days</div>
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:11.5px;color:var(--fg-55)">
-        <span>Proposal</span>
-        <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">TECHNICAL / REFERENCE</span>
-        <span style="color:var(--fg-40)">·</span><span style="display:inline-flex;align-items:center;gap:6px"><div class="cnpy-av" title="andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="font-family:var(--sans);font-size:12px;font-weight:500;color:var(--p-sky)">@andres</span></span>
-        <span style="color:var(--fg-40)">·</span><span style="color:var(--fg-40)">4h ago</span>
+      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="@andres (Andres) — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
+        <span data-slot="kind" style="flex:none">Proposal</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="where" data-mtip="Technical / Reference" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">Technical / Reference</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">4h ago</span>
       </div>
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true"></span>
-  </button></div></div><div class="cnpy-rv-row" data-morph-key="rv:adr:5"><div class="cnpy-rv-row-in"><button data-act="reviewSelect" data-arg="adr:5" class="cnpy-titem cnpy-surface cnpy-card">
+  </div></div></div><div class="cnpy-rv-row" data-morph-key="rv:adr:5"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="adr:5">
+    <button data-act="reviewSelect" data-arg="adr:5" class="cnpy-hit" aria-label="Use D1 for the search index"></button>
     <span class="cnpy-selbar"></span>
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Use D1 for the search index</div>
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Use D1 for the search index</div>
         
       </div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Use D1&#39;s FTS5.</div>
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:11.5px;color:var(--fg-55)">
-        <span>Decision</span>
-        <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">ADR-005</span>
-        <span style="color:var(--fg-40)">·</span><span style="display:inline-flex;align-items:center;gap:6px"><div class="cnpy-av" title="andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="font-family:var(--sans);font-size:12px;font-weight:500;color:var(--p-sky)">@andres</span></span>
-        <span style="color:var(--fg-40)">·</span><span style="color:var(--fg-40)">5h ago</span>
+      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="@andres (Andres) — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
+        <span data-slot="kind" style="flex:none">Decision</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="where" data-mtip="ADR-005" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--label);font-size:11px">ADR-005</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">5h ago</span>
       </div>
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true"></span>
-  </button></div></div></div>
+  </div></div></div></div>
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
@@ -147,7 +149,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Auth flow</h2>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)">
           <span>Proposal</span>
-          <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">TECHNICAL / REFERENCE</span>
+          <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">Technical / Reference</span>
           <span style="color:var(--fg-40)">·</span><span style="display:inline-flex;align-items:center;gap:6px"><button data-act="openPerson" data-arg="andres" class="cnpy-personchip" title="Andres" style="display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style=""><span style="font-family:var(--sans);font-size:12px;font-weight:500;color:var(--p-sky)">@andres</span></span></button></span>
           <span style="color:var(--fg-40)">·</span><span style="color:var(--fg-40)">4h ago</span>
         </div>

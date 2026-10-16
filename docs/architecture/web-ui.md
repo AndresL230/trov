@@ -918,7 +918,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   `upgrade` is true.
 - **The suggestion chip** (`aiSuggestionChip`, #157): "Suggested: X, because…" with Accept and Dismiss. It is
   never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
-  reason is a real disclosure button (`aria-expanded`, works on touch), the chip a container of buttons (never
+  reason is a real disclosure button (`aria-expanded`, works on touch; `data-field="aiReason:<key>"`, so a page rebuilt
+  on the press gives it back its keyboard focus — the themes' lanes carry `aiThemesLane:<id>` for the same reason), the
+  chip a container of buttons (never
   a button itself), and it wraps, so it fits a row, a card, a detail pane and a phone. A 409 `not_available`
   (no accept handler for its kind) replaces the buttons with "Not available yet". It is used by Phase C's cards
   (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`), the proposed themes and the Roadmap's
@@ -929,7 +931,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   (`.cnpy-rise` + `--i`). **Leaving — ONE exit for the whole kit** (`ai-ui.ts` › Leaving): ONE state
   (`state.ai.leaving`, key → when its exit began), ONE class (`.cnpy-ai-leave`, `[data-inline]` for a mark inside a
   line), ONE constant (`AI_EXIT_MS`, 310 ms) and ONE helper (`aiLeaving`, over `aiLeavingT` / `aiLeave`). It covers
-  "Wrong?" on State or a Trov entry (`aiHiddenKey`), "Got it" on the Feed's note (`AI_NOTE_LEAVING`), and every
+  "Wrong?" on State, a Trov entry, the brief tile or a themes range (`aiHiddenKey`; on Where the work went the
+  caption, byline and chart leave INSIDE the card while the other range stays, else the whole card), "Got it" on the
+  Feed's note (`AI_NOTE_LEAVING`), and every
   suggestion an Accept / Dismiss took — a chip, the risk line, a list row's mark, a proposed theme, a Roadmap card
   (`aiSuggestionKey(id)`) — and a Roadmap note or the drift "Wrong?" took. The Tickets queue reuses `aiLeave` for a
   card a refetch finds declined while All is up (its own `state.qLeaving`, `tickets.md` › The default view hides
@@ -956,8 +960,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   (label and line on one `--i`), each Next item and the byline rise in order (`.cnpy-rise`), only under
   `[data-enter]`, so a rerender never replays them; landing after the entrance, the tile takes the dashboard
   skeleton's settle fade (`data-settle-with`, Loading skeletons above). Off under reduced motion
-  (`test/render.brief-motion.test.ts`). The tile leaving on "Wrong?" has no exit yet: My Work is not `data-morph`ed,
-  and the bento switches layout when the brief goes.
+  (`test/render.brief-motion.test.ts`). On "Wrong?" the tile leaves by the kit's one exit IN its bento slot
+  (`.mw-bento-brief > .cnpy-ai-leave` holds the brief's area); only then does the bento take its other layout, which
+  fades in (`pendingFlash` on `.mw-bento`). Under reduced motion it is simply gone (`test/render.ai-motion.test.ts`).
 - **The plain-language filter** (`web/src/ai-filter.ts`, #162) lives INSIDE the Filter menu of Tickets, the Feed and
   Artifacts — no bar of its own. `FilterMenuProps.top` puts its section at the popover's top, over a hairline: a
   `cnpy-menurow` "Describe a filter" with the AI mark and a chevron, and under it the field (input + Apply, the
