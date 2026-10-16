@@ -139,12 +139,12 @@ export const AiSettingsSchema = z.object({
 }) satisfies z.ZodType<AiSettings>;
 
 export const AiUsageSchema = z.object({
-  runs: z.number().int().min(0),
-  failed: z.number().int().min(0),
-  capped: z.number().int().min(0),
-  tokensIn: z.number().int().min(0),
-  tokensOut: z.number().int().min(0),
-  tokensCached: z.number().int().min(0),
+  runs: z.number().int().min(0).optional(),
+  failed: z.number().int().min(0).optional(),
+  capped: z.number().int().min(0).optional(),
+  tokensIn: z.number().int().min(0).optional(),
+  tokensOut: z.number().int().min(0).optional(),
+  tokensCached: z.number().int().min(0).optional(),
   jevChecks: z.number().int().min(0).optional(),
   jevTokensIn: z.number().int().min(0).optional(),
   jevTokensOut: z.number().int().min(0).optional(),

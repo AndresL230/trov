@@ -319,8 +319,9 @@ Per provider, per org per UTC day in `org_usage_daily`. Counts only.
 
 Platform › Usage reads them into `OrgUsage.ai` and `PlatformUsageResponse.ai` (`src/platform/usage.ts`) — runs,
 failed, capped, Claude's tokens, and `jevChecks` / `jevTokensIn` / `jevTokensOut` (drawn as Sift checks and tokens
-only when the read carries them) — when a key is set, left out without one, as summaries say they are off. None of
-them is a person's request (not "active people", not "last activity").
+only when the read carries them). Each provider's figures stand on ITS key alone: Anthropic's with an Anthropic key,
+Sift's with a TypeSafe AI key (a TypeSafe key alone draws a "Sift" line), the field left out with neither, as
+summaries say they are off. None of them is a person's request (not "active people", not "last activity").
 
 ## Jobs: importance and Sift on new items (Jev, Phase C)
 

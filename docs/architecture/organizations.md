@@ -325,7 +325,8 @@ Platform › **Usage** [`src/platform/usage.ts`, `org_usage_daily`]: per organiz
 tool calls by day, active people, what was created in the window (feed entries, tickets, doc versions,
 sprints, prompts, handoffs, artifacts), e-mails sent, the most-called tools, and sizes now (rows per kind,
 artifact bytes, tokens and connected apps) — and, when the deployment has an Anthropic key, AI runs (attempted,
-failed, capped) and tokens (`OrgUsage.ai`, `ai.md`). Platform › an organization shows the same for that one.
+failed, capped) and tokens, and when it has a TypeSafe AI key, Sift's checks and tokens, each on its own key
+(`OrgUsage.ai`, `ai.md`). Platform › an organization shows the same for that one.
 Requests are metered, not limited. What IS limited per organization — people, repositories, environments,
 stored artifacts, agent connections per person — is its plan's (`plans.md`).
 

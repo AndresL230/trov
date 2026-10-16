@@ -366,15 +366,18 @@ export interface AiSettingsPut { enabled?: boolean; chatAuto?: boolean }
 /** `OrgUsage.ai?` / `PlatformUsageResponse.ai?`: AI runs and tokens in the window
  *  (`org_usage_daily`, metrics `ai_run:*`, `ai_run_failed:*`, `ai_run_capped:*`, `ai_tokens_*`). */
 export interface AiUsage {
-  runs: number;
-  failed: number;
-  capped: number;
-  tokensIn: number;
-  tokensOut: number;
-  tokensCached: number;
+  /** Anthropic's side — present only when the deployment has an Anthropic key (owner ruling Q7: each provider's
+   *  figures stand on that provider's key alone). */
+  runs?: number;
+  failed?: number;
+  capped?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  tokensCached?: number;
   /** TypeSafe AI's side (Phase B: token metrics per provider) — Jev requests (`ai_suggest`: Sift's and the AI
-   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Optional: a read from before
-   *  them (and the preview fixtures) leaves them out, and the screen then draws exactly what it did. */
+   *  pass's, what `jev_checks` counts) and their tokens (`ai_jev_tokens_in` / `_out`). Present only when the
+   *  deployment has a TypeSafe AI key; a read from before them (and the preview fixtures) leaves them out, and the
+   *  screen then draws exactly what it did. */
   jevChecks?: number;
   jevTokensIn?: number;
   jevTokensOut?: number;

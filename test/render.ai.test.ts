@@ -664,6 +664,18 @@ describe("Platform › Usage — AI runs and tokens", () => {
     expect(html).toContain('data-usage-ai style');
     expect(text(orgUsageBlock(org({ ai }), 7))).toContain("AI runs Runs 120");
   });
+  // Q7 (owner ruling 2026-10-16): with a TypeSafe key and no Anthropic key, Sift's figures still show.
+  it("only Sift's figures (no Anthropic key): the line is \"Sift\", with its checks and tokens — no runs, no zeros", () => {
+    const sift = { jevChecks: 1520, jevTokensIn: 3000, jevTokensOut: 40 };
+    const r = report([org({ ai: sift })], false);
+    const html = usageView({ status: "ok", usage: { ...r, ai: sift }, days: 7, open: "acme" });
+    const totals = html.slice(html.indexOf('data-usage-ai="totals"'));
+    expect(text(totals.slice(0, totals.indexOf("</div>")))).toContain("> Sift Sift checks 1,520 Sift tokens in 3,000 Sift tokens out 40 last 7 days, all organizations");
+    expect(text(orgUsageBlock(org({ ai: sift }), 7))).toContain("Sift Sift checks 1,520");
+    expect(html).not.toContain("AI runs");
+    expect(html).not.toMatch(/Runs 0|Failed 0/);
+  });
+
   it("absent `ai` adds nothing — never a line of zeros", () => {
     const html = usageView({ status: "ok", usage: report([org()], false), days: 7, open: "acme" });
     expect(html).not.toContain("data-usage-ai");
