@@ -709,8 +709,11 @@ Summary, Code, CI & Deploys, Usage, Team & Planning), its label followed by the 
 `#repo/summary` (`isRepoScreenTab`, `hash.ts`; quick search's "Repo › Summary"). It is offered only while
 `repoSummaryShown` (`web/src/repo.ts`): the LIVE read carries `state` and this person's "Wrong?" exit on it is not
 over — or, while the first read is still out, the address asks for it, so a deep link or a reload holds its tab
-and the card's shape (`repoStateSkeleton`, `data-ai-state="loading"`) until the read says; a failed first read
-draws the dashboard's error block there. With the field absent — the org's AI off, no key so nothing written,
+and its address until the read says; a failed first read draws the dashboard's error block there. A COLD load
+(the Repo chunk not yet in) first paints the chunk's generic skeleton (`repoView` in `repo-lazy.ts`, about half a
+second locally) — the read usually lands before the chunk, so the State card's own shape (`repoStateSkeleton`,
+`data-ai-state="loading"`) is drawn only when the chunk is in and the read is still out (a warm switch to the tab);
+it is not promised on a cold load (owner, Q-F1, 2026-10-16). With the field absent — the org's AI off, no key so nothing written,
 nothing written yet, the version flagged "Wrong?", a failed state read — there is NO tab (the AI kit's rule: off is
 no row, never an "off" state, as the Filter menu's "Describe a filter"), and sample data never has one. An address
 that asks for Summary when there is none draws the Overview, and `rerender()` (`main.ts`) moves `state.repoTab` —
