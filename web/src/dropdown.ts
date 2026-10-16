@@ -9,7 +9,8 @@
 //    (like the org switcher's menu), so no `overflow:hidden` ancestor can clip it and morph.ts
 //    keeps it — and its focus — across rerenders. A `role="listbox"` of `.cnpy-menurow` options,
 //    the current one check-marked; an option may carry a one-line `hint` and an `icon` (a preview,
-//    shown in the trigger too while it is picked).
+//    shown in the trigger too while it is picked; an `iconOnly` trigger — a header control — is
+//    just that icon and the caret).
 // A screen renders the trigger where the control sits and passes the SAME props to
 // `dropdownMenu` among its root overlays.
 //
@@ -57,6 +58,9 @@ export interface DropdownProps {
   size?: "md" | "sm";
   /** Stretch across the parent (a form field). */
   fill?: boolean;
+  /** A header control: the trigger is only the picked option's `icon` and the caret, at the icon buttons' 32px
+   *  (`.cnpy-dd.is-icon`); `ariaLabel` names it (with the choice) and is its tooltip. */
+  iconOnly?: boolean;
 }
 
 /** Which dropdown is open — ONE at a time, app-wide (`state.dd`). */
@@ -84,10 +88,12 @@ export function dropdown(p: DropdownProps, ui: DropdownUi): string {
   const text = cur ? cur.shown ?? cur.label : "";
   // Expanded only while it is really open: on its way out the trigger is already at rest.
   const open = isOpen(p, ui) && !ui.closing;
-  const name = p.labelledBy ? ` aria-labelledby="${attr(`${p.labelledBy} ${p.id}`)}"` : p.ariaLabel ? ` aria-label="${attr(`${p.ariaLabel}: ${text}`)}"` : "";
-  const cls = `cnpy-dd${p.size === "sm" ? " is-sm" : ""}${p.fill ? " is-fill" : ""}${open ? " is-open" : ""}`;
+  const icon = p.iconOnly && !!cur?.icon;
+  const name = p.labelledBy && !icon ? ` aria-labelledby="${attr(`${p.labelledBy} ${p.id}`)}"` : p.ariaLabel ? ` aria-label="${attr(`${p.ariaLabel}: ${text}`)}"${icon ? ` title="${attr(p.ariaLabel)}"` : ""}` : "";
+  const cls = `cnpy-dd${p.size === "sm" ? " is-sm" : ""}${p.fill ? " is-fill" : ""}${icon ? " is-icon" : ""}${open ? " is-open" : ""}`;
   const shown = `<span class="cnpy-dd-v">${esc(text)}</span>`;
-  const lead = cur?.icon ? `<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true">${cur.icon}</span>${shown}</span>` : shown;
+  const lead = icon ? `<span class="cnpy-dd-icon" aria-hidden="true">${cur!.icon}</span>`
+    : cur?.icon ? `<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true">${cur.icon}</span>${shown}</span>` : shown;
   return `<button type="button" id="${attr(p.id)}" data-field="${attr(p.id)}" data-dd="${attr(p.id)}"${p.disabled ? " disabled" : ` data-act="ddToggle" data-arg="${attr(p.id)}"`} class="${cls}" style="border-radius:8px" aria-haspopup="listbox" aria-expanded="${open}"${open ? ` aria-controls="${attr(`${p.id}-menu`)}"` : ""}${name}>${lead}${CARET}</button>`;
 }
 

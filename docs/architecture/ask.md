@@ -295,15 +295,15 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `ask-icons.ts`, `ask-motion.ts` (the motion hooks: inventory §12), `ask-replay.ts` (the dev replay).
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
-  Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts` (instructions and the default mode are server rows,
-  `GET / PUT /ask/settings`; "While it works", the thinking orb, is per browser and applies on the pick, not on Save).
+  Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
   20px thinking orb says what Trov is doing — a running step's icon (`STEP_ORB`: search / docs / feed / read / review
   steps "searching", the rest "working", decorative beside the step's words), the thinking row's icon ("solving";
   "Thought for Ns" keeps the clock), and the lone-cursor slot ("working" before anything arrived, "composing" once a
   block has). The text cursor inside streaming words is unchanged. Which animation is the person's pick
-  (`AskUi.orb`, `ask-orb.ts` `askOrbState`): "Match what it's doing" is the default above; one of the six (Settings ›
-  Trov › While it works) replaces every orb in Ask — steps, thinking and the wait — while the orb's name ("Working…",
+  (`AskUi.orb`, `ask-orb.ts` `askOrbState`), from the header's "Thinking animation" dropdown beside the bug button
+  (Ask only; its trigger is the picked orb and a caret; it stays on a phone): "Match what it's doing" is the default
+  above; one of the six replaces every orb in Ask — steps, thinking and the wait — while the orb's name ("Working…",
   "Writing…") still says what it is doing. Kept per browser (localStorage `trov.askOrb`), applied live.
 - **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)

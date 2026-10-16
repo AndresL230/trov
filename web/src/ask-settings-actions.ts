@@ -2,16 +2,13 @@
 // here. It reads my Ask settings and Ask's standing for the org on screen, keeps what I type as a draft (a keystroke
 // is a plain rerender: personal Settings is `data-morph`ed, so the field keeps its focus), and Save writes both
 // with ONE PUT — the server's answer replaces the slice. The default mode is sent only when the plan offers a
-// choice; the server refuses any other on a one-mode plan anyway (403 `mode_unavailable`). The thinking orb
-// (`trovSetOrb`, ask-orb.ts) is NOT part of Save: a pick sets `ask.orb` at once — every orb in Ask follows on the
-// next paint — and is kept in this browser's localStorage.
+// choice; the server refuses any other on a one-mode plan anyway (403 `mode_unavailable`).
 import { OrgApiError, Unauthorized, getAskSettings, getAskState, putAskSettings } from "./api";
 import { TROV_SAVED, TROV_TRY, initialTrovPrefs, trovInstructions, trovMode, trovModes, type TrovPrefsUi } from "./ask-settings";
 import { ASK_INSTRUCTIONS_MAX, type AskMode } from "@shared/ai-ask-core";
-import { ASK_ORB_KEY, parseAskOrb, type AskOrbChoice } from "./ask-orb";
 
 export interface TrovPrefsHost {
-  state: { trovPrefs: TrovPrefsUi; orgSlug: string | null; ask: { orb: AskOrbChoice } };
+  state: { trovPrefs: TrovPrefsUi; orgSlug: string | null };
   rerender(): void;
   unauth(e: unknown): void;
   flash(msg: string, ms?: number): void;
@@ -92,16 +89,6 @@ export function createTrovPrefs(h: TrovPrefsHost) {
         set({ draftMode: arg as AskMode, saved: false, error: null });
         h.rerender();
         return;
-      case "trovSetOrb": {
-        // A pick comes as the dropdown's `value`; anything else is ignored rather than stored.
-        const raw = value ?? arg;
-        const choice = parseAskOrb(raw);
-        if (choice !== raw) return;
-        h.state.ask.orb = choice;
-        try { localStorage.setItem(ASK_ORB_KEY, choice); } catch { /* this session only */ }
-        h.rerender();
-        return;
-      }
       case "trovSetSave": void save(); return;
       case "trovSetRetry": void load(true); return;
     }

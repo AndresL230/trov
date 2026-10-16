@@ -1088,16 +1088,19 @@ each paint is one static frame. Ask uses it in place of its spinner, clock and l
 `thinkingOrbTour(states, …)` is one canvas (`data-orb="tour"`, `data-orb-tour`) that shows each state in turn
 (`TOUR_SECONDS` each, on the same clock; its first under reduced motion).
 
-**Which orb Ask shows is the person's pick** (`web/src/ask-orb.ts`): Settings › Trov › "While it works" is a
-`dropdown()` (`trovOrbDropdown`) of "Match what it's doing" (the default: each place shows what it means) and the six
-animations by name — Orbits (working), Globe (searching), Cube (solving), Wave (listening), Ribbon (composing),
-Shapes (shaping). Each row and the trigger show their orb animating at 20px through the dropdown's option `icon`
+**Which orb Ask shows is the person's pick** (`web/src/ask-orb.ts`): a compact `dropdown()` in the Ask screen's
+header, immediately before the bug button and ONLY on `ask` (render.ts `orbSwitch`). Its trigger is `iconOnly`
+(`.cnpy-dd.is-icon`): just the picked option's 20px orb, animating, and a small caret, at the header icon buttons'
+32px with their quiet border and hover fill, named "Thinking animation: <choice>" (and titled "Thinking
+animation"). On a phone, where the Ask header hides the bug and theme buttons, it stays, at the header's 44px touch
+size. Its menu (`askOrbDropdown`, a root overlay like every dropdown's) is "Match what it's doing" (the default: each
+place shows what it means) and the six animations by name — Orbits (working), Globe (searching), Cube (solving),
+Wave (listening), Ribbon (composing), Shapes (shaping) — each row with its orb through the dropdown's option `icon`
 (trusted markup before the label, `.cnpy-dd-lead` / `.cnpy-dd-icon`); Match previews itself as a tour of the four
-states Ask uses. A pick (`trovSetOrb`) sets `AskUi.orb` at once — every orb in Ask follows on the next paint, an
-answer that is still streaming included — and is kept PER BROWSER in localStorage `trov.askOrb` (read once at
-start in main.ts, parsed by `parseAskOrb`, every access in try/catch); it is not server state because
-`person_ask_settings` has fixed columns and a look is not worth a migration. Ask's own screen has no switch for it
-(none of its menus is about how it looks).
+states Ask uses. A pick (`setAskOrb`, main.ts) sets `AskUi.orb` at once — every orb in Ask follows on the next paint,
+an answer that is still streaming included — and is kept PER BROWSER in localStorage `trov.askOrb` (read once at
+start, parsed by `parseAskOrb`, every access in try/catch); it is not server state because `person_ask_settings`
+has fixed columns and a look is not worth a migration.
 
 ## Corners — tighter than the design file
 

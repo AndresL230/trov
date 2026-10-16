@@ -3417,6 +3417,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       persist("trov.collapsed", state.collapsed ? "1" : "0");
       railTip(null);
       break;
+    case "setAskOrb": {
+      // Ask's thinking animation (the header dropdown, ask-orb.ts): applies on this paint, kept in this browser.
+      const raw = value ?? arg;
+      if (parseAskOrb(raw) !== raw) return;
+      state.ask.orb = parseAskOrb(raw);
+      persist(ASK_ORB_KEY, state.ask.orb);
+      break;
+    }
     case "cycleTheme": {
       // header button flips between the two concrete themes; settings can also pick "system".
       const next = resolvedTheme() === "light" ? "dark" : "light";

@@ -35,7 +35,8 @@ import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
-import { trovSettingsTiles, trovOrbDropdown, initialTrovPrefs, type TrovPrefsUi } from "./ask-settings";
+import { trovSettingsTiles, initialTrovPrefs, type TrovPrefsUi } from "./ask-settings";
+import { askOrbDropdown } from "./ask-orb";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
@@ -1006,6 +1007,9 @@ function header(s: AppState): string {
   // threads drawer and New thread (ask-screen.ts / ask-phone.ts). The Tickets page gains "Ask about this ⌘J".
   const ask = s.screen === "ask" ? askHeader(s) : null;
   const askControls = s.screen === "ask" ? phoneHeaderControls(s) : cmdjHeaderButton(s);
+  // Ask's thinking animation (ask-orb.ts): beside the bug button, on the Ask screen only — a compact dropdown whose
+  // trigger is the picked orb, animating. On a phone it stays when the bug and theme buttons leave.
+  const orbSwitch = s.screen === "ask" ? dropdown(askOrbDropdown(s.ask.orb), s.dd) : "";
 
   return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
@@ -1013,7 +1017,7 @@ function header(s: AppState): string {
       ${ask ? ask.crumb : art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${askControls}${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${askControls}${newControls}${feedControls}${docsControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${orbSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -2575,7 +2579,7 @@ function settingsView(s: AppState): string {
 
     ${mcpAccessSection(s, org?.name ?? "")}
 
-    ${trovSettingsTiles(s.trovPrefs, s.orgSlug, { choice: s.ask.orb, dd: s.dd })}
+    ${trovSettingsTiles(s.trovPrefs, s.orgSlug)}
 
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
@@ -3058,9 +3062,10 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "settings" ? accountDeleteModal(s.acctDelete) : ""}
     ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
-    ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu([...grantDropdowns(s), trovOrbDropdown(s.ask.orb)], s.dd) : ""}
+    ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
+    ${s.view === "app" && s.screen === "ask" && s.dd.open ? dropdownMenu([askOrbDropdown(s.ask.orb)], s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
