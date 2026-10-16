@@ -114,6 +114,7 @@ import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
 import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
 import { createPaintQueue } from "./paint-queue";
+import { onMarkdownLib, prefetchMarkdownLib } from "./markdown-load";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -129,6 +130,9 @@ const paints = createPaintQueue(() => paintApp());
 function rerender(): void { paints.now(); }
 function rerenderSoon(): void { paints.soon(); }
 function batchRender<T>(fn: () => T): T { return paints.batch(fn); }
+// marked + DOMPurify are their own chunk (markdown-load.ts): a body drawn before it is in is a
+// placeholder, and its arrival repaints — a read landing, so it shares the next frame's paint.
+onMarkdownLib(() => rerenderSoon());
 
 // The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
 // and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
@@ -370,6 +374,8 @@ function paintApp(): void {
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // Signed in: the Markdown chunk starts loading beside the first reads (once).
+  if (state.view === "app" || state.view === "platform") prefetchMarkdownLib();
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
   const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
   if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
