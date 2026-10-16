@@ -43,7 +43,7 @@ for an organization whose admin turned them on, in the background, each request 
 | `GOOGLE_CLIENT_ID` | secret | the Google OAuth client id (the second sign-in provider) | `/auth/google/login` answers 503 |
 | `GOOGLE_CLIENT_SECRET` | secret | its client secret | the redirect still happens, the exchange fails and `/auth/google/callback` 401s `exchange_failed` |
 | `COOKIE_SECRET` | secret | the HMAC key for the session cookie, the sealed onboarding / OAuth-transaction cookies, the unsubscribe token (`/u/…`), artifact download links, and the hashed client address of a signed-out support report | no session can be made or read |
-| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing | — never set in production |
+| `DEV_LOGIN` | local only (`.dev.vars`) | bypasses OAuth and acts as this seeded user; with it set, `/` is the app shell, never the prerendered landing. A session cookie wins over it, which is how the local dev sign-in (`/auth/dev/as`, `npm run dev:as`) switches person — `local-dev.md` | — never set in production |
 
 ### The GitHub App (`github-app.md`)
 
@@ -113,7 +113,8 @@ ignored. The Worker itself never reads it.
 
 ### Local development only
 
-`DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
+`DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above; the seeded local app, its scenarios and the dev sign-in are
+`local-dev.md`), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
 Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
 `http://localhost`, and never honoured beside a live Stripe key. The two stand-ins are described in `.dev.vars.example`.
 `LOCAL_AI_PREVIEW` — `ready` | `empty` | `capped` | `proposed`: the AI screens' sample content (`src/ai/preview.ts`,
