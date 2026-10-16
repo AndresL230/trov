@@ -17,8 +17,6 @@ import { cvRef, parseCvRef, cvRefWord, isCvRef } from "../web/src/ask-cvref";
 import { refFallbackText } from "../web/src/ask-refs";
 import { newTurn, foldAskEvent, foldThreadEvent, emptyConvo, withLastTurn, type AskConvo, type AskMsg, type AskTurn } from "../web/src/ask-stream";
 import type { AskApi } from "../web/src/ask-api";
-import { ASK_ORB_CHOICES, ASK_ORB_KEY, ASK_ORB_MATCH_TOUR, askOrbDropdown, askOrbState, parseAskOrb, type AskOrbChoice } from "../web/src/ask-orb";
-import { thinkingOrbTour, tourState, TOUR_SECONDS } from "../web/src/thinking-orb";
 import { dropdownMenu } from "../web/src/dropdown";
 import mainSrc from "../web/src/main.ts?raw";
 import { askTranscript, askRefFixtures, askStateFixture, askThreadsFixture, ASK_SCENARIO_QUESTION, type AskScenario } from "@shared/ai-fixtures";
@@ -192,7 +190,7 @@ describe("`streaming` — mid-answer", () => {
     expect(view("answer", { events: upToChart, busy: true }).html).toContain(`<div data-morph-key="cursor" class="ask-cur-alone">`);
     expect(view("answer", { events: [], busy: true }).html).toContain(`ask-cur-alone`);
     // The place the words will come holds a thinking orb: working before anything arrived, writing after a block.
-    expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working" data-orb-size="20" width="20" height="20" aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
+    expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="solving" data-orb-size="20" width="20" height="20" aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
     expect(view("answer", { events: upToChart, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Writing…<\/span>/);
   });
   it("the wait row stays under the steps for the whole wait — while a step runs too, with that step's orb", () => {
@@ -219,127 +217,26 @@ describe("`streaming` — mid-answer", () => {
   });
 });
 
-describe("the thinking orb the person picked (the Ask header's switch, AskUi.orb)", () => {
+describe("the thinking orbs mean one thing each — no picker (the owner)", () => {
   const orbs = (html: string): string[] => [...html.matchAll(/<canvas class="cnpy-orb" data-orb="(\w+)"/g)].map((m) => m[1]);
   const answerEvents = () => askTranscript("answer", NOW).map((s) => s.event);
   const thinkEvents = () => { const e = askTranscript("thinking", NOW).map((s) => s.event); return e.slice(0, e.findIndex((x) => x.event === "thinking") + 1); };
-  const pick = (o: AskOrbChoice) => (s: AppState) => { s.ask.orb = o; };
-
-  it("by default (Match) each place shows what it means — unchanged", () => {
-    expect(base().ask.orb).toBe("match");
-    expect(orbs(view("answer", { events: [], busy: true }).html)).toEqual(["working"]);
+  it("thinking is the cube, writing the ribbon, a search the globe, other work the orbits", () => {
+    expect(orbs(view("answer", { events: [], busy: true }).html)).toEqual(["solving"]);
     expect(orbs(view("thinking", { events: thinkEvents(), busy: true }).html)).toContain("solving");
+    const ev = answerEvents();
+    const upToChart = ev.slice(0, ev.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
+    expect(orbs(view("answer", { events: upToChart, busy: true }).html)).toEqual(["composing"]);
+    const search: AskEvent[] = [{ event: "activity", data: { step: 1, tool: "search_docs", icon: "search", label: "Searched docs for 'x'", state: "run" } }];
+    expect(orbs(view("answer", { events: search, busy: true }).html)).toEqual(["searching"]);
+    const work: AskEvent[] = [{ event: "activity", data: { step: 1, tool: "get_ticket", icon: "tickets", label: "Read ticket #87", state: "run" } }];
+    expect(orbs(view("answer", { events: work, busy: true }).html)).toEqual(["working"]);
   });
-
-  it("one animation picked: every orb in the answer is that one — the steps, the thinking row and the wait", () => {
-    const wait = view("answer", { events: [], busy: true, over: pick("listening") }).html;
-    expect(orbs(wait)).toEqual(["listening"]);
-    // The word beside the orb still says what Trov is doing, whatever the orb looks like.
-    expect(wait).toMatch(/data-orb="listening"[^>]*aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Thinking…/);
-    const step = view("answer", { events: answerEvents().slice(0, 2), busy: true, over: pick("shaping") }).html;
-    expect(orbs(step).length).toBeGreaterThan(0);
-    expect(new Set(orbs(step))).toEqual(new Set(["shaping"]));
-    const think = view("thinking", { events: thinkEvents(), busy: true, over: pick("working") }).html;
-    expect(think).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><canvas class="cnpy-orb" data-orb="working"[^>]*aria-hidden="true"/);
-    expect(new Set(orbs(think))).toEqual(new Set(["working"]));
-    const events = answerEvents();
-    const upToChart = events.slice(0, events.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
-    expect(view("answer", { events: upToChart, busy: true, over: pick("searching") }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"[^>]*><\/canvas><span class="ask-wait-l">Writing…/);
-  });
-
-  it("a finished answer has no orb, whatever is picked", () => {
-    expect(orbs(view("answer", { over: pick("solving") }).html)).toEqual([]);
-  });
-});
-
-describe("the thinking-animation switch — the Ask header, beside the bug button (ask-orb.ts)", () => {
-  const header = (s: AppState): string => { const h = render(s); return h.slice(h.indexOf('<div class="cnpy-hdr-r"'), h.indexOf("</header>")); };
-  const trigger = (html: string): string => html.match(/<button type="button" id="ask-orb"[^]*?<\/button>/)?.[0] ?? "";
-  const ME_ORG = { handle: "andres", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "owner" as const }], superadmin: false, pending_invites: 0 };
-
-  it("sits in the Ask header immediately before the bug button: the picked orb and a caret, named Thinking animation", () => {
-    const h = header(base());
-    const t = trigger(h);
-    expect(t).not.toBe("");
-    expect(h.indexOf('id="ask-orb"')).toBeLessThan(h.indexOf('data-act="supportOpen"'));
-    expect(h.slice(h.indexOf(t) + t.length).trimStart()).toMatch(/^<button data-act="supportOpen" data-arg="bug"/);
-    expect(t).toContain('class="cnpy-dd is-icon"');
-    expect(t).toContain('data-act="ddToggle" data-arg="ask-orb"');
-    expect(t).toContain(`aria-label="Thinking animation: Match what it&#39;s doing"`);
-    expect(t).toContain('title="Thinking animation"');
-    expect(t).toContain('aria-haspopup="listbox"');
-    // Only the orb (Match tours the states Ask uses) and the caret — no words.
-    expect(t).toContain(`data-orb="tour" data-orb-tour="${ASK_ORB_MATCH_TOUR.join(" ")}"`);
-    expect(t).not.toContain("cnpy-dd-v");
-    expect(t).toContain("cnpy-dd-caret");
-    expect(h).not.toContain("<select");
-  });
-
-  it("shows only on the Ask screen", () => {
-    for (const screen of ["mywork", "settings", "tickets", "feed"] as const) {
-      const s = base(); s.screen = screen; (s as { me: unknown }).me = ME_ORG;
-      expect(render(s)).not.toContain('id="ask-orb"');
-    }
-  });
-
-  it("the trigger is the pick's own orb; on a phone it stays when the bug and theme buttons leave", () => {
-    const s = base(); s.ask.orb = "searching";
-    const t = trigger(header(s));
-    expect(t).toMatch(/<span class="cnpy-dd-icon" aria-hidden="true"><canvas class="cnpy-orb" data-orb="searching" data-orb-size="20"[^>]*aria-hidden="true"/);
-    expect(t).toContain('aria-label="Thinking animation: Globe"');
-    const ph = base(); ph.phone = true; ph.ask.vw = 390;
-    expect(header(ph)).toContain('id="ask-orb"');
-    expect(css).toMatch(/\.cnpy-dd\.is-icon \{ height:32px;/);
-    expect(css).toMatch(/\[data-phone="1"\] \.cnpy-hdr-r > \.cnpy-dd\.is-icon \{ height:44px; min-height:44px;/);
-    expect(css).toMatch(/\[data-phone="1"\]\[data-screen="ask"\] \.cnpy-hdr-r > \[data-act="supportOpen"\]/);
-  });
-
-  it("its menu (a root overlay while open): Match, then the six animations by name, each with its 20px orb; the pick checked", () => {
-    expect(ASK_ORB_CHOICES.map((c) => c.label)).toEqual(["Match what it's doing", "Orbits", "Globe", "Cube", "Wave", "Ribbon", "Shapes"]);
-    const s = base(); s.ask.orb = "listening";
-    expect(render(s)).not.toContain('data-overlay="dd-ask-orb"');
-    s.dd = { open: "ask-orb", opening: false, closing: false };
-    const html = render(s);
-    expect(html).toContain('data-overlay="dd-ask-orb"');
-    const menu = dropdownMenu([askOrbDropdown("listening")], s.dd);
-    expect(menu).toContain('role="listbox" aria-label="Thinking animation"');
-    expect(menu).toContain('data-dd-act="setAskOrb"');
-    const rows = menu.match(/<button type="button" role="option"[^]*?<\/button>/g) ?? [];
-    expect(rows).toHaveLength(7);
-    ASK_ORB_CHOICES.forEach((c, i) => {
-      expect(rows[i]).toContain(`data-arg="${c.value}"`);
-      expect(rows[i]).toContain(`<span class="cnpy-dd-optl">${c.label.replace(/'/g, "&#39;")}</span>`);
-      expect(rows[i]).toMatch(c.value === "match" ? /data-orb="tour"/ : new RegExp(`data-orb="${c.value}" data-orb-size="20"`));
-      expect(rows[i]).toContain(`aria-selected="${c.value === "listening"}"`);
-    });
-    expect(rows[0]).toContain('<span class="cnpy-dd-opth">Searching, thinking and writing each look different.</span>');
-  });
-
-  it("the choice: Match follows each place; one animation replaces them all; kept per browser; a bad value is Match", () => {
-    expect(askOrbState("match", "searching")).toBe("searching");
-    expect(askOrbState("listening", "searching")).toBe("listening");
-    expect(parseAskOrb("solving")).toBe("solving");
-    for (const bad of [null, undefined, "", "tour", "spinner", 3]) expect(parseAskOrb(bad)).toBe("match");
-    expect(ASK_ORB_KEY).toBe("trov.askOrb");
-    // main.ts reads it at start and the act stores it (persist wraps localStorage in try/catch).
-    expect(mainSrc).toContain("state.ask.orb = parseAskOrb(localStorage.getItem(ASK_ORB_KEY))");
-    expect(mainSrc).toMatch(/case "setAskOrb": \{[^]*?if \(parseAskOrb\(raw\) !== raw\) return;[^]*?persist\(ASK_ORB_KEY, state\.ask\.orb\);/);
-  });
-
-  it("Settings › Trov has no orb control (it moved to the Ask header)", () => {
-    const s = base(); s.screen = "settings"; (s as { me: unknown }).me = ME_ORG;
+  it("the Ask header has no thinking-animation switch any more", () => {
+    const s = base();
     const html = render(s);
     expect(html).not.toContain("ask-orb");
-    expect(html).not.toContain("While it works");
-  });
-
-  it("a tour shows each state in turn on the shared clock; under reduced motion (t = 0.6s) its first", () => {
-    const tour = ["working", "searching", "solving"];
-    expect(tourState(tour, 0.6)).toBe("working");
-    expect(tourState(tour, TOUR_SECONDS + 0.1)).toBe("searching");
-    expect(tourState(tour, TOUR_SECONDS * 3 + 0.1)).toBe("working");
-    expect(tourState([], 1)).toBeUndefined();
-    expect(thinkingOrbTour(["solving", "working"], 20, null)).toMatch(/^<canvas class="cnpy-orb" data-orb="tour" data-orb-tour="solving working" data-orb-size="20"[^>]*aria-hidden="true"/);
+    expect(html).not.toContain("Thinking animation");
   });
 });
 

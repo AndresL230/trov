@@ -337,14 +337,13 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   orb beside "Thinking…" ("Writing…" once a block is out) in the sweep of light — is there for the whole wait, before
   anything, while the steps appear and after them, gone only while words stream or the Thinking row runs (that row
   keeps its "solving" orb; "Thought for Ns" keeps the clock). Its orb is the running step's kind (`STEP_ORB`: search /
-  docs / feed / read / review steps "searching", the rest "working"), else "working", "composing" once a block is out.
+  docs / feed / read / review steps and anything labelled "Searched …" are "searching", the rest "working"), else
+  "solving" (the cube = thinking), "composing" once a block is out.
   A step keeps its own icon; its label carries the sweep while it runs. Steps APPEAR AS THEY GO: the tools run in a
   few ms, so the pacer (`ask-pace.ts`, `stepMs` 350) shows each running for 350 ms, then done, then the next — what
-  comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. Which animation is the person's pick
-  (`AskUi.orb`, `ask-orb.ts` `askOrbState`), from the header's "Thinking animation" dropdown beside the bug button
-  (Ask only; its trigger is the picked orb and a caret; it stays on a phone): "Match what it's doing" is the default
-  above; one of the six replaces every orb in Ask — steps, thinking and the wait — while the orb's name ("Working…",
-  "Writing…") still says what it is doing. Kept per browser (localStorage `trov.askOrb`), applied live.
+  comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. **Each orb means one thing** (the owner, 2026-10-16:
+  the picker is gone) — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the
+  orbits for other work; all of them in the theme's purple.
 - **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
   is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another

@@ -16,8 +16,7 @@ import { conversationView, emptyView } from "../../web/src/ask-conversation";
 import { composerView, knownHits, type ComposerFile } from "../../web/src/ask-composer";
 import { hoverCard } from "../../web/src/ask-refs";
 import { threadsView } from "../../web/src/ask-threads";
-import { thinkingOrb, thinkingOrbTour, type OrbState } from "../../web/src/thinking-orb";
-import { askOrbDropdown, ASK_ORB_MATCH_TOUR } from "../../web/src/ask-orb";
+import { thinkingOrb, type OrbState } from "../../web/src/thinking-orb";
 import { createDropdowns, dropdown, dropdownMenu } from "../../web/src/dropdown";
 import { cmdjHeaderButton } from "../../web/src/ask-cmdj";
 import { askFlagsLine } from "../../web/src/review";
@@ -255,7 +254,6 @@ function screens(): Section {
     s.ask.hits = { status: "ok", data: askSearchFixture(NOW) };
     s.ask.threadMenu = 5;
   }, {});
-  const orbMenu = page(HOSTING(), (s) => { s.dd = { open: "ask-orb", opening: false, closing: false }; });
   const drag = page(HOSTING(), (s) => { s.ask.composer.page = { ...s.ask.composer.page, drag: true }; });
   return {
     id: "screens", title: "Whole screens", intro: "The Ask screen as the app draws it at 1440 × 900: the thread list, the conversation and its composer, the inspector. Scaled to fit; “Actual size” shows it 1:1.",
@@ -266,8 +264,6 @@ function screens(): Section {
       desktop("scr-thinking", "Thinking mode", "Done: “Thought for 14s” above the answer", "#ask/<id>", thinking),
       desktop("scr-pr", "The inspector open", "PR #173, opened from #176 from ticket #14 (the trail); the thread list hidden", "#ask/<id>, beside the thread", pr),
       desktop("scr-search", "Searching threads", "“netlify”: hits with the match marked; a row's ⋯ menu open", "The thread list", search),
-      desktop("scr-orb", "Thinking animation", "The header's dropdown open: Match what it's doing, then the six orbs", "The Ask header, beside the bug button", orbMenu,
-        { html: placed(render(orbMenu), orbMenu.dd, 1440, 900) }),
       desktop("scr-drag", "Dropping files", "Files dragged over the conversation", "The conversation", drag),
     ],
   };
@@ -373,12 +369,10 @@ function waiting(): Section {
   return {
     id: "wait", title: "The wait", intro: "The wait row: while a turn is live and no words are streaming, the one orb and its word sit under the steps for the whole wait, in the sweep of light — “Thinking…” before anything is written (its orb follows the running step: searching for look-ups, else working), “Writing…” once a block is out. It steps aside while words stream (the soft cursor is in them) and while the Thinking row runs.",
     specs: [
-      inline("w-first", "Thinking… (nothing yet)", "Sent, nothing back yet (orb: working)", "Under the question", keep(cv(nothing), [".ask-cur-alone"])),
-      inline("w-steps", "Thinking… (steps done)", "Every step done, no words yet (orb: working)", "Under the steps", keep(cv(wait), [".ask-steps", ".ask-cur-alone"])),
-      inline("w-writing", "Writing…", "A block is out, the words are not (orb: composing)", "Under the block", keep(cv(blockOut), [".ask-parts", ".ask-cur-alone"])),
+      inline("w-first", "Thinking… (nothing yet)", "Sent, nothing back yet (orb: the cube, thinking)", "Under the question", keep(cv(nothing), [".ask-cur-alone"])),
+      inline("w-steps", "Thinking… (steps done)", "Every step done, no words yet (orb: the cube, thinking)", "Under the steps", keep(cv(wait), [".ask-steps", ".ask-cur-alone"])),
+      inline("w-writing", "Writing…", "A block is out, the words are not (orb: the ribbon, writing)", "Under the block", keep(cv(blockOut), [".ask-parts", ".ask-cur-alone"])),
       inline("w-cursor", "The soft cursor", "Streaming mid-list (the design's token 58)", "At the end of the words", keep(cv(cur), ".ask-parts")),
-      inline("w-pinned", "A pinned orb", "The header's pick is Shapes: every orb in Ask is Shapes, the words still say what it does", "Steps and the wait",
-        keep(cv(page([question("What's blocking the hosting work?"), answer(fold(events("answer").filter((e) => e.event === "activity").slice(0, 9)))], (s) => { s.ask.orb = "shaping"; })), [".ask-steps", ".ask-cur-alone"])),
     ],
   };
 }
@@ -987,18 +981,15 @@ function threads(): Section {
 }
 
 function orbs(): Section {
-  const states: OrbState[] = ["working", "searching", "solving", "listening", "composing", "shaping"];
-  const row = (size: 20 | 64) => `<div class="gx-orbs">${states.map((st) => `<figure class="gx-orb">${thinkingOrb(st, size)}<figcaption>${st}</figcaption></figure>`).join("")}<figure class="gx-orb">${thinkingOrbTour(ASK_ORB_MATCH_TOUR, size, null)}<figcaption>match (tour)</figcaption></figure></div>`;
-  const dd = { open: "ask-orb", opening: false, closing: false };
+  // What each orb means in Ask (fixed — the owner removed the picker): thinking is the cube, writing the ribbon, a
+  // search the globe, other work the orbits. The other two are the engine's, unused in Ask.
+  const meaning: [OrbState, string][] = [["solving", "Thinking"], ["composing", "Writing"], ["searching", "Searching"], ["working", "Other work"], ["listening", "Unused"], ["shaping", "Unused"]];
+  const row = (size: 20 | 64) => `<div class="gx-orbs">${meaning.map(([st, m]) => `<figure class="gx-orb">${thinkingOrb(st, size)}<figcaption>${m} · ${st}</figcaption></figure>`).join("")}</div>`;
   return {
-    id: "orbs", title: "Thinking orbs", intro: "Ask's working animations (thinking-orb.ts): one canvas loop paints every orb on the shared clock. By default the orb matches what Trov is doing — searching, working, solving (thinking), composing (writing); the header's Thinking animation dropdown can pin one for every orb.",
+    id: "orbs", title: "Thinking orbs", intro: "Ask's working animations (thinking-orb.ts), in the theme's purple: one canvas loop paints every orb on the shared clock. Each means one thing — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the orbits for other work.",
     specs: [
-      inline("o-20", "The six orbs, 20px", "As steps, thinking and the wait use them", "Steps, thinking, the wait", row(20), { sample: false }),
-      inline("o-64", "The six orbs, 64px", "The engine's larger preset", "Nowhere on screen today (thinking-orb.ts keeps the size)", row(64), { sample: false }),
-      inline("o-dd", "The header dropdown", "The trigger (the picked orb and a caret) and its menu, each option with its orb", "The Ask header",
-        placed(`${dropdown(askOrbDropdown("match"), dd)}${dropdownMenu([askOrbDropdown("match")], dd)}`, dd, 360, 380, 16), { sample: false, w: 360, h: 380, stage: "gx-fixed gx-ddbox" }),
-      inline("o-dd-cube", "A pinned orb", "Cube picked: the trigger shows it", "The Ask header",
-        placed(`${dropdown(askOrbDropdown("solving"), { ...dd, open: null })}`, { ...dd, open: null }, 360, 72, 16), { sample: false, w: 360, h: 72, stage: "gx-fixed gx-ddbox" }),
+      inline("o-20", "The orbs, 20px", "As steps, thinking and the wait use them, with what each means", "Steps, thinking, the wait", row(20), { sample: false }),
+      inline("o-64", "The orbs, 64px", "The engine's larger preset", "Nowhere on screen today (thinking-orb.ts keeps the size)", row(64), { sample: false }),
     ],
   };
 }

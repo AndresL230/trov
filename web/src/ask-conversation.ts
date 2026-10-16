@@ -46,7 +46,6 @@ import { aiDay } from "./ai-ui";
 import { closingAttr, stickAfterScroll } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
 import { thinkingOrb, type OrbState } from "./thinking-orb";
-import { askOrbState } from "./ask-orb";
 import { parseCommand, sentFileChip, sentRefChip } from "./ask-composer";
 import { diagramFigure } from "./ask-diagram";
 import { singleItemCard } from "./ask-one";
@@ -439,7 +438,9 @@ const stepOrb = (s: Pick<AskStep, "tool" | "icon" | "label">): OrbState => (/^(s
 
 /** Every orb in an answer: the person's pick (Settings › Trov, `AskUi.orb`), else — on "match" — `natural`, what that
  *  place means. The label (when the orb is not decorative) still says what Trov is doing, whatever it looks like. */
-const orb = (v: AskView, natural: OrbState, label: string | null): string => thinkingOrb(askOrbState(v.ui.orb, natural), 20, label);
+/** The orb for what Trov is doing (fixed, the owner: no picker) — thinking is the cube ("solving"), writing the ribbon
+ *  ("composing"), a search the globe ("searching"), other work the orbits ("working"). */
+const orb = (_v: AskView, state: OrbState, label: string | null): string => thinkingOrb(state, 20, label);
 
 /** The show tools and the save form's step are what the answer SHOWS — the design lists no step for them. */
 export const quietStep = (s: Pick<AskStep, "tool">): boolean => /^show_/.test(s.tool) || s.tool === "save_artifact";
@@ -552,7 +553,8 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // running step's kind, else working; writing once a block is out.
   const running = holdLast ? shownSteps.at(-1) : shownSteps.filter((s) => s.state === "run").at(-1);
   const curAlone = live && !cursorIn && t.thinking?.state !== "run";
-  const waitOrb: OrbState = parts.length ? "composing" : running ? stepOrb(running) : "working";
+  // Thinking (nothing running) is the cube; a running step its kind; writing once a block is out.
+  const waitOrb: OrbState = parts.length ? "composing" : running ? stepOrb(running) : "solving";
   const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   const foot = t.done && !t.error ? footer(v, a) : "";

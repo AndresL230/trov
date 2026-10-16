@@ -38,15 +38,6 @@ describe("dropdown — an option's icon (a preview, trusted markup)", () => {
     expect(dropdown({ ...withIcons, value: "<fig>" }, closed())).not.toContain("cnpy-dd-lead");
     expect(dropdown(base, closed())).not.toContain("cnpy-dd-icon");
   });
-  it("an iconOnly trigger is just the icon and the caret, named (and titled) by its aria label with the choice", () => {
-    const t = dropdown({ ...withIcons, iconOnly: true }, closed());
-    expect(t).toContain('class="cnpy-dd is-icon"');
-    expect(t).toContain('aria-label="Fruit: A pear" title="Fruit"');
-    expect(t).toMatch(/><span class="cnpy-dd-icon" aria-hidden="true"><i data-ico="pear"><\/i><\/span><svg class="cnpy-dd-caret"/);
-    expect(t).not.toContain("cnpy-dd-v");
-    // A pick with no icon falls back to the words.
-    expect(dropdown({ ...withIcons, iconOnly: true, value: "<fig>" }, closed())).toContain('<span class="cnpy-dd-v">Fig &amp; &lt;jam&gt;</span>');
-  });
 });
 
 describe("dropdown — the trigger", () => {

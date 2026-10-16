@@ -1359,13 +1359,6 @@ input, select { font-family: inherit; }
 /* An option's preview (`DropdownOption.icon`: Settings › Trov's thinking orbs) before its label, in the row and in the trigger. */
 .cnpy-dd-lead { display:flex; align-items:center; gap:9px; min-width:0; }
 .cnpy-dd-icon { flex:none; display:flex; align-items:center; justify-content:center; width:20px; height:20px; }
-/* An icon-only trigger (`iconOnly`: Ask's thinking-animation switch in the header) wears the header's icon buttons'
-   look — 32px, the quiet border, a hover fill — with the orb and the caret inside. On a phone it is the Ask header's
-   44px touch target (the bug and theme buttons leave there; it stays). */
-.cnpy-dd.is-icon { height:32px; padding:0 6px 0 6px; gap:3px; border-color:var(--border); background:transparent; color:var(--fg-55); transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
-.cnpy-dd.is-icon:hover:not(:disabled) { border-color:var(--border); background:var(--hover); }
-.cnpy-dd.is-icon .cnpy-dd-caret { width:10px; height:10px; }
-[data-phone="1"] .cnpy-hdr-r > .cnpy-dd.is-icon { height:44px; min-height:44px; padding:0 9px 0 10px; }
 .cnpy-dd-caret { flex:none; color:var(--fg-40); transition:transform .14s ease; }
 .cnpy-dd:hover:not(:disabled) { border-color:var(--fg-40); }
 .cnpy-dd.is-open { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }

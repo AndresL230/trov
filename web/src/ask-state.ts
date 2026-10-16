@@ -33,7 +33,6 @@ import { initialInspectorUi, type InspectorUi } from "./ask-inspector";
 import { initialActionsUi, type ActionsUi } from "./ask-actions";
 import { initialCmdjUi, type CmdjUi } from "./ask-cmdj";
 import { initialPhoneUi, type PhoneUi } from "./ask-phone";
-import type { AskOrbChoice } from "./ask-orb";
 
 /** Which conversation: the Ask page's, or the ⌘J panel's (over any page). */
 export type AskWhere = "page" | "panel";
@@ -69,9 +68,6 @@ export interface AskUi {
   closing: Record<string, true>;
   /** The dev replay driving the screen (`?askReplay=<scenario>`), or null. */
   replay: { scenario: string; speed: number } | null;
-  /** Which thinking orb shows while a turn is live (ask-orb.ts): "match" = what it is doing. Per browser — main.ts
-   *  reads it from localStorage at start; Settings › Trov's `trovSetOrb` sets and stores it. */
-  orb: AskOrbChoice;
   // ── the parts' own state ──
   conversation: ConversationUi;
   composer: Record<AskWhere, ComposerUi>;
@@ -94,7 +90,6 @@ export function initialAskUi(): AskUi {
     hover: null,
     closing: {},
     replay: null,
-    orb: "match",
     conversation: initialConversationUi(),
     composer: { page: initialComposerUi(), panel: initialComposerUi() },
     inspectorUi: initialInspectorUi(),

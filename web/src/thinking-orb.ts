@@ -12,8 +12,6 @@
 //   the theme                 read on every frame from the nearest [data-cnpy-theme]; the ink is that theme's
 //                             --purple (purple = "Trov is working"), a dot's depth its opacity (orbs/engine/core.ts setInk).
 //   reduced motion            one static frame per paint and no loop (the upstream's frame at 0.6s).
-//   a tour                    `thinkingOrbTour(states, …)`: one orb that shows each state in turn (TOUR_SECONDS each),
-//                             on the same clock — a preview of "it changes with what it does" (Settings › Trov).
 
 import { MODE_DRAWS } from "./orbs/engine/registry";
 import { setInk } from "./orbs/engine/core";
@@ -32,14 +30,6 @@ const dpr = (): number => (browser ? Math.min(2, window.devicePixelRatio || 1) :
 const reduced = (): boolean => browser && typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 let raf = 0;
-
-/** How long a tour shows each of its states. */
-export const TOUR_SECONDS = 2.4;
-
-/** A tour's state at `tSec` (its first one under reduced motion, where the clock stands at 0.6s). */
-export function tourState(states: readonly string[], tSec: number): string | undefined {
-  return states.length ? states[Math.floor(tSec / TOUR_SECONDS) % states.length] : undefined;
-}
 
 /** The orb's ink: its theme's `--purple` (#rgb / #rrggbb / rgb()), read off the canvas; null when it has none. */
 const inks = new Map<string, readonly [number, number, number] | null>();
@@ -60,7 +50,7 @@ function inkOf(c: HTMLCanvasElement): readonly [number, number, number] | null {
 }
 
 function paint(c: HTMLCanvasElement, tSec: number): void {
-  const state = c.dataset.orb === "tour" ? tourState((c.dataset.orbTour ?? "").split(" ").filter(Boolean), tSec) : c.dataset.orb;
+  const state = c.dataset.orb;
   if (!state || !STATES.has(state)) return;
   const size: OrbSize = c.dataset.orbSize === "64" ? 64 : 20;
   const ratio = dpr();
@@ -103,7 +93,3 @@ export function thinkingOrb(state: OrbState, size: OrbSize = 20, label: string |
   return `<canvas class="cnpy-orb" data-orb="${state}" data-orb-size="${size}" width="${px}" height="${px}" ${a11y} style="width:${size}px;height:${size}px"></canvas>`;
 }
 
-/** One orb that shows `states` in turn — the same canvas, sizes and loop as `thinkingOrb`. */
-export function thinkingOrbTour(states: readonly OrbState[], size: OrbSize = 20, label: string | null = null): string {
-  return thinkingOrb(states[0] ?? "working", size, label).replace(/data-orb="\w+"/, `data-orb="tour" data-orb-tour="${states.join(" ")}"`);
-}
