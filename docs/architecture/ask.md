@@ -323,6 +323,10 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
+- **Half-written markdown** (`settleTail`, ask-conversation.ts): while a text part streams, its last line is settled
+  before it is parsed — a bare heading / list / fence marker or a table row not yet closed by its bar waits, an unclosed
+  `**` / `*` / backtick is closed for now (the words show bold as they arrive), a half `[link](…` shows its text, a half
+  `[[ref` waits — so no raw marks flash before they render (the owner). A finished part is parsed as it came.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
   20px thinking orb says what Trov is doing, in ONE place under the steps (the owner, 2026-10-16): the wait row — the
   orb beside "Thinking…" ("Writing…" once a block is out) in the sweep of light — is there for the whole wait, before

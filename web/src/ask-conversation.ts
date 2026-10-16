@@ -143,6 +143,37 @@ export function parseMd(md: string): MdNode[] {
   return out;
 }
 
+/** While a text part STREAMS, its last line may be half a piece of markdown — a `##` with no words yet, `**bo`, a
+ *  `[link](ht`, a table row still being typed. Drawn as-is it shows the raw marks for a moment before they render (the
+ *  owner). This settles that tail only: a bare heading / list / fence marker or a half table row waits for its words, an
+ *  unclosed `**` / `*` / backtick is closed for now (so the words show bold as they come), a half link shows its text,
+ *  a half `[[ref` waits. A finished answer is never touched. */
+export function settleTail(md: string): string {
+  const cut = md.lastIndexOf("\n");
+  const head = md.slice(0, cut + 1);
+  let last = md.slice(cut + 1);
+  // A bare block marker: "##", "- ", "1.", "`", "``" — nothing to show yet.
+  if (/^\s{0,3}#{1,6}\s*$/.test(last) || /^\s*([-*+]|\d{1,3}[.)])\s*$/.test(last) || /^\s*`{1,2}$/.test(last)) return head;
+  // A table row still being typed (not closed by its last bar): wait for the whole row.
+  if (/^\s*\|/.test(last) && !/\|\s*$/.test(last)) return head;
+  // A ref token still coming.
+  if (last.lastIndexOf("[[") > last.lastIndexOf("]]")) last = last.slice(0, last.lastIndexOf("[["));
+  // A link still coming: its text so far.
+  last = last.replace(/\[([^\]]*)\]\([^)]*$/, "$1").replace(/(^|[^[])\[([^\]]*)$/, "$1$2");
+  // Unclosed emphasis and code, outside code spans: close them for now (a lone trailing mark just waits). A leading
+  // list / heading marker ("* ", "- ", "## ") is not emphasis — it is set aside first.
+  const lead = last.match(/^\s*(?:[-*+]|\d{1,3}[.)]|#{1,6})\s+/)?.[0] ?? "";
+  last = last.slice(lead.length);
+  const ticks = (last.match(/`/g) ?? []).length;
+  if (ticks % 2 === 1) last = /`$/.test(last) ? last.slice(0, -1) : `${last}\``;
+  const outside = last.split(/`[^`]*`/).join("");
+  const bold = (outside.match(/\*\*/g) ?? []).length;
+  if (bold % 2 === 1) last = /\*\*\s*$/.test(last) ? last.replace(/\*\*\s*$/, "") : `${last}**`;
+  const singles = (last.split(/`[^`]*`/).join("").replace(/\*\*/g, "").match(/\*/g) ?? []).length;
+  if (singles % 2 === 1) last = /\*\s*$/.test(last) ? last.replace(/\*\s*$/, "") : `${last}*`;
+  return head + lead + last;
+}
+
 /** Bold, italics, code and links on ESCAPED text (placeholders for the chips pass through untouched). */
 function emphasis(html: string): string {
   return html
@@ -177,7 +208,8 @@ export function tableView(v: AskView, head: string[] | null, rows: string[][]): 
 
 /** A text part as markup; `cur` puts the soft cursor at the end of its last line. `tableTools(k)` wraps table k. */
 function mdView(v: AskView, md: string, cur: boolean, tableTools: (k: number, inner: string) => string): string {
-  const nodes = parseMd(md);
+  // `cur`: this part is still streaming — its half-written tail is settled first (never a finished answer's).
+  const nodes = parseMd(cur ? settleTail(md) : md);
   let tables = 0;
   return nodes.map((n, i) => {
     const c = cur && i === nodes.length - 1 ? CURSOR : "";

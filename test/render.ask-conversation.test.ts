@@ -11,7 +11,7 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import { askView, type AskCtx, type AskSendInput, type AskWhere } from "../web/src/ask-state";
 import {
-  conversationView, emptyView, conversationPart, parseMd, splitRow, chainOrder, cvItem, themeTip, thinkingLabel, quietStep, plainText,
+  conversationView, emptyView, conversationPart, parseMd, splitRow, chainOrder, cvItem, themeTip, thinkingLabel, quietStep, plainText, settleTail,
 } from "../web/src/ask-conversation";
 import { cvRef, parseCvRef, cvRefWord, isCvRef } from "../web/src/ask-cvref";
 import { refFallbackText } from "../web/src/ask-refs";
@@ -423,6 +423,34 @@ describe("the error, Stopped, and the oversized-image notice", () => {
     ];
     const { html } = view("answer", { events, busy: true });
     expect(html).toMatch(/<div class="ask-step"><span class="ask-step-i"><svg[^>]*>[\s\S]*?<\/svg><\/span><span class="ask-step-l">Read standup\.png<\/span><span class="ask-step-n">· Not read<\/span><\/div>/);
+  });
+});
+
+describe("settleTail — a streaming answer never shows half-written markdown (the owner)", () => {
+  it("bare markers wait; unclosed emphasis and code close for now; half links show their text; half refs and rows wait", () => {
+    expect(settleTail("Done.\n##")).toBe("Done.\n");
+    expect(settleTail("Done.\n## ")).toBe("Done.\n");
+    expect(settleTail("Intro\n- ")).toBe("Intro\n");
+    expect(settleTail("Intro\n3.")).toBe("Intro\n");
+    expect(settleTail("Intro\n``")).toBe("Intro\n");
+    expect(settleTail("The **Production bac")).toBe("The **Production bac**");
+    expect(settleTail("The **")).toBe("The ");
+    expect(settleTail("An *aside")).toBe("An *aside*");
+    expect(settleTail("Run `npm te")).toBe("Run `npm te`");
+    expect(settleTail("See [the doc](https://tro")).toBe("See the doc");
+    expect(settleTail("See [the do")).toBe("See the do");
+    expect(settleTail("Blocked by [[ticket:8")).toBe("Blocked by ");
+    expect(settleTail("| A | B |\n|---|---|\n| one | tw")).toBe("| A | B |\n|---|---|\n");
+    // A list marker is not emphasis; earlier lines and closed marks are untouched.
+    expect(settleTail("* First item")).toBe("* First item");
+    expect(settleTail("**Done** and *done*\n- Next **st")).toBe("**Done** and *done*\n- Next **st**");
+    expect(settleTail("A ref [[ticket:8]] and **b")).toBe("A ref [[ticket:8]] and **b**");
+  });
+  it("only while streaming: the live part renders the bold, a finished one is left as it came", () => {
+    const events: AskEvent[] = [{ event: "text", data: { delta: "The **Production bac" } }];
+    const live = view("answer", { events, busy: true }).html;
+    expect(live).toContain("<strong>Production bac</strong>");
+    expect(live).not.toContain("**");
   });
 });
 
