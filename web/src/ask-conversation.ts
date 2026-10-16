@@ -428,6 +428,8 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
 
 /** What a running step's orb shows (thinking-orb.ts): looking things up searches, anything else works. */
 const STEP_ORB: Partial<Record<AskStep["icon"], OrbState>> = { search: "searching", docs: "searching", feed: "searching", read: "searching", review: "searching" };
+/** A step's orb: any search (`search_*`, `query`, or a step the server labels "Searched …", e.g. `list_tickets`) is the globe. */
+const stepOrb = (s: Pick<AskStep, "tool" | "icon" | "label">): OrbState => (/^(search|query|find)/.test(s.tool) || /^Search/.test(s.label) ? "searching" : STEP_ORB[s.icon] ?? "working");
 
 /** Every orb in an answer: the person's pick (Settings › Trov, `AskUi.orb`), else — on "match" — `natural`, what that
  *  place means. The label (when the orb is not decorative) still says what Trov is doing, whatever it looks like. */
@@ -436,16 +438,20 @@ const orb = (v: AskView, natural: OrbState, label: string | null): string => thi
 /** The show tools and the save form's step are what the answer SHOWS — the design lists no step for them. */
 export const quietStep = (s: Pick<AskStep, "tool">): boolean => /^show_/.test(s.tool) || s.tool === "save_artifact";
 
-function stepView(v: AskView, a: AskAnswer, s: AskStep): string {
+function stepView(v: AskView, a: AskAnswer, s: AskStep, held = false): string {
   const key = `${a.key}:s${s.step}`;
-  const results = s.results.filter((r) => !isHiddenRef(v.look, r));
+  // `held`: the latest step reads as still running while Trov works with what it found (the owner: as the gallery
+  // shows it) — its result line and toggle come once the next step starts or the answer begins.
+  // A notice (a result line and no results, e.g. "Not read") is never held: it is the news, not the work.
+  const running = s.state === "run" || (held && !(s.resultLine && !s.results.length));
+  const results = running ? [] : s.results.filter((r) => !isHiddenRef(v.look, r));
   const has = results.length > 0;
   const open = has && v.ui.conversation.open[key] === true;
-  const run = s.state === "run" ? " is-run" : "";
+  const run = running ? " is-run" : "";
   // A step keeps its own icon running or done; its label carries the sweep of light while it runs. The ONE orb is
   // the wait row's, under the steps (the owner: the orb and "Thinking…" stay below as the steps appear).
   const icon = askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
-  const found = s.resultLine ?? (has ? `${results.length} ${results.length === 1 ? "result" : "results"}` : null);
+  const found = running ? null : s.resultLine ?? (has ? `${results.length} ${results.length === 1 ? "result" : "results"}` : null);
   const line = found ? `<span class="ask-step-n">· ${esc(found)}</span>` : "";
   const head = has
     ? `<button type="button" class="ask-step${run}" data-act="askCvToggle" data-arg="${attr(key)}" aria-expanded="${open}"><span class="ask-step-i">${icon}</span><span class="ask-step-l">${esc(s.label)}</span>${line}${chev(open)}</button>`
@@ -522,9 +528,13 @@ const STOP_SQ = `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true
 function answer(v: AskView, a: AskAnswer, last: boolean): string {
   const t: AskTurn = a.turn;
   const live = turnLive(t);
-  const steps = t.activity.filter((s) => !quietStep(s)).map((s) => stepView(v, a, s)).join("");
-  const think = thinkView(v, a);
   const parts = shownParts(t);
+  const shownSteps = t.activity.filter((s) => !quietStep(s));
+  // While nothing of the answer is out yet (and the Thinking row is not running), the latest step stays "running":
+  // the tools finish in ms, but Trov is still working with what that step found.
+  const holdLast = live && !parts.length && t.thinking?.state !== "run";
+  const steps = shownSteps.map((s, i) => stepView(v, a, s, holdLast && i === shownSteps.length - 1)).join("");
+  const think = thinkView(v, a);
   const end = parts.length - 1;
   const cursorIn = live && parts[end]?.kind === "text";
   // MOTION (ask-motion.ts): every part is a keyed child of a `data-ask-enter` list, so a streamed block or card
@@ -534,9 +544,9 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // and after them while the model reads what it found — gone only while words stream (the cursor is in them) or
   // while the Thinking row runs (it says the same, with its own orb). Its orb shows what is happening now: the
   // running step's kind, else working; writing once a block is out.
-  const running = t.activity.filter((s) => s.state === "run" && !quietStep(s)).at(-1);
+  const running = holdLast ? shownSteps.at(-1) : shownSteps.filter((s) => s.state === "run").at(-1);
   const curAlone = live && !cursorIn && t.thinking?.state !== "run";
-  const waitOrb: OrbState = parts.length ? "composing" : running ? STEP_ORB[running.icon] ?? "working" : "working";
+  const waitOrb: OrbState = parts.length ? "composing" : running ? stepOrb(running) : "working";
   const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   const foot = t.done && !t.error ? footer(v, a) : "";

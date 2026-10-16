@@ -420,6 +420,22 @@ describe("the error, Stopped, and the oversized-image notice", () => {
   });
 });
 
+describe("the latest step stays running while Trov works with what it found (the owner)", () => {
+  it("held running until the next step or the answer's first part; then it shows its results", () => {
+    const events: AskEvent[] = [
+      { event: "activity", data: { step: 1, tool: "search_docs", icon: "search", label: "Searched docs for 'hosting'", state: "run" } },
+      { event: "activity", data: { step: 1, state: "done", results: ["doc:hosting"] } },
+    ];
+    const held = view("answer", { events, busy: true }).html;
+    expect(held).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><svg[\s\S]*?<span class="ask-step-l">Searched docs for &#39;hosting&#39;<\/span><\/div>/);
+    expect(held).not.toContain("ask-step-n");
+    expect(held).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"/);
+    const answered = view("answer", { events: [...events, { event: "text", data: { delta: "Here is what I found." } }], busy: true }).html;
+    expect(answered).not.toContain("ask-step is-run");
+    expect(answered).toContain("· 1 result");
+  });
+});
+
 describe("the question — Edit on the last one, edit-and-resend", () => {
   it("Edit only on the last question, and not while an answer streams", () => {
     const s = base();
