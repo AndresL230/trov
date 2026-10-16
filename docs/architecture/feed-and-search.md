@@ -195,7 +195,7 @@ without the preview. `test/ai.hookup.test.ts` proves the whole path on real rows
 
 **Entries written by Trov** (`FeedRow.ai?`, `AiFeedMeta`). An entry with no `ai`, or `ai.origin === "agent"`, is an
 agent's and renders as before. One with `origin: "ai"` takes the AI mark as its avatar, "Trov" as the name and
-"for <subject>" (the subject through `people.ts`), its brief, then "From #173, 65b9f1f, a1c04e2 and 2 more" and
+"for <subject>" (the subject through `people.ts`; a deleted account's is "Deleted user", plain text — Q31), its brief, then "From #173, 65b9f1f, a1c04e2 and 2 more" and
 "Wrong?" (hidden for that person at once). Only when at least one LOADED entry carries `ai` does the header gain a
 **Source** `segmented()` (All / Agents / Trov, `state.ai.feedSource`, client-side, beside For reading / For
 agents), and the list a one-time note above the first Trov entry on screen ("Trov now writes entries from your

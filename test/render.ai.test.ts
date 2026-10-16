@@ -535,6 +535,16 @@ describe("Feed — entries written by Trov", () => {
     expect(rowsOf[1]).toContain(AI_TIP.session);
     expect(rowsOf[2]).not.toContain('data-ai="session"');
   });
+  it("a Trov entry about a deleted account says \"Deleted user\" as plain text, never a link (Q31)", () => {
+    const [a] = feedFixtures(NOW);
+    const gone = { ...a, ai: { ...a.ai!, subject: "deleted-x7k2" } };
+    const persons = { status: "ok" as const, data: [...PERSONS, { handle: "deleted-x7k2", name: "Deleted user", color: "sky" as const, avatar_url: null, role: null }] };
+    const html = render(feed({ feed: { status: "ok", data: [gone] }, persons }));
+    const card = html.slice(html.indexOf(`data-feed-id="${a.id}"`));
+    expect(text(card)).toContain("Trov for Deleted user");
+    expect(card).not.toContain('data-arg="deleted-x7k2"');
+    expect(card).not.toContain("@deleted-x7k2");
+  });
   it("Wrong? hides the entry for this person", () => {
     const html = render(feed({ ai: ui({ hidden: ["feed:990001"] }) }));
     expect(html).not.toContain('data-feed-id="990001"');
