@@ -3044,7 +3044,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   /* the conversation's */
   .ask-q-edit, .ask-chev, .ask-tools, .ask-ci, .ask-one, .ask-one-go { transition:none !important; }
   .ask-one:hover { transform:none !important; }
-  .ask-q-editbox, .ask-step-det, .ask-think-sum, .ask-think-l, .ask-src, .ask-bar-b, .ask-tl, .ask-one-fill, .ask-dg-n, .ask-dg-e--lr, .ask-dg-e--tb { animation:none !important; }
+  .ask-q-editbox, .ask-step-det, .ask-think-sum, .ask-think-l, .ask-src, .ask-bar-b, .ask-tl, .ask-dg-n, .ask-dg-e--lr, .ask-dg-e--tb { animation:none !important; }
+  .ask-one-fill { animation:none !important; }
   .ask-dg-c { transition:none !important; }
   /* the inspector's */
   .ask-iv-fill, .ask-iv-barfill, .ask-iv-table { animation:none !important; }
