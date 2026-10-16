@@ -9,6 +9,7 @@ import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { runAiPass } from "../src/ai/pass";
 import { briefJob, buildBriefInput, briefPromptInput, briefFromAnswer, numbersGrounded, orderNext, type NextOffer } from "../src/ai/brief";
+import { BRIEF_LINE_MAX, BRIEF_NEXT_MAX, BRIEF_WHY_MAX, oneSentence } from "../src/ai/brief-core";
 import { newBudget } from "../src/repo/dispatch";
 import { briefVersions, latestBrief, markMyWorkOpened, storeBrief, BRIEF_VERSIONS_KEPT } from "../src/data/person-brief";
 import { getMyWork, storedBrief } from "../src/tools/mywork";
@@ -116,10 +117,12 @@ describe("the input: what the server offers, in the server's order", () => {
     expect(b.now.status?.summary).toBe("Status: hosting screens half done, Netlify test failing");
     expect(b.recently.notes.map((n) => n.summary)).toEqual(["Shipped: status marks across the app"]); // no handoff line, no Status twice
     expect(b.recently.cards.map((c) => c.ref)).toEqual(["pr:11"]);
+    expect(BRIEF_NEXT_MAX).toBe(3);
     expect(b.next.map((o) => [o.ref, o.rule])).toEqual([
-      ["ticket:3", "overdue"], ["run:4812", "blocked"], ["handoff:7", "waiting"], ["handoff:8", "waiting"], ["ticket:2", "due soon"],
-    ]); // 5 at most: the plain assigned #1 is cut; the closed #4 and the expired handoff #9 never offered
-    expect(b.next.map((o) => o.title)).toEqual(["Netlify connect flow", "Netlify connect test", "Handoff 7 first line", "Handoff 8 first line", "Polish the Hosting tab"]);
+      ["ticket:3", "overdue"], ["run:4812", "blocked"], ["handoff:7", "waiting"],
+    ]); // 3 at most (BR-OWNER-1): handoff #8, the due-soon #2 and the plain assigned #1 are cut; the closed #4 and the
+    // expired handoff #9 never offered
+    expect(b.next.map((o) => o.title)).toEqual(["Netlify connect flow", "Netlify connect test", "Handoff 7 first line"]);
     // The model never sees a raw PR body.
     expect(briefPromptInput(b)).not.toContain("RAW BODY NEVER SENT");
   });
@@ -158,7 +161,8 @@ describe("the job: one Haiku call, only what the input says", () => {
     await briefPass(s);
     expect(s.haiku).toBe(1);
     const b = await latestJson();
-    expect(b.next.items.map((i: { ref: string }) => i.ref)).toEqual(["ticket:3", "run:4812", "handoff:7", "handoff:8", "ticket:2"]);
+    // ticket:2 (due soon) is past the three offered: its why is dropped with it.
+    expect(b.next.items.map((i: { ref: string }) => i.ref)).toEqual(["ticket:3", "run:4812", "handoff:7"]);
     expect(b.next.items.map((i: { title: string }) => i.title)[0]).toBe("Netlify connect flow");
     expect(b.next.items.find((i: { ref: string }) => i.ref === "ticket:3").why).toBe("Its sprint has passed.");
     // No why from the model: the server's own plain sentence.
@@ -185,7 +189,7 @@ describe("the job: one Haiku call, only what the input says", () => {
     await markMe();
     await briefPass(stubProviders({ claude: answer({
       now: { text: "You have 42 failing tests on #12.", cites: ["pr:12"] },
-      recently: { text: "x".repeat(401), cites: ["pr:11"] },
+      recently: { text: "x".repeat(BRIEF_LINE_MAX + 1), cites: ["pr:11"] },
       next: [{ ref: "ticket:3", why: "Three weeks late." }, { ref: "run:4812", why: "Failing 17 times." }],
     }) }));
     const b = await latestJson();
@@ -199,6 +203,25 @@ describe("the job: one Haiku call, only what the input says", () => {
     expect(numbersGrounded("17 times", "feed:17")).toBe(false); // nor a feed row's id
     expect(numbersGrounded("due 2026-10-15", "due 2026-10-15")).toBe(true);
     expect(numbersGrounded("due 2026-10-16", "due 2026-10-15")).toBe(false);
+  });
+
+  it("the one shape (BR-OWNER-1): Now and Recently ONE sentence each, within the cap; a why past its cap is the server's", async () => {
+    await markMe();
+    await briefPass(stubProviders({ claude: answer({
+      now: { text: "You have #12 open. Its Netlify connect test is failing.", cites: ["pr:12"] }, // two sentences: dropped
+      recently: { text: `You shipped ${"the hosting tab polish and ".repeat(6)}more.`.slice(0, BRIEF_LINE_MAX), cites: ["pr:11"] }, // one sentence, at the cap: kept
+      next: [{ ref: "ticket:3", why: `Its sprint has passed${", and it waits on you".repeat(4)}.` }], // past BRIEF_WHY_MAX
+    }) }));
+    const b = await latestJson();
+    expect(b.now).toBeNull();
+    expect(b.recently.text.length).toBeLessThanOrEqual(BRIEF_LINE_MAX);
+    const why = b.next.items.find((i: { ref: string }) => i.ref === "ticket:3").why;
+    expect(why).toMatch(/^Its sprint, .+, was due \d{4}-\d{2}-\d{2}\.$/); // the server's own, never a cut one
+    // Every why the server keeps — the model's or its own — fits the line.
+    for (const i of b.next.items) expect(i.why.length, i.ref).toBeLessThanOrEqual(BRIEF_WHY_MAX);
+    expect(oneSentence("You shipped v0.34 and #178.")).toBe(true);
+    expect(oneSentence("You shipped it. Then more.")).toBe(false);
+    expect(oneSentence("You shipped “the tab.” Then more.")).toBe(false);
   });
 
   it("a refusal or an answer cut at max_tokens writes NOTHING and counts a failed attempt", async () => {

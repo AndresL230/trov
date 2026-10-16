@@ -21,7 +21,7 @@ const NOW = new Date("2026-10-15T12:00:00Z");
 /** Each `.cnpy-rise` in `html`, in document order: [what it is, its --i]. */
 function rises(html: string): [string, number][] {
   const out: [string, number][] = [];
-  const re = /<(\w+)[^>]*class="([^"]*\bcnpy-rise\b[^"]*)"[^>]*style="--i:(\d+);/g;
+  const re = /<(\w+)[^>]*class="([^"]*\bcnpy-rise\b[^"]*)"[^>]*style="--i:(\d+)[;"]/g;
   for (let m = re.exec(html); m; m = re.exec(html)) {
     const start = html.indexOf(">", m.index + m[0].length) + 1;
     const after = html.slice(start, start + 4000).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -44,9 +44,13 @@ describe("the brief tile's markup carries the entrance hooks", () => {
     expect(r[8][0]).toMatch(/^div:Written by Trov/);
   });
 
-  it("a brief with only Next starts its rows at step 1; capped and empty draw no row rises", () => {
+  it("every brief takes the same steps (the one shape, BR-OWNER-1): an empty part rises in its slot; capped and empty draw no row rises", () => {
     const b = briefFixture("ready", NOW);
-    expect(rises(briefTile({ ...b, now: null, recently: null })).map(([, i]) => i)).toEqual([1, 1, 2, 3, 4]);
+    const thin = rises(briefTile({ ...b, now: null, recently: null }));
+    expect(thin.map(([, i]) => i)).toEqual([1, 1, 2, 2, 3, 3, 4, 5, 6]);
+    expect(thin[1][0]).toMatch(/^div:Nothing new\./);
+    // Fewer Next items: the unused rows are kept, empty and still; the byline keeps its step.
+    expect(rises(briefTile({ ...b, next: { items: b.next.items.slice(0, 1) } })).map(([, i]) => i)).toEqual([1, 1, 2, 2, 3, 3, 6]);
     for (const st of ["capped", "empty"] as const) {
       const html = briefTile(briefFixture(st, NOW));
       expect(html.match(/<li[^>]*cnpy-rise/g)).toBeNull();

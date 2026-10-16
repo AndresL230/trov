@@ -7,13 +7,13 @@
 // (`trov-dev`, repository AndresL230/trov), read 2026-10-15 through Trov's MCP read tools — `get_my_work`,
 // `list_tickets`, `list_handoffs`, `get_feed`, `get_repo_dashboard` (tab code) — read only. Personal Dev has ONE
 // member and NO sprints, so a few things are ARRANGED around those real rows, and each case says which:
-//   • a sprint and its date (cases `overdue-sprint`, `cut-to-five`): Personal Dev has none;
+//   • a sprint and its date (cases `overdue-sprint`, `cut-to-three`): Personal Dev has none;
 //   • a teammate's view (case `someone-waiting`): handoffs #11 and #3 really were left for anyone by andres;
 //   • a CI run's id (case `failing-pr`): #179's checks really failed (get_repo_dashboard), its run id is a stand-in;
 //   • `today`, set to when the rows were current.
 // The ORDER of Next is always the server's (`orderNext`), never written by hand.
 import type { AiCite } from "@shared/ai";
-import { AI_LIST_MAX } from "@shared/ai";
+import { BRIEF_NEXT_MAX } from "../../../src/ai/brief-core";
 import { orderNext, type BriefCard, type BriefInput, type BriefNote, type BriefPr, type NextOffer, type NextRule } from "../../../src/ai/brief-core";
 
 const GH = "https://github.com/AndresL230/trov";
@@ -78,7 +78,7 @@ class Bundle {
     return {
       handle: this.handle, name: this.name, today: this.today,
       now: { prs: this.prs, status: this.status }, recently: { cards: this.cards, notes: this.notes },
-      next: orderNext(this.offers).slice(0, AI_LIST_MAX), cites: this.cites,
+      next: orderNext(this.offers).slice(0, BRIEF_NEXT_MAX), cites: this.cites,
     };
   }
 }
@@ -167,8 +167,8 @@ export const BRIEF_CASES: BriefCase[] = [
       .handoff(3, "Performance plan for trov.dev is ready; nothing in it is built yet.", "andres", "2026-10-14", "anyone").build(),
   },
   {
-    id: "cut-to-five",
-    source: "real: tickets #1–#5 (the Repo dashboard series) and #33, handoff #12; ARRANGED: all assigned to andres, #2 in sprint \"Repo setups\" due 2026-10-18; the server offers its top 5",
+    id: "cut-to-three",
+    source: "real: tickets #1–#5 (the Repo dashboard series) and #33, handoff #12; ARRANGED: all assigned to andres, #2 in sprint \"Repo setups\" due 2026-10-18; the server offers its top 3 (BRIEF_NEXT_MAX)",
     input: andres("2026-10-15")
       .ticket(1, "Repo dashboard: support repositories hosted on one stack (e.g. everything on one Cloudflare Worker)")
       .ticket(2, "Repo dashboard: an environment with one part (no backend / frontend split)", { rule: "due soon", sprint: { title: "Repo setups", due: "2026-10-18" }, rank: 3 })

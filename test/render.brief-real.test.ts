@@ -99,7 +99,7 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { jobs: [briefJob], now: new Date(Date.now() + 31 * MIN) });
     expect(s.haiku).toBe(1);
     const row = (await latestBrief(ctx(), ME))!;
-    expect(row).toMatchObject({ version: 1, model: "claude-haiku-5-5", prompt_version: "brief.1" });
+    expect(row).toMatchObject({ version: 1, model: "claude-haiku-5-5", prompt_version: "brief.2" });
 
     // The real read: the same brief on the cookie route and on MCP's getMyWork, generatedAt = the row's.
     const data = await dashboard(cookie);
@@ -127,7 +127,12 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     // The app's motion hooks on the real tile: the rows rise in order on the entrance; landing later, the tile
     // fades with the dashboard read's skeleton (test/render.brief-motion.test.ts pins the mechanics).
     expect(tile).toContain('data-settle-with="mw-tickets"');
-    expect([...tile.matchAll(/class="(?:mw-brief-next )?cnpy-rise" style="--i:(\d+);/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 4]);
+    // The one shape (BR-OWNER-1): Recently is empty here, so it says "Nothing new." in its slot; Next has two
+    // items and keeps its third row, empty; the byline keeps its step.
+    expect([...tile.matchAll(/class="(?:mw-brief-next )?cnpy-rise" style="--i:(\d+)[;"]/g)].map((m) => Number(m[1]))).toEqual([1, 1, 2, 2, 3, 3, 4, 6]);
+    expect(t).toContain("Recently Nothing new.");
+    expect(tile).toContain('<li class="mw-brief-next mw-brief-pad" aria-hidden="true"></li>');
+    expect(tile).not.toContain("mw-scroll");
 
     // "Wrong?": exactly what the button carries, sent as the web client sends it.
     const arg = /data-act="aiWrong" data-arg="([^"]+)"/.exec(tile)?.[1];
