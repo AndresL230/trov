@@ -277,11 +277,11 @@ export async function countAssignedTickets(ctx: TenantContext, handle: string, s
  * Any D1 failure degrades the whole projection to empty with degraded:true
  * rather than throwing.
  */
-export async function getMyWork(ctx: TenantContext, handle: string, now: Date = new Date()): Promise<MyWork> {
+export async function getMyWork(ctx: TenantContext, handle: string, now: Date = new Date(), opts: { emptyWhenNone?: boolean } = {}): Promise<MyWork> {
   const work = await myWorkProjection(ctx, handle);
   if (work.degraded || work.person === null) return work;
   // The brief is read on its own: a failed read leaves it out and never degrades the rest.
-  const brief = await storedBrief(ctx, handle, now).catch(() => null);
+  const brief = await storedBrief(ctx, handle, now, opts).catch(() => null);
   return brief ? { ...work, brief } : work;
 }
 
@@ -295,10 +295,21 @@ const BriefContentSchema = AiBriefSchema.pick({ now: true, recently: true, next:
  * off, nothing was stored, the stored row fails its schema, or this person pressed "Wrong?" on that very version
  * (`aiItemRef.brief(generatedAt)`; the next version shows again). When the org's `ai_runs` are spent the LAST
  * brief is shown as `capped`, with the day it resumes. A row the pass stored with no model is `empty`.
+ * `emptyWhenNone` (My Work's screen read, with a key — Q24): someone with NO brief yet gets `empty` too (`capped`
+ * once the runs are spent), so the tile says when Trov writes it; MCP and the e-mail still read null.
  */
-export async function storedBrief(ctx: TenantContext, handle: string, now: Date = new Date()): Promise<AiBrief | null> {
+export async function storedBrief(ctx: TenantContext, handle: string, now: Date = new Date(), opts: { emptyWhenNone?: boolean } = {}): Promise<AiBrief | null> {
   const [org, row] = await Promise.all([planAndAiRuns(ctx, now), latestBrief(ctx, handle)]);
-  if (!org.enabled || !row) return null;
+  if (!org.enabled) return null;
+  if (!row) {
+    if (!opts.emptyWhenNone) return null;
+    const capped = planRefusal(org.plan, "ai_runs", org.used, 1) !== null;
+    return {
+      state: capped ? "capped" : "empty", generatedAt: null, model: null,
+      resumesOn: capped ? nextMonthStart(now) : null, upgrade: capped && org.plan.plan === FREE_PLAN,
+      now: null, recently: null, next: { items: [] },
+    };
+  }
   let content: unknown;
   try { content = JSON.parse(row.brief_json); } catch { return null; }
   const parsed = BriefContentSchema.safeParse(content);

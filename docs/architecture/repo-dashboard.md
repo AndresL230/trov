@@ -646,8 +646,10 @@ does not name them (Summary is a SCREEN tab, `REPO_SCREEN_TABS`, never a `RepoTa
 newest `repo_state` version** (0062; written by the AI pass's `repo.state` job — `ai.md` › Repo state), read by
 `readRepoState` (`src/tools/repo-state.ts`) beside the projection — `GET /repo/dashboard` (`src/routes.ts`) and
 `get_repo_dashboard` (`getRepoDashboardForAgent`) make the same read, never a model call. It is ABSENT with no
-repository, with the org's AI switch off, with nothing written yet, for the person who flagged that version
-"Wrong?", or on any failed read (never a 500, never a degraded dashboard); `ready` otherwise, and `capped` (same
+repository, with the org's AI switch off, for the person who flagged that version "Wrong?", or on any failed read
+(never a 500, never a degraded dashboard). With NOTHING written yet it is absent over MCP and with no key, but
+`GET /repo/dashboard` on a deployment WITH a key carries an `empty` state (`readRepoState`'s `emptyWhenNone`; Q23:
+Summary says "Trov writes this after your next merge…"; `capped` instead once the runs are spent); `ready` otherwise, and `capped` (same
 content, `resumesOn`, `upgrade` on Free) once the month's `ai_runs` are spent. `eventCount` is the server's count
 of what the version was written from. **`themes` is written too** (`src/tools/themes.ts` `readRepoThemes`, called at
 the end of `getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read —
@@ -713,8 +715,9 @@ and its address until the read says; a failed first read draws the dashboard's e
 (the Repo chunk not yet in) first paints the chunk's generic skeleton (`repoView` in `repo-lazy.ts`, about half a
 second locally) — the read usually lands before the chunk, so the State card's own shape (`repoStateSkeleton`,
 `data-ai-state="loading"`) is drawn only when the chunk is in and the read is still out (a warm switch to the tab);
-it is not promised on a cold load (owner, Q-F1, 2026-10-16). With the field absent — the org's AI off, no key so nothing written,
-nothing written yet, the version flagged "Wrong?", a failed state read — there is NO tab (the AI kit's rule: off is
+it is not promised on a cold load (owner, Q-F1, 2026-10-16). With the field absent — the org's AI off, no key, the
+version flagged "Wrong?", a failed state read — there is NO tab (nothing written yet, with a key, is an `empty` state:
+the tab shows its sentence, Q23) (the AI kit's rule: off is
 no row, never an "off" state, as the Filter menu's "Describe a filter"), and sample data never has one. An address
 that asks for Summary when there is none draws the Overview, and `rerender()` (`main.ts`) moves `state.repoTab` —
 and so the address — to `overview` with the tab switch's flash: a read landing without `state`, Preview with sample

@@ -73,6 +73,7 @@ import { askApp } from "./ai/ask/routes";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreview, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
+import { aiKeyPresent } from "./ai/eligibility";
 import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
@@ -776,7 +777,8 @@ tenantRoot.get("/me/dashboard", async (c) => {
     // Opening My Work is what makes a person's brief worth writing (src/data/person-brief.ts `briefWanted`): one
     // timestamp, at most one write an hour, never a model call; a failed write never fails the read.
     const [data] = await Promise.all([
-      getMyWork(c.var.ctx, login) as Promise<DashboardData>,
+      // With a key, someone with no brief yet reads `empty` (Q24): the tile says when Trov writes it.
+      getMyWork(c.var.ctx, login, new Date(), { emptyWhenNone: aiKeyPresent(c.env) }) as Promise<DashboardData>,
       markMyWorkOpened(c.var.ctx, login).catch((e) => console.error("mywork opened", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`)),
     ]);
     // `brief` is the newest stored one (src/tools/mywork.ts `storedBrief`), absent when there is none. LOCAL_AI_PREVIEW
@@ -809,9 +811,10 @@ tenantRoot.get("/repo/dashboard", async (c) => {
     const app = c.req.query("app") || null;
     const [dash, state] = await Promise.all([
       getRepoDashboard(c.var.ctx, repo, Date.now(), envs, undefined, { app }),
-      // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when there
-      // is none, the switch is off, or this person flagged it "Wrong?" (src/tools/repo-state.ts).
-      readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle }),
+      // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when the
+      // switch is off or this person flagged it "Wrong?" (src/tools/repo-state.ts); with nothing written yet it is
+      // `empty` when the deployment has a key (Q23: Summary says when Trov writes it), else absent.
+      readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle, emptyWhenNone: aiKeyPresent(c.env) }),
     ]);
     const written = state ? { ...dash, state } : dash;
     // `themes` (not a section) is there when the repo has themes (src/tools/themes.ts). LOCAL_AI_PREVIEW shows the

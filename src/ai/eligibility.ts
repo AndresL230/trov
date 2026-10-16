@@ -51,6 +51,10 @@ export function allowanceUse(plan: OrgPlan, key: LimitKey, used: number, now: Da
   return { used, cap: resolveEntitlements(plan.plan, plan.overrides, plan.members)[key], resumesOn: spent ? nextMonthStart(now) : null };
 }
 
+/** Whether this deployment can write at all (an `ANTHROPIC_API_KEY` is set) — what a screen read asks before it
+ *  says "Trov writes this after…" for something not written yet (Q23/Q24): with no key nothing ever will be. */
+export const aiKeyPresent = (env: Pick<Env, "ANTHROPIC_API_KEY">): boolean => !!env.ANTHROPIC_API_KEY;
+
 /** `ok` | `off` | `no_key` | `capped`. Never throws: with no key nothing is read; a failed read is `off`. */
 export async function aiEligibility(ctx: TenantContext, env: Pick<Env, "ANTHROPIC_API_KEY">, now: Date = new Date()): Promise<AiEligibility> {
   if (!env.ANTHROPIC_API_KEY) return "no_key";

@@ -108,8 +108,10 @@ that renders a "No summary recorded" placeholder. Stored as columns on `pr_summa
 `model != 'excerpt' AND title IS NOT NULL`) — never truth, never generated at render.
 
 **Your brief** (`DashboardData.brief?`, `AiBrief` in `shared/ai-core.ts`; `briefTile` in `web/src/mywork.ts`) is
-a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off, no
-key, or nothing written: the field is absent and the bento is exactly its five tiles). With it the bento is laid out by AREA
+a bento TILE — drawn ONLY when the dashboard carries `brief` and the person has not pressed "Wrong?" on it (off or no
+key: the field is absent and the bento is exactly its five tiles). With a key and the switch on, someone with NO brief
+yet gets an `empty` one (`storedBrief`'s `emptyWhenNone`, `GET /me/dashboard` only — Q24), so the tile says when Trov
+writes it; `capped` instead once the month's runs are spent. With it the bento is laid out by AREA
 (`trov.css` `.mw-bento-brief`, `MyWorkLayout.bento`), each tile sized to what it holds and the whole closing as one
 rectangle: Brief on the left (8 of 12 columns) beside Needs your review over Docs you own; Your sessions beside
 Tickets for you (the wide slot, BR-OWNER-3); Repo wide beside Queued handoffs (`libraryTiles` gives the two small
