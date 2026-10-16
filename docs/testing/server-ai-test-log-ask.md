@@ -35,13 +35,13 @@ Screenshots: [`server-ai-shots/ask/`](server-ai-shots/ask/) (named by case id; t
 
 ## Results
 
-**158 cases run** (157 Tier 1 + the owner's AU-OWNER-1): 39 AK · 10 AR · 45 AU (AU-24 counted per scenario, AU-27 per phone scenario) · 23 added AU
+**159 cases run** (157 Tier 1 + the owner's AU-OWNER-1 and AU-OWNER-2): 39 AK · 10 AR · 45 AU (AU-24 counted per scenario, AU-27 per phone scenario) · 23 added AU
 (marked *added*) · 30 EV · 11 MO.
 
 | result | count |
 | --- | --- |
 | pass | 128 |
-| fail → fixed (16 bugs, 16 commits) | 20 |
+| fail → fixed (17 bugs) | 21 |
 | question | 9 |
 | pre-existing | 1 |
 
@@ -152,6 +152,7 @@ Screenshots: [`server-ai-shots/ask/`](server-ai-shots/ask/) (named by case id; t
 | AU-30 | edit the last question | "Sending replaces the answer below"; replaced answer's cards expire (AK-29) | § 2.16 | the note shows; but editing a **/search** question showed only "netlify" and resent it **without the command** → a model question ("Something went wrong." with no key) | fail → fixed | AU-30-edit.png → AU-30-edit-retest.png | b0427bce |
 | AU-31 | the error block | "Something went wrong. Nothing was changed. Try again" | § 3 | so (AU-22) | pass | AU-22-no-key.png | — |
 | AU-OWNER-1 | the owner, on the af26ce3c preview: `#ask`, new thread; 1440 and 360; motion on / reduced | the empty screen STARTS centred (heading, starters, composer with its hint lines, design `live`); after the first question the composer docks at the foot with a smooth glide (app motion), instant under reduced motion; a re-opened empty thread centres again; phone per the design's `phone` | owner (coordinator message) | before: composer pinned at the foot (`AU-OWNER-1-before-1440.png`). After 086338ea + 074b68a3: 1440 — box 720 px, block centred (heading 350, composer 527–690 in a 57–900 column); the send flips `data-ask-dock` center → dock and the composer glides `translateY(-243px) → none` (300 ms, --fx-ease), lands 770–900; reduced motion: no transform; New thread → centred again (same geometry). 360 — 1-column starters, the phone + bar "Fast · Asks first", centred; glide −144 px; docks 666–780 | fail → fixed | AU-OWNER-1-before-1440.png, AU-OWNER-1-after-centred-1440/360.png, AU-OWNER-1-after-docked-1440/360.png, owner1.out | 086338ea, 074b68a3 |
+| AU-OWNER-2 | the owner (after the merge, branch `ai/ask-owner-fixes`): Shift+Enter in the composer; 1440, 360, reduced motion, the ⌘J panel | no scrollbar while the box grows — clipped until the words pass the 220px cap, only then scrolling; growth stays smooth; the same for a wrapping line, a pasted block, shrinking; instant under reduced motion | owner (coordinator message) | before: the input was `overflow-y:auto` while its height transition ran, so for 14 frames of three Shift+Enters the words were taller than the box with a scrollbar allowed (sampled per frame with the old rule: 14 / 14 "flash" frames; a wrapping line 2 / 2). After: `overflow-y:hidden` until `data-full` (words > 220px), then `auto`. Every frame sampled (`scrollHeight > clientHeight` + computed `overflow-y` + `data-full`) across Shift+Enter ×3, a wrapping line, pasting 6 and 20 lines, shrinking and Shift+Enter again: **0 flash frames** at 1440, 360, under reduced motion (heights jump, no transition) and in the ⌘J panel; the heights still glide (46 → 47 → 49 → … → 95). **Amended by the owner: no scrollbar ever, not even at the cap** — `scrollbar-width:none` + `::-webkit-scrollbar{display:none}` on `.ask-input` only. At the cap (30 pasted lines) on the page 1440, a phone 360 and the ⌘J panel: `scrollbar-width: none`, bar 0 px, `overflow-y:auto` + `data-full`, the wheel scrolls it (120 px), Ctrl+Home brings the caret up; a paste at the cap had left the caret out of view (scrollTop 0) — the composer now keeps it in view (scrollTop at the bottom after the paste and after typing at the end) | fail → fixed | AU-OWNER-2-*.png, final/owner2.out, final/owner2b.out | the AU-OWNER-2 commit |
 | AU-32 | injection thread 801004 | HTML / script / javascript: link inert | — | 0 script, 0 img, 0 `<b>`, 0 javascript: links; all as text | pass | AU-32-injection.png | — |
 
 ### Added cases (no Tier 1 case in the matrix for these built parts: one per design scenario, replay, against the design render)

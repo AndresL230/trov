@@ -83,6 +83,27 @@ describe("the @ picker's group heads", () => {
   });
 });
 
+describe("AU-OWNER-2: the input never shows a scrollbar while it grows", () => {
+  // The owner: Shift+Enter flashed a scrollbar on the input. Its height is a CSS transition (46 → 220px); while it
+  // animates the words are taller than the box, and `overflow-y:auto` drew the bar. The box clips (`hidden`) until
+  // its words pass the 220px cap — `data-full` — and only then scrolls.
+  it("clips while the words fit under the cap; scrolls only past it", async () => {
+    const css = (await import("../web/src/trov.css?raw")).default as string;
+    const base = css.match(/\n\.ask-input \{[^}]*\}/)![0];
+    expect(base).toMatch(/overflow-y:hidden/);
+    expect(base).not.toMatch(/overflow-y:auto/);
+    expect(css).toMatch(/\.ask-input\[data-full="1"\] \{ overflow-y:auto; \}/);
+    // The owner's amendment: never a visible scrollbar, not even past the cap (it still scrolls) — the box only.
+    expect(css).toMatch(/\n\.ask-input \{ scrollbar-width:none; \}/);
+    expect(css).toMatch(/\n\.ask-input::-webkit-scrollbar \{ display:none; \}/);
+    expect(css).not.toMatch(/(^|\n)\s*\*?::-webkit-scrollbar \{ display:none/);
+    const grown = html(askState("pro", (s) => { s.ask.composer.page = { ...s.ask.composer.page, text: "a\nb", h: 70, full: false }; }));
+    expect(grown).not.toMatch(/data-ask-input="page"[^>]*data-full/);
+    const full = html(askState("pro", (s) => { s.ask.composer.page = { ...s.ask.composer.page, text: "a\n".repeat(30), h: 220, full: true }; }));
+    expect(full).toMatch(/<textarea[^>]*data-full="1"[^>]*>/);
+  });
+});
+
 describe("the box — a new thread on Pro", () => {
   it("the input, the toolbar (attach, mention, commands), the mode menu, the Auto switch and Send", () => {
     const h = html(askState());

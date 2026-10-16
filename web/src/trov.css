@@ -3193,7 +3193,14 @@ button.ask-dn:hover { border-color:var(--border-strong); }
 .ask-co-x:hover { background:var(--hover); color:var(--fg); }
 .ask-co-x--sm { width:18px; height:18px; }
 /* The input grows with its words (ask-composer.ts `grow` sets the height after a paint; this eases it). */
-.ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; overflow-y:auto; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); transition:height .14s var(--fx-ease); }
+.ask-input { display:block; width:100%; min-height:46px; max-height:220px; box-sizing:border-box; padding:12px 14px 4px; border:0; outline:none; resize:none; overflow-y:hidden; background:none; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); transition:height .14s var(--fx-ease); }
+/* AU-OWNER-2: while the height glides the words are taller than the box — clipped, never a flashing scrollbar. It
+   scrolls only once its words pass the 220px cap (`data-full`, set by the composer's measure). */
+.ask-input[data-full="1"] { overflow-y:auto; }
+/* …and the owner's amendment: no scrollbar ever, not even past the cap — it still scrolls (wheel, touch, keys, the
+   caret). The composer's box only (page, ⌘J panel, phone), not app-wide. */
+.ask-input { scrollbar-width:none; }
+.ask-input::-webkit-scrollbar { display:none; }
 .ask-input::placeholder { color:var(--fg-55); }
 .ask-box-bar { display:flex; align-items:center; gap:2px; padding:4px 8px 8px; }
 .ask-co-grow { flex:1; }
