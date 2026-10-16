@@ -44,7 +44,7 @@ import type { AskCtx, AskLoad, AskPart, AskView } from "./ask-state";
 import { inspectorRef } from "./ask-state";
 import {
   isHiddenRef, personName, personOf, refAvatar, refChip, refFallbackText, refShort, refStatusIcon, refStatusMark, refTypeWord,
-  repoFactsOf, repoHeadEnv, repoMark, repoVerdicts, verdictMark, viewOf,
+  repoFactsOf, repoHeadEnv, repoMark, repoVerdicts, verdictMark, viewOf, checksOf, checkSummaryMark, CHECK_PASS as PASS, CHECK_FAIL as FAIL,
 } from "./ask-refs";
 import { askIcon, REF_ICON, trovMark } from "./ask-icons";
 import { AskApiError, isUnauthorized } from "./ask-api";
@@ -186,18 +186,6 @@ function refRow(v: AskView, ref: string, trail?: (x: RefView) => string, given?:
   return itemRow(ref, lead, num, x.title, trail ? trail(x) : x.status ? `<span class="ask-iv-sub">${esc(x.status.word)}</span>` : "");
 }
 
-/** A PR's checks as the design's summary: failing (diamond), passing (dot), running (ring), or nothing. */
-type Check = { name: string; state: string };
-const checksOf = (x: RefView): Check[] => (Array.isArray(x.extra.checks) ? (x.extra.checks as { name?: unknown; state?: unknown }[])
-  .filter((c) => typeof c.name === "string").map((c) => ({ name: String(c.name), state: String(c.state ?? "") })) : []);
-const PASS = new Set(["success", "neutral", "skipped"]);
-const FAIL = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure"]);
-function checkSummaryMark(checks: Check[], size = 11.5): string {
-  if (!checks.length) return "";
-  if (checks.some((c) => FAIL.has(c.state))) return stateMark("Checks failing", "var(--red)", "diamond", size, "At least one check failed on its newest commit.");
-  if (checks.every((c) => PASS.has(c.state))) return stateMark("Checks passing", "var(--green)", "dot", size, "Every check passed on its newest commit.");
-  return stateMark("Checks running", "var(--fg-55)", "ring", size, "Checks are still running on its newest commit.");
-}
 
 // ── the skeleton and the states with no item ─────────────────────────────────
 

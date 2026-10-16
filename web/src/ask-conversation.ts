@@ -8,7 +8,8 @@
 //                  inspector; `show_*` / `save_artifact` steps stay quiet; the oversized-image notice is an ordinary
 //                  step), thinking ("Thinking… Ns" the client counts → "Thought for Ns", which opens to the summary),
 //                  then the parts: markdown (headings, lists, tables with `[[ticket:14|status]]` cells, ref chips),
-//                  rich blocks (item cards, the bar chart, the theme strip, the dependency chain, not found), write
+//                  rich blocks (item cards — ONE item is its own card, ask-one.ts —, the bar chart, the theme strip,
+//                  the dependency chain, not found), write
 //                  cards and Save forms (ask-actions.ts), with a soft cursor while it streams; Stopped / the error
 //   the footer     the Trov mark + the mode word, "N sources" (a numbered list), Copy, Regenerate (+ "Regenerate
 //                  with" the modes), Save as artifact and Wrong? (the actions part's acts: `askAcSaveForm`,
@@ -48,6 +49,7 @@ import { thinkingOrb, type OrbState } from "./thinking-orb";
 import { askOrbState } from "./ask-orb";
 import { parseCommand } from "./ask-composer";
 import { diagramFigure } from "./ask-diagram";
+import { singleItemCard } from "./ask-one";
 
 export interface ConversationUi {
   /** Disclosures by key (`<answerKey>:s<step>`, `<answerKey>:think`, `<answerKey>:src`). */
@@ -334,7 +336,8 @@ function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "b
     case "items": {
       const items = b.items.filter((it) => !isHiddenRef(v.look, it.ref));
       if (!items.length) return "";
-      // Cards open themselves: no Open in inspector.
+      // Cards open themselves: no Open in inspector. ONE item is its own layout (ask-one.ts), never a stretched card.
+      if (items.length === 1) return rich(v, "items", singleItemCard(v, items[0]), save, null);
       return rich(v, "items", `<div class="ask-cards" style="--n:${Math.min(items.length, 3)}">${items.map((it) => itemCard(v, it)).join("")}</div>`, save, null);
     }
     case "chart": return rich(v, "chart", chartFigure(b.chart), save, open("chart"));

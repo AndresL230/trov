@@ -155,9 +155,13 @@ export interface RefView {
   updated?: string | null;
   /** In-app hash route or absolute URL (a PR); null when the item has no page of its own. */
   href: string | null;
-  /** What the hover card shows. ticket: { priority, assignees, sprint }; pr: { author, head, base, checks };
-   *  doc: { space, version, owner, excerpt }; person: { role?, workingOn? }; sprint: { due, progress };
-   *  handoff: { from, to, task }; artifact: { kind, visibility, version }; repo: { facts: AskRepoFacts | null }. */
+  /** What the hover card and the single item card show. ticket: { priority, assignees, sprint, excerpt }; pr: { author,
+   *  head, base, repo, checks, excerpt }; doc: { space, version, owner, excerpt, staged }; decision: { excerpt };
+   *  feed: { brief }; person: { handle, role?, workingOn?, openTickets }; sprint: { start, due, progress, excerpt };
+   *  handoff: { from, to, task }; artifact: { kind, visibility, version, status }; prompt: { excerpt };
+   *  repo: { facts: AskRepoFacts | null }. `excerpt` is the item's own first paragraph (a ticket's body, a PR's
+   *  "What", a decision's decision, a sprint's summary, a prompt's description), ≤ 280 chars, or null; a person's
+   *  `openTickets` counts the tickets they are on that are not done or declined. */
   extra: Record<string, unknown>;
 }
 

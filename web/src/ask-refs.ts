@@ -193,6 +193,21 @@ export function repoMark(f: AskRepoFacts | null, size = 12.5): string {
   return verdictMark(f && head ? envVerdict(f, head.key) : VERDICT.unknown, size);
 }
 
+// ── a pull request's checks ──────────────────────────────────────────────────
+
+/** A PR's checks as the design's summary: failing (diamond), passing (dot), running (ring), or nothing. */
+export type PrCheck = { name: string; state: string };
+export const checksOf = (x: Pick<RefView, "extra">): PrCheck[] => (Array.isArray(x.extra.checks) ? (x.extra.checks as { name?: unknown; state?: unknown }[])
+  .filter((c) => typeof c.name === "string").map((c) => ({ name: String(c.name), state: String(c.state ?? "") })) : []);
+export const CHECK_PASS: ReadonlySet<string> = new Set(["success", "neutral", "skipped"]);
+export const CHECK_FAIL: ReadonlySet<string> = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure"]);
+export function checkSummaryMark(checks: PrCheck[], size = 11.5): string {
+  if (!checks.length) return "";
+  if (checks.some((c) => CHECK_FAIL.has(c.state))) return stateMark("Checks failing", "var(--red)", "diamond", size, "At least one check failed on its newest commit.");
+  if (checks.every((c) => CHECK_PASS.has(c.state))) return stateMark("Checks passing", "var(--green)", "dot", size, "Every check passed on its newest commit.");
+  return stateMark("Checks running", "var(--fg-55)", "ring", size, "Checks are still running on its newest commit.");
+}
+
 // ── the hover card (ask-trov.dc.html L1010–1038) ─────────────────────────────
 
 export interface HoverAt { x: number; y: number }

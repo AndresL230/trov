@@ -79,6 +79,23 @@ function views(): Record<string, PeekResult> {
   const v: Record<string, PeekResult> = askRefFixtures(NOW);
   const r = v[REPO] as RefView;
   v[REPO] = { ...r, extra: { facts: askRepoFacts(repoScenario("N", "trov", { now: T })) } };
+  // The single item card's words (#178: `extra.excerpt`, a person's `openTickets` — src/ai/ask/refs.ts), which the
+  // design's fixtures (and so the recorded transcripts) predate.
+  const words: Record<string, Record<string, unknown>> = {
+    "ticket:14": { excerpt: "Walk a new org from an empty Repo screen to its first deploy: pick the repository, confirm what the scan found, connect the host." },
+    "ticket:29": { excerpt: "netlify-connect.test.ts still asserts on the old pills, so CI on main is red. Update it to the status marks and re-run." },
+    "pr:176": { excerpt: "Adds the Netlify step to guided setup: paste a token, pick the site, and Trov starts polling its deploys." },
+    "sprint:7": { excerpt: "Every host behind one provider interface, and each environment's deploys on the Repo screen." },
+    "person:andres": { openTickets: 5 }, "person:maya": { openTickets: 2 }, "person:priya": { openTickets: 1 }, "person:jon": { openTickets: 1 },
+  };
+  for (const [ref, extra] of Object.entries(words)) { const x = v[ref] as RefView; v[ref] = { ...x, extra: { ...x.extra, ...extra } }; }
+  // A decision and a prompt (the transcripts carry none): what the server builds for them (src/ai/ask/refs.ts).
+  v["decision:7"] = { ref: "decision:7", type: "decision", num: 7, title: "Hosting tokens live in one encrypted table", owner: "andres", updated: new Date(T - 9 * 86_400_000).toISOString(), href: null,
+    status: { mark: "check", tone: "accent", word: "Ratified", tip: "A person ratified this decision." },
+    extra: { excerpt: "Every provider's token goes through `resolveCredential`, encrypted at rest; nothing reads a Worker secret for a host." } };
+  v["prompt:release-notes"] = { ref: "prompt:release-notes", type: "prompt", title: "Write the release notes", owner: "priya", updated: new Date(T - 3 * 86_400_000).toISOString(), href: "#prompts/release-notes",
+    status: { mark: "dot", tone: "green", word: "Published", tip: "Settled: published by a person." },
+    extra: { excerpt: "Turns the merged PRs since the last tag into release notes in product words, one line each." } };
   return v;
 }
 const VIEWS = views();
@@ -444,7 +461,22 @@ function blocks(): Section {
     specs: [
       inline("b-items3", "Item cards", "Three: a ticket, a PR, a sprint (each opens itself)", "The answer", b("items")),
       inline("b-items-all", "Item cards, every type", "Doc (staged), handoff, repository, feed, person, artifact", "The answer", items(["doc:release-0-30-notes", "handoff:11", REPO, "feed:41", "person:priya", "artifact:hosting-status-oct-15"])),
-      inline("b-items1", "One item card", "A single card", "The answer", items(["ticket:29"])),
+      // ONE item is its own layout (ask-one.ts): the identity on the left, the type's facts on the right; under 560px
+      // (a phone, the ⌘J panel) the facts stack under it.
+      ...([["ticket:29", "Ticket", "Status, priority, assignees, sprint; its body under the title"],
+        ["pr:176", "Pull request", "State, checks, author, branch; its What under the title"],
+        ["doc:hosting-connections", "Doc", "Status, owner, space, version; its excerpt"],
+        ["decision:7", "Decision", "Status, author, when it was proposed; the decision"],
+        ["feed:41", "Feed entry", "Kind, author, posted; its brief"],
+        ["sprint:7", "Sprint", "Status, dates, progress as a bar and “n of m done”, lead; its summary"],
+        ["handoff:11", "Handoff", "Status, from, to, sent; its task"],
+        ["artifact:hosting-status-oct-15", "Artifact", "Visibility, state, kind, version, author"],
+        ["person:andres", "Person", "The picture, name and handle, the role; open tickets, what they are working on"],
+        ["prompt:release-notes", "Prompt", "Status, author, slug; its description"],
+        [REPO, "Repository", "Each environment's verdict (the Overview's), what needs attention; the head's checks"],
+      ] as const).map(([ref, word, state]) => inline(`b-one-${ref.split(":")[0]}`, `One item: ${word.toLowerCase()}`, state, "The answer", items([ref]))),
+      inline("b-one-narrow", "One item, narrow", "Under 560px (a phone, the ⌘J panel) the facts stack under the identity", "The ⌘J panel", items(["ticket:29"]), { w: 388 }),
+      inline("b-one-narrow-sprint", "One item, narrow: a sprint", "The progress bar keeps its words", "The ⌘J panel", items(["sprint:7"]), { w: 388 }),
       inline("b-chart", "Bar chart", "Merged PRs by week (8 weeks)", "The answer", b("chart")),
       inline("b-chart2", "Bar chart, not weekly", "Tickets by status, a zero bar", "The answer", keep(cv(page([question("Show me"), answer(chartFew)])), ".ask-part[data-block=chart]")),
       inline("b-themes", "Theme strip", "Four lanes × eight weeks, tinted by share", "The answer", b("themes")),

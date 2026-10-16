@@ -156,6 +156,9 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n -
 const firstLine = (s: string): string => (s.split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").trim();
 const firstPara = (md: string): string => clip((md.split(/\n\s*\n/).find((p) => p.trim() && !/^#/.test(p.trim())) ?? "").replace(/\s+/g, " ").trim(), 280);
 
+/** An item's own words for a card (#178: the single item card): its first paragraph, ≤ 280 chars; null when it has none. */
+const excerptOf = (md: string | null | undefined): string | null => (md ? firstPara(md) || null : null);
+
 /**
  * Resolve refs to RefViews, as `viewer` may see them now. A ref that names nothing — or something the viewer may
  * not see — is left out of the map. Batched per type; a failed read leaves that type out rather than failing.
@@ -178,15 +181,15 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
   await Promise.all([...byType].map(([type, keys]) => guard(async () => {
     switch (type) {
       case "ticket": {
-        const rows = await fanOut<{ number: number; title: string; status: string; priority: string; updated_at: string; sprint: string | null; assignees: string | null }>(ctx, ints(keys), (ph) =>
-          `SELECT t.number, t.title, t.status, t.priority, t.updated_at, s.title AS sprint,
+        const rows = await fanOut<{ number: number; title: string; body: string | null; status: string; priority: string; updated_at: string; sprint: string | null; assignees: string | null }>(ctx, ints(keys), (ph) =>
+          `SELECT t.number, t.title, t.body, t.status, t.priority, t.updated_at, s.title AS sprint,
                   (SELECT group_concat(a.login, ',') FROM ticket_assignees a WHERE a.ticket_id = t.id AND a.org_id = t.org_id) AS assignees
              FROM tickets t LEFT JOIN sprints s ON s.id = t.sprint_id AND s.org_id = t.org_id
             WHERE t.org_id = ? AND t.number IN (${ph})`, [ctx.orgId]);
         for (const t of rows) {
           const assignees = t.assignees ? t.assignees.split(",") : [];
           put({ ref: `ticket:${t.number}`, type, num: t.number, title: t.title, status: ticketStatus(t.status), owner: assignees[0] ?? null, updated: t.updated_at,
-            href: `#tickets/${t.number}`, extra: { priority: t.priority, assignees, sprint: t.sprint } });
+            href: `#tickets/${t.number}`, extra: { priority: t.priority, assignees, sprint: t.sprint, excerpt: excerptOf(t.body) } });
         }
         break;
       }
@@ -215,7 +218,7 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
           put({ ref: `pr:${n}`, type, num: n, title: s?.title ?? p?.title ?? `Pull request #${n}`, status: state ? PR_STATUS[state] ?? null : null,
             owner: p?.actor_login ?? e?.subject_login ?? null, updated: p?.occurred_at ?? e?.occurred_at ?? null,
             href: p?.url ?? (repo ? `https://github.com/${repo}/pull/${n}` : null),
-            extra: { author: p?.actor_login ?? e?.subject_login ?? null, head: p?.ref ?? null, base, repo, checks: latest.map((c) => ({ name: c.name, state: c.state })) } });
+            extra: { author: p?.actor_login ?? e?.subject_login ?? null, head: p?.ref ?? null, base, repo, checks: latest.map((c) => ({ name: c.name, state: c.state })), excerpt: excerptOf(s?.what) } });
         }
         break;
       }
@@ -235,9 +238,9 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
         break;
       }
       case "decision": {
-        const rows = await fanOut<{ id: number; title: string; status: string; created_by: string | null; created_at: string }>(ctx, ints(keys), (ph) =>
-          `SELECT id, title, status, created_by, created_at FROM adrs WHERE org_id = ? AND id IN (${ph})`, [ctx.orgId]);
-        for (const a of rows) put({ ref: `decision:${a.id}`, type, num: a.id, title: a.title, owner: a.created_by, updated: a.created_at, href: null, extra: {},
+        const rows = await fanOut<{ id: number; title: string; status: string; decision: string | null; context: string | null; created_by: string | null; created_at: string }>(ctx, ints(keys), (ph) =>
+          `SELECT id, title, status, decision, context, created_by, created_at FROM adrs WHERE org_id = ? AND id IN (${ph})`, [ctx.orgId]);
+        for (const a of rows) put({ ref: `decision:${a.id}`, type, num: a.id, title: a.title, owner: a.created_by, updated: a.created_at, href: null, extra: { excerpt: excerptOf(a.decision) ?? excerptOf(a.context) },
           status: a.status === "ratified" ? { mark: "check", tone: "accent", word: "Ratified", tip: "A person ratified this decision." } : { mark: "ring", tone: "amber", word: "Draft", tip: "Proposed, not ratified yet." } });
         break;
       }
@@ -248,13 +251,13 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
         break;
       }
       case "sprint": {
-        const rows = await fanOut<{ id: number; title: string; status: string; target_date: string | null; start_date: string | null; lead: string | null; updated_at: string | null; total: number; closed: number }>(ctx, ints(keys), (ph) =>
-          `SELECT s.id, s.title, s.status, s.target_date, s.start_date, s.lead, s.updated_at,
+        const rows = await fanOut<{ id: number; title: string; status: string; summary: string | null; description: string | null; target_date: string | null; start_date: string | null; lead: string | null; updated_at: string | null; total: number; closed: number }>(ctx, ints(keys), (ph) =>
+          `SELECT s.id, s.title, s.status, s.summary, s.description, s.target_date, s.start_date, s.lead, s.updated_at,
                   (SELECT COUNT(*) FROM tickets t WHERE t.sprint_id = s.id AND t.org_id = s.org_id) AS total,
                   (SELECT COUNT(*) FROM tickets t WHERE t.sprint_id = s.id AND t.org_id = s.org_id AND t.status IN ('done', 'declined')) AS closed
              FROM sprints s WHERE s.org_id = ? AND s.id IN (${ph})`, [ctx.orgId]);
         for (const s of rows) put({ ref: `sprint:${s.id}`, type, num: s.id, title: s.title, status: sprintStatus(s.status, s.target_date || null, today), owner: s.lead, updated: s.updated_at,
-          href: `#sprints/${s.id}`, extra: { start: s.start_date, due: s.target_date || null, progress: { closed: s.closed, total: s.total } } });
+          href: `#sprints/${s.id}`, extra: { start: s.start_date, due: s.target_date || null, progress: { closed: s.closed, total: s.total }, excerpt: excerptOf(s.summary) ?? excerptOf(s.description) } });
         break;
       }
       case "handoff": {
@@ -286,16 +289,19 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
           const working = await all<{ number: number }>(ctx,
             `SELECT t.number FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id AND a.org_id = t.org_id
               WHERE t.org_id = ? AND a.login = ? COLLATE NOCASE AND t.status IN ('in_progress', 'testing') ORDER BY t.updated_at DESC LIMIT 3`, ctx.orgId, p.handle);
+          const open = await first<{ n: number }>(ctx,
+            `SELECT COUNT(*) AS n FROM tickets t JOIN ticket_assignees a ON a.ticket_id = t.id AND a.org_id = t.org_id
+              WHERE t.org_id = ? AND a.login = ? COLLATE NOCASE AND t.status NOT IN ('done', 'declined')`, ctx.orgId, p.handle);
           put({ ref: `person:${p.handle.toLowerCase()}`, type, title: p.name || p.handle, status: null, owner: p.handle, href: null,
-            extra: { handle: p.handle, ...(p.role ? { role: p.role } : {}), workingOn: working.map((w) => `ticket:${w.number}`) } });
+            extra: { handle: p.handle, ...(p.role ? { role: p.role } : {}), workingOn: working.map((w) => `ticket:${w.number}`), openTickets: open?.n ?? null } });
         }
         break;
       }
       case "prompt": {
-        const rows = await fanOut<{ slug: string; title: string; author: string; updated_at: string; status: string | null }>(ctx, keys, (ph) =>
-          `SELECT p.slug, p.title, p.author, p.updated_at, (SELECT v.status FROM prompt_versions v WHERE v.org_id = p.org_id AND v.slug = p.slug ORDER BY v.version DESC LIMIT 1) AS status
+        const rows = await fanOut<{ slug: string; title: string; description: string | null; author: string; updated_at: string; status: string | null }>(ctx, keys, (ph) =>
+          `SELECT p.slug, p.title, p.description, p.author, p.updated_at, (SELECT v.status FROM prompt_versions v WHERE v.org_id = p.org_id AND v.slug = p.slug ORDER BY v.version DESC LIMIT 1) AS status
              FROM prompts p WHERE p.org_id = ? AND p.deleted_at IS NULL AND p.slug IN (${ph})`, [ctx.orgId]);
-        for (const p of rows) put({ ref: `prompt:${p.slug}`, type, title: p.title, owner: p.author, updated: p.updated_at, href: `#prompts/${encodeURIComponent(p.slug)}`, extra: {},
+        for (const p of rows) put({ ref: `prompt:${p.slug}`, type, title: p.title, owner: p.author, updated: p.updated_at, href: `#prompts/${encodeURIComponent(p.slug)}`, extra: { excerpt: excerptOf(p.description) },
           status: p.status === "published" ? { mark: "dot", tone: "green", word: "Published", tip: "Settled: published by a person." }
             : p.status === "staged" ? { mark: "ring", tone: "amber", word: "Staged", tip: "Waiting for a person to publish it." } : { mark: "ring", tone: "muted", word: "Draft", tip: "Not published yet." } });
         break;

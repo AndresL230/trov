@@ -43,6 +43,35 @@ describe("peek and the inspector", () => {
   });
 });
 
+describe("the single item card's words (#178): `extra.excerpt` and a person's open tickets, from the same reads", () => {
+  it("a ticket's body, a PR's What, a decision, a sprint's summary, a prompt's description — the first paragraph; none is null", async () => {
+    const cookie = await cookieFor(ME);
+    const ctx = await tenantCtx("AndresL230");
+    const T0 = "2026-10-10T00:00:00Z";
+    const n = await create_ticket(ctx, { title: "With a body", body: "## Steps\n\nThe build fails at `tsc`.\nTwo errors.\n\nMore below.", category: "bug", priority: "normal", assignees: [ME] }, "AndresL230");
+    const bare = await create_ticket(ctx, { title: "No body", body: "", category: "bug", priority: "normal", assignees: [ME] }, "AndresL230");
+    await run(env.DB, `INSERT INTO events (org_id, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
+      VALUES (?, 'gh:pr:901:merged', 'pr_merged', 901, 'AndresL230', '{}', 'webhook', ?, ?, 'github-webhook')`, ORG_A, T0, T0);
+    await run(env.DB, `INSERT INTO pr_summaries (org_id, semantic_key, pr_number, model, created_at, title, what) VALUES (?, 'gh:pr:901:merged', 901, 'm', ?, 'A PR', 'Sorts the queue by need.')`, ORG_A, T0);
+    await run(env.DB, `INSERT INTO adrs (org_id, title, context, decision, status, created_at, created_by) VALUES (?, 'One table', 'Tokens were everywhere.', NULL, 'draft', ?, 'AndresL230')`, ORG_A, T0);
+    const adr = await first<{ id: number }>(env.DB, `SELECT id FROM adrs WHERE org_id = ? AND title = 'One table'`, ORG_A);
+    await run(env.DB, `INSERT INTO sprints (id, org_id, title, target_date, status, summary, description, created_at, created_by) VALUES (9901, ?, 'S', '2026-10-30', 'in_progress', '', 'From the description.', ?, 'AndresL230')`, ORG_A, T0);
+    await run(env.DB, `INSERT INTO prompts (org_id, slug, title, description, author, created_at, updated_at) VALUES (?, 'one-card', 'One card', 'Draws one item.', 'AndresL230', ?, ?)`, ORG_A, T0, T0);
+    const r = await call("POST", `${BASE}/ask/peek`, cookie, { refs: [`ticket:${n}`, `ticket:${bare}`, "pr:901", `decision:${adr!.id}`, "sprint:9901", "prompt:one-card", `person:${ME}`] });
+    expect(r.status).toBe(200);
+    const [t, b, pr, d, sp, p, person] = r.json.items;
+    for (const v of [t, b, pr, d, sp, p, person]) RefViewSchema.parse(v);
+    expect(t.extra.excerpt).toBe("The build fails at `tsc`. Two errors.");     // the first paragraph that is not a heading
+    expect(b.extra.excerpt).toBeNull();                                        // nothing to say: null, never a guess
+    expect(pr.extra.excerpt).toBe("Sorts the queue by need.");
+    expect(d.extra.excerpt).toBe("Tokens were everywhere.");                  // no decision yet: its context
+    expect(sp.extra.excerpt).toBe("From the description.");                   // an empty summary: the description
+    expect(p.extra.excerpt).toBe("Draws one item.");
+    // The person's tickets that are not done or declined (both above are triage).
+    expect(person.extra.openTickets).toBe(2);
+  });
+});
+
 describe("a repo ref (#186) — the Repo Overview's facts, never a state of Ask's own", () => {
   it("peek reads RepoFacts (the dashboard's projection): status null, nothing captured has nothing to call Healthy", async () => {
     await addOrgRepo("acme/peek-repo");

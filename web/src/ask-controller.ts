@@ -27,7 +27,7 @@ import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askK
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
-import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskEvent, type RefView } from "@shared/ai-ask-core";
+import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type RefView } from "@shared/ai-ask-core";
 
 export interface AskHost {
   state: AppState;
@@ -130,12 +130,18 @@ export function createAskController(host: AskHost): AskController {
         .finally(() => { if (pending.size) want([]); });
     }, 30);
   }
+  /** A single person card (ask-one.ts) names what they are working on: those tickets' views, peeked once. */
+  function wantOneCard(b: AskBlock): void {
+    if (b.kind !== "items" || b.items.length !== 1 || b.items[0].type !== "person") return;
+    const w = b.items[0].extra.workingOn;
+    want(Array.isArray(w) ? w.filter((r): r is string => typeof r === "string" && parseAskRef(r) !== null).slice(0, 3) : []);
+  }
   /** Every RefView an event carries goes straight into the store. */
   function primeFromEvent(e: AskEvent): void {
     if (e.event === "done") prime(e.data.cites);
     else if (e.event === "block") {
       const b = e.data;
-      if (b.kind === "items") prime(b.items);
+      if (b.kind === "items") { prime(b.items); wantOneCard(b); }
       else if (b.kind === "diagram") prime(b.diagram.nodes.flatMap((n) => (n.view ? [n.view] : [])));
     } else if (e.event === "action" && e.data.preview.item) prime([e.data.preview.item]);
     else if (e.event === "activity" && e.data.state === "done" && e.data.results?.length) want(e.data.results);
@@ -256,7 +262,7 @@ export function createAskController(host: AskHost): AskController {
     api.getThread(id).then((d) => {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...convoFromDetail(d), uid: ui().page.uid });    // the column stays; the skeleton settles
-      for (const m of d.messages) { prime(m.cites); want(m.context); }
+      for (const m of d.messages) { prime(m.cites); want(m.context); m.blocks.forEach(wantOneCard); }
     }).catch((e) => {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...ui().page, status: "error" });

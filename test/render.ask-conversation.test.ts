@@ -24,6 +24,9 @@ import mainSrc from "../web/src/main.ts?raw";
 import { askTranscript, askRefFixtures, askStateFixture, askThreadsFixture, ASK_SCENARIO_QUESTION, type AskScenario } from "@shared/ai-fixtures";
 import type { AskAttachment, AskEvent, AskThreadDetail } from "@shared/ai-ask-core";
 import css from "../web/src/trov.css?raw";
+import { singleItemCard, plainWords } from "../web/src/ask-one";
+import { repoScenario } from "../web/src/repo-sample";
+import { askRepoFacts, type RefView } from "@shared/ai-ask-core";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
 const HQ = "What's blocking the hosting work? This is what I see in CI.";
@@ -726,5 +729,160 @@ describe("motion — reduced motion and corners for the conversation's pieces", 
     expect(html).toMatch(/class="ask-step-w" data-morph-key="s:1" data-ask-tween/);
     expect(html).toContain(`<div data-morph-key="foot" class="ask-foot-w" data-ask-tween>`);
     expect(html).toMatch(/class="ask-q can-edit" data-morph-key="q:qk1" data-ask-tween/);
+  });
+});
+
+// ── ONE item (web/src/ask-one.ts): its own layout, never the grid's card stretched ─────────────────────────────
+
+describe("one item — the single item card (ask-one.ts)", () => {
+  const PEOPLE = [
+    { handle: "andres", name: "Andres Lopez", color: "moss", avatar_url: null, role: null },
+    { handle: "maya", name: "Maya Chen", color: "sky", avatar_url: null, role: null },
+    { handle: "priya", name: "Priya Natarajan", color: "plum", avatar_url: null, role: null },
+    { handle: "jon", name: "Jon Park", color: "ochre", avatar_url: null, role: null },
+  ];
+  const V = askRefFixtures(NOW) as Record<string, RefView>;
+  const REPO = Object.keys(V).find((k) => k.startsWith("repo:"))!;
+  V[REPO] = { ...V[REPO], extra: { facts: askRepoFacts(repoScenario("N", "trov", { now: NOW.getTime() })) } };
+  // What the server adds for this card (src/ai/ask/refs.ts; test/ask.views.test.ts), which the design's fixtures predate.
+  const add = (ref: string, extra: Record<string, unknown>) => { V[ref] = { ...V[ref], extra: { ...V[ref].extra, ...extra } }; };
+  add("ticket:14", { excerpt: "Walk a new org from an empty Repo screen to its first deploy." });
+  add("pr:176", { excerpt: "Adds the Netlify step to guided setup." });
+  add("sprint:7", { excerpt: "Every host behind one provider interface." });
+  add("person:andres", { openTickets: 5 });
+  V["decision:7"] = { ref: "decision:7", type: "decision", num: 7, title: "Tokens live in one table", owner: "andres", updated: "2026-10-03T10:00:00Z", href: null,
+    status: { mark: "check", tone: "accent", word: "Ratified", tip: "A person ratified this decision." }, extra: { excerpt: "Every provider's token goes through **one** resolver." } };
+  V["prompt:release-notes"] = { ref: "prompt:release-notes", type: "prompt", title: "Write the release notes", owner: "priya", updated: "2026-10-12T10:00:00Z", href: "#prompts/release-notes",
+    status: { mark: "dot", tone: "green", word: "Published", tip: "Settled: published by a person." }, extra: { excerpt: "Merged PRs into release notes." } };
+  const look = { views: V, persons: PEOPLE } as unknown as Parameters<typeof singleItemCard>[0]["look"];
+  const one = (ref: string, over: Partial<RefView> = {}): string => singleItemCard({ look: { ...look, views: { ...V, [ref]: { ...V[ref], ...over } } } }, { ...V[ref], ...over });
+  /** The facts column as [label, plain value] pairs, in order. */
+  const facts = (html: string): [string, string][] =>
+    [...html.matchAll(/<dt class="ask-one-l">([^<]*)<\/dt><dd class="ask-one-v">([\s\S]*?)<\/dd>/g)].map((m) => [m[1], text(m[2]).trim()]);
+  const labels = (html: string): string[] => facts(html).map(([l]) => l);
+  const words = (html: string): string => text(html.match(/<p class="ask-one-x">([\s\S]*?)<\/p>/)?.[1] ?? "").trim();
+
+  it("an items block with ONE item draws the single card; two or more keep the grid of cards", () => {
+    const done: AskEvent = { event: "done", data: { messageId: 2, questionId: 1, cites: [], tokens: { in: 1, out: 1, cached: 0 } } };
+    const single = view("answer", { events: [{ event: "block", data: { kind: "items", items: [V["ticket:14"]] } }, done] }).html;
+    expect(single).toMatch(/<div class="ask-rich" data-rich="items">[\s\S]*?<div class="ask-one-c"><div class="ask-one cnpy-hitbox" data-one="ticket">/);
+    expect(single).not.toContain("ask-cards");
+    const two = view("answer", { events: [{ event: "block", data: { kind: "items", items: [V["ticket:14"], V["pr:176"]] } }, done] }).html;
+    expect(two).toContain(`<div class="ask-cards" style="--n:2">`);
+    expect(two).not.toContain("ask-one");
+  });
+
+  it("the whole card is ONE hitArea that opens the item (its last child); nothing inside is a button", () => {
+    const html = one("ticket:14");
+    expect(html.match(/<button/g)).toHaveLength(1);
+    expect(html).toMatch(/<button data-act="askShOpen" data-arg="ticket:14" class="cnpy-hit" aria-label="Ticket #14: Guided repository setup"><\/button>\s*<\/div><\/div>$/);
+    expect(text(html)).toContain("Open beside the thread");
+  });
+
+  it("ticket: the eyebrow and number, its body under the title; status, priority, assignees (pictures), sprint", () => {
+    const html = one("ticket:14");
+    expect(text(html)).toContain("Ticket #14");
+    expect(html).toContain(`<span class="ask-one-t">Guided repository setup</span>`);
+    expect(words(html)).toMatch(/^Walk a new org from an empty Repo screen/);
+    expect(facts(html)).toEqual([["Status", "In progress"], ["Priority", "High"], ["Assignees", "MC AL Maya Chen +1"], ["Sprint", "Hosting"]]);
+    expect(html.match(/class="cnpy-av"/g)?.length).toBe(2);                  // both assignees' pictures, through people.ts
+    expect(facts(one("ticket:19", { extra: { priority: "normal", assignees: [], sprint: null } }))).toEqual([["Status", "Triage"], ["Priority", "Normal"], ["Assignees", "Unassigned"], ["Sprint", "Backlog"]]);
+  });
+
+  it("pull request: the repository beside the number, its What; state, checks (the summary and n of m), author, branch", () => {
+    const html = one("pr:176");
+    expect(text(html)).toContain("Pull request #176");
+    expect(html).toMatch(/<span class="ask-one-ebr">[^<]+\/[^<]+<\/span>/);
+    expect(words(html)).toMatch(/^Adds the Netlify step/);
+    expect(facts(html)).toEqual([["State", "In review"], ["Checks", "Checks failing 3 of 4"], ["Author", "MC Maya Chen"], ["Branch", "maya/netlify-connect → main"]]);
+    expect(facts(one("pr:176", { extra: { ...V["pr:176"].extra, checks: [] } }))[1]).toEqual(["Checks", "None captured"]);
+  });
+
+  it("doc: status, owner, space, version; the excerpt as plain words (markdown's marks out)", () => {
+    const html = one("doc:hosting-connections");
+    expect(labels(html)).toEqual(["Status", "Owner", "Space", "Version"]);
+    expect(facts(html)[3]).toEqual(["Version", "v4"]);
+    expect(words(html)).toMatch(/^An org connects a hosting account once/);
+    expect(words(one("doc:hosting-connections", { extra: { ...V["doc:hosting-connections"].extra, excerpt: "**Sapling** is `fast`, see [the doc](https://x.y)." } }))).toBe("Sapling is fast, see the doc.");
+  });
+
+  it("decision: status, author, when it was proposed; the decision", () => {
+    const html = one("decision:7");
+    expect(facts(html)).toEqual([["Status", "Ratified"], ["Author", "AL Andres Lopez"], ["Proposed", "Oct 3"]]);
+    expect(words(html)).toBe("Every provider's token goes through one resolver.");
+  });
+
+  it("feed entry: the kind word comes off the title into the facts; author, posted; the brief", () => {
+    const html = one("feed:41", { title: "Shipped: status marks replace pills" });
+    expect(html).toContain(`<span class="ask-one-t">Status marks replace pills</span>`);
+    expect(labels(html)).toEqual(["Kind", "Author", "Posted"]);
+    expect(facts(html).slice(0, 2)).toEqual([["Kind", "Shipped"], ["Author", "PN Priya Natarajan"]]);
+    expect(words(html)).toMatch(/^Every board, table and rail/);
+    expect(labels(one("feed:41"))).toEqual(["Author", "Posted"]);         // no kind word: no kind, never a guess
+  });
+
+  it("sprint: status, dates, progress as a thin bar and “n of m done”, lead; its summary", () => {
+    const html = one("sprint:7");
+    expect(facts(html)).toEqual([["Status", "3 days late"], ["Dates", "Oct 5 – 30"], ["Progress", "7 of 12 done"], ["Lead", "AL Andres Lopez"]]);
+    expect(html).toContain(`<span class="ask-one-fill" style="width:58%"></span>`);
+    expect(words(html)).toMatch(/^Every host behind one provider interface/);
+    expect(facts(one("sprint:7", { extra: { ...V["sprint:7"].extra, progress: { closed: 0, total: 0 } } }))[2]).toEqual(["Progress", "No tickets yet"]);
+  });
+
+  it("handoff: status, from, to (anyone in words), sent; its task", () => {
+    const html = one("handoff:11");
+    expect(text(html)).toContain("Handoff #11");
+    expect(labels(html)).toEqual(["Status", "From", "To", "Sent"]);
+    expect(facts(html)[2]).toEqual(["To", "Anyone"]);
+    expect(words(html)).toMatch(/^Pick up the performance plan/);
+  });
+
+  it("artifact: visibility, state, kind, version, author", () => {
+    expect(facts(one("artifact:hosting-status-oct-15"))).toEqual([["Visibility", "Private"], ["State", "Draft"], ["Kind", "HTML page"], ["Version", "v1"], ["Author", "AL Andres Lopez"]]);
+  });
+
+  it("person: the picture, name and handle, the role; open tickets and what they are working on (their marks, from the look)", () => {
+    const html = one("person:andres");
+    expect(html).toMatch(/<div class="ask-one-who"><div class="cnpy-av"[^>]*>AL<\/div><div class="ask-one-whot"><span class="ask-one-t">Andres Lopez<\/span><span class="ask-one-h" style="color:var\(--p-moss\)">@andres<\/span>/);
+    expect(words(html)).toBe("Founder. Hosting and the gate.");
+    expect(facts(html)).toEqual([["Open tickets", "5"], ["Working on", "#18 Hosting connections: Netlify and Vercel #29 Fix the Netlify connect test on main"]]);
+    expect(facts(one("person:jon", { extra: { handle: "jon", workingOn: [] } }))).toEqual([["Working on", "Nothing in progress"]]);
+  });
+
+  it("prompt: status, author, slug; its description", () => {
+    const html = one("prompt:release-notes");
+    expect(facts(html)).toEqual([["Status", "Published"], ["Author", "PN Priya Natarajan"], ["Slug", "release-notes"]]);
+    expect(words(html)).toBe("Merged PRs into release notes.");
+  });
+
+  it("repository: each environment's verdict (the Overview's), what needs attention; the head's checks under the title", () => {
+    const html = one(REPO);
+    const f = facts(html);
+    expect(f.length).toBeGreaterThan(1);
+    expect(f[f.length - 1][0]).toBe("Attention");
+    expect(words(html)).toMatch(/^Production: /);
+    // Not read: Unknown, never Healthy, and the words say so.
+    const unread = one(REPO, { extra: { facts: null } });
+    expect(facts(unread)).toEqual([["State", "Unknown"]]);
+    expect(words(unread)).toBe("Trov has no reading of this repository yet.");
+  });
+
+  it("plainWords: markdown's inline marks out, the words kept", () => {
+    expect(plainWords("- **Bold** and *em* with `code` and ![img](a.png) [link](b)")).toBe("Bold and em with code and img link");
+    expect(plainWords("snake_case_name stays")).toBe("snake_case_name stays");
+  });
+
+  it("CSS: two zones side by side, stacked under 560px of the card's own width (a container query); motion off; corners", () => {
+    expect(css).toContain(".ask-one-c { container:askone / inline-size; }");
+    expect(css).toMatch(/\.ask-one \{ display:grid; grid-template-columns:minmax\(0, 1fr\) minmax\(272px, 44%\);[^}]*grid-template-areas:"id facts" "ft facts";/);
+    const narrow = css.slice(css.indexOf("@container askone (max-width: 559px)"));
+    const block = narrow.slice(0, narrow.indexOf("\n}\n"));
+    expect(block).toMatch(/\.ask-one \{ grid-template-columns:minmax\(0, 1fr\);[^}]*grid-template-areas:"id" "facts" "ft"; \}/);
+    expect(block).toMatch(/\.ask-one-facts \{[^}]*border-left:0; border-top:1px solid var\(--border\)/);
+    const reduce = css.slice(css.indexOf("/* the conversation's */"));
+    expect(reduce.slice(0, 600)).toContain(".ask-one, .ask-one-go { transition:none !important; }");
+    expect(reduce.slice(0, 600)).toContain(".ask-one-fill { animation:none !important; }");
+    expect(css).toContain("[data-cnpy-theme] .ask-one,");
+    expect(css).toContain("[data-cnpy-theme] .ask-one-fill { border-radius:calc(2px * var(--corner-scale)) !important; }");
   });
 });
