@@ -186,8 +186,8 @@ describe("`streaming` — mid-answer", () => {
     expect(view("answer", { events: upToChart, busy: true }).html).toContain(`<div data-morph-key="cursor" class="ask-cur-alone">`);
     expect(view("answer", { events: [], busy: true }).html).toContain(`ask-cur-alone`);
     // The place the words will come holds a thinking orb: working before anything arrived, writing after a block.
-    expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working" data-orb-size="20" width="20" height="20" role="img" aria-label="Working…"/);
-    expect(view("answer", { events: upToChart, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*aria-label="Writing…"/);
+    expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working" data-orb-size="20" width="20" height="20" aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
+    expect(view("answer", { events: upToChart, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Writing…<\/span>/);
   });
   it("every step done and no words yet (Smart reading what it found): the Working orb holds the place — not while a step runs", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event);
@@ -196,7 +196,7 @@ describe("`streaming` — mid-answer", () => {
     const lastStepDone = beforeText.map((e) => e.event === "activity" && e.data.state === "done").lastIndexOf(true);
     expect(lastStepDone).toBeGreaterThan(0);
     const quiet = beforeText.slice(0, lastStepDone + 1).filter((e) => e.event !== "text");
-    expect(view("answer", { events: quiet, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working"[^>]*aria-label="Working…"/);
+    expect(view("answer", { events: quiet, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
     const running = events.slice(0, 2);
     expect(running.some((e) => e.event === "activity" && e.data.state === "run")).toBe(true);
     expect(view("answer", { events: running, busy: true }).html).not.toContain("ask-cur-alone");
@@ -224,8 +224,8 @@ describe("the thinking orb the person picked (the Ask header's switch, AskUi.orb
   it("one animation picked: every orb in the answer is that one — the steps, the thinking row and the wait", () => {
     const wait = view("answer", { events: [], busy: true, over: pick("listening") }).html;
     expect(orbs(wait)).toEqual(["listening"]);
-    // The orb's name still says what Trov is doing, whatever it looks like.
-    expect(wait).toMatch(/data-orb="listening"[^>]*role="img" aria-label="Working…"/);
+    // The word beside the orb still says what Trov is doing, whatever the orb looks like.
+    expect(wait).toMatch(/data-orb="listening"[^>]*aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Thinking…/);
     const step = view("answer", { events: answerEvents().slice(0, 2), busy: true, over: pick("shaping") }).html;
     expect(orbs(step).length).toBeGreaterThan(0);
     expect(new Set(orbs(step))).toEqual(new Set(["shaping"]));
@@ -234,7 +234,7 @@ describe("the thinking orb the person picked (the Ask header's switch, AskUi.orb
     expect(new Set(orbs(think))).toEqual(new Set(["working"]));
     const events = answerEvents();
     const upToChart = events.slice(0, events.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
-    expect(view("answer", { events: upToChart, busy: true, over: pick("searching") }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"[^>]*aria-label="Writing…"/);
+    expect(view("answer", { events: upToChart, busy: true, over: pick("searching") }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"[^>]*><\/canvas><span class="ask-wait-l">Writing…/);
   });
 
   it("a finished answer has no orb, whatever is picked", () => {

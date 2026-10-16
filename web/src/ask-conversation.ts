@@ -542,9 +542,10 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   const kids: [string, string][] = [
     ["steps", steps || think ? `<div class="ask-steps" data-morph-list data-ask-enter="fade">${steps}${think ? `<div data-morph-key="think">${think}</div>` : ""}</div>` : ""],
     ["parts", `<div class="ask-parts" data-morph-list data-ask-enter="rise">${body}</div>`],
-    // Live with no text streaming: a thinking orb holds the place where the words will come — working before
-    // anything has arrived, writing once a block has.
-    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, parts.length ? "composing" : "working", parts.length ? "Writing…" : "Working…")}</div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
+    // Live with no text streaming: a thinking orb and its word, in the sweep of light (the owner: the wait must read
+    // as thinking — most of a turn's wait is here, its steps run for a few ms), hold the place where the words will
+    // come — "Thinking…" before the words, "Writing…" once a block is out and the words are not.
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, parts.length ? "composing" : "working", null)}<span class="ask-wait-l">${parts.length ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }
