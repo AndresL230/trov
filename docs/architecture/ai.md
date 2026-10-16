@@ -732,7 +732,13 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   revives only a close the hover started (`fmClosingByHover` in `main.ts`), never this one, though the apply's repaint
   under a resting pointer fires a pointerover. A line above the toolbar (`aiFilterLine`) says what was set and what was
   not a filter here, with Undo back to the filters set by hand; after Undo it leaves by the kit's one exit
-  (`AiController.leave`, key `filter:<screen>`).
+  (`AiController.leave`, key `filter:<screen>`). An answer whose filter has no words (labels empty) draws no line —
+  never "Undo" alone. A hand change to the screen's filters after an apply drops the line and its Undo by the same
+  exit (`AiFilterController.sync`, called before every paint, compares the screen's state with the one the apply
+  left), so the line never describes filters that no longer hold and Undo never overwrites the hand change. An
+  Apply refused with 403 `off` (or 503 `no_key`, which reads exactly like off) — the switch went off after the row
+  was drawn — turns the row off at once (no row, as off is drawn), shuts the menu and says the server's sentence
+  once as a toast; no reload needed.
 - **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
   model's answer, with no key, no call and no count; `empty` is unreadable, `capped` the 402. The switch still holds.
 - Tests: `test/ai.filter.test.ts` (the call, the gates, the checks, the preview), `test/render.ai-filter.test.ts`.

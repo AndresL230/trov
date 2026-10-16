@@ -226,6 +226,7 @@ const aiFilterCtl = createAiFilterController({
   restore: (screen, snap) => restoreAiFilter(screen, snap),
   closeMenu: (screen) => closeFilterMenu(AI_FILTER_MENU[screen]),
   leave: (key) => aiCtl.leave(key),
+  flash: (m) => flash(m),
   names: () => ({
     me: state.me?.handle ?? "",
     person: (h) => state.persons.data.find((p) => p.handle.toLowerCase() === h.toLowerCase())?.name || h,
@@ -576,6 +577,7 @@ function paintApp(): void {
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
   const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
   askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
+  aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));
   syncReviewDetail(rvFocus);
   syncSegments(mount);

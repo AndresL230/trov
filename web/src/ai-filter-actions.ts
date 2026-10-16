@@ -9,7 +9,10 @@
 //     and the menu closes on its own exit, leaving the "Filtered: …" line above the screen;
 //   • aiFilterUndo   — puts back the filter state the screen had before; the line leaves by the AI kit's one exit.
 // Whether the row shows at all is the org's AI switch, read ONCE per org from `GET /ai/settings` (`ensure`) —
-// a cheap existing read; nothing on the way to a screen calls a model.
+// a cheap existing read; nothing on the way to a screen calls a model. An Apply refused because the switch went
+// off since (403 `off`, or 503 `no_key`, which reads exactly like off) turns the row off at once — no stale box
+// until a reload. A hand change to the screen's filters after an apply drops the "Filtered: …" line and its Undo
+// (`sync`, before every paint): the line would no longer say what is set.
 
 import type { AppState } from "./render";
 import { aiFilterLabels, aiFilterLeaveKey, aiFilterScreenOf, type AiFilterNames, type AiFilterSnapshot } from "./ai-filter";
@@ -33,11 +36,15 @@ export interface AiFilterHost {
   closeMenu(screen: AiFilterScreen): void;
   /** Start the AI kit's one exit for `key` (ai-actions.ts `leave`); null under reduced motion. */
   leave(key: string): number | null;
+  /** A toast (main.ts `flash`). */
+  flash?(message: string): void;
 }
 export interface AiFilterController {
   act(act: string, arg: string | null, value: string | null): void;
   /** Read the org's AI switch once per org (on entering a screen with a typed filter). */
   ensure(): void;
+  /** Before a paint: an applied line whose screen's filters were since changed by hand goes, with its Undo. */
+  sync(): void;
 }
 
 export function createAiFilterController(host: AiFilterHost): AiFilterController {
@@ -119,7 +126,7 @@ export function createAiFilterController(host: AiFilterHost): AiFilterController
         // Undo always goes back to what the person had set by hand.
         const undo = u.applied[screen]?.undo ?? host.snapshot(screen);
         host.apply(screen, a.filter);
-        u.applied = { ...u.applied, [screen]: { labels: aiFilterLabels(screen, a.filter, host.names()), unmatched: a.unmatched, undo, at: Date.now() } };
+        u.applied = { ...u.applied, [screen]: { labels: aiFilterLabels(screen, a.filter, host.names()), unmatched: a.unmatched, undo, after: host.snapshot(screen), at: Date.now() } };
         u.undone = { ...u.undone, [screen]: undefined };
         host.rerender();
         // Done: the menu shuts on its own exit, and the line above the screen says what was set.
@@ -129,9 +136,31 @@ export function createAiFilterController(host: AiFilterHost): AiFilterController
         if (mine !== seq) return;
         u.busy = null;
         if (e instanceof Unauthorized) { host.unauth(e); return; }
+        // The switch went off (or the key went) since the row was drawn: the row goes now, as off draws it — no
+        // row at all — and the menu shuts on its exit with the reason said once.
+        if (e instanceof OrgApiError && (e.message === "off" || e.message === "no_key")) {
+          u.on = false;
+          u.reveal = null;
+          u.error = { ...u.error, [screen]: undefined };
+          host.rerender();
+          host.closeMenu(screen);
+          host.flash?.(e.detail ?? AI_FILTER_MESSAGES.off);
+          return;
+        }
         u.error = { ...u.error, [screen]: refusalText(e) };
         host.rerender();
       });
+  }
+
+  /** An applied line whose screen no longer holds the filters it applied (changed by hand) leaves, Undo with it. */
+  function sync(): void {
+    const u = ui();
+    for (const screen of Object.keys(u.applied) as AiFilterScreen[]) {
+      const a = u.applied[screen];
+      if (!a?.after || JSON.stringify(host.snapshot(screen)) === JSON.stringify(a.after)) continue;
+      u.applied = { ...u.applied, [screen]: undefined };
+      u.undone = { ...u.undone, [screen]: host.leave(aiFilterLeaveKey(screen)) === null ? undefined : a };
+    }
   }
 
   function act(name: string, arg: string | null, value: string | null): void {
@@ -159,5 +188,5 @@ export function createAiFilterController(host: AiFilterHost): AiFilterController
     }
   }
 
-  return { act, ensure };
+  return { act, ensure, sync };
 }
