@@ -378,6 +378,10 @@ describe("Repo › Planning › Where the work went", () => {
     expect(t).toContain("Where the work went");
     expect(t).toContain("Since late August most of the work went to multi-org");
     expect(t).toMatch(/Themes and caption written by Trov from \d+ pull requests, 3h ago/);
+    // Never a misleading zero (Q-S4): with no pull request counted the byline names none.
+    const none = text(themesSection({ "8w": { ...themes("proposed")["8w"], prCount: 0 }, quarter: themes("proposed").quarter }, rp()));
+    expect(none).not.toContain("from 0 pull requests");
+    expect(none).toMatch(/written by Trov, /);
     expect(h).toContain('data-seg="repo-themes-range"');
     expect(t).toContain("8 weeks");
     expect(t).toContain("Quarter");

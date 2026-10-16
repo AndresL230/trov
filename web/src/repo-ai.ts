@@ -223,7 +223,8 @@ export function themesSection(all: Partial<Record<AiThemeRange, AiThemes>>, p: R
     ? `<button type="button" data-act="aiThemesEdit" class="cnpy-ghostbtn" style="font-size:13px;font-weight:500;border:1px solid var(--border-strong);border-radius:6px;padding:5px 12px;min-height:32px;white-space:nowrap">Edit themes</button>` : "";
   const written = t.caption ? "Themes and caption written by Trov" : "Themes written by Trov";
   const count = t.state === "empty" ? "" : aiByline(t.generatedAt, AI_TIP.themes, {
-    lead: written, from: t.prCount === null ? undefined : `${t.prCount} pull ${t.prCount === 1 ? "request" : "requests"}`,
+    // Never a misleading zero (Q-S4): no count in the byline when it counts no pull request (or does not know).
+    lead: written, from: !t.prCount ? undefined : `${t.prCount} pull ${t.prCount === 1 ? "request" : "requests"}`,
   });
   // Pressed "Wrong?" just now with the other range still there: the caption and byline leave with the chart.
   const leavingT = outT(range);
