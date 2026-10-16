@@ -16,7 +16,7 @@
 // it, and main.ts's `decided` holds the screen's re-read for `AI_EXIT_MS` so the read never pulls it out mid-exit.
 import type { AiSuggestion } from "@shared/ai-core";
 import { AI_TIP, aiCites, aiLeaving, aiSuggestionChip, aiSuggestionKey, type AiUi } from "./ai-ui";
-import { aiMark } from "./marks";
+import { aiMark, aiStateMark } from "./marks";
 import { esc, attr } from "./ui";
 
 /** The bit of `state.ai` a chip needs, with which items are leaving (ai-ui.ts › Leaving). */
@@ -71,7 +71,7 @@ export function unplacedRowMark(ai: AiSuggestion[] | undefined, leaving?: AiUi["
 export function reviewRiskMark(ai: AiSuggestion[] | undefined, leaving?: AiUi["leaving"]): string {
   const r = ofKind(ai, "review.risk");
   return r
-    ? aiLeaving({ leaving }, aiSuggestionKey(r.id), `<span class="cnpy-ai-risk" data-mtip="${attr(`${AI_TIP.suggestion} Because ${r.reason}.`)}" style="display:inline-flex;align-items:center;gap:5px;color:var(--fg-55);font-size:11.5px;min-width:0">${aiMark(11)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.label)}</span></span>`, { hold: true, inline: true })
+    ? aiLeaving({ leaving }, aiSuggestionKey(r.id), `<span class="cnpy-ai-risk">${aiStateMark(r.label, 12, `${AI_TIP.suggestion} Because ${r.reason}.`)}</span>`, { hold: true, inline: true })
     : "";
 }
 

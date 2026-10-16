@@ -7,11 +7,11 @@
 // Interactions dispatch via data-act / data-arg handled in main.ts. No fetching,
 // no inline data.
 
-import { esc, attr, MONO_LABEL, surface, SURFACE } from "./ui";
+import { esc, attr, MONO_LABEL, surface, SURFACE, HITBOX, hitArea } from "./ui";
 import { LOW_CONFIDENCE, kindMark } from "./marks";
 import { segmented } from "./segmented";
 import { renderedDoc } from "./review-rendered";
-import { personChip, personLink, handleTag } from "./people";
+import { personChip, personLink, personAvatarLink, handleTag } from "./people";
 import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 import type { AiSuggestion } from "@shared/ai-core";
@@ -120,35 +120,56 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
   // that leaves can collapse and the cards under it glide up as the same elements. Its structure is
   // the same in every state — the selection bar and the verdict label are always emitted and shown
   // by attribute. A row with a verdict is `inert`: it is on its way out.
-  return `<div class="cnpy-rv-row" data-morph-key="rv:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><button data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-titem ${SURFACE} cnpy-card"${selected ? ` aria-current="true"` : ""}>
+  return `<div class="cnpy-rv-row" data-morph-key="rv:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-titem ${SURFACE} cnpy-card ${HITBOX}" data-rv-card="${attr(it.id)}"${selected ? ` aria-current="true"` : ""}>
+    ${hitArea("reviewSelect", it.id, it.title).replace("<button ", `<button${selected ? ` aria-current="true"` : ""} `)}
     <span class="cnpy-selbar"></span>
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
-        ${it.flagged ? `<div style="flex:none;margin-top:1px">${LOW_CONFIDENCE(12)}</div>` : ""}
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
+        ${reviewHeadMarks(it, aiLeaving)}
       </div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(it.summary)}</div>
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;font-size:11.5px;color:var(--fg-55)">
-        ${type ? `<span>${esc(type)}</span>` : ""}
-        ${id ? `${dot}<span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${esc(id)}</span>` : ""}
-        ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentBit(it, 18)}</span>
-        ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>${it.ai ? `${dot}${reviewRiskMark(it.ai, aiLeaving)}` : ""}
-      </div>
+      ${reviewMetaRow(it, type, id, dot)}
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[verdict]}` : ""}</span>
-  </button></div></div>`;
+  </div></div></div>`;
+}
+/** A card's states, up-right on its title row where Review has always put "Low confidence": the gate's
+ *  low-confidence mark and Trov's risk ("Changes a decision", `reviewRiskMark` — it leaves by the AI kit's exit once
+ *  dismissed). Never in the meta row: a state is a mark, not a word in a byline. "" with neither. */
+function reviewHeadMarks(it: ReviewItem, aiLeaving?: AiUi["leaving"]): string {
+  const risk = it.ai ? reviewRiskMark(it.ai, aiLeaving) : "";
+  if (!it.flagged && !risk) return "";
+  return `<div class="cnpy-rv-marks" style="flex:none;margin-top:1px;display:flex;flex-direction:column;align-items:flex-end;gap:4px">${it.flagged ? LOW_CONFIDENCE(12) : ""}${risk}</div>`;
+}
+
+/** A card's meta row (the owner's layout, e2e RV-OWNER-1): ONE line, the same slots in the same order on every card —
+ *  the author's avatar alone (its handle in the tooltip and its accessible name; a button that opens their card when
+ *  they are a known person), then kind, where (the section path in sentence case, or the ADR number) and time. Only
+ *  "where" gives way: it ends in an ellipsis, the whole path in its tooltip. Nothing else joins the row, so a card with
+ *  a risk and one without stand the same height. */
+function reviewMetaRow(it: ReviewItem, type: string, id: string, dot: string): string {
+  const isAdr = /^ADR-/i.test(id);
+  return `<div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@${attr(it.agent)}" style="flex:none;display:inline-flex;align-items:center">${agentAvatar(it, 18)}</span>
+        <span data-slot="kind" style="flex:none">${esc(type)}</span>${dot}
+        <span data-slot="where"${id ? ` data-mtip="${attr(id)}"` : ""} style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis${isAdr ? ";font-family:var(--label);font-size:11px" : ""}">${esc(id)}</span>${dot}
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">${esc(it.time)}</span>
+      </div>`;
+}
+/** The author as their avatar alone: the button to their card for a known person (people.ts), else the chip with
+ *  the handle as its accessible name. */
+function agentAvatar(it: ReviewItem, size: number): string {
+  const p = it.agentColor && it.agentHandle ? { handle: it.agentHandle, name: it.agentName, color: it.agentColor, avatar_url: it.agentAvatar } : null;
+  if (p) return personAvatarLink(p, it.agent, size).replace(/aria-label="[^"]*"/, `aria-label="${attr(`@${it.agent}${it.agentName ? ` (${it.agentName})` : ""} — person card`)}"`);
+  const chip = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
+  return `<span role="img" aria-label="${attr(`@${it.agent}`)}" style="display:inline-flex">${personChip(chip, size, it.agent)}</span>`;
 }
 const CHECK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`;
 const X_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
 
-/** The agent byline piece: a colored chip + handleTag when mapped to a person,
- *  else a bare muted handleTag (personChip falls back to initials). */
-function agentBit(it: ReviewItem, chipSize: number): string {
-  const p = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
-  return `${personChip(p, chipSize, it.agent)}${handleTag(p, it.agent)}`;
-}
-/** The same pair as ONE chip that opens the person's card — the detail header's byline (the
- *  list card is itself a button that selects, so it keeps `agentBit`). Plain when unmapped. */
+/** The chip and handle as ONE button that opens the person's card — the detail header's byline (the list card shows
+ *  the avatar alone, `agentAvatar`). Plain when unmapped. */
 function agentLink(it: ReviewItem, chipSize: number): string {
   const p = it.agentColor ? { handle: it.agent, color: it.agentColor, avatar_url: it.agentAvatar } : null;
   const person = p && it.agentHandle ? { handle: it.agentHandle, name: it.agentName, color: p.color, avatar_url: p.avatar_url } : null;
@@ -285,8 +306,11 @@ export function adrRecord(sections: AdrSection[]): string {
 function splitEyebrow(eyebrow: string): { type: string; id: string } {
   const at = eyebrow.indexOf(" · ");
   const rawType = at === -1 ? eyebrow : eyebrow.slice(0, at);
-  const id = at === -1 ? "" : eyebrow.slice(at + 3);
+  const rawId = at === -1 ? "" : eyebrow.slice(at + 3);
   const type = rawType ? rawType.charAt(0) + rawType.slice(1).toLowerCase() : "";
+  // The section path is a fact: plain text, each part in sentence case ("Technical / Architecture"), never the
+  // mapper's UPPERCASE. An ADR number stays as it is ("ADR-005").
+  const id = /^ADR-/i.test(rawId) ? rawId : rawId.split(" / ").map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1).toLowerCase() : p)).join(" / ");
   return { type, id };
 }
 
