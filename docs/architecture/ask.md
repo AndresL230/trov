@@ -425,23 +425,43 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   with edges) is the blocker: the surface and a darker edge (a filled dot in the list). The list is a rail with a dot
   per node. Motion: nodes rise by layer and each SVG wipes in its direction once, on insertion (a rerender keeps the
   elements — measured: no animation restarts while typing or opening the sources); off under reduced motion.
-- **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame) with Edit
-  of its `editable` fields only — Confirm sends just the changed ones as `args` (each edited card alone, then the
-  rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never
-  Confirm. **An assignment** (`assign_ticket`, and a handoff's claim in the same frame) reads as one: the item — number,
-  title, its status mark; a click opens it — then the people, avatar and name through people.ts: "Andres → Jose" for a
-  replacement, "Unassigned → Jose", "Adds Jose · Andres stays on it", "Removes Luke" (a claim: sender → you). Edit
-  turns the person who comes (or goes, when someone else is on it to pick) into the app's `dropdown()` — every member
-  who could take it, with their avatar (`askAcPick`); its menu is a root overlay (`actionDropdowns`, render.ts), so it
-  opens over the ⌘J panel too. Its lines name people ("Assigned ticket #87 to Jose", "Reassigned ticket #6 from Jack to
-  Luke", "Took Luke off ticket #7"; `doneText` / `proposedText` take the directory), and a confirmed edit becomes the
-  card's `fields` so its line names who it really went to. A decided card is a line per outcome (done linked to `ref` with a time and Undo; Cancelled / Undone /
-  Expired / Didn't work); Undo's `changed` keeps the line and says "Changed since. Undo it by hand." with a link. An
-  Auto result names its own write (`action_result { tool, kind, preview }`), so its line says what was done with no
-  read back; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts
-  `loadTickets`, only once the queue was loaded) so an open board drops a declined ticket with its exit. `saveButton` / `wrongButton` are the footer's and a block's
-  buttons (acts `askAcSaveForm`, `askAcWrong`). **The swap** (ask-motion.ts rule 4): a card becoming its line (or its
-  Edit form opening) glides ONCE from the height it had to its natural new one, whatever paints follow — the
+- **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame). **Every
+  kind has the same frame** (the owner, 2026-10-16): the head — the eyebrow, the draft / waiting mark and, for a waiting
+  card, its reason in words — then the body, which ENDS on one row with Cancel / Confirm at its end (`endRow`): never a
+  row or a footer band of their own. That row is the card's facts (a new ticket's Category · Priority · Assignee ·
+  Sprint, four columns across; a new sprint's dates as the app writes them — `sprintDatesLabel`, "Nov 2 – 20" — its
+  lead with avatar and its urgency; any other write's short lines as "Label value" facts, its long ones the card's
+  text), its people from → to (a handoff, an assignment, a claim), the item and its move (a move is ONE row: "#87
+  Title · In progress → Testing", the status marks, Cancel / Confirm — also a sprint started or completed), or a hint
+  ("Goes to Review before it is live", what publishing does). Narrow (a phone, the ⌘J panel) the controls wrap under
+  the row's content as a right-aligned group, beside its trailing hint when it has one (`.ask-act-break`). A group's
+  earlier rows keep the controls' room (`.ask-act-ghost`) so its columns line up.
+  **There is no Edit mode**: every `editable` field is edited IN PLACE — text (a title, a task, a doc hunk's `+`
+  text, an edit's new title) reads as text and a click (`askAcText`) turns it into an input that looks the same,
+  focused; Enter or leaving it keeps the edit (a hunk's textarea: ⌘/Ctrl+Enter), Escape puts back what it held (an
+  Escape layer above the others), and a title left empty goes back. A small fixed set (category, priority) is a word a
+  click cycles (`askAcField <id>|<field>|<next>`, its tooltip lists the values); a person (a new ticket's assignee, a
+  handoff's recipient — Anyone or a member — an assignment's person) is the app's `dropdown()`, quiet until hovered,
+  its menu a root overlay (`actionDropdowns`, render.ts) so it opens over the ⌘J panel too (`askAcPick`; Unassigned is
+  `~none` → null). Confirm sends just the changed editable fields as `args`, as before (each edited card alone, then
+  the rest of the group in one call); the server is unchanged. A Publish whose `canPublish` is false shows Open in
+  Review, never Confirm. **An assignment** (`assign_ticket`, and a handoff's claim in the same frame) reads as one: the
+  item — number, title, its status mark; a click opens it — then the people, avatar and name through people.ts:
+  "Andres → Jose" for a replacement, "Unassigned → Jose", "Adds Jose · Andres stays on it", "Removes Luke" (a claim:
+  sender → you); the person who comes (or goes, when someone else is on it to pick) is the dropdown — every member who
+  could take it. Its lines name people ("Assigned ticket #87 to Jose", "Reassigned ticket #6 from Jack to Luke", "Took
+  Luke off ticket #7"; `doneText` / `proposedText` take the directory), and a confirmed edit becomes the card's
+  `fields` so its line names who it really went to. **A decided card is ONE line per outcome**: the mark and what
+  happened (done linked to `ref`; Cancelled / Undone / Expired / Didn't work), the reason muted on the same line (cut
+  short, all of it in its `data-mtip`), then the time and Undo / Open at its end (Didn't work opens the item); on a
+  phone it flows as one wrapped line, never a stacked block. Undo's `changed` keeps the line and says "Changed since.
+  Undo it by hand." with Open for the item. An Auto result names its own write (`action_result { tool, kind,
+  preview }`), so its line says what was done with no read back; nothing on the client ever decides a card. An Undo of
+  a ticket write calls `ctx.refreshTickets` (main.ts `loadTickets`, only once the queue was loaded) so an open board
+  drops a declined ticket with its exit. The Save as artifact form carries Kind and Who can see it as compact switches
+  at its head's right (their options are their labels), the title with Save at its end, the hint under them.
+  `saveButton` / `wrongButton` are the footer's and a block's
+  buttons (acts `askAcSaveForm`, `askAcWrong`). **The swap** (ask-motion.ts rule 4): a card becoming its line glides ONCE from the height it had to its natural new one, whatever paints follow — the
   Confirm's own, a toast, every streamed word. `askTweenHeights` measures natural heights (running glides stepped past
   their end for the read; `tweenStart` decides): reading a glide's own height as the card's once started a glide back
   on every paint, and the card swung 48 ↔ 336px under an answer still writing. The measuring layout sees the card

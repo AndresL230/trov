@@ -118,14 +118,14 @@ const ticketRow = (n: number) => first<{ title: string; status: string; priority
 beforeAll(async () => { await web(); }, 60_000);
 
 describe("Ask's write cards, the real routes into the real screen", { timeout: 60_000 }, () => {
-  it("a proposed card: Edit → Confirm sends only the edited fields; the server writes them and the card becomes its done line", async () => {
+  it("a proposed card: fields edited in place → Confirm sends only the edited ones; the server writes them and the card becomes its done line", async () => {
     const w = await web();
     const cookie = await cookieFor(ME);
     const model = fakeModel([[{ type: "tool_use", name: "create_ticket", input: { title: "Hookup draft", priority: "high", assignees: [ME] } }], answer("A card.")]);
     const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "file it" }));
     const { s, ctx, flashes } = await screenFrom(w, r.events, cookie);
     const card = eventsOf(r.events, "action")[0];
-    expect(text(lines(w, s)[0])).toMatch(/^New ticket Draft, not created yet Edit .*Hookup draft/);
+    expect(text(lines(w, s)[0])).toMatch(/^New ticket Draft, not created yet Hookup draft .*Cancel Confirm$/);
     s.ask.actions.drafts[card.id] = { title: "Hookup, edited", priority: "low", category: "other" };
     await w.confirmCards(ctx, [card.id]);
     const made = Number(s.ask.page.messages[1].turn.actions[card.id].ref.split(":")[1]);
@@ -145,7 +145,7 @@ describe("Ask's write cards, the real routes into the real screen", { timeout: 6
     const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "publish and file", auto: true }));
     const { s, ctx, flashes } = await screenFrom(w, r.events, cookie);
     const [pub, made] = lines(w, s);
-    expect(text(pub)).toMatch(/^Publish doc Waiting for you Hookup doc/);
+    expect(text(pub)).toMatch(/^Publish doc Waiting for you .*Hookup doc/);
     expect(pub).toContain("Publishing waits for you, even on Auto.");
     expect(text(made)).toMatch(/^Created ticket #\d+ Just now Undo$/);
     expect((await first<{ c: number }>(env.DB, `SELECT current_version AS c FROM docs WHERE org_id = ? AND slug = 'hookup-doc'`, ORG_A))?.c ?? 0).toBe(0);
@@ -230,7 +230,7 @@ describe("Ask's write cards, the real routes into the real screen", { timeout: 6
     await w.addSaveForm(ctx, "a1");
     const a = s.ask.page.messages[1];
     const part = w.shownParts(a.turn).find((p: any) => p.kind === "block" && p.block.kind === "save_form");
-    expect(text(w.saveFormView(w.askView(s), a, part.block, part.index))).toMatch(/^Save as artifact Title Kind Markdown HTML page Who can see it Private Org/);
+    expect(text(w.saveFormView(w.askView(s), a, part.block, part.index))).toMatch(/^Save as artifact Markdown HTML page Private Org Save/);
     s.ask.actions.forms[`a1|${part.index}`] = { title: "Hosting, from Ask", visibility: "private" };
     await w.saveArtifact(ctx, `a1|${part.index}`);
     const saved = w.shownParts(s.ask.page.messages[1].turn).find((p: any) => p.kind === "block" && p.block.kind === "save_form");

@@ -2,23 +2,28 @@
 // scenarios `actions-ask`, `actions-auto`, `artifact`, `artifact-saved`; design ask-trov.dc.html L475–590,
 // L1651–1672, L630–638; #12 §2.11–12, §2.14, §3).
 //
-//   • A CARD (`action` event, state proposed | waiting): the eyebrow ("New ticket", "New handoff", "Doc edit",
-//     "Publish doc"), a mark ("Draft, not created yet" / "Waiting for you"), the body per kind, inline Edit of the
-//     fields the tool's input takes (`editable` — ticket: title, category, priority, assignee; handoff: recipient,
-//     task; doc edit: the `+` text of each hunk), and Cancel / Confirm. `confirm { args }` sends ONLY the edited
-//     fields; the server re-validates them and rebuilds the card. A Publish card never runs in Auto (it waits with
-//     the server's note) and offers Confirm only when `preview.canPublish` — else "Open in Review". An ASSIGNMENT
-//     (`assign_ticket`, a group of them, or a handoff's claim) draws the item with its status mark and the people:
-//     from → to, "Adds" / "Removes" beside who stays; Edit picks the person with the app's dropdown (`askAcPick`,
-//     its menu among the root overlays through `actionDropdowns`).
-//   • A LINE (after the decision): done (linked to `ref`, a time, Undo while the server offers it), "Cancelled: …",
-//     "Undone: …", "Expired: …" or "Didn't work: …". Consecutive cards of one `groupId` are ONE card / ONE line
-//     ("Filed tickets #30, #31 and #32") with one Confirm and one Undo for the group. Undo refused because the item
-//     changed since (409 `changed`) says "Changed since. Undo it by hand." with a link to the item.
+//   • A CARD (`action` event, state proposed | waiting): the head — the eyebrow ("New ticket", "Move", …), a mark
+//     ("Draft, not created yet" / "Waiting for you") and a waiting card's reason — then the body per kind, which ENDS
+//     on one row (its facts, its people from → to, the item and its move, or a hint) with Cancel / Confirm at that
+//     row's end (`endRow`): never a row or a footer of their own. EVERY field the tool's input takes (`editable` —
+//     ticket: title, category, priority, assignee; handoff: recipient, task; doc edit: the `+` text of each hunk; an
+//     edit to a ticket: its new title; an assignment: the person) is edited IN PLACE on the card — there is no Edit
+//     mode: text is clicked into an input that looks the same (Enter / leaving it keeps it, Escape puts it back), a
+//     small fixed set (category, priority) cycles with a click, a person is the app's `dropdown()` (its menu among
+//     the root overlays through `actionDropdowns`). `confirm { args }` sends ONLY the changed editable fields; the
+//     server re-validates them and rebuilds the card. A Publish card never runs in Auto (it waits with the server's
+//     note) and offers Confirm only when `preview.canPublish` — else "Open in Review". An ASSIGNMENT (`assign_ticket`,
+//     a group of them, or a handoff's claim) draws the item with its status mark and the people: from → to, "Adds" /
+//     "Removes" beside who stays. A MOVE is one row: the ticket, from → to, the controls.
+//   • A LINE (after the decision), ONE line each: the mark and what happened — done (linked to `ref`), "Cancelled:
+//     …", "Undone: …", "Expired: …" or "Didn't work: …" — the reason muted on the same line (cut short, all of it in
+//     its tooltip), then the time and Undo / Open at its end. Consecutive cards of one `groupId` are ONE card / ONE
+//     line ("Filed tickets #30, #31 and #32") with one Confirm and one Undo for the group. Undo refused because the
+//     item changed since (409 `changed`) says "Changed since. Undo it by hand." with Open for the item.
 //   • SAVE AS ARTIFACT: `saveButton` (the footer, a block) asks the server for a `save_form` block (no model call)
-//     and adds it under that answer; the form (Title, Kind and Who can see it as `segmented()`, Save) becomes the
-//     saved line ("Saved as artifact: <title> · Private", Open). In Auto the server saves at once: the stream's
-//     `action_result` for `save_artifact` draws the same saved line, with Undo.
+//     and adds it under that answer; the form (Kind and Who can see it as `segmented()` at its head's right, the
+//     title with Save at its end) becomes the saved line ("Saved as artifact: <title> · Private", Open). In Auto the
+//     server saves at once: the stream's `action_result` for `save_artifact` draws the same saved line, with Undo.
 //   • WRONG?: `wrongButton` toggles a row of the three reasons; a pick posts the reason (the server records it with
 //     the mode, the message and its cites), closes the row and says "Thanks. The team can see this in Review."
 //
@@ -29,17 +34,20 @@
 //   feedbackView(v, answer)                         under the footer: the Wrong? reasons row while it is open
 //   wrongButton(v, answer) / saveButton(answer, block?)   the footer's / a block's buttons (or use the acts below)
 //   applyResults(ctx, ans)                          fold Confirm / Cancel / Undo answers into the conversations
-//   actionsPart                                     the acts (`askAc…`), the Wrong? row's Escape layer
+//   actionsPart                                     the acts (`askAc…`), the keys and Escape of text edited in place,
+//                                                   the Wrong? row's Escape layer
 // Acts and their args (`|` separates; an answer is named by its key `a…` / `m…`, or by its stored message id):
 //   askAcConfirm / askAcCancel / askAcUndo  "<id>[,<id>…]"   (the card's / group's ids)
-//   askAcEdit "<id>"   askAcField "<id>|<field>[|<value>]" (value from the input when absent)   askAcHunk "<id>|<index>"
-//   askAcPick "<id>|<field>" with the dropdown's option as `value` (an assignment's person)
+//   askAcText "<id>|<field>" (open text for editing)   askAcField "<id>|<field>[|<value>]" (typed: value from the
+//   input; a cycle: the next value)   askAcPick "<id>|<field>" with the dropdown's option as `value` (a person)
+//   — a doc hunk's field is `hunk:<index>`
 //   askAcSaveForm "<answer>[|<block>]"   askAcSaveTitle / askAcSaveKind / askAcSaveVis / askAcSave "<answer>|<index>[|<value>]"
 //   askAcWrong "<answer>"   askAcWrongReason "<answer>|<reason>"
 // MOTION (ask-motion.ts): every card / line / form sits in a `data-ask-tween` wrapper, so a card collapsing to its
-// line, a form becoming its saved line and the Edit form opening or closing glide; a line, the Edit form and the
-// save form enter once (a new `data-morph-key`), the Wrong? row pops in and out (`ctx.exit`, `data-closing`).
-// Nothing replays on a rerender: the page is `data-morph`, and an unchanged key is patched in place.
+// line and a form becoming its saved line glide (once — `tweenStart`); a line and the save form enter once (a new
+// `data-morph-key`), the Wrong? row pops in and out (`ctx.exit`, `data-closing`). Editing in place moves nothing: the
+// card only changes its words. Nothing replays on a rerender: the page is `data-morph`, and an unchanged key is
+// patched in place.
 // CSS: `/* ── Ask: actions ── */` in trov.css.
 
 import { esc, attr, relTime } from "./ui";
@@ -47,9 +55,9 @@ import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
 import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskMsg, type AskTurn } from "./ask-stream";
 import { AskApiError } from "./ask-api";
 import { segmented } from "./segmented";
-import { glyph, markShape, priorityIcon, PRIORITY_LABEL } from "./marks";
+import { glyph, markShape, priorityIcon, priorityMark, ticketStatusMark, PRIORITY_LABEL } from "./marks";
 import { personName, personOf, refAvatar, refStatusMark, type RefLook } from "./ask-refs";
-import { dropdown, type DropdownProps } from "./dropdown";
+import { dropdown, type DropdownOption, type DropdownProps } from "./dropdown";
 import type { AppState } from "./render";
 import { askIcon } from "./ask-icons";
 import { closingAttr } from "./ask-motion";
@@ -58,15 +66,18 @@ import {
   type AskWrongReason,
 } from "@shared/ai-ask-core";
 import { TICKET_CATEGORIES, TICKET_STATUS_LABEL, type TicketPriority, type TicketStatus } from "@shared/tickets-core";
+import { sprintDatesLabel } from "@shared/sprints-core";
 
 export interface ActionsUi {
   /** Cards with a decision in flight (no double Confirm). */
   busy: Record<number, boolean>;
   /** Answers whose Wrong? row is open (by answer key). */
   wrongOpen: Record<string, boolean>;
-  /** Cards whose Edit form is open. */
-  editing: Record<number, boolean>;
-  /** The edited fields per card (kept until Confirm, also while the form is shut). `hunks` maps a hunk's index → text. */
+  /** The text field being edited in place, per card, and what it held before (Escape puts that back). */
+  inline: Record<number, { field: string; was: unknown; had: boolean }>;
+  /** A text input that just opened: focus it after the paint (its data-field). */
+  focusInline: string | null;
+  /** The edited fields per card (kept until Confirm). `hunks` maps a hunk's index → text. */
   drafts: Record<number, Record<string, unknown>>;
   /** Undo refused because the item changed since: the server's words and the item to undo by hand (per card id). */
   refused: Record<number, { message: string; ref: string | null }>;
@@ -75,7 +86,7 @@ export interface ActionsUi {
   /** Save forms being saved, and answers asking for a form (same keys). */
   saving: Record<string, boolean>;
 }
-export const initialActionsUi = (): ActionsUi => ({ busy: {}, wrongOpen: {}, editing: {}, drafts: {}, refused: {}, forms: {}, saving: {} });
+export const initialActionsUi = (): ActionsUi => ({ busy: {}, wrongOpen: {}, inline: {}, focusInline: null, drafts: {}, refused: {}, forms: {}, saving: {} });
 
 // ── words ────────────────────────────────────────────────────────────────────
 
@@ -254,89 +265,159 @@ const SHAPE = {
 
 // ── cards ────────────────────────────────────────────────────────────────────
 
-const draftOf = (v: AskView, id: number): Record<string, unknown> => v.ui.actions.drafts[id] ?? {};
-/** A field's value on screen: the person's edit, else the card's. */
-const fieldOf = (v: AskView, vm: AskActionVm, f: string): unknown => (f in draftOf(v, vm.id) ? draftOf(v, vm.id)[f] : vm.fields[f]);
-const label = (k: string, body: string) => `<div><div class="ask-act-k">${esc(k)}</div>${body}</div>`;
-const canEdit = (vm: AskActionVm, f: string) => vm.editable.includes(f);
-
-/** The people a pick offers: the picked one, the viewer, then the org's members — five at most (a switch, not a list). */
-function peopleFor(v: AskView, picked: string | null, max: number, withMe = true): string[] {
-  const me = v.app.me?.handle ?? null;
-  const out: string[] = [];
-  const add = (h: string | null | undefined) => { if (h && !out.some((x) => x.toLowerCase() === h.toLowerCase())) out.push(h); };
-  add(picked);
-  if (withMe) add(me);
-  for (const p of [...v.look.persons].sort((a, b) => (a.name ?? a.handle).localeCompare(b.name ?? b.handle))) {
-    if (out.length >= max) break;
-    if (!withMe && me && p.handle.toLowerCase() === me.toLowerCase()) continue;
-    add(p.handle);
+const draftOf = (v: Pick<AskView, "ui">, id: number): Record<string, unknown> => v.ui.actions.drafts[id] ?? {};
+/** A field's value on screen: the person's edit, else the card's. A doc hunk's field is `hunk:<index>`. */
+const fieldOf = (v: Pick<AskView, "ui">, vm: AskActionVm, f: string): unknown => {
+  const d = draftOf(v, vm.id);
+  if (f.startsWith("hunk:")) {
+    const i = Number(f.slice(5));
+    const hs = rec(d.hunks);
+    return i in hs ? hs[i] : vm.preview?.hunks?.find((h) => h.index === i)?.after ?? "";
   }
-  return out.slice(0, max);
-}
-const firstName = (v: AskView, h: string): string => (personOf(v.look, h)?.name ?? h).split(/\s+/)[0];
+  return f in d ? d[f] : vm.fields[f];
+};
+const label = (k: string, body: string) => `<div class="ask-act-field"><div class="ask-act-k">${esc(k)}</div>${body}</div>`;
+const canEdit = (vm: AskActionVm, f: string) => vm.editable.includes(f.startsWith("hunk:") ? "hunks" : f);
 
-function ticketBody(v: AskView, vm: AskActionVm, editing: boolean): string {
+/** THE card's last row (every kind): what the card ends on — its facts, its people from → to, the item and its
+ *  move, or a hint — with Cancel / Confirm (`btns`) at its end. The controls never take a row of their own: when
+ *  the card is narrow they wrap under the row's content as a right-aligned group, beside the row's trailing hint
+ *  when it has one. A keyed list, so the controls stay the same elements while the content beside them changes.
+ *  `cls`: is-fields (label-over-value fields; the controls sit on their baseline), is-ruled (a hairline above),
+ *  is-people, is-move. Rows of a group's earlier writes pass no `btns`. */
+const endRow = (pieces: string, btns: string, cls = ""): string =>
+  `<div class="ask-act-end${cls ? ` ${cls}` : ""}" data-morph-key="end" data-morph-list>${pieces}${btns}</div>`;
+/** A group's earlier writes: the room the controls take on its last one, so the rows' columns line up. */
+const GHOST = `<span class="ask-act-ghost" data-morph-key="btns" aria-hidden="true"></span>`;
+/** On a phone or in the ⌘J panel, the row's trailing hint starts a line that it shares with the controls. */
+const BREAK = `<span class="ask-act-break" data-morph-key="br" aria-hidden="true"></span>`;
+
+// ── editing in place ─────────────────────────────────────────────────────────
+// There is no Edit mode: every field the write's input takes (`editable`) is a control on the pending card itself.
+//   • a small fixed set (priority, category) is a CYCLE — one click steps to the next value (its tooltip lists them);
+//   • a person (assignee, recipient, an assignment's person) is the app's `dropdown()` — its menu among the root
+//     overlays (`actionDropdowns`);
+//   • text (a title, a task, a doc hunk's new text) reads as text; a click turns it into an input that looks the
+//     same (`inline`), Enter or leaving it keeps the edit, Escape puts back what it held.
+// Each edit is a draft (`drafts`); Confirm sends only the changed editable fields (`editedArgs`), as before.
+
+/** The data-field of a text control (the text and its input share it, so focus moves between them). */
+const textField = (id: number, field: string): string => `askAcT${id}-${field.replace(/[^A-Za-z0-9]/g, "-")}`;
+const inlineOpen = (v: Pick<AskView, "ui">, id: number, field: string): boolean => v.ui.actions.inline[id]?.field === field;
+
+/** Text that edits in place: the text (a button that reads as it), or, while open, an input styled like it. */
+function textEdit(v: AskView, vm: AskActionVm, field: string, value: string, cls: string, name: string, multiline = false): string {
+  const id = vm.id;
+  const df = textField(id, field);
+  if (!canEdit(vm, field)) return `<span class="${cls}">${esc(value)}</span>`;
+  if (inlineOpen(v, id, field)) {
+    return multiline
+      ? `<textarea class="ask-act-input ${cls}" rows="2" data-act="askAcField" data-arg="${id}|${field}" data-field="${df}" data-ask-inline="${id}" aria-label="${attr(name)}">${esc(value)}</textarea>`
+      : `<input class="ask-act-input ${cls}" data-act="askAcField" data-arg="${id}|${field}" data-field="${df}" data-ask-inline="${id}" value="${attr(value)}" maxlength="200" aria-label="${attr(name)}" />`;
+  }
+  return `<button type="button" class="ask-act-txt ${cls}" data-act="askAcText" data-arg="${id}|${field}" data-field="${df}" aria-label="${attr(`${name}: ${value}. Click to edit`)}">${esc(value)}</button>`;
+}
+
+/** A small fixed set, cycled by a click: the value as a mark-like word; the tooltip says what comes next. */
+function cycleEdit(vm: AskActionVm, field: string, value: string, options: { value: string; label: string; icon?: string }[], name: string): string {
+  const cur = options.find((o) => o.value === value) ?? { value, label: value };
+  const inner = `${cur.icon ?? ""}<span>${esc(cur.label)}</span>`;
+  if (!canEdit(vm, field)) return `<span class="ask-act-v ask-act-iv">${inner}</span>`;
+  const next = options[(options.findIndex((o) => o.value === value) + 1) % options.length];
+  return `<button type="button" class="ask-act-cyc ask-act-v ask-act-iv" data-act="askAcField" data-arg="${vm.id}|${field}|${attr(next.value)}" aria-label="${attr(`${name}: ${cur.label}. Change to ${next.label}`)}" data-mtip="${attr(`${options.map((o) => o.label).join(" · ")} — click for ${next.label}`)}">${inner}</button>`;
+}
+
+/** The people a person-pick offers: every member, with their avatar ("You" beside the viewer). */
+function peopleOptions(v: AskView, except: string[] = []): DropdownOption[] {
+  const me = v.app.me?.handle ?? null;
+  return v.look.persons
+    .filter((p) => !except.some((x) => sameH(x, p.handle)))
+    .map((p) => ({ value: p.handle, label: personName(v.look, p.handle), icon: refAvatar(v.look, p.handle, 18), ...(me && sameH(p.handle, me) ? { hint: "You" } : {}) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+const NONE = "~none";
+
+/** A new ticket's Assignee pick. */
+function assigneeProps(v: AskView, vm: AskActionVm): DropdownProps {
+  const asg = (fieldOf(v, vm, "assignee") as string | null | undefined) ?? null;
+  const cur = asg ? personOf(v.look, asg)?.handle ?? asg : NONE;
+  const options = [{ value: NONE, label: "Unassigned" }, ...peopleOptions(v)];
+  if (asg && !options.some((o) => sameH(o.value, cur))) options.push({ value: cur, label: personName(v.look, cur), icon: refAvatar(v.look, cur, 18) });
+  return { id: `ask-ac-asg-${vm.id}`, act: "askAcPick", arg: `${vm.id}|assignee`, value: cur, options, ariaLabel: "Assignee", size: "sm" };
+}
+/** A new handoff's Send to pick: Anyone, or a member (not the sender). */
+function recipientProps(v: AskView, vm: AskActionVm): DropdownProps {
+  const to = String(fieldOf(v, vm, "recipient") ?? "anyone");
+  const me = v.app.me?.handle ?? null;
+  const cur = to === "anyone" ? "anyone" : personOf(v.look, to)?.handle ?? to;
+  const options: DropdownOption[] = [{ value: "anyone", label: "Anyone", hint: "Any agent session can claim it" }, ...peopleOptions(v, me ? [me] : [])];
+  if (!options.some((o) => sameH(o.value, cur))) options.push({ value: cur, label: personName(v.look, cur), icon: refAvatar(v.look, cur, 18) });
+  return { id: `ask-ac-to-${vm.id}`, act: "askAcPick", arg: `${vm.id}|recipient`, value: cur, options, ariaLabel: "Send to", size: "sm" };
+}
+/** A dropdown on a card: the app's trigger, quiet until hovered (the card's text, with a caret). */
+const pickIn = (v: AskView, p: DropdownProps, key: string): string => `<span class="ask-act-pick" data-morph-key="${attr(key)}">${dropdown(p, v.app.dd)}</span>`;
+
+const CATEGORY_OPTS = TICKET_CATEGORIES.map((c) => ({ value: c, label: c }));
+const PRIORITY_OPTS = (["high", "normal", "low"] as TicketPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p], icon: priorityIcon(p, 13, false) }));
+
+/** A new ticket: its title (edits in place) and description, then its fields in a row that fills the card —
+ *  Category and Priority (a click cycles them), Assignee (a dropdown), Sprint — with Cancel / Confirm at its end. */
+function ticketBody(v: AskView, vm: AskActionVm, btns: string): string {
   const title = String(fieldOf(v, vm, "title") ?? vm.preview?.title ?? "");
   const body = String(vm.fields.body ?? line(vm, "Description") ?? "");
   const cat = String(fieldOf(v, vm, "category") ?? line(vm, "Category") ?? "other");
-  const prio = String(fieldOf(v, vm, "priority") ?? line(vm, "Priority") ?? "normal") as TicketPriority;
+  const prio = String(fieldOf(v, vm, "priority") ?? line(vm, "Priority") ?? "normal");
   const asg = (fieldOf(v, vm, "assignee") as string | null | undefined) ?? null;
   const sprint = line(vm, "Sprint") ?? "Backlog";
-  if (!editing) {
-    return `<div class="ask-act-body" data-morph-key="view">
-      <div class="ask-act-row">${glyph("todo", "var(--fg-55)", 13)}<div class="ask-act-main"><div class="ask-act-title">${esc(title)}</div>${body ? `<div class="ask-act-desc">${esc(body)}</div>` : ""}</div></div>
-      <div class="ask-act-grid">
-        ${label("Category", `<span class="ask-act-v">${esc(cat)}</span>`)}
-        ${label("Priority", `<span class="ask-act-v ask-act-iv">${PRIORITY_LABEL[prio] ? `${priorityIcon(prio, 13, false)}${esc(PRIORITY_LABEL[prio])}` : esc(prio)}</span>`)}
-        ${label("Assignee", `<span class="ask-act-v ask-act-iv ask-act-strong">${asg ? `${refAvatar(v.look, asg, 18)}${esc(personName(v.look, asg))}` : "Unassigned"}</span>`)}
-        ${label("Sprint", `<span class="ask-act-v">${esc(sprint)}</span>`)}
-      </div>
-    </div>`;
-  }
-  const id = vm.id;
-  const field = (f: string, inner: string) => (canEdit(vm, f) ? inner : "");
-  return `<div class="ask-act-form" data-morph-key="edit">
-    ${field("title", `<label class="ask-field">Title<input class="ask-input-line" data-act="askAcField" data-arg="${id}|title" data-field="askAcTitle${id}" value="${attr(title)}" maxlength="200" /></label>`)}
-    ${field("category", `<div class="ask-field"><span>Category</span>${segmented({ id: `ask-ac-cat-${id}`, ariaLabel: "Category", value: cat, act: "askAcField", size: "sm",
-      options: TICKET_CATEGORIES.map((c) => ({ value: c, label: c, arg: `${id}|category|${c}` })) })}</div>`)}
-    ${field("priority", `<div class="ask-field"><span>Priority</span>${segmented({ id: `ask-ac-prio-${id}`, ariaLabel: "Priority", value: prio, act: "askAcField", size: "sm",
-      options: (["high", "normal", "low"] as TicketPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p], icon: priorityIcon(p, 12, false, "currentColor"), arg: `${id}|priority|${p}` })) })}</div>`)}
-    ${field("assignee", `<div class="ask-field"><span>Assignee</span>${segmented({ id: `ask-ac-asg-${id}`, ariaLabel: "Assignee", value: asg ?? "", act: "askAcField", size: "sm",
-      options: peopleFor(v, asg, 5).map((h) => ({ value: h, label: firstName(v, h), icon: refAvatar(v.look, h, 16), arg: `${id}|assignee|${h}` })) })}</div>`)}
+  const assignee = canEdit(vm, "assignee") ? pickIn(v, assigneeProps(v, vm), "asg")
+    : `<span class="ask-act-v ask-act-iv ask-act-strong">${asg ? `${refAvatar(v.look, asg, 18)}${esc(personName(v.look, asg))}` : "Unassigned"}</span>`;
+  return `<div class="ask-act-body">
+    <div class="ask-act-row">${glyph("todo", "var(--fg-55)", 13)}<div class="ask-act-main">${textEdit(v, vm, "title", title, "ask-act-title", "Title")}${body ? `<div class="ask-act-desc">${esc(body)}</div>` : ""}</div></div>
+    ${endRow(`<div class="ask-act-fields is-ticket" data-morph-key="fields">
+      ${label("Category", cycleEdit(vm, "category", cat, CATEGORY_OPTS, "Category"))}
+      ${label("Priority", cycleEdit(vm, "priority", prio, PRIORITY_OPTS, "Priority"))}
+      ${label("Assignee", assignee)}
+      ${label("Sprint", `<span class="ask-act-v">${esc(sprint)}</span>`)}
+    </div>`, btns, "is-fields is-ruled")}
   </div>`;
 }
 
-function handoffBody(v: AskView, vm: AskActionVm, editing: boolean): string {
+/** A person on a write card: their avatar and name (people.ts through `refAvatar`). `strong`: the one who comes or
+ *  goes — the change the card is about. */
+const personTag = (v: AskView, h: string, strong = false, key = `p:${h.toLowerCase()}`): string =>
+  `<span class="ask-asg-p${strong ? " is-strong" : ""}" data-morph-key="${attr(key)}">${refAvatar(v.look, h, 20)}<span class="ask-asg-n">${esc(personName(v.look, h))}</span></span>`;
+const toArrow = () => `<span class="ask-asg-to" data-morph-key="to">${askIcon("arrow", 14, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span></span>`;
+/** The faint words after the people ("Andres Lopez stays on it", "No one else can claim it after"). */
+const peopleHint = (text: string, key = "stays"): string => `${BREAK}<span class="ask-asg-stays" data-morph-key="${key}">${esc(text)}</span>`;
+
+/** A new handoff: the task (edits in place), Done / Next, its files, then who it goes from → to — the recipient a
+ *  dropdown — with Cancel / Confirm at that row's end (the assignment card's people row). */
+function handoffBody(v: AskView, vm: AskActionVm, btns: string): string {
   const from = (line(vm, "From") ?? "").replace(/^@/, "") || v.app.me?.handle || "";
   const to = String(fieldOf(v, vm, "recipient") ?? "anyone");
   const task = String(fieldOf(v, vm, "task") ?? line(vm, "Task") ?? "");
   const list = (x: unknown): string[] => (Array.isArray(x) ? x.filter((s): s is string => typeof s === "string") : []);
   const done = list(vm.fields.done), next = list(vm.fields.next), files = list(vm.fields.files);
   const anyone = to === "anyone";
-  const id = vm.id;
-  const head = `<div class="ask-act-who">${from ? `${refAvatar(v.look, from, 18)}<span class="ask-act-strong">${esc(personName(v.look, from))}</span>` : ""}${askIcon("arrow", 14, "var(--fg-40)", 2)}${anyone ? "" : refAvatar(v.look, to, 18)}<span class="ask-act-strong">${esc(anyone ? "Anyone" : personName(v.look, to))}</span>${anyone ? `<span class="ask-act-faint">· any agent session can claim it</span>` : ""}</div>`;
-  const editor = editing
-    ? `<div class="ask-act-form ask-act-form--in" data-morph-key="edit">
-        ${canEdit(vm, "recipient") ? `<div class="ask-field"><span>Send to</span>${segmented({ id: `ask-ac-to-${id}`, ariaLabel: "Send to", value: to, act: "askAcField", size: "sm",
-          options: [{ value: "anyone", label: "Anyone", arg: `${id}|recipient|anyone` }, ...peopleFor(v, anyone ? null : to, 4, false).map((h) => ({ value: h, label: firstName(v, h), icon: refAvatar(v.look, h, 16), arg: `${id}|recipient|${h}` }))] })}</div>` : ""}
-        ${canEdit(vm, "task") ? `<label class="ask-field">Task<input class="ask-input-line" data-act="askAcField" data-arg="${id}|task" data-field="askAcTask${id}" value="${attr(task)}" /></label>` : ""}
-      </div>`
-    : `<div class="ask-act-title ask-act-title--h" data-morph-key="view">${esc(task)}</div>`;
+  const rcpt = canEdit(vm, "recipient") ? pickIn(v, recipientProps(v, vm), "rcpt")
+    : anyone ? `<span class="ask-asg-p is-strong" data-morph-key="rcpt">Anyone</span>` : personTag(v, to, true, "rcpt");
+  const who = `${from ? personTag(v, from, false, "from") : ""}${toArrow()}${rcpt}${anyone ? peopleHint("Any agent session can claim it") : ""}`;
   const col = (k: string, xs: string[], g: "done" | "todo") => `<div><div class="ask-act-k">${k}</div>${xs.map((t) => `<div class="ask-act-li${g === "todo" ? " is-next" : ""}"><span>${glyph(g, g === "done" ? "var(--accent)" : "var(--fg-55)", 13)}</span>${esc(t)}</div>`).join("")}</div>`;
-  return `<div class="ask-act-body">${head}${editor}
+  return `<div class="ask-act-body">${textEdit(v, vm, "task", task, "ask-act-title", "Task")}
     ${done.length || next.length ? `<div class="ask-act-cols">${col("Done", done, "done")}${col("Next", next, "todo")}</div>` : ""}
     ${files.length ? `<div class="ask-act-files">${files.map((p) => `<span>${esc(p)}</span>`).join("")}</div>` : ""}
+    ${endRow(who, btns, "is-people is-ruled")}
   </div>`;
 }
 
-function hunksView(v: AskView, vm: AskActionVm, hunks: AskDocHunk[], editing: boolean): string {
-  const drafts = rec(draftOf(v, vm.id).hunks);
+/** A doc edit's hunks: the heading for context, the old line struck out, the new one (edits in place). */
+function hunksView(v: AskView, vm: AskActionVm, hunks: AskDocHunk[]): string {
   return hunks.map((h) => {
-    const after = typeof drafts[h.index] === "string" ? String(drafts[h.index]) : h.after;
-    const add = editing && canEdit(vm, "hunks")
-      ? `<div class="ask-diff-row is-add is-edit"><span class="ask-diff-sign">+</span><textarea rows="2" data-act="askAcHunk" data-arg="${vm.id}|${h.index}" data-field="askAcHunk${vm.id}-${h.index}" aria-label="New text${h.heading ? ` under ${attr(h.heading)}` : ""}">${esc(after)}</textarea></div>`
-      : after ? `<div class="ask-diff-row is-add"><span class="ask-diff-sign">+</span><span>${esc(after)}</span></div>` : "";
+    const f = `hunk:${h.index}`;
+    const after = String(fieldOf(v, vm, f) ?? "");
+    const add = canEdit(vm, f) || after
+      ? `<div class="ask-diff-row is-add"><span class="ask-diff-sign">+</span>${textEdit(v, vm, f, after, "ask-diff-t", `New text${h.heading ? ` under ${h.heading}` : ""}`, true)}</div>`
+      : "";
     return `<div class="ask-diff" data-morph-key="h${h.index}">
       ${h.heading ? `<div class="ask-diff-row is-h"><span class="ask-diff-sign"></span>${esc(h.heading)}</div>` : ""}
       ${h.before ? `<div class="ask-diff-row is-del"><span class="ask-diff-sign">−</span><s>${esc(h.before)}</s></div>` : ""}
@@ -345,16 +426,20 @@ function hunksView(v: AskView, vm: AskActionVm, hunks: AskDocHunk[], editing: bo
   }).join("");
 }
 
-function docBody(v: AskView, vm: AskActionVm, editing: boolean): string {
+/** A doc edit: the doc and its version step, the hunks, then "Goes to Review before it is live" beside the controls. */
+function docBody(v: AskView, vm: AskActionVm, btns: string): string {
   const [from, to] = (line(vm, "Version") ?? "").split("→").map((s) => s.trim());
+  const more = line(vm, "More");
   return `<div class="ask-act-body">
-    <div class="ask-act-doc">${askIcon("docs", 14, "var(--fg-55)")}<span class="ask-act-strong">${esc(docTitle(vm))}</span>${from ? `<span class="ask-act-ver">${esc(to ? `${from} → ${to}` : from)}</span>` : ""}<span class="ask-grow"></span><span class="ask-act-faint">Goes to Review before it is live</span></div>
-    <div class="ask-diffs" data-morph-list>${hunksView(v, vm, vm.preview?.hunks ?? [], editing)}</div>
-    ${line(vm, "More") ? `<div class="ask-act-faint ask-act-more">${esc(line(vm, "More")!)}</div>` : ""}
+    <div class="ask-act-doc">${askIcon("docs", 14, "var(--fg-55)")}<span class="ask-act-strong">${esc(docTitle(vm))}</span>${from ? `<span class="ask-act-ver">${esc(to ? `${from} → ${to}` : from)}</span>` : ""}</div>
+    <div class="ask-diffs" data-morph-list>${hunksView(v, vm, vm.preview?.hunks ?? [])}</div>
+    ${endRow(`<span class="ask-act-hint" data-morph-key="hint">${more ? `${esc(more)} · ` : ""}Goes to Review before it is live</span>`, btns)}
   </div>`;
 }
 
-function publishBody(vm: AskActionVm): string {
+/** Publish a staged doc: the doc (its space, version and status), what is staged, then what publishing does beside
+ *  the controls. */
+function publishBody(vm: AskActionVm, btns: string): string {
   const item = vm.preview?.item ?? null;
   const ver = line(vm, "Version") ?? (typeof item?.extra.version === "number" ? `v${item.extra.version}` : "");
   const space = str(item?.extra.space);
@@ -362,20 +447,20 @@ function publishBody(vm: AskActionVm): string {
   const what = line(vm, "What it does") ?? `Publishing makes ${ver || "it"} live for the org. Agents read it from then on.`;
   return `<div class="ask-act-body">
     <div class="ask-act-doc">${askIcon("docs", 14, "var(--fg-55)")}<span class="ask-act-strong">${esc(docTitle(vm))}</span><span class="ask-act-ver">${esc([space ? upperFirst(space) : null, ver].filter(Boolean).join(" · "))}</span><span class="ask-grow"></span>${item?.status ? refStatusMark(item.status, 12) : ""}</div>
-    <div class="ask-act-desc">${esc(what)}</div>
     ${staged.length ? `<ul class="ask-act-ul">${staged.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+    ${endRow(`<span class="ask-act-lead" data-morph-key="what">${esc(what)}</span>`, btns)}
   </div>`;
 }
 
-/** A person on an assignment card: their avatar and name (people.ts through `refAvatar`). `strong`: the one who comes
- *  or goes — the change the card is about. */
-const personTag = (v: AskView, h: string, strong = false, key = `p:${h.toLowerCase()}`): string =>
-  `<span class="ask-asg-p${strong ? " is-strong" : ""}" data-morph-key="${attr(key)}">${refAvatar(v.look, h, 20)}<span class="ask-asg-n">${esc(personName(v.look, h))}</span></span>`;
 const NOBODY = `<span class="ask-asg-none" data-morph-key="none">Unassigned</span>`;
-const toArrow = () => `<span class="ask-asg-to" data-morph-key="to">${askIcon("arrow", 14, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span></span>`;
+/** An item on a card: its number and title, a click opens it. */
+const itemTag = (ref: string | null, num: string | null, title: string, key = "item"): string => {
+  const inner = `${num ? `<span class="ask-asg-num">#${esc(num)}</span>` : ""}<span class="ask-asg-title">${esc(title)}</span>`;
+  return ref ? `<button type="button" class="ask-asg-item" data-morph-key="${key}" data-act="askShOpen" data-arg="${attr(ref)}">${inner}</button>` : `<span class="ask-asg-item" data-morph-key="${key}">${inner}</span>`;
+};
 
-/** The Edit picker for one assignment write: the app's dropdown (never a native select), every member who could
- *  take it (an add) or everyone on it now (a removal), each with their avatar. Its menu is a root overlay
+/** The picker for one assignment write: the app's dropdown (never a native select), every member who could take it
+ *  (an add) or everyone on it now (a removal), each with their avatar. Its menu is a root overlay
  *  (`actionDropdowns`, render.ts) — the same props on both sides. */
 function assignPickProps(v: AskView, one: AssignOne): DropdownProps {
   const vm = one.vm;
@@ -392,23 +477,24 @@ function assignPickProps(v: AskView, one: AssignOne): DropdownProps {
   return { id: `ask-ac-asg-${vm.id}`, act: "askAcPick", arg: `${vm.id}|login`, value: cur, options, ariaLabel: one.on ? "Assign to" : "Take off", size: "sm" };
 }
 
-/** May Edit change this write's person? An add: any member. A removal: only when someone else is on it to pick. */
+/** May this write's person be picked? An add: any member. A removal: only when someone else is on it to pick. */
 const pickable = (one: AssignOne): boolean => canEdit(one.vm, "login") && (one.on || assigneesBefore(one.vm).length > 1);
 
-/** The writes a card shows, with the person's Edit pick in place of the proposed one. */
+/** The writes a card shows, with the person's pick in place of the proposed one. */
 const assignsOf = (v: AskView, vms: AskActionVm[]): AssignOne[] =>
   vms.map((x) => assignOf(x, str(fieldOf(v, x, "login")) ?? undefined)).filter((x): x is AssignOne => !!x);
 
 /** An assignment card's body: per ticket, the item (number, title, its status mark — a click opens it) and the
  *  change in people. A replacement reads from → to ("Andres → Jose"), an add to an unassigned ticket "Unassigned →
  *  Jose", a removal of the last one "Luke → Unassigned"; an add beside others "Adds Jose · Andres stays on it", a
- *  removal beside others "Removes Luke · Jose stays on it". While editing, the person who comes (or goes) is a picker. */
-function assignBody(v: AskView, vms: AskActionVm[], editing: boolean): string {
+ *  removal beside others "Removes Luke · Jose stays on it". The person who comes (or goes) is a dropdown whenever
+ *  someone else could be picked. */
+function assignBody(v: AskView, vms: AskActionVm[], btns: string): string {
   const ts = byTicket(assignsOf(v, vms));
-  const pick = (one: AssignOne, strong: boolean) => (editing && pickable(one)
-    ? `<span class="ask-asg-pick" data-morph-key="pick:${one.vm.id}">${dropdown(assignPickProps(v, one), v.app.dd)}</span>`
+  const pick = (one: AssignOne, strong: boolean) => (pickable(one)
+    ? pickIn(v, assignPickProps(v, one), `pick:${one.vm.id}`)
     : personTag(v, one.login, strong, `p:${one.vm.id}`));
-  return `<div class="ask-act-body ask-asg" data-morph-list>${ts.map((t) => {
+  return `<div class="ask-act-body ask-asg" data-morph-list>${ts.map((t, i) => {
     const vm = (t.adds[0] ?? t.removes[0]).vm;
     const item = vm.preview?.item ?? null;
     const ref = item?.ref ?? (t.num ? `ticket:${t.num}` : null);
@@ -420,33 +506,41 @@ function assignBody(v: AskView, vms: AskActionVm[], editing: boolean): string {
     const change = t.adds.length && t.removes.length ? `${removes(false)}${toArrow()}${adds}`
       : t.adds.length ? (stays.length ? `${word("Adds")}${adds}` : `${NOBODY}${toArrow()}${adds}`)
       : stays.length ? `${word("Removes")}${removes(true)}` : `${removes(true)}${toArrow()}${NOBODY}`;
-    const staysNote = stays.length ? `<span class="ask-asg-stays" data-morph-key="stays">${esc(listWords(stays.map((h) => personName(v.look, h))))} ${stays.length === 1 ? "stays" : "stay"} on it</span>` : "";
+    const staysNote = stays.length ? peopleHint(`${listWords(stays.map((h) => personName(v.look, h)))} ${stays.length === 1 ? "stays" : "stay"} on it`) : "";
     const title = item?.title ?? (t.num ? `Ticket #${t.num}` : "The ticket");
-    const itemInner = `${t.num ? `<span class="ask-asg-num">#${esc(t.num)}</span>` : ""}<span class="ask-asg-title">${esc(title)}</span>`;
     return `<div class="ask-asg-t" data-morph-key="t:${attr(t.num ?? String(vm.id))}">
-      <div class="ask-asg-head">${ref ? `<button type="button" class="ask-asg-item" data-act="askShOpen" data-arg="${attr(ref)}">${itemInner}</button>` : `<span class="ask-asg-item">${itemInner}</span>`}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
-      <div class="ask-asg-who">${change}${staysNote}</div>
+      <div class="ask-asg-head">${itemTag(ref, t.num, title)}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
+      ${endRow(`${change}${staysNote}`, i === ts.length - 1 ? btns : "", "ask-asg-who is-people")}
     </div>`;
   }).join("")}</div>`;
 }
 
 /** Claiming a handoff is an assignment too: the handoff, and it moving from its sender to you. */
-function claimBody(v: AskView, vm: AskActionVm): string {
+function claimBody(v: AskView, vm: AskActionVm, btns: string): string {
   const item = vm.preview?.item ?? null;
   const num = item?.num != null ? String(item.num) : keyOf(vm.ref ?? item?.ref ?? null);
   const from = str(item?.extra.from) ?? ((line(vm, "From") ?? "").replace(/^@/, "") || null);
   const me = v.app.me?.handle ?? null;
   const title = item?.title ?? line(vm, "Title") ?? (num ? `Handoff #${num}` : "The handoff");
   const ref = item?.ref ?? (num ? `handoff:${num}` : null);
-  const itemInner = `${num ? `<span class="ask-asg-num">#${esc(num)}</span>` : ""}<span class="ask-asg-title">${esc(title)}</span>`;
   return `<div class="ask-act-body ask-asg"><div class="ask-asg-t" data-morph-key="t:${attr(num ?? String(vm.id))}">
-    <div class="ask-asg-head">${ref ? `<button type="button" class="ask-asg-item" data-act="askShOpen" data-arg="${attr(ref)}">${itemInner}</button>` : `<span class="ask-asg-item">${itemInner}</span>`}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
-    <div class="ask-asg-who">${from ? personTag(v, from) : ""}${toArrow()}${me ? personTag(v, me, true) : `<span class="ask-asg-p is-strong">You</span>`}<span class="ask-asg-stays">No one else can claim it after</span></div>
+    <div class="ask-asg-head">${itemTag(ref, num, title)}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
+    ${endRow(`${from ? personTag(v, from, false, "from") : ""}${toArrow()}${me ? personTag(v, me, true, "me") : `<span class="ask-asg-p is-strong" data-morph-key="me">You</span>`}${peopleHint("No one else can claim it after")}`, btns, "ask-asg-who is-people")}
   </div></div>`;
 }
 
-/** Every open card's dropdowns (the assignment pickers), for the root overlays: render.ts draws the open one's menu
- *  — over the Ask screen and over any page under the ⌘J panel. The props are the trigger's own (`assignPickProps`). */
+/** A card's dropdowns (the people picks), for its triggers and for the root overlays. */
+function cardDropdowns(v: AskView, vm: AskActionVm): DropdownProps[] {
+  switch (toolOf(vm)) {
+    case "assign_ticket": { const one = assignsOf(v, [vm])[0]; return one && pickable(one) ? [assignPickProps(v, one)] : []; }
+    case "create_ticket": return canEdit(vm, "assignee") ? [assigneeProps(v, vm)] : [];
+    case "send_handoff": return canEdit(vm, "recipient") ? [recipientProps(v, vm)] : [];
+    default: return [];
+  }
+}
+
+/** Every open card's dropdowns, for the root overlays: render.ts draws the open one's menu — over the Ask screen and
+ *  over any page under the ⌘J panel. The props are the triggers' own. */
 export function actionDropdowns(app: AppState): DropdownProps[] {
   const out: DropdownProps[] = [];
   for (const where of ["page", "panel"] as AskWhere[]) {
@@ -454,34 +548,122 @@ export function actionDropdowns(app: AppState): DropdownProps[] {
     for (const m of app.ask[where].messages) {
       if (m.role !== "assistant") continue;
       for (const vm of Object.values(m.turn.actions)) {
-        if (toolOf(vm) !== "assign_ticket" || (vm.state !== "proposed" && vm.state !== "waiting")) continue;
-        const one = assignsOf(v, [vm])[0];
-        if (one && pickable(one)) out.push(assignPickProps(v, one));
+        if (vm.state !== "proposed" && vm.state !== "waiting") continue;
+        out.push(...cardDropdowns(v, vm));
       }
     }
   }
   return out;
 }
 
-/** Any other write (a move, a sprint, a comment…): the server's title and its lines. */
-function genericBody(vm: AskActionVm): string {
+/** A fact on a card's row: an optional quiet label, then its value. */
+const fact = (k: string | null, html: string, key: string): string =>
+  `<span class="ask-fact" data-morph-key="${attr(key)}">${k ? `<span class="ask-fact-k">${esc(k)}</span>` : ""}<span class="ask-fact-v">${html}</span></span>`;
+/** "from → to" in a value: the arrow drawn, the new side in the strong face. */
+const stepHtml = (value: string): string => {
+  const [a, b] = value.split("→").map((s) => s.trim());
+  return b === undefined ? esc(value) : `<span class="ask-mv"><span>${esc(upperFirst(a))}</span>${askIcon("arrow", 13, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span><span class="ask-mv-to">${esc(upperFirst(b))}</span></span>`;
+};
+/** A line short enough to be a fact in the row ("@priya", "Hosting, Billing"); a longer one is the card's text. */
+const SHORT_LINE = 40;
+
+/** Any other write (a comment, the plan, a link…): the server's title, its long lines as the card's text, then its
+ *  short lines as facts in ONE row across the card with the controls at its end. With no short line, the last text
+ *  (or, with no lines at all, the title) shares the controls' row. */
+function genericBody(vm: AskActionVm, btns: string): string {
   const lines = (vm.preview?.lines ?? []).filter((l) => l.label !== "What it does");
+  const short = lines.filter((l) => l.value.length <= SHORT_LINE && !l.value.includes("\n"));
+  const long = lines.filter((l) => !short.includes(l));
+  const title = esc(vm.preview?.title ?? "Change");
+  if (!lines.length) return `<div class="ask-act-body">${endRow(`<div class="ask-act-title ask-act-lead" data-morph-key="title">${title}</div>`, btns)}</div>`;
+  // The text: one long line is the card's text as is; several keep their names as a quiet lead-in.
+  const named = long.length > 1;
+  const text = (l: { label: string; value: string }, cls: string, key: string) =>
+    `<div class="${cls}" data-morph-key="${attr(key)}">${named ? `<span class="ask-fact-k">${esc(l.label)}</span>` : ""}${esc(l.value)}</div>`;
+  const lastLong = short.length ? null : long[long.length - 1];
   return `<div class="ask-act-body">
-    <div class="ask-act-title">${esc(vm.preview?.title ?? "Change")}</div>
-    ${lines.length ? `<div class="ask-act-lines">${lines.map((l) => `<div class="ask-act-k">${esc(l.label)}</div><div class="ask-act-v">${esc(l.value)}</div>`).join("")}</div>` : ""}
+    <div class="ask-act-title">${title}</div>
+    ${long.filter((l) => l !== lastLong).map((l, i) => text(l, "ask-act-desc", `t${i}`)).join("")}
+    ${short.length
+      ? endRow(short.map((l, i) => fact(l.label, stepHtml(l.value), `f${i}`)).join(""), btns, "is-facts")
+      : endRow(text(lastLong!, "ask-act-lead", "text"), btns)}
   </div>`;
 }
 
-function bodyOf(v: AskView, vm: AskActionVm, editing: boolean): string {
-  switch (toolOf(vm)) {
-    case "create_ticket": return ticketBody(v, vm, editing);
-    case "send_handoff": return handoffBody(v, vm, editing);
-    case "propose_doc_update": return docBody(v, vm, editing);
-    case "publish_doc": return publishBody(vm);
-    case "assign_ticket": return assignBody(v, [vm], editing);
-    case "claim_handoff": return claimBody(v, vm);
-    default: return genericBody(vm);
+/** A new sprint: its name, its summary as the card's text, then ONE row of facts — its dates as the app writes
+ *  them ("Nov 2 – 20"), its lead (avatar and name), its urgency — with the controls at its end. */
+function sprintBody(v: AskView, vm: AskActionVm, btns: string): string {
+  const start = line(vm, "Start"), due = line(vm, "Due");
+  const lead = (line(vm, "Lead") ?? "").replace(/^@/, "") || null;
+  const urgency = line(vm, "Urgency") as TicketPriority | null;
+  const summary = line(vm, "Summary");
+  const dates = start ? sprintDatesLabel({ start, due }) : due ? `Due ${sprintDatesLabel({ start: due, due }) ?? due}` : null;
+  const facts = [
+    dates ? fact(null, `${askIcon("clock", 13, "var(--fg-55)")}<span>${esc(dates)}</span>`, "dates") : "",
+    lead ? fact("Lead", `${refAvatar(v.look, lead, 18)}<span class="ask-act-strong">${esc(personName(v.look, lead))}</span>`, "lead") : "",
+    urgency && urgency in PRIORITY_LABEL ? fact(null, priorityMark(urgency, 12.5, `${PRIORITY_LABEL[urgency]} urgency`), "urg") : "",
+  ].filter(Boolean).join("");
+  return `<div class="ask-act-body">
+    <div class="ask-act-title">${esc(vm.preview?.title ?? "New sprint")}</div>
+    ${summary ? `<div class="ask-act-desc">${esc(summary)}</div>` : ""}
+    ${endRow(facts || `<span class="ask-act-hint" data-morph-key="hint">No dates yet</span>`, btns, "is-facts")}
+  </div>`;
+}
+
+/** A status the card names ("In progress"), as the ticket's mark when it is one. */
+const statusOf = (word: string): TicketStatus | null =>
+  (Object.keys(TICKET_STATUS_LABEL) as TicketStatus[]).find((s) => TICKET_STATUS_LABEL[s].toLowerCase() === word.trim().toLowerCase()) ?? null;
+
+/** A move (a ticket's status or sprint, a sprint's state): ONE row — the item (number and title, a click opens it),
+ *  then from → to (the status marks, or the names), the controls at its end. Narrow, the item takes its own line and
+ *  from → to shares the controls' line. A move without its item reads as any other write. */
+function moveBody(vm: AskActionVm, btns: string): string {
+  const item = vm.preview?.item ?? null;
+  const l = vm.preview?.lines[0] ?? null;
+  const [from, to] = (l?.value ?? "").split("→").map((s) => s.trim());
+  if (!item || !from || !to) return genericBody(vm, btns);
+  const num = item.num != null ? String(item.num) : keyOf(item.ref);
+  const fs = statusOf(from), ts = statusOf(to);
+  const arrow = `${askIcon("arrow", 14, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span>`;
+  const step = fs && ts
+    ? `${ticketStatusMark(fs)}${arrow}<span class="ask-mv-to">${ticketStatusMark(ts)}</span>`
+    : `<span>${esc(upperFirst(from))}</span>${arrow}<span class="ask-mv-to">${esc(upperFirst(to))}</span>`;
+  return `<div class="ask-act-body">
+    ${endRow(`${itemTag(item.ref, num, item.title)}<span class="ask-mv" data-morph-key="mv">${step}</span>`, btns, "is-move")}
+  </div>`;
+}
+
+/** An edit to a ticket: the ticket, then its new title (edits in place) beside the old one, its new description. */
+function editTicketBody(v: AskView, vm: AskActionVm, btns: string): string {
+  const item = vm.preview?.item ?? null;
+  const t = line(vm, "Title");
+  if (!item || !t) return genericBody(vm, btns);
+  const num = item.num != null ? String(item.num) : keyOf(item.ref);
+  const was = t.split("→")[0].trim();
+  const now = String(fieldOf(v, vm, "title") ?? t.split("→")[1]?.trim() ?? "");
+  const desc = line(vm, "Description");
+  return `<div class="ask-act-body">
+    <div class="ask-asg-head">${itemTag(item.ref, num, was)}${item.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
+    ${desc ? `<div class="ask-act-desc">${esc(desc)}</div>` : ""}
+    ${endRow(`<span class="ask-fact-k" data-morph-key="k">New title</span>${textEdit(v, vm, "title", now, "ask-act-strong ask-act-grow", "New title")}`, btns, "is-ruled")}
+  </div>`;
+}
+
+function bodyOf(v: AskView, vm: AskActionVm, btns: string): string {
+  const tool = toolOf(vm);
+  switch (tool) {
+    case "create_ticket": return ticketBody(v, vm, btns);
+    case "send_handoff": return handoffBody(v, vm, btns);
+    case "propose_doc_update": return docBody(v, vm, btns);
+    case "publish_doc": return publishBody(vm, btns);
+    case "assign_ticket": return assignBody(v, [vm], btns);
+    case "claim_handoff": return claimBody(v, vm, btns);
+    case "create_sprint": return sprintBody(v, vm, btns);
+    case "edit_ticket": return editTicketBody(v, vm, btns);
   }
+  // A move — or any write that is one item going from → to (a sprint started, completed).
+  const ls = vm.preview?.lines ?? [];
+  return vm.kind === "move" || (vm.preview?.item && ls.length === 1 && ls[0].value.includes("→")) ? moveBody(vm, btns) : genericBody(vm, btns);
 }
 
 /** One card: a single write, or the pending writes of one group (stacked in one frame, one Confirm). */
@@ -492,10 +674,6 @@ function cardView(v: AskView, vms: AskActionVm[]): string {
   const waiting = vms.some((x) => x.state === "waiting");
   const busy = vms.some((x) => v.ui.actions.busy[x.id] === true || x.state === "running");
   const assign = tool === "assign_ticket";
-  // An assignment group edits each of its writes' person (one Edit for the card, a picker per person).
-  const editable = assign ? assignsOf(v, vms).some(pickable)
-    : vms.length === 1 && vm.editable.length > 0 && ["create_ticket", "send_handoff", "propose_doc_update"].includes(tool);
-  const editing = editable && v.ui.actions.editing[vm.id] === true;
   const eyebrow = vms.length > 1 && tool === "create_ticket" ? `${vms.length} new tickets` : EYEBROW[tool] ?? KIND_WORD[vm.kind ?? "other"] ?? "Change";
   const draftWord = CREATES.has(tool) ? "Draft, not created yet" : "Draft, not done yet";
   const mark = waiting
@@ -508,30 +686,37 @@ function cardView(v: AskView, vms: AskActionVm[]): string {
   const confirm = publishBlocked
     ? `<a class="ask-btn ask-btn--accent" href="#review">Open in Review</a>`
     : `<button type="button" class="ask-btn ask-btn--accent ask-act-confirm" data-act="askAcConfirm" data-arg="${arg}"${busy ? " disabled" : ""}>${I_CHECK}${busy ? "Working…" : "Confirm"}</button>`;
-  const bodies = assign ? assignBody(v, vms, editing)
-    : vms.length > 1
-    ? `<div class="ask-act-stack" data-morph-list>${vms.map((x) => `<div data-morph-key="g${x.id}">${bodyOf(v, x, false)}</div>`).join("")}</div>`
-    : bodyOf(v, vm, editing);
-  return `<div class="ask-act" data-morph-key="act:${ids[0]}" data-ask-tween${busy ? ` aria-busy="true"` : ""}>
-    <div class="ask-act-head">
-      <span class="ask-eyebrow">${esc(eyebrow)}</span>${mark}<span class="ask-grow"></span>
-      ${editable ? `<button type="button" class="ask-act-edit" data-act="askAcEdit" data-arg="${vm.id}" aria-expanded="${editing}"${busy ? " disabled" : ""}>${editing ? "Done editing" : "Edit"}</button>` : ""}
-    </div>
-    ${bodies}
-    <div class="ask-act-foot">
-      ${note ? `<span class="ask-act-note">${SHAPE.warn()}${esc(note)}</span>` : ""}<span class="ask-grow"></span>
+  // Cancel / Confirm: one group at the end of the card's last row (never a row, or a footer band, of their own).
+  const btns = `<div class="ask-act-btns" data-morph-key="btns">
       <button type="button" class="ask-btn" data-act="askAcCancel" data-arg="${arg}"${busy ? " disabled" : ""}>Cancel</button>
       ${confirm}
+    </div>`;
+  const bodies = assign ? assignBody(v, vms, btns)
+    : vms.length > 1
+    ? `<div class="ask-act-stack" data-morph-list>${vms.map((x, i) => `<div data-morph-key="g${x.id}">${bodyOf(v, x, i === vms.length - 1 ? btns : GHOST)}</div>`).join("")}</div>`
+    : bodyOf(v, vm, btns);
+  // The head: the eyebrow, the card's mark and — when the card waits for a reason — that reason, in words.
+  return `<div class="ask-act" data-morph-key="act:${ids[0]}" data-ask-tween${busy ? ` aria-busy="true"` : ""}>
+    <div class="ask-act-head">
+      <span class="ask-eyebrow">${esc(eyebrow)}</span>${mark}${note ? `<span class="ask-act-note">${esc(note)}</span>` : ""}
     </div>
+    ${bodies}
   </div>`;
 }
 
 // ── lines ────────────────────────────────────────────────────────────────────
+// ONE line per outcome: the mark and what happened, then the reason as muted words on the same line (cut short with
+// the whole of it as the tooltip), then the time and any action (Undo, Open) at its right end. On a phone it wraps
+// as one flowing line of text, never a stacked block.
 
 type LineCat = "done" | "cancelled" | "undone" | "expired" | "failed";
 const catOf = (s: AskActionVm["state"]): LineCat | null =>
   s === "confirmed" || s === "auto" ? "done" : s === "cancelled" ? "cancelled" : s === "undone" ? "undone" : s === "expired" ? "expired" : s === "failed" ? "failed" : null;
 const timeWord = (at: string | null): string => (at ? upperFirst(relTime(at)) : "");
+/** The muted reason after what happened. */
+const why = (text: string, lead = ""): string => `<span class="ask-line-why" data-mtip="${attr(text)}">${lead ? `<span class="ask-line-wmark">${lead}</span>` : ""}${esc(text)}</span>`;
+const openBtn = (ref: string, word = `Open ${refWord(ref)}`): string =>
+  `<button type="button" class="ask-undo" data-act="askShOpen" data-arg="${attr(ref)}">${esc(word)}${I_OPEN}</button>`;
 
 function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
   const vm = vms[0];
@@ -543,28 +728,29 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
       : cat === "undone" ? `Undone: ${lowerFirst(doneText(vms, v.look))}`
       : cat === "expired" ? `Expired: ${lowerFirst(proposedText(vms, v.look))}`
       : `Didn't work: ${lowerFirst(proposedText(vms, v.look))}`;
-    const why = cat === "failed" ? str(rec(vm.result).error) ?? str(rec(vm.result).message) : cat === "expired" ? "This card expired with its turn. Ask again." : null;
-    return `<div class="ask-line is-off" data-morph-key="${key}">${cat === "failed" ? SHAPE.bad() : SHAPE.off()}<span class="ask-line-t">${esc(text)}</span>${why ? `<span class="ask-line-why">${esc(why)}</span>` : ""}</div>`;
+    const reason = cat === "failed" ? str(rec(vm.result).error) ?? str(rec(vm.result).message) : cat === "expired" ? "This card expired with its turn. Ask again." : null;
+    // Didn't work: the item it was about, to see why.
+    const item = cat === "failed" ? vm.preview?.item?.ref ?? null : null;
+    return `<div class="ask-line is-off" data-morph-key="${key}">${cat === "failed" ? SHAPE.bad() : SHAPE.off()}<span class="ask-line-main"><span class="ask-line-t">${esc(text)}</span>${reason ? why(reason) : ""}</span>${item ? openBtn(item) : ""}</div>`;
   }
   const refused = ids.map((id) => v.ui.actions.refused[id]).find(Boolean) ?? null;
   const canUndo = !refused && vms.some((x) => x.undo && (x.state === "confirmed" || x.state === "auto"));
   const undo = canUndo ? `<button type="button" class="ask-undo" data-act="askAcUndo" data-arg="${ids.join(",")}"${busy ? " disabled" : ""}>${I_UNDO}${busy ? "Undoing…" : "Undo"}</button>` : "";
-  const refusedHtml = refused
-    ? `<span class="ask-line-refused">${SHAPE.warn()}${esc(refused.message)}</span>${refused.ref ? `<button type="button" class="ask-undo" data-act="askShOpen" data-arg="${attr(refused.ref)}">Open ${esc(refWord(refused.ref))}</button>` : ""}`
-    : "";
+  // Undo refused (the item changed since): the reason on the line, Open in place of the time and Undo.
+  const tail = refused ? (refused.ref ? openBtn(refused.ref) : "") : `<span class="ask-line-at">${esc(timeWord(vm.at))}</span>`;
+  const reason = refused ? why(refused.message, SHAPE.warn()) : "";
   // Saved as an artifact (Auto saves at once): the saved line, with Open.
   if (toolOf(vm) === "save_artifact") {
     const r = rec(vm.result);
     const vis = r.visibility === "org" ? "Org" : "Private";
-    return `<div class="ask-line ask-line--saved" data-morph-key="${key}">${SHAPE.done()}<span class="ask-line-t">Saved as artifact: ${esc(str(r.title) ?? "Untitled")}</span><span class="ask-line-vis">· ${vis}</span><span class="ask-grow"></span>
-      ${refusedHtml || `<span class="ask-line-at">${esc(timeWord(vm.at))}</span>`}
-      ${vm.ref ? `<button type="button" class="ask-undo" data-act="askShOpen" data-arg="${attr(vm.ref)}">Open${I_OPEN}</button>` : ""}${undo}</div>`;
+    return `<div class="ask-line ask-line--saved" data-morph-key="${key}">${SHAPE.done()}<span class="ask-line-main"><span class="ask-line-t">Saved as artifact: ${esc(str(r.title) ?? "Untitled")}</span><span class="ask-line-vis">· ${vis}</span>${reason}</span>
+      ${tail}${vm.ref && !refused ? openBtn(vm.ref, "Open") : ""}${undo}</div>`;
   }
   const text = doneText(vms, v.look);
   const link = vm.ref ?? vm.preview?.item?.ref ?? null;
-  return `<div class="ask-line" data-morph-key="${key}">${SHAPE.done()}${link
+  return `<div class="ask-line" data-morph-key="${key}">${SHAPE.done()}<span class="ask-line-main">${link
     ? `<button type="button" class="ask-line-link" data-act="askShOpen" data-arg="${attr(link)}">${esc(text)}</button>`
-    : `<span class="ask-line-t">${esc(text)}</span>`}<span class="ask-grow"></span>${refusedHtml || `<span class="ask-line-at">${esc(timeWord(vm.at))}</span>`}${undo}</div>`;
+    : `<span class="ask-line-t">${esc(text)}</span>`}${reason}</span>${tail}${undo}</div>`;
 }
 
 /** One card / line for consecutive actions of one group (`shownParts`' `actions` entry). The pending ones are one
@@ -603,7 +789,7 @@ export function saveFormView(v: AskView, a: AskAnswer, block: Extract<AskBlock, 
   const f = block.form;
   const fk = `${a.key}|${index}`;
   if (f.saved) {
-    return `<div class="ask-acts" data-ask-tween><div class="ask-line ask-line--saved" data-morph-key="saved:${attr(fk)}">${SHAPE.done()}<span class="ask-line-t">Saved as artifact: ${esc(f.saved.title)}</span><span class="ask-line-vis">· ${f.saved.visibility === "org" ? "Org" : "Private"}</span><span class="ask-grow"></span>
+    return `<div class="ask-acts" data-ask-tween><div class="ask-line ask-line--saved" data-morph-key="saved:${attr(fk)}">${SHAPE.done()}<span class="ask-line-main"><span class="ask-line-t">Saved as artifact: ${esc(f.saved.title)}</span> <span class="ask-line-vis">· ${f.saved.visibility === "org" ? "Org" : "Private"}</span></span>
       <button type="button" class="ask-undo" data-act="askShOpen" data-arg="${attr(`artifact:${f.saved.slug}`)}">Open${I_OPEN}</button></div></div>`;
   }
   const d = v.ui.actions.forms[fk] ?? {};
@@ -612,19 +798,22 @@ export function saveFormView(v: AskView, a: AskAnswer, block: Extract<AskBlock, 
   const vis = d.visibility ?? f.visibility;
   const busy = v.ui.actions.saving[fk] === true;
   const domKey = fk.replace(/[^A-Za-z0-9_-]/g, "_");
+  // The head: the eyebrow, then Kind and Who can see it at its right — two compact switches whose own options are
+  // their labels (each names itself in its tooltip). Then the title with Save at its end, the hint under it.
   return `<div class="ask-acts" data-ask-tween><div class="ask-save" data-morph-key="save:${attr(fk)}">
-    <div class="ask-save-head">${askIcon("artifacts", 15, "var(--fg-55)")}<span class="ask-eyebrow">Save as artifact</span></div>
-    <label class="ask-field">Title<input class="ask-input-line ask-input-line--lg" data-act="askAcSaveTitle" data-arg="${attr(fk)}" data-field="askAcSave${domKey}" value="${attr(title)}" maxlength="200" placeholder="Name it" /></label>
-    <div class="ask-save-opts">
-      <div class="ask-field"><span>Kind</span>${segmented({ id: `ask-save-k-${domKey}`, ariaLabel: "Kind", value: kind, act: "askAcSaveKind", size: "sm",
-        options: [{ value: "markdown", label: "Markdown", arg: `${fk}|markdown` }, { value: "html", label: "HTML page", arg: `${fk}|html` }] })}</div>
-      <div class="ask-field"><span>Who can see it</span>${segmented({ id: `ask-save-v-${domKey}`, ariaLabel: "Who can see it", value: vis, act: "askAcSaveVis", size: "sm",
-        options: [{ value: "private", label: "Private", arg: `${fk}|private` }, { value: "org", label: "Org", arg: `${fk}|org` }] })}</div>
+    <div class="ask-save-head">${askIcon("artifacts", 15, "var(--fg-55)")}<span class="ask-eyebrow">Save as artifact</span>
+      <div class="ask-save-opts">
+        <span data-mtip="Kind">${segmented({ id: `ask-save-k-${domKey}`, ariaLabel: "Kind", value: kind, act: "askAcSaveKind", size: "sm",
+          options: [{ value: "markdown", label: "Markdown", arg: `${fk}|markdown` }, { value: "html", label: "HTML page", arg: `${fk}|html` }] })}</span>
+        <span data-mtip="Who can see it">${segmented({ id: `ask-save-v-${domKey}`, ariaLabel: "Who can see it", value: vis, act: "askAcSaveVis", size: "sm",
+          options: [{ value: "private", label: "Private", arg: `${fk}|private` }, { value: "org", label: "Org", arg: `${fk}|org` }] })}</span>
+      </div>
     </div>
-    <div class="ask-save-foot">
-      <span class="ask-save-hint">${esc(vis === "org" ? `Everyone in ${orgName(v)} can open it from Artifacts.` : "Only you can see it. You can publish it to the org later.")}</span>
+    <div class="ask-save-row">
+      <input class="ask-input-line ask-input-line--lg" data-act="askAcSaveTitle" data-arg="${attr(fk)}" data-field="askAcSave${domKey}" value="${attr(title)}" maxlength="200" placeholder="Name it" aria-label="Title" />
       <button type="button" class="ask-btn ask-btn--accent" data-act="askAcSave" data-arg="${attr(fk)}"${busy || !title.trim() ? " disabled" : ""}>${busy ? "Saving…" : "Save"}</button>
     </div>
+    <div class="ask-save-hint">${esc(vis === "org" ? `Everyone in ${orgName(v)} can open it from Artifacts.` : "Only you can see it. You can publish it to the org later.")}</div>
   </div></div>`;
 }
 
@@ -763,7 +952,7 @@ export async function confirmCards(ctx: AskCtx, ids: number[]): Promise<void> {
     if (rest.length) applyResults(ctx, await ctx.api.confirmAction(rest[0]));
     const done = live.map((id) => actionVm(ctx, id)).filter((x): x is AskActionVm => !!x && (x.state === "confirmed" || x.state === "auto"));
     const failed = live.map((id) => actionVm(ctx, id)).find((x) => x?.state === "failed");
-    for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.editing[id]; }
+    for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.inline[id]; }
     if (failed) ctx.flash(str(rec(failed.result).error) ?? "That change didn't work. Nothing else was changed.");
     else if (done.length) ctx.flash(doneText(done, ctx.look()));
   } catch (e) {
@@ -781,7 +970,7 @@ export async function cancelCards(ctx: AskCtx, ids: number[]): Promise<void> {
   ctx.paint();
   try {
     applyResults(ctx, await ctx.api.cancelAction(live[0]));     // the whole group goes
-    for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.editing[id]; }
+    for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.inline[id]; }
   } catch (e) {
     onRefusal(ctx, live, e, "Couldn't cancel that.");
   } finally {
@@ -939,6 +1128,33 @@ export const REPLAY_WRITES: Record<number, { ref: string; result: unknown }> = {
 function setDraft(ctx: AskCtx, id: number, f: (d: Record<string, unknown>) => Record<string, unknown>): void {
   ctx.ui.actions.drafts = { ...ctx.ui.actions.drafts, [id]: f(ctx.ui.actions.drafts[id] ?? {}) };
 }
+/** One edited field into the card's draft (a hunk's text into `hunks`). */
+function setField(ctx: AskCtx, id: number, field: string, val: unknown): void {
+  if (field.startsWith("hunk:")) setDraft(ctx, id, (d) => ({ ...d, hunks: { ...rec(d.hunks), [field.slice(5)]: val } }));
+  else setDraft(ctx, id, (d) => ({ ...d, [field]: val }));
+}
+/** Leave the text being edited in place: keep the edit (Enter, or focus leaving it) or put back what it held
+ *  (`revert`: Escape). A title or a task left empty goes back too. Focus returns to the text (they share a data-field). */
+function closeInline(ctx: AskCtx, id: number, revert: boolean): void {
+  const open = ctx.ui.actions.inline[id];
+  if (!open) return;
+  const vm = actionVm(ctx, id);
+  const now = vm ? fieldOf(ctx, vm, open.field) : null;
+  if (revert || (typeof now === "string" && !now.trim() && !open.field.startsWith("hunk:"))) {
+    const hunk = open.field.startsWith("hunk:") ? open.field.slice(5) : null;
+    if (open.had) setField(ctx, id, open.field, open.was);
+    else if (hunk !== null) setDraft(ctx, id, (d) => { const { [hunk]: _x, ...hs } = rec(d.hunks); return { ...d, hunks: hs }; });
+    else setDraft(ctx, id, (d) => { const { [open.field]: _x, ...rest } = d; return rest; });
+  }
+  const { [id]: _gone, ...rest } = ctx.ui.actions.inline;
+  ctx.ui.actions.inline = rest;
+  ctx.paint();
+}
+/** The card an inline input belongs to. */
+const inlineId = (el: EventTarget | null): number | null => {
+  const id = el && typeof (el as Element).getAttribute === "function" ? Number((el as Element).getAttribute("data-ask-inline")) : NaN;
+  return id > 0 ? id : null;
+};
 function setFormDraft(ctx: AskCtx, fk: string, patch: ActionsUi["forms"][string]): void {
   ctx.ui.actions.forms = { ...ctx.ui.actions.forms, [fk]: { ...(ctx.ui.actions.forms[fk] ?? {}), ...patch } };
 }
@@ -953,36 +1169,35 @@ export const actionsPart: AskPart = {
       case "askAcConfirm": void confirmCards(ctx, parseIds(a)); return;
       case "askAcCancel": void cancelCards(ctx, parseIds(a)); return;
       case "askAcUndo": void undoCards(ctx, parseIds(a)); return;
-      case "askAcEdit": {
-        const id = Number(a);
-        if (!(id > 0)) return;
-        ctx.ui.actions.editing = { ...ctx.ui.actions.editing, [id]: !ctx.ui.actions.editing[id] };
+      case "askAcText": {
+        // A click on editable text: it becomes an input that looks the same (focused after the paint).
+        const [id, field] = a.split("|");
+        const n = Number(id);
+        const vm = n > 0 && field ? actionVm(ctx, n) : null;
+        if (!vm || !canEdit(vm, field) || ctx.ui.actions.busy[n]) return;
+        const d = ctx.ui.actions.drafts[n] ?? {};
+        const had = field.startsWith("hunk:") ? field.slice(5) in rec(d.hunks) : field in d;
+        ctx.ui.actions.inline = { ...ctx.ui.actions.inline, [n]: { field, was: fieldOf(ctx, vm, field), had } };
+        ctx.ui.actions.focusInline = textField(n, field);
         ctx.paint();
         return;
       }
       case "askAcField": {
+        // Typed text (the input holds it: no repaint), or a cycle's next value (`<id>|<field>|<value>`).
         const [id, field, picked] = a.split("|");
         const n = Number(id);
         if (!(n > 0) || !field) return;
-        const val = picked !== undefined ? picked : value ?? "";
-        setDraft(ctx, n, (d) => ({ ...d, [field]: val }));
-        // A typed field repaints nothing (the input holds it); a pick moves its switch.
+        setField(ctx, n, field, picked !== undefined ? picked : value ?? "");
         if (picked !== undefined) ctx.paint();
         return;
       }
       case "askAcPick": {
-        // A dropdown's pick (an assignment's person): the option is `value`.
+        // A dropdown's pick (a person): the option is `value`; "Unassigned" is NONE.
         const [id, field] = a.split("|");
         const n = Number(id);
         if (!(n > 0) || !field || !value) return;
-        setDraft(ctx, n, (d) => ({ ...d, [field]: value }));
+        setField(ctx, n, field, value === NONE ? null : value);
         ctx.paint();
-        return;
-      }
-      case "askAcHunk": {
-        const [id, index] = a.split("|").map(Number);
-        if (!(id > 0) || !Number.isInteger(index)) return;
-        setDraft(ctx, id, (d) => ({ ...d, hunks: { ...rec(d.hunks), [index]: value ?? "" } }));
         return;
       }
       case "askAcSaveForm": {
@@ -1018,7 +1233,37 @@ export const actionsPart: AskPart = {
       }
     }
   },
+  // Text edited in place: Enter keeps it (a hunk's textarea takes Enter as a new line; ⌘/Ctrl+Enter keeps it), Escape
+  // puts back what it held (an Escape layer, so nothing under it closes too), leaving it keeps it.
+  onKeyDown(ctx, e) {
+    const id = inlineId(e.target);
+    if (id === null || e.key !== "Enter" || e.isComposing) return false;
+    if ((e.target as Element).tagName === "TEXTAREA" && !(e.metaKey || e.ctrlKey)) return false;
+    e.preventDefault();
+    closeInline(ctx, id, false);
+    return true;
+  },
+  onChange(ctx, e) {
+    if (e.type !== "focusout") return false;
+    const id = inlineId(e.target);
+    if (id === null) return false;
+    closeInline(ctx, id, false);
+    return true;
+  },
+  afterPaint(ctx, mount) {
+    const f = ctx.ui.actions.focusInline;
+    if (!f) return;
+    ctx.ui.actions.focusInline = null;
+    const el = mount.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-ask-inline][data-field="${f}"]`);
+    if (!el) return;
+    el.focus();
+    el.select();
+  },
   escape: [{
+    layer: "menu",
+    isOpen: (ctx) => Object.keys(ctx.ui.actions.inline).length > 0,
+    close: (ctx) => { for (const id of Object.keys(ctx.ui.actions.inline)) closeInline(ctx, Number(id), true); },
+  }, {
     layer: "menu",
     isOpen: (ctx) => Object.keys(ctx.ui.actions.wrongOpen).some((k) => !ctx.ui.closing[`wrong:${k}`]),
     close: (ctx) => { for (const k of Object.keys(ctx.ui.actions.wrongOpen)) closeWrong(ctx, k); },

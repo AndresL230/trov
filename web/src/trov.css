@@ -3050,7 +3050,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   /* the inspector's */
   .ask-iv-fill, .ask-iv-barfill, .ask-iv-table { animation:none !important; }
   /* the write cards' */
-  .ask-act-form, .ask-asg-pick, .ask-diff textarea, .ask-line, .ask-wrong, .ask-wrong[data-closing] { animation:none !important; }
+  .ask-line, .ask-wrong, .ask-wrong[data-closing] { animation:none !important; }
 }
 
 /* ── Ask: threads ── (ask-threads.ts; the shell's) */
@@ -3387,9 +3387,9 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 [data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-qfile::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 /* …and a write card's Cancel / Confirm / Edit, an assignment's item and person picker, and a line's link and Undo / Open
    (actions part). */
-[data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-edit, [data-phone="1"] button.ask-asg-item, [data-phone="1"] .ask-act .cnpy-dd,
+[data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-cyc, [data-phone="1"] .ask-act-txt, [data-phone="1"] button.ask-asg-item, [data-phone="1"] .ask-act .cnpy-dd,
 [data-phone="1"] .ask-undo, [data-phone="1"] .ask-line-link { position:relative; }
-[data-phone="1"] .ask-col .ask-btn::after, [data-phone="1"] .ask-act-edit::after, [data-phone="1"] button.ask-asg-item::after, [data-phone="1"] .ask-act .cnpy-dd::after,
+[data-phone="1"] .ask-col .ask-btn::after, [data-phone="1"] .ask-act-cyc::after, [data-phone="1"] .ask-act-txt::after, [data-phone="1"] button.ask-asg-item::after, [data-phone="1"] .ask-act .cnpy-dd::after,
 [data-phone="1"] .ask-undo::after, [data-phone="1"] .ask-line-link::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 
 /* ── Ask: composer ── (ask-composer.ts; ask-trov.dc.html L658–780) */
@@ -3499,47 +3499,68 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-acts { display:flex; flex-direction:column; }
 .ask-grow { flex:1; }
 .ask-eyebrow { font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; }
-/* A card: the eyebrow and its mark, the body per kind, the footer with Cancel / Confirm. */
+/* A card, every kind the same frame: the head (the eyebrow, its mark and a waiting card's reason), then the body per
+   kind, which ENDS on one row — its facts, its people from → to, the item and its move, or a hint — with Cancel /
+   Confirm at that row's end (ask-actions.ts `endRow`). No footer band: the controls never take a row of their own.
+   Narrow (a phone, the ⌘J panel), they wrap under the row's content as a right-aligned group, beside the row's
+   trailing hint when it has one (`.ask-act-break` starts the hint's line). */
 .ask-act { margin:0 0 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
-.ask-act[aria-busy="true"] .ask-act-body { opacity:.72; }
-.ask-act-head { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); }
+.ask-act[aria-busy="true"] .ask-act-body > :not(.ask-act-end), .ask-act[aria-busy="true"] .ask-act-end > :not(.ask-act-btns) { opacity:.72; }
+.ask-act-head { display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; padding:10px 16px; border-bottom:1px solid var(--border); }
 .ask-act-st { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-70); white-space:nowrap; }
-.ask-act-edit { padding:2px 4px; border-radius:5px; font-size:12.5px; font-weight:500; color:var(--accent); cursor:pointer; }
-.ask-act-edit:hover { text-decoration:underline; }
-.ask-act-edit:disabled { opacity:.5; cursor:default; text-decoration:none; }
-.ask-act-body { padding:14px 16px 4px; }
+.ask-act-note { flex:1 1 14em; min-width:0; font-size:12px; color:var(--fg-55); }
+.ask-act-note::before { content:"·"; margin-right:8px; color:var(--fg-40); }
+[data-phone="1"] .ask-act-note, .ask-panel .ask-act-note { flex-basis:100%; }
+[data-phone="1"] .ask-act-note::before, .ask-panel .ask-act-note::before { content:none; }
+.ask-act-body { padding:14px 16px; }
 .ask-act-stack > div + div { border-top:1px solid var(--border); }
+/* The last row and its controls. */
+.ask-act-end { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; min-height:30px; margin-top:12px; font-size:13px; color:var(--fg-70); }
+.ask-act-end:first-child { margin-top:0; }
+.ask-act-end.is-ruled { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.ask-act-end.is-people { gap:8px 10px; }
+.ask-act-btns { display:flex; align-items:center; gap:8px; flex:none; margin-left:auto; }
+.ask-act-end.is-fields { align-items:flex-end; }
+/* A new ticket's fields: four columns across the row, the Assignee's widest (two on a phone or in the ⌘J panel). */
+.ask-act-fields { flex:1 1 26em; min-width:0; display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.5fr) minmax(0,1fr); gap:10px 14px; }
+/* A group's earlier tickets keep the room the controls take on its last one, so every row's columns line up. */
+.ask-act-ghost { flex:none; width:172px; }
+[data-phone="1"] .ask-act-ghost, .ask-panel .ask-act-ghost { display:none; }
+.ask-act-stack .ask-act-btns { min-width:172px; justify-content:flex-end; }
+[data-phone="1"] .ask-act-fields, .ask-panel .ask-act-fields { grid-template-columns:repeat(2, minmax(0,1fr)); }
+.ask-act-field { min-width:0; }
+.ask-act-break { display:none; }
+[data-phone="1"] .ask-act-break, .ask-panel .ask-act-break { display:block; flex-basis:100%; height:0; }
+.ask-act-lead { flex:1 1 16em; min-width:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; }
+.ask-act-title.ask-act-lead { font-size:15px; line-height:1.35; color:var(--fg); }
+.ask-act-hint { flex:1 1 0; min-width:9em; font-size:12px; color:var(--fg-55); }
+/* A move: the ticket, then its status (or sprint) from → to. Narrow, from → to shares the controls' line. */
+.ask-act-end.is-move > .ask-asg-item { flex:0 1 auto; }
+.ask-mv { display:inline-flex; align-items:center; flex-wrap:wrap; gap:6px 8px; font-size:12.5px; color:var(--fg-70); }
+.ask-mv-to { font-weight:500; color:var(--fg); }
 .ask-act-row { display:flex; align-items:flex-start; gap:9px; }
 .ask-act-row > svg { flex:none; margin-top:3px; }
 .ask-act-main { flex:1; min-width:0; }
 .ask-act-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; overflow-wrap:anywhere; }
-.ask-act-title--h { margin:10px 0 0; }
 .ask-act-desc { margin-top:6px; font-size:13px; line-height:1.6; color:var(--fg-70); overflow-wrap:anywhere; }
-.ask-act-grid { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin:14px 0 10px; padding-top:12px; border-top:1px solid var(--border); }
-[data-phone="1"] .ask-act-grid, .ask-panel .ask-act-grid { grid-template-columns:repeat(2, minmax(0,1fr)); }
 .ask-act-k { margin-bottom:5px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
 .ask-act-v { font-size:12.5px; color:var(--fg-70); overflow-wrap:anywhere; }
 .ask-act-iv { display:inline-flex; align-items:center; gap:6px; }
 .ask-act-strong { font-weight:500; color:var(--fg); }
 .ask-act-faint { font-size:12px; color:var(--fg-55); }
-.ask-act-lines { display:grid; grid-template-columns:max-content 1fr; gap:6px 14px; align-items:baseline; margin:12px 0 10px; }
-.ask-act-lines > .ask-act-k { margin:0; }
-.ask-act-who { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-70); }
 .ask-act-cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin-top:14px; }
 [data-phone="1"] .ask-act-cols { grid-template-columns:1fr; }
 .ask-act-li { display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
 .ask-act-li > span { flex:none; margin-top:2px; }
 .ask-act-li.is-next { color:var(--fg); }
-.ask-act-files { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 10px; }
+.ask-act-files { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 0; }
 .ask-act-files > span { padding:2px 6px; border:1px solid var(--border); border-radius:5px; background:color-mix(in srgb, var(--fg) 5%, transparent); font-family:var(--code); font-size:11.5px; color:var(--fg-70); }
 .ask-act-doc { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; }
 .ask-act-ver { font-family:var(--label); font-size:12px; color:var(--fg-55); }
-.ask-act-more { margin:-4px 0 10px; }
-.ask-act-ul { margin:8px 0 10px; padding-left:18px; font-size:12.5px; line-height:1.6; color:var(--fg-55); }
+.ask-act-ul { margin:8px 0 0; padding-left:18px; font-size:12.5px; line-height:1.6; color:var(--fg-55); }
 /* An assignment (assign_ticket; a handoff's claim): the item — its number, title (a click opens it) and status mark —
    then who it goes to: avatars and names, from → to for a replacement, "Adds" / "Removes" beside the people who stay.
    While editing, the person is the app's dropdown (it fades in where the name was). */
-.ask-asg { padding-bottom:14px; }
 .ask-asg-t + .ask-asg-t { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
 .ask-asg-head { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; }
 .ask-asg-item { flex:1 1 240px; min-width:0; display:flex; align-items:baseline; gap:8px; padding:0; font:inherit; color:var(--fg); text-align:left; }
@@ -3548,7 +3569,7 @@ button.ask-asg-item:hover .ask-asg-title { text-decoration:underline; text-decor
 .ask-asg-num { flex:none; font-family:var(--label); font-size:13px; color:var(--fg-55); }
 .ask-asg-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; overflow-wrap:anywhere; }
 .ask-asg-st { flex:none; }
-.ask-asg-who { display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; min-height:30px; margin-top:12px; font-size:13px; color:var(--fg-70); }
+.ask-asg-who { margin-top:12px; }
 .ask-asg-p { display:inline-flex; align-items:center; gap:7px; min-width:0; max-width:100%; color:var(--fg-70); }
 .ask-asg-p.is-strong { font-weight:500; color:var(--fg); }
 .ask-asg-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -3557,59 +3578,86 @@ button.ask-asg-item:hover .ask-asg-title { text-decoration:underline; text-decor
 .ask-asg-to { display:inline-flex; align-items:center; }
 .ask-asg-stays { font-size:12px; color:var(--fg-55); }
 .ask-asg-stays::before { content:"·"; margin-right:8px; color:var(--fg-40); }
-/* A phone or the ⌘J panel: the people who stay (or the claim's note) take their own line, with no dot to hang from. */
-[data-phone="1"] .ask-asg-stays, .ask-panel .ask-asg-stays { flex-basis:100%; }
+/* A phone or the ⌘J panel: the people who stay (or the claim's note) start their own line — no dot to hang from — and
+   share it with the controls. */
+[data-phone="1"] .ask-asg-stays, .ask-panel .ask-asg-stays { flex:1 1 0; min-width:8em; }
 [data-phone="1"] .ask-asg-stays::before, .ask-panel .ask-asg-stays::before { content:none; }
-.ask-asg-pick { display:inline-flex; max-width:100%; animation:ask-fade-in .14s ease both; }
-/* Edit: the form fades in where the card's text was; the card's height glides (data-ask-tween). */
-.ask-act-form { display:flex; flex-direction:column; gap:14px; padding:14px 16px 8px; animation:ask-fade-in .14s ease both; }
-.ask-act-form--in { padding:0; margin-top:12px; gap:12px; }
+/* Editing in place (no Edit mode): text that edits reads as text — a hover tint says it can — and a click turns it
+   into an input that looks the same (accent ring). A small fixed set is a word a click cycles; a person is the app's
+   dropdown, quiet (no border) until hovered or open. Nothing fades or slides: the card only changes its words. */
+.ask-act-txt, .ask-act-input { font:inherit; color:inherit; }
+.ask-act-txt { display:block; max-width:calc(100% + 10px); margin:-2px -5px; padding:2px 5px; border-radius:5px; text-align:left; overflow-wrap:anywhere; cursor:text; transition:background .12s ease; }
+.ask-act-txt:hover { background:color-mix(in srgb, var(--fg) 6%, transparent); }
+.ask-act-input { display:block; width:calc(100% + 10px); box-sizing:border-box; margin:-2px -5px; padding:2px 5px; border:0; border-radius:5px; background:color-mix(in srgb, var(--accent) 6%, var(--surface)); box-shadow:inset 0 0 0 1px var(--accent); outline:none; color:var(--fg); }
+textarea.ask-act-input { resize:vertical; min-height:3.3em; white-space:pre-wrap; }
+.ask-act-txt.ask-act-title, .ask-act-input.ask-act-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; }
+.ask-act-txt.ask-act-strong, .ask-act-input.ask-act-strong { font-weight:500; color:var(--fg); }
+.ask-diff-row > .ask-act-txt, .ask-diff-row > .ask-act-input { flex:1; min-width:0; max-width:none; }
+.ask-act-end > .ask-act-grow { flex:1 1 12em; min-width:0; }
+.ask-act-cyc { margin:-3px -6px; padding:3px 6px; border-radius:5px; cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-act-cyc:hover { background:color-mix(in srgb, var(--fg) 6%, transparent); color:var(--fg); }
+.ask-act-pick { display:inline-flex; flex:0 1 auto; max-width:calc(100% + 7px); margin:-1px 0 -1px -7px; }
+.ask-act-pick .cnpy-dd.is-sm { height:28px; padding:0 6px; border-color:transparent; background:transparent; color:var(--fg); font-weight:500; }
+.ask-act-pick .cnpy-dd.is-sm:hover, .ask-act-pick .cnpy-dd.is-open { border-color:var(--border-strong); background:var(--surface); }
+.ask-act-pick .cnpy-dd-caret { color:var(--fg-40); }
+/* A card's facts: one row across the card — an optional quiet label, then the value (a date span, a lead, …). */
+.ask-act-end.is-facts { gap:8px 18px; }
+.ask-fact { display:inline-flex; align-items:center; gap:7px; min-width:0; font-size:12.5px; color:var(--fg-70); }
+.ask-fact-k { margin-right:6px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-fact > .ask-fact-k { margin-right:0; }
+.ask-fact-v { display:inline-flex; align-items:center; gap:6px; min-width:0; overflow-wrap:anywhere; }
 .ask-field { display:flex; flex-direction:column; align-items:flex-start; gap:6px; font-size:12.5px; font-weight:500; }
 label.ask-field { align-items:stretch; }
 .ask-field .cnpy-seg { max-width:100%; overflow-x:auto; }
 .ask-input-line { width:100%; height:36px; box-sizing:border-box; padding:0 12px; border:1px solid var(--border-strong); border-radius:9px; background:transparent; outline:none; font:inherit; font-size:13.5px; font-weight:400; color:var(--fg); transition:border-color .12s ease; }
 .ask-input-line:focus { border-color:var(--accent); }
 .ask-input-line--lg { height:38px; font-size:14px; }
-.ask-act-foot { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 14px; border-top:1px solid var(--border); background:color-mix(in srgb, var(--fg) 1.5%, transparent); }
-.ask-act-note { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--fg-70); }
 .ask-act-confirm { padding:6px 14px; }
 a.ask-btn { text-decoration:none; }
 /* A doc edit's hunks: the heading for context, the old line struck out, the new one (a textarea while editing). */
-.ask-diffs { margin:12px 0 10px; display:flex; flex-direction:column; gap:8px; }
+.ask-diffs { margin:12px 0 0; display:flex; flex-direction:column; gap:8px; }
 .ask-diff { border:1px solid var(--border); border-radius:8px; overflow:hidden; font-size:13px; line-height:1.6; }
 .ask-diff-row { display:flex; gap:10px; padding:5px 10px; color:var(--fg); overflow-wrap:anywhere; white-space:pre-wrap; }
 .ask-diff-row.is-h { color:var(--fg-55); background:color-mix(in srgb, var(--fg) 2.5%, transparent); font-family:var(--code); font-size:12px; }
 .ask-diff-row.is-del { background:color-mix(in srgb, var(--red) 9%, transparent); }
 .ask-diff-row.is-del s { text-decoration-color:color-mix(in srgb, var(--red) 50%, transparent); }
 .ask-diff-row.is-add { background:color-mix(in srgb, var(--green) 10%, transparent); }
-.ask-diff-row.is-edit { padding:6px 10px; }
 .ask-diff-sign { width:10px; flex:none; font-family:var(--code); }
 .is-del > .ask-diff-sign { color:var(--red); }
 .is-add > .ask-diff-sign { color:var(--green); }
-.ask-diff textarea { flex:1; min-height:52px; resize:vertical; box-sizing:border-box; padding:6px 8px; border:1px solid var(--border-strong); border-radius:6px; background:var(--surface); outline:none; font:inherit; font-size:13px; line-height:1.55; color:var(--fg); animation:ask-fade-in .14s ease both; }
-.ask-diff textarea:focus { border-color:var(--accent); }
 /* A line: what was done (linked), when, Undo — or Cancelled / Undone / Expired / Didn't work, muted. It enters once
    (a new key replaces the card), and the wrapper's height glides from the card's. */
 .ask-line { display:flex; align-items:center; flex-wrap:wrap; gap:9px; min-height:40px; box-sizing:border-box; margin:0 0 8px; padding:6px 8px 6px 12px; border:1px solid var(--border); border-radius:10px; background:var(--surface); box-shadow:var(--shadow); font-size:13px; animation:ask-line-in .36s cubic-bezier(.2,.7,.2,1) both; }
 .ask-line--saved { min-height:44px; }
+/* The words take the room and wrap inside it, so the mark, the time and Undo stay on their line. */
+.ask-line-main { flex:1 1 12em; min-width:0; display:flex; align-items:baseline; gap:2px 10px; }
+.ask-line-main > .ask-line-t, .ask-line-main > .ask-line-link { flex:0 1 auto; min-width:0; }
 .ask-line-t { font-weight:500; color:var(--fg); overflow-wrap:anywhere; }
 .ask-line.is-off .ask-line-t { color:var(--fg-55); }
-.ask-line-why { flex-basis:100%; padding-left:18px; font-size:12px; color:var(--fg-55); }
+/* The reason, muted, on the same line — cut short (its tooltip holds all of it). A phone or the ⌘J panel lets the
+   line flow as text instead, wrapping, never a stacked block. */
+.ask-line-why { flex:1 1 0; min-width:3em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:400; color:var(--fg-55); }
+.ask-line-wmark { display:inline-flex; margin-right:6px; vertical-align:-1px; }
+[data-phone="1"] .ask-line-main, .ask-panel .ask-line-main { display:block; }
+[data-phone="1"] .ask-line-why, .ask-panel .ask-line-why { margin-left:6px; white-space:normal; }
 .ask-line-link { padding:0; font:inherit; font-weight:500; color:var(--fg); text-align:left; text-decoration:underline; text-decoration-color:var(--border-strong); text-underline-offset:3px; cursor:pointer; transition:text-decoration-color .12s ease; }
 .ask-line-link:hover { text-decoration-color:var(--fg); }
 .ask-line-at { font-family:var(--label); font-size:11.5px; color:var(--fg-40); white-space:nowrap; }
 .ask-line-vis { font-size:12px; color:var(--fg-55); }
-.ask-line-refused { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-70); }
 .ask-undo { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border-strong); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); white-space:nowrap; cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-undo:hover { background:var(--hover); color:var(--fg); }
 .ask-undo:disabled { opacity:.55; cursor:default; }
 @keyframes ask-line-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 /* Save as artifact: the form card (it enters as a new part of the answer), then its saved line. */
 .ask-save { margin:0 0 12px; padding:14px 16px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
-.ask-save-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
-.ask-save-opts { display:flex; flex-wrap:wrap; gap:22px; margin-top:14px; }
-.ask-save-foot { display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
-.ask-save-hint { flex:1; font-size:12px; color:var(--fg-55); }
+/* Its head carries Kind and Who can see it at the right (their options are their labels); the title has Save at its
+   end; the hint is under them. */
+.ask-save-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.ask-save-opts { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; gap:8px; max-width:100%; margin-left:auto; }
+.ask-save-opts .cnpy-seg { max-width:100%; overflow-x:auto; }
+.ask-save-row { display:flex; align-items:center; gap:10px; }
+.ask-save-row > .ask-input-line { flex:1; min-width:0; }
+.ask-save-hint { margin-top:8px; font-size:12px; color:var(--fg-55); }
 /* Wrong?: the reasons row under the footer pops in, and out when a reason is picked or Escape closes it. */
 /* Wrong?'s reasons open like the sources list beside it: a rise in step with the footer's height glide (ask-motion.ts
    rule 4, 240ms) — not a pop, whose overshoot ran against the glide. */
@@ -4367,16 +4415,17 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-nf-card,
 [data-cnpy-theme] .ask-src { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-q-editbox { border-radius:calc(12px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-act-edit,
+[data-cnpy-theme] .ask-act-txt,
+[data-cnpy-theme] .ask-act-input,
+[data-cnpy-theme] .ask-act-cyc,
 [data-cnpy-theme] .ask-act-files > span { border-radius:calc(5px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-diff textarea { border-radius:calc(6px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-undo,
 [data-cnpy-theme] .ask-wrong-opt { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-diff { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-input-line { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-act,
 [data-cnpy-theme] .ask-line,
-[data-cnpy-theme] .ask-save,
+[data-cnpy-theme] .ask-save { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* Ask: inspector (ask-inspector.ts) */
 [data-cnpy-theme] .ask-iv-bar,
 [data-cnpy-theme] .ask-iv-fill { border-radius:calc(3px * var(--corner-scale)) !important; }

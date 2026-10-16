@@ -93,20 +93,22 @@ describe("actions-ask — draft cards for a ticket, a handoff and a doc edit", (
   it("each card: its eyebrow, the draft mark, the body per kind, Cancel and Confirm — nothing runs before Confirm", () => {
     expect(text(ticket)).toMatch(/^New ticket Draft, not created yet/);
     expect(ticket).toContain("Reconnect expired hosting tokens from Org settings");
-    expect(text(ticket)).toMatch(/Category bug Priority High Assignee AL Andres Lopez Sprint Hosting/);
-    expect(text(handoff)).toMatch(/^New handoff Draft, not created yet/);
-    expect(text(handoff)).toContain("Andres Lopez Anyone · any agent session can claim it".replace("Andres", "AL Andres"));
-    expect(text(handoff)).toContain("Fix the Netlify connect test on main");
+    expect(text(ticket)).toMatch(/Category bug Priority High Assignee AL Andres Lopez Sprint Hosting Cancel Confirm$/);
+    expect(text(handoff)).toMatch(/^New handoff Draft, not created yet Fix the Netlify connect test on main/);
+    expect(text(handoff)).toMatch(/AL Andres Lopez to Anyone Any agent session can claim it Cancel Confirm$/);
     expect(text(handoff)).toMatch(/Done .*Traced the failure.* Next .*Update the test to assert on the new marks/);
     expect(handoff).toContain("test/netlify-connect.test.ts");
-    expect(text(doc)).toMatch(/^Doc edit Draft, not created yet/);
-    expect(text(doc)).toContain("Hosting connections v4 → v5 Goes to Review before it is live");
+    expect(text(doc)).toMatch(/^Doc edit Draft, not created yet Hosting connections v4 → v5/);
     expect(text(doc)).toContain("## Tokens − Trov refreshes hosting tokens automatically before they expire. + Token refresh is manual for now.");
+    expect(text(doc)).toMatch(/Goes to Review before it is live Cancel Confirm$/);
     for (const [card, id] of [[ticket, 31], [handoff, 32], [doc, 33]] as const) {
       expect(card).toContain(`data-act="askAcConfirm" data-arg="${id}"`);
       expect(card).toContain(`data-act="askAcCancel" data-arg="${id}"`);
-      expect(card).toContain(`data-act="askAcEdit" data-arg="${id}" aria-expanded="false"`);
       expect(card).not.toContain("askAcUndo");
+      // No Edit mode, no footer band: the controls end the card's last row.
+      expect(card).not.toContain("askAcEdit");
+      expect(card).not.toContain("ask-act-foot");
+      expect(card).toMatch(/<div class="ask-act-end[^"]*" data-morph-key="end" data-morph-list>(?:(?!<div class="ask-act-end).)*<div class="ask-act-btns" data-morph-key="btns">\s*<button type="button" class="ask-btn" data-act="askAcCancel"/s);
     }
   });
 
@@ -115,49 +117,98 @@ describe("actions-ask — draft cards for a ticket, a handoff and a doc edit", (
     expect(ticket).not.toMatch(/DRAFT|pill/);
   });
 
-  it("Edit opens ONLY the fields the tool's input takes, as real inputs and segmented switches", () => {
+  it("every editable field edits in place — text, a cycle, a dropdown — and nothing else does", () => {
+    // Text reads as text (a button) until clicked; the small fixed sets cycle; people are the app's dropdown.
+    expect(ticket).toMatch(/<button type="button" class="ask-act-txt ask-act-title" data-act="askAcText" data-arg="31\|title" data-field="askAcT31-title"[^>]*>Reconnect expired hosting tokens from Org settings<\/button>/);
+    expect(ticket).toMatch(/class="ask-act-cyc[^"]*" data-act="askAcField" data-arg="31\|category\|request" aria-label="Category: bug\. Change to request"/);
+    expect(ticket).toMatch(/class="ask-act-cyc[^"]*" data-act="askAcField" data-arg="31\|priority\|normal" aria-label="Priority: High\. Change to Normal"/);
+    expect(ticket).toMatch(/<span class="ask-act-pick" data-morph-key="asg"><button type="button" id="ask-ac-asg-31"[^>]*class="cnpy-dd is-sm"[^>]*aria-label="Assignee: Andres Lopez"/);
+    expect(ticket).not.toContain("<select");
+    expect(ticket).not.toContain("cnpy-seg");
+    expect(handoff).toMatch(/data-act="askAcText" data-arg="32\|task"[^>]*>Fix the Netlify connect test on main</);
+    expect(handoff).toMatch(/id="ask-ac-to-32"[^>]*aria-label="Send to: Anyone"/);
+    expect(doc).toMatch(/data-act="askAcText" data-arg="33\|hunk:0"[^>]*>Token refresh is manual for now\./);
+    // The menus are root overlays: their props come from the same cards.
+    const ids = actionDropdowns(s).map((p) => p.id);
+    expect(ids).toEqual(expect.arrayContaining(["ask-ac-asg-31", "ask-ac-to-32"]));
+    const to = actionDropdowns(s).find((p) => p.id === "ask-ac-to-32")!;
+    expect(to.options.map((o) => o.label)).toEqual(["Anyone", "Maya Chen", "Priya Raman"]);        // not the sender
+    const asg = actionDropdowns(s).find((p) => p.id === "ask-ac-asg-31")!;
+    expect(asg.options[0]).toMatchObject({ value: "~none", label: "Unassigned" });
+  });
+
+  it("a click on text opens it as an input that looks the same; Enter keeps the edit, Escape puts it back", () => {
     const s2 = app("actions-ask");
-    s2.ask.actions.editing = { 31: true, 32: true, 33: true };
-    const [t, h, d] = cards(s2);
-    expect(t).toContain('aria-expanded="true"');
-    expect(t).toContain("Done editing");
-    expect(t).toMatch(/<input class="ask-input-line" data-act="askAcField" data-arg="31\|title"[^>]*value="Reconnect expired hosting tokens from Org settings"/);
-    expect(t).toContain('aria-label="Category"');
-    expect(t).toContain('data-arg="31|category|request"');
-    expect(t).toContain('aria-label="Priority"');
-    expect(t).toContain('data-arg="31|priority|low"');
-    expect(t).toContain('aria-label="Assignee"');
-    expect(t).toContain('data-arg="31|assignee|maya"');
-    expect(t).not.toContain("<select");
-    expect(h).toContain('aria-label="Send to"');
-    expect(h).toContain('data-arg="32|recipient|anyone"');
-    expect(h).toMatch(/data-arg="32\|task"[^>]*value="Fix the Netlify connect test on main"/);
-    expect(d).toMatch(/<textarea[^>]*data-act="askAcHunk" data-arg="33\|0"[^>]*>Token refresh is manual for now\./);
-    // The form is a new key where the text was (it fades in once); the card keeps its key (its height glides).
-    expect(t).toContain('data-morph-key="edit"');
-    expect(ticket).toContain('data-morph-key="view"');
+    const { ctx } = ctxOf(s2, {});
+    actionsPart.act!(ctx, "askAcText", "31|title", null);
+    expect(s2.ask.actions.focusInline).toBe("askAcT31-title");
+    let [t] = cards(s2);
+    expect(t).toMatch(/<input class="ask-act-input ask-act-title" data-act="askAcField" data-arg="31\|title" data-field="askAcT31-title" data-ask-inline="31" value="Reconnect expired hosting tokens from Org settings"/);
+    // The card keeps its key and its body; only the words change (no form opens).
     expect(t.match(/data-morph-key="act:31" data-ask-tween/)).not.toBeNull();
+    actionsPart.act!(ctx, "askAcField", "31|title", "Reconnect expired tokens");
+    // Escape: the layer above everything else, and it puts back what the text held.
+    const layer = actionsPart.escape![0];
+    expect(layer.isOpen(ctx)).toBe(true);
+    layer.close(ctx);
+    expect(s2.ask.actions.inline[31]).toBeUndefined();
+    expect(s2.ask.actions.drafts[31]).toEqual({});
+    [t] = cards(s2);
+    expect(t).toMatch(/class="ask-act-txt ask-act-title"[^>]*>Reconnect expired hosting tokens from Org settings</);
+    // Enter keeps it (a key on the input; the shell routes the card's keydown here).
+    actionsPart.act!(ctx, "askAcText", "31|title", null);
+    actionsPart.act!(ctx, "askAcField", "31|title", "Reconnect expired tokens");
+    const input = { tagName: "INPUT", getAttribute: (n: string) => (n === "data-ask-inline" ? "31" : null) } as unknown as HTMLElement;
+    const enter = { key: "Enter", isComposing: false, metaKey: false, ctrlKey: false, target: input, preventDefault: vi.fn() } as unknown as KeyboardEvent;
+    expect(actionsPart.onKeyDown!(ctx, enter)).toBe(true);
+    expect(s2.ask.actions.inline[31]).toBeUndefined();
+    expect(s2.ask.actions.drafts[31]).toEqual({ title: "Reconnect expired tokens" });
+    [t] = cards(s2);
+    expect(t).toMatch(/class="ask-act-txt ask-act-title"[^>]*>Reconnect expired tokens</);
+    // A title left empty goes back.
+    actionsPart.act!(ctx, "askAcText", "31|title", null);
+    actionsPart.act!(ctx, "askAcField", "31|title", "   ");
+    expect(actionsPart.onChange!(ctx, { type: "focusout", target: input } as unknown as Event)).toBe(true);
+    expect(s2.ask.actions.drafts[31]).toEqual({ title: "Reconnect expired tokens" });
+  });
+
+  it("a cycle steps to the next value; a dropdown pick sets the person (Unassigned is null)", () => {
+    const s2 = app("actions-ask");
+    const { ctx } = ctxOf(s2, {});
+    actionsPart.act!(ctx, "askAcField", "31|priority|normal", null);
+    let [t] = cards(s2);
+    expect(t).toMatch(/aria-label="Priority: Normal\. Change to Low"/);
+    actionsPart.act!(ctx, "askAcField", "31|priority|low", null);
+    [t] = cards(s2);
+    expect(t).toMatch(/data-arg="31\|priority\|high" aria-label="Priority: Low\. Change to High"/);
+    actionsPart.act!(ctx, "askAcPick", "31|assignee", "maya");
+    [t] = cards(s2);
+    expect(t).toMatch(/aria-label="Assignee: Maya Chen"/);
+    actionsPart.act!(ctx, "askAcPick", "31|assignee", "~none");
+    expect(s2.ask.actions.drafts[31].assignee).toBeNull();
+    expect(text(cards(s2)[0])).toMatch(/Assignee Unassigned/);
   });
 
   it("Confirm sends ONLY the edited editable fields; the server's result collapses the card to its done line", async () => {
     const s2 = app("actions-ask");
     const confirmAction = vi.fn(async (id: number) => ({ results: [result(id, "confirmed", "ticket:30", { id: 30, title: "Reconnect expired tokens" })] } satisfies AskActionAnswer));
     const { ctx, flashes } = ctxOf(s2, { confirmAction });
-    actionsPart.act!(ctx, "askAcEdit", "31", null);
+    actionsPart.act!(ctx, "askAcText", "31|title", null);
     actionsPart.act!(ctx, "askAcField", "31|title", "Reconnect expired tokens");
     actionsPart.act!(ctx, "askAcField", "31|priority|normal", null);
     actionsPart.act!(ctx, "askAcField", "31|category|bug", null);    // unchanged: not sent
+    actionsPart.act!(ctx, "askAcPick", "31|assignee", "maya");
     actionsPart.act!(ctx, "askAcConfirm", "31", null);
     await flush();
     expect(confirmAction).toHaveBeenCalledTimes(1);
-    expect(confirmAction).toHaveBeenCalledWith(31, { args: { title: "Reconnect expired tokens", priority: "normal" } });
+    expect(confirmAction).toHaveBeenCalledWith(31, { args: { title: "Reconnect expired tokens", priority: "normal", assignee: "maya" } });
     const [t] = cards(s2);
     expect(t).not.toContain("askAcConfirm");
     expect(text(t)).toMatch(/^Created ticket #30 Just now Undo$/);
     expect(t).toContain('data-act="askShOpen" data-arg="ticket:30"');
     expect(t).toContain('data-morph-key="ln:31:done"');
     expect(flashes).toEqual(["Created ticket #30"]);
-    expect(s2.ask.actions.editing[31]).toBeUndefined();
+    expect(s2.ask.actions.inline[31]).toBeUndefined();
     expect(s2.ask.actions.drafts[31]).toBeUndefined();
   });
 
@@ -165,7 +216,9 @@ describe("actions-ask — draft cards for a ticket, a handoff and a doc edit", (
     const s2 = app("actions-ask");
     const confirmAction = vi.fn(async (id: number) => ({ results: [result(id, "confirmed", id === 33 ? "doc:hosting-connections" : "handoff:12", id === 32 ? { id: 12, recipient: "anyone" } : null, false)] }));
     const { ctx, flashes } = ctxOf(s2, { confirmAction });
-    actionsPart.act!(ctx, "askAcHunk", "33|0", "Token refresh is manual.");
+    actionsPart.act!(ctx, "askAcText", "33|hunk:0", null);
+    expect(cards(s2)[2]).toMatch(/<textarea class="ask-act-input ask-diff-t" rows="2" data-act="askAcField" data-arg="33\|hunk:0"[^>]*>Token refresh is manual for now\./);
+    actionsPart.act!(ctx, "askAcField", "33|hunk:0", "Token refresh is manual.");
     actionsPart.act!(ctx, "askAcConfirm", "33", null);
     actionsPart.act!(ctx, "askAcConfirm", "32", null);
     await flush();
@@ -224,7 +277,7 @@ describe("actions-auto — done lines with Undo and a time, one grouped line, on
       "Sent handoff #11 to anyone Just now Undo",
       "Moved ticket #14 to In progress Just now Undo",
       "Filed tickets #30, #31 and #32 Just now Undo",
-      expect.stringMatching(/^Publish doc Waiting for you Release 0\.30 notes Product · v2 Staged, not approved Publishing makes v2 live for the org\. Agents read it from then on\./),
+      expect.stringMatching(/^Publish doc Waiting for you Publishing waits for you, even on Auto\. Release 0\.30 notes Product · v2 Staged, not approved .*Publishing makes v2 live for the org\. Agents read it from then on\. Cancel Confirm$/),
     ]);
   });
 
@@ -433,9 +486,11 @@ describe("artifact / artifact-saved — the Save form, then its saved line", () 
     return { a, block: p.block, index: p.index, html: saveFormView(askView(s), a, p.block, p.index) };
   };
 
-  it("artifact: the form — Title, Kind and Who can see it as segmented switches, the hint, Save", () => {
+  it("artifact: the form — Kind and Who can see it as compact switches at its head's right, the title with Save at its end, the hint", () => {
     const { html } = formOf(app("artifact"));
-    expect(text(html)).toMatch(/^Save as artifact Title Kind Markdown HTML page Who can see it Private Org Only you can see it\. You can publish it to the org later\. Save$/);
+    expect(text(html)).toMatch(/^Save as artifact Markdown HTML page Private Org Save Only you can see it\. You can publish it to the org later\.$/);
+    // The switches sit in the head (no stacked labels: they name themselves in a tooltip); Save shares the title's row.
+    expect(html).toMatch(/<div class="ask-save-head">[\s\S]*<span data-mtip="Kind">[\s\S]*<span data-mtip="Who can see it">[\s\S]*<\/div>\s*<\/div>\s*<div class="ask-save-row">\s*<input[^>]*aria-label="Title" \/>\s*<button type="button" class="ask-btn ask-btn--accent" data-act="askAcSave"/);
     expect(html).toMatch(/data-act="askAcSaveTitle" data-arg="a1\|0"[^>]*value="Hosting status, Oct 15"/);
     expect(html).toMatch(/class="cnpy-seg-btn is-on"[^>]*data-arg="a1\|0\|html"|class="cnpy-seg-btn is-on" data-act="askAcSaveKind" data-arg="a1\|0\|html"/);
     expect(html).toContain('aria-label="Who can see it"');
@@ -483,7 +538,7 @@ describe("artifact / artifact-saved — the Save form, then its saved line", () 
     actionsPart.act!(ctx, "askAcSaveForm", "a1", null);
     await flush();
     expect(saveForm).toHaveBeenCalledWith(4, undefined);
-    expect(text(formOf(s).html)).toMatch(/^Save as artifact Title Kind Markdown HTML page/);
+    expect(text(formOf(s).html)).toMatch(/^Save as artifact Markdown HTML page Private Org Save/);
     // Asking again while that form is open does not stack a second one.
     actionsPart.act!(ctx, "askAcSaveForm", "4", null);
     await flush();
@@ -532,7 +587,7 @@ describe("Wrong? — three reasons, posted with the answer; the toast says the t
     expect(feedbackView(askView(s), a)).toContain('data-closing="1"');
     s.ask.closing = {};
     const { ctx } = ctxOf(s, {});
-    const esc = actionsPart.escape![0];
+    const esc = actionsPart.escape![1];          // [0] is text edited in place (it closes first)
     expect(esc.layer).toBe("menu");
     expect(esc.isOpen(ctx)).toBe(true);
     esc.close(ctx);
@@ -562,8 +617,15 @@ describe("motion — collapses glide, entrances play once, all off under reduced
   const ask = css.slice(css.indexOf("/* ══ Ask Trov"), css.indexOf("/* ── the site on a phone")).replace(/\/\*[\s\S]*?\*\//g, "");
   const reduce = ask.slice(ask.indexOf("@media (prefers-reduced-motion: reduce)"));
   const block = reduce.slice(0, reduce.indexOf("\n}\n"));
-  it.each([".ask-act-form", ".ask-asg-pick", ".ask-diff textarea", ".ask-line", ".ask-wrong", ".ask-wrong[data-closing]"])("%s's animation is off under reduced motion", (sel) => {
+  it.each([".ask-line", ".ask-wrong", ".ask-wrong[data-closing]"])("%s's animation is off under reduced motion", (sel) => {
     expect(block).toContain(sel);
+  });
+  it("editing in place moves nothing: the text, its input, a cycle and a pick carry no animation", () => {
+    for (const sel of [".ask-act-txt", ".ask-act-input", ".ask-act-cyc", ".ask-act-pick"]) {
+      const rules = ask.match(new RegExp(`[^}]*\\${sel}[^{]*\\{[^}]*\\}`, "g")) ?? [];
+      expect(rules.length).toBeGreaterThan(0);
+      for (const rule of rules) expect(rule).not.toMatch(/animation:/);
+    }
   });
 });
 
@@ -590,7 +652,7 @@ describe("assignment cards — the item, the people, the change", () => {
 
   it("an add beside someone: the ticket (number, title, status mark, a click opens it), \"Adds\" the person, who stays", () => {
     const [h] = cards(withCards([asg(70, 87, "maya", true, ["andres"])]));
-    expect(text(h)).toMatch(/^Assignment Draft, not done yet Edit #87 Fix the Railway deploy In progress Adds MC Maya Chen Andres Lopez stays on it Cancel Confirm$/);
+    expect(text(h)).toMatch(/^Assignment Draft, not done yet #87 Fix the Railway deploy In progress Adds MC Maya Chen Andres Lopez stays on it Cancel Confirm$/);
     expect(h).toContain('data-act="askShOpen" data-arg="ticket:87"');
     expect(h).toContain('data-mtip="Someone is on it."');          // the status is a mark with its meaning, not a pill
     expect(h).not.toMatch(/<select|text-transform:uppercase/);
@@ -610,11 +672,10 @@ describe("assignment cards — the item, the people, the change", () => {
     expect(h.match(/data-act="askAcConfirm" data-arg="74,75"/g)).toHaveLength(1);
   });
 
-  it("Edit is the app's dropdown (avatars, names; never a native select); its menu's props are the trigger's (actionDropdowns)", () => {
+  it("the person is the app's dropdown in place (avatars, names; never a native select, no Edit); its menu's props are the trigger's (actionDropdowns)", () => {
     const s = withCards([asg(76, 87, "maya", true, ["andres"])]);
-    const { ctx } = ctxOf(s, {});
-    actionsPart.act!(ctx, "askAcEdit", "76", null);
     const [h] = cards(s);
+    expect(h).not.toContain("askAcEdit");
     expect(h).toContain('id="ask-ac-asg-76"');
     expect(h).toContain('aria-haspopup="listbox"');
     expect(h).toContain('aria-label="Assign to: Maya Chen"');
@@ -630,7 +691,6 @@ describe("assignment cards — the item, the people, the change", () => {
     const s = withCards([asg(77, 87, "maya", true, ["andres"])]);
     const confirmAction = vi.fn(async (id: number) => ({ results: [result(id, "confirmed", "ticket:87", { assignees: ["andres", "priya"] })] } satisfies AskActionAnswer));
     const { ctx, flashes } = ctxOf(s, { confirmAction });
-    actionsPart.act!(ctx, "askAcEdit", "77", null);
     actionsPart.act!(ctx, "askAcPick", "77|login", "priya");
     expect(text(cards(s)[0])).toContain("Adds PR Priya Raman");
     actionsPart.act!(ctx, "askAcConfirm", "77", null);
@@ -651,7 +711,9 @@ describe("assignment cards — the item, the people, the change", () => {
     const line = (state: AskActionVm["state"]) => text(cards(withCards([asg(78, 87, "maya", true, [], { state, result: state === "failed" ? { error: "Ticket #87 was closed." } : null })]))[0]);
     expect(line("cancelled")).toBe("Cancelled: assign ticket #87 to Maya Chen");
     expect(line("undone")).toBe("Undone: assigned ticket #87 to Maya Chen");
-    expect(line("failed")).toBe("Didn&#39;t work: assign ticket #87 to Maya Chen Ticket #87 was closed.");
+    // One line: what happened, the reason muted on it (all of it in the tooltip), the item to look at.
+    expect(line("failed")).toBe("Didn&#39;t work: assign ticket #87 to Maya Chen Ticket #87 was closed. Open ticket #87");
+    expect(cards(withCards([asg(78, 87, "maya", true, [], { state: "failed", result: { error: "Ticket #87 was closed." } })]))[0]).toContain('<span class="ask-line-why" data-mtip="Ticket #87 was closed.">');
   });
 
   it("a card stored before the fields existed still reads from its preview line", () => {
