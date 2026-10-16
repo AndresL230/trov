@@ -779,8 +779,9 @@ org's real ones, and what is sent names both providers in every mode) — when i
 `capped` / `proposed`), the request came to a loopback `http://` origin (what `wrangler dev` serves on; no deployed
 Worker is reached there) and no live Stripe key is set. Never over MCP. It also answers the plain-language filter route
 from its fixtures (above). And it puts Phase C's sample suggestions on the REAL rows of the ticket detail, Unplaced and
-Review (`ticketSuggestionsFixture`, `unplacedSuggestionFixture`, `reviewRiskFixture`; made-up ids, so Accept and
-Dismiss answer `not_found`) while the switch is on, in `ready` / `proposed`.
+Review (`ticketSuggestionsFixture`, `unplacedSuggestionFixture`, `reviewRiskFixture` — per list: the proposals and
+the drafted decisions are read apart) while the switch is on, in `ready` / `proposed`. Every sample suggestion has
+its OWN made-up id (Q38; the list is in `shared/ai-fixtures.ts`), so no two "because…" open together.
 
 ## Evals (`test/ai-evals/<kind>/`)
 

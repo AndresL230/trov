@@ -163,6 +163,9 @@ const LANES: { id: string; name: string; colorKey: AiThemeLane["colorKey"]; w: n
   { id: "polish", name: "UI polish", colorKey: "rose", w: [0.2, 0.1, 0.2, 0.3, 0.2, 0.2, 0.5, 0.9], early: [0.3, 0.2, 0.4, 0.2, 0.1], description: "Status marks, the Review page and smaller fixes across screens.", prs: [{ ...pr(173), label: "#173 Status marks" }, { ref: "pr:138", label: "#138 Review page", href: gh("pull/138") }] },
 ];
 
+/** The proposed themes' suggestion ids: one per lane from here (Q38: clear of the card samples' 901–908). */
+const PREVIEW_THEME_ID = 910;
+
 export function themesFixture(mode: AiPreviewMode, range: AiThemeRange, now: Date): AiThemes {
   const n = AI_THEME_RANGE_WEEKS[range];
   const weeks = Array.from({ length: n }, (_, i) => monday(now, n - 1 - i));
@@ -174,7 +177,7 @@ export function themesFixture(mode: AiPreviewMode, range: AiThemeRange, now: Dat
       id: l.id, name: l.name, colorKey: l.colorKey, description: l.description, prs: l.prs,
       counts: weights.map((w) => Math.round(w * 6)),
       status: proposed ? "proposed" : "active",
-      suggestionId: proposed ? 900 + i : null,
+      suggestionId: proposed ? PREVIEW_THEME_ID + i : null,
     };
   });
   const prCount = lanes.reduce((s, l) => s + l.counts.reduce((a, b) => a + b, 0), 0);
@@ -662,9 +665,11 @@ export function feedImportanceFixtures(now: Date): FeedRow[] {
 
 // ── Phase C: the card suggestions (the ticket detail, Unplaced, Review) ─────
 // What `LOCAL_AI_PREVIEW` puts on three REAL reads (src/ai/attach.ts): an open ticket's detail gets a category, a
-// priority and a possible duplicate; the first doc-shaped Unplaced item a destination; the first two Review items a
-// risk. Ids are made up (90x), so Accept and Dismiss answer `not_found` in the preview — nothing real changes. `empty`
-// and `capped` show none (no suggestion is these screens' normal state).
+// priority and a possible duplicate; the first doc-shaped Unplaced item a destination; the first two staged
+// proposals and the first two drafted decisions a risk. Ids are made up and EACH sample has its own (Q38: a shared id
+// opened two "because…" at once): 901–903 the ticket, 904 Unplaced, 905–906 the proposals, 907–908 the drafted
+// decisions, 910–915 the proposed themes, 9101–9102 the Roadmap's cards — no row has them, so nothing real changes.
+// `empty` and `capped` show none (no suggestion is these screens' normal state).
 const sugg = (o: Omit<AiSuggestion, "state" | "label"> & { label?: string }): AiSuggestion =>
   ({ state: "open", label: o.label ?? (typeof o.value === "string" ? o.value : JSON.stringify(o.value)), ...o });
 
@@ -696,17 +701,19 @@ export function unplacedSuggestionFixture(mode: AiPreviewMode, id: number): AiSu
   });
 }
 
-/** Review items' risks: the first changes a decision, the second contradicts a doc. */
-export function reviewRiskFixture(mode: AiPreviewMode, ref: string, index: number): AiSuggestion | null {
+/** Review items' risks, per list (the proposals and the drafted decisions are read apart): the first changes a
+ *  decision, the second contradicts a doc. A drafted decision's ids follow the proposals' (907, 908). */
+export function reviewRiskFixture(mode: AiPreviewMode, ref: string, index: number, list: "proposals" | "adrs" = "proposals"): AiSuggestion | null {
   if (mode === "empty" || mode === "capped" || index > 1) return null;
+  const base = list === "adrs" ? 907 : 905;
   return index === 0
     ? sugg({
-        id: 905, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, label: "Changes a decision",
+        id: base, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "decision", label: "Changes a decision" }, label: "Changes a decision",
         reason: "it replaces “A session lasts 7 days.” with “A session lasts 30 days.”; the ratified decision “Short sessions” covers the same ground",
         confidence: 0.78, cites: [{ ref: "adr:3", label: "ADR-003", href: null }],
       })
     : sugg({
-        id: 906, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "contradicts", label: "Contradicts a doc" }, label: "Contradicts a doc",
+        id: base + 1, itemType: "proposal", itemRef: ref, kind: "review.risk", value: { risk: "contradicts", label: "Contradicts a doc" }, label: "Contradicts a doc",
         reason: "it decides “Use D1's FTS5.”; the live doc “Search” covers the same ground", confidence: 0.66, cites: [{ ref: "doc:search", label: "Search", href: null }],
       });
 }

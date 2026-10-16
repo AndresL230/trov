@@ -445,7 +445,7 @@ describe("Repo › Planning › Where the work went", () => {
     expect((block.match(/data-act="aiAccept"/g) ?? []).length).toBe(6);
     expect((block.match(/data-act="aiRenameOpen"/g) ?? []).length).toBe(6);
     expect((block.match(/>Remove<\/button>/g) ?? []).length).toBe(6);
-    expect(block).toContain('data-act="aiAccept" data-arg="900"');
+    expect(block).toContain('data-act="aiAccept" data-arg="910"');
     expect(block).not.toContain("Waiting for an admin");
   });
   it("proposed (member): no buttons, 'Waiting for an admin to accept themes'", () => {
@@ -455,12 +455,12 @@ describe("Repo › Planning › Where the work went", () => {
     expect(h).not.toContain("aiRenameOpen");
   });
   it("Rename is an inline labelled field; a 409 not_available says 'Not available yet'", () => {
-    const h = themesSection(themes("proposed"), rp({ ui: ui({ rename: { id: 901, draft: "Tickets" } }) }));
-    expect(h).toMatch(/<label for="ai-rename-901" class="cnpy-sr">New name for Tickets and sprints<\/label>/);
-    expect(h).toMatch(/<input id="ai-rename-901" data-act="aiRenameDraft" data-arg="901"[^>]*value="Tickets"/);
-    expect(h).toContain('data-act="aiRenameSave" data-arg="901"');
-    const na = themesSection(themes("proposed"), rp({ ui: ui({ unavailable: [902] }) }));
-    const chip = na.slice(na.indexOf('data-ai-chip="theme-902"'));
+    const h = themesSection(themes("proposed"), rp({ ui: ui({ rename: { id: 911, draft: "Tickets" } }) }));
+    expect(h).toMatch(/<label for="ai-rename-911" class="cnpy-sr">New name for Tickets and sprints<\/label>/);
+    expect(h).toMatch(/<input id="ai-rename-911" data-act="aiRenameDraft" data-arg="911"[^>]*value="Tickets"/);
+    expect(h).toContain('data-act="aiRenameSave" data-arg="911"');
+    const na = themesSection(themes("proposed"), rp({ ui: ui({ unavailable: [912] }) }));
+    const chip = na.slice(na.indexOf('data-ai-chip="theme-912"'));
     expect(chip.slice(0, chip.indexOf("</li>"))).toContain("Not available yet");
   });
   it("is Planning's first section, above the panel", () => {
