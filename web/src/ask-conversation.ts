@@ -673,6 +673,8 @@ let ticker: ReturnType<typeof setInterval> | null = null;
 let docWired = false;
 /** Scrollers already listening (a WeakSet: morph would strip a marker attribute). */
 const wired = new WeakSet<HTMLElement>();
+/** Scrollers following the bottom frame by frame while a height glide runs in them (`follow` in afterPaint). */
+const following = new WeakSet<HTMLElement>();
 
 export const conversationPart: AskPart = {
   code: "Cv",
@@ -787,13 +789,28 @@ export const conversationPart: AskPart = {
     return false;
   },
   afterPaint(ctx, mount) {
-    // Stick to the bottom while an answer streams, unless the person scrolled up (the scroller says so).
+    // Stick to the bottom while an answer streams, unless the person scrolled up (the scroller says so) — and keep
+    // FOLLOWING it while a height glide runs (ask-motion.ts rule 4): pinning once at the glide's first frame left the
+    // scroller clamped short of the bottom when the glide grew it (opening Wrong? or the sources), so the next paint's
+    // pin jumped the thread up and the close jumped it back before it glided.
     for (const sc of Array.from(mount.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) {
       if (!wired.has(sc)) {
         wired.add(sc);
         sc.addEventListener("scroll", () => { ctx.ui.conversation.stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60; }, { passive: true });
       }
-      if (ctx.ui.conversation.stick) sc.scrollTop = sc.scrollHeight;
+      if (!ctx.ui.conversation.stick) continue;
+      sc.scrollTop = sc.scrollHeight;
+      if (following.has(sc) || typeof requestAnimationFrame !== "function" || typeof sc.getAnimations !== "function") continue;
+      // The glides are Web Animations (`Animation`, not the CSS ones: the cursor's blink never ends). They start AFTER
+      // this (the controller tweens heights once the parts' afterPaint ran), so look from the next frame on.
+      const gliding = () => sc.getAnimations({ subtree: true }).some((an) => an.constructor === Animation && an.playState === "running");
+      following.add(sc);
+      const follow = (): void => {
+        if (ctx.ui.conversation.stick && sc.isConnected) sc.scrollTop = sc.scrollHeight;
+        if (sc.isConnected && gliding()) requestAnimationFrame(follow);
+        else following.delete(sc);
+      };
+      requestAnimationFrame(follow);
     }
     // "Thinking… Ns" counts between paints (the label alone; the next paint writes the same number).
     if (!ticker && mount.querySelector("[data-ask-think]")) {
