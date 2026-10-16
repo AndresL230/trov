@@ -169,7 +169,8 @@ describe("My Work › Your brief", () => {
   it("ready: the first tile — Now / Recently / Next, the byline, the thumbs-down", () => {
     const html = mw("ready");
     const labels = [...html.matchAll(/data-screen-label="My Work · ([^"]+)"/g)].map((m) => m[1]);
-    expect(labels).toEqual(["Your brief", "Needs your review", "Tickets for you", "Your sessions", "Repo monitor", "Docs you own", "Queued handoffs"]);
+    // The visual order (BR-OWNER-3): Brief, then Needs your review over Repo; Your sessions beside Tickets for you.
+    expect(labels).toEqual(["Your brief", "Needs your review", "Repo monitor", "Your sessions", "Tickets for you", "Docs you own", "Queued handoffs"]);
     const card = html.slice(html.lastIndexOf("<section", html.indexOf('data-mw="brief"')), html.lastIndexOf("<section", html.indexOf('data-mw="review"')));
     const t = text(card);
     expect(t).toContain("Your brief");
@@ -197,7 +198,25 @@ describe("My Work › Your brief", () => {
     const html = mw("ready");
     expect(html).toContain('class="mw-bento mw-bento-brief cnpy-stagger"');
     const tiles = [...html.matchAll(/data-mw="(\w+)"/g)].map((m) => m[1]);
-    expect(tiles).toEqual(["brief", "review", "tickets", "sessions", "repo", "docs", "handoffs"]);
+    expect(tiles).toEqual(["brief", "review", "repo", "sessions", "tickets", "docs", "handoffs"]);
+    // The owner's swap (BR-OWNER-3): Repo stacks under Needs your review beside the brief; Tickets for you takes the
+    // wide slot beside Your sessions; the bottom row is unchanged.
+    expect(css).toContain(`.mw-bento-brief { grid-template-areas:
+  "brief brief brief brief brief brief brief brief review review review review"
+  "brief brief brief brief brief brief brief brief repo repo repo repo"
+  "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
+  "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }`);
+    // A phone stacks Brief, Needs your review, Tickets for you, Repo, then the rest — and the entrance follows it.
+    for (const [k, n] of [["brief", 1], ["review", 2], ["tickets", 3], ["repo", 4], ["sessions", 5], ["docs", 6], ["handoffs", 7]] as const) {
+      expect(css).toContain(`  .mw-bento-brief > [data-mw="${k}"]${k === "brief" ? ", .mw-bento-brief > .cnpy-ai-leave" : ""} { order:${n}; }`);
+    }
+    expect(css).toContain('  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="tickets"] { --n:2; }');
+    expect(css).toContain('  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="repo"] { --n:3; }');
+    // In the brief's bento the three list tiles are in their two-row mode; without it they are not.
+    for (const k of ["review", "repo", "tickets"]) {
+      const open2 = html.lastIndexOf("<section", html.indexOf(`data-mw="${k}"`));
+      expect(html.slice(open2, html.indexOf("</section>", open2)), k).toMatch(/mw-side-(body|swap)/);
+    }
     expect(text(html.slice(html.indexOf('data-mw="handoffs"')))).toContain("Queued handoffs");
     // NO tile scrolls (BR-OWNER-1): the rows size to what the tiles hold — no fixed height, no fixed rows, no
     // scrolling region in the brief bento — and the brief tile has no scrolling region at all.

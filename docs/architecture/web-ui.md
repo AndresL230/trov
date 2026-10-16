@@ -956,6 +956,17 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
 - **Labels** in the brief's Now / Recently / Next and State's heading use `var(--label)` — the existing label
   style, which is Geist outside the sidebar (Archivo Narrow stays the sidebar's face only).
 - Radii are inline, at values the corners block already scales; nothing new needed a line there.
+- **The brief's one shape** (BR-OWNER-1; `trov.css` `.mw-brief-*`, the caps `AI_BRIEF_*`): Now, Recently and Next
+  are always drawn ("Nothing new." in an empty part), in boxes of a FIXED height — a sentence and its one row of
+  sources in room for three lines (92px), Next three rows of a one-line title over a two-line why (60px each), unused
+  rows kept — so the body is 404px for every brief, and the empty and capped states hold it (an unwritten brief holds
+  the byline's place too). A narrow bento (≤860px) gives four lines and three (508px); one column (≤700px) lets each
+  box take its text's height. Text past a box is clamped (`line-clamp`) with its whole text as the tooltip
+  (`data-mtip`), so even an older, longer brief never overflows; the producer's caps mean a new one never needs it.
+  Next keeps one row per kind's group (`AI_NEXT_GROUP`) whatever an older brief stored, and an `overdue` item is
+  "Overdue" in the danger tone. Measured in Chromium through the real render, without a dev server: one height at
+  1440, 1280 and 1024 for the fixture, a brief at every cap, an older over-long one, a thin one, empty and capped,
+  and no tile in the bento scrolls at 1440, 1280, 1024 or 360.
 - **Motion** is the app's own: the brief tile rises with the bento's `.cnpy-stagger`; its Now / Recently / Next
   (label and line on one `--i`), each Next item and the byline rise in order (`.cnpy-rise`), only under
   `[data-enter]`, so a rerender never replays them; landing after the entrance, the tile takes the dashboard

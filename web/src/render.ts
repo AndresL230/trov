@@ -2704,8 +2704,8 @@ function myWorkView(s: AppState): string {
   // Tickets 7 | Sessions 5, then Repo 7 | Needs your review 5.
   // Your brief (written by Trov) is a tile of its own, ONLY when the dashboard carries one and this
   // person has not pressed "Wrong?" on it. With it the bento is laid out by AREA (trov.css
-  // `.mw-bento-brief`): Brief tall on the left beside Needs your review over Tickets; Your sessions tall
-  // on the left beside Repo over two small tiles, Docs you own and Queued handoffs.
+  // `.mw-bento-brief`, BR-OWNER-3): Brief tall on the left beside Needs your review over Repo; Your sessions tall
+  // on the left beside Tickets for you over two small tiles, Docs you own and Queued handoffs.
   const reviewClear = reviewLoad === "ok" && reviewItems.length === 0;
   // "Wrong?" on it: the tile leaves by the AI kit's one exit IN its slot (`aiLeaving`), and only then does the bento
   // take its other layout (ai-actions.ts fades that one in).
@@ -2713,7 +2713,9 @@ function myWorkView(s: AppState): string {
   const brief = d?.brief && (!s.ai.hidden.includes(briefKey) || aiLeavingT(s.ai, briefKey) !== null) ? d.brief : null;
   const strips = brief ? [] : ["library"];
   const order = brief
-    ? ["brief", "review", "tickets", "sessions", "repo", "docs", "handoffs"]
+    // In the visual order (BR-OWNER-3): Brief beside Needs your review over Repo; Your sessions beside Tickets for
+    // you; then Docs you own and Queued handoffs. A phone reorders by CSS (trov.css `.mw-bento-brief` at 700px).
+    ? ["brief", "review", "repo", "sessions", "tickets", "docs", "handoffs"]
     : reviewClear ? ["tickets", "sessions", "repo", "review"] : ["tickets", "review", "sessions", "repo"];
   // With the brief, the areas place every tile; the spans only matter below the phone breakpoint (all 12).
   const span: Record<string, number> = brief
@@ -2727,7 +2729,7 @@ function myWorkView(s: AppState): string {
     tickets: () => ticketsTile({ load: dLoad, rows: tickets, total: ticketsTotal, expanded: s.mwExpanded.tickets }, degraded, span.tickets, dueOf, !!brief),
     review: () => reviewTile(reviewItems, reviewLoad, span.review, !!brief),
     sessions: () => sessionsTile(sessions, feedLoad, waiting, span.sessions),
-    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s) }),
+    repo: () => repoTile(s.repo.data, mwLoad(s.repo.status, !!s.repo.data), s.mwRepoTab, span.repo, { noRepo: s.orgMe.status === "ok" && !s.orgMe.data?.repos.primary, admin: viewerIsAdmin(s), beside: !!brief }),
     library: () => libraryStrip(library, span.library),
     docs: () => libTiles?.docs ?? "",
     handoffs: () => libTiles?.handoffs ?? "",

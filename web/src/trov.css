@@ -71,33 +71,38 @@ input, select { font-family: inherit; }
 .mw-lib { display:grid; grid-template-columns:minmax(0,1fr) 1px minmax(0,1fr) 1px minmax(0,1fr); }
 .mw-libdiv { width:1px; height:100%; }
 /* With Your brief (render.ts): the bento by AREA, so each tile is sized to what it holds and the whole
-   closes as one rectangle — Brief tall beside Needs your review over Tickets; Your sessions tall beside
-   Repo over Docs you own and Queued handoffs. */
+   closes as one rectangle — Brief tall beside Needs your review over Repo (the owner's swap, BR-OWNER-3); Your
+   sessions tall beside Tickets for you over Docs you own and Queued handoffs. On a phone it stacks Brief, Needs
+   your review, Tickets for you, Repo, then the rest (`order`, and the entrance's steps with it). */
 .mw-bento-brief { grid-template-areas:
-  "brief brief brief brief brief brief brief review review review review review"
-  "brief brief brief brief brief brief brief tickets tickets tickets tickets tickets"
-  "sessions sessions sessions sessions repo repo repo repo repo repo repo repo"
+  "brief brief brief brief brief brief brief brief review review review review"
+  "brief brief brief brief brief brief brief brief repo repo repo repo"
+  "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
   "sessions sessions sessions sessions docs docs docs docs hand hand hand hand"; }
 /* NO tile scrolls (the owner, BR-OWNER-1 — replacing the fixed-height rows of earlier on 2026-10-15): the rows
    size to what the tiles hold, and everything they hold is bounded — the brief is ONE shape (`.mw-brief-*`
    below), Needs your review and Tickets show at most three rows, Your sessions two, Repo keeps its own floor.
    Brief = rows 1 + 2, Your sessions = rows 3 + 4. */
 .mw-bento-brief > [data-mw="brief"] { grid-area:brief; }
-/* Beside the brief (BR-OWNER-2; mywork.ts `MW_BESIDE_ROWS`): Needs your review and Tickets for you, five columns
-   wide, two rows each in fixed boxes — a two-line title (its whole text the tooltip when longer), one line under
-   it — then the "N more" line, its place kept when there is none; unused rows are kept empty. Every state of the
-   tile fills the same body (`.mw-side-body`), so the pair is one height and lines up with the brief. */
+/* In the brief's bento (BR-OWNER-2/3; mywork.ts `MW_BESIDE_ROWS`): Needs your review, Tickets for you and Repo hold
+   two rows each in fixed boxes — a review or ticket row a two-line title (its whole text the tooltip when longer)
+   over one line, a Repo row one truncated line — then the "N more" line, its place kept when there is none; unused
+   rows are kept empty. Every state of a tile fills the same body (`.mw-side-body`, `.mw-side-swap`), so Needs your
+   review over Repo is one height and lines up with the brief beside it. */
 .mw-side-body { display:flex; flex-direction:column; flex:1 1 auto; }
 .mw-side-body[data-side="review"] { min-height:259px; }
 .mw-side-body[data-side="tickets"] { min-height:239px; }
 .mw-side-rows { display:flex; flex-direction:column; flex:1 1 auto; }
 .mw-side-row { box-sizing:border-box; height:84px; flex:none; overflow:hidden; }
 .mw-side-pad { border-top:1px solid transparent; }
-.mw-side-title { display:-webkit-box !important; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; height:40px; line-height:20px !important; overflow:hidden; overflow-wrap:anywhere; }
+.mw-side-title { display:-webkit-box !important; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; max-height:40px; line-height:20px !important; overflow:hidden; overflow-wrap:anywhere; }
 .mw-side-meta { flex-wrap:nowrap !important; height:20px; line-height:20px; white-space:nowrap; overflow:hidden; }
 .mw-side-sub { box-sizing:border-box; height:32px; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .mw-side-foot { box-sizing:border-box; height:39px; line-height:20px; margin-top:auto; flex:none; }
 .mw-side-foot-pad { border-top:1px solid transparent; }
+/* Repo: its summary line (41), two rows (39 each) and the "N more" line (39) — 158px — and +2 for a 1px rule at
+   fractional display scaling, as `.mw-repo-swap` measures. */
+.mw-repo-swap.mw-side-swap, .mw-side-swap { min-height:calc(41px + 2 * 39px + 39px + 2px); display:flex; flex-direction:column; flex:1 1 auto; }
 .mw-bento-brief > [data-mw="review"] { grid-area:review; }
 .mw-bento-brief > [data-mw="tickets"] { grid-area:tickets; }
 .mw-bento-brief > [data-mw="sessions"] { grid-area:sessions; }
@@ -126,6 +131,17 @@ input, select { font-family: inherit; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
   .mw-bento-brief { grid-template-areas:none; }
+  .mw-bento-brief > [data-mw="brief"], .mw-bento-brief > .cnpy-ai-leave { order:1; }
+  .mw-bento-brief > [data-mw="review"] { order:2; }
+  .mw-bento-brief > [data-mw="tickets"] { order:3; }
+  .mw-bento-brief > [data-mw="repo"] { order:4; }
+  .mw-bento-brief > [data-mw="sessions"] { order:5; }
+  .mw-bento-brief > [data-mw="docs"] { order:6; }
+  .mw-bento-brief > [data-mw="handoffs"] { order:7; }
+  /* The entrance follows what is seen: Tickets for you rises third, Repo fourth. */
+  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="tickets"] { --n:2; }
+  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="repo"] { --n:3; }
+  [data-enter] .mw-bento-brief.cnpy-stagger > [data-mw="sessions"] { --n:4; }
   .mw-side-body[data-side] { min-height:0; }
   .mw-bento-brief > .mw-tile { grid-area:auto; grid-column:span 12; }
   .mw-bento-brief > .cnpy-ai-leave { grid-area:auto; grid-column:span 12; }

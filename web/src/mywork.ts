@@ -265,7 +265,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
 }
 
 // ── repo monitor ─────────────────────────────────────────────────────────────
-interface RepoPanel { head: string; headColor: string; sub: string; rows: { tone: string; title: string; ref: string; time: string; href?: string }[]; note?: string }
+interface RepoPanel { head: string; headColor: string; sub: string; rows: { tone: string; title: string; ref: string; time: string; href?: string }[]; note?: string; /** How many there are in all, when the rows are capped. */ total?: number }
 
 const NOT_CONNECTED = "Not connected yet — the Repo dashboard says what it waits on.";
 const NOTHING = "Nothing captured in this window.";
@@ -284,6 +284,7 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
       head: total ? String(total) : "No", headColor: total ? "var(--red)" : "var(--green)",
       sub: `CI failure${total === 1 ? "" : "s"} this week${s.data.rate !== null ? ` · ${s.data.rate.toFixed(1)}% of runs` : ""}`,
       rows: rows.slice(0, 3).map((r) => ({ tone: "var(--red)", title: r.job ? `${r.workflow} · ${r.job}` : r.workflow, ref: r.branch, time: relTime(r.at), href: r.url })),
+      total,
     };
   }
   if (tab === "deploys") {
@@ -298,6 +299,7 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
       head: String(envs.length), headColor: down || failing ? "var(--red)" : "var(--fg)",
       sub: `environment${envs.length === 1 ? "" : "s"}${down ? ` · ${down} down` : ""}${failing ? ` · ${failing} failing` : ""}`,
       rows: envs.map((e) => { const p = latest(e); return { tone: TONE[e.tone], title: `${e.name} · ${e.pill.toLowerCase()}`, ref: p?.sha ? p.sha.slice(0, 7) : "", time: p?.deployedAt ? relTime(p.deployedAt) : "" }; }),
+      total: envs.length,
     };
   }
   const s = d.prs;
@@ -311,21 +313,25 @@ function repoPanel(d: RepoDashboard, tab: MwRepoTab): RepoPanel {
   const tone = { review: "var(--blue)", approved: "var(--green)", draft: "var(--fg-40)", merged: "var(--accent)", closed: "var(--fg-40)" } as const;
   const shown = list.slice(0, 3).map((p) => ({ tone: tone[p.state], title: p.title, ref: `#${p.number}`, time: relTime(p.at), href: p.url }));
   if (openCount === null) {
-    return { head: "", headColor: "", sub: "Open PRs not captured yet — showing recent merged/closed", rows: shown };
+    return { head: "", headColor: "", sub: "Open PRs not captured yet — showing recent merged/closed", rows: shown, total: list.length };
   }
   return {
+    total: open.length ? Math.max(openCount, open.length) : list.length,
     head: String(openCount), headColor: "var(--fg)",
     sub: `open pull request${openCount === 1 ? "" : "s"}${open.length || !rows.length ? "" : " · latest below"}`,
     rows: shown,
   };
 }
 
-export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number, o: { noRepo?: boolean; admin?: boolean } = {}): string {
+export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTab, span: number, o: { noRepo?: boolean; admin?: boolean; beside?: boolean } = {}): string {
+  // In the brief's bento (BR-OWNER-3) Repo is the narrow tile under Needs your review: TWO rows (titles truncate), then
+  // "N more in Repo" (its place kept when there is none), in one fixed body (`.mw-side-swap`) whatever the panel holds.
+  const nRows = o.beside ? MW_BESIDE_ROWS : 3;
   // Sample data (the Repo screen's "Preview with sample data", session-only)
   // replaces `state.repo` wholesale — there is no live payload left to show
   // instead — so it stays on the tile, but never unlabelled.
   const sampleTag = repo?.sample ? `<span class="mw-repo-sample">${kindMark("Sample data", "warn", 11.5, "Placeholder values from the Repo screen's preview, not this repository's.")}</span>` : "";
-  const name = repo?.repo || sampleTag ? `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${sampleTag}${repo?.repo ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40)">${esc(repo.repo)}</span>` : ""}</span>` : "";
+  const name = repo?.repo || sampleTag ? `<span style="display:inline-flex;align-items:center;gap:8px;min-width:0">${sampleTag}${repo?.repo ? `<span style="font-family:var(--label);font-size:12px;color:var(--fg-40)${o.beside ? ";min-width:0;overflow:hidden;text-overflow:ellipsis" : ""}"${o.beside ? ` title="${attr(repo.repo)}"` : ""}>${esc(repo.repo)}</span>` : ""}</span>` : "";
   const head = tileHead("Repo", { act: "goRepo", label: "Dashboard" }, name);
   const tabs = `<div style="padding:10px 16px 12px">${segmented({
     id: "mw-repo", ariaLabel: "Repo view", value: tab, act: "mwRepoTab", size: "xs", inertOn: true,
@@ -336,18 +342,20 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
   // The organization has no repository (`GET /me` said so — read, not guessed): nothing to monitor yet.
   // Only an admin can connect one, so only an admin is offered the way there.
   if (o.noRepo && !repo?.sample) {
-    return tile("repo", span, "Repo monitor", `${head}${tabs}${emptyLayout("mw-repo", { text: MW_EMPTY.repo, action: o.admin ? { label: "Connect a repository", act: "orgGo", arg: "repos" } : null, plain: true, shapes: skList(3, row), sayStyle: "padding:10px 16px 14px;border-top:1px solid var(--border)" })}`);
+    const empty = emptyLayout("mw-repo", { text: MW_EMPTY.repo, action: o.admin ? { label: "Connect a repository", act: "orgGo", arg: "repos" } : null, plain: true, shapes: skList(o.beside ? 1 : 3, row), sayStyle: "padding:10px 16px 14px;border-top:1px solid var(--border)" });
+    return tile("repo", span, "Repo monitor", `${head}${tabs}${o.beside ? `<div class="mw-side-swap">${empty}</div>` : empty}`);
   }
   if (!repo && load !== "error") {
     // The summary line, then the three rows.
-    return tile("repo", span, "Repo monitor", `${head}${tabs}${skeleton("mw-repo", "Loading&hellip;", `<div style="padding:10px 16px;border-top:1px solid var(--border)">${skLine("46%", 13.5, 1.5)}</div>${skList(3, row)}`)}`);
+    const sk = skeleton("mw-repo", "Loading&hellip;", `<div style="padding:10px 16px;border-top:1px solid var(--border)">${skLine("46%", 13.5, 1.5)}</div>${skList(nRows, row)}`);
+    return tile("repo", span, "Repo monitor", `${head}${tabs}${o.beside ? `<div class="mw-side-swap">${sk}</div>` : sk}`);
   }
-  if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${tileNote("Couldn't load the Repo dashboard.")}`);
+  if (!repo) return tile("repo", span, "Repo monitor", `${head}${tabs}${o.beside ? `<div class="mw-side-swap">${tileNote("Couldn't load the Repo dashboard.")}</div>` : tileNote("Couldn't load the Repo dashboard.")}`);
   const p = repoPanel(repo, tab);
   const inner = p.note
     ? tileNote(p.note)
     : `<div class="mw-repo-sum" style="display:flex;align-items:baseline;gap:6px;padding:10px 16px;border-top:1px solid var(--border);font-size:13.5px">${p.head ? `<span style="font-weight:500;color:${p.headColor};font-variant-numeric:tabular-nums;flex:none">${esc(p.head)}</span>` : ""}<span style="color:var(--fg-55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.sub)}</span></div>
-      ${p.rows.map((r) => {
+      ${(o.beside ? p.rows.slice(0, nRows) : p.rows).map((r) => {
         const open = r.href ? `<a href="${attr(safeUrl(r.href))}" target="_blank" rel="noopener" class="mw-row mw-repo-row" style="text-decoration:none;color:inherit;` : `<div class="mw-repo-row" style="`;
         const close = r.href ? "</a>" : "</div>";
         return `${open}display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 16px;border-top:1px solid var(--border)">
@@ -356,6 +364,11 @@ export function repoTile(repo: RepoDashboard | null, load: MwLoad, tab: MwRepoTa
           <span style="font-size:12.5px;color:var(--fg-40);white-space:nowrap">${esc(r.time)}</span>
         ${close}`;
       }).join("")}`;
+  if (o.beside) {
+    const more = p.note ? 0 : Math.max(0, (p.total ?? p.rows.length) - Math.min(p.rows.length, nRows));
+    const foot = p.note ? "" : sideFoot(more > 0 ? `<button data-act="goRepo" class="mw-more mw-side-foot" style="${FOOT_BTN};border-top:1px solid var(--border);width:100%">${more} more in Repo</button>` : "");
+    return tile("repo", span, "Repo monitor", `${head}${tabs}<div class="mw-repo-swap mw-side-swap" style="flex:1;display:flex;flex-direction:column">${inner}${foot}</div>`);
+  }
   return tile("repo", span, "Repo monitor", `${head}${tabs}<div class="mw-repo-swap" style="flex:1;display:flex;flex-direction:column">${inner}</div>`);
 }
 
