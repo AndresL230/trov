@@ -159,6 +159,7 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   card an Accept / Dismiss took — and a note or the drift "Wrong?" took — is Review's `.cnpy-rv-row`: `data-verdict`
   + `inert`, collapsing over `AI_EXIT_MS` (= `REVIEW_EXIT_MS`), then not drawn (`state.ai.leaving` / `decided` in
   `ai-actions.ts`, which only HIDE rows of the read). The write goes on the click; a failure puts the card back with a
-  toast; the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
+  toast — a 400's own `message` as the server wrote it (the writer's refusal, e.g. "that sprint draft is not one Trov
+  can create"; Q21/Q40), else "Couldn't do that. Try again." (`refusalText`, `ai-actions.ts`); the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
   Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
   (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).

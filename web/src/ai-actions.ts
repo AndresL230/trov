@@ -14,7 +14,7 @@
 import type { AppState } from "./render";
 import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, AI_NOTE_LEAVING, aiHiddenKey, aiSuggestionKey, type AiFeedSource } from "./ai-ui";
 import { AI_ITEM_TYPES, AI_THEME_RANGES, type AiFeedbackBody, type AiThemeRange } from "@shared/ai-core";
-import { ApiError, PreviewBlocked, Unauthorized, acceptAiSuggestion, dismissAiSuggestion, sendAiFeedback } from "./api";
+import { ApiError, OrgApiError, PreviewBlocked, Unauthorized, acceptAiSuggestion, dismissAiSuggestion, sendAiFeedback } from "./api";
 
 export interface AiHost {
   state: AppState;
@@ -46,6 +46,14 @@ export function parseFeedbackArg(arg: string | null): AiFeedbackBody | null {
     if (typeof j.itemRef !== "string" || !j.itemRef || typeof j.kind !== "string") return null;
     return { itemType: j.itemType, itemRef: j.itemRef, kind: j.kind, model: typeof j.model === "string" ? j.model : null, promptVersion: typeof j.promptVersion === "string" ? j.promptVersion : null };
   } catch { return null; }
+}
+
+/** What a refused Accept / Dismiss says: a 400's own sentence as the server wrote it (a theme name that is taken, a
+ *  Roadmap writer's refusal — Q20, Q21/Q40), else what is known, else the generic line. */
+export function refusalText(e: unknown): string {
+  if (e instanceof OrgApiError && e.status === 400 && e.detail) return e.detail;
+  if (e instanceof ApiError && e.message === "not_open") return "Someone already answered that suggestion.";
+  return "Couldn't do that. Try again.";
 }
 
 /** The handles that pressed "Got it" on this browser. */
@@ -144,9 +152,7 @@ export function createAiController(host: AiHost): AiController {
         if (e instanceof ApiError && e.message === "not_available") {
           if (!u.unavailable.includes(id)) u.unavailable = [...u.unavailable, id];
           if (u.rename?.id === id) u.rename = null;
-        } else if (!(e instanceof PreviewBlocked)) {
-          host.flash(e instanceof ApiError && e.message === "not_open" ? "Someone already answered that suggestion." : "Couldn't do that. Try again.", 5000);
-        }
+        } else if (!(e instanceof PreviewBlocked)) host.flash(refusalText(e), 5000);
         rerender();
       });
   }

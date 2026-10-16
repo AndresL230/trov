@@ -8,10 +8,12 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const calls = vi.hoisted(() => ({ accept: [] as Array<(ok: boolean) => void>, dismiss: [] as Array<(ok: boolean) => void>, feedback: [] as Array<(ok: boolean) => void> }));
+/** A pending call is answered with true (200), false (a bare 400 `invalid`) or the error to reject with. */
+type Answer = (ok: boolean | Error) => void;
+const calls = vi.hoisted(() => ({ accept: [] as Array<Answer>, dismiss: [] as Array<Answer>, feedback: [] as Array<Answer> }));
 vi.mock("../web/src/api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../web/src/api")>();
-  const pending = (list: Array<(ok: boolean) => void>) => new Promise<unknown>((res, rej) => list.push((ok) => (ok ? res({}) : rej(new real.ApiError(400, "invalid")))));
+  const pending = (list: Array<Answer>) => new Promise<unknown>((res, rej) => list.push((ok) => (ok === true ? res({}) : rej(ok === false ? new real.ApiError(400, "invalid") : ok))));
   return {
     ...real,
     acceptAiSuggestion: () => pending(calls.accept),
@@ -22,6 +24,7 @@ vi.mock("../web/src/api", async (importOriginal) => {
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
 
 import { createAiController } from "../web/src/ai-actions";
+import { OrgApiError } from "../web/src/api";
 import { AI_EXIT_MS, aiSuggestionKey } from "../web/src/ai-ui";
 import { initialState, type AppState } from "../web/src/render";
 import { roadmapSuggestionCards } from "../web/src/roadmap-ai";
@@ -101,6 +104,28 @@ describe("a Roadmap card leaves by the AI kit's one exit", () => {
     expect(h.log.flashes).toEqual(["Couldn't do that. Try again."]);
     vi.advanceTimersByTime(AI_EXIT_MS);
     expect(h.log.afterDecide).toEqual([]);
+  });
+
+  it("a 400 that carries the server's sentence says it as it is (Q21/Q40: a Roadmap writer; Q20: a theme name)", async () => {
+    const h = harness();
+    h.ctl.act("aiAccept", String(A.id), null);
+    calls.accept[0](new OrgApiError(400, "invalid", "that sprint draft is not one Trov can create", null));
+    await flush();
+    expect(h.log.flashes).toEqual(["that sprint draft is not one Trov can create"]);
+    expect(h.state.ai.leaving).toEqual([]); // back exactly, as any failure
+    const r = harness("repo");
+    r.state.ai.rename = { id: B.id, draft: "Billing" };
+    r.ctl.act("aiRenameSave", null, null);
+    calls.accept[1](new OrgApiError(400, "invalid", "A theme named Billing already exists.", null));
+    await flush();
+    expect(r.log.flashes).toEqual(["A theme named Billing already exists."]);
+    expect(r.state.ai.rename).toEqual({ id: B.id, draft: "Billing" }); // the field stays open to change the name
+    // A 409 with no sentence keeps its own words.
+    const n = harness();
+    n.ctl.act("aiDismiss", String(A.id), null);
+    calls.dismiss[0](new OrgApiError(409, "not_open", null, null));
+    await flush();
+    expect(n.log.flashes).toEqual(["Someone already answered that suggestion."]);
   });
 
   it("reduced motion: gone at once (the exit's class is display:none there), and the re-read goes at once", async () => {
