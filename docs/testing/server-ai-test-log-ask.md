@@ -322,3 +322,180 @@ resize bounds / phone sheet / settings Save) all held, and no run showed a horiz
 failed script. The final-pass screenshots matched the ones linked above and were not kept twice.
 
 Typecheck: pass at every commit. Full suite: the gate script once, at the final commit — see the report.
+
+## Final pass 2026-10-16
+
+The last browser pass of Ask before #178 ships: the Tier 1 Ask screen cases again, plus everything that changed on
+2026-10-16 (the fixed orbs, the wait row, steps that appear one at a time, the pacer, `settleTail`, the scroll rules
+and jump arrow, the floating Cancel / Confirm, inline edits, the assignment and claim cards, the single-item card,
+the diagram, the composer chips) and the regressions the #187 merge could have caused (lazy chunks).
+
+**Setup.** Branch `ai/e2e-final-ask` off `ai/screens` 40d88ea6, worktree `~/Projects/trov-e2e-ask`, its own
+`wrangler dev --port 8851 --test-scheduled` with a `vite build --watch` beside it. The local D1 is a copy of the :8790
+preview: every scenario plus the Ask showcase. **`LOCAL_AI_PREVIEW` is off, and the ANTHROPIC / TYPESAFE keys are
+live**, so these are REAL Ask answers (17 questions were sent in all). `DEV_LOGIN=AndresL230`; Pinecone (free, at its
+cap) and Northwind (Team) were opened through `/auth/dev/as`. The browser was headless Playwright Chromium, because
+the Chrome automation tab runs no `requestAnimationFrame`. Viewports were 1440×900, 390×844 and 360×780, plus the ⌘J
+panel; light and dark (`trov.theme`); `reducedMotion` emulated on and off. A per-frame sampler recorded each live
+answer frame by frame: the wait row, the orb's state, the orb's canvas ink (mean RGB of its drawn dots), the
+shimmer's `getAnimations()`, the steps, the length of the streamed text, any raw markdown in the rendered text, the
+scroller's position and the jump arrow. Screenshots:
+[`server-ai-shots/final-ask/`](server-ai-shots/final-ask/).
+
+**Pace, measured** (the length of the rendered text per frame; ref chips render longer than their `[[ref]]` token, so
+the lower bound below removes chips and tables):
+
+| answer | chars / time | avg cps | 1 s windows (median · p90 · max) | lower bound avg (max) | chars a frame (median · p95) |
+| --- | --- | --- | --- | --- | --- |
+| 1440 light, new thread, file + sprint chip | 3173 / 28.7 s | 111 | 112 · 153* · 155* | 94 (118) | 2 · 4 |
+| 1440 dark, after both fixes | 4125 / 38.4 s | 107 | 110 · 117 · 119 | 97 (119) | 2 · 3 |
+| ⌘J panel dark (until Stop) | 257 / 2.3 s | 110 | 118 | 104 (118) | 2 · 3 |
+| 390 light, table-heavy | 920 / 10.5 s | 87 | 96 · 117 · 117 | — | 2 · 34† |
+
+\* Windows that hold ref chips (a chip's name is longer than its token). † A table row lands whole once its closing
+bar arrives (`settleTail`), 53–86 characters in one frame; between rows the words come 1–4 characters a frame.
+Character by character, within 70–120 cps: **pass**.
+
+| id | surface | state | expected | source | actual | result | evidence | fix |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| F-OR1 | answer orbs | live, 1440 light + dark | the cube ("solving") while Trov thinks: from Send until a step or the first words | ask.md › Working, shown; web-ui.md › The thinking orb | `solving` from 0 ms in every live answer | pass | q1/q2 timelines | — |
+| F-OR2 | | live, search steps | the globe ("searching") while a search runs | same, `stepOrb` | "Searched Trov for …", "Looked up … in Trov's docs", "Searched tickets" → `searching` | pass | q1 light/dark | — |
+| F-OR3 | | live, other steps | the orbits ("working") for other work | same | "Looked at the sprint", "Checked CI and deploys" → `working` | pass | q1 | — |
+| F-OR4 | | live, a block out before the words | the ribbon ("composing") with "Writing…" | same | ⌘J dark: the ticket card, then `composing` "Writing…" until the words; light 1440 the same | pass | writing-ribbon-dark.png, writing-ribbon-light.png | — |
+| F-OR5 | | live, light + dark (**dark was UNVERIFIED**) | the orb's ink is the theme's `--purple` (#804db7 light, #a98bd6 dark) | web-ui.md (setInk) | light: mean dot RGB 127,76,182; dark: 168,138,214, for all four orbs | pass | sampler `ink` | — |
+| F-OR6 | | reduced motion | one static frame, no loop | web-ui.md | two canvas snapshots 300–400 ms apart are identical (both themes); motion on: they differ | pass | wait-check | — |
+| F-WR1 | the wait row | live | "Thinking…" with the orb, UNDER the steps for the whole wait, gone once words stream | ask.md | there from 0 ms; stays while the steps appear; gone at the first word (cursor) | pass | timelines, wait-row-*.png | — |
+| F-WR2 | | live, a block out | "Writing…" | same | yes, with the ribbon | pass | writing-ribbon-*.png | — |
+| F-ST1 | steps | live | appear one at a time, ~350 ms apart (`stepMs`) | ask.md, ask-pace.ts | each runs about 350 ms, then the next appears: 1833 / 2200 / 2550 / 2869 / 3234 ms; 1766 → 2136 ms | pass | q2 timeline | — |
+| F-ST2 | | live | the latest step stays running until the answer starts | ask.md | the last step held `is-run` from 2.1 s to the first word at 7.5 s (light), 2.9 s → 11.4 s (dark) | pass | q1 timelines | — |
+| F-SH1 | shimmer | motion on | a purple sweep on the running step's label and the wait label | trov.css › ask-shimmer | `ask-shimmer: running` on both; gradient through `--purple` (128,77,183 / 169,139,214) | pass | sampler `bgimg` | — |
+| F-SH2 | | reduced motion, 390 light + 1440 both themes | the sweep is off and the words are plain `--fg-55` | trov.css comment, ask.md | **no animation, but the words drew `color: transparent` on a static gradient** (`background-clip: text`, with a faint purple at the right end): the reduced-motion rule (trov.css L3038) came BEFORE the sweep rule (L3165) with the same selector, so the sweep's `background` / `color` won | fail → fixed | phone-reduced-wait-light.png; after: wait-row-*-reduced.png (`rgb(110,110,120)` light, `rgba(237,233,226,.55)` dark, `background: none`) | 554a4e12 (AU-F-RM1) |
+| F-PC1 | pacer | live, 1440 | 70–120 cps, one character at a time | ask-pace.ts `ASK_PACE` | see the pace table | pass | q1-*.out | — |
+| F-PC2 | | live, 390 | same; a table scrolls in its block | ask.md | as the table; table 346 px wide, scrollWidth 530, `overflow-x: auto`; no page scroll | pass | phone-answer-light.png | — |
+| F-MD1 | settleTail | live, 1440 light (headings, bold, inline code, a table, refs, lists) | no raw markdown on any frame | ask.md › Half-written markdown | 0 of 2092 frames | pass | q1 light | — |
+| F-MD2 | markdown | live, ⌘J dark | the same | same | **`**` shown raw around inline code**: `1. **\`quiz.spec.ts\`:** it passes…` drew `**quiz.spec.ts:** it passes` on 124 frames AND in the finished answer. `emphasis` split the line on code spans before pairing `**`, so a bold mark around code could never pair (and could pair wrongly across a code span) | fail → fixed | md-bold-code-fixed.png (after) | 53b62388 (AU-F-MD1) |
+| F-MD3 | | live dark after the fix; every stored thread | no raw marks | — | an answer with bold code, a link, 9 table lines and 9 headings: 0 of 3086 frames; 18 stored threads: 0 raw, `<strong><code>` drawn | pass | answer-dark.png | — |
+| F-SP1 | Stop | ⌘J dark, mid-pace (the server had already finished) | Stop shows everything received at once | ask-pace.ts `flush` | 257 → 2091 characters in one frame; the footer comes (the turn was done, so no "Stopped" line) | pass | cmdj-stopped-dark.png | — |
+| F-SP2 | | 390 dark, while a step ran (the server was still working) | "Stopped. The answer above is partial." | AU-29 | so; the step is shown done; no footer until a reload (QA-4 still open) | pass | AU-29-stop-phone-dark.png | — |
+| F-SC1 | scroll | live | an eased follow while streaming | ask.md › The bottom | ≤ 20 px a frame, ≤ 106 px behind (a whole table landing), 0 at the end; on the phone ≤ 32 / ≤ 54 | pass | sampler | — |
+| F-SC2 | | stored 9501 | opening the sources, a step's results or Wrong? never moves the view | same | the scroller's top and the clicked control's y are unchanged on every frame for each of the three | pass | ux | — |
+| F-SC3 | | live, scrolled up 500 px mid-answer | scrolling up lets go | same | the top stayed put for 1.5 s while 70 / 157 more characters arrived | pass | jump-busy-*.png | — |
+| F-SC4 | jump arrow | stored | shows past 160 px, never before | ask.md (`AWAY_PX`) | 100 / 160 px: hidden (`tabindex=-1`); 220 px: shown | pass | jump | — |
+| F-SC5 | | live, light + dark | purple while an answer is still coming; grey otherwise | same | busy: 128,77,183 / 169,139,214; idle: 79,79,88 | pass | jump-busy-*.png | — |
+| F-SC6 | | live + stored | a click glides back and holds on | same | gap 569 → 0 over ~30 frames, eased; following again afterwards (≤ 17 px a frame, ≤ 41 behind) | pass | sampler | — |
+| F-WC1 | write cards | ticket (1440 light), assignment (dark), claim (390 light), group | the frame holds content only; Cancel / Confirm float outside, under its bottom-right edge, with no background | ask.md › The floating pair | 0 buttons in the frame; pair 8 px under the card, right edges aligned, transparent | pass | card-*.png | — |
+| F-WC2 | | new ticket | the title edits in place | ask.md | a click → an input with the same class and value, focused; Enter keeps "(edited)" | pass | w1 | — |
+| F-WC3 | | | category / priority: a word that a click cycles, with a tooltip of the values | same | "High · Normal · Low — click for Normal" → Normal | pass | w1 | — |
+| F-WC4 | | | a person is `dropdown()`, its menu a root overlay | same | menu outside the card: Unassigned, You, 7 members; picked Omar | pass | w1 | — |
+| F-WC5 | | | Confirm sends only the changed fields | same | `{"args":{"title":"… (edited)","priority":"normal","assignee":"omar-h"}}`; ticket #92 created that way | pass | w1 | — |
+| F-WC6 | | | a decided card is ONE line, with Undo / Open | same | "Created ticket #92 · Just now · Undo"; after Undo "Undone: created ticket #92" (#92 declined) | pass | card-ticket-line-light.png | — |
+| F-WC7 | | at the bottom (**the confirm glide after the floating pair was UNVERIFIED**) | one glide, nothing jumps, the bottom holds | ask.md › The swap | the wrapper glides 216 → 52 with no reversal; the gap stays 0 on every frame | pass | w1 | — |
+| F-WC8 | | scrolled up | the clicked card stays put, the rows under it rise | same | the card's top stayed at 214 / 170 px on every frame; one glide each | pass | w2, w3 | — |
+| F-WC9 | | | everything on a card is 30 px | ask.md › One control height | the cycled words, the dropdown, Cancel / Confirm, Undo, the Save form's field / Save / switches: all 30 | pass | geom | — |
+| F-WC10 | assignment | add (the model proposed an add) | "Adds Jose · Andres stays on it", people through people.ts | ask.md | so; "Assigned ticket #87 to Jose" | pass | card-assign-dark.png | — |
+| F-WC11 | | replacement | "Jose → Luke", "Andres stays on it" | same | so; "Reassigned ticket #87 from Jose to Luke"; DB [AndresL230, lpcooper-arch] | pass | card-replace-dark.png | — |
+| F-WC12 | | Undo of the replacement | undoes both halves | ask.md, actions.ts | "Undone: reassigned …"; DB [AndresL230, Jose-Gael-Cruz-Lopez] | pass | undo | — |
+| F-WC13 | claim | 390 light | sender → you, "No one else can claim it after"; one line | ask.md | so; "Claimed handoff #16" (DB claimed by AndresL230); 44 px hit areas | pass | card-claim-*.png | — |
+| F-WC14 | group | 1440 light | one frame, ONE pair; one line | ask.md | "2 new tickets", one pair; "Filed tickets #93 and #94"; Undo → both declined | pass | card-group-light.png | — |
+| F-SV1 | Save form | 1440 dark | Kind / Who can see it as switches at the head's right; the title with Save at its end; no Cancel | ask.md | the switches at the top right; the field and Save share top and height (30); no Cancel; Save → one glide → "Saved as artifact: … · Private · Open" | pass | save-form-dark.png | — |
+| F-WG1 | Wrong? | 1440 light + dark | no box; a reason gives the toast | ask.md, AU-8 | the row has no border and no background; "Thanks. The team can see this in Review." | pass | wrong-open-light.png | — |
+| F-ONE1…11 | single-item card | 11 types (ticket, PR, doc, decision, feed, sprint, handoff, artifact, person, prompt, repo); 1440 light, 390 dark | identity on the left, facts on the right; stacked when narrow; the whole card one hit area | ask.md › One item | all 11: facts on the right at 664 px; under the identity at 346 px; per-type rows as specified (PR has no Branch row: not stored); one hit area | pass ×11 | one-1440-light-0.png, one-1440-light-10.png | — |
+| F-DG1 | diagram | 4-node chain (stored 9501) | left → right when it fits, top → bottom when narrow | ask.md › The diagram | 1440 / 1100 / 800: left → right; 390 / 360: top → bottom | pass | diagram-1440-light.png, diagram-390-dark.png | — |
+| F-DG2 | | fan-out (live: A → B → C/D/E → F) | parallel lanes, the parent centred, connectors, the root as the blocker | same | 3 lanes, B centred, curved connectors to one point per card, A emphasised | pass | diagram-fan-1440-light.png | — |
+| F-DG3 | | fan-out, phone | the list (timeline) once a lane would be under 120 px | same | `--ls: 1`, a rail with a dot per node, the root's dot filled | pass | diagram-fan-390-dark.png | — |
+| F-CH1 | composer chips | new thread, light + dark | chips above the box; Clear with two or more; no "About …" line | ask.md › Composer | file + sprint chips above the box, Clear, no "About" line | pass | chips-centre-*.png | — |
+| F-CH2 | sent question | | the same chips under the bubble, a small Edit under them | same | 2 chips (`ask-q-chip`), Edit 20 px | pass | answer-light.png | — |
+| F-CH3 | dock glide | with chips, light + dark (**UNVERIFIED before**) | the composer glides from the centre to the foot, carrying the chips | ask.md › The composer's place | its top 488 → 770 over ~320 ms, eased, in one piece | pass | q1 `composer` | — |
+| F-DR1 | drag over | 1440 dark (**UNVERIFIED before**) | "Drop files to attach" over the conversation; leaving clears it; a drop makes a chip | ask.md | overlay 920×823 with "Images, PDFs and text files, up to 10 MB each" (fades in); gone on dragleave; drop → POST 200, chip "dropped-test.txt"; × → DELETE 200 | pass | drag-overlay-dark.png | — |
+| F-RG1 | #187: inspector artifact | the Artifacts chunk never loaded | the inspector previews the artifact | artifacts-state.ts `artifactFrame` | html (sandbox `allow-scripts`, its page inside), svg (`sandbox=""`), image: all drawn; **no artifacts-*.js request**; markdown says "No preview for this kind" (by design) | pass | inspector-artifact-*.png | — |
+| F-RG2 | #187: ⌘J over Repo | the chunk held 3 s, then released | the panel opens over the skeleton and survives the chunk landing | ask.md › ⌘J | open + focused before; the draft kept after; screen drawn; Escape closes; ⌘J reopens with the draft | pass | cmdj-over-repo.png | — |
+| F-RG3 | #187: ⌘J over Org settings | same | same | same | same (a 404 from `/github/repositories` is the screen's own, not Ask's) | pass | lazy | — |
+| F-RG4 | #187: ⌘J over Artifacts | same | same | same | same | pass | cmdj-over-artifacts.png | — |
+| F-RG5 | #187: ⌘J over Platform | before / after the chunk | — | ask.md says "over any page" | nothing opens: Platform is outside any org (`view: "platform"`), and Ask is per org | question Q-F3 | lazy | — |
+| F-RG6 | #187: refs that open lazy screens | inspector › Open in page | the screen loads its chunk and renders | — | artifact → `#artifacts/teacher-dashboard-notes`, repo → `#repo`, sprint → `#sprints/3`; no "Loading", no error | pass | insp | — |
+| F-AA1 | "Ask again" | an expired / failed line | — | brief | NOT BUILT: an expired line says "This card expired with its turn. Ask again." with no control | gap | — | — |
+| F-EM1 | empty answer | live, 390 reduced, a request for 11 cards | — | — | the model spent the 8 tool calls on lookups, and the final call (`tool_choice: none`) wrote nothing: an answer with 8 steps, no words and no blocks, but the full footer (Copy, Regenerate, Save as artifact, Wrong?, "No sources"). Stored text "" | question Q-F2 | Q-F2-empty-answer.png | — |
+
+Tier 1 Ask screen cases rerun on this build (real routes, no replay):
+
+| id | result | actual (short) |
+| --- | --- | --- |
+| AU-1 | pass | Workspace: My Work, **Trov**, Tickets … |
+| AU-2 | pass | threads 260 px; header "Ask Trov"; the empty state centred with its 4 starters; composer `data-ask-dock=center` (AU-2-empty-centred.png) |
+| AU-3 | pass | Pinned / Today / This week / Earlier |
+| AU-4 | pass (QA-2 still open) | rename via the route; an HTML title is drawn as text in the list and the crumb; export `text/markdown`, `test-e2e-renamed-bxb.md` |
+| AU-5 | pass | "hosting": 7 rows, 6 `<mark>`s, "1 match" |
+| AU-6 | pass | chips with live marks; the hover card at ~445 ms (≥ 320) with the repo's verdicts |
+| AU-7 | pass | "Smart · 3 sources · Copy · Regenerate · Save as artifact · Wrong?" |
+| AU-8 | pass | F-WG1 |
+| AU-9 | pass | F-WC* |
+| AU-11 | pass | F-SV1 |
+| AU-12 | pass | "Ask about this Ctrl J"; 420 px aria-modal panel; context "#87 Ticket"; "Open as thread" |
+| AU-13 | pass | Escape closes the @ picker first (panel stays), then the panel |
+| AU-14 | pass | the five `/` commands; Shift+Enter makes a new line; the @ picker groups (a space ends the query: "@Token rotation" + Enter SENT the words — by design) |
+| AU-15 | pass | attach → chip, upload on attach (F-CH1, F-DR1) |
+| AU-16 | pass | Pinecone (Free): Settings "On Free, every question uses Smart."; `modes: [smart]` |
+| AU-17 | pass | Northwind: Fast / Smart / Thinking, "…Counts as 5 questions." |
+| AU-20 | pass (Q-F4) | Pinecone at cap: "You've used this month's questions." + Upgrade to Pro, no box / Send |
+| AU-25 | pass | 480 px; the separator's arrows stop at 720 and 380; Escape closes |
+| AU-27 | pass | 360 dark: drawer 300 px modal; the + menu (Attach / Mention / Run a command / Mode / Changes); "Smart · Auto" on an Auto thread; no page scroll. The app's own "Open navigation" button is 40 px (the same on Tickets: not Ask's) |
+| AU-28 | pass | Settings › Trov; What Trov can see → Integrations / Repositories / Hosting / Environments |
+| AU-29 | pass | F-SP2 |
+| AU-30 | pass | Edit → "Sending replaces the answer below."; Escape cancels |
+| AK (smoke) | pass | `/ask/state` (enterprise, 3 modes, 4 starters, attach 5 × 10 MB); `/ask/threads` (4 groups); `/ask/peek` in order (`ticket:99999` and `foo:1` hidden, the person lowercased); `/ask/item` 200 / 404; PATCH rename 200; another thread or a bad id 404 |
+
+Not rerun this time (Tier 1 rows that need the replay or the matrix's test orgs, unchanged since the earlier pass):
+AU-10, AU-18, AU-19, AU-21, AU-22, AU-23, AU-24 (replay), AU-26, AU-31, AU-32 (the injection thread is not in this
+seed; the HTML-title check above stands in).
+
+### Final pass: bugs fixed
+
+- **AU-F-MD1** (F-MD2): bold around inline code showed its `**` raw, both while streaming and in the finished answer.
+  `emphasis` (ask-conversation.ts) split each line on code spans before pairing `**`, so a mark on either side of a
+  span could not pair, and could pair wrongly across one. Fix: the code spans become placeholders first, emphasis and
+  links run on the whole line, and then the spans are put back. Test: `render.ask-conversation.test.ts` › "bold
+  around inline code". Commit **53b62388**. Retested: live dark (0 of 3086 frames), all 18 stored threads, and the
+  conversation, actions, inspector, cmdj, phone, composer, diagram, stream and integration render files.
+- **AU-F-RM1** (F-SH2): under reduced motion the running step's label, "Thinking… Ns" and the wait row's word were
+  transparent text on a static gradient, not plain `--fg-55`. The reduced-motion rule has the same selector as the
+  sweep but comes earlier in trov.css, so the sweep's `background` / `color` won. Fix: `!important` on the
+  reduced-motion rule's `background` and `color`. Test: `render.ask-conversation.test.ts` › "under reduced motion the
+  words are plain". Commit **554a4e12**. Retested: the wait row in light and dark with motion on and off (computed
+  color / background / animations / a still orb).
+
+### Final pass: questions (spec silent; not guessed)
+
+- **Q-F1** A block is out and a step is running (the ⌘J answer: the ticket card, then "Read your handoffs"). The wait
+  row says "Writing…" with the ribbon (`parts.length` wins in `waitOrb`), not the running step's globe or orbits. ask.md
+  lists the step's kind first and "composing once a block is out" last. Expected: the running step's orb while a step
+  runs, the ribbon only once no step runs. The owner should rule.
+- **Q-F2** An answer with no words and no blocks (the model used its 8 calls on lookups, then wrote nothing) shows its
+  steps and a full footer: Copy, Regenerate, Save as artifact, Wrong?. Expected: a line that says Trov didn't write an
+  answer, with Try again, and no Copy / Save of nothing. The client could also nudge the last call. Not guessed.
+- **Q-F3** ⌘J on Platform does nothing. Platform sits outside any org and Ask is per org, so that seems right; ask.md
+  says "over any page". Expected: nothing (as now), or a one-line hint. The owner should confirm.
+- **Q-F4** At the cap the composer is replaced by the "used up" block, but "Enter to send · Shift+Enter for a new
+  line" still shows under it with no box to type in (with QA-6, the starters stay clickable). Expected: no Enter hint
+  while blocked.
+- Still open from the earlier pass: QA-2 (Delete has no confirmModal) and QA-4 (no footer after Stop until a reload),
+  both seen again.
+
+### Final pass: gap
+
+- **"Ask again" on expired / failed lines is not built** (F-AA1). The expired line's reason says "Ask again." as words
+  only.
+
+### Final pass: observations (not counted)
+
+- Org settings asks `/github/repositories` and gets a 404 locally (no GitHub App): the screen's own, not Ask's.
+- The app's phone "Open navigation" button is 40 px on every screen, not only Ask.
+- `POST /ask` still reports `net::ERR_ABORTED` after its last event under wrangler dev (as before; content complete).
+- Writes made by these cases on this worktree's D1 only: tickets #92–#94 created then undone (declined); #87's
+  assignees changed and restored; handoff #16 claimed; two artifacts saved; test threads 10002–10015.
+
+### Final pass: counts
+
+**90 cases**: 67 new cases (F-*, with F-ONE counted ×11) and 23 Tier 1 reruns (22 AU rows and the AK smoke).
+**85 pass**, **2 fail → fixed** (F-MD2, F-SH2), **2 questions** (F-RG5 / Q-F3, F-EM1 / Q-F2), **1 gap** (F-AA1).
+Two more questions came up on cases that passed: Q-F1 (on F-OR4) and Q-F4 (on AU-20). Typecheck passed at both fix
+commits; the full suite was not run (the master runs the gate).
