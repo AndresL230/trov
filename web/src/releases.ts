@@ -220,10 +220,11 @@ export const RELEASES: Release[] = [
         "Railway's old per-environment project tokens showed as two Connected \"workspace token\" cards while the org-wide connection the Backend parts need did not exist.",
         "A host disconnected by an admin read Removed on its parts but Not connected on its card.",
         "A deploy with no target (every GitHub-sourced deploy) was dropped from the Repo dashboard's deploy reads: `NOT (NULL AND …)` is NULL in SQL.",
+        "What's new: a release's Heads-up and Upgrade notes sat beside the title alone, so the notes or patch lines started below them — 2,000px down on a long Upgrade notes list. They now run in a column beside the whole page, and the body starts right under the title (#188)",
       ],
       removed: [],
     },
-    prs: [186, 187],
+    prs: [186, 187, 188],
   },
   // Trov writes for you (#178): the AI screens, My Work's new layout, a handoff's reading list.
   {
