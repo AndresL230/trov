@@ -174,7 +174,8 @@ describe("phone — the + menu (`phone-plus`)", () => {
     expect(plus(() => undefined, "free")).not.toContain("ask-ph-mode-page");
     const off = plus((s) => { s.ask.state.data!.autoAllowed = false; });
     expect(off).toMatch(/<div class="ask-ph-group is-off" role="group"/);
-    expect(off).toMatch(/<button type="button" class="cnpy-seg-btn is-on" disabled aria-pressed="true">Ask before changes<\/button><button type="button" class="cnpy-seg-btn" disabled aria-pressed="false">Auto<\/button>/);
+    // A fully locked switch leaves the tab order: every option -1 (segmented()'s roving tabindex, #192).
+    expect(off).toMatch(/<button type="button" tabindex="-1" data-field="seg:ph-auto-page:ask" class="cnpy-seg-btn is-on" disabled aria-pressed="true">Ask before changes<\/button><button type="button" tabindex="-1" data-field="seg:ph-auto-page:auto" class="cnpy-seg-btn" disabled aria-pressed="false">Auto<\/button>/);
     expect(off).toContain(AUTO_OFF_NOTE);
     expect(AUTO_OFF_NOTE).toBe("An admin turned off Auto for this org. Trov asks before every change.");
   });
