@@ -726,7 +726,9 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   without a repaint and clears a refusal; Enter or Apply calls the route; a refusal shows under the field, in the
   menu. The answer REPLACES the screen's filter state (`applyAiFilter` in `main.ts` — a field left out is "no
   filter"), so the result is what the person would get setting those filters by hand, each visible in the same
-  menu, which then closes on its exit. A line above the toolbar (`aiFilterLine`) says what was set and what was
+  menu, which then closes on its exit — every time: the hover menu's "re-entered while fading out: keep it" rule
+  revives only a close the hover started (`fmClosingByHover` in `main.ts`), never this one, though the apply's repaint
+  under a resting pointer fires a pointerover. A line above the toolbar (`aiFilterLine`) says what was set and what was
   not a filter here, with Undo back to the filters set by hand; after Undo it leaves by the kit's one exit
   (`AiController.leave`, key `filter:<screen>`).
 - **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
