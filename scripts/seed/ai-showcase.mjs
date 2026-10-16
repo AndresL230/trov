@@ -825,17 +825,17 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   // ── My Work › Your brief (brief-dev's v1 kept as the older version) ──
   s.push(...briefDevStatements(new Date(c.t - 26 * 60 * MIN)).filter((x) => x.startsWith("INSERT")));
   const D = tk("D");
-  const h16 = handoff(16), h17 = handoff(17), h15 = handoff(15);
+  // The brief's fixed shape (the owner's ruling): Now and Recently ONE short sentence each, Next AT MOST 3 — in the
+  // server's order: the overdue ticket, the blocked one (its deploy is failing), then the first handoff waiting.
+  const h16 = handoff(16);
   const nextItems = [
     { ref: "ticket:3", kind: "due", title: byNum(3)?.title ?? "Ticket #3", why: `Its sprint, Token rotation & audit log, was due ${snap.sprints.find((x) => x.id === 3)?.target_date ?? "2026-06-10"}.`, cites: [ticketCite(3)] },
-    ...(h16 ? [{ ref: "handoff:16", kind: "handoff", title: clip(firstLine(h16.body), 140), why: "Jose left it for you, with the backend half already done.", cites: [handoffCite(16)] }] : []),
-    ...(h17 ? [{ ref: "handoff:17", kind: "handoff", title: clip(firstLine(h17.body), 140), why: "Jack left it for you; the prompt and the eval are what remain.", cites: [handoffCite(17)] }] : []),
-    ...(h15 ? [{ ref: "handoff:15", kind: "handoff", title: clip(firstLine(h15.body), 140), why: "Jack left it for anyone, and nobody has picked it up.", cites: [handoffCite(15)] }] : []),
-    { ref: `ticket:${N.D}`, kind: "due", title: D.title, why: `Its sprint, Hosting providers rollout, is due ${sprint.target_date}.`, cites: [ticketCite(N.D)] },
-  ].slice(0, 5);
+    { ref: `ticket:${N.D}`, kind: "failing", title: D.title, why: "The Production backend deploy is failing at its build step.", cites: [ticketCite(N.D)] },
+    ...(h16 ? [{ ref: "handoff:16", kind: "handoff", title: clip(firstLine(h16.body), 140), why: "Jose left it for you, with the backend half done.", cites: [handoffCite(16)] }] : []),
+  ].slice(0, 3);
   const brief = {
-    now: { text: "You have the failed Production backend build in progress, and you handed its two type errors to Jose.", cites: [ticketCite(N.D), handoffCite(HN)] },
-    recently: { text: "You shipped hosting providers behind one interface and let several organizations share one GitHub installation.", cites: [prCite(185), prCite(171), feedCite(IDS.feed.hosting, "Shipped: hosting providers behind one interface")] },
+    now: { text: "You have the failed Production backend build in progress, with its fix handed to Jose.", cites: [ticketCite(N.D), handoffCite(HN)] },
+    recently: { text: "You shipped hosting providers behind one interface and shared GitHub installs across orgs.", cites: [prCite(185), prCite(171), feedCite(IDS.feed.hosting, "Shipped: hosting providers behind one interface")] },
     next: { items: nextItems },
   };
   s.push(insert("person_brief", { org_id: ORG, handle: ME, version: 2, generated_at: c.ago(9), model: HAIKU, prompt_version: "brief.1", input_hash: "ai-showcase", brief_json: brief }));
