@@ -384,6 +384,8 @@ const PLATFORM: Record<string, string> = {
   "GET /auth/login": "public: starts the GitHub OAuth redirect",
   "GET /auth/callback": "public: the OAuth callback — state + PKCE bound to a sealed cookie. Also the GitHub App's install return (`installation_id`): binds an installation only for the org and person a second sealed cookie names, after GitHub confirms the account can reach it (test/github-app.connect.test.ts)",
   "GET /auth/google/login": "public: starts the Google OAuth redirect",
+  "GET /auth/dev/as": "local development only (src/auth/dev-signin.ts): a bare 404 unless DEV_LOGIN is set, the request came to a loopback origin and no live Stripe key is held; then a session for a seeded person",
+  "GET /auth/dev/out": "local development only, under the same three conditions as /auth/dev/as: drops that session",
   "GET /auth/google/callback": "public: the OAuth callback",
   "GET /auth/onboard": "the sealed onboard cookie: echoes the provider profile it carries",
   "GET /auth/handle-check": "onboard cookie or session: is a handle free (persons are global)",

@@ -948,6 +948,17 @@ export async function getRepoDashboard(
   // are the same ones, with the same conditions, as when they ran one after the other; only the order moved.
   // test/perf.round-trips.test.ts pins the chain.
 
+  // "Where the work went" (./themes.ts): a D1 aggregation, ABSENT when the switch is off or the repository has no
+  // theme. It depends on nothing above, so it runs beside the rest; it fails ALONE: a throw leaves the field out and
+  // the dashboard says it is degraded.
+  const themesP = readRepoThemes(ctx, repo, now).then(
+    (themes) => ({ themes, failed: false }),
+    (e) => {
+      console.error("repo dashboard", "themes", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
+      return { themes: undefined, failed: true };
+    },
+  );
+
   // Never on the render path: GitHub's GraphQL refs query is called off
   // reconcileRepo only — this only reads back the snapshot it wrote. No
   // snapshot yet → not_connected; a stale one is still shown, same as `drift`
@@ -1572,14 +1583,7 @@ export async function getRepoDashboard(
     console.error("repo dashboard", "facts", e instanceof Error ? e.message : String(e), `org=${ctx.orgId}`);
   }
 
-  // "Where the work went" (./themes.ts): a D1 aggregation, ABSENT when the switch is off or the repository has no
-  // theme. It fails ALONE: a throw leaves the field out and the dashboard says it is degraded.
-  let themesFailed = false;
-  const themes = await readRepoThemes(ctx, repo, now).catch((e) => {
-    themesFailed = true;
-    console.error("repo dashboard", "themes", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
-    return undefined;
-  });
+  const { themes, failed: themesFailed } = await themesP;
 
   return {
     repo, generatedAt: nowAt, degraded: hostingFailed || factsFailed || scopeFailed || themesFailed, facts,

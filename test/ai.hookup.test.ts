@@ -44,10 +44,15 @@ interface Web {
   parseFeedbackArg(arg: string | null): AiFeedbackBody | null;
 }
 const WEB = "../web/src/";
-const web = async (): Promise<Web> => ({
-  ...(await import(/* @vite-ignore */ `${WEB}render`)),
-  ...(await import(/* @vite-ignore */ `${WEB}ai-actions`)),
-}) as Web;
+const web = async (): Promise<Web> => {
+  // The Repo screen is its own chunk (web-ui.md › The app's bundles): handed in as loaded, so it renders, not its skeleton.
+  const { repoChunk } = await import(/* @vite-ignore */ `${WEB}repo-lazy`);
+  repoChunk.set(await import(/* @vite-ignore */ `${WEB}repo`));
+  return {
+    ...(await import(/* @vite-ignore */ `${WEB}render`)),
+    ...(await import(/* @vite-ignore */ `${WEB}ai-actions`)),
+  } as Web;
+};
 
 const e = env as unknown as Env;
 const REPO = "SaplingLearn/sapling";
