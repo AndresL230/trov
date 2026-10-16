@@ -488,7 +488,9 @@ export function briefTile(b: AiBrief, hidden = false, span = 7): string {
   // Empty and capped hold the ready brief's height (trov.css `.mw-brief-body`), so the tile never changes size.
   body = `<div class="mw-brief-body">${body}</div>`;
   const riseLast = 3 + AI_BRIEF_NEXT_MAX;
-  const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>` : "";
+  const foot = written ? `<div class="cnpy-rise" style="--i:${riseLast};display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px 8px 16px;border-top:1px solid var(--border);margin-top:auto">${aiByline(b.generatedAt, AI_TIP.brief, { size: 12 })}${wrong}</div>`
+    // Nothing written yet has no byline: its place is kept, so even this tile is the one height.
+    : `<div class="mw-brief-footpad" aria-hidden="true"></div>`;
   return `<section${surface(`min-width:0;display:flex;flex-direction:column;overflow:hidden;--span:${span}`, { cls: "mw-tile mw-brief cnpy-rise" })} data-settle-with="${BRIEF_SETTLE_WITH}" data-mw="brief" data-ai="brief" data-ai-state="${b.state}" data-screen-label="My Work · Your brief" aria-labelledby="mw-brief-h">${head}<div style="display:flex;flex-direction:column;gap:8px;padding:10px 16px 14px;min-width:0">${body}</div>${foot}</section>`;
 }
 

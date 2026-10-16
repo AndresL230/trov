@@ -139,6 +139,8 @@ input, select { font-family: inherit; }
 .mw-brief-title, .mw-brief-why { display:block; line-height:20px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .mw-brief-title { font-size:14px; }
 .mw-brief-why { font-size:13px; color:var(--fg-55); }
+/* The byline's place when nothing is written yet (its height: 8 + 28 + 8 and the 1px rule). */
+.mw-brief-footpad { flex:none; height:45px; margin-top:auto; }
 @container mwmain (max-width: 1040px) {
   .mw-brief-body { min-height:404px; }
   .mw-brief-text { height:66px; -webkit-line-clamp:3; line-clamp:3; }
@@ -150,7 +152,7 @@ input, select { font-family: inherit; }
   .mw-brief-text { height:auto; -webkit-line-clamp:4; line-clamp:4; }
   .mw-brief-cites { height:auto; flex-wrap:wrap; white-space:normal; }
   .mw-brief-next { height:auto; }
-  .mw-brief-pad { display:none; }
+  .mw-brief-pad, .mw-brief-footpad { display:none; }
   .mw-brief-title { white-space:normal; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
   .mw-brief-why { height:auto; -webkit-line-clamp:3; line-clamp:3; }
 }
