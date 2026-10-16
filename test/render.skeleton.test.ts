@@ -164,7 +164,7 @@ describe("Docs — loading", () => {
     expect(html).toContain('data-empty="doc"');
     expect(html).not.toContain("Select a doc from the tree.");
     // Docs exist in the space, none is picked: the prompt to pick.
-    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", body: "", current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
+    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", outline: [], current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
     expect(body(render(app("docs", { docsList: { status: "ok", data: [doc as never] }, docDetail: { status: "ok", data: null } })))).toContain("Select a doc from the tree.");
   });
 });

@@ -1,5 +1,5 @@
 // A small least-recently-used cache, for pure functions the app reruns on every paint with the
-// same input (markdown.ts's renderers, outline.ts's `extractOutline`). A hit moves its entry to the
+// same input (markdown.ts's renderers). A hit moves its entry to the
 // newest end; past `max` entries the oldest is dropped. Values are handed out as they are stored,
 // so cache only what nobody mutates: strings, or frozen objects.
 

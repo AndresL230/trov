@@ -1,12 +1,13 @@
 /**
  * Markdown is rendered once per body (web-ui.md › Markdown is rendered once per body): the LRU
- * (web/src/lru.ts), `extractOutline`'s frozen memo (web/src/outline.ts), and the key markdown.ts's
- * renderers cache under. marked + DOMPurify need a DOM this workerd harness does not have, so the
- * renderers' key is checked in their source; everything else runs.
+ * (web/src/lru.ts) and the key markdown.ts's renderers cache under. The Docs tree's outlines are
+ * built on the server (shared/doc-outline.ts, sent by GET /docs), so the browser computes none.
+ * marked + DOMPurify need a DOM this workerd harness does not have, so the renderers' key is
+ * checked in their source; everything else runs.
  */
 import { describe, expect, it } from "vitest";
 import { createLru } from "../web/src/lru";
-import { extractOutline } from "../web/src/outline";
+import { extractOutline } from "@shared/doc-outline";
 import markdownSrc from "../web/src/markdown.ts?raw";
 
 describe("the LRU", () => {
@@ -26,27 +27,15 @@ describe("the LRU", () => {
   });
 });
 
-describe("extractOutline is memoized by body, and what it hands out cannot be changed", () => {
+describe("extractOutline (shared/doc-outline.ts) — what GET /docs sends for each doc", () => {
   const body = "# Title\n\n## Setup\n\ntext\n\n### Keys\n\n```\n## not a heading\n```\n\n## Setup\n";
 
-  it("the same body gives the same outline, computed once", () => {
-    const a = extractOutline(body);
-    expect(a).toEqual([
+  it("H2/H3 only, fenced code skipped, ids de-duped across every level", () => {
+    expect(extractOutline(body)).toEqual([
       { level: 2, text: "Setup", id: "setup" },
       { level: 3, text: "Keys", id: "keys" },
       { level: 2, text: "Setup", id: "setup-1" },
     ]);
-    expect(extractOutline(body)).toBe(a);
-    expect(extractOutline(`${body}\n## More\n`)).not.toBe(a);
-  });
-
-  it("the array and every item are frozen", () => {
-    const a = extractOutline(body);
-    expect(Object.isFrozen(a)).toBe(true);
-    for (const it of a) expect(Object.isFrozen(it)).toBe(true);
-    expect(() => { (a as unknown as unknown[]).push({}); }).toThrow();
-    expect(() => { (a[0] as { id: string }).id = "x"; }).toThrow();
-    expect(extractOutline(body)[0].id).toBe("setup");
   });
 
   it("an empty or missing body is an empty outline", () => {
