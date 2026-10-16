@@ -100,7 +100,11 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   (`AskRepoFacts`, shared/ai-ask-core.ts: apps, environments, parts with their newest deploy, out-of-step, CI per
   environment, release, attention, the week; `null` when the read failed) and `status: null` — the client draws its
   state with the Overview's `envVerdict` and `stateMark` (Healthy only when the branch head's checks pass; Live with
-  none captured; Unknown with nothing seen), never a word of Ask's own. `POST /ask/peek { refs }` answers `{ ref, hidden: true }` for what the person can't
+  none captured; Unknown with nothing seen), never a word of Ask's own. `extra` (#178, for the single item card) also
+  carries `excerpt` — the item's own first paragraph, ≤ 280 chars, null when it has none: a ticket's body, a PR's
+  What (`pr_summaries.what`), a decision's decision (else its context), a sprint's summary (else its description), a
+  prompt's description; a doc's was already there — and a person's `openTickets` (their tickets not done or declined,
+  one COUNT), all from the queries `resolveViews` already makes. `POST /ask/peek { refs }` answers `{ ref, hidden: true }` for what the person can't
   see; `GET /ask/item/:ref` is the inspector's read where no per-type route exists.
 - With nothing found the model shows `show_not_found({ query, tries })`; the server fills "What I searched" from this
   turn's search calls with counts it computes.
@@ -363,7 +367,24 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `<answerKey>[|<block>]`) and `askAcWrong` `<answerKey>`. A block or a question's file
   opens in the inspector as a conversation-held ref, `askcv:<where>:<key>:<kind>:<n>` (`ask-cvref.ts`): primed as
   hidden so it is never peeked, resolved by `cvItem`, drawn bigger with `chartFigure` / `themesFigure` /
-  `diagramFigure` / `tableView`. **The bottom** (ask-motion.ts rule 7): a conversation stays at its bottom while
+  `diagramFigure` / `tableView`. **One item** (`ask-one.ts` `singleItemCard`, the owner: never "a wider version that
+  just looks boring, and has dead space on the right"): an `items` block with ONE visible item draws its own card —
+  two zones: the identity on the left (the type and number eyebrow — a PR's repository beside it —, a 16.5px title,
+  two clamped lines of the item's own words: `excerpt` as plain words (`plainWords` drops markdown's inline marks), a
+  handoff's task, a feed entry's brief, a person's role, a repo's head-environment CI line; a foot: "Updated …" and
+  "Open beside the thread") and a facts column on a faint tint, label / value rows per type: ticket Status · Priority ·
+  Assignees (pictures, "Unassigned") · Sprint ("Backlog"); PR State · Checks (the summary mark and "n of m") · Author
+  · Branch (head → base); doc Status · Owner · Space · Version; decision Status · Author · Proposed; feed Kind (the
+  summary's leading word, taken off the title) · Author · Posted; sprint Status · Dates · Progress (a thin bar and "n
+  of m done", "No tickets yet") · Lead; handoff Status · From · To ("Anyone") · Sent; artifact Visibility · State ·
+  Kind · Version · Author; person Open tickets · Working on (up to three, each its mark, number and title — the
+  controller peeks those tickets once, `wantOneCard`); prompt Status · Author · Slug; repo each environment's verdict
+  (≤ 3, the Overview's) · Attention (else State: Unknown). A missing value is a missing row, never a guess; added /
+  deleted lines and a ticket's due date are stored nowhere, so they are not drawn. The whole card is ONE `hitArea`
+  (opens the item; nothing inside is a button); Save as artifact stays on the block's toolbar. Under 560px of its own
+  width (`@container askone`: a phone, the ⌘J panel) the facts stack under the identity, the foot last. Its entrance
+  is the rich block's; the hover lift and the bar's wipe are off under reduced motion. Two or more items keep the grid
+  of cards (`itemCard`). The gallery's "One item: …" specimens show every type, and two narrow ones. **The bottom** (ask-motion.ts rule 7): a conversation stays at its bottom while
   `conversation.stick` — set by a send, a thread opened or a new one, and by reaching the bottom; cleared ONLY by the
   person scrolling up (`stickAfterScroll`, any distance). ONLY THE CONVERSATION moves the view (the owner,
   2026-10-16): the controller's `bottomMove` compares each scroller's conversation with its last paint — a thread
