@@ -26,6 +26,37 @@ Apps) are rows it enters in Org settings, envelope-encrypted under `TROV_KEK` (`
 | `ASSETS` | the static assets binding over `web/dist` (the prerendered public pages, the app shell `app.html`, the scripts and images, and the generated `_redirects` / `_headers`). It serves a file BEFORE the Worker runs, except `/`, which `run_worker_first = ["/"]` sends to the Worker first (the landing or the app shell, `web-ui.md` › The public pages, for crawlers) | no page is served |
 | `ARTIFACTS_BUCKET` | R2, bucket `trov-artifacts`: binary artifact bodies at `artifacts/<sha256>`, doc images, and uploaded avatars and organization images (`avatars/<sha256>`, `org-logos/<sha256>`) — `artifacts.md` | **the bucket must exist before the first deploy that carries the binding** (`wrangler r2 bucket create trov-artifacts`), or the deploy fails |
 
+`ASSETS`' caching (which files a browser may keep, and for how long) is `_headers`: `web-ui.md` › Browser caching.
+
+### Placement
+
+`[placement] mode = "smart"` (`wrangler.toml`). The D1 primary of `trov` runs in **ENAM** (eastern North
+America; `wrangler d1 info trov`, 2026-10-15 — read replication off). A Worker request makes several D1 round
+trips in series, each one paying the distance to that region; Smart Placement lets Cloudflare run the Worker
+near the database instead of near the visitor when its own measurements of the Worker's traffic say that is
+faster. It decides per Worker after it has seen traffic, and can take a while to settle after a deploy. It
+moves only the Worker: the static files `ASSETS` serves before the Worker runs are still answered at the
+visitor's edge. Nothing in
+the code depends on where the Worker runs; removing the block is a plain deploy.
+
+### Bundle
+
+`minify = true` with `upload_source_maps = true` (`wrangler.toml`). Wrangler's esbuild bundle of `src/` is
+minified — 4.5 MB / 939 KB gzip before, 2.4 MB / 670 KB after (`wrangler deploy --dry-run`, 2026-10-16) — and its
+source map is uploaded beside it, so Workers Logs and an uncaught error's stack still name the TypeScript file and
+line. Wrangler's `keep_names` (default true) keeps every function's and class's `.name`; each error class sets its
+own `name` anyway, and log text and `scrubbedMessage` / `scrubbedLog` work on strings, which minifying never
+touches. Nothing in `src/` branches on a minified identifier.
+
+`src/mcp.ts` is imported DYNAMICALLY, inside the `/mcp` branch of `src/index.ts`. It is still one script — esbuild
+does not split it — but it wraps a dynamically imported module (and everything only it reaches: the MCP and
+agents SDKs, the tool modules) in a lazy initialiser, so an isolate evaluates them on its first `/mcp` request,
+never at startup. `wrangler check startup`, 15 alternating local runs: startup CPU about 24 ms (≈ 18 %) lower at
+the median, for about 12 KB more gzip (the wrappers). `src/mcp-catalog.ts` imports it statically, but the Worker
+never imports the catalog (it runs at build time and in the tests). Invariant 12 is unchanged — what `src/mcp.ts` itself reaches (`test/secrets.mcp.test.ts`).
+The test pool loads `src/mcp.ts` in its setup file (`test/apply-migrations.ts`): there a first dynamic import costs
+seconds inside whichever test sends the file's first `/mcp` call, against its 5 s timeout.
+
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.

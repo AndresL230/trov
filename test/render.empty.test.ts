@@ -37,6 +37,10 @@ import type { SprintView, SprintDetail } from "@shared/sprints";
 import type { HandoffView } from "@shared/handoffs";
 import type { PromptSummary } from "@shared/handoffs";
 import type { ArtifactSummaryDTO } from "@shared/artifacts-core";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 // ── fixtures ─────────────────────────────────────────────────────────────────
 const T0 = "2026-09-14T10:00:00Z";
@@ -249,7 +253,7 @@ const CASES: Case[] = [
   { name: "Feed", screen: "feed", empty: ["feed", "feed-week", "feed-review"], member: ["welcomeOpen"],
     withData: (s) => ({ ...s, feed: { status: "ok", data: [feedRow] } }), data: "Shipped the thing.", gone: ["feed"] },
   { name: "Docs", screen: "docs", empty: ["docs-tree", "doc"], member: ["newDoc"],
-    withData: (s) => ({ ...s, docsList: { status: "ok", data: [doc] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } } }), data: "A real doc" },
+    withData: (s) => ({ ...s, docsList: { status: "ok", data: [{ ...doc, outline: [] }] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } } }), data: "A real doc" },
   { name: "Artifacts", screen: "artifacts", empty: ["artifacts"], member: ["artNew"],
     withData: (s) => ({ ...s, art: { ...s.art, list: { status: "ok", data: [artifact] } } }), data: "A real artifact" },
   { name: "Handoffs", screen: "handoffs", empty: ["handoffs"], member: ["newHandoff"],
@@ -413,7 +417,7 @@ describe("preview — every screen, whatever the organization holds", () => {
       mywork: { status: "ok", data: { person: "alice", previousActivity: [], todo: [], tickets: [{ id: 7, title: "A real ticket", body: "", category: "bug", priority: "normal", status: "submitted", source: "canopy", requester: "alice", sprint: null, updatedAt: T0, createdAt: T0 }], ticketsTotal: 1, degraded: false } },
       mwSessions: { status: "ok", data: [feedRow] }, mwDocs: { status: "ok", data: [] },
       feed: { status: "ok", data: [feedRow] }, feedAuthors: ["alice"], feedStats: { status: "ok", data: { days: [{ date: "2026-09-14", count: 3 }], total: 3, people: 1, topTags: [], topAuthors: [{ author: "alice", count: 3 }] } },
-      docsList: { status: "ok", data: [doc] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } },
+      docsList: { status: "ok", data: [{ ...doc, outline: [] }] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } },
       roadmap: { status: "ok", data: { narrative: "The real plan.", version: 1, updated_at: T0, updated_by: "alice", sprints: [sprint] } }, roadmapFeed: { status: "ok", data: [feedRow] },
       proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] }, needsTriage: { status: "ok", data: [] },
       tickets: { status: "ok", data: [ticket] }, ticketBadge: 4, sprints: { status: "ok", data: [sprint] },

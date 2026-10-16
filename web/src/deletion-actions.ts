@@ -25,12 +25,9 @@ export interface DeletionHost {
   leave(href: string): void;
 }
 
-/** Where each deletion lands, and what the landing says (main.ts reads it once and drops it). */
-export const DELETED_PARAM = "deleted";
-export const DELETED_SENTENCE: Record<"account" | "org", string> = {
-  account: "Your account has been deleted, and you are signed out.",
-  org: "The organization has been deleted. Its members keep their Trov accounts.",
-};
+// The notice's words are deletion-notice.ts (the signed-out landing says one of them).
+export { DELETED_PARAM, DELETED_SENTENCE } from "./deletion-notice";
+import { DELETED_PARAM } from "./deletion-notice";
 
 /** A refused deletion, as the sentence the modal shows. */
 export function deletionFailure(e: unknown): string {

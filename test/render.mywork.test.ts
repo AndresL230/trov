@@ -15,7 +15,7 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (s: string) => s,
 }));
 
-import { render, initialState } from "../web/src/render";
+import { render, initialState, GUIDE_ALT } from "../web/src/render";
 import { mwTicketRow, reviewTile, repoTile, ticketsTile, mwSpans, libraryStrip } from "../web/src/mywork";
 import type { MyWorkPr, MyWorkTodo, MyWorkTicket, DashboardData } from "@shared/dashboard";
 import type { PersonSummary } from "../web/src/api";
@@ -471,6 +471,30 @@ describe("render() — the Get Started guide", () => {
     }
   });
 
+  it("each figure is the column-sized WebP with the full capture in its srcset and for the lightbox, and both files exist", () => {
+    const html = render(guideState());
+    const imgs = [...html.matchAll(/<button data-act="guideZoom"[^>]*>\s*(<img [^>]*>)/g)].map((m) => m[1]);
+    expect(imgs.length).toBeGreaterThan(15);
+    expect(html).not.toMatch(/\/guide\/[^"]*\.png/);
+    const files = new Set(Object.keys(import.meta.glob("../web/public/guide/*.webp")).map((p) => p.replace("../web/public", "")));
+    for (const img of imgs) {
+      const base = /src="(\/guide\/[a-z-]+-(?:dark|light))-1720\.webp"/.exec(img)?.[1];
+      expect(base, img).toBeTruthy();
+      expect(img).toContain(`srcset="${base}-1720.webp 1720w, ${base}.webp 2560w"`);
+      expect(img).toContain('sizes="(max-width: 860px) 100vw, 860px"');
+      expect(img).toContain(`data-full="${base}.webp"`);
+      expect(img).toContain('decoding="async"');
+      expect(img).toContain('loading="lazy"');
+      expect(files.has(`${base}-1720.webp`), base).toBe(true);
+      expect(files.has(`${base}.webp`), base).toBe(true);
+    }
+    // Both themes of every figure are on disk, whichever the viewer picks.
+    for (const name of Object.keys(GUIDE_ALT)) for (const th of ["dark", "light"]) {
+      expect(files.has(`/guide/${name}-${th}-1720.webp`), `${name}-${th}`).toBe(true);
+      expect(files.has(`/guide/${name}-${th}.webp`), `${name}-${th}`).toBe(true);
+    }
+  });
+
   it("has a table of contents whose every entry jumps to a heading on the page, in page order", () => {
     const html = render(guideState());
     const targets = [...html.matchAll(/data-act="guideJump" data-arg="([^"]+)"/g)].map((m) => m[1]);
@@ -665,9 +689,14 @@ describe("My Work — audit fixes", () => {
     expect(mw).toContain("loadMwSessions()");
     expect(body("loadMwDocs")).toContain("listDocMeta()");
     expect(body("loadMwSessions")).toContain("limit: 2");
-    // The boot's badge loads are guarded, so a screen loader that already started them (My Work, Review) is not doubled.
-    expect(mainSrc).toContain('if (state.proposals.status === "idle") loadProposals();');
-    expect(mainSrc).toContain('if (state.draftAdrs.status === "idle") loadDraftAdrs();');
+    // The boot reads the sidebar's counts from GET /badges, never the lists they count…
+    const boot = body("enterOrgNow"); // `enterOrg` is its batchRender wrapper
+    expect(boot).toContain("loadBadges()");
+    for (const list of ["loadProposals", "loadDraftAdrs", "loadNeedsTriage", "loadIdentityTasks", "loadHandoffs", "loadPrompts", "loadTicketBadge"])
+      expect(boot, list).not.toMatch(new RegExp(`\\b${list}\\(`));
+    // …and the Feed's review box loads them guarded, so a screen loader that already started them is not doubled.
+    expect(body("loadFeedReview")).toContain('if (state.proposals.status === "idle") loadProposals();');
+    expect(body("loadFeedReview")).toContain('if (state.draftAdrs.status === "idle") loadDraftAdrs();');
     expect(mainSrc).not.toMatch(/^\s*loadProposals\(\);\s*\n\s*loadDraftAdrs\(\);/m);
   });
 

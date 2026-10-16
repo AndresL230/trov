@@ -13,7 +13,8 @@ import {
   acceptRepoSuggestion, deleteRepoAppSetup, getRepoAppsSetup, ignoreRepoSuggestion, putEnvironmentPart, putRepoAppSetup, scanRepoNow, undoRepoSuggestion,
   type RepoAppBody,
 } from "./api";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg } from "./org-core";
+import { roleAtLeast } from "./org-ui";
 import { hashForRoute, type OrgRepoRoute } from "./hash";
 import { addProblems, blankAdd, draftOf, draftProblems, keyForSignal, settingsForPick, type AppDraft, type RepoAppsUi, type SetupApp } from "./repo-apps";
 import { relTime } from "./ui";

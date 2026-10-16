@@ -56,7 +56,7 @@ import { attentionLine } from "./repo-attention";
 import { segmented } from "./segmented";
 import { skeleton, skBar, skLine, skLines, skBox } from "./skeleton";
 import { renderMarkdown } from "./markdown";
-import { rawUrl, artifactFrame } from "./artifacts";
+import { rawUrl, artifactFrame } from "./artifacts-state";
 import { getRepoDashboard, patchArtifact } from "./api";
 import { reducedMotion, ASK_EASE, ASK_FX } from "./ask-motion";
 import { cvRefWord, isCvRef } from "./ask-cvref";

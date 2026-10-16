@@ -14,7 +14,7 @@ import { consumeLegacyInvite, isLegacyOrg } from "../src/data/legacy";
 import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
 import { cookieFor, seedPerson } from "./helpers/persons";
-import { sha256Hex } from "../src/auth/crypto";
+import { hmacSeal, sha256Hex } from "../src/auth/crypto";
 import { MCP_INVALID_TOKEN_HINT } from "@shared/error-hints";
 import { ORG_A, ORG_B, bearerCtx, ensureMember, mintTokenFor, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 
@@ -173,6 +173,63 @@ describe("the gates", () => {
       const res = await t.request(`/api/o/${slug}/whoami`, { headers: { cookie } }, env);
       expect([res.status, await res.json()], slug).toEqual([404, { error: "not_found" }]);
     }
+  });
+
+  it("tenantGate on the session gate's merged read: every case answers as the two separate reads did, in ONE statement", async () => {
+    const t = new Hono<AppEnv>();
+    t.use("*", sessionGate);
+    t.use("/api/o/:slug/*", tenantGate);
+    t.get("/api/o/:slug/whoami", (c) => c.json({ orgId: c.var.ctx.orgId, userId: c.var.ctx.userId, role: c.var.ctx.role, via: c.var.ctx.via }));
+    const queries: string[] = [];
+    const counting = (base: Env = e) => ({ ...base, DB: new Proxy(env.DB, { get: (db, k) => k === "prepare" ? (q: string) => (queries.push(q), db.prepare(q)) : Reflect.get(db, k) }) }) as Env;
+    const ask = async (path: string, cookie: string | null, base: Env = e) => {
+      queries.length = 0;
+      const res = await t.request(path, cookie ? { headers: { cookie } } : {}, counting(base));
+      return [res.status, await res.json()];
+    };
+
+    // A member, by role: the context the separate resolveTenant built, from the one statement.
+    await ensureMember("jose-a", "admin");
+    expect(await ask("/api/o/saplinglearn/whoami", await cookieFor("AndresL230"))).toEqual([200, { orgId: ORG_A, userId: "AndresL230", role: "owner", via: "session" }]);
+    expect(queries).toHaveLength(1);
+    expect(await ask("/api/o/saplinglearn/whoami", await cookieFor("jose-a"))).toEqual([200, { orgId: ORG_A, userId: "jose-a", role: "admin", via: "session" }]);
+    expect(await ask("/api/o/saplinglearn/whoami", await cookieFor("meilin"))).toEqual([200, { orgId: ORG_A, userId: "meilin", role: "member", via: "session" }]);
+    // A percent-encoded slug is the same org (Hono decodes `:slug`; so does the hint).
+    expect((await ask("/api/o/sapling%6Cearn/whoami", await cookieFor("meilin")))[0]).toBe(200);
+    expect(queries).toHaveLength(1);
+
+    // No cookie, an unknown session, an expired one: 401 before any org is looked at — the same body.
+    const unauthorized = [401, { error: "unauthorized" }];
+    expect(await ask("/api/o/saplinglearn/whoami", null)).toEqual(unauthorized);
+    expect(queries).toHaveLength(0);
+    expect(await ask("/api/o/saplinglearn/whoami", `session=${await hmacSeal("no-such-session", "test-cookie-secret")}`)).toEqual(unauthorized);
+    await env.DB.prepare(`INSERT INTO sessions (id, person, created_at, expires_at) VALUES ('expired-s', 'meilin', '2020-01-01T00:00:00Z', '2020-01-02T00:00:00Z')`).run();
+    expect(await ask("/api/o/saplinglearn/whoami", `session=${await hmacSeal("expired-s", "test-cookie-secret")}`)).toEqual(unauthorized);
+    // …and an expired session to an org it is not even in is still the 401, never the 404.
+    expect(await ask("/api/o/acme/whoami", `session=${await hmacSeal("expired-s", "test-cookie-secret")}`)).toEqual(unauthorized);
+
+    // A live session: unknown slug, non-member, removed member, suspended org — the one 404, one statement.
+    const notFound = [404, { error: "not_found" }];
+    const meilin = await cookieFor("meilin");
+    expect(await ask("/api/o/no-such-org/whoami", meilin)).toEqual(notFound);
+    expect(queries).toHaveLength(1);
+    expect(await ask("/api/o/acme/whoami", meilin)).toEqual(notFound);
+    const sana = await cookieFor("sanaok");
+    expect((await ask("/api/o/saplinglearn/whoami", sana))[0]).toBe(200);
+    await env.DB.prepare(`DELETE FROM memberships WHERE org_id = ? AND user_id = 'sanaok'`).bind(ORG_A).run(); // removed, session kept
+    expect(await ask("/api/o/saplinglearn/whoami", sana)).toEqual(notFound);
+    await env.DB.prepare(`UPDATE orgs SET suspended_at = '2026-01-01T00:00:00Z' WHERE id = ?`).bind(ORG_A).run();
+    expect(await ask("/api/o/saplinglearn/whoami", meilin)).toEqual(notFound);
+    expect(queries).toHaveLength(1);
+    // A superadmin is no member: the same 404 (superadmin grants nothing inside an org).
+    await env.DB.prepare(`UPDATE orgs SET suspended_at = NULL WHERE id = ?`).bind(ORG_A).run();
+    await env.DB.prepare(`INSERT INTO platform_admins (person, granted_at, granted_by) VALUES ('meilin', '2026-01-01T00:00:00Z', 'test')`).run();
+    expect(await ask("/api/o/acme/whoami", meilin)).toEqual(notFound);
+
+    // DEV_LOGIN: no session is read, so there is no hint — the gate reads the membership itself.
+    expect(await ask("/api/o/saplinglearn/whoami", null, { ...e, DEV_LOGIN: "jose-a" } as Env)).toEqual([200, { orgId: ORG_A, userId: "jose-a", role: "admin", via: "session" }]);
+    expect(queries).toHaveLength(1);
+    expect(await ask("/api/o/acme/whoami", null, { ...e, DEV_LOGIN: "jose-a" } as Env)).toEqual(notFound);
   });
 
   it("/mcp: a token whose person has left its org is the same 401 invalid_token as an unknown one — never a 409", async () => {

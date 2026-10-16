@@ -42,7 +42,9 @@ const any: unknown = new Proxy(function () { /* callable */ }, {
   ownKeys: () => [],
 });
 /** Not request functions: the prefix's own controls, and the error classes. */
-const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref", "setWriteBlock", "isWriteMethod", "PreviewBlocked"]);
+const NOT_REQUESTS = new Set(["setApiOrg", "apiOrgSlug", "apiUrl", "tenantHref", "isGlobalPath", "setOrgLostHandler", "Unauthorized", "ApiError", "NotFound", "OrgApiError", "isRateLimited", "rateLimitText", "planLimitText", "githubInstallHref", "setWriteBlock", "isWriteMethod", "PreviewBlocked",
+  // Ask: folds the flags a read carries onto its rows (no request).
+  "attachAskFlags"]);
 /** Functions whose arguments must be real values (a Blob for a multipart body). */
 const SPECIAL: Record<string, unknown[]> = {
   // THE sender (Ask's SSE client reads the response itself): a tenant path like every other call.
@@ -286,9 +288,9 @@ describe("the SPA sends nothing around the prefix", () => {
       if (f.name === "api.ts" || f.name === "releases.ts") continue;
       const bare = f.src.replace(/(?:apiUrl|tenantHref)\(`\/img\/\$\{[^}]+\}`\)/g, "");
       const hits = bare.split("\n").filter((l) => literal.test(l));
-      // artifacts.ts: the raw route is named in ONE place — `rawUrl` and its `rawOf` twin for the API's own
+      // artifacts-state.ts: the raw route is named in ONE place — `rawUrl` and its `rawOf` twin for the API's own
       // `raw_url` — and both go through `tenantHref`, so a raw page is always the current org's.
-      if (f.name === "artifacts.ts") {
+      if (f.name === "artifacts-state.ts") {
         expect(hits).toHaveLength(2);
         expect(hits[0]).toContain("export const rawUrl");
         expect(hits[0]).toContain("tenantHref(`/raw/a/");

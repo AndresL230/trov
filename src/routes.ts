@@ -19,7 +19,8 @@ import { scanApp } from "./repo/scan-routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
-import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { get_doc, get_doc_page, get_doc_version, list_doc_tree, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { sidebarBadges } from "./tools/badges";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
   set_ticket_sprint, set_ticket_parent, add_ticket_comment,
@@ -230,17 +231,41 @@ tenantRoot.post("/ingest", async (c) => {
   return c.json({ ok: true, result });
 });
 
+// The Docs screen's reads. None sends a body it does not show: the list carries each doc's outline
+// (built on the server) instead of its body, the doc read its versions without theirs, and one
+// version's body is its own read. MCP `list_docs` / `get_doc` keep their bodies (src/mcp.ts). A
+// failed read is a 503 `{ error }` — never a 500.
 tenantRoot.get("/docs", async (c) => {
-  // `?fields=meta` drops the bodies (and ignores `section`) — a list-only read.
-  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
-  const docs = await list_docs(c.var.ctx, c.req.query("section"));
-  return c.json({ docs });
+  try {
+    // `?fields=meta` drops the outlines too (and ignores `section`) — My Work's list-only read.
+    if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
+    return c.json({ docs: await list_doc_tree(c.var.ctx, c.req.query("section")) });
+  } catch (e) {
+    console.error("docs list failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read the docs" }, 503);
+  }
 });
 
 tenantRoot.get("/doc/:slug", async (c) => {
-  const found = await get_doc(c.var.ctx, c.req.param("slug"));
-  if (!found) return c.json({ error: "not found" }, 404);
-  return c.json(found);
+  try {
+    const found = await get_doc_page(c.var.ctx, c.req.param("slug"));
+    return found ? c.json(found) : c.json({ error: "not found" }, 404);
+  } catch (e) {
+    console.error("doc read failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read this doc" }, 503);
+  }
+});
+
+tenantRoot.get("/doc/:slug/versions/:version", async (c) => {
+  const raw = c.req.param("version");
+  if (!/^[1-9]\d{0,8}$/.test(raw)) return c.json({ error: "version must be a positive integer" }, 400);
+  try {
+    const version = await get_doc_version(c.var.ctx, c.req.param("slug"), Number(raw));
+    return version ? c.json({ version }) : c.json({ error: "not found" }, 404);
+  } catch (e) {
+    console.error("doc version read failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read this version" }, 503);
+  }
 });
 
 tenantRoot.get("/feed", async (c) => {
@@ -774,14 +799,16 @@ tenantRoot.get("/repo/dashboard", async (c) => {
   // `?repo=` one of the org's repositories (any case; absent → the primary, as before; unknown → 404) and
   // `?app=` an app key of it or `__repo` (REPO_WIDE). An unknown app reads as every app — the facts are not
   // narrowed (`narrowFacts` leaves an unknown key alone), exactly like the design's App menu.
+  // The repository and the environments read side by side; `repo` is set as soon as it is known, so a
+  // failure of the other read still names it in the degraded answer, as when they ran one after the other.
   let repo = "";
+  const heldP = dashboardRepo(c.var.ctx, c.req.query("repo")).then((r) => { if (r !== null) repo = r; return r; });
   try {
-    const held = await dashboardRepo(c.var.ctx, c.req.query("repo"));
+    const [held, envs] = await Promise.all([heldP, orgEnvironments(c.var.ctx)]);
     if (held === null) return c.json({ error: "unknown repository" }, 404);
-    repo = held;
     const app = c.req.query("app") || null;
     const [dash, state] = await Promise.all([
-      getRepoDashboard(c.var.ctx, repo, Date.now(), await orgEnvironments(c.var.ctx), undefined, { app }),
+      getRepoDashboard(c.var.ctx, repo, Date.now(), envs, undefined, { app }),
       // `state` (shared/repo.ts, not a section): the newest version Trov wrote (0062_repo_state), absent when there
       // is none, the switch is off, or this person flagged it "Wrong?" (src/tools/repo-state.ts).
       readRepoState(c.var.ctx, repo, { viewer: c.get("principal").handle }),
@@ -792,6 +819,7 @@ tenantRoot.get("/repo/dashboard", async (c) => {
     const preview = aiPreview(c.env, c.req.url);
     return c.json(preview ? { ...written, state: preview.repoState, themes: preview.themes } : written);
   } catch {
+    await heldP.catch(() => undefined); // the repository's name, if its own read succeeded
     return c.json(emptyRepoDashboard(repo, true));
   }
 });
@@ -949,6 +977,16 @@ tenantRoot.get("/tickets", async (c) => {
     me: c.get("principal").handle,
   });
   return c.json({ tickets });
+});
+
+// The sidebar's counts in one batch: the boot reads this instead of the seven lists it counts.
+// A failed read degrades (503 `{ error }`): the badges stay as they were, the screen still renders.
+tenantRoot.get("/badges", async (c) => {
+  try { return c.json(await sidebarBadges(c.var.ctx, c.get("principal").handle)); }
+  catch (e) {
+    console.error("badges failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "badges unavailable" }, 503);
+  }
 });
 
 // REGISTERED BEFORE /tickets/:id ON PURPOSE: Hono matches in registration order,

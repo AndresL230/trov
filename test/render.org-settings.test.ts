@@ -23,6 +23,10 @@ import type { IntegrationDTO, IntegrationKind, OrgEnvironmentDTO, OrgRepoDTO, Or
 import type { MyOrg, MyOrgsResponse, OrgInvite, OrgMember, OrgRole } from "@shared/orgs";
 import { AI_NEVER_SENT, AI_SENDS, type AiSettings } from "@shared/ai-core";
 import { aiSettingsFixture } from "@shared/ai-fixtures";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const SECRET = "ghp_THIS_IS_THE_SECRET_VALUE_1a2b";
 const HOOK = "hook_0123456789abcdef0123456789abcdef01234567";

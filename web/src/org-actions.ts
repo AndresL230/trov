@@ -412,8 +412,8 @@ export function createOrgController(host: OrgHost): OrgController {
       .then((r) => {
         u.nameSaving = false; u.nameDraft = null;
         if (u.settings.data) u.settings = { status: "ok", data: { ...u.settings.data, org: r.org } };
-        const mine = state.myOrgs.data?.orgs.find((x) => x.slug === o.slug);
-        if (mine) mine.name = r.org.name;
+        // Both copies of my orgs: /auth/me's (what the rail shows until the full list is read) and /api/orgs'.
+        for (const mine of [...(state.me?.orgs ?? []), ...(state.myOrgs.data?.orgs ?? [])]) if (mine.slug === o.slug) mine.name = r.org.name;
         host.flash("Org renamed");
       })
       .catch((e) => {

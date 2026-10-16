@@ -19,6 +19,10 @@ import handoffsSrc from "../web/src/handoffs.ts?raw";
 import artifactsSrc from "../web/src/artifacts.ts?raw";
 import landingSrc from "../web/src/landing.ts?raw";
 import renderSrc from "../web/src/render.ts?raw";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
 const page = (feature: FeatureState | null = null) => landingView({ dark: false, signInOpen: false, seen: new Set(), feature });

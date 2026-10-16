@@ -17,6 +17,10 @@ import { repoStateFixture } from "@shared/ai-fixtures";
 import { aiHiddenKey, initialAiUi } from "../web/src/ai-ui";
 import { aiItemRef } from "@shared/ai-core";
 import { REPO_SCREEN_TABS, REPO_TABS, type RepoDashboard, type RepoPerson, type RepoProductCount, type RepoProductEnv, type RepoRefreshResult } from "@shared/repo";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const NC = { status: "not_connected" } as const;
 const EMPTY = { status: "empty" } as const;
@@ -613,7 +617,7 @@ describe("Repo › Summary — what Trov wrote, on its own tab", () => {
       expect(labels(html)).not.toContain("summary");
       expect(html).toContain('aria-labelledby="repo-tab-overview"');
     }
-    expect(mainSrc).toMatch(/state\.repoTab === "summary" && !repoSummaryShown\(repoProps\(state\)\)\) \{\s*state\.repoTab = "overview";/);
+    expect(mainSrc).toMatch(/state\.repoTab === "summary" && !repoMod\.repoSummaryShown\(repoProps\(state\)\)\) \{\s*state\.repoTab = "overview";/);
   });
 
   it("\"Wrong?\": the card leaves by the kit's exit on its tab, then the tab is gone", () => {

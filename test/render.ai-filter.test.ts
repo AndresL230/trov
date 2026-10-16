@@ -10,6 +10,10 @@ import { AI_EXIT_MS, initialAiUi } from "../web/src/ai-ui";
 import { AI_FILTER_MESSAGES, AI_FILTER_PLACEHOLDER, type AiFilterScreen } from "@shared/ai-filter-core";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const ME = { handle: "andres", name: "Andres", avatar_url: null, color: "sky" as const, identities: [], orgs: [{ slug: "trov", name: "Trov", role: "admin" as const }], superadmin: false, pending_invites: 0 };
 const PERSONS = [

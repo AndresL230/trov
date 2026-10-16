@@ -21,6 +21,28 @@ describe("mcp tokens", () => {
     expect(row?.token_hash).not.toBe(raw); // never the raw token
   });
 
+  it("last_used_at is written at most once a minute: a second call within the minute writes nothing", async () => {
+    await seedPerson("real-user");
+    const { raw } = await mintTokenFor("real-user");
+    const used = async () => (await first<{ last_used_at: string | null }>(env.DB, `SELECT last_used_at FROM mcp_tokens WHERE person = ?`, "real-user"))?.last_used_at;
+    const writes: string[] = [];
+    const counting = platformCtx("test", { ...env, DB: new Proxy(env.DB, { get: (db, k) => k === "prepare" ? (q: string) => (q.startsWith("UPDATE") && writes.push(q), db.prepare(q)) : Reflect.get(db, k) }) } as never);
+
+    expect(await resolveToken(counting, raw)).toEqual({ handle: "real-user", orgId: ORG_A });
+    const firstUse = await used();
+    expect(firstUse).not.toBeNull();
+    expect(writes).toHaveLength(1);
+    expect(await resolveToken(counting, raw)).toEqual({ handle: "real-user", orgId: ORG_A });
+    expect(writes).toHaveLength(1); // within the minute: no write
+    expect(await used()).toBe(firstUse);
+
+    // Older than a minute: the next call bumps it again.
+    await env.DB.prepare(`UPDATE mcp_tokens SET last_used_at = ? WHERE person = ?`).bind(new Date(Date.now() - 61_000).toISOString(), "real-user").run();
+    expect(await resolveToken(counting, raw)).toEqual({ handle: "real-user", orgId: ORG_A });
+    expect(writes).toHaveLength(2);
+    expect(Date.parse((await used()) ?? "")).toBeGreaterThan(Date.now() - 10_000);
+  });
+
   // The rename to Trov: new tokens start `trov_mcp_`, but a `canopy_mcp_` token already pasted into an
   // agent's config is the SAME lookup (the hash of the whole string) and must keep working.
   it("a token minted before the rename (`canopy_mcp_…`) still resolves, over /mcp's bearer path too", async () => {

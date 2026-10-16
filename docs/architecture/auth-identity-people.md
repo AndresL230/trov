@@ -139,7 +139,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
 `persons` (handle PK; name, color, email) is the root — the handle is chosen at first sign-in, prefilled
 with the GitHub login, and renameable from Settings (`renamePerson` rewrites every stored handle
 atomically via `HANDLE_COLUMNS`, in one D1 batch with FK checks deferred for the transaction).
-`identities(provider, subject) → person` holds the GitHub login and Google `sub`. Event subjects
+`identities(provider, subject) → person` holds the GitHub login and Google `sub`; a person's identities are
+read by handle without case (`person = ? COLLATE NOCASE`), through the NOCASE index
+`idx_identities_person_nocase` (0075 — `data-layer.md` › Round trips). Event subjects
 (`events.subject_login`) resolve to a person through the github identity row at read time
 (`resolvePersonForLogin`); an unmapped login raises an `identity_tasks` row and Org settings › Members
 (its Unmatched logins section, `web/src/identity.ts`) links it to an existing handle. Mapping a login there calls the same `linkIdentity` as sign-in linking, so

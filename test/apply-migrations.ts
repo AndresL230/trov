@@ -8,6 +8,12 @@ import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 // with a clean slate — approximating per-test D1 isolation.
 await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 
+// src/index.ts imports src/mcp.ts DYNAMICALLY, on the first /mcp request (docs/architecture/env.md › Bundle).
+// In this pool a dynamic import is fetched and evaluated through the module runner when it first runs — seconds,
+// inside whichever test sends the file's first /mcp call, against its 5 s timeout. Loading it here, once per
+// file and outside every test, is what the static import used to do.
+await import("../src/mcp");
+
 beforeEach(async () => {
   // The canonical data-table reset lives in scripts/seed/reset.mjs, shared by
   // this harness and the dev seed loader (FK-safe delete order + people

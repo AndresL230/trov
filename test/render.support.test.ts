@@ -32,6 +32,10 @@ import { ApiError, isGlobalPath } from "../web/src/api";
 import { RELEASES } from "../web/src/releases";
 import { SUPPORT_KINDS, SUPPORT_MESSAGE_MAX, SUPPORT_SUBJECT_MAX, SUPPORT_HONEYPOT, SUPPORT_FALLBACK_EMAIL, type SupportReport } from "@shared/support-core";
 import coreSource from "../shared/support-core.ts?raw";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64) Chrome/141.0";
 const draft = (over: Partial<SupportDraft> = {}): SupportDraft => ({

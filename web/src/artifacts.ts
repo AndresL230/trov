@@ -30,164 +30,39 @@ import { confirmModal } from "./confirm";
 import { renderMarkdown, sanitizeSvg } from "./markdown";
 import { collapsedLineDiff } from "./diff";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skLines, skList, skW, skCard } from "./skeleton";
-import { ticketStatusMark, artifactStatusMark, stateMark } from "./marks";
+import { ticketStatusMark, stateMark } from "./marks";
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
 import type { PersonColor } from "@shared/rows";
 import {
   ARTIFACT_KINDS, ARTIFACT_AREAS, ARTIFACT_STATUSES, ARTIFACT_TEXT_EXT, ARTIFACT_SUMMARY_MAX, artifactKindLabel,
   artifactCap, isBinaryKind, isTextKind, kindForFilename, claudeOnlyHits, isBundledExport, canRatify, parseSlugVersion,
   type ArtifactKind, type ArtifactStatus, type ArtifactVisibility, type ArtifactLinkType,
-  type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO, type ArtifactDiffDTO,
+  type ArtifactSummaryDTO, type ArtifactDetailDTO, type ArtifactVersionDTO,
 } from "@shared/artifacts-core";
 
 export { ARTIFACT_AREAS, ARTIFACT_KINDS };
+// What the app's first download needs — the state, the routes, a framed page's measured height, the
+// Mermaid post-paint pass and the ticket page's Artifacts block — is artifacts-state.ts; this module is
+// the lazy Artifacts chunk (artifacts-lazy.ts) and re-exports it unchanged.
+export {
+  ART_FILTER_KEYS, initialArtCreate, initialArtUi, detailKey, diffKey, ART_ROUTE_NONE, setArtFrameHeight,
+  renderPendingMermaid, ticketArtifactsBlock, rawUrl, artifactFrame,
+  type ArtSlice, type ArtFilterKey, type ArtFilters, type ArtTicketRef, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
+  type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtRoute, type ArtPerson, type ArtProps,
+} from "./artifacts-state";
+import {
+  rawUrl, rawOf, artifactFrame, ART_FILTER_KEYS, detailKey, diffKey, NO_FILTERS, KIND_ICON, EYEBROW, frameHeight, mermaidSvgs, mermaidFailed, mermaidPending,
+  type ArtSlice, type ArtFilterKey, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
+  ART_ROUTE_NONE, type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtProps, type ArtPerson, type ArtRoute,
+} from "./artifacts-state";
+
 /** The repositories a new artifact may be filed under: the ORG's connected ones (`GET /api/o/:slug/me`
  *  `repos.all`, primary first) — plus the draft's own value when it is none of them. */
 export const artifactRepoOptions = (repos: readonly string[], current: string): string[] =>
   current && !repos.includes(current) ? [...repos, current] : [...repos];
 
-// ── state ────────────────────────────────────────────────────────────────────
-
-/** One loadable read. `missing` = the API's 404 (absent, or private to someone else). */
-export interface ArtSlice<T> { status: "idle" | "loading" | "ok" | "error" | "missing"; data: T | null; error?: string }
-const IDLE = <T>(): ArtSlice<T> => ({ status: "idle", data: null });
-
-export type ArtFilterKey = "area" | "kind" | "author" | "status" | "sprint";
-export const ART_FILTER_KEYS: readonly ArtFilterKey[] = ["area", "kind", "author", "status", "sprint"];
-export type ArtFilters = Record<ArtFilterKey, string>;
-const NO_FILTERS: ArtFilters = { area: "all", kind: "all", author: "all", status: "all", sprint: "all" };
-
-/** A ticket as the attach dialog and the library search know it. */
-export interface ArtTicketRef { id: number; title: string; status: string }
-/** A sprint as the filter and the link field know it. */
-export interface ArtSprintRef { id: number; label: string; dates: string | null; active: boolean }
-
-export interface ArtLinkDraft { kind: "ticket" | "sprint" | "PR" | "issue"; label: string; target_type: ArtifactLinkType; target_ref: string }
-export interface ArtFile { name: string; size: number; /** Text kinds: the file's text (for the preview, the claude.ai check and the JSON body). */ text: string | null; /** Binary kinds: the file itself (multipart). */ blob: Blob | null }
-export interface ArtCreate {
-  title: string;
-  kind: ArtifactKind;
-  area: string;
-  repo: string;
-  vis: ArtifactVisibility;
-  links: ArtLinkDraft[];
-  linkDraft: string;
-  linkErr: boolean;
-  tab: "paste" | "file" | "url";
-  paste: string;
-  file: ArtFile | null;
-  url: string;
-  urlFetched: { text: string } | null;
-  fetching: boolean;
-  urlErr: string | null;
-  submitting: boolean;
-}
-/** The viewer's New version dialog: edit the shown version's text, or upload a replacement file.
- *  `base` is the version the edit started from (the one on screen); `original` its text, so an
- *  untouched edit cannot be sent. */
-export interface ArtNewVersion {
-  tab: "edit" | "file";
-  base: number;
-  original: string;
-  text: string;
-  file: ArtFile | null;
-  fileErr: string | null;
-  summary: string;
-  submitting: boolean;
-}
-export interface ArtUi {
-  /** The library's list, loaded unfiltered (the popover counts every option). */
-  list: ArtSlice<ArtifactSummaryDTO[]>;
-  /** One artifact at one version, keyed `detailKey(slug, v)`. */
-  details: Record<string, ArtSlice<ArtifactDetailDTO>>;
-  /** Two versions compared, keyed `diffKey(slug, a, b)`. */
-  diffs: Record<string, ArtSlice<ArtifactDiffDTO>>;
-  /** The artifacts linked to a ticket (the ticket detail's block), keyed by ticket id. */
-  ticketArts: Record<number, ArtSlice<ArtifactSummaryDTO[]>>;
-  /** Every ticket (seg=all) — the attach dialog's list and the library's ticket search. */
-  attachTickets: ArtSlice<ArtTicketRef[]>;
-  /** A write is in flight (status, visibility, ratify, attach) — a second click waits. */
-  busy: boolean;
-  q: string;
-  f: ArtFilters;
-  filterOpen: boolean;
-  filterCat: ArtFilterKey;
-  verMenu: boolean;
-  dotMenu: boolean;
-  ratifyOpen: boolean;
-  attachOpen: boolean;
-  attachQ: string;
-  attachPick: number | null;
-  /** The New version dialog, open when non-null. */
-  nv: ArtNewVersion | null;
-  /** The viewer's "Delete artifact" confirm is open (author / admin only). */
-  deleteArm: boolean;
-  /** The delete is in flight: the confirm's buttons are disabled. */
-  deleteBusy: boolean;
-  c: ArtCreate;
-}
-export function initialArtCreate(repo = ""): ArtCreate {
-  return {
-    title: "", kind: "html", area: "ui", repo, vis: "org", links: [], linkDraft: "", linkErr: false,
-    tab: "paste", paste: "", file: null, url: "", urlFetched: null, fetching: false, urlErr: null, submitting: false,
-  };
-}
-export function initialArtUi(): ArtUi {
-  return {
-    list: IDLE(), details: {}, diffs: {}, ticketArts: {}, attachTickets: IDLE(), busy: false,
-    q: "", f: { ...NO_FILTERS }, filterOpen: false, filterCat: "area",
-    verMenu: false, dotMenu: false, ratifyOpen: false, attachOpen: false, attachQ: "", attachPick: null, nv: null,
-    deleteArm: false, deleteBusy: false,
-    c: initialArtCreate(),
-  };
-}
-export const detailKey = (slug: string, v: number | null): string => `${slug}@${v ?? "latest"}`;
-export const diffKey = (slug: string, a: number, b: number): string => `${slug}:${a}..${b}`;
-
-/** The three Artifacts screens. `artifact` is one artifact: its viewer, or its diff when `diff` is set. */
-export type ArtScreen = "artifacts" | "artifactnew" | "artifact";
-export interface ArtRoute { slug: string | null; v: number | null; diff: { a: number; b: number } | null }
-export const ART_ROUTE_NONE: ArtRoute = { slug: null, v: null, diff: null };
-
-export interface ArtPerson { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null }
-export interface ArtProps {
-  screen: ArtScreen;
-  route: ArtRoute;
-  ui: ArtUi;
-  /** The signed-in handle — the author check for private artifacts and the visibility toggle. */
-  me: string;
-  /** The signed-in person is an admin or owner of this org — may delete any artifact they can see. */
-  admin: boolean;
-  /** The org's name (the visibility help says who "everyone" is) and its connected repositories. */
-  orgName?: string;
-  repos?: readonly string[];
-  persons: ArtPerson[];
-  /** `location.host` in the browser; the address strips print it. */
-  host: string;
-  /** The filter menu (web/src/filter-menu.ts) that this render opens, if any — plays its entrance once. */
-  fmOpening?: string | null;
-  /** The plain-language filter's applied line (ai-filter.ts `aiFilterLine`) above the library's toolbar; "" when
-   *  nothing typed is applied or the org's AI is off. */
-  aiFilter?: string;
-  /** The Filter menu's typed-filter row (ai-filter.ts `aiFilterMenuTop`) at the popover's top; "" when AI is off. */
-  aiFilterMenu?: string;
-  /** The resolved theme — the mermaid cache is keyed by it (the diagram is drawn in its colours). */
-  theme: string;
-  tickets: ArtTicketRef[];
-  sprints: ArtSprintRef[];
-}
-
 // ── constants (the design's) ─────────────────────────────────────────────────
 
-const KIND_ICON: Record<ArtifactKind, string> = {
-  html: "M8 7 3 12l5 5M16 7l5 5-5 5",
-  markdown: "M6 3h7l5 5v13H6zM13 3v5h5M9 13h6M9 17h6",
-  svg: "M12 3 21 12 12 21 3 12z",
-  mermaid: "M4 4h6v6H4zM14 14h6v6h-6zM10 7h4.5a2.5 2.5 0 0 1 2.5 2.5V14",
-  image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M15 9h.01",
-  pdf: "M6 3h7l5 5v13H6zM13 3v5h5M9 18v-5h2a1.5 1.5 0 0 1 0 3H9",
-  file: "M6 3h7l5 5v13H6zM13 3v5h5",
-};
 const BINARY_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "application/pdf": "pdf" };
 
 /** Metadata beside a title (an area, a kind): muted text, no box. */
@@ -197,7 +72,6 @@ const metaText = (text: string, size = 12): string => `<span style="font-size:${
 const isTicketStatus = (s: string): s is TicketStatus => (TICKET_STATUSES as readonly string[]).includes(s);
 const ticketStatusWord = (s: string): string => (isTicketStatus(s) ? TICKET_STATUS_LABEL[s] : s);
 const MONO_VAL = "font-family:var(--label);font-size:11.5px;color:var(--fg-70)";
-const EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)";
 const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
 const MENU = "background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;box-shadow:0 14px 38px rgba(0,0,0,.3)";
 const OUTLINE_BTN = "padding:7px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)";
@@ -276,11 +150,6 @@ export function artFileName(slug: string, kind: ArtifactKind, v: ArtifactVersion
   const ext = isTextKind(kind) ? ARTIFACT_TEXT_EXT[kind] : BINARY_EXT[v.content_type.split(";")[0].trim().toLowerCase()] ?? "bin";
   return `${slug}-v${v.version_no}.${ext}`;
 }
-/** The raw route for one version, under the CURRENT org: `/api/o/<org>/raw/a/<slug>@v<n>` (api.ts `tenantHref`).
- *  The API's `raw_url` names the same route by its suffix (`/raw/a/<slug>@v<n>`), so it goes through the same prefix. */
-export const rawUrl = (slug: string, v: number): string => tenantHref(`/raw/a/${encodeURIComponent(slug)}@v${v}`);
-const rawOf = (apiRawUrl: string | undefined, slug: string, v: number): string =>
-  apiRawUrl && apiRawUrl.startsWith("/raw/a/") ? tenantHref(apiRawUrl) : rawUrl(slug, v);
 const withDownload = (u: string): string => `${u}${u.includes("?") ? "&" : "?"}download=1`;
 
 /** The create form's current text (paste / a text file / a fetched URL); "" for a binary file. */
@@ -561,68 +430,6 @@ function libraryView(p: ArtProps): string {
 
 // ── 2 · viewer ───────────────────────────────────────────────────────────────
 
-/** Measured heights of framed HTML artifacts (key `slug@v`): the rerender rebuilds
- *  the iframe, so the box is sized from here before the new frame reports in. */
-const frameHeights = new Map<string, number>();
-const FRAME_DEFAULT = 640;
-/** Record a frame's reported document height; returns the height the box should take. */
-export function setArtFrameHeight(key: string, h: number): number {
-  const v = Math.round(Math.max(160, Math.min(h, 40000)));
-  frameHeights.set(key, v);
-  return v;
-}
-
-// Mermaid: rendered post-paint (renderPendingMermaid, called by main.ts after each
-// paint) into a module cache keyed `slug@v|theme`, so a rerender inlines the SVG
-// at once and only a miss shows "Rendering diagram…". The library is the `mermaid`
-// dependency (an EXACT version in package.json), loaded by a dynamic import(): Vite
-// makes it its own chunks, served from Trov's origin, fetched the first time a
-// diagram is opened and never part of the main bundle. No CDN is contacted.
-const mermaidSvgs = new Map<string, string>();
-const mermaidFailed = new Set<string>();
-const mermaidPending = new Map<string, string>();
-const mermaidInflight = new Set<string>();
-interface MermaidApi {
-  initialize(c: Record<string, unknown>): void;
-  render(id: string, src: string): Promise<{ svg: string }>;
-}
-let mermaidLib: Promise<MermaidApi> | null = null;
-let mermaidSeq = 0;
-function loadMermaid(): Promise<MermaidApi> {
-  if (!mermaidLib) {
-    mermaidLib = import("mermaid").then((m) => m.default as unknown as MermaidApi);
-    mermaidLib.catch(() => { mermaidLib = null; });
-  }
-  return mermaidLib;
-}
-/** Draw every mermaid box a paint left waiting. Browser-only; never throws. */
-export function renderPendingMermaid(root: ParentNode): void {
-  for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-art-mermaid]"))) {
-    const key = el.dataset.artMermaid ?? "";
-    const src = mermaidPending.get(key);
-    if (src === undefined || mermaidInflight.has(key)) continue;
-    mermaidInflight.add(key);
-    const themed = el.closest("[data-cnpy-theme]") ?? document.documentElement;
-    const cs = getComputedStyle(themed);
-    const v = (n: string) => cs.getPropertyValue(n).trim();
-    // Every box showing this key, found at completion time (a rerender may have replaced `el`).
-    const boxes = () => Array.from(document.querySelectorAll<HTMLElement>(`[data-art-mermaid="${key.replace(/["\\]/g, "\\$&")}"]`));
-    loadMermaid().then(async (mermaid) => {
-      mermaid.initialize({
-        startOnLoad: false, securityLevel: "strict", theme: "base", fontFamily: "Geist, system-ui, sans-serif",
-        themeVariables: { background: v("--bg"), primaryColor: v("--bg"), primaryTextColor: v("--fg"), primaryBorderColor: v("--fg-40"), lineColor: v("--fg-55"), secondaryColor: v("--bg"), tertiaryColor: v("--bg"), edgeLabelBackground: v("--bg"), fontSize: "14px" },
-        flowchart: { curve: "basis", padding: 14 },
-      });
-      const { svg: out } = await mermaid.render(`cnpy-mm-${++mermaidSeq}`, src);
-      mermaidSvgs.set(key, out);
-      for (const b of boxes()) { b.removeAttribute("data-art-mermaid"); b.innerHTML = out; }
-    }).catch(() => {
-      mermaidFailed.add(key);
-      for (const b of boxes()) { b.removeAttribute("data-art-mermaid"); b.textContent = "Couldn't render this diagram."; }
-    }).finally(() => { mermaidInflight.delete(key); mermaidPending.delete(key); });
-  }
-}
-
 /** A notice above the page: its sentence and its actions — the sentence names the state, so there is no tag. */
 function banner(body: string, actions: string): string {
   return `<div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 14px;border:1px solid var(--border);border-radius:9px;margin-bottom:22px">
@@ -638,31 +445,6 @@ function ratifyHint(d: ArtifactDetailDTO, isLatest: boolean, p: ArtProps): strin
   }
   if (!isLatest) return "Only the latest version can be ratified";
   return "";
-}
-
-/** The viewer's sandboxed frame for the kinds that load the raw route (html, image, pdf, svg), else null — the ONE
- *  markup the viewer below and Ask's inspector (ask-inspector.ts, the artifact's live preview) both draw. */
-export function artifactFrame(o: { kind: string; title: string; raw: string; key: string }): string | null {
-  switch (o.kind) {
-    case "html": {
-      const h = frameHeights.get(o.key) ?? FRAME_DEFAULT;
-      // allow-scripts WITHOUT allow-same-origin: the page runs in an opaque origin
-      // (no cookies, no parent DOM), and tells us its height by postMessage.
-      return `<div class="art-frame" data-art-key="${attr(o.key)}" style="position:relative;overflow:hidden;background:#fff;height:${h}px">
-        <iframe title="${attr(o.title)}" src="${attr(o.raw)}" sandbox="allow-scripts" referrerpolicy="no-referrer" style="display:block;width:100%;height:100%;border:0;background:#fff"></iframe>
-      </div>`;
-    }
-    case "svg":
-      // A drawing renders without script: `sandbox=""`, it can do nothing (the library card's rule).
-      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" sandbox="" referrerpolicy="no-referrer" style="display:block;width:100%;height:320px;border:0;background:var(--bg)"></iframe>`;
-    case "image":
-      return `<div style="display:grid;place-items:center;padding:32px 24px;background:var(--bg)"><img src="${attr(o.raw)}" alt="${attr(o.title)}" style="display:block;max-width:100%;height:auto"></div>`;
-    case "pdf":
-      // NOT sandboxed — see the viewer's pdf case below for why that is safe.
-      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" style="display:block;width:100%;height:78vh;min-height:480px;border:0;background:#fff"></iframe>`;
-    default:
-      return null;
-  }
 }
 
 /** The viewer's body for one version, per kind. */
@@ -1233,34 +1015,6 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
       <button data-act="artCloseDialogs" class="cnpy-outlinebtn" style="${OUTLINE_BTN}">Cancel</button>
       <button data-act="artNvSubmit" class="${ok ? "cnpy-accentbtn" : ""}" style="${primarySt(ok)}">${nv.submitting ? "Saving…" : `Save v${next}`}</button>
     </div>`;
-}
-
-// ── the ticket detail's Artifacts block ──────────────────────────────────────
-
-/** The ticket detail's Artifacts section (the prototype's ticket screen): every
- *  artifact the viewer can see that links this ticket. */
-export function ticketArtifactsBlock(slice: ArtSlice<ArtifactSummaryDTO[]> | undefined): string {
-  const arts = slice?.data ?? [];
-  const head = `<div data-screen-label="Attached artifacts" style="display:flex;align-items:baseline;gap:10px;margin-top:26px">
-      <div style="${EYEBROW};flex:none">Artifacts</div>
-      <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">${slice?.data ? arts.length : "–"}</span>
-    </div>`;
-  if (!slice?.data && slice?.status !== "error") {
-    return `${head}${skeleton("ticket-artifacts", "Loading artifacts&hellip;", skLine(220, 12, 1.5), "margin-top:10px")}`;
-  }
-  if (!slice?.data) {
-    return `${head}<div style="font-size:12px;color:var(--fg-40);margin-top:10px">Couldn't load the artifacts attached here.</div>`;
-  }
-  if (!arts.length) {
-    return `${head}<div style="font-size:12px;color:var(--fg-40);margin-top:10px">No artifacts attached. Attach one from its page in <button data-act="goArtifacts" class="cnpy-link" style="font-size:12px;color:var(--accent);padding:0">Artifacts</button>.</div>`;
-  }
-  return `${head}<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">${arts.map((a) => {
-    return `<button data-act="artOpen" data-arg="${attr(a.slug)}" class="cnpy-card" style="display:inline-flex;align-items:center;gap:9px;padding:7px 13px 7px 10px;border:1px solid var(--border);border-radius:9px;text-align:left;background:color-mix(in srgb,var(--fg) 2.5%,transparent)">
-      <span style="flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:6px;color:var(--fg-70);background:color-mix(in srgb,var(--fg) 6%,transparent)">${I.kind(a.kind)}</span>
-      <span style="min-width:0"><span style="display:block;font-size:12.5px;font-weight:600;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px">${esc(a.title)}</span><span style="display:block;font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--fg-40);margin-top:1px;white-space:nowrap">${a.kind.toUpperCase()} · V${a.current_version} · @${esc(a.author_id.toUpperCase())}</span></span>
-      ${artifactStatusMark(a.status)}
-    </button>`;
-  }).join("")}</div>`;
 }
 
 // ── the reducer ──────────────────────────────────────────────────────────────

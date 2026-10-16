@@ -41,7 +41,7 @@ import {
 } from "@shared/hosting-status-core";
 import { emptyLayout, skBox, skCard, skLine, skRowsShape, skeleton } from "./skeleton";
 import type { MyOrg } from "@shared/orgs";
-import type { OrgUi } from "./org-settings";
+import type { OrgUi } from "./org-core";
 import {
   HOSTING_METRICS, MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, hostingRevokedReasonText, isHostingProvider, metricsForRole,
   type ConnectionMethodDTO, type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectOutcome,
@@ -118,12 +118,8 @@ export interface HostingUi {
   dismissed: HostingProviderId[];
 }
 
-export function initialHostingUi(): HostingUi {
-  return {
-    setup: { status: "idle", data: null }, sample: null, sampleStack: "vercel_render", sampleData: null, notice: null, part: null, connect: null, token: null, manage: null,
-    tests: {}, doneOpen: false, dismissed: [],
-  };
-}
+// The first value lives in org-core.ts (the app's state is made before this chunk loads).
+export { initialHostingUi } from "./org-core";
 
 /** The payload on screen: the sample's while previewing, else the org's own. */
 export const hostingData = (h: HostingUi): HostingSetupDTO | null => (h.sample ? h.sampleData : h.setup.data);

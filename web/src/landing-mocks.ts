@@ -28,7 +28,7 @@
 
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@shared/tickets-core";
 import { agentMark, handoffMark, markShape, ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
-import { stateTag as sprintStateMark, type TlState } from "./timeline";
+import { stateTag as sprintStateMark, type TlState } from "./sprint-state";
 import { ARTIFACT_STATUSES } from "@shared/artifacts-core";
 
 export const MOCK_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;

@@ -144,7 +144,7 @@ describe("GET /me/dashboard (session-gated)", () => {
 });
 
 describe("GET /docs?fields=meta — the body-less doc list (My Work's Docs you own)", () => {
-  it("returns every doc's metadata and no body; plain /docs is unchanged", async () => {
+  it("returns every doc's metadata and no body; plain /docs has each doc's outline, and no body either", async () => {
     const cookie = await cookieFor("AndresL230");
     const now = new Date().toISOString();
     await env.DB.prepare(
@@ -158,6 +158,8 @@ describe("GET /docs?fields=meta — the body-less doc list (My Work's Docs you o
     expect(JSON.stringify(meta)).not.toContain("SECRET BODY");
 
     const full = (await (await app.request("/docs", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
-    expect(full.docs[0]).toHaveProperty("body", "SECRET BODY");
+    expect(full.docs[0]).toHaveProperty("outline", []);
+    expect(full.docs[0]).not.toHaveProperty("body");
+    expect(meta.docs[0]).not.toHaveProperty("outline");
   });
 });

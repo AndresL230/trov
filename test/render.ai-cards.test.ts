@@ -23,6 +23,10 @@ import { reviewRiskFixture, ticketSuggestionsFixture, unplacedSuggestionFixture 
 import { AI_EXIT_MS, aiSuggestionKey, initialAiUi } from "../web/src/ai-ui";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const NOW = new Date("2026-10-15T12:00:00.000Z");
 beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });

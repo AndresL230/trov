@@ -9,6 +9,7 @@ export type {
 } from "./tickets";
 import type { AiFeedMeta, AiSuggestion, FeedImportance } from "./ai-core";
 import type { AskFlag } from "./ai-ask-core";
+import type { OutlineItem } from "./doc-outline";
 
 // Sprints (the table 0025_sprints.sql renamed in place) are defined ONCE, as Zod
 // schemas in shared/sprints.ts, and re-exported here for the same reason.
@@ -42,6 +43,10 @@ export interface DocRow {
 /** A doc without its body — `GET /docs?fields=meta` (My Work's "Docs you own" cell). */
 export type DocMetaRow = Pick<DocRow, "slug" | "section" | "title" | "current_version" | "updated_at" | "updated_by" | "space" | "owner">;
 
+/** One doc in the Docs tree — `GET /docs`: its metadata and its H2/H3 outline (built on the server
+ *  from the body, shared/doc-outline.ts), never the body itself. */
+export type DocListRow = DocMetaRow & { outline: OutlineItem[] };
+
 export interface DocVersionRow {
   id: number;
   slug: string;
@@ -58,6 +63,10 @@ export interface DocVersionRow {
   change_kind: "new" | "edit" | "rewrite" | null; // server-classified delta size (0009)
   low_confidence: number;        // 1 = staged-and-flagged (low-conf on an existing slug) (0009)
 }
+
+/** A doc version without its body — `GET /doc/:slug`'s `versions` (the reader's Version history).
+ *  One version's body is `GET /doc/:slug/versions/:version`. */
+export type DocVersionMetaRow = Omit<DocVersionRow, "body">;
 
 export interface FeedRow {
   id: number;

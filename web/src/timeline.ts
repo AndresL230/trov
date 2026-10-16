@@ -57,7 +57,6 @@ import { isoDayKey, localDayKey, sprintDueState } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
 import { esc, attr, surface } from "./ui";
 import { personAvatarLink } from "./people";
-import { glyphMark, type Glyph } from "./marks";
 
 const DAY = 86_400_000;
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -79,30 +78,12 @@ export interface TimelineProps {
   now: number;
 }
 
-export type TlState = "done" | "ready" | "overdue" | "active" | "upcoming";
+// The states, their words, glyphs and colours, and the state's mark are sprint-state.ts (the landing's
+// mockups draw the mark without this module).
+export { stateTag, type TlState } from "./sprint-state";
+import { stateTag, STATE_LABEL, STATE_COLOR, type TlState } from "./sprint-state";
 export type TlLane = "in_progress" | "upcoming" | "done";
 
-const STATE_LABEL: Record<TlState, string> = {
-  done: "Done", ready: "Ready to complete", overdue: "Overdue", active: "In progress", upcoming: "Upcoming",
-};
-const STATE_TAG: Record<TlState, string> = {
-  done: "Done", ready: "Ready", overdue: "Overdue", active: "In progress", upcoming: "Upcoming",
-};
-/** The state's glyph (marks.ts): the ring fills as the sprint moves along — the tickets' shapes —
- *  and a late one is a warning triangle. */
-const STATE_GLYPH: Record<TlState, Glyph> = { upcoming: "todo", active: "half", ready: "most", done: "done", overdue: "warn" };
-/** What each state means — the tooltip on its mark. */
-const STATE_HINT: Record<TlState, string> = {
-  upcoming: "Not started yet.",
-  active: "Running now.",
-  ready: "Every ticket is closed. A person confirms it done.",
-  done: "Confirmed done.",
-  overdue: "Past its due date with tickets still open.",
-};
-/** The state's colour — theme vars only. Upcoming is the neutral fg family. */
-const STATE_COLOR: Record<TlState, string> = {
-  done: "var(--green)", ready: "var(--accent)", overdue: "var(--red)", active: "var(--accent)", upcoming: "var(--fg-55)",
-};
 const LANES: { id: TlLane; label: string; color: string }[] = [
   { id: "in_progress", label: "In progress", color: "var(--accent)" },
   { id: "upcoming", label: "Upcoming", color: "var(--fg-55)" },
@@ -326,9 +307,6 @@ function dot(color: string): string {
 
 /** A sprint's state as its glyph and word — a mark, never a tag (`marks.ts`). The site's
  *  Roadmap mock draws its rows with this too. */
-export function stateTag(state: TlState, label = STATE_TAG[state], size = 12): string {
-  return `<span class="tl-tag" style="display:inline-flex;flex:none">${glyphMark(STATE_GLYPH[state], STATE_COLOR[state], label, size, STATE_HINT[state])}</span>`;
-}
 
 function popover(p: Placed, persons: PersonSummary[], center: number, up: boolean, when: string): string {
   const { sp, state } = p;

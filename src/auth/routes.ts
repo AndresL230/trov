@@ -216,19 +216,21 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
   // ── Session-gated ──
   authApp.get("/me", async (c) => {
     const handle = c.get("principal").handle;
-    const row = await getPerson(c.var.p, handle);
-    const identities = (await listIdentities(c.var.p, handle)).map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
+    // Every read below is independent of the others: ONE wait (`data-layer.md` › Round trips). The title is
+    // read whether or not the person row is there, and used only when it is.
     // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's. `role` is the
     // title held in the person's only org (Q9: it lives on the membership) — null with none or several.
     // §5.1: `orgs` (each with the caller's role), `superadmin` and `pending_invites` are what the SPA routes
     // on — an org picker when there is not exactly one. `org` and `admin` are kept for the current SPA and
     // speak for the SOLE org the old paths resolve (`resolveSoleTenant`): its name, and whether the caller
     // is its admin or owner — "" / false with no org, several, or a suspended one.
-    const [orgs, invites, superadmin, sole] = await Promise.all([
+    const [row, idRows, title, orgs, invites, superadmin, sole] = await Promise.all([
+      getPerson(c.var.p, handle), listIdentities(c.var.p, handle), soleTitle(c.var.p, handle),
       listMyOrgs(c.var.p, handle), listMyInvites(c.var.p, handle), isSuperadmin(c.var.p, handle), resolveSoleTenant(c.env, handle, "session"),
     ]);
+    const identities = idRows.map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
     return c.json({
-      handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row ? await soleTitle(c.var.p, handle) : null, color: row?.color ?? "stone", identities,
+      handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row ? title : null, color: row?.color ?? "stone", identities,
       org: sole.ok ? orgs[0]?.name ?? "" : "", admin: sole.ok && hasRole(sole.ctx, "admin"),
       orgs, superadmin, pending_invites: invites.length,
     });

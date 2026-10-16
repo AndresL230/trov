@@ -23,6 +23,7 @@
 
 import { renderMarkdown } from "./markdown";
 import { markdownBlocks, type MdBlock } from "./md-blocks";
+import { markdownLib } from "./markdown-load";
 import { diffSeq } from "./diff";
 import { innersOf, mapInners, mergeInline, replaced, soleElement } from "./html-words";
 import { surface } from "./ui";
@@ -225,6 +226,9 @@ let memo: { key: string; html: string } | null = null;
 export function renderedDoc(live: string, proposed: string, isNew: boolean): string {
   const key = `${isNew ? "n" : "e"}\u0000${live}\u0000${proposed}`;
   if (memo?.key === key) return memo.html;   // a repaint of the same proposal renders nothing again
+  // Before the Markdown chunk is in (markdown-load.ts) there is nothing to cut blocks with: the body's
+  // placeholder, never memoized, and the chunk's arrival repaints.
+  if (!markdownLib()) return renderMarkdown(proposed);
   let body: string;
   let foot: string;
   if (isNew) {

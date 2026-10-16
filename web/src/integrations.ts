@@ -30,7 +30,7 @@ import { kindMark, type StateKind } from "./marks";
 import type { MyOrg } from "@shared/orgs";
 import type { IntegrationDTO, IntegrationKind, OrgAuditDTO } from "@shared/integrations";
 import { providerOfKind } from "@shared/hosting";
-import type { OrgUi } from "./org-settings";
+import type { OrgUi } from "./org-core";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, existingLink, githubAppRow } from "./github-app";
 import type { GithubAppStatusDTO } from "@shared/github-app";
 

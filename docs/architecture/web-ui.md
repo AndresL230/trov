@@ -54,6 +54,15 @@ Trov works") is the REFERENCE — the skills, how a change is staged and confirm
 accounts, connecting an agent, troubleshooting. It has no numbered "Step 1 / 2 / 3": a reader is already
 signed in. The welcome e-mail links the guided setup, not the Guide. A new rule about signing in or
 connecting goes in ONE of these and is linked from the others.
+**The Guide's screenshots** (`web/public/guide/`, alt text `GUIDE_ALT`) are WebP only, two per figure and theme:
+`<name>-<theme>-1720.webp` (twice the 860 px column) and the full 2560×1600 capture `<name>-<theme>.webp`.
+`guideImg` (`render.ts`) draws the column file as `src` with both in `srcset` (`sizes="(max-width: 860px) 100vw,
+860px"`, so a 3× screen takes the full one), `loading="lazy"`, `decoding="async"`, and the full one as `data-full`,
+which the lightbox opens (`main.ts` `guideZoom`). No PNG fallback: every supported browser decodes WebP.
+`scripts/capture-guide.mjs` writes both through `scripts/guide-images.mjs` (`writeGuideImages`: sharp, quality 82 /
+85, smart chroma subsampling); run on its own, that script converts stray PNG captures and removes them. The
+column files are 3.1 MB for all 42 (the PNGs were 10.3 MB, −70%); `test/render.mywork.test.ts` holds the markup
+and that every file exists.
 
 Inside an organization (the guided setup) the backdrop is the REAL My Work of the org on screen
 (`firstRunBackdrop(s)`), read while the person is in the setup (`loadHome`); leaving the setup for My Work is a
@@ -66,6 +75,115 @@ step of the guided setup is a route) — so `.cnpy-fr-bg` turns animation and tr
 it. That is the cause of "the screen behind refreshes on every step", not a rebuild: check `getAnimations({
 subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
+
+## Paints: now, batched, or once a frame (`web/src/paint-queue.ts`)
+
+A paint renders the WHOLE app to a string and `paint()` parses it, so one costs tens to hundreds of
+milliseconds on a big screen. Every paint goes through one queue in `main.ts` (`paintApp` is the paint; nothing
+calls it directly), in one of three ways:
+
+- **`rerender()` paints now.** It is the interactive paint — a click, a keystroke, a write's answer — and stays
+  synchronous because its callers focus an element, measure, or read the DOM on the next line. Focus, caret and
+  scroll restoration and `data-morph` all happen inside the paint, exactly as before.
+- **`batchRender(fn)` folds the paints `fn` asks for into ONE**, made before it returns (so the DOM is current
+  for whatever follows). `enterOrg` (the boot: about eighteen reads, each painting its "loading" state) and
+  `loadForScreen` (My Work alone starts eight) run inside one. Batches nest; only the outermost paints.
+- **`rerenderSoon()` is a read landing** (a loader's `.then` / `.catch`): every read that lands before the next
+  animation frame shares one paint. A hidden document (a background or automation tab, where rAF never fires) or
+  one without rAF uses a timeout instead, and a visible one keeps a 100 ms timeout as a backstop in case it is
+  hidden before its frame. Reads that land a frame or two apart would still paint once each, so a landing paints
+  no sooner than `SOON_GAP_MS` (100 ms) after the last landing or batch paint, measured from that paint's END; an
+  interactive paint does not hold one back (search results still show between keystrokes). Any paint made in the
+  meantime takes the waiting one's place.
+
+**Rule:** a loader's completion calls `rerenderSoon()`; its start (the "loading" state) and everything a person
+does call `rerender()`. An expired session (`Unauthorized`) still leaves with `rerender()`. A controller module
+gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actions.ts`). Never call
+`rerenderSoon()` where the next line reads the DOM. Measured on My Work against `wrangler dev` (2026-10-15):
+27 full-app paints at boot before, 4–5 after; the longest task at 4× CPU throttling 1.7 s → about 0.2 s. Tests:
+`test/paint-queue.test.ts`.
+
+## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/lru.ts`)
+
+marked and DOMPurify are their own chunk (`markdown-lib.ts`, loaded by `markdown-load.ts`; › The app's bundles):
+`markdown.ts` keeps the renderers and their caches, and a body asked for before the chunk is in is a placeholder
+— a block is a few skeleton lines (invisible for `SKEL_DELAY_MS`), an inline summary its text, escaped; a
+sanitized SVG a block too — which is NEVER cached; the chunk's arrival repaints (`onMarkdownLib` → `rerenderSoon`),
+and only when a placeholder was drawn. Signed in, `paintApp` starts the load once beside the first reads
+(`prefetchMarkdownLib`), so it is usually in before any body is. `md-blocks.ts` reads marked's lexer from the same
+chunk (Review's Rendered view draws the body's placeholder until it is in, never memoized).
+
+Because every paint rebuilds the whole app's markup, `renderMarkdown` (marked → DOMPurify → `enhance`) and
+`renderMarkdownInline` ran for every doc, ticket and feed summary on screen on EVERY paint — the slowest part of
+a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block bodies, 300 inline summaries (so
+a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
+repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
+`tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
+reads) must join the key. Results are strings, so a cached one cannot be mutated. The Docs tree computes no
+outline: `GET /docs` sends each doc's outline instead of its body (`shared/doc-outline.ts`; `feed-and-search.md` ›
+The Docs screen's reads), and `web/src/outline.ts` only re-exports `slugifyHeading` for the reader's heading ids.
+`sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
+
+## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
+
+`web/src/releases.ts` is every release's notes and patch lines — the largest module in the app, and every PR adds
+to it — so the app bundle does not carry it. Like the Repo screen's sample data (`repo-sample.ts`), the screen is
+rendered from `import("./releases")`: `render.ts` calls `releasesView` / `releaseCrumb` (releases-lazy.ts), which
+draw the screen's own frame with skeletons (`data-skel="releases"`, `release-head`, `release-body`) until the chunk
+is in, then `releasesScreen` itself. `paintApp` starts the load whenever it paints the screen without the chunk,
+and the arrival repaints (`rerenderSoon`). A chunk that fails (an old page after a deploy, whose chunk names are
+gone) says so — "Reload the page to try again" — and is not retried in a loop.
+
+- **No app module imports releases.ts as a value** (`import type` only; a test reads every `web/src/*.ts`). The
+  build-time readers keep the full import: `docs-changelog.ts` (the public `/docs/changelog`), and the tests.
+- **The newest version is `release-latest.ts`** (`LATEST_VERSION`, and `LATEST_RELEASE` with its slug): the
+  support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
+  to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
+  and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+
+## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
+
+The signed-out landing and the app are separate bundles, and the app's screens that most people never open
+are chunks of their own, loaded when a screen first needs them. Measured with `npm run build:web` (gzip,
+2026-10-16): before, `/` and every app page downloaded the same 453 kB of script (main 437, with What's new
+already a chunk); after, the signed-out `/` downloads 59 kB (the landing 26, what it shares with the app 15,
+morph 8, pricing 5, the rest small) and an app page 253 kB (main 218, the shared 15, the support controller 9,
+morph 8), then marked + DOMPurify (24) beside the first reads and each chunk below when it is first needed:
+Org settings 62, Repo 43, Platform 30, the landing 26, Artifacts 20, What's new 104.
+
+- **The signed-out page boots alone.** `index.html`'s script is `landing-page.ts` (site-prerender.ts): the
+  landing, its dialogs, the tour, the menu and the Contact form, with no app module. Its acts and keyboard are
+  `landing-actions.ts` (`createLandingController`), the ONE definition main.ts runs too (a signed-out visit to
+  an app address, `#site` reopened from the sidebar logo). It paints `landing-root.ts` — the app's root element
+  and toast are `app-root.ts`, which `render()` uses — so the two cannot drift. The Contact form's controller,
+  and the API client it sends with, load when the form first opens. The page hands itself to main.ts
+  (`import("./main")`) only for what the app answers: `?denied=`, `#onboard`, a page without the prerendered
+  markup. Keep app modules out of its static graph: the sprint state's mark is `sprint-state.ts` and the
+  deletion notice's words `deletion-notice.ts` for that reason.
+- **The lazy chunks.** Each is a `lazyChunk(() => import("./x"))` (lazy-chunk.ts) behind a facade that render.ts
+  draws through — the real screen once the chunk is in, a skeleton in the screen's own frame until then, and
+  `chunkFailedView` ("did not load. Reload the page") when the load failed (an old page after a deploy):
+
+  | Chunk | Facade | Eager part (in the first download) |
+  |---|---|---|
+  | the landing (in the app) | `landing-lazy.ts` | `landing-actions.ts`, `site-feature-core.ts` (`TOUR_KEYS`) |
+  | Platform (views + controller, `platform-chunk.ts`) | `platform-lazy.ts` | `platform-core.ts`: the state, the add-organization rules, `/platform/`, the page's shell |
+  | Org settings (views + `org-actions` / `hosting-actions` / `repo-apps-actions`, `org-chunk.ts`) | `org-lazy.ts` | `org-core.ts` (`OrgUi` and its first value, tabs, `currentOrg`), `org-invite.ts` (the invite form the first-run setup shares) |
+  | Artifacts (`artifacts.ts`) | `artifacts-lazy.ts` | `artifacts-state.ts`: state, routes, a frame's height, the Mermaid pass, the ticket page's block |
+  | the Repo screen (`repo.ts` + its blocks) | `repo-lazy.ts` | `repo-core.ts`: the poll's lifetime, the updated label, the count-up, `ALL_APPS` |
+  | marked + DOMPurify (`markdown-lib.ts`) | `markdown.ts` / `markdown-load.ts` | the renderers and their LRU |
+  | What's new (`releases.ts`) | `releases-lazy.ts` | `release-latest.ts` |
+
+  The heavy module re-exports its eager part unchanged, so its importers and the tests that import it are
+  untouched. A new eager need goes in the eager part, never a static import of the chunk from an eager module.
+- **Loading and painting.** `paintApp` calls `withChunk(chunk)` when it paints a screen without its chunk;
+  a controller that lives in a chunk (Platform's, Org settings') is made when it lands, and a load or an act
+  asked for before then runs once it has (`withChunk(chunk, fn)`). The landing runs everything that waited and
+  repaints in ONE batched paint (`batchRender`), like a read landing. A failed chunk is not retried by a paint
+  (its screen says to reload); an act asked for again tries again. Opening Org settings before its chunk is in
+  shows the screen's skeleton at once (main.ts sets what `orgGo` sets), and the act runs again with its reads.
+- **Tests** that draw a lazy screen through `render()` hand the chunks in first (`test/helpers/web-chunks.ts`
+  `loadWebChunks()`); the build does the same for the landing (`site-prerender.ts`).
 
 ## The signed-out site — one banner, carried through the page (`web/src/landing.ts`)
 
@@ -197,11 +315,12 @@ script then takes over the SAME markup. Everything else is the app, and is never
   typed (Free $0, Pro $10 per seat / month as a `UnitPriceSpecification`; Enterprise has no price, so no
   Offer; no rating or review, which Trov does not have). `test/site-pages.test.ts` holds each to the render.
 - **Prerendered from the code that boots it** (`web/src/site-prerender.ts`, loaded in Node through Vite's own
-  module server at build time). The landing is `render(initialState())` — exactly main.ts's signed-out paint —
-  so its first paint MORPHS it (`data-morph="landing"`); `/pricing`, `/terms` and `/privacy` are `siteRoot(…)` of
-  their boot script's own render and patch in place too (`paintRoot`, morph.ts). On the prerendered landing
-  main.ts paints the landing at once and asks nothing: no "Signing you in…" card, no `/auth/me` (the Worker only
-  sends that page to a request with no session cookie). Pages are built in the light theme; `THEME_BOOT`, an
+  module server at build time). The landing is `render(initialState())` — the app's signed-out paint — and its
+  script is `landing-page.ts`, which paints the same markup (`landing-root.ts`, held to `render()` tag for tag
+  by `test/site-pages.test.ts`), so its first paint MORPHS it (`data-morph="landing"`); `/pricing`, `/terms` and
+  `/privacy` are `siteRoot(…)` of their boot script's own render and patch in place too (`paintRoot`, morph.ts).
+  On the prerendered landing nothing is asked: no "Signing you in…" card, no `/auth/me` (the Worker only sends
+  that page to a request with no session cookie), and none of the app's bundle (› The app's bundles). Pages are built in the light theme; `THEME_BOOT`, an
   inline script that is each root's first child (and in the app shell's head), paints `<html>` and the root in
   the stored theme before the rest of the page is parsed; the boot's first paint drops it, and main.ts keeps
   `<html>`'s background in step (`syncPageBackground`).
@@ -224,6 +343,14 @@ script then takes over the SAME markup. Everything else is the app, and is never
   alone (a webhook's bare 401 stays bare). On a host that is not PUBLIC_ORIGIN's (a Preview) the Worker tags
   everything, and `_headers` (`assetHeaders`) tags every static file on a `*.workers.dev` address, plus `/app`
   and `/404` anywhere. Loopback counts as the public host, so `wrangler dev` answers as production does.
+- **Browser caching** (`_headers`, `ASSET_CACHE` in `shared/site-pages.ts` — the ONLY rules that say
+  `Cache-Control`): Vite's `/assets/*` carry a content hash in their names, so they are `public,
+  max-age=31536000, immutable`; the Guide's screenshots (`/guide/*.webp`, stable names) are `public, max-age=604800`.
+  Everything else the binding serves — the pages, the app shell, `/fonts/`, the text files — keeps the binding's
+  default (revalidated by ETag on every use), so a deploy is seen on the next load. The binding gives a path that
+  matches several rules ALL their headers and joins a header two rules both set, which is why only one rule may
+  name `Cache-Control` for any path (`test/site-pages.test.ts`). A file that must change under the same name never
+  goes in `/assets/`.
 - **robots.txt** disallows only the API, sign-in and token endpoints and the session-gated bytes
   (`ROBOTS_DISALLOW`). The app's pages are deliberately NOT disallowed: a crawler that may not fetch a URL
   never sees its `noindex` (nor that it is no longer the home page's HTML), and a disallowed URL can still be
@@ -363,7 +490,7 @@ dashboard, retention windows to verify) are listed in the release's `ops` and in
 - **Accessibility basics.** Every page starts with a skip link (`skipLink`, `.site-skip`: out of sight until
   focused) to `#site-main` (the app: `#cnpy-main`), followed WITHOUT writing the hash (`followSkipLink`; the hash is
   the route and the sign-in return-to). Site navs are labelled landmarks; links inside legal and docs text are
-  underlined (WCAG 1.4.1); the sign-in dialog traps Tab (`main.ts`); onboarding's fields have `<label for>`s,
+  underlined (WCAG 1.4.1); the sign-in dialog traps Tab (`landing-actions.ts`); onboarding's fields have `<label for>`s,
   their help as `aria-describedby` and the colours as a named radiogroup; Guide screenshots carry `GUIDE_ALT`.
   Checked 2026-10-12 with axe-core 4.10 (WCAG 2.0/2.1 A + AA and best practice) in Playwright's Chromium against
   `wrangler dev`: `/`, `/pricing`, `/terms`, `/privacy`, `/refunds`, `/docs/setup`, the 404, the sign-in dialog
@@ -466,6 +593,20 @@ on a keystroke, and never because a read landed: see Loading skeletons below). `
 mid-entrance joins the animation where the old DOM left off. Hooks: `.cnpy-rise` + `--i`, `.cnpy-stagger`
 (lists), `.repo-bar` / `.repo-fill` / `.repo-spark`, `data-count` (count-up). In-place changes use the
 one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
+
+### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
+
+The sidebar's counts (Review, Unplaced, Tickets, Handoffs, Prompts, and the admin's unmatched logins on the
+switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
+WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
+`enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
+that shows a list loads it (the Feed's "Waiting on review" box loads Review's two reads, a prompt's tag
+picker the library). A list that lands writes its count into `state.badges` (`listed()` in `main.ts`), so a
+reload of that list never flashes 0, and a badges answer that lands AFTER a list never overwrites it.
+`badgeCount` in `render.ts` is the one place that picks: the list's own count once it is `ok`, else
+`state.badges`. Nor does the boot read `GET /api/orgs`: `/auth/me` already has my orgs, my role in each and
+the invites count; the full list is read where it is shown (the switcher's menu, the picker, Settings, a
+connection's scope dialog).
 
 ## A row leaving a list — the one exit pattern (Review's queue)
 

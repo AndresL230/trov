@@ -33,6 +33,10 @@ import type { DashboardData, MyWorkTicket } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
 import type { PlanView, SprintView } from "../web/src/api";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const NOW = new Date("2026-10-14T12:00:00.000Z");
 beforeAll(() => { vi.useFakeTimers(); vi.setSystemTime(NOW); });

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { platformCtx, systemCtx, ORG_B } from "./helpers/tenant";
 import { all, run, nowIso } from "./helpers/db";
 import { ingestEvent } from "../src/consumer";
 import { storePrSummary, storeIssueSummary, type Summarizer, type PrSummary, type IssueSummary } from "../src/tools/summarize";
-import { getMyWork, listAssignedTickets, countAssignedTickets } from "../src/tools/mywork";
+import { getMyWork, listAssignedTickets, countAssignedTickets, listOpenAssignedIssues } from "../src/tools/mywork";
 import { create_ticket, transition_ticket } from "../src/tools/tickets";
 import type { TicketCreate } from "@shared/tickets";
 import { seedPerson } from "./helpers/persons";
@@ -175,6 +175,56 @@ describe("getMyWork — todo latest-snapshot semantics", () => {
     work = await getMyWork(systemCtx(), "AndresL230");
     expect(work.todo).toHaveLength(1);
     expect(work.todo[0].number).toBe(7);
+  });
+});
+
+describe("listOpenAssignedIssues — the filter runs in D1, with the JS rule's exact answer", () => {
+  /** One captured issue snapshot with a hand-written raw (assignees, action and state as given). */
+  async function snapshot(number: number, at: string, issue: { state?: string; assignees?: string[]; action?: string | null }) {
+    const { state = "open", assignees = ["AndresL230"], action = "edited" } = issue;
+    const raw = JSON.stringify({
+      ...(action === null ? {} : { action }),
+      issue: {
+        number, title: `Issue ${number}`, html_url: `https://github.com/o/r/issues/${number}`, state, updated_at: at,
+        user: { login: "someone" }, assignees: assignees.map((login) => ({ login })), labels: [], milestone: null,
+      },
+    });
+    await ingestEvent(systemCtx(), platformCtx(), {
+      semantic_key: `gh:issue:${number}:${action}:${at}`, event_type: "issue", ref_number: number,
+      subject_login: assignees[0] ?? "someone", raw, provenance: "webhook", occurred_at: at,
+    }, "github-webhook");
+  }
+
+  it("open + not gone + assigned to one of the logins (exact spelling), on each issue's LATEST snapshot only", async () => {
+    await snapshot(1, "2026-07-01T10:00:00Z", {});                                          // mine, open
+    await snapshot(2, "2026-07-02T10:00:00Z", { assignees: ["someone-else", "AndresL230"] }); // mine among others
+    await snapshot(3, "2026-07-03T10:00:00Z", { assignees: ["someone-else"] });             // someone else's
+    await snapshot(4, "2026-07-04T10:00:00Z", { state: "closed" });                         // closed
+    await snapshot(5, "2026-07-05T10:00:00Z", { action: "transferred" });                   // left the repo
+    await snapshot(6, "2026-07-06T10:00:00Z", { action: "deleted" });                       // left the repo
+    await snapshot(7, "2026-07-07T10:00:00Z", { action: null });                            // no action: not gone
+    await snapshot(8, "2026-07-08T10:00:00Z", { assignees: ["andresl230"] });               // another spelling: not mine
+    await snapshot(9, "2026-07-09T10:00:00Z", { assignees: [] });                           // nobody's
+    await snapshot(10, "2026-07-10T10:00:00Z", { assignees: ["second-login"] });            // my OTHER login
+    // An older snapshot never counts: 11 was mine, then reassigned; 12 was someone else's, then mine;
+    // 13 was closed, then reopened; 14 was open, then closed.
+    await snapshot(11, "2026-07-11T10:00:00Z", {});
+    await snapshot(11, "2026-07-11T11:00:00Z", { assignees: ["someone-else"] });
+    await snapshot(12, "2026-07-12T10:00:00Z", { assignees: ["someone-else"] });
+    await snapshot(12, "2026-07-12T11:00:00Z", {});
+    await snapshot(13, "2026-07-13T10:00:00Z", { state: "closed" });
+    await snapshot(13, "2026-07-13T11:00:00Z", { action: "reopened" });
+    await snapshot(14, "2026-07-14T10:00:00Z", {});
+    await snapshot(14, "2026-07-14T11:00:00Z", { state: "closed" });
+
+    const numbers = async (logins: string[]) => (await listOpenAssignedIssues(systemCtx(), logins)).map((t) => t.number);
+    expect(await numbers(["AndresL230", "second-login"])).toEqual([13, 12, 10, 7, 2, 1]); // newest-updated first
+    expect(await numbers(["AndresL230"])).toEqual([13, 12, 7, 2, 1]);
+    expect(await numbers(["someone-else"])).toEqual([11, 3, 2]);
+    expect(await numbers(["nobody"])).toEqual([]);
+    expect(await numbers([])).toEqual([]);
+    // Another org's events are never read.
+    expect(await listOpenAssignedIssues(systemCtx(ORG_B), ["AndresL230"])).toEqual([]);
   });
 });
 
