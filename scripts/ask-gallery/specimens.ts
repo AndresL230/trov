@@ -512,6 +512,11 @@ function cards(): Section {
   const publish = autoEvents().find((e): e is { event: "action"; data: ActionEv } => e.event === "action")!.data;
   const blocked: ActionEv = { ...publish, id: 47, state: "proposed", note: null, preview: { ...publish.preview, canPublish: false } };
   const [move, sprint, comment, plan, complete, capped] = moreCards();
+  const moveSprint: ActionEv = { id: 67, groupId: "g-67", tool: "set_ticket_sprint", kind: "move", state: "proposed", note: null,
+    preview: { title: "Move #14 to Billing", lines: [{ label: "Sprint", value: "Hosting → Billing" }], item: R["ticket:14"] }, fields: {}, editable: [] };
+  const editTicket: ActionEv = { id: 68, groupId: "g-68", tool: "edit_ticket", kind: "ticket", state: "proposed", note: null,
+    preview: { title: "Edit #14", lines: [{ label: "Title", value: `${R["ticket:14"].title} → Connect Netlify and Vercel from Org settings` }], item: R["ticket:14"] },
+    fields: { title: "Connect Netlify and Vercel from Org settings", body: null }, editable: ["title"] };
   const group: ActionEv[] = [
     { ...ticket, id: 71, groupId: "g-7", fields: { ...ticket.fields }, editable: [] },
     { ...ticket, id: 72, groupId: "g-7", preview: { ...ticket.preview, lines: [{ label: "Title", value: "Remove the pill styles left in trov.css" }, { label: "Category", value: "chore" }, { label: "Priority", value: "low" }] }, fields: { title: "Remove the pill styles left in trov.css", category: "chore", priority: "low", assignee: "priya" }, editable: [] },
@@ -523,20 +528,26 @@ function cards(): Section {
   const autoS = page([question(ASK_SCENARIO_QUESTION["actions-auto"]!.text), answer(autoT)]);
   const prior = page(replayPriorExchange(false, new Date(T - 20 * 60_000).toISOString()));
   const priorAuto = page(replayPriorExchange(true, new Date(T - 20 * 60_000).toISOString()));
-  const editingOf = (cid: number, drafts: Record<string, unknown> = {}) => (s: AppState) => { s.ask.actions.editing = { [cid]: true }; s.ask.actions.drafts = { [cid]: drafts }; };
+  // Edited in place: the person's drafts on the card, and (`field`) the text open as an input.
+  const editedOf = (cid: number, drafts: Record<string, unknown> = {}, field?: string) => (s: AppState) => {
+    s.ask.actions.drafts = { [cid]: drafts };
+    if (field) s.ask.actions.inline = { [cid]: { field, was: null, had: false } };
+  };
   return {
     id: "cards", title: "Write cards", intro: "A write never runs when the model calls it: the server builds a card from Trov's rows and it waits for Confirm (or runs at once on Auto). After the decision the card becomes a line. Consecutive calls to one tool are one card, one Confirm, one Undo.",
     specs: [
       cardSpec("c-ticket", "New ticket", "Pending: “Draft, not created yet”, Edit, Cancel, Confirm", [ticket]),
-      cardSpec("c-ticket-edit", "New ticket — editing", "Edit open: title, category, priority, assignee (the editable fields only)", [ticket], { over: editingOf(31, { priority: "normal" }) }),
+      cardSpec("c-ticket-edit", "New ticket — edited inline", "Priority cycled to Normal, the assignee picked, the title open as an input (no Edit mode)", [ticket], { over: editedOf(31, { priority: "normal", assignee: "maya" }, "title") }),
       cardSpec("c-ticket-run", "New ticket — confirming", "Confirm pressed: “Working…”, every button disabled", [ticket], { over: (s) => { s.ask.actions.busy = { 31: true }; } }),
       cardSpec("c-handoff", "New handoff", "Pending: from → to, the task, Done / Next, files", [handoff]),
-      cardSpec("c-handoff-edit", "New handoff — editing", "Edit open: Send to, Task", [handoff], { over: editingOf(32, { recipient: "maya" }) }),
+      cardSpec("c-handoff-edit", "New handoff — edited inline", "Send to picked (Maya), the task open as an input", [handoff], { over: editedOf(32, { recipient: "maya" }, "task") }),
       cardSpec("c-doc", "Doc edit", "Pending: the version step, the hunk under its heading (− / +)", [doc]),
-      cardSpec("c-doc-edit", "Doc edit — editing", "Edit open: the + text is a textarea", [doc], { over: editingOf(33) }),
+      cardSpec("c-doc-edit", "Doc edit — edited inline", "The + text clicked: a textarea that looks like it", [doc], { over: editedOf(33, {}, "hunk:0") }),
       cardSpec("c-publish", "Publish a staged doc", "Waiting (Auto never publishes): the note, Confirm", [publish]),
       cardSpec("c-publish-no", "Publish — not allowed", "canPublish false: “Open in Review” instead of Confirm", [blocked]),
-      cardSpec("c-move", "Move a ticket", "Pending: the server's title and lines", [move]),
+      cardSpec("c-move", "Move a ticket", "Pending: one row — the ticket, In progress → Testing, Cancel / Confirm", [move]),
+      cardSpec("c-move-sprint", "Move a ticket to a sprint", "Pending: the ticket, Hosting → Billing", [moveSprint]),
+      cardSpec("c-edit-ticket", "Edit a ticket", "Pending: the ticket, its new title (edits in place)", [editTicket]),
       cardSpec("c-sprint", "New sprint", "Pending", [sprint]),
       cardSpec("c-other", "Any other write", "Pending: a comment", [comment]),
       cardSpec("c-plan", "Waiting for you", "Auto on, Confirm-only: the roadmap plan", [plan]),
@@ -597,11 +608,9 @@ function assignments(): Section {
     preview: { title: "Claim handoff #11", lines: [{ label: "Title", value: handoff.title }, { label: "From", value: "@maya" }], item: handoff }, fields: { id: 11 }, editable: [] };
   for (const c of [add, addNone, rmLast, rmOther, ...rep, ...many]) asgWrite(c);
   DEFAULT_WRITES[99] = { ref: "handoff:11", result: { id: 11, claimed_by: "andres" } };
-  const editing = (id: number) => (s: AppState) => { s.ask.actions.editing = { [id]: true }; };
   // The picker open: the card's trigger and its menu (a root overlay in the app), placed by the app's dropdown code.
   const picker = (c: ActionEv, h: number) => {
     const s = page([question("Give #18 to Maya too."), answer(cardsAnswer([c]))]);
-    s.ask.actions.editing = { [c.id]: true };
     s.dd = { open: `ask-ac-asg-${c.id}`, opening: false, closing: false };
     return placed(`${keep(cv(s), ".ask-parts .ask-part")}${dropdownMenu(actionDropdowns(s), s.dd)}`, s.dd, 720, h);
   };
@@ -614,7 +623,7 @@ function assignments(): Section {
       cardSpec("a-rm-last", "Remove the last one", "Pending: Priya Natarajan → Unassigned (no Edit: nobody else to pick)", [rmLast]),
       cardSpec("a-replace", "Replace", "Pending: two writes on one ticket, one card — Andres Lopez → Maya Chen", rep),
       cardSpec("a-many", "One person, two tickets", "Pending: a card per ticket in one frame, one Confirm", many),
-      cardSpec("a-edit", "Editing", "Edit open: the person is a dropdown trigger", [add], { over: editing(91) }),
+      cardSpec("a-edit", "Edited inline", "Another person picked in the dropdown (Jon Park)", [add], { over: (s) => { s.ask.actions.drafts = { 91: { login: "jon" } }; } }),
       inline("a-picker", "Editing, the picker open", "The menu: every member who could take it, with avatars (not Andres — already on it)", "The answer; the menu over it",
         picker(add, 420), { w: 720, h: 420, stage: "gx-fixed gx-block" }),
       inline("a-picker-rm", "Editing a removal, the picker open", "Only the people on it now", "The answer; the menu over it",
