@@ -180,13 +180,16 @@ const putJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T
 
 // ── reads ────────────────────────────────────────────────────────────────────
 export interface FeedQuery { author?: string; tags?: string[]; limit?: number; }
-export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> {
+export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> { return getFeedPage(q).then((r) => r.feed); }
+/** The Feed's page with `aiOff`: true when it holds an entry Trov wrote but Trov writes no new ones (the org's switch
+ *  off, or no key) — the one-time "Trov now writes entries…" note is then not said (Q29). */
+export function getFeedPage(q: FeedQuery = {}): Promise<{ feed: FeedRow[]; aiOff: boolean }> {
   const p = new URLSearchParams();
   if (q.author) p.set("author", q.author);
   if (q.tags && q.tags.length) p.set("tags", q.tags.join(","));
   if (q.limit) p.set("limit", String(q.limit));
   const qs = p.toString();
-  return getJson<{ feed: FeedRow[] }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => r.feed);
+  return getJson<{ feed: FeedRow[]; aiOff?: boolean }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => ({ feed: r.feed, aiOff: r.aiOff === true }));
 }
 
 /** The Feed aside's "This week" (`GET /feed/stats`): the last `days` of the WHOLE

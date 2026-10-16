@@ -201,7 +201,9 @@ agent's and renders as before. One with `origin: "ai"` takes the AI mark as its 
 agents), and the list a one-time note above the first Trov entry on screen ("Trov now writes entries from your
 commits, about 45 minutes after your last push. Your agents can stick to decisions and findings." + AI settings
 → Org settings › AI), dismissed per person with "Got it" (`trov.aiFeedNote`, a JSON list of handles in this
-browser's localStorage). Source = Trov over a page with no entry Trov wrote says "No Trov entries in this view."
+browser's localStorage). Trov's entries are RECORDS: with the org's switch off (or no key) they keep their mark, byline
+and the Source switch; only the note, no longer true, is not drawn — `/feed` then answers `aiOff: true` beside a
+page that holds one (`getFeedPage`, `AiUi.feedAiOff`; Q29). Source = Trov over a page with no entry Trov wrote says "No Trov entries in this view."
 (`FEED_NO_TROV`, Q27) where any other filter says "No entries match this filter.". With no `ai` anywhere the Feed
 is byte-for-byte what it was (`test/render.ai-absent.test.ts`).
 

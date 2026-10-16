@@ -74,6 +74,7 @@ import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreview, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
 import { aiKeyPresent } from "./ai/eligibility";
+import { aiSwitchOn } from "./data/ai-cards";
 import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
@@ -283,7 +284,12 @@ tenantRoot.get("/feed", async (c) => {
   // are merged in (src/ai/preview.ts).
   const feed = await hideWrongFor(c.var.ctx, c.get("principal").handle, await get_feed(c.var.ctx, filter));
   const preview = aiPreview(c.env, c.req.url);
-  return c.json({ feed: preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed });
+  const rows = preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed;
+  // Trov's entries are records: they keep their mark whatever the switch says. Only the one-time note ("Trov now
+  // writes entries…") would be untrue with the switch off or no key — `aiOff` says so, and only on a page that has
+  // one of them (Q29). One more statement, only then.
+  const aiOff = rows.some((r) => r.ai?.origin === "ai") && !(aiKeyPresent(c.env) && (await aiSwitchOn(c.var.ctx)));
+  return c.json(aiOff ? { feed: rows, aiOff: true } : { feed: rows });
 });
 
 // The Feed aside's "This week": entry counts per day, people, top tags and authors over

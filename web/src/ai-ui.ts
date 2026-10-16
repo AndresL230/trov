@@ -35,6 +35,9 @@ export interface AiUi {
   feedSource: AiFeedSource;
   /** Handles that pressed "Got it" on the Feed's note, on this browser (`trov.aiFeedNote`). */
   noteSeen: string[];
+  /** The Feed's last read said Trov writes no new entries (the switch off, or no key; `/feed`'s `aiOff`): its
+   *  one-time note is not drawn. Trov's entries keep their mark (Q29). */
+  feedAiOff: boolean;
   /** Repo › Planning › Where the work went: the range on screen and the lane picked. */
   themesRange: AiThemeRange;
   themesLane: string | null;
@@ -55,7 +58,7 @@ export interface AiUi {
   leaving: { key: string; at: number }[];
 }
 export function initialAiUi(): AiUi {
-  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, previewDecided: [], leaving: [] };
+  return { hidden: [], feedSource: "all", noteSeen: [], feedAiOff: false, themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, previewDecided: [], leaving: [] };
 }
 /** The localStorage key "Got it" is remembered under: a JSON list of handles (per person, per browser). */
 export const AI_NOTE_KEY = "trov.aiFeedNote";

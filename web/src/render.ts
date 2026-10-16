@@ -1336,7 +1336,8 @@ function feedView(s: AppState): string {
   const shown = feedShown(s, now);
   // "Got it" and "Wrong?" take the note and an entry out with the one exit (ai-ui.ts › Leaving).
   const noteT = aiLeavingT(s.ai, AI_NOTE_LEAVING, now);
-  const noteAt = feedHasAi(s) && (!feedNoteSeen(s) || noteT !== null) ? shown.findIndex(isTrovEntry) : -1;
+  // With the switch off (or no key) the note would be untrue: not drawn; the entries keep their mark (Q29).
+  const noteAt = feedHasAi(s) && !s.ai.feedAiOff && (!feedNoteSeen(s) || noteT !== null) ? shown.findIndex(isTrovEntry) : -1;
   const cards = shown.map((e, i) => {
     const note = i === noteAt ? (noteT === null ? feedAiNote() : aiLeave(feedAiNote(), noteT)) : "";
     if (isTrovEntry(e)) {

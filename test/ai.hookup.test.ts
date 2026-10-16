@@ -27,6 +27,7 @@ import type { FeedRow } from "@shared/rows";
 import type { RepoDashboard } from "@shared/repo";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
+import { run } from "./helpers/db";
 import { addOrgRepo } from "./helpers/org-config";
 import { keyedEnv, stubProviders, type ClaudeReply } from "./helpers/ai-pass";
 
@@ -211,6 +212,20 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect(feedHtml).toContain(`href="https://github.com/${REPO}/pull/185"`); // a source, linked to the digest's repo
     const feedWrong = wrongArg(w, feedHtml, `data-feed-id="${entry.id}"`);
     expect(feedWrong).toMatchObject({ itemType: "feed", itemRef: String(entry.id) });
+    // With the switch on and a key, the page says nothing more; switched OFF, the entry stays a record (its mark,
+    // the Source switch) and only the one-time note, no longer true, goes (Q29).
+    const keyedFeed = async () => (await (await api.request("https://trov.dev/api/o/saplinglearn/feed", { headers: { cookie } }, keyedEnv())).json()) as { feed: FeedRow[]; aiOff?: boolean };
+    expect(await keyedFeed()).not.toHaveProperty("aiOff");
+    expect((await get<{ aiOff?: boolean }>("/feed", cookie)).aiOff).toBe(true); // no key: nothing new is written either
+    await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = ?`, ORG_A);
+    const off = await keyedFeed();
+    expect(off.aiOff).toBe(true);
+    expect(off.feed.filter((r) => r.ai).map((r) => r.id)).toEqual([entry.id]);
+    const offHtml = w.render(appState(w, { screen: "feed", feedView: "reading", feed: { status: "ok", data: off.feed }, ai: { ...(w.initialState().ai as Record<string, unknown>), feedAiOff: true } }));
+    expect(offHtml).toContain(`data-ai="feed" data-feed-id="${entry.id}"`);
+    expect(offHtml).toContain('data-seg="feed-source"');
+    expect(offHtml).not.toContain(w.FEED_AI_NOTE.slice(0, 40));
+    await run(env.DB, `UPDATE orgs SET ai_automation = 1 WHERE id = ?`, ORG_A);
 
     // ── "Wrong?": the exact bodies the buttons carry, to the real route; the next reads leave each out ──
     for (const body of [stateWrong, feedWrong]) {
