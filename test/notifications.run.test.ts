@@ -307,6 +307,17 @@ describe("\"Only when something needs me\" (0067, Phase E)", () => {
     expect((await bodies()).map((b) => b.to_address)).toEqual(["luke@example.com"]);
   });
 
+  // Q46 (owner ruling 2026-10-16): the daily only — the weekly always goes.
+  it("does not hold back the weekly: with nothing that needs them, the weekly is still sent", async () => {
+    await user("AndresL230", "andres@example.com");
+    await needed("AndresL230");
+    await pending();
+    await run(env.DB, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES ('org_saplinglearn', 'AndresL230', 'review_queue', 'weekly', 'now')`);
+    await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: localDelivery(systemCtx()) });
+    const rows = (await outbox()).filter((r) => r.user_id === "AndresL230");
+    expect(rows.map((r) => [r.cadence, r.status])).toEqual([["weekly", "sent"]]);
+  });
+
   it("a Next item (with no brief: an assigned ticket) sends the whole digest", async () => {
     await user("AndresL230", "andres@example.com");
     await needed("AndresL230");

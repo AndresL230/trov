@@ -32,8 +32,11 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 - **"Only when something needs me"** (`notification_person_prefs`, 0067; Settings › Email notifications, `PUT
   /prefs { onlyWhenNeeded }`, own row, per org): with it on, `deliverRow` asks `needsMe` (`renderers/my-work.ts`)
   BEFORE rendering — the brief has a Next item (with no brief: an assigned ticket), or a notable or breaking item
-  touched their work in the window — and marks the row `skipped` otherwise. A queue line alone never sends it.
-  The retry and the test send read it too (a sample test send ignores it).
+  touched their work since their last send (Also's rule) — and marks the row `skipped` otherwise. A queue line alone
+  never sends it. It holds back the scheduled DAILY only (owner ruling Q46): the weekly, the admin preview and the
+  test send always go (the retry re-asks it for a daily row). While the person is unsubscribed the option stays in
+  Settings, dimmed, with its reason ("Not in use while you're unsubscribed from Trov email."; `aria-disabled`, the
+  toggle refused), never hidden.
 - **The brief pre-warm** (`prewarmDigests`, `cron.ts`; `ai.md` › The router): the repo tick ONE TICK BEFORE the hour
   (`:50`) asks `dueCadence` for the coming hour, per org; for an org whose daily or weekly digest is due then, the
   AI router marks every recipient's `person:<handle>` scope URGENT (it skips the debounce), so the AI pass that

@@ -58,7 +58,8 @@ export interface ClaimedRow {
   kinds: readonly NotificationKind<TenantContext>[];
   window: Window;
   timeZone: string;
-  /** The person chose "Only when something needs me" (0067): nothing is sent unless `needsMe` says so. */
+  /** The person chose "Only when something needs me" (0067): a DAILY is sent only when `needsMe` says so. The weekly,
+   *  the preview and the test send always go (owner ruling Q46). */
   onlyWhenNeeded?: boolean;
 }
 
@@ -92,8 +93,9 @@ export async function deliverRow(ctx: TenantContext, row: ClaimedRow, opts: Deli
   let sections: Section[];
   let rendered: string[];
   try {
-    // "Only when something needs me": no Next item and nothing notable or breaking touched their work → skipped.
-    if (row.onlyWhenNeeded && !presetSections && !(await needsMe(ctx, row.login, row.window))) {
+    // "Only when something needs me" (the daily only, Q46): no Next item and nothing notable or breaking touched
+    // their work → skipped.
+    if (row.onlyWhenNeeded && row.window.cadence === "daily" && !presetSections && !(await needsMe(ctx, row.login, row.window))) {
       await setStatus(ctx, row.key, { status: "skipped", kinds: [] });
       return "skipped";
     }

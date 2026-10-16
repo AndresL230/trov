@@ -4043,6 +4043,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "toggleOnlyWhenNeeded": {
+      if (state.notifPrefs.data?.unsubscribed) return; // dimmed with its reason while unsubscribed (notifications.ts)
       const next = !(state.notifPrefs.data?.onlyWhenNeeded ?? false);
       writePrefs({ onlyWhenNeeded: next }, next ? "Digests only when something needs you" : "Every digest again");
       return;
