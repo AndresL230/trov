@@ -26,6 +26,7 @@ import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
 import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askTweenHeights, reducedMotion } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
+import { AskPacer, type PaceClock } from "./ask-pace";
 import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskEvent, type RefView } from "@shared/ai-ask-core";
 
 export interface AskHost {
@@ -68,6 +69,14 @@ export function createAskController(host: AskHost): AskController {
     // Away from the Ask screen only Ask's root overlays (the ⌘J panel, the hover card) change: they repaint alone,
     // so the page behind is never rebuilt per keystroke or streamed word (ask-cmdj.ts `cmdjRepaint`).
     raf(() => { paintQueued = false; if (cmdjRepaint(host.mount, s)) after(); else host.rerender(); });
+  }
+
+  /** The answer's pace (ask-pace.ts) runs on the page's frames; none without a window (tests) or under reduced motion
+   *  (the words show as they arrive). A hidden tab, where frames stop, gets them at once. */
+  function paceClock(): PaceClock | null {
+    if (typeof window === "undefined" || typeof requestAnimationFrame !== "function" || reducedMotion()) return null;
+    const hidden = () => typeof document !== "undefined" && document.hidden;
+    return { now: () => performance.now(), frame: (f) => { if (hidden()) setTimeout(f, 0); else requestAnimationFrame(() => f()); }, instant: hidden };
   }
 
   function fail(e: unknown, fallback: string): void {
@@ -159,25 +168,32 @@ export function createAskController(host: AskHost): AskController {
     streams[where] = ctl;
     const wasNew = c.threadId === null;
     let textSeen = "";
+    const deliver = (e: AskEvent) => {
+      if (streams[where] !== ctl) return;
+      if (e.event === "thread") setConvo(where, foldThreadEvent(ui()[where], e.data));
+      else if (e.event === "done") setConvo(where, withLastTurn(withQuestionId(ui()[where], e.data.questionId), (t) => foldAskEvent(t, e, Date.now())));
+      else setConvo(where, withLastTurn(ui()[where], (t) => foldAskEvent(t, e, Date.now())));
+      primeFromEvent(e);
+      if (e.event === "text") { textSeen += e.data.delta; if (/\]\]/.test(e.data.delta)) want(refsInText(textSeen)); }
+      for (const p of PARTS) p.onEvent?.(ctx, where, e);
+      paint();
+    };
+    // The answer's words go out at a reading pace (ask-pace.ts): a burst the model held back arrives as a stream.
+    // Stop (or anything that aborts) delivers what was received at once.
+    const clock = paceClock();
+    const pacer = clock ? new AskPacer(deliver, clock) : AskPacer.passthrough(deliver);
+    ctl.signal.addEventListener("abort", () => pacer.flush(), { once: true });
     try {
       await api.ask({
         threadId: c.threadId, text: input.text, command: input.command, mode, auto, context: input.context ?? [], attachments: input.attachments ?? [],
         replaceFrom: input.replaceFrom, origin: where === "panel" ? "panel" : undefined,
-      }, {
-        signal: ctl.signal,
-        onEvent: (e) => {
-          if (streams[where] !== ctl) return;
-          if (e.event === "thread") setConvo(where, foldThreadEvent(ui()[where], e.data));
-          else if (e.event === "done") setConvo(where, withLastTurn(withQuestionId(ui()[where], e.data.questionId), (t) => foldAskEvent(t, e, Date.now())));
-          else setConvo(where, withLastTurn(ui()[where], (t) => foldAskEvent(t, e, Date.now())));
-          primeFromEvent(e);
-          if (e.event === "text") { textSeen += e.data.delta; if (/\]\]/.test(e.data.delta)) want(refsInText(textSeen)); }
-          for (const p of PARTS) p.onEvent?.(ctx, where, e);
-          paint();
-        },
-      });
+      }, { signal: ctl.signal, onEvent: (e) => { if (streams[where] === ctl) pacer.push(e); } });
+      // The stream is over; its last words (and `done`) are still going out — Send stays Stop until they have.
+      pacer.close();
+      await pacer.idle();
       if (streams[where] === ctl) setConvo(where, withLastTurn(ui()[where], (t) => failTurn(t)));
     } catch (e) {
+      pacer.flush();
       if (isAbort(e) || ctl.signal.aborted) setConvo(where, withLastTurn(ui()[where], stopTurn));
       else if (isUnauthorized(e)) { host.unauth(e); }
       else {

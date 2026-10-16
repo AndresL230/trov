@@ -11,7 +11,8 @@ import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, ORG_B, ensureMember, tenantCtx } from "./helpers/tenant";
 import { ASK_SYSTEM_RULES, fence } from "../src/ai/ask/prompt";
-import { BASE, KEYED, ask, call, eventsOf, fakeModel, streamResponse, withAsk } from "./helpers/ask";
+import { BASE, KEYED, ask, call, eventsOf, fakeModel, readSse, streamBody, streamResponse, withAsk } from "./helpers/ask";
+import { app } from "../src/routes";
 
 const ME = "ask-person";
 const day = () => new Date().toISOString().slice(0, 10);
@@ -81,6 +82,52 @@ describe("POST /ask — a read-only answer", () => {
     // Smart answers on Sonnet; no thinking is shown.
     expect(a.model).toBe("claude-sonnet-5-5");
     expect(a.thinking).toBeUndefined();
+  });
+});
+
+describe("POST /ask — the words go out as the model writes them", () => {
+  it("a text delta reaches the client while the model's answer (after a tool result) is still open; done only after it ends", async () => {
+    const cookie = await cookieFor(ME);
+    const n = await ticket("Stream me");
+    // The model's second answer: its first words, then it HANGS until the test releases it.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    const body = streamBody([{ type: "text", text: `[[ticket:${n}]] is open, and here is more.${final}` }]);
+    const firstDelta = body.indexOf("event: content_block_delta");
+    const cut = body.indexOf("\n\n", firstDelta) + 2;
+    const enc = new TextEncoder();
+    const held = () => new Response(new ReadableStream<Uint8Array>({
+      async start(c) {
+        c.enqueue(enc.encode(body.slice(0, cut)));
+        await gate;
+        c.enqueue(enc.encode(body.slice(cut)));
+        c.close();
+      },
+    }), { status: 200, headers: { "content-type": "text/event-stream" } });
+    const model = fakeModel([[{ type: "tool_use", name: "get_ticket", input: { id: n } }], held]);
+    await withAsk({ fetchImpl: model.fetchImpl }, async () => {
+      const res = await app.request(`${BASE}/ask`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ mode: "smart", text: "Status?" }) }, KEYED);
+      expect(res.headers.get("content-type")).toMatch(/^text\/event-stream/);
+      const reader = res.body!.getReader();
+      const dec = new TextDecoder();
+      let got = "";
+      // Read until the first `text` event — the model has NOT finished (the gate is shut).
+      while (!/event: text\n/.test(got)) {
+        const { value, done } = await reader.read();
+        expect(done, "the stream ended before any text").toBe(false);
+        got += dec.decode(value, { stream: true });
+      }
+      const early = readSse(got.slice(0, got.lastIndexOf("\n\n") + 2));
+      expect(early.map((e) => e.event)).toContain("activity");
+      // The model's first 12 characters (streamBody's chunk), as they came.
+      expect(eventsOf(early, "text")[0].delta).toBe(`[[ticket:${n}]] is open`.slice(0, 12));
+      expect(early.some((e) => e.event === "done")).toBe(false);
+      release();
+      for (;;) { const { value, done } = await reader.read(); if (done) break; got += dec.decode(value, { stream: true }); }
+      const all = readSse(got);
+      expect(all.at(-1)!.event).toBe("done");
+      expect(eventsOf(all, "text").map((t) => t.delta).join("").trimEnd()).toBe(`[[ticket:${n}]] is open, and here is more.`);
+    });
   });
 });
 
