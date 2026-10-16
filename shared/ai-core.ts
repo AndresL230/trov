@@ -97,6 +97,11 @@ export const AI_BRIEF_NEXT_MAX = 3;
 /** Sources under one line: one row of them. */
 export const AI_BRIEF_CITES_MAX = 3;
 
+/** How many days what Trov wrote about NOW stays current (owner ruling Q25). A brief older than this is HIDDEN — read
+ *  as if there were none (a stale "Now" is a wrong claim); a repo state older than this stays and says its age
+ *  (`AiRepoState.ageDays`). */
+export const AI_STALE_DAYS = 7;
+
 // ── Repo › Overview › "State" ───────────────────────────────────────────────
 /** `RepoDashboard.state?`. Each list is at most AI_LIST_MAX long. `eventCount` is counted
  *  by the server ("Written by Trov from 6 events"); null when unknown, never a guessed 0. */
@@ -106,6 +111,10 @@ export interface AiRepoState extends AiMeta {
   inFlight: AiLine[];
   attention: AiLine[];
   eventCount: number | null;
+  /** Whole days since this version was written, counted by the SERVER at read time (owner ruling Q25: an old state
+   *  stays, and says its age plainly — the card adds "Written N days ago." from `AI_STALE_DAYS`). Absent when the
+   *  read has no written version (`empty`). */
+  ageDays?: number;
 }
 export const AI_LIST_MAX = 5;
 

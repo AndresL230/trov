@@ -344,6 +344,12 @@ describe("Repo › Summary › State", () => {
     expect(text(h)).toContain("Written by Trov, 2h ago");
     expect(h).not.toContain("0 events");
   });
+  it("an old state says its age plainly (Q25): 'Written N days ago.' under the headline from the server's ageDays — a quiet fact, not a mark", () => {
+    const old = repoStateSection({ ...repoStateFixture("ready", NOW), ageDays: 9 }, rp());
+    expect(text(old)).toContain("Written 9 days ago.");
+    expect(old).toMatch(/class="repo-state-age" style="[^"]*color:var\(--fg-55\)">Written 9 days ago\.<\/p>/);
+    for (const fresh of [{ ageDays: 6 }, {}]) expect(repoStateSection({ ...repoStateFixture("ready", NOW), ...fresh }, rp())).not.toContain("repo-state-age");
+  });
   it("empty: the mock's sentence; capped: the headline and 'this state is from <day> and resumes <day>'", () => {
     expect(text(repoStateSection(repoStateFixture("empty", NOW), rp()))).toContain(AI_EMPTY.state);
     const c = text(repoStateSection(repoStateFixture("capped", NOW), rp()));

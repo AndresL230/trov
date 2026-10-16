@@ -16,7 +16,7 @@
 // one panel (the mock's layout), whose hairlines and sections are untouched. Pure markup; the acts are ai-actions.ts's.
 
 import type { AiLine, AiRepoState, AiThemeLane, AiThemeRange, AiThemes } from "@shared/ai-core";
-import { AI_THEME_NAME_MAX, AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
+import { AI_STALE_DAYS, AI_THEME_NAME_MAX, AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
 import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
 import { segmented } from "./segmented";
@@ -81,8 +81,13 @@ export function repoStateSection(st: AiRepoState, p: RepoAiProps, now = Date.now
             : `<p style="margin:0;font-size:13px;color:var(--fg-55)">Nothing here.</p>`}
         </div>`;
     }).join("");
+    // Its age, plainly (owner ruling Q25): an old state stays — a fact under the headline, in the byline's quiet
+    // ink, never a warning. The server counts the days (`ageDays`).
+    const age = st.ageDays !== undefined && st.ageDays >= AI_STALE_DAYS
+      ? `<p class="repo-state-age" style="margin:0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">Written ${st.ageDays} days ago.</p>` : "";
+    const headline = st.headline ? `<p class="repo-state-hl" style="margin:0;font-size:18px;font-weight:500;line-height:1.4;letter-spacing:-0.005em;max-width:64ch">${esc(st.headline)}</p>` : "";
     body = `<div style="display:flex;flex-direction:column;gap:18px">
-        ${st.headline ? `<p class="repo-state-hl" style="margin:0;font-size:18px;font-weight:500;line-height:1.4;letter-spacing:-0.005em;max-width:64ch">${esc(st.headline)}</p>` : ""}
+        ${age ? `<div style="display:flex;flex-direction:column;gap:4px">${headline}${age}</div>` : headline}
         <div class="repo-state-cols">${cols}</div>
       </div>`;
   }

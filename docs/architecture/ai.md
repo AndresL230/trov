@@ -487,7 +487,9 @@ a breaking change skips it — 6 h otherwise).
 off (the switch off or no key),
 nothing written, a row that no longer parses, the viewer's "Wrong?" on that version
 (`aiItemRef.repoState(repo, generatedAt)`), or a failed read; `capped` once the month's `ai_runs` are spent (the
-last state, `resumesOn`, `upgrade` on Free); else `ready`. Two statements (plus "Wrong?"'s with a viewer).
+last state, `resumesOn`, `upgrade` on Free); else `ready`. An OLD state stays (owner ruling Q25) and says its age:
+`ageDays`, the server's whole days since it was written, and the card adds "Written N days ago." under the headline
+from `AI_STALE_DAYS` (7) on — a quiet fact in the byline's ink, never a mark. Two statements (plus "Wrong?"'s with a viewer).
 
 ## The brief (`brief.person`, Phase D, #163; `src/ai/brief.ts`, `src/ai/brief-core.ts`, `0063_person_brief`)
 
@@ -551,7 +553,9 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
   insert and the trim in ONE batch). In `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; deleting the account
   DELETES the person's rows (`src/deletion/person.ts`), never hands them to the tombstone.
 - **The read** (`storedBrief`, `src/tools/mywork.ts`, plain D1 — reachable from MCP, so it imports nothing from
-  `src/ai/`): the newest row → `AiBrief`; ABSENT under the read rule's off (the switch off or no key), there is none, it fails `AiBriefSchema`,
+  `src/ai/`): the newest row → `AiBrief`; ABSENT under the read rule's off (the switch off or no key), when it is
+  older than `AI_STALE_DAYS` (7 days, owner ruling Q25: a stale "Now" is a wrong claim — read as none, so the
+  e-mail, which reads it at its window's end, falls back to the assigned items), there is none, it fails `AiBriefSchema`,
   or the person pressed "Wrong?" on that version; `capped` (with `resumesOn`, `upgrade` on Free) when `ai_runs` are
   spent; `empty` for a no-model version. `GET /me/dashboard`, `get_my_work` and — Phase E — the e-mail read it. An
   OLDER stored brief may be longer, carry more than three or several of a kind, or mark a past-due item `due`: it

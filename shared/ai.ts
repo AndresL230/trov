@@ -61,6 +61,7 @@ export const AiRepoStateSchema = z.object({
   inFlight: z.array(AiLineSchema).max(AI_LIST_MAX),
   attention: z.array(AiLineSchema).max(AI_LIST_MAX),
   eventCount: z.number().int().min(0).nullable(),
+  ageDays: z.number().int().min(0).optional(),
 }) satisfies z.ZodType<AiRepoState>;
 
 export const AiFeedMetaSchema = z.object({

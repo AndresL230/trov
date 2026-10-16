@@ -5,7 +5,7 @@ import { isFeedImportance } from "@shared/ai-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { memberPerson, memberGithubLogins } from "../auth/persons";
 import { isIssueGone } from "./issue-gone";
-import { AiBriefSchema, aiItemRef, type AiBrief } from "@shared/ai";
+import { AI_STALE_DAYS, AiBriefSchema, aiItemRef, type AiBrief } from "@shared/ai";
 import { latestBrief } from "../data/person-brief";
 import { hiddenFor } from "../data/ai";
 import { aiShown } from "../plans/gate";
@@ -291,7 +291,8 @@ const BriefContentSchema = AiBriefSchema.pick({ now: true, recently: true, next:
  * THE read of a person's brief (0063_person_brief): the NEWEST row the AI pass stored for them — what My Work
  * (`GET /me/dashboard`), MCP `get_my_work` and, from Phase E, the e-mail show. D1 only: no model, nothing from
  * src/ai/ (this module is reachable from src/mcp.ts). Null — the field is ABSENT — when THE read rule hides it
- * (`aiShown`: the org's AI switch off, or no Anthropic key on the deployment), nothing was stored, the stored row fails its schema, or this person pressed "Wrong?" on that very version
+ * (`aiShown`: the org's AI switch off, or no Anthropic key on the deployment), nothing was stored, the newest is
+ * older than `AI_STALE_DAYS` (Q25: hidden, never shown as current), the stored row fails its schema, or this person pressed "Wrong?" on that very version
  * (`aiItemRef.brief(generatedAt)`; the next version shows again). When the org's `ai_runs` are spent the LAST
  * brief is shown as `capped`, with the day it resumes. A row the pass stored with no model is `empty`.
  */
@@ -302,6 +303,10 @@ export async function storedBrief(ctx: TenantContext, handle: string, now: Date 
   try { content = JSON.parse(row.brief_json); } catch { return null; }
   const parsed = BriefContentSchema.safeParse(content);
   if (!parsed.success) return null;
+  // Older than `AI_STALE_DAYS` is NOT current (owner ruling Q25: a stale "Now" is a wrong claim): read as none — so
+  // the e-mail, too, falls back to the assigned items. An instant that does not parse is never shown either.
+  const age = now.getTime() - Date.parse(row.generated_at);
+  if (!(age <= AI_STALE_DAYS * 86_400_000)) return null;
   const written = row.model !== null;
   if (written && (await hiddenFor(ctx, handle, "brief")).has(aiItemRef.brief(row.generated_at))) return null;
   return {

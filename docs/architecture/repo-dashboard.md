@@ -649,7 +649,9 @@ newest `repo_state` version** (0062; written by the AI pass's `repo.state` job �
 repository, under the AI read rule's off (the org's switch off or no Anthropic key — `ai.md` › The read rule), with nothing written yet, for the person who flagged that version
 "Wrong?", or on any failed read (never a 500, never a degraded dashboard); `ready` otherwise, and `capped` (same
 content, `resumesOn`, `upgrade` on Free) once the month's `ai_runs` are spent. `eventCount` is the server's count
-of what the version was written from. **`themes` is written too** (`src/tools/themes.ts` `readRepoThemes`, called at
+of what the version was written from, and `ageDays` its whole days since it was written: an old state STAYS (owner
+ruling Q25) and the card says "Written N days ago." under the headline from `AI_STALE_DAYS` (7) on — a plain fact
+in the byline's ink (`.repo-state-age`), never a mark or a warning. **`themes` is written too** (`src/tools/themes.ts` `readRepoThemes`, called at
 the end of `getRepoDashboard`, so the route and `get_repo_dashboard` get the same field): a D1 aggregation on read —
 merged PRs per theme per UTC Monday week from `pr_themes`, a proposal's lane from the PRs it cited, the newest caption
 on the 8-week range — present only under the AI read rule (the switch on and a key) and while the repository has an

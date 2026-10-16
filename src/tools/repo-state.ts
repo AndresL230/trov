@@ -75,6 +75,12 @@ export async function appendRepoState(ctx: TenantContext, repo: string, v: {
   ]);
 }
 
+/** Whole days since `at`, counted now — `{}` when `at` does not read as an instant (never a guessed 0). */
+function ageOf(at: string, now: Date): { ageDays?: number } {
+  const t = Date.parse(at);
+  return Number.isFinite(t) ? { ageDays: Math.max(0, Math.floor((now.getTime() - t) / 86_400_000)) } : {};
+}
+
 /**
  * `RepoDashboard.state` for `repo` — what the screen and `get_repo_dashboard` carry, or undefined (absent). Two
  * statements (the switch, plan and month's runs in one; the newest version), plus one for "Wrong?" when there is a
@@ -100,6 +106,8 @@ export async function readRepoState(ctx: TenantContext, repo: string, opts: { vi
       inFlight: stored.inFlight.slice(0, AI_LIST_MAX),
       attention: stored.attention.slice(0, AI_LIST_MAX),
       eventCount: row.event_count,
+      // Its age, plainly (Q25): an old state stays, and the card says how old.
+      ...ageOf(row.generated_at, now),
     };
     const parsed = AiRepoStateSchema.safeParse(dto);
     return parsed.success ? parsed.data : undefined;

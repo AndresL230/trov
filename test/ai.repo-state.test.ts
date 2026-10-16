@@ -227,6 +227,13 @@ describe("THE READ: absent unless there is a state to show", () => {
     expect(await readRepoState(systemCtx(), REPO)).toMatchObject({ state: "ready", eventCount: 3, headline: "All green." });
   });
 
+  it("an old state STAYS and says its age plainly (Q25): `ageDays`, the server's whole days since it was written", async () => {
+    await write(); // written 2026-10-15T01:00Z
+    expect(await readRepoState(systemCtx(), REPO, { now: new Date("2026-10-15T20:00:00Z") })).toMatchObject({ state: "ready", ageDays: 0 });
+    expect(await readRepoState(systemCtx(), REPO, { now: new Date("2026-10-24T02:00:00Z") })).toMatchObject({ state: "ready", ageDays: 9, headline: "All green." });
+    expect(await readRepoState(systemCtx(), REPO, { now: new Date("2026-11-14T02:00:00Z") })).toMatchObject({ ageDays: 30 });
+  });
+
   it("the month's runs spent → capped, with the last state, when it resumes, and Upgrade on Free", async () => {
     await write();
     await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG_A);
