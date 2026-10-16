@@ -113,6 +113,7 @@ export const AI_TIP = {
   state: `Written by Trov from captured events, tickets and the plan. ${AI_NOT_OFFICIAL}`,
   themes: `Themes and caption written by Trov from this repository's merged pull requests. ${AI_NOT_OFFICIAL}`,
   suggestion: `Suggested by Trov. Nothing changes until a person accepts it. ${AI_NOT_OFFICIAL}`,
+  session: `Written by Trov about your session, from its commits and pull requests. ${AI_NOT_OFFICIAL}`,
 } as const;
 /** A feed entry's tooltip names its own sources. */
 export const aiFeedTip = (sources: AiCite[], more: number): string =>

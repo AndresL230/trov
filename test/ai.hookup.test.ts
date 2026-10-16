@@ -198,6 +198,12 @@ describe("the AI screens over REAL rows: webhook → pass → reads → render",
     expect(AiFeedMetaSchema.parse(entry.ai)).toMatchObject({ origin: "ai", subject: ME, model: "claude-haiku-5-5" });
     expect(entry.ai!.sources.map((c) => c.ref)).toContain("pr:185");
     expect(feed.filter((r) => !r.ai).map((r) => r.summary)).toEqual(["Decision: hosting connections stay read-only"]);
+    // `?author=` stays literal (who wrote it: not Trov's digest); `about=1` adds the digests whose subject is that
+    // person — My Work › Your sessions (Q30). Another org's rows never come (the read binds the org).
+    expect((await get<{ feed: FeedRow[] }>(`/feed?author=${ME}`, cookie)).feed.map((r) => r.id)).not.toContain(entry.id);
+    const mine = (await get<{ feed: FeedRow[] }>(`/feed?author=${ME}&about=1`, cookie)).feed;
+    expect(mine.map((r) => r.id)).toContain(entry.id);
+    expect(mine.every((r) => r.author === ME || r.ai?.subject === ME)).toBe(true);
     // MCP get_feed carries the same rows, `ai` included.
     expect(await mcp<FeedRow[]>("get_feed", {})).toEqual(feed);
     // The repo state cites the digest by its feed id: the two producers are wired to each other.

@@ -83,7 +83,8 @@ issue ever captured (`test/mywork.test.ts` pins the rule clause by clause).
 `todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
 a mirrored ticket's issue can therefore appear in both `todo` and `tickets` (`source: "github"` says so).
 The SCREEN (`web/src/mywork.ts`, composed by `myWorkView`) reads its other tiles off their own slices: Your
-sessions off `mwSessions` (`GET /feed?author=<me>&limit=2` — never the Feed screen's filtered `feed`), Docs
+sessions off `mwSessions` (`GET /feed?author=<me>&about=1&limit=2` — never the Feed screen's filtered `feed`; `about=1`
+adds the session digests Trov wrote about me, `subject = me`, each drawn with the AI mark — Q30), Docs
 you own off `mwDocs` (`GET /docs?fields=meta`, no bodies, stubs at `current_version = 0` skipped), the review
 tile off `reviewHeadsFromReads` (no diff), and every handoff count — Your sessions' pills and the library's
 Queued handoffs cell (count + the newest: its row opens it; **Claim & copy** (`mwHandoffClaim`,

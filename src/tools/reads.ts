@@ -94,6 +94,9 @@ export async function list_doc_meta(ctx: TenantContext): Promise<DocMetaRow[]> {
 
 export interface FeedFilter {
   author?: string;
+  /** With `author`: also the session digests Trov wrote ABOUT that person (`origin = 'ai'`, `subject = author`) —
+   *  My Work › Your sessions (Q30). `author` alone stays literal: who wrote the entry. */
+  aboutAuthor?: boolean;
   tags?: string[];
   since?: string;
   limit?: number;
@@ -105,7 +108,10 @@ export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Pro
   const joinParams: unknown[] = [];
   let join = "";
 
-  if (filter.author) {
+  if (filter.author && filter.aboutAuthor) {
+    clauses.push(`(f.author = ? OR (f.origin = 'ai' AND f.subject = ?))`);
+    params.push(filter.author, filter.author);
+  } else if (filter.author) {
     clauses.push(`f.author = ?`);
     params.push(filter.author);
   }

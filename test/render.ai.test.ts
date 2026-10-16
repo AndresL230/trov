@@ -14,7 +14,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import { TROV_MARK_PATH } from "../shared/mark";
 import { render, initialState, feedShown, FEED_AI_NOTE, FEED_NO_TROV, type AppState } from "../web/src/render";
-import { briefTile } from "../web/src/mywork";
+import { briefTile, sessionsTile } from "../web/src/mywork";
 import { repoStateSection, themesSection, bandHeight, weekLabel, type RepoAiProps } from "../web/src/repo-ai";
 import { repoView, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
@@ -22,7 +22,7 @@ import {
   AI_EMPTY, initialAiUi, aiCite, aiCapped, aiDay, aiSuggestionChip, aiWrongBtn, aiFeedback, aiFromLine, aiFeedTip, type AiUi,
 } from "../web/src/ai-ui";
 import { parseFeedbackArg } from "../web/src/ai-actions";
-import { aiHiddenKey } from "../web/src/ai-ui";
+import { aiHiddenKey, AI_TIP } from "../web/src/ai-ui";
 import { aiMark, AI_NOT_OFFICIAL } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
@@ -524,6 +524,16 @@ describe("Feed — entries written by Trov", () => {
     expect(text(html)).not.toContain("No entries match this filter.");
     // Agents or All with nothing shown keep the filter's words.
     expect(text(render(feed({ feed: { status: "ok", data: [rows()[0]] }, ai: ui({ feedSource: "agents" }) })))).toContain("No entries match this filter.");
+  });
+  it("My Work › Your sessions draws a digest Trov wrote about me with the AI mark (Q30); my own entries as before", () => {
+    const html = sessionsTile([
+      { id: 1, summaryHtml: "Shipped: hosting", brief: null, at: NOW.toISOString(), trov: true },
+      { id: 2, summaryHtml: "Decision: read-only", brief: null, at: NOW.toISOString() },
+    ], "ok", [], 6);
+    const rowsOf = html.split('class="mw-row"');
+    expect(rowsOf[1]).toContain('data-ai="session"');
+    expect(rowsOf[1]).toContain(AI_TIP.session);
+    expect(rowsOf[2]).not.toContain('data-ai="session"');
   });
   it("Wrong? hides the entry for this person", () => {
     const html = render(feed({ ai: ui({ hidden: ["feed:990001"] }) }));

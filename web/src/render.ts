@@ -2680,7 +2680,7 @@ function myWorkView(s: AppState): string {
   const feedLoad = mwLoad(s.mwSessions.status, s.mwSessions.data.length > 0);
   const sessions: MwSession[] = s.mwSessions.data
     .slice(0, 2)
-    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at }));
+    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at, trov: e.ai?.origin === "ai" }));
   const handoffLoad = mwLoad(s.handoffs.status, s.handoffs.data.length > 0);
   const waiting: MwHandoff[] = handoffsForMe(s.handoffs.data, me)
     .map((h) => ({ id: h.id, title: firstLine(h.body) || `Handoff #${h.id}`, at: h.created_at }));

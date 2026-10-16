@@ -1212,13 +1212,13 @@ function loadMyWork(): void {
       rerenderSoon();
     });
 }
-/** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
- *  screen's author/tag filters (which shape `state.feed`) never reach it. */
+/** Your sessions: MY two latest feed entries, and the session digests Trov wrote about me (Q30) — My Work's own
+ *  read, so the Feed screen's author/tag filters (which shape `state.feed`) never reach it. */
 function loadMwSessions(): void {
   const me = state.me?.handle;
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
-  getFeed({ author: me, limit: 2 })
+  getFeed({ author: me, about: true, limit: 2 })
     .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }

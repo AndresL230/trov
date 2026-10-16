@@ -53,9 +53,10 @@ export function withPreviewRoadmap<P extends { sprints: { active: boolean; note?
 
 /** `/feed`'s page with the preview's entries merged in, newest first, as the page was asked for: none when
  *  it filters by another author or by tags (the fixtures have none), none older than `since`, cut to `limit`. */
-export function withPreviewFeed(rows: FeedRow[], extra: FeedRow[], filter: { author?: string; tags?: string[]; since?: string; limit?: number }): FeedRow[] {
+export function withPreviewFeed(rows: FeedRow[], extra: FeedRow[], filter: { author?: string; aboutAuthor?: boolean; tags?: string[]; since?: string; limit?: number }): FeedRow[] {
   if (filter.tags?.length) return rows;
-  const mine = extra.filter((r) => (!filter.author || filter.author === r.author) && (!filter.since || r.created_at >= filter.since));
+  const byAuthor = (r: FeedRow) => !filter.author || filter.author === r.author || (!!filter.aboutAuthor && r.ai?.origin === "ai" && r.ai.subject === filter.author);
+  const mine = extra.filter((r) => byAuthor(r) && (!filter.since || r.created_at >= filter.since));
   if (!mine.length) return rows;
   const limit = Math.trunc(Math.min(Math.max(Number.isFinite(filter.limit) ? (filter.limit as number) : 50, 1), 500));
   return [...rows, ...mine].sort((a, b) => b.created_at.localeCompare(a.created_at) || b.id - a.id).slice(0, limit);

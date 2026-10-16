@@ -187,7 +187,7 @@ from the row; an agent's entry carries no `ai`, exactly as before. `/feed` and M
 Trov entry the caller flagged "Wrong?" (`hideWrongFor`: `ai_feedback` item type `feed`, ref = the entry's id —
 `aiItemRef.feed`, what the Feed's button sends; for them only; the record stays). Its `importance` is Phase C's `feed.importance` (Jev,
 `card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
-sample entries into `/feed` by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler
+sample entries into `/feed` by `created_at` (respecting `author` / `about` / `tags` / `since` / `limit`) under `wrangler
 dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with
 their `ai_sessions`, a skipped session and two `repo_state` versions (`fixtures/dev/ai.json`,
 `scripts/seed/build.mjs` › `aiStatements`; left out of the Guide demo), so the Feed and Repo › Summary show them
@@ -204,7 +204,9 @@ commits, about 45 minutes after your last push. Your agents can stick to decisio
 browser's localStorage). Trov's entries are RECORDS: with the org's switch off (or no key) they keep their mark, byline
 and the Source switch; only the note, no longer true, is not drawn — `/feed` then answers `aiOff: true` beside a
 page that holds one (`getFeedPage`, `AiUi.feedAiOff`; Q29). Source = Trov over a page with no entry Trov wrote says "No Trov entries in this view."
-(`FEED_NO_TROV`, Q27) where any other filter says "No entries match this filter.". With no `ai` anywhere the Feed
+(`FEED_NO_TROV`, Q27) where any other filter says "No entries match this filter.". `?author=<handle>` is LITERAL —
+who wrote the entry, so never Trov's digest about them; `&about=1` (`FeedFilter.aboutAuthor`) adds the digests whose
+`subject` is that handle (one SQL clause, still bound to the org), which My Work › Your sessions reads (Q30). With no `ai` anywhere the Feed
 is byte-for-byte what it was (`test/render.ai-absent.test.ts`).
 
 ## Read side — FTS5 query engine

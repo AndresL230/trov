@@ -275,6 +275,8 @@ tenantRoot.get("/feed", async (c) => {
   const limit = c.req.query("limit");
   const filter = {
     author: c.req.query("author"),
+    // `about=1` with an author: also Trov's digests whose subject is that person (My Work › Your sessions, Q30).
+    aboutAuthor: c.req.query("about") === "1",
     tags: tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : undefined,
     since: c.req.query("since"),
     limit: limit ? Number(limit) : undefined,
