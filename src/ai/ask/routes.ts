@@ -92,7 +92,7 @@ async function standing(ctx: TenantContext): Promise<Standing> {
 const defaultModeOf = (modes: readonly AskMode[], stored: AskMode | null): AskMode => (stored && modes.includes(stored) ? stored : ASK_DEFAULT_MODE);
 
 function allowanceOf(st: Standing, adding = 0) {
-  // The cap the gate enforces (`planRefusal` reads the same): Pro's is per seat — × the paid seats, or × the members
+  // The cap the gate enforces (`planRefusal`, i.e. THE cap test `capReached` — Q11 — reads the same): Pro's is per seat — × the paid seats, or × the members
   // (at least 1) with no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap (#12 §2.1).
   const cap = resolveEntitlements(st.plan.plan, st.plan.overrides, st.plan.members).ai_chat;
   const used = st.used + adding;

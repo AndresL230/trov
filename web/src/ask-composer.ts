@@ -55,6 +55,7 @@ import {
   type AskAttachKind, type AskAttachment, type AskCommand, type AskMode, type AskRefType, type AskState,
 } from "@shared/ai-ask-core";
 import { QUICK_MIN_CHARS } from "@shared/quick-search";
+import { capReached } from "@shared/plans";
 
 export const COMPOSER_STATES = ["quota", "off", "autoOff", "error", "tooLarge", "at", "slash", "files", "drag", "free", "low", "busy"] as const;
 export type ComposerForced = (typeof COMPOSER_STATES)[number];
@@ -192,7 +193,7 @@ export function composerBlock(v: ComposerSee): ComposerBlock {
   const st = stateOf(v);
   if (st?.eligibility === "no_key") return "no_key";
   if (st && !st.enabled) return "off";
-  if (st && st.allowance.cap !== null && st.allowance.used >= st.allowance.cap) return "quota";
+  if (st && capReached(st.allowance.used, st.allowance.cap)) return "quota"; // THE cap test (Q11, shared/plans.ts)
   if (st && st.modes.length && !st.modes.some(modeCanSend)) return "quota";
   const code = lastAnswer(convoOf(v))?.turn.error?.code;
   return code === "no_key" ? "no_key" : code === "off" ? "off" : code === "capped" ? "quota" : null;

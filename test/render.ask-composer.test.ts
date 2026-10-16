@@ -180,6 +180,8 @@ describe("composer:quota and composer:off — the blocks", () => {
     expect(h).toMatch(/data-act="orgGo" data-arg="general">Upgrade to Pro</);
     expect(h).not.toContain(`data-ask-input`);
     expect(composerBlock(askView(s))).toBe("quota");
+    // ONE cap test (Q11, `capReached`: used >= cap): one question short of the cap still sends.
+    expect(composerBlock(askView(askState("free", (st) => withState(st, (x) => ({ ...x, allowance: { ...x.allowance, used: 49 } })))))).toBeNull();
   });
   it("used up on Pro: when it resets, no upsell; a `capped` error from the stream blocks too", () => {
     const pro = askState("pro", (st) => withState(st, (x) => ({ ...x, allowance: { ...x.allowance, used: 1500 } })));
