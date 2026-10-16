@@ -126,10 +126,10 @@ describe("field present — Trov's suggestions on the three screens", () => {
     expect(nestedButtons(html)).toBe(false);
   });
 
-  it("Review: the risk as a quiet line — a mark on the list card, the reason and Dismiss in the detail; never an Accept, Promote or Reject of its own", () => {
+  it("Review: the risk as a quiet line in the detail (the reason and Dismiss) — not on the list card (RV-OWNER-2); never an Accept, Promote or Reject of its own", () => {
     const risk = reviewRiskFixture(MODE, "doc:auth-flow@3", 0)!;
     const html = render(app({ screen: "review", proposals: { status: "ok", data: [proposal({ ai: [risk] })] }, draftAdrs: { status: "ok", data: [adr()] } }));
-    expect(html.match(/cnpy-ai-risk"/g)).toHaveLength(1); // the list card
+    expect(html).not.toContain('class="cnpy-ai-risk"'); // not on the list card (RV-OWNER-2)
     expect(html).toContain("cnpy-ai-risk-line");
     expect(html).toContain("Changes a decision");
     expect(html).not.toContain('data-act="aiAccept"');
@@ -178,7 +178,6 @@ describe("motion — a suggestion enters with its screen and leaves by the AI ki
     // The list row's mark leaves with it, inline.
     expect(u).toMatch(/<span class="cnpy-ai-leave" data-inline data-ai-leaving inert style="--leave-t:-0ms"><span class="cnpy-ai-leave-in"><span class="cnpy-ai-row-mark"/);
     expect(review).toMatch(/<div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-40ms"><div class="cnpy-ai-leave-in"><div class="cnpy-rise"[^>]*><div class="cnpy-ai-risk-line"/);
-    expect(review).toMatch(/<span class="cnpy-ai-leave" data-inline data-ai-leaving inert style="--leave-t:-40ms"><span class="cnpy-ai-leave-in"><span class="cnpy-ai-risk"/);
   });
 
   it("past the exit a suggestion stays collapsed (held at AI_EXIT_MS) until its screen's re-read drops it", () => {
