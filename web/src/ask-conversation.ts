@@ -409,7 +409,7 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
   const files = q.attachments.map((f) => fileView(v.where, q, f)).join("");
   const ctx = q.context.map((r) => refChip(r, v.look, { size: "tag" })).join("");
   const edit = canEdit && !editing
-    ? `<button type="button" class="ask-q-edit" data-act="askCvEdit" data-arg="${attr(`${v.where}:${q.key}`)}" aria-label="Edit message">${askIcon("rename", 13)}<span>Edit</span></button>` : "";
+    ? `<button type="button" class="ask-q-edit" data-act="askCvEdit" data-arg="${attr(`${v.where}:${q.key}`)}" aria-label="Edit message">${askIcon("rename", 11)}<span>Edit</span></button>` : "";
   const body = editing && canEdit && ed
     ? `<div class="ask-q-editbox">
         <textarea class="ask-q-ta" rows="3" data-act="askCvEditText" data-field="askCvEdit:${attr(v.where)}" data-ask-edit aria-label="Edit your message">${esc(ed.text)}</textarea>
@@ -417,9 +417,11 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
           <button type="button" class="ask-btn" data-act="askCvEditCancel">Cancel</button>
           <button type="button" class="ask-btn ask-btn--accent" data-act="askCvEditSend"${ed.text.trim() ? "" : " disabled"}>Send</button></div>
       </div>`
-    : `<div class="ask-q-col">${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}<div class="ask-q-bubble">${esc(q.text)}</div></div>`;
+    // The words first, what came with them under the bubble (the owner, 2026-10-16).
+    : `<div class="ask-q-col"><div class="ask-q-bubble">${esc(q.text)}</div>${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}${edit}</div>`;
   // `data-ask-tween`: the bubble ↔ the edit box glides instead of jumping.
-  return `<div class="ask-q${canEdit ? " can-edit" : ""}" data-morph-key="q:${attr(q.key)}" data-ask-tween>${edit}${body}</div>`;
+  // Edit sits small under the question (the owner), inside its column, so it never shifts the bubble.
+  return `<div class="ask-q${canEdit ? " can-edit" : ""}" data-morph-key="q:${attr(q.key)}" data-ask-tween>${body}</div>`;
 }
 
 // ── the answer ───────────────────────────────────────────────────────────────

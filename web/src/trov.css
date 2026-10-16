@@ -3119,10 +3119,12 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 @keyframes ask-wipe { from { clip-path:inset(0 100% 0 0); } to { clip-path:inset(0 0 0 0); } }
 /* The question: a right-aligned bubble, its files and context above it, Edit beside the last one. */
 .ask-q { display:flex; justify-content:flex-end; align-items:flex-start; gap:6px; margin-bottom:22px; }
-.ask-q-col { display:flex; flex-direction:column; align-items:flex-end; gap:6px; max-width:min(560px, 86%); min-width:0; }
-.ask-q-att { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:flex-end; gap:6px; }
+.ask-q-col { position:relative; display:flex; flex-direction:column; align-items:flex-end; gap:6px; max-width:min(560px, 86%); min-width:0; }
+.ask-q-att { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:flex-start; gap:6px; }
 .ask-q-bubble { padding:9px 14px; border-radius:12px; background:color-mix(in srgb, var(--fg) 6%, var(--bg)); font-size:14.5px; line-height:1.55; white-space:pre-wrap; overflow-wrap:anywhere; text-align:left; }
-.ask-q-edit { display:inline-flex; align-items:center; gap:6px; flex:none; height:28px; margin-top:4px; padding:0 8px; border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-55); cursor:pointer; opacity:0; transition:opacity .14s ease, background .12s ease, color .12s ease; }
+/* Edit (the last question, on hover; always on a phone) shows small just under the question, in the gap before the
+   answer — out of the flow, so it never moves the bubble or what follows. */
+.ask-q-edit { position:absolute; top:100%; right:0; margin-top:1px; display:inline-flex; align-items:center; gap:4px; flex:none; height:20px; padding:0 6px; border-radius:7px; font-size:11.5px; font-weight:500; color:var(--fg-55); cursor:pointer; opacity:0; transition:opacity .14s ease, background .12s ease, color .12s ease; }
 .ask-q:hover .ask-q-edit, .ask-q-edit:focus-visible, [data-phone="1"] .ask-q-edit { opacity:1; }
 .ask-q-edit:hover { background:var(--hover); color:var(--fg); }
 .ask-q-editbox { width:min(560px, 100%); box-sizing:border-box; background:var(--surface); border:1px solid var(--border-input); border-radius:12px; box-shadow:0 0 0 3px var(--accent-soft); animation:ask-fade-in .14s ease both; }
