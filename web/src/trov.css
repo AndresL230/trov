@@ -3034,6 +3034,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
+  .ask-step.is-run .ask-step-l, .ask-think-l { animation:none !important; background:none; color:inherit; }
   /* the composer */
   .ask-input { transition:none !important; }
   .ask-co-chip, .ask-co-menu, .ask-co-pick, .ask-co-ctx, .ask-co-note, .ask-co-drop, .ask-blocked { animation:none !important; }
@@ -3159,7 +3160,11 @@ button.ask-step:hover { background:var(--hover); color:var(--fg-70); }
 .ask-res-t { font-size:12.5px; font-weight:500; }
 .ask-res-m { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--fg-55); }
 .ask-think { margin-bottom:2px; }
-.ask-think-l { animation:ask-pulse 1.6s ease-in-out infinite; }
+/* What Trov is doing RIGHT NOW reads as thinking (the owner): a running step's label and "Thinking… Ns" carry a soft
+   sweep of light across the words — the ink at --fg-40, the sweep at --fg — while they run. Off under reduced
+   motion, where the words are plain. */
+.ask-step.is-run .ask-step-l, .ask-think-l { background:linear-gradient(90deg, var(--fg-40) 0%, var(--fg-40) 35%, var(--fg) 50%, var(--fg-40) 65%, var(--fg-40) 100%) 0 0 / 250% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:ask-shimmer 1.8s linear infinite; }
+@keyframes ask-shimmer { from { background-position:100% 0; } to { background-position:0% 0; } }
 .ask-think-sum { margin:4px 0 6px 6px; padding:4px 0 4px 14px; border-left:1px solid var(--border); font-size:13px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; animation:ask-cv-rise .26s cubic-bezier(.2,.7,.2,1) both; }
 /* The answer's text: markdown, ref chips inline, the soft cursor at the end of the last line. */
 .ask-text { font-size:14.5px; line-height:1.7; overflow-wrap:anywhere; }

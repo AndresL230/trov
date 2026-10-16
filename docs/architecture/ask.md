@@ -70,7 +70,10 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   `thinking` setting (`display: "updates"` / `"summarized"`, `between_tools`, low effort) changes it, and Fast (Haiku)
   and text before any tool stream at generation speed. So the CLIENT paces: `AskPacer` sits between `readAskStream`
   and the fold and lets text out a few whole words a frame (each frame releases `1 - e^(-dt/600ms)` of the backlog,
-  at least 240 characters a second; a cut never lands inside a `[[ref]]`). An event with no text waiting goes out at
+  never under 90 nor over 160 characters a second — the owner's steady reading pace, so a 2,000-character answer
+  takes ~13 s to write out whatever speed it arrived at; a word past a frame's allowance is borrowed from the next
+  frames; a cut never lands inside a `[[ref]]`). While a step runs, its label (and "Thinking… Ns") carries a sweep
+  of light (`.ask-step.is-run .ask-step-l`, `ask-shimmer`; plain under reduced motion). An event with no text waiting goes out at
   once; one behind text (a block, a card, `followups`, `done`) keeps its place, so the footer comes after the words
   and Send stays Stop until they are out. Stop / an error / a new thread `flush()` everything received at once (what
   the stored partial has); no window, reduced motion or a hidden tab: no pacing. Every recorded transcript folds to the

@@ -84,7 +84,7 @@ describe("the pace — a burst becomes a stream", () => {
     expect(order).toEqual(["activity", "text", "block", "text", "done"]);
   });
 
-  it("a steady stream keeps up: about the pace it arrives at, well under a second behind", () => {
+  it("a fast stream is written out at the ceiling — never faster than maxCps, never slower than minCps", () => {
     const c = manualClock();
     const got: string[] = [];
     const p = new AskPacer((e) => { if (e.event === "text") got.push(e.data.delta); }, c.clock);
@@ -95,8 +95,11 @@ describe("the pace — a burst becomes a stream", () => {
       c.step();
     }
     const shown = got.join("").length;
-    // What waits is less than ~0.8 s of arrivals.
-    expect(sent - shown).toBeLessThan(0.8 * 940);
+    const secs = 120 / 60;
+    // The owner's steady reading pace: ~940 chars a second arrive, at most maxCps (+ one word's rounding) go out.
+    expect(shown).toBeLessThanOrEqual(ASK_PACE.maxCps * secs + word.length);
+    expect(shown).toBeGreaterThanOrEqual(ASK_PACE.minCps * secs - word.length);
+    expect(sent - shown).toBeGreaterThan(0);
   });
 
   it("Stop: flush puts everything received on screen at once, in order, and idle resolves", async () => {
@@ -144,8 +147,8 @@ describe("the pace — a burst becomes a stream", () => {
     expect(hiddenGot).toEqual([text(BURST), done]);
   });
 
-  it("the defaults: a backlog drains on a 600 ms curve with a 240 characters-a-second floor", () => {
-    expect(ASK_PACE).toEqual({ tauMs: 600, minCps: 240 });
+  it("the defaults: a backlog drains on a 600 ms curve, between 90 and 160 characters a second", () => {
+    expect(ASK_PACE).toEqual({ tauMs: 600, minCps: 90, maxCps: 160 });
   });
 });
 

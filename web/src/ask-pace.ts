@@ -4,8 +4,8 @@
 // text they write AFTER a tool result until they know it is the answer and not a progress note before another tool
 // call — so an answer that follows a search can arrive as ONE burst (hundreds of characters in a few milliseconds),
 // and painting it as it lands puts the whole answer on screen at once. The pacer sits between the stream and the
-// fold: text goes out a few words per frame, quickly when a lot is waiting (the wait is never more than about
-// `tauMs` behind plus the floor's tail) and at least `minCps` characters a second; whatever came after the text (a
+// fold: text goes out a few words per frame, faster when a lot is waiting, but never under `minCps` nor over `maxCps`
+// characters a second (the owner: a steady reading pace, so a 2,000-character burst takes ~13s to write out); whatever came after the text (a
 // block, a card, `followups`, `done`) waits its turn, so the answer keeps the order it streamed in and the footer
 // comes once the words are out.
 //
@@ -29,8 +29,10 @@ export interface PaceOpts {
   tauMs: number;
   /** The floor, in characters a second (the tail of a backlog, a slow stream). */
   minCps: number;
+  /** The ceiling, in characters a second (the owner: never faster than a steady read, however big the burst). */
+  maxCps: number;
 }
-export const ASK_PACE: PaceOpts = { tauMs: 600, minCps: 240 };
+export const ASK_PACE: PaceOpts = { tauMs: 600, minCps: 90, maxCps: 160 };
 
 type Item = { text: string } | { e: AskEvent };
 
@@ -95,7 +97,8 @@ export class AskPacer {
     const dt = Math.min(Math.max(now - this.last, 0), 100);
     this.last = now;
     const waiting = this.q.reduce((n, it) => n + ("text" in it ? it.text.length : 0), 0);
-    this.credit += Math.max(waiting * (1 - Math.exp(-dt / this.opts.tauMs)), (this.opts.minCps * dt) / 1000);
+    const drain = Math.max(waiting * (1 - Math.exp(-dt / this.opts.tauMs)), (this.opts.minCps * dt) / 1000);
+    this.credit += Math.min(drain, (this.opts.maxCps * dt) / 1000);
     while (this.q.length) {
       const head = this.q[0];
       if (!("text" in head)) { this.q.shift(); this.deliver(head.e); continue; }
@@ -107,7 +110,8 @@ export class AskPacer {
       if (n === 0) break;
       const out = head.text.slice(0, n);
       head.text = head.text.slice(n);
-      this.credit = Math.max(0, this.credit - n);
+      // A whole word past the credit is borrowed from the next frames (never forgiven, or the cap leaks to a word a frame).
+      this.credit -= n;
       if (!head.text) this.q.shift();
       this.deliver({ event: "text", data: { delta: out } });
       if (head.text) break;
