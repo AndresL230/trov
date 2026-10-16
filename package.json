@@ -17,7 +17,8 @@
     "db:create": "wrangler d1 create trov",
     "db:migrate:local": "wrangler d1 migrations apply trov --local",
     "db:migrate:remote": "wrangler d1 migrations apply trov --remote",
-    "seed": "node scripts/seed-dev.mjs"
+    "seed": "node scripts/seed-dev.mjs",
+    "ask:gallery": "esbuild scripts/ask-gallery/build.ts --bundle --platform=node --format=esm --packages=external --outfile=.ask-gallery/build.mjs --log-level=warning && node .ask-gallery/build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "0.133.0",

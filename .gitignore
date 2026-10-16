@@ -8,6 +8,8 @@ web/dist/
 .superpowers/
 .trov/
 .canopy/
+# npm run ask:gallery — the built Ask Trov gallery and its bundled builder (scripts/ask-gallery/)
+.ask-gallery/
 
 # multitenancy migration checks: local production exports (scripts/mt/verify-migration.mjs) — never commit
 .mt/

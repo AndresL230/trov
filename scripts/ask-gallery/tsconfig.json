@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.web.json",
+  "compilerOptions": { "types": ["node"], "baseUrl": "../..", "paths": { "@shared/*": ["shared/*"] } },
+  "include": ["./*.ts", "../../web/src/env.d.ts"]
+}
