@@ -39,6 +39,22 @@ moves only the Worker: the static files `ASSETS` serves before the Worker runs a
 visitor's edge. Nothing in
 the code depends on where the Worker runs; removing the block is a plain deploy.
 
+### Bundle
+
+`minify = true` with `upload_source_maps = true` (`wrangler.toml`). Wrangler's esbuild bundle of `src/` is
+minified — 4.5 MB / 939 KB gzip before, 2.4 MB / 670 KB after (`wrangler deploy --dry-run`, 2026-10-16) — and its
+source map is uploaded beside it, so Workers Logs and an uncaught error's stack still name the TypeScript file and
+line. Wrangler's `keep_names` (default true) keeps every function's and class's `.name`; each error class sets its
+own `name` anyway, and log text and `scrubbedMessage` / `scrubbedLog` work on strings, which minifying never
+touches. Nothing in `src/` branches on a minified identifier.
+
+`src/mcp.ts` is imported DYNAMICALLY, inside the `/mcp` branch of `src/index.ts`. It is still one script — esbuild
+does not split it — but it wraps a dynamically imported module (and everything only it reaches: the MCP and
+agents SDKs, the tool modules) in a lazy initialiser, so an isolate evaluates them on its first `/mcp` request,
+never at startup. `wrangler check startup`, 15 alternating local runs: startup CPU about 24 ms (≈ 18 %) lower at
+the median, for about 12 KB more gzip (the wrappers). `src/mcp-catalog.ts` imports it statically, but the Worker
+never imports the catalog (it runs at build time and in the tests). Invariant 12 is unchanged — what `src/mcp.ts` itself reaches (`test/secrets.mcp.test.ts`).
+
 Capture-time summaries call Anthropic's Messages API (`ANTHROPIC_API_KEY`, through the one model client
 `src/ai/client.ts`), never at render — not a Cloudflare binding,
 so there is no `[ai]` block.
