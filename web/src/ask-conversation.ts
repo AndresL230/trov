@@ -494,7 +494,8 @@ function footer(v: AskView, a: AskAnswer): string {
   const t = a.turn;
   const k = a.key;
   const id = `${v.where}:${k}`;
-  const n = t.cites.length;
+  // The sources the person can see NOW (a reopened thread re-reads them, QA-1): one since hidden is not counted.
+  const n = t.cites.filter((c) => !isHiddenRef(v.look, c.ref)).length;
   const srcOpen = n > 0 && v.ui.conversation.open[`${k}:src`] === true;
   const modes = modesOf(v);
   const regenOpen = v.ui.conversation.regen === id;

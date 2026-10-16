@@ -19,8 +19,8 @@ import { initialState, type AppState } from "../web/src/render";
 import { createAskController } from "../web/src/ask-controller";
 import { conversationView } from "../web/src/ask-conversation";
 import { askView } from "../web/src/ask-state";
-import { askStateFixture, askThreadsFixture } from "@shared/ai-fixtures";
-import type { AskMessage, AskThreadDetail } from "@shared/ai-ask-core";
+import { askRefFixtures, askStateFixture, askThreadsFixture } from "@shared/ai-fixtures";
+import type { AskMessage, AskThreadDetail, RefView } from "@shared/ai-ask-core";
 
 const NOW = new Date("2026-10-15T12:00:00Z");
 const ME = { handle: "andres", name: "Andres Lopez", avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "owner" as const }], superadmin: false, pending_invites: 0 };
@@ -153,5 +153,46 @@ describe("Q52: a thread event with autoOff", () => {
     await vi.waitFor(() => expect(s.ask.page.busy).toBe(false), { timeout: 3000 });
     expect(s.ask.state.data?.autoAllowed).toBe(false);
     expect(s.ask.composer.page.auto).toBeNull();
+  });
+});
+
+describe("QA-1: a reopened thread re-reads what it shows — the stored citations are the first paint only", () => {
+  it("a status reads as it is now; an item since hidden drops out of the sources, the item cards and their count", async () => {
+    const s = app();
+    const ctl = controller(s);
+    const R = askRefFixtures(NOW);
+    const t14 = R["ticket:14"], pr = R["pr:176"];
+    const was: RefView = { ...t14, status: { mark: "progress", tone: "accent", word: "In progress", tip: "In progress." } as RefView["status"] };
+    const msg = (o: Partial<AskMessage>): AskMessage => ({ id: 0, role: "assistant", mode: "smart", text: "", command: null, context: [], blocks: [], activity: [], followups: [], thinking: null, cites: [], attachments: [], actions: [], stopped: false, model: "m", units: 1, createdAt: NOW.toISOString(), ...o } as AskMessage);
+    const detail: AskThreadDetail = {
+      thread: { ...askThreadsFixture(NOW)[0], id: 44, draft: "" },
+      messages: [
+        msg({ id: 1, role: "user", text: "status?", context: ["ticket:14"] }),
+        msg({ id: 2, text: "See [[ticket:14]] and [[pr:176]].", cites: [was, pr], blocks: [{ kind: "items", items: [was, pr] }] }),
+      ],
+    };
+    const peeked: string[][] = [];
+    transport.handler = async (path, init) => {
+      if (path === "/ask/threads/44") return Response.json(detail);
+      if (path === "/ask/peek") {
+        const refs = (JSON.parse(String(init.body)) as { refs: string[] }).refs;
+        peeked.push(refs);
+        // Now: #14 is Done, and the PR was made invisible to this person.
+        return Response.json({ items: refs.map((r) => r === "ticket:14" ? { ...t14, status: { mark: "done", tone: "green", word: "Done", tip: "Done." } } : { ref: r, hidden: true }) });
+      }
+      return Response.json({ error: "not_found" }, { status: 404 });
+    };
+    ctl.act("askThOpen", "44", null);
+    // First paint: the snapshot.
+    await vi.waitFor(() => expect(s.ask.page.messages).toHaveLength(2), { timeout: 3000 });
+    // Then the live read: every item the thread shows was peeked, known or not.
+    await vi.waitFor(() => expect(peeked.flat().sort()).toEqual(["pr:176", "ticket:14"]), { timeout: 3000 });
+    await vi.waitFor(() => expect("hidden" in (s.ask.refViews["pr:176"] ?? {})).toBe(true), { timeout: 3000 });
+    expect((s.ask.refViews["ticket:14"] as RefView).status?.word).toBe("Done");
+    s.ask.conversation.open = { ...s.ask.conversation.open, [`${s.ask.page.messages[1].key}:src`]: true };
+    const h = view(s);
+    expect(h).toContain(">1 source<");
+    expect(h).not.toContain(`data-arg="pr:176"`);
+    expect(h).not.toContain("In progress");
   });
 });

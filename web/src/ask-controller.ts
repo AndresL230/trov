@@ -27,7 +27,7 @@ import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askK
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
-import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type RefView } from "@shared/ai-ask-core";
+import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type AskMessage, type RefView } from "@shared/ai-ask-core";
 
 export interface AskHost {
   state: AppState;
@@ -55,6 +55,20 @@ export interface AskController {
 
 /** Every part, in Escape order of no importance (ask-escape.ts orders the layers). Add a part HERE once. */
 export const PARTS: readonly AskPart[] = [conversationPart, composerPart, inspectorPart, actionsPart, cmdjPart, phonePart, threadsPart];
+
+/** Every item a reopened thread shows, to read again (QA-1): sources, item cards, diagram nodes, context chips. */
+export function threadRefs(messages: readonly AskMessage[]): string[] {
+  const out = new Set<string>();
+  for (const m of messages) {
+    for (const c of m.cites) out.add(c.ref);
+    for (const r of m.context) out.add(r);
+    for (const b of m.blocks) {
+      if (b.kind === "items") for (const it of b.items) out.add(it.ref);
+      else if (b.kind === "diagram") for (const n of b.diagram.nodes) if (n.ref) out.add(n.ref);
+    }
+  }
+  return [...out].filter((r) => parseAskRef(r) !== null);
+}
 
 /** When to look for a stopped answer's stored row after Stop (ms between tries). */
 const STOP_READBACK_MS = [250, 600, 1200, 2500];
@@ -120,8 +134,10 @@ export function createAskController(host: AskHost): AskController {
     for (const v of views) next[v.ref] = v;
     ui().refViews = next;
   }
-  function want(refs: readonly string[]): void {
-    for (const r of refs) if (!(r in ui().refViews) && !pending.has(r)) pending.add(r);
+  /** Peek what is not known yet — or, with `fresh`, read these again even when a view is stored (a reopened thread's
+   *  snapshot, QA-1): the answer replaces the stored view, `hidden` included. */
+  function want(refs: readonly string[], fresh = false): void {
+    for (const r of refs) if ((fresh || !(r in ui().refViews)) && !pending.has(r)) pending.add(r);
     if (!pending.size || peekTimer) return;
     peekTimer = setTimeout(() => {
       peekTimer = null;
@@ -309,7 +325,11 @@ export function createAskController(host: AskHost): AskController {
     api.getThread(id).then((d) => {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...convoFromDetail(d), uid: ui().page.uid });    // the column stays; the skeleton settles
-      for (const m of d.messages) { prime(m.cites); want(m.context); m.blocks.forEach(wantOneCard); }
+      // The stored citations are the FIRST paint only (QA-1): every item the thread shows — its sources and chips,
+      // its item cards and diagram nodes, the questions' context — is peeked again at once, so a status reads as it
+      // is now and an item since made private or deleted drops out (`hidden`) instead of showing as it was.
+      for (const m of d.messages) { prime(m.cites); m.blocks.forEach(wantOneCard); }
+      want(threadRefs(d.messages), true);
     }).catch((e) => {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...ui().page, status: "error" });

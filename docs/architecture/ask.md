@@ -104,7 +104,11 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   `[[handoff:3]]`, `[[artifact:slug]]`, `[[person:handle]]`, `[[prompt:slug]]`, `[[repo:owner/name]]`;
   `[[ticket:14|status]]` = a status cell) is LINKED only when its ref is in the thread's seen set — what a tool
   returned in any turn (`refsFromResult`, per tool) or what the person attached — and resolves for the viewer now.
-  `done.cites` carries the linked RefViews; everything else renders as plain text.
+  `done.cites` carries the linked RefViews; everything else renders as plain text. A REOPENED thread draws the stored
+  `cites_json` / block views as its first paint only, then peeks every item it shows again at once (`threadRefs`,
+  ask-controller.ts: sources, item cards, diagram nodes, context chips — `want(…, fresh)`): a status reads as it is
+  now, and an item since made private or deleted drops out (its chip is plain text, its source row and card go, the
+  count says so, a diagram node loses its link and mark) — never its old state (the owner, QA-1).
 - `RefView { ref, type, num?, title, status { mark, tone, word, tip }, owner?, updated?, href, extra }` — built by
   `resolveViews` from Trov's rows, permission-checked (another person's private artifact, a deleted page, an unknown
   id: absent). Status words are the design's over the existing vocabularies (Triage / In progress / Testing / Done /

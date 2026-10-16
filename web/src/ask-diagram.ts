@@ -23,7 +23,7 @@
 
 import { esc, attr } from "./ui";
 import type { AskView } from "./ask-state";
-import { viewOf, refTypeWord, refStatusMark, repoFactsOf, repoCiMark } from "./ask-refs";
+import { viewOf, isHiddenRef, refTypeWord, refStatusMark, repoFactsOf, repoCiMark } from "./ask-refs";
 import { askIcon, REF_ICON } from "./ask-icons";
 import type { AskDiagram, RefView } from "@shared/ai-ask-core";
 
@@ -294,7 +294,9 @@ export function diagramFigure(v: Pick<AskView, "look">, d: AskDiagram): string {
   ].join(";");
 
   const items = L.order.map((n, i) => {
-    const view = n.view ?? (n.ref ? viewOf(v.look, n.ref) : null);
+    // The live view first (a reopened thread re-reads it, QA-1); the one stored with the block until then. An item
+    // since hidden is a plain node: no link, no mark (never its old state).
+    const view = n.ref && isHiddenRef(v.look, n.ref) ? null : (n.ref ? viewOf(v.look, n.ref) : null) ?? n.view;
     const { kind, title } = nodeWords(n, view);
     const st = statusOf(view, 11.5);
     const p = L.at.get(n.id)!;
