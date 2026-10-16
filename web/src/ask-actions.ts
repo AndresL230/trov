@@ -3,9 +3,10 @@
 // L1651–1672, L630–638; #12 §2.11–12, §2.14, §3).
 //
 //   • A CARD (`action` event, state proposed | waiting): the head — the eyebrow ("New ticket", "Move", …), a mark
-//     ("Draft, not created yet" / "Waiting for you") and a waiting card's reason — then the body per kind, which ENDS
-//     on one row (its facts, its people from → to, the item and its move, or a hint) with Cancel / Confirm at that
-//     row's end (`endRow`): never a row or a footer of their own. EVERY field the tool's input takes (`editable` —
+//     ("Draft, not created yet" / "Waiting for you") and a waiting card's reason — then the body per kind, designed on
+//     its own: it fills the card's width (fields in columns across it, a row's note at its right edge). Cancel /
+//     Confirm FLOAT outside the frame, a compact right-aligned pair just under its bottom-right edge, the same for
+//     every kind and a group (`cardView`). EVERY field the tool's input takes (`editable` —
 //     ticket: title, category, priority, assignee; handoff: recipient, task; doc edit: the `+` text of each hunk; an
 //     edit to a ticket: its new title; an assignment: the person) is edited IN PLACE on the card — there is no Edit
 //     mode: text is clicked into an input that looks the same (Enter / leaving it keeps it, Escape puts it back), a
@@ -14,7 +15,7 @@
 //     server re-validates them and rebuilds the card. A Publish card never runs in Auto (it waits with the server's
 //     note) and offers Confirm only when `preview.canPublish` — else "Open in Review". An ASSIGNMENT (`assign_ticket`,
 //     a group of them, or a handoff's claim) draws the item with its status mark and the people: from → to, "Adds" /
-//     "Removes" beside who stays. A MOVE is one row: the ticket, from → to, the controls.
+//     "Removes" beside who stays. A MOVE is one row: the ticket, from → to at its right.
 //   • A LINE (after the decision), ONE line each: the mark and what happened — done (linked to `ref`), "Cancelled:
 //     …", "Undone: …", "Expired: …" or "Didn't work: …" — the reason muted on the same line (cut short, all of it in
 //     its tooltip), then the time and Undo / Open at its end. Consecutive cards of one `groupId` are ONE card / ONE
@@ -279,18 +280,19 @@ const fieldOf = (v: Pick<AskView, "ui">, vm: AskActionVm, f: string): unknown =>
 const label = (k: string, body: string) => `<div class="ask-act-field"><div class="ask-act-k">${esc(k)}</div>${body}</div>`;
 const canEdit = (vm: AskActionVm, f: string) => vm.editable.includes(f.startsWith("hunk:") ? "hunks" : f);
 
-/** THE card's last row (every kind): what the card ends on — its facts, its people from → to, the item and its
- *  move, or a hint — with Cancel / Confirm (`btns`) at its end. The controls never take a row of their own: when
- *  the card is narrow they wrap under the row's content as a right-aligned group, beside the row's trailing hint
- *  when it has one. A keyed list, so the controls stay the same elements while the content beside them changes.
- *  `cls`: is-fields (label-over-value fields; the controls sit on their baseline), is-ruled (a hairline above),
- *  is-people, is-move. Rows of a group's earlier writes pass no `btns`. */
-const endRow = (pieces: string, btns: string, cls = ""): string =>
-  `<div class="ask-act-end${cls ? ` ${cls}` : ""}" data-morph-key="end" data-morph-list>${pieces}${btns}</div>`;
-/** A group's earlier writes: the room the controls take on its last one, so the rows' columns line up. */
-const GHOST = `<span class="ask-act-ghost" data-morph-key="btns" aria-hidden="true"></span>`;
-/** On a phone or in the ⌘J panel, the row's trailing hint starts a line that it shares with the controls. */
-const BREAK = `<span class="ask-act-break" data-morph-key="br" aria-hidden="true"></span>`;
+/** A card's closing row (most kinds): its fields, its people from → to, or its new title — the content alone, across
+ *  the card's whole width (Cancel / Confirm are never in it: they float under the card, `cardView`). A keyed list,
+ *  so an edit in place changes only its words. `cls`: is-fields (label-over-value fields in columns that fill the
+ *  row), is-ruled (a hairline above), is-people. */
+const metaRow = (pieces: string, cls = ""): string =>
+  `<div class="ask-act-meta${cls ? ` ${cls}` : ""}" data-morph-key="meta" data-morph-list>${pieces}</div>`;
+/** The quiet words a row ends on, at its right edge ("Andres Lopez stays on it", "Goes to Review before it is
+ *  live") — so a row's content and its note span the card; narrow, the note takes the next line, left-aligned. */
+const aside = (text: string, key = "aside"): string => `<span class="ask-act-aside" data-morph-key="${attr(key)}">${esc(text)}</span>`;
+/** Label-over-value fields in columns that share the row's width (a new ticket's four, a sprint's, a write's short
+ *  lines): one field fills the row, four split it. */
+const fieldsRow = (fields: string[], cls = ""): string =>
+  metaRow(`<div class="ask-act-fields${cls ? ` ${cls}` : ""}" data-morph-key="fields" style="--n:${fields.length}">${fields.join("")}</div>`, "is-fields is-ruled");
 
 // ── editing in place ─────────────────────────────────────────────────────────
 // There is no Edit mode: every field the write's input takes (`editable`) is a control on the pending card itself.
@@ -360,9 +362,9 @@ const pickIn = (v: AskView, p: DropdownProps, key: string): string => `<span cla
 const CATEGORY_OPTS = TICKET_CATEGORIES.map((c) => ({ value: c, label: c }));
 const PRIORITY_OPTS = (["high", "normal", "low"] as TicketPriority[]).map((p) => ({ value: p, label: PRIORITY_LABEL[p], icon: priorityIcon(p, 13, false) }));
 
-/** A new ticket: its title (edits in place) and description, then its fields in a row that fills the card —
- *  Category and Priority (a click cycles them), Assignee (a dropdown), Sprint — with Cancel / Confirm at its end. */
-function ticketBody(v: AskView, vm: AskActionVm, btns: string): string {
+/** A new ticket: its title (edits in place) and description, then its fields in four columns across the card —
+ *  Category and Priority (a click cycles them), Assignee (a dropdown), Sprint. */
+function ticketBody(v: AskView, vm: AskActionVm): string {
   const title = String(fieldOf(v, vm, "title") ?? vm.preview?.title ?? "");
   const body = String(vm.fields.body ?? line(vm, "Description") ?? "");
   const cat = String(fieldOf(v, vm, "category") ?? line(vm, "Category") ?? "other");
@@ -373,12 +375,12 @@ function ticketBody(v: AskView, vm: AskActionVm, btns: string): string {
     : `<span class="ask-act-v ask-act-iv ask-act-strong">${asg ? `${refAvatar(v.look, asg, 18)}${esc(personName(v.look, asg))}` : "Unassigned"}</span>`;
   return `<div class="ask-act-body">
     <div class="ask-act-row">${glyph("todo", "var(--fg-55)", 13)}<div class="ask-act-main">${textEdit(v, vm, "title", title, "ask-act-title", "Title")}${body ? `<div class="ask-act-desc">${esc(body)}</div>` : ""}</div></div>
-    ${endRow(`<div class="ask-act-fields is-ticket" data-morph-key="fields">
-      ${label("Category", cycleEdit(vm, "category", cat, CATEGORY_OPTS, "Category"))}
-      ${label("Priority", cycleEdit(vm, "priority", prio, PRIORITY_OPTS, "Priority"))}
-      ${label("Assignee", assignee)}
-      ${label("Sprint", `<span class="ask-act-v">${esc(sprint)}</span>`)}
-    </div>`, btns, "is-fields is-ruled")}
+    ${fieldsRow([
+      label("Category", cycleEdit(vm, "category", cat, CATEGORY_OPTS, "Category")),
+      label("Priority", cycleEdit(vm, "priority", prio, PRIORITY_OPTS, "Priority")),
+      label("Assignee", assignee),
+      label("Sprint", `<span class="ask-act-v ask-act-iv">${esc(sprint)}</span>`),
+    ], "is-ticket")}
   </div>`;
 }
 
@@ -387,12 +389,13 @@ function ticketBody(v: AskView, vm: AskActionVm, btns: string): string {
 const personTag = (v: AskView, h: string, strong = false, key = `p:${h.toLowerCase()}`): string =>
   `<span class="ask-asg-p${strong ? " is-strong" : ""}" data-morph-key="${attr(key)}">${refAvatar(v.look, h, 20)}<span class="ask-asg-n">${esc(personName(v.look, h))}</span></span>`;
 const toArrow = () => `<span class="ask-asg-to" data-morph-key="to">${askIcon("arrow", 14, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span></span>`;
-/** The faint words after the people ("Andres Lopez stays on it", "No one else can claim it after"). */
-const peopleHint = (text: string, key = "stays"): string => `${BREAK}<span class="ask-asg-stays" data-morph-key="${key}">${esc(text)}</span>`;
+/** The faint words after the people ("Andres Lopez stays on it", "No one else can claim it after"), at the row's
+ *  right edge. */
+const peopleHint = (text: string, key = "stays"): string => aside(text, key);
 
 /** A new handoff: the task (edits in place), Done / Next, its files, then who it goes from → to — the recipient a
- *  dropdown — with Cancel / Confirm at that row's end (the assignment card's people row). */
-function handoffBody(v: AskView, vm: AskActionVm, btns: string): string {
+ *  dropdown — with what that means at the row's right (the assignment card's people row). */
+function handoffBody(v: AskView, vm: AskActionVm): string {
   const from = (line(vm, "From") ?? "").replace(/^@/, "") || v.app.me?.handle || "";
   const to = String(fieldOf(v, vm, "recipient") ?? "anyone");
   const task = String(fieldOf(v, vm, "task") ?? line(vm, "Task") ?? "");
@@ -406,7 +409,7 @@ function handoffBody(v: AskView, vm: AskActionVm, btns: string): string {
   return `<div class="ask-act-body">${textEdit(v, vm, "task", task, "ask-act-title", "Task")}
     ${done.length || next.length ? `<div class="ask-act-cols">${col("Done", done, "done")}${col("Next", next, "todo")}</div>` : ""}
     ${files.length ? `<div class="ask-act-files">${files.map((p) => `<span>${esc(p)}</span>`).join("")}</div>` : ""}
-    ${endRow(who, btns, "is-people is-ruled")}
+    ${metaRow(who, "is-people is-ruled")}
   </div>`;
 }
 
@@ -426,20 +429,20 @@ function hunksView(v: AskView, vm: AskActionVm, hunks: AskDocHunk[]): string {
   }).join("");
 }
 
-/** A doc edit: the doc and its version step, the hunks, then "Goes to Review before it is live" beside the controls. */
-function docBody(v: AskView, vm: AskActionVm, btns: string): string {
+/** A doc edit: the doc and its version step, "Goes to Review before it is live" at that row's right, then the hunks
+ *  across the card. */
+function docBody(v: AskView, vm: AskActionVm): string {
   const [from, to] = (line(vm, "Version") ?? "").split("→").map((s) => s.trim());
   const more = line(vm, "More");
   return `<div class="ask-act-body">
-    <div class="ask-act-doc">${askIcon("docs", 14, "var(--fg-55)")}<span class="ask-act-strong">${esc(docTitle(vm))}</span>${from ? `<span class="ask-act-ver">${esc(to ? `${from} → ${to}` : from)}</span>` : ""}</div>
+    <div class="ask-act-doc">${askIcon("docs", 14, "var(--fg-55)")}<span class="ask-act-strong">${esc(docTitle(vm))}</span>${from ? `<span class="ask-act-ver">${esc(to ? `${from} → ${to}` : from)}</span>` : ""}${aside(`${more ? `${more} · ` : ""}Goes to Review before it is live`)}</div>
     <div class="ask-diffs" data-morph-list>${hunksView(v, vm, vm.preview?.hunks ?? [])}</div>
-    ${endRow(`<span class="ask-act-hint" data-morph-key="hint">${more ? `${esc(more)} · ` : ""}Goes to Review before it is live</span>`, btns)}
   </div>`;
 }
 
-/** Publish a staged doc: the doc (its space, version and status), what is staged, then what publishing does beside
- *  the controls. */
-function publishBody(vm: AskActionVm, btns: string): string {
+/** Publish a staged doc: the doc (its space, version and status at the row's right), what is staged, then what
+ *  publishing does. */
+function publishBody(vm: AskActionVm): string {
   const item = vm.preview?.item ?? null;
   const ver = line(vm, "Version") ?? (typeof item?.extra.version === "number" ? `v${item.extra.version}` : "");
   const space = str(item?.extra.space);
@@ -448,7 +451,7 @@ function publishBody(vm: AskActionVm, btns: string): string {
   return `<div class="ask-act-body">
     <div class="ask-act-doc">${askIcon("docs", 14, "var(--fg-55)")}<span class="ask-act-strong">${esc(docTitle(vm))}</span><span class="ask-act-ver">${esc([space ? upperFirst(space) : null, ver].filter(Boolean).join(" · "))}</span><span class="ask-grow"></span>${item?.status ? refStatusMark(item.status, 12) : ""}</div>
     ${staged.length ? `<ul class="ask-act-ul">${staged.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
-    ${endRow(`<span class="ask-act-lead" data-morph-key="what">${esc(what)}</span>`, btns)}
+    ${metaRow(`<span class="ask-act-lead" data-morph-key="what">${esc(what)}</span>`, "is-ruled")}
   </div>`;
 }
 
@@ -489,12 +492,12 @@ const assignsOf = (v: AskView, vms: AskActionVm[]): AssignOne[] =>
  *  Jose", a removal of the last one "Luke → Unassigned"; an add beside others "Adds Jose · Andres stays on it", a
  *  removal beside others "Removes Luke · Jose stays on it". The person who comes (or goes) is a dropdown whenever
  *  someone else could be picked. */
-function assignBody(v: AskView, vms: AskActionVm[], btns: string): string {
+function assignBody(v: AskView, vms: AskActionVm[]): string {
   const ts = byTicket(assignsOf(v, vms));
   const pick = (one: AssignOne, strong: boolean) => (pickable(one)
     ? pickIn(v, assignPickProps(v, one), `pick:${one.vm.id}`)
     : personTag(v, one.login, strong, `p:${one.vm.id}`));
-  return `<div class="ask-act-body ask-asg" data-morph-list>${ts.map((t, i) => {
+  return `<div class="ask-act-body ask-asg" data-morph-list>${ts.map((t) => {
     const vm = (t.adds[0] ?? t.removes[0]).vm;
     const item = vm.preview?.item ?? null;
     const ref = item?.ref ?? (t.num ? `ticket:${t.num}` : null);
@@ -510,13 +513,13 @@ function assignBody(v: AskView, vms: AskActionVm[], btns: string): string {
     const title = item?.title ?? (t.num ? `Ticket #${t.num}` : "The ticket");
     return `<div class="ask-asg-t" data-morph-key="t:${attr(t.num ?? String(vm.id))}">
       <div class="ask-asg-head">${itemTag(ref, t.num, title)}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
-      ${endRow(`${change}${staysNote}`, i === ts.length - 1 ? btns : "", "ask-asg-who is-people")}
+      ${metaRow(`${change}${staysNote}`, "ask-asg-who is-people")}
     </div>`;
   }).join("")}</div>`;
 }
 
 /** Claiming a handoff is an assignment too: the handoff, and it moving from its sender to you. */
-function claimBody(v: AskView, vm: AskActionVm, btns: string): string {
+function claimBody(v: AskView, vm: AskActionVm): string {
   const item = vm.preview?.item ?? null;
   const num = item?.num != null ? String(item.num) : keyOf(vm.ref ?? item?.ref ?? null);
   const from = str(item?.extra.from) ?? ((line(vm, "From") ?? "").replace(/^@/, "") || null);
@@ -525,7 +528,7 @@ function claimBody(v: AskView, vm: AskActionVm, btns: string): string {
   const ref = item?.ref ?? (num ? `handoff:${num}` : null);
   return `<div class="ask-act-body ask-asg"><div class="ask-asg-t" data-morph-key="t:${attr(num ?? String(vm.id))}">
     <div class="ask-asg-head">${itemTag(ref, num, title)}${item?.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
-    ${endRow(`${from ? personTag(v, from, false, "from") : ""}${toArrow()}${me ? personTag(v, me, true, "me") : `<span class="ask-asg-p is-strong" data-morph-key="me">You</span>`}${peopleHint("No one else can claim it after")}`, btns, "ask-asg-who is-people")}
+    ${metaRow(`${from ? personTag(v, from, false, "from") : ""}${toArrow()}${me ? personTag(v, me, true, "me") : `<span class="ask-asg-p is-strong" data-morph-key="me">You</span>`}${peopleHint("No one else can claim it after")}`, "ask-asg-who is-people")}
   </div></div>`;
 }
 
@@ -556,57 +559,46 @@ export function actionDropdowns(app: AppState): DropdownProps[] {
   return out;
 }
 
-/** A fact on a card's row: an optional quiet label, then its value. */
-const fact = (k: string | null, html: string, key: string): string =>
-  `<span class="ask-fact" data-morph-key="${attr(key)}">${k ? `<span class="ask-fact-k">${esc(k)}</span>` : ""}<span class="ask-fact-v">${html}</span></span>`;
 /** "from → to" in a value: the arrow drawn, the new side in the strong face. */
 const stepHtml = (value: string): string => {
   const [a, b] = value.split("→").map((s) => s.trim());
   return b === undefined ? esc(value) : `<span class="ask-mv"><span>${esc(upperFirst(a))}</span>${askIcon("arrow", 13, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span><span class="ask-mv-to">${esc(upperFirst(b))}</span></span>`;
 };
-/** A line short enough to be a fact in the row ("@priya", "Hosting, Billing"); a longer one is the card's text. */
+/** A line short enough to be a field in the row ("@priya", "Hosting, Billing"); a longer one is the card's text. */
 const SHORT_LINE = 40;
 
 /** Any other write (a comment, the plan, a link…): the server's title, its long lines as the card's text, then its
- *  short lines as facts in ONE row across the card with the controls at its end. With no short line, the last text
- *  (or, with no lines at all, the title) shares the controls' row. */
-function genericBody(vm: AskActionVm, btns: string): string {
+ *  short lines as label-over-value fields in columns across the card (the new ticket's row). */
+function genericBody(vm: AskActionVm): string {
   const lines = (vm.preview?.lines ?? []).filter((l) => l.label !== "What it does");
   const short = lines.filter((l) => l.value.length <= SHORT_LINE && !l.value.includes("\n"));
   const long = lines.filter((l) => !short.includes(l));
-  const title = esc(vm.preview?.title ?? "Change");
-  if (!lines.length) return `<div class="ask-act-body">${endRow(`<div class="ask-act-title ask-act-lead" data-morph-key="title">${title}</div>`, btns)}</div>`;
   // The text: one long line is the card's text as is; several keep their names as a quiet lead-in.
   const named = long.length > 1;
-  const text = (l: { label: string; value: string }, cls: string, key: string) =>
-    `<div class="${cls}" data-morph-key="${attr(key)}">${named ? `<span class="ask-fact-k">${esc(l.label)}</span>` : ""}${esc(l.value)}</div>`;
-  const lastLong = short.length ? null : long[long.length - 1];
   return `<div class="ask-act-body">
-    <div class="ask-act-title">${title}</div>
-    ${long.filter((l) => l !== lastLong).map((l, i) => text(l, "ask-act-desc", `t${i}`)).join("")}
-    ${short.length
-      ? endRow(short.map((l, i) => fact(l.label, stepHtml(l.value), `f${i}`)).join(""), btns, "is-facts")
-      : endRow(text(lastLong!, "ask-act-lead", "text"), btns)}
+    <div class="ask-act-title">${esc(vm.preview?.title ?? "Change")}</div>
+    ${long.map((l, i) => `<div class="ask-act-desc" data-morph-key="t${i}">${named ? `<span class="ask-fact-k">${esc(l.label)}</span>` : ""}${esc(l.value)}</div>`).join("")}
+    ${short.length ? fieldsRow(short.map((l) => label(l.label, `<span class="ask-act-v ask-act-iv">${stepHtml(l.value)}</span>`))) : ""}
   </div>`;
 }
 
-/** A new sprint: its name, its summary as the card's text, then ONE row of facts — its dates as the app writes
- *  them ("Nov 2 – 20"), its lead (avatar and name), its urgency — with the controls at its end. */
-function sprintBody(v: AskView, vm: AskActionVm, btns: string): string {
+/** A new sprint: its name, its summary as the card's text, then its fields across the card — Dates as the app
+ *  writes them ("Nov 2 – 20"), Lead (avatar and name), Urgency. */
+function sprintBody(v: AskView, vm: AskActionVm): string {
   const start = line(vm, "Start"), due = line(vm, "Due");
   const lead = (line(vm, "Lead") ?? "").replace(/^@/, "") || null;
   const urgency = line(vm, "Urgency") as TicketPriority | null;
   const summary = line(vm, "Summary");
   const dates = start ? sprintDatesLabel({ start, due }) : due ? `Due ${sprintDatesLabel({ start: due, due }) ?? due}` : null;
-  const facts = [
-    dates ? fact(null, `${askIcon("clock", 13, "var(--fg-55)")}<span>${esc(dates)}</span>`, "dates") : "",
-    lead ? fact("Lead", `${refAvatar(v.look, lead, 18)}<span class="ask-act-strong">${esc(personName(v.look, lead))}</span>`, "lead") : "",
-    urgency && urgency in PRIORITY_LABEL ? fact(null, priorityMark(urgency, 12.5, `${PRIORITY_LABEL[urgency]} urgency`), "urg") : "",
-  ].filter(Boolean).join("");
+  const fields = [
+    label("Dates", dates ? `<span class="ask-act-v ask-act-iv">${askIcon("clock", 13, "var(--fg-55)")}<span>${esc(dates)}</span></span>` : `<span class="ask-act-v ask-act-iv ask-act-faint">No dates yet</span>`),
+    lead ? label("Lead", `<span class="ask-act-v ask-act-iv ask-act-strong">${refAvatar(v.look, lead, 18)}<span>${esc(personName(v.look, lead))}</span></span>`) : "",
+    urgency && urgency in PRIORITY_LABEL ? label("Urgency", `<span class="ask-act-v ask-act-iv">${priorityMark(urgency, 12.5, `${PRIORITY_LABEL[urgency]} urgency`)}</span>`) : "",
+  ].filter(Boolean);
   return `<div class="ask-act-body">
     <div class="ask-act-title">${esc(vm.preview?.title ?? "New sprint")}</div>
     ${summary ? `<div class="ask-act-desc">${esc(summary)}</div>` : ""}
-    ${endRow(facts || `<span class="ask-act-hint" data-morph-key="hint">No dates yet</span>`, btns, "is-facts")}
+    ${fieldsRow(fields)}
   </div>`;
 }
 
@@ -614,14 +606,14 @@ function sprintBody(v: AskView, vm: AskActionVm, btns: string): string {
 const statusOf = (word: string): TicketStatus | null =>
   (Object.keys(TICKET_STATUS_LABEL) as TicketStatus[]).find((s) => TICKET_STATUS_LABEL[s].toLowerCase() === word.trim().toLowerCase()) ?? null;
 
-/** A move (a ticket's status or sprint, a sprint's state): ONE row — the item (number and title, a click opens it),
- *  then from → to (the status marks, or the names), the controls at its end. Narrow, the item takes its own line and
- *  from → to shares the controls' line. A move without its item reads as any other write. */
-function moveBody(vm: AskActionVm, btns: string): string {
+/** A move (a ticket's status or sprint, a sprint's state): ONE row across the card — the item (number and title, a
+ *  click opens it) on the left, from → to (the status marks, or the names) at its right. Narrow, from → to takes the
+ *  next line. A move without its item reads as any other write. */
+function moveBody(vm: AskActionVm): string {
   const item = vm.preview?.item ?? null;
   const l = vm.preview?.lines[0] ?? null;
   const [from, to] = (l?.value ?? "").split("→").map((s) => s.trim());
-  if (!item || !from || !to) return genericBody(vm, btns);
+  if (!item || !from || !to) return genericBody(vm);
   const num = item.num != null ? String(item.num) : keyOf(item.ref);
   const fs = statusOf(from), ts = statusOf(to);
   const arrow = `${askIcon("arrow", 14, "var(--fg-40)", 2)}<span class="cnpy-sr">to</span>`;
@@ -629,15 +621,16 @@ function moveBody(vm: AskActionVm, btns: string): string {
     ? `${ticketStatusMark(fs)}${arrow}<span class="ask-mv-to">${ticketStatusMark(ts)}</span>`
     : `<span>${esc(upperFirst(from))}</span>${arrow}<span class="ask-mv-to">${esc(upperFirst(to))}</span>`;
   return `<div class="ask-act-body">
-    ${endRow(`${itemTag(item.ref, num, item.title)}<span class="ask-mv" data-morph-key="mv">${step}</span>`, btns, "is-move")}
+    <div class="ask-act-move">${itemTag(item.ref, num, item.title)}<span class="ask-mv" data-morph-key="mv">${step}</span></div>
   </div>`;
 }
 
-/** An edit to a ticket: the ticket, then its new title (edits in place) beside the old one, its new description. */
-function editTicketBody(v: AskView, vm: AskActionVm, btns: string): string {
+/** An edit to a ticket: the ticket (its status at the row's right), its new description, then its new title (edits
+ *  in place) across the card. */
+function editTicketBody(v: AskView, vm: AskActionVm): string {
   const item = vm.preview?.item ?? null;
   const t = line(vm, "Title");
-  if (!item || !t) return genericBody(vm, btns);
+  if (!item || !t) return genericBody(vm);
   const num = item.num != null ? String(item.num) : keyOf(item.ref);
   const was = t.split("→")[0].trim();
   const now = String(fieldOf(v, vm, "title") ?? t.split("→")[1]?.trim() ?? "");
@@ -645,28 +638,35 @@ function editTicketBody(v: AskView, vm: AskActionVm, btns: string): string {
   return `<div class="ask-act-body">
     <div class="ask-asg-head">${itemTag(item.ref, num, was)}${item.status ? `<span class="ask-asg-st">${refStatusMark(item.status, 12)}</span>` : ""}</div>
     ${desc ? `<div class="ask-act-desc">${esc(desc)}</div>` : ""}
-    ${endRow(`<span class="ask-fact-k" data-morph-key="k">New title</span>${textEdit(v, vm, "title", now, "ask-act-strong ask-act-grow", "New title")}`, btns, "is-ruled")}
+    ${metaRow(`<span class="ask-fact-k" data-morph-key="k">New title</span>${textEdit(v, vm, "title", now, "ask-act-strong ask-act-grow", "New title")}`, "is-ruled")}
   </div>`;
 }
 
-function bodyOf(v: AskView, vm: AskActionVm, btns: string): string {
+function bodyOf(v: AskView, vm: AskActionVm): string {
   const tool = toolOf(vm);
   switch (tool) {
-    case "create_ticket": return ticketBody(v, vm, btns);
-    case "send_handoff": return handoffBody(v, vm, btns);
-    case "propose_doc_update": return docBody(v, vm, btns);
-    case "publish_doc": return publishBody(vm, btns);
-    case "assign_ticket": return assignBody(v, [vm], btns);
-    case "claim_handoff": return claimBody(v, vm, btns);
-    case "create_sprint": return sprintBody(v, vm, btns);
-    case "edit_ticket": return editTicketBody(v, vm, btns);
+    case "create_ticket": return ticketBody(v, vm);
+    case "send_handoff": return handoffBody(v, vm);
+    case "propose_doc_update": return docBody(v, vm);
+    case "publish_doc": return publishBody(vm);
+    case "assign_ticket": return assignBody(v, [vm]);
+    case "claim_handoff": return claimBody(v, vm);
+    case "create_sprint": return sprintBody(v, vm);
+    case "edit_ticket": return editTicketBody(v, vm);
   }
   // A move — or any write that is one item going from → to (a sprint started, completed).
   const ls = vm.preview?.lines ?? [];
-  return vm.kind === "move" || (vm.preview?.item && ls.length === 1 && ls[0].value.includes("→")) ? moveBody(vm, btns) : genericBody(vm, btns);
+  return vm.kind === "move" || (vm.preview?.item && ls.length === 1 && ls[0].value.includes("→")) ? moveBody(vm) : genericBody(vm);
 }
 
-/** One card: a single write, or the pending writes of one group (stacked in one frame, one Confirm). */
+/** One card: a single write, or the pending writes of one group (stacked in one frame, one Confirm).
+ *
+ *  THE FLOATING PAIR: the frame holds the content alone — the head (eyebrow, mark, a waiting card's reason) and the
+ *  body, which fills the card's width on its own. Cancel / Confirm (a group's ONE pair; "Open in Review" in place of
+ *  Confirm for a Publish that cannot publish) sit OUTSIDE the frame, right-aligned just under its bottom-right edge
+ *  — no band, no background — the same for every kind, on a phone and in the ⌘J panel too. They come right after
+ *  the card's content in the DOM (the keyboard reaches them next), and they belong to the card's wrapper, which is
+ *  what the decision swaps for its line: the pair leaves in the card's one glide (ask-motion.ts rule 4). */
 function cardView(v: AskView, vms: AskActionVm[]): string {
   const vm = vms[0];
   const ids = vms.map((x) => x.id);
@@ -686,21 +686,22 @@ function cardView(v: AskView, vms: AskActionVm[]): string {
   const confirm = publishBlocked
     ? `<a class="ask-btn ask-btn--accent" href="#review">Open in Review</a>`
     : `<button type="button" class="ask-btn ask-btn--accent ask-act-confirm" data-act="askAcConfirm" data-arg="${arg}"${busy ? " disabled" : ""}>${I_CHECK}${busy ? "Working…" : "Confirm"}</button>`;
-  // Cancel / Confirm: one group at the end of the card's last row (never a row, or a footer band, of their own).
-  const btns = `<div class="ask-act-btns" data-morph-key="btns">
+  const btns = `<div class="ask-act-btns" role="group" aria-label="${attr(`${eyebrow}: confirm or cancel`)}">
       <button type="button" class="ask-btn" data-act="askAcCancel" data-arg="${arg}"${busy ? " disabled" : ""}>Cancel</button>
       ${confirm}
     </div>`;
-  const bodies = assign ? assignBody(v, vms, btns)
+  const bodies = assign ? assignBody(v, vms)
     : vms.length > 1
-    ? `<div class="ask-act-stack" data-morph-list>${vms.map((x, i) => `<div data-morph-key="g${x.id}">${bodyOf(v, x, i === vms.length - 1 ? btns : GHOST)}</div>`).join("")}</div>`
-    : bodyOf(v, vm, btns);
-  // The head: the eyebrow, the card's mark and — when the card waits for a reason — that reason, in words.
-  return `<div class="ask-act" data-morph-key="act:${ids[0]}" data-ask-tween${busy ? ` aria-busy="true"` : ""}>
-    <div class="ask-act-head">
-      <span class="ask-eyebrow">${esc(eyebrow)}</span>${mark}${note ? `<span class="ask-act-note">${esc(note)}</span>` : ""}
+    ? `<div class="ask-act-stack" data-morph-list>${vms.map((x) => `<div data-morph-key="g${x.id}">${bodyOf(v, x)}</div>`).join("")}</div>`
+    : bodyOf(v, vm);
+  return `<div class="ask-act-w" data-morph-key="act:${ids[0]}" data-ask-tween${busy ? ` aria-busy="true"` : ""}>
+    <div class="ask-act">
+      <div class="ask-act-head">
+        <span class="ask-eyebrow">${esc(eyebrow)}</span>${mark}${note ? `<span class="ask-act-note">${esc(note)}</span>` : ""}
+      </div>
+      ${bodies}
     </div>
-    ${bodies}
+    ${btns}
   </div>`;
 }
 

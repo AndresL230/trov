@@ -3493,16 +3493,24 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-co-drop-s { font-size:12.5px; color:var(--fg-55); }
 
 /* ── Ask: actions ── (ask-actions.ts: write cards, their lines, Save as artifact, Wrong?; design L475–590, L630–638) */
-.ask-acts { display:flex; flex-direction:column; }
+/* One control height for everything that sits together on a card, its line and the Save form (the owner): the
+   floating Cancel / Confirm, Undo / Open, the Save form's title field and Save, its switches, a card's person
+   dropdown and the words a click cycles — the app's small control (`.cnpy-dd.is-sm`, 30px). On a phone the look stays
+   and the 44px comes from hit areas. Pinned by test/render.ask-actions.test.ts. */
+.ask-acts { display:flex; flex-direction:column; --ask-ctl:30px; }
 .ask-grow { flex:1; }
 .ask-eyebrow { font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); white-space:nowrap; }
 /* A card, every kind the same frame: the head (the eyebrow, its mark and a waiting card's reason), then the body per
-   kind, which ENDS on one row — its facts, its people from → to, the item and its move, or a hint — with Cancel /
-   Confirm at that row's end (ask-actions.ts `endRow`). No footer band: the controls never take a row of their own.
-   Narrow (a phone, the ⌘J panel), they wrap under the row's content as a right-aligned group, beside the row's
-   trailing hint when it has one (`.ask-act-break` starts the hint's line). */
-.ask-act { margin:0 0 12px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
-.ask-act[aria-busy="true"] .ask-act-body > :not(.ask-act-end), .ask-act[aria-busy="true"] .ask-act-end > :not(.ask-act-btns) { opacity:.72; }
+   kind, designed on its own — it fills the card's width (fields in columns across it, a row's note at its right
+   edge). Cancel / Confirm float OUTSIDE the frame (ask-actions.ts `cardView`): a compact right-aligned pair just
+   under its bottom-right edge, no band and no background of their own, closer to their card than to anything else —
+   the same for every kind, a group, a phone and the ⌘J panel. The wrapper (`.ask-act-w`) holds both, so the pair
+   leaves with the card's one glide to its line. */
+.ask-act-w { margin:0 0 14px; }
+.ask-act { background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); overflow:hidden; }
+.ask-act-w[aria-busy="true"] .ask-act-body { opacity:.72; }
+.ask-act-btns { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:6px; margin-top:8px; }
+.ask-act-btns > .ask-btn { height:var(--ask-ctl); box-sizing:border-box; padding:0 12px; }
 .ask-act-head { display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; padding:10px 16px; border-bottom:1px solid var(--border); }
 .ask-act-st { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-70); white-space:nowrap; }
 .ask-act-note { flex:1 1 14em; min-width:0; font-size:12px; color:var(--fg-55); }
@@ -3511,28 +3519,31 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 [data-phone="1"] .ask-act-note::before, .ask-panel .ask-act-note::before { content:none; }
 .ask-act-body { padding:14px 16px; }
 .ask-act-stack > div + div { border-top:1px solid var(--border); }
-/* The last row and its controls. */
-.ask-act-end { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; min-height:30px; margin-top:12px; font-size:13px; color:var(--fg-70); }
-.ask-act-end:first-child { margin-top:0; }
-.ask-act-end.is-ruled { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
-.ask-act-end.is-people { gap:8px 10px; }
-.ask-act-btns { display:flex; align-items:center; gap:8px; flex:none; margin-left:auto; }
-.ask-act-end.is-fields { align-items:flex-end; }
-/* A new ticket's fields: four columns across the row, the Assignee's widest (two on a phone or in the ⌘J panel). */
-.ask-act-fields { flex:1 1 26em; min-width:0; display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.5fr) minmax(0,1fr); gap:10px 14px; }
-/* A group's earlier tickets keep the room the controls take on its last one, so every row's columns line up. */
-.ask-act-ghost { flex:none; width:172px; }
-[data-phone="1"] .ask-act-ghost, .ask-panel .ask-act-ghost { display:none; }
-.ask-act-stack .ask-act-btns { min-width:172px; justify-content:flex-end; }
-[data-phone="1"] .ask-act-fields, .ask-panel .ask-act-fields { grid-template-columns:repeat(2, minmax(0,1fr)); }
+/* A card's closing row: its fields, its people from → to, or its new title — across the whole card. */
+.ask-act-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; min-height:var(--ask-ctl); margin-top:12px; font-size:13px; color:var(--fg-70); }
+.ask-act-meta:first-child { margin-top:0; }
+.ask-act-meta.is-ruled { margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
+.ask-act-meta.is-people { gap:8px 10px; }
+.ask-act-meta.is-fields { display:block; }
+/* The quiet words a row ends on, at its right edge; narrow (a phone, the ⌘J panel) they take the next line. */
+.ask-act-aside { margin-left:auto; font-size:12px; color:var(--fg-55); text-align:right; }
+[data-phone="1"] .ask-act-aside, .ask-panel .ask-act-aside { flex-basis:100%; margin-left:0; text-align:left; }
+/* Fields in columns that share the row (`--n` of them; a new ticket's four weighted, the Assignee's widest). Narrow
+   they flow two to a line — and one alone still fills it. Every value sits on one control-height line, so a
+   dropdown, a word a click cycles and plain text share their baseline. */
+.ask-act-fields { display:grid; grid-template-columns:repeat(var(--n, 4), minmax(0,1fr)); gap:10px 18px; }
+.ask-act-fields.is-ticket { grid-template-columns:minmax(0,.8fr) minmax(0,.8fr) minmax(0,1.4fr) minmax(0,1fr); }
+[data-phone="1"] .ask-act-fields, .ask-panel .ask-act-fields { grid-template-columns:repeat(auto-fit, minmax(min(100%, 9.5em), 1fr)); }
 .ask-act-field { min-width:0; }
-.ask-act-break { display:none; }
-[data-phone="1"] .ask-act-break, .ask-panel .ask-act-break { display:block; flex-basis:100%; height:0; }
+.ask-act-field .ask-act-iv { min-height:var(--ask-ctl); }
 .ask-act-lead { flex:1 1 16em; min-width:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; }
 .ask-act-title.ask-act-lead { font-size:15px; line-height:1.35; color:var(--fg); }
 .ask-act-hint { flex:1 1 0; min-width:9em; font-size:12px; color:var(--fg-55); }
-/* A move: the ticket, then its status (or sprint) from → to. Narrow, from → to shares the controls' line. */
-.ask-act-end.is-move > .ask-asg-item { flex:0 1 auto; }
+/* A move: one row — the ticket on the left, its status (or sprint) from → to at the right. Narrow, from → to takes
+   the next line. */
+.ask-act-move { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; min-height:var(--ask-ctl); }
+.ask-act-move > .ask-mv { margin-left:auto; }
+[data-phone="1"] .ask-act-move > .ask-mv, .ask-panel .ask-act-move > .ask-mv { margin-left:0; }
 .ask-mv { display:inline-flex; align-items:center; flex-wrap:wrap; gap:6px 8px; font-size:12.5px; color:var(--fg-70); }
 .ask-mv-to { font-weight:500; color:var(--fg); }
 .ask-act-row { display:flex; align-items:flex-start; gap:9px; }
@@ -3540,7 +3551,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-act-main { flex:1; min-width:0; }
 .ask-act-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; overflow-wrap:anywhere; }
 .ask-act-desc { margin-top:6px; font-size:13px; line-height:1.6; color:var(--fg-70); overflow-wrap:anywhere; }
-.ask-act-k { margin-bottom:5px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.ask-act-k { margin-bottom:2px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
 .ask-act-v { font-size:12.5px; color:var(--fg-70); overflow-wrap:anywhere; }
 .ask-act-iv { display:inline-flex; align-items:center; gap:6px; }
 .ask-act-strong { font-weight:500; color:var(--fg); }
@@ -3573,12 +3584,6 @@ button.ask-asg-item:hover .ask-asg-title { text-decoration:underline; text-decor
 .ask-asg-none { font-style:italic; color:var(--fg-55); }
 .ask-asg-w { color:var(--fg-55); }
 .ask-asg-to { display:inline-flex; align-items:center; }
-.ask-asg-stays { font-size:12px; color:var(--fg-55); }
-.ask-asg-stays::before { content:"·"; margin-right:8px; color:var(--fg-40); }
-/* A phone or the ⌘J panel: the people who stay (or the claim's note) start their own line — no dot to hang from — and
-   share it with the controls. */
-[data-phone="1"] .ask-asg-stays, .ask-panel .ask-asg-stays { flex:1 1 0; min-width:8em; }
-[data-phone="1"] .ask-asg-stays::before, .ask-panel .ask-asg-stays::before { content:none; }
 /* Editing in place (no Edit mode): text that edits reads as text — a hover tint says it can — and a click turns it
    into an input that looks the same (accent ring). A small fixed set is a word a click cycles; a person is the app's
    dropdown, quiet (no border) until hovered or open. Nothing fades or slides: the card only changes its words. */
@@ -3590,26 +3595,22 @@ textarea.ask-act-input { resize:vertical; min-height:3.3em; white-space:pre-wrap
 .ask-act-txt.ask-act-title, .ask-act-input.ask-act-title { font-size:15px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; }
 .ask-act-txt.ask-act-strong, .ask-act-input.ask-act-strong { font-weight:500; color:var(--fg); }
 .ask-diff-row > .ask-act-txt, .ask-diff-row > .ask-act-input { flex:1; min-width:0; max-width:none; }
-.ask-act-end > .ask-act-grow { flex:1 1 12em; min-width:0; }
-.ask-act-cyc { margin:-3px -6px; padding:3px 6px; border-radius:5px; cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-act-meta > .ask-act-grow { flex:1 1 12em; min-width:0; }
+.ask-act-cyc { display:inline-flex; height:var(--ask-ctl); box-sizing:border-box; margin:0 -6px; padding:0 6px; border-radius:5px; cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-act-cyc:hover { background:color-mix(in srgb, var(--fg) 6%, transparent); color:var(--fg); }
-.ask-act-pick { display:inline-flex; flex:0 1 auto; max-width:calc(100% + 7px); margin:-1px 0 -1px -7px; }
-.ask-act-pick .cnpy-dd.is-sm { height:28px; padding:0 6px; border-color:transparent; background:transparent; color:var(--fg); font-weight:500; }
+.ask-act-pick { display:inline-flex; flex:0 1 auto; max-width:calc(100% + 7px); margin:0 0 0 -7px; }
+.ask-act-pick .cnpy-dd.is-sm { height:var(--ask-ctl); padding:0 6px; border-color:transparent; background:transparent; color:var(--fg); font-weight:500; }
 .ask-act-pick .cnpy-dd.is-sm:hover, .ask-act-pick .cnpy-dd.is-open { border-color:var(--border-strong); background:var(--surface); }
 .ask-act-pick .cnpy-dd-caret { color:var(--fg-40); }
-/* A card's facts: one row across the card — an optional quiet label, then the value (a date span, a lead, …). */
-.ask-act-end.is-facts { gap:8px 18px; }
-.ask-fact { display:inline-flex; align-items:center; gap:7px; min-width:0; font-size:12.5px; color:var(--fg-70); }
+/* A quiet label before a value (a write's long lines when it has several; an edit's New title). */
 .ask-fact-k { margin-right:6px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
-.ask-fact > .ask-fact-k { margin-right:0; }
-.ask-fact-v { display:inline-flex; align-items:center; gap:6px; min-width:0; overflow-wrap:anywhere; }
 .ask-field { display:flex; flex-direction:column; align-items:flex-start; gap:6px; font-size:12.5px; font-weight:500; }
 label.ask-field { align-items:stretch; }
 .ask-field .cnpy-seg { max-width:100%; overflow-x:auto; }
 .ask-input-line { width:100%; height:36px; box-sizing:border-box; padding:0 12px; border:1px solid var(--border-strong); border-radius:9px; background:transparent; outline:none; font:inherit; font-size:13.5px; font-weight:400; color:var(--fg); transition:border-color .12s ease; }
 .ask-input-line:focus { border-color:var(--accent); }
 .ask-input-line--lg { height:38px; font-size:14px; }
-.ask-act-confirm { padding:6px 14px; }
+.ask-act-btns > .ask-act-confirm { padding:0 14px; }
 a.ask-btn { text-decoration:none; }
 /* A doc edit's hunks: the heading for context, the old line struck out, the new one (a textarea while editing). */
 .ask-diffs { margin:12px 0 0; display:flex; flex-direction:column; gap:8px; }
@@ -3641,7 +3642,7 @@ a.ask-btn { text-decoration:none; }
 .ask-line-link:hover { text-decoration-color:var(--fg); }
 .ask-line-at { font-family:var(--label); font-size:11.5px; color:var(--fg-40); white-space:nowrap; }
 .ask-line-vis { font-size:12px; color:var(--fg-55); }
-.ask-undo { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid var(--border-strong); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); white-space:nowrap; cursor:pointer; transition:background .12s ease, color .12s ease; }
+.ask-undo { display:inline-flex; align-items:center; gap:6px; height:var(--ask-ctl); box-sizing:border-box; padding:0 10px; border:1px solid var(--border-strong); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); white-space:nowrap; cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-undo:hover { background:var(--hover); color:var(--fg); }
 .ask-undo:disabled { opacity:.55; cursor:default; }
 @keyframes ask-line-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
@@ -3651,9 +3652,11 @@ a.ask-btn { text-decoration:none; }
    end; the hint is under them. */
 .ask-save-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
 .ask-save-opts { display:flex; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; gap:8px; max-width:100%; margin-left:auto; }
-.ask-save-opts .cnpy-seg { max-width:100%; overflow-x:auto; }
+.ask-save-opts .cnpy-seg { height:var(--ask-ctl); box-sizing:border-box; padding:2px; max-width:100%; overflow-x:auto; }
+.ask-save-opts .cnpy-seg-btn { height:100%; padding-top:0; padding-bottom:0; }
 .ask-save-row { display:flex; align-items:center; gap:10px; }
-.ask-save-row > .ask-input-line { flex:1; min-width:0; }
+.ask-save-row > .ask-input-line { flex:1; min-width:0; height:var(--ask-ctl); font-size:13.5px; }
+.ask-save-row > .ask-btn { height:var(--ask-ctl); box-sizing:border-box; padding:0 14px; }
 .ask-save-hint { margin-top:8px; font-size:12px; color:var(--fg-55); }
 /* Wrong?: the reasons row under the footer pops in, and out when a reason is picked or Escape closes it. */
 /* Wrong?'s reasons open like the sources list beside it: a rise in step with the footer's height glide (ask-motion.ts
@@ -3665,7 +3668,7 @@ a.ask-btn { text-decoration:none; }
 .ask-wrong-q { margin-right:4px; font-size:12.5px; color:var(--fg-70); }
 .ask-wrong-opt { padding:4px 10px; border:1px solid var(--border); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:border-color .12s ease, color .12s ease; }
 .ask-wrong-opt:hover { border-color:var(--border-strong); color:var(--fg); }
-.ask-act :focus-visible, .ask-line :focus-visible, .ask-save :focus-visible, .ask-wrong :focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.ask-act :focus-visible, .ask-act-btns :focus-visible, .ask-line :focus-visible, .ask-save :focus-visible, .ask-wrong :focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 
 /* ── Ask: inspector ── (ask-inspector.ts — the per-type views; the frame is the shell's, above). The design's
    L796–1000: label-face eyebrows and field labels, 19px titles, 92px field rows, hairline lists, a --bg box for
