@@ -4,13 +4,14 @@
 // text they write AFTER a tool result until they know it is the answer and not a progress note before another tool
 // call — so an answer that follows a search can arrive as ONE burst (hundreds of characters in a few milliseconds),
 // and painting it as it lands puts the whole answer on screen at once. The pacer sits between the stream and the
-// fold: text goes out a few words per frame, faster when a lot is waiting, but never under `minCps` nor over `maxCps`
+// fold: text goes out a few characters per frame, faster when a lot is waiting, but never under `minCps` nor over `maxCps`
 // characters a second (the owner: a steady reading pace, so a 2,000-character burst takes ~17s to write out); whatever came after the text (a
 // block, a card, `followups`, `done`) waits its turn, so the answer keeps the order it streamed in and the footer
 // comes once the words are out.
 //
 //   • Events with no text waiting in front of them go out at once (steps, thinking, the thread) — no delay.
-//   • A cut never splits a word, nor a `[[ref]]` token (it would flash as raw brackets).
+//   • Text goes out character by character (a steady flow, not word jumps); a cut never splits a `[[ref]]` token (it
+//     would flash as raw brackets) nor a surrogate pair; half-written markdown at the end is the renderer's `settleTail`.
 //   • `flush()` sends everything now: Stop, an error, a new thread — what was received is what the stored answer has.
 //   • No scheduler (tests, the build) or reduced motion: `AskPacer.passthrough` — every event goes out as it arrives.
 
@@ -169,9 +170,10 @@ export class AskPacer {
  *  never into the middle of a `[[ref]]` token — through its `]]` when that is here, else up to its `[[` (0 when the
  *  token opens the text: it waits for the rest). */
 export function cutAt(text: string, n: number): number {
+  // Character by character (the owner: whole words made the rollout choppy) — the half-written markdown a cut can
+  // leave at the end is settled by the renderer (ask-conversation.ts `settleTail`). Never inside a surrogate pair.
   let i = Math.min(Math.max(1, n), text.length);
-  // On to the end of the word (or the start of the next whitespace run).
-  while (i < text.length && !/\s/.test(text[i])) i++;
+  if (i < text.length && /[\uD800-\uDBFF]/.test(text[i - 1])) i++;
   // Inside an open `[[…`: through its `]]` when it is here, else stop before it.
   const open = text.lastIndexOf("[[", i - 1);
   if (open >= 0 && text.indexOf("]]", open) < 0) return open;

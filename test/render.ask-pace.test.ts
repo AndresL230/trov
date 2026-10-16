@@ -44,7 +44,7 @@ describe("the pace — a burst becomes a stream", () => {
     const first = (got[0] as Extract<AskEvent, { event: "text" }>).data.delta;
     expect(first.length).toBeGreaterThan(0);
     expect(first.length).toBeLessThan(BURST.length / 4);
-    expect(BURST[first.length]).toMatch(/\s/);    // a word boundary, never half a word
+    expect(first.length).toBeLessThan(12);          // a few characters, not a word's jump
     let frames = 1;
     while (p.pending && frames < 1000) { c.step(); frames++; }
     expect(got.at(-1)).toBe(done);
@@ -180,12 +180,12 @@ describe("the pace — a burst becomes a stream", () => {
   });
 });
 
-describe("cutAt — where a frame's words end", () => {
-  it("runs on to the end of the word", () => {
-    expect(cutAt("Hello there world", 2)).toBe(5);
-    expect(cutAt("Hello there world", 5)).toBe(5);
-    expect(cutAt("Hello there world", 6)).toBe(11);
+describe("cutAt — where a frame's text ends", () => {
+  it("character by character (a steady flow, not word jumps), never inside a surrogate pair", () => {
+    expect(cutAt("Hello there world", 2)).toBe(2);
+    expect(cutAt("Hello there world", 6)).toBe(6);
     expect(cutAt("short", 99)).toBe(5);
+    expect(cutAt("ok 👍 yes", 4)).toBe(5);             // the emoji is two code units: never half of it
   });
   it("never splits a [[ref]] token: through its ]] when here, else up to its [[", () => {
     expect(cutAt("See [[ticket:14]] now", 7)).toBe("See [[ticket:14]]".length);
