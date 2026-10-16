@@ -178,4 +178,5 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |
 | secrets, vars, bindings, `REPO_ENVIRONMENTS` | `env.md` |
+| the local dev seed and its scenarios, `npm run seed` / `dev:seeded` / `dev:as`, signing in as anyone locally | `local-dev.md` |
 | where a file or migration lives | `layout.md` |

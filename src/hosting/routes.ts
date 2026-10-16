@@ -33,7 +33,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingProvider, type HostingTestDTO } from "@shared/hosting";
 import { hostingStatus, notConnectedSentence } from "@shared/hosting-status-core";
-import { resolveSessionPrincipal, type AppEnv, type Principal } from "../auth/principal";
+import { resolveSessionPrincipal, resolvePrincipalOrDev, type AppEnv, type Principal } from "../auth/principal";
 import { RoleError, platform, requireRole } from "../data/context";
 import { adminOrgForInstallation } from "../platform/jobs";
 import {
@@ -179,8 +179,7 @@ export function makeHostingApp(o: HostingRouteOptions = {}): Hono<AppEnv> {
 /** The signed-in person on the callback (a public path, so the session gate set no principal): the session
  *  COOKIE alone — never an `Authorization` header — or the local-dev login, exactly as `sessionGate` reads them. */
 async function currentPerson(c: C): Promise<Principal | null> {
-  if (c.env.DEV_LOGIN) return { handle: c.env.DEV_LOGIN }; // local dev only, as in `sessionGate`
-  return resolveSessionPrincipal(c);
+  return resolvePrincipalOrDev(c); // the session, else (local dev only) DEV_LOGIN, as in `sessionGate`
 }
 
 /**

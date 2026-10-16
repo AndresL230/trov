@@ -31,10 +31,16 @@ export interface PaceOpts {
   minCps: number;
   /** The ceiling, in characters a second (the owner: never faster than a steady read, however big the burst). */
   maxCps: number;
+  /** How long each step shows as running before it finishes and the next one appears, in ms (the owner: steps
+   *  "appear as they go", one after another — the tools themselves run in a few ms, so they arrived all at once). */
+  stepMs: number;
 }
-export const ASK_PACE: PaceOpts = { tauMs: 600, minCps: 70, maxCps: 120 };
+export const ASK_PACE: PaceOpts = { tauMs: 600, minCps: 70, maxCps: 120, stepMs: 350 };
 
-type Item = { text: string } | { e: AskEvent };
+/** The steps the answer never shows (ask-conversation.ts `quietStep`): they take no time on screen. */
+const QUIET_TOOL = /^(show_|save_artifact$)/;
+/** An event may carry `at`: not before that time (a step's start or finish, spaced `stepMs` apart). */
+type Item = { text: string } | { e: AskEvent; at?: number };
 
 export class AskPacer {
   private q: Item[] = [];
@@ -44,6 +50,9 @@ export class AskPacer {
   private scheduled = false;
   private credit = 0;
   private waiters: (() => void)[] = [];
+  /** The steps' clock: when the next step may start, and when each shown step started. */
+  private nextStepAt = 0;
+  private stepShown = new Map<number, number>();
 
   /** `clock` null: no pacing, every event is delivered as it arrives. */
   constructor(private deliver: (e: AskEvent) => void, private clock: PaceClock | null, private opts: PaceOpts = ASK_PACE) {}
@@ -63,8 +72,23 @@ export class AskPacer {
       this.schedule();
       return;
     }
-    if (!this.q.length) { this.deliver(e); return; }
-    this.q.push({ e });
+    // A step starts no sooner than `stepMs` after the one before it, and finishes no sooner than `stepMs` after it
+    // started — so each shows running (its label in the sweep of light), then done, then the next appears.
+    let at: number | undefined;
+    if (e.event === "activity" && (e.data.state !== "run" || !QUIET_TOOL.test(e.data.tool)) && (e.data.state === "run" || this.stepShown.has(e.data.step))) {
+      const now = this.clock.now();
+      if (e.data.state === "run") {
+        at = Math.max(now, this.nextStepAt);
+        this.stepShown.set(e.data.step, at);
+        this.nextStepAt = at + this.opts.stepMs;
+      } else {
+        at = Math.max(now, (this.stepShown.get(e.data.step) ?? now) + this.opts.stepMs);
+        this.nextStepAt = Math.max(this.nextStepAt, at);
+      }
+      if (at <= now) at = undefined;
+    }
+    if (!this.q.length && at === undefined) { this.deliver(e); return; }
+    this.q.push(at === undefined ? { e } : { e, at });
     this.schedule();
   }
 
@@ -101,7 +125,11 @@ export class AskPacer {
     this.credit += Math.min(drain, (this.opts.maxCps * dt) / 1000);
     while (this.q.length) {
       const head = this.q[0];
-      if (!("text" in head)) { this.q.shift(); this.deliver(head.e); continue; }
+      if (!("text" in head)) {
+        // A step not due yet holds what comes after it; the words behind it build no credit while they wait.
+        if (head.at !== undefined && head.at > now) { this.credit = Math.min(this.credit, 0); break; }
+        this.q.shift(); this.deliver(head.e); continue;
+      }
       if (this.credit < 1) break;
       // Text with something after it (or a closed stream) is whole: an unclosed `[[` in it is just text.
       const whole = this.closed || this.q.length > 1;

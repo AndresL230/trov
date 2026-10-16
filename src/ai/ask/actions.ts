@@ -294,8 +294,13 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
       return { result: await ticketDetail(c, a.id), ref: `ticket:${a.id}`, undo: null };
     },
   },
+  // The card draws the assignment itself (ask-actions.ts `assignBody`): the ticket and its status from `item`, who is
+  // on it now from `item.extra.assignees`, and who comes or goes from `fields` — `login`, the one field a person
+  // may change before Confirm (the agent tool's args are unchanged).
   assign_ticket: {
-    input: AssignIn, card: "ticket",
+    input: AssignIn, card: "ticket", editable: ["login"],
+    fields: (a: z.infer<typeof AssignIn>) => ({ id: a.id, login: a.login, on: a.on }),
+    edit: (_c, a: z.infer<typeof AssignIn>, f) => ({ ...a, ...(typeof f.login === "string" && f.login.trim() ? { login: f.login.trim() } : {}) }),
     async preview(c, a: z.infer<typeof AssignIn>) {
       await laneTicket(c, a.id, "assign");
       const h = await requireMember(c.ctx, a.login);
@@ -307,8 +312,12 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
       await agentAssignTicket(c.ctx, c.env, a.id, a.login, a.on, c.handle);
       return { result: await ticketDetail(c, a.id), ref: `ticket:${a.id}`, undo: had === a.on ? null : { id: a.id, login: a.login, on: !a.on, stamp: await ticketStamp(c, a.id) } };
     },
+    // "As the write left it" is THAT person's assignment, not the ticket's `updated_at`: a replacement is two writes
+    // to one ticket (one group, one Undo), and undoing the first touches the ticket — a stamp check refused the
+    // second every time. Someone who since put the person back on (or took them off) still stops it.
     async undo(c, d: { id: number; login: string; on: boolean; stamp: string | null }) {
-      await unchangedTicket(c, d.id, d.stamp);
+      const t = await ticketDetail(c, d.id);
+      if (t.assignees.some((h) => h.toLowerCase() === d.login.toLowerCase()) === d.on) throw new ChangedSince(`ticket:${d.id}`);
       await agentAssignTicket(c.ctx, c.env, d.id, d.login, d.on, c.handle);
       return ticketDetail(c, d.id);
     },

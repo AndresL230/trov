@@ -133,6 +133,11 @@ is replaced.
 - **Kinds**: ticket, handoff, doc_edit (≤ 3 changed hunks with their heading; editing a hunk rebuilds the body), move,
   publish, sprint, other. **Groups**: consecutive calls to the same tool in one answer share a `groupId` — one card,
   one Confirm, one Undo.
+- **Assignments** (`assign_ticket`): the card's `fields` are `{ id, login, on }` and `login` is the one editable field
+  (the agent tool's args are unchanged); the preview's `item` is the ticket's RefView, whose `extra.assignees` is who
+  was on it when the card was made — the card draws the change from those two. A replacement is two writes (remove,
+  add) in one group. Undo checks THAT person's assignment is as the write left it (not the ticket's `updated_at`: the
+  group's first undo touches the ticket, and a stamp check refused the second every time).
 - **Auto** (`auto: true` on the request, only while `orgs.ai_chat_auto` is on): writes run at once (`auto`), at most 5
   per answer; past it, and for `update_plan`, completing a sprint and Publish, the card WAITS with its note. Moving
   a ticket to Done is an ordinary write.
@@ -311,10 +316,14 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
-  20px thinking orb says what Trov is doing — a running step's icon (`STEP_ORB`: search / docs / feed / read / review
-  steps "searching", the rest "working", decorative beside the step's words), the thinking row's icon ("solving";
-  "Thought for Ns" keeps the clock), and the lone-cursor slot ("working" before anything arrived, "composing" once a
-  block has). The text cursor inside streaming words is unchanged. Which animation is the person's pick
+  20px thinking orb says what Trov is doing, in ONE place under the steps (the owner, 2026-10-16): the wait row — the
+  orb beside "Thinking…" ("Writing…" once a block is out) in the sweep of light — is there for the whole wait, before
+  anything, while the steps appear and after them, gone only while words stream or the Thinking row runs (that row
+  keeps its "solving" orb; "Thought for Ns" keeps the clock). Its orb is the running step's kind (`STEP_ORB`: search /
+  docs / feed / read / review steps "searching", the rest "working"), else "working", "composing" once a block is out.
+  A step keeps its own icon; its label carries the sweep while it runs. Steps APPEAR AS THEY GO: the tools run in a
+  few ms, so the pacer (`ask-pace.ts`, `stepMs` 350) shows each running for 350 ms, then done, then the next — what
+  comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. Which animation is the person's pick
   (`AskUi.orb`, `ask-orb.ts` `askOrbState`), from the header's "Thinking animation" dropdown beside the bug button
   (Ask only; its trigger is the picked orb and a caret; it stays on a phone): "Match what it's doing" is the default
   above; one of the six replaces every orb in Ask — steps, thinking and the wait — while the orb's name ("Working…",
@@ -365,7 +374,14 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Write cards, Save, Wrong?** (`ask-actions.ts`): a pending card (or a group's pending cards, one frame) with Edit
   of its `editable` fields only — Confirm sends just the changed ones as `args` (each edited card alone, then the
   rest of the group in one call) — and Cancel; a Publish whose `canPublish` is false shows Open in Review, never
-  Confirm. A decided card is a line per outcome (done linked to `ref` with a time and Undo; Cancelled / Undone /
+  Confirm. **An assignment** (`assign_ticket`, and a handoff's claim in the same frame) reads as one: the item — number,
+  title, its status mark; a click opens it — then the people, avatar and name through people.ts: "Andres → Jose" for a
+  replacement, "Unassigned → Jose", "Adds Jose · Andres stays on it", "Removes Luke" (a claim: sender → you). Edit
+  turns the person who comes (or goes, when someone else is on it to pick) into the app's `dropdown()` — every member
+  who could take it, with their avatar (`askAcPick`); its menu is a root overlay (`actionDropdowns`, render.ts), so it
+  opens over the ⌘J panel too. Its lines name people ("Assigned ticket #87 to Jose", "Reassigned ticket #6 from Jack to
+  Luke", "Took Luke off ticket #7"; `doneText` / `proposedText` take the directory), and a confirmed edit becomes the
+  card's `fields` so its line names who it really went to. A decided card is a line per outcome (done linked to `ref` with a time and Undo; Cancelled / Undone /
   Expired / Didn't work); Undo's `changed` keeps the line and says "Changed since. Undo it by hand." with a link. An
   Auto result names its own write (`action_result { tool, kind, preview }`), so its line says what was done with no
   read back; nothing on the client ever decides a card. An Undo of a ticket write calls `ctx.refreshTickets` (main.ts

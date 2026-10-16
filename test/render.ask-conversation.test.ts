@@ -189,7 +189,7 @@ describe("`streaming` — mid-answer", () => {
     expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working" data-orb-size="20" width="20" height="20" aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
     expect(view("answer", { events: upToChart, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*aria-hidden="true"[^>]*><\/canvas><span class="ask-wait-l">Writing…<\/span>/);
   });
-  it("every step done and no words yet (Smart reading what it found): the Working orb holds the place — not while a step runs", () => {
+  it("the wait row stays under the steps for the whole wait — while a step runs too, with that step's orb", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event);
     const firstText = events.findIndex((e) => e.event === "text");
     const beforeText = events.slice(0, firstText);
@@ -199,13 +199,17 @@ describe("`streaming` — mid-answer", () => {
     expect(view("answer", { events: quiet, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
     const running = events.slice(0, 2);
     expect(running.some((e) => e.event === "activity" && e.data.state === "run")).toBe(true);
-    expect(view("answer", { events: running, busy: true }).html).not.toContain("ask-cur-alone");
+    const during = view("answer", { events: running, busy: true }).html;
+    expect(during).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="(searching|working)"[^>]*><\/canvas><span class="ask-wait-l">Thinking…/);
+    // …below the steps: the wait row comes after the steps list.
+    expect(during.indexOf("ask-cur-alone")).toBeGreaterThan(during.indexOf("ask-step is-run"));
   });
-  it("a running step's icon is a thinking orb, decorative (its words say what it does)", () => {
+  it("a running step keeps its own icon (the one orb is the wait row's) and its label carries the sweep", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event).slice(0, 2);
     const { html: h } = view("answer", { events, busy: true });
-    expect(h).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><canvas class="cnpy-orb" data-orb="(searching|working)" data-orb-size="20" width="20" height="20" aria-hidden="true"/);
-    expect(h).not.toContain("ask-spin");
+    expect(h).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><svg/);
+    expect(h.slice(h.indexOf("ask-step is-run"), h.indexOf("ask-cur-alone"))).not.toContain("cnpy-orb");
+    expect(css).toContain(".ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:");
   });
 });
 

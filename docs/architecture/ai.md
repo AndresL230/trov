@@ -582,7 +582,8 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   window, null with no active theme: the read the Roadmap's drift calls.
 - **Local**: `fixtures/dev/themes.json` + `scripts/seed/themes-dev.mjs` (appended by `scripts/seed-dev.mjs`) seed four
   active themes, a person's pick, a caption and a proposal; `LOCAL_AI_PREVIEW` still overrides the field with fixtures.
-- **The AI showcase (local)**: after `npm run seed` and `node scripts/seed/repo-setups.mjs`, and with `wrangler dev`
+- **The AI showcase (local)**: part of `npm run seed`'s `team` scenario since the scenarios (`local-dev.md`); run alone,
+  after `npm run seed` and `node scripts/seed/repo-setups.mjs` (or `scripts/seed/team-rich.mjs`), and with `wrangler dev`
   running (DEV_LOGIN=AndresL230), `cd <the folder it serves> && node <repo>/scripts/seed/ai-showcase.mjs [--server
   http://localhost:8790]` fills SaplingLearn with realistic output on EVERY AI surface of this file, in the real tables:
   the brief, repo state versions, Trov's digests and importance, Sift runs, the ticket / Review / Unplaced cards, Roadmap

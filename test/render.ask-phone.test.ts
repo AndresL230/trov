@@ -73,7 +73,8 @@ describe("phone — the screen (`phone`)", () => {
   // line's Undo / Open were left out of the conversation's 44px touch floor.
   it("a write card's buttons and Edit, and a line's buttons, get the 44px hit area on a phone", () => {
     expect(css).toMatch(/\[data-phone="1"\] \.ask-col \.ask-btn::after, \[data-phone="1"\] \.ask-act-edit::after/);
-    expect(css).toMatch(/\[data-phone="1"\] \.ask-col \.ask-btn, \[data-phone="1"\] \.ask-act-edit \{ position:relative; \}/);
+    // (a line's Undo / Open and its link, and an assignment's item and person picker, are in the same rule)
+    expect(css).toMatch(/\[data-phone="1"\] \.ask-col \.ask-btn, \[data-phone="1"\] \.ask-act-edit, [^{]*\[data-phone="1"\] \.ask-undo, \[data-phone="1"\] \.ask-line-link \{ position:relative; \}/);
   });
 
   it("the composer: + · the meta line · Send (44×44), no Enter hint, no desktop toolbar", () => {
