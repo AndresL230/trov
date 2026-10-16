@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "build:web": "vite build --config web/vite.config.ts",
-    "dev": "npm run build:web && (npm run watch:web & wrangler dev)",
+    "dev": "npm run build:web && node scripts/dev/ensure-seeded.mjs && (npm run watch:web & wrangler dev)",
+    "dev:seeded": "npm run build:web && node scripts/dev/ensure-seeded.mjs --force && (npm run watch:web & wrangler dev)",
+    "dev:as": "node scripts/dev/as.mjs",
     "watch:web": "vite build --config web/vite.config.ts --watch --emptyOutDir false",
     "deploy": "npm run build:web && wrangler deploy",
     "deploy:preview": "wrangler d1 migrations apply trov-preview --remote --env preview && wrangler preview",
