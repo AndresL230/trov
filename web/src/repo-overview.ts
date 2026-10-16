@@ -1,7 +1,7 @@
 // Repo › Overview, drawn from `facts` (shared/repo-facts-core.ts) — the composition of the design's `buildScreen`
 // (docs/superpowers/specs/repo-setups-design/repo-data.js) and RepoScreen.dc.html, top to bottom:
 //
-//   the AI state slot (#178's `state` block sits here, above everything, once it lands)
+//   the AI state slot (the design's place for #178's `state`; it stays EMPTY — State is the Summary tab, repo.ts)
 //   Needs attention                                    only when something is wrong (repo-attention.ts)
 //   the connect card                                   only with `facts.connect` (repo-connect.ts), above the opener
 //   the opener, by `layout.opener` (shared/repo-layout-core.ts — the same rules MCP returns):
@@ -142,7 +142,8 @@ const BLOCKS: Record<Exclude<OverviewBlockName, "state">, OverviewBlock> = {
 /** The Overview from facts: every block the layout asks for, each in its wrapper, with the entrance stagger. */
 export function overviewFacts(f: RepoFacts, x: OverviewCtx): string {
   return overviewBlocks(f, x).map((name, i) => name === "state"
-    // #178's AI `state` block goes here, above the rule-picked opener. Empty until it lands.
+    // The design's place for #178's AI `state`, above the rule-picked opener. Always empty: the owner split it
+    // out to the Summary tab (2026-10-15; repo.ts `summaryTab`).
     ? `<div data-repo-state-slot></div>`
     : `<div class="repo-block cnpy-rise" style="--i:${i}" data-repo-block="${name}">${BLOCKS[name](f, x)}</div>`).join("");
 }

@@ -1,7 +1,8 @@
 // The Repo dashboard's two sections Trov writes (shared/ai-core.ts), each drawn ONLY when the
-// dashboard carries its field — absent, the tab is exactly what it was (test/render.ai-absent.test.ts):
+// dashboard carries its field — absent, the screen is exactly what it was (test/render.ai-absent.test.ts):
 //
-//   Overview › State (`RepoDashboard.state`): a one-line headline and three wrapping columns —
+//   Summary › State (`RepoDashboard.state`): the Summary tab, the Repo screen's second, offered only while
+//     the live read carries the field (repo.ts `repoSummaryShown`). A one-line headline and three wrapping columns —
 //     Shipped recently (the done glyph, green), In flight (the half glyph, blue), Needs attention
 //     (the warning glyph, amber) — each line linked to its sources; "Written by Trov from 6 events".
 //   Planning › Where the work went (`RepoDashboard.themes`, per range): the caption, an 8 weeks /
@@ -11,14 +12,15 @@
 //     (ai-ui.ts `aiSuggestionChip`): an admin accepts, renames or removes each; a member is told
 //     they wait on an admin.
 //
-// Both are their own card above the dashboard's one panel (the mock's layout): the panel's hairlines
-// and its sections are untouched. Pure markup; the acts are ai-actions.ts's.
+// Each is its own card: State is the Summary tab's whole content; Where the work went sits above Planning's
+// one panel (the mock's layout), whose hairlines and sections are untouched. Pure markup; the acts are ai-actions.ts's.
 
 import type { AiLine, AiRepoState, AiThemeLane, AiThemeRange, AiThemes } from "@shared/ai-core";
 import { AI_THEME_NAME_MAX, AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
 import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
 import { segmented } from "./segmented";
+import { skeleton, skLine, skList, skW } from "./skeleton";
 import {
   AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiHiddenKey, aiIsHidden, aiLeave, aiLeaving, aiLeavingT, aiSuggestionChip, aiSuggestionKey, aiWrongBtn, type AiUi,
 } from "./ai-ui";
@@ -34,7 +36,7 @@ export interface RepoAiProps {
 const HEAD = "margin:0;font-size:13.5px;font-weight:600;font-family:var(--label);color:var(--fg-55)";
 const CARD = "padding:20px 22px;display:flex;flex-direction:column;gap:18px;margin-bottom:16px;min-width:0";
 
-// ── Overview › State ─────────────────────────────────────────────────────────
+// ── Summary › State ──────────────────────────────────────────────────────────
 
 const COLUMNS: { key: "shipped" | "inFlight" | "attention"; title: string; mark: string; tone: string }[] = [
   { key: "shipped", title: "Shipped recently", mark: glyph("done", "var(--green)", 13), tone: "var(--green)" },
@@ -46,8 +48,14 @@ function stateLine(l: AiLine): string {
   return `<li style="line-height:1.55;overflow-wrap:anywhere">${esc(l.text)}${l.cites.length ? ` <span style="display:inline-flex;flex-wrap:wrap;gap:6px">${aiCites(l.cites)}</span>` : ""}</li>`;
 }
 
-/** Overview's first section. "" when this person pressed "Wrong?" on it — after its exit, while it
- *  leaves (ai-ui.ts › Leaving). */
+/** Whether `repoStateSection` draws anything: not once this person pressed "Wrong?" on it and its exit is over. */
+export function repoStateShown(st: AiRepoState, p: RepoAiProps, now = Date.now()): boolean {
+  const ref = aiItemRef.repoState(p.repo, st.generatedAt ?? "state");
+  return !aiIsHidden(p.ui, "repo_state", ref) || aiLeavingT(p.ui, aiHiddenKey("repo_state", ref), now) !== null;
+}
+
+/** The Repo screen's Summary tab (the State card). "" when this person pressed "Wrong?" on it — after its exit,
+ *  while it leaves (ai-ui.ts › Leaving). */
 export function repoStateSection(st: AiRepoState, p: RepoAiProps, now = Date.now()): string {
   const ref = aiItemRef.repoState(p.repo, st.generatedAt ?? "state");
   if (aiIsHidden(p.ui, "repo_state", ref)) {
@@ -81,6 +89,17 @@ export function repoStateSection(st: AiRepoState, p: RepoAiProps, now = Date.now
   const wrong = st.generatedAt && st.state !== "empty"
     ? `<div style="display:flex;justify-content:flex-end">${aiWrongBtn(aiFeedback("repo_state", ref, "repo_state", st.model))}</div>` : "";
   return `<section${surface(CARD, { cls: "repo-ai cnpy-rise" })} data-ai="repo_state" data-ai-state="${st.state}" aria-labelledby="repo-state-h">${head}${body}${wrong}</section>`;
+}
+
+/** The Summary tab while the dashboard's first read is out (a deep link, a reload): the State card's own shape —
+ *  heading and byline, headline, three columns — so the written state lands where the bars were. */
+export function repoStateSkeleton(): string {
+  const col = (c: number): string => `<div style="display:flex;flex-direction:column;gap:10px;min-width:0">${skLine("46%", 13)}${skList(3, (i) => skLine(skW(c * 3 + i), 13.5, 1.55))}</div>`;
+  return `<section${surface(CARD, { cls: "repo-ai cnpy-rise" })} data-ai="repo_state" data-ai-state="loading" aria-label="State">${skeleton("repo-summary", "Loading&hellip;", `<div style="display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;justify-content:space-between;gap:8px">${skLine(52, 13.5)}${skLine(150, 12)}</div>
+      ${skLine("58%", 18, 1.4)}
+      <div class="repo-state-cols">${[0, 1, 2].map(col).join("")}</div>
+    </div>`)}</section>`;
 }
 
 // ── Planning › Where the work went ───────────────────────────────────────────

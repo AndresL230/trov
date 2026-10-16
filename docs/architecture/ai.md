@@ -430,7 +430,8 @@ for any reserved handle, so neither Settings nor Platform can delete it.
 ## Repo state (`src/ai/repo-state.ts`, `src/tools/repo-state.ts`, `0062_repo_state`; Phase D)
 
 Where the org's repository stands — a headline and three lists of at most 5 (shipped recently, in flight, needs
-attention), each line with its cites — what Repo › Overview's State, `get_repo_dashboard`'s `state` and the
+attention), each line with its cites — what Repo › Summary (its own tab, shown only while the read carries the
+field — `repo-dashboard.md` › Written by Trov), `get_repo_dashboard`'s `state` and the
 `load-context` skill read FIRST. The job `repo.state` takes `repo:<repo>` (debounced 60 min on Pro / Enterprise —
 a breaking change skips it — 6 h otherwise).
 

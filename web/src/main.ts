@@ -13,7 +13,7 @@ import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, type MwRepoTab } from "./mywork";
 import {
-  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf,
+  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
 } from "./render";
 import {
@@ -81,8 +81,8 @@ import { createPlatform } from "./platform-actions";
 import { createTagsController } from "./tags-actions";
 import { PLATFORM_PATH, isPlatformPath } from "./platform";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
-import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
-import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
+import { formatCount, repoPollFor, repoSummaryShown, repoUpdatedLabel } from "./repo";
+import { isRepoScreenTab, REPO_RANGES, type RepoRange } from "@shared/repo";
 import {
   artifactsAct, artAcceptFile, artAcceptNvFile, renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
   type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
@@ -437,6 +437,13 @@ function rerender(): void {
   // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
   // The held paint runs when the drag ends (clearBoardDrag).
   if (boardDrag) { rerenderHeld = true; return; }
+  // Repo › Summary exists only while the live read carries Trov's state (repo.ts `repoSummaryShown`): a read that
+  // lands without it (AI off, nothing written, a failed read), sample data, or the end of its "Wrong?" exit moves
+  // the screen — and the address — to the Overview, which flashes in like a tab switch.
+  if (state.view === "app" && state.screen === "repo" && state.repoTab === "summary" && !repoSummaryShown(repoProps(state))) {
+    state.repoTab = "overview";
+    if (state.repo.data) pendingFlash = ".repo-panel > :not(.repo-poll-strip)";
+  }
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
   const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
   if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
@@ -2669,15 +2676,15 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // ── Repo dashboard ───────────────────────────────────────────────────────
     // `arg` = the tab to land on (quick search's "Repo › …" entries); none = Overview.
-    case "goRepo": state.screen = "repo"; state.repoTab = arg && isRepoTab(arg) ? arg : "overview"; loadRepoIfNeeded(); return;
+    case "goRepo": state.screen = "repo"; state.repoTab = arg && isRepoScreenTab(arg) ? arg : "overview"; loadRepoIfNeeded(); return;
     // The page's tab bar: the one dashboard payload covers every tab, so a switch is ONE
     // rerender with nothing to load — goRepo's load would rebuild the bar and cut its slide.
     // The entrance is not replayed (markEnter), so the new tab's content flashes in instead:
-    // a short rise, and its sparklines / fills / bars grow again — and the section Trov wrote above
-    // the panel (Overview › State, Planning › Where the work went, `.repo-ai`) with it.
+    // a short rise, and its sparklines / fills / bars grow again — and what Trov wrote (Summary's State card,
+    // Planning › Where the work went above the panel, `.repo-ai`) with it.
     case "setRepoTab": {
       const tab = arg ?? "";
-      if (!isRepoTab(tab) || tab === state.repoTab) return;
+      if (!isRepoScreenTab(tab) || tab === state.repoTab) return;
       state.repoTab = tab;
       pendingFlash = ".repo-panel > :not(.repo-poll-strip), .repo-ai";
       break;

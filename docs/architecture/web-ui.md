@@ -446,7 +446,9 @@ tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform'
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
 tab carrying the red overdue dot, in the same page frame on both tabs — `asideColumns`' optional `tabs` heads
 the Narrative's two columns with it — and New sprint staying in the header; the Repo dashboard's Overview / Code /
-CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard, its switch `setRepoTab`
+CI & Deploys / Usage / Team & Planning, `repoTabBar`, in every state of the dashboard — plus Summary, second, with the
+AI mark after its label, only while the live read carries what Trov wrote (`repoSummaryShown`; a tab that comes
+and goes with its DATA, unlike the sidebar, whose nodes never do — `repo-dashboard.md` › Written by Trov), its switch `setRepoTab`
 flashing the new tab's content in place of the entrance): text tabs at the top of the page BODY on a full-width hairline that is the line
 between the tabs and the content, the picked tab marked by a 2px accent underline on that line, 40px tabs (a
 badge never makes one taller), a row that does not fit scrolling inside the bar, `role="tablist"` / `"tab"` +
@@ -897,7 +899,7 @@ every mark explains itself; `placeTip`), and each screen's own tests pin its mar
 ## The AI kit — what Trov wrote, and how it says so (`web/src/ai-ui.ts`)
 
 Four screens show something Trov WROTE (shared/ai-core.ts; `docs/superpowers/specs/2026-10-14-ai-screens-mock.md`):
-My Work › Your brief, Repo › Overview › State, Repo › Planning › Where the work went, and Feed entries written by
+My Work › Your brief, Repo › Summary (State), Repo › Planning › Where the work went, and Feed entries written by
 Trov. **Each is drawn ONLY when its read carries the field** (`DashboardData.brief`, `RepoDashboard.state` /
 `themes`, `FeedRow.ai`); off is the field missing, never a state, and with it absent the screen is byte-for-byte
 what it was (`test/render.ai-absent.test.ts`, snapshots written before the kit existed). Production omits every
@@ -925,8 +927,8 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   (no accept handler for its kind) replaces the buttons with "Not available yet". It is used by Phase C's cards
   (the ticket detail, Unplaced, Review's risk line — `web/src/ai-cards.ts`), the proposed themes and the Roadmap's
   sprint-draft and narrative cards (`web/src/roadmap-ai.ts`).
-- **Motion** is the app's: State rises with the page (`.cnpy-rise`) and flashes with the panel on a Repo tab
-  switch (`pendingFlash` includes `.repo-ai`); a Trov entry cascades in the feed's `.cnpy-stagger`, and the Source
+- **Motion** is the app's: State rises with the page (`.cnpy-rise`) and flashes in on a Repo tab
+  switch to Summary (`pendingFlash` includes `.repo-ai`); a Trov entry cascades in the feed's `.cnpy-stagger`, and the Source
   switch flashes the list (`AiHost.flashNext`); Phase C's chips and the risk line rise with their screen
   (`.cnpy-rise` + `--i`). **Leaving — ONE exit for the whole kit** (`ai-ui.ts` › Leaving): ONE state
   (`state.ai.leaving`, key → when its exit began), ONE class (`.cnpy-ai-leave`, `[data-inline]` for a mark inside a
