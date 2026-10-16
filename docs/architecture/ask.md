@@ -359,7 +359,10 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   that scrolls sideways (`fitChips` measures after a paint → `ComposerUi.chipScroll` / `data-scroll`) and each × has
   a 44px hit area. A chip pops in once and leaves through `ctx.exit`; the row's height glides; it is inside the
   composer, so `askGlideDock` carries it; a conversation keeping to its bottom moves up as the composer area grows
-  (`askKeepBottom`, rule 7). DOM order is focus order: the context line's clear, the chips' ×, then the box. `@` searches
+  (`askKeepBottom`, rule 7). No "About … · N files" line (the owner: it only repeated the chips); with two or more
+  the row ends on **Clear** (removes them all). A SENT question shows the same chips under its bubble, one size for
+  everything (an image is the chip's 22px thumb, never a bigger card), no ×, a click opens the item (`sentFileChip` /
+  `sentRefChip`). DOM order is focus order: the chips' ×, Clear, then the box. `@` searches
   the org through the app's quick search (`AskApi.searchRefs`; PRs are not in it — only PRs Trov already shows
   are offered), rows drawn from RefViews; `/` is the five commands, sent as `command` with the rest as the text.
   The mode (only when the plan offers more than one) and the Auto switch are remembered per thread

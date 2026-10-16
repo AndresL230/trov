@@ -3037,7 +3037,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
   .ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { animation:none !important; background:none; color:var(--fg-55); }
   /* the composer */
   .ask-input { transition:none !important; }
-  .ask-co-chip, .ask-co-menu, .ask-co-pick, .ask-co-ctx, .ask-co-note, .ask-co-drop, .ask-blocked { animation:none !important; }
+  .ask-co-chip, .ask-co-menu, .ask-co-pick, .ask-co-clear, .ask-co-note, .ask-co-drop, .ask-blocked { animation:none !important; }
   /* phone: the + menu's pop and its + turning, the sheet (`.ask-insp-frame` above covers its variants) */
   .ask-ph-plus, .ask-ph-plus[data-closing] { animation:none !important; }
   .ask-ph-plusbtn > svg { transition:none !important; }
@@ -3134,15 +3134,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-q-ta { display:block; width:100%; box-sizing:border-box; padding:11px 14px; border:0; outline:none; resize:vertical; background:transparent; font:inherit; font-size:14.5px; line-height:1.55; color:var(--fg); }
 .ask-q-editbar { display:flex; align-items:center; justify-content:flex-end; gap:8px; padding:0 10px 10px; }
 .ask-q-edithint { flex:1; padding-left:4px; font-size:11.5px; color:var(--fg-40); }
-.ask-qimg { display:block; width:136px; overflow:hidden; border:1px solid var(--border); border-radius:9px; background:var(--surface); box-shadow:var(--shadow); text-align:left; cursor:pointer; transition:border-color .14s ease; }
-.ask-qimg:hover { border-color:var(--border-strong); }
-.ask-qimg img, .ask-qimg-ph { display:block; width:100%; height:84px; object-fit:cover; }
-.ask-qimg-ph { display:grid; place-items:center; background:repeating-linear-gradient(135deg, var(--hover) 0 6px, transparent 6px 12px); font-family:var(--code); font-size:10px; color:var(--fg-55); }
-.ask-qimg-f { display:flex; align-items:center; gap:6px; padding:5px 8px; border-top:1px solid var(--border); font-size:11.5px; color:var(--fg-70); }
-.ask-qimg-n, .ask-res-t, .ask-src-t, .ask-ci-o { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ask-qfile { display:inline-flex; align-items:center; gap:7px; max-width:100%; padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); font-size:12px; color:var(--fg-70); cursor:pointer; transition:border-color .12s ease; }
-.ask-qfile:hover { border-color:var(--border-strong); }
-.ask-qfile-s { color:var(--fg-40); }
+.ask-res-t, .ask-src-t, .ask-ci-o { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* The answer: steps, thinking, the parts, the footer, the follow-ups. */
 .ask-a { margin-bottom:30px; }
 .ask-steps { display:flex; flex-direction:column; gap:1px; margin-bottom:10px; }
@@ -3383,8 +3375,8 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 /* A phone: every touch target in the conversation is at least 44px tall, by its hit area, not its look. Rows in a
    stack grow by padding (min-height); inline and side-by-side controls get an invisible 44px box centred on them. */
 [data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
-[data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-qfile { position:relative; }
-[data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-qfile::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
+[data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-q-chip { position:relative; }
+[data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-q-chip::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 /* …and a write card's Cancel / Confirm / Edit, an assignment's item and person picker, and a line's link and Undo / Open
    (actions part). */
 [data-phone="1"] .ask-col .ask-btn, [data-phone="1"] .ask-act-cyc, [data-phone="1"] .ask-act-txt, [data-phone="1"] button.ask-asg-item, [data-phone="1"] .ask-act .cnpy-dd,
@@ -3416,6 +3408,10 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-co-chip-n { font-size:12px; font-weight:500; color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ask-co-chip-m { font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
 .ask-co-chip.is-bad .ask-co-chip-m { color:var(--red); }
+/* A sent question's chips are the composer's (the owner: one size for everything that came with it), as buttons that
+   open the item: no ×, so a little more room on the right. */
+.ask-q-chip { padding-right:10px; font:inherit; color:inherit; text-align:left; cursor:pointer; transition:border-color .12s ease; }
+.ask-q-chip:hover { border-color:var(--border-strong); }
 .ask-co-x { width:20px; height:20px; border-radius:5px; display:grid; place-items:center; flex:none; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-co-x:hover { background:var(--hover); color:var(--fg); }
 .ask-co-x--sm { width:18px; height:18px; }
@@ -3470,8 +3466,9 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-co-pick-foot { display:flex; gap:14px; padding:7px 12px; border-top:1px solid var(--border); font-size:11px; color:var(--fg-55); white-space:nowrap; }
 /* The phone's + menu: a sheet rising above the composer. */
 /* The context line and the notes above the box; the blocks that replace it. */
-.ask-co-ctx { display:flex; align-items:center; gap:7px; padding:0 4px 7px; font-size:12px; color:var(--fg-55); animation:ask-fade-in .16s ease both; }
-.ask-co-ctx-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* The chips row's Clear (two or more attached): plain text, like the row's other quiet controls. */
+.ask-co-clear { align-self:center; padding:0 6px; height:24px; font-size:12px; font-weight:500; color:var(--fg-55); cursor:pointer; border-radius:7px; transition:background .12s ease, color .12s ease; }
+.ask-co-clear:hover { background:var(--hover); color:var(--fg); }
 .ask-co-note { display:flex; align-items:center; gap:8px; padding:0 4px 8px; font-size:12.5px; color:var(--fg-70); animation:ask-fade-in .16s ease both; }
 .ask-co-note b { font-weight:600; }
 .ask-co-link { padding:0; font:inherit; font-weight:500; color:var(--accent); cursor:pointer; }
@@ -4373,6 +4370,7 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-co-thumb { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-co-ico,
 [data-cnpy-theme] .ask-co-x { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .ask-co-clear { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-co-tool,
 [data-cnpy-theme] .ask-co-modebtn,
 [data-cnpy-theme] .ask-co-mi,
@@ -4403,11 +4401,9 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-btn--sm { border-radius:calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-fb--l { border-radius:calc(7px * var(--corner-scale)) 0 0 calc(7px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-fb--r { border-radius:0 calc(7px * var(--corner-scale)) calc(7px * var(--corner-scale)) 0 !important; }
-[data-cnpy-theme] .ask-qfile,
 [data-cnpy-theme] .ask-pre,
 [data-cnpy-theme] .ask-tools,
 [data-cnpy-theme] .ask-dg-c { border-radius:calc(8px * var(--corner-scale)) !important; }
-[data-cnpy-theme] .ask-qimg,
 [data-cnpy-theme] .ask-nf-try { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-ci,
 [data-cnpy-theme] .ask-one,

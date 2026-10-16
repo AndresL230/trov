@@ -296,7 +296,7 @@ describe("attaching — upload on attach, limits from ask/state", () => {
     expect(s.ask.composer.page.files.map((f) => f.state)).toEqual(["ready", "ready"]);
     expect(s.ask.page.threadId).toBe(77);
     const h = html(s);
-    expect(h).toContain("2 files");
+    expect(h).toContain(`class="ask-co-clear"`);
     expect(h).toMatch(/class="ask-co-chip" data-morph-key="f:u\d+"><span class="ask-co-ico"[^>]*>.*?<\/span><span class="ask-co-chip-t"><span class="ask-co-chip-n">deploys-october.csv<\/span><span class="ask-co-chip-m">18 KB<\/span>/);
     expect(h).toContain(`aria-label="Remove netlify-api.pdf"`);
     // Words-free: the files alone are a question.
@@ -386,27 +386,29 @@ describe("attaching — upload on attach, limits from ask/state", () => {
 });
 
 describe("composer:files — chips and the context line", () => {
-  it("file chips (a thumb box, the size) and the context chip; 'About ticket #14 · 3 files' with its clear", () => {
+  it("file chips (a thumb box, the size) and the context chip — no 'About …' line (the owner); the row ends on Clear", () => {
     const s = askState();
     const ctx = makeCtx(s);
     composerReplaySetup(ctx, "page", "files");
     const h = html(s);
-    expect(h).toContain(`<div class="ask-co-ctx" data-morph-key="ctx">`);
-    expect(h).toContain("About ticket #14 · 3 files");
-    expect(h).toContain(`data-act="askCoClear" data-arg="page" aria-label="Remove all context"`);
+    expect(h).not.toContain("ask-co-ctx");
+    expect(h).not.toContain("About ticket #14");
+    expect(h).toContain(`class="ask-co-clear" data-morph-key="clear" data-act="askCoClear" data-arg="page" aria-label="Remove all attached items">Clear</button>`);
     for (const n of ["ci-failure.png", "deploys-october.csv", "netlify-api.pdf"]) expect(h).toContain(`aria-label="Remove ${n}"`);
     expect(h).toMatch(/data-morph-key="c:ticket:14">.*?<span class="ask-co-chip-n">#14<\/span><span class="ask-co-chip-m">Ticket<\/span>/);
     expect(h).toContain(">412 KB<");
     sendFrom(ctx, "page");
     expect(ctx.sent[0]).toMatchObject({ text: "Why does this fail only on main?", context: ["ticket:14"], attachments: [901, 902, 903] });
   });
-  it("two refs: 'About ticket #14 and 1 more'; clear removes every chip", () => {
+  it("two refs: the row ends on Clear (one alone has none); Clear removes every chip", () => {
     const s = askState("pro", (st) => { st.ask.composer.page.context = ["ticket:14", "pr:176"]; });
-    expect(html(s)).toContain("About ticket #14 and 1 more");
+    expect(html(s)).toContain(`class="ask-co-clear"`);
+    const one = askState("pro", (st) => { st.ask.composer.page.context = ["ticket:14"]; });
+    expect(html(one)).not.toContain(`class="ask-co-clear"`);
     const ctx = makeCtx(s);
     composerPart.act!(ctx, "askCoClear", "page", null);
     expect(s.ask.composer.page.context).toEqual([]);
-    expect(html(s)).not.toContain(`class="ask-co-ctx"`);
+    expect(html(s)).not.toContain(`class="ask-co-clear"`);
   });
   it("a chip leaving pops out on data-closing (ctx.exit), as does every chip under Remove all", () => {
     const s = askState("pro", (st) => { st.ask.composer.page.context = ["ticket:14"]; st.ask.closing = { "co:page:c:ticket:14": true }; });
@@ -427,8 +429,9 @@ describe("the chips sit ABOVE the box, not in it (the owner)", () => {
     for (const k of ["f:f0", "f:f1", "f:f2", "c:ticket:14"]) expect(row(h)).toContain(`data-morph-key="${k}"`);
     expect(box(h)).not.toContain("ask-co-chip");
     expect(box(h)).toMatch(/^<div class="ask-box" data-morph-key="box" data-morph-list><textarea/);
-    // DOM order is the focus order: the chips' × come before the box (and the context line's clear before them).
-    expect(h.indexOf("askCoClear")).toBeLessThan(h.indexOf("askCoRemove"));
+    // DOM order is the focus order: the chips' × , then the row's Clear, then the box.
+    expect(h.lastIndexOf("askCoRemove")).toBeLessThan(h.indexOf("askCoClear"));
+    expect(h.indexOf("askCoClear")).toBeLessThan(h.indexOf(`data-ask-input="page"`));
     expect(h.lastIndexOf("askCoRemove")).toBeLessThan(h.indexOf(`data-ask-input="page"`));
   });
   it("too large, not attached, uploading: each chip and its note sit above the box", () => {
@@ -465,7 +468,7 @@ describe("the chips sit ABOVE the box, not in it (the owner)", () => {
     expect(css).toMatch(/\[data-phone="1"\] \.ask-co-chips\[data-scroll="1"\] \{ flex-wrap:nowrap; overflow-x:auto;/);
     expect(css).toMatch(/\[data-phone="1"\] \.ask-co-x::after \{ content:""; position:absolute; left:50%; top:50%; width:44px; height:44px;/);
     // Reduced motion: the chips' pop is in the one switch (the row's glide and entrances check it in ask-motion.ts).
-    expect(css).toMatch(/\.ask-co-chip, \.ask-co-menu, \.ask-co-pick, \.ask-co-ctx, \.ask-co-note, \.ask-co-drop, \.ask-blocked \{ animation:none !important; \}/);
+    expect(css).toMatch(/\.ask-co-chip, \.ask-co-menu, \.ask-co-pick, \.ask-co-clear, \.ask-co-note, \.ask-co-drop, \.ask-blocked \{ animation:none !important; \}/);
   });
   it("askKeepBottom: a conversation keeping to its bottom moves down by what the composer area took; scrolled up, it stays", () => {
     let cb: () => void = () => undefined;
@@ -623,12 +626,12 @@ describe("drafts — kept per thread", () => {
 });
 
 describe("the ⌘J panel's composer", () => {
-  it("its placeholder names the page's item, the switch says 'Ask first', the context line names the item, and the context stays after a send", () => {
+  it("its placeholder names the page's item, the switch says 'Ask first', the item's chip is there, and the context stays after a send", () => {
     const s = askState("pro", (st) => { st.screen = "ticketdetail"; st.ticketId = 14; st.ask.cmdj = { open: true, contextRef: "ticket:14" }; st.ask.composer.panel.context = ["ticket:14"]; });
     const h = html(s, "panel");
     expect(h).toContain(`placeholder="Ask about this ticket…"`);
     expect(h).toContain(">Ask first<");
-    expect(h).toContain("About ticket #14: Guided repository setup");
+    expect(h).toMatch(/data-morph-key="c:ticket:14">.*?<span class="ask-co-chip-n">#14<\/span>/);
     expect(h).not.toContain("Answers come from what you can see");
     const ctx = makeCtx(s);
     typeText(ctx, "panel", "What's left before this can close?");

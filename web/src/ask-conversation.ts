@@ -1,8 +1,8 @@
 // Ask Trov — the conversation (inventory §1b, §2; ask-trov.dc.html L299–L650; scenarios `live`, `streaming`,
 // `thinking`, `answer`, `notfound` and the stream parts of `search` and `answer-pr`).
 //
-//   the question   a right-aligned bubble; image files as 136px cards (the thumbnail, else a striped placeholder),
-//                  other files as chips, context chips; Edit on hover over the LAST question (always on a phone)
+//   the question   a right-aligned bubble, then what came with it as the composer's chips, one size for all (an
+//                  image is its 22px thumb; ask-composer.ts `sentFileChip` / `sentRefChip`); Edit on hover over the LAST question (always on a phone)
 //                  opens an edit box ("Sending replaces the answer below.") whose Send goes through `replaceFrom`
 //   the answer     in stream order: activity steps (each with results opens to "N results", whose rows open in the
 //                  inspector; `show_*` / `save_artifact` steps stay quiet; the oversized-image notice is an ordinary
@@ -47,7 +47,7 @@ import { closingAttr, stickAfterScroll } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
 import { thinkingOrb, type OrbState } from "./thinking-orb";
 import { askOrbState } from "./ask-orb";
-import { parseCommand } from "./ask-composer";
+import { parseCommand, sentFileChip, sentRefChip } from "./ask-composer";
 import { diagramFigure } from "./ask-diagram";
 import { singleItemCard } from "./ask-one";
 
@@ -351,14 +351,8 @@ function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "b
 // ── the question ─────────────────────────────────────────────────────────────
 
 function fileView(where: AskWhere, q: AskQuestion, f: AskAttachment): string {
-  const ref = cvRef(where, q.key, "upload", f.id);
-  if (f.kind === "image") {
-    return `<button type="button" class="ask-qimg" data-act="askCvOpen" data-arg="${attr(ref)}" aria-label="${attr(`Open ${f.title}`)}">${f.thumbUrl
-      ? `<img src="${attr(f.thumbUrl)}" alt="" loading="lazy" decoding="async">`
-      : `<span class="ask-qimg-ph" aria-hidden="true">Image · ${esc(fmtSize(f.size))}</span>`}<span class="ask-qimg-f">${askIcon("image", 13, "var(--fg-55)")}<span class="ask-qimg-n">${esc(f.title)}</span></span></button>`;
-  }
-  const icon = /\.csv$/i.test(f.title) ? "csv" : "file";
-  return `<button type="button" class="ask-qfile" data-act="askCvOpen" data-arg="${attr(ref)}" aria-label="${attr(`Open ${f.title}`)}">${askIcon(icon, 14, "var(--fg-55)")}<span>${esc(f.title)}</span><span class="ask-qfile-s">${esc(fmtSize(f.size))}</span></button>`;
+  // The composer's chip, the same size for every file (the owner: an image is its 22px thumb, not a bigger card).
+  return sentFileChip({ kind: f.kind, title: f.title, size: f.size, thumbUrl: f.thumbUrl }, "askCvOpen", cvRef(where, q.key, "upload", f.id));
 }
 
 function question(v: AskView, q: AskQuestion, last: boolean): string {
@@ -367,7 +361,7 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
   const editing = ed !== null && ed.where === v.where && ed.key === q.key;
   const canEdit = last && !busy;
   const files = q.attachments.map((f) => fileView(v.where, q, f)).join("");
-  const ctx = q.context.map((r) => refChip(r, v.look, { size: "tag" })).join("");
+  const ctx = q.context.map((r) => sentRefChip(v.look, r)).join("");
   const edit = canEdit && !editing
     ? `<button type="button" class="ask-q-edit" data-act="askCvEdit" data-arg="${attr(`${v.where}:${q.key}`)}" aria-label="Edit message">${askIcon("rename", 11)}<span>Edit</span></button>` : "";
   const body = editing && canEdit && ed

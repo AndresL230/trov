@@ -9,8 +9,9 @@
 //     "Too large" chip with its note; a failed upload says "Something went wrong. Try again"
 //   • chips for the files and the context refs in ONE row ABOVE the box (the owner: "attached chips should show up
 //     above the text box, not inside it") — the box holds only the words and the toolbar; the row wraps, and on a
-//     phone past two rows it is one line that scrolls sideways — and the context line ("About ticket #14 · 1 file")
-//     with its clear
+//     phone past two rows it is one line that scrolls sideways — ending on Clear when there are two or more (no
+//     "About … · N files" line: it only repeated the chips). A sent question shows them as the same chips
+//     (`sentFileChip` / `sentRefChip`, no ×).
 //   • `@` opens the picker (grouped by type; the app's quick search, rows drawn from RefViews), `/` the commands
 //     (ticket, handoff, search, summarize, brief — sent as `command`); ↑↓ wrap, Enter / Tab picks, Esc closes
 //   • the mode menu (only when `ask/state.modes` offers more than one: Pro), the Ask before changes / Auto switch
@@ -301,21 +302,24 @@ const chipKey = (where: AskWhere, key: string): string => `co:${where}:${key}`;
 const chipClosing = (v: AskView, key: string): string =>
   closingAttr(v.ui.closing, chipKey(v.where, key)) || closingAttr(v.ui.closing, chipKey(v.where, "*"));
 
-/** "About ticket #14 · 1 file" (the ⌘J panel names its one item: "About ticket #14: Guided repository setup"). */
-export function contextLine(v: Pick<AskView, "ui" | "where" | "look">): string {
-  const ui = v.ui.composer[v.where];
-  const parts: string[] = [];
-  if (ui.context.length) {
-    const first = ui.context[0];
-    const view = viewOf(v.look, first);
-    let s = `About ${view ? refCtxWord(view) : refFallbackText(first)}`;
-    if (v.where === "panel" && ui.context.length === 1 && view) s += `: ${view.title}`;
-    if (ui.context.length > 1) s += ` and ${ui.context.length - 1} more`;
-    parts.push(s);
-  }
-  const n = ui.files.length;
-  if (n) parts.push(`${n} ${n === 1 ? "file" : "files"}`);
-  return parts.join(" · ");
+/** What came with a SENT question, as the composer's own chip — the same size whatever it is (the owner: an image is a
+ *  22px thumb in its chip, never a bigger card), no ×; a click opens it (`act` / `arg`). */
+export function sentChip(o: { lead: string; name: string; meta: string; act: string; arg: string; aria: string }): string {
+  return `<button type="button" class="ask-co-chip ask-q-chip" data-act="${attr(o.act)}" data-arg="${attr(o.arg)}" aria-label="${attr(o.aria)}">${o.lead}<span class="ask-co-chip-t"><span class="ask-co-chip-n">${esc(o.name)}</span><span class="ask-co-chip-m">${esc(o.meta)}</span></span></button>`;
+}
+/** A sent file: an image's thumb (else its kind's icon), its name and size. */
+export function sentFileChip(f: { kind: string; title: string; size: number; thumbUrl?: string | null }, act: string, arg: string): string {
+  const icon = askIcon(f.kind === "image" ? "image" : /\.(csv|tsv)$/i.test(f.title) ? "csv" : "file", 14, null, 1.8);
+  const lead = f.kind === "image" && f.thumbUrl ? `<img class="ask-co-thumb" src="${attr(f.thumbUrl)}" alt="" loading="lazy" decoding="async">` : `<span class="ask-co-ico" style="color:var(--fg-55)">${icon}</span>`;
+  return sentChip({ lead, name: f.title, meta: fmtBytes(f.size), act, arg, aria: `Open ${f.title}` });
+}
+/** A sent context item (an @ mention, the ⌘J page's item): as its composer chip; it opens the item. */
+export function sentRefChip(look: RefLook, ref: string): string {
+  const view = viewOf(look, ref);
+  const p = parseAskRef(ref);
+  const name = view ? refShort(view) : refFallbackText(ref);
+  const meta = view ? refTypeWord(view) : p ? refTypeWord({ type: p.type }) : "";
+  return sentChip({ lead: `<span class="ask-co-ico">${refLead(look, ref, 16)}</span>`, name, meta, act: "askShOpen", arg: ref, aria: `Open ${name}` });
 }
 
 function pickerView(v: AskView, p: ComposerPicker): string {
@@ -392,7 +396,9 @@ function sendButton(v: AskView, big: boolean): string {
  *  list pops each new chip in once (rule 2) and its height glides as chips come, go or wrap (rule 4). */
 function chipsRow(v: AskView): string {
   const ui = v.ui.composer[v.where];
-  const chips = [...ui.files.map((f) => fileChip(v, f)), ...ui.context.map((r) => ctxChip(v, r))].join("");
+  const n = ui.files.length + ui.context.length;
+  const clear = n >= 2 ? `<button type="button" class="ask-co-clear" data-morph-key="clear" data-act="askCoClear" data-arg="${v.where}" aria-label="Remove all attached items">Clear</button>` : "";
+  const chips = [...ui.files.map((f) => fileChip(v, f)), ...ui.context.map((r) => ctxChip(v, r))].join("") + clear;
   const scroll = v.app.phone && ui.chipScroll ? ` data-scroll="1"` : "";
   return `<div class="ask-co-chips" data-morph-key="chips" data-morph-list data-ask-enter="pop" data-ask-tween role="group" aria-label="Attached"${scroll}>${chips}</div>`;
 }
@@ -439,8 +445,8 @@ export function composerView(v: AskView): string {
   const maxMb = st ? fmtBytes(st.attach.maxBytes) : "";
   const inner: string[] = [];
   if (ui.picker && !block) inner.push(pickerView(v, ui.picker));
-  const line = block ? "" : contextLine(v);
-  if (line) inner.push(`<div class="ask-co-ctx" data-morph-key="ctx">${trovMark(11)}<span class="ask-co-ctx-t">${esc(line)}</span><button type="button" class="ask-co-x ask-co-x--sm" data-act="askCoClear" data-arg="${v.where}" aria-label="Remove all context">${X}</button></div>`);
+  // No "About … · N files" line any more (the owner: it only repeated the chips under it); the chips row ends on a
+  // Clear when there are two or more, which removes them all (the line's ✕ did).
   if (!block && (ui.error || ui.forced === "error")) {
     inner.push(`<div class="ask-co-note" data-morph-key="err" role="alert">${badMark()}<span>Something went wrong. <button type="button" class="ask-co-link" data-act="askCoRetry" data-arg="${v.where}">Try again</button></span></div>`);
   }

@@ -89,12 +89,14 @@ describe("`answer` — the whole answer, in stream order", () => {
   const { html } = view("answer");
   const t = text(html);
 
-  it("the question: a bubble, the image file as a card, the context chip", () => {
+  it("the question: a bubble, then what came with it as the composer's chips — one size, an image too (the owner)", () => {
     expect(html).toMatch(/<div class="ask-q can-edit" data-morph-key="q:qk1" data-ask-tween>/);
     expect(html).toContain(`<div class="ask-q-bubble">What&#39;s blocking the hosting work? This is what I see in CI.</div>`);
-    expect(html).toMatch(/<button type="button" class="ask-qimg" data-act="askCvOpen" data-arg="askcv:page:qk1:upload:900" aria-label="Open ci-failure.png">/);
-    expect(html).toContain(`class="ask-qimg-ph"`);           // no thumbnail URL: the striped placeholder
-    expect(html).toMatch(/class="ask-chip ask-chip--tag"[^>]*data-ask-ref="ticket:14"/);
+    expect(html).toMatch(/<button type="button" class="ask-co-chip ask-q-chip" data-act="askCvOpen" data-arg="askcv:page:qk1:upload:900" aria-label="Open ci-failure.png"><span class="ask-co-ico"/);
+    expect(html).not.toContain("ask-qimg");
+    expect(html).toMatch(/<button type="button" class="ask-co-chip ask-q-chip" data-act="askShOpen" data-arg="ticket:14" aria-label="Open #14">/);
+    // The bubble first, the chips under it.
+    expect(html.indexOf("ask-q-bubble")).toBeLessThan(html.indexOf("ask-q-chip"));
   });
 
   it("activity steps with their result lines; a step with results opens (aria-expanded), the show_* step stays quiet", () => {
@@ -464,7 +466,9 @@ describe("the question — Edit on the last one, edit-and-resend", () => {
     const q = c.messages[0] as Extract<AskMsg, { role: "user" }>;
     s.ask.page = { ...c, messages: [{ ...q, attachments: [att({ title: "ci.png", kind: "image", size: 400_000 }, 7, "/raw/ci.png"), att({ title: "deploys.csv", kind: "text", size: 2048 }, 8)] }, c.messages[1]] };
     const html = conversationView(askView(s, "page"));
-    expect(html).toContain(`<img src="/raw/ci.png" alt="" loading="lazy" decoding="async">`);
+    // The image's thumbnail is the chip's 22px lead — the same chip as any file (the owner).
+    expect(html).toContain(`<img class="ask-co-thumb" src="/raw/ci.png" alt="" loading="lazy" decoding="async">`);
+    expect(text(html)).toContain("ci.png 391 KB");
     expect(text(html)).toContain("deploys.csv 2 KB");
   });
 });
