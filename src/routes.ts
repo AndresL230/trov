@@ -76,7 +76,6 @@ import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } 
 import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
-import { hideWrongFor } from "./tools/feed-ai";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 
 export const app = new Hono<AppEnv>();
@@ -280,7 +279,7 @@ tenantRoot.get("/feed", async (c) => {
   // An entry written by Trov carries `ai` (shared/rows.ts, 0061_ai_digests). One this person flagged "Wrong?" is
   // hidden for them (and only them); the record stays. Under `wrangler dev` with LOCAL_AI_PREVIEW the sample entries
   // are merged in (src/ai/preview.ts).
-  const feed = await hideWrongFor(c.var.ctx, c.get("principal").handle, await get_feed(c.var.ctx, filter));
+  const feed = await get_feed(c.var.ctx, { ...filter, viewer: c.get("principal").handle });
   const preview = await aiPreviewShown(c.var.ctx, c.env, c.req.url);
   return c.json({ feed: preview ? withPreviewFeed(feed, previewFeedRows(preview), filter) : feed });
 });

@@ -188,8 +188,10 @@ first `AI_FEED_SOURCES_SHOWN` (3) and `moreCount` the rest, `generatedAt` (`crea
 from the row; an agent's entry carries no `ai`, exactly as before. The entry is a record (owner ruling Q29): it keeps
 its `ai` with the org's switch off or no key — off writes no new one; only the web's one-time "Trov now writes…"
 note goes (it reads `GET /ai/settings`' `enabled` / `eligibility`). `/feed` and MCP `get_feed` both leave out a
-Trov entry the caller flagged "Wrong?" (`hideWrongFor`: `ai_feedback` item type `feed`, ref = the entry's id —
-`aiItemRef.feed`, what the Feed's button sends; for them only; the record stays). Its `importance` is Phase C's `feed.importance` (Jev,
+Trov entry the caller flagged "Wrong?" (`ai_feedback` item type `feed`, ref = the entry's id — `aiItemRef.feed`, what
+the Feed's button sends; for them only; the record stays) IN SQL, before the LIMIT (`get_feed`'s `viewer`: a
+`NOT EXISTS` on the primary key, set by each caller to its own authenticated person, never by a client), so a page is
+never short (owner ruling Q28; `test/ai.feed-wrong.test.ts`) and the separate "Wrong?" read is gone. Its `importance` is Phase C's `feed.importance` (Jev,
 `card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
 sample entries into `/feed` by `created_at` (respecting `author` / `tags` / `since` / `limit`) under `wrangler
 dev` only, never over MCP (`ai.md`); the local seed (`npm run seed`) has REAL Trov rows too — three digests with

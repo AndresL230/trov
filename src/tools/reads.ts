@@ -97,6 +97,11 @@ export interface FeedFilter {
   tags?: string[];
   since?: string;
   limit?: number;
+  /** The person reading (the cookie person on `/feed`, the token's person on MCP `get_feed`): an entry Trov wrote that
+   *  they flagged "Wrong?" (`ai_feedback`, item type `feed`, ref = the entry's id — `aiItemRef.feed`) is left out
+   *  IN SQL, before the LIMIT, so a page is never short (owner ruling Q28). The record stays; for them only. Never
+   *  from a client: each caller sets it to its own authenticated person. */
+  viewer?: string | null;
 }
 
 export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Promise<FeedRow[]> {
@@ -112,6 +117,10 @@ export async function get_feed(ctx: TenantContext, filter: FeedFilter = {}): Pro
   if (filter.since) {
     clauses.push(`f.created_at >= ?`);
     params.push(filter.since);
+  }
+  if (filter.viewer) {
+    clauses.push(`NOT (f.origin = 'ai' AND EXISTS (SELECT 1 FROM ai_feedback a WHERE a.org_id = f.org_id AND a.handle = ? AND a.item_type = 'feed' AND a.item_ref = CAST(f.id AS TEXT)))`);
+    params.push(filter.viewer);
   }
   if (filter.tags && filter.tags.length > 0) {
     const placeholders = filter.tags.map(() => "?").join(", ");

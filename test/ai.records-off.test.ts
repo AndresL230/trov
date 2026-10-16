@@ -43,7 +43,7 @@ describe("records stay records with AI off (Q29 / Q32)", () => {
   beforeEach(async () => { ids = await seed(); });
 
   const check = async () => {
-    for (const feed of [await webFeed(), await get_feed(ctx(), {})]) {
+    for (const feed of [await webFeed(), await get_feed(ctx(), { viewer: ME })]) {
       const trov = feed.find((r) => r.id === ids.trov);
       expect(trov?.ai).toMatchObject({ origin: "ai", subject: ME });
       expect(trov?.author).toBe("trov");
