@@ -3464,7 +3464,7 @@ a.ask-btn { text-decoration:none; }
 /* Wrong?: the reasons row under the footer pops in, and out when a reason is picked or Escape closes it. */
 /* Wrong?'s reasons open like the sources list beside it: a rise in step with the footer's height glide (ask-motion.ts
    rule 4, 240ms) — not a pop, whose overshoot ran against the glide. */
-.ask-wrong { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); animation:ask-cv-rise .24s cubic-bezier(.2,.7,.2,1) both; }
+.ask-wrong { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; padding:4px 0 2px; animation:ask-cv-rise .24s cubic-bezier(.2,.7,.2,1) both; }
 /* It fades for the whole of its exit's wait (ask-actions.ts `closeWrong`, 140ms) — like the disclosures above — so the
    collapse follows at once: no blank beat before it, no cut-off fade. */
 .ask-wrong[data-closing] { animation:ask-fade-out .14s var(--fx-ease) both; pointer-events:none; }
@@ -4218,7 +4218,6 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .ask-act,
 [data-cnpy-theme] .ask-line,
 [data-cnpy-theme] .ask-save,
-[data-cnpy-theme] .ask-wrong { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* Ask: inspector (ask-inspector.ts) */
 [data-cnpy-theme] .ask-iv-bar,
 [data-cnpy-theme] .ask-iv-fill { border-radius:calc(3px * var(--corner-scale)) !important; }
