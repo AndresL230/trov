@@ -26,6 +26,13 @@
 // untouched.
 //
 // Not-found is the API's: `404 {"error":"not_found"}` for every cause.
+//
+// Caching: `private` (a browser may keep it, no shared cache may), revalidated every time — EXCEPT a 200 for a
+// NUMBERED version on the per-org route (`/api/o/<org>/raw/a/<slug>@v<n>` or `/v<n>`, what the SPA frames), which
+// is `RAW_IMMUTABLE` + `Vary: Cookie`: those bytes can never change (a version is never rewritten; the org is
+// in the path). The alias `/raw/a/…` resolves the caller's ONE org, which can change, so it stays `private`;
+// so do the latest version and every error. The trade-off — a person who loses access keeps what their own
+// browser already holds — is docs/architecture/artifacts.md › Artifacts (the raw route).
 
 import { Hono } from "hono";
 import type { Context, MiddlewareHandler } from "hono";
@@ -53,6 +60,12 @@ const baseHeaders = (kind: ArtifactKind | null): Record<string, string> => ({
   "cache-control": "private",
   "content-security-policy": rawCspFor(kind),
 });
+
+/** The cache header of a numbered version on the per-org route: its bytes never change (see the header). */
+export const RAW_IMMUTABLE = "private, max-age=31536000, immutable";
+
+/** The per-org mount (`/api/o/:org/raw/a/…`) — never the one-org alias `/raw/a/…`. */
+const ORG_RAW_PATH = /^\/api\/o\/[^/]+\/raw\/a\//;
 
 /** Injected into inline HTML: report the document height to the embedding viewer. */
 export const HEIGHT_SCRIPT =
@@ -97,6 +110,12 @@ async function serveRaw(c: Context<AppEnv>, ref: string): Promise<Response> {
       "content-type": r.content_type,
       "content-disposition": `${attachment ? "attachment" : "inline"}; filename="${rawFilename(r)}"`,
     };
+    // A numbered version under the org the path names: immutable for this browser. `Vary: Cookie` keeps a copy
+    // cached under one sign-in from answering another on the same browser.
+    if (parsed.version !== null && ORG_RAW_PATH.test(c.req.path)) {
+      headers["cache-control"] = RAW_IMMUTABLE;
+      headers["vary"] = "Cookie";
+    }
     if (r.text !== null) {
       const body = r.kind === "html" && !download ? injectHeightScript(r.text) : r.text;
       return new Response(body, { status: 200, headers });

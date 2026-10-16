@@ -23,12 +23,18 @@ const CSP_ACTIVE =
   "img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'; sandbox allow-scripts";
 const CSP_PASSIVE = "default-src 'none'; frame-ancestors 'self'";
 
-const lockedDown = (res: Response, csp: string, label: string) => {
+const IMMUTABLE = "private, max-age=31536000, immutable";
+
+const lockedDown = (res: Response, csp: string, label: string, cache = "private") => {
   expect(res.headers.get("x-frame-options"), label).toBe("SAMEORIGIN");
   expect(res.headers.get("x-content-type-options"), label).toBe("nosniff");
-  expect(res.headers.get("cache-control"), label).toBe("private");
+  expect(res.headers.get("cache-control"), label).toBe(cache);
+  expect(res.headers.get("vary"), label).toBe(cache === IMMUTABLE ? "Cookie" : null);
   expect(res.headers.get("content-security-policy"), label).toBe(csp);
 };
+
+/** A numbered version on the per-org route is immutable; the alias, the latest version and every error are not. */
+const cacheFor = (path: string): string => (/^\/api\/o\/[^/]+\/raw\/a\/[^?]*(?:@|\/)v\d+(?:\?|$)/.test(path) ? IMMUTABLE : "private");
 
 // ── 7. raw headers per kind ──────────────────────────────────────────────────
 
@@ -59,7 +65,7 @@ describe.each([["the per-org route", "/api/o/saplinglearn/raw/a"], ["the one-org
       for (const path of [`${RAW}/${slug}`, `${RAW}/${slug}@v1`, `${RAW}/${slug}/v1`]) {
         const res = await get(path, me);
         expect(res.status, path).toBe(200);
-        lockedDown(res, csp, path);
+        lockedDown(res, csp, path, cacheFor(path));
         expect(res.headers.get("content-type"), path).toBe(type);
         expect(res.headers.get("content-disposition"), path).toBe(`${inline ? "inline" : "attachment"}; filename="${slug}-v1.${ext}"`);
         const text = await res.text();
@@ -140,7 +146,7 @@ describe("7b · /api/o/:slug/raw/a — the org in the path, and nothing of anoth
     const a = await get("/api/o/saplinglearn/raw/a/same-slug", me);
     const b = await get("/api/o/acme/raw/a/same-slug@v1", me);
     expect([a.status, b.status]).toEqual([200, 200]);
-    lockedDown(a, CSP_ACTIVE, "A"); lockedDown(b, CSP_ACTIVE, "B");
+    lockedDown(a, CSP_ACTIVE, "A"); lockedDown(b, CSP_ACTIVE, "B", IMMUTABLE);
     expect(await a.text()).toContain("<p>from A</p>");
     const bText = await b.text();
     expect(bText).toContain("<p>from B</p>");
@@ -190,6 +196,47 @@ describe("7b · /api/o/:slug/raw/a — the org in the path, and nothing of anoth
     expect(gone.status).toBe(404);
     lockedDown(gone, CSP_PASSIVE, "suspended");
     expect(await gone.text()).toBe(NOT_FOUND);
+  });
+});
+
+// ── 7c. caching: a numbered version on the per-org route is immutable ─────────
+describe("7c · raw caching — immutable only where the bytes can never change", () => {
+  const ORG = "/api/o/saplinglearn/raw/a";
+
+  it("a numbered version on the per-org route is immutable (+ Vary: Cookie); the latest, the alias and every error stay private", async () => {
+    const me = await cookieFor(ME);
+    await createText(me, { title: "Cache html", kind: "html", area: "ui", content: "<p>one</p>" });
+    const png = uniqueBytes("cache-png");
+    await createBinary(me, { title: "Cache img", kind: "image", area: "ui" }, { bytes: png, name: "a.png", type: "image/png" });
+
+    for (const path of [`${ORG}/cache-html@v1`, `${ORG}/cache-html/v1`, `${ORG}/cache-html@v1?download=1`, `${ORG}/cache-img@v1`, `${ORG}/cache-img/v1`]) {
+      const res = await get(path, me);
+      expect(res.status, path).toBe(200);
+      lockedDown(res, path.includes("img") ? CSP_PASSIVE : CSP_ACTIVE, path, IMMUTABLE);
+    }
+    for (const path of [`${ORG}/cache-html`, `${ORG}/cache-img`, `${ORG}/cache-html?download=1`, "/raw/a/cache-html@v1", "/raw/a/cache-html/v1", "/raw/a/cache-img@v1"]) {
+      const res = await get(path, me);
+      expect(res.status, path).toBe(200);
+      lockedDown(res, path.includes("img") ? CSP_PASSIVE : CSP_ACTIVE, path);
+    }
+
+    // A version that does not exist YET is a private 404 — never cached as final — and v1's bytes outlive v2.
+    const early = await get(`${ORG}/cache-html@v2`, me);
+    expect(early.status).toBe(404);
+    lockedDown(early, CSP_PASSIVE, "v2 before it exists");
+    expect((await wf("/api/artifacts/cache-html/versions", jsonInit("POST", { content: "<p>two</p>" }, me))).status).toBeLessThan(300);
+    const v2 = await get(`${ORG}/cache-html@v2`, me);
+    lockedDown(v2, CSP_ACTIVE, "v2", IMMUTABLE);
+    expect(await v2.text()).toContain("<p>two</p>");
+    const v1 = await (await get(`${ORG}/cache-html@v1`, me)).text();
+    expect(v1).toContain("<p>one</p>");
+    expect(v1).not.toContain("two");
+
+    // Someone who cannot see the page gets the one private 404 for the numbered URL too.
+    await createText(me, { title: "Cache private", visibility: "private" });
+    const hidden = await get(`${ORG}/cache-private@v1`, await cookieFor(YOU));
+    expect(hidden.status).toBe(404);
+    lockedDown(hidden, CSP_PASSIVE, "private page");
   });
 });
 
