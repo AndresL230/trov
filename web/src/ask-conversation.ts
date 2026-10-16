@@ -42,7 +42,7 @@ import { skeleton, skLine, skLines } from "./skeleton";
 import { markShape, tagSquare, tagTone } from "./marks";
 import { ciLine } from "./repo-verdict";
 import { aiDay } from "./ai-ui";
-import { closingAttr } from "./ask-motion";
+import { closingAttr, stickAfterScroll } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
 import { thinkingOrb, type OrbState } from "./thinking-orb";
 import { askOrbState } from "./ask-orb";
@@ -792,13 +792,16 @@ export const conversationPart: AskPart = {
     return false;
   },
   afterPaint(ctx, mount) {
-    // Stick to the bottom while an answer streams, unless the person scrolled up (the scroller says so).
+    // `stick` (the bottom, ask-motion.ts rule 7 — the controller pins once the paint's glides started): only the
+    // person scrolling UP lets go of it, and coming back to the bottom holds on again (`stickAfterScroll`).
     for (const sc of Array.from(mount.querySelectorAll<HTMLElement>("[data-ask-scroll]"))) {
-      if (!wired.has(sc)) {
-        wired.add(sc);
-        sc.addEventListener("scroll", () => { ctx.ui.conversation.stick = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 60; }, { passive: true });
-      }
-      if (ctx.ui.conversation.stick) sc.scrollTop = sc.scrollHeight;
+      if (wired.has(sc)) continue;
+      wired.add(sc);
+      let top = sc.scrollTop;
+      sc.addEventListener("scroll", () => {
+        ctx.ui.conversation.stick = stickAfterScroll(ctx.ui.conversation.stick, top, { top: sc.scrollTop, height: sc.scrollHeight, client: sc.clientHeight });
+        top = sc.scrollTop;
+      }, { passive: true });
     }
     // "Thinking… Ns" counts between paints (the label alone; the next paint writes the same number).
     if (!ticker && mount.querySelector("[data-ask-think]")) {

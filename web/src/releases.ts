@@ -353,6 +353,7 @@ export const RELEASES: Release[] = [
         "A handoff's reading list rises in when a claim draws it, and never again on a rerender (e2e MO-13) (#178)",
         "Org settings › AI's switches keep the keyboard's focus while they save (`switchBtn` busy is `aria-disabled`) (e2e EV-OA-admin-K) (#178)",
         "The plain-language filter's \"Filtered: …\" line rises in when applied and leaves with the AI kit's one exit on Undo (e2e MO-10 / MO-11) (#178)",
+        "Ask's conversation keeps to its bottom: the controller pins after the paint's height glides start and follows them frame by frame (`askFollowBottom`, ask-motion.ts rule 7), and only the person scrolling up lets go (`stickAfterScroll`) — opening or closing Wrong? or the sources glides instead of jumping 50px, and a shrinking glide no longer lets go for the rest of an answer (its footer and follow-ups ended out of view); a height glide clips with `overflow:clip`, so the footer no longer snaps 8px when it ends; Wrong?'s row rises in step with the glide and fades for its whole 140ms exit (#178)",
       ],
       removed: [
         "The digest's per-PR What / Why / Impact cards, its assigned-issue rows and labels, the ticket queue's per-ticket rows and the Roadmap section's plan diff (Phase E: one line per queue) (#178)",

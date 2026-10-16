@@ -3462,8 +3462,12 @@ a.ask-btn { text-decoration:none; }
 .ask-save-foot { display:flex; align-items:center; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--border); }
 .ask-save-hint { flex:1; font-size:12px; color:var(--fg-55); }
 /* Wrong?: the reasons row under the footer pops in, and out when a reason is picked or Escape closes it. */
-.ask-wrong { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); transform-origin:top left; animation:ask-pop-in .16s cubic-bezier(.2,.9,.3,1.2) both; }
-.ask-wrong[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
+/* Wrong?'s reasons open like the sources list beside it: a rise in step with the footer's height glide (ask-motion.ts
+   rule 4, 240ms) — not a pop, whose overshoot ran against the glide. */
+.ask-wrong { display:flex; align-items:center; flex-wrap:wrap; gap:6px; margin-top:6px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; background:var(--surface); animation:ask-cv-rise .24s cubic-bezier(.2,.7,.2,1) both; }
+/* It fades for the whole of its exit's wait (ask-actions.ts `closeWrong`, 140ms) — like the disclosures above — so the
+   collapse follows at once: no blank beat before it, no cut-off fade. */
+.ask-wrong[data-closing] { animation:ask-fade-out .14s var(--fx-ease) both; pointer-events:none; }
 .ask-wrong-q { margin-right:4px; font-size:12.5px; color:var(--fg-70); }
 .ask-wrong-opt { padding:4px 10px; border:1px solid var(--border); border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:border-color .12s ease, color .12s ease; }
 .ask-wrong-opt:hover { border-color:var(--border-strong); color:var(--fg); }
