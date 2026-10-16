@@ -17,7 +17,8 @@ import { AI_JOBS } from "../src/ai/pass";
 import { KIND_PROVIDER } from "../src/ai/client";
 import { AI_ACCEPT_HANDLERS } from "../src/ai/suggestions";
 import { putInsight, INSIGHT_KEEP } from "../src/data/org-insights";
-import { AI_ROUTES, type AiSuggestion } from "@shared/ai";
+import { putSuggestion } from "../src/data/ai";
+import { AI_ROADMAP_ITEM, AI_ROUTES, type AiSuggestion } from "@shared/ai";
 import type { AiThemeShare } from "@shared/ai-core";
 import type { PlanView } from "../src/tools/plan";
 import { all, first, run } from "./helpers/db";
@@ -383,6 +384,15 @@ describe("the weekly narrative proposal — Batch API; an admin's accept is a `w
     expect(await first(env.DB, `SELECT narrative, updated_by FROM plan WHERE org_id = ?`, ORG_A)).toEqual({ narrative: ANSWER.narrative, updated_by: FIXTURE_ADMIN });
     // The sprints the plan write did not list are untouched — still active, never done.
     expect((await first<{ status: string }>(env.DB, `SELECT status FROM sprints WHERE id = ?`, sprintId))!.status).toBe("in_progress");
+  });
+
+  // Owner ruling Q36 (confirmed): a refused Accept is never a 500 — a writer's refusal is 400 `invalid` WITH the
+  // writer's own words (the screen shows them, Q21 / Q40); a gone item is 409 `not_available` (test/ai.cards.test.ts).
+  it("Q36: a Roadmap writer's refusal is 400 { error: 'invalid', message: <the writer's words> } and the suggestion stays open", async () => {
+    const id = (await putSuggestion(ctx(), { ...AI_ROADMAP_ITEM, kind: "sprint_draft", value: { sprints: [{ name: "Exports", goal: "CSV.", tickets: [1] }] }, confidence: null, reason: "Backlog.", cites: [], model: "m", promptVersion: "p" }))!;
+    const r = await call<{ error: string; message: string }>("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), { value: { sprints: "not a list" } });
+    expect(r).toEqual({ status: 400, json: { error: "invalid", message: "that sprint draft is not one Trov can create" } });
+    expect((await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state).toBe("open");
   });
 
   it("GUARD: no valid cite, or a number it was not given, writes no suggestion; an edited narrative over the cap is refused and stays open", async () => {
