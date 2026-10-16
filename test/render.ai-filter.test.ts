@@ -247,6 +247,16 @@ describe("main.ts wires the menus", () => {
     expect(mainSrc).toContain('if (menu?.querySelector(".fm-ai")?.contains(document.activeElement)) return;');
     expect(mainSrc).toContain('const AI_FILTER_MENU: Record<AiFilterScreen, string> = { tickets: "queue", feed: "feed", artifacts: "art" };');
   });
+  // FL-final-2 (e2e final pass): Enter on a typed filter repaints the screen while the menu fades out; the repaint
+  // under a pointer resting on the popover fired a pointerover, and the hover rule ("re-entered while it was fading
+  // out: keep it") revived the menu — every second apply left it open over the "Filtered: …" line and its Undo.
+  // Only a close the hover started is revived by the pointer; one that was asked for (Apply, Escape, the backdrop,
+  // the Filter button) runs to its end.
+  it("a close that was asked for is not revived by a pointerover; only a hover's own close is", () => {
+    expect(mainSrc).toContain("hoverCloseTimer = setTimeout(() => { hoverCloseTimer = null; closeFilterMenu(id, false, true); }, 200);");
+    expect(mainSrc).toContain("if (!FILTER_MENUS[id].isOpen() || (fmClosing === id && fmClosingByHover)) {");
+    expect(mainSrc).not.toContain("if (!FILTER_MENUS[id].isOpen() || fmClosing === id) {");
+  });
 });
 
 describe("the words of an applied filter", () => {

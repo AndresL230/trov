@@ -344,3 +344,35 @@ nothing that passed earlier failed. The fixes' own cases were retested after eac
 | OA-1 (screen copy) | Org settings › AI's What is sent now mirrors the Privacy Policy's AI rows (0a8519eb), four of which are still DRAFT there. | Approve both together; the new screen lines carry no DRAFT marker. |
 | F-1 | No `hint` for the AI routes' own codes (`off`, `no_key`, `unreadable`). | Add hints, e.g. off: "This organization's AI switch is off (Org settings › AI): nothing was sent. An admin can turn it on." |
 | matrix | The reference shots `ai-screens-shots/org-ai-*` show the pre-Phase-A page (one allowance, one switch). | Replace them with this run's `oa-p*` shots. |
+
+## Final pass 2026-10-16
+
+Same run as the screens log's "Final pass 2026-10-16" (branch `ai/e2e-final-screens` from `40d88ea6`, ai/screens
+after the #187 merge; one server on :8852; data set B = `server-ai-e2e.mjs` 121/121 + `repo-setups.mjs`, keys blank,
+`DEV_LOGIN` unset, `NOTIFICATIONS_MODE=local`; `K:dummy` keys only for refusal cases; `LOCAL_AI_PREVIEW` per mode for
+the P cases). Shots in `docs/testing/server-ai-shots/final-screens/`.
+
+| ids | result | evidence |
+|---|---|---|
+| G-1/24, G-2/25, G-3/26, G-4/27, G-58 | pass | 12 routes (6 `/ai/*`, 6 `/ask/*`) per caller: signed out 401 ×12, outsider 404 ×12, superadmin 404 ×12, bearer + cookie 403 `forbidden` ×12, bearer alone 401 ×12 |
+| G-59, G-60, G-61 | pass | test-other's four reads carry nothing of test-ent; 5003 accept / dismiss 404 / 404, still open; `/ask/peek ticket:2` = test-ent's "test-Blank login screen…" |
+| OA-1 … OA-26 | pass (OA-15 = Q10) | OA-1 lead "on … runs Sift on your tags", two switches, unlimited; OA-2 member words + "Only an admin or an owner…"; OA-4 403; OA-5 `aria-busy` while the PUT is slowed, flash, audit `org.ai {"enabled":false}`; OA-6/7 flashes; OA-8 400 ×3; OA-9 120/300 · 120/250 · 300/1,000 · 20/50; OA-10 four "Used up … until Nov 1"; OA-11 310/300 …; OA-12 "This Trov has no Anthropic key…" + No key; OA-13 `no_key`; OA-14 `off`; OA-16/17/18 caps 900 / 1500 & 2000 / 10; OA-19 120 (last month's 999 not counted); OA-20…23 P:ready 212/486/1,240/1,120 (admin 1 switch, member 0), P:empty 0s, P:capped four "Used up"; OA-24 "Loading the AI settings…" `aria-busy`; OA-25 "Couldn't load…" + Try again loads; OA-26 double-click → one PUT. OA-1-admin.png, OA-2-member.png, OA-12-nokey.png |
+| SF-1 … SF-10, SF-14 … SF-18 | pass (SF-15 = Q9) | SF-1 no `ai`; SF-2 "no TypeSafe AI key…"; SF-3 "Trov's AI is off for this organization (Org settings › AI)…"; SF-4 "Off: nothing is sent."; SF-5 "…used up: Trov stops looking for items until next month."; SF-6 "300 of 1,000"; SF-7 "1,520"; SF-8 403; SF-9 400 `enabled`; SF-10 the two flashes, row ends 0; SF-14 `busy` + Find items disabled; SF-15 `off`; SF-16 `no_key`; SF-17 `not_found` (ui retired, restored after); SF-18 `capped`. SF-2-nokey.png. **See the incident below for SF-14's first attempt.** |
+| PU-1 … PU-6 | pass (PU-2 = Q7) | PU-1 404; PU-2 no AI runs block, "AI summaries are off on this deployment"; PU-3 nine figures + "last 30 days, all organizations"; PU-4 Runs 42 · Failed 2 · Capped 1 · 18.0K / 2,400 / 9,000 · Sift 1,520 · 3,000 / 40; PU-5 days 1 / 30 / 30; PU-6 `trov` not counted. PU-3.png |
+| FL-1 … FL-11, FL-13 … FL-22 | pass after FL-final-2 | FL-1 / FL-2 no row; FL-3 the three placeholders, `maxlength=300`, first row "Describe a filter"; FL-4 (screens log FL-L5); FL-5 400 ×3; FL-6/20 403 `off`; FL-7 … FL-10 402 with each plan's sentence (gift org's runs set to 2,000); FL-11 429, `Retry-After`, "…try again after 6:00 AM." (the spent bucket re-dated to the current UTC hour first); FL-13 "Filtered: Open · Assigned to you · Bug · High priority." 15 → 1 shown; FL-14 + “overdue”; FL-15 + “about deploys”; FL-16 "HTML · Published · search “checkout”."; FL-17 Undo back to 15; FL-18 422; FL-19 402 (member wording); FL-21 no `img`; FL-22 one request, "Reading…" `aria-busy`. Running FL-14 after FL-13 found **FL-final-2** (menu left open on every second apply) — fixed f771e519. FL-16-preview.png |
+| RL-1 … RL-9 | pass (RL-3 = Q12) | RL-1 "Read these first (not complete)", Doc test-Deploy checklist + 1 feed row; RL-2 `[]`; RL-3 gone after reload; RL-4 the copy ends with the list; RL-5 My Work's Claim & copy has no list; RL-6 test-admin 403 `not your handoff`; RL-7 test-Webhook retries; RL-8 MCP "## Read these first…" + ``get_doc slug `test-deploy-checklist` ``; RL-9 none. Handoffs put back to pending after. RL-1.png |
+| EM-1 … EM-16, EM-19 … EM-22, EM-24, EM-sample | pass (EM-3 = Q32/Q43, EM-6 = Q45) | daily cron fired at the real New York hour (`send_hour` set to it): test-member "test- CI run 4812 is failing on your pull request #115, plus 4 more", Now + 3 Next + Also (breaking); test-ai-off member: ASSIGNED TO YOU ×3 + Also (one ALSO label); review line "4 waiting, 1 changes a decision"; no What/Why/Impact anywhere; no rows for test-noemail / test-unsub; test-empty `skipped` ×2; free member sent; weekly previews: test-ent THIS WEEK 3 highlights + "1 pull request merged, 8 entries in the Feed", ai-off / pro / free the numbers line only; six samples render; test-send `mode:"local"`; member preview 403; the stored HTML at 360 dark: no h-scroll, 0 link/img/script, 0 requests. EM-21-360-dark.png |
+| JB-1, JB-7, JB-8 | pass | a new ticket marks `card ticket:16` (and `ticket:15`); test-ai-off: 0 rows; a keyless `*/10` tick: 0 batches, `ai_dirty` byte-identical |
+| MC-1 … MC-4 | pass | 44 tools, none promote / ratify / accept / dismiss / publish; P:ready over MCP returns the seeded brief, not the fixture; `get_ticket 2` no `ai`; MC-4 = G-4 |
+| LG-1 … LG-3 | pass | `/terms` 5 "DRAFT —", `/privacy` 16, both name Anthropic and TypeSafe AI, Sift never Jev, in the served HTML; no `X-Robots-Tag`; 0 console errors |
+
+Not rerun: SF-11 … SF-13 (the New tag form), EM-17, EM-18, EM-23, EM-25, JB-2 … JB-6, JB-9, JB-10, RL-10, FL-12
+(model), FL-23 / FL-25 (Q3 / Q2, unchanged code).
+
+**Incident (SF-14, first attempt, K:dummy).** The `sift-run-busy` fixture's running row was seeded at 08:55Z; by
+09:20Z it was past Sift's stale window, so `POST …/tags/test-hosting/find-items` let it go and STARTED a run
+(`org_tag_runs` 10001, `calls 4`, failed after 0.26 s): with the dummy TypeSafe key that means up to four requests
+to `api.typesafe.ai` carrying fixture text, all refused. Nothing real was sent and no real key was used, but it broke
+"never a real service" for those requests. The case was rerun with a freshly dated running row (→ `busy`, no call).
+Lesson for the matrix: re-date time-bound fixtures (the busy run, the filter rate-limit bucket) right before a
+K:dummy case, as was done here for FL-11.
