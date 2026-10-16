@@ -31,6 +31,10 @@ import { matchIssueRef } from "../web/src/issue-ref";
 import type { Me } from "../web/src/api";
 import type { MyInvite, MyOrg, MyOrgsResponse, OrgRole } from "@shared/orgs";
 import { PLANS, type MyGrant } from "@shared/plans";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const sources = import.meta.glob("../web/src/*.ts", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
 

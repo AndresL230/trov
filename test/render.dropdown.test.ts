@@ -16,6 +16,10 @@ import { orgSettingsView, orgOverlays, orgDropdowns, initialOrgUi, inviteRoleDro
 import { ROLE_HINT } from "../web/src/org-ui";
 import { render, initialState, type AppState } from "../web/src/render";
 import type { MyOrg, OrgMember, OrgRole } from "@shared/orgs";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const closed = initialDropdownUi;
 const ui = (o: Partial<DropdownUi>): DropdownUi => ({ ...closed(), ...o });

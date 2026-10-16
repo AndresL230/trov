@@ -8,7 +8,7 @@
 import type { AppState } from "./render";
 import { ApiError, Unauthorized, checkOrgSlug, createOrg, respondToInvite } from "./api";
 import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError, handleError, handleTaken } from "./org-picker";
-import { slugFromName } from "./platform";
+import { slugFromName } from "./platform-core";
 import { orgHref } from "./org-context";
 import type { MyOrg, MyOrgsResponse } from "@shared/orgs";
 

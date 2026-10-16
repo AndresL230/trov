@@ -16,6 +16,8 @@
 // theme is dark, so a dark visitor never sees a light page first; the boot script's first paint drops it.
 import { LLMS_FULL_TXT, LLMS_TXT, faqPageLd, siteHead, type SitePage } from "@shared/site-pages";
 import { initialState, render } from "./render";
+import { landingChunk } from "./landing-lazy";
+import * as landingModule from "./landing";
 import { pricingView } from "./pricing";
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { notFoundView } from "./not-found";
@@ -37,6 +39,9 @@ export function withThemeBoot(root: string): string {
   if (!open) throw new Error("site-prerender: a page's root must be one <div>");
   return `${open[0]}${THEME_BOOT}${root.slice(open[0].length)}`;
 }
+
+// The landing is a lazy chunk in the app (landing-lazy.ts): the build draws it, so it hands the module in.
+landingChunk.set(landingModule);
 
 interface DocumentParts {
   /** The page's own head tags (title, description, …). */
@@ -82,8 +87,9 @@ function documentHtml(d: DocumentParts): string {
 function pageBody(page: SitePage): Pick<DocumentParts, "body" | "script" | "extraHead"> {
   switch (page.kind) {
     case "landing":
-      // The signed-out app: main.ts paints exactly this on boot (the landing, light, nothing open).
-      return { body: `<div id="app">${withThemeBoot(render(initialState()))}</div>`, script: "/src/main.ts" };
+      // The signed-out app's markup (the landing, light, nothing open), booted by the landing's own script
+      // (landing-page.ts), which paints exactly this — the app's bundle is not on this page.
+      return { body: `<div id="app">${withThemeBoot(render(initialState()))}</div>`, script: "/src/landing-page.ts" };
     case "pricing":
       return { body: `<div id="pricing">${withThemeBoot(siteRoot("light", pricingView(false)))}</div>`, script: "/src/pricing-page.ts" };
     case "legal": {

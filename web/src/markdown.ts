@@ -1,41 +1,28 @@
-import { marked, type Tokens } from "marked";
-import DOMPurify from "dompurify";
-import { repoUrl } from "./github";
 import { tenantHref, apiOrgSlug } from "./api";
+import { repoUrl } from "./github";
 import { createLru } from "./lru";
 import { slugifyHeading } from "./outline";
-import { issueRefStart, matchIssueRef } from "./issue-ref";
 import { DOC_IMAGE_PATH_RE } from "@shared/doc-images";
+import { markdownLib, markdownMissed } from "./markdown-load";
+import { esc } from "./ui";
+import { skeleton, skLines } from "./skeleton";
 
-marked.setOptions({ gfm: true, breaks: false });
+// marked + DOMPurify are their own chunk (markdown-lib.ts, loaded by markdown-load.ts; web-ui.md › The app's
+// bundles). Until it is in, a body draws a placeholder — a block is a few skeleton lines (invisible for
+// SKEL_DELAY_MS, so a chunk that lands in time is never seen), an inline summary its text, escaped — and
+// the chunk's arrival repaints. A placeholder is never cached.
 
-// Auto-link GitHub issue/PR refs in prose — bare `#123` (this org's main repo) and
-// `owner/repo#123` (that repo; see issue-ref.ts). Runs as an inline extension, so
-// it skips code spans/blocks (tokenized separately) and its output is still DOMPurify-sanitized.
-marked.use({
-  extensions: [
-    {
-      name: "issueRef",
-      level: "inline",
-      start(src: string) {
-        return issueRefStart(src);
-      },
-      tokenizer(src: string) {
-        // No repository connected: `owner/repo#12` still links (it names its repo); a bare `#12` stays text.
-        const ref = matchIssueRef(src, repoUrl());
-        if (ref) return { type: "issueRef", raw: ref.raw, href: ref.href, text: ref.text } as Tokens.Generic;
-        return undefined;
-      },
-      renderer(token) {
-        // `href` is built from a strict owner/repo#N match and `text` is that same
-        // match — no quotes or angle brackets can occur — and the result still
-        // passes through DOMPurify with everything else.
-        const { href, text } = token as unknown as { href: string; text: string };
-        return `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
-      },
-    },
-  ],
-});
+/** A string's short, stable name: the placeholder's skeleton key (unique per body on a screen). */
+function bodyKey(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) | 0;
+  return `md-${(h >>> 0).toString(36)}`;
+}
+
+const blockPending = (body: string): string => {
+  markdownMissed();
+  return skeleton(bodyKey(body ?? ""), "Loading…", skLines(["100%", "94%", "62%"], 14.5, 1.7));
+};
 
 // Memoized (web-ui.md › Markdown is rendered once per body): every paint rebuilds the whole app's
 // markup, and marked + DOMPurify + `enhance` per doc, per paint, was the slowest part of a paint on
@@ -58,8 +45,10 @@ export function renderMarkdown(body: string): string {
   const key = cacheKey(body);
   const hit = blockCache.get(key);
   if (hit !== undefined) return hit;
-  const html = marked.parse(body ?? "", { async: false }) as string;
-  const clean = DOMPurify.sanitize(html);
+  const lib = markdownLib();
+  if (!lib) return blockPending(body);
+  const html = lib.marked.parse(body ?? "", { async: false }) as string;
+  const clean = lib.DOMPurify.sanitize(html);
   const out = enhance(clean);
   blockCache.set(key, out);
   return out;
@@ -74,8 +63,10 @@ export function renderMarkdownInline(text: string): string {
   const key = cacheKey(text);
   const hit = inlineCache.get(key);
   if (hit !== undefined) return hit;
-  const html = marked.parseInline(text ?? "", { async: false }) as string;
-  const out = DOMPurify.sanitize(html);
+  const lib = markdownLib();
+  if (!lib) { markdownMissed(); return esc(text ?? ""); }
+  const html = lib.marked.parseInline(text ?? "", { async: false }) as string;
+  const out = lib.DOMPurify.sanitize(html);
   inlineCache.set(key, out);
   return out;
 }
@@ -87,7 +78,9 @@ export function renderMarkdownInline(text: string): string {
  * SVG ONLY through this (render tests mock this module).
  */
 export function sanitizeSvg(src: string): string {
-  return DOMPurify.sanitize(src ?? "", { USE_PROFILES: { svg: true, svgFilters: true } }) as string;
+  const lib = markdownLib();
+  if (!lib) return blockPending(src);
+  return lib.DOMPurify.sanitize(src ?? "", { USE_PROFILES: { svg: true, svgFilters: true } }) as string;
 }
 
 /**

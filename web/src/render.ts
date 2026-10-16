@@ -40,7 +40,8 @@ import type { AccountDeletionPreview } from "@shared/deletion-core";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
-import { landingView } from "./landing";
+// The landing is its own chunk in the app (landing-lazy.ts); the signed-out page `/` boots it alone (landing-page.ts).
+import { landingView } from "./landing-lazy";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
@@ -54,19 +55,28 @@ import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
-import { repoView, repoControls, repoCrumb, repoDropdowns, type RepoProps, type RepoPollState } from "./repo";
+// The Repo screen is its own chunk (repo-lazy.ts draws a skeleton until it is in).
+import { repoView, repoControls, repoCrumb, repoDropdowns } from "./repo-lazy";
+import type { RepoProps } from "./repo";
+import type { RepoPollState } from "./repo-core";
 import type { GroupBy } from "@shared/repo-layout-core";
 import type { ScenarioKey } from "./repo-sample-keys";
+// Artifacts is its own chunk (artifacts-lazy.ts draws a skeleton until it is in); its state is artifacts-state.ts.
+import { artifactsView, artifactsHeader, artifactsDialogs } from "./artifacts-lazy";
 import {
-  artifactsView, artifactsHeader, artifactsDialogs, ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
+  ticketArtifactsBlock, initialArtUi, ART_ROUTE_NONE,
   type ArtUi, type ArtRoute, type ArtScreen, type ArtProps,
-} from "./artifacts";
+} from "./artifacts-state";
 import type { RepoDashboard, RepoTab, RepoRange } from "@shared/repo";
-import { platformView, platformOrgView, platformDialogs, platformHeaderControls, platformCrumb, platformPage, initialPlat, type PlatState } from "./platform";
+// Platform is its own chunk (platform-lazy.ts draws a skeleton until it is in); its state is platform-core.ts.
+import { platformView, platformOrgView, platformDialogs, platformPage } from "./platform-lazy";
+import { platformHeaderControls, platformCrumb, initialPlat, type PlatState } from "./platform-core";
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
-import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+// Org settings is its own chunk (org-lazy.ts draws a skeleton until it is in); its state is org-core.ts.
+import { orgSettingsView, orgOverlays } from "./org-lazy";
+import { initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-core";
 import { settingsPlanTile, settingsLimitsTile, settingsOrgsTile } from "./settings-plan";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.
@@ -78,6 +88,7 @@ import { PLUGIN_INSTALL, browserConnectCommand, connectSteps, copyBox, mcpCode, 
 import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type WelcomeUi } from "./welcome";
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
+import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } from "./app-root";
 
 // A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
 // Technical | Product). Values come from the data, not a fixed union.
@@ -678,9 +689,7 @@ export const viewerIsAdmin = (s: Pick<AppState, "orgSlug" | "myOrgs" | "me">): b
 const PLUS_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>`;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function resolved(s: AppState): "dark" | "light" {
-  return s.theme === "system" ? (s.systemDark ? "dark" : "light") : s.theme;
-}
+const resolved = (s: AppState): "dark" | "light" => resolvedTheme(s);
 // esc / attr live in ./ui (shared with the componentized surfaces).
 // Defense-in-depth: external URLs from captured payloads must be http(s) — never javascript:/data:/etc.
 const safeUrl = (u: string): string => (/^https?:\/\//i.test(u) ? u : "#");
@@ -828,7 +837,8 @@ function verifyingCard(): string {
 // ── app shell ────────────────────────────────────────────────────────────────
 /** The rail is collapsed when the person collapsed it OR the viewport forces it. On a phone
  *  it is neither: it is the full rail, in a drawer (trov.css `[data-phone="1"]`). */
-export const railCollapsed = (s: AppState): boolean => !s.phone && (s.collapsed || s.narrow);
+// The rail renders collapsed below 900px (app-root.ts).
+export { railCollapsed };
 
 function sidebar(s: AppState): string {
   const counts = triageCounts(s);
@@ -2871,22 +2881,14 @@ function firstRunBackdrop(s?: AppState): string {
   return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(behind)}</div>`;
 }
 
-// The toast pops in, then fades out over its last 400ms. Both delays are offset by the time
-// already elapsed (negative = joined mid-way), so a rerender while it is up never replays the pop.
-// Centered with auto margins, not translateX(-50%): cnpy-pop animates `transform` to none.
-const TOAST_FADE_MS = 400;
-/** A toast's one button: `Undo` on a delete. Dispatched like any `data-act`. */
-export interface ToastAction { label: string; act: string; arg: string }
+// The toast and its one button are app-root.ts (the landing page draws them too).
+export type { ToastAction } from "./app-root";
+
 /** Whether the signed-in person may delete the open prompt: its author, or an admin (the server re-checks). */
 export function canDeletePrompt(s: Pick<AppState, "me" | "promptDetail" | "orgSlug" | "myOrgs">): boolean {
   const p = s.promptDetail.data?.prompt;
   if (!p || !s.me) return false;
   return viewerIsAdmin(s) || s.me.handle.toLowerCase() === p.author.toLowerCase();
-}
-function toastBlock(msg: string, elapsed: number, ms: number, action: ToastAction | null = null): string {
-  return `<div class="cnpy-toast" role="status" aria-live="polite" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100vw - 32px));z-index:50;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.45;animation-delay:${-elapsed}ms,${ms - TOAST_FADE_MS - elapsed}ms">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px"><path d="M20 6 9 17l-5-5"></path></svg><span>${esc(msg)}</span>${action ? `<span aria-hidden="true" style="color:var(--fg-40)">·</span><button type="button" data-act="${attr(action.act)}" data-arg="${attr(action.arg)}" class="cnpy-toast-act" style="font-size:13px;font-weight:600;color:var(--accent);white-space:nowrap">${esc(action.label)}</button>` : ""}
-  </div>`;
 }
 
 /** The state a paint draws: the real one, or — while a preview is on, inside an organization or
@@ -2898,8 +2900,7 @@ export function shownState(s: AppState): AppState {
 
 export function render(real: AppState): string {
   const s = shownState(real);
-  const themeAttr = resolved(s);
-  return `<div data-cnpy-theme="${themeAttr}" data-screen="${s.screen}" data-collapsed="${railCollapsed(s) ? "1" : "0"}" data-narrow="${s.narrow ? "1" : "0"}" data-phone="${s.phone ? "1" : "0"}" data-drawer="${s.phone && s.drawer ? "1" : "0"}" data-author="${s.feedAuthor}" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+  return appRoot(s, `
     ${s.billingCheckout ? billingCheckoutPage(s.billingCheckout, firstRunBackdrop()) : s.billingDone ? billingDonePage(s.billingDone, firstRunBackdrop()) : s.view === "auth" ? authView(s) : s.view === "orgs" ? orgPickerView({ backdrop: firstRunBackdrop(), me: s.me, mine: s.me?.orgs ?? [], orgs: s.myOrgs.data, status: s.myOrgs.status, ui: s.orgsUi, hash: typeof location !== "undefined" ? location.hash : "", superadmin: s.plat.superadmin === true }) : s.view === "platform" ? platformPage(s.plat, s.screen, s.me?.handle ?? null, s.dd) : s.screen === "site" ? landingView({ dark: resolved(s) !== "light", signInOpen: false, signedIn: true, seen: s.landingSeen, feature: s.siteFeature, menuOpen: s.siteMenu }) : s.screen === "welcome" ? welcomeView(welcomeProps(s)) : appView(s)}
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
@@ -2922,5 +2923,5 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
     ${real.preview && s !== real ? previewBanner(real.preview) : ""}
-  </div>`;
+  `);
 }

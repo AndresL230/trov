@@ -18,8 +18,9 @@ import { dropdown, type DropdownProps, type DropdownUi } from "./dropdown";
 import { segmented } from "./segmented";
 import { envVerdict } from "./repo-verdict";
 
-/** The App menu's value for "All apps" (a dropdown option needs a string). */
-export const ALL_APPS = "__all";
+/** The App menu's value for "All apps" (repo-core.ts, in the app's first download). */
+export { ALL_APPS } from "./repo-core";
+import { ALL_APPS } from "./repo-core";
 
 const prs = (n: number | null): string => (n === null ? "" : `${n} open ${n === 1 ? "pull request" : "pull requests"}`);
 

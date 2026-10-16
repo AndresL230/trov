@@ -8,7 +8,8 @@ import {
   listOrgTags, getTagPage, addOrgTag, editOrgTag, mergeOrgTag, retireOrgTag, restoreOrgTag, resolveTagSuggestion, setItemTags,
   findTagItems, undoTagRun, setTagSuggestions, getTagRun, settleTagReview,
 } from "./api";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg } from "./org-core";
+import { roleAtLeast } from "./org-ui";
 import { isTagPageTab, nextTagColor, tagDraftProblem, type TagPageTab } from "./tags";
 import { isTagColor, isTagItemType, normalizeTagName } from "@shared/tags-core";
 import { POLL_MS, applyAnswer, barFill, barState, newLive, runCounter, shouldPoll, shownAt, type LiveRun } from "./fit-run";

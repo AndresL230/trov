@@ -20,6 +20,10 @@ import { parseHash, hashForRoute } from "../web/src/hash";
 import { STARTER_TAGS, TAG_COLORS, tagLineParts, similarTag, normalizeTagName, type OrgTagDTO, type TagListDTO, type TagPageDTO, type TagSuggestionDTO, type TagAiDTO, type TagRunDTO } from "@shared/tags-core";
 import type { MyOrg, OrgRole } from "@shared/orgs";
 import type { FeedRow } from "@shared/rows";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const org = (role: OrgRole = "owner"): MyOrg => ({ slug: "acme", name: "Acme Robotics", role });
 const tag = (name: string, o: Partial<OrgTagDTO> = {}): OrgTagDTO => ({ name, description: `About ${name}`, color: "sky", starter: false, retired: false, counts: { feed: 0, doc: 0, adr: 0 }, ...o });

@@ -50,11 +50,9 @@ import { blankDoc, defaultSection } from "./newdoc";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
-import { mountLandingMotion, unmountLandingMotion, noteJump } from "./landing-motion";
-import { createFeatureCtl } from "./site-feature";
-import { createMenuCtl } from "./site-menu";
-import { initSiteViewport } from "./site-viewport";
-import { TOUR_KEYS } from "./landing";
+import { mountLandingMotion, unmountLandingMotion } from "./landing-motion";
+import { createLandingController } from "./landing-actions";
+import { landingChunk } from "./landing-lazy";
 import { initFaqAccordion } from "./site-faq";
 import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
@@ -75,22 +73,26 @@ import { setWriteBlock } from "./api";
 import { isGroupBy } from "@shared/repo-layout-core";
 import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
-import { ALL_APPS } from "./repo-header";
+import { ALL_APPS } from "./repo-core";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
-import { createPlatform } from "./platform-actions";
+import { platformChunk } from "./platform-lazy";
+import type { LazyChunk } from "./lazy-chunk";
 import { createTagsController } from "./tags-actions";
-import { PLATFORM_PATH, isPlatformPath } from "./platform";
+import { PLATFORM_PATH, isPlatformPath } from "./platform-core";
 import { NAV_GROUPS, navGroupOf, type NavGroup } from "./sidebar";
-import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo";
+import { formatCount, repoPollFor, repoUpdatedLabel } from "./repo-core";
+import { repoChunk } from "./repo-lazy";
 import { isRepoTab, REPO_RANGES, type RepoRange } from "@shared/repo";
+// Artifacts is its own chunk (artifacts-lazy.ts): the reducer and the file pickers run once it is in.
 import {
-  artifactsAct, artAcceptFile, artAcceptNvFile, renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
-  type ArtScreen, type ArtEffect, type ArtWrite, type ArtRoute, type ArtFilterKey, type ArtFile,
-} from "./artifacts";
+  renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
+  type ArtScreen, type ArtRoute, type ArtFilterKey, type ArtFile,
+} from "./artifacts-state";
+import type { ArtEffect, ArtWrite } from "./artifacts";
+import { artifactsChunk } from "./artifacts-lazy";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
-import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
@@ -98,7 +100,9 @@ import { LATEST_RELEASE } from "./release-latest";
 import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg, isOrgTab } from "./org-core";
+import { roleAtLeast } from "./org-ui";
+import { orgChunk } from "./org-lazy";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
@@ -114,6 +118,7 @@ import { GITHUB_LOGIN_RE, type MyOrgsResponse } from "@shared/orgs";
 import { isGithubConnectOutcome } from "@shared/github-app";
 import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
 import { createPaintQueue } from "./paint-queue";
+import { onMarkdownLib, prefetchMarkdownLib } from "./markdown-load";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -129,6 +134,9 @@ const paints = createPaintQueue(() => paintApp());
 function rerender(): void { paints.now(); }
 function rerenderSoon(): void { paints.soon(); }
 function batchRender<T>(fn: () => T): T { return paints.batch(fn); }
+// marked + DOMPurify are their own chunk (markdown-load.ts): a body drawn before it is in is a
+// placeholder, and its arrival repaints — a read landing, so it shares the next frame's paint.
+onMarkdownLib(() => rerenderSoon());
 
 // The state preview (web/src/preview.ts): `?preview=empty` / `?preview=loading`, read once here
 // and kept in the address bar while it is on (a reload stays in it). While it is on api.ts
@@ -157,10 +165,25 @@ const syncCtl = createSyncController({
 });
 
 // Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
-const orgCtl = createOrgController({
-  state, mount, rerender: () => rerender(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
-  reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
-});
+// Its own chunk (org-lazy.ts): the controller is made when the chunk lands, and a load or an act asked
+// for before then runs once it has (`withChunk`). Before it is made there is no form to tidy after a paint.
+type OrgCtl = import("./org-actions").OrgController;
+let orgCtlMade: OrgCtl | null = null;
+function withOrgCtl(fn: (c: OrgCtl) => void): void {
+  withChunk(orgChunk, (m) => {
+    orgCtlMade ??= m.createOrgController({
+      state, mount, rerender: () => rerender(), flash: (msg, ms, a) => flash(msg, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+      reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
+    });
+    fn(orgCtlMade);
+  });
+}
+const orgCtl: OrgCtl = {
+  act: (act, arg, value) => withOrgCtl((c) => c.act(act, arg, value)),
+  load: () => withOrgCtl((c) => c.load()),
+  loadPlan: () => withOrgCtl((c) => c.loadPlan()),
+  afterPaint: () => { orgCtlMade?.afterPaint(); },
+};
 // The organization's tag list (web/src/tags-actions.ts): every `tag…` act, the list's read, a tag's page.
 const tagsCtl = createTagsController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
@@ -355,6 +378,31 @@ let drawerRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
+// ── lazy chunks (lazy-chunk.ts; web-ui.md › The app's bundles) ───────────────
+// A screen whose module is its own chunk draws its skeleton until the chunk is in. `withChunk` starts
+// (or joins) the load and, once it lands, runs what was waiting for it — a controller's first read,
+// an act — and repaints, all in ONE paint (`batchRender`). A paint that needs a chunk calls it with no
+// `fn`; a chunk that failed is then not retried in a loop (its screen says to reload), but an act asked
+// for again tries again.
+const chunkWaiters = new Map<LazyChunk<unknown>, ((m: unknown) => void)[]>();
+function withChunk<M>(chunk: LazyChunk<M>, fn?: (m: M) => void): void {
+  const ready = chunk.get();
+  if (ready) { fn?.(ready); return; }
+  if (chunk.failed() && !fn) return;
+  const key = chunk as LazyChunk<unknown>;
+  const waiting = chunkWaiters.get(key);
+  if (waiting) { if (fn) waiting.push(fn as (m: unknown) => void); return; }
+  chunkWaiters.set(key, fn ? [fn as (m: unknown) => void] : []);
+  chunk.load().then(
+    (m) => {
+      const fns = chunkWaiters.get(key) ?? [];
+      chunkWaiters.delete(key);
+      batchRender(() => { for (const f of fns) f(m); rerenderSoon(); });
+    },
+    () => { chunkWaiters.delete(key); rerenderSoon(); },
+  );
+}
+
 let releasesWanted = false;
 function wantReleases(): void {
   if (releasesWanted) return;
@@ -370,6 +418,19 @@ function paintApp(): void {
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // The landing is its own chunk in the app (the signed-out page `/` boots it alone, landing-page.ts):
+  // a signed-out paint, or the landing reopened by the sidebar logo, starts the load.
+  if (state.view === "auth" ? state.authStep === "login" : state.view === "app" && state.screen === "site") withChunk(landingChunk);
+  // Org settings is its own chunk: painting it without it starts the load.
+  if (state.view === "app" && state.screen === "org") withChunk(orgChunk);
+  // The Repo screen is its own chunk: painting it without it starts the load.
+  if (state.view === "app" && state.screen === "repo") withChunk(repoChunk);
+  // Artifacts' screens are their own chunk: painting one without it starts the load.
+  if (state.view === "app" && (state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact")) withChunk(artifactsChunk);
+  // Platform's screens are their own chunk: painting one without it starts the load.
+  if ((state.view === "platform" || state.view === "app") && (state.screen === "platform" || state.screen === "platformorg")) withChunk(platformChunk);
+  // Signed in: the Markdown chunk starts loading beside the first reads (once).
+  if (state.view === "app" || state.view === "platform") prefetchMarkdownLib();
   // The phone drawer closes whenever the route changes (a nav row, a search, Back).
   const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
   if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
@@ -437,7 +498,7 @@ function paintApp(): void {
     pendingFlash = null;
   }
   const onLanding = state.view === "auth" ? state.authStep === "login" : state.screen === "site";
-  if (onLanding) mountLandingMotion(mount, state.landingSeen);
+  if (onLanding && landingChunk.get()) mountLandingMotion(mount, state.landingSeen);
   else unmountLandingMotion();
   if (field) {
     const el = mount.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${field}"]`);
@@ -2212,14 +2273,14 @@ function runArtEffect(fx: ArtEffect): void {
  *  artAcceptNvFile refuses a file from the other side of it. */
 function readArtFile(file: File | undefined | null, target: "create" | "nv" = "create"): void {
   if (!file) return;
-  const accept = (f: ArtFile) => {
-    if (target === "create") artAcceptFile(state.art, f);
+  const accept = (f: ArtFile) => withChunk(artifactsChunk, (art) => {
+    if (target === "create") art.artAcceptFile(state.art, f);
     else {
       const d = state.art.details[detailKey(state.artRoute.slug ?? "", state.artRoute.v)]?.data;
-      if (d) artAcceptNvFile(state.art, d.kind, f);
+      if (d) art.artAcceptNvFile(state.art, d.kind, f);
     }
     rerender();
-  };
+  });
   if (isBinaryKind(kindForFilename(file.name))) {
     accept({ name: file.name, size: file.size, text: null, blob: file });
     return;
@@ -2270,12 +2331,25 @@ function confirmOut(then: () => void): void {
 }
 
 // ── Platform (superadmin): its loads and acts live in platform-actions.ts ────
-const platform = createPlatform({
-  state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
-  // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
-  // On the standalone page there is no My Work to fall back to: the picker.
-  leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
-});
+// Its own chunk (platform-lazy.ts): the controller is made when the chunk lands, and a load or an
+// act asked for before then runs once it has (`withChunk`).
+type PlatformCtl = ReturnType<typeof import("./platform-actions").createPlatform>;
+let platformCtl: PlatformCtl | null = null;
+const platform = {
+  run(fn: (c: PlatformCtl) => void): void {
+    withChunk(platformChunk, (m) => {
+      platformCtl ??= m.createPlatform({
+        state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
+        // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
+        // On the standalone page there is no My Work to fall back to: the picker.
+        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
+      });
+      fn(platformCtl);
+    });
+  },
+  load(): void { platform.run((c) => c.load()); },
+  act(act: string, arg: string | null, value: string | null): void { platform.run((c) => c.act(act, arg, value)); },
+};
 
 
 // Copy text to the clipboard. Prefers the async Clipboard API (available on
@@ -2346,6 +2420,9 @@ function scheduleRenameCheck(): void {
 // delegate passes `selectionStart` for inputs/textareas). Only the @mention
 // picker needs it; every other case ignores it.
 function dispatch(act: string, arg: string | null, value: string | null, caret: number | null = null): void {
+  // The landing page's acts — Sign in, the tour, the menu, the jumps (landing-actions.ts, shared with the
+  // signed-out page's own boot, landing-page.ts).
+  if (landingCtl.act(act, arg)) return;
   switch (act) {
     // The state preview's banner: switch to the other state, or close it ("" = off). The flag
     // lives in the address bar, so it is rewritten there; nothing is loaded or sent.
@@ -2356,26 +2433,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     // auth state navigation (how the screens become reachable)
-    case "signIn":
-      // Return-to: the hash never reaches the server, so stash it for the boot
-      // after /auth/callback lands on "/" (an email deep link survives sign-in).
-      // Not #site: that IS the landing page, and returning to it strands them outside the app.
-      // The org they were on (`/<slug>/`) is stashed the same way: the callback lands on "/".
-      try {
-        if (location.hash && location.hash !== "#site") sessionStorage.setItem(RETURN_HASH_KEY, location.hash);
-        const from = orgSlugFromPath(location.pathname);
-        if (from) sessionStorage.setItem(RETURN_ORG_KEY, from);
-      } catch { /* ignore */ }
-      window.location.href = "/auth/login";
-      return;
-    case "signInGoogle":
-      try {
-        if (location.hash && location.hash !== "#site") sessionStorage.setItem(RETURN_HASH_KEY, location.hash);
-        const from = orgSlugFromPath(location.pathname);
-        if (from) sessionStorage.setItem(RETURN_ORG_KEY, from);
-      } catch { /* ignore */ }
-      window.location.href = "/auth/google/login";
-      return;
     case "signInGoogleSwitch": window.location.href = "/auth/google/login?prompt=select_account"; return;
     case "onbHandle": {
       state.onboard.handle = (value ?? "").trim();
@@ -2458,21 +2515,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         });
       return;
     }
-    // Landing page (signed out): the Sign in dialog, and in-page jumps. The jumps
-    // scroll instead of setting location.hash — the hash is the route and the
-    // sign-in return-to, and must survive a browse of the landing page.
-    case "openSignIn": {
-      // `arg` says what the visitor came to do ("signup" from a Start-for-free button, or the dialog's own
-      // switch); anything else is the nav's Sign in. Switching inside the open dialog keeps focus on the switch.
-      const switching = state.signInOpen;
-      menuCtl.close({ instant: true, refocus: false }); // opened from the menu: the sign-in sheet takes its place
-      state.signInMode = arg === "signup" ? "signup" : "signin";
-      state.signInOpen = true;
-      rerender();
-      mount.querySelector<HTMLElement>(switching ? '[role="dialog"] [data-field="signInSwitch"]' : '[role="dialog"] [data-act="signIn"]')?.focus();
-      return;
-    }
-    case "signInPlan": state.signInPlan = arg === "team" ? "team" : "free"; break;
     // After payment, "Set up your organization": on to the welcome card IN PLACE (the card morphs into
     // it), not by loading `/?setup=…`. Anything unexpected falls back to that page load.
     case "billingSetup": {
@@ -2488,40 +2530,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     // The payment page's fallback (billing-checkout.ts): Stripe's hosted checkout, when its form would not open here.
     case "billingHosted": void billingCheckoutHosted(billingCheckoutHost); return;
-    case "closeSignIn": state.signInOpen = false; break;
-    // The tour's dialog (site-feature.ts): a card grows into it, ← / → step through the features.
-    // The menu the nav offers under 900px (site-menu.ts).
-    case "openSiteMenu": menuCtl.open(); return;
-    case "closeSiteMenu": menuCtl.close(); return;
-    case "openFeature": if (arg) featureCtl.open(arg); return;
-    case "closeFeature": featureCtl.close(); return;
-    case "stepFeature": featureCtl.step(arg === "prev" ? -1 : 1); return;
-    // The landing's "Get started": signed in, straight to the guide; signed out, the
-    // guide becomes the sign-in return-to (replaceState: no hashchange, no route) and
-    // the Sign in dialog opens.
-    case "siteGuide":
-      if (state.me) {
-        state.siteReturn = null;
-        const guide = parseHash("#guide");
-        applyRoute(guide);
-        loadForScreen(guide.screen);
-        window.scrollTo(0, 0);
-        return;
-      }
-      history.replaceState(null, "", `${location.pathname}#guide`);
-      dispatch("openSignIn", null, null);
-      return;
-    case "siteJump": {
-      const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-      // ONE scroll per click; where it lands is the target's `scroll-margin-top` (trov.css). Sections
-      // passed on the way settle without their entrance (landing-motion.ts).
-      // From the menu: it closes (unlocking the page's scroll at once) and the page scrolls under it as it leaves.
-      menuCtl.close({ refocus: false });
-      noteJump();
-      if (arg === "top") window.scrollTo({ top: 0, behavior });
-      else document.getElementById(`site-${arg}`)?.scrollIntoView({ behavior, block: "start" });
-      return;
-    }
     case "backToLogin":
       state.authStep = "login";
       history.replaceState({}, "", "/");
@@ -2549,14 +2557,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       rerender();
       window.scrollTo(0, 0);
       return;
-    case "siteBack": {
-      menuCtl.close({ instant: true, refocus: false });
-      const back = state.siteReturn ?? parseHash("");
-      state.siteReturn = null;
-      applyRoute(back);
-      loadForScreen(back.screen);
-      return;
-    }
 
     // primary navigation
     case "goMyWork":
@@ -4124,11 +4124,20 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
-      if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
+      if (act.startsWith("org")) {
+        if (act === "orgGo") {
+          loadOrgAdminExtras();
+          // Org settings is its own chunk: until it is in, the screen opens at once on its skeleton
+          // (what orgGo itself sets, org-actions.ts), and the act runs again — with its reads — once it lands.
+          if (!orgChunk.get()) { state.screen = "org"; state.personCard = null; if (isOrgTab(arg)) state.org.tab = arg; state.org.repoPage = null; rerender(); }
+        }
+        orgCtl.act(act, arg, value);
+        return;
+      }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
-        const run = () => runArtEffect(artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: viewerIsAdmin(state), host: `${location.origin}${orgBase(state.orgSlug).replace(/\/$/, "")}`, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value));
+        const run = () => withChunk(artifactsChunk, (art) => runArtEffect(art.artifactsAct(state.art, { screen, route: state.artRoute, me: state.me?.handle ?? "", admin: viewerIsAdmin(state), host: `${location.origin}${orgBase(state.orgSlug).replace(/\/$/, "")}`, sprints: state.sprints.data.map((x) => ({ id: x.id, label: x.label, dates: sprintDatesLabel(x), active: x.active })) }, act, arg, value)));
         // The delete confirm plays its exit before it closes (Escape, the backdrop, Cancel).
         if (act === "artDeleteCancel" && state.art.deleteArm && !state.art.deleteBusy) confirmOut(run);
         else run();
@@ -4829,41 +4838,25 @@ mount.addEventListener("mouseleave", () => railTip(null));
 // A status mark's tooltip (`data-mtip`, marks.ts): one styled bubble on <body>, placed by tip.ts.
 installMarkTips(mount);
 
-// The landing tour's dialog: Escape, ← / →, and Tab kept inside it.
-const featureCtl = createFeatureCtl({ mount, keys: TOUR_KEYS, get: () => state.siteFeature, set: (v) => { state.siteFeature = v; }, rerender: () => rerender() });
-document.addEventListener("keydown", (e) => featureCtl.onKey(e));
-// A phone steps through the tour's dialog by swiping it left or right (site-feature.ts `onSwipe*`).
-mount.addEventListener("pointerdown", (e) => featureCtl.onPointerDown(e));
-mount.addEventListener("pointerup", (e) => featureCtl.onPointerUp(e));
-mount.addEventListener("pointercancel", () => featureCtl.onPointerCancel());
 
-// The landing's menu (under 900px): Escape, Tab kept inside it, and gone when the window outgrows it.
-const menuCtl = createMenuCtl({ mount, get: () => state.siteMenu, set: (v) => { state.siteMenu = v; }, rerender: () => rerender() });
-document.addEventListener("keydown", (e) => menuCtl.onKey(e));
-window.addEventListener("resize", () => menuCtl.onResize());
-// The on-screen keyboard: the site's sheets stay above it (site-viewport.ts sets `--site-kb`).
-initSiteViewport();
-
-// Escape closes the landing page's sign-in dialog, wherever focus is.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
-  state.signInOpen = false;
-  rerender();
-});
-// …and Tab stays inside it (it is `aria-modal`): from the last stop — the consent's links — back to the
-// first, and the reverse, so a keyboard never wanders onto the page behind (the compliance pass's keyboard check).
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Tab" || !state.signInOpen || state.view !== "auth") return;
-  const dialog = document.querySelector<HTMLElement>('[data-overlay="signin"] [role="dialog"]');
-  if (!dialog) return;
-  const stops = [...dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')]
-    .filter((el) => el.offsetParent !== null || el === document.activeElement);
-  if (!stops.length) return;
-  const first = stops[0], last = stops[stops.length - 1];
-  const at = document.activeElement as HTMLElement | null;
-  if (!at || !dialog.contains(at)) { e.preventDefault(); first.focus(); return; }
-  if (e.shiftKey && at === first) { e.preventDefault(); last.focus(); }
-  else if (!e.shiftKey && at === last) { e.preventDefault(); first.focus(); }
+// The landing page (landing-actions.ts): the Sign in dialog, the tour's dialog, the menu under 900px, the
+// in-page jumps and their keyboard. Signed in (the landing reopened by the sidebar logo, `#site`), "Get
+// started" opens the Guide and the nav's way back returns to where the logo was clicked from.
+const landingCtl = createLandingController({
+  state, mount, rerender: () => rerender(),
+  guide: () => {
+    state.siteReturn = null;
+    const guide = parseHash("#guide");
+    applyRoute(guide);
+    loadForScreen(guide.screen);
+    window.scrollTo(0, 0);
+  },
+  back: () => {
+    const back = state.siteReturn ?? parseHash("");
+    state.siteReturn = null;
+    applyRoute(back);
+    loadForScreen(back.screen);
+  },
 });
 
 // The payment page (`/billing/checkout`, embedded checkout). Stripe.js is loaded from here and nowhere
@@ -4924,14 +4917,10 @@ if (params.get("denied") === "1") {
       history.replaceState(null, "", "/");
       rerender();
     });
-} else if (mount.querySelector(':scope > * > [data-morph="landing"]')) {
-  // The PRERENDERED landing page: the Worker sends it for `/` only to a request with no session cookie
-  // (src/site.ts — the app shell otherwise, and always with the local DEV_LOGIN), and the build made it
-  // from this very render (web/src/site-prerender.ts). So there is nobody to ask about: no "Signing you
-  // in…" card and no /auth/me, which could only answer unauthorized. This paint MORPHS the markup already
-  // on screen (`data-morph="landing"`, morph.ts): nothing is rebuilt or flashes, and the reveals play.
-  showSignedOut();
 } else {
+  // (The PRERENDERED landing page — `/` with no session cookie — is booted by its own script,
+  // landing-page.ts, which hands the page to this one only for what it does not answer: `?denied=`,
+  // `#onboard`, and a page without the prerendered markup.)
   // Show "verifying" while we check if a session cookie exists
   state.view = "auth";
   state.authStep = "verifying";

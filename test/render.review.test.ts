@@ -31,6 +31,11 @@ import { maintenanceView, assignPanel, fileHint, type MaintenanceProps, type Unp
 import { identitySection, personPicker, type IdentityProps, type IdentityGroup } from "../web/src/identity";
 import { render, initialState, triageCounts, identityCount } from "../web/src/render";
 import mainSrc from "../web/src/main.ts?raw";
+import { setMarkdownLib } from "../web/src/markdown-load";
+import * as markdownLibModule from "../web/src/markdown-lib";
+
+// The Markdown chunk (marked's lexer, which the Rendered view cuts blocks with) as if it had loaded.
+setMarkdownLib(markdownLibModule);
 
 // ── lineDiff ──────────────────────────────────────────────────────────────────
 

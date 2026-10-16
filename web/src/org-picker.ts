@@ -21,7 +21,7 @@ import { PLANS, FREE_PLAN, UPGRADE_PLAN, giftLengthWords, seatsPhrase, type MyGr
 import { BILLING_GRANTER } from "@shared/billing";
 import { esc, attr, relTime, surface } from "./ui";
 import { accentBtn, quietBtn, orgBanner, roleWord } from "./org-ui";
-import { nameError, addOrgServerError } from "./platform";
+import { nameError, addOrgServerError } from "./platform-core";
 import { orgHref } from "./org-context";
 import { orgTile } from "./org-logo";
 import { skeleton, skLine } from "./skeleton";
