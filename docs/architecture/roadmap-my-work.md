@@ -109,11 +109,12 @@ rectangle: Brief on the left (8 of 12 columns) beside Needs your review over Doc
 Tickets for you (the wide slot, BR-OWNER-3); Repo wide beside Queued handoffs (`libraryTiles` gives the two small
 tiles; Artifacts is not drawn here — the owner's call; the strip without a brief keeps it). A SHORT tile under
 Needs your review is the point (the owner, 2026-10-16): with Repo there the right column was 556px and stretched the
-brief to it; with Docs you own it is ~429px, the brief's own height. The tiles are in that visual order, and the
+brief to it. Needs your review is slim (one-line titles, 64px rows) and Docs you own's row takes the rest of the
+brief's height (`grid-template-rows:auto 1fr auto auto`): 258 + 12 + 135 = the brief's 405 at 1456. The tiles are in that visual order, and the
 entrance follows it. **Nothing in the
 bento scrolls** (BR-OWNER-1/2): the rows size to what the tiles hold, and all of it is bounded. The brief is ONE
 shape (`ai.md` › The brief; fixed boxes, `web-ui.md` › The AI kit); Needs your review and Tickets for you
-hold TWO rows each in fixed boxes (`MW_BESIDE_ROWS`; a title clamped to two lines) then "N more in Review" /
+hold TWO rows each in fixed boxes (`MW_BESIDE_ROWS`; a ticket title clamped to two lines, a review title to one) then "N more in Review" /
 "N more in the queue" (that one opens the queue filtered to me), the line's place and unused rows kept, every state
 (loading, empty, failed) in the same fixed body. Repo, wide in the last row, is its usual tile (`repoTile` still
 has a narrow two-row `beside` form, unused since the 2026-10-16 swap). The brief's parts never stretch to the row. Below the 700px container breakpoint every tile is full width at its natural

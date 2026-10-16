@@ -206,7 +206,11 @@ describe("My Work › Your brief", () => {
   "brief brief brief brief brief brief brief brief review review review review"
   "brief brief brief brief brief brief brief brief docs docs docs docs"
   "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
-  "repo repo repo repo repo repo repo repo hand hand hand hand"; }`);
+  "repo repo repo repo repo repo repo repo hand hand hand hand";`);
+    // Docs you own's row takes what the brief has over Needs your review, which is slim: one-line titles, 64px rows.
+    expect(css).toContain("  grid-template-rows:auto 1fr auto auto; }");
+    expect(css).toContain('.mw-side-body[data-side="review"] .mw-side-row { height:64px; }');
+    expect(css).toContain("  .mw-bento-brief { grid-template-areas:none; grid-template-rows:none; }");
     // A phone stacks Brief, Needs your review, Tickets for you, Repo, then the rest — and the entrance follows it.
     for (const [k, n] of [["brief", 1], ["review", 2], ["tickets", 3], ["repo", 4], ["sessions", 5], ["docs", 6], ["handoffs", 7]] as const) {
       expect(css).toContain(`  .mw-bento-brief > [data-mw="${k}"]${k === "brief" ? ", .mw-bento-brief > .cnpy-ai-leave" : ""} { order:${n}; }`);
@@ -224,7 +228,7 @@ describe("My Work › Your brief", () => {
     expect(html.slice(open, html.indexOf("</section>", open))).not.toContain("mw-scroll");
     const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
     for (const m of rules.matchAll(/([^{}]*\.mw-bento-brief[^{}]*)\{([^{}]*)\}/g)) {
-      expect(m[2], m[1].trim()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)|(^|[;\s])height:(?!100%)|grid-template-rows:(?!none)/);
+      expect(m[2], m[1].trim()).not.toMatch(/overflow(-y)?:\s*(auto|scroll)|(^|[;\s])height:(?!100%)|grid-template-rows:(?!none|auto 1fr auto auto;)/);
     }
     // Without a brief: the strip across the page, all three parts in one tile, no area layout.
     const plain = render(app({ screen: "mywork", mywork: { status: "ok", data: dash({}) } }));

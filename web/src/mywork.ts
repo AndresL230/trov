@@ -132,8 +132,8 @@ export const MW_ROWS = 3;
 // there is none, and unused rows kept empty: so each tile is one height whatever it holds, the pair lines up with
 // the brief, and nothing scrolls. Without the brief they are exactly as before.
 export const MW_BESIDE_ROWS = 2;
-/** A title that may not fit its two lines: its whole text is the tooltip. */
-const sideTip = (title: string): string => (title.length > 40 ? ` data-mtip="${attr(title)}"` : "");
+/** A title that may not fit its box (two lines; Needs your review's one, `fits` 20): its whole text is the tooltip. */
+const sideTip = (title: string, fits = 40): string => (title.length > fits ? ` data-mtip="${attr(title)}"` : "");
 const sidePads = (n: number): string =>
   Array.from({ length: Math.max(0, MW_BESIDE_ROWS - n) }, () => `<div class="mw-side-row mw-side-pad" aria-hidden="true"></div>`).join("");
 /** The "N more" line's place: the line itself, or kept empty. */
@@ -212,7 +212,7 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number, besi
   const n = beside ? MW_BESIDE_ROWS : 3;
   const rows = items.slice(0, n).map((it) => `<div class="mw-row${beside ? " mw-side-row" : ""}" style="display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--border)">
       <button data-act="mwOpenReview" data-arg="${attr(it.id)}" style="flex:1;min-width:0;display:block;text-align:left;padding:0">
-        <span${beside ? ` class="mw-side-title"${sideTip(it.title)}` : ""} style="${ROW_TITLE}">${esc(it.title)}</span>
+        <span${beside ? ` class="mw-side-title"${sideTip(it.title, 20)}` : ""} style="${ROW_TITLE}">${esc(it.title)}</span>
         <span${beside ? ` class="mw-side-meta"` : ""} style="${META};margin-top:4px">
           <span style="white-space:nowrap;color:var(--fg-55)">${it.kind === "decision" ? "Decision" : "Proposal"}</span>
           ${sep}<span style="white-space:nowrap">${esc(it.time)}</span>

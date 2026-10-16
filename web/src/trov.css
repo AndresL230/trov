@@ -79,7 +79,10 @@ input, select { font-family: inherit; }
   "brief brief brief brief brief brief brief brief review review review review"
   "brief brief brief brief brief brief brief brief docs docs docs docs"
   "sessions sessions sessions sessions tickets tickets tickets tickets tickets tickets tickets tickets"
-  "repo repo repo repo repo repo repo repo hand hand hand hand"; }
+  "repo repo repo repo repo repo repo repo hand hand hand hand";
+  /* Docs you own's row takes what the brief has over Needs your review (the owner, 2026-10-16: the tile on top
+     slim, the one below taller); every other row is its content's height. */
+  grid-template-rows:auto 1fr auto auto; }
 /* NO tile scrolls (the owner, BR-OWNER-1 — replacing the fixed-height rows of earlier on 2026-10-15): the rows
    size to what the tiles hold, and everything they hold is bounded — the brief is ONE shape (`.mw-brief-*`
    below), Needs your review and Tickets show at most three rows, Your sessions two, Repo keeps its own floor.
@@ -91,7 +94,11 @@ input, select { font-family: inherit; }
    rows are kept empty. Every state of a tile fills the same body (`.mw-side-body`, `.mw-side-swap`), so a tile is
    one height whatever it holds. */
 .mw-side-body { display:flex; flex-direction:column; flex:1 1 auto; }
-.mw-side-body[data-side="review"] { min-height:259px; }
+/* Needs your review is slim (the owner, 2026-10-16): a one-line title over its meta line, 64px rows — the count
+   (52), two rows and the "N more" line (39). */
+.mw-side-body[data-side="review"] { min-height:219px; }
+.mw-side-body[data-side="review"] .mw-side-row { height:64px; }
+.mw-side-body[data-side="review"] .mw-side-title { -webkit-line-clamp:1; line-clamp:1; max-height:20px; }
 .mw-side-body[data-side="tickets"] { min-height:239px; }
 .mw-side-rows { display:flex; flex-direction:column; flex:1 1 auto; }
 .mw-side-row { box-sizing:border-box; height:84px; flex:none; overflow:hidden; }
@@ -131,7 +138,7 @@ input, select { font-family: inherit; }
 .mw-handoff:hover { border-color:color-mix(in srgb,var(--blue) 45%,transparent) !important; }
 @container mwmain (max-width: 700px) {
   .mw-tile { grid-column:span 12; }
-  .mw-bento-brief { grid-template-areas:none; }
+  .mw-bento-brief { grid-template-areas:none; grid-template-rows:none; }
   .mw-bento-brief > [data-mw="brief"], .mw-bento-brief > .cnpy-ai-leave { order:1; }
   .mw-bento-brief > [data-mw="review"] { order:2; }
   .mw-bento-brief > [data-mw="tickets"] { order:3; }
