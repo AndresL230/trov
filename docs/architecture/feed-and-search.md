@@ -173,7 +173,9 @@ breaking an amber triangle, each with its word and a tooltip saying it is Sift's
 (`test/render.feed-importance.test.ts`). The mark has no motion of its own: it enters with its row (the Feed's
 `.cnpy-stagger` entrance, on a route change only, off under reduced motion), so a rerender never replays it.
 `LOCAL_AI_PREVIEW` merges two rated agent entries (`feedImportanceFixtures`)
-into `/feed`; the dev seed rates a few entries and PRs.
+into `/feed`; the dev seed rates a few entries and PRs. A stored rating is a RECORD, not a computed surface (owner
+ruling Q32): it keeps showing — the Feed's mark, `get_feed`, the daily e-mail's "Also" — with the org's AI switch
+off or no Anthropic key; off only stops NEW ratings (`test/ai.records-off.test.ts`).
 
 **Entries written by Trov** (`FeedRow.ai?`, `shared/ai-core.ts` `AiFeedMeta`: `origin: "ai"`, the person it was
 written for, its sources). The SESSION DIGESTS (`ai.md` › Session digests): a `Shipped:` / `Status:` entry the AI
@@ -183,7 +185,9 @@ read of the feed (`get_feed`: `/feed` and MCP) folds those three columns into `a
 `src/tools/feed-ai.ts`) — `subject`, `sources` (the server's cites built from the entry's own `artifacts`: PRs, then
 commits, linked to the digest's repository from `ai_sessions`; no repository = no link, never a guess), the
 first `AI_FEED_SOURCES_SHOWN` (3) and `moreCount` the rest, `generatedAt` (`created_at`) and `model` — and drops them
-from the row; an agent's entry carries no `ai`, exactly as before. `/feed` and MCP `get_feed` both leave out a
+from the row; an agent's entry carries no `ai`, exactly as before. The entry is a record (owner ruling Q29): it keeps
+its `ai` with the org's switch off or no key — off writes no new one; only the web's one-time "Trov now writes…"
+note goes (it reads `GET /ai/settings`' `enabled` / `eligibility`). `/feed` and MCP `get_feed` both leave out a
 Trov entry the caller flagged "Wrong?" (`hideWrongFor`: `ai_feedback` item type `feed`, ref = the entry's id —
 `aiItemRef.feed`, what the Feed's button sends; for them only; the record stays). Its `importance` is Phase C's `feed.importance` (Jev,
 `card:feed`), which the router's `feed_ingested` mark asks for like any entry. `LOCAL_AI_PREVIEW` merges two
