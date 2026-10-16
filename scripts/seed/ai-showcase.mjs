@@ -840,7 +840,7 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
     recently: { text: "You shipped hosting providers behind one interface and shared GitHub installs across orgs.", cites: [prCite(185), prCite(171), feedCite(IDS.feed.hosting, "Shipped: hosting providers behind one interface")] },
     next: { items: nextItems },
   };
-  s.push(insert("person_brief", { org_id: ORG, handle: ME, version: 2, generated_at: c.ago(9), model: HAIKU, prompt_version: "brief.2", input_hash: "ai-showcase", brief_json: brief }));
+  s.push(insert("person_brief", { org_id: ORG, handle: ME, version: 2, generated_at: c.ago(9), model: HAIKU, prompt_version: "brief.3", input_hash: "ai-showcase", brief_json: brief }));
   s.push(`UPDATE memberships SET mywork_opened_at = ${q(c.ago(2))} WHERE org_id = '${ORG}' AND user_id = '${ME}'`);
 
   // ── Repo › Overview › State: three versions, the newest drawn ──

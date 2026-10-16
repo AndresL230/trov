@@ -99,7 +99,7 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     await runAiPass(keyedEnv(), newBudget(s.fetchImpl), { jobs: [briefJob], now: new Date(Date.now() + 31 * MIN) });
     expect(s.haiku).toBe(1);
     const row = (await latestBrief(ctx(), ME))!;
-    expect(row).toMatchObject({ version: 1, model: "claude-haiku-5-5", prompt_version: "brief.2" });
+    expect(row).toMatchObject({ version: 1, model: "claude-haiku-5-5", prompt_version: "brief.3" });
 
     // The real read: the same brief on the cookie route and on MCP's getMyWork, generatedAt = the row's.
     const data = await dashboard(cookie);

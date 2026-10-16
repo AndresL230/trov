@@ -173,6 +173,8 @@ input, select { font-family: inherit; }
 .mw-brief-body { min-height:300px; display:flex; flex-direction:column; gap:8px; }
 .mw-brief-text { margin:0; font-size:14px; line-height:22px; height:44px; overflow:hidden; overflow-wrap:anywhere; text-wrap:pretty; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
 .mw-brief-cites { display:flex; align-items:center; gap:6px; height:20px; font-size:12.5px; line-height:20px; white-space:nowrap; overflow:hidden; min-width:0; }
+.mw-brief-cites > * { flex:none; }
+.mw-brief-cites > :last-child { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .mw-brief-none { color:var(--fg-55); }
 .mw-brief-list { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; min-width:0; }
 .mw-brief-next { display:flex; gap:12px; align-items:baseline; min-width:0; height:40px; }
@@ -201,6 +203,8 @@ input, select { font-family: inherit; }
 @container mwmain (max-width: 560px) {
   .mw-brief-grid { grid-template-columns:minmax(0,1fr); row-gap:4px; }
   .mw-brief-grid > :nth-child(2n):not(:last-child) { margin-bottom:10px; }
+  /* The why is beside the mark, ~165px wide at 360: four lines hold an 80-character why. */
+  .mw-brief-why { -webkit-line-clamp:4; line-clamp:4; }
 }
 .repo-state-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); gap:20px; }
 .cnpy-ai-cite:hover { text-decoration:underline; text-underline-offset:2px; }

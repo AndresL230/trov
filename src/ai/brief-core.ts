@@ -7,14 +7,20 @@ import { AI_BRIEF_CITES_MAX, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_
 import { each, sections } from "./sections";
 
 export const BRIEF_JOB = "brief.person";
-/** brief.2 (BR-OWNER-1): the one shape — one sentence each for Now and Recently, at most three Next items, short whys. */
-export const BRIEF_PROMPT_VERSION = "brief.2";
+/** brief.2 (BR-OWNER-1): the one shape — one sentence each for Now and Recently, at most three Next items, short whys.
+ *  brief.3: the lengths as WORD budgets under the character caps (brief.2's live run went past a cap in 7 of 10 cases,
+ *  and an answer past a cap is dropped, so a Now or Recently with material read "Nothing new."). */
+export const BRIEF_PROMPT_VERSION = "brief.3";
 /** What Recently looks back over. */
 export const BRIEF_RECENT_DAYS = 7;
 /** The brief's one shape (shared/ai-core.ts `AI_BRIEF_*`): lengths an answer may not pass — a longer one is DROPPED
  *  (the line is left out; a why falls back to the server's own), never cut — and how many Next items are offered. */
 export const BRIEF_LINE_MAX = AI_BRIEF_LINE_MAX;
 export const BRIEF_WHY_MAX = AI_BRIEF_WHY_MAX;
+/** The budgets the prompt asks for (brief.3): words, which a model keeps, sized well under the character caps it
+ *  does not count reliably — 20 words is ~125 characters, 10 words ~60. */
+export const BRIEF_LINE_WORDS = 20;
+export const BRIEF_WHY_WORDS = 10;
 export const BRIEF_NEXT_MAX = AI_BRIEF_NEXT_MAX;
 const MAX_CITES = AI_BRIEF_CITES_MAX;
 
@@ -101,10 +107,10 @@ export const BRIEF_SYSTEM = [
   "",
   "Rules:",
   "- Write to the person as \"you\". Plain words and short sentences. No markdown, no emoji, no jargon, no file names.",
-  `- now: exactly ONE sentence (at most ${BRIEF_LINE_MAX} characters) on the work they are in the middle of: their open pull requests, what is failing on them, and their latest status note. Pick what matters most; do not list everything. Use null when the input has nothing under Now.`,
-  `- recently: exactly ONE sentence (at most ${BRIEF_LINE_MAX} characters) on what they finished in the last 7 days, from their merged pull requests and session notes. Name the one or two things that matter most. Use null when the input has nothing under Recently.`,
+  `- now: exactly ONE sentence of at most ${BRIEF_LINE_WORDS} words (a hard limit of ${BRIEF_LINE_MAX} characters) on the work they are in the middle of: their open pull requests, what is failing on them, and their latest status note. Pick what matters most; do not list everything. Use null when the input has nothing under Now.`,
+  `- recently: exactly ONE sentence of at most ${BRIEF_LINE_WORDS} words (a hard limit of ${BRIEF_LINE_MAX} characters) on what they finished in the last 7 days, from their merged pull requests and session notes. Name the one or two things that matter most. Use null when the input has nothing under Recently.`,
   "- cites: the refs each sentence is written from, copied exactly from the input. Never a ref that is not in the input. Refs go ONLY in cites: never write one (pr:12, feed:107, run:4812) in a sentence. In a sentence, a pull request is #12; anything else is named in words.",
-  `- next: for EACH offered Next item (there are at most ${BRIEF_NEXT_MAX}), its ref copied exactly, and why: one short sentence of at most ${BRIEF_WHY_MAX} characters on why it matters now, using only that item's facts. Keep the input's order. Never add an item, and do not repeat its title.`,
+  `- next: for EACH offered Next item (there are at most ${BRIEF_NEXT_MAX}), its ref copied exactly, and why: ONE short clause of at most ${BRIEF_WHY_WORDS} words (a hard limit of ${BRIEF_WHY_MAX} characters; count the words) on why it matters now, using only that item's facts. One reason, not two joined by "and" or "so". Keep the input's order. Never add an item, and do not repeat its title.`,
   "- Never write a number, date or count that is not in the input, in digits or in words. The only counts you may use are the ones in brackets after a heading.",
   "- Write a date only as the input writes it in words (Jun 10); never as 2026-06-10.",
   "- Say only what the facts say. Do not add events, reasons or plans that are not in the input (a push, a review, a deadline). Do not guess.",

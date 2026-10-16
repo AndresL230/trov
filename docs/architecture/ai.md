@@ -495,10 +495,13 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
     requests (2)") — the only counts the model may use.
 - **ONE SHAPE** (the owner, BR-OWNER-1; `AI_BRIEF_*` in `shared/ai-core.ts`): Now and Recently are ONE sentence each
   of at most 160 characters with at most 3 sources, Next at most 3 items (one per kind), each why at most 80 — so My
-  Work's tile is the same height every time and never scrolls (`web-ui.md` › The AI kit). Prompt `brief.2` asks for
-  exactly that; the server below drops what is past it. **The recorded eval answers are for `brief.1`**: the CI
-  replay (`test/ai-evals.brief.test.ts`) fails until `scripts/ai-evals/brief-live.ts` is run live once for `brief.2`
-  (the eval set now offers three, one per kind, and grades `one_shape`).
+  Work's tile is the same height every time and never scrolls (`web-ui.md` › The AI kit). Prompt `brief.3` asks for
+  it in WORDS — a sentence at most 20 (`BRIEF_LINE_WORDS`), a why ONE clause of at most 10 (`BRIEF_WHY_WORDS`) — with
+  the character caps named as hard limits; the server below drops what is past a cap. Words because the model does
+  not count characters: `brief.2` (characters only) went past a cap in 7 of 10 live cases, and a dropped Now or
+  Recently reads "Nothing new." with material there. `brief.3` recorded 2026-10-16: raw and kept 1.000 over the 10
+  cases; every recorded brief rendered through `briefTile` fits its boxes at 1440 / 1280 / 1024 / 390 / 360, light
+  and dark (no sentence or why clamped; only item titles and a worded last source end in "…").
 - **The answer and the server's checks** (`briefFromAnswer`): `now` and `recently` are kept only when the input
   has something for them, their text is ONE sentence (`oneSentence`) ≤ `BRIEF_LINE_MAX` (160) — dropped, never cut —
   has no ISO date (the app writes "Jun 10"), has NO ref written into it

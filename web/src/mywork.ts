@@ -486,7 +486,10 @@ function briefLine(line: AiLine | null, i: number): string {
   const text = line
     ? `<p class="mw-brief-text"${tipIf(line.text, AI_BRIEF_LINE_MAX)}>${esc(line.text)}</p>`
     : `<p class="mw-brief-text mw-brief-none">${NOTHING_NEW}</p>`;
-  const cites = line?.cites.length ? aiCites(line.cites.slice(0, AI_BRIEF_CITES_MAX)) : "";
+  // The short `#N` sources first, a worded one (a status note's title) last: the row is one line, and only its last
+  // source gives way, ending in "…" (trov.css `.mw-brief-cites`).
+  const shown = line?.cites.slice(0, AI_BRIEF_CITES_MAX) ?? [];
+  const cites = shown.length ? aiCites([...shown.filter((c) => c.label.startsWith("#")), ...shown.filter((c) => !c.label.startsWith("#"))]) : "";
   return `<div class="mw-brief-line cnpy-rise" style="--i:${i};display:flex;flex-direction:column;gap:6px;min-width:0">
       ${text}<div class="mw-brief-cites"${cites ? "" : ` aria-hidden="true"`}>${cites}</div>
     </div>`;

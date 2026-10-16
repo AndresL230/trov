@@ -182,7 +182,7 @@ describe("beside the brief (BR-OWNER-2/3): two rows each in fixed boxes, then 'N
     expect(one).toContain('class="mw-side-foot mw-side-foot-pad" aria-hidden="true"');
     // A long title keeps its whole text as the row's tooltip; the box clamps it to two lines.
     const long = "Token rotation & audit log for every connection and its secrets, end to end";
-    expect(ticketsTile({ load: "ok", rows: [makeTicket({ id: 1, title: long })] }, false, 8, () => null, true)).toContain(`class="mw-side-title" data-mtip="${long}"`);
+    expect(ticketsTile({ load: "ok", rows: [makeTicket({ id: 1, title: long })] }, false, 8, () => null, true)).toContain(`class="mw-side-title" data-mtip="${long.replace("&", "&amp;")}"`);
   });
 
   it("Repo, narrow under Needs your review: two rows (titles truncate), then 'N more in Repo'", () => {
