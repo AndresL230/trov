@@ -141,10 +141,12 @@ export const RELEASES: Release[] = [
         "Railway's old tokens no longer show as two connected cards, and a disconnected host reads the same on its card and its parts (#186)",
         "What's new: a release's notes run beside the whole page, so its highlights or patch lines start right under the title (#188)",
         "The local dev seed now loads on a brand-new local database without --reset (#189)",
+        "On a phone, the Open navigation button is a full 44×44 touch target (#192)",
+        "Tab into a switch lands on the picked option; arrow keys move between options, and focus stays after a pick (#192)",
       ],
       removed: [],
     },
-    prs: [186, 187, 188, 189, 190],
+    prs: [186, 187, 188, 189, 190, 192],
   },
   // Trov writes for you (#178): Ask Trov, the AI pass, My Work's brief, the shorter digest.
   {

@@ -51,6 +51,16 @@ describe("phone drawer — attributes on the root, never a different tree", () =
     expect(shut.indexOf('class="cnpy-scrim"')).toBeGreaterThan(shut.indexOf("</main>"));
   });
 
+  it("CSS: the menu button is a 44×44 touch target that still takes the header's old 40px slot", () => {
+    const rule = rules.match(/\[data-phone="1"\] \.cnpy-menubtn \{([^}]*)\}/)?.[1] ?? "";
+    expect(rule).toContain("width:44px;");
+    expect(rule).toContain("height:44px;");
+    // Negative margins give the 4px back, so the header row and the title don't move:
+    // 2px above / below / right, and the old -8px pull to the gutter plus 2px on the left.
+    expect(rule).toContain("margin:-2px -2px -2px -10px;");
+    expect(rule).not.toMatch(/(^|[^-])(width|height):40px/);
+  });
+
   it("CSS: hidden off a phone; on a phone the rail is fixed off-canvas and slides in when open", () => {
     expect(rules).toContain(".cnpy-menubtn, .cnpy-scrim { display:none; }");
     expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*position:fixed;[^}]*transform:translateX\(-100%\);[^}]*visibility:hidden;/);

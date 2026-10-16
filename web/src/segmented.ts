@@ -11,9 +11,21 @@
 // markup is right with no script at all. Off under prefers-reduced-motion. The indicator is
 // `data-keep`: on a page patched in place (morph.ts) it is left to this module alone.
 //
-// Pure markup here; `syncSegments` is the only DOM code, the styles live in trov.css.
+// Keyboard: a switch is ONE Tab stop, on the picked option (a roving tabindex: the picked
+// option is tabindex 0, the rest -1; nothing picked, or the picked one locked → the first
+// option that is not locked). It is a group of toggle buttons (role="group", aria-pressed),
+// so ←/→ move FOCUS between its options (skipping locked ones, wrapping) and Home/End jump —
+// Enter / Space picks, as on any button. A move never picks: an option's act may save (an
+// artifact's status, a notification cadence), and one arrow press is not a choice.
+// `onSegmentedKey` is wired once in main.ts. Each option carries `data-field="seg:<id>:<value>"`,
+// so the repaint a pick causes puts focus back on that option (rerender's focus restore, as
+// for a tab bar) — now the picked one — instead of dropping it to <body>.
+//
+// Pure markup plus `segKeyTarget`; `syncSegments` and `onSegmentedKey` are the only DOM
+// code, the styles live in trov.css.
 
 import { esc, attr } from "./ui";
+import { tabKeyTarget } from "./tabs";
 
 export interface SegOption {
   value: string;
@@ -53,13 +65,38 @@ export interface SegmentedProps {
 
 export function segmented(p: SegmentedProps): string {
   const size = p.size ?? "md";
-  const btns = p.options.map((o) => {
+  // The one Tab stop: the picked option, else the first that is not locked.
+  const picked = p.options.findIndex((o) => o.value === p.value && !o.locked);
+  const stop = picked >= 0 ? picked : p.options.findIndex((o) => !o.locked);
+  const btns = p.options.map((o, i) => {
     const on = o.value === p.value;
     const act = o.act ?? p.act;
     const live = !o.locked && !(on && p.inertOn);
-    return `<button type="button" class="cnpy-seg-btn${on ? " is-on" : ""}"${live ? ` data-act="${attr(act)}" data-arg="${attr(o.arg ?? o.value)}"` : ""}${o.locked ? " disabled" : ""}${o.tone ? ` data-tone="${o.tone}"` : ""} aria-pressed="${on}"${o.title ? ` title="${attr(o.title)}"` : ""}>${o.icon ?? ""}${esc(o.label)}${o.trail ?? ""}</button>`;
+    return `<button type="button" tabindex="${i === stop ? 0 : -1}" data-field="seg:${attr(p.id)}:${attr(o.value)}" class="cnpy-seg-btn${on ? " is-on" : ""}"${live ? ` data-act="${attr(act)}" data-arg="${attr(o.arg ?? o.value)}"` : ""}${o.locked ? " disabled" : ""}${o.tone ? ` data-tone="${o.tone}"` : ""} aria-pressed="${on}"${o.title ? ` title="${attr(o.title)}"` : ""}>${o.icon ?? ""}${esc(o.label)}${o.trail ?? ""}</button>`;
   }).join("");
   return `<div class="cnpy-seg cnpy-seg--${size}${p.fill ? " cnpy-seg--fill" : ""}${p.className ? ` ${attr(p.className)}` : ""}" data-seg="${attr(p.id)}" data-morph-key="seg:${attr(p.id)}" role="group" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span>${btns}</div>`;
+}
+
+/** Where a key moves focus from option `at` (`locked[i]`: option i cannot take focus):
+ *  ←/→ step over the open options (wrapping), Home/End jump; null = not a switch key. */
+export function segKeyTarget(key: string, at: number, locked: boolean[]): number | null {
+  const open = locked.flatMap((l, i) => (l ? [] : [i]));
+  const to = tabKeyTarget(key, open.indexOf(at), open.length);
+  return to === null ? null : open[to];
+}
+
+/** A switch's keyboard: move focus (and the roving Tab stop) to the target option. */
+export function onSegmentedKey(e: KeyboardEvent): void {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  const btn = (e.target as Element | null)?.closest?.<HTMLButtonElement>(".cnpy-seg > .cnpy-seg-btn");
+  const seg = btn?.parentElement;
+  if (!btn || !seg) return;
+  const btns = Array.from(seg.querySelectorAll<HTMLButtonElement>(":scope > .cnpy-seg-btn"));
+  const to = segKeyTarget(e.key, btns.indexOf(btn), btns.map((b) => b.disabled));
+  if (to === null) return;
+  e.preventDefault();
+  for (const [i, b] of btns.entries()) b.tabIndex = i === to ? 0 : -1;
+  btns[to].focus();
 }
 
 interface Box { x: number; y: number; w: number; h: number }
