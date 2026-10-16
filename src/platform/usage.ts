@@ -85,6 +85,14 @@ const AI_TOKEN_FIELD: Record<string, "tokensIn" | "tokensOut" | "tokensCached" |
   [METRIC_AI_TOKENS_IN]: "tokensIn", [METRIC_AI_TOKENS_OUT]: "tokensOut", [METRIC_AI_TOKENS_CACHED]: "tokensCached",
   [METRIC_AI_SUGGEST]: "jevChecks", [METRIC_JEV_TOKENS_IN]: "jevTokensIn", [METRIC_JEV_TOKENS_OUT]: "jevTokensOut",
 };
+/** Each provider's figures stand on its own key (owner ruling Q7): Anthropic's with an Anthropic key, Sift's (TypeSafe
+ *  AI) with a TypeSafe key — none at all with neither, so the field is left out, never a line of zeros. */
+const ANTHROPIC_FIELDS = ["runs", "failed", "capped", "tokensIn", "tokensOut", "tokensCached"] as const;
+const SIFT_FIELDS = ["jevChecks", "jevTokensIn", "jevTokensOut"] as const;
+function byKeys(ai: Required<AiUsage>, opts: { aiEnabled?: boolean; siftEnabled?: boolean }): AiUsage | null {
+  const fields = [...(opts.aiEnabled ? ANTHROPIC_FIELDS : []), ...(opts.siftEnabled ? SIFT_FIELDS : [])];
+  return fields.length ? Object.fromEntries(fields.map((k) => [k, ai[k]])) as AiUsage : null;
+}
 const aiField = (metric: string): keyof Required<AiUsage> | null =>
   metric.startsWith(METRIC_AI_RUN_PREFIX) ? "runs" : metric.startsWith(METRIC_AI_RUN_FAILED_PREFIX) ? "failed"
     : metric.startsWith(METRIC_AI_RUN_CAPPED_PREFIX) ? "capped" : AI_TOKEN_FIELD[metric] ?? null;
@@ -99,7 +107,7 @@ const topTools = (m: Map<string, number>) =>
  * today. One D1 batch. `series` is zero-filled, oldest first, exactly `days` long — in every org row and
  * in the totals.
  */
-export async function platformUsage(p: PlatformContext, days: number = USAGE_DEFAULT_DAYS, now: Date = new Date(), opts: { summariesEnabled?: boolean; aiEnabled?: boolean } = {}): Promise<PlatformUsageResponse> {
+export async function platformUsage(p: PlatformContext, days: number = USAGE_DEFAULT_DAYS, now: Date = new Date(), opts: { summariesEnabled?: boolean; aiEnabled?: boolean; siftEnabled?: boolean } = {}): Promise<PlatformUsageResponse> {
   const until = dayOf(now.getTime());
   const since = dayOf(now.getTime() - (days - 1) * DAY_MS);
   const sinceIso = `${since}T00:00:00.000Z`;
@@ -181,12 +189,14 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
       slug: o.slug, name: o.name, logo_url: orgLogoSrc(o), status: o.suspended_at ? "suspended" : "active", created_at: o.created_at,
       last_activity_at: lastAt.get(o.id) ?? null, sizes: s, activity: a, series: [...series.values()],
       summaries: { ...derived(sm), month_used: monthUsed.get(o.id) ?? 0, cap: caps.get(o.id) ?? null },
-      // With no key nothing runs: the field is left out, as Platform says summaries are off (`summaries_enabled`).
-      ...(opts.aiEnabled ? { ai } : {}),
+      // With no key nothing runs: the provider's figures are left out (and the field, with neither key), as
+      // Platform says summaries are off (`summaries_enabled`).
+      ...(byKeys(ai, opts) ? { ai: byKeys(ai, opts)! } : {}),
     };
   });
   const tAi = zeroAi();
   for (const o of out) if (o.ai) for (const k of Object.keys(tAi) as (keyof AiUsage)[]) tAi[k] += o.ai[k] ?? 0;
+  const totalAi = byKeys(tAi, opts);
   const tSummaries = zeroSummaries();
   for (const o of out) for (const k of Object.keys(tSummaries) as (keyof UsageSummaries)[]) tSummaries[k] += o.summaries[k];
 
@@ -218,7 +228,7 @@ export async function platformUsage(p: PlatformContext, days: number = USAGE_DEF
 
   return {
     summaries_enabled: opts.summariesEnabled === true, summaries: tSummaries,
-    ...(opts.aiEnabled ? { ai: tAi } : {}),
+    ...(totalAi ? { ai: totalAi } : {}),
     days, since, until, generated_at: now.toISOString(),
     totals: {
       orgs: out.length, suspended_orgs: out.filter((o) => o.status === "suspended").length, persons,

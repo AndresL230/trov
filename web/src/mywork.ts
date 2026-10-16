@@ -11,7 +11,7 @@
 import type { MyWorkTicket } from "@shared/dashboard";
 import type { RepoDashboard, RepoTone } from "@shared/repo";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
-import { ticketStatusIcon, kindMark } from "./marks";
+import { ticketStatusIcon, kindMark, aiMark } from "./marks";
 import type { HandoffView } from "@shared/handoffs";
 import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
@@ -238,7 +238,8 @@ export function reviewTile(items: ReviewHead[], load: MwLoad, span: number, besi
 
 /** Your sessions: what I recorded to the Feed lately (My Work's OWN read — never the
  *  Feed screen's filtered list), then the handoffs waiting on me (`handoffsForMe`). */
-export interface MwSession { id: number; summaryHtml: string; brief: string | null; at: string }
+/** `trov`: a session digest Trov wrote about me (Q30) — drawn with the AI mark, as everything Trov wrote. */
+export interface MwSession { id: number; summaryHtml: string; brief: string | null; at: string; trov?: boolean }
 export interface MwHandoff { id: number; title: string; at: string }
 export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: MwHandoff[], span: number): string {
   // The line speaks only when a handoff IS waiting — "none" is the library strip's
@@ -247,7 +248,7 @@ export function sessionsTile(sessions: MwSession[], feedLoad: MwLoad, handoffs: 
     ? tileSub(handoffs.length === 1 ? "1 handoff waiting for a fresh session" : `${handoffs.length} handoffs waiting for a fresh session`)
     : `<div style="height:12px"></div>`;
   const rows = sessions.map((x) => `<button data-act="goFeed" class="mw-row" style="${ROW};display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px">
-      <span style="min-width:0;font-size:14px;font-weight:500;color:var(--fg);line-height:1.4;text-wrap:pretty" class="cnpy-md-inline">${x.summaryHtml}</span>
+      <span style="min-width:0;font-size:14px;font-weight:500;color:var(--fg);line-height:1.4;text-wrap:pretty" class="cnpy-md-inline">${x.trov ? `<span data-ai="session" style="display:inline-flex;vertical-align:-1px;margin-right:6px">${aiMark(12, AI_TIP.session)}</span>` : ""}${x.summaryHtml}</span>
       <span style="font-size:12.5px;color:var(--fg-40);white-space:nowrap;padding-top:2px">${relTime(x.at)}</span>
       ${x.brief ? `<span style="font-size:12.5px;line-height:1.5;color:var(--fg-40);grid-column:span 2;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.brief)}</span>` : ""}
     </button>`).join("");

@@ -20,9 +20,7 @@ import { cookieFor } from "./helpers/persons";
 import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
 import { run } from "./helpers/db";
 import { useAiKey } from "./helpers/ai-key";
-
-// THE read rule (src/plans/gate.ts `aiShown`): no Anthropic key reads like the switch off, so these tests hold a fake one.
-useAiKey();
+import { FAKE_ANTHROPIC_KEY } from "./helpers/anthropic";
 
 const ME = "AndresL230";
 const LOCAL = "http://localhost:8787";
@@ -78,7 +76,33 @@ describe("production: every AI field is omitted", () => {
   });
 });
 
+describe("nothing written yet, with a key and the switch on: the screens say when Trov writes it (Q23/Q24)", () => {
+  const KEYED_ENV = withVars({ ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY });
+  it("/me/dashboard carries an `empty` brief and /repo/dashboard an `empty` state; MCP, no key or the switch off: absent", async () => {
+    const empty = { state: "empty", generatedAt: null, model: null, resumesOn: null, upgrade: false };
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_q23', ?, 'acme/app', 1, 0, '2026-10-06T00:00:00Z', 'test')`, ORG_A);
+    expect((await get<Dash>(DEPLOYED, "/me/dashboard", KEYED_ENV)).brief).toEqual({ ...empty, now: null, recently: null, next: { items: [] } });
+    expect((await get<Dash>(DEPLOYED, "/repo/dashboard", KEYED_ENV)).state).toEqual({ ...empty, headline: null, shipped: [], inFlight: [], attention: [], eventCount: null });
+    // MCP still leaves them out (nothing written is no field there), and so does a deployment with no key.
+    expect(await mcp<Dash>("get_my_work", {}, KEYED_ENV)).not.toHaveProperty("brief");
+    expect(await mcp<Dash>("get_repo_dashboard", {}, KEYED_ENV)).not.toHaveProperty("state");
+    expect(await get<Dash>(DEPLOYED, "/me/dashboard")).not.toHaveProperty("brief");
+    // The month's runs spent: `capped`, never a promise that Trov writes it soon.
+    await run(env.DB, `UPDATE orgs SET plan = 'free' WHERE id = ?`, ORG_A);
+    await run(env.DB, `INSERT INTO org_usage_daily (org_id, day, actor, metric, count, last_at) VALUES (?, ?, 'ai-pass', 'ai_run:repo.state', 250, ?)`, ORG_A, new Date().toISOString().slice(0, 10), new Date().toISOString());
+    const capped = { state: "capped", generatedAt: null, model: null, resumesOn: nextMonthStart(new Date()), upgrade: true };
+    expect((await get<Dash>(DEPLOYED, "/me/dashboard", KEYED_ENV)).brief).toEqual({ ...capped, now: null, recently: null, next: { items: [] } });
+    expect((await get<Dash>(DEPLOYED, "/repo/dashboard", KEYED_ENV)).state).toEqual({ ...capped, headline: null, shipped: [], inFlight: [], attention: [], eventCount: null });
+    // The switch off: absent.
+    await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = ?`, ORG_A);
+    expect(await get<Dash>(DEPLOYED, "/me/dashboard", KEYED_ENV)).not.toHaveProperty("brief");
+    expect(await get<Dash>(DEPLOYED, "/repo/dashboard", KEYED_ENV)).not.toHaveProperty("state");
+  });
+});
+
 describe("LOCAL_AI_PREVIEW under `wrangler dev`", () => {
+  // The preview keeps THE read rule (src/plans/gate.ts `aiShown`): it shows its samples only with a key (a fake one here).
+  useAiKey();
   it("fills the three reads with the fixtures, valid against the contracts; the feed's entries merged newest first", async () => {
     await append_feed(systemCtx(), { author: ME, summary: "an agent's entry", body: "b", tags: [] });
     const e = withVars({ LOCAL_AI_PREVIEW: "ready" });
@@ -128,13 +152,23 @@ describe("LOCAL_AI_PREVIEW under `wrangler dev`", () => {
     expect((await mcp<FeedRow[]>("get_feed", {}, e)).filter((r) => "ai" in r)).toEqual([]);
   });
 
-  it("GUARD: a deployed origin, a live Stripe key beside it, or a value that is not a mode → no AI field at all", async () => {
+  it("GUARD: a deployed origin, a live Stripe key beside it, or a value that is not a mode → no sample at all", async () => {
     await append_feed(systemCtx(), { author: ME, summary: "an agent's entry", body: "b", tags: [] });
-    await expectNoAiFields(DEPLOYED, withVars({ LOCAL_AI_PREVIEW: "ready" }));
-    await expectNoAiFields("https://localhost:8787", withVars({ LOCAL_AI_PREVIEW: "ready" })); // https is not `wrangler dev`'s
-    await expectNoAiFields(LOCAL, withVars({ LOCAL_AI_PREVIEW: "ready", STRIPE_SECRET_KEY: "sk_live_x" }));
-    await expectNoAiFields(LOCAL, withVars({ LOCAL_AI_PREVIEW: "ready", STRIPE_SECRET_KEY: "rk_live_x" }));
-    for (const v of ["off", "1", "true", "READY ", ""]) await expectNoAiFields(LOCAL, withVars({ LOCAL_AI_PREVIEW: v }));
+    // With the key the preview needs, the real reads still answer: nothing written is an `empty` brief and state on
+    // the screens (Q23/Q24) — never the samples, and no theme or Trov entry.
+    const noSample = async (origin: string, e: Env) => {
+      const dash = await get<Dash>(origin, "/me/dashboard", e);
+      expect((dash.brief as { state?: string } | undefined)?.state ?? "absent").toBe("empty");
+      const repo = await get<Dash>(origin, "/repo/dashboard", e);
+      expect((repo.state as { state?: string } | undefined)?.state ?? "absent").not.toBe("ready");
+      expect(repo).not.toHaveProperty("themes");
+      expect((await feedOf(origin, e)).filter((r) => "ai" in r)).toEqual([]);
+    };
+    await noSample(DEPLOYED, withVars({ LOCAL_AI_PREVIEW: "ready" }));
+    await noSample("https://localhost:8787", withVars({ LOCAL_AI_PREVIEW: "ready" })); // https is not `wrangler dev`'s
+    await noSample(LOCAL, withVars({ LOCAL_AI_PREVIEW: "ready", STRIPE_SECRET_KEY: "sk_live_x" }));
+    await noSample(LOCAL, withVars({ LOCAL_AI_PREVIEW: "ready", STRIPE_SECRET_KEY: "rk_live_x" }));
+    for (const v of ["off", "1", "true", "READY ", ""]) await noSample(LOCAL, withVars({ LOCAL_AI_PREVIEW: v }));
   });
 
   it("aiPreviewMode: the rule on its own", () => {

@@ -20,8 +20,9 @@ import { TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, type TicketS
 import { SprintCreate, PlanNarrative, PlanSprintEntry } from "@shared/sprints";
 import { FEED_BRIEF_MAX } from "@shared/contract";
 import { ARTIFACT_SUMMARY_MAX } from "@shared/artifacts";
-import type { AskActionKind, AskActionPreview, RefView } from "@shared/ai-ask-core";
-import type { TenantContext } from "../../data/context";
+import { ASK_AUTO_WRITES_MAX, ASK_EXCLUDED_TOOLS, type AskActionKind, type AskActionPreview, type RefView } from "@shared/ai-ask-core";
+import { MCP_TOOLS } from "@shared/mcp-tools.generated";
+import { hasRole, type TenantContext } from "../../data/context";
 import { first } from "../../data/sql";
 import { get_ticket, get_sprint, get_doc } from "../../tools/reads";
 import { TicketError, ticketByNumber, transition_ticket, add_ticket_comment } from "../../tools/tickets";
@@ -535,10 +536,35 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
       return card("Update the roadmap plan", [...line("Narrative", clip(a.narrative, 400)), ...line("Sprints", a.sprints.map((s: { label: string }) => s.label).join(", "))]);
     },
     async run(c, a) {
+      // MCP registers this tool for an admin only; a card made while the person was one is not a licence now (Q57).
+      if (!hasRole(c.ctx, "admin")) throw new TicketError("forbidden", "Only an admin can change the roadmap plan.");
       return { result: await write_plan(c.ctx, a as PlanWrite, c.handle), ref: null, undo: null };
     },
   },
 };
+
+/** The MCP tools only an admin is offered (MCP registers them for an admin only; Ask offers them likewise). */
+const ADMIN_TOOLS: ReadonlySet<string> = new Set(MCP_TOOLS.filter((t) => t.admin).map((t) => t.name));
+
+/**
+ * May THIS person run this write NOW — exactly as if they called the tool themselves (the owner's ruling Q57,
+ * 2026-10-16)? A card is a proposal: it never carries the proposer's rights forward. Confirm (and Auto, at once)
+ * asks this with the confirmer's own context before anything runs; past it, each writer applies its own rule as it
+ * would over MCP — the ticket lane and the assignment rule (src/tools/tickets-agent.ts, re-read on the write),
+ * a handoff's sender / recipient, Publish's `mayPromote`, an artifact's author. Throws the writer-style
+ * `forbidden` (the card's line then says "Didn't work" with the reason); nothing is written.
+ */
+export function assertMayRunNow(ctx: TenantContext, tool: string): void {
+  if (!(tool in WRITES) || tool in ASK_EXCLUDED_TOOLS) throw new TicketError("forbidden", "Ask can't make that change.");
+  if (ADMIN_TOOLS.has(tool) && !hasRole(ctx, "admin")) throw new TicketError("forbidden", "Only an admin can make that change.");
+}
+
+/** Why a WAITING card waits, rebuilt for the thread read (no column keeps it; Q55): a Confirm-only write's own note,
+ *  else the Auto cap — the only two reasons a card is stored `waiting` (turn.ts). Not waiting → null. */
+export function waitingNote(tool: string, state: string): string | null {
+  if (state !== "waiting") return null;
+  return WRITES[tool]?.confirmOnly ?? `Auto runs up to ${ASK_AUTO_WRITES_MAX} changes per answer.`;
+}
 
 /** May Auto mode run this write (beyond the thread's toggle, the org's switch and the per-answer cap)? */
 export function autoAllowedFor(tool: string): boolean {

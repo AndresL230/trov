@@ -22,9 +22,10 @@ export function dueWords(due: string | null, now: Date): string | null {
 
 /**
  * roadmap_plan — ONE line (Phase E): "Sprint: Hosting, due Fri, 2 of 5 done". The sprint in progress the person has
- * tickets in (else the org's sprint in progress due soonest): its name, when it is due, and how many of its tickets a
- * person marked done (declined ones do not count). The full plan diff it used to mail is gone. Null with no sprint in
- * progress. Pure read.
+ * tickets in (else the org's sprint in progress due soonest): its name, when it is due ("due Fri" within the week,
+ * "due Nov 2" past it, "3 days late" when overdue), and how many of its tickets a person marked done (declined ones do
+ * not count). It rides EVERY daily whatever this kind's cadence (owner ruling Q45, `selectKinds`); the cadence
+ * governs the weekly. The full plan diff it used to mail is gone. Null with no sprint in progress. Pure read.
  */
 async function render(ctx: TenantContext, handle: string, window: Window): Promise<Section | null> {
   const rows = await all<SprintLineRow>(ctx,
@@ -45,7 +46,7 @@ async function render(ctx: TenantContext, handle: string, window: Window): Promi
 export const roadmapPlanKind: NotificationKind<TenantContext> = {
   id: "roadmap_plan",
   label: "Sprint",
-  description: "One line: the sprint in progress, when it is due and how much is done.",
+  description: "One line: the sprint in progress, when it is due and how much is done. It is in every daily digest; Weekly adds it to the weekly one.",
   defaultCadence: "weekly",
   allowedCadences: ["daily", "weekly", "off"],
   render,

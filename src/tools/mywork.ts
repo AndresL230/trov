@@ -276,11 +276,11 @@ export async function countAssignedTickets(ctx: TenantContext, handle: string, s
  * Any D1 failure degrades the whole projection to empty with degraded:true
  * rather than throwing.
  */
-export async function getMyWork(ctx: TenantContext, handle: string, now: Date = new Date()): Promise<MyWork> {
+export async function getMyWork(ctx: TenantContext, handle: string, now: Date = new Date(), opts: { emptyWhenNone?: boolean } = {}): Promise<MyWork> {
   const work = await myWorkProjection(ctx, handle);
   if (work.degraded || work.person === null) return work;
   // The brief is read on its own: a failed read leaves it out and never degrades the rest.
-  const brief = await storedBrief(ctx, handle, now).catch(() => null);
+  const brief = await storedBrief(ctx, handle, now, opts).catch(() => null);
   return brief ? { ...work, brief } : work;
 }
 
@@ -295,10 +295,20 @@ const BriefContentSchema = AiBriefSchema.pick({ now: true, recently: true, next:
  * older than `AI_STALE_DAYS` (Q25: hidden, never shown as current), the stored row fails its schema, or this person pressed "Wrong?" on that very version
  * (`aiItemRef.brief(generatedAt)`; the next version shows again). When the org's `ai_runs` are spent the LAST
  * brief is shown as `capped`, with the day it resumes. A row the pass stored with no model is `empty`.
+ * `emptyWhenNone` (My Work's screen read — Q24; the key is the read rule's): someone with NO brief yet, or only a
+ * stale one, gets `empty` too (`capped` once the runs are spent), so the tile says when Trov writes it; MCP and the
+ * e-mail still read null.
  */
-export async function storedBrief(ctx: TenantContext, handle: string, now: Date = new Date()): Promise<AiBrief | null> {
+export async function storedBrief(ctx: TenantContext, handle: string, now: Date = new Date(), opts: { emptyWhenNone?: boolean } = {}): Promise<AiBrief | null> {
   const [org, row] = await Promise.all([aiShown(ctx, now), latestBrief(ctx, handle)]);
-  if (!org.shown || !row) return null;
+  if (!org.shown) return null;
+  // No brief to show — none written, or the newest is stale (Q25: read as missing): the screen's read says `empty`
+  // (`capped` once the runs are spent) so the tile says when Trov writes it (Q24); MCP and the e-mail read null.
+  const none = (): AiBrief | null => !opts.emptyWhenNone ? null : {
+    state: org.capped ? "capped" : "empty", generatedAt: null, model: null, resumesOn: org.resumesOn, upgrade: org.upgrade,
+    now: null, recently: null, next: { items: [] },
+  };
+  if (!row) return none();
   let content: unknown;
   try { content = JSON.parse(row.brief_json); } catch { return null; }
   const parsed = BriefContentSchema.safeParse(content);
@@ -306,7 +316,7 @@ export async function storedBrief(ctx: TenantContext, handle: string, now: Date 
   // Older than `AI_STALE_DAYS` is NOT current (owner ruling Q25: a stale "Now" is a wrong claim): read as none — so
   // the e-mail, too, falls back to the assigned items. An instant that does not parse is never shown either.
   const age = now.getTime() - Date.parse(row.generated_at);
-  if (!(age <= AI_STALE_DAYS * 86_400_000)) return null;
+  if (!(age <= AI_STALE_DAYS * 86_400_000)) return none();
   const written = row.model !== null;
   if (written && (await hiddenFor(ctx, handle, "brief")).has(aiItemRef.brief(row.generated_at))) return null;
   return {

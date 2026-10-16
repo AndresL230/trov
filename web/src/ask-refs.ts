@@ -193,6 +193,21 @@ export function repoMark(f: AskRepoFacts | null, size = 12.5): string {
   return verdictMark(f && head ? envVerdict(f, head.key) : VERDICT.unknown, size);
 }
 
+/** A repository's CI as a mark — its head environment's checks, in the checks' own words ("Checks failing" /
+ *  "passing" / "running", the PR summary's vocabulary), the line itself in the tooltip; "Unknown" when no checks were
+ *  captured on the branch head (never guessed). A diagram's repo node is CI (the owner, QA-5): the design's "CI on
+ *  main" node shows the checks, not the deploy verdict. */
+export function repoCiMark(f: AskRepoFacts | null, size = 12.5): string {
+  const head = f ? repoHeadEnv(f) : null;
+  const c = f && head ? f.ci.find((x) => x.env === head.key) : undefined;
+  const line = ciLine(c);
+  if (!c || !line) return stateMark(VERDICT.unknown.word, VERDICT.unknown.tone, VERDICT.unknown.shape, size, f ? "No checks captured on the branch head." : "Trov has no reading of this repository yet.");
+  const tip = `${head!.name}: ${line.text}`;
+  return c.state === "fail" ? stateMark("Checks failing", "var(--red)", "diamond", size, tip)
+    : c.state === "pass" ? stateMark("Checks passing", "var(--green)", "dot", size, tip)
+    : stateMark("Checks running", "var(--fg-55)", "ring", size, tip);
+}
+
 // ── a pull request's checks ──────────────────────────────────────────────────
 
 /** A PR's checks as the design's summary: failing (diamond), passing (dot), running (ring), or nothing. */

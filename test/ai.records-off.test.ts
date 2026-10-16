@@ -29,6 +29,13 @@ async function seed(): Promise<{ trov: number; rated: number }> {
   const rated = await append_feed(ctx(), { author: ME, summary: "Incident: deploys failing", body: "b", tags: [] });
   await run(env.DB, `UPDATE feed SET origin = 'ai', author = 'trov', subject = ?, model = 'claude-haiku-5-5' WHERE id = ?`, ME, trov);
   await run(env.DB, `UPDATE feed SET importance = 'breaking' WHERE id = ?`, rated);
+  // A merged pull request of theirs that Sift rated breaking — what the daily's "Also" lists (Q43: their own PRs).
+  const at = new Date(Date.now() - 10 * 60_000).toISOString();
+  await run(env.DB, `INSERT INTO events (org_id, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
+    VALUES (?, 'gh:pr:4711:merged', 'pr_merged', 4711, ?, ?, 'webhook', ?, ?, 'github-webhook')`,
+  ORG_A, ME, JSON.stringify({ pr: { number: 4711, title: "Fix deploys", html_url: "https://github.com/AndresL230/trov/pull/4711", base: { ref: "main" } } }), at, at);
+  await run(env.DB, `INSERT INTO pr_summaries (org_id, semantic_key, pr_number, model, created_at, title, what, why, impact, importance)
+    VALUES (?, 'gh:pr:4711:merged', 4711, 'claude-haiku-5-5', ?, 'Deploys fixed', 'what', 'why', 'impact', 'breaking')`, ORG_A, at);
   return { trov, rated };
 }
 
@@ -51,10 +58,10 @@ describe("records stay records with AI off (Q29 / Q32)", () => {
     }
     const day = { cadence: "daily" as const, start: new Date(Date.now() - 3_600_000), end: new Date(Date.now() + 60_000), id: "today" };
     const also = (await briefContent(ctx(), ME, day))!.also;
-    expect(also.map((a) => a.title)).toContain("Incident: deploys failing");
+    expect(also.map((a) => a.title)).toContain("Deploys fixed");
   };
 
-  it("on: Trov's entry carries its `ai`, the rated entry its importance, and the daily's Also lists it", check);
+  it("on: Trov's entry carries its `ai`, the rated entry its importance, and the daily's Also lists their rated PR", check);
 
   it("the org's switch off: the same — and `GET /ai/settings` says off, for the web's one-time note", async () => {
     await run(env.DB, `UPDATE orgs SET ai_automation = 0 WHERE id = ?`, ORG_A);

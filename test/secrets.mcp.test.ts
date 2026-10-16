@@ -175,7 +175,9 @@ describe("the model client is the summary seams', the AI pass's, the Sift run's 
     ]);
     // TypeSafe's key: the Sift run and the AI pass (its Jev jobs and gates) send with it; the Tags list says whether one is set.
     const jevReaders = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /\.TYPESAFE_API_KEY\b/.test(text)).map(([f]) => f).sort();
-    expect(jevReaders).toEqual(["src/ai/pass.ts", "src/ai/sift.ts", "src/tags/routes.ts"]);
+    // …and Org settings › AI (Q8: each provider's key status) and Platform › Usage (Q7: Sift's figures on its own key)
+    // say whether one is set.
+    expect(jevReaders).toEqual(["src/ai/pass.ts", "src/ai/routes.ts", "src/ai/sift.ts", "src/platform/routes.ts", "src/tags/routes.ts"]);
   });
 
   it("the Jev provider is the client's alone: only src/ai/client.ts imports it, and only it names TypeSafe's URL", () => {

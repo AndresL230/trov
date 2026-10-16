@@ -179,14 +179,19 @@ const postJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<
 const putJson = <T>(path: string, body: unknown = {}): Promise<T> => writeJson<T>("PUT", path, body);
 
 // ── reads ────────────────────────────────────────────────────────────────────
-export interface FeedQuery { author?: string; tags?: string[]; limit?: number; }
-export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> {
+/** `about`: with `author`, also the digests Trov wrote about that person (My Work › Your sessions, Q30). */
+export interface FeedQuery { author?: string; about?: boolean; tags?: string[]; limit?: number; }
+export function getFeed(q: FeedQuery = {}): Promise<FeedRow[]> { return getFeedPage(q).then((r) => r.feed); }
+/** The Feed's page with `aiOff`: true when it holds an entry Trov wrote but Trov writes no new ones (the org's switch
+ *  off, or no key) — the one-time "Trov now writes entries…" note is then not said (Q29). */
+export function getFeedPage(q: FeedQuery = {}): Promise<{ feed: FeedRow[]; aiOff: boolean }> {
   const p = new URLSearchParams();
   if (q.author) p.set("author", q.author);
+  if (q.author && q.about) p.set("about", "1");
   if (q.tags && q.tags.length) p.set("tags", q.tags.join(","));
   if (q.limit) p.set("limit", String(q.limit));
   const qs = p.toString();
-  return getJson<{ feed: FeedRow[] }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => r.feed);
+  return getJson<{ feed: FeedRow[]; aiOff?: boolean }>(`/feed${qs ? `?${qs}` : ""}`).then((r) => ({ feed: r.feed, aiOff: r.aiOff === true }));
 }
 
 /** The Feed aside's "This week" (`GET /feed/stats`): the last `days` of the WHOLE
@@ -1218,7 +1223,7 @@ export function resolveTagSuggestion(name: string, body: { resolution: TagT.Sugg
   return orgSend("POST", `/api/tags/suggestions/${encodeURIComponent(name)}/resolve`, body);
 }
 /** Look for existing items that fit a tag (admin; a model run in the background). `status` says whether it started. */
-export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
+export function findTagItems(name: string): Promise<{ ok: true; status: "started" | "off" | "org_off" | "no_key" | "busy" | "capped" | "not_found" }> { return orgSend("POST", tagPath(name, "/find-items")); }
 /** The latest run for a tag, live (admin): what the Tags tab polls while it goes. */
 export function getTagRun(name: string): Promise<TagT.TagRunDTO | null> { return orgSend<{ run: TagT.TagRunDTO | null }>("GET", tagPath(name, "/run")).then((r) => r.run); }
 /** Undo a tag's latest run (admin): take the tag off exactly the items that run tagged. */

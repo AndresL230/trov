@@ -10,7 +10,7 @@ import { KIND_PROVIDER, providerFor } from "../src/ai/client";
 import { toClaudeSchema } from "../src/ai/schema";
 import { filterCandidates, filterInput, filterModelSchema, resolveFilter, runAiFilter } from "../src/ai/filter";
 import {
-  AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AI_FILTER_SCHEMAS, AiFilterAnswerSchema, type AiFilterAnswer,
+  AI_FILTER_MESSAGES, AI_FILTER_ROUTE, AI_FILTER_SCHEMAS, AI_FILTER_TRY, AiFilterAnswerSchema, aiFilterUnreadable, type AiFilterAnswer,
 } from "@shared/ai-filter";
 import { aiFilterFixture, AI_PREVIEW_MODES } from "@shared/ai-fixtures";
 import { FAKE_ANTHROPIC_KEY, messageResponse, sentMessage, sentInput, type MessageOpts } from "./helpers/anthropic";
@@ -185,8 +185,25 @@ describe("POST /ai/filter — the answer", () => {
     stubModel({ filter: {}, unmatched: ["the weather"] });
     const r = await post<{ error: string; message: string }>({ screen: "feed", text: "what's the weather" });
     expect(r.status).toBe(422);
-    expect(r.json).toEqual({ error: "unreadable", message: `${AI_FILTER_MESSAGES.unreadable} Not a filter here: “the weather”.` });
+    expect(r.json).toEqual({ error: "unreadable", message: `${aiFilterUnreadable("feed")} Not a filter here: “the weather”.` });
     expect(await runsCounted()).toBe(1); // the call was made: it counts
+  });
+
+  // Q-F2 (owner ruling 2026-10-16): the sentence names what THAT screen's schema filters by — the Feed has no
+  // status or priority, Tickets and Artifacts no time.
+  it("the unreadable sentence is worded per screen, from that screen's filter schema", async () => {
+    expect(aiFilterUnreadable("feed")).toBe("Trov couldn't turn that into a filter on this screen. Try naming a person, a tag or a time.");
+    expect(aiFilterUnreadable("tickets")).toBe("Trov couldn't turn that into a filter on this screen. Try naming a person, a status, a category, a priority or a sprint.");
+    expect(aiFilterUnreadable("artifacts")).toBe("Trov couldn't turn that into a filter on this screen. Try naming a person, a kind, an area, a status or a sprint.");
+    expect(AI_FILTER_TRY.feed).not.toMatch(/status|priority/);
+    for (const screen of ["tickets", "artifacts"] as const) expect(AI_FILTER_TRY[screen]).not.toMatch(/time/);
+    for (const screen of ["tickets", "artifacts"] as const) {
+      vi.unstubAllGlobals();
+      stubModel({ filter: {}, unmatched: [] });
+      const r = await post<{ error: string; message: string }>({ screen, text: "something unfilterable" });
+      expect(r.status).toBe(422);
+      expect(r.json.message).toBe(aiFilterUnreadable(screen));
+    }
   });
 
   for (const stop_reason of ["refusal", "max_tokens"] as const) {

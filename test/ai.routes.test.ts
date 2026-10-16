@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
-import { AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AiSettingsSchema, AiSuggestionSchema, type AiSettings } from "@shared/ai";
+import { AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AI_SENDS_ALL, AiSettingsSchema, AiSuggestionSchema, type AiSettings } from "@shared/ai";
 import { AI_ACCEPT_HANDLERS, type AcceptHandler } from "../src/ai/suggestions";
 import { hiddenFor, putSuggestion, type AiSuggestionRow } from "../src/data/ai";
 import { mcpToolCatalog } from "../src/mcp-catalog";
@@ -48,10 +48,13 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
       enabled: true, canEdit: false, eligibility: "no_key", // the pool has no key
       allowances: { ai_summaries: unlimited, ai_runs: unlimited, jev_checks: unlimited, ai_chat: unlimited },
       chatAuto: true, // 0058: on for every org
+      keys: { anthropic: false, typesafe: false }, planEnded: null, // Q8 / Q10
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
-    // Both providers, by their legal names, and what each receives.
-    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([
+    // Both providers, by their legal names, and what each receives — HELD to the approved Privacy rows while the AI
+    // passages are DRAFT (AI_LEGAL_DRAFT, shared/legal-core.ts; owner ruling 2026-10-16), then every line.
+    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
+    expect(AI_SENDS_ALL.map((s) => [s.provider, s.for])).toEqual([
       ["Anthropic", "Summaries"], ["Anthropic", "Ask Trov"], ["Anthropic", "Filters typed in plain words"],
       ["Anthropic", "Notes, briefs, the weekly email's highlights and suggestions"],
       ["TypeSafe AI", "Sift"], ["TypeSafe AI", "Sorting and checking items"],
@@ -83,6 +86,21 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
         ai_chat: { used: 30, cap: 50, resumesOn: null },
       },
     });
+  });
+
+  // Q8, Q10 (owner ruling 2026-10-16).
+  it("says per provider whether its key is set, and names a plan that has ended", async () => {
+    const cookie = await cookieFor(MEMBER);
+    const both = { ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, TYPESAFE_API_KEY: "ts-test-key" };
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, both)).json.keys).toEqual({ anthropic: true, typesafe: true });
+    const siftOnly = { ...(env as unknown as Env), TYPESAFE_API_KEY: "ts-test-key" };
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, siftOnly)).json.keys).toEqual({ anthropic: false, typesafe: true });
+    await run(env.DB, `UPDATE orgs SET plan = 'team', plan_status = 'canceled' WHERE id = ?`, ORG_A);
+    const ended = (await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, both)).json;
+    expect(ended).toMatchObject({ planEnded: "Pro", eligibility: "capped" });
+    expect(ended.allowances.ai_runs.resumesOn).toBeNull(); // not a date: it resumes when renewed
+    await run(env.DB, `UPDATE orgs SET plan_status = 'active' WHERE id = ?`, ORG_A);
+    expect((await call<AiSettings>("GET", `${BASE}${AI_ROUTES.settings}`, cookie, undefined, both)).json.planEnded).toBeNull();
   });
 
   it("Pro's Ask Trov allowance is 300 questions PER SEAT — the paid seats × 300, or the members × 300 for a gifted Pro, computed when read", async () => {
@@ -280,9 +298,38 @@ describe('"Wrong?" — POST /ai/feedback', () => {
     expect([...(await hiddenFor(systemCtx(ORG_B), MEMBER, "brief"))]).toEqual([]);
   });
 
+  // Q15 (owner ruling 2026-10-16): an omitted nullable field is null, not a refusal.
+  it("an omitted `model` / `promptVersion` is stored as null", async () => {
+    const cookie = await cookieFor(MEMBER);
+    expect(await call("POST", `${BASE}${AI_ROUTES.feedback}`, cookie, { itemType: "brief", itemRef: "person:x", kind: "brief" })).toEqual({ status: 200, json: { ok: true } });
+    expect(await all(env.DB, `SELECT item_ref, model, prompt_version FROM ai_feedback`)).toEqual([{ item_ref: "person:x", model: null, prompt_version: null }]);
+  });
+
+  // Q14 (owner ruling 2026-10-16; invariant 7): a D1 failure on either write is a 503 `{ error }`, never a 500.
+  it("a D1 failure on POST /ai/feedback or PUT /ai/settings is 503 `{ error }`, never a 500", async () => {
+    const broken = new Proxy(env.DB, {
+      get(t, k) {
+        if (k === "batch") return () => Promise.reject(new Error("D1 is down"));
+        if (k === "prepare") return (sql: string) => /INSERT INTO ai_feedback/.test(sql)
+          ? { bind: () => ({ run: () => { throw new Error("D1 is down"); } }) }
+          : t.prepare(sql);
+        const v = Reflect.get(t, k);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+    const down = { ...(env as unknown as Env), DB: broken } as unknown as Env;
+    const fb = await call<{ error: string }>("POST", `${BASE}${AI_ROUTES.feedback}`, await cookieFor(MEMBER), body, down);
+    expect(fb.status).toBe(503);
+    expect(typeof fb.json.error).toBe("string");
+    const put = await call<{ error: string }>("PUT", `${BASE}${AI_ROUTES.settings}`, await cookieFor(FIXTURE_ADMIN), { enabled: false }, down);
+    expect(put.status).toBe(503);
+    expect(typeof put.json.error).toBe("string");
+    expect(await first(env.DB, `SELECT ai_automation FROM orgs WHERE id = ?`, ORG_A)).toEqual({ ai_automation: 1 });
+  });
+
   it("a body the contract refuses is 400 and writes nothing", async () => {
     const cookie = await cookieFor(MEMBER);
-    for (const bad of [{ ...body, itemType: "ticket" }, { ...body, itemRef: "" }, { itemType: "brief" }, null]) {
+    for (const bad of [{ ...body, itemType: "ticket" }, { ...body, itemRef: "" }, { itemType: "brief" }, { ...body, model: 7 }, null]) {
       expect((await call("POST", `${BASE}${AI_ROUTES.feedback}`, cookie, bad)).status).toBe(400);
     }
     expect(await all(env.DB, `SELECT id FROM ai_feedback`)).toEqual([]);

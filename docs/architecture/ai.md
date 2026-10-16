@@ -297,8 +297,8 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
 
 | Route (`/api/o/:slug…`) | Who | Does |
 |---|---|---|
-| `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `canEdit` (admin+), `eligibility`, `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
-| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings` |
+| `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `canEdit` (admin+), `eligibility`, `keys` (`{ anthropic, typesafe }`: is each provider's key set on this deployment), `planEnded` (the plan's name when it is canceled — AI paused until renewed — else null), `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
+| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings`. A failed write is 503 `{ error }`, never a 500 |
 
 On the screen, TypeSafe AI's model is **Sift** — never its own name; the providers' legal names appear only where
 the tab says what is SENT (`web-ui.md`, the Privacy Policy).
@@ -344,8 +344,9 @@ Per provider, per org per UTC day in `org_usage_daily`. Counts only.
 
 Platform › Usage reads them into `OrgUsage.ai` and `PlatformUsageResponse.ai` (`src/platform/usage.ts`) — runs,
 failed, capped, Claude's tokens, and `jevChecks` / `jevTokensIn` / `jevTokensOut` (drawn as Sift checks and tokens
-only when the read carries them) — when a key is set, left out without one, as summaries say they are off. None of
-them is a person's request (not "active people", not "last activity").
+only when the read carries them). Each provider's figures stand on ITS key alone: Anthropic's with an Anthropic key,
+Sift's with a TypeSafe AI key (a TypeSafe key alone draws a "Sift" line), the field left out with neither, as
+summaries say they are off. None of them is a person's request (not "active people", not "last activity").
 
 ## Jobs: importance and Sift on new items (Jev, Phase C)
 
@@ -492,8 +493,8 @@ a breaking change skips it — 6 h otherwise).
    deleted, in ONE batch.
 
 **The read** (`readRepoState`, MCP-reachable, imports nothing from `src/ai/`): absent with no repo, the read rule's
-off (the switch off or no key),
-nothing written, a row that no longer parses, the viewer's "Wrong?" on that version
+off (the switch off or no key), nothing written (but `empty` — `capped` once the runs are spent — for the screen's
+read, `emptyWhenNone`: Q23), a row that no longer parses, the viewer's "Wrong?" on that version
 (`aiItemRef.repoState(repo, generatedAt)`), or a failed read; `capped` once the month's `ai_runs` are spent (the
 last state, `resumesOn`, `upgrade` on Free); else `ready`. An OLD state stays (owner ruling Q25) and says its age:
 `ageDays`, the server's whole days since it was written, and the card adds "Written N days ago." under the headline
@@ -561,9 +562,11 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
   insert and the trim in ONE batch). In `ORG_TABLES`, `HANDLE_COLUMNS` and the reset seed; deleting the account
   DELETES the person's rows (`src/deletion/person.ts`), never hands them to the tombstone.
 - **The read** (`storedBrief`, `src/tools/mywork.ts`, plain D1 — reachable from MCP, so it imports nothing from
-  `src/ai/`): the newest row → `AiBrief`; ABSENT under the read rule's off (the switch off or no key), when it is
-  older than `AI_STALE_DAYS` (7 days, owner ruling Q25: a stale "Now" is a wrong claim — read as none, so the
-  e-mail, which reads it at its window's end, falls back to the assigned items), there is none, it fails `AiBriefSchema`,
+  `src/ai/`): the newest row → `AiBrief`; ABSENT under the read rule's off (the switch off or no key), when there is
+  none or it is older than `AI_STALE_DAYS` (7 days, owner ruling Q25: a stale "Now" is a wrong claim — read as none,
+  so the e-mail, which reads it at its window's end, falls back to the assigned items) — but `empty` (`capped` once
+  the runs are spent) for My Work's screen read, `emptyWhenNone`, so someone with no current brief is told when Trov
+  writes it (Q24; `get_my_work` and the e-mail still read none) — when it fails `AiBriefSchema`,
   or the person pressed "Wrong?" on that version; `capped` (with `resumesOn`, `upgrade` on Free) when `ai_runs` are
   spent; `empty` for a no-model version. `GET /me/dashboard`, `get_my_work` and — Phase E — the e-mail read it. An
   OLDER stored brief may be longer, carry more than three or several of a kind, or mark a past-due item `due`: it
@@ -589,7 +592,7 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   only PR numbers from the input; ≥ 3 of them or the theme is not written. Each written theme is a `proposed` row and an
   `ai_suggestions` row (item `theme` / `<repo>#<id>`, kind `themes.propose`, reason = its description, cites = its PRs).
 - **The admin's answers** (cookie routes, `src/ai/themes-accept.ts`; the handler's `role` and `dismissRole` are
-  `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid`), Merge
+  `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid` with "A theme named … already exists."), Merge
   `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
   Accept, Rename and a Merge into an active theme write the proposal's seed PRs into `pr_themes` for the active
   theme (`seedPrThemes`: `source='ai'`, the proposal's model and prompt version; a PR that already has a theme — a
@@ -733,10 +736,16 @@ API (`batch: true`, half the price), the pass's last stage.
   handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
   gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`); a Roadmap writer refusing
   (`SprintError` / `TicketError` / `PersonError`) is a 400 `invalid` with the writer's message. Theme accept / rename /
-  remove go through the same two routes.
+  remove go through the same two routes; a refused theme NAME is a 400 `invalid` whose `message` says what happened
+  (a handler's `refusal(value)` before the claim, `AcceptRefused(code, sentence)` after it — `themeNameRefusal`, and
+  the clash "A theme named Billing already exists."; Q20). The screens show a refusal's `message` as it is (Q21/Q40).
 - **"Wrong?"** — `POST /ai/feedback` (`AiFeedbackBody`) records `ai_feedback` for the cookie person, ONE row per
   (person, item), idempotent; it hides the item for that person (`hiddenFor(ctx, handle, itemType)`, what a
-  producer reads) and never edits the record.
+  producer reads) and never edits the record. ONE exception: `importance` (Sift's rating, `aiItemRef.importance`,
+  `feed:<id>`) — "Wrong?" on a rating is feedback for the evals ONLY (Q34): the rating is a computed fact, so nothing
+  reads that row to hide anything and nothing edits it; the Feed draws a small thumbs-down after a notable or breaking
+  mark (`aiRatingWrongBtn`, act `aiRatingWrong`, pressed for the session in `AiUi.ratedWrong`) and no Dismiss.
+  `model` and `promptVersion` are nullable, and an omitted one is null; a failed write is 503 `{ error }`, never a 500.
 - Both tables are in `ORG_TABLES` and the reset seed; `ai_suggestions.decided_by` and `ai_feedback.handle` are in
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
   tool and none has an old-path alias.
@@ -766,7 +775,9 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   by likeness — or it is dropped. `unmatched` keeps only phrases quoted from the request (a dropped name too, when
   the request said it): the screen shows them as "Not a filter here: “overdue”", never model prose.
 - **Unreadable**: nothing left to set, a `refusal`, an answer cut at `max_tokens`, no JSON, or an error → 422
-  `{ error: "unreadable", message }` in plain words (naming the request's words that were no filter here).
+  `{ error: "unreadable", message }` in plain words, said per screen from that screen's schema (`aiFilterUnreadable`:
+  the Feed suggests a person, a tag or a time — never a status or priority it does not have), naming the request's
+  words that were no filter here.
 - **In the Filter menu** (`web/src/ai-filter.ts`, acts in `web/src/ai-filter-actions.ts`; `web-ui.md`): each
   screen's own Filter menu (`filter-menu.ts`; Tickets' `queue`, the Feed's `feed`, Artifacts' `art`) opens on a
   first row, "Describe a filter" with the AI mark (`aiFilterMenuTop`, passed as `FilterMenuProps.top`), shown only
@@ -780,7 +791,13 @@ the model cannot invent an item, because it returns no item. Three screens: Tick
   revives only a close the hover started (`fmClosingByHover` in `main.ts`), never this one, though the apply's repaint
   under a resting pointer fires a pointerover. A line above the toolbar (`aiFilterLine`) says what was set and what was
   not a filter here, with Undo back to the filters set by hand; after Undo it leaves by the kit's one exit
-  (`AiController.leave`, key `filter:<screen>`).
+  (`AiController.leave`, key `filter:<screen>`). An answer whose filter has no words (labels empty) draws no line —
+  never "Undo" alone. A hand change to the screen's filters after an apply drops the line and its Undo by the same
+  exit (`AiFilterController.sync`, called before every paint, compares the screen's state with the one the apply
+  left), so the line never describes filters that no longer hold and Undo never overwrites the hand change. An
+  Apply refused with 403 `off` (or 503 `no_key`, which reads exactly like off) — the switch went off after the row
+  was drawn — turns the row off at once (no row, as off is drawn), shuts the menu and says the server's sentence
+  once as a toast; no reload needed.
 - **`LOCAL_AI_PREVIEW`** answers from `aiFilterFixture` (`shared/ai-fixtures.ts`), checked by `resolveFilter` like a
   model's answer, with no call and no count; `empty` is unreadable, `capped` the 402. The switch and the key still
   hold (403 `off`, 503 `no_key` first — the read rule).
@@ -816,7 +833,8 @@ The contracts are typed (`shared/ai-core.ts`, schemas in `shared/ai.ts`): `Dashb
 `get_feed`), plus the cards' `ai?` on the ticket detail, Unplaced and Review (› The kinds), the Roadmap's
 `SprintView.note?` / `PlanView.drift?` / `suggestions?` (› The Roadmap) and `feed.importance`. Every producer exists:
 each field is present only when its producer wrote something, the switch is on and the reader did not press "Wrong?"
-on it — off or nothing written is a MISSING field, never an "off" state. `get_repo_dashboard` carries `state` with `tab: overview` (or no
+on it — off is a MISSING field, never an "off" state; nothing written is missing too, except the brief and the State
+on their screens with a key, which say when Trov writes them (`empty`, Q23/Q24). `get_repo_dashboard` carries `state` with `tab: overview` (or no
 tab) and `themes` with `planning` (or no tab) when the dashboard has them — they are not sections, so
 `REPO_TAB_SECTIONS` does not name them (`src/tools/repo-agent.ts`).
 
@@ -829,8 +847,14 @@ org's real ones, and what is sent names both providers in every mode) — when i
 `capped` / `proposed`), the request came to a loopback `http://` origin (what `wrangler dev` serves on; no deployed
 Worker is reached there) and no live Stripe key is set. Never over MCP. It also answers the plain-language filter route
 from its fixtures (above). And it puts Phase C's sample suggestions on the REAL rows of the ticket detail, Unplaced and
-Review (`ticketSuggestionsFixture`, `unplacedSuggestionFixture`, `reviewRiskFixture`; made-up ids, so Accept and
-Dismiss answer `not_found`) while the switch is on, in `ready` / `proposed`.
+Review (`ticketSuggestionsFixture`, `unplacedSuggestionFixture`, `reviewRiskFixture` — per list: the proposals and
+the drafted decisions are read apart) while the switch is on, in `ready` / `proposed`. Every sample suggestion has
+its OWN made-up id (Q38; the list is in `shared/ai-fixtures.ts`), so no two "because…" open together.
+No row has one, so an Accept / Dismiss on a sample (`isPreviewSuggestionId`, `AI_PREVIEW_SUGGESTION_IDS`) that would
+be `not_found` answers `{ ok: true, preview: true }` under the preview and writes nothing; the screen takes the
+decision LOCALLY (`ai-actions.ts`: the item leaves by the kit's exit and stays gone this session —
+`AiUi.previewDecided` — a proposed theme turns active under its name or leaves the chart, no re-read) and says "Not
+saved in preview" (Q5). A real row with that id is answered as usual.
 
 ## Evals (`test/ai-evals/<kind>/`)
 

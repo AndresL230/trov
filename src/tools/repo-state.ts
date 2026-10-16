@@ -84,14 +84,22 @@ function ageOf(at: string, now: Date): { ageDays?: number } {
 /**
  * `RepoDashboard.state` for `repo` — what the screen and `get_repo_dashboard` carry, or undefined (absent). Two
  * statements (the switch, plan and month's runs in one; the newest version), plus one for "Wrong?" when there is a
- * viewer. Never throws.
+ * viewer. Never throws. `emptyWhenNone` (the screens' — Q23; the key is the read rule's): shown and nothing written yet,
+ * an `empty` state (`capped` once the runs are spent) so the screen says when Trov writes it; MCP leaves it absent.
  */
-export async function readRepoState(ctx: TenantContext, repo: string, opts: { viewer?: string | null; now?: Date } = {}): Promise<AiRepoState | undefined> {
+export async function readRepoState(ctx: TenantContext, repo: string, opts: { viewer?: string | null; now?: Date; emptyWhenNone?: boolean } = {}): Promise<AiRepoState | undefined> {
   if (!repo) return undefined;
   try {
     const now = opts.now ?? new Date();
     const [gate, row] = await Promise.all([aiShown(ctx, now), latestRepoState(ctx, repo)]);
-    if (!gate.shown || !row) return undefined;
+    if (!gate.shown) return undefined;
+    if (!row) {
+      if (!opts.emptyWhenNone) return undefined;
+      return {
+        state: gate.capped ? "capped" : "empty", generatedAt: null, model: null, resumesOn: gate.resumesOn, upgrade: gate.upgrade,
+        headline: null, shipped: [], inFlight: [], attention: [], eventCount: null,
+      };
+    }
     const stored = parseStoredState(row.state_json);
     if (!stored) return undefined;
     if (opts.viewer && (await hiddenFor(ctx, opts.viewer, "repo_state")).has(aiItemRef.repoState(repo, row.generated_at))) return undefined;

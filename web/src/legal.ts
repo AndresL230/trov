@@ -27,8 +27,9 @@ import { trovMark } from "@shared/mark";
 import { PLANS } from "@shared/plans";
 import { PRICING, formatPrice } from "@shared/pricing";
 import {
-  LEGAL_EMAIL, LEGAL_ENTITY, LEGAL_STATE, MIN_AGE, NOTICES_PATH, PRIVACY_PATH, REFUNDS_PATH, SOURCE_PATH, TERMS_PATH, TROV_SOURCE_REPO,
+  AI_LEGAL_DRAFT, LEGAL_EMAIL, LEGAL_ENTITY, LEGAL_STATE, MIN_AGE, NOTICES_PATH, PRIVACY_PATH, REFUNDS_PATH, SOURCE_PATH, TERMS_PATH, TROV_SOURCE_REPO,
 } from "@shared/legal-core";
+import { ASK_AUTO_WRITES_MAX } from "@shared/ai-ask-core";
 import { siteFooter, siteMark, skipLink } from "./site-chrome";
 
 /** Who runs the service. */
@@ -83,9 +84,13 @@ const PROVIDERS_UPDATED = "2026-10-14";
 // DRAFT: awaiting Andres's approval (#178 Phase G). Every passage below that starts with `${DRAFT}` is new text for
 // the server-side AI build — Ask Trov, the plain-language filter, the AI pass's notes, briefs and suggestions, the
 // weekly email's "This week", and the widened Anthropic and TypeSafe AI lists — and shows a visible "DRAFT —" so
-// nothing reads as final. The approved passages (summaries, Sift) are unchanged. On approval: drop `${DRAFT}` from
-// each passage, delete this constant, and bump `updated` (PROVIDERS_UPDATED, and the date
-// test/render.legal.test.ts pins). Ask Trov and the filter are written from the code (src/ai/ask/, src/ai/filter.ts,
+// nothing reads as final. The approved passages (summaries, Sift) are unchanged. The marker is ONE flag,
+// `AI_LEGAL_DRAFT` (shared/legal-core.ts), which ALSO holds Org settings › AI › "What is sent" (`AI_SENDS`,
+// shared/ai-core.ts) to the approved lines (summaries, Sift): the screen repeats the Privacy rows' claims, so the
+// two ship together (owner ruling, 2026-10-16 — "approve once, ship both", pinned in test/render.legal.test.ts).
+// On approval: set `AI_LEGAL_DRAFT` to false — every marker below goes and the full "What is sent" list ships —
+// and bump `updated` (PROVIDERS_UPDATED, and the date test/render.legal.test.ts pins). Dropping each `${DRAFT}`
+// and this constant can follow as a cleanup; it changes nothing on the page. Ask Trov and the filter are written from the code (src/ai/ask/, src/ai/filter.ts,
 // docs/architecture/ask.md); the pass's producers, Sift on new docs and the emails from the decided build
 // (docs/superpowers/specs/2026-10-15-server-ai-build.md › Phases C–E) — re-check those against the merged code
 // before the markers come off.
@@ -98,7 +103,13 @@ const PROVIDERS_UPDATED = "2026-10-14";
 // TypeSafe's privacy policy (typesafe.ai/legal/privacy-policy) its Services are hosted in the United States and it
 // does not train or fine-tune models on Input; its DPA lists its subprocessors at trust.typesafe.ai/subprocessors,
 // which Privacy › 4 links (DRAFT) instead of naming any itself.
-const DRAFT = "<b>DRAFT —</b> ";
+// Revised 2026-10-16 to the owner's rulings on the open list (Legal #2–#4): Ask Trov's changes are cards to confirm
+// UNLESS Auto is on (src/ai/ask/turn.ts, actions.ts: at most ASK_AUTO_WRITES_MAX per answer, only some with an Undo,
+// update_plan / complete_sprint / publish_doc Confirm-only); Sift's own tags (FIT_APPLY, 0.85, src/tools/tag-fit.ts)
+// are carved out of "suggestions"; the switch line was verified against the capture paths
+// (test/summaries.switch.test.ts › every capture entry point). Still DRAFT: the owner is not approving; the lines
+// get checked — and TypeSafe AI's hosting and no-training line (Privacy › 4) against TypeSafe's own terms.
+const DRAFT = AI_LEGAL_DRAFT ? "<b>DRAFT —</b> " : "";
 
 // ── Terms of Service ─────────────────────────────────────────────────────────
 
@@ -212,11 +223,11 @@ export const TERMS: LegalDoc = {
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Sift on new docs (Phase C, `tag.fit` in the pass).
         p(`${DRAFT}While both switches are on, Sift also checks each doc against the organization's tags when the doc is approved, by the same rules.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov (src/ai/ask/, docs/architecture/ask.md).
-        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations or other people's private items, nor source code unless the person attaches a file of it, and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels. In Auto, which a person turns on for a conversation and an admin can turn off for the organization, some changes run at once and can be undone. It never publishes a doc unless the person confirms it, and it cannot reject or delete anything. Each question counts against the organization's monthly allowance for Ask Trov.`),
+        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations or other people's private items, nor source code unless the person attaches a file of it, and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels, unless they turn on Auto for the conversation (an admin can turn Auto off for the organization). In Auto, up to ${ASK_AUTO_WRITES_MAX} changes in each answer run at once, with no card to confirm first, and some of them can be undone from the conversation; changing the roadmap plan, completing a sprint and publishing a doc still wait for the person to confirm. It never publishes a doc unless the person confirms it. It cannot reject or delete anything: undoing a change only takes back what that change did, so undoing a sprint it created removes that sprint while it is still empty. Each question counts against the organization's monthly allowance for Ask Trov.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — the plain-language filter (src/ai/filter.ts) and the AI
         // pass's producers (Phases C–D: session notes, repo state, the brief, themes, sprint notes and plan drift,
         // the weekly recap, doc drift; Jev's cards and gates).
-        p(`${DRAFT}<b>Notes, briefs and suggestions.</b> When a person types a filter in plain words on Tickets, the Feed or Artifacts, Trov uses Anthropic Claude to set the screen's own filters from it. While an organization's AI switch is on, Trov also uses Anthropic Claude to write short texts from what the organization already holds in Trov: a note on what a burst of work in a connected repository shipped, where a repository stands, each person's brief (on My Work, for the agents they connect, and in their email), the themes of the work merged, notes on sprints and on drift from the plan, the weekly email's "This week" highlights, and changes to a doc that seems out of date. It uses a decision model from TypeSafe AI to sort and check items: a ticket's category and priority, a likely duplicate, how much a change matters, what a proposal changes, where an unplaced item belongs, which theme a pull request is part of, and whether something is worth writing about at all. These can be wrong: they are a convenience, not a record. They are shown as written by Trov, or as suggestions a person accepts or dismisses. None of them approves, promotes, rejects, resolves or closes anything, and a doc change Trov writes is staged for a person to approve, like an agent's.`),
+        p(`${DRAFT}<b>Notes, briefs and suggestions.</b> When a person types a filter in plain words on Tickets, the Feed or Artifacts, Trov uses Anthropic Claude to set the screen's own filters from it. While an organization's AI switch is on, Trov also uses Anthropic Claude to write short texts from what the organization already holds in Trov: a note on what a burst of work in a connected repository shipped, where a repository stands, each person's brief (on My Work, for the agents they connect, and in their email), the themes of the work merged, notes on sprints and on drift from the plan, the weekly email's "This week" highlights, and changes to a doc that seems out of date. It uses a decision model from TypeSafe AI to sort and check items: a ticket's category and priority, a likely duplicate, how much a change matters, what a proposal changes, where an unplaced item belongs, which theme a pull request is part of, and whether something is worth writing about at all. These can be wrong: they are a convenience, not a record. They are shown as written by Trov, or as suggestions a person accepts or dismisses — except a tag Sift judges a fit with 85% confidence or more, which, where an admin has turned Sift on, is added to the item at once, with no person reviewing it first, as described above; anyone in the organization can take it off. Apart from adding those tags, none of them approves, promotes, rejects, resolves or closes anything, and a doc change Trov writes is staged for a person to approve, like an agent's.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — the org switch (orgs.ai_automation) covers every feature
         // in this section, PR and issue summaries included (owner ruling, Legal 1; ai/summaries-switch: off = no call,
         // no new summary row, and a summary already written is kept as it is — docs/architecture/ai.md).

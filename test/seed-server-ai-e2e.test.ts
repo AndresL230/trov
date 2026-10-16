@@ -8,6 +8,7 @@ import {
   SECTIONS, SCHEMA_SQL, insert, isoWeekId, missingFrom, schemaFromRows, serverAiE2eStatements, allFixtures,
 } from "../scripts/seed/server-ai-e2e.mjs";
 import { targetsRemote } from "../scripts/seed/build.mjs";
+import { DEV_FIXTURES } from "../scripts/seed/scenarios.mjs";
 import { RefViewSchema } from "@shared/ai-ask";
 
 const NOW = new Date("2026-10-15T12:00:00.000Z");
@@ -30,6 +31,14 @@ async function count(sql: string): Promise<number> {
 // The idempotence case writes the whole seed twice: 30 s per case (5 s ran out under a loaded full suite).
 // The seed writes a few thousand statements twice in one test: 30 s each (5 s ran out under a loaded full suite).
 describe("server-ai e2e seed", { timeout: 30_000 }, () => {
+  it("with the dev base (SaplingLearn's fixtures), the canonical sprints are dated against the clock: none reads months overdue", async () => {
+    const out = serverAiE2eStatements(await schema(), { now: NOW, base: true, fx: DEV_FIXTURES });
+    for (const st of out.statements) await env.DB.prepare(st).run();
+    const today = NOW.toISOString().slice(0, 10);
+    expect(await count(`SELECT COUNT(*) AS n FROM sprints WHERE org_id = 'org_saplinglearn' AND status != 'done' AND target_date < '${today}'`)).toBe(0);
+    expect(await count(`SELECT COUNT(*) AS n FROM sprints WHERE org_id = 'org_saplinglearn' AND id = 3 AND status = 'done'`)).toBe(1);
+  });
+
   it("runs every section this schema can take, and every fixture of those sections is present", async () => {
     const { sections, fixtures } = await seed();
     const s = await schema();

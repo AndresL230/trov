@@ -3,10 +3,12 @@
  * Cancellation Policy — public paths, linked from every footer, rendered from one pure function with a
  * section anchor per heading, and written from what the code does (the compliance pass, 2026-10-12).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { LEGAL_DOCS, LEGAL_ORDER, TERMS, PRIVACY, REFUNDS, LEGAL_CONTACT, LEGAL_OPERATOR, legalDate, legalTabs, legalView, type LegalDoc } from "../web/src/legal";
 import { landingView } from "../web/src/landing";
-import { AI_NEVER_SENT } from "@shared/ai-core";
+import { AI_NEVER_SENT, AI_SENDS, AI_SENDS_ALL } from "@shared/ai-core";
+import { ASK_AUTO_WRITES_MAX } from "@shared/ai-ask-core";
+import { AI_LEGAL_DRAFT } from "@shared/legal-core";
 import { siteFooter } from "../web/src/site-chrome";
 
 const text = (doc: LegalDoc): string => [doc.lede, ...doc.brief, ...doc.sections.flatMap((s) => [s.title, ...s.body])].join(" ");
@@ -208,6 +210,48 @@ describe("legal pages", () => {
     expect(section(PRIVACY, "cookies")).toContain(`<td>${DRAFT}<code>trov.aiFeedNote</code></td><td>Local storage</td>`);
     // The public pages call TypeSafe AI's model Sift and never by its own name.
     for (const doc of ALL) expect(text(doc)).not.toMatch(/\bJev\b/);
+  });
+
+  it("Ask Trov (Terms §10, owner ruling Legal #2): changes are cards to confirm UNLESS Auto is on — and what Auto does, as the code does it", () => {
+    const ai = section(TERMS, "ai");
+    expect(ai).not.toContain("A change it proposes is a card the person confirms or cancels. ");
+    expect(ai).toContain("A change it proposes is a card the person confirms or cancels, unless they turn on Auto for the conversation (an admin can turn Auto off for the organization).");
+    // src/ai/ask/turn.ts: at most ASK_AUTO_WRITES_MAX per answer; actions.ts: only some writes carry an Undo, and the
+    // Confirm-only writes (update_plan, complete_sprint, publish_doc) wait even on Auto.
+    expect(ai).toContain(`In Auto, up to ${ASK_AUTO_WRITES_MAX} changes in each answer run at once, with no card to confirm first, and some of them can be undone from the conversation; changing the roadmap plan, completing a sprint and publishing a doc still wait for the person to confirm.`);
+    expect(ai).toContain("It cannot reject or delete anything: undoing a change only takes back what that change did, so undoing a sprint it created removes that sprint while it is still empty.");
+    expect(ai).not.toContain("some changes run at once and can be undone");
+  });
+
+  it("Notes, briefs and suggestions (Terms §10, owner ruling Legal #3): Sift's own tags are carved out of \"suggestions\"", () => {
+    const ai = section(TERMS, "ai");
+    // src/tools/tag-fit.ts FIT_APPLY = 0.85, FIT_SUGGEST = 0.6; src/ai/sift-items.ts applies the same bands to new docs.
+    expect(ai).toContain("They are shown as written by Trov, or as suggestions a person accepts or dismisses — except a tag Sift judges a fit with 85% confidence or more, which, where an admin has turned Sift on, is added to the item at once, with no person reviewing it first, as described above; anyone in the organization can take it off. Apart from adding those tags, none of them approves, promotes, rejects, resolves or closes anything");
+  });
+
+  it("approve once, ship both: the DRAFT markers and Org settings › AI's \"What is sent\" follow ONE flag (AI_LEGAL_DRAFT)", async () => {
+    // The Privacy table's provider rows, and which carry the marker.
+    const providerRows = (doc: LegalDoc) => [...section(doc, "sharing").matchAll(/<td>(Anthropic|TypeSafe AI)<\/td><td>(<b>DRAFT —<\/b> )?/g)].map((m) => ({ provider: m[1], draft: !!m[2] }));
+    // Held (owner ruling 2026-10-16): the screen claims only what the policy states as final — summaries and Sift.
+    expect(AI_LEGAL_DRAFT).toBe(true);
+    const rows = providerRows(PRIVACY);
+    expect(rows.length).toBe(AI_SENDS_ALL.length);
+    expect(AI_SENDS.map((l) => [l.provider, l.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
+    expect(AI_SENDS.length).toBe(rows.filter((r) => !r.draft).length);
+    // Approved: the ONE flag flips — no marker on any page, and the full list on the screen, together.
+    vi.resetModules();
+    vi.doMock("@shared/legal-core", async (orig) => ({ ...(await orig<typeof import("@shared/legal-core")>()), AI_LEGAL_DRAFT: false }));
+    try {
+      const legal = await import("../web/src/legal");
+      const core = await import("@shared/ai-core");
+      for (const doc of Object.values(legal.LEGAL_DOCS)) expect(text(doc)).not.toContain("DRAFT");
+      expect(providerRows(legal.PRIVACY).every((r) => !r.draft)).toBe(true);
+      expect(core.AI_SENDS).toEqual(core.AI_SENDS_ALL);
+      expect(core.AI_SENDS.length).toBe(providerRows(legal.PRIVACY).length);
+    } finally {
+      vi.doUnmock("@shared/legal-core");
+      vi.resetModules();
+    }
   });
 
   it("dates read in fixed English", () => {

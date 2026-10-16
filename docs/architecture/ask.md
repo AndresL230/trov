@@ -31,7 +31,10 @@ the allowances and the switches: `ai.md`.
 - `askModesFor(plan)`: Free and Personal get Smart only (no switcher); Pro (`team`) and Enterprise all three. A mode the
   plan does not offer is refused BEFORE anything runs: `403 { error: "mode_unavailable" }`.
 - `ai_chat` counts QUESTIONS by the mode's "counts as", metered BEFORE the model is called (an attempt — a stopped
-  answer still counts); `/search` calls no model and counts nothing. Caps live in `shared/plans.ts` (the master's;
+  answer still counts); `/search` calls no model and counts nothing. An answer that FINISHED having written nothing — no
+  words, no block, no card (the model spent its calls on lookups) — is taken back off (`unmeterBy`, the same day and
+  actor) and stored with 0 units; the screen says "Trov didn't write an answer." with Try again and no Copy / Save
+  (the owner, Q-F2; `isEmptyAnswer`). Caps live in `shared/plans.ts` (the master's;
   `resolveEntitlements` makes Pro's per seat). Tokens go to `ai_tokens_in` / `_out` / `_cached` (actor: the person).
 - Each thread has a mode (`chat_threads.mode`); a new one starts in Settings › Trov's default (Pro), else Smart.
 
@@ -54,10 +57,24 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   cached), the older thread (its last block cached) and the question. Tool calls run between iterations; past the
   mode's call limit the next request sets `tool_choice: none`. Within the turn the newest tool results carry the
   fourth breakpoint.
-- **Commands**: `/search` answers with item cards from Trov's own quick search, no model; `/ticket`, `/handoff`,
+- **Commands**: `/search` answers with item cards from Trov's own quick search, no model (its step says "No
+  results" / "1 result" / "N results" — `resultLine`, the one wording, streamed and stored; Q51); `/ticket`, `/handoff`,
   `/summarize`, `/brief` add one instruction in front of the person's words.
-- **Stop**: the request's own abort signal (the client went away) or `POST /ask/threads/:id/stop` (a flag read
-  between steps) ends the turn; the partial answer is stored with `stopped = 1`; tools that ran stay done.
+- **Stop**: the client cancelling the response stream, the request's own abort signal (which a dropped browser
+  connection does NOT fire without `enable_request_signal`), or `POST /ask/threads/:id/stop` — a flag read between
+  steps AND every `STOP_POLL_MS` (1 s) while the model streams — ends the turn; the partial answer is stored with
+  `stopped = 1`; tools that ran stay done. The events are QUEUED on the response's own `ReadableStream` (`enqueue`,
+  its `cancel` ends the turn), never an awaited write: an awaited write on a stream nobody reads never settles, and
+  under wrangler dev the runtime cancelled such a turn as hung after Stop — nothing was stored and the question had
+  counted (`test/ask.rulings.test.ts`). On the
+  screen the footer draws AT ONCE for what was written (Copy works on what is shown); Regenerate, Save and Wrong? need
+  the stored id, which the controller reads back from the thread a moment later (`readBackStopped`, a few spaced tries;
+  QA-4).
+- **A close after `done` is never a Stop** (the `net::ERR_ABORTED` Chromium reports for `POST /ask` under wrangler dev,
+  after its last event): the server stores the answer — and decides `stopped` — BEFORE it writes `done`, and only an
+  abort DURING the turn (`runTurn`'s listener, removed when it returns) can mark it; on the client the pacer is
+  flushed before the catch reads the error, so `done` has landed and `stopTurn` / `failTurn` leave a finished turn
+  alone (`turnLive`), whatever the browser calls the close (`test/render.ask-controller.test.ts`).
 - **Replace** (`replaceFrom`): the last question (edit-and-resend, with the new text) or the last answer
   (regenerate, in any mode). The replaced messages get `replaced_at` (hidden, out of search) and their undecided cards
   expire.
@@ -92,7 +109,11 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   `[[handoff:3]]`, `[[artifact:slug]]`, `[[person:handle]]`, `[[prompt:slug]]`, `[[repo:owner/name]]`;
   `[[ticket:14|status]]` = a status cell) is LINKED only when its ref is in the thread's seen set — what a tool
   returned in any turn (`refsFromResult`, per tool) or what the person attached — and resolves for the viewer now.
-  `done.cites` carries the linked RefViews; everything else renders as plain text.
+  `done.cites` carries the linked RefViews; everything else renders as plain text. A REOPENED thread draws the stored
+  `cites_json` / block views as its first paint only, then peeks every item it shows again at once (`threadRefs`,
+  ask-controller.ts: sources, item cards, diagram nodes, context chips — `want(…, fresh)`): a status reads as it is
+  now, and an item since made private or deleted drops out (its chip is plain text, its source row and card go, the
+  count says so, a diagram node loses its link and mark) — never its old state (the owner, QA-1).
 - `RefView { ref, type, num?, title, status { mark, tone, word, tip }, owner?, updated?, href, extra }` — built by
   `resolveViews` from Trov's rows, permission-checked (another person's private artifact, a deleted page, an unknown
   id: absent). Status words are the design's over the existing vocabularies (Triage / In progress / Testing / Done /
@@ -137,15 +158,28 @@ never twice), applies edited fields (only `editable` ones; re-validated; preview
 through the same lane-scoped writers MCP uses. Cancel drops it. A card expires when the next turn starts or its answer
 is replaced.
 
+- **Rights are checked at Confirm** (the owner, Q57): a card is a proposal and never carries the rights it was made
+  under. Confirm runs with the CONFIRMER's context as it is now, as if they called the tool themselves —
+  `assertMayRunNow` (actions.ts: an admin-only tool needs the admin role now; an excluded tool never runs), then each
+  writer's own rule inside `run` (the ticket lane and the assignment rule re-read on the write, a handoff's sender /
+  recipient, Publish's `mayPromote`, `update_plan`'s admin check). Refused → the card is `failed` with the
+  writer's `forbidden` and nothing is written (`test/ask.rulings.test.ts`). The turn asks the same before it builds a
+  card.
+- **A waiting card's note** is rebuilt by the thread read (`waitingNote`: a Confirm-only write's own note, else the
+  Auto cap's — the only two reasons a card waits), so it survives a reload (Q55).
+
 - **Kinds**: ticket, handoff, doc_edit (≤ 3 changed hunks with their heading; editing a hunk rebuilds the body), move,
   publish, sprint, other. **Groups**: consecutive calls to the same tool in one answer share a `groupId` — one card,
-  one Confirm, one Undo.
+  one Confirm, one Undo; each item inside the group keeps its OWN in-place fields, and Confirm sends every edited
+  item alone with its edits, then the rest of the group in one call (QA-3; `test/render.ask-actions.test.ts`).
 - **Assignments** (`assign_ticket`): the card's `fields` are `{ id, login, on }` and `login` is the one editable field
   (the agent tool's args are unchanged); the preview's `item` is the ticket's RefView, whose `extra.assignees` is who
   was on it when the card was made — the card draws the change from those two. A replacement is two writes (remove,
   add) in one group. Undo checks THAT person's assignment is as the write left it (not the ticket's `updated_at`: the
   group's first undo touches the ticket, and a stamp check refused the second every time).
-- **Auto** (`auto: true` on the request, only while `orgs.ai_chat_auto` is on): writes run at once (`auto`), at most 5
+- **Auto** (`auto: true` on the request, only while `orgs.ai_chat_auto` is on — asked for while it is off, the answer
+  runs asking first and the `thread` event carries `autoOff: true`, so the composer's switch turns to "Asks first"
+  with the admin's reason (the owner, Q52)): writes run at once (`auto`), at most 5
   per answer; past it, and for `update_plan`, completing a sprint and Publish, the card WAITS with its note. Moving
   a ticket to Done is an ordinary write.
 - **Publish a staged doc** (`publish_doc`): Confirm calls `promote_doc` — the web promote path — as the person, only
@@ -168,7 +202,17 @@ is replaced.
 
 - `POST /ask/attachments` (multipart, ≤ 5 files, 10 MB each, images / PDFs / text and code): checked whole first, then
   each stored as a PRIVATE artifact (`createPage`: D1 for a text kind, R2 for the rest; sha256; the artifact caps)
-  and linked to the thread (`chat_artifacts`). A message names them by id; the model gets them read BACK from the
+  and linked to the thread (`chat_artifacts`). Past the org's artifact storage it is the app's ONE 402 body
+  (`plan_limit` with `limit` / `used` / `cap` / `plan` / `status` / `message`; Save as artifact too — Q59).
+  **With no `threadId` the files are PENDING** (the owner, Q60; `0068_ask_pending`): linked, unsent, to the person's
+  hidden HOLDER thread (`chat_threads.pending = 1`), which no route lists, searches, opens or writes, and the answer's
+  `threadId` is null — no visible untitled thread. The question that names them binds them to its thread
+  (`bindPendingAttachments`, the person's own holder only). Never sent, they go 24 hours after the upload
+  (`sweepPendingAskAttachments`, src/deletion/ask-pending.ts, on the hourly digest trigger `0 * * * *` — no cron of
+  its own), by the composer ✕'s hard delete; one published or referenced meanwhile keeps its artifact and loses only
+  the link; an empty holder goes too. The holder is an ordinary thread of the person's, so account and org deletion
+  already take it. The composer sends EACH FILE AS ITS OWN REQUEST, so one failure is that chip's alone (no batch
+  atomicity). A message names them by id; the model gets them read BACK from the
   store (`readRaw`, as the person) — whole only in that turn. Later turns carry one line; `read_attachment(id)` reads
   one again, this person's thread's only.
 - **An image over the model's limit** is stored, NOT read, and the person is told. The limits are the Messages API's
@@ -202,9 +246,12 @@ is replaced.
   `POST /ask/threads/:id/save { messageId?, block?, title, kind: markdown | html, visibility }` writes it from the
   STORED answer: Markdown with refs as links, or an HTML page rendered by the server (charts as SVG, every string
   escaped). Linked to the thread and to the tickets and sprints it cites.
-- Threads: `GET /ask/threads` (grouped pinned / today / week / earlier), `?q=` (titles and the person's own messages
-  through `chat_fts`; `{ thread, snippet { text, matches }, matchCount }`), `PATCH` (title, pinned, auto, mode,
-  draft), `DELETE`, `/export` (markdown). A ⌘J thread records `origin: panel` and `context_ref`.
+- Threads: `GET /ask/threads` (grouped pinned / today / week / earlier), `?q=` (titles and the thread's messages —
+  the person's questions AND Trov's answers — through `chat_fts`; the owner kept answers searchable, Q54; `{ thread,
+  snippet { text, matches }, matchCount }`), `PATCH` (title, pinned, auto, mode, draft), `DELETE`, `/export`
+  (markdown, named by `askExportName`: the title transliterated to ASCII — é → e, ß → ss —, `ask-trov` only when
+  nothing is left (Q56); the client's download name is the same function). A ⌘J thread records `origin: panel` and
+  `context_ref` — the first context item the person can SEE; a hidden item never enters a thread (Q53).
 - "Wrong?" (`POST /ask/messages/:id/wrong { reason }`): `ai_feedback` (item type `ask`, `detail_json`: reason, mode,
   messageId, cites). "A source is wrong" / "It is out of date" also add one `ask_flags` row per cited item — the
   reason only, no handle, no thread, no text — which Review reads (`askFlags` on `GET /proposals` and `GET /adrs`).
@@ -217,7 +264,10 @@ is replaced.
   can see" is the design's copy, held to this file's Tools section — change one, check the other. Where something is
   connected links its Org settings tab (`orgGo`: Integrations, Repositories, Hosting, Environments; the off line, AI).
 - `GET /ask/state`: `{ enabled, eligibility, plan, modes, defaultMode, allowance { used, cap, resetsAt, low }, autoAllowed,
-  attach { maxFiles, maxBytes, kinds }, starters }` — starters by plain rules (the person's top assigned ticket, the
+  attach { maxFiles, maxBytes, kinds }, starters }` — each mode carries `canSend` (the key, the switch and the
+  allowance left covering what it counts as: with 1–4 left Thinking cannot; Q50), and the composer never sends a
+  mode that cannot (its menu shows it disabled with "Needs 5 questions; fewer are left this month."; the question goes
+  in the default, else Smart); every mode out reads as the quota block; starters by plain rules (the person's top assigned ticket, the
   active sprint, what is waiting on them), the design's four as the fallback. `allowance.cap` is the cap the gate
   enforces (`resolveEntitlements` with the org's members): on Pro 300 × the paid seats, or × the members (at least
   1) when there is no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap, never multiplied.
@@ -247,7 +297,9 @@ no row anywhere still points at the same sha (`src/deletion/r2.ts`).
   link in ONE batch, re-checked inside it; R2 after the commit when nothing else holds the bytes). Refused with nothing
   deleted: not the person's (404), already sent (`sent`), published (`published`), or referred to by a ticket or a doc
   (`referenced`) — 409 each. A never-sent attachment also goes with its thread (`deleteAskThread`).
-- **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`) deletes the thread and its attachments,
+- **`DELETE /ask/threads/:id`** (`deleteAskThread`, `src/deletion/ask.ts`; the thread menu's Delete asks first through the
+  app's `confirmModal` — "Delete “<title>”?", what goes and what stays — a root overlay, `threadDeleteModal`; QA-2)
+  deletes the thread and its attachments,
   EXCEPT a file something still refers to (`planThreadAttachments`). "Referenced" is what the schema actually links:
   - **a ticket** — an `artifact_links` row to a ticket (the library's Links, MCP `artifact_update`, `record_session`'s
     `artifact_links`); or the artifact's address in a ticket's body, a comment, or the ticket's own links
@@ -322,29 +374,32 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   and their breakpoints, the inspector's frame), `ask-threads.ts` (the thread list), `ask-escape.ts`,
   `ask-icons.ts`, `ask-motion.ts` (the motion hooks: inventory §12), `ask-replay.ts` (the dev replay).
 - **Parts** (stubs with their interface in the file header): `ask-conversation.ts`, `ask-composer.ts`,
-  `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
+  `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over any ORG page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
 - **Jump to the latest** (`jumpButton`, ask-conversation.ts): scrolled up more than 160px (and not following the
   bottom), an arrow shows on the scroller's bottom edge — a 0-height sticky row, so it changes no height; the scroll
   listener flips its `data-away` without a repaint and the render writes the same from `conversation.away`. It is
-  purple while an answer is still coming (`data-busy`). A click (`askCvJump`) glides to the bottom and holds on there.
+  in the accent while an answer is still coming (`data-busy`). A click (`askCvJump`) glides to the bottom and holds on there.
 - **Half-written markdown** (`settleTail`, ask-conversation.ts): while a text part streams, its last line is settled
   before it is parsed — a bare heading / list / fence marker or a table row not yet closed by its bar waits, an unclosed
   `**` / `*` / backtick is closed for now (the words show bold as they arrive), a half `[link](…` shows its text, a half
   `[[ref` waits — so no raw marks flash before they render (the owner). A finished part is parsed as it came.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
   20px thinking orb says what Trov is doing, in ONE place under the steps (the owner, 2026-10-16): the wait row — the
-  orb beside "Thinking…" ("Writing…" once a block is out) in the sweep of light — is there for the whole wait, before
+  orb beside "Thinking…" ("Writing…" once a block is out and no step runs) in the sweep of light — is there for the whole wait, before
   anything, while the steps appear and after them, gone only while words stream or the Thinking row runs (that row
   keeps its "solving" orb; "Thought for Ns" keeps the clock). Its orb is the running step's kind (`STEP_ORB`: search /
   docs / feed / read / review steps and anything labelled "Searched …" are "searching", the rest "working"), else
-  "solving" (the cube = thinking), "composing" once a block is out.
+  "solving" (the cube = thinking), "composing" (the ribbon, "Writing…") once a block is out AND no step runs — a step
+  running after a block still shows its own orb (the owner, Q-F1).
   A step keeps its own icon; its label carries the sweep while it runs. Steps APPEAR AS THEY GO: the tools run in a
   few ms, so the pacer (`ask-pace.ts`, `stepMs` 350) shows each running for 350 ms, then done, then the next — what
   comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. **Each orb means one thing** (the owner, 2026-10-16:
   the picker is gone) — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the
-  orbits for other work; all of them in the theme's purple.
-- **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any page (full screen on a phone), its own conversation
+  orbits for other work; all of them in the theme's `--accent` (olive in dark — the owner: colour carries meaning only,
+  no hue of its own for "working").
+- **The ⌘J panel** (`ask-cmdj.ts`): 420px on the right over any org page (full screen on a phone; ⌘J does nothing on
+  Platform, which sits outside every org while Ask is per org — the owner kept it so, Q-F3), its own conversation
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
   is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another
   item starts a fresh panel thread; the same item reopens the same one. "Open as thread" moves the conversation, the
@@ -357,10 +412,15 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   the panel; closing hands focus back to its opener. The Tickets page's one change is the header's "Ask about
   this ⌘J" (`cmdjHeaderButton`). `?askReplay=cmdj#tickets/14` plays the scenario over the ticket (the replay starts
   from the controller's after-paint for a panel plan, since the Ask screen never enters there).
+- **A blocked composer** (`composerBlock`, in the server gate's order): no key (`eligibility: no_key`, or a `no_key`
+  stream error) shows "Ask Trov is not set up on this deployment." in place of the box, as `off` does (Q58); off and
+  the quota have their cards. While blocked there is no Enter hint (Q-F4), and the starters stay to read but send
+  nothing — `aria-disabled`, the block's reason in their tooltip (`composerBlockReason`; QA-6). A starter or a
+  follow-up goes in the composer's own mode and Auto (`composerMode` / `composerAuto`).
 - **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
   allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
-  the UI. Files upload ON ATTACH (`POST /ask/attachments`; a new conversation's first upload makes its thread, and
-  the question goes there); a file over `maxBytes` stays as a red "Too large" chip and is never sent. **What is
+  the UI. Files upload ON ATTACH, one request per file (`POST /ask/attachments`; in a new conversation they are
+  pending until the first question binds them — › Attachments; a failed file is its own chip's failure); a file over `maxBytes` stays as a red "Too large" chip and is never sent. **What is
   attached sits ABOVE the box** (the owner): the file chips (every state, an image's thumbnail) then the context chips
   are one keyed row (`.ask-co-chips`, `data-ask-enter="pop"` + `data-ask-tween`) between the notes and the box, on the
   box's edges; the box holds only the words and the toolbar. The row wraps; on a phone past two rows it is one line
@@ -422,7 +482,9 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `want − index`), in half-lane steps — a fan-out is parallel lanes with its parent centred on them. Shapes: `chain`,
   `graph`, `set` (no edges: a plain list), `list` (a loop or a broken edge: the timeline). **One set of nodes**: an
   `<ol>` in topological order (the text equivalent: each step's button names it, a hidden "Waits on …" says its
-  edges), each `<li>` absolutely placed by three coordinate sets carried as custom properties (`--lx/--ly/--lw`,
+  edges; a node's mark is its item's status — a REPOSITORY's is its CI, the head environment's checks in the checks'
+  words "Checks failing / passing / running", Unknown when none were captured, never the deploy verdict: `repoCiMark`,
+  the owner's QA-5), each `<li>` absolutely placed by three coordinate sets carried as custom properties (`--lx/--ly/--lw`,
   `--tx/--ty/--tw`, `--sy`). trov.css › Ask diagram sets `--lr` / `--tb` / `--ls` to 1 for the mode in use and every
   position is their weighted sum — so a mode is three numbers, not a second stylesheet. **The mode** is a container
   query on `.ask-dg-wrap`: top → bottom by default; left → right once `(layers + 0.36 × gaps) × 112px` fits (`data-l`,

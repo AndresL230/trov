@@ -376,12 +376,13 @@ describe("storage and the read", () => {
 });
 
 describe("GET /me/dashboard", () => {
-  it("records that My Work was opened, carries the stored brief, and leaves the field OUT when there is none", async () => {
+  it("records that My Work was opened, carries the stored brief, and an `empty` one when there is none (Q24)", async () => {
     await run(env.DB, `UPDATE memberships SET mywork_opened_at = NULL WHERE org_id = ? AND user_id = ?`, ORG_A, ME);
     const cookie = await cookieFor(ME);
     const get = async () => (await (await app.request("/me/dashboard", { headers: { cookie } }, env)).json()) as Record<string, unknown>;
     const none = await get();
-    expect("brief" in none).toBe(false);
+    // None stored, under the read rule: the screen's read says `empty` (Q24 — the tile says when Trov writes it).
+    expect(none.brief).toMatchObject({ state: "empty", generatedAt: null, now: null });
     expect((await first<{ t: string | null }>(env.DB, `SELECT mywork_opened_at AS t FROM memberships WHERE org_id = ? AND user_id = ?`, ORG_A, ME))!.t).not.toBeNull();
     await markMe();
     await briefPass(stubProviders({ claude: answer() }));

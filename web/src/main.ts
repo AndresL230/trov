@@ -19,7 +19,7 @@ import {
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getFeedPage, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
@@ -226,6 +226,7 @@ const aiFilterCtl = createAiFilterController({
   restore: (screen, snap) => restoreAiFilter(screen, snap),
   closeMenu: (screen) => closeFilterMenu(AI_FILTER_MENU[screen]),
   leave: (key) => aiCtl.leave(key),
+  flash: (m) => flash(m),
   names: () => ({
     me: state.me?.handle ?? "",
     person: (h) => state.persons.data.find((p) => p.handle.toLowerCase() === h.toLowerCase())?.name || h,
@@ -576,6 +577,7 @@ function paintApp(): void {
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
   const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
   askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
+  aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));
   syncReviewDetail(rvFocus);
   syncSegments(mount);
@@ -1153,9 +1155,10 @@ function loadFeed(): void {
   rerender();
   const author = state.feedAuthor !== "all" ? state.feedAuthor : undefined;
   const tags = state.feedTag !== "all" ? [state.feedTag] : undefined;
-  getFeed({ author, tags })
-    .then((rows) => {
+  getFeedPage({ author, tags })
+    .then(({ feed: rows, aiOff }) => {
       state.feed = { status: "ok", data: rows };
+      state.ai.feedAiOff = aiOff;
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
       if (!author && !tags) state.feedAuthors = [...new Set(rows.map((r) => r.author))];
       rerenderSoon();
@@ -1211,13 +1214,13 @@ function loadMyWork(): void {
       rerenderSoon();
     });
 }
-/** Your sessions: MY two latest feed entries — My Work's own read, so the Feed
- *  screen's author/tag filters (which shape `state.feed`) never reach it. */
+/** Your sessions: MY two latest feed entries, and the session digests Trov wrote about me (Q30) — My Work's own
+ *  read, so the Feed screen's author/tag filters (which shape `state.feed`) never reach it. */
 function loadMwSessions(): void {
   const me = state.me?.handle;
   if (!me) return;
   state.mwSessions = { status: "loading", data: state.mwSessions.data };
-  getFeed({ author: me, limit: 2 })
+  getFeed({ author: me, about: true, limit: 2 })
     .then((rows) => { state.mwSessions = { status: "ok", data: rows }; rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
@@ -4041,6 +4044,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "toggleOnlyWhenNeeded": {
+      if (state.notifPrefs.data?.unsubscribed) return; // dimmed with its reason while unsubscribed (notifications.ts)
       const next = !(state.notifPrefs.data?.onlyWhenNeeded ?? false);
       writePrefs({ onlyWhenNeeded: next }, next ? "Digests only when something needs you" : "Every digest again");
       return;

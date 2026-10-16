@@ -28,7 +28,7 @@ import { platformDevStatements } from "./platform-dev.mjs";
 import { themesDevStatements } from "./themes-dev.mjs";
 import { briefDevStatements } from "./brief-dev.mjs";
 import { aiRoadmapDevStatements } from "./ai-roadmap-dev.mjs";
-import { teamRichStatements, insert, insertMany, makeClock } from "./team-rich.mjs";
+import { teamRichStatements, insert, insertMany, makeClock, datedRoadmap } from "./team-rich.mjs";
 import * as showcase from "./ai-showcase.mjs";
 import docs from "../../fixtures/dev/docs.json" with { type: "json" };
 import feed from "../../fixtures/dev/feed.json" with { type: "json" };
@@ -167,7 +167,8 @@ export function teamBaseStatements(now = new Date(), { reset = false } = {}) {
     .filter((x) => reset || !(x.startsWith("INSERT INTO org_admin_audit") || x.includes("'org_b', 'sanaok', 'owner'")));
   return [
     ...teamSetupStatements(),
-    ...buildSeedStatements(fx).slice(RESET_STATEMENTS.length),
+    // The roadmap's sprints dated against the clock (team-rich.mjs `datedRoadmap`; the fixture keeps the TEST seed's dates).
+    ...buildSeedStatements({ ...fx, roadmap: datedRoadmap(fx.roadmap, now) }).slice(RESET_STATEMENTS.length),
     ...platform,
     ...themesDevStatements(fx.themes, now),
     ...briefDevStatements(now),

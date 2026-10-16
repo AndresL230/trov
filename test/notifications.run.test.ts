@@ -9,7 +9,7 @@ import { ORG_B, ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
 import { all, first, run } from "./helpers/db";
 import { ingestEvent, ingestAdrDraft } from "../src/consumer";
 import { seedNotificationPolicy } from "../src/notifications/policy";
-import { resolveCadence } from "../src/notifications/resolve";
+import { resolveCadence, selectKinds } from "../src/notifications/resolve";
 import { computeWindow } from "../src/notifications/window";
 import { runDigest } from "../src/notifications/run";
 import { localDelivery } from "../src/notifications/delivery";
@@ -90,6 +90,26 @@ describe("resolveCadence — three layers, first match wins", () => {
   });
   it("an unknown kind resolves to off", async () => {
     expect(await resolveCadence(systemCtx(), "u", "nope")).toBe("off");
+  });
+});
+
+// Q45 (owner ruling 2026-10-16): the Sprint line rides the daily whatever `roadmap_plan` resolves to (weekly by
+// default); its own cadence governs the weekly only.
+describe("selectKinds: the Sprint line rides every daily", () => {
+  const ids = (ks: readonly { id: string }[]) => ks.map((k) => k.id);
+  const pol = (o: Record<string, { enabled?: number; default_cadence?: "daily" | "weekly" | "off" }> = {}) =>
+    new Map(Object.entries(o).map(([kind, p]) => [kind, { org_id: "o", kind, enabled: p.enabled ?? 1, default_cadence: p.default_cadence ?? "weekly", updated_at: null, updated_by: null }])) as never;
+  it("by default (roadmap_plan weekly) the daily carries it beside the other daily kinds, and the weekly keeps it too", () => {
+    expect(ids(selectKinds(REGISTRY, pol(), new Map(), "daily"))).toEqual(["my_work", "review_queue", "roadmap_plan", "ticketq"]);
+    expect(ids(selectKinds(REGISTRY, pol(), new Map(), "weekly"))).toContain("roadmap_plan");
+  });
+  it("whatever the person set it to — off included — but not when the org turned the kind off, nor alone", () => {
+    expect(ids(selectKinds(REGISTRY, pol(), new Map([["roadmap_plan", "off"]]), "daily"))).toContain("roadmap_plan");
+    expect(ids(selectKinds(REGISTRY, pol(), new Map([["roadmap_plan", "off"]]), "weekly"))).not.toContain("roadmap_plan");
+    expect(ids(selectKinds(REGISTRY, pol({ roadmap_plan: { enabled: 0 } }), new Map(), "daily"))).not.toContain("roadmap_plan");
+    // A daily with nothing else is not sent for the Sprint line alone.
+    const allOff = new Map(REGISTRY.map((k) => [k.id, "off" as const]));
+    expect(selectKinds(REGISTRY, pol(), allOff, "daily")).toEqual([]);
   });
 });
 
@@ -287,6 +307,17 @@ describe("\"Only when something needs me\" (0067, Phase E)", () => {
     expect((await bodies()).map((b) => b.to_address)).toEqual(["luke@example.com"]);
   });
 
+  // Q46 (owner ruling 2026-10-16): the daily only — the weekly always goes.
+  it("does not hold back the weekly: with nothing that needs them, the weekly is still sent", async () => {
+    await user("AndresL230", "andres@example.com");
+    await needed("AndresL230");
+    await pending();
+    await run(env.DB, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES ('org_saplinglearn', 'AndresL230', 'review_queue', 'weekly', 'now')`);
+    await runDigest(systemCtx(), platformCtx(), "weekly", MON, { delivery: localDelivery(systemCtx()) });
+    const rows = (await outbox()).filter((r) => r.user_id === "AndresL230");
+    expect(rows.map((r) => [r.cadence, r.status])).toEqual([["weekly", "sent"]]);
+  });
+
   it("a Next item (with no brief: an assigned ticket) sends the whole digest", async () => {
     await user("AndresL230", "andres@example.com");
     await needed("AndresL230");
@@ -301,7 +332,12 @@ describe("\"Only when something needs me\" (0067, Phase E)", () => {
   it("something notable that touched their work in the window sends it, even with nothing next", async () => {
     await user("AndresL230", "andres@example.com");
     await needed("AndresL230");
-    await run(env.DB, `INSERT INTO feed (org_id, author, summary, created_at, importance) VALUES ('org_saplinglearn', 'AndresL230', 'Hosting deploys now poll every hour', '2026-09-11T03:00:00Z', 'notable')`);
+    // Q43: an entry that names a pull request THEY authored touches their work (being its author alone does not).
+    await ingestEvent(systemCtx(), platformCtx(), {
+      semantic_key: "gh:pr:5:merged", event_type: "pr_merged", ref_number: 5, subject_login: "AndresL230", provenance: "webhook", occurred_at: "2026-09-01T00:00:00Z",
+      raw: JSON.stringify({ pr: { number: 5, title: "Poll", body: "", html_url: "https://github.com/o/r/pull/5", merged: true, user: { login: "AndresL230" }, base: { ref: "main" } } }),
+    } as CapturedEvent, "github-webhook");
+    await run(env.DB, `INSERT INTO feed (org_id, author, summary, artifacts, created_at, importance) VALUES ('org_saplinglearn', 'lpcooper-arch', 'Hosting deploys now poll every hour', '{"prs":["#5"],"commits":[],"issues":[]}', '2026-09-11T03:00:00Z', 'notable')`);
     await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });
     const [row] = await outbox();
     expect(row.status).toBe("sent");

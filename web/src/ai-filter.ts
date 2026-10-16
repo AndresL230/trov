@@ -26,6 +26,9 @@ export interface AiFilterApplied {
   /** The request's words this screen cannot filter by. */
   unmatched: string[];
   undo: AiFilterSnapshot;
+  /** The screen's filter state right after the apply: a hand change makes the state differ from it, and the line
+   *  (with its Undo) goes — it no longer says what is set (`AiFilterController.sync`). */
+  after?: AiFilterSnapshot;
   /** When it was applied (`Date.now()`): the line rises in once from then (`.cnpy-flash` at a negative delay). */
   at?: number;
 }
@@ -90,13 +93,14 @@ export function aiFilterMenuTop(screen: AiFilterScreen, ui: AiFilterUi): string 
 }
 
 /** The line above the screen's toolbar once a typed filter is applied: what was set, what was not a filter here,
- *  and Undo — and, after Undo, the same line on its way out (the AI kit's one exit). "" otherwise. */
+ *  and Undo — and, after Undo, the same line on its way out (the AI kit's one exit). "" otherwise, and "" when the
+ *  answer set nothing that has words (a line of "Undo" alone says nothing). */
 export function aiFilterLine(screen: AiFilterScreen, ui: AiFilterUi, ai: Partial<Pick<AiUi, "leaving">>, now = Date.now()): string {
   if (!ui.on) return "";
   const applied = ui.applied[screen];
-  if (applied) return appliedLine(screen, applied, now);
+  if (applied) return applied.labels.length ? appliedLine(screen, applied, now) : "";
   const undone = ui.undone[screen];
-  if (!undone) return "";
+  if (!undone || !undone.labels.length) return "";
   const t = aiLeavingT(ai, aiFilterLeaveKey(screen), now);
   return t === null ? "" : aiLeave(appliedLine(screen, undone, null), t);
 }

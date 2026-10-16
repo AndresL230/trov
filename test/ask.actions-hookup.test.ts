@@ -204,8 +204,8 @@ describe("Ask's write cards, the real routes into the real screen", { timeout: 6
     await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { threadId, replaceFrom: answerId, text: "" }));
     const card = eventsOf(r.events, "action")[0];
     await w.confirmCards(ctx, [card.id]);
-    expect(text(lines(w, s)[0])).toBe("Expired: new ticket This card expired with its turn. Ask again.");
-    expect(flashes).toEqual(["This card expired with its turn. Ask again."]);
+    expect(text(lines(w, s)[0])).toBe("Expired: new ticket This card expired with its turn.");
+    expect(flashes).toEqual(["This card expired with its turn."]);
     expect(await first(env.DB, `SELECT number FROM tickets WHERE org_id = ? AND title = 'Hookup replaced'`, ORG_A)).toBeNull();
   });
 

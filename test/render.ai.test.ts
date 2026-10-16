@@ -13,8 +13,8 @@ vi.mock("../web/src/markdown", () => ({
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
 import { TROV_MARK_PATH } from "../shared/mark";
-import { render, initialState, feedShown, FEED_AI_NOTE, type AppState } from "../web/src/render";
-import { briefTile } from "../web/src/mywork";
+import { render, initialState, feedShown, FEED_AI_NOTE, FEED_NO_TROV, type AppState } from "../web/src/render";
+import { briefTile, sessionsTile } from "../web/src/mywork";
 import { repoStateSection, themesSection, bandHeight, weekLabel, type RepoAiProps } from "../web/src/repo-ai";
 import { repoView, type RepoProps } from "../web/src/repo";
 import { repoSample } from "../web/src/repo-sample";
@@ -22,14 +22,15 @@ import {
   AI_EMPTY, initialAiUi, aiCite, aiCapped, aiDay, aiSuggestionChip, aiWrongBtn, aiFeedback, aiFromLine, aiFeedTip, type AiUi,
 } from "../web/src/ai-ui";
 import { parseFeedbackArg } from "../web/src/ai-actions";
-import { aiHiddenKey } from "../web/src/ai-ui";
+import { aiHiddenKey, AI_TIP } from "../web/src/ai-ui";
 import { aiMark, AI_NOT_OFFICIAL } from "../web/src/marks";
 import { aiTab, allowanceLine } from "../web/src/org-ai";
 import { usageView, orgUsageBlock } from "../web/src/platform-usage";
 import { PRIVACY } from "../web/src/legal";
+import { AI_LEGAL_DRAFT } from "@shared/legal-core";
 import css from "../web/src/trov.css?raw";
 import { briefFixture, repoStateFixture, themesFixture, feedFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
-import { aiItemRef, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, AI_NEVER_SENT, AI_SENDS, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
+import { aiItemRef, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, AI_NEVER_SENT, AI_SENDS, AI_SENDS_ALL, type AiSettings, type AiThemeRange, type AiThemes } from "@shared/ai-core";
 import type { DashboardData } from "@shared/dashboard";
 import type { FeedRow } from "@shared/rows";
 import type { OrgUsage, PlatformUsageResponse } from "@shared/orgs";
@@ -456,7 +457,7 @@ describe("Repo › Planning › Where the work went", () => {
     expect((block.match(/data-act="aiAccept"/g) ?? []).length).toBe(6);
     expect((block.match(/data-act="aiRenameOpen"/g) ?? []).length).toBe(6);
     expect((block.match(/>Remove<\/button>/g) ?? []).length).toBe(6);
-    expect(block).toContain('data-act="aiAccept" data-arg="900"');
+    expect(block).toContain('data-act="aiAccept" data-arg="910"');
     expect(block).not.toContain("Waiting for an admin");
   });
   it("proposed (member): no buttons, 'Waiting for an admin to accept themes'", () => {
@@ -466,12 +467,12 @@ describe("Repo › Planning › Where the work went", () => {
     expect(h).not.toContain("aiRenameOpen");
   });
   it("Rename is an inline labelled field; a 409 not_available says 'Not available yet'", () => {
-    const h = themesSection(themes("proposed"), rp({ ui: ui({ rename: { id: 901, draft: "Tickets" } }) }));
-    expect(h).toMatch(/<label for="ai-rename-901" class="cnpy-sr">New name for Tickets and sprints<\/label>/);
-    expect(h).toMatch(/<input id="ai-rename-901" data-act="aiRenameDraft" data-arg="901"[^>]*value="Tickets"/);
-    expect(h).toContain('data-act="aiRenameSave" data-arg="901"');
-    const na = themesSection(themes("proposed"), rp({ ui: ui({ unavailable: [902] }) }));
-    const chip = na.slice(na.indexOf('data-ai-chip="theme-902"'));
+    const h = themesSection(themes("proposed"), rp({ ui: ui({ rename: { id: 911, draft: "Tickets" } }) }));
+    expect(h).toMatch(/<label for="ai-rename-911" class="cnpy-sr">New name for Tickets and sprints<\/label>/);
+    expect(h).toMatch(/<input id="ai-rename-911" data-act="aiRenameDraft" data-arg="911"[^>]*value="Tickets"/);
+    expect(h).toContain('data-act="aiRenameSave" data-arg="911"');
+    const na = themesSection(themes("proposed"), rp({ ui: ui({ unavailable: [912] }) }));
+    const chip = na.slice(na.indexOf('data-ai-chip="theme-912"'));
     expect(chip.slice(0, chip.indexOf("</li>"))).toContain("Not available yet");
   });
   it("is Planning's first section, above the panel", () => {
@@ -528,6 +529,34 @@ describe("Feed — entries written by Trov", () => {
     // Above the first Trov entry ON SCREEN: with Agents picked, there is none, so no note.
     expect(render(feed({ ai: ui({ feedSource: "agents" }) }))).not.toContain("cnpy-ai-note");
   });
+  it("Source = Trov with no Trov entry on the page says so (Q27)", () => {
+    const tagged = { ...agent, ai: { origin: "agent" as const, subject: null, sources: [], moreCount: 0, generatedAt: null, model: null } };
+    const html = render(feed({ feed: { status: "ok", data: [tagged] }, ai: ui({ feedSource: "trov" }) }));
+    expect(text(html)).toContain(FEED_NO_TROV);
+    expect(text(html)).not.toContain("No entries match this filter.");
+    // Agents or All with nothing shown keep the filter's words.
+    expect(text(render(feed({ feed: { status: "ok", data: [rows()[0]] }, ai: ui({ feedSource: "agents" }) })))).toContain("No entries match this filter.");
+  });
+  it("My Work › Your sessions draws a digest Trov wrote about me with the AI mark (Q30); my own entries as before", () => {
+    const html = sessionsTile([
+      { id: 1, summaryHtml: "Shipped: hosting", brief: null, at: NOW.toISOString(), trov: true },
+      { id: 2, summaryHtml: "Decision: read-only", brief: null, at: NOW.toISOString() },
+    ], "ok", [], 6);
+    const rowsOf = html.split('class="mw-row"');
+    expect(rowsOf[1]).toContain('data-ai="session"');
+    expect(rowsOf[1]).toContain(AI_TIP.session);
+    expect(rowsOf[2]).not.toContain('data-ai="session"');
+  });
+  it("a Trov entry about a deleted account says \"Deleted user\" as plain text, never a link (Q31)", () => {
+    const [a] = feedFixtures(NOW);
+    const gone = { ...a, ai: { ...a.ai!, subject: "deleted-x7k2" } };
+    const persons = { status: "ok" as const, data: [...PERSONS, { handle: "deleted-x7k2", name: "Deleted user", color: "sky" as const, avatar_url: null, role: null }] };
+    const html = render(feed({ feed: { status: "ok", data: [gone] }, persons }));
+    const card = html.slice(html.indexOf(`data-feed-id="${a.id}"`));
+    expect(text(card)).toContain("Trov for Deleted user");
+    expect(card).not.toContain('data-arg="deleted-x7k2"');
+    expect(card).not.toContain("@deleted-x7k2");
+  });
   it("Wrong? hides the entry for this person", () => {
     const html = render(feed({ ai: ui({ hidden: ["feed:990001"] }) }));
     expect(html).not.toContain('data-feed-id="990001"');
@@ -548,7 +577,7 @@ describe("Org settings › AI", () => {
   const settings = (o: Partial<AiSettings> = {}): AiSettings => ({
     enabled: true, canEdit: true, eligibility: "ok",
     allowances: { ai_summaries: use(212, 3000), ai_runs: use(1212, 3000), jev_checks: use(40, 10000), ai_chat: use(830, 2500) },
-    chatAuto: true, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
+    chatAuto: true, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
   });
   const tab = (a: AiSettings | null, status: "ok" | "loading" | "error" = "ok", saving = false) => aiTab(org, { status, data: a }, saving);
 
@@ -613,19 +642,49 @@ describe("Org settings › AI", () => {
     expect(t).not.toMatch(/\bJev\b/);
     expect(html).not.toMatch(/\bJev\b/);
   });
-  it("what is sent lists every feature the Privacy Policy names for Anthropic and TypeSafe AI, not only summaries and Sift (e2e OA-1 / LG-2)", () => {
+  it("what is sent is HELD to the approved Privacy rows (summaries, Sift) while the AI passages are DRAFT — and lists every one once they are (e2e OA-1 / LG-2; owner ruling 2026-10-16)", () => {
     const t = text(tab(settings()));
-    // Anthropic: summaries, Ask Trov, the plain-language filter, and what the AI pass writes; TypeSafe AI: Sift, and the pass's sorting and checking.
-    for (const line of ["For summaries", "For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For Sift", "For sorting and checking items"]) {
-      expect(t).toContain(line);
+    // Held: only what the Privacy Policy states as final. The flag and the full list: test/render.legal.test.ts.
+    expect(AI_LEGAL_DRAFT).toBe(true);
+    for (const line of ["For summaries", "For Sift"]) expect(t).toContain(line);
+    for (const line of ["For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For sorting and checking items"]) {
+      expect(t).not.toContain(line);
     }
-    // One line per provider row of the Privacy Policy's service-provider table (web/src/legal.ts › sharing).
+    // Once approved, the screen renders every line the Privacy Policy's provider table names.
+    const full = text(tab(settings({ sends: [...AI_SENDS_ALL] })));
+    for (const line of ["For summaries", "For Ask Trov", "For filters typed in plain words", "For notes, briefs, the weekly email", "For Sift", "For sorting and checking items"]) {
+      expect(full).toContain(line);
+    }
     const sharing = PRIVACY.sections.find((s) => s.id === "sharing")!.body.join(" ");
     const rows = (sharing.match(/<td>(Anthropic|TypeSafe AI)<\/td>/g) ?? []).length;
-    expect(AI_SENDS.length).toBe(rows);
+    expect(AI_SENDS_ALL.length).toBe(rows);
   });
   it("no key on this Trov: said as a fact", () => {
-    expect(text(tab(settings({ eligibility: "no_key" })))).toContain("This Trov has no Anthropic key");
+    expect(text(tab(settings({ eligibility: "no_key", keys: { anthropic: false, typesafe: true } })))).toContain("This Trov has no Anthropic key");
+  });
+  // Q8 (owner ruling 2026-10-16): the TypeSafe key was said only on Tags; now each provider has its own status.
+  it("each provider's key has its own status: Anthropic and TypeSafe AI, set (a plain fact) or missing (a mark and what it stops)", () => {
+    const both = tab(settings());
+    expect([...both.matchAll(/data-ai-key="([a-z]+)" data-set="(\d)"/g)].map((m) => [m[1], m[2]])).toEqual([["anthropic", "1"], ["typesafe", "1"]]);
+    expect(text(both)).toContain("Providers");
+    expect(text(both).match(/Key set/g)?.length).toBe(2);
+    expect(both).not.toContain("No key");
+    const noSift = tab(settings({ keys: { anthropic: true, typesafe: false } }));
+    expect(text(noSift)).toContain("This Trov has no TypeSafe AI key, so Sift tags, sorts and checks nothing whatever the switch says.");
+    expect(noSift).toMatch(/data-ai-key="typesafe" data-set="0"[\s\S]*No key/);
+    expect(noSift.slice(noSift.indexOf('data-ai-key="anthropic"'), noSift.indexOf('data-ai-key="typesafe"'))).not.toContain("No key");
+    expect(text(noSift)).not.toContain("no Anthropic key");
+    const neither = text(tab(settings({ eligibility: "no_key", keys: { anthropic: false, typesafe: false } })));
+    expect(neither).toContain("This Trov has no Anthropic key");
+    expect(neither).toContain("This Trov has no TypeSafe AI key");
+    expect(neither).not.toMatch(/\bJev\b/);
+  });
+  // Q10 (owner ruling 2026-10-16): a canceled plan read as `capped` with no sentence and no "Used up" line.
+  it("an ended plan says so under the switch, with the way to the plan (Org settings › General)", () => {
+    const html = tab(settings({ eligibility: "capped", planEnded: "Pro" }));
+    expect(text(html).replace(/&#39;/g, "'")).toContain("This organization's Pro plan has ended, so Trov's AI is paused until it is renewed.");
+    expect(html).toMatch(/data-ai-plan-ended[\s\S]*data-act="orgGo" data-arg="general"[^>]*>Plan and billing/);
+    expect(tab(settings())).not.toContain("data-ai-plan-ended");
   });
   it("not read yet is a skeleton; a failed read says so", () => {
     expect(tab(null, "loading")).toContain("aria-busy");
@@ -662,6 +721,18 @@ describe("Platform › Usage — AI runs and tokens", () => {
     expect(html).toContain('data-usage-ai style');
     expect(text(orgUsageBlock(org({ ai }), 7))).toContain("AI runs Runs 120");
   });
+  // Q7 (owner ruling 2026-10-16): with a TypeSafe key and no Anthropic key, Sift's figures still show.
+  it("only Sift's figures (no Anthropic key): the line is \"Sift\", with its checks and tokens — no runs, no zeros", () => {
+    const sift = { jevChecks: 1520, jevTokensIn: 3000, jevTokensOut: 40 };
+    const r = report([org({ ai: sift })], false);
+    const html = usageView({ status: "ok", usage: { ...r, ai: sift }, days: 7, open: "acme" });
+    const totals = html.slice(html.indexOf('data-usage-ai="totals"'));
+    expect(text(totals.slice(0, totals.indexOf("</div>")))).toContain("> Sift Sift checks 1,520 Sift tokens in 3,000 Sift tokens out 40 last 7 days, all organizations");
+    expect(text(orgUsageBlock(org({ ai: sift }), 7))).toContain("Sift Sift checks 1,520");
+    expect(html).not.toContain("AI runs");
+    expect(html).not.toMatch(/Runs 0|Failed 0/);
+  });
+
   it("absent `ai` adds nothing — never a line of zeros", () => {
     const html = usageView({ status: "ok", usage: report([org()], false), days: 7, open: "acme" });
     expect(html).not.toContain("data-usage-ai");

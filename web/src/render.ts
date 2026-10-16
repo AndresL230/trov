@@ -90,7 +90,7 @@ import { welcomeView, welcomeOverlays, initialWelcomeUi, type WelcomeProps, type
 import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, type SyncUi } from "./sync";
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
-import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
+import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiRatingWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
 import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
 import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
@@ -1256,10 +1256,14 @@ function feedBrief(brief: string | null): string {
 }
 
 /** Sift's rating in a byline (`feed.importance`): a dot and the mark for notable or breaking; NOTHING for routine or an
- *  unrated entry, so a row without one is exactly what it was. */
-function feedImportance(e: FeedRow): string {
+ *  unrated entry, so a row without one is exactly what it was. After the mark, "Wrong?" (Q34): feedback for the evals
+ *  only — the rating is a computed fact, never edited, dismissed or hidden. */
+function feedImportance(s: AppState, e: FeedRow): string {
   const m = importanceMark(e.importance);
-  return m ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span><span data-importance="${e.importance}" style="display:inline-flex;align-items:center">${m}</span>` : "";
+  if (!m) return "";
+  const body = aiFeedback("importance", aiItemRef.importance(e.id), "feed.importance", null);
+  const wrong = aiRatingWrongBtn(body, s.ai.ratedWrong.includes(aiHiddenKey("importance", body.itemRef)));
+  return `<span style="font-size:12px;color:var(--fg-40)">&middot;</span><span data-importance="${e.importance}" style="display:inline-flex;align-items:center;gap:2px">${m}${wrong}</span>`;
 }
 
 /** A feed entry's `@author`: a link to their person card when the author is a known person. */
@@ -1288,6 +1292,8 @@ function feedSourceSeg(s: AppState): string {
     options: [{ value: "all", label: "All" }, { value: "agents", label: "Agents" }, { value: "trov", label: "Trov" }],
   });
 }
+/** Source = Trov with no entry Trov wrote on the page (Q27). */
+export const FEED_NO_TROV = "No Trov entries in this view.";
 /** Said once, above the first entry Trov wrote, until this person presses "Got it". */
 export const FEED_AI_NOTE = "Trov now writes entries from your commits, about 45 minutes after your last push. Your agents can stick to decisions and findings.";
 function feedAiNote(): string {
@@ -1314,7 +1320,7 @@ function feedTrovCard(s: AppState, e: FeedRow & { ai: NonNullable<FeedRow["ai"]>
             <span style="font-size:12px;font-weight:600;color:var(--fg)">Trov</span>
             ${subject}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
-            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>${feedImportance(e)}
+            <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>${feedImportance(s, e)}
           </div>
           <div style="display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:10px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)">
             ${from || "<span></span>"}${aiWrongBtn(aiFeedback("feed", aiItemRef.feed(e.id), "feed", a.model), 12.5)}
@@ -1334,7 +1340,8 @@ function feedView(s: AppState): string {
   const shown = feedShown(s, now);
   // "Got it" and "Wrong?" take the note and an entry out with the one exit (ai-ui.ts › Leaving).
   const noteT = aiLeavingT(s.ai, AI_NOTE_LEAVING, now);
-  const noteAt = feedHasAi(s) && (!feedNoteSeen(s) || noteT !== null) ? shown.findIndex(isTrovEntry) : -1;
+  // With the switch off (or no key) the note would be untrue: not drawn; the entries keep their mark (Q29).
+  const noteAt = feedHasAi(s) && !s.ai.feedAiOff && (!feedNoteSeen(s) || noteT !== null) ? shown.findIndex(isTrovEntry) : -1;
   const cards = shown.map((e, i) => {
     const note = i === noteAt ? (noteT === null ? feedAiNote() : aiLeave(feedAiNote(), noteT)) : "";
     if (isTrovEntry(e)) {
@@ -1358,7 +1365,7 @@ function feedView(s: AppState): string {
             ${agentMark()}
             <span style="font-size:12px;color:var(--fg-40)">&middot;</span>
             <span style="font-size:12px;color:var(--fg-40)">${relTime(e.created_at)}</span>
-            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}${feedImportance(e)}
+            ${e.tags && e.tags.length ? `<span style="font-size:12px;color:var(--fg-40)">&middot;</span>${tagWords(e.tags)}` : ""}${feedImportance(s, e)}
             <div style="flex:1"></div>
           </div>
           ${artifactRow}
@@ -1372,7 +1379,9 @@ function feedView(s: AppState): string {
   if (s.feed.status === "ok" && s.feed.data.length === 0 && s.feedAuthor === "all" && s.feedTag === "all") {
     return wrapFeed(s, emptyLayout("feed", { text: FEED_EMPTY, action: CONNECT_AGENT, sayStyle: "margin-bottom:12px", shapes: skList(3, feedCardShape) }), false);
   }
-  const empty = s.feed.status === "ok" && shown.length === 0 ? notice("No entries match this filter.") : "";
+  // Source = Trov over a page with no entry Trov wrote says so, not "match this filter" (Q27).
+  const empty = s.feed.status === "ok" && shown.length === 0
+    ? notice(feedHasAi(s) && s.ai.feedSource === "trov" ? FEED_NO_TROV : "No entries match this filter.") : "";
   return wrapFeed(s, `<div class="cnpy-stagger">${cards}</div>${empty}`);
 }
 
@@ -2675,7 +2684,7 @@ function myWorkView(s: AppState): string {
   const feedLoad = mwLoad(s.mwSessions.status, s.mwSessions.data.length > 0);
   const sessions: MwSession[] = s.mwSessions.data
     .slice(0, 2)
-    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at }));
+    .map((e) => ({ id: e.id, summaryHtml: renderMarkdownInline(e.summary), brief: e.brief, at: e.created_at, trov: e.ai?.origin === "ai" }));
   const handoffLoad = mwLoad(s.handoffs.status, s.handoffs.data.length > 0);
   const waiting: MwHandoff[] = handoffsForMe(s.handoffs.data, me)
     .map((h) => ({ id: h.id, title: firstLine(h.body) || `Handoff #${h.id}`, at: h.created_at }));
@@ -2879,7 +2888,7 @@ function sprintScreenBody(s: AppState): string {
   if ((slice.status === "loading" || slice.status === "idle") && !slice.data) return sprintSkeleton();
   if (slice.status === "error") return notice("Couldn't load this sprint.");
   if (!slice.data) return notice("That sprint doesn't exist.");
-  return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed });
+  return sprintScreen({ detail: slice.data, persons: s.persons.data, resourceDraft: s.linkDraft, deleteArmed: s.sprintDeleteArmed, ai: s.ai });
 }
 
 /** The person card for `handle`: painted from the `GET /persons` summary, completed by the

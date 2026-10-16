@@ -21,7 +21,7 @@ import {
 } from "@shared/ai-ask-core";
 import { askChatClient } from "../client";
 import { ASK_TOOLS, WRITE_ICON, activityLabel, offeredTools, type ToolSpec } from "./tools";
-import { autoAllowedFor, cardFields, ChangedSince } from "./actions";
+import { assertMayRunNow, autoAllowedFor, cardFields, ChangedSince } from "./actions";
 import type { AskToolCtx } from "./context";
 import { refsFromResult, normalRef } from "./refs";
 import { ASK_SYSTEM_RULES, MetaSplitter, fence } from "./prompt";
@@ -64,6 +64,8 @@ export interface TurnInput {
   notices?: readonly AttachmentNotice[];
   fetchImpl?: typeof fetch;
   now: () => number;
+  /** How often (ms) the Stop flag is read WHILE the model streams (default STOP_POLL_MS; a test passes 0). */
+  stopPollMs?: number;
 }
 
 export interface TurnActivity { step: number; tool: string; icon: AskActivityIcon; label: string; results: string[]; resultLine: string | null }
@@ -103,7 +105,8 @@ const json = (v: unknown, max = 40_000): string => {
   const s = JSON.stringify(v ?? null);
   return s.length > max ? `${s.slice(0, max)}… (truncated)` : s;
 };
-const resultLine = (n: number): string => (n === 0 ? "No results" : n === 1 ? "1 result" : `${n} results`);
+/** A search step's count, the ONE wording everywhere — streamed and stored (Q51). */
+export const resultLine = (n: number): string => (n === 0 ? "No results" : n === 1 ? "1 result" : `${n} results`);
 
 /** What the turn tracks across its tool calls. */
 interface TurnState {
@@ -115,6 +118,9 @@ interface TurnState {
   lastWrite: { tool: string; groupId: string } | null;
   groups: number;
 }
+
+/** How often the Stop flag is read while the model streams. */
+export const STOP_POLL_MS = 1_000;
 
 export async function runTurn(t: TurnInput): Promise<TurnResult> {
   const def = askMode(t.mode);
@@ -179,7 +185,15 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
       let blockType: string | null = null;
       let thinkingStart = 0;
       let thinkingText = "";
+      let polled = t.now();
       for await (const ev of stream) {
+        // Stop while the model streams: the flag `POST /ask/threads/:id/stop` sets is read every STOP_POLL_MS too, not
+        // only between steps — the request's own signal does not fire when a browser drops the connection (no
+        // `enable_request_signal`), so without this a long answer ran to its end after Stop.
+        if (t.now() - polled >= (t.stopPollMs ?? STOP_POLL_MS)) {
+          polled = t.now();
+          if (await stopRequested(t.ctx, t.tool.threadId)) { stop("stopped"); break; }
+        }
         if (ev.type === "content_block_start") {
           blockType = ev.content_block.type;
           if (blockType === "thinking" && def.thinking) {
@@ -325,6 +339,7 @@ async function runTool(
     }
 
     // A WRITE. The card is built from Trov's rows first: a write that cannot apply is refused here, with no card.
+    assertMayRunNow(t.ctx, use.name); // not this person's to make (an admin-only tool to a member): no card (Q57)
     const preview = await spec.preview(t.tool, args);
     const { fields, editable } = cardFields(use.name, args);
     const groupId = st.lastWrite?.tool === use.name ? st.lastWrite.groupId : `${t.tool.threadId}-${t.turn}-${++st.groups}`;

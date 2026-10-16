@@ -4,11 +4,17 @@
 import { describe, it, expect, vi } from "vitest";
 
 const mdMock = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const sent = vi.hoisted(() => ({ bodies: [] as unknown[] }));
+vi.mock("../web/src/api", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../web/src/api")>()),
+  sendAiFeedback: (b: unknown) => { sent.bodies.push(b); return Promise.resolve({ ok: true }); },
+}));
 vi.mock("../web/src/markdown", () => ({
   renderMarkdown: (body: string) => `<div class="mock-live-md">${mdMock(body)}</div>`,
   renderMarkdownInline: (text: string) => mdMock(text),
 }));
 import { render, initialState } from "../web/src/render";
+import { createAiController } from "../web/src/ai-actions";
 import { IMPORTANCE_MARK, importanceMark } from "../web/src/marks";
 import type { FeedRow } from "@shared/rows";
 import { feedFixtures, feedImportanceFixtures, aiPreviewFixtures } from "@shared/ai-fixtures";
@@ -85,5 +91,35 @@ describe("the Feed's importance mark", () => {
     const html = render(state([...feedFixtures(NOW), ...fx]));
     expect(html).toContain('data-importance="breaking"');
     expect(html).toContain('data-importance="notable"');
+  });
+});
+
+describe("Wrong? on a rating — feedback for the evals only (Q34)", () => {
+  it("a notable or breaking mark carries a small Wrong? (no Dismiss, nothing to edit); routine and unrated carry none", () => {
+    for (const imp of ["notable", "breaking"] as const) {
+      const html = render(state([row({ id: 7, importance: imp })]));
+      const mark = html.slice(html.indexOf(`data-importance="${imp}"`));
+      const btn = mark.match(/<button type="button" data-act="aiRatingWrong" data-arg="([^"]+)"[^>]*aria-pressed="false"/);
+      expect(btn).not.toBeNull();
+      expect(JSON.parse(btn![1].replace(/&quot;/g, '"'))).toEqual({ itemType: "importance", itemRef: "feed:7", kind: "feed.importance", model: null, promptVersion: null });
+      expect(mark.slice(0, mark.indexOf("</span></span>"))).not.toMatch(/aiDismiss|aiAccept|Dismiss/);
+    }
+    expect(render(state([row({ importance: "routine" })]))).not.toContain("aiRatingWrong");
+  });
+  it("pressing it sends ai_feedback and keeps the rating on screen, pressed — nothing is hidden", async () => {
+    const s = state([row({ id: 7, importance: "breaking" })]);
+    const flashes: string[] = [];
+    const ctl = createAiController({ state: s, mount: {} as HTMLElement, rerender: () => {}, flash: (m) => flashes.push(m), unauth: () => {} });
+    const arg = JSON.stringify({ itemType: "importance", itemRef: "feed:7", kind: "feed.importance", model: null, promptVersion: null });
+    ctl.act("aiRatingWrong", arg, null);
+    ctl.act("aiRatingWrong", arg, null); // once
+    await Promise.resolve(); await Promise.resolve();
+    expect(sent.bodies).toHaveLength(1);
+    expect(s.ai.hidden).toEqual([]);
+    expect(s.ai.leaving).toEqual([]);
+    const html = render(s);
+    expect(html).toContain('data-importance="breaking"');
+    expect(html).toMatch(/data-act="aiRatingWrong"[^>]*aria-pressed="true"/);
+    expect(flashes).toEqual(["Thanks: Trov is told this rating looks wrong. It stays as rated."]);
   });
 });

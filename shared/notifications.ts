@@ -30,7 +30,8 @@ export type Window = z.infer<typeof Window>;
 // Phase E (the shorter e-mail): `layout: "line"` is a queue's ONE line ("Review: 3 waiting") — `heading` is its
 // label, `text` the whole line, `html` the part after the label; the assembler gathers every line into one block
 // after the others. `subject` is a subject line a section offers (the brief's top Next item): the first section
-// offering one names the mail.
+// offering one names the mail. `footnote` is ONE plain-text line the section asks for in the mail's footer (the
+// brief's "paused" line, for an admin: owner ruling Q42).
 export const Section = z.object({
   heading: z.string().min(1),
   html: z.string().min(1),
@@ -40,6 +41,7 @@ export const Section = z.object({
   linkLabel: z.string().optional(),
   layout: z.enum(["block", "line"]).optional(),
   subject: z.string().min(1).optional(),
+  footnote: z.string().min(1).optional(),
 });
 export type Section = z.infer<typeof Section>;
 

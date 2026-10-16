@@ -115,8 +115,20 @@ describe("POST /api/notifications/test-send", () => {
     expect(rows[0]).toMatchObject({ user_id: "admin-user", cadence: "daily", status: "sent" });
     const bodies = await all<{ to_address: string; subject: string; html: string }>(env.DB, `SELECT * FROM notification_outbox_bodies`);
     expect(bodies[0].to_address).toBe("admin@example.com");
-    expect(bodies[0].subject).toMatch(/^Trov daily, /);
+    expect(bodies[0].subject).toBe("Your Trov digest"); // Q41: nothing next for them
     expect(bodies[0].html).toContain("Review:</span> 1 waiting");
+  });
+
+  // Q46 (owner ruling 2026-10-16): "Only when something needs me" holds back the scheduled daily only.
+  it("a test send and the preview always go, even for someone with \"Only when something needs me\" and nothing that does", async () => {
+    const cookie = await cookieFor("admin-user", "admin@example.com");
+    await run(env.DB, `INSERT INTO notification_person_prefs (org_id, user_id, only_when_needed, updated_at) VALUES ('org_saplinglearn', 'admin-user', 1, 'now')`);
+    await pending();
+    const res = await send(cookie, { cadence: "daily" });
+    expect(((await res.json()) as { status: string }).status).toBe("sent");
+    const preview = await app.request("/api/notifications/preview?cadence=daily", { headers: { cookie } }, env);
+    expect(preview.status).toBe(200);
+    expect(await preview.text()).toContain("Review:");
   });
 
   it("does not consume the real window: a later scheduled run for the same window still sends", async () => {

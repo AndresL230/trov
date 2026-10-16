@@ -33,8 +33,14 @@ export interface AiUi {
    *  answers; a failed write takes the key out again. */
   hidden: string[];
   feedSource: AiFeedSource;
+  /** Importance ratings this person said look wrong this session (`aiHiddenKey("importance", …)`): the button
+   *  stays pressed; the rating itself is untouched (Q34). */
+  ratedWrong: string[];
   /** Handles that pressed "Got it" on the Feed's note, on this browser (`trov.aiFeedNote`). */
   noteSeen: string[];
+  /** The Feed's last read said Trov writes no new entries (the switch off, or no key; `/feed`'s `aiOff`): its
+   *  one-time note is not drawn. Trov's entries keep their mark (Q29). */
+  feedAiOff: boolean;
   /** Repo › Planning › Where the work went: the range on screen and the lane picked. */
   themesRange: AiThemeRange;
   themesLane: string | null;
@@ -46,13 +52,16 @@ export interface AiUi {
   unavailable: number[];
   /** The suggestion chip whose reason is open (its key), or null. */
   reasonOpen: string | null;
+  /** Sample suggestions decided under `LOCAL_AI_PREVIEW` (the server answered `preview: true`; Q5): nothing was
+   *  saved, so the decision lives here — the item stays gone (held at its exit's end) for this session. */
+  previewDecided: number[];
   /** Items on their way out (`aiHiddenKey`; `AI_NOTE_LEAVING` for the Feed's note; `aiSuggestionKey` for a decided
    *  suggestion) and when they started: drawn collapsing for `AI_EXIT_MS`, then gone (› Leaving). Never under
    *  reduced motion. */
   leaving: { key: string; at: number }[];
 }
 export function initialAiUi(): AiUi {
-  return { hidden: [], feedSource: "all", noteSeen: [], themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, leaving: [] };
+  return { hidden: [], ratedWrong: [], feedSource: "all", noteSeen: [], feedAiOff: false, themesRange: "8w", themesLane: null, rename: null, busy: [], unavailable: [], reasonOpen: null, previewDecided: [], leaving: [] };
 }
 /** The localStorage key "Got it" is remembered under: a JSON list of handles (per person, per browser). */
 export const AI_NOTE_KEY = "trov.aiFeedNote";
@@ -107,6 +116,7 @@ export const AI_TIP = {
   state: `Written by Trov from captured events, tickets and the plan. ${AI_NOT_OFFICIAL}`,
   themes: `Themes and caption written by Trov from this repository's merged pull requests. ${AI_NOT_OFFICIAL}`,
   suggestion: `Suggested by Trov. Nothing changes until a person accepts it. ${AI_NOT_OFFICIAL}`,
+  session: `Written by Trov about your session, from its commits and pull requests. ${AI_NOT_OFFICIAL}`,
 } as const;
 /** A feed entry's tooltip names its own sources. */
 export const aiFeedTip = (sources: AiCite[], more: number): string =>
@@ -181,6 +191,14 @@ export function aiFeedback(itemType: AiItemType, itemRef: string, kind: string, 
 const THUMBS_DOWN = (size: number): string => `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V2"></path><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg>`;
 export function aiWrongBtn(body: AiFeedbackBody, size = 14): string {
   return `<button type="button" data-act="aiWrong" data-arg="${attr(JSON.stringify(body))}" class="cnpy-ghostbtn cnpy-ai-wrong" aria-label="Wrong? Hide this and tell Trov it is wrong" data-mtip="Wrong? Hides this for you and tells Trov." style="display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;color:var(--fg-55);border:1px solid var(--border-strong);border-radius:6px;background:transparent">${THUMBS_DOWN(size)}</button>`;
+}
+
+/** "Wrong?" on Sift's importance rating (Q34): feedback for the evals ONLY — the rating is a computed fact, so it
+ *  stays exactly as rated (nothing is hidden or edited, and there is no Dismiss). The small thumbs-down sits right
+ *  after the mark in a byline; pressed, it stays pressed for the session (`AiUi.ratedWrong`). */
+export function aiRatingWrongBtn(body: AiFeedbackBody, pressed: boolean): string {
+  const tip = pressed ? "You told Trov this rating looks wrong. It stays as rated." : "Wrong? Tells Trov this rating looks wrong, to improve it. The rating stays.";
+  return `<button type="button" data-act="aiRatingWrong" data-arg="${attr(JSON.stringify(body))}" class="cnpy-ghostbtn cnpy-ai-wrong" aria-label="${attr(tip)}" aria-pressed="${pressed}" data-mtip="${attr(tip)}" style="display:inline-flex;align-items:center;justify-content:center;flex:none;width:24px;height:24px;margin:-6px 0;padding:0;color:${pressed ? "var(--accent)" : "var(--fg-40)"};border:0;border-radius:6px;background:transparent">${THUMBS_DOWN(12)}</button>`;
 }
 
 /** "Monthly AI allowance used; <clause>." — `clause` says what resumes when ("your brief resumes

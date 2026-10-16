@@ -83,6 +83,25 @@ describe("`live` — a new thread", () => {
   });
 });
 
+describe("QA-6: a blocked composer's starters send nothing and say why", () => {
+  for (const [name, set, why] of [
+    ["at the cap", (s: AppState) => { s.ask.state = { status: "ok", data: { ...s.ask.state.data!, allowance: { ...s.ask.state.data!.allowance, used: 1500 } } }; }, "You've used this month's questions."],
+    ["off", (s: AppState) => { s.ask.state = { status: "ok", data: { ...s.ask.state.data!, enabled: false } }; }, "Ask Trov is off for this org."],
+    ["no key", (s: AppState) => { s.ask.state = { status: "ok", data: { ...s.ask.state.data!, eligibility: "no_key" } }; }, "Ask Trov is not set up on this deployment."],
+  ] as const) {
+    it(name, () => {
+      const s = base();
+      set(s);
+      const html = emptyView(askView(s, "page"));
+      expect(html).not.toContain(`data-act="askCvSend"`);
+      expect(html).toContain(`aria-disabled="true" data-mtip="${why.replace(/'/g, "&#39;")}"`);
+      const { ctx, sent } = fakeCtx(s);
+      act(ctx, "askCvSend", "What shipped this week?"); // a stale click
+      expect(sent).toEqual([]);
+    });
+  }
+});
+
 describe("`answer` — the whole answer, in stream order", () => {
   const { html } = view("answer");
   const t = text(html);
@@ -208,6 +227,18 @@ describe("`streaming` — mid-answer", () => {
     // …below the steps: the wait row comes after the steps list.
     expect(during.indexOf("ask-cur-alone")).toBeGreaterThan(during.indexOf("ask-step is-run"));
   });
+  it("Q-F1: a block is out and a step runs — the running step's orb, not the ribbon; the ribbon once no step runs", () => {
+    const ev = askTranscript("answer", NOW).map((s) => s.event);
+    const upToChart = ev.slice(0, ev.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
+    const step = (n: number, state: "run" | "done"): AskEvent => state === "run"
+      ? { event: "activity", data: { step: n, tool: "search_docs", icon: "search", label: "Searched docs for 'more'", state: "run" } }
+      : { event: "activity", data: { step: n, state: "done" } };
+    const n = 90;
+    const during = view("answer", { events: [...upToChart, step(n, "run")], busy: true }).html;
+    expect(during).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"[^>]*><\/canvas><span class="ask-wait-l">Thinking…<\/span>/);
+    const after = view("answer", { events: [...upToChart, step(n, "run"), step(n, "done")], busy: true }).html;
+    expect(after).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*><\/canvas><span class="ask-wait-l">Writing…<\/span>/);
+  });
   it("a running step keeps its own icon (the one orb is the wait row's) and its label carries the sweep", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event).slice(0, 2);
     const { html: h } = view("answer", { events, busy: true });
@@ -226,6 +257,18 @@ describe("`streaming` — mid-answer", () => {
       expect(rule).toMatch(/background:none !important/);
       expect(rule).toMatch(/color:var\(--fg-55\) !important/);
     }
+  });
+});
+
+describe("colour carries meaning only (the owner, 2026-10-16): Ask's \"working\" is the accent, never a hue of its own", () => {
+  it("the orb's ink, the running sweep and the busy jump arrow are --accent (olive in dark); no Ask rule uses --purple", async () => {
+    const orbSrc = (await import("../web/src/thinking-orb.ts?raw")).default as string;
+    expect(orbSrc).toContain(`getPropertyValue("--accent")`);
+    expect(orbSrc).not.toContain("--purple");
+    expect(css).toContain(".ask-step.is-run .ask-step-l, .ask-think-l, .ask-wait-l { background:linear-gradient(90deg, var(--fg-40) 0%, var(--fg-40) 35%, var(--accent) 50%,");
+    expect(css).toContain('.ask-jump[data-busy="1"] { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }');
+    const askRules = css.split("}").filter((r) => /(^|\n|,)\s*\.ask-/.test(r.split("{")[0] ?? ""));
+    expect(askRules.filter((r) => r.includes("--purple"))).toEqual([]);
   });
 });
 
@@ -336,7 +379,7 @@ describe("the error, Stopped, and the oversized-image notice", () => {
 });
 
 describe("jump to the latest (the owner)", () => {
-  it("rendered with the conversation, hidden until the person scrolled away; purple while an answer streams; the act holds on to the bottom", () => {
+  it("rendered with the conversation, hidden until the person scrolled away; in the accent while an answer streams; the act holds on to the bottom", () => {
     const s = base();
     const idle = jumpButton(askView(s, "page"));
     expect(idle).toMatch(/^<div class="ask-jump-w"><button type="button" class="ask-jump" data-act="askCvJump" data-arg="page" aria-label="Jump to the latest"[^>]*data-away="0" data-busy="0" tabindex="-1" aria-hidden="true">/);
@@ -567,10 +610,11 @@ describe("acts — edit-and-resend and regenerate go through replaceFrom", () =>
     s.ask.composer.panel.context = ["person:maya", "ticket:14"];
     const { ctx, sent } = fakeCtx(s);
     act(ctx, "askCvSend", "What's left before this can close?");
-    expect(sent).toEqual([{ text: "What's left before this can close?", where: "panel", context: ["ticket:14", "person:maya"] }]);
+    // With the composer's own mode and switch (Q50: never a mode the allowance can't cover).
+    expect(sent).toEqual([{ text: "What's left before this can close?", where: "panel", context: ["ticket:14", "person:maya"], mode: "smart", auto: false }]);
     s.screen = "ask";
     act(ctx, "askCvSend", "What shipped this week?");
-    expect(sent[1]).toEqual({ text: "What shipped this week?", where: "page" });
+    expect(sent[1]).toEqual({ text: "What shipped this week?", where: "page", mode: "smart", auto: false });
   });
 
   it("disclosures open at once and close through their exit; Copy says Copied", () => {

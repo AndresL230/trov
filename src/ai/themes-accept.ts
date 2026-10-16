@@ -28,6 +28,19 @@ export const themeName = (v: unknown): string | null => {
   return s.length >= 1 && s.length <= THEME_NAME_MAX && !/^\(.*\)$/.test(s) ? s : null;
 };
 
+/** Why a rename's name is refused, in the words the Repo screen shows (Q20); null when it is a good name or not a
+ *  name at all. */
+export function themeNameRefusal(v: unknown): string | null {
+  if (!v || typeof v !== "object" || Array.isArray(v) || !("name" in v)) return null;
+  const raw = (v as { name: unknown }).name;
+  if (typeof raw !== "string") return null;
+  const s = raw.replace(/\s+/g, " ").trim();
+  if (!s) return "A theme needs a name.";
+  if (s.length > THEME_NAME_MAX) return `A theme name is at most ${THEME_NAME_MAX} characters.`;
+  if (/^\(.*\)$/.test(s)) return "A theme name can't be wrapped in parentheses.";
+  return null;
+}
+
 /** What an accept may carry: the stored value (`{ name, description }`), a new `name`, or `mergeInto`. */
 type ThemeAcceptValue = { name: string } | { mergeInto: number };
 function parseValue(v: unknown): ThemeAcceptValue | null {
@@ -51,6 +64,7 @@ export const themeAcceptHandler: AcceptHandler = {
   role: "admin",
   dismissRole: "admin",
   valid: (v) => parseValue(v) !== null,
+  refusal: themeNameRefusal,
   async apply(ctx: TenantContext, s: AiSuggestionRow, value: unknown): Promise<void> {
     const v = parseValue(value);
     const id = themeIdOf(s);
@@ -74,7 +88,8 @@ export const themeAcceptHandler: AcceptHandler = {
     try {
       ok = await activateTheme(ctx, id, ctx.userId, at, rename);
     } catch (e) {
-      if (isUniqueClash(e)) throw new AcceptRefused("invalid"); // another live theme has that name: merge instead
+      // Another live theme has that name (merge instead): say so, in the admin's own spelling (Q20).
+      if (isUniqueClash(e)) throw new AcceptRefused("invalid", `A theme named ${v.name} already exists.`);
       throw e;
     }
     if (!ok) throw new AcceptRefused("not_open");

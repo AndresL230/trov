@@ -34,7 +34,8 @@ const BRIEF_AI: BriefContent = {
   ],
   nextTotal: 4,
   also: [
-    { title: "Repository setups", href: `${GH}/pull/172`, importance: "breaking", at: "2026-09-11T08:00:00Z" },
+    // Also links into Trov, never GitHub (Q43): their own pull request opens My Work.
+    { title: "Repository setups", href: appHref("#mywork"), importance: "breaking", at: "2026-09-11T08:00:00Z" },
     { title: "Hosting deploys now poll every hour", href: appHref("#feed"), importance: "notable", at: "2026-09-11T06:00:00Z" },
   ],
 };
@@ -68,8 +69,9 @@ const must = (s: Section | null): Section[] => (s ? [s] : []);
 /** One fixture: its cadence and sections — or `skipped`, what a run does instead of sending. */
 export function sampleDigest(scenario: SampleScenario): { cadence: RunCadence; sections: Section[]; skipped?: string } {
   switch (scenario) {
-    case "daily-ai": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_AI)), REVIEW, TICKETS] };
-    case "daily-off": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_OFF)), REVIEW_OFF, TICKETS] };
+    // The Sprint line rides every daily (Q45).
+    case "daily-ai": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_AI)), REVIEW, SPRINT, TICKETS] };
+    case "daily-off": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_OFF)), REVIEW_OFF, SPRINT, TICKETS] };
     case "daily-empty": return { cadence: "daily", sections: [queueLine({ label: "Tickets", rest: "1 waiting for someone", deepLink: "/#tickets", linkLabel: "Tickets" })] };
     case "weekly-ai": return { cadence: "weekly", sections: [...must(renderBrief({ ...BRIEF_AI, also: [] })), ...must(renderWeek(HIGHLIGHTS, NUMBERS)), SPRINT] };
     case "weekly-off": return { cadence: "weekly", sections: [...must(renderBrief(BRIEF_OFF)), ...must(renderWeek([], NUMBERS)), SPRINT] };

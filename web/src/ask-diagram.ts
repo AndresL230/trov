@@ -23,7 +23,7 @@
 
 import { esc, attr } from "./ui";
 import type { AskView } from "./ask-state";
-import { viewOf, refTypeWord, refStatusMark, repoFactsOf, repoMark } from "./ask-refs";
+import { viewOf, isHiddenRef, refTypeWord, refStatusMark, repoFactsOf, repoCiMark } from "./ask-refs";
 import { askIcon, REF_ICON } from "./ask-icons";
 import type { AskDiagram, RefView } from "@shared/ai-ask-core";
 
@@ -253,10 +253,11 @@ function edgePaths(L: DiagramLayout, mode: "lr" | "tb"): string {
 
 // ── the cards ────────────────────────────────────────────────────────────────
 
-/** An item's state as a mark: a repository's is the Overview's verdict, anything else its RefStatus. */
+/** An item's state as a mark: a repository's is its CI — the head environment's checks (QA-5) — anything else its
+ *  RefStatus. */
 function statusOf(view: RefView | null, size: number): string {
   if (!view) return "";
-  if (view.type === "repo") return repoMark(repoFactsOf(view), size);
+  if (view.type === "repo") return repoCiMark(repoFactsOf(view), size);
   return view.status ? refStatusMark(view.status, size) : "";
 }
 
@@ -293,7 +294,9 @@ export function diagramFigure(v: Pick<AskView, "look">, d: AskDiagram): string {
   ].join(";");
 
   const items = L.order.map((n, i) => {
-    const view = n.view ?? (n.ref ? viewOf(v.look, n.ref) : null);
+    // The live view first (a reopened thread re-reads it, QA-1); the one stored with the block until then. An item
+    // since hidden is a plain node: no link, no mark (never its old state).
+    const view = n.ref && isHiddenRef(v.look, n.ref) ? null : (n.ref ? viewOf(v.look, n.ref) : null) ?? n.view;
     const { kind, title } = nodeWords(n, view);
     const st = statusOf(view, 11.5);
     const p = L.at.get(n.id)!;
