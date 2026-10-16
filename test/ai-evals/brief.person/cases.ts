@@ -11,10 +11,9 @@
 //   • a teammate's view (case `someone-waiting`): handoffs #11 and #3 really were left for anyone by andres;
 //   • a CI run's id (case `failing-pr`): #179's checks really failed (get_repo_dashboard), its run id is a stand-in;
 //   • `today`, set to when the rows were current.
-// The ORDER of Next is always the server's (`orderNext`), never written by hand.
+// The ORDER of Next is always the server's (`pickNext`: `orderNext`, one per kind's group, three), never written by hand.
 import type { AiCite } from "@shared/ai";
-import { BRIEF_NEXT_MAX } from "../../../src/ai/brief-core";
-import { orderNext, type BriefCard, type BriefInput, type BriefNote, type BriefPr, type NextOffer, type NextRule } from "../../../src/ai/brief-core";
+import { pickNext, shortDay, type BriefCard, type BriefInput, type BriefNote, type BriefPr, type NextOffer, type NextRule } from "../../../src/ai/brief-core";
 
 const GH = "https://github.com/AndresL230/trov";
 
@@ -32,7 +31,7 @@ class Bundle {
     for (const f of failing) {
       this.offers.push({
         ref: `run:${f.id}`, kind: "failing", rule: "blocked", title: f.name,
-        facts: `its last run failed on ${this.today}, on your pull request #${n} "${title}"`,
+        facts: `its last run failed on ${shortDay(this.today)}, on your pull request #${n} "${title}"`,
         fallback: `It is failing on your pull request #${n}.`,
         cites: [this.cites[`run:${f.id}`], this.cites[`pr:${n}`]], order: [0, 0, String(f.id)],
       });
@@ -54,11 +53,11 @@ class Bundle {
     const ref = this.c({ ref: `ticket:${n}`, label: `#${n}`, href: `#tickets/${n}` });
     const status = o.status ?? "submitted";
     this.offers.push({
-      ref, kind: rule === "assigned" ? "ticket" : "due", rule, title,
-      facts: [o.sprint ? `in sprint "${o.sprint.title}", due ${o.sprint.due}${rule === "overdue" ? " (passed)" : ""}` : "in no sprint",
+      ref, kind: rule === "overdue" ? "overdue" : rule === "due soon" ? "due" : "ticket", rule, title,
+      facts: [o.sprint ? `in sprint "${o.sprint.title}", due ${shortDay(o.sprint.due)}${rule === "overdue" ? " (passed)" : ""}` : "in no sprint",
         status === "in_progress" ? "in progress" : "not started", `priority ${o.priority ?? "normal"}`,
         o.requester ? `requested by ${o.requester}` : "filed by you"].join("; "),
-      fallback: rule === "overdue" ? `Its sprint, ${o.sprint!.title}, was due ${o.sprint!.due}.` : rule === "due soon" ? `Its sprint, ${o.sprint!.title}, is due ${o.sprint!.due}.` : "It is assigned to you.",
+      fallback: rule === "overdue" ? `Its sprint, ${o.sprint!.title}, was due ${shortDay(o.sprint!.due)}.` : rule === "due soon" ? `Its sprint, ${o.sprint!.title}, is due ${shortDay(o.sprint!.due)}.` : "It is assigned to you.",
       cites: [this.cites[ref]], order: [o.rank ?? 2, o.priority === "high" ? 0 : 1, String(n).padStart(9, "0")],
     });
     return this;
@@ -67,7 +66,7 @@ class Bundle {
     const ref = this.c({ ref: `handoff:${n}`, label: `handoff #${n}`, href: `#handoffs/${n}` });
     this.offers.push({
       ref, kind: "handoff", rule: forWhom === "yourself" ? "assigned" : "waiting", title,
-      facts: `left by ${forWhom === "yourself" ? "you" : from} for ${forWhom} on ${at}; nobody has claimed it`,
+      facts: `left by ${forWhom === "yourself" ? "you" : from} for ${forWhom} on ${shortDay(at)}; nobody has claimed it`,
       fallback: forWhom === "yourself" ? "You left it for yourself to pick up." : forWhom === "you" ? `${from} left it for you.` : `${from} left it for anyone to pick up.`,
       cites: [this.cites[ref]], order: forWhom === "yourself" ? [1, 0, at] : [forWhom === "you" ? 0 : 1, Date.parse(at), String(n)],
     });
@@ -78,7 +77,7 @@ class Bundle {
     return {
       handle: this.handle, name: this.name, today: this.today,
       now: { prs: this.prs, status: this.status }, recently: { cards: this.cards, notes: this.notes },
-      next: orderNext(this.offers).slice(0, BRIEF_NEXT_MAX), cites: this.cites,
+      next: pickNext(this.offers), cites: this.cites,
     };
   }
 }

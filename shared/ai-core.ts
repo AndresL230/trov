@@ -59,8 +59,12 @@ export const TROV_SYSTEM_HANDLE = "trov";
 // ── My Work › "Your brief" ──────────────────────────────────────────────────
 /** What a Next row is; picks its state mark (Failing = red dot, Handoff = arrow, a ticket
  *  shows its `#N`, a sprint ticket due soon = the due mark). */
-export const AI_NEXT_KINDS = ["failing", "handoff", "ticket", "due"] as const;
+/** A Next row's kind, which is its mark: `overdue` is past its date (its sprint's), `due` is due soon (BR-OWNER-1). */
+export const AI_NEXT_KINDS = ["failing", "handoff", "ticket", "due", "overdue"] as const;
 export type AiNextKind = (typeof AI_NEXT_KINDS)[number];
+/** Next carries at most ONE item per group (the owner, BR-OWNER-1: "one of each"): Overdue and Due soon are one
+ *  group — a brief never has both — and every other kind is its own. */
+export const AI_NEXT_GROUP: Record<AiNextKind, string> = { failing: "failing", handoff: "handoff", ticket: "ticket", due: "due", overdue: "due" };
 
 export interface AiBriefNextItem {
   /** The real item this row is (one of the items the server offered the model). */

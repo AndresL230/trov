@@ -17,7 +17,7 @@ import type { ReviewHead } from "./triage-map";
 import { segmented } from "./segmented";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, type EmptyAction } from "./skeleton";
 import { esc, attr, relTime, surface } from "./ui";
-import { AI_BRIEF_CITES_MAX, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
+import { AI_BRIEF_CITES_MAX, AI_BRIEF_LINE_MAX, AI_BRIEF_NEXT_MAX, AI_BRIEF_WHY_MAX, AI_NEXT_GROUP, aiItemRef, type AiBrief, type AiBriefNextItem, type AiLine } from "@shared/ai-core";
 import { AI_EMPTY, AI_TIP, aiByline, aiCapped, aiCite, aiCites, aiDay, aiEmpty, aiFeedback, aiWrongBtn } from "./ai-ui";
 
 export type MwRepoTab = "prs" | "ci" | "deploys";
@@ -415,9 +415,12 @@ const TICKET_BOX = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" 
 const kindWord = (icon: string, word: string): string =>
   `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg-70);white-space:nowrap">${icon}${esc(word)}</span>`;
 
-/** A Next row's lead: Failing (the app's failing mark), Handoff (an arrow), the ticket's `#N`, or Due soon. */
+/** A Next row's lead: Failing (the app's failing mark), Overdue (the danger tone: its date has passed), Due soon,
+ *  Handoff (an arrow), or the ticket's `#N`. An older stored brief may carry `due` on an item already past its date
+ *  (before the `overdue` kind, BR-OWNER-1): it still renders, as Due soon — the row carries no date to tell. */
 export function briefNextMark(it: AiBriefNextItem): string {
   if (it.kind === "failing") return kindMark("Failing", "bad", 12.5, "Its last CI run failed.");
+  if (it.kind === "overdue") return kindMark("Overdue", "bad", 12.5, "In a sprint whose date has passed.");
   if (it.kind === "due") return kindMark("Due soon", "warn", 12.5, "In a sprint that is due within the week.");
   if (it.kind === "handoff") return kindWord(ARROW_MARK, "Handoff");
   return kindWord(TICKET_BOX, it.cites[0]?.label ?? "Ticket");
@@ -454,7 +457,14 @@ function briefNextRow(it: AiBriefNextItem, i: number): string {
 }
 /** Next: at most three rows, always three slots — "Nothing new." in the first when there is none, unused ones empty. */
 function briefNext(items: AiBriefNextItem[], i: number): string {
-  const shown = items.slice(0, AI_BRIEF_NEXT_MAX);
+  // At most one per kind's group and three in all (BR-OWNER-1) — the producer keeps both; an older brief may not.
+  const groups = new Set<string>();
+  const shown = items.filter((it) => {
+    const g = AI_NEXT_GROUP[it.kind] ?? it.kind;
+    if (groups.has(g)) return false;
+    groups.add(g);
+    return true;
+  }).slice(0, AI_BRIEF_NEXT_MAX);
   const rows = shown.length ? shown.map((it, k) => briefNextRow(it, i + k)) : [`<li class="mw-brief-next cnpy-rise" style="--i:${i}"><span class="mw-brief-none">${NOTHING_NEW}</span></li>`];
   while (rows.length < AI_BRIEF_NEXT_MAX) rows.push(`<li class="mw-brief-next mw-brief-pad" aria-hidden="true"></li>`);
   return `<ol class="mw-brief-list">${rows.join("")}</ol>`;

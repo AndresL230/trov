@@ -2,11 +2,12 @@
 // localhost shows a real brief — read through the real path (src/tools/mywork.ts `storedBrief`), no
 // LOCAL_AI_PREVIEW needed (which, when set, still shows its own sample instead). Appended by scripts/seed-dev.mjs
 // AFTER the shared seed; never part of the test reset. Every item is a real row of fixtures/dev/*: ticket #3 in the
-// overdue sprint "Token rotation & audit log", the two handoffs Jose and Jack left for Andres, and his merged PRs
-// #162 and #158 — in the order the server gives Next (overdue, then someone waiting, oldest first; the first three,
-// all it offers), with the titles the rows have (test/ai.brief.test.ts holds the two to each other). It keeps the
-// brief's one shape (BR-OWNER-1, shared/ai-core.ts `AI_BRIEF_*`): Now and Recently one sentence of at most 160
-// characters, Next 3 items, each why at most 80, at most 3 sources a line. The words are written in the brief's style, as the model would; `model` and `prompt_version`
+// overdue sprint "Token rotation & audit log" (an `overdue` item: its date has passed), the older of the two handoffs
+// Jose and Jack left for Andres, and his merged PRs #162 and #158 — in the order the server gives Next (overdue, then
+// someone waiting), ONE per kind (BR-OWNER-1: so the second handoff is not offered), with the titles the rows have
+// (test/ai.brief.test.ts holds the two to each other). It keeps the brief's one shape (shared/ai-core.ts
+// `AI_BRIEF_*`): Now and Recently one sentence of at most 160 characters, Next at most 3 items and one per kind, each
+// why at most 80, at most 3 sources a line, dates as the app writes them ("Jun 10"). The words are written in the brief's style, as the model would; `model` and `prompt_version`
 // say what the pass would record. Stamped against the clock at seed time, so it reads "12 min ago".
 
 const q = (v) => `'${String(v).replace(/'/g, "''")}'`;
@@ -26,9 +27,8 @@ export function briefDevStatements(now = new Date()) {
     },
     next: {
       items: [
-        { ref: "ticket:3", kind: "due", title: "Add a “lesson duration” field to the curriculum planner", why: "Its sprint, Token rotation & audit log, was due 2026-06-10.", cites: [ticket(3)] },
+        { ref: "ticket:3", kind: "overdue", title: "Add a “lesson duration” field to the curriculum planner", why: "Its sprint, Token rotation & audit log, was due Jun 10.", cites: [ticket(3)] },
         { ref: "handoff:16", kind: "handoff", title: "Resume tokens are wired on the backend, but the Next.js reader still drops the stream on reconnect.", why: "Jose left it for you, with the backend half already done.", cites: [handoff(16)] },
-        { ref: "handoff:17", kind: "handoff", title: "Quiz agent still fails validation on ~4% of calls. Parser is fixed; prompt and eval aren't.", why: "Jack left it for you; the prompt and the eval are what remain.", cites: [handoff(17)] },
       ],
     },
   };

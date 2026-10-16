@@ -106,7 +106,7 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     const brief = data.brief!;
     expect(brief).toMatchObject({ state: "ready", generatedAt: row.generated_at, model: "claude-haiku-5-5", now: { text: NOW_TEXT }, recently: null });
     expect(brief.next.items.map((i) => [i.ref, i.kind, i.title])).toEqual([
-      ["ticket:3", "due", "Netlify connect flow"], // overdue first (the server's rule order)…
+      ["ticket:3", "overdue", "Netlify connect flow"], // overdue first (the server's rule order) — its own kind…
       ["handoff:7", "handoff", "Finish the Render provider"], // …then someone waiting; the server's own fallback why
     ]);
     expect(brief.next.items[0].why).toBe(WHY_TICKET);
@@ -123,6 +123,8 @@ describe("My Work › Your brief, from a stored person_brief row through the rea
     expect(t.indexOf("Netlify connect flow")).toBeGreaterThan(-1);
     expect(t.indexOf("Finish the Render provider")).toBeGreaterThan(t.indexOf("Netlify connect flow"));
     expect(t).toContain(WHY_TICKET);
+    expect(t).toContain("Overdue"); // past its sprint's date: the Overdue mark, never "Due soon" (BR-OWNER-1)
+    expect(t).not.toContain("Due soon");
     expect(tile).not.toContain("mock-live-md"); // nothing rendered as markdown
     // The app's motion hooks on the real tile: the rows rise in order on the entrance; landing later, the tile
     // fades with the dashboard read's skeleton (test/render.brief-motion.test.ts pins the mechanics).

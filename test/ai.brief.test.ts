@@ -9,7 +9,7 @@ import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { runAiPass } from "../src/ai/pass";
 import { briefJob, buildBriefInput, briefPromptInput, briefFromAnswer, numbersGrounded, orderNext, type NextOffer } from "../src/ai/brief";
-import { BRIEF_LINE_MAX, BRIEF_NEXT_MAX, BRIEF_WHY_MAX, oneSentence } from "../src/ai/brief-core";
+import { BRIEF_LINE_MAX, BRIEF_NEXT_MAX, BRIEF_WHY_MAX, oneSentence, pickNext, shortDay } from "../src/ai/brief-core";
 import { newBudget } from "../src/repo/dispatch";
 import { briefVersions, latestBrief, markMyWorkOpened, storeBrief, BRIEF_VERSIONS_KEPT } from "../src/data/person-brief";
 import { getMyWork, storedBrief } from "../src/tools/mywork";
@@ -123,6 +123,11 @@ describe("the input: what the server offers, in the server's order", () => {
     ]); // 3 at most (BR-OWNER-1): handoff #8, the due-soon #2 and the plain assigned #1 are cut; the closed #4 and the
     // expired handoff #9 never offered
     expect(b.next.map((o) => o.title)).toEqual(["Netlify connect flow", "Netlify connect test", "Handoff 7 first line"]);
+    // Past its sprint's date is its own kind, Overdue — never "due" (Due soon) — and its dates read "Jun 10", never ISO.
+    expect(b.next.map((o) => o.kind)).toEqual(["overdue", "failing", "handoff"]);
+    expect(b.next[0].facts).toMatch(/due [A-Z][a-z]{2} \d{1,2} \(passed\)/);
+    expect(b.next[0].fallback).toMatch(/^Its sprint, .+, was due [A-Z][a-z]{2} \d{1,2}\.$/);
+    for (const o of b.next) expect(`${o.facts} ${o.fallback}`, o.ref).not.toMatch(/\d{4}-\d{2}-\d{2}/);
     // The model never sees a raw PR body.
     expect(briefPromptInput(b)).not.toContain("RAW BODY NEVER SENT");
   });
@@ -140,6 +145,19 @@ describe("the input: what the server offers, in the server's order", () => {
       "Status: hosting screens half done, Netlify test failing", "Shipped: Hosting tab polish", "Shipped: status marks across the app",
     ]);
     expect(briefPromptInput(b)).not.toContain("someone else's");
+  });
+
+  it("pickNext (BR-OWNER-1): ONE per kind's group — the top of each by the rule order — three at most, in that order", () => {
+    const o = (ref: string, kind: NextOffer["kind"], rule: NextOffer["rule"], k = 0): NextOffer => ({ ref, kind, rule, title: ref, facts: "", fallback: "x", cites: [{ ref, label: ref, href: null }], order: [k, 0, ref] });
+    // Three handoffs in a row (what the owner saw) give one; Overdue and Due soon are one group: the overdue wins.
+    const offers = [o("h1", "handoff", "waiting", 0), o("h2", "handoff", "waiting", 1), o("h3", "handoff", "waiting", 2), o("d", "due", "due soon"), o("od", "overdue", "overdue"), o("t", "ticket", "assigned")];
+    expect(pickNext(offers).map((x) => x.ref)).toEqual(["od", "h1", "t"]);
+    expect(pickNext([o("h1", "handoff", "waiting"), o("h2", "handoff", "waiting", 1)]).map((x) => x.ref)).toEqual(["h1"]);
+    expect(pickNext([o("f1", "failing", "blocked"), o("f2", "failing", "blocked", 1), o("d", "due", "due soon"), o("h", "handoff", "waiting"), o("t", "ticket", "assigned")]).map((x) => x.ref)).toEqual(["f1", "h", "d"]);
+    expect(BRIEF_NEXT_MAX).toBe(3);
+    expect(shortDay("2026-06-10")).toBe("Jun 10");
+    expect(shortDay("2026-10-15T09:00:00.000Z")).toBe("Oct 15");
+    expect(shortDay(null)).toBe("");
   });
 
   it("orderNext is the rule order whatever order the offers come in", () => {
@@ -216,7 +234,7 @@ describe("the job: one Haiku call, only what the input says", () => {
     expect(b.now).toBeNull();
     expect(b.recently.text.length).toBeLessThanOrEqual(BRIEF_LINE_MAX);
     const why = b.next.items.find((i: { ref: string }) => i.ref === "ticket:3").why;
-    expect(why).toMatch(/^Its sprint, .+, was due \d{4}-\d{2}-\d{2}\.$/); // the server's own, never a cut one
+    expect(why).toMatch(/^Its sprint, .+, was due [A-Z][a-z]{2} \d{1,2}\.$/); // the server's own, never a cut one
     // Every why the server keeps — the model's or its own — fits the line.
     for (const i of b.next.items) expect(i.why.length, i.ref).toBeLessThanOrEqual(BRIEF_WHY_MAX);
     expect(oneSentence("You shipped v0.34 and #178.")).toBe(true);

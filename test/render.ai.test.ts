@@ -248,6 +248,23 @@ describe("My Work › Your brief", () => {
     // Within the caps there is nothing to clamp, so no tooltip.
     expect(briefTile(b)).not.toMatch(/class="mw-brief-(text|why)" data-mtip/);
   });
+  it("Next: an overdue item is marked Overdue in the danger tone; one row per kind's group, even from an older brief", () => {
+    const b = briefFixture("ready", NOW);
+    const od = { ref: "ticket:3", kind: "overdue" as const, title: "Lesson duration field", why: "Its sprint, Token rotation, was due Jun 10.", cites: [{ ref: "ticket:3", label: "#3", href: "#tickets/3" }] };
+    const card = briefTile({ ...b, next: { items: [od, ...b.next.items.slice(1)] } });
+    const row = card.split(/class="mw-brief-next[ "]/)[1];
+    expect(text(row)).toContain("Overdue");
+    expect(text(row)).not.toContain("Due soon");
+    expect(row).toContain("var(--red)");
+    // An older brief with three handoffs and a due beside an overdue: one handoff, one of the two, three rows at most.
+    const h = (n: number) => ({ ref: `handoff:${n}`, kind: "handoff" as const, title: `Handoff ${n}`, why: "Left for you.", cites: [{ ref: `handoff:${n}`, label: `handoff #${n}`, href: `#handoffs/${n}` }] });
+    const due = { ...od, ref: "ticket:4", kind: "due" as const, title: "Due-soon ticket" };
+    const old = briefTile({ ...b, next: { items: [od, h(1), h(2), h(3), due] } });
+    expect(text(old)).toContain("Handoff 1");
+    expect(text(old)).not.toContain("Handoff 2");
+    expect(text(old)).not.toContain("Due-soon ticket");
+    expect(old.match(/<li class="mw-brief-next cnpy-rise"/g)).toHaveLength(2);
+  });
   it("empty: the mock's sentence, no grid, no Wrong?", () => {
     const card = briefTile(briefFixture("empty", NOW));
     expect(text(card)).toContain(AI_EMPTY.brief);

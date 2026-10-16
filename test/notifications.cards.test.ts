@@ -35,6 +35,13 @@ describe("Your brief", () => {
     expect(s.subject).toBe("Netlify test failing, plus 1 more");
   });
 
+  it("an overdue Next item carries My Work's word, Overdue (BR-OWNER-1), in the html and the text part", () => {
+    const s = renderBrief(brief({ next: [{ title: "Lesson duration field", href: appHref("#tickets/3"), line: "Its sprint, Token rotation, was due Jun 10.", overdue: true }], nextTotal: 1 }))!;
+    expect(s.html).toMatch(/Lesson duration field<\/a><span style="padding-left:10px;"><span data-mark[^>]*>[\s\S]*Overdue/);
+    expect(s.text).toContain("  - Lesson duration field (Overdue) <");
+    expect(renderBrief(brief())!.html).not.toContain("Overdue");
+  });
+
   it("with no brief, the assigned tickets under their own label; with only Also, the block is called Also", () => {
     expect(renderBrief(brief({ source: "assigned", now: null }))!.html).toContain("ASSIGNED TO YOU");
     const onlyAlso = renderBrief(brief({ now: null, next: [], nextTotal: 0 }))!;
