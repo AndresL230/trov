@@ -142,9 +142,10 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
   - A clickable person goes through `web/src/people.ts`; a picture always through `avatarSrc`.
   - Never a button inside a button — use `hitArea`.
   - Motion is off under `prefers-reduced-motion`.
-- **Every shipped PR adds its lines to the top entry of `web/src/releases.ts`**: release notes in product
-  words, `ops` deploy steps, and patch lines ending `(#N)`. The merging PR cuts "Unreleased" into the next
-  `0.N` (the file's header says how).
+- **Every shipped PR adds ONE patch line to the top entry of `web/src/releases.ts`**: a user-visible change in
+  product words ending `(#N)` (not a paragraph, not an engineering log), its number in `prs`, and an `ops` line
+  only for a migration, secret, var, trigger or plugin version. Caps are tested. The merging PR cuts
+  "Unreleased" into the next `0.N` (the file's header says how).
 - **Deferred seams — do NOT activate:** Cloudflare Queue, Vectorize (`// SEAM:` comments only).
 - The product was renamed Canopy → Trov, but stored identifiers keep the old name on purpose: issued
   `canopy_mcp_` / `canopy_oat_` tokens (new: `trov_…`) and the `canopy/*` status contexts. Don't rename them.

@@ -136,10 +136,24 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
 
 - **No app module imports releases.ts as a value** (`import type` only; a test reads every `web/src/*.ts`). The
   build-time readers keep the full import: `docs-changelog.ts` (the public `/docs/changelog`), and the tests.
+- **The record is kept short** (#190): 35 releases were folded into 12 entries (milestones; same-day versions
+  together), each ≤ 4 highlights and ≤ 20 patch lines in product words, held by `RELEASE_CAPS` in
+  `test/releases.test.ts`. A folded version is listed in its entry's `covers`: `findRelease` resolves it, so an old
+  `#releases/0.3` or `#releases/0.3/patches` opens that entry, and `releaseName` labels it `v0.1–0.4` (the meta row,
+  the crumb). The chunk went from ~131 kB to ~20 kB gzip (esbuild, the module with its imports). It stays ONE chunk:
+  the index draws every entry's title and headline, so splitting off the old entries would add a second request
+  and a loading state to save a few kB.
 - **The newest version is `release-latest.ts`** (`LATEST_VERSION`, and `LATEST_RELEASE` with its slug): the
   support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
   to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
   and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+- **A release page is ONE two-column grid** (`releasePageView`, `.cnpy-reldoc-grid`; #188): the back link and the
+  Release notes / Patch notes switch across the top; down the left column the title block, the body card and the
+  newer / older links; down the right column the page's note (Heads-up on the notes, Upgrade notes on the patches),
+  a SIBLING of the body — never inside the header. From 900px of page the note's area spans the left column's rows
+  and the last row is `1fr`, so a note of any length runs beside the body and never pushes it down; it flows with
+  the page (no sticky box, no inner scroller). Under 900px it stacks in source order: title, note, body. Pinned by
+  `test/releases.test.ts` (the grid's children and the CSS areas).
 
 ## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
 

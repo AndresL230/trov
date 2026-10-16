@@ -310,12 +310,14 @@
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
   builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
   `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
-  data (`0.N` per milestone, newest first) plus a pure renderer, loaded as its OWN chunk through
+  data (`0.N` per milestone, newest first; older versions folded into milestone entries listed in `covers`, whose
+  old links still resolve) plus a pure renderer, loaded as its OWN chunk through
   `releases-lazy.ts` (app modules import it as a type only); the newest version is `release-latest.ts`
-  (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). **Every shipped PR adds its lines to the top
-  entry** (highlights / heads-up in product words, deploy steps in `ops`, patch lines ending `(#N)` to link the
-  PR) — and since a merge to `main` deploys, the PR that merges also CUTS "Unreleased" into the next `0.N`, so
-  main never shows a shipped batch as unreleased; the header comment says how.
+  (`LATEST_VERSION`, pinned to `RELEASES[0]` by `test/releases.test.ts`). **Every shipped PR adds ONE patch line to
+  the top entry** (a user-visible change in product words ending `(#N)`; deploy steps in `ops`; highlights only for
+  a batch's headline features; `RELEASE_CAPS` tested) — and since a merge to `main` deploys, the PR that merges
+  also CUTS "Unreleased" into the next `0.N`, so main never shows a shipped batch as unreleased; the header comment
+  says how.
   **The app's bundles** (`web-ui.md` › The app's bundles): `web/src/lazy-chunk.ts` is the loader every lazy screen
   shares; `app-root.ts` the root element and the toast (`render()` and the landing page both draw them). Each lazy
   chunk has a facade and an eager part: the landing in the app (`landing-lazy.ts`), Platform (`platform-chunk.ts`

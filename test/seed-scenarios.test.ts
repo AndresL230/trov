@@ -10,7 +10,7 @@ import { env } from "cloudflare:test";
 import { ORG_TABLES } from "../src/deletion/tables";
 import { app } from "../src/routes";
 import { devSignInAllowed } from "../src/auth/dev-signin";
-import { loadScenarios, scenarioNames, SCENARIOS, orgTablesInOrder, ORG_TABLES_SQL, type SeedDb } from "../scripts/seed/scenarios.mjs";
+import { loadScenarios, scenarioNames, SCENARIOS, orgTablesInOrder, orgWipeStatements, ORG_TABLES_SQL, type SeedDb } from "../scripts/seed/scenarios.mjs";
 import { CANONICAL_SPRINT_DATES, datedRoadmap } from "../scripts/seed/team-rich.mjs";
 import roadmapFixture from "../fixtures/dev/roadmap.json";
 import { cookieFor } from "./helpers/persons";
@@ -87,6 +87,28 @@ describe("the team scenario", () => {
     for (const [child, parent] of [["ticket_events", "tickets"], ["doc_versions", "docs"], ["prompt_versions", "prompts"], ["artifact_versions", "artifact_pages"], ["org_environment_parts", "org_environments"]]) {
       expect(order.indexOf(child), `${child} before ${parent}`).toBeLessThan(order.indexOf(parent));
     }
+  });
+});
+
+describe("a freshly migrated D1 (what `npm run seed` meets in a new worktree, #189)", () => {
+  it("loads every scenario WITHOUT --reset, and again on top", async () => {
+    // A fresh D1 holds SaplingLearn alone (0042_organizations) and nobody in it: no Acme (`org_b` is the canonical
+    // reset's) and no memberships. Make the test D1 that.
+    const tables = orgTablesInOrder((await db.query(ORG_TABLES_SQL))[0]);
+    await db.apply("fresh", [...orgWipeStatements("org_b", tables), `DELETE FROM orgs WHERE id = 'org_b'`, `DELETE FROM memberships`]);
+    expect(await count(`SELECT COUNT(*) AS n FROM orgs`)).toBe(1);
+
+    await loadScenarios(db, scenarioNames(), { now: NOW });
+    const members = async () => Object.fromEntries((await rows<{ org_id: string; n: number }>(`SELECT org_id, COUNT(*) AS n FROM memberships GROUP BY org_id`)).map((r) => [r.org_id, r.n]));
+    const first = await members();
+    for (const s of SCENARIOS) expect(first[s.org], s.name).toBeGreaterThan(0);
+    // The plain path writes only the scenarios' own orgs — never Acme's rows, which belong to the reset.
+    expect(await count(`SELECT COUNT(*) AS n FROM orgs WHERE id = 'org_b'`)).toBe(0);
+    expect(await count(`SELECT COUNT(*) AS n FROM org_usage_daily WHERE org_id = 'org_saplinglearn'`)).toBeGreaterThan(0);
+
+    // A second plain run over the seeded D1 (`npm run seed` again) rewrites the same orgs to the same shape.
+    await loadScenarios(db, scenarioNames(), { now: NOW });
+    expect(await members()).toEqual(first);
   });
 });
 
