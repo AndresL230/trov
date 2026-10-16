@@ -10,7 +10,8 @@ import type { AppState } from "./render";
 import type { OrgLogo } from "@shared/orgs";
 import { ApiError, OrgApiError, Unauthorized, rateLimitText, removeOrgLogo, uploadOrgLogo } from "./api";
 import { prepareAvatar } from "./avatar";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg } from "./org-core";
+import { roleAtLeast } from "./org-ui";
 
 export interface OrgLogoHost {
   state: AppState;

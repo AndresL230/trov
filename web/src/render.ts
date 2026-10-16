@@ -74,7 +74,9 @@ import { platformHeaderControls, platformCrumb, initialPlat, type PlatState } fr
 import { reviewItemsFromReads, reviewHeadsFromReads, ASSIGN_OPTIONS, unplacedFromRow, identityFromTask, discardedFromRow, peopleFromPersons } from "./triage-map";
 // Org settings (org-settings.ts / integrations.ts): the screen, its root overlays and its state.
 import { dropdown, dropdownMenu, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
-import { orgSettingsView, orgOverlays, initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-settings";
+// Org settings is its own chunk (org-lazy.ts draws a skeleton until it is in); its state is org-core.ts.
+import { orgSettingsView, orgOverlays } from "./org-lazy";
+import { initialOrgUi, currentOrg, type OrgUi, type OrgSettingsProps } from "./org-core";
 import { settingsPlanTile, settingsLimitsTile, settingsOrgsTile } from "./settings-plan";
 import type { MyOrg, MyOrgsResponse, OrgMeResponse } from "@shared/orgs";
 // Organizations as a person meets them (org-picker.ts): the switcher, the picker, the create dialog.

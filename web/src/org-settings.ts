@@ -52,180 +52,29 @@ import { notificationsAdminSections, notifDropdowns, type NotifAdminProps } from
 import { orgLogoSection, initialOrgLogoUi, type OrgLogoUi } from "./org-logo";
 import { NOT_CONFIGURED_LINE, appLeadPhrase, connectLink, connectNotice, existingLink, githubAppRow, githubLink, lostBanner, mismatchBanner, repoPicker, suspendedBanner, type GithubNotice } from "./github-app";
 import type { GithubAppStatusDTO, GithubReposDTO } from "@shared/github-app";
-import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingPartRow, hostingTab, hostingTodo, initialHostingUi, leftoversConfirmCopy, partConfirmCopy, type HostingUi } from "./hosting";
+import { disconnectConfirmCopy, hostingData, hostingDropdowns, hostingOverlay, hostingPartRow, hostingTab, hostingTodo, leftoversConfirmCopy, partConfirmCopy } from "./hosting";
 import { onIntegrationsTab } from "./integrations";
 import { githubInstallHref } from "./api";
-import { appRemoveCopy, initialRepoAppsUi, repoAppsDropdowns, repoAppsPage, type RepoAppsUi } from "./repo-apps";
-import type { OrgRepoRoute } from "./hash";
-
-// ── state ────────────────────────────────────────────────────────────────────
-
-export type OrgTab = "integrations" | "repos" | "environments" | "hosting" | "members" | "tags" | "notifications" | "general";
-export const ORG_TABS: readonly OrgTab[] = ["integrations", "repos", "environments", "hosting", "members", "tags", "notifications", "general"];
-export const isOrgTab = (v: unknown): v is OrgTab => typeof v === "string" && (ORG_TABS as readonly string[]).includes(v);
+import { appRemoveCopy, repoAppsDropdowns, repoAppsPage } from "./repo-apps";
+// The state (OrgUi and its first value), the tabs and the current org are org-core.ts; the invite form
+// (Members' and the first-run setup's) is org-invite.ts — both in the app's first download. This module
+// is the lazy Org settings chunk (org-lazy.ts) and re-exports them unchanged.
+export {
+  ORG_TABS, isOrgTab, ENV_TEXT_FIELDS, blankEnvFields, envFieldsOf, initialOrgUi, currentOrg, orgTabsFor, effectiveOrgTab, githubOf,
+  type OrgTab, type EnvField, type EnvDraft, type MemberDraft, type OrgConfirm, type OrgUi, type OrgSettingsProps,
+} from "./org-core";
+import {
+  ENV_TEXT_FIELDS, orgTabsFor, effectiveOrgTab, githubOf,
+  type OrgTab, type EnvDraft, type EnvField, type MemberDraft, type OrgConfirm, type OrgUi, type OrgSettingsProps,
+} from "./org-core";
+export { inviteDraftOk, inviteRoleDropdown, inviteMailNote, inviteSection } from "./org-invite";
+import { inviteRoleDropdown, inviteMailNote, inviteSection } from "./org-invite";
 const TAB_LABEL: Record<OrgTab, string> = { integrations: "Integrations", repos: "Repositories", environments: "Environments", hosting: "Hosting", members: "Members", tags: "Tags", notifications: "Notifications", general: "General" };
-/** The tabs only an admin or an owner may open (their APIs are admin+). */
-const ADMIN_TABS: readonly OrgTab[] = ["integrations", "hosting", "notifications"];
-
-const idle = <T>(data: T): OrgSlice<T> => ({ status: "idle", data });
-
-/** The environment fields an admin edits (the DTO's, as text; `key` only when adding). */
-export const ENV_TEXT_FIELDS = ["label", "note", "branch", "frontend_url", "api_url", "health_path"] as const;
-export type EnvField = (typeof ENV_TEXT_FIELDS)[number];
-export interface EnvDraft {
-  /** null = adding a new environment (its key is `keyDraft`). */
-  key: string | null;
-  keyDraft: string;
-  fields: Record<EnvField, string>;
-  saving: boolean;
-  error: string | null;
-  /** The field a refusal is about (`key`, or one of the DTO's), so the message sits beside it. */
-  errorField: string | null;
-}
-export const blankEnvFields = (): Record<EnvField, string> => ({
-  label: "", note: "", branch: "", frontend_url: "", api_url: "", health_path: "/",
-});
-export const envFieldsOf = (e: OrgEnvironmentDTO): Record<EnvField, string> => ({
-  label: e.label, note: e.note ?? "", branch: e.branch, frontend_url: e.frontend_url, api_url: e.api_url, health_path: e.health_path,
-});
-
-export interface MemberDraft {
-  handle: string;
-  role: OrgRole;
-  title: string;
-  responsibilities: string;
-  saving: boolean;
-  error: string | null;
-}
-
-/** What the open confirmation modal is about. `arg` = a repo id, an environment key,
- *  `<kind>:<scope>`, a member's handle, "" for the key — or, on Hosting, a part (`<env>/<part>`) to
- *  remove and a provider connection (`<provider>:<scope>`) to disconnect. */
-export interface OrgConfirm { what: "repo" | "env" | "secret" | "member" | "key" | "github" | "part" | "hosting" | "leftovers" | "app"; arg: string; busy: boolean }
-
-/** Everything Org settings keeps in AppState (`state.org`). It NEVER holds a secret's value:
- *  a credential being typed lives only in the input and in org-actions.ts's private draft. */
-export interface OrgUi {
-  tab: OrgTab;
-  /** The slug the slices below were read for (a different current org reloads them). */
-  slug: string | null;
-  settings: OrgSlice<{ org: OrgSettings; can_edit: boolean } | null>;
-  members: OrgSlice<OrgMember[]>;
-  invites: OrgSlice<OrgInvite[]>;
-  repos: OrgSlice<OrgRepoDTO[]>;
-  envs: OrgSlice<OrgEnvironmentDTO[]>;
-  integrations: OrgSlice<IntegrationsListDTO | null>;
-  audit: OrgSlice<OrgAuditDTO[]>;
-  /** The org's plan and its use of each limit (shared/plans.ts; org-plan.ts renders it). */
-  plan: OrgSlice<OrgPlanView | null>;
-  // General
-  nameDraft: string | null;
-  nameSaving: boolean;
-  nameError: string | null;
-  /** General's image control (org-logo.ts): its menu, a write in flight, the last refusal. */
-  logo: OrgLogoUi;
-  // Members
-  memberEdit: MemberDraft | null;
-  inviteBy: "github" | "email";
-  inviteDraft: string;
-  /** The invitee's name, for an e-mail invite's greeting (optional). */
-  inviteName: string;
-  inviteRole: "member" | "admin";
-  inviteBusy: boolean;
-  inviteError: string | null;
-  /** The pending invite whose e-mail is being sent again (its id). */
-  mailBusy: number | null;
-  // Repositories
-  repoDraft: string;
-  repoBusy: boolean;
-  repoError: string | null;
-  /** The org's GitHub App connection (github-app.ts): read by every member, for both GitHub tabs. */
-  github: OrgSlice<GithubAppStatusDTO | null>;
-  /** The repositories the installation can see (admins, while one is live). */
-  githubRepos: OrgSlice<GithubReposDTO | null>;
-  /** What the return from GitHub said (`?github=` on the page it redirected to), until dismissed. */
-  githubNotice: GithubNotice | null;
-  githubFilter: string;
-  /** The repository being tracked from the installation's list (its full name). */
-  githubBusy: string | null;
-  // Environments
-  envEdit: EnvDraft | null;
-  envBusy: boolean;
-  // Integrations
-  secretForm: SecretFormState | null;
-  tests: Record<string, TestState>;
-  auditOpen: boolean;
-  /** The rows whose details are open (org-ui.ts `openRow`), by key: an integration's
-   *  `<kind>:<scope>`, `key`, `history`, `repo:<id>`. */
-  openRows: string[];
-  confirm: OrgConfirm | null;
-  /** General › Plan's billing actions (org-plan.ts, org-billing-actions.ts). */
-  billing: OrgBillingUi;
-  /** The Hosting tab (hosting.ts, hosting-actions.ts): its one read, the open dialog, tests in flight. */
-  hosting: HostingUi;
-  /** General › Delete organization (an owner's; deletion.ts, deletion-actions.ts). */
-  del: DeleteUi<OrgDeletionPreview>;
-  /** Repositories › one repository's page (its Apps, an app, Add an app), from the route; null = the list. */
-  repoPage: OrgRepoRoute | null;
-  /** That page's read and drafts (repo-apps.ts, repo-apps-actions.ts). */
-  apps: RepoAppsUi;
-}
-
-export function initialOrgUi(): OrgUi {
-  return {
-    tab: "integrations", slug: null,
-    settings: idle(null), members: idle([]), invites: idle([]), repos: idle([]), envs: idle([]), integrations: idle(null), audit: idle([]), plan: idle(null),
-    nameDraft: null, nameSaving: false, nameError: null, logo: initialOrgLogoUi(),
-    memberEdit: null, inviteBy: "github", inviteDraft: "", inviteName: "", inviteRole: "member", inviteBusy: false, inviteError: null, mailBusy: null,
-    repoDraft: "", repoBusy: false, repoError: null,
-    github: idle(null), githubRepos: idle(null), githubNotice: null, githubFilter: "", githubBusy: null,
-    envEdit: null, envBusy: false,
-    secretForm: null, tests: {}, auditOpen: false, openRows: [], confirm: null, billing: initialOrgBillingUi(),
-    hosting: initialHostingUi(),
-    del: initialDeleteUi<OrgDeletionPreview>(),
-    repoPage: null, apps: initialRepoAppsUi(),
-  };
-}
-
-/** THE current org: the one the page's path names (`state.orgSlug`, from `/<slug>/`), with MY role
- *  in it. `GET /api/orgs` is the fresher source (a rename, a role change); `/auth/me`'s copy answers
- *  until it lands, so nothing waits on a second request to know who is an admin. */
-export function currentOrg(s: { orgSlug: string | null; myOrgs: { data: MyOrgsResponse | null }; me: { orgs: readonly MyOrg[] } | null }): MyOrg | null {
-  if (!s.orgSlug) return null;
-  return s.myOrgs.data?.orgs.find((o) => o.slug === s.orgSlug) ?? s.me?.orgs.find((o) => o.slug === s.orgSlug) ?? null;
-}
-/** The tabs a role may open: Integrations, Hosting and Notifications are admin+ (their APIs are). */
-export const orgTabsFor = (role: OrgRole | null): OrgTab[] => ORG_TABS.filter((t) => !ADMIN_TABS.includes(t) || roleAtLeast(role, "admin"));
-/** The tab on screen: the picked one, or — when the role may not open it — the first it may. */
-export function effectiveOrgTab(tab: OrgTab, role: OrgRole | null): OrgTab {
-  const tabs = orgTabsFor(role);
-  return tabs.includes(tab) ? tab : tabs[0];
-}
-
-export interface OrgSettingsProps {
-  org: MyOrg | null;
-  /** `GET /api/orgs` has not answered / failed (no org to show yet). */
-  orgsStatus: "idle" | "loading" | "ok" | "error";
-  me: string;
-  ui: OrgUi;
-  /** Members › Unmatched logins (render.ts builds it for an admin; null = not shown). */
-  identity?: IdentityProps | null;
-  /** The Notifications tab's reads (admins; null = not shown). */
-  notif?: NotifAdminProps | null;
-  /** Which dropdown is open (dropdown.ts; `state.dd`). Omitted = none. */
-  dd?: DropdownUi;
-  /** The Tags tab's reads and state (web/src/tags.ts; every member). */
-  tags?: Omit<TagsTabProps, "dd"> | null;
-}
+import type { OrgRepoRoute } from "./hash";
 
 // ── setup checklist ──────────────────────────────────────────────────────────
 
 export interface SetupStep { key: "repo" | "env" | "token" | "team"; title: string; why: string; tab: OrgTab; go: string; done: boolean }
-
-/** The org's GitHub App connection, from whichever read has it: its own (`GET …/github`, every member)
- *  or the Integrations list's copy (admins). null until one has answered. */
-export const githubOf = (ui: Pick<OrgUi, "github" | "integrations">): GithubAppStatusDTO | null =>
-  ui.github.data ?? ui.integrations.data?.github_app ?? null;
 
 /**
  * A new org's four first steps, each read off live data — or null while any of that data
@@ -548,20 +397,10 @@ export function environmentsTab(org: MyOrg, ui: OrgUi): string {
 
 // ── MEMBERS ──────────────────────────────────────────────────────────────────
 
-/** Is the invite draft a GitHub login / an email address? (The server validates again.) */
-export function inviteDraftOk(by: "github" | "email", draft: string): boolean {
-  const v = draft.trim().replace(/^@/, "");
-  return by === "github" ? GITHUB_LOGIN_RE.test(v) : INVITE_EMAIL_RE.test(v);
-}
 /** Why the only owner cannot be demoted or removed — the API's `last_owner`, as a sentence. */
 export const lastOwnerSentence = (name: string): string =>
   `${name} is the only owner. Make someone else an owner first, then try again.`;
 
-/** The role an invite grants: member or admin (an owner is made from a member, in the editor). */
-export const inviteRoleDropdown = (ui: Pick<OrgUi, "inviteRole">): DropdownProps => ({
-  id: "org-invite-role", act: "orgInviteRole", value: ui.inviteRole, ariaLabel: "Role the invite grants",
-  options: [roleOption("member", "As member"), roleOption("admin", "As admin")],
-});
 /** A member's org role, in their editor. Only an owner grants or revokes Owner; an admin editing
  *  an owner cannot change the role at all (and nobody can mid-save) — then it is disabled. */
 export function memberRoleDropdown(m: Pick<OrgMember, "role">, d: Pick<MemberDraft, "role" | "saving">, viewer: OrgRole): DropdownProps {
@@ -604,14 +443,6 @@ function memberEditor(m: OrgMember, d: MemberDraft, viewer: OrgRole, soleOwner: 
   </div>`;
 }
 
-/** What happened to an invite's e-mail, as one short phrase for its row (and whether it needs attention). */
-export function inviteMailNote(i: OrgInvite): { text: string; bad: boolean } {
-  if (i.github_login) return { text: "No email: they see it when they sign in", bad: false };
-  if (i.mail_status === "sent") return { text: `Email sent ${i.mail_at ? relTime(i.mail_at) : ""}`.trim(), bad: false };
-  if (i.mail_status === "failed") return { text: `Email not sent${i.mail_at ? ` (tried ${relTime(i.mail_at)})` : ""}`, bad: true };
-  return { text: "No email sent yet", bad: false };
-}
-
 /** Members › Unmatched logins: only for an admin, and only while a login waits (or one was
  *  discarded and can be restored) — empty is its normal state, and then it is not there. */
 export function unmatchedLogins(admin: boolean, identity: IdentityProps | null | undefined): string {
@@ -624,41 +455,6 @@ export function unmatchedLogins(admin: boolean, identity: IdentityProps | null |
   return `<section data-org-identity aria-labelledby="org-identity-t">
       ${orgHead("Unmatched logins", "GitHub logins in captured activity that belong to no one yet", identity.groups.length, "org-identity-t")}
       ${body}
-    </section>`;
-}
-
-/**
- * "Invite someone" — Members' primary action, and the first-run wizard's third step (welcome.ts):
- * ONE form, so both obey the same gate. The plan's seats (org-plan.ts): a one-person plan offers
- * no invitation at all (""); with every seat in use the form gives way to the sentence the server
- * would answer with — and, for the owner, the one thing that fixes it: "Add a seat" (paid Pro) or
- * "Upgrade to Pro" (Free). One line of controls in one surface, with what happens next said once,
- * under them. Admins only.
- */
-export function inviteSection(org: MyOrg, ui: OrgUi, dd: DropdownUi = initialDropdownUi()): string {
-  const admin = roleAtLeast(org.role, "admin");
-  const canSend = inviteDraftOk(ui.inviteBy, ui.inviteDraft) && !ui.inviteBusy;
-  const gate = inviteGate(ui.plan.data, org.role);
-  const fix = gate.kind === "full" ? seatCapAction(gate.next, ui.billing, ui.plan.data?.billing?.available ?? false) : "";
-  return !admin || gate.kind === "solo" ? ""
-    : gate.kind !== "open" ? `<section aria-labelledby="org-invite-t" data-invite-gate="${gate.kind}">
-      ${orgHead("Invite someone", "", null, "org-invite-t")}
-      <div${surface("padding:14px 16px")}><p role="status" style="margin:0;font-size:13px;line-height:1.55;color:var(--fg-70)">${esc(gate.sentence)}${gate.kind === "full" ? " Removing a member or revoking a pending invite frees a seat." : ""}</p>${fix ? `<div class="cnpy-plan-actions" data-seat-fix="${gate.next ?? ""}">${fix}</div>${gate.next === "upgrade" ? checkoutTerms() : ""}` : ""}${fix && ui.billing.error ? `<div role="alert" style="${O_ERR}">${esc(ui.billing.error)}</div>` : ""}</div>
-    </section>`
-    : `<section aria-labelledby="org-invite-t">
-      ${orgHead("Invite someone", "", null, "org-invite-t")}
-      <div${surface("padding:14px 16px")}>
-        <div class="cnpy-field-anchor"><div class="cnpy-org-invite">
-          ${segmented({ id: "org-invite-by", ariaLabel: "Invite by", act: "orgInviteBy", value: ui.inviteBy, size: "sm", inertOn: true, options: [{ value: "github", label: "GitHub login" }, { value: "email", label: "Email" }] })}
-          <input id="org-invite" data-act="orgInviteDraft" data-field="orgInvite" data-enter="orgInviteSend" value="${attr(ui.inviteDraft)}" placeholder="${ui.inviteBy === "github" ? "octocat" : "name@example.com"}" aria-label="${ui.inviteBy === "github" ? "GitHub login to invite" : "Email address to invite"}"${ui.inviteBy === "email" ? ' type="email" inputmode="email"' : ""} autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="org-invite-h${ui.inviteError ? " org-invite-e" : ""}"${ui.inviteError ? ' aria-invalid="true"' : ""} class="cnpy-input" style="${O_FIELD};flex:1 1 200px;width:auto;min-width:0;${ui.inviteError ? "border-color:var(--red);" : ""}" />
-          ${ui.inviteBy === "email" ? `<input id="org-invite-name" data-act="orgInviteName" data-field="orgInviteName" data-enter="orgInviteSend" value="${attr(ui.inviteName)}" maxlength="${INVITE_NAME_MAX}" placeholder="Their name (optional)" aria-label="Their name, for the email's greeting (optional)" autocomplete="off" class="cnpy-input" style="${O_FIELD};flex:1 1 160px;width:auto;min-width:0" />` : ""}
-          ${dropdown(inviteRoleDropdown(ui), dd)}
-          ${accentBtn(ui.inviteBusy ? "Inviting…" : "Invite", "orgInviteSend", { disabled: !canSend, busy: ui.inviteBusy, extra: "height:36px" })}
-        </div>${ui.inviteError ? fieldError("org-invite-e", ui.inviteError) : ""}</div>
-        <div id="org-invite-h" style="${O_HELP};margin-top:9px">${ui.inviteBy === "email"
-          ? "Trov emails them the invitation. They join when they sign in with that address, with Google or GitHub, and accept."
-          : "They see the invitation the next time they sign in with that GitHub account, and join when they accept. No email is sent: tell them it is waiting."}</div>
-      </div>
     </section>`;
 }
 

@@ -21,6 +21,10 @@ import { segmented } from "../web/src/segmented";
 import { setApiOrg } from "../web/src/api";
 import mainSrc from "../web/src/main.ts?raw";
 import morphSrc from "../web/src/morph.ts?raw";
+import { loadWebChunks } from "./helpers/web-chunks";
+
+// The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
+loadWebChunks();
 
 const route = (hash: string): Route => parseHash(hash);
 

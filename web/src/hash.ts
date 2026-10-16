@@ -53,7 +53,7 @@ import type { ReleasePage } from "./releases";
 import { LATEST_RELEASE } from "./release-latest";
 import { PLAT_TABS, type PlatTab } from "./platform-core";
 import { ORG_SLUG_RE } from "@shared/orgs";
-import { isOrgTab, type OrgTab } from "./org-settings";
+import { isOrgTab, type OrgTab } from "./org-core";
 import { isWelcomeStep, type WelcomeStep } from "./welcome";
 import { normalizeTagName } from "@shared/tags-core";
 

@@ -95,7 +95,6 @@ import type { ArtEffect, ArtWrite } from "./artifacts";
 import { artifactsChunk } from "./artifacts-lazy";
 import { kindForFilename, isBinaryKind } from "@shared/artifacts-core";
 import { confirmKeyAction } from "./confirm";
-import { createOrgController } from "./org-actions";
 import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
@@ -103,7 +102,9 @@ import { LATEST_RELEASE } from "./release-latest";
 import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
-import { currentOrg, roleAtLeast } from "./org-settings";
+import { currentOrg, isOrgTab } from "./org-core";
+import { roleAtLeast } from "./org-ui";
+import { orgChunk } from "./org-lazy";
 import { createSyncController } from "./sync-actions";
 import { createDropdowns } from "./dropdown";
 import { initialOrgsUi } from "./org-picker";
@@ -166,10 +167,25 @@ const syncCtl = createSyncController({
 });
 
 // Org settings (web/src/org-actions.ts): every `org…` act, its loads, and the secret form's draft.
-const orgCtl = createOrgController({
-  state, mount, rerender: () => rerender(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
-  reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
-});
+// Its own chunk (org-lazy.ts): the controller is made when the chunk lands, and a load or an act asked
+// for before then runs once it has (`withChunk`). Before it is made there is no form to tidy after a paint.
+type OrgCtl = import("./org-actions").OrgController;
+let orgCtlMade: OrgCtl | null = null;
+function withOrgCtl(fn: (c: OrgCtl) => void): void {
+  withChunk(orgChunk, (m) => {
+    orgCtlMade ??= m.createOrgController({
+      state, mount, rerender: () => rerender(), flash: (msg, ms, a) => flash(msg, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+      reloadOrgs: () => loadMyOrgs(), leaveOrg: () => showPicker(null),
+    });
+    fn(orgCtlMade);
+  });
+}
+const orgCtl: OrgCtl = {
+  act: (act, arg, value) => withOrgCtl((c) => c.act(act, arg, value)),
+  load: () => withOrgCtl((c) => c.load()),
+  loadPlan: () => withOrgCtl((c) => c.loadPlan()),
+  afterPaint: () => { orgCtlMade?.afterPaint(); },
+};
 // The organization's tag list (web/src/tags-actions.ts): every `tag…` act, the list's read, a tag's page.
 const tagsCtl = createTagsController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
@@ -404,6 +420,8 @@ function paintApp(): void {
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
   if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  // Org settings is its own chunk: painting it without it starts the load.
+  if (state.view === "app" && state.screen === "org") withChunk(orgChunk);
   // The Repo screen is its own chunk: painting it without it starts the load.
   if (state.view === "app" && state.screen === "repo") withChunk(repoChunk);
   // Artifacts' screens are their own chunk: painting one without it starts the load.
@@ -4178,7 +4196,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
-      if (act.startsWith("org")) { if (act === "orgGo") loadOrgAdminExtras(); orgCtl.act(act, arg, value); return; }
+      if (act.startsWith("org")) {
+        if (act === "orgGo") {
+          loadOrgAdminExtras();
+          // Org settings is its own chunk: until it is in, the screen opens at once on its skeleton
+          // (what orgGo itself sets, org-actions.ts), and the act runs again — with its reads — once it lands.
+          if (!orgChunk.get()) { state.screen = "org"; state.personCard = null; if (isOrgTab(arg)) state.org.tab = arg; state.org.repoPage = null; rerender(); }
+        }
+        orgCtl.act(act, arg, value);
+        return;
+      }
       // Every Artifacts act goes to the one reducer in artifacts.ts.
       if (act.startsWith("art")) {
         const screen = state.screen === "artifacts" || state.screen === "artifactnew" || state.screen === "artifact" ? state.screen : null;
