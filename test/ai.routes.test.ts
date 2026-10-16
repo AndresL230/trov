@@ -221,6 +221,29 @@ describe("suggestions — accept and dismiss", () => {
     expect(await row(id)).toEqual({ state: "open", decided_by: null, decided_at: null });
   });
 
+  it("dismiss is whoever can SET the field (Q22): an admin-only kind is an admin's to dismiss too; and it writes the dismisser's ai_feedback", async () => {
+    const feedback = (id: number) => all<{ handle: string; item_type: string; kind: string; model: string | null; prompt_version: string | null }>(env.DB,
+      `SELECT handle, item_type, kind, model, prompt_version FROM ai_feedback WHERE org_id = ? AND item_type = 'suggestion' AND item_ref = ?`, ORG_A, String(id));
+    const adminKind = await suggestion();
+    await withHandler("category", { role: "admin", apply: async () => undefined }, async () => {
+      expect(await call("POST", `${BASE}${AI_ROUTES.dismiss(adminKind)}`, await cookieFor(MEMBER), {})).toEqual({ status: 403, json: { error: "forbidden" } });
+      expect((await row(adminKind))!.state).toBe("open");
+      expect(await feedback(adminKind)).toEqual([]);
+      expect((await call("POST", `${BASE}${AI_ROUTES.dismiss(adminKind)}`, await cookieFor(FIXTURE_ADMIN), {})).status).toBe(200);
+    });
+    expect(await feedback(adminKind)).toEqual([{ handle: FIXTURE_ADMIN, item_type: "suggestion", kind: "category", model: expect.anything(), prompt_version: expect.anything() }]);
+    // A member's kind: the member dismisses it, and their feedback is recorded once.
+    const memberKind = await suggestion({ reason: "Another." });
+    await withHandler("category", { role: "member", apply: async () => undefined }, async () => {
+      expect((await call("POST", `${BASE}${AI_ROUTES.dismiss(memberKind)}`, await cookieFor(MEMBER), {})).status).toBe(200);
+    });
+    expect((await feedback(memberKind)).map((f) => f.handle)).toEqual([MEMBER]);
+    // The real registry: a Roadmap suggestion (an admin's to accept) is an admin's to dismiss.
+    const roadmap = (await putSuggestion(systemCtx(), { itemType: "roadmap", itemRef: "org", kind: "plan_narrative", value: { narrative: "Now: x." }, confidence: null, reason: "Stale.", cites: [], model: "m", promptVersion: "p" }))!;
+    expect(await call("POST", `${BASE}${AI_ROUTES.dismiss(roadmap)}`, await cookieFor(MEMBER), {})).toEqual({ status: 403, json: { error: "forbidden" } });
+    expect((await call("POST", `${BASE}${AI_ROUTES.dismiss(roadmap)}`, await cookieFor(FIXTURE_ADMIN), {})).status).toBe(200);
+  });
+
   it("dismiss is any member's, and the decision is remembered: a re-run supersedes only an OPEN suggestion", async () => {
     const id = await suggestion();
     const r = await call<{ ok: true; suggestion: { state: string } }>("POST", `${BASE}${AI_ROUTES.dismiss(id)}`, await cookieFor(MEMBER), {});

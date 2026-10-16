@@ -16,7 +16,8 @@ export interface AcceptHandler {
    *  propagates (a `PlanLimitError` reaches the app's 402 as usual). `req` is what the request knows that the
    *  context does not: the app's origin (an in-app link, Phase C's duplicate). */
   apply(ctx: TenantContext, suggestion: AiSuggestionRow, value: unknown, req?: AcceptRequest): Promise<void>;
-  /** Who may DISMISS this kind (default: any member). A theme's Remove is an admin's. */
+  /** Who may DISMISS this kind (default: `role` — whoever can set the field, owner ruling Q22). A theme's Remove is an
+   *  admin's. */
   dismissRole?: "member" | "admin";
   /** What a dismissal also does to the real item (a removed theme), AS `ctx`'s person, after it is recorded.
    *  Never fails the dismissal: a throw is logged. */

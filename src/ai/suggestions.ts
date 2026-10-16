@@ -5,11 +5,11 @@
 // Accepting is a per-KIND handler from `AI_ACCEPT_HANDLERS` (./accept.ts; Phase C registers the card kinds' —
 // ./jobs/accept.ts; a kind with none, like `review.risk` (information only), answers `not_available`). A handler
 // declares who may accept its kind (`role`: a ticket's category may be any member's call, a theme an admin's);
-// dismissing is open to every member unless the handler says an admin (`dismissRole`: a theme's Remove), and may
-// also act on the real item (`dismissed`).
-import type { AiSuggestion, AiSuggestionError } from "@shared/ai";
+// dismissing is whoever can set the field — `dismissRole`, else that same `role` (Q22) — and may also act on the real
+// item (`dismissed`).
+import { aiItemRef, type AiSuggestion, type AiSuggestionError } from "@shared/ai";
 import { hasRole, type TenantContext } from "../data/context";
-import { decideSuggestion, getSuggestion, reopenSuggestion, suggestionDto, type AiSuggestionRow } from "../data/ai";
+import { decideSuggestion, getSuggestion, recordFeedback, reopenSuggestion, suggestionDto, type AiSuggestionRow } from "../data/ai";
 import { nowIso } from "../data/sql";
 import { aiShown } from "../plans/gate";
 import { AcceptRefused, type AcceptHandler, type AcceptRequest } from "./accept";
@@ -73,9 +73,11 @@ export async function acceptSuggestion(
   return { ok: true, suggestion: suggestionDto({ ...row, state: "accepted", decided_by: ctx.userId, decided_at: at }) };
 }
 
-/** Dismiss suggestion `id` as `ctx`'s person — any member, unless the kind's handler says an admin
- *  (`dismissRole`); the decision is remembered (a re-run of the kind supersedes only an OPEN suggestion). THE read
- *  rule's off refuses it (`off`), as it refuses Accept. */
+/** Dismiss suggestion `id` as `ctx`'s person — WHOEVER CAN SET THE FIELD (owner ruling Q22): the kind's `dismissRole`,
+ *  else the role that may accept it (a Roadmap suggestion is an admin's either way); a kind with no handler
+ *  (`review.risk`: the proposal's own promote / reject are every member's) any member. The decision is remembered (a
+ *  re-run of the kind supersedes only an OPEN suggestion), and it is also recorded as this person's `ai_feedback`
+ *  (item type `suggestion`, its id) for the evals. THE read rule's off refuses it (`off`), as it refuses Accept. */
 export async function dismissSuggestion(
   ctx: TenantContext, id: number, handlers: Readonly<Record<string, AcceptHandler>> = AI_ACCEPT_HANDLERS,
 ): Promise<SuggestionAnswer> {
@@ -84,9 +86,12 @@ export async function dismissSuggestion(
   if (!(await aiShown(ctx)).shown) return refuse("off");
   if (row.state !== "open") return refuse("not_open");
   const handler = Object.hasOwn(handlers, row.kind) ? handlers[row.kind] : undefined;
-  if (handler?.dismissRole === "admin" && !hasRole(ctx, "admin")) return refuse("forbidden");
+  if ((handler?.dismissRole ?? handler?.role ?? "member") === "admin" && !hasRole(ctx, "admin")) return refuse("forbidden");
   const at = nowIso();
   if (!(await decideSuggestion(ctx, id, "dismissed", ctx.userId, at))) return refuse("not_open");
+  // Dismiss is also a "this is wrong" for the evals (Q22): never fails the dismissal.
+  await recordFeedback(ctx, ctx.userId, { itemType: "suggestion", itemRef: aiItemRef.suggestion(id), kind: row.kind, model: row.model, promptVersion: row.prompt_version }, at)
+    .catch((e: unknown) => console.error("ai suggestion: dismiss feedback failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`));
   if (handler?.dismissed) {
     await handler.dismissed(ctx, row).catch((e: unknown) => console.error("ai suggestion: dismiss hook failed", row.kind, e instanceof Error ? e.name : "error", `org=${ctx.orgId}`));
   }

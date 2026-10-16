@@ -713,8 +713,11 @@ API (`batch: true`, half the price), the pass's last stage.
   `plan_narrative` (admin; `src/ai/roadmap-accept.ts`); a kind with none
   (`review.risk`) is `not_available`. A handler gets the request's origin too (`AcceptRequest`: the in-app address a
   duplicate link points at). **A handler names its `role`**: `member` (anyone in the org)
-  or `admin`; **dismiss is open to every member** (`POST /ai/suggestions/:id/dismiss`) unless the handler names a `dismissRole` (a theme's
-  Remove is an admin's), and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
+  or `admin`; **dismiss is whoever can set the field** (owner ruling Q22; `POST /ai/suggestions/:id/dismiss`): the
+  handler's `dismissRole`, else its `role` — so a Roadmap draft or narrative is an admin's to dismiss as to accept, a
+  theme's Remove an admin's, a ticket or Unplaced card any member's, and a kind with no handler (`review.risk`, whose
+  proposal any member may promote or reject) any member's. A dismissal also records the dismisser's `ai_feedback`
+  (item type `suggestion`, ref = its id, its kind, model and prompt version) for the evals, and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
   `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. A refusal is never a 500: Phase C's
   handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
   gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`); a Roadmap writer refusing
