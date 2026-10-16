@@ -103,6 +103,11 @@ export function orgTablesInOrder(rows) {
   }
   return out;
 }
+/** Rows written WITHOUT an id (the fixtures' Unplaced items, the AI samples' suggestions, starter tags…) take the next
+ *  autoincrement value. After a scenario's wipe that counter may sit inside an id block another layer owns (the rich
+ *  layer's 7000–7999, the showcase's 9500–9899), and the owner's next delete would take those rows with it — so a
+ *  counter left anywhere in 6000–9998 moves to 9999 first. */
+export const AUTOINCREMENT_PAST_BLOCKS = [`UPDATE sqlite_sequence SET seq = 9999 WHERE seq BETWEEN 6000 AND 9998`];
 /** Every row of `orgId` (and the OAuth tokens of its connections, which have no org_id), children first. */
 export function orgWipeStatements(orgId, tables) {
   const O = q(orgId);
@@ -371,7 +376,7 @@ export async function loadScenarios(db, names, { now = new Date(), reset = false
   const out = {};
   for (const sc of chosen) {
     log(`${sc.name} — ${sc.what}`);
-    await db.apply(`${sc.name}: wipe ${sc.org}`, orgWipeStatements(sc.org, tables));
+    await db.apply(`${sc.name}: wipe ${sc.org}`, [...orgWipeStatements(sc.org, tables), ...AUTOINCREMENT_PAST_BLOCKS]);
     await db.apply(`${sc.name}: rows`, sc.statements(now, { reset }));
     if (sc.showcase) out[sc.name] = await teamShowcase(db, { now, image, views, origin });
   }
