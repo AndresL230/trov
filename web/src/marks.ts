@@ -242,11 +242,6 @@ export const AI_NOT_OFFICIAL = "Not official; check the sources.";
 export function aiMark(size = 12, tip: string | null = null, label: string | null = null): string {
   return svg(size, AI_GLYPH, label === null ? null : esc(label), "var(--accent)", "0 0 100 100", tip === null ? null : esc(tip));
 }
-/** A state Trov SUGGESTED (Review's risk: "Changes a decision"), as a mark: the AI glyph and the sentence-case word,
- *  the same shape as every other mark (`stateMark`), its `tip` saying what it means and that Trov suggested it. */
-export function aiStateMark(word: string, size = 12, tip: string | null = null): string {
-  return mark(aiMark(Math.round(size * 0.92)), word, size, tip);
-}
 
 // ── search authority ─────────────────────────────────────────────────────────
 

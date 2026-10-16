@@ -16,7 +16,7 @@
 // it, and main.ts's `decided` holds the screen's re-read for `AI_EXIT_MS` so the read never pulls it out mid-exit.
 import type { AiSuggestion } from "@shared/ai-core";
 import { AI_TIP, aiCites, aiLeaving, aiSuggestionChip, aiSuggestionKey, type AiUi } from "./ai-ui";
-import { aiMark, aiStateMark } from "./marks";
+import { aiMark } from "./marks";
 import { esc, attr } from "./ui";
 
 /** The bit of `state.ai` a chip needs, with which items are leaving (ai-ui.ts › Leaving). */
@@ -67,13 +67,7 @@ export function unplacedRowMark(ai: AiSuggestion[] | undefined, leaving?: AiUi["
     : "";
 }
 
-/** The risk on a Review LIST card: the mark and the words, nothing to press (the card is the button). */
-export function reviewRiskMark(ai: AiSuggestion[] | undefined, leaving?: AiUi["leaving"]): string {
-  const r = ofKind(ai, "review.risk");
-  return r
-    ? aiLeaving({ leaving }, aiSuggestionKey(r.id), `<span class="cnpy-ai-risk">${aiStateMark(r.label, 12, `${AI_TIP.suggestion} Because ${r.reason}.`)}</span>`, { hold: true, inline: true })
-    : "";
-}
+// The risk is NOT drawn on a Review LIST card (the owner, RV-OWNER-2): only in the item's detail (`reviewRiskLine`).
 
 /** The risk in the Review DETAIL pane: a quiet line — the mark, the risk, its reason one tap away, and Dismiss. */
 export function reviewRiskLine(ai: AiSuggestion[] | undefined, ui: AiChipUi): string {

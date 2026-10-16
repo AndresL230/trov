@@ -16,8 +16,7 @@ import type { PersonColor } from "@shared/rows";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skList, skW, skProse } from "./skeleton";
 import type { AiSuggestion } from "@shared/ai-core";
 import { ASK_WRONG_LABELS, type AskFlag } from "@shared/ai-ask-core";
-import { reviewRiskLine, reviewRiskMark, type AiChipUi } from "./ai-cards";
-import type { AiUi } from "./ai-ui";
+import { reviewRiskLine, type AiChipUi } from "./ai-cards";
 
 const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
@@ -113,7 +112,7 @@ export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFi
  *  up-right on the title row when the gate set it (nothing otherwise: every row here is
  *  waiting), 2-line summary, then a byline that folds the record type · identifier
  *  (label-face) into the author · date. */
-export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null, aiLeaving?: AiUi["leaving"]): string {
+export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVerdict | null = null): string {
   const { type, id } = splitEyebrow(it.eyebrow);
   const dot = `<span style="color:var(--fg-40)">·</span>`;
   // The row is the list's KEYED child (`data-morph-key`): a repaint patches it in place, so a card
@@ -126,7 +125,7 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
         <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(it.title)}</div>
-        ${reviewHeadMarks(it, aiLeaving)}
+        ${it.flagged ? `<div class="cnpy-rv-marks" style="flex:none;margin-top:1px">${LOW_CONFIDENCE(12)}</div>` : ""}
       </div>
       <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(it.summary)}</div>
       ${reviewMetaRow(it, type, id, dot)}
@@ -134,15 +133,6 @@ export function reviewCard(it: ReviewItem, selected: boolean, verdict: ReviewVer
     <span class="cnpy-rv-verdict" aria-hidden="true">${verdict ? `${verdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[verdict]}` : ""}</span>
   </div></div></div>`;
 }
-/** A card's states, up-right on its title row where Review has always put "Low confidence": the gate's
- *  low-confidence mark and Trov's risk ("Changes a decision", `reviewRiskMark` — it leaves by the AI kit's exit once
- *  dismissed). Never in the meta row: a state is a mark, not a word in a byline. "" with neither. */
-function reviewHeadMarks(it: ReviewItem, aiLeaving?: AiUi["leaving"]): string {
-  const risk = it.ai ? reviewRiskMark(it.ai, aiLeaving) : "";
-  if (!it.flagged && !risk) return "";
-  return `<div class="cnpy-rv-marks" style="flex:none;margin-top:1px;display:flex;flex-direction:column;align-items:flex-end;gap:4px">${it.flagged ? LOW_CONFIDENCE(12) : ""}${risk}</div>`;
-}
-
 /** A card's meta row (the owner's layout, e2e RV-OWNER-1): ONE line, the same slots in the same order on every card —
  *  the author's avatar alone (its handle in the tooltip and its accessible name; a button that opens their card when
  *  they are a known person), then kind, where (the section path in sentence case, or the ADR number) and time. Only
@@ -413,7 +403,7 @@ export function reviewView(p: ReviewProps): string {
   // inserts and removes rows and leaves every other row the element it was. When the last row is
   // leaving, the empty layout is already under it and rises as the row collapses — no jump.
   const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
-    : `${visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null, p.aiUi?.leaving)).join("")}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
+    : `${visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("")}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
