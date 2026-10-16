@@ -185,6 +185,18 @@ describe("`streaming` — mid-answer", () => {
     expect(view("answer", { events: [], busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working" data-orb-size="20" width="20" height="20" role="img" aria-label="Working…"/);
     expect(view("answer", { events: upToChart, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="composing"[^>]*aria-label="Writing…"/);
   });
+  it("every step done and no words yet (Smart reading what it found): the Working orb holds the place — not while a step runs", () => {
+    const events = askTranscript("answer", NOW).map((s) => s.event);
+    const firstText = events.findIndex((e) => e.event === "text");
+    const beforeText = events.slice(0, firstText);
+    const lastStepDone = beforeText.map((e) => e.event === "activity" && e.data.state === "done").lastIndexOf(true);
+    expect(lastStepDone).toBeGreaterThan(0);
+    const quiet = beforeText.slice(0, lastStepDone + 1).filter((e) => e.event !== "text");
+    expect(view("answer", { events: quiet, busy: true }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="working"[^>]*aria-label="Working…"/);
+    const running = events.slice(0, 2);
+    expect(running.some((e) => e.event === "activity" && e.data.state === "run")).toBe(true);
+    expect(view("answer", { events: running, busy: true }).html).not.toContain("ask-cur-alone");
+  });
   it("a running step's icon is a thinking orb, decorative (its words say what it does)", () => {
     const events = askTranscript("answer", NOW).map((s) => s.event).slice(0, 2);
     const { html: h } = view("answer", { events, busy: true });

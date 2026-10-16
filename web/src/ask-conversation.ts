@@ -522,7 +522,10 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // MOTION (ask-motion.ts): every part is a keyed child of a `data-ask-enter` list, so a streamed block or card
   // rises in once and a text part only grows; a write card / save form is `data-ask-tween` (its swap glides).
   const body = parts.map((p, i) => partView(v, a, p, i, cursorIn && i === end)).join("");
-  const curAlone = live && !cursorIn && (parts.length > 0 || (!steps && !think));
+  // …and once every step is done with nothing written yet (the model is reading what it found — Smart and Thinking
+  // can be quiet for seconds there), so the place under the steps is never empty while the answer is coming.
+  const between = !t.activity.some((s) => s.state === "run") && t.thinking?.state !== "run";
+  const curAlone = live && !cursorIn && (parts.length > 0 || (!steps && !think) || between);
   const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   const foot = t.done && !t.error ? footer(v, a) : "";

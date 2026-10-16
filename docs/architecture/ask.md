@@ -63,6 +63,19 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   expire.
 - **Compaction**: past ~60k characters of older turns, all but the newest 6 messages are summarized ONCE by Fast
   (`ask.compact`, `structured`) and sent first, fenced, as a cached prefix.
+- **The pace** (`web/src/ask-pace.ts`): the server forwards every `text_delta` the moment the SDK yields it, but
+  Smart (Sonnet 5.5) and Thinking (Opus 5.5) hold back the text they write AFTER a tool result until they know it is
+  the answer and not a progress note before another tool call — measured on 2026-10-15: `message_start` and all ~25–76
+  deltas of a short answer land within ~10 ms, a long one releases ~2,000 characters at once and streams the rest; no
+  `thinking` setting (`display: "updates"` / `"summarized"`, `between_tools`, low effort) changes it, and Fast (Haiku)
+  and text before any tool stream at generation speed. So the CLIENT paces: `AskPacer` sits between `readAskStream`
+  and the fold and lets text out a few whole words a frame (each frame releases `1 - e^(-dt/600ms)` of the backlog,
+  at least 240 characters a second; a cut never lands inside a `[[ref]]`). An event with no text waiting goes out at
+  once; one behind text (a block, a card, `followups`, `done`) keeps its place, so the footer comes after the words
+  and Send stays Stop until they are out. Stop / an error / a new thread `flush()` everything received at once (what
+  the stored partial has); no window, reduced motion or a hidden tab: no pacing. Every recorded transcript folds to the
+  same turn through it (`test/render.ask-pace.test.ts`). While every step is done and nothing is written yet, the
+  Working orb holds the answer's place.
 - The answer ends with a `<trov-meta>{ title, followups }</trov-meta>` line the server holds back from the stream
   (`MetaSplitter`): the thread's title (written by the same call) and up to 3 follow-ups.
 
@@ -275,7 +288,8 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `ask-controller.ts` (main.ts hands it every `ask…` act, routed by the two-letter part code; it owns the reads, one
   stream per conversation with Stop, batched `POST /ask/peek`, the inspector stack, the hover card, ⌘J, the Escape
   stack, the resize edge; nothing on a render path fetches), `ask-api.ts` (the typed client), `ask-sse.ts` +
-  `ask-stream.ts` (the SSE reader and the reducer, tested on every recorded transcript), `ask-refs.ts` (the chip, the
+  `ask-stream.ts` (the SSE reader and the reducer, tested on every recorded transcript), `ask-pace.ts` (the
+  answer's reading pace between the two — › The stream), `ask-refs.ts` (the chip, the
   status cell, the hover card — one `RefView` per ref), `ask-screen.ts` + `ask-layout.ts` (header, the three columns
   and their breakpoints, the inspector's frame), `ask-threads.ts` (the thread list), `ask-escape.ts`,
   `ask-icons.ts`, `ask-motion.ts` (the motion hooks: inventory §12), `ask-replay.ts` (the dev replay).
