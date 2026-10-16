@@ -465,6 +465,13 @@ dashboard, retention windows to verify) are listed in the release's `ops` and in
   and the paths from `shared/legal-core.ts`. Change the code, change the text, bump `updated`.
   `test/render.legal.test.ts` holds the facts most likely to drift (cookies and lifetimes, retention, processors,
   no Vercel / Netlify, no `read:org`, the refund policy's four rules).
+- **DRAFT passages, one flag.** The server-side AI build's text (#178 Phase G: Ask Trov, the typed filter, the AI
+  pass's notes and suggestions, the widened provider rows) is not approved: each passage starts `${DRAFT}`, a
+  visible "DRAFT —" while `AI_LEGAL_DRAFT` (`shared/legal-core.ts`) is true. The same flag HOLDS Org settings › AI ›
+  What is sent (`AI_SENDS`, `shared/ai-core.ts`) to the approved lines — summaries and Sift — since the screen
+  repeats the Privacy rows' claims; `AI_SENDS_ALL` is the full list. Approving is ONE change (set the flag false,
+  bump `updated`), and the policy and the screen ship together (`test/render.legal.test.ts` › approve once, ship
+  both).
 - **Consent wherever an account can be made** — `consentHtml()`: "By continuing you agree to the Terms of Service
   and Privacy Policy, and confirm you are 16 or older." Under the landing's sign-in / Get started dialog (every
   mode and plan, `.site-signin-note`), on the refused-Google card, on the MCP OAuth sign-in page; onboarding (where

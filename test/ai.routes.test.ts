@@ -4,7 +4,7 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { app } from "../src/routes";
-import { AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AiSettingsSchema, AiSuggestionSchema, type AiSettings } from "@shared/ai";
+import { AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AI_SENDS_ALL, AiSettingsSchema, AiSuggestionSchema, type AiSettings } from "@shared/ai";
 import { AI_ACCEPT_HANDLERS, type AcceptHandler } from "../src/ai/suggestions";
 import { hiddenFor, putSuggestion, type AiSuggestionRow } from "../src/data/ai";
 import { mcpToolCatalog } from "../src/mcp-catalog";
@@ -49,8 +49,10 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
       chatAuto: true, // 0058: on for every org
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });
-    // Both providers, by their legal names, and what each receives.
-    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([
+    // Both providers, by their legal names, and what each receives — HELD to the approved Privacy rows while the AI
+    // passages are DRAFT (AI_LEGAL_DRAFT, shared/legal-core.ts; owner ruling 2026-10-16), then every line.
+    expect(r.json.sends.map((s) => [s.provider, s.for])).toEqual([["Anthropic", "Summaries"], ["TypeSafe AI", "Sift"]]);
+    expect(AI_SENDS_ALL.map((s) => [s.provider, s.for])).toEqual([
       ["Anthropic", "Summaries"], ["Anthropic", "Ask Trov"], ["Anthropic", "Filters typed in plain words"],
       ["Anthropic", "Notes, briefs, the weekly email's highlights and suggestions"],
       ["TypeSafe AI", "Sift"], ["TypeSafe AI", "Sorting and checking items"],
