@@ -147,8 +147,36 @@ describe("the pace — a burst becomes a stream", () => {
     expect(hiddenGot).toEqual([text(BURST), done]);
   });
 
-  it("the defaults: a backlog drains on a 600 ms curve, between 70 and 120 characters a second", () => {
-    expect(ASK_PACE).toEqual({ tauMs: 600, minCps: 70, maxCps: 120 });
+  it("the defaults: a backlog drains on a 600 ms curve, between 70 and 120 characters a second; a step shows 350 ms", () => {
+    expect(ASK_PACE).toEqual({ tauMs: 600, minCps: 70, maxCps: 120, stepMs: 350 });
+  });
+
+  it("steps appear as they go: each shows running for stepMs, then finishes, then the next starts — what follows waits", () => {
+    const c = manualClock();
+    const got: string[] = [];
+    const p = new AskPacer((e) => got.push(e.event === "activity" ? `${e.data.step}:${e.data.state}` : e.event), c.clock);
+    // The tools ran in a few ms: four step events and the text arrive at once.
+    for (const e of [
+      { event: "activity", data: { step: 1, tool: "search_tickets", icon: "search", label: "Searched tickets", state: "run" } },
+      { event: "activity", data: { step: 1, state: "done", results: [] } },
+      { event: "activity", data: { step: 2, tool: "get_ticket", icon: "read", label: "Read ticket #87", state: "run" } },
+      { event: "activity", data: { step: 2, state: "done", results: [] } },
+      { event: "text", data: { delta: "Two things. " } },
+    ] as AskEvent[]) p.push(e);
+    expect(got).toEqual(["1:run"]);                       // the first step at once
+    const at = (ms: number) => { while (c.clock.now() < 1000 + ms) c.step(); };
+    at(200); expect(got).toEqual(["1:run"]);             // still running
+    at(380); expect(got).toEqual(["1:run", "1:done", "2:run"]);
+    at(600); expect(got).toEqual(["1:run", "1:done", "2:run"]);
+    at(760); expect(got.slice(0, 4)).toEqual(["1:run", "1:done", "2:run", "2:done"]);
+    while (p.pending) c.step();
+    expect(got.at(-1)).toBe("text");
+    // A quiet step (a show_* tool) takes no time on screen.
+    const q: string[] = [];
+    const p2 = new AskPacer((e) => q.push(e.event === "activity" ? `${e.data.step}:${e.data.state}` : e.event), manualClock().clock);
+    p2.push({ event: "activity", data: { step: 1, tool: "show_items", icon: "search", label: "", state: "run" } } as AskEvent);
+    p2.push({ event: "activity", data: { step: 1, state: "done" } } as AskEvent);
+    expect(q).toEqual(["1:run", "1:done"]);
   });
 });
 

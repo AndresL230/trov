@@ -300,10 +300,14 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   `ask-inspector.ts`, `ask-actions.ts`, `ask-cmdj.ts` (the ⌘J panel over ANY page, a root `data-overlay`, and the
   Tickets page's "Ask about this ⌘J"), `ask-phone.ts`; Settings › Trov is `ask-settings.ts`.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
-  20px thinking orb says what Trov is doing — a running step's icon (`STEP_ORB`: search / docs / feed / read / review
-  steps "searching", the rest "working", decorative beside the step's words), the thinking row's icon ("solving";
-  "Thought for Ns" keeps the clock), and the lone-cursor slot ("working" before anything arrived, "composing" once a
-  block has). The text cursor inside streaming words is unchanged. Which animation is the person's pick
+  20px thinking orb says what Trov is doing, in ONE place under the steps (the owner, 2026-10-16): the wait row — the
+  orb beside "Thinking…" ("Writing…" once a block is out) in the sweep of light — is there for the whole wait, before
+  anything, while the steps appear and after them, gone only while words stream or the Thinking row runs (that row
+  keeps its "solving" orb; "Thought for Ns" keeps the clock). Its orb is the running step's kind (`STEP_ORB`: search /
+  docs / feed / read / review steps "searching", the rest "working"), else "working", "composing" once a block is out.
+  A step keeps its own icon; its label carries the sweep while it runs. Steps APPEAR AS THEY GO: the tools run in a
+  few ms, so the pacer (`ask-pace.ts`, `stepMs` 350) shows each running for 350 ms, then done, then the next — what
+  comes after waits its turn; quiet steps take no time; Stop shows everything at once. The text cursor inside streaming words is unchanged. Which animation is the person's pick
   (`AskUi.orb`, `ask-orb.ts` `askOrbState`), from the header's "Thinking animation" dropdown beside the bug button
   (Ask only; its trigger is the picked orb and a caret; it stays on a phone): "Match what it's doing" is the default
   above; one of the six replaces every orb in Ask — steps, thinking and the wait — while the orb's name ("Working…",

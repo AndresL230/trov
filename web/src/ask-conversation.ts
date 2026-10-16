@@ -440,8 +440,9 @@ function stepView(v: AskView, a: AskAnswer, s: AskStep): string {
   const has = results.length > 0;
   const open = has && v.ui.conversation.open[key] === true;
   const run = s.state === "run" ? " is-run" : "";
-  // A running step's icon is a thinking orb (its words say the same, so the orb is decorative).
-  const icon = s.state === "run" ? orb(v, STEP_ORB[s.icon] ?? "working", null) : askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
+  // A step keeps its own icon running or done; its label carries the sweep of light while it runs. The ONE orb is
+  // the wait row's, under the steps (the owner: the orb and "Thinking…" stay below as the steps appear).
+  const icon = askIcon(ACTIVITY_ICON[s.icon] ?? "search", 14, "var(--fg-40)");
   const found = s.resultLine ?? (has ? `${results.length} ${results.length === 1 ? "result" : "results"}` : null);
   const line = found ? `<span class="ask-step-n">· ${esc(found)}</span>` : "";
   const head = has
@@ -527,10 +528,13 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // MOTION (ask-motion.ts): every part is a keyed child of a `data-ask-enter` list, so a streamed block or card
   // rises in once and a text part only grows; a write card / save form is `data-ask-tween` (its swap glides).
   const body = parts.map((p, i) => partView(v, a, p, i, cursorIn && i === end)).join("");
-  // …and once every step is done with nothing written yet (the model is reading what it found — Smart and Thinking
-  // can be quiet for seconds there), so the place under the steps is never empty while the answer is coming.
-  const between = !t.activity.some((s) => s.state === "run") && t.thinking?.state !== "run";
-  const curAlone = live && !cursorIn && (parts.length > 0 || (!steps && !think) || between);
+  // The wait row sits under the steps for the whole wait (the owner): before anything, while steps appear one by one,
+  // and after them while the model reads what it found — gone only while words stream (the cursor is in them) or
+  // while the Thinking row runs (it says the same, with its own orb). Its orb shows what is happening now: the
+  // running step's kind, else working; writing once a block is out.
+  const running = t.activity.filter((s) => s.state === "run" && !quietStep(s)).at(-1);
+  const curAlone = live && !cursorIn && t.thinking?.state !== "run";
+  const waitOrb: OrbState = parts.length ? "composing" : running ? STEP_ORB[running.icon] ?? "working" : "working";
   const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   const foot = t.done && !t.error ? footer(v, a) : "";
@@ -545,7 +549,7 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
     // Live with no text streaming: a thinking orb and its word, in the sweep of light (the owner: the wait must read
     // as thinking — most of a turn's wait is here, its steps run for a few ms), hold the place where the words will
     // come — "Thinking…" before the words, "Writing…" once a block is out and the words are not.
-    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, parts.length ? "composing" : "working", null)}<span class="ask-wait-l">${parts.length ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, waitOrb, null)}<span class="ask-wait-l">${parts.length ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }
