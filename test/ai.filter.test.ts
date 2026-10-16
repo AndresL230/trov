@@ -97,6 +97,16 @@ describe("the tickets' status field (declined is hidden from All — the owner's
   });
 });
 
+// FL-final-1 (e2e final pass): the placeholder's own example, "my open high-priority bugs", came back as open + high
+// only — the live model never read "my" as the assignee, and "bugs" became nothing or a title search.
+describe("the tickets' assignee and category fields say which words they take", () => {
+  it('"my" is assignee me, and a plural kind ("bugs") is the category', () => {
+    const input = filterInput("tickets", { people: [], sprints: [], tags: [] }, "my open high-priority bugs", "n");
+    expect(input).toContain('"me" is the person asking: "my", "mine" and "assigned to me" mean me');
+    expect(input).toContain('the kind of ticket, plural or not: "bugs" is bug');
+  });
+});
+
 describe("POST /ai/filter — the answer", () => {
   it("a readable request: the filter, checked, and one `ai_run:filter` counted before the call", async () => {
     const id = await sprint("Hosting screens");
