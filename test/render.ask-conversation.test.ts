@@ -17,6 +17,7 @@ import { cvRef, parseCvRef, cvRefWord, isCvRef } from "../web/src/ask-cvref";
 import { refFallbackText } from "../web/src/ask-refs";
 import { newTurn, foldAskEvent, foldThreadEvent, emptyConvo, withLastTurn, type AskConvo, type AskMsg, type AskTurn } from "../web/src/ask-stream";
 import type { AskApi } from "../web/src/ask-api";
+import type { AskOrbChoice } from "../web/src/ask-orb";
 import { askTranscript, askRefFixtures, askStateFixture, askThreadsFixture, ASK_SCENARIO_QUESTION, type AskScenario } from "@shared/ai-fixtures";
 import type { AskAttachment, AskEvent, AskThreadDetail } from "@shared/ai-ask-core";
 import css from "../web/src/trov.css?raw";
@@ -190,6 +191,39 @@ describe("`streaming` — mid-answer", () => {
     const { html: h } = view("answer", { events, busy: true });
     expect(h).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><canvas class="cnpy-orb" data-orb="(searching|working)" data-orb-size="20" width="20" height="20" aria-hidden="true"/);
     expect(h).not.toContain("ask-spin");
+  });
+});
+
+describe("the thinking orb the person picked (Settings › Trov, AskUi.orb)", () => {
+  const orbs = (html: string): string[] => [...html.matchAll(/<canvas class="cnpy-orb" data-orb="(\w+)"/g)].map((m) => m[1]);
+  const answerEvents = () => askTranscript("answer", NOW).map((s) => s.event);
+  const thinkEvents = () => { const e = askTranscript("thinking", NOW).map((s) => s.event); return e.slice(0, e.findIndex((x) => x.event === "thinking") + 1); };
+  const pick = (o: AskOrbChoice) => (s: AppState) => { s.ask.orb = o; };
+
+  it("by default (Match) each place shows what it means — unchanged", () => {
+    expect(base().ask.orb).toBe("match");
+    expect(orbs(view("answer", { events: [], busy: true }).html)).toEqual(["working"]);
+    expect(orbs(view("thinking", { events: thinkEvents(), busy: true }).html)).toContain("solving");
+  });
+
+  it("one animation picked: every orb in the answer is that one — the steps, the thinking row and the wait", () => {
+    const wait = view("answer", { events: [], busy: true, over: pick("listening") }).html;
+    expect(orbs(wait)).toEqual(["listening"]);
+    // The orb's name still says what Trov is doing, whatever it looks like.
+    expect(wait).toMatch(/data-orb="listening"[^>]*role="img" aria-label="Working…"/);
+    const step = view("answer", { events: answerEvents().slice(0, 2), busy: true, over: pick("shaping") }).html;
+    expect(orbs(step).length).toBeGreaterThan(0);
+    expect(new Set(orbs(step))).toEqual(new Set(["shaping"]));
+    const think = view("thinking", { events: thinkEvents(), busy: true, over: pick("working") }).html;
+    expect(think).toMatch(/<div class="ask-step is-run"><span class="ask-step-i"><canvas class="cnpy-orb" data-orb="working"[^>]*aria-hidden="true"/);
+    expect(new Set(orbs(think))).toEqual(new Set(["working"]));
+    const events = answerEvents();
+    const upToChart = events.slice(0, events.findIndex((e) => e.event === "block" && e.data.kind === "chart") + 1);
+    expect(view("answer", { events: upToChart, busy: true, over: pick("searching") }).html).toMatch(/class="ask-cur-alone"><canvas class="cnpy-orb" data-orb="searching"[^>]*aria-label="Writing…"/);
+  });
+
+  it("a finished answer has no orb, whatever is picked", () => {
+    expect(orbs(view("answer", { over: pick("solving") }).html)).toEqual([]);
   });
 });
 

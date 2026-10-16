@@ -1,7 +1,8 @@
 // Settings › Trov (Trov handoff #12 §3, the design's `settings` scenario): how Ask Trov answers ME in this
 // organization — my instructions (at most ASK_INSTRUCTIONS_MAX characters, with the counter and the Try chips), the
 // mode a new thread starts in (Pro: a segmented switch; a plan with one mode says so), what Trov can and cannot see,
-// and Save. Three tiles of personal Settings' bento (render.ts `settingsView`, after MCP access), placed by name in
+// and Save. Under the mode, "While it works": which thinking orb Ask shows (ask-orb.ts) — a dropdown whose rows and
+// trigger each show their orb animating; per browser, applied on the pick (no Save), so it is not in the PUT. Three tiles of personal Settings' bento (render.ts `settingsView`, after MCP access), placed by name in
 // trov.css (`/* ── Ask: Settings › Trov ── */`).
 //
 // The rows are `GET / PUT /api/o/:slug/ask/settings`; the plan, the modes it offers and their words, and the org's
@@ -11,6 +12,9 @@
 // changes while typing (the counter, its colour, Save's label) is always emitted.
 import { esc } from "./ui";
 import { segmented } from "./segmented";
+import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
+import { thinkingOrb, thinkingOrbTour } from "./thinking-orb";
+import { ASK_ORB_CHOICES, ASK_ORB_MATCH_TOUR, type AskOrbChoice } from "./ask-orb";
 import { markShape, STATE_KIND, kindMark } from "./marks";
 import { skLine, skBox, skeleton } from "./skeleton";
 import type { Loadable } from "./render";
@@ -117,7 +121,33 @@ function instructionsTile(ui: TrovPrefsUi): string {
   </section>`;
 }
 
-function modeTile(ui: TrovPrefsUi): string {
+/** "While it works": the thinking orb Ask shows. Picking applies at once (`trovSetOrb`), kept in this browser. */
+export const TROV_ORB_NOTE = "What Ask Trov shows while it searches, thinks and writes. Kept in this browser.";
+
+/** The orb dropdown's props — the trigger here and its menu among the Settings screen's overlays (render.ts). Each
+ *  option previews its orb (20px, decorative: the label names it); "Match what it's doing" tours the ones Ask uses. */
+export function trovOrbDropdown(choice: AskOrbChoice): DropdownProps {
+  return {
+    id: "trov-orb", act: "trovSetOrb", value: choice, labelledBy: "trov-orb-l", size: "md", fill: true,
+    options: ASK_ORB_CHOICES.map((c) => ({
+      value: c.value, label: c.label, ...(c.hint ? { hint: c.hint } : {}),
+      icon: c.value === "match" ? thinkingOrbTour(ASK_ORB_MATCH_TOUR, 20, null) : thinkingOrb(c.value, 20, null),
+    })),
+  };
+}
+
+/** What the mode tile's orb section reads: the pick and the app's one open dropdown. */
+export interface TrovOrbUi { choice: AskOrbChoice; dd: DropdownUi }
+
+function orbSection(o: TrovOrbUi): string {
+  return `<div class="cnpy-trov-orb">
+      <div id="trov-orb-l" style="${LABEL}">While it works</div>
+      <p style="margin:10px 0 12px;${NOTE}">${esc(TROV_ORB_NOTE)}</p>
+      ${dropdown(trovOrbDropdown(o.choice), o.dd)}
+    </div>`;
+}
+
+function modeTile(ui: TrovPrefsUi, orb: TrovOrbUi): string {
   const modes = trovModes(ui);
   const picked = trovMode(ui);
   const plan = ui.state.data?.plan ?? null;
@@ -136,11 +166,13 @@ function modeTile(ui: TrovPrefsUi): string {
     // One mode (Free, Personal): nothing to pick — the plan's line says what every question uses.
     body = `<p data-trov-onemode style="margin:14px 0 0;${NOTE}">${esc(oneModeLine(plan))}</p>`;
   }
-  const foot = modes.length > 1 ? `<div style="margin-top:auto;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-55)">${esc(oneModeLine("free"))}</div>` : "";
+  const foot = modes.length > 1 ? `<div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-55)">${esc(oneModeLine("free"))}</div>` : "";
   return `<section class="cnpy-tile cnpy-surface cnpy-set-trov-mode">
     ${head}
     ${body}
-    ${foot ? `<div style="flex:1;min-height:18px"></div>${foot}` : ""}
+    ${foot}
+    <div style="flex:1;min-height:18px"></div>
+    ${orbSection(orb)}
   </section>`;
 }
 
@@ -168,11 +200,12 @@ function seeTile(ui: TrovPrefsUi): string {
   </section>`;
 }
 
-/** The three tiles, or nothing outside an organization (the rows are per org). */
-export function trovSettingsTiles(ui: TrovPrefsUi, orgSlug: string | null): string {
+/** The three tiles, or nothing outside an organization (the rows are per org). `orb`: the browser's orb pick and the
+ *  app's dropdown state (render.ts passes `state.ask.orb`, `state.dd`). */
+export function trovSettingsTiles(ui: TrovPrefsUi, orgSlug: string | null, orb: TrovOrbUi = { choice: "match", dd: initialDropdownUi() }): string {
   if (!orgSlug) return "";
   // A read for another organization is never shown as this one's: until this org's arrives, the skeleton.
   const cur = ui.slug === orgSlug ? ui : { ...initialTrovPrefs(), slug: orgSlug };
-  return `${instructionsTile(cur)}\n\n    ${modeTile(cur)}\n\n    ${seeTile(cur)}`;
+  return `${instructionsTile(cur)}\n\n    ${modeTile(cur, orb)}\n\n    ${seeTile(cur)}`;
 }
 

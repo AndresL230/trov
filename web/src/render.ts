@@ -35,7 +35,7 @@ import { releasesScreen, findRelease, type ReleasePage } from "./releases";
 import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
-import { trovSettingsTiles, initialTrovPrefs, type TrovPrefsUi } from "./ask-settings";
+import { trovSettingsTiles, trovOrbDropdown, initialTrovPrefs, type TrovPrefsUi } from "./ask-settings";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
@@ -2575,7 +2575,7 @@ function settingsView(s: AppState): string {
 
     ${mcpAccessSection(s, org?.name ?? "")}
 
-    ${trovSettingsTiles(s.trovPrefs, s.orgSlug)}
+    ${trovSettingsTiles(s.trovPrefs, s.orgSlug, { choice: s.ask.orb, dd: s.dd })}
 
     <section class="cnpy-tile cnpy-surface cnpy-set-appear">
       <div style="${SECTION_LABEL}">Appearance</div>
@@ -3058,7 +3058,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "settings" && s.mcpSetup ? mcpSetupModal() : ""}
     ${s.view === "app" && s.screen === "settings" ? accountDeleteModal(s.acctDelete) : ""}
     ${s.view === "app" && s.screen === "settings" ? grantScopeDialog(s) : ""}
-    ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
+    ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu([...grantDropdowns(s), trovOrbDropdown(s.ask.orb)], s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}

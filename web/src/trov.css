@@ -1065,6 +1065,8 @@ input, select { font-family: inherit; }
 }
 .cnpy-trov-foot { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); }
 .cnpy-set-trov-instr textarea::placeholder { color:var(--fg-40); }
+/* "While it works" (the orb dropdown) closes the Default mode tile, under a rule like the tile's other foot. */
+.cnpy-trov-orb { padding-top:14px; border-top:1px solid var(--border); }
 /* Motion (web-ui.md › Sidebar & motion): the tiles enter with the page (`[data-enter] #cnpy-main > *`), like the rest
    of the bento; the loading skeletons settle into the content (skeleton.ts). What changes in place eases: the counter's
    colour as it nears the limit, Save's fill as it goes quiet / comes back, "Saved" rising once when a save lands, and a
@@ -1356,6 +1358,9 @@ input, select { font-family: inherit; }
 .cnpy-dd.is-sm { height:30px; padding:0 8px 0 10px; font-size:12.5px; border-color:var(--border); color:var(--fg-70); }
 .cnpy-dd.is-fill { display:flex; width:100%; }
 .cnpy-dd-v { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+/* An option's preview (`DropdownOption.icon`: Settings › Trov's thinking orbs) before its label, in the row and in the trigger. */
+.cnpy-dd-lead { display:flex; align-items:center; gap:9px; min-width:0; }
+.cnpy-dd-icon { flex:none; display:flex; align-items:center; justify-content:center; width:20px; height:20px; }
 .cnpy-dd-caret { flex:none; color:var(--fg-40); transition:transform .14s ease; }
 .cnpy-dd:hover:not(:disabled) { border-color:var(--fg-40); }
 .cnpy-dd.is-open { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
