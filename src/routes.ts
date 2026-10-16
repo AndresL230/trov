@@ -19,7 +19,7 @@ import { scanApp } from "./repo/scan-routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
-import { get_doc, list_docs, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { get_doc, get_doc_page, get_doc_version, list_doc_tree, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import { sidebarBadges } from "./tools/badges";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
@@ -224,17 +224,41 @@ tenantRoot.post("/ingest", async (c) => {
   return c.json({ ok: true, result });
 });
 
+// The Docs screen's reads. None sends a body it does not show: the list carries each doc's outline
+// (built on the server) instead of its body, the doc read its versions without theirs, and one
+// version's body is its own read. MCP `list_docs` / `get_doc` keep their bodies (src/mcp.ts). A
+// failed read is a 503 `{ error }` — never a 500.
 tenantRoot.get("/docs", async (c) => {
-  // `?fields=meta` drops the bodies (and ignores `section`) — a list-only read.
-  if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
-  const docs = await list_docs(c.var.ctx, c.req.query("section"));
-  return c.json({ docs });
+  try {
+    // `?fields=meta` drops the outlines too (and ignores `section`) — My Work's list-only read.
+    if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
+    return c.json({ docs: await list_doc_tree(c.var.ctx, c.req.query("section")) });
+  } catch (e) {
+    console.error("docs list failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read the docs" }, 503);
+  }
 });
 
 tenantRoot.get("/doc/:slug", async (c) => {
-  const found = await get_doc(c.var.ctx, c.req.param("slug"));
-  if (!found) return c.json({ error: "not found" }, 404);
-  return c.json(found);
+  try {
+    const found = await get_doc_page(c.var.ctx, c.req.param("slug"));
+    return found ? c.json(found) : c.json({ error: "not found" }, 404);
+  } catch (e) {
+    console.error("doc read failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read this doc" }, 503);
+  }
+});
+
+tenantRoot.get("/doc/:slug/versions/:version", async (c) => {
+  const raw = c.req.param("version");
+  if (!/^[1-9]\d{0,8}$/.test(raw)) return c.json({ error: "version must be a positive integer" }, 400);
+  try {
+    const version = await get_doc_version(c.var.ctx, c.req.param("slug"), Number(raw));
+    return version ? c.json({ version }) : c.json({ error: "not found" }, 404);
+  } catch (e) {
+    console.error("doc version read failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read this version" }, 503);
+  }
 });
 
 tenantRoot.get("/feed", async (c) => {

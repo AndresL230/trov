@@ -94,7 +94,7 @@ gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actio
 27 full-app paints at boot before, 4–5 after; the longest task at 4× CPU throttling 1.7 s → about 0.2 s. Tests:
 `test/paint-queue.test.ts`.
 
-## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/outline.ts`, `web/src/lru.ts`)
+## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/lru.ts`)
 
 Because every paint rebuilds the whole app's markup, `renderMarkdown` (marked → DOMPurify → `enhance`) and
 `renderMarkdownInline` ran for every doc, ticket and feed summary on screen on EVERY paint — the slowest part of
@@ -102,10 +102,10 @@ a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block
 a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
 repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
 `tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
-reads) must join the key. Results are strings, so a cached one cannot be mutated. `extractOutline` (the Docs tree
-draws every doc's outline on every paint) is memoized by body in a 500-entry LRU — larger than a big org's doc
-count, because a tree that cycles through more docs than the cache holds would miss on every one — and hands out
-a FROZEN array of frozen items. `sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
+reads) must join the key. Results are strings, so a cached one cannot be mutated. The Docs tree computes no
+outline: `GET /docs` sends each doc's outline instead of its body (`shared/doc-outline.ts`; `feed-and-search.md` ›
+The Docs screen's reads), and `web/src/outline.ts` only re-exports `slugifyHeading` for the reader's heading ids.
+`sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
 
 ## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
 

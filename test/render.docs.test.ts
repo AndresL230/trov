@@ -39,7 +39,8 @@ function docsState(docs: DocRow[]): ReturnType<typeof initialState> {
     view: "app",
     screen: "docs",
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" as const }], superadmin: false, pending_invites: 0 },
-    docsList: { status: "ok", data: docs },
+    // GET /docs carries each doc's outline, never its body.
+    docsList: { status: "ok", data: docs.map(({ body: _body, ...meta }) => ({ ...meta, outline: [] })) },
   };
 }
 
@@ -84,5 +85,20 @@ describe("Docs — a doc's people open their person card", () => {
     expect(html).toMatch(/<button data-act="openPerson" data-arg="meilin" class="cnpy-personchip"/);
     expect(html).not.toContain('data-act="openPerson" data-arg="ghost"');
     expect(html).toContain("@ghost");
+  });
+});
+
+describe("Docs tree — each page's outline is the one GET /docs sent", () => {
+  it("draws the server's outline (no body needed), and no chevron for a doc without headings", () => {
+    const s = docsState([doc(), doc({ slug: "plain", title: "Plain" })]);
+    s.docsList = { status: "ok", data: [
+      { ...s.docsList.data[0], outline: [{ level: 2, text: "Setup", id: "setup" }, { level: 3, text: "Keys", id: "keys" }] },
+      s.docsList.data[1],
+    ] };
+    const html = render(s);
+    expect(html).toContain('data-act="scrollToHeading" data-arg="a-doc::setup" class="cnpy-outline-item"');
+    expect(html).toContain('data-act="scrollToHeading" data-arg="a-doc::keys" class="cnpy-outline-item lvl3"');
+    expect(html).toContain('data-act="toggleOutline" data-arg="a-doc"');
+    expect(html).not.toContain('data-act="toggleOutline" data-arg="plain"');
   });
 });

@@ -5,7 +5,7 @@
 
 import { trovMark } from "@shared/mark";
 import type { Me, StagedProposal, IdentityTask, DiscardedIdentity, PersonSummary, PersonProfile } from "./api";
-import type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
+import type { FeedRow, DocRow, DocMetaRow, DocListRow, DocVersionMetaRow, AdrRow, NeedsTriageRow, PersonColor, OAuthGrantSummary, McpTokenSummary } from "@shared/rows";
 import type { QueryResult, QueryPrimary, QueryPointer, SprintView, SprintDetail, PlanView } from "./api";
 import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory } from "./api";
 import type { TicketPriority } from "@shared/tickets";
@@ -38,7 +38,6 @@ import { supportDialog, initialSupport, type SupportDraft } from "./support";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, type DeleteUi } from "./deletion";
 import type { AccountDeletionPreview } from "@shared/deletion-core";
 import { renderMarkdown, renderMarkdownInline } from "./markdown";
-import { extractOutline } from "./outline";
 import { repoUrl } from "./github";
 import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, asideNote, hitArea, HITBOX } from "./ui";
 import { landingView } from "./landing";
@@ -218,8 +217,8 @@ export interface AppState {
   /** The Feed aside's "This week" (`GET /feed/stats`): the WHOLE team's last 7 days,
    *  unfiltered — refreshed on each entry to the Feed, never by a filter change. */
   feedStats: Loadable<FeedStats | null>;
-  docsList: Loadable<DocRow[]>;
-  docDetail: Loadable<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] } | null>;
+  docsList: Loadable<DocListRow[]>;
+  docDetail: Loadable<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] } | null>;
   /** The organization's tag list (`GET /api/tags`): the Feed's filter, the Unplaced picker, a doc's
    *  Tags row and Org settings › Tags all draw from it. Read once per org, again after a write. */
   tags: Loadable<TagListDTO | null>;
@@ -1268,7 +1267,7 @@ export const spaceLabel = (k: string): string => (k ? k.charAt(0).toUpperCase() 
 
 /** First doc of a space in tree display order (section rank, then title) — the
  *  page opened by default when the docs list loads or the space toggles. */
-export function firstDocForSpace(docs: DocRow[], space: string): DocRow | undefined {
+export function firstDocForSpace(docs: DocListRow[], space: string): DocListRow | undefined {
   return docs
     .filter((d) => d.space === space)
     .sort((a, b) => sectionRank(a.section) - sectionRank(b.section) || a.title.localeCompare(b.title))[0];
@@ -1276,9 +1275,9 @@ export function firstDocForSpace(docs: DocRow[], space: string): DocRow | undefi
 
 // One tree row: the page button (opens the doc) with a chevron that toggles its
 // in-page outline, plus the outline itself (scroll-to-heading links) when open.
-function docTreeRow(s: AppState, doc: DocRow): string {
+function docTreeRow(s: AppState, doc: DocListRow): string {
   const active = doc.slug === s.docSlug;
-  const outline = extractOutline(doc.body);
+  const outline = doc.outline;
   const open = !!s.docOutlineOpen[doc.slug];
   const chevron = outline.length
     ? `<span class="cnpy-treechev${open ? " is-open" : ""}" data-act="toggleOutline" data-arg="${attr(doc.slug)}" role="button" aria-expanded="${open ? "true" : "false"}" aria-label="Toggle outline"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"></path></svg></span>`
@@ -1318,7 +1317,7 @@ function docsView(s: AppState): string {
       // The space has no doc: one section group of page rows, drawn empty (the reader says the rest).
       treeHtml = emptyLayout("docs-tree", { text: `No ${spaceLabel(s.docSpace)} docs yet.`, plain: true, sayStyle: "padding:2px 8px 14px", shapes: docTreeGroupShape(0, 4) });
     } else {
-      const grouped = new Map<string, DocRow[]>();
+      const grouped = new Map<string, DocListRow[]>();
       for (const doc of spaceDocs) {
         if (!grouped.has(doc.section)) grouped.set(doc.section, []);
         grouped.get(doc.section)!.push(doc);

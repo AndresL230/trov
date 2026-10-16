@@ -204,6 +204,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "handle": return ALICE;
     case "sha": return fx.imgSha;
     case "ver": return "v1";
+    case "version": return "1"; // a doc's first version (its body carries the canary)
     case "key": return under("/repos/") ? "web" : fx.envKey;
     case "kind": return "github_token";
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
@@ -235,7 +236,7 @@ const TENANT: Record<string, Row> = {
   // src/routes.ts — tenantRoot
   "GET /img/:sha": {},
   "POST /ingest": J({}),
-  "GET /docs": {}, "GET /doc/:slug": {}, "GET /feed": { query: `?author=${ALICE}` }, "GET /feed/stats": {},
+  "GET /docs": {}, "GET /doc/:slug": {}, "GET /doc/:slug/versions/:version": {}, "GET /feed": { query: `?author=${ALICE}` }, "GET /feed/stats": {},
   "GET /search": { query: "?q=CANARY" }, "GET /search/quick": { query: "?q=CANARY" },
   "GET /needs-triage": {}, "GET /adrs": {}, "GET /proposals": {},
   "POST /doc/:slug/promote": J({ version: 2 }), "POST /doc/:slug/reject": J({ version: 2 }),
@@ -572,7 +573,7 @@ describe("controls", () => {
       if (r.raw.includes(CANARY)) seen.push(suffix);
     }
     expect(seen).toEqual(expect.arrayContaining([
-      "/img/:sha", "/docs", "/doc/:slug", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
+      "/img/:sha", "/docs", "/doc/:slug", "/doc/:slug/versions/:version", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
       "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id",
       "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
     ]));

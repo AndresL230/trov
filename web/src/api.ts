@@ -6,7 +6,7 @@
 // the MCP bearer is for /mcp only and never appears here.
 import type { SidebarBadges } from "@shared/badges";
 import type {
-  FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow, EventRow,
+  FeedRow, DocRow, DocMetaRow, DocListRow, DocVersionRow, DocVersionMetaRow, AdrRow, NeedsTriageRow, EventRow,
   PersonColor,
 } from "@shared/rows";
 // Type-only (erased at build): the sprint DTOs the roadmap renders. Importing the
@@ -192,17 +192,26 @@ export function getFeedStats(days = 7, tz = -new Date().getTimezoneOffset()): Pr
   return getJson<FeedStats>(`/feed/stats?days=${days}&tz=${tz}`);
 }
 
-export function listDocs(): Promise<DocRow[]> {
-  return getJson<{ docs: DocRow[] }>("/docs").then((r) => r.docs);
+/** The Docs tree: every doc's metadata and its outline, built on the server — never a body. */
+export function listDocs(): Promise<DocListRow[]> {
+  return getJson<{ docs: DocListRow[] }>("/docs").then((r) => r.docs);
 }
 /** Every doc without its body (`/docs?fields=meta`) — My Work's "Docs you own". */
 export function listDocMeta(): Promise<DocMetaRow[]> {
   return getJson<{ docs: DocMetaRow[] }>("/docs?fields=meta").then((r) => r.docs);
 }
 
-export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] }> {
-  return getJson<{ doc: DocRow; versions: DocVersionRow[]; tags?: string[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
+/** One doc for the reader: its live body, its tags, and its versions WITHOUT their bodies. */
+export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }> {
+  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
     if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
+    throw e;
+  });
+}
+/** One version of a doc with its body — read only when a version's text is shown. */
+export function getDocVersion(slug: string, version: number): Promise<DocVersionRow> {
+  return getJson<{ version: DocVersionRow }>(`/doc/${encodeURIComponent(slug)}/versions/${version}`).then((r) => r.version).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(`${slug} v${version}`);
     throw e;
   });
 }
@@ -946,7 +955,7 @@ export const setOAuthGrantCurrent = (id: number, org: string) => grantScope(id, 
 export const setOAuthGrantMode = (id: number, mode: "repo" | "manual", org?: string) => grantScope(id, "mode", { mode, org });
 
 // Re-export the row types the UI renders, so screens import shapes from one place.
-export type { FeedRow, DocRow, DocMetaRow, DocVersionRow, AdrRow, NeedsTriageRow };
+export type { FeedRow, DocRow, DocMetaRow, DocListRow, DocVersionRow, DocVersionMetaRow, AdrRow, NeedsTriageRow };
 export type { SprintView, SprintDetail, SprintCreate };
 export type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter, TicketCategory, TicketCreate };
 export type { DashboardData };

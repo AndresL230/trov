@@ -1,5 +1,6 @@
-import type { DocRow, DocMetaRow, DocVersionRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
+import type { DocRow, DocMetaRow, DocListRow, DocVersionRow, DocVersionMetaRow, FeedRow, AdrRow, NeedsTriageRow, SprintRow, PlanRow, EventRow, IdentityTaskRow, TicketRow, TicketLinkRow, TicketCommentRow, TicketEventRow } from "@shared/rows";
 import { tagsOfItems } from "./tags";
+import { extractOutline } from "@shared/doc-outline";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -28,6 +29,52 @@ export async function get_doc(
   return { doc, versions, tags };
 }
 
+/** The Docs screen's read of one doc (`GET /doc/:slug`): the doc with its live body, its tags, and
+ *  every version WITHOUT its body — the reader shows the live text and the history's rows only. One
+ *  version's body is `get_doc_version`. MCP `get_doc` keeps every body (its contract). */
+export async function get_doc_page(
+  ctx: TenantContext,
+  slug: string
+): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[] } | null> {
+  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  if (!doc) return null;
+  const versions = await all<DocVersionMetaRow>(
+    ctx,
+    `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence
+       FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
+    ctx.orgId,
+    slug
+  );
+  const tags = (await tagsOfItems(ctx, "doc", [slug])).get(slug) ?? [];
+  return { doc, versions, tags };
+}
+
+/** One version of a doc, body included (`GET /doc/:slug/versions/:version`) — read only when a
+ *  version's text is shown. Null when this org has no such doc version. */
+export async function get_doc_version(ctx: TenantContext, slug: string, version: number): Promise<DocVersionRow | null> {
+  return await first<DocVersionRow>(
+    ctx,
+    `SELECT * FROM doc_versions WHERE org_id = ? AND slug = ? AND version = ?`,
+    ctx.orgId,
+    slug,
+    version
+  );
+}
+
+/** The Docs tree (`GET /docs`): every doc's metadata and its H2/H3 outline, built here from the body
+ *  (shared/doc-outline.ts) so the bodies never cross the wire. `section` narrows it as in `list_docs`.
+ *  MCP `list_docs` keeps the bodies (its contract). */
+export async function list_doc_tree(ctx: TenantContext, section?: string): Promise<DocListRow[]> {
+  const docs = section
+    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section)
+    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? ORDER BY slug ASC`, ctx.orgId);
+  return docs.map((d) => ({
+    slug: d.slug, section: d.section, title: d.title, current_version: d.current_version,
+    updated_at: d.updated_at, updated_by: d.updated_by, space: d.space, owner: d.owner,
+    outline: extractOutline(d.body),
+  }));
+}
+
 export async function list_docs(ctx: TenantContext, section?: string): Promise<DocRow[]> {
   if (section) {
     return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section);
@@ -38,7 +85,7 @@ export async function list_docs(ctx: TenantContext, section?: string): Promise<D
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
  *  own"), so it never pulls every doc's full text over the wire. */
 export async function list_doc_meta(ctx: TenantContext): Promise<DocMetaRow[]> {
-  return all<DocMetaRow>(ctx,
+  return await all<DocMetaRow>(ctx,
     `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? ORDER BY slug ASC`,
     ctx.orgId);
 }
