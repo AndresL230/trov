@@ -69,8 +69,9 @@ const must = (s: Section | null): Section[] => (s ? [s] : []);
 /** One fixture: its cadence and sections — or `skipped`, what a run does instead of sending. */
 export function sampleDigest(scenario: SampleScenario): { cadence: RunCadence; sections: Section[]; skipped?: string } {
   switch (scenario) {
-    case "daily-ai": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_AI)), REVIEW, TICKETS] };
-    case "daily-off": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_OFF)), REVIEW_OFF, TICKETS] };
+    // The Sprint line rides every daily (Q45).
+    case "daily-ai": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_AI)), REVIEW, SPRINT, TICKETS] };
+    case "daily-off": return { cadence: "daily", sections: [...must(renderBrief(BRIEF_OFF)), REVIEW_OFF, SPRINT, TICKETS] };
     case "daily-empty": return { cadence: "daily", sections: [queueLine({ label: "Tickets", rest: "1 waiting for someone", deepLink: "/#tickets", linkLabel: "Tickets" })] };
     case "weekly-ai": return { cadence: "weekly", sections: [...must(renderBrief({ ...BRIEF_AI, also: [] })), ...must(renderWeek(HIGHLIGHTS, NUMBERS)), SPRINT] };
     case "weekly-off": return { cadence: "weekly", sections: [...must(renderBrief(BRIEF_OFF)), ...must(renderWeek([], NUMBERS)), SPRINT] };

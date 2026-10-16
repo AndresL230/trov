@@ -9,7 +9,7 @@ import { ORG_B, ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
 import { all, first, run } from "./helpers/db";
 import { ingestEvent, ingestAdrDraft } from "../src/consumer";
 import { seedNotificationPolicy } from "../src/notifications/policy";
-import { resolveCadence } from "../src/notifications/resolve";
+import { resolveCadence, selectKinds } from "../src/notifications/resolve";
 import { computeWindow } from "../src/notifications/window";
 import { runDigest } from "../src/notifications/run";
 import { localDelivery } from "../src/notifications/delivery";
@@ -90,6 +90,26 @@ describe("resolveCadence — three layers, first match wins", () => {
   });
   it("an unknown kind resolves to off", async () => {
     expect(await resolveCadence(systemCtx(), "u", "nope")).toBe("off");
+  });
+});
+
+// Q45 (owner ruling 2026-10-16): the Sprint line rides the daily whatever `roadmap_plan` resolves to (weekly by
+// default); its own cadence governs the weekly only.
+describe("selectKinds: the Sprint line rides every daily", () => {
+  const ids = (ks: readonly { id: string }[]) => ks.map((k) => k.id);
+  const pol = (o: Record<string, { enabled?: number; default_cadence?: "daily" | "weekly" | "off" }> = {}) =>
+    new Map(Object.entries(o).map(([kind, p]) => [kind, { org_id: "o", kind, enabled: p.enabled ?? 1, default_cadence: p.default_cadence ?? "weekly", updated_at: null, updated_by: null }])) as never;
+  it("by default (roadmap_plan weekly) the daily carries it beside the other daily kinds, and the weekly keeps it too", () => {
+    expect(ids(selectKinds(REGISTRY, pol(), new Map(), "daily"))).toEqual(["my_work", "review_queue", "roadmap_plan", "ticketq"]);
+    expect(ids(selectKinds(REGISTRY, pol(), new Map(), "weekly"))).toContain("roadmap_plan");
+  });
+  it("whatever the person set it to — off included — but not when the org turned the kind off, nor alone", () => {
+    expect(ids(selectKinds(REGISTRY, pol(), new Map([["roadmap_plan", "off"]]), "daily"))).toContain("roadmap_plan");
+    expect(ids(selectKinds(REGISTRY, pol(), new Map([["roadmap_plan", "off"]]), "weekly"))).not.toContain("roadmap_plan");
+    expect(ids(selectKinds(REGISTRY, pol({ roadmap_plan: { enabled: 0 } }), new Map(), "daily"))).not.toContain("roadmap_plan");
+    // A daily with nothing else is not sent for the Sprint line alone.
+    const allOff = new Map(REGISTRY.map((k) => [k.id, "off" as const]));
+    expect(selectKinds(REGISTRY, pol(), allOff, "daily")).toEqual([]);
   });
 });
 

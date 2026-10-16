@@ -318,10 +318,13 @@ describe("roadmap_plan renderer: the Sprint line", () => {
     expect((await kind().render(systemCtx(), "Darkest-Teddy", WINDOW))!.text).toBe("Sprint: Other, due Sat");
   });
 
-  it("due words: today, a weekday within the week, a date beyond it, days late; nothing for no date", () => {
-    const now = new Date("2026-09-11T12:00:00Z");
+  it("due words: today, a weekday within the week, a date beyond it, days late; nothing for no date (Q45)", () => {
+    const now = new Date("2026-09-11T12:00:00Z"); // a Friday
     expect(dueWords("2026-09-11", now)).toBe("due today");
     expect(dueWords("2026-09-14", now)).toBe("due Mon");
+    expect(dueWords("2026-09-17", now)).toBe("due Thu"); // 6 days: still a weekday
+    expect(dueWords("2026-09-18", now)).toBe("due Sep 18"); // 7 days: a date — "due Fri" on a Friday would read as today
+    expect(dueWords("2026-11-02", now)).toBe("due Nov 2");
     expect(dueWords("2026-10-01", now)).toBe("due Oct 1");
     expect(dueWords("2026-09-10", now)).toBe("1 day late");
     expect(dueWords("2026-09-08", now)).toBe("3 days late");
