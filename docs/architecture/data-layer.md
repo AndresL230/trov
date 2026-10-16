@@ -321,7 +321,8 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
 - **Raw artifact bytes** (`src/artifacts/raw.ts`) are ONE sub-app mounted at `/api/o/:slug/raw/a/…` and, as
   its alias, at `/raw/a/…`: the same lock-down headers, sandbox / CSP and access rules on both, wrapped by
   `rawHeaders` BEFORE the gates so the session gate's 401 and the tenant gate's 404 carry them too. Another
-  org's slug is the same 404 as an unknown one. Still the app's own origin — moving them off it is §8.6.
+  org's slug is the same 404 as an unknown one. One difference: a numbered version is browser-cacheable for a
+  year only on the per-org mount — the alias's org can change under the same URL (`artifacts.md` › caching). Still the app's own origin — moving them off it is §8.6.
 - **The SPA shell** is answered by `src/index.ts` for `GET /<slug>/` (a valid org slug that is not in `RESERVED_ORG_SLUGS`; the old `/o/<slug>/…` is a 301 to it) and `GET /platform*` (the superadmin's area
   outside any org); neither path reaches the session gate, and both hold no data.
 - **Roles** (§5.2): admin means `hasRole(ctx, "admin")` (admin or owner of the request's org) — in the repository
@@ -424,6 +425,12 @@ plain (non-`async`) function that returns the helper's promise is fine (`getPers
 | `GET /auth/me` | 5 → 2 | 8 → 8 |
 | any `/api/o/:slug/*` request: the gates | 2 → 1 | 2 → 1 |
 | `/mcp` with a pasted token: the `last_used_at` write | every call → at most once a minute | |
+
+**A trip's own cost is its query plan.** A statement that compares without case (`person = ? COLLATE NOCASE`,
+like every handle) needs an index with THAT collation — SQLite cannot use a BINARY one for it. `identities` has
+`idx_identities_person_nocase` (0075) for every read of a person's identities (`listIdentities` on `/auth/me`,
+`memberGithubLogins`, the profile, the deletion): each was a full scan before. `test/perf.indexes.test.ts` holds
+those plans with EXPLAIN QUERY PLAN; a new hot read that must stay a search goes there.
 
 `test/helpers/d1-count.ts` wraps the D1 binding and counts both numbers (every trip waits the same short
 delay, so `serial` is the longest chain of trips that each waited for an earlier one); `test/perf.round-trips.test.ts`

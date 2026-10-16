@@ -3,6 +3,13 @@ account_id = "0bda3a2560ca48711ef7336cc421abed"
 main = "src/index.ts"
 compatibility_date = "2025-11-01"
 compatibility_flags = ["nodejs_compat"]
+# The Worker bundle is minified (about half the bytes to upload and to parse on a cold start), and its source map
+# is uploaded beside it, so Workers Logs and an uncaught error's stack still name the TypeScript file and line.
+# Wrangler's `keep_names` (default true) still keeps every function's and class's `.name`, and each error class
+# sets its own `name` anyway; log text and scrubbing are strings, which minifying never touches.
+# docs/architecture/env.md › Bundle.
+minify = true
+upload_source_maps = true
 
 # Static Assets: served before the Worker fetch handler. Matched files (/pricing, /terms, the scripts)
 # are returned directly; unmatched paths (/ingest, /feed, /mcp, /robots.txt) fall through to src/index.ts.

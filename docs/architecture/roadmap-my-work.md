@@ -65,7 +65,12 @@ updated, each carrying its own stored summary), and `tickets` (their OPEN assign
 any more and a mirrored ticket reaches it only as a ticket — 6 most recently updated, with the sprint label,
 plus `ticketsTotal`, the UNCAPPED count of that same rule, which the "N open" figure and the greeting use) —
 built from `events` (+ `pr_summaries`, `issue_summaries`, `persons`, `identities`) and from `tickets` +
-`ticket_assignees`, no live GitHub. `todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
+`ticket_assignees`, no live GitHub. `todo` is `listOpenAssignedIssues` (also the my_work digest's list, uncapped): each captured issue's LATEST
+snapshot, kept when its `issue.state` is `open`, its `action` is not one that means it left the repository
+(`ISSUE_GONE_ACTIONS`) and one of its `assignees[].login` is exactly one of the person's logins — all filtered in
+D1 (`json_extract` / `json_each`), so only the person's open issues' raw JSON leaves the database, not every
+issue ever captured (`test/mywork.test.ts` pins the rule clause by clause).
+`todo` / `previousActivity` stay in the DTO for MCP `get_my_work`, where
 a mirrored ticket's issue can therefore appear in both `todo` and `tickets` (`source: "github"` says so).
 The SCREEN (`web/src/mywork.ts`, composed by `myWorkView`) reads its other tiles off their own slices: Your
 sessions off `mwSessions` (`GET /feed?author=<me>&limit=2` — never the Feed screen's filtered `feed`), Docs
