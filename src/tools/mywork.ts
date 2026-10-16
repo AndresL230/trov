@@ -3,7 +3,7 @@ import type { EventRow, PersonRow } from "@shared/rows";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { memberPerson, memberGithubLogins } from "../auth/persons";
-import { isIssueGone } from "./issue-gone";
+import { ISSUE_GONE_ACTIONS } from "./issue-gone";
 
 // My Work: a D1-only projection over captured GitHub events (Task 6). No live
 // GitHub reads — this is deliberately the "what already happened + what's
@@ -113,27 +113,38 @@ export function toMyWorkPr(row: PrEventJoinRow): MyWorkPr {
  * The dashboard caps this; the email renderer lists it whole.
  */
 export async function listOpenAssignedIssues(ctx: TenantContext, logins: string[]): Promise<MyWorkTodo[]> {
-  const issueRows = await all<IssueSnapshotRow>(
+  if (logins.length === 0) return [];
+  // The filter runs in D1, on each issue's LATEST snapshot only — so only the person's open issues' raw JSON
+  // comes back, never every issue ever captured. Same rule as before, clause by clause: `issue.state` is
+  // exactly 'open'; the delivery's `action` is not one that means the issue LEFT the repository
+  // (`ISSUE_GONE_ACTIONS` — an absent action is not gone); and one of `issue.assignees[].login` equals one of
+  // `logins` exactly (json_extract's text compares BINARY, like the JS `includes` it replaces).
+  const snapshots = async (): Promise<IssueSnapshotRow[]> => await all<IssueSnapshotRow>(
     ctx,
     `SELECT e.ref_number, e.raw, s.summary AS summary, s.title AS s_title, s.next_step AS s_next_step
      FROM (
-       SELECT ref_number, raw, ROW_NUMBER() OVER (PARTITION BY ref_number ORDER BY occurred_at DESC, id DESC) rn
+       SELECT id, ROW_NUMBER() OVER (PARTITION BY ref_number ORDER BY occurred_at DESC, id DESC) rn
        FROM events WHERE org_id = ? AND event_type = 'issue'
-     ) e
+     ) latest
+     JOIN events e ON e.id = latest.id AND e.org_id = ?
      LEFT JOIN issue_summaries s ON s.issue_number = e.ref_number AND s.org_id = ?
-     WHERE e.rn = 1
+     WHERE latest.rn = 1
+       AND json_extract(e.raw, '$.issue.state') = 'open'
+       AND COALESCE(json_extract(e.raw, '$.action'), '') NOT IN (${ISSUE_GONE_ACTIONS.map(() => "?").join(", ")})
+       AND EXISTS (SELECT 1 FROM json_each(e.raw, '$.issue.assignees') a
+                    WHERE json_extract(a.value, '$.login') IN (${logins.map(() => "?").join(", ")}))
      ORDER BY e.ref_number ASC`,
     ctx.orgId,
-    ctx.orgId
+    ctx.orgId,
+    ctx.orgId,
+    ...ISSUE_GONE_ACTIONS,
+    ...logins
   );
-  const sprintByGroup = await sprintTitlesByGroupNumber(ctx);
+  const [issueRows, sprintByGroup] = await Promise.all([snapshots(), sprintTitlesByGroupNumber(ctx)]);
   const todo: MyWorkTodo[] = [];
   for (const row of issueRows) {
     const parsed = JSON.parse(row.raw) as RawIssue;
     const issue = parsed.issue;
-    if (issue.state !== "open") continue;
-    if (isIssueGone(parsed.action)) continue; // deleted / transferred: the snapshot still says open
-    if (!issue.assignees.some((a) => logins.includes(a.login))) continue;
     const group = issue.milestone; // GitHub's own key — not Trov vocabulary
     const claimed = typeof group?.number === "number" ? sprintByGroup.get(group.number) ?? null : null;
     todo.push({
