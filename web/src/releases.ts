@@ -220,6 +220,7 @@ export const RELEASES: Release[] = [
         "Railway's old per-environment project tokens showed as two Connected \"workspace token\" cards while the org-wide connection the Backend parts need did not exist.",
         "A host disconnected by an admin read Removed on its parts but Not connected on its card.",
         "A deploy with no target (every GitHub-sourced deploy) was dropped from the Repo dashboard's deploy reads: `NOT (NULL AND …)` is NULL in SQL.",
+        "The local dev seed (`npm run seed`, `npm run dev:seeded`) failed on a brand-new local database: the team scenario wrote usage rows for the Acme demo org, which only `--reset` creates. Without `--reset` it now writes SaplingLearn's alone (#189)",
       ],
       removed: [],
     },
