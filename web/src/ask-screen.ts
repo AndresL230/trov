@@ -5,7 +5,7 @@
 //                        threads column's "Hide threads" and the conversation's "Threads ›")
 //   inspectorFrame(v)    the inspector's frame (Back, type word, "from …" trail, Open in page, Close, the resize
 //                        edge, the phone sheet) around ask-inspector.ts's `inspectorBody`
-//   askOverlays(app)     the root-level overlays: the hover card and the ⌘J panel (over any screen)
+//   askOverlays(app)     the root-level overlays: the hover card, the ⌘J panel (over any screen) and Delete's confirm
 //
 // STRUCTURE IS STABLE: the three columns are ALWAYS emitted and shown / hidden by attribute, so morph.ts never
 // swaps the conversation (and the composer's focus, caret and scroll) when the list or the inspector comes and
@@ -17,7 +17,7 @@ import { askView, convoOf, inspectorRef, type AskView } from "./ask-state";
 import { askLayout } from "./ask-layout";
 import { askIcon } from "./ask-icons";
 import { hoverCard, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
-import { threadsView } from "./ask-threads";
+import { threadsView, threadDeleteModal } from "./ask-threads";
 import { conversationView, emptyView, jumpButton } from "./ask-conversation";
 import { composerView } from "./ask-composer";
 import { inspectorBody, inspectorLocalHead } from "./ask-inspector";
@@ -100,5 +100,5 @@ export function askOverlays(app: AppState): string {
   const v = askView(app, "page");
   const hv = ui.hover ? viewOf(v.look, ui.hover.ref) : null;
   const card = ui.hover && hv ? `<div data-overlay="ask-hc" class="ask-hc-layer"${closingAttr(ui.closing, "hover")}>${hoverCard(hv, v.look, ui.hover.at)}</div>` : "";
-  return `${card}${cmdjOverlay(app)}`;
+  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui)}`;
 }

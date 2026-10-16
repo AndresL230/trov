@@ -18,6 +18,8 @@ export interface ChatThreadRow {
   summary_through: number;
   turn: number;
   stop_requested: number;
+  /** 1 = the person's hidden holder of pending attachments (0068_ask_pending): never listed, searched or opened. */
+  pending: number;
   created_at: string;
   updated_at: string;
 }
@@ -71,7 +73,7 @@ export interface ChatArtifactRow {
 
 /** The owner's thread, or null (unknown, another person's, another org's: the same null). */
 export function getThread(ctx: TenantContext, handle: string, id: number): Promise<ChatThreadRow | null> {
-  return first<ChatThreadRow>(ctx, `SELECT * FROM chat_threads WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE`, id, ctx.orgId, handle);
+  return first<ChatThreadRow>(ctx, `SELECT * FROM chat_threads WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0`, id, ctx.orgId, handle);
 }
 
 export interface NewThread { mode: AskMode; origin?: AskOrigin; contextRef?: string | null; auto?: boolean }
@@ -86,7 +88,7 @@ export async function createThread(ctx: TenantContext, handle: string, t: NewThr
 /** The owner's threads: pinned first, then the most recently used. */
 export function listThreads(ctx: TenantContext, handle: string, limit = 200): Promise<ChatThreadRow[]> {
   return all<ChatThreadRow>(ctx,
-    `SELECT * FROM chat_threads WHERE org_id = ? AND handle = ? COLLATE NOCASE ORDER BY pinned DESC, updated_at DESC, id DESC LIMIT ?`,
+    `SELECT * FROM chat_threads WHERE org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0 ORDER BY pinned DESC, updated_at DESC, id DESC LIMIT ?`,
     ctx.orgId, handle, limit);
 }
 
@@ -102,7 +104,7 @@ export async function searchThreads(ctx: TenantContext, handle: string, q: strin
     ? await all<ChatThreadRow & { snippet: string }>(ctx,
       `SELECT t.*, snippet(chat_fts, 2, char(2), char(3), '…', 12) AS snippet
          FROM chat_fts f JOIN chat_threads t ON t.id = CAST(f.thread_id AS INTEGER) AND t.org_id = f.org_id
-        WHERE chat_fts MATCH ? AND f.org_id = ? AND t.handle = ? COLLATE NOCASE
+        WHERE chat_fts MATCH ? AND f.org_id = ? AND t.handle = ? COLLATE NOCASE AND t.pending = 0
         ORDER BY bm25(chat_fts) LIMIT ?`,
       match, ctx.orgId, handle, limit * 4).catch((e) => { console.error("ask search", e instanceof Error ? e.name : "error"); return [] as (ChatThreadRow & { snippet: string })[]; })
     : [];
@@ -119,7 +121,7 @@ export async function searchThreads(ctx: TenantContext, handle: string, q: strin
   }
   const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const byTitle = await all<ChatThreadRow>(ctx,
-    `SELECT * FROM chat_threads WHERE org_id = ? AND handle = ? COLLATE NOCASE AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?`,
+    `SELECT * FROM chat_threads WHERE org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0 AND title LIKE ? ESCAPE '\\' ORDER BY updated_at DESC LIMIT ?`,
     ctx.orgId, handle, like, limit);
   for (const t of byTitle) if (!out.has(t.id)) out.set(t.id, { thread: t, snippet: null, matchCount: 0 });
   return [...out.values()].slice(0, limit);
@@ -137,7 +139,7 @@ export async function patchThread(ctx: TenantContext, handle: string, id: number
   if (p.mode !== undefined) { sets.push("mode = ?"); vals.push(p.mode); }
   if (p.draft !== undefined) { sets.push("draft = ?"); vals.push(p.draft); }
   if (!sets.length) return !!(await getThread(ctx, handle, id));
-  const res = await run(ctx, `UPDATE chat_threads SET ${sets.join(", ")} WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE`, ...vals, id, ctx.orgId, handle);
+  const res = await run(ctx, `UPDATE chat_threads SET ${sets.join(", ")} WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0`, ...vals, id, ctx.orgId, handle);
   return (res.meta.changes ?? 0) > 0;
 }
 
@@ -173,7 +175,7 @@ export async function startTurn(ctx: TenantContext, threadId: number, mode: AskM
 
 /** Stop: the running turn ends at its next step (the request's own abort covers a connection that is open). */
 export async function requestStop(ctx: TenantContext, handle: string, id: number): Promise<boolean> {
-  const res = await run(ctx, `UPDATE chat_threads SET stop_requested = 1 WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE`, id, ctx.orgId, handle);
+  const res = await run(ctx, `UPDATE chat_threads SET stop_requested = 1 WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0`, id, ctx.orgId, handle);
   return (res.meta.changes ?? 0) > 0;
 }
 
@@ -334,6 +336,34 @@ export async function pendingAttachments(ctx: TenantContext, threadId: number, i
 /** One of THIS thread's attachments (what `read_attachment` may read): another thread's or org's is null. */
 export function threadAttachment(ctx: TenantContext, threadId: number, id: number): Promise<ChatArtifactRow | null> {
   return first<ChatArtifactRow>(ctx, `SELECT * FROM chat_artifacts WHERE id = ? AND org_id = ? AND thread_id = ? AND role = 'attachment'`, id, ctx.orgId, threadId);
+}
+
+// ── pending attachments (0068_ask_pending; the owner's ruling Q60) ──────────
+//
+// A file uploaded before its conversation exists is linked to the person's hidden HOLDER thread (`pending = 1`):
+// never listed, searched or opened (every thread read above leaves it out). Sending moves what the question names
+// onto the real thread (`bindPendingAttachments`); what is never sent goes after 24 hours (src/deletion/ask.ts).
+
+/** The person's holder thread in this org — made the first time it is needed. Two racing uploads may each make
+ *  one; every read below takes all of the person's holders, so that costs nothing. */
+export async function pendingHolder(ctx: TenantContext, handle: string, at: string = nowIso()): Promise<number> {
+  const had = await first<{ id: number }>(ctx, `SELECT id FROM chat_threads WHERE org_id = ? AND handle = ? COLLATE NOCASE AND pending = 1 ORDER BY id LIMIT 1`, ctx.orgId, handle);
+  if (had) return had.id;
+  const res = await run(ctx,
+    `INSERT INTO chat_threads (org_id, handle, mode, origin, pending, created_at, updated_at) VALUES (?, ?, 'smart', 'page', 1, ?, ?)`,
+    ctx.orgId, handle, at, at);
+  return Number(res.meta.last_row_id);
+}
+
+/** Move the person's PENDING attachments named by `ids` onto `threadId` (still unsent: the question marks them).
+ *  Another person's, a sent one, one already on a thread: untouched. */
+export async function bindPendingAttachments(ctx: TenantContext, handle: string, threadId: number, ids: readonly number[]): Promise<void> {
+  if (!ids.length) return;
+  await run(ctx,
+    `UPDATE chat_artifacts SET thread_id = ?
+      WHERE org_id = ? AND role = 'attachment' AND message_id IS NULL AND id IN (${ids.map(() => "?").join(", ")})
+        AND thread_id IN (SELECT id FROM chat_threads WHERE org_id = ? AND handle = ? COLLATE NOCASE AND pending = 1)`,
+    threadId, ctx.orgId, ...ids, ctx.orgId, handle);
 }
 
 export async function markAttachmentsSent(ctx: TenantContext, ids: readonly number[], messageId: number): Promise<void> {

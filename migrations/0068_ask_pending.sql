@@ -1,0 +1,17 @@
+-- 0068_ask_pending: an Ask attachment uploaded before its conversation exists is PENDING (the owner's ruling Q60,
+-- 2026-10-16; docs/architecture/ask.md › Attachments). Until now such an upload created a visible, untitled thread.
+-- Now it is linked (`chat_artifacts`, unsent) to the person's hidden HOLDER thread — `chat_threads.pending = 1` —
+-- which no Ask route lists, searches, opens or writes (`getThread`, `listThreads`, `searchThreads` leave it out).
+-- Sending the question moves the attachments it names onto the new thread; what is never sent is swept 24 hours
+-- after it was uploaded (src/deletion/ask.ts `sweepPendingAskAttachments`, on the hourly digest trigger — no new
+-- cron), through the same hard delete as the composer's ✕.
+-- ADDITIVE ONLY: one column with a default; no row is rewritten, and a Worker from before it keeps working (it never
+-- writes a holder, and reads every existing thread as before, all `pending = 0`). The holder is an ordinary thread
+-- row of the person's, so an account's deletion (src/deletion/person.ts) and an org's (ORG_TABLES) already remove it
+-- and its attachments; no new table and no new handle column.
+--
+-- ROLLBACK (by hand, after `wrangler rollback` to the Worker from before it): the holders and their pending files
+-- would show as untitled threads — delete them first through the Worker, or accept that, then:
+--   ALTER TABLE chat_threads DROP COLUMN pending;
+--   DELETE FROM d1_migrations WHERE name = '0068_ask_pending.sql';
+ALTER TABLE chat_threads ADD COLUMN pending INTEGER NOT NULL DEFAULT 0 CHECK (pending IN (0, 1));

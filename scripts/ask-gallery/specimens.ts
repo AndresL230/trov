@@ -986,7 +986,7 @@ function orbs(): Section {
   const meaning: [OrbState, string][] = [["solving", "Thinking"], ["composing", "Writing"], ["searching", "Searching"], ["working", "Other work"], ["listening", "Unused"], ["shaping", "Unused"]];
   const row = (size: 20 | 64) => `<div class="gx-orbs">${meaning.map(([st, m]) => `<figure class="gx-orb">${thinkingOrb(st, size)}<figcaption>${m} · ${st}</figcaption></figure>`).join("")}</div>`;
   return {
-    id: "orbs", title: "Thinking orbs", intro: "Ask's working animations (thinking-orb.ts), in the theme's purple: one canvas loop paints every orb on the shared clock. Each means one thing — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the orbits for other work.",
+    id: "orbs", title: "Thinking orbs", intro: "Ask's working animations (thinking-orb.ts), in the theme's accent (olive in dark): one canvas loop paints every orb on the shared clock. Each means one thing — the cube while Trov thinks, the ribbon while it writes, the globe while it searches, the orbits for other work.",
     specs: [
       inline("o-20", "The orbs, 20px", "As steps, thinking and the wait use them, with what each means", "Steps, thinking, the wait", row(20), { sample: false }),
       inline("o-64", "The orbs, 64px", "The engine's larger preset", "Nowhere on screen today (thinking-orb.ts keeps the size)", row(64), { sample: false }),

@@ -153,3 +153,39 @@ describe("the CSS — direction by width, the narrow fallback, motion, corners",
     expect(css).toContain("[data-cnpy-theme] .ask-dg-dot { border-radius:50% !important; }");
   });
 });
+
+// QA-5 (the owner, 2026-10-16): a repository node is CI — the design's "CI on main" node shows the checks
+// ("Failing"), never the deploy verdict ("Live").
+import { repoScenario, SCENARIO_KEYS, SCENARIO_VARIANTS } from "../web/src/repo-sample";
+import { askRepoFacts, type RefView } from "@shared/ai-ask-core";
+import { repoCiMark, repoHeadEnv } from "../web/src/ask-refs";
+import { stateMark } from "../web/src/marks";
+import { VERDICT } from "../web/src/repo-verdict";
+
+describe("QA-5: a repo node in a diagram shows its CI state", () => {
+  const NOW2 = new Date("2026-10-15T12:00:00Z");
+  const repoView = (facts: unknown): RefView => ({ ref: "repo:AndresL230/trov", type: "repo", title: "AndresL230/trov", status: null, href: "#repo", extra: { facts } });
+  const node = (view: RefView) => diagramFigure({ look: { views: { [view.ref]: view }, persons: [] } } as unknown as Parameters<typeof diagramFigure>[0],
+    dia([{ ...n("ci", view.ref, "CI on main"), view }, n("x", null, "Release")], [["ci", "x"]]));
+  const all = SCENARIO_KEYS.flatMap((k) => SCENARIO_VARIANTS[k].map((v) => askRepoFacts(repoScenario(k, v, { now: NOW2.getTime() }))));
+  const withState = (st: "fail" | "pass" | "running") => all.find((f) => { const h = repoHeadEnv(f); return h && f.ci.find((c) => c.env === h.key)?.state === st; });
+
+  it("failing checks on the head: Checks failing (the red diamond), with the line in its tooltip", () => {
+    const f = withState("fail");
+    expect(f).toBeTruthy();
+    const h = node(repoView(f));
+    expect(h).toContain("Checks failing");
+    expect(h).toContain(repoCiMark(f!, 11.5));
+    expect(h).not.toMatch(/>(Live|Healthy)</);
+  });
+  it("passing and running use the same vocabulary", () => {
+    for (const [st, word] of [["pass", "Checks passing"], ["running", "Checks running"]] as const) {
+      const f = withState(st);
+      if (f) expect(node(repoView(f))).toContain(word);
+    }
+  });
+  it("no checks captured, or no facts: Unknown — never guessed", () => {
+    expect(repoCiMark(null)).toBe(stateMark(VERDICT.unknown.word, VERDICT.unknown.tone, VERDICT.unknown.shape, 12.5, "Trov has no reading of this repository yet."));
+    expect(node(repoView(null))).toContain("Unknown");
+  });
+});

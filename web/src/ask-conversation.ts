@@ -46,7 +46,7 @@ import { aiDay } from "./ai-ui";
 import { closingAttr, stickAfterScroll } from "./ask-motion";
 import { cvRef, parseCvRef } from "./ask-cvref";
 import { thinkingOrb, type OrbState } from "./thinking-orb";
-import { parseCommand, sentFileChip, sentRefChip } from "./ask-composer";
+import { composerAuto, composerBlock, composerBlockReason, composerMode, parseCommand, sentFileChip, sentRefChip } from "./ask-composer";
 import { diagramFigure } from "./ask-diagram";
 import { singleItemCard } from "./ask-one";
 
@@ -71,8 +71,8 @@ const AWAY_PX = 160;
 
 /** The jump-to-latest arrow (the owner): it sits on the scroller's bottom edge (a 0-height sticky row, so it changes no
  *  height), shows once the person scrolled up — the scroll listener flips `data-away` without a repaint; the render
- *  writes the same from `ui.conversation.away`, so a morph keeps it — and while an answer streams below it is purple
- *  (`data-busy`). A click glides to the bottom and holds on there (`askCvJump`). */
+ *  writes the same from `ui.conversation.away`, so a morph keeps it — and while an answer streams below it is in the
+ *  accent (`data-busy`). A click glides to the bottom and holds on there (`askCvJump`). */
 export function jumpButton(v: AskView): string {
   const away = v.ui.conversation.away[v.where] === true;
   return `<div class="ask-jump-w"><button type="button" class="ask-jump" data-act="askCvJump" data-arg="${v.where}" aria-label="Jump to the latest" data-tip="Jump to the latest" data-away="${away ? "1" : "0"}" data-busy="${convoOf(v).busy ? "1" : "0"}"${away ? "" : ` tabindex="-1" aria-hidden="true"`}>${askIcon("chevDown", 16, null, 2.2)}</button></div>`;
@@ -494,7 +494,8 @@ function footer(v: AskView, a: AskAnswer): string {
   const t = a.turn;
   const k = a.key;
   const id = `${v.where}:${k}`;
-  const n = t.cites.length;
+  // The sources the person can see NOW (a reopened thread re-reads them, QA-1): one since hidden is not counted.
+  const n = t.cites.filter((c) => !isHiddenRef(v.look, c.ref)).length;
   const srcOpen = n > 0 && v.ui.conversation.open[`${k}:src`] === true;
   const modes = modesOf(v);
   const regenOpen = v.ui.conversation.regen === id;
@@ -553,11 +554,20 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // running step's kind, else working; writing once a block is out.
   const running = holdLast ? shownSteps.at(-1) : shownSteps.filter((s) => s.state === "run").at(-1);
   const curAlone = live && !cursorIn && t.thinking?.state !== "run";
-  // Thinking (nothing running) is the cube; a running step its kind; writing once a block is out.
-  const waitOrb: OrbState = parts.length ? "composing" : running ? stepOrb(running) : "solving";
+  // A running step's kind wins — before the answer AND after a block is out (the owner, Q-F1); the ribbon ("Writing…")
+  // only once a block is out and no step runs; the cube (thinking) before anything.
+  const waitOrb: OrbState = running ? stepOrb(running) : parts.length ? "composing" : "solving";
   const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
-  const foot = t.done && !t.error ? footer(v, a) : "";
+  // Something written: words, a block or a card. A finished answer with none (the model spent its calls on lookups)
+  // says so, with Try again, and has no Copy / Save of nothing (Q-F2; the server did not count it).
+  const written = parts.some((p) => p.kind !== "text" || p.md.trim() !== "");
+  const unwritten = t.done && !t.error && !t.stopped && !written
+    ? `<div class="ask-err ask-err--none" role="status">${markShape("square", "var(--fg-40)", 9)}<span class="ask-err-t">Trov didn't write an answer.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>`
+    : "";
+  // The footer: a finished answer's — and a stopped one's at once, for what it wrote (QA-4); the stored id that
+  // Regenerate, Save and Wrong? need is read back after Stop (ask-controller.ts `readBackStopped`).
+  const foot = (t.done || t.stopped) && !t.error && written ? footer(v, a) : "";
   const follow = last && t.done && !t.error && !convoOf(v).busy && t.followups.length
     ? `<div class="ask-follow" role="list" aria-label="Follow-up questions">${t.followups.map((f) => `<div role="listitem"><button type="button" class="ask-fu" data-act="askCvSend" data-arg="${attr(f)}">${askIcon("followUp", 14, "var(--fg-40)")}<span>${esc(f)}</span></button></div>`).join("")}</div>`
     : "";
@@ -569,7 +579,7 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
     // Live with no text streaming: a thinking orb and its word, in the sweep of light (the owner: the wait must read
     // as thinking — most of a turn's wait is here, its steps run for a few ms), hold the place where the words will
     // come — "Thinking…" before the words, "Writing…" once a block is out and the words are not.
-    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, waitOrb, null)}<span class="ask-wait-l">${parts.length ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["stopped", stopped], ["foot", foot], ["follow", follow],
+    ["cursor", curAlone ? `<div class="ask-cur-alone">${orb(v, waitOrb, null)}<span class="ask-wait-l">${waitOrb === "composing" ? "Writing…" : "Thinking…"}</span></div>` : ""], ["err", err], ["none", unwritten], ["stopped", stopped], ["foot", foot], ["follow", follow],
   ];
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }
@@ -594,12 +604,18 @@ export function conversationView(v: AskView): string {
 /** A new thread: the mark, the headline, the starters (from `ask/state`, the design's four as the fallback). */
 export function emptyView(v: AskView): string {
   const starters = v.ui.state.data?.starters?.length ? v.ui.state.data.starters : ASK_STARTERS_FALLBACK;
+  // Blocked (no key, off, the questions used): the starters stay to read but send nothing, and say why (QA-6).
+  const block = composerBlock(v);
+  const why = block ? composerBlockReason(block) : null;
+  const starter = (q: string) => why
+    ? `<button type="button" aria-disabled="true" data-mtip="${attr(why)}">${askIcon("arrow", 13, "var(--fg-40)", 2)}<span>${esc(q)}</span></button>`
+    : `<button type="button" data-act="askCvSend" data-arg="${attr(q)}">${askIcon("arrow", 13, "var(--fg-40)", 2)}<span>${esc(q)}</span></button>`;
   // Keyed by the conversation: New thread brings it back with its entrance. On arriving at Ask the pieces rise
   // with the screen (`.cnpy-rise` + `--i`, main.ts markEnter); afterwards `.ask-empty` fades in by itself.
   return `<div class="ask-empty" data-morph-key="empty:${attr(convoOf(v).uid)}">
     <div class="cnpy-rise" style="--i:0">${trovMark(28)}</div>
     <h2 class="ask-empty-h cnpy-rise" style="--i:1">Ask anything about your team's work</h2>
-    <div class="ask-starters cnpy-rise" style="--i:2">${starters.map((q) => `<button type="button" data-act="askCvSend" data-arg="${attr(q)}">${askIcon("arrow", 13, "var(--fg-40)", 2)}<span>${esc(q)}</span></button>`).join("")}</div>
+    <div class="ask-starters cnpy-rise" style="--i:2"${why ? ` data-blocked` : ""}>${starters.map(starter).join("")}</div>
   </div>`;
 }
 
@@ -717,11 +733,16 @@ export const conversationPart: AskPart = {
       // In the ⌘J panel it carries the panel's context, the page's item first (a panel thread's `contextRef`).
       case "askCvSend": {
         if (!arg) return;
-        if (ctx.ui.cmdj.open && ctx.app.screen !== "ask") {
+        const where: AskWhere = ctx.ui.cmdj.open && ctx.app.screen !== "ask" ? "panel" : "page";
+        const see = { ui: ctx.ui, where };
+        if (composerBlock(see)) return; // blocked: nothing is sent (QA-6)
+        // The composer's own mode and switch — a mode the allowance can't cover is never sent (Q50).
+        const how = { mode: composerMode(see), auto: composerAuto(see) };
+        if (where === "panel") {
           const page = ctx.ui.cmdj.contextRef;
           const context = [...new Set([...(page ? [page] : []), ...ctx.ui.composer.panel.context])];
-          ctx.send({ text: arg, where: "panel", context });
-        } else ctx.send({ text: arg, where: "page" });
+          ctx.send({ text: arg, where: "panel", context, ...how });
+        } else ctx.send({ text: arg, where: "page", ...how });
         return;
       }
       case "askCvToggle": if (arg) toggle(ctx, arg); return;

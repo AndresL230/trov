@@ -1235,10 +1235,11 @@ wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose w
 for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
 `requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
 left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
-each paint is one static frame. The ink is the theme's `--purple` (purple = Trov is working, the owner): `setInk` in
+each paint is one static frame. The ink is the theme's `--accent` (olive in dark; the owner, 2026-10-16: colour carries meaning only, so
+"working" has no hue of its own): `setInk` in
 `orbs/engine/core.ts` — the one local change to the vendored engine, marked — makes a dot's depth its opacity in that
 colour. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`), and the running sweep's highlight is
-`--purple` too.
+`--accent` too.
 `thinkingOrbTour(states, …)` is one canvas (`data-orb="tour"`, `data-orb-tour`) that shows each state in turn
 (`TOUR_SECONDS` each, on the same clock; its first under reduced motion).
 
