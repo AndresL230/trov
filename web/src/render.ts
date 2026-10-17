@@ -1008,6 +1008,23 @@ function sidebar(s: AppState): string {
   });
 }
 
+/** A doc page's whole trail in the header, after "Library": its space and every page above it as links back, then the
+ *  page itself (the only breadcrumb on the page — the article has none). Null until the doc's read is in (the
+ *  header then names the space, as before). */
+function docTrail(s: AppState): string | null {
+  const d = s.docDetail.data;
+  if (!d || (s.docSlug !== null && d.doc.slug !== s.docSlug)) return null;
+  const sep = `<span aria-hidden="true" style="color:var(--fg-40);font-size:15px;flex:none">›</span>`;
+  const link = (act: string, arg: string, label: string) =>
+    `<button type="button" data-act="${act}" data-arg="${attr(arg)}" class="cnpy-hdr-crumb" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:220px">${esc(label)}</button>`;
+  const parts = [
+    link("libOpenSpace", d.doc.space, spaceName(s, d.doc.space)),
+    ...(d.page?.ancestors ?? []).map((a) => link("openDoc", a.slug, a.title)),
+    `<span aria-current="page" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(d.doc.title)}</span>`,
+  ];
+  return `<nav aria-label="Breadcrumb" style="display:inline-flex;align-items:center;gap:10px;min-width:0">${sep}${parts.join(sep)}</nav>`;
+}
+
 /** The "›" crumb text for the three child screens (empty on a top-level screen). */
 function headerCrumb(s: AppState): string {
   if (s.screen === "releases") return releaseCrumb(s.releaseVersion, s.releasePage);
@@ -1133,7 +1150,8 @@ function header(s: AppState): string {
     : s.screen === "platformorg" ? "platGo"
     : s.screen === "tag" ? "tagsGo"
     : "ticketsBack";
-  const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : child
+  const trail = s.screen === "docs" ? docTrail(s) : null;
+  const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : trail ? trail : child
     // The crumb is set like the title before it (15px, semibold) — the page you are on, in full strength; the
     // title is the quieter link back.
     ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`

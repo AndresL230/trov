@@ -180,16 +180,21 @@ describe("the docs pane", () => {
 });
 
 describe("the doc page", () => {
-  it("the breadcrumb (space, ancestors, the page), the title, Live, and who wrote it", () => {
+  it("ONE breadcrumb, in the header: Library › the space › each page above › the page; the title, Live, and who wrote it", () => {
     const html = render(docState());
-    expect(html).toMatch(/data-act="libOpenSpace" data-arg="engineering" class="cnpy-dpg-crumb">[\s\S]*?<span>Engineering<\/span>/);
-    expect(html).toContain('data-act="openDoc" data-arg="arch" class="cnpy-dpg-crumb"><span>Architecture</span>');
-    expect(html).toContain('<span class="cnpy-dpg-here" aria-current="page">Authentication</span>');
+    const hdr = html.slice(html.indexOf('<header class="cnpy-hdr"'), html.indexOf("</header>"));
+    expect(hdr).toMatch(/data-act="goLibrary"[^>]*>Library<\/button>/);
+    expect(hdr).toContain('data-act="libOpenSpace" data-arg="engineering" class="cnpy-hdr-crumb"');
+    expect(hdr).toMatch(/data-act="openDoc" data-arg="arch" class="cnpy-hdr-crumb"[^>]*>Architecture<\/button>/);
+    expect(hdr).toMatch(/<span aria-current="page"[^>]*>Authentication<\/span>/);
+    expect(hdr.indexOf("Engineering")).toBeLessThan(hdr.indexOf("Architecture"));
+    // …and none above the article's title.
+    expect(html).not.toContain("cnpy-dpg-crumb");
     expect(html).toContain('<h1 class="cnpy-dpg-title">Authentication</h1>');
     expect(html).toContain('data-mtip="This is the version everyone reads."');
     expect(html).toContain("by Jordan</span>");
-    // Header: "Library › Engineering".
-    expect(html).toMatch(/›<\/span><span[^>]*>Engineering<\/span>/);
+    // Before the doc's read is in, the header names the space ("Library › Engineering").
+    expect(render(docState({ docDetail: { status: "loading", data: null } }))).toMatch(/›<\/span><span[^>]*>Engineering<\/span>/);
   });
   it("a change pending review, and a page never approved, each carry their banner", () => {
     const pending = render(docState({ docDetail: { status: "ok", data: { doc: doc(), versions: [], page: { ...PAGE, authority: "staged_pending", info: { ...PAGE.info, pending_version: 4 } } } } }));

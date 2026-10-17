@@ -4,7 +4,8 @@
 // one place it is) and who last wrote it; History; the tags; the body — Markdown, with `[[slug]]` links turned into
 // links to `#doc/<slug>` BEFORE it renders (shared/docs-links-core.ts `replaceDocLinks`, which never touches code),
 // and a link to no page drawn as flagged text with its tooltip; then "Pages under ‹Title›". Beside it the 210px
-// sticky rail: On this page (the headings, scroll-spied by main.ts), Owner, Last edited by, Version (+ History),
+// sticky rail: Owner, Last edited by, Version (+ History), Linked from, then On this page (the headings, scroll-spied
+// by main.ts only on a page long enough to scroll through them),
 // Imported from, and Linked from (the live pages that link here). Pure: props in, markup out.
 import { replaceDocLinks, type DocLink } from "@shared/docs-links-core";
 import { extractOutline } from "@shared/doc-outline";
@@ -116,16 +117,6 @@ function banner(page: DocPageDTO): string {
   </div>`;
 }
 
-function crumbs(doc: DocRow, page: DocPageDTO | null, space: SpaceDTO | null): string {
-  const sep = `<span class="cnpy-dpg-sep" aria-hidden="true">›</span>`;
-  const parts = [
-    `<button type="button" data-act="libOpenSpace" data-arg="${attr(doc.space)}" class="cnpy-dpg-crumb">${space ? spaceTile(space, 14) : ""}<span>${esc(space?.name ?? doc.space)}</span></button>`,
-    ...(page?.ancestors ?? []).map((a) => `<button type="button" data-act="openDoc" data-arg="${attr(a.slug)}" class="cnpy-dpg-crumb"><span>${esc(a.title)}</span></button>`),
-    `<span class="cnpy-dpg-here" aria-current="page">${esc(doc.title)}</span>`,
-  ];
-  return `<nav class="cnpy-dpg-crumbs" aria-label="Breadcrumb">${parts.join(sep)}</nav>`;
-}
-
 /** The meta row's mark: "Live" (the one place it is said), else the page's status. */
 function statusMark(page: DocPageDTO | null): string {
   if (page?.archived) return kindMark("Archived", "off", 12.5, ARCHIVED_PAGE_TIP);
@@ -187,8 +178,8 @@ function rail(doc: DocRow, page: DocPageDTO | null, persons: readonly PersonSumm
   const linked = backs.length
     ? backs.map((b) => `<button type="button" data-act="openDoc" data-arg="${attr(b.slug)}" class="cnpy-rail-link"><span class="cnpy-rail-lt">${esc(b.title)}</span><span class="cnpy-rail-lp">${esc(b.path.length ? b.path.join(" › ") : "Top level")}</span></button>`).join("")
     : `<p class="cnpy-rail-empty">No pages link here yet. Links from other pages show up once ${page?.authority === "unpromoted" ? "this one is approved" : "those pages are approved"}.</p>`;
+  // On this page comes last: who owns it, who edited it, its version and what links here first.
   return `<aside class="cnpy-dpg-rail" aria-label="About this page">
-    ${toc.length ? `<div class="cnpy-rail-g"><div class="cnpy-rail-h">On this page</div><div class="cnpy-toc">${toc.join("")}</div></div>` : ""}
     <div class="cnpy-rail-g">
       ${field("Owner", person(doc.owner))}
       ${field("Last edited by", person(info?.edited_by ?? doc.updated_by), esc(libraryWhen(info?.edited_at ?? doc.updated_at)))}
@@ -196,6 +187,7 @@ function rail(doc: DocRow, page: DocPageDTO | null, persons: readonly PersonSumm
       ${imported}
     </div>
     <div class="cnpy-rail-g"><div class="cnpy-rail-h">Linked from <span class="cnpy-rail-n">${backs.length}</span></div>${linked}</div>
+    ${toc.length ? `<div class="cnpy-rail-g"><div class="cnpy-rail-h">On this page</div><div class="cnpy-toc">${toc.join("")}</div></div>` : ""}
   </aside>`;
 }
 
@@ -250,7 +242,6 @@ export function docPageView(p: DocPageProps): string {
     <div class="cnpy-dpg-grid">
       <article class="cnpy-dpg-art" style="min-width:0">
         ${page?.archived ? archivedBanner(doc.slug, page, p.persons) : page ? banner(page) : ""}
-        ${crumbs(doc, page, p.space)}
         <h1 class="cnpy-dpg-title">${esc(doc.title)}</h1>
         ${meta}
         ${p.showHistory ? historyPanel(versions, doc, p.persons) : ""}

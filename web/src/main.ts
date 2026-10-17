@@ -765,6 +765,8 @@ function cssEscape(v: string): string {
 // ── the doc page's scroll-spy: the rail's On this page entry for the section in view ──
 // The current heading is the last one whose top is within 120px of the top of the page's scroller (`#cnpy-libmain`);
 // at the bottom the last one is current. Direct DOM (no repaint), so it stays cheap while scrolling.
+/** The least a doc page must scroll for On this page to mark the section in view (CSS px of scroll range). */
+const SPY_MIN_SCROLL = 160;
 function updateActiveHeading(): void {
   if (state.screen !== "docs") return;
   const pane = mount.querySelector<HTMLElement>("#cnpy-libmain");
@@ -772,7 +774,12 @@ function updateActiveHeading(): void {
   if (!pane || !items.length) return;
   const ids = new Set(items.map((b) => b.dataset.toc as string));
   const heads = [...pane.querySelectorAll<HTMLElement>(".cnpy-md h2[id], .cnpy-md h3[id], .cnpy-dpg-kh[id]")].filter((h) => ids.has(h.id));
-  if (!heads.length) return;
+  // Too short to follow: with fewer than two headings, or a page that scrolls less than SPY_MIN_SCROLL px, every
+  // heading is already in view and the "current" one would only jump to the last — so nothing is marked.
+  if (heads.length < 2 || pane.scrollHeight - pane.clientHeight < SPY_MIN_SCROLL) {
+    for (const b of items) b.classList.remove("is-current");
+    return;
+  }
   const top = rectOf(pane).top;
   let active = heads[0].id;
   for (const h of heads) {
