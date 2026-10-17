@@ -121,9 +121,12 @@ const outlineBtn = (act: string, arg: string | null, label: string, extra = ""):
   `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(label)}</button>`;
 const H2 = "font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);margin:0";
 const UPLOAD = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
+const ARCHIVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5h17v4h-17z"></path><path d="M5 9v10h14V9"></path><path d="M10 13h4"></path></svg>`;
+/** A small outlined icon button, the outline buttons' height: its words are its label and tooltip. */
+const iconBtn = (act: string, arg: string | null, label: string, icon: string, extra = ""): string =>
+  `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-outlinebtn" aria-label="${attr(label)}" data-mtip="${attr(label)}" style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border-strong);color:var(--fg-70);flex:none">${icon}</button>`;
 /** The secondary Import button (Library home, a space's home): opens the import wizard, `space` preset. */
-const importBtn = (space: string | null): string =>
-  `<button type="button" data-act="goImport" data-arg="${attr(space ?? "")}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${UPLOAD}Import</button>`;
+const importBtn = (space: string | null): string => iconBtn("goImport", space ?? "", "Import", UPLOAD);
 
 /** A "By" cell: an 18px avatar and "Short name · when" (the design's), or "—" when nobody is known. */
 function byCell(persons: readonly PersonSummary[], handle: string | null, at: string | null): string {
@@ -350,7 +353,7 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   ].map((item) => `<span class="cnpy-lib-mi">${item}</span>`).join("");
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
-    : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${outlineBtn("libArchive", null, "Archive", " data-confirm-trigger")}` : ""}${importBtn(sp.slug)}${accentBtn("libNewPage", sp.slug, "New page")}`;
+    : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${iconBtn("libArchive", null, "Archive space", ARCHIVE, " data-confirm-trigger")}` : ""}${importBtn(sp.slug)}${accentBtn("libNewPage", sp.slug, "New page")}`;
   return `<div class="cnpy-lib-shead" style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
     ${spaceTile(sp, 40)}
     <div style="flex:1;min-width:240px">
