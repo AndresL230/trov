@@ -186,10 +186,10 @@ export async function readDocPage(ctx: TenantContext, doc: DocRow): Promise<DocP
   }
   // A target that is no page in the Library is either ARCHIVED (0083_doc_archive: drawn as text marked "Archived") or
   // broken (no such page at all).
-  const archivedSet = missing.length
-    ? new Set((await all<{ slug: string }>(ctx, `SELECT slug FROM docs WHERE org_id = ? AND archived_at IS NOT NULL AND slug IN (SELECT value FROM json_each(?))`, ctx.orgId, JSON.stringify(missing))).map((r) => r.slug))
-    : new Set<string>();
-  const broken = missing.filter((s) => !archivedSet.has(s));
+  const archivedTitles = missing.length
+    ? new Map((await all<{ slug: string; title: string }>(ctx, `SELECT slug, title FROM docs WHERE org_id = ? AND archived_at IS NOT NULL AND slug IN (SELECT value FROM json_each(?))`, ctx.orgId, JSON.stringify(missing))).map((r) => [r.slug, r.title]))
+    : new Map<string, string>();
+  const broken = missing.filter((s) => !archivedTitles.has(s));
   const backlinks = back
     .map((b) => tree.bySlug.get(b.from_slug))
     .filter((p): p is LibraryPageDTO => !!p && p.current_version > 0 && p.slug !== doc.slug)
@@ -207,7 +207,7 @@ export async function readDocPage(ctx: TenantContext, doc: DocRow): Promise<DocP
     body,
     links,
     broken_links: broken,
-    archived_links: missing.filter((s) => archivedSet.has(s)),
+    archived_links: missing.filter((s) => archivedTitles.has(s)).map((s) => ({ slug: s, title: archivedTitles.get(s) as string })),
     backlinks,
     info: {
       owner: doc.owner,

@@ -13,7 +13,7 @@ import type { DocRow, DocVersionMetaRow } from "@shared/rows";
 import type { PersonSummary } from "@shared/people";
 import { esc, attr, surface, hitArea, HITBOX } from "./ui";
 import { personLink } from "./people";
-import { stateMark, glyphMark, markShape, AUTHORITY_MARK, authorityMark } from "./marks";
+import { stateMark, glyphMark, markShape, kindMark, STATE_KIND, AUTHORITY_MARK, authorityMark } from "./marks";
 import { skeleton, skBar, skBox, skLine, skLines, emptyLayout } from "./skeleton";
 import { renderMarkdown } from "./markdown";
 import { spaceTile, pageIcon, libraryWhen } from "./library";
@@ -37,6 +37,10 @@ export interface DocPageProps {
 /** What "Live" means, said on the doc page's mark (the design's STATUS_TIP). */
 export const LIVE_TIP = "This is the version everyone reads.";
 export const REJECTED_TIP = "Someone turned this version down in Review. It never went live.";
+/** What "Archived" means, on an archived page's mark and on a link to one (0083_doc_archive). */
+export const ARCHIVED_PAGE_TIP = "This page was archived. It's out of the Library until someone restores it.";
+/** The archived page's banner. */
+export const ARCHIVED_BANNER = "This page is archived.";
 /** A link to a page that does not exist. */
 export const brokenLinkTip = (slug: string): string => `No page is called “${slug}” yet. The link starts working once one is.`;
 /** The doc page with no page picked (a space with no page yet, or a tree with nothing open). */
@@ -48,6 +52,7 @@ const fullName = (persons: readonly PersonSummary[], h: string): string => find(
 const shortName = (persons: readonly PersonSummary[], h: string): string => fullName(persons, h).split(/\s+/)[0];
 
 const ARROW = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
+const ARCHIVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5h17v4h-17z"></path><path d="M5 9v10h14V9"></path><path d="M10 13h4"></path></svg>`;
 const CLOCK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>`;
 
 /**
@@ -55,15 +60,19 @@ const CLOCK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" strok
  * page that exists is `<a class="cnpy-doclink" href="#doc/<slug>">` with its label (else the page's title), one to no
  * page is flagged text (`.cnpy-doclink is-broken`) with a tooltip. Code spans and fenced blocks are left as written.
  */
-export function linkedBody(body: string, page: Pick<DocPageDTO, "links" | "broken_links"> | null): string {
+export function linkedBody(body: string, page: Pick<DocPageDTO, "links" | "broken_links" | "archived_links"> | null): string {
   const titles = new Map((page?.links ?? []).map((l) => [l.slug, l]));
   const broken = new Set(page?.broken_links ?? []);
+  const archived = new Map((page?.archived_links ?? []).map((l) => [l.slug, l.title]));
   return replaceDocLinks(body, (l: DocLink) => {
     const hit = titles.get(l.slug);
     if (hit) {
       const where = [...hit.path, hit.title].join(" › ");
       return `<a class="cnpy-doclink" href="#doc/${attr(encodeURIComponent(l.slug))}" data-mtip="${attr(where)}">${esc(l.label ?? hit.title)}</a>`;
     }
+    // A link to an ARCHIVED page (0083_doc_archive): plain text, then the "Archived" mark — no link to follow.
+    const gone = archived.get(l.slug);
+    if (gone !== undefined) return `<span class="cnpy-doclink-arch">${esc(l.label ?? gone)} ${kindMark("Archived", "off", 11.5, ARCHIVED_PAGE_TIP)}</span>`;
     if (broken.has(l.slug) || !page) return `<span class="cnpy-doclink is-broken" data-mtip="${attr(brokenLinkTip(l.slug))}">${esc(l.label ?? l.slug)}</span>`;
     return esc(l.label ?? l.slug);
   });
@@ -71,7 +80,7 @@ export function linkedBody(body: string, page: Pick<DocPageDTO, "links" | "broke
 
 /** The body as the outline reads it: each link as its words (so a heading's id matches the rendered one). */
 const outlineBody = (body: string, page: DocPageDTO | null): string => {
-  const titles = new Map((page?.links ?? []).map((l) => [l.slug, l.title]));
+  const titles = new Map([...(page?.archived_links ?? []), ...(page?.links ?? [])].map((l) => [l.slug, l.title]));
   return replaceDocLinks(body, (l) => l.label ?? titles.get(l.slug) ?? l.slug);
 };
 
@@ -79,6 +88,17 @@ const outlineBody = (body: string, page: DocPageDTO | null): string => {
 export const CHILDREN_ANCHOR = "pages-under";
 
 // ── the parts ────────────────────────────────────────────────────────────────
+
+/** An archived page's banner (0083_doc_archive): what it is, who archived it and when, and Restore for those allowed. */
+function archivedBanner(slug: string, page: DocPageDTO, persons: readonly PersonSummary[]): string {
+  const a = page.archived!;
+  const who = a.by ? ` by ${esc(fullName(persons, a.by))}` : "";
+  return `<div${surface("display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:18px", { cls: "cnpy-dpg-banner is-archived" })}>
+    ${markShape(STATE_KIND.off.shape, STATE_KIND.off.tone, 10)}
+    <div style="flex:1;min-width:0;font-size:12.5px;line-height:1.45;color:var(--fg-70)"><strong style="font-weight:600;color:var(--fg)">${esc(ARCHIVED_BANNER)}</strong> Archived ${esc(libraryWhen(a.at))}${who}. It's out of the Library, and links to it read as archived.</div>
+    ${page.can_archive ? `<button type="button" data-act="libPageRestore" data-arg="${attr(slug)}" class="cnpy-link" style="flex:none;padding:0;font-size:12.5px;font-weight:500;color:var(--accent);white-space:nowrap">Restore page</button>` : ""}
+  </div>`;
+}
 
 function banner(page: DocPageDTO): string {
   if (page.authority === "live") return "";
@@ -108,6 +128,7 @@ function crumbs(doc: DocRow, page: DocPageDTO | null, space: SpaceDTO | null): s
 
 /** The meta row's mark: "Live" (the one place it is said), else the page's status. */
 function statusMark(page: DocPageDTO | null): string {
+  if (page?.archived) return kindMark("Archived", "off", 12.5, ARCHIVED_PAGE_TIP);
   if (!page || page.authority === "live") return stateMark("Live", "var(--green)", "dot", 12.5, LIVE_TIP);
   return authorityMark(page.authority, 12.5);
 }
@@ -218,6 +239,7 @@ export function docPageView(p: DocPageProps): string {
     <div class="cnpy-dpg-by">${statusMark(page)}<span style="color:var(--fg-40)">·</span>${byline(page, doc, p.persons)}</div>
     <div style="display:flex;align-items:center;gap:8px;flex:none">
       <button type="button" data-act="toggleHistory" class="cnpy-dpg-btn${p.showHistory ? " is-on" : ""}" aria-pressed="${p.showHistory}">${CLOCK}History</button>
+      ${page?.can_archive && !page.archived ? `<button type="button" data-act="libPageArchive" data-arg="${attr(doc.slug)}" data-confirm-trigger class="cnpy-dpg-btn">${ARCHIVE}Archive page</button>` : ""}
     </div>
   </div>`;
   const kids = children.length
@@ -227,7 +249,7 @@ export function docPageView(p: DocPageProps): string {
   return `<div class="${PAGE_FRAME}" data-screen-label="Doc">
     <div class="cnpy-dpg-grid">
       <article class="cnpy-dpg-art" style="min-width:0">
-        ${page ? banner(page) : ""}
+        ${page?.archived ? archivedBanner(doc.slug, page, p.persons) : page ? banner(page) : ""}
         ${crumbs(doc, page, p.space)}
         <h1 class="cnpy-dpg-title">${esc(doc.title)}</h1>
         ${meta}

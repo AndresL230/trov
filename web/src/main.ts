@@ -205,7 +205,14 @@ const tagsCtl = createTagsController({
 });
 // The Docs Library (web/src/library-actions.ts): every `lib…` act, the Library's read, a space's home.
 const libCtl = createLibraryController({
-  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  // Archive page / Restore (0083_doc_archive): Review's queue (when held) and the badges lose or regain its waiting
+  // versions; the doc page of it, when open, reads its archived state again.
+  pageChanged: (slug) => {
+    if (state.proposals.status !== "idle") loadProposals();
+    loadBadges();
+    if (state.screen === "docs" && state.docSlug === slug) loadDoc(slug);
+  },
   openDoc: (slug) => dispatch("openDocFrom", slug, null),
   newPage: (space) => dispatch("newDoc", space || null, null),
 });

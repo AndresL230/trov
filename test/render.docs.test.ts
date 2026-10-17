@@ -280,3 +280,39 @@ describe("the drag's rules (tree-drag.ts, tree-actions.ts)", () => {
     expect(moveRefusalText("weird")).toBe("Couldn't move the page. Try again.");
   });
 });
+
+describe("Archive page (0083_doc_archive): who sees it, the archived page, links to one", () => {
+  const archivedPage: DocPageDTO = { ...PAGE, archived: { at: T0, by: "priya" }, can_archive: true, children: [], ancestors: [] };
+  it("the … menu offers Archive page only to an admin or an owner of the space (can_archive), after the others", () => {
+    const canState = (can: boolean) => docState({ treeMenu: "api", spaceHome: { status: "ok", data: { space: SPACES[0], pages: PAGES, can_edit: can, can_archive: can, can_admin: false } } });
+    const menu = pane(render(canState(true))).match(/<div class="cnpy-dp-menu"[\s\S]*?<\/div>/)![0];
+    const items = [...menu.matchAll(/role="menuitem" data-act="(\w+)"[^>]*>([^<]*)</g)].map((m) => `${m[1]}:${m[2]}`);
+    expect(items).toEqual(["treeCopyLink:Copy link", "treeMoveTop:Move to the top level", "treeNew:New page inside", "libPageArchive:Archive page"]);
+    expect(pane(render(canState(false)))).not.toContain("libPageArchive");
+  });
+  it("the doc page header's Archive page, for can_archive only", () => {
+    expect(render(docState({ docDetail: { status: "ok", data: { doc: doc(), versions: [], page: { ...PAGE, can_archive: true } } } }))).toMatch(/data-act="libPageArchive" data-arg="auth"[^>]*>[\s\S]*?Archive page<\/button>/);
+    expect(render(docState())).not.toContain("libPageArchive");
+  });
+  it("an archived page, opened by its link: read-only with the banner, the Archived mark, Restore for those allowed; no Tags row, no Archive", () => {
+    const html = render(docState({ docDetail: { status: "ok", data: { doc: doc(), versions: [], tags: ["auth"], page: archivedPage } } }));
+    expect(html).toContain("This page is archived.");
+    expect(html).toContain("by Priya Natarajan.");
+    expect(html).toContain('data-act="libPageRestore" data-arg="auth"');
+    expect(html).toMatch(/data-mtip="This page was archived\. It(&#39;|')s out of the Library until someone restores it\."[^>]*>[\s\S]*?Archived<\/span>/);
+    expect(html).not.toContain('data-act="libPageArchive"');
+    expect(html).not.toContain("data-item-tags");
+    expect(render(docState({ docDetail: { status: "ok", data: { doc: doc(), versions: [], tags: ["auth"], page: PAGE } } }))).toContain("data-item-tags");
+    const notMine = render(docState({ docDetail: { status: "ok", data: { doc: doc(), versions: [], page: { ...archivedPage, can_archive: false } } } }));
+    expect(notMine).toContain("This page is archived.");
+    expect(notMine).not.toContain("libPageRestore");
+  });
+  it("a [[link]] to an archived page is plain text with the Archived mark — no link to follow", () => {
+    const out = linkedBody("See [[old]] and [[old|the old one]].", { links: [], broken_links: [], archived_links: [{ slug: "old", title: "Old runbook" }] });
+    expect(out).toContain('<span class="cnpy-doclink-arch">Old runbook <span data-mtip="This page was archived.');
+    expect(out).toContain('<span class="cnpy-doclink-arch">the old one ');
+    expect(out).toContain("Archived</span>");
+    expect(out).not.toContain('href="#doc/old"');
+    expect(out).not.toContain("is-broken");
+  });
+});

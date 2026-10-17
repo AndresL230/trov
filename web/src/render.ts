@@ -56,7 +56,7 @@ import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal,
 import { newDocView, blankDoc, newDocSpaceDropdown, type NewDocDraft } from "./newdoc";
 import { docsPane } from "./docs-pane";
 import { docPageView, type DocPageData } from "./doc-page";
-import { libraryHomeView, spaceHomeView, spaceDialog, ownersDialog, archiveDialog, spacePositionDropdown, initialLibraryUi, type LibraryUi, type SpaceTab } from "./library";
+import { libraryHomeView, spaceHomeView, spaceDialog, ownersDialog, archiveDialog, archivePageDialog, spacePositionDropdown, initialLibraryUi, type LibraryUi, type SpaceTab } from "./library";
 import { DEFAULT_SPACE, type LibraryDTO, type SpaceHomeDTO, type SpaceDTO, type LibraryPageDTO } from "@shared/docs-core";
 import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
@@ -1519,6 +1519,7 @@ function libraryFrame(s: AppState, content: string, key: string): string {
     headActive: s.screen === "space",
     open: s.treeOpen,
     menu: s.treeMenu,
+    canArchive: h.data?.space.slug === slug && h.data.can_archive === true,
   });
   const label = space ? `${space.name} pages` : "Pages";
   return `<div class="cnpy-libframe" data-tree="${s.docsTree ? "1" : "0"}">
@@ -1532,7 +1533,8 @@ function libraryFrame(s: AppState, content: string, key: string): string {
 function docScreen(s: AppState): string {
   const slug = paneSpaceSlug(s);
   const d = s.docDetail.data;
-  const tagsRow = d && (s.docSlug === null || d.doc.slug === s.docSlug)
+  // An archived page reads read-only (0083_doc_archive): no Tags row to edit.
+  const tagsRow = d && (s.docSlug === null || d.doc.slug === s.docSlug) && !d.page?.archived
     ? itemTagsRow({ tags: d.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, dd: s.dd })
     : "";
   // No doc named (the tree is open with nothing picked): the page is empty once the tree is in, a skeleton before.
@@ -1550,7 +1552,7 @@ function spaceScreen(s: AppState): string {
   const mine = h.data !== null && h.data.space.slug === s.spaceSlug;
   if (h.status === "error" && !mine) return libraryFrame(s, notice("Couldn't load this space."), "space");
   if (h.status === "ok" && h.data === null) return libraryFrame(s, notice("There is no space here. It may have been renamed, or the link is wrong."), "space");
-  return libraryFrame(s, spaceHomeView({ slug: s.spaceSlug, home: h, tab: s.spaceTab, admin: viewerIsAdmin(s), persons: s.persons.data, descDraft: s.libUi.desc }), "space");
+  return libraryFrame(s, spaceHomeView({ slug: s.spaceSlug, home: h, tab: s.spaceTab, admin: viewerIsAdmin(s), persons: s.persons.data, descDraft: s.libUi.desc, restoring: s.libUi.pageRestoring }), "space");
 }
 /** New page in the frame: the pane shows the space it will go in. */
 function newDocScreen(s: AppState): string {
@@ -1570,6 +1572,7 @@ function libraryOverlays(s: AppState): string {
   }
   if (ui.owners && sp && s.screen === "space") out.push(ownersDialog(sp, ui.owners, s.persons.data));
   if (ui.archive && sp && s.screen === "space" && viewerIsAdmin(s)) out.push(archiveDialog(sp, ui.archive));
+  if (ui.pageArchive && (s.screen === "space" || s.screen === "docs" || s.screen === "newdoc")) out.push(archivePageDialog(ui.pageArchive));
   return out.join("");
 }
 
@@ -3123,7 +3126,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
-    ${s.view === "app" && (s.screen === "library" || s.screen === "space") ? libraryOverlays(s) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
+    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
     ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}

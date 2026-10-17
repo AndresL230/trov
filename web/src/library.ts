@@ -6,7 +6,7 @@
 // reads and writes are web/src/library-actions.ts.
 import {
   SPACE_ICONS, SPACE_COLORS, SPACE_NAME_MAX, SPACE_DESCRIPTION_MAX, NEW_SPACE_ICON, NEW_SPACE_COLOR,
-  isSpaceColor, isSpaceIcon, spaceNamedLike, cleanSpaceName, pagesWord, ownedBy,
+  isSpaceColor, isSpaceIcon, spaceNamedLike, cleanSpaceName, pagesWord, ownedBy, archivePageText,
   type SpaceIcon, type SpaceColor, type SpaceDTO, type LibraryDTO, type LibraryPageDTO, type SpaceHomeDTO,
 } from "@shared/docs-core";
 import type { PersonSummary } from "@shared/people";
@@ -251,10 +251,10 @@ export function libraryHomeView(p: LibraryHomeProps): string {
 
 // ── a space's home (`#library/<space>`) ──────────────────────────────────────
 
-export const SPACE_TABS = ["overview", "all", "recent", "oldest", "az"] as const;
+export const SPACE_TABS = ["overview", "all", "recent", "oldest", "az", "archived"] as const;
 export type SpaceTab = (typeof SPACE_TABS)[number];
 export const isSpaceTab = (v: unknown): v is SpaceTab => typeof v === "string" && (SPACE_TABS as readonly string[]).includes(v);
-const TAB_LABEL: Record<SpaceTab, string> = { overview: "Overview", all: "All pages", recent: "Recently updated", oldest: "Least recently updated", az: "A to Z" };
+const TAB_LABEL: Record<SpaceTab, string> = { overview: "Overview", all: "All pages", recent: "Recently updated", oldest: "Least recently updated", az: "A to Z", archived: "Archived pages" };
 
 export interface SpaceHomeProps {
   slug: string | null;
@@ -265,6 +265,8 @@ export interface SpaceHomeProps {
   persons: readonly PersonSummary[];
   /** The description being edited in place (null = not editing), and whether its save is out. */
   descDraft: string | null;
+  /** The archived page whose Restore is out (0083_doc_archive). */
+  restoring?: string | null;
 }
 
 const SPACE_FRAME = "max-width:1080px;margin:0 auto;padding:28px 36px 90px";
@@ -272,12 +274,39 @@ const ROW_COLS = "1fr 190px 190px";
 
 const byUpdated = (a: LibraryPageDTO, b: LibraryPageDTO): number => (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
 
-function spaceTabs(tab: SpaceTab, count: number | null): string {
+function spaceTabs(tab: SpaceTab, count: number | null, archived: number | null = null): string {
+  const badge = (n: number | null) => (n !== null ? `<span class="cnpy-badge" data-n="${n}">${n}</span>` : undefined);
   return tabBar({
     id: "space-tab", ariaLabel: "Pages", value: tab, act: "libTab",
-    tabs: SPACE_TABS.map((t) => ({ value: t, label: TAB_LABEL[t], trail: t === "all" && count !== null ? `<span class="cnpy-badge" data-n="${count}">${count}</span>` : undefined })),
+    tabs: SPACE_TABS.map((t) => ({ value: t, label: TAB_LABEL[t], trail: t === "all" ? badge(count) : t === "archived" ? badge(archived) : undefined })),
   });
 }
+
+/** Space home's Archived pages, empty (0083_doc_archive). */
+export const ARCHIVED_PAGES_EMPTY = "No archived pages. A page someone archives leaves the tree and waits here, so it can be restored.";
+/** What Archived pages is, above the list. */
+export const ARCHIVED_PAGES_NOTE = "Out of the tree, search and agents' reads. Restore one to put it back in the tree.";
+
+/** The Archived pages tab: each page with who archived it and when, and Restore for an admin or an owner. */
+function archivedPanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
+  const list = d.archived_pages ?? [];
+  if (!list.length) return emptyLayout("space-archived", { text: ARCHIVED_PAGES_EMPTY, shapes: recentRowsShape(2, ARCHIVED_COLS), shapesStyle: "margin-top:12px" });
+  const rows = list.map((a, i) => {
+    const busy = p.restoring === a.slug;
+    const restore = d.can_archive
+      ? `<button type="button" data-act="libPageRestore" data-arg="${attr(a.slug)}" class="cnpy-outlinebtn"${busy ? ` disabled aria-busy="true"` : ""} style="position:relative;z-index:2;padding:5px 11px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70);white-space:nowrap">${busy ? "Restoring…" : "Restore"}</button>`
+      : "";
+    return `<div class="cnpy-lib-row ${HITBOX}" data-archived-page="${attr(a.slug)}" style="grid-template-columns:${ARCHIVED_COLS};min-height:52px;padding:8px 16px${i ? ";border-top:1px solid var(--border)" : ""}">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0">${pageIcon(14)}<span style="min-width:0;font-size:13.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</span></div>
+      <div style="display:flex;align-items:center;min-width:0">${byCell(p.persons, a.archived_by, a.archived_at)}</div>
+      <div style="display:flex;align-items:center;justify-content:flex-end">${restore}</div>
+      ${hitArea("libOpenDoc", a.slug, `Open ${a.title}`)}
+    </div>`;
+  }).join("");
+  return `<p style="font-size:12.5px;color:var(--fg-55);margin:0 0 10px">${esc(ARCHIVED_PAGES_NOTE)}</p>
+    <div${surface("padding:0;overflow:hidden")}><div class="cnpy-lib-row cnpy-lib-th" style="grid-template-columns:${ARCHIVED_COLS};min-height:34px;padding:0 16px;font-size:12px;color:var(--fg-55);border-bottom:1px solid var(--border)"><div>Page</div><div>Archived</div><div></div></div>${rows}</div>`;
+}
+const ARCHIVED_COLS = "1fr 220px 110px";
 
 /** A top-level page card as shapes (the loading skeleton and the empty layout's hollow cards). */
 const pageCardShape = (i: number): string => skCard(`${skLine(skW(i, ["44%", "52%", "38%"]), 11.5, 1.4)}<div style="margin-top:8px">${skLine(skW(i + 1), 14, 1.35)}</div><div style="margin-top:6px">${skLine("88%", 12.5, 1.5)}</div><div style="display:flex;align-items:center;gap:7px;margin-top:auto;padding-top:12px">${skBox(16, 16)}${skBar(96, 8)}</div>`, "min-height:136px;padding:14px 16px;display:flex;flex-direction:column");
@@ -348,6 +377,7 @@ const tableHead = (): string =>
   `<div class="cnpy-lib-row cnpy-lib-th" style="grid-template-columns:${ROW_COLS};min-height:34px;padding:0 16px;font-size:12px;color:var(--fg-55);border-bottom:1px solid var(--border)"><div>Page</div><div>Status</div><div>Last updated</div></div>`;
 
 function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
+  if (p.tab === "archived") return archivedPanel(p, d);
   const pages = d.pages;
   const lead = pageIcon(14);
   const pathOf = (pg: LibraryPageDTO): string => (pg.path.length ? pg.path.join(" › ") : "Top level");
@@ -396,13 +426,13 @@ export function spaceHomeView(p: SpaceHomeProps): string {
       <div${tabPanelAttrs("space-tab", p.tab)} style="padding-top:22px">${skeleton("space", "Loading pages…", spaceBodyShapes())}</div>
     </div>`;
   }
-  const body = d.pages.length === 0
+  const body = d.pages.length === 0 && p.tab !== "archived"
     ? `${emptyLayout("space", { title: "No pages yet", text: SPACE_EMPTY, actionHtml: d.space.archived ? undefined : `<button type="button" data-act="libNewPage" data-arg="${attr(d.space.slug)}" class="cnpy-empty-act">New page</button><button type="button" data-act="goImport" data-arg="${attr(d.space.slug)}" class="cnpy-empty-act">Import</button>` })}
       <h2 style="${H2};color:var(--fg-70);margin:26px 0 12px">Top-level pages</h2>${emptyShapes(`<div style="${PAGE_GRID}">${skList(3, pageCardShape)}</div>`)}
       <h2 style="${H2};color:var(--fg-70);margin:30px 0 12px">Recently updated</h2>${emptyShapes(recentRowsShape(3, ROW_COLS))}`
     : spacePanel(p, d);
   return `<div class="cnpy-lib" data-screen-label="Space" style="${SPACE_FRAME}">${spaceHeader(p, d)}
-    <div style="margin-top:22px">${spaceTabs(p.tab, d.pages.length)}</div>
+    <div style="margin-top:22px">${spaceTabs(p.tab, d.pages.length, (d.archived_pages ?? []).length)}</div>
     <div${tabPanelAttrs("space-tab", p.tab)} style="padding-top:22px">${body}</div>
   </div>`;
 }
@@ -435,8 +465,13 @@ export interface LibraryUi {
   desc: string | null;
   /** The archived space whose Restore is out. */
   restoring: string | null;
+  /** Archive page's confirmation (0083_doc_archive): the page, its title, how many pages sit right under it, its
+   *  space's name. */
+  pageArchive: { slug: string; title: string; under: number; spaceName: string; busy: boolean; error: string | null } | null;
+  /** The archived page whose Restore is out. */
+  pageRestoring: string | null;
 }
-export const initialLibraryUi = (): LibraryUi => ({ space: null, owners: null, archive: null, desc: null, restoring: null });
+export const initialLibraryUi = (): LibraryUi => ({ space: null, owners: null, archive: null, desc: null, restoring: null, pageArchive: null, pageRestoring: null });
 
 /** The Position dropdown's value for "first". */
 export const FIRST = "__first";
@@ -514,5 +549,15 @@ export function archiveDialog(sp: SpaceDTO, a: NonNullable<LibraryUi["archive"]>
     body: `It leaves the sidebar and the Library for everyone. Its ${pagesWord(sp.pages)} stay as they are, and an admin can restore it from the Library.`,
     confirmAct: "libArchiveGo", cancelAct: "libArchiveClose", busy: a.busy,
     confirmLabel: "Archive space", busyLabel: "Archiving…", error: a.error,
+  });
+}
+
+/** Archive page's confirmation (0083_doc_archive): what happens, in the brief's words; red, like Archive space. */
+export function archivePageDialog(a: NonNullable<LibraryUi["pageArchive"]>): string {
+  return confirmModal({
+    id: "lib-page-archive", title: `Archive ${a.title}?`,
+    body: archivePageText(a.title, a.under, a.spaceName),
+    confirmAct: "libPageArchiveGo", cancelAct: "libPageArchiveClose", busy: a.busy,
+    confirmLabel: "Archive page", busyLabel: "Archiving…", error: a.error,
   });
 }

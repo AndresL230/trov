@@ -4123,6 +4123,9 @@ a.ask-btn { text-decoration:none; }
 a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-doclink.is-broken { color:var(--fg-55); text-decoration-style:dashed; text-decoration-color:var(--amber); cursor:help; }
 .cnpy-doclink.is-broken::before { background:var(--amber); }
+/* A link to an ARCHIVED page (0083_doc_archive): its words as plain text, then the "Archived" mark. */
+.cnpy-doclink-arch { color:var(--fg-70); white-space:nowrap; }
+.cnpy-doclink-arch > span { vertical-align:-2px; margin-left:2px; }
 .cnpy-dpg-kids { margin-top:40px; }
 .cnpy-dpg-kh { font-size:14px; font-weight:500; margin:0 0 12px; }
 .cnpy-dpg-kgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:10px; }

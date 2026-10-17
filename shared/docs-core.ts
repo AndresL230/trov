@@ -291,8 +291,9 @@ export interface DocPageDTO {
   /** The live pages whose live body links here ("Linked from"). */
   backlinks: DocPageRef[];
   info: DocPageInfo;
-  /** The `[[slug]]` targets that are ARCHIVED pages (0083_doc_archive): drawn as plain text marked "Archived". */
-  archived_links?: string[];
+  /** The `[[slug]]` targets that are ARCHIVED pages (0083_doc_archive), with their titles: drawn as plain text marked
+   *  "Archived". */
+  archived_links?: { slug: string; title: string }[];
   /** This page is archived (0083_doc_archive): when and by whom. Read-only then, with Restore for `can_archive`. */
   archived?: { at: string; by: string | null } | null;
   /** May the reader archive (or, archived, restore) this page — an org admin or an owner of its space, while the

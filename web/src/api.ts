@@ -223,6 +223,15 @@ export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersio
 export function moveDoc(slug: string, target: DocsT.DocMoveBody): Promise<DocsT.DocMoveResult> {
   return postJson<DocsT.DocMoveResult>(`/doc/${encodeURIComponent(slug)}/move`, target);
 }
+/** Archive a page (0083_doc_archive): an admin or an owner of its space; cookie only, never an agent's. Its children
+ *  move up a level. A refusal is an ApiError whose message is the code (`forbidden`, `archived`, `space_archived` …). */
+export function archiveDoc(slug: string): Promise<DocsT.DocArchiveResult> {
+  return postJson<DocsT.DocArchiveResult>(`/doc/${encodeURIComponent(slug)}/archive`, {});
+}
+/** Restore an archived page: back under its old parent when it can, else at the top level. */
+export function restoreDoc(slug: string): Promise<DocsT.DocRestoreResult> {
+  return postJson<DocsT.DocRestoreResult>(`/doc/${encodeURIComponent(slug)}/restore`, {});
+}
 /** One version of a doc with its body — read only when a version's text is shown. */
 export function getDocVersion(slug: string, version: number): Promise<DocVersionRow> {
   return getJson<{ version: DocVersionRow }>(`/doc/${encodeURIComponent(slug)}/versions/${version}`).then((r) => r.version).catch((e) => {

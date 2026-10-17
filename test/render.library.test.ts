@@ -25,11 +25,11 @@ import {
   SPACE_ICON_PATHS, FIRST, type SpaceHomeProps,
 } from "../web/src/library";
 import { initialDropdownUi } from "../web/src/dropdown";
-import { SPACE_ICONS, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
+import { SPACE_ICONS, archivePageText, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
 import { AUTHORITY_MARK } from "../web/src/marks";
-import { spaceErrorText, createLibraryController } from "../web/src/library-actions";
+import { spaceErrorText, createLibraryController, pageArchiveErrorText } from "../web/src/library-actions";
 import css from "../web/src/trov.css?raw";
-import { OrgApiError } from "../web/src/api";
+import { OrgApiError, ApiError } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
 const sp = (slug: string, name: string, over: Partial<SpaceDTO> = {}): SpaceDTO => ({
@@ -347,7 +347,7 @@ describe("the Create space dialog's focus (case CS1)", () => {
     const mount = { querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
     const state = app("library", "admin");
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
     });
     ctl.act("libNew", null, null);
     expect(state.libUi.space?.mode).toBe("create");
@@ -360,7 +360,7 @@ describe("the Create space dialog's focus (case CS1)", () => {
     const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
     state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
     });
     ctl.act("libEdit", null, null);
     expect(focused.at(-1)).toBe("#lib-sp-name");
@@ -380,7 +380,7 @@ describe("the Create space dialog's focus (case CS1)", () => {
     const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
     state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
     });
     for (const [open, close, name] of [["libNew", "libSpaceClose", "new"], ["libOwners", "libOwnersClose", "owners"], ["libArchive", "libArchiveClose", "archive"]] as const) {
       doc.activeElement = opener(name);
@@ -388,5 +388,71 @@ describe("the Create space dialog's focus (case CS1)", () => {
       ctl.act(close, null, null);
       expect(focused.at(-1), close).toBe(name);
     }
+  });
+});
+
+describe("Archive page (0083_doc_archive): Space home's Archived pages, the confirmation, the controller", () => {
+  const ARCH = [{ slug: "old-runbook", title: "Old runbook", archived_at: T0, archived_by: "priya", current_version: 2 }];
+  const home = (canArchive: boolean, archived = ARCH, over: Partial<SpaceHomeProps> = {}): string =>
+    spaceHomeView({ slug: "engineering", tab: "archived", admin: false, persons: PERSONS, descDraft: null,
+      home: { status: "ok", data: { space: ENG, pages: PAGES, can_edit: canArchive, can_archive: canArchive, can_admin: false, archived_pages: archived } }, ...over });
+
+  it("is the last tab, with its count; each page says who archived it and when, and opens by its link", () => {
+    const html = home(false);
+    expect(html).toMatch(/id="space-tab-archived"[^>]*>Archived pages<span class="cnpy-badge" data-n="1">1<\/span><\/button><\/div>/);
+    expect(html).toContain('data-archived-page="old-runbook"');
+    expect(html).toContain("Old runbook");
+    expect(html).toMatch(/Priya · /);
+    expect(html).toContain('data-act="libOpenDoc" data-arg="old-runbook"');
+  });
+  it("Restore for an admin or an owner of the space (can_archive) only; busy while it is out", () => {
+    expect(home(false)).not.toContain("libPageRestore");
+    expect(home(true)).toContain('data-act="libPageRestore" data-arg="old-runbook"');
+    expect(home(true, ARCH, { restoring: "old-runbook" })).toContain("Restoring…");
+  });
+  it("no archived page: the empty layout, the tab still there (stable), with 0", () => {
+    const html = home(true, []);
+    expect(html).toContain('data-empty="space-archived"');
+    expect(html).toContain("No archived pages.");
+    expect(html).toContain('<span class="cnpy-badge" data-n="0">0</span>');
+    // A space with no live page still shows its Archived pages, not the "No pages yet" layout.
+    const onlyArchived = spaceHomeView({ slug: "engineering", tab: "archived", admin: false, persons: PERSONS, descDraft: null,
+      home: { status: "ok", data: { space: ENG, pages: [], can_edit: true, can_archive: true, can_admin: false, archived_pages: ARCH } } });
+    expect(onlyArchived).toContain('data-archived-page="old-runbook"');
+    expect(onlyArchived).not.toContain('data-empty="space"');
+  });
+  it("the confirmation says what happens, in red, over a doc page or a space's home", () => {
+    const state = app("docs", "member", { docSlug: "auth", libUi: { ...initialState().libUi, pageArchive: { slug: "auth", title: "Authentication", under: 2, spaceName: "Engineering", busy: false, error: null } } });
+    const html = render(state);
+    expect(html).toContain("Archive Authentication?");
+    expect(html).toMatch(/Authentication leaves the Library\. 2 pages under it move up a level\. You can restore it from Engineering(&#39;|')s Archived pages\./);
+    expect(html).toContain('data-confirm-tone="danger"');
+    expect(html).toContain('data-act="libPageArchiveGo"');
+    expect(archivePageText("Guide", 1, "Ops")).toBe("Guide leaves the Library. The page under it moves up a level. You can restore it from Ops's Archived pages.");
+    expect(archivePageText("Guide", 0, "Ops")).toBe("Guide leaves the Library. You can restore it from Ops's Archived pages.");
+  });
+  it("the controller opens it from a pane row with the page's title and the pages right under it, focused; closing gives the focus back", () => {
+    const focused: string[] = [];
+    const doc = { activeElement: { isConnected: true, focus: () => focused.push("opener") } as unknown };
+    const mount = { ownerDocument: doc, querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("space", "admin", { spaceSlug: "engineering", treeMenu: "auth" } as Partial<AppState>);
+    const tree = [...PAGES, { ...PAGES[0], slug: "auth-kid", title: "Kid", parent_slug: "auth" }, { ...PAGES[0], slug: "auth-kid2", title: "Kid 2", parent_slug: "auth" }];
+    state.spaceHome = { status: "ok", data: { space: ENG, pages: tree, can_edit: true, can_archive: true, can_admin: true } } as unknown as AppState["spaceHome"];
+    const ctl = createLibraryController({
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
+    });
+    ctl.act("libPageArchive", "auth", null);
+    expect(state.treeMenu).toBeNull();
+    expect(state.libUi.pageArchive).toMatchObject({ slug: "auth", title: "Authentication", under: 2, spaceName: "Engineering" });
+    expect(focused.at(-1)).toBe("#lib-page-archive [data-confirm-focus]");
+    ctl.act("libPageArchiveClose", null, null);
+    expect(state.libUi.pageArchive).toBeNull();
+    expect(focused.at(-1)).toBe("opener");
+  });
+  it("a refusal is said in words", () => {
+    const err = (code: string) => pageArchiveErrorText(new ApiError(409, code), "Couldn't archive the page.");
+    expect(err("forbidden")).toBe("Only an admin, or an owner of this space, can archive or restore its pages.");
+    expect(err("space_archived")).toBe("This space is archived. Restore the space first.");
+    expect(pageArchiveErrorText(new Error("x"), "Couldn't archive the page.")).toBe("Couldn't archive the page. Check your connection and try again.");
   });
 });

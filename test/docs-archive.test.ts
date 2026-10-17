@@ -202,7 +202,7 @@ describe("links, Review and the gate around an archived page", () => {
     await archive(admin, "target");
     await archive(admin, "source");
     const page = await docPage(admin, "linker");
-    expect(page.archived_links).toEqual(["target"]);
+    expect(page.archived_links).toEqual([{ slug: "target", title: "target title" }]);
     expect(page.broken_links).toEqual(["nowhere"]);
     expect(page.links).toEqual([]);
     expect(page.backlinks).toEqual([]);

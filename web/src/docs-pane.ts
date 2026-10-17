@@ -3,7 +3,8 @@
 // the head row (the space: its home, and "+" for a page at its top level; while dragging it is "the top level"),
 // "PAGES" and the space's page count, then one 28px row per page — indented by `indentPx(depth)`, a guide line per
 // ancestor level, a chevron when it has children, the status shape for a page that is not live (never a word), and
-// on hover "+" (a page inside) and "…" (Copy link / Move to the top level / New page inside). The tree's ORDER and rules are
+// on hover "+" (a page inside) and "…" (Copy link / Move to the top level / New page inside / Archive page, for an admin
+// or an owner of the space). The tree's ORDER and rules are
 // shared/docs-tree-core.ts; the pointer drag over these rows is web/src/tree-drag.ts (rows carry `data-dtree`).
 // Pure: props in, markup out. Every row is stable markup (`data-morph-key` per page) so a paint patches it in place:
 // a chevron's turn and the pane's own scroll survive every repaint.
@@ -29,6 +30,9 @@ export interface DocsPaneProps {
   open: Readonly<Record<string, boolean>>;
   /** The row whose "…" menu is open. */
   menu: string | null;
+  /** May the reader archive pages here (an admin, or an owner of the space; 0083_doc_archive)? Adds "Archive page" to
+   *  the "…" menu. */
+  canArchive?: boolean;
 }
 
 /** The longest title the row shows without its tooltip (the design's 24 characters). */
@@ -72,6 +76,7 @@ function row(pg: LibraryPageDTO, depth: number, hasKids: boolean, isOpen: boolea
         <button type="button" role="menuitem" data-act="treeCopyLink" data-arg="${attr(pg.slug)}" class="cnpy-dp-mi">Copy link</button>
         ${pg.parent_slug !== null ? `<button type="button" role="menuitem" data-act="treeMoveTop" data-arg="${attr(pg.slug)}" class="cnpy-dp-mi">Move to the top level</button>` : ""}
         <button type="button" role="menuitem" data-act="treeNew" data-arg="${attr(pg.slug)}" class="cnpy-dp-mi">New page inside</button>
+        ${p.canArchive ? `<button type="button" role="menuitem" data-act="libPageArchive" data-arg="${attr(pg.slug)}" data-confirm-trigger class="cnpy-dp-mi">Archive page</button>` : ""}
       </div>`
     : "";
   return `<div class="cnpy-dp-row ${HITBOX}${active ? " is-active" : ""}${depth === 0 ? " is-top" : ""}${menuOpen ? " has-menu" : ""}" data-morph-key="dp:${attr(pg.slug)}" data-dtree="${attr(pg.slug)}" data-depth="${depth}" style="padding-left:${pad}px;--dp-in:${pad - 2}px">

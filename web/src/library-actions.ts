@@ -5,8 +5,10 @@
 import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, NotFound, Unauthorized, PreviewBlocked,
-  getLibrary, getSpaceHome, createSpace, editSpace, setSpaceOwners, moveSpace, archiveSpace, restoreSpace,
+  getLibrary, getSpaceHome, createSpace, editSpace, setSpaceOwners, moveSpace, archiveSpace, restoreSpace, archiveDoc, restoreDoc,
 } from "./api";
+import type { ToastAction } from "./render";
+import { buildTree, childrenOf } from "@shared/docs-tree-core";
 import { blankSpaceDraft, duplicateOf, isSpaceTab, FIRST, type SpaceDraft } from "./library";
 import { cleanSpaceName, cleanSpaceDescription, isSpaceColor, isSpaceIcon, type SpaceDTO, type SpaceColor } from "@shared/docs-core";
 
@@ -15,8 +17,10 @@ export interface LibraryHost {
   mount: HTMLElement;
   rerender(): void;
   rerenderSoon(): void;
-  flash(msg: string, ms?: number): void;
+  flash(msg: string, ms?: number, action?: ToastAction | null): void;
   unauth(e: unknown): void;
+  /** A page was archived or restored (0083_doc_archive): read again what shows it — Review, the badges, the doc page. */
+  pageChanged(slug: string): void;
   /** Play the confirmation modal's exit, then run `then`. */
   confirmOut(then: () => void): void;
   /** Open a doc in the reader (`#doc/<slug>`). */
@@ -33,6 +37,20 @@ export interface LibraryController {
   openSpace(slug: string | null): void;
   /** Read a space's pages into `spaceHome` unless it already holds them (the docs pane on a doc page and New page). */
   ensureSpace(slug: string): void;
+}
+
+/** A refusal of Archive page / Restore as words (0083_doc_archive). */
+export function pageArchiveErrorText(e: unknown, fallback: string): string {
+  if (e instanceof PreviewBlocked) return "This is a preview: nothing is changed.";
+  if (!(e instanceof ApiError)) return `${fallback} Check your connection and try again.`;
+  switch (e.message) {
+    case "forbidden": return "Only an admin, or an owner of this space, can archive or restore its pages.";
+    case "archived": return "That page is already archived.";
+    case "not_archived": return "That page isn't archived any more. Reload the page.";
+    case "space_archived": return "This space is archived. Restore the space first.";
+    case "not_found": return "That page isn't there any more. Reload the page.";
+    default: return `${fallback} Try again.`;
+  }
 }
 
 /** A refusal of a space route as words that say what to do next. */
@@ -221,8 +239,77 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       });
   }
 
+  // ── Archive page / Restore (0083_doc_archive) ─────────────────────────────
+  /** What the confirmation needs about `slug`: its title, how many pages sit right under it, its space's name. */
+  function pageFacts(slug: string): { title: string; under: number; space: string } | null {
+    const h = state.spaceHome.data;
+    const d = state.docDetail.data;
+    const pg = h?.pages.find((p) => p.slug === slug);
+    if (h && pg) return { title: pg.title, under: childrenOf(buildTree(h.pages), slug, pg.space).length, space: h.space.slug };
+    if (d && d.doc.slug === slug) return { title: d.doc.title, under: d.page?.children.length ?? 0, space: d.doc.space };
+    return null;
+  }
+  const spaceNameOf = (slug: string): string =>
+    (state.spaceHome.data?.space.slug === slug ? state.spaceHome.data.space.name : null)
+      ?? state.library.data?.spaces.find((s) => s.slug === slug)?.name ?? slug;
+
+  /** Read again what an archive or a restore changed: the space's tree and its Archived pages, the Library's counts. */
+  function afterPage(space: string, slug: string): void {
+    load();
+    if (state.spaceHome.data?.space.slug === space) openSpace(space);
+    host.pageChanged(slug);
+  }
+
+  function archivePage(): void {
+    const a = ui().pageArchive;
+    if (!a || a.busy) return;
+    a.busy = true; a.error = null;
+    rerender();
+    const space = pageFacts(a.slug)?.space ?? state.spaceHome.data?.space.slug ?? "";
+    archiveDoc(a.slug)
+      .then(() => {
+        host.confirmOut(() => { ui().pageArchive = null; rerender(); });
+        host.flash(`Archived ${a.title}`, 6000, { label: "Undo", act: "libPageRestore", arg: a.slug });
+        afterPage(space, a.slug);
+      })
+      .catch((e) => { if (fail(e)) return; a.busy = false; a.error = pageArchiveErrorText(e, "Couldn't archive the page."); rerender(); });
+  }
+
+  function restorePage(slug: string): void {
+    if (ui().pageRestoring) return;
+    ui().pageRestoring = slug;
+    rerender();
+    const h = state.spaceHome.data;
+    const d = state.docDetail.data;
+    const title = h?.archived_pages?.find((p) => p.slug === slug)?.title ?? (d?.doc.slug === slug ? d.doc.title : null) ?? slug;
+    const space = (d?.doc.slug === slug ? d.doc.space : null) ?? h?.space.slug ?? "";
+    restoreDoc(slug)
+      .then((r) => {
+        ui().pageRestoring = null;
+        const where = r.parent_slug ? h?.pages.find((p) => p.slug === r.parent_slug)?.title ?? null : null;
+        host.flash(where ? `Restored ${title} under ${where}` : `Restored ${title} to the top level of ${spaceNameOf(space)}`, 5000, { label: "Open", act: "libOpenDoc", arg: slug });
+        afterPage(space, slug);
+        rerender();
+      })
+      .catch((e) => { if (fail(e)) return; ui().pageRestoring = null; host.flash(pageArchiveErrorText(e, "Couldn't restore the page."), 6000); rerender(); });
+  }
+
   function act(act: string, arg: string | null, value: string | null): void {
     switch (act) {
+      case "libPageArchive": {
+        state.treeMenu = null;
+        const facts = arg ? pageFacts(arg) : null;
+        if (!arg || !facts) { rerender(); return; }
+        remember();
+        ui().pageArchive = { slug: arg, title: facts.title, under: facts.under, spaceName: spaceNameOf(facts.space), busy: false, error: null };
+        rerender();
+        // The confirmation's contract: its button is focused on open, so Enter / Space press it (confirm.ts).
+        host.mount.querySelector<HTMLElement>("#lib-page-archive [data-confirm-focus]")?.focus();
+        return;
+      }
+      case "libPageArchiveGo": archivePage(); return;
+      case "libPageArchiveClose": if (ui().pageArchive?.busy) return; host.confirmOut(() => { ui().pageArchive = null; rerender(); giveBack(); }); return;
+      case "libPageRestore": if (arg) restorePage(arg); return;
       case "libOpenSpace": if (arg) goSpace(arg); return;
       case "libOpenDoc": if (arg) host.openDoc(arg); return;
       case "libNewPage": host.newPage(arg ?? state.spaceSlug ?? ""); return;
