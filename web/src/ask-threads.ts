@@ -1,9 +1,11 @@
 // Ask Trov — the thread list (SHELL; inventory §1a, scenarios `live` and `search`; ask-trov.dc.html L216–282).
 //
 // New thread, Search threads (`GET /ask/threads?q=` → hits with a highlighted snippet), the groups Pinned /
-// Today / This week / Earlier, the active row, and each row's ⋯ menu: Rename (inline), Pin / Unpin, Export as
-// markdown, Delete. A column on a desktop (ask-screen.ts), a drawer on a phone (ask-phone.ts `threadsDrawer`).
-// Acts `askTh…`; reads and writes through `ctx.api` (the controller loads the list on entering Ask).
+// Today / This week / Earlier, the active row, and each row's ⋯ menu: Rename (inline), Pin / Unpin, Share with
+// <org> / Stop sharing, Export as markdown, Delete. Then "Shared in <org>": the conversations OTHER members shared
+// (`GET /ask/shared`; 0076_ask_sharing) — each row its owner's picture and name, opened read-only, no menu.
+// A column on a desktop (ask-screen.ts), a drawer on a phone (ask-phone.ts `threadsDrawer`).
+// Acts `askTh…`; reads and writes through `ctx.api` (the controller loads the lists on entering Ask).
 
 import { esc, attr } from "./ui";
 import type { AskCtx, AskPart, AskUi, AskView } from "./ask-state";
@@ -12,6 +14,9 @@ import { closingAttr } from "./ask-motion";
 import { skeleton, skList, skLine, skW } from "./skeleton";
 import { askExportName, type AskSearchHit, type AskThreadGroup, type AskThreadSummary } from "@shared/ai-ask-core";
 import { confirmModal } from "./confirm";
+import { sharedMark } from "./marks";
+import { personName, refAvatar } from "./ask-refs";
+import type { AppState } from "./render";
 
 const GROUP_LABEL: Record<AskThreadGroup, string> = { pinned: "Pinned", today: "Today", week: "This week", earlier: "Earlier" };
 const GROUPS: AskThreadGroup[] = ["pinned", "today", "week", "earlier"];
@@ -38,10 +43,23 @@ export function snippetHtml(s: AskSearchHit["snippet"]): string {
   return out + esc(s.text.slice(at));
 }
 
+/** The org on screen's name ("your organization" before it is known): what "Share with …" names. */
+export const askOrgName = (app: Pick<AppState, "me" | "orgSlug">): string =>
+  app.me?.orgs.find((o) => o.slug === app.orgSlug)?.name ?? "your organization";
+
+/** The shared mark's tooltip, for the owner and for a reader (`owner`: the owner's name). */
+export const sharedTip = (org: string, owner: string | null = null): string =>
+  owner ? `${owner} shared this with ${org}. Everyone there can read it; only ${owner} can continue it.`
+    : `Shared with ${org}: everyone there can read it. Only you can continue it.`;
+
 function menu(v: AskView, t: AskThreadSummary): string {
+  const org = askOrgName(v.app);
   return `<div class="ask-menu ask-th-menu" role="menu" aria-label="Thread actions"${closingAttr(v.ui.closing, "menu")}>
     <button type="button" role="menuitem" data-act="askThRename" data-arg="${t.id}">${askIcon("rename", 14)}Rename</button>
     <button type="button" role="menuitem" data-act="askThPin" data-arg="${t.id}">${askIcon("pin", 14)}${t.pinned ? "Unpin" : "Pin"}</button>
+    ${t.shared
+      ? `<button type="button" role="menuitem" data-act="askThUnshare" data-arg="${t.id}">${askIcon("lock", 14)}Stop sharing</button>`
+      : `<button type="button" role="menuitem" data-act="askThShare" data-arg="${t.id}">${askIcon("share", 14)}${esc(`Share with ${org}`)}</button>`}
     <button type="button" role="menuitem" data-act="askThExport" data-arg="${t.id}">${askIcon("download", 14)}Export as markdown</button>
     <div class="ask-menu-sep" role="separator"></div>
     <button type="button" role="menuitem" class="is-danger" data-act="askThDelete" data-arg="${t.id}">${askIcon("trash", 14)}Delete</button>
@@ -58,14 +76,36 @@ function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string 
     return `<div class="ask-th" data-morph-key="th:${t.id}"${leaving}><div class="ask-th-in"><input class="ask-th-rename" data-act="askThRenameText" data-arg="${t.id}" data-field="askThRename" data-ask-rename="${t.id}" value="${attr(v.ui.renaming.text)}" aria-label="Thread name" maxlength="80" /></div></div>`;
   }
   const time = `<span class="ask-th-at">${esc(threadTime(t))}</span>`;
+  // Shared with the org: a quiet mark after the title (private, the normal state, has none).
+  const mark = t.shared ? `<span class="ask-th-mark">${sharedMark(sharedTip(askOrgName(v.app)), 13, false)}</span>` : "";
   const main = hit
     ? `<button type="button" class="ask-th-b ask-th-b--hit${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}>
-        <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "New thread")}</span>${time}</span>
+        <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "New thread")}</span>${mark}${time}</span>
         ${hit.snippet ? `<span class="ask-th-snip">${snippetHtml(hit.snippet)}</span>` : ""}
         <span class="ask-th-count">${hit.matchCount} ${hit.matchCount === 1 ? "match" : "matches"}</span>
       </button>`
-    : `<button type="button" class="ask-th-b${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}><span class="ask-th-title">${esc(t.title || "New thread")}</span>${time}</button>`;
+    : `<button type="button" class="ask-th-b${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}><span class="ask-th-title">${esc(t.title || "New thread")}</span>${mark}${time}</button>`;
   return `<div class="ask-th${open ? " is-menu" : ""}" data-morph-key="th:${t.id}"${leaving}${leaving ? " inert" : ""}><div class="ask-th-in">${main}<button type="button" class="ask-th-more" data-act="askThMore" data-arg="${t.id}" aria-label="Thread actions" aria-haspopup="menu" aria-expanded="${open}">${askIcon("more", 14)}</button>${open ? menu(v, t) : ""}</div></div>`;
+}
+
+/** A conversation another member shared: the title and time, then its owner's picture and name — one button that
+ *  opens it read-only (the picture is people.ts's chip, not a control of its own); no ⋯ menu, it is not the
+ *  person's to rename, pin, share or delete. */
+function sharedRow(v: AskView, t: AskThreadSummary): string {
+  const on = v.app.screen === "ask" && v.ui.page.threadId === t.id;
+  const owner = t.owner ?? "";
+  const name = personName(v.look, owner);
+  return `<div class="ask-th ask-th--shared" data-morph-key="sh:${t.id}"><div class="ask-th-in"><button type="button" class="ask-th-b ask-th-b--hit ask-th-b--shared${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""} aria-label="${attr(`${t.title || "Untitled thread"}, shared by ${name}`)}">
+      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span><span class="ask-th-at">${esc(threadTime(t))}</span></span>
+      <span class="ask-th-owner">${refAvatar(v.look, owner, 16)}<span class="ask-th-owner-n">${esc(name)}</span></span>
+    </button></div></div>`;
+}
+
+/** "Shared in <org>": the conversations other members shared, under the person's own (none: no section). */
+export function sharedSection(v: AskView): string {
+  const rows = v.ui.shared.data;
+  if (!rows.length) return "";
+  return `<div class="ask-th-head ask-th-head--shared">${esc(`Shared in ${askOrgName(v.app)}`)}</div><div class="ask-th-list" data-morph-list data-ask-enter="rise">${rows.map((t) => sharedRow(v, t)).join("")}</div>`;
 }
 
 /** The whole list: New thread, the search box, then the groups (or the search's hits). */
@@ -91,6 +131,7 @@ export function threadsView(v: AskView): string {
       // deleted one collapses — and a repaint never replays a row (ask-motion.ts rule 2).
       return rows.length ? `<div class="ask-th-head">${GROUP_LABEL[g]}</div><div class="ask-th-list" data-morph-list data-ask-enter="rise">${rows.map((t) => row(v, t, null)).join("")}</div>` : "";
     }).join("") || `<div class="ask-th-none">No threads yet. Ask something to start one.</div>`;
+    body += sharedSection(v);
   }
   return `<div class="ask-threads-in">
     <div class="ask-th-top">
@@ -165,6 +206,39 @@ export function threadDeleteModal(ui: Pick<AskUi, "threadDelete" | "closing">): 
     confirmAct: "askThDeleteGo", cancelAct: "askThDeleteCancel", arg: String(d.id),
   }).replace(`class="cnpy-cmodal"`, `class="cnpy-cmodal"${closingAttr(ui.closing, "thdel")}`);
 }
+/** Share's confirmation: what every member of the org will read, and what stays the owner's — the files they attached
+ *  (private artifacts: members see each file's name, never what is in it). A root `data-overlay` like Delete's. */
+export function threadShareModal(ui: Pick<AskUi, "threadShare" | "closing">, org: string): string {
+  const d = ui.threadShare;
+  if (!d) return "";
+  return confirmModal({
+    id: "ask-th-share", title: `Share “${d.title || "this thread"}” with ${org}?`,
+    body: `Everyone in ${org} can open it and read the whole conversation: your questions and Trov's answers, including anything Trov quoted from the files you attached. Only you can continue, rename or delete it, and you can stop sharing at any time.`,
+    detail: `<p class="ask-share-note">${esc("Files you attached stay private: members see each file's name, not what is in it. A source only you can see stays hidden from them.")}</p>`,
+    confirmLabel: "Share", busyLabel: "Sharing…", tone: "neutral",
+    confirmAct: "askThShareGo", cancelAct: "askThShareCancel", arg: String(d.id),
+  }).replace(`class="cnpy-cmodal"`, `class="cnpy-cmodal"${closingAttr(ui.closing, "thshare")}`);
+}
+const closeShare = (ctx: AskCtx) => ctx.exit("thshare", () => { ctx.ui.threadShare = null; }, DELETE_OUT_MS);
+
+/** Share / stop sharing, written at once (the row's mark follows), the list read again after. */
+function setShared(ctx: AskCtx, id: number, shared: boolean): void {
+  const t = threadById(ctx, id);
+  if (!t) return;
+  const apply = (on: boolean) => {
+    ctx.ui.threads.data = ctx.ui.threads.data.map((x) => (x.id === id ? { ...x, shared: on } : x));
+    const c = ctx.ui.page;
+    if (c.threadId === id && c.thread) ctx.ui.page = { ...c, thread: { ...c.thread, shared: on } };
+  };
+  apply(shared);
+  ctx.paint();
+  if (ctx.replay) { ctx.flash("Replay: nothing was shared."); return; }
+  const org = askOrgName(ctx.app);
+  ctx.api.patchThread(id, { shared })
+    .then(() => { ctx.flash(shared ? `Shared with ${org}` : "Stopped sharing. Only you can read it now."); ctx.reloadThreads(); })
+    .catch((e) => { apply(!shared); ctx.fail(e, shared ? "Couldn't share the thread." : "Couldn't stop sharing the thread."); ctx.reloadThreads(); });
+}
+
 /** Delete's confirm out: its exit, then gone. */
 const closeDelete = (ctx: AskCtx) => ctx.exit("thdel", () => { ctx.ui.threadDelete = null; }, DELETE_OUT_MS);
 const DELETE_OUT_MS = 140;
@@ -174,7 +248,7 @@ export const threadsPart: AskPart = {
   afterPaint(_ctx, mount) {
     // Delete's confirm takes the focus on its destructive button (Enter confirms, Escape cancels — main.ts's one
     // keyboard contract for every `[data-confirm-dialog]`).
-    if (focusConfirm) { focusConfirm = false; mount.querySelector<HTMLElement>("#ask-th-delete [data-confirm-focus]")?.focus(); }
+    if (focusConfirm) { focusConfirm = false; mount.querySelector<HTMLElement>("#ask-th-delete [data-confirm-focus], #ask-th-share [data-confirm-focus]")?.focus(); }
     if (focusMenu) { focusMenu = false; mount.querySelector<HTMLElement>(MENU_ITEM)?.focus(); }
     if (focusMore !== null) { const id = focusMore; focusMore = null; mount.querySelector<HTMLElement>(`[data-act="askThMore"][data-arg="${id}"]`)?.focus(); }
   },
@@ -205,6 +279,30 @@ export const threadsPart: AskPart = {
         ctx.api.patchThread(id, { pinned: !t.pinned }).then(() => ctx.reloadThreads()).catch((e) => { ctx.fail(e, "Couldn't pin the thread."); ctx.reloadThreads(); });
         return;
       }
+      // Share asks first: everyone in the org will read the whole conversation (attachments by name only).
+      case "askThShare": {
+        const t = threadById(ctx, id);
+        ctx.ui.threadMenu = null;
+        if (t) { ctx.cancelExit("thshare"); ctx.ui.threadShare = { id, title: t.title }; focusConfirm = true; }
+        ctx.paint();
+        return;
+      }
+      case "askThShareCancel":
+        if (!ctx.ui.threadShare) return;
+        closeShare(ctx);
+        if (id > 0) focusMore = id; // focus back on the row's ⋯, where the menu was
+        ctx.paint();
+        return;
+      case "askThShareGo":
+        if (!ctx.ui.threadShare) return;
+        closeShare(ctx);
+        setShared(ctx, id, true);
+        return;
+      // Stop sharing asks nothing: it takes nothing from the owner, and sharing again brings it back.
+      case "askThUnshare":
+        ctx.ui.threadMenu = null;
+        setShared(ctx, id, false);
+        return;
       case "askThExport": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;

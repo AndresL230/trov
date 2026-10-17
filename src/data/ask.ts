@@ -1,6 +1,7 @@
 // Ask Trov's rows (0066_ask; docs/architecture/ask.md). A TENANT module: every statement names `org_id`, bound
 // from the caller's context, AND the thread's OWNER — a thread is one person's, so another org's or another
-// person's thread, message, card or attachment is the one `null` / not found. Nothing here calls a model.
+// person's thread, message, card or attachment is the one `null` / not found. The one exception is READING a thread
+// its owner shared with the org (0076_ask_sharing, › sharing below). Nothing here calls a model.
 import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 import type { AskMode, AskOrigin, AskWrongReason } from "@shared/ai-ask-core";
 

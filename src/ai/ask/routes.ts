@@ -2,7 +2,8 @@
 // shared/ai-ask-core.ts), COOKIE ONLY — a request carrying an Authorization header is refused (`cookieOnly`;
 // CLAUDE.md invariant 8), and none of this is an MCP tool. `tenantGate` has already resolved `c.var.ctx`, the cookie
 // person's live membership of that org; every thread, message, card and attachment is that person's own, so anyone
-// else's is the one `not_found`.
+// else's is the one `not_found` — except that another member may READ a thread its owner shared with the org
+// (0076_ask_sharing: `GET /ask/threads/:id`, `GET /ask/shared`; every write still names the owner).
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../auth/principal";

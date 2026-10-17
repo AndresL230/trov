@@ -39,7 +39,11 @@
 
 import { esc, attr } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
-import { convoOf } from "./ask-state";
+import { convoOf, readOnly } from "./ask-state";
+import { personLink } from "./people";
+import { personName, personOf } from "./ask-refs";
+import { askOrgName, sharedTip } from "./ask-threads";
+import { sharedMark } from "./marks";
 import { askIcon, askSpinner, trovMark, REF_ICON } from "./ask-icons";
 import { phoneComposerBar } from "./ask-phone";   // the phone's bottom row and its + menu (the ONE + menu)
 import { segmented } from "./segmented";
@@ -323,10 +327,14 @@ const chipClosing = (v: AskView, key: string): string =>
 export function sentChip(o: { lead: string; name: string; meta: string; act: string; arg: string; aria: string }): string {
   return `<button type="button" class="ask-co-chip ask-q-chip" data-act="${attr(o.act)}" data-arg="${attr(o.arg)}" aria-label="${attr(o.aria)}">${o.lead}<span class="ask-co-chip-t"><span class="ask-co-chip-n">${esc(o.name)}</span><span class="ask-co-chip-m">${esc(o.meta)}</span></span></button>`;
 }
-/** A sent file: an image's thumb (else its kind's icon), its name and size. */
-export function sentFileChip(f: { kind: string; title: string; size: number; thumbUrl?: string | null }, act: string, arg: string): string {
+/** A sent file: an image's thumb (else its kind's icon), its name and size. `closed`: someone else's PRIVATE file on a
+ *  conversation they shared (0076_ask_sharing) — its name and size only, not a control, `closed` its tooltip. */
+export function sentFileChip(f: { kind: string; title: string; size: number; thumbUrl?: string | null }, act: string, arg: string, closed: string | null = null): string {
   const icon = askIcon(f.kind === "image" ? "image" : /\.(csv|tsv)$/i.test(f.title) ? "csv" : "file", 14, null, 1.8);
-  const lead = f.kind === "image" && f.thumbUrl ? `<img class="ask-co-thumb" src="${attr(f.thumbUrl)}" alt="" loading="lazy" decoding="async">` : `<span class="ask-co-ico" style="color:var(--fg-55)">${icon}</span>`;
+  const lead = f.kind === "image" && f.thumbUrl && !closed ? `<img class="ask-co-thumb" src="${attr(f.thumbUrl)}" alt="" loading="lazy" decoding="async">` : `<span class="ask-co-ico" style="color:var(--fg-55)">${icon}</span>`;
+  if (closed) {
+    return `<span class="ask-co-chip ask-q-chip is-closed" data-mtip="${attr(closed)}">${lead}<span class="ask-co-chip-t"><span class="ask-co-chip-n">${esc(f.title)}</span><span class="ask-co-chip-m">${esc(fmtBytes(f.size))} · Private</span></span></span>`;
+  }
   return sentChip({ lead, name: f.title, meta: fmtBytes(f.size), act, arg, aria: `Open ${f.title}` });
 }
 /** A sent context item (an @ mention, the ⌘J page's item): as its composer chip; it opens the item. */
@@ -460,7 +468,25 @@ function blockView(v: AskView, b: Exclude<ComposerBlock, null>): string {
 }
 
 /** The composer for `v.where`. */
+/** In the composer's place on a conversation someone else shared (0076_ask_sharing): whose it is — their picture
+ *  and name, the person card a click away (people.ts) — that it is shared, and that only they can continue it. No
+ *  box, no files, no chips: a reader never sends into it (ask.md › Sharing a conversation). */
+export function sharedComposer(v: AskView): string {
+  const owner = convoOf(v).thread?.owner ?? "";
+  const name = personName(v.look, owner);
+  const org = askOrgName(v.app);
+  const who = personLink(personOf(v.look, owner), owner, 20, name, "font-weight:600;color:var(--fg)");
+  return `<div class="ask-composer ask-composer--shared" data-ask-composer="${v.where}" data-ask-dock="dock" data-morph-list>
+    <div class="ask-co-in" data-morph-key="ro"><div class="ask-ro" role="note">
+      <span class="ask-ro-who">${who}</span>
+      <span class="ask-ro-t">${esc(`shared this conversation with ${org}. Only ${name} can continue it.`)}</span>
+      <span class="ask-ro-mark">${sharedMark(sharedTip(org, name), 12)}</span>
+    </div></div>
+  </div>`;
+}
+
 export function composerView(v: AskView): string {
+  if (readOnly(v)) return sharedComposer(v);
   const ui = v.ui.composer[v.where];
   const st = stateOf(v);
   const phone = v.app.phone;
@@ -1130,7 +1156,7 @@ export const composerPart: AskPart = {
   },
   onDragOver(ctx, e) {
     const z = dropZone(e);
-    if (!z || !hasFiles(e) || !ctx.ui.state.data || composerBlock({ ui: ctx.ui, where: z.where })) return false;
+    if (!z || !hasFiles(e) || !ctx.ui.state.data || composerBlock({ ui: ctx.ui, where: z.where }) || readOnly({ ui: ctx.ui, where: z.where })) return false;
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     ctx.cancelExit(chipKey(z.where, "drop"));
@@ -1147,7 +1173,7 @@ export const composerPart: AskPart = {
   },
   onDrop(ctx, e) {
     const z = dropZone(e);
-    if (!z || !hasFiles(e)) return false;
+    if (!z || !hasFiles(e) || readOnly({ ui: ctx.ui, where: z.where })) return false;
     e.preventDefault();
     ctx.cancelExit(chipKey(z.where, "drop"));
     ctx.ui.composer[z.where] = { ...ctx.ui.composer[z.where], drag: false };
