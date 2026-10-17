@@ -145,6 +145,16 @@ export function toLinkView(r: LinkRow): LinkView {
     close_reason: r.close_reason, expires_at: r.expires_at,
   };
 }
+/**
+ * A link as one of its two people reads it on the web (the cookie routes): the OTHER side's session id stays out —
+ * it is theirs (an Ask side's names their thread), as on MCP (`list_links`) and in Ask (`linkResult`). The side's
+ * kind, branch and when it was seen stay: the page says "coding session on `x`" or "Ask thread" from those. A
+ * self-link's two sides are both the reader's, so both keep theirs.
+ */
+export function linkForViewer<T extends LinkView>(l: T, actor: string): T {
+  const own = (s: LinkView["requester"]) => (same(s.handle, actor) ? s : { ...s, session: null });
+  return { ...l, requester: own(l.requester), recipient: own(l.recipient) };
+}
 const toNoteView = (n: NoteRow): LinkNoteView => ({
   id: n.id, side: n.side, author: n.author, author_kind: n.author_kind, body: n.body, created_at: n.created_at, delivered_at: n.delivered_at,
 });

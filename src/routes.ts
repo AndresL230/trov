@@ -41,7 +41,7 @@ import {
   listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
 import {
-  listLinks, getLink, createRequestFromWeb, sendLink, acceptLink, declineLink, cancelLink, closeLink, sendLinkNote,
+  listLinks, getLink, createRequestFromWeb, sendLink, acceptLink, declineLink, cancelLink, closeLink, sendLinkNote, linkForViewer,
   LinkError, LINK_ERROR_STATUS, type LinkCloseInput, type LinkNoteInput, type LinkWebRequestInput,
 } from "./tools/links";
 import { LINK_BOXES, type LinkBox } from "@shared/links";
@@ -468,14 +468,16 @@ const LINK_STEPS = { send: sendLink, accept: acceptLink, decline: declineLink, c
 tenantApi.get("/links", async (c) => {
   const box = c.req.query("box") ?? "open";
   if (!(LINK_BOXES as readonly string[]).includes(box)) return c.json({ error: "bad_request", message: `unknown box: ${box}` }, 400);
-  try { return c.json({ links: await listLinks(c.var.ctx, c.get("principal").handle, box as LinkBox) }); }
+  const me = c.get("principal").handle;
+  try { return c.json({ links: (await listLinks(c.var.ctx, me, box as LinkBox)).map((l) => linkForViewer(l, me)) }); }
   catch (e) { return linkFail(c, e); }
 });
 tenantApi.get("/links/:id", async (c) => {
   const id = linkId(c.req.param("id"));
   try {
-    const link = id === null ? null : await getLink(c.var.ctx, c.get("principal").handle, id);
-    return link ? c.json({ link }) : c.json({ error: "not_found" }, 404);
+    const me = c.get("principal").handle;
+    const link = id === null ? null : await getLink(c.var.ctx, me, id);
+    return link ? c.json({ link: linkForViewer(link, me) }) : c.json({ error: "not_found" }, 404);
   } catch (e) { return linkFail(c, e); }
 });
 // A person starts a link: `requested` (24 h), or `open` at once when it is to themself. Only `target`, `reason`
@@ -483,14 +485,16 @@ tenantApi.get("/links/:id", async (c) => {
 tenantApi.post("/links", async (c) => {
   const b = await linkBody(c);
   const input = { target: b.target, reason: b.reason, repo: b.repo } as LinkWebRequestInput;
-  try { return c.json({ link: await createRequestFromWeb(c.var.ctx, c.get("principal").handle, input) }); }
+  const me = c.get("principal").handle;
+  try { return c.json({ link: linkForViewer(await createRequestFromWeb(c.var.ctx, me, input), me) }); }
   catch (e) { return linkFail(c, e); }
 });
 for (const step of ["send", "accept", "decline", "cancel"] as const) {
   tenantApi.post(`/links/:id/${step}`, async (c) => {
     const id = linkId(c.req.param("id"));
     if (id === null) return c.json({ error: "not_found" }, 404);
-    try { return c.json({ link: await LINK_STEPS[step](c.var.ctx, c.get("principal").handle, id) }); }
+    const me = c.get("principal").handle;
+    try { return c.json({ link: linkForViewer(await LINK_STEPS[step](c.var.ctx, me, id), me) }); }
     catch (e) { return linkFail(c, e); }
   });
 }
@@ -498,7 +502,8 @@ tenantApi.post("/links/:id/close", async (c) => {
   const id = linkId(c.req.param("id"));
   if (id === null) return c.json({ error: "not_found" }, 404);
   const b = await linkBody(c);
-  try { return c.json({ link: await closeLink(c.var.ctx, c.get("principal").handle, { id, reason: b.reason } as LinkCloseInput, "web") }); }
+  const me = c.get("principal").handle;
+  try { return c.json({ link: linkForViewer(await closeLink(c.var.ctx, me, { id, reason: b.reason } as LinkCloseInput, "web"), me) }); }
   catch (e) { return linkFail(c, e); }
 });
 // A person's note, from their own side (a self-link's `side` may name which; default the requester's, so it
@@ -513,7 +518,7 @@ tenantApi.post("/links/:id/notes", async (c) => {
   try {
     await sendLinkNote(c.var.ctx, c.var.p, me, { id, body: b.body, side: b.side } as LinkNoteInput, "web");
     const link = await getLink(c.var.ctx, me, id);
-    return link ? c.json({ link }) : c.json({ error: "not_found" }, 404);
+    return link ? c.json({ link: linkForViewer(link, me) }) : c.json({ error: "not_found" }, 404);
   } catch (e) { return linkFail(c, e); }
 });
 

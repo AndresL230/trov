@@ -156,7 +156,8 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   the ONLY place a link is sent, accepted, declined or cancelled (besides Ask's Confirm). The actor is always the
   session's person; a body's author fields are never read. `:id` is the per-org number.
   `GET /links?box=waiting|mine|open|unbound|closed` (default `open`; another box is 400) → `{ links }`;
-  `GET /links/:id` → `{ link }` with its notes, 404 `not_found` for anyone but its two people;
+  `GET /links/:id` → `{ link }` with its notes, 404 `not_found` for anyone but its two people; every answer is
+  `linkForViewer`'s: the OTHER side's `session` is null (its kind, branch and seen stay), as on MCP and in Ask;
   `POST /links` `{ target, reason, repo? }` → `{ link }` (`createRequestFromWeb`: `requested`, or `open` to oneself);
   `POST /links/:id/send|accept|decline|cancel` and `/close` `{ reason? }` → `{ link }`;
   `POST /links/:id/notes` `{ body, side? }` → `{ link }` with its notes (a person's note, own side, no session —

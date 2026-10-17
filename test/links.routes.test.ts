@@ -260,3 +260,27 @@ describe("the badge", () => {
     expect(await badge(J)).toBe(1);
   });
 });
+
+// E2E P-23 (docs/testing/agent-links-test-log.md): the web read carried the OTHER side's session id — an agent's own
+// session, or an Ask side's thread id ("the other side's thread is theirs, and its id never reaches this viewer").
+describe("a link's other side keeps its session id to itself on the web", () => {
+  it("the detail, the boxes and each step's answer null the other side's session; the reader's own side keeps it", async () => {
+    const d = await draft(J, L);
+    expect(d.requester.session).toBe(`s-${J}`);
+    expect((await linkOf(post(J, `/links/${d.id}/send`))).requester.session).toBe(`s-${J}`);
+    const accepted = await linkOf(post(L, `/links/${d.id}/accept`));
+    expect(accepted.requester).toMatchObject({ handle: J, kind: "chat", session: null });
+    expect((await detailOf(get(L, `/links/${d.id}`))).requester).toMatchObject({ kind: "chat", session: null });
+    expect((await detailOf(get(J, `/links/${d.id}`))).requester.session).toBe(`s-${J}`);
+    expect((await listOf(L, "open"))[0].requester.session).toBeNull();
+    expect((await listOf(J, "open"))[0].requester.session).toBe(`s-${J}`);
+    expect((await detailOf(post(L, `/links/${d.id}/notes`, { body: "noted" }))).requester.session).toBeNull();
+    expect((await linkOf(post(L, `/links/${d.id}/close`))).requester.session).toBeNull();
+  });
+
+  it("a self-link's two sides are both the reader's: both keep their session", async () => {
+    const d = await draft(J, J);
+    const l = await linkOf(post(J, `/links/${d.id}/send`));
+    expect(l).toMatchObject({ state: "open", self: true, requester: { session: `s-${J}` } });
+  });
+});
