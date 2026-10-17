@@ -6,7 +6,7 @@
 // Kept by hand, and pinned to `RELEASES[0]` by test/releases.test.ts, so it cannot drift: the PR that
 // opens an "Unreleased" entry sets it to "Unreleased", and the PR that cuts that entry into the next
 // `0.N` sets it to "0.N" (the releases.ts header says when).
-export const LATEST_VERSION: string = "0.11";
+export const LATEST_VERSION: string = "Unreleased";
 
 /** The newest release: its version and its URL segment (releases.ts `releaseSlug`). */
 export const LATEST_RELEASE: { readonly version: string; readonly slug: string } = {

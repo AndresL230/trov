@@ -10,7 +10,7 @@
 //                             Rendering an orb starts it. A canvas that is not laid out is skipped; a hidden tab
 //                             pauses it (rAF does).
 //   the theme                 read on every frame from the nearest [data-cnpy-theme]; the ink is that theme's
-//                             --accent (olive in dark), a dot's depth its opacity (orbs/engine/core.ts setInk). Colour
+//                             --accent (the lifted purple in dark), a dot's depth its opacity (orbs/engine/core.ts setInk). Colour
 //                             carries meaning only (the owner, 2026-10-16): no hue of its own for "working".
 //   reduced motion            one static frame per paint and no loop (the upstream's frame at 0.6s).
 

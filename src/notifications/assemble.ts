@@ -46,7 +46,7 @@ function mix(fg: string, bg: string, t: number): string {
 /** Site tokens (web/src/trov.css), light → dark. Every colour in the email comes from here. */
 const BASE = {
   // Trov's brand: the purple of the mark (`--mark` #616ACB) on the light theme's cool neutrals. The dark
-  // column is the same purple family on near-black — mail is the brand's, not the app's olive dark theme.
+  // column is the same purple family on near-black, as the app's dark theme is.
   // The card is a hair off white on purpose: #ffffff is the literal ink on the band and on buttons, and
   // the dark swap rewrites every inline colour that equals a token.
   ground: { light: "#f1f1f5", dark: "#0f0f12" }, // page behind the card (one step past --bg)

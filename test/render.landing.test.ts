@@ -137,8 +137,10 @@ describe("landing — the banner carried through the page", () => {
   it("is ONE definition with the first-run card's banner", () => {
     expect(rules).toMatch(/\.cnpy-orgs-banner, \.site-banner \{[^}]*linear-gradient\(135deg, #5e66c7 0%, #4d55bb 48%, #3940a2 100%\)/);
     expect(rules).toMatch(/\.cnpy-orgs-banner::after, \.site-banner::after \{[^}]*background-size:16px 16px/);
-    // Dark: the banner follows the theme's accent (the green mark), on the site AND the first-run cards — one rule.
-    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%\)/);
+    // Dark: the same purple one step deeper (the dark accent is the light one's purple), on the site AND the
+    // first-run cards — one rule; nothing on the banner keeps the old olive ink.
+    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #5760bf 0%, #464eae 48%, #343b94 100%\)/);
+    expect(rules).not.toContain("#3a4620");
     // …and the glows behind the cards take the mark's colour from the theme, not a fixed purple.
     expect(rules).not.toMatch(/color-mix\(in srgb, #616acb /);
     expect(rules.match(/color-mix\(in srgb, var\(--mark, #616acb\) /g)?.length).toBeGreaterThanOrEqual(3);

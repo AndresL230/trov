@@ -221,7 +221,7 @@ two providers as a narrow centred pair with an "or" rule between them, a foot. A
 (a border sits outside the banner and showed as a pale frame round it); its edge is a ring in the shadow.
 
 Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
-banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add
+banner's dots in the page's own accent (purple in both themes), mirrored on a flipped row. Do not add
 a fourth banner or a second texture (the tour's dialog has none: its stage is the same dot field); a new section is plain unless it replaces one of the three.
 
 - **Both themes.** The banner is the brand's purple on light AND dark (it is not the app's chrome); on dark it
@@ -1221,6 +1221,12 @@ regress silently:
   `--fg-40` .40 → .52, `--red` #cc6262 → #df7372. The banner's gradient went one step deeper in both themes and
   its text is at least 92% white. `--fg-55` is unchanged, so light `--fg-55` and `--fg-40` now sit close
   (4.67 / 4.53 on `--bg`).
+- **The dark accent is the light accent's purple** (the owner, 2026-10-17: "the same purple instead of that
+  green"). `#525cc3` itself reads only 3.0:1 on the dark `--bg`, so dark `--accent` (and `--mark`, the tab icon,
+  `TROV_MARK_COLORS.dark`) is the same hue (235°) and saturation lifted the least that passes: `#8d94d8` — 6.1:1 on
+  `--bg`, 5.8:1 on `--surface`, 4.6:1 on its own 14% `--accent-soft` (the tightest pair) — with `--accent-fg`
+  `#11132e` (6.4:1) as the ink on it. It was the olive `#9aab65` / `#131a07`; the dark banner went back to the
+  brand purple with it. The semantic `--green` and the `--p-moss` handle colour are unchanged.
 - **New tokens, split where a value served two jobs:** `--border-input` (fields) beside `--border-strong`
   (cards, dividers, the empty layouts' hollow shapes — still quiet); `--red-fg` (text on a filled red button:
   white on light, the dark ink on dark, as `--accent-fg`); `--p-ink` (avatar initials); `--focus` (= `--accent`).
@@ -1260,7 +1266,7 @@ wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose w
 for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
 `requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
 left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
-each paint is one static frame. The ink is the theme's `--accent` (olive in dark; the owner, 2026-10-16: colour carries meaning only, so
+each paint is one static frame. The ink is the theme's `--accent` (purple in both themes, lifted in dark; the owner, 2026-10-16: colour carries meaning only, so
 "working" has no hue of its own): `setInk` in
 `orbs/engine/core.ts` — the one local change to the vendored engine, marked — makes a dot's depth its opacity in that
 colour. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`), and the running sweep's highlight is

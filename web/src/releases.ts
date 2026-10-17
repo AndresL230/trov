@@ -103,6 +103,27 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  {
+    version: "Unreleased",
+    date: "2026-10-17",
+    unreleased: true,
+    title: "Purple in dark mode",
+    headline: "Dark mode takes Trov's purple accent, the same as light mode.",
+    highlights: [
+      "Dark mode now uses Trov's purple accent, the same as light mode, in place of the green.",
+      "The logo, the tab icon and the banners on the public pages are purple in dark mode too.",
+      "Links, focus rings, picked tabs and buttons stay easy to read on the dark background in the new colour.",
+    ],
+    patches: {
+      added: [],
+      changed: [
+        "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#0)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [0],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {
