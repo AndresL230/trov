@@ -97,6 +97,9 @@ if (argv.includes("--list")) {
 
 const q = (v) => (v === null || v === undefined ? "NULL" : typeof v === "number" ? String(v) : `'${String(v).replace(/'/g, "''")}'`);
 const sha256 = (s) => createHash("sha256").update(s).digest("hex");
+/** A run's stored plan in the shape the Worker reads (src/imports/runs.ts `Manifest`): a run the seed made never planned
+ *  a page, so a finish or a cancel on it reads an empty plan — never a missing one. */
+const manifest = (fileSize, fileCount) => JSON.stringify({ file_size: fileSize, file_count: fileCount, files: [], choices: {}, writes: [], links: [], images: [] });
 
 // ── ids and handles ─────────────────────────────────────────────────────────────────────────────────────────────
 const MAIN = "org_test_docslib", ONE = "org_test_docslib_one", NONE = "org_test_docslib_none", OTHER = "org_test_docslib_other";
@@ -413,7 +416,7 @@ function mainOrg(c) {
     id, org_id: MAIN, space_slug: space, parent_slug: parent, file_name: file, started_by: by, started_at: c.days(startedDays),
     updated_at: extra.updated ?? c.days(startedDays - 0.001), ended_at: status === "running" ? null : c.days(startedDays - 0.002), status,
     counts: JSON.stringify(counts), failures: JSON.stringify(failures), total: counts.pages ?? 0,
-    manifest: JSON.stringify({ file_size: extra.size ?? null, file_count: extra.count ?? 0 }), images: "[]",
+    manifest: manifest(extra.size ?? null, extra.count ?? 0), images: "[]",
   }));
   run(IMP.done, "done", ADMIN, 0.1, "test-handbook.zip", E, "test-runbooks", { pages: 2, new_pages: 2, staged: 2, staged_new: 2 }, [], { size: 2_400_000, count: 2 });
   run(IMP.partial, "partial", ADMIN, 0.06, "test-handbook-v2.zip", E, "test-getting-started",
@@ -446,7 +449,7 @@ function oneOrg(c) {
     id: IMP.running, org_id: ONE, space_slug: "engineering", parent_slug: null, file_name: "test-running.zip", started_by: MEMBER,
     started_at: c.days(0.01), updated_at: new Date(c.t + 12 * 3600_000).toISOString(), ended_at: null, status: "running",
     counts: JSON.stringify({ pages: 40, new_pages: 40, staged: 12, staged_new: 12 }), failures: "[]", total: 40,
-    manifest: JSON.stringify({ file_size: 3_100_000, file_count: 52 }), images: "[]",
+    manifest: manifest(3_100_000, 52), images: "[]",
   }));
   return s;
 }
@@ -464,7 +467,7 @@ function otherOrg(c) {
   s.push(insert("doc_imports", {
     id: IMP.other, org_id: OTHER, space_slug: "engineering", parent_slug: null, file_name: "test-other-org.zip", started_by: OUTSIDER,
     started_at: c.days(2), updated_at: c.days(2), ended_at: c.days(2), status: "done", counts: JSON.stringify({ pages: 1, new_pages: 1, staged: 1, staged_new: 1 }),
-    failures: "[]", total: 1, manifest: JSON.stringify({ file_size: 9_000, file_count: 1 }), images: "[]",
+    failures: "[]", total: 1, manifest: manifest(9_000, 1), images: "[]",
   }));
   s.push(insert("mcp_tokens", { person: OUTSIDER, org_id: OTHER, token_hash: sha256(TOKENS.outsider), token_hint: TOKENS.outsider.slice(-4), created_at: c.days(1), revoked: 0 }));
   return s;
@@ -520,6 +523,7 @@ export const CHECKS = [
   ["imports-history: runs in test-docs", `SELECT COUNT(*) AS n FROM doc_imports WHERE org_id = ${M}`, 6],
   ["imports-history: one of each stored status (done ×2, partial, failed, abandoned, running-stale)", `SELECT COUNT(DISTINCT status) AS n FROM doc_imports WHERE org_id = ${M}`, 5],
   ["import-running: test-docs-one holds a live running run", `SELECT COUNT(*) AS n FROM doc_imports WHERE org_id = ${q(ONE)} AND status = 'running' AND updated_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')`, 1],
+  ["import-plans: every seeded run stores a plan the Worker can read (a writes list)", `SELECT COUNT(*) AS n FROM doc_imports WHERE org_id IN (${ORGS.map(q).join(", ")}) AND json_type(manifest, '$.writes') IS NOT 'array'`, 0],
   ["review-import-group: test-deploys has an import v2 under an agent's v3", `SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = ${M} AND slug = 'test-deploys' AND status = 'staged'`, 2],
   ["review-agent-group: the agent's staged versions", `SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = ${M} AND status = 'staged' AND created_by = '${AGENT}'`, 7],
   ["triage-space: Unplaced doc proposals for a space", `SELECT COUNT(*) AS n FROM needs_triage WHERE org_id = ${M} AND resolved = 0`, 2],
