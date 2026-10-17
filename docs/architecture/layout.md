@@ -284,7 +284,10 @@
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components;
   `web/src/marks.ts` is the ONE place a state is drawn (status glyphs, priority bars, a shape and a word —
   never a pill; `web-ui.md` › Status marks), read by every screen, the site and its tour mocks, and
-  `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`); and
+  `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`);
+  `web/src/zoom.ts` is the big-screen zoom (past ~3000px, to 1.3 at 3840) and its CSS-px helpers (`rectOf`,
+  `pointOf`, `viewportOf`, `clientOf`) every rect → style site uses, installed first by `web/src/zoom-boot.ts`
+  (`web-ui.md` › Big screens); and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
   Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set and the Repo-setups scenarios A–N as `RepoFacts` (a

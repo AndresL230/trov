@@ -13,5 +13,5 @@ export const landingChunk = lazyChunk<typeof LandingModule>(() => import("./land
 export function landingView(p: LandingProps): string {
   const m = landingChunk.get();
   if (m) return m.landingView(p);
-  return `<div role="main" aria-busy="true" style="min-height:100vh">${landingChunk.failed() ? chunkFailedView("This page") : ""}</div>`;
+  return `<div role="main" aria-busy="true" style="min-height:calc(100 * var(--vh))">${landingChunk.failed() ? chunkFailedView("This page") : ""}</div>`;
 }

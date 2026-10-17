@@ -28,6 +28,7 @@
 // Nothing here touches the page behind: it is `data-morph="landing"`, so every repaint patches it.
 
 import { FX_EXIT_MS, FX_MOVE_MS, VT_CLASS, VT_NAME, fxMode, stepKey, swipeStep, trapIndex, type FeatureState } from "./site-feature-core";
+import { clientOf, viewportOf } from "./zoom";
 export * from "./site-feature-core";
 
 /** The focusable controls of a dialog, in order — what Tab cycles through. */
@@ -79,7 +80,7 @@ export function createFeatureCtl(d: FeatureDeps) {
     if (unlock) return;
     const root = document.documentElement;
     const [o, p] = [root.style.overflow, root.style.paddingRight];
-    const bar = innerWidth - root.clientWidth;
+    const bar = Math.round(viewportOf().width - clientOf().width);   // CSS px both (zoom.ts)
     root.style.overflow = "hidden";
     if (bar > 0) root.style.paddingRight = `${bar}px`;
     unlock = () => { root.style.overflow = o; root.style.paddingRight = p; unlock = null; };

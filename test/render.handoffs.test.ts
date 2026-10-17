@@ -215,7 +215,7 @@ describe("surface cards — handoffs, prompts, new doc", () => {
   });
 
   it("the three form cards (prompt editor, new handoff, new doc) are surfaces", () => {
-    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"';
+    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"';
     const editor = promptEditorView({ draft: blankPromptDraft(), takenSlugs: [] });
     const handoff = newHandoffView({ draft: blankHandoff(), me: "AndresL230", persons });
     const doc = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces: [{ key: "technical", label: "Technical" }], sections: ["reference"] });

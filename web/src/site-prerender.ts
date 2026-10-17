@@ -26,6 +26,7 @@ import { docsView } from "./docs";
 import { docsMarkdown, markdownFooter } from "./docs-content";
 import { landingQuestions } from "./site-questions";
 import { llmsFullTxt, llmsTxt, markdownPages } from "./llms";
+import { ZOOM_BOOT } from "./zoom";
 
 /** The stored theme, read as main.ts / pricing-page.ts / legal-page.ts read it (`trov.theme`, or the
  *  pre-rename `canopy.theme`; Midnight is Dark; System follows the OS). It paints `<html>` in that theme's
@@ -63,13 +64,15 @@ export const FONT_PRELOAD = `<link rel="preload" href="/src/fonts/geist-latin.wo
 // its own content clear with env(safe-area-inset-*) (trov.css, the phone rules). favicon.ico is for
 // browsers without SVG favicons (Safari); the SVG, listed last, wins everywhere else — before JS runs it
 // follows prefers-color-scheme, and once the app paints web/src/favicon.ts repoints it at the app's theme.
-// Type comes from Trov's own origin (FONT_PRELOAD): no page asks a third party for anything.
+// Type comes from Trov's own origin (FONT_PRELOAD): no page asks a third party for anything. ZOOM_BOOT (zoom.ts)
+// sets the big-screen zoom before the body is parsed, so a 4K window never paints a page at 1× first.
 function documentHtml(d: DocumentParts): string {
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    ${ZOOM_BOOT}
     ${d.head}
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />

@@ -549,7 +549,7 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
   // `.cnpy-board`: under a tablet's width the columns keep a readable width and the board
   // scrolls sideways inside itself, a column per snap (trov.css). On a big screen a column stops at
   // --board-col-max and the board keeps to the left under its toolbar (web-ui.md › Big screens).
-  return `<div class="cnpy-board" style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,var(--board-col-max)))">${cols}</div>`;
+  return `<div class="cnpy-board" style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100 * var(--vh) - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,var(--board-col-max)))">${cols}</div>`;
 }
 
 /** The whole queue screen: toolbar + Board or Table. */
@@ -591,7 +591,7 @@ export interface NewTicketProps {
  *  shell's own padding and a bottom breath. The form's card and the detail's
  *  two columns both take it, so a ticket screen fills the window it is in
  *  rather than floating in the top third of a large one. */
-const CARD_MIN_H = "calc(100vh - 210px)";
+const CARD_MIN_H = "calc(100 * var(--vh) - 210px)";
 
 const FIELD_LABEL = "display:block;font-size:13px;font-weight:500;margin-bottom:8px";
 const TEXT_INPUT =

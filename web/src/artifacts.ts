@@ -72,7 +72,7 @@ const metaText = (text: string, size = 12): string => `<span style="font-size:${
 const isTicketStatus = (s: string): s is TicketStatus => (TICKET_STATUSES as readonly string[]).includes(s);
 const ticketStatusWord = (s: string): string => (isTicketStatus(s) ? TICKET_STATUS_LABEL[s] : s);
 const MONO_VAL = "font-family:var(--label);font-size:11.5px;color:var(--fg-70)";
-const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px";
 const MENU = "background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;box-shadow:0 14px 38px rgba(0,0,0,.3)";
 const OUTLINE_BTN = "padding:7px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)";
 /** The toast shown when the author makes a page private (it replaced a standing banner). */
@@ -457,7 +457,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
     case "svg":
       return `<div class="art-svg" style="display:grid;place-items:center;padding:40px 24px;min-height:320px;background:var(--bg);color:var(--fg);overflow-x:auto">${sanitizeSvg(d.content ?? "")}</div>`;
     case "markdown":
-      return `<div style="background:var(--bg);padding:36px clamp(20px,4vw,56px) 44px"><div class="cnpy-md" style="max-width:760px;margin:0 auto">${renderMarkdown(d.content ?? "")}</div></div>`;
+      return `<div style="background:var(--bg);padding:36px clamp(20px,4 * var(--vw),56px) 44px"><div class="cnpy-md" style="max-width:760px;margin:0 auto">${renderMarkdown(d.content ?? "")}</div></div>`;
     case "mermaid": {
       const mk = `${key}|${p.theme}`;
       const box = "display:grid;place-items:center;padding:36px 24px;min-height:300px;background:var(--bg);color:var(--fg-40);font-size:12.5px;overflow-x:auto";
@@ -477,7 +477,7 @@ function contentBlock(p: ArtProps, d: ArtifactDetailDTO): string {
       // `default-src 'none'` — the browser's PDF viewer renders it, and nothing in it
       // can run as a page in Trov's origin.
       return `<div style="background:var(--bg)">
-        <iframe title="${attr(d.title)}" src="${attr(raw)}" style="display:block;width:100%;height:78vh;min-height:480px;border:0;background:#fff"></iframe>
+        <iframe title="${attr(d.title)}" src="${attr(raw)}" style="display:block;width:100%;height:calc(78 * var(--vh));min-height:480px;border:0;background:#fff"></iframe>
         <div style="padding:10px 14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--fg-55)"><a href="${attr(raw)}" target="_blank" rel="noopener" class="cnpy-link" style="color:var(--accent);font-weight:500">Open PDF in a new tab</a></div>
       </div>`;
     default: {
@@ -527,7 +527,7 @@ function viewerView(p: ArtProps, d: ArtifactDetailDTO): string {
   </button>`;
 
   const verMenu = ui.verMenu ? `<div data-act="artCloseMenus" style="position:fixed;inset:0;z-index:29"></div>
-    <div role="menu" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:320px;max-width:calc(100vw - 40px);${MENU};padding:5px;animation:cnpy-pop .14s ease both">
+    <div role="menu" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:320px;max-width:calc(100 * var(--vw) - 40px);${MENU};padding:5px;animation:cnpy-pop .14s ease both">
       <div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.08em;color:var(--fg-40);padding:6px 10px 4px">VERSIONS</div>
       <div class="cnpy-scroll" style="max-height:320px;overflow-y:auto">
       ${[...versions].reverse().map((x) => `<button data-act="artOpen" data-arg="${attr(vArg(x.version_no))}" role="menuitem" class="cnpy-menurow" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:7px 10px;border-radius:7px">
@@ -714,7 +714,7 @@ function diffView(p: ArtProps, d: ArtifactDetailDTO, pair: { a: number; b: numbe
   }
 
   const openArg = pair.b === d.current_version ? d.slug : `${d.slug}@v${pair.b}`;
-  return `<div data-screen-label="Version diff" style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px">
+  return `<div data-screen-label="Version diff" style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px">
     <div style="font-family:var(--label);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.11em;color:var(--fg-40);margin-bottom:11px">Compare versions <span style="color:var(--border-strong);margin:0 2px">/</span> ${d.kind.toUpperCase()}</div>
     <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">${esc(d.title)}</h2>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:16px">
@@ -903,7 +903,7 @@ export function artifactsDialogs(p: ArtProps): string {
   const vno = d.version.version_no;
   const shell = (w: number, inner: string, label: string) => `<div data-act="artCloseDialogs" style="position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);animation:cnpy-fade .14s ease"></div>
     <div style="position:fixed;inset:0;z-index:61;display:grid;place-items:center;padding:16px;pointer-events:none">
-      <div role="dialog" aria-modal="true" aria-label="${label}"${surface(`pointer-events:auto;width:min(${w}px,100%);max-height:calc(100vh - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both`)}>${inner}</div>
+      <div role="dialog" aria-modal="true" aria-label="${label}"${surface(`pointer-events:auto;width:min(${w}px,100%);max-height:calc(100 * var(--vh) - 32px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 20px 60px rgba(0,0,0,.45);animation:cnpy-pop .2s ease both`)}>${inner}</div>
     </div>`;
 
   if (p.ui.nv) return shell(820, newVersionDialog(p, d, p.ui.nv), "New version");
@@ -979,7 +979,7 @@ function newVersionDialog(p: ArtProps, d: ArtifactDetailDTO, nv: ArtNewVersion):
   });
 
   const source = nv.tab === "edit"
-    ? `<textarea data-act="artNvText" data-field="artNvText" class="cnpy-input cnpy-scroll" spellcheck="false" aria-label="Content" style="width:100%;height:min(46vh,440px);resize:vertical;padding:12px 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-family:var(--code);font-size:12px;line-height:1.6;outline:none;white-space:pre">${esc(nv.text)}</textarea>
+    ? `<textarea data-act="artNvText" data-field="artNvText" class="cnpy-input cnpy-scroll" spellcheck="false" aria-label="Content" style="width:100%;height:min(46 * var(--vh),440px);resize:vertical;padding:12px 13px;border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);font-family:var(--code);font-size:12px;line-height:1.6;outline:none;white-space:pre">${esc(nv.text)}</textarea>
       ${nv.base !== latestNo ? `<div style="font-size:12px;color:var(--fg-55);margin-top:7px">Starting from v${nv.base}, an older version. Saving it makes this text the latest again.</div>` : ""}`
     : !nv.file
       ? `<div data-art-drop="nv" style="border:1px dashed var(--border-strong);border-radius:11px;padding:48px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px">

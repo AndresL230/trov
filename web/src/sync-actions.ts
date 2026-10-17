@@ -18,6 +18,7 @@ import { SYNC_MAX_BATCHES, type SyncRunView, type SyncStatusView } from "@shared
 import { ApiError, Unauthorized, adminBackfill, getSync, type SyncBatchBody } from "./api";
 import { morph } from "./morph";
 import { syncControl, syncDriving, syncLive, syncOverlay, syncRepoLabel, type SyncProps, type SyncUi } from "./sync";
+import { clientOf, rectOf } from "./zoom";
 
 export interface SyncHost {
   mount: HTMLElement;
@@ -63,9 +64,9 @@ export function createSyncController(h: SyncHost) {
     if (!panel) return;
     const btn = h.mount.querySelector<HTMLElement>("[data-sync-btn]");
     if (btn) {
-      const r = btn.getBoundingClientRect();
+      const r = rectOf(btn);                // CSS px (zoom.ts), the window's width too
       h.mount.style.setProperty("--sync-top", `${Math.round(r.bottom + 6)}px`);
-      h.mount.style.setProperty("--sync-right", `${Math.max(8, Math.round(document.documentElement.clientWidth - r.right))}px`);
+      h.mount.style.setProperty("--sync-right", `${Math.max(8, Math.round(clientOf().width - r.right))}px`);
     }
     // The control that held focus is gone (Sync now, once the run starts): the dialog takes it.
     const a = document.activeElement;

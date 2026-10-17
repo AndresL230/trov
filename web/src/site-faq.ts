@@ -16,6 +16,8 @@
 // One delegated listener on the document serves every `.site-faq` on the page, and survives the page
 // being repainted (the SPA's landing page; the standalone pricing page).
 
+import { rectOf } from "./zoom";
+
 const DURATION = 380;
 const EASING = "cubic-bezier(.4, 0, .2, 1)";
 const running = new WeakMap<HTMLElement, Animation>();
@@ -28,7 +30,7 @@ function move(d: HTMLDetailsElement, open: boolean): void {
   d.dataset.open = open ? "1" : "0";
   if (!box || still() || typeof box.animate !== "function") { running.get(box as HTMLElement)?.cancel(); d.open = open; return; }
   // Where the box is now: mid-flight if a click interrupts it, else closed (0) or open (its full height).
-  const from = d.open ? box.getBoundingClientRect().height : 0;
+  const from = d.open ? rectOf(box).height : 0;      // CSS px (zoom.ts), as scrollHeight and the keyframes are
   running.get(box)?.cancel();
   d.open = true; // the content must be laid out to be measured, and to be seen while it closes
   const full = box.scrollHeight;

@@ -25,6 +25,7 @@
 // — exactly what a <select>'s `change` dispatched. The styles live in trov.css.
 
 import { esc, attr } from "./ui";
+import { clientOf, rectOf, viewportOf } from "./zoom";
 
 export interface DropdownOption {
   value: string;
@@ -196,14 +197,15 @@ export function createDropdowns(h: DropdownHost): Dropdowns {
 
   /** Under the trigger, left edges aligned; above it when it does not fit below and there is
    *  more room there; pulled in from the viewport's edges. `offset*` sizes, so the entrance's
-   *  scale does not skew them. */
+   *  scale does not skew them. CSS px throughout (zoom.ts: the trigger's rect and the window, read through
+   *  `rectOf` / `viewportOf`, so the big-screen zoom does not move it twice). */
   function place(): void {
     const id = ui().open;
     if (!id) return;
     const t = triggerOf(id), pop = popOf(id);
     if (!t || !pop) return;
-    const r = t.getBoundingClientRect();
-    const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    const r = rectOf(t);
+    const vw = clientOf().width, vh = viewportOf().height;
     const s = pop.style;
     const scrolled = pop.scrollTop;
     s.minWidth = `${Math.round(r.width)}px`;

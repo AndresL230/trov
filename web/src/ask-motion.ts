@@ -40,6 +40,8 @@
 //      The composer area growing under it (a chip row, another line) shortens the scroller: `askKeepBottom` moves
 //      the view down with it, so nothing ends up under the composer.
 
+import { rectOf } from "./zoom";
+
 /** The app's motion clock in ms (trov.css `:root` `--fx-fast` / `--fx-base` / `--fx-slow`), and the exit's wait. */
 export const ASK_FX = { fast: 180, base: 240, slow: 300, exit: 200 } as const;
 /** The app's curves: `--fx-ease`, and the entrance's rise (`[data-enter] .cnpy-rise`). */
@@ -93,7 +95,7 @@ export function askGlideDock(root: ParentNode, reduce = reducedMotion()): number
   let n = 0;
   for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-ask-dock]"))) {
     const at = el.getAttribute("data-ask-dock") ?? "";
-    const top = el.getBoundingClientRect().top;
+    const top = rectOf(el).top;              // CSS px (zoom.ts), as the translate below is
     const was = docks.get(el);
     docks.set(el, { top, at });
     if (!was || was.at === at || reduce || Math.abs(was.top - top) < 2 || typeof el.animate !== "function") continue;

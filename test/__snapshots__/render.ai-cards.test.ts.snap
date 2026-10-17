@@ -1,8 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`field absent — each screen renders exactly what it did before Phase C > Review (no row carries \`ai\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="review" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="review" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -199,8 +199,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
 `;
 
 exports[`field absent — each screen renders exactly what it did before Phase C > Unplaced (no row carries \`ai\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="maintenance" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="maintenance" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -297,7 +297,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
     <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">Things an agent produced but couldn&#39;t place. Read one, then file it or throw it away.</div>
     <div class="cnpy-surface" style="display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px">
     <div class="cnpy-scroll" style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border);overflow-y:auto;overflow-x:hidden;max-height:640px"><button data-act="maintSelect" data-arg="7" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:var(--hover);transition:background .12s ease">
@@ -363,8 +363,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
 `;
 
 exports[`field absent — each screen renders exactly what it did before Phase C > ticket detail (no \`ai\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="ticketdetail" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="ticketdetail" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -461,8 +461,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px">
-    <div class="cnpy-td-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 258px;gap:34px;min-height:calc(100vh - 210px)">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px">
+    <div class="cnpy-td-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 258px;gap:34px;min-height:calc(100 * var(--vh) - 210px)">
       <div style="min-width:0;display:flex;flex-direction:column">
         <div style="display:flex;align-items:flex-start;gap:10px;margin:0 0 22px">
           <h2 style="margin:0;flex:1;min-width:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Login page shows a blank screen on Safari</h2>
