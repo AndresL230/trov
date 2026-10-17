@@ -297,6 +297,15 @@ export function createAskController(host: AskHost): AskController {
     }).finally(paint);
   }
 
+  /** The conversations others shared in the org: read on arriving at Ask (they change when someone else shares). */
+  function reloadShared(): void {
+    if (ui().shared.status === "idle") ui().shared = { status: "loading", data: [] };
+    Promise.resolve().then(() => api.listShared()).then((data) => { ui().shared = { status: "ok", data }; }).catch((e) => {
+      if (isUnauthorized(e)) host.unauth(e);
+      else ui().shared = { ...ui().shared, status: ui().shared.data.length ? "ok" : "error" };
+    }).finally(paint);
+  }
+
   function newThread(where: AskWhere = "page"): void {
     if (streams[where]) streams[where]!.abort();
     delete streams[where];
@@ -336,6 +345,8 @@ export function createAskController(host: AskHost): AskController {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...ui().page, status: "error" });
       fail(e, "Couldn't open this thread.");
+      // A row of Shared in <org> that its owner has since stopped sharing (or deleted): the list is read again.
+      if (ui().shared.data.some((t) => t.id === id)) reloadShared();
     }).finally(paint);
   }
 
@@ -538,6 +549,7 @@ export function createAskController(host: AskHost): AskController {
       }).finally(paint);
     }
     reloadThreads();
+    reloadShared();
   }
 
   function enter(threadId: number | null): void {

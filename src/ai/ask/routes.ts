@@ -2,7 +2,8 @@
 // shared/ai-ask-core.ts), COOKIE ONLY — a request carrying an Authorization header is refused (`cookieOnly`;
 // CLAUDE.md invariant 8), and none of this is an MCP tool. `tenantGate` has already resolved `c.var.ctx`, the cookie
 // person's live membership of that org; every thread, message, card and attachment is that person's own, so anyone
-// else's is the one `not_found`.
+// else's is the one `not_found` — except that another member may READ a thread its owner shared with the org
+// (0076_ask_sharing: `GET /ask/threads/:id`, `GET /ask/shared`; every write still names the owner).
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../auth/principal";
@@ -21,9 +22,9 @@ import {
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
-  attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
-  insertMessage, linkArtifact, listActions, listMessages, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments, pendingHolder,
-  putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, searchThreads, setMessageContent, setThreadTitle, startTurn,
+  attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAction, getAskSettings, getMessage, getSharedThread, getThread, groupActions, insertAction,
+  insertMessage, linkArtifact, listActions, listMessages, listSharedThreads, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments, pendingHolder,
+  putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, searchThreads, setMessageContent, setThreadShared, setThreadTitle, startTurn,
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
 } from "../../data/ask";
 import { orgIdentityOf, appBase } from "../../tools/org-links";
@@ -624,6 +625,14 @@ export function threadGroup(t: Pick<ChatThreadRow, "pinned" | "updated_at">, now
 const summaryOf = (t: ChatThreadRow): AskThreadSummary => ({
   id: t.id, title: t.title, pinned: t.pinned === 1, mode: t.mode, auto: t.auto_mode === 1, origin: t.origin, contextRef: t.context_ref,
   hasDraft: t.draft.trim().length > 0, group: threadGroup(t, nowDate()), createdAt: t.created_at, updatedAt: t.updated_at,
+  shared: t.shared_at !== null,
+});
+
+/** Someone else's thread as a member of the org reads it (shared, read-only): none of the owner's own settings — no
+ *  draft, no pin, no Auto — and whose it is. */
+const viewerSummaryOf = (t: ChatThreadRow): AskThreadSummary => ({
+  ...summaryOf(t), pinned: false, auto: false, hasDraft: false, group: threadGroup({ pinned: 0, updated_at: t.updated_at }, nowDate()),
+  shared: true, owner: t.handle, viewer: true,
 });
 
 /** FTS5's snippet with its marker characters → the text and the match's offsets. */
@@ -639,6 +648,16 @@ export function snippetOffsets(raw: string | null): AskSearchHit["snippet"] {
   }
   return { text, matches };
 }
+
+/** Threads other members shared in this org (read-only for the person; their own shared ones are in their list). */
+askApp.get(ASK_ROUTES.shared, async (c) => {
+  try {
+    return c.json({ threads: (await listSharedThreads(c.var.ctx, me(c))).map(viewerSummaryOf) });
+  } catch (e) {
+    console.error("ask shared", e instanceof Error ? e.name : "error");
+    return c.json({ error: "Couldn't read the shared threads" }, 503);
+  }
+});
 
 askApp.get(ASK_ROUTES.threads, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
@@ -708,12 +727,77 @@ async function threadOr404(c: C): Promise<ChatThreadRow | Response> {
 }
 
 askApp.get("/ask/threads/:id", async (c) => {
-  const t = await threadOr404(c);
-  if (t instanceof Response) return t;
+  const id = positiveId(c.req.param("id"));
+  const own = id === null ? null : await getThread(c.var.ctx, me(c), id);
+  // Not the person's own: a thread another member SHARED in this org reads read-only; anything else — private,
+  // another org's, unknown, a removed member's — is the same 404 (its existence never shows).
+  const shared = own || id === null ? null : await getSharedThread(c.var.ctx, id);
+  const t = own ?? shared;
+  if (!t) return c.json({ error: "not_found" }, 404);
   const [rows, actions] = await Promise.all([listMessages(c.var.ctx, t.id), listActions(c.var.ctx, t.id)]);
-  const body: AskThreadDetail = { thread: { ...summaryOf(t), draft: t.draft }, messages: rows.map((m) => messageOf(m, actions)) };
+  const messages = rows.map((m) => messageOf(m, actions));
+  const body: AskThreadDetail = own
+    ? { thread: { ...summaryOf(t), draft: t.draft }, messages }
+    : { thread: { ...viewerSummaryOf(t), draft: "" }, messages: await asViewer(c.var.ctx, me(c), messages) };
   return c.json(body);
 });
+
+/**
+ * A shared thread as ANOTHER member reads it (0076_ask_sharing; ask.md › Sharing a conversation). What the owner asked
+ * and what Trov wrote are shared as written; what the stored answer resolved FOR THE OWNER is resolved again for the
+ * reader, so an item only the owner can see (their private artifact) never shows its title, status or link:
+ *  - every ref the thread names (sources, item cards, diagram nodes, context chips, steps' results, cards' items and
+ *    done lines, a saved page) is re-read as the reader in one batch, and what they can't see is dropped (a diagram
+ *    node keeps its label and loses its link);
+ *  - attachments are the owner's PRIVATE artifacts: the reader gets each file's name, kind and size, never its slug,
+ *    hash or preview; opening one is the private artifact's own rule (its author only), so it stays closed;
+ *  - a card is never editable or undoable.
+ */
+async function asViewer(ctx: TenantContext, viewer: string, messages: AskMessage[]): Promise<AskMessage[]> {
+  const refs = new Set<string>();
+  for (const m of messages) {
+    m.cites.forEach((x) => refs.add(x.ref));
+    m.context.forEach((r) => refs.add(r));
+    m.activity.forEach((st) => st.results.forEach((r) => refs.add(r)));
+    for (const b of m.blocks) {
+      if (b.kind === "items") b.items.forEach((x) => refs.add(x.ref));
+      else if (b.kind === "diagram") b.diagram.nodes.forEach((n) => { if (n.ref) refs.add(n.ref); });
+      else if (b.kind === "save_form" && b.form.saved) refs.add(`artifact:${b.form.saved.slug}`);
+    }
+    for (const a of m.actions) { if (a.ref) refs.add(a.ref); if (a.preview.item) refs.add(a.preview.item.ref); }
+  }
+  const named = [...refs].map(normalRef).filter((r) => parseAskRef(r) !== null);
+  const seen = named.length ? await resolveViews(ctx, viewer, named, nowDate()) : new Map<string, RefView>();
+  const view = (ref: string): RefView | null => seen.get(normalRef(ref)) ?? null;
+  const sees = (ref: string): boolean => seen.has(normalRef(ref));
+  const visible = (xs: readonly RefView[]): RefView[] => xs.flatMap((x) => { const now = view(x.ref); return now ? [now] : []; });
+  const block = (b: AskBlock): AskBlock => {
+    if (b.kind === "items") return { ...b, items: visible(b.items) };
+    if (b.kind === "diagram") {
+      return { ...b, diagram: { ...b.diagram, nodes: b.diagram.nodes.map((n) => (n.ref && sees(n.ref) ? { ...n, view: view(n.ref) } : { ...n, ref: null, view: null })) } };
+    }
+    if (b.kind === "save_form") return { ...b, form: { ...b.form, saved: b.form.saved && sees(`artifact:${b.form.saved.slug}`) ? b.form.saved : null } };
+    return b;
+  };
+  return messages.map((m) => ({
+    ...m,
+    cites: visible(m.cites),
+    context: m.context.filter(sees),
+    activity: m.activity.map((st) => ({ ...st, results: st.results.filter(sees) })),
+    blocks: m.blocks.map(block),
+    attachments: m.attachments.map((f) => ({ id: f.id, slug: "", title: f.title, kind: f.kind, contentType: f.contentType, size: f.size, sha256: "" })),
+    actions: m.actions.map((a) => {
+      const hidden = a.ref !== null && !sees(a.ref);
+      return {
+        ...a, editable: [], undo: false,
+        ref: hidden ? null : a.ref,
+        preview: { ...a.preview, item: a.preview.item ? view(a.preview.item.ref) : null },
+        // A saved answer the reader can't see: not its title or address either.
+        result: hidden && a.tool === "save_artifact" ? null : a.result,
+      };
+    }),
+  }));
+}
 
 askApp.patch("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
@@ -723,7 +807,11 @@ askApp.patch("/ask/threads/:id", async (c) => {
   const st = await standing(c.var.ctx);
   if (parsed.data.auto === true && !st.chatAuto) return c.json({ error: "auto_off", message: "An admin turned off Auto for this org. Trov asks before every change." }, 409);
   if (parsed.data.mode && !st.modes.includes(parsed.data.mode)) return c.json({ error: "mode_unavailable" }, 403);
-  await patchThread(c.var.ctx, me(c), t.id, parsed.data);
+  const { shared, ...rest } = parsed.data;
+  await patchThread(c.var.ctx, me(c), t.id, rest);
+  // Share with the org / stop sharing (0076_ask_sharing): the owner's own thread only — `threadOr404` answered 404 to
+  // anyone else, a member reading it shared included.
+  if (shared !== undefined) await setThreadShared(c.var.ctx, me(c), t.id, shared);
   return c.json({ thread: summaryOf((await getThread(c.var.ctx, me(c), t.id))!) });
 });
 

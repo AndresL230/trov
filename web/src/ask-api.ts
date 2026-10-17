@@ -72,6 +72,8 @@ export interface AskStreamOpts { onEvent(e: AskEvent): void; signal?: AbortSigna
 export interface AskApi {
   getState(): Promise<AskState>;
   listThreads(): Promise<AskThreadSummary[]>;
+  /** `GET /ask/shared`: conversations other members shared in this org — each with its `owner`, read-only here. */
+  listShared(): Promise<AskThreadSummary[]>;
   searchThreads(q: string, signal?: AbortSignal): Promise<AskSearchHit[]>;
   getThread(id: number): Promise<AskThreadDetail>;
   patchThread(id: number, patch: AskThreadPatch): Promise<AskThreadSummary>;
@@ -103,6 +105,7 @@ export interface AskApi {
 export const askApi: AskApi = {
   getState: () => send<AskState>("GET", ASK_ROUTES.state),
   listThreads: () => send<{ threads: AskThreadSummary[] }>("GET", ASK_ROUTES.threads).then((r) => r.threads),
+  listShared: () => send<{ threads: AskThreadSummary[] }>("GET", ASK_ROUTES.shared).then((r) => r.threads),
   searchThreads: (q, signal) => send<{ hits: AskSearchHit[] }>("GET", `${ASK_ROUTES.threads}?q=${encodeURIComponent(q)}`, undefined, signal).then((r) => r.hits),
   getThread: (id) => send<AskThreadDetail>("GET", ASK_ROUTES.thread(id)),
   patchThread: (id, patch) => send<{ thread: AskThreadSummary }>("PATCH", ASK_ROUTES.thread(id), patch).then((r) => r.thread),

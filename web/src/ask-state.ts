@@ -52,6 +52,10 @@ export interface AskUi {
   renaming: { id: number; text: string } | null;
   /** The thread whose Delete is asking first (`confirmModal`, QA-2): a hard delete with no undo. */
   threadDelete: { id: number; title: string } | null;
+  /** `GET /ask/shared`: conversations OTHER members shared in this org (read-only here; 0076_ask_sharing). */
+  shared: AskLoad<AskThreadSummary[]>;
+  /** The thread whose "Share with <org>" is asking first (`confirmModal`): what members will and won't see. */
+  threadShare: { id: number; title: string } | null;
   /** The two conversations. */
   page: AskConvo;
   panel: AskConvo;
@@ -84,6 +88,7 @@ export function initialAskUi(): AskUi {
     state: { status: "idle", data: null },
     threads: { status: "idle", data: [] },
     threadQ: "", hits: null, threadMenu: null, renaming: null, threadDelete: null,
+    shared: { status: "idle", data: [] }, threadShare: null,
     page: emptyConvo(), panel: emptyConvo(),
     refViews: {},
     threadsForced: null,
@@ -115,6 +120,10 @@ export interface AskView {
 export const askView = (app: AppState, where: AskWhere = "page"): AskView =>
   ({ app, ui: app.ask, where, look: { views: app.ask.refViews, persons: app.persons.data } });
 export const convoOf = (v: Pick<AskView, "ui" | "where">): AskConvo => v.ui[v.where];
+/** The conversation is someone else's, shared with the org (0076_ask_sharing): it is read, never continued — no
+ *  composer, no Edit / Regenerate / Save / Wrong? / follow-ups, no card decided (ask.md › Sharing a conversation). */
+export const isViewerConvo = (c: Pick<AskConvo, "thread">): boolean => c.thread?.viewer === true;
+export const readOnly = (v: Pick<AskView, "ui" | "where">): boolean => isViewerConvo(convoOf(v));
 
 /** One question to send (the composer, a starter, a follow-up, a rephrase chip, edit-and-resend, regenerate). */
 export interface AskSendInput {
@@ -160,7 +169,7 @@ export interface AskCtx {
   newThread(where?: AskWhere): void;
   /** Open a stored thread (`#ask/<id>`). */
   openThread(id: number): void;
-  /** Reload the thread list (after a rename, a pin, a delete, a new thread's title). */
+  /** Reload the thread list (after a rename, a pin, a share, a delete, a new thread's title). */
   reloadThreads(): void;
   /** Animate `key` out, then run `apply` (the state change that removes it) and repaint (ask-motion.ts rule 3).
    *  Under reduced motion `apply` runs at once. A second exit of the same key while one runs is ignored. */

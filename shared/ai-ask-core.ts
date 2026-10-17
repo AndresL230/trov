@@ -353,7 +353,8 @@ export const ASK_ROUTES = {
   peek: "/ask/peek",                                                  // POST { refs } → { items: PeekResult[] }
   item: (ref: string) => `/ask/item/${encodeURIComponent(ref)}`,      // GET → AskItem (the inspector, where no per-type route exists)
   threads: "/ask/threads",                                            // GET ?q= → AskThreadList | AskSearch
-  thread: (id: number) => `/ask/threads/${id}`,                       // GET → AskThreadDetail; PATCH AskThreadPatch; DELETE
+  thread: (id: number) => `/ask/threads/${id}`,                       // GET → AskThreadDetail (the owner's, or a shared one read-only); PATCH AskThreadPatch; DELETE
+  shared: "/ask/shared",                                              // GET → { threads: AskThreadSummary[] } — shared in this org by others
   exportThread: (id: number) => `/ask/threads/${id}/export`,          // GET → text/markdown
   stop: (id: number) => `/ask/threads/${id}/stop`,                    // POST → { ok }
   saveForm: (messageId: number) => `/ask/messages/${messageId}/save-form`, // POST { block? } → { block: save_form }
@@ -428,6 +429,12 @@ export interface AskThreadSummary {
   group: AskThreadGroup;
   createdAt: string;
   updatedAt: string;
+  /** Shared with the org (0076_ask_sharing): any member can read it, only its owner can continue it. Absent = private. */
+  shared?: boolean;
+  /** Its owner's handle — on a thread someone else shared (`viewer`), and on every `GET /ask/shared` row. */
+  owner?: string;
+  /** The person reading is NOT its owner: the thread is someone else's, shared with the org — read-only. */
+  viewer?: boolean;
 }
 
 /** One search hit: the thread, a snippet with the match's offsets, and how many of its messages matched. */
@@ -480,7 +487,8 @@ export interface AskThreadDetail {
   messages: AskMessage[];
 }
 
-export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string }
+/** `shared`: share the thread with the org (true) or stop sharing it (false) — its owner only. */
+export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string; shared?: boolean }
 
 /** `POST /ask/threads/:id/save` — the whole thread (no `messageId`), one answer, or one block of it. */
 export interface AskSaveBody {

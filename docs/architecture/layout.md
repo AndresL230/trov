@@ -243,6 +243,9 @@
   Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
+  Then `0076_ask_sharing` (Ask Trov) [`chat_threads.shared_at` and the partial index `idx_chat_threads_shared`: a
+  conversation its owner shared with the org, read-only for its other members; additive — `ask.md` › Sharing a
+  conversation].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

@@ -53,6 +53,7 @@
 
 import { esc, attr, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
+import { convoOf, readOnly } from "./ask-state";
 import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskMsg, type AskTurn } from "./ask-stream";
 import { AskApiError } from "./ask-api";
 import { segmented } from "./segmented";
@@ -754,16 +755,26 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
     : `<span class="ask-line-t">${esc(text)}</span>`}${reason}</span>${tail}${undo}</div>`;
 }
 
+/** A card on someone else's shared conversation (0076_ask_sharing): only its owner decides it, so a reader gets the
+ *  line it would become — what Trov proposed, and that it waits for the owner — with no field to edit, no Confirm. */
+function readerLine(v: AskView, vms: AskActionVm[]): string {
+  const owner = convoOf(v).thread?.owner;
+  const who = owner ? personName(v.look, owner) : "its owner";
+  return `<div class="ask-line is-off" data-morph-key="ln:${vms[0].id}:pending">${SHAPE.waiting()}<span class="ask-line-main"><span class="ask-line-t">${esc(`Proposed: ${lowerFirst(proposedText(vms, v.look))}`)}</span>${why(`Waiting for ${who} to confirm it.`)}</span></div>`;
+}
+
 /** One card / line for consecutive actions of one group (`shownParts`' `actions` entry). The pending ones are one
- *  card; the decided ones a line per outcome. */
+ *  card; the decided ones a line per outcome. A reader of someone else's shared conversation gets lines only. */
 export function actionGroupView(v: AskView, a: AskAnswer, ids: number[]): string {
   const vms = ids.map((id) => a.turn.actions[id]).filter((x): x is AskActionVm => !!x);
   if (!vms.length) return "";
+  const ro = readOnly(v);
   const pending = vms.filter((x) => x.state === "proposed" || x.state === "waiting" || x.state === "running");
   const out: string[] = [];
-  if (pending.length) out.push(cardView(v, pending));
+  if (pending.length) out.push(ro ? readerLine(v, pending) : cardView(v, pending));
   for (const cat of ["done", "undone", "cancelled", "expired", "failed"] as LineCat[]) {
-    const these = vms.filter((x) => catOf(x.state) === cat);
+    // A reader's lines never offer Undo: the server sends `undo: false` for them, and this says the same.
+    const these = vms.filter((x) => catOf(x.state) === cat).map((x) => (ro ? { ...x, undo: false } : x));
     if (these.length) out.push(lineView(v, these, cat));
   }
   return `<div class="ask-acts" data-ask-tween data-morph-list>${out.join("")}</div>`;

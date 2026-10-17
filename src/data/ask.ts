@@ -1,6 +1,7 @@
 // Ask Trov's rows (0066_ask; docs/architecture/ask.md). A TENANT module: every statement names `org_id`, bound
 // from the caller's context, AND the thread's OWNER — a thread is one person's, so another org's or another
-// person's thread, message, card or attachment is the one `null` / not found. Nothing here calls a model.
+// person's thread, message, card or attachment is the one `null` / not found. The one exception is READING a thread
+// its owner shared with the org (0076_ask_sharing, › sharing below). Nothing here calls a model.
 import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
 import type { AskMode, AskOrigin, AskWrongReason } from "@shared/ai-ask-core";
 
@@ -20,6 +21,8 @@ export interface ChatThreadRow {
   stop_requested: number;
   /** 1 = the person's hidden holder of pending attachments (0068_ask_pending): never listed, searched or opened. */
   pending: number;
+  /** When the owner shared it with the org (0076_ask_sharing): NULL = private. */
+  shared_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -125,6 +128,39 @@ export async function searchThreads(ctx: TenantContext, handle: string, q: strin
     ctx.orgId, handle, like, limit);
   for (const t of byTitle) if (!out.has(t.id)) out.set(t.id, { thread: t, snippet: null, matchCount: 0 });
   return [...out.values()].slice(0, limit);
+}
+
+// ── sharing (0076_ask_sharing) ───────────────────────────────────────────────
+//
+// The owner may share a thread with the org they asked it in; while shared, any LIVE member of the same org reads
+// it (read-only — every write above still names the owner). A thread whose owner is no longer a member of the org is
+// not shared with anyone: they could not stop sharing it any more. Unknown, private, pending, another org's, an
+// ex-member's: the one `null` / left out.
+
+/** `t.handle` is still a member of this org (the membership row exists; a removed member's is gone). */
+const OWNER_LIVE = `EXISTS (SELECT 1 FROM memberships m WHERE m.org_id = ? AND m.user_id = t.handle)`;
+
+/** A thread shared in this org, for any member to read; null when it is not (or is not there). */
+export function getSharedThread(ctx: TenantContext, id: number): Promise<ChatThreadRow | null> {
+  return first<ChatThreadRow>(ctx,
+    `SELECT t.* FROM chat_threads t WHERE t.id = ? AND t.org_id = ? AND t.pending = 0 AND t.shared_at IS NOT NULL AND ${OWNER_LIVE}`,
+    id, ctx.orgId, ctx.orgId);
+}
+
+/** The threads shared in this org by OTHER people (the person's own are in their own list): newest share first. */
+export function listSharedThreads(ctx: TenantContext, except: string, limit = 100): Promise<ChatThreadRow[]> {
+  return all<ChatThreadRow>(ctx,
+    `SELECT t.* FROM chat_threads t WHERE t.org_id = ? AND t.pending = 0 AND t.shared_at IS NOT NULL AND t.handle <> ? COLLATE NOCASE AND ${OWNER_LIVE}
+      ORDER BY t.shared_at DESC, t.id DESC LIMIT ?`,
+    ctx.orgId, except, ctx.orgId, limit);
+}
+
+/** Share (keeping the first share's time) or stop sharing — the owner's thread only. False when there is none. */
+export async function setThreadShared(ctx: TenantContext, handle: string, id: number, shared: boolean, at: string = nowIso()): Promise<boolean> {
+  const res = await run(ctx,
+    `UPDATE chat_threads SET shared_at = ${shared ? "COALESCE(shared_at, ?)" : "NULL"} WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0`,
+    ...(shared ? [at] : []), id, ctx.orgId, handle);
+  return (res.meta.changes ?? 0) > 0;
 }
 
 export interface ThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string }

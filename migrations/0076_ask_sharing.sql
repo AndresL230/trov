@@ -1,0 +1,24 @@
+-- 0076_ask_sharing — an Ask Trov conversation can be SHARED with its organization, read-only.
+--
+-- Until now a thread was private to its owner (`chat_threads.handle`; 0066_ask). The owner may now share it with the
+-- org they asked it in (`PATCH /ask/threads/:id { shared }`, a cookie route — never MCP) and stop sharing it again.
+-- While it is shared, any LIVE member of the SAME org can open it read-only (`GET /ask/threads/:id`, listed by
+-- `GET /ask/shared`); only the owner can continue, rename, pin, export or delete it, and deleting it deletes it for
+-- everyone. The owner's PRIVATE attachments stay private: a viewer sees a file's name, never its contents
+-- (docs/architecture/ask.md › Sharing a conversation).
+--
+-- chat_threads.shared_at  when the owner shared it; NULL = private (every existing thread). Stop sharing sets it back
+--                         to NULL. A pending holder (`pending = 1`) is never shared: every route leaves it out.
+--
+-- ADDITIVE ONLY: one nullable column and one index; no row is rewritten, and a Worker from before it keeps working
+-- (it never reads the column, and every thread stays its owner's alone). No new table and no new handle column:
+-- `chat_threads` is already in ORG_TABLES (an org's deletion) and its `handle` in HANDLE_COLUMNS, and an account's
+-- deletion already removes the person's threads, shared or not (src/deletion/person.ts).
+--
+-- ROLLBACK (by hand, after `wrangler rollback` to the Worker from before it): every shared thread becomes private
+-- again, nothing else is lost:
+--   DROP INDEX IF EXISTS idx_chat_threads_shared;
+--   ALTER TABLE chat_threads DROP COLUMN shared_at;
+--   DELETE FROM d1_migrations WHERE name = '0076_ask_sharing.sql';
+ALTER TABLE chat_threads ADD COLUMN shared_at TEXT;
+CREATE INDEX IF NOT EXISTS idx_chat_threads_shared ON chat_threads (org_id, shared_at) WHERE shared_at IS NOT NULL;

@@ -951,7 +951,9 @@ Polaris Badge, the 2026 Atlassian lozenge, Linear). There is no `statusBadge` an
    screens whose states are not a workflow (settings, connections, billing, the Repo verdicts, the platform
    pages) say what a state MEANS instead — `kindMark(word, kind)` over `STATE_KIND` (good / waiting / warn /
    bad / stopped / done / off) — so "Error" or "Suspended" looks the same on every page and no page picks
-   its own colour.
+   its own colour. An Ask conversation shared with the org is `sharedMark` (a two-people glyph, muted, and
+   "Shared"; alone in a thread row, `role="img"` named "Shared"; its `data-mtip` who can read it) — private,
+   the normal state, has none (`ask.md` › Sharing a conversation).
 4. **One soft label** — a fill, no border, sentence case, 12px / 500 — only where the state is the page's
    headline (the recommended plan on pricing, `.site-plan-badge`; "Recommended" on the MCP consent page).
 
