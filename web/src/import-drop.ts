@@ -1,7 +1,8 @@
 // Drop to import (the Library design's §10, docs/architecture/docs-library.md › The import screens): Markdown files
 // or a .zip dragged over a space's page — its home, a doc page, New page, the docs pane — or over a sidebar space row
-// open the import wizard on that space at its Preview step. Not on the import screen itself (its Files step has its
-// own drop zone).
+// open the import wizard on that space at its Preview step; over Library home or Imports (no space) at its Where
+// step with the files kept (owner ruling DR10). Not on Review, an archived space, or the import screen itself (its
+// Files step has its own drop zone).
 //
 // The overlay is ONE node on <body>, outside the app's mount, moved and filled here on each `dragover` — a drag never
 // repaints the app (a rerender per `dragover` would rebuild a page that is not `data-morph`ed). Over the main column
@@ -19,7 +20,16 @@ const OK_NAME = /\.(md|markdown|zip)$/i;
 
 export const DROP_BAD_TITLE = "Only Markdown files can be imported";
 export const DROP_SIDE_BAD = "Only Markdown files, or a .zip of them, can be imported.";
-export const dropTitle = (space: string): string => `Drop to import into ${space}`;
+export const dropTitle = (space: string | null): string => (space ? `Drop to import into ${space}` : "Drop to import");
+
+/** Owner ruling DR10: what the main column takes a drop for. A space's home, a doc in it or New page in it: that
+ *  (live) space. Library home and Imports: no space — the wizard opens at Where with the files kept. Anything else
+ *  (Review, an archived space — passed as no live space —, the import screen): nothing. */
+export function mainDropTarget(screen: string, live: { slug: string; name: string } | null): { slug: string | null; name: string | null } | null {
+  if (screen === "library" || screen === "imports") return { slug: null, name: null };
+  if (screen === "space" || screen === "docs" || screen === "newdoc") return live;
+  return null;
+}
 export const dropSub = (n: number): string => `${n === 1 ? "1 file" : `${n} Markdown files`}. You can check everything before it goes to Review.`;
 export const dropBadSub = (name: string | null): string => `${name ?? "That"} isn't a Markdown file. Drop .md files, or one .zip of them.`;
 export const dropBadToast = (name: string): string => `${name} isn't a Markdown file. Use .md files or a .zip of them.`;
@@ -40,11 +50,11 @@ export function splitDropped(files: readonly File[]): { ok: File[]; bad: File | 
 export interface DropHost {
   /** In the app, and not on the import screen. */
   enabled(): boolean;
-  /** The space the main column is a drop target for (a space's home, a doc in it, New page in it), or null. */
-  mainSpace(): { slug: string; name: string } | null;
+  /** What the main column is a drop target for (`mainDropTarget`): a space, no space (slug null), or null. */
+  mainSpace(): { slug: string | null; name: string | null } | null;
   spaceName(slug: string): string | null;
-  /** Good files dropped on `space`. */
-  drop(files: File[], space: string): void;
+  /** Good files dropped on `space` (null: no space yet — the wizard asks Where). */
+  drop(files: File[], space: string | null): void;
   /** What a refused drop says. */
   bad(msg: string): void;
 }
@@ -58,7 +68,7 @@ export function installImportDrop(host: DropHost, doc: Document = document): () 
   let lit: Element | null = null;
   let hideTimer: ReturnType<typeof setTimeout> | null = null;
   /** Where the drag is now (what the drop does). */
-  let target: { space: string; side: boolean } | null = null;
+  let target: { space: string | null; side: boolean } | null = null;
 
   const el = (): HTMLDivElement => {
     if (node) return node;
@@ -79,7 +89,7 @@ export function installImportDrop(host: DropHost, doc: Document = document): () 
   };
   const text = (sel: string, t: string) => { const x = node?.querySelector(sel); if (x) x.textContent = t; };
 
-  function show(mode: "main" | "side", info: { n: number; bad: boolean }, space: string, row: Element | null): void {
+  function show(mode: "main" | "side", info: { n: number; bad: boolean }, space: string | null, row: Element | null): void {
     const n = el();
     // The overlay lives on <body>: it takes the app's theme (its tokens) from the app's root.
     const theme = doc.querySelector("[data-cnpy-theme]")?.getAttribute("data-cnpy-theme");
@@ -90,7 +100,7 @@ export function installImportDrop(host: DropHost, doc: Document = document): () 
     if (main) Object.assign(n.style, { left: `${main.left}px`, top: `${main.top}px`, width: `${main.width}px`, height: `${main.height}px` });
     const tile = n.querySelector(".cnpy-impdrop-tile");
     if (tile) tile.innerHTML = info.bad ? BAN : UPLOAD;
-    const name = host.spaceName(space) ?? space;
+    const name = space === null ? null : host.spaceName(space) ?? space;
     text(".cnpy-impdrop-t", info.bad ? DROP_BAD_TITLE : dropTitle(name));
     text(".cnpy-impdrop-s", info.bad ? dropBadSub(null) : dropSub(info.n));
     const pill = n.querySelector<HTMLElement>(".cnpy-impdrop-pill");
@@ -115,8 +125,8 @@ export function installImportDrop(host: DropHost, doc: Document = document): () 
     const row = t?.closest?.(".cnpy-aside [data-drop-space]") ?? null;
     const inMain = t?.closest?.("#cnpy-main") ?? null;
     const main = inMain ? host.mainSpace() : null;
+    if (!row && !main) { if (target) hide(); return; }
     const space = row?.getAttribute("data-drop-space") ?? main?.slug ?? null;
-    if (!space) { if (target) hide(); return; }
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     target = { space, side: row !== null };

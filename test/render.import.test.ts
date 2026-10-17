@@ -30,7 +30,7 @@ import {
 } from "../web/src/import";
 import { reviewView, importGroups, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { sidebarView, NAV_CLOSED, navKeyOf, type SidebarProps } from "../web/src/sidebar";
-import { dragFiles, splitDropped, dropSub, dropTitle, DROP_TYPES } from "../web/src/import-drop";
+import { dragFiles, splitDropped, dropSub, dropTitle, mainDropTarget, DROP_TYPES } from "../web/src/import-drop";
 import { IMPORT_MARK, importRunMark } from "../web/src/marks";
 import { importErrorText } from "../web/src/import-actions";
 import { OrgApiError, PreviewBlocked } from "../web/src/api";
@@ -425,5 +425,18 @@ describe("drop to import (import-drop.ts)", () => {
     expect(dropTitle("Product")).toBe("Drop to import into Product");
     expect(dropSub(1)).toBe("1 file. You can check everything before it goes to Review.");
     expect(dropSub(3)).toBe("3 Markdown files. You can check everything before it goes to Review.");
+  });
+  it("owner ruling DR10: Library home and Imports take a drop with no space; Review and an archived space take none", () => {
+    const eng = { slug: "engineering", name: "Engineering" };
+    expect(mainDropTarget("library", null)).toEqual({ slug: null, name: null });
+    expect(mainDropTarget("imports", null)).toEqual({ slug: null, name: null });
+    expect(mainDropTarget("space", eng)).toEqual(eng);
+    expect(mainDropTarget("docs", eng)).toEqual(eng);
+    expect(mainDropTarget("newdoc", eng)).toEqual(eng);
+    // An archived space's page is passed as no live space: no target.
+    expect(mainDropTarget("space", null)).toBeNull();
+    expect(mainDropTarget("review", null)).toBeNull();
+    expect(mainDropTarget("import", null)).toBeNull();
+    expect(dropTitle(null)).toBe("Drop to import");
   });
 });

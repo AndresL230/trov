@@ -121,6 +121,20 @@ describe("reading the files", () => {
     expect(state.imp.step).toBe("preview");
     expect(state.imp.files.map((f) => f.title)).toEqual(["One", "Two"]);
   });
+
+  it("owner ruling DR10: dropped with no space (Library home, Imports), the wizard opens at Where with the files kept", async () => {
+    const { state, ctl } = setup();
+    ctl.dropTo([new File(["# One\n\nx"], "one.md")], null);
+    expect(state.screen).toBe("import");
+    expect(state.imp.space).toBeNull();
+    await settle();
+    expect(state.imp.step).toBe("where");
+    expect(state.imp.picks.map((p) => p.name)).toEqual(["one.md"]);
+    // Picking a space keeps them; Files lists them.
+    ctl.act("impSpace", "engineering", null);
+    ctl.act("impStep", "files", null);
+    expect(state.imp.picks.map((p) => [p.name, p.state])).toEqual([["one.md", "ready"]]);
+  });
 });
 
 describe("the run", () => {

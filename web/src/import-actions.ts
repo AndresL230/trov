@@ -54,7 +54,7 @@ export interface ImportController {
   /** Files picked with the file input or dropped on the Files step. */
   addFiles(files: readonly File[]): void;
   /** Files dropped on a space page or a sidebar space row: the wizard on that space, straight to Preview. */
-  dropTo(files: readonly File[], space: string): void;
+  dropTo(files: readonly File[], space: string | null): void;
 }
 
 /** A file of a pick, read: what the planner needs, the Markdown text, and how to get an image's bytes. */
@@ -495,10 +495,14 @@ export function createImportController(host: ImportHost): ImportController {
     rerender();
   }
 
-  function dropTo(files: readonly File[], space: string): void {
+  function dropTo(files: readonly File[], space: string | null): void {
     if (driverActive(ui().run)) { open(space); host.flash("An import is already running from this page. It has to finish first.", 4200); return; }
     open(space);
-    if (!ui().space) return;
+    if (!ui().space) {
+      // No space (Library home, Imports — owner ruling DR10): the wizard asks Where first, the files kept for Files.
+      if (space === null) addFiles(files);
+      return;
+    }
     ui().step = "files";
     autoPreview = true;
     addFiles(files);

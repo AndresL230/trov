@@ -10,7 +10,7 @@ import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
 import { REVIEW_EXIT_MS, REVIEW_FILTERS, importGroups, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
 import { createImportController } from "./import-actions";
-import { installImportDrop } from "./import-drop";
+import { installImportDrop, mainDropTarget } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
@@ -231,9 +231,8 @@ const impCtl = createImportController({
 installImportDrop({
   enabled: () => state.view === "app" && state.screen !== "import",
   mainSpace: () => {
-    if (state.screen !== "space" && state.screen !== "docs" && state.screen !== "newdoc") return null;
-    const slug = paneSpaceSlug(state);
-    return slug && liveSpaces(state).some((x) => x.slug === slug) ? { slug, name: spaceName(state, slug) } : null;
+    const slug = state.screen === "space" || state.screen === "docs" || state.screen === "newdoc" ? paneSpaceSlug(state) : null;
+    return mainDropTarget(state.screen, slug && liveSpaces(state).some((x) => x.slug === slug) ? { slug, name: spaceName(state, slug) } : null);
   },
   spaceName: (slug) => (liveSpaces(state).some((x) => x.slug === slug) ? spaceName(state, slug) : null),
   drop: (files, space) => impCtl.dropTo(files, space),
