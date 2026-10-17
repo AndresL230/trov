@@ -144,6 +144,16 @@ export function createImportController(host: ImportHost): ImportController {
     soon(() => host.mount.querySelector("#cnpy-main")?.scrollTo(0, 0));
   }
 
+  /** A step change replaces the step's whole block, and the button that had the focus with it: the focus goes to
+   *  the new step's heading (a keyboard user carries on from there), unless the person has put it somewhere since. */
+  function focusStep(): void {
+    soon(() => {
+      const a = document.activeElement;
+      if (a && a !== document.body && a.isConnected) return;
+      host.mount.querySelector<HTMLElement>("h2.cnpy-imp-h")?.focus({ preventScroll: true });
+    });
+  }
+
   function goStep(step: ImportStep): void {
     const u = ui();
     if (step !== "where" && !liveSpace(u.space)) return;
@@ -154,6 +164,7 @@ export function createImportController(host: ImportHost): ImportController {
     if (u.space) host.ensureSpace(u.space);
     rerender();
     scrollTop();
+    focusStep();
   }
 
   // ── reading the files ──────────────────────────────────────────────────────
@@ -357,6 +368,7 @@ export function createImportController(host: ImportHost): ImportController {
         state.badges = { ...state.badges, imports: Math.max(1, state.badges.imports ?? 0) };
         rerender();
         scrollTop();
+        focusStep();
         void drive();
       })
       .catch((e) => {
@@ -425,7 +437,7 @@ export function createImportController(host: ImportHost): ImportController {
     if (state.screen !== "import" && !error && run) {
       const n = run.counts.staged;
       host.flash(`${n} ${n === 1 ? "page" : "pages"} from ${r?.source ?? run.file_name} ${n === 1 ? "is" : "are"} in Review`, 6000, { label: "Open Review", act: "goReview", arg: "" });
-    } else rerender();
+    } else { rerender(); if (state.screen === "import") focusStep(); }
   }
 
   function retry(): void {

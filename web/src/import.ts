@@ -297,7 +297,7 @@ function whereStep(p: ImportWizardProps, spaces: SpaceDTO[]): string {
     }
   }
   return `<div data-morph-key="imp:where" style="${NARROW}">
-    <h2 style="${H2}">Where should the pages go?</h2>
+    <h2 class="cnpy-imp-h" tabindex="-1" style="${H2}">Where should the pages go?</h2>
     <p style="${SUB}">Pick a space. You can also put everything inside a page that already exists.</p>
     <div id="imp-space-l" style="${LABEL}">Space</div>
     <div class="cnpy-imp-sps" role="radiogroup" aria-labelledby="imp-space-l">${cards}</div>
@@ -333,7 +333,7 @@ function filesStep(p: ImportWizardProps, spaces: SpaceDTO[]): string {
   const list = ui.picks.length ? `<div${surface("padding:0;overflow:hidden;margin-top:14px")}>${ui.picks.map(pickRow).join("")}</div>` : "";
   const name = spaces.find((s) => s.slug === ui.space)?.name ?? ui.space ?? "";
   return `<div data-morph-key="imp:files" style="${NARROW}">
-    <h2 style="${H2}">Add your files</h2>
+    <h2 class="cnpy-imp-h" tabindex="-1" style="${H2}">Add your files</h2>
     <p style="${SUB}">Markdown files (.md), or one .zip of Markdown files. Folders inside a zip become pages with the files nested under them.</p>
     <input type="file" multiple accept="${attr(IMPORT_ACCEPT)}" data-imp-file hidden tabindex="-1" aria-hidden="true">
     <div class="cnpy-imp-drop" data-imp-drop data-over="${ui.dragOver ? "1" : "0"}" style="border-radius:10px">
@@ -355,7 +355,7 @@ function previewStep(p: ImportWizardProps, spaces: SpaceDTO[]): string {
   const ui = p.ui;
   const sp = spaces.find((s) => s.slug === ui.space) ?? null;
   const source = importSourceName(ui.picks);
-  const head = `<h2 style="${H2}">Check what will be added</h2>
+  const head = `<h2 class="cnpy-imp-h" tabindex="-1" style="${H2}">Check what will be added</h2>
     <p style="${SUB}">From <strong style="font-weight:600;color:var(--fg)">${esc(source)}</strong> into <strong style="font-weight:600;color:var(--fg)">${esc(whereWords(ui, spaces, p.pages))}</strong>. Nothing is added until you confirm.</p>`;
   if (p.pages === null) {
     return `<div data-morph-key="imp:preview">${head}${skeleton("imp-preview", "Checking the files…", `<div style="margin-top:20px">${skBox("100%", 64)}</div><div class="cnpy-imp-pgrid" style="margin-top:14px"><div>${skList(8, (i) => `<div style="display:flex;align-items:center;gap:8px;height:32px;padding-left:${12 + (i % 3) * 18}px">${skBox(14, 14)}${skLine(skW(i), 13, 1.4, "flex:1")}</div>`)}</div><div>${skBox("100%", 180)}</div></div>`)}</div>`;
@@ -452,7 +452,7 @@ function runStep(p: ImportWizardProps): string {
   const stalled = r.phase === "stalled";
   const now = r.phase === "starting" ? "Starting the import…" : r.phase === "finishing" ? "Finishing…" : r.current ? `${r.phase === "images" ? "Uploading" : "Adding"} ${r.current}` : "Adding pages…";
   return `<div data-morph-key="imp:progress"${surface("max-width:560px;padding:24px 26px 22px", { cls: "cnpy-imp-card" })}>
-    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px"><h2 style="font-size:16px;font-weight:600;margin:0">Adding pages to Review</h2><span style="font-size:16px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums">${pct}%</span></div>
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px"><h2 class="cnpy-imp-h" tabindex="-1" style="font-size:16px;font-weight:600;margin:0">Adding pages to Review</h2><span style="font-size:16px;font-weight:600;color:var(--accent);font-variant-numeric:tabular-nums">${pct}%</span></div>
     <div style="font-size:12.5px;color:var(--fg-55);margin-top:3px">${esc(r.source)} into ${esc(r.spaceName)}</div>
     <div class="cnpy-imp-bar" role="progressbar" aria-label="Import progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></div>
     <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--fg-70);font-variant-numeric:tabular-nums"><span>${r.pagesDone} of ${pagesN(r.pages)}</span><span>${r.images ? `${r.imagesDone} of ${plural(r.images, "image", "images")}` : "No images"}</span></div>
@@ -486,7 +486,7 @@ function doneCard(r: ImportDriverView): string {
     .map(([n, one, many]) => `<div><div style="font-size:16px;font-weight:600;font-variant-numeric:tabular-nums">${n}</div><div style="font-size:12px;color:var(--fg-55)">${esc(String(n === 1 ? one : many))}</div></div>`).join("")}</div>` : "";
   return `<div data-morph-key="imp:done"${surface("max-width:560px;padding:24px 26px 22px", { cls: "cnpy-imp-card" })}>
     ${tile}
-    <h2 style="font-size:20px;font-weight:600;letter-spacing:-0.015em;margin:14px 0 0">${esc(title)}</h2>
+    <h2 class="cnpy-imp-h" tabindex="-1" style="font-size:20px;font-weight:600;letter-spacing:-0.015em;margin:14px 0 0">${esc(title)}</h2>
     <p style="font-size:13px;line-height:1.55;color:var(--fg-70);margin:6px 0 0">${esc(lines.join(" "))}</p>
     ${cols}
     <div style="display:flex;align-items:center;gap:8px;margin-top:20px;flex-wrap:wrap">${staged > 0 ? btnPrimary("goReview", "Open Review ›") : ""}${btnOutline("goImports", "See import details")}${btnQuiet("impMore", "Import more")}</div>

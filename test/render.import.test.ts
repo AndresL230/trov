@@ -37,6 +37,7 @@ import { OrgApiError, PreviewBlocked } from "../web/src/api";
 import type { LibraryDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 import type { ImportRunView, ImportFile } from "@shared/docs-import-core";
 import css from "../web/src/trov.css?raw";
+import actionsSrc from "../web/src/import-actions.ts?raw";
 
 const T0 = "2026-10-15T10:00:00Z";
 const sp = (slug: string, name: string, pages = 0): SpaceDTO => ({
@@ -211,6 +212,16 @@ describe("the import wizard (`#import`)", () => {
     for (const act of ["goReview", "goImports", "impMore"]) expect(html).toContain(`data-act="${act}"`);
     // Every step is done once the run is.
     expect(html).not.toContain('data-s="now"');
+  });
+
+  it("a step change hands the focus to the new step's heading, never <body> (Batch B finding)", () => {
+    const run = { counts: { pages: 1, new_pages: 1, versions: 0, images: 0, skipped_files: 0, skipped_pages: 0, staged: 1, staged_new: 1, staged_versions: 0, unchanged: 0, failed: 0, images_uploaded: 0 } } as ImportRunView;
+    const steps = [wiz({ step: "where" }), wiz({ step: "files", picks: [zipPick] }), wiz({ step: "preview", picks: [zipPick], files: FILES, links: null }),
+      wiz({ step: "run", run: driver() }), wiz({ step: "run", run: driver({ phase: "done", run }) })];
+    for (const html of steps) expect(html).toMatch(/<h2 class="cnpy-imp-h" tabindex="-1"/);
+    // The controller moves it there after each step change, the run's start and its end.
+    expect(actionsSrc.match(/focusStep\(\);/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(actionsSrc).toMatch(/function focusStep\(\): void \{[\s\S]*?h2\.cnpy-imp-h[\s\S]*?focus\(\{ preventScroll: true \}\)/);
   });
 
   it("the done card's figures agree with their words: \"1 new page\", \"1 image\" (found in Batch B2's retest)", () => {
