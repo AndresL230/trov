@@ -12,7 +12,7 @@ the allowances and the switches: `ai.md`.
 | Contract (zod-free values, SPA-importable) | `shared/ai-ask-core.ts` — modes (`ASK_MODES`, the ONE table; re-exported from `shared/ai.ts`), limits, SSE events, `RefView`, blocks, cards, routes, DTOs |
 | Contract (zod) | `shared/ai-ask.ts` — `AskEventSchemas`, request bodies, DTO schemas |
 | Fixtures | `shared/ai-fixtures.ts` › Ask Trov — one transcript per design scenario, state / settings / threads / search / ref views; the same transcripts as files in `docs/superpowers/specs/ask-transcripts/` |
-| Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `migrations/0076_10_17_staging.sql` › `0076_ask_sharing` (`chat_threads.shared_at`) / `0077_ask_people_sharing` (`chat_thread_people`, `asked_by`); every statement in `src/data/ask.ts` |
+| Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `migrations/0076_10_17_staging.sql` › `0076_ask_sharing` (`chat_threads.shared_at`) / `0077_ask_people_sharing` (`chat_thread_people`, `asked_by`) / `0076_ask_github` (`orgs.ai_chat_github`); every statement in `src/data/ask.ts` |
 | Routes | `src/ai/ask/routes.ts` (`askApp`, mounted under `/api/o/:slug`, cookie only) |
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
 | Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts`, `github.ts` (the GitHub tools — › GitHub; their credentialed transport is `src/repo/ask-github.ts`, handed in by `src/routes.ts`) |
@@ -159,7 +159,7 @@ Ask can look things up on GitHub itself when Trov's own rows do not answer: `src
 credential) and `src/repo/ask-github.ts` (the transport — the credential). Tests: `test/ask.github.test.ts`.
 
 - **Three gates, stacked.** The org's AI switch (`orgs.ai_automation`, the stream's gate) AND its **GitHub lookups**
-  switch (`orgs.ai_chat_github`, `0076_ask_github`) AND the asking person's OWN GitHub access. The switch is an admin's
+  switch (`orgs.ai_chat_github`, `0076_10_17_staging` › `0076_ask_github`) AND the asking person's OWN GitHub access. The switch is an admin's
   (Org settings › AI, `PUT /ai/settings { chatGithub }`, cookie only, audited `org.ai_chat_github`; `ai.md` › The
   switches) and is OFF for every org, existing and new, so no organization sends source code to Anthropic until an
   admin chooses it (the coordinator's call on the owner's ruling — flip the column default to change it). Off: no
