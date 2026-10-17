@@ -22,11 +22,12 @@ export interface DocLink {
 
 const LINK_RE = /\[\[([^\[\]|\n]*)(?:\|([^\[\]\n]*))?\]\]/g;
 
-interface Segment { code: boolean; text: string }
+export interface CodeSegment { code: boolean; text: string }
 
-/** Split a body into code (fenced blocks, inline code spans) and prose, losslessly. */
-function segments(body: string): Segment[] {
-  const out: Segment[] = [];
+/** Split a body into code (fenced blocks, inline code spans) and prose, losslessly — joining every
+ *  segment's text gives the body back. The import's link rewrite (docs-import-core) uses it too. */
+export function codeSegments(body: string): CodeSegment[] {
+  const out: CodeSegment[] = [];
   const push = (code: boolean, text: string) => {
     if (!text) return;
     const last = out[out.length - 1];
@@ -97,7 +98,7 @@ function parse(m: RegExpMatchArray): DocLink | null {
 /** Every `[[…]]` link outside code, in order (repeats included). */
 export function findDocLinks(body: string): DocLink[] {
   const out: DocLink[] = [];
-  for (const seg of segments(body ?? "")) {
+  for (const seg of codeSegments(body ?? "")) {
     if (seg.code) continue;
     for (const m of seg.text.matchAll(LINK_RE)) {
       const l = parse(m);
@@ -116,7 +117,7 @@ export function extractDocLinks(body: string): string[] {
 
 /** Replace every link outside code with `fn(link)`; code and everything else is left byte for byte. */
 export function replaceDocLinks(body: string, fn: (link: DocLink) => string): string {
-  return segments(body ?? "")
+  return codeSegments(body ?? "")
     .map((seg) => seg.code ? seg.text : seg.text.replace(LINK_RE, (...args) => {
       const l = parse(args as unknown as RegExpMatchArray);
       return l ? fn(l) : (args[0] as string);
