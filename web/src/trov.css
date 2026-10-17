@@ -560,7 +560,7 @@ input, select { font-family: inherit; }
    The base rule carries the transition with no delay, so a row whose write FAILED opens again
    at once. The app's one clock (`--fx-ease`, `--fx-fast`, on `:root`). */
 .cnpy-rv-row { display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
-.cnpy-rv-row-in { min-height:0; }
+.cnpy-rv-row-in { min-height:0; min-width:0; }
 .cnpy-rv-row[data-verdict] { grid-template-rows:0fr; opacity:0; transition-delay:.13s; pointer-events:none; }
 .cnpy-rv-row[data-verdict] > .cnpy-rv-row-in { overflow:hidden; }
 .cnpy-rv-row[data-verdict="promoted"], .cnpy-rv-row[data-verdict="ratified"] { --rv-tone:var(--green); }
