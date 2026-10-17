@@ -37,6 +37,8 @@ export const LIMITS = {
   handle_check: { max: 60, window: "hour" },
   /** `POST /api/o/:slug/ai/filter`: a plain-language filter — one model call each, from the org's `ai_runs`. */
   ai_filter: { max: 60, window: "hour" },
+  /** A note on an agent link (src/tools/links.ts) — an agent's, an Ask thread's or the person's own, one allowance. */
+  link_note: { max: 60, window: "hour" },
 } as const satisfies Record<string, Limit>;
 
 export type LimitedAction = keyof typeof LIMITS;

@@ -258,6 +258,13 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     // The session digests' bookkeeping (0061_ai_digests) keyed by those logins. The digests themselves stay, as
     // content: their `subject` becomes the tombstone through HANDLE_COLUMNS, like every other entry.
     ...(a.logins.length ? [stmt(p, `DELETE FROM ai_sessions WHERE lower(actor_login) IN (${a.logins.map((_, i) => `lower(?${i + 1})`).join(", ")})`, ...a.logins)] : []),
+    // Their live agent links end (0078_agent_links), in every org: a draft or a request is cancelled, an open link
+    // closed — by them, so `closed_by` names the tombstone once HANDLE_COLUMNS below rewrites it. No one's agent goes
+    // on writing to a side whose person is gone. The thread stays, as content, like a handoff's body.
+    stmt(p, `UPDATE agent_links SET state = CASE WHEN state = 'open' THEN 'closed' ELSE 'cancelled' END, closed_at = ?2,
+               closed_by = CASE WHEN state = 'open' THEN ?1 ELSE closed_by END,
+               close_reason = CASE WHEN state = 'open' THEN 'account deleted' ELSE close_reason END
+             WHERE state IN ('draft', 'requested', 'open') AND (requester = ?1 COLLATE NOCASE OR recipient = ?1 COLLATE NOCASE)`, h, at),
     // Rate-limit counters (two days at most anyway), by handle and by the sign-ins they were onboarded with.
     stmt(p, `DELETE FROM abuse_counters WHERE subject = ? COLLATE NOCASE${counters.length ? ` OR subject IN (${ph(counters.length)})` : ""}`, h, ...counters),
     // The ONE sentence Trov writes with a handle in it (src/tools/handoffs.ts: "<sender> left a handoff for

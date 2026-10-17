@@ -28,7 +28,7 @@ import { PR_FILES_REQUESTS, PR_FILES_SYNC_REQUESTS } from "./pr-files";
 import { describeSources } from "./scan-store";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
-import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
+import { expireDueHandoffs, expireDueLinks, pruneRepoCapture } from "../platform/sweeps";
 import { listAllParts } from "../hosting/parts";
 import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
 import { PROVIDERS } from "../hosting/registry";
@@ -509,7 +509,8 @@ export const PROGRESS_COST_ESTIMATE = 40;
  *
  *   every tick   `health` — one unit per (org, environment): 2 pings
  *                (`pingHealth`), 4 for two environments — and the handoff
- *                expiry sweep (`expireDueHandoffs`, D1 only, cross-org), and
+ *                and agent-link expiry sweeps (`expireDueHandoffs`,
+ *                `expireDueLinks`, D1 only, cross-org), and
  *                the end of gifted plans (`expireGifts`, D1 only: an org whose
  *                gift has lapsed moves to Free — src/plans/gifts.ts).
  *   :00          `usage` — one unit per (org, environment), and NOTHING else
@@ -612,6 +613,9 @@ export async function handleRepoCron(
   // write-only sweep on the platform context, §4.4). D1 only (no subrequest), so it adds nothing to
   // any tick's budget, and it runs BEFORE the :00 early return so no hour is skipped.
   await safely("handoff expiry", () => expireDueHandoffs(p, scheduledTime));
+  // …and agent links past their time, the same way (0078_agent_links: a draft 1 h, a request 24 h, an open link
+  // 7 days or 12 h with neither side seen).
+  await safely("link expiry", () => expireDueLinks(p, scheduledTime));
   // Every tick too: a plan given for free until a date ends (0048_plan_gifts, src/plans/gifts.ts) — each
   // org whose gift has lapsed moves to Free, nothing deleted. One read of `orgs`, then one guarded batch
   // per lapsed org; D1 only, and almost always nothing to do. It never throws and is safe to run late.

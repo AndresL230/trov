@@ -14,6 +14,7 @@ import { append_feed, promote_doc, propose_doc_update, ratify_adr, route_triage,
 import { create_ticket, add_ticket_comment, set_ticket_parent, set_ticket_sprint } from "../../src/tools/tickets";
 import { create_sprint, add_sprint_resource } from "../../src/tools/sprints";
 import { createHandoff } from "../../src/tools/handoffs";
+import { createRequestFromWeb, sendLinkNote } from "../../src/tools/links";
 import { savePrompt } from "../../src/tools/prompts";
 import { createPage, sha256Hex } from "../../src/tools/artifacts";
 import { mintToken } from "../../src/auth/tokens";
@@ -78,6 +79,9 @@ export async function fillOrg(orgId: string, author: string, tag: string): Promi
   await run(env.DB, `UPDATE plan SET narrative = ? WHERE org_id = ?`, `${tag} narrative`, orgId); // the roadmap's FTS row (no trigger removes it)
   await run(env.DB, `INSERT INTO plan_versions (org_id, version, narrative, sprints_json, created_at, created_by) VALUES (?, 1, ?, '[]', ?, ?)`, orgId, tag, T, author);
   await createHandoff(sys, author, { body: `${tag} handoff`, context: { task: tag } }, { sessionId: `${tag}-session`, itemIndex: 0 });
+  // An agent link with a note (0078_agent_links): a self-link, open at once from the web.
+  const link = await createRequestFromWeb(owner, author, { target: { person: author }, reason: `${tag} link` });
+  await sendLinkNote(owner, platformCtx(), author, { id: link.id, body: `${tag} note` }, "web");
   await savePrompt(sys, author, { slug: `${tag}-prompt`, title: `${tag} prompt`, body: tag, tags: ["review"], status: "published" }, "human");
   const page = await createPage(sys, { title: `${tag} artifact`, kind: "markdown", area: "auth", content: `# ${tag}` }, author);
   await run(env.DB, `INSERT INTO artifact_links (page_id, target_type, target_ref, created_by, created_at, org_id) SELECT id, 'pr', 'o/r#1', ?, ?, org_id FROM artifact_pages WHERE org_id = ? AND slug = ?`, author, T, orgId, page.slug);
