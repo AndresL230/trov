@@ -29,7 +29,7 @@ import { SPACE_ICONS, archivePageText, type SpaceDTO, type LibraryPageDTO, type 
 import { AUTHORITY_MARK } from "../web/src/marks";
 import { spaceErrorText, createLibraryController, pageArchiveErrorText } from "../web/src/library-actions";
 import css from "../web/src/trov.css?raw";
-import { OrgApiError, ApiError } from "../web/src/api";
+import { OrgApiError, ApiError, setApiOrg } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
 const sp = (slug: string, name: string, over: Partial<SpaceDTO> = {}): SpaceDTO => ({
@@ -359,7 +359,7 @@ describe("the Create space dialog's focus (case CS1)", () => {
     const mount = { querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
     const state = app("library", "admin");
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {}, treeChanged: () => {},
     });
     ctl.act("libNew", null, null);
     expect(state.libUi.space?.mode).toBe("create");
@@ -372,7 +372,7 @@ describe("the Create space dialog's focus (case CS1)", () => {
     const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
     state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {}, treeChanged: () => {},
     });
     ctl.act("libEdit", null, null);
     expect(focused.at(-1)).toBe("#lib-sp-name");
@@ -392,7 +392,7 @@ describe("the Create space dialog's focus (case CS1)", () => {
     const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
     state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {}, treeChanged: () => {},
     });
     for (const [open, close, name] of [["libNew", "libSpaceClose", "new"], ["libOwners", "libOwnersClose", "owners"], ["libArchive", "libArchiveClose", "archive"]] as const) {
       doc.activeElement = opener(name);
@@ -451,7 +451,7 @@ describe("Archive page (0083_doc_archive): Space home's Archived pages, the conf
     const tree = [...PAGES, { ...PAGES[0], slug: "auth-kid", title: "Kid", parent_slug: "auth" }, { ...PAGES[0], slug: "auth-kid2", title: "Kid 2", parent_slug: "auth" }];
     state.spaceHome = { status: "ok", data: { space: ENG, pages: tree, can_edit: true, can_archive: true, can_admin: true } } as unknown as AppState["spaceHome"];
     const ctl = createLibraryController({
-      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {},
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {}, treeChanged: () => {},
     });
     ctl.act("libPageArchive", "auth", null);
     expect(state.treeMenu).toBeNull();
@@ -460,6 +460,34 @@ describe("Archive page (0083_doc_archive): Space home's Archived pages, the conf
     ctl.act("libPageArchiveClose", null, null);
     expect(state.libUi.pageArchive).toBeNull();
     expect(focused.at(-1)).toBe("opener");
+  });
+  it("an archive or a restore reads the open doc page again — the archived page's parent lists its children (e2e AR1)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true, places: [], parent_slug: null }), { status: 200, headers: { "content-type": "application/json" } })));
+    setApiOrg("acme");
+    try {
+      const doc = { activeElement: null };
+      const mount = { ownerDocument: doc, querySelector: () => ({ focus: () => {}, value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+      const state = app("docs", "admin", { spaceSlug: "engineering", docSlug: "api" } as Partial<AppState>);
+      state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_archive: true, can_admin: true } } as unknown as AppState["spaceHome"];
+      const reread: string[] = [];
+      const ctl = createLibraryController({
+        state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+        pageChanged: () => {}, treeChanged: () => reread.push("tree"),
+      });
+      ctl.act("libPageArchive", "auth", null);
+      ctl.act("libPageArchiveGo", null, null);
+      expect(reread).toEqual([]);                            // not before the Worker has it
+      await new Promise((r) => setTimeout(r, 0));
+      expect(reread).toEqual(["tree"]);
+      // (the stubbed reads answered the space's read with a bare object; put the space back for the restore)
+      state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_archive: true, can_admin: true } } as unknown as AppState["spaceHome"];
+      ctl.act("libPageRestore", "auth", null);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(reread).toEqual(["tree", "tree"]);
+    } finally {
+      setApiOrg(null);
+      vi.unstubAllGlobals();
+    }
   });
   it("a refusal is said in words", () => {
     const err = (code: string) => pageArchiveErrorText(new ApiError(409, code), "Couldn't archive the page.");

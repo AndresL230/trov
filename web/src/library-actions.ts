@@ -19,8 +19,11 @@ export interface LibraryHost {
   rerenderSoon(): void;
   flash(msg: string, ms?: number, action?: ToastAction | null): void;
   unauth(e: unknown): void;
-  /** A page was archived or restored (0083_doc_archive): read again what shows it — Review, the badges, the doc page. */
+  /** A page was archived or restored (0083_doc_archive): read again what shows it — Review and the badges. */
   pageChanged(slug: string): void;
+  /** An archive or a restore changed the tree: the open doc page is read again (the archived page itself, or a page
+   *  whose "Pages under" and links it was in). */
+  treeChanged(): void;
   /** Play the confirmation modal's exit, then run `then`. */
   confirmOut(then: () => void): void;
   /** Open a doc in the reader (`#doc/<slug>`). */
@@ -258,6 +261,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
     load();
     if (state.spaceHome.data?.space.slug === space) openSpace(space);
     host.pageChanged(slug);
+    host.treeChanged();
   }
 
   function archivePage(): void {

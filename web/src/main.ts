@@ -207,12 +207,12 @@ const tagsCtl = createTagsController({
 const libCtl = createLibraryController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   // Archive page / Restore (0083_doc_archive): Review's queue (when held) and the badges lose or regain its waiting
-  // versions; the doc page of it, when open, reads its archived state again.
-  pageChanged: (slug) => {
+  // versions; the open doc page — the page itself, or one whose "Pages under" or links it was in — is read again.
+  pageChanged: () => {
     if (state.proposals.status !== "idle") loadProposals();
     loadBadges();
-    if (state.screen === "docs" && state.docSlug === slug) loadDoc(slug);
   },
+  treeChanged: () => { if (state.screen === "docs" && state.docSlug) loadDoc(state.docSlug); },
   openDoc: (slug) => dispatch("openDocFrom", slug, null),
   newPage: (space) => dispatch("newDoc", space || null, null),
 });
