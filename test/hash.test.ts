@@ -185,6 +185,21 @@ describe("hashForRoute", () => {
     }
   });
 
+  it("routes the import wizard (with a space picked or not) and Imports history, and round-trips them", () => {
+    const base = { ticketId: null, sprintId: null };
+    expect(parseHash("#import")).toEqual({ screen: "import", ...base });
+    expect(parseHash("#import/engineering")).toEqual({ screen: "import", ...base, importSpace: "engineering" });
+    expect(parseHash("#imports")).toEqual({ screen: "imports", ...base });
+    for (const h of ["#import", "#import/engineering", "#imports"]) expect(hashForRoute(parseHash(h)), h).toBe(h);
+    for (const r of [{ screen: "import", ...base }, { screen: "import", ...base, importSpace: "product" }, { screen: "imports", ...base }] as const) {
+      expect(parseHash(hashForRoute(r))).toEqual(r);
+    }
+    // Picking a space is a choice on the same page: no entrance replay.
+    expect(pageKey({ screen: "import", ...base, importSpace: "product" })).toBe(pageKey({ screen: "import", ...base }));
+    expect(sameRoute({ screen: "import", ...base, importSpace: "product" }, { screen: "import", ...base })).toBe(false);
+    for (const junk of ["#import/Not A Slug", "#import/a/b", "#imports/3"]) expect(parseHash(junk).screen, junk).toBe("mywork");
+  });
+
   it("degrades to the parent screen when the id is missing", () => {
     expect(hashForRoute({ screen: "ticketdetail", ticketId: null, sprintId: null })).toBe("#tickets");
     expect(hashForRoute({ screen: "sprint", ticketId: null, sprintId: null })).toBe("#roadmap");

@@ -45,6 +45,10 @@ describe("sidebar — structure is stable across every state", () => {
       { screen: "handoff" },
       { screen: "maintenance" },
       { screen: "releases" },
+      // The Library's Imports row and Import action: a running import, Imports history and the wizard.
+      { counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0, imports: 1 } },
+      { screen: "imports" },
+      { screen: "import" },
     ];
     for (const v of variants) expect(skeleton(sidebarView(props(v))), JSON.stringify(v)).toBe(base);
   });

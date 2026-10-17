@@ -17,7 +17,7 @@ function makeProposal(overrides: Partial<StagedProposal> = {}): StagedProposal {
     author: "octo-agent", confidence: "high", status: "staged",
     change_kind: "edit", low_confidence: 0, base_version: 6, current_version: 6,
     created_at: "2026-07-01T10:00:00Z",
-    stagedBody: "line one\nline two", promotedBody: "line one\nold line two",
+    stagedBody: "line one\nline two", promotedBody: "line one\nold line two", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null,
     ...overrides,
   };
 }

@@ -261,6 +261,43 @@ export function authorityMark(a: Authority, size = 12): string {
   return m ? stateMark(m.word, m.tone, m.shape, size, m.hint) : "";
 }
 
+// ── a Markdown import (the Docs Library's Import, docs-library.md › The import screens) ──
+
+/** A run's status as a mark: in progress is the half-filled ring (work moving along), done the accent's check,
+ *  done with skipped files the amber triangle, failed the red diamond, stopped (cancelled, or never finished) the
+ *  faded cross. The glyphs are the progress glyphs above, so a shape means the same thing as on a ticket. The ONE
+ *  table: Imports history and the wizard's done card read it. */
+export const IMPORT_MARK = {
+  running: { word: "In progress", glyph: "half", tone: "var(--accent)", hint: "Pages are being added to Review now." },
+  done: { word: "Done", glyph: "done", tone: "var(--accent)", hint: "Every page it planned went to Review." },
+  partial: { word: "Done with skipped files", glyph: "warn", tone: "var(--amber)", hint: "Its pages went to Review, but some files weren't imported. Open it to see which and why." },
+  failed: { word: "Failed", glyph: null, tone: "var(--red)", hint: "Nothing from it reached Review." },
+  abandoned: { word: "Stopped", glyph: "declined", tone: "var(--fg-40)", hint: "It stopped before it finished: the page that ran it was closed. Pages it had already added stay in Review." },
+  cancelled: { word: "Cancelled", glyph: "declined", tone: "var(--fg-40)", hint: "Someone cancelled it. Pages it had already added stay in Review." },
+} as const satisfies Record<string, { word: string; glyph: Glyph | null; tone: string; hint: string }>;
+export type ImportMarkKey = keyof typeof IMPORT_MARK;
+
+/** A run's mark: the glyph (a diamond for Failed — a state-mark shape, as everywhere a thing is failing) and its word. */
+export function importRunMark(key: ImportMarkKey, size = 12.5): string {
+  const m = IMPORT_MARK[key];
+  return m.glyph ? glyphMark(m.glyph, m.tone, m.word, size, m.hint) : stateMark(m.word, m.tone, "diamond", size, m.hint);
+}
+
+/** What the import will do with a page whose title is already in the space (the Preview's flag, at 11.5px): a new
+ *  version (the amber triangle: it changes a live page once approved), skipped (the faded cross), or renamed
+ *  (an open ring: a new page under another name). */
+export const IMPORT_FLAG = {
+  version: { word: "New version", hint: "Its text goes to Review as a new version of the page that already has this title." },
+  skip: { word: "Skipped", hint: "Not imported: the page with this title stays as it is." },
+  rename: { word: "Renamed", hint: "Imported as a new page under the name you gave it." },
+} as const;
+export function importFlagMark(choice: keyof typeof IMPORT_FLAG, size = 11.5): string {
+  const f = IMPORT_FLAG[choice];
+  if (choice === "version") return glyphMark("warn", "var(--amber)", f.word, size, f.hint);
+  if (choice === "skip") return glyphMark("declined", "var(--fg-40)", f.word, size, f.hint);
+  return stateMark(f.word, "var(--fg-55)", "ring", size, f.hint);
+}
+
 // ── tags ─────────────────────────────────────────────────────────────────────
 // A tag is a FACT about an item, not a state, and it is drawn in exactly two ways (the "option C"
 // ruling; `web-ui.md` › Tags), both here — the ONE place a tag is drawn:

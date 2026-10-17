@@ -217,7 +217,7 @@ function proposal(slug: string, createdAt: string, author = "kai"): StagedPropos
   return {
     slug, version: 2, title: `Doc ${slug}`, section: "Overview", space: "technical", summary: null, author,
     confidence: "high", status: "staged", change_kind: "edit", low_confidence: 0, base_version: 1, current_version: 1,
-    created_at: createdAt, stagedBody: "STAGED-BODY-LINE", promotedBody: "PROMOTED-BODY-LINE",
+    created_at: createdAt, stagedBody: "STAGED-BODY-LINE", promotedBody: "PROMOTED-BODY-LINE", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null,
   };
 }
 function adr(id: number, createdAt: string, by = "mira"): AdrRow {

@@ -149,7 +149,7 @@ describe("Rendered — a NEW doc reads as it will once promoted", () => {
     expect(html).not.toContain("cnpy-rv-legend");
   });
   it("a proposal for a slug with nothing live is new, whatever its change_kind says", () => {
-    const base = { slug: "s", version: 1, title: "T", section: "Architecture", space: "technical", summary: null, author: "a", confidence: null, status: "staged", low_confidence: 0, base_version: null, created_at: "2026-10-01T00:00:00Z", stagedBody: "# T" };
+    const base = { slug: "s", version: 1, title: "T", section: "Architecture", space: "technical", summary: null, author: "a", confidence: null, status: "staged", low_confidence: 0, base_version: null, created_at: "2026-10-01T00:00:00Z", stagedBody: "# T", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null };
     expect(proposalReviewItem({ ...base, change_kind: "new", current_version: 0, promotedBody: "" }).isNew).toBe(true);
     expect(proposalReviewItem({ ...base, change_kind: null, current_version: 0, promotedBody: "" }).isNew).toBe(true);
     const edit = proposalReviewItem({ ...base, version: 2, change_kind: "edit", current_version: 1, promotedBody: "# Old" });

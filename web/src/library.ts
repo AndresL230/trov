@@ -104,8 +104,8 @@ export const LIBRARY_SUBTITLE = "Guides, runbooks, specs and decisions for the w
 export const LIBRARY_EMPTY = "A space holds the pages for one team or topic, like Engineering or Onboarding. Create one, then write pages in it or import Markdown files you already have.";
 /** Library home with spaces but no page yet. */
 export const LIBRARY_RECENT_EMPTY = "The pages changed last show here, from every space. Write one from a space's New page.";
-/** A space's home with no page (the design's sentence, without the Import clause: Import arrives later). */
-export const SPACE_EMPTY = "Write the first page. New pages wait in Review until someone approves them.";
+/** A space's home with no page (the design's sentence). */
+export const SPACE_EMPTY = "Write the first page, or import Markdown files you already have. Imported pages wait in Review until someone approves them.";
 /** The Create space dialog's intro. */
 export const CREATE_SPACE_INTRO = "A space holds the pages for one team or topic. Only admins can create one.";
 const ARCHIVED_TIP = "Archived: it is out of the sidebar and the Library. An admin can restore it.";
@@ -120,6 +120,10 @@ const accentBtn = (act: string, arg: string | null, label: string, icon = PLUS):
 const outlineBtn = (act: string, arg: string | null, label: string, extra = ""): string =>
   `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(label)}</button>`;
 const H2 = "font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);margin:0";
+const UPLOAD = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
+/** The secondary Import button (Library home, a space's home): opens the import wizard, `space` preset. */
+const importBtn = (space: string | null): string =>
+  `<button type="button" data-act="goImport" data-arg="${attr(space ?? "")}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${UPLOAD}Import</button>`;
 
 /** A "By" cell: an 18px avatar and "Short name · when" (the design's), or "—" when nobody is known. */
 function byCell(persons: readonly PersonSummary[], handle: string | null, at: string | null): string {
@@ -156,7 +160,7 @@ function libraryTitle(p: LibraryHomeProps): string {
       <h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;margin:0;line-height:1.2">Library</h1>
       <p style="font-size:13.5px;line-height:1.5;color:var(--fg-70);max-width:560px;margin:6px 0 0">${esc(LIBRARY_SUBTITLE)}</p>
     </div>
-    ${p.admin ? `<div style="display:flex;gap:8px;flex:none">${accentBtn("libNew", null, "New space")}</div>` : ""}
+    <div style="display:flex;gap:8px;flex:none">${importBtn(null)}${p.admin ? accentBtn("libNew", null, "New space") : ""}</div>
   </div>`;
 }
 
@@ -317,7 +321,7 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const owners = d.can_edit && !sp.archived ? `<button type="button" data-act="libOwners" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Edit owners</button>` : "";
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
-    : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${outlineBtn("libArchive", null, "Archive", " data-confirm-trigger")}` : ""}${accentBtn("libNewPage", sp.slug, "New page")}`;
+    : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${outlineBtn("libArchive", null, "Archive", " data-confirm-trigger")}` : ""}${importBtn(sp.slug)}${accentBtn("libNewPage", sp.slug, "New page")}`;
   return `<div class="cnpy-lib-shead" style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
     ${spaceTile(sp, 40)}
     <div style="flex:1;min-width:240px">
@@ -388,7 +392,7 @@ export function spaceHomeView(p: SpaceHomeProps): string {
     </div>`;
   }
   const body = d.pages.length === 0
-    ? `${emptyLayout("space", { title: "No pages yet", text: SPACE_EMPTY, action: d.space.archived ? null : { label: "New page", act: "libNewPage", arg: d.space.slug } })}
+    ? `${emptyLayout("space", { title: "No pages yet", text: SPACE_EMPTY, actionHtml: d.space.archived ? undefined : `<button type="button" data-act="libNewPage" data-arg="${attr(d.space.slug)}" class="cnpy-empty-act">New page</button><button type="button" data-act="goImport" data-arg="${attr(d.space.slug)}" class="cnpy-empty-act">Import</button>` })}
       <h2 style="${H2};color:var(--fg-70);margin:26px 0 12px">Top-level pages</h2>${emptyShapes(`<div style="${PAGE_GRID}">${skList(3, pageCardShape)}</div>`)}
       <h2 style="${H2};color:var(--fg-70);margin:30px 0 12px">Recently updated</h2>${emptyShapes(recentRowsShape(3, ROW_COLS))}`
     : spacePanel(p, d);

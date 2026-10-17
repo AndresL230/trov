@@ -44,7 +44,10 @@ import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, aside
 // The landing is its own chunk in the app (landing-lazy.ts); the signed-out page `/` boots it alone (landing-page.ts).
 import { landingView } from "./landing-lazy";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
-import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
+import { reviewView, importGroups, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
+import { importWizardView, importsHistoryView, initialImportUi, driverActive, type ImportUi } from "./import";
+import { confirmModal } from "./confirm";
+import type { ImportRunView } from "@shared/docs-import-core";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
@@ -131,6 +134,8 @@ export type Screen =
   // screen `docs`, the reader) and New page (`#docs/new`, the screen `newdoc`) sit under it too.
   | "library" | "space"
   | "newdoc"
+  // The Markdown import wizard (`#import`) and Imports history (`#imports`): web/src/import.ts.
+  | "import" | "imports"
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
   | "releases"
   // Org settings: one screen, five tabs (`#org[/<tab>]`, web/src/org-settings.ts).
@@ -259,6 +264,11 @@ export interface AppState {
   spaceTab: SpaceTab;
   /** The Library screens' dialogs and the description edited in place (library.ts). */
   libUi: LibraryUi;
+  /** The import wizard and Imports history's own state, and the run this tab drives (import.ts; the files' text stays
+   *  in import-actions.ts). */
+  imp: ImportUi;
+  /** Imports history (`GET /imports`), newest first. */
+  importRuns: Loadable<ImportRunView[]>;
   /** The doc page's read (`GET /doc/:slug`): the doc, its versions without their bodies, its tags, and `page` — its
    *  place in the tree, its links both ways and the rail (doc-page.ts). */
   docDetail: Loadable<DocPageData | null>;
@@ -307,6 +317,12 @@ export interface AppState {
    *  has left the list and the write or the refetch that confirms it is still out. Either way the
    *  item is out of the queue's counts. A failed write deletes the entry, and the card is back. */
   reviewLeaving: Record<string, { verdict: ReviewVerdict; gone: boolean }>;
+  /** Review's import groups opened with "Review one by one", by import id. */
+  reviewGroupsOpen: Record<string, boolean>;
+  /** The most pages each import group has held this session (its "‹d› of ‹N› reviewed"). */
+  reviewGroupTotals: Record<string, number>;
+  /** The import group whose Reject all asks first (`confirmModal`). */
+  reviewGroupReject: { id: number; busy: boolean } | null;
   assignOpen: string | null;
   assignKind: AssignKind | null;
   assignSection: string | null;
@@ -568,6 +584,8 @@ export function initialState(): AppState {
     spaceSlug: null,
     spaceTab: "overview",
     libUi: initialLibraryUi(),
+    imp: initialImportUi(),
+    importRuns: { status: "idle", data: [] },
     docDetail: { status: "idle", data: null },
     tags: { status: "idle", data: null },
     tagsUi: initialTagsUi(),
@@ -588,7 +606,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {},
+    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupReject: null,
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
     mapPicks: {},
@@ -683,6 +701,10 @@ export function reviewProps(s: AppState): ReviewProps {
       return p ? { ...it, agentColor: p.color, agentAvatar: p.avatar_url, agentHandle: p.handle, agentName: p.name } : it;
     }),
     leaving,
+    groupsOpen: s.reviewGroupsOpen,
+    groupTotals: s.reviewGroupTotals,
+    spaceNames: Object.fromEntries([...liveSpaces(s), ...(s.library.data?.archived ?? [])].map((sp) => [sp.slug, sp.name])),
+    people: s.persons.data,
     filter: s.reviewFilter,
     selectedId: s.reviewSel,
     diffView: s.reviewDiffView,
@@ -704,6 +726,28 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     people: peopleFromPersons(s.persons.data),
     aiUi: s.ai,
   };
+}
+
+/** The Library's Imports badge: imports in progress — the badges read's (or Imports history's) count, and at least
+ *  the one this tab is running. */
+export function importsBadge(s: Pick<AppState, "badges" | "imp" | "importRuns">): number {
+  const listed = s.importRuns.status === "ok" ? s.importRuns.data.filter((r) => r.status === "running").length : s.badges.imports ?? 0;
+  return Math.max(listed, driverActive(s.imp.run) ? 1 : 0);
+}
+
+/** Review › an import group's Reject all asks first (the design's copy). */
+function reviewGroupRejectModal(s: AppState, r: { id: number; busy: boolean }): string {
+  const g = importGroups(reviewProps(s).items).get(r.id);
+  if (!g) return "";
+  const k = g.items.filter((it) => !s.reviewLeaving[it.id]).length;
+  const space = spaceName(s, g.space);
+  const pages = `${k} ${k === 1 ? "page" : "pages"}`;
+  return confirmModal({
+    id: "rv-group-reject", title: `Reject ${pages} from ${g.file}?`,
+    body: `They won't be added to ${space}. The import stays in Imports, so you can run it again later.`,
+    confirmAct: "reviewGroupRejectGo", cancelAct: "reviewGroupRejectClose", arg: String(r.id), busy: r.busy,
+    confirmLabel: `Reject ${pages}`, busyLabel: "Rejecting…",
+  });
 }
 
 /** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
@@ -911,7 +955,7 @@ function sidebar(s: AppState): string {
     spacesLoaded: s.library.status === "ok" && s.library.data !== null,
     canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
-    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts) },
+    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
@@ -933,6 +977,8 @@ function headerCrumb(s: AppState): string {
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
   if (s.screen === "newdoc") return "New page";
+  if (s.screen === "import") return "Import";
+  if (s.screen === "imports") return "Imports";
   if (s.screen === "space") return s.spaceHome.data?.space.slug === s.spaceSlug ? s.spaceHome.data.space.name : spaceName(s, s.spaceSlug ?? "");
   if (s.screen === "docs") return spaceName(s, paneSpaceSlug(s) ?? s.docSpace);
   if (s.screen === "tag") return s.tagName ?? "";
@@ -955,7 +1001,7 @@ function header(s: AppState): string {
     artifacts: "Artifacts", artifactnew: "Artifacts", artifact: "Artifacts",
     handoffs: "Handoffs", handoff: "Handoffs", newhandoff: "Handoffs",
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
-    newdoc: "Library",
+    newdoc: "Library", import: "Library", imports: "Library",
     releases: "What's new",
     platform: "Platform", platformorg: "Platform",
     org: "Org settings", tag: "Tags",
@@ -1019,13 +1065,13 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
-    || s.screen === "space" || s.screen === "docs"
+    || s.screen === "space" || s.screen === "docs" || s.screen === "import" || s.screen === "imports"
     || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag";
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
-    : s.screen === "newdoc" || s.screen === "space" || s.screen === "docs" ? "goLibrary"
+    : s.screen === "newdoc" || s.screen === "space" || s.screen === "docs" || s.screen === "import" || s.screen === "imports" ? "goLibrary"
     : s.screen === "releases" ? "goReleases"
     : s.screen === "platformorg" ? "platGo"
     : s.screen === "tag" ? "tagsGo"
@@ -2909,6 +2955,8 @@ function screenBody(s: AppState): string {
       colorOf: (h) => personFor(s, h)?.color ?? null, tagColorOf: (n) => s.tags.data?.tags.find((t) => t.name === n)?.color ?? null,
     });
     case "newdoc": return newDocScreen(s);
+    case "import": return importWizardView({ ui: s.imp, library: s.library, pages: s.imp.space && s.spaceHome.data?.space.slug === s.imp.space ? s.spaceHome.data.pages : null, admin: viewerIsAdmin(s) });
+    case "imports": return importsHistoryView({ runs: { status: s.importRuns.status, data: s.importRuns.data }, ui: s.imp, persons: s.persons.data, me: s.me?.handle ?? null, spaces: liveSpaces(s), driver: s.imp.run });
     case "org": return orgSettingsView(orgProps(s));
     default: return feedView(s);
   }
@@ -2998,6 +3046,9 @@ function appView(s: AppState): string {
     // patched in place. A space's home, a doc page and New page are ONE page per space (`lib:<space>`): the docs pane
     // beside them is patched across the three (its open chevrons, its scroll), and only the content is replaced.
     : s.screen === "library" ? "library"
+    // The import wizard holds a form (a rename field per title that exists) and its steps are keyed parts
+    // (`imp:<step>`); Imports history's rows are a keyed list (one opens in place).
+    : s.screen === "import" ? "import" : s.screen === "imports" ? "imports"
     : s.screen === "space" || s.screen === "docs" || s.screen === "newdoc" ? `lib:${paneSpaceSlug(s) ?? ""}` : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
@@ -3066,7 +3117,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
-    ${s.view === "app" && (s.screen === "library" || s.screen === "space") ? libraryOverlays(s) : ""}
+    ${s.view === "app" && (s.screen === "library" || s.screen === "space") ? libraryOverlays(s) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
     ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}

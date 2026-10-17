@@ -66,6 +66,9 @@ export function proposalReviewItem(p: StagedProposal): ReviewItem {
     isNew: p.current_version === 0 || p.promotedBody.trim() === "",
     ...(p.ai ? { ai: p.ai } : {}),
     ...(p.askFlags?.length ? { askFlags: p.askFlags } : {}),
+    // Its place in its space's tree, and — for a page of a Markdown import — the run (Review groups by it).
+    slug: p.slug, space: p.space, parentSlug: p.parent_slug ?? null,
+    ...(p.import_id != null ? { importId: p.import_id, importPath: p.import_path ?? null, importFile: p.import_file_name ?? null, importBy: p.import_by ?? null, importAt: p.import_at ?? null } : {}),
   };
 }
 

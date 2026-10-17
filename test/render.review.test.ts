@@ -163,15 +163,17 @@ describe("reviewView — populated", () => {
     expect(reviewView(makeReviewProps())).not.toContain("Stale base");
   });
 
-  it("filter hides non-matching kinds from the list", () => {
-    const props = makeReviewProps({
-      items: [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] })],
-      filter: "decision",
-    });
-    const html = reviewView(props);
-    expect(html).toContain("A Decision");
-    // The proposal row is filtered out of the list (its title appears nowhere else)
-    expect(html).not.toContain("Test Proposal");
+  it("filter hides what it does not hold: Imports shows the import groups, Written by agents everything else", () => {
+    const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" })];
+    const imports = reviewView(makeReviewProps({ items, filter: "imports" }));
+    expect(imports).toContain("Import from handbook.zip");
+    // The agent rows are filtered out of the list (their titles appear nowhere else): nothing is picked by default.
+    expect(imports).not.toContain("Test Proposal");
+    expect(imports).not.toContain("A Decision");
+    const agents = reviewView(makeReviewProps({ items, filter: "agents" }));
+    expect(agents).toContain("A Decision");
+    expect(agents).toContain("Test Proposal");
+    expect(agents).not.toContain("Import from handbook.zip");
   });
 });
 
@@ -353,7 +355,7 @@ describe("reviewView — empty states", () => {
   });
 
   it("renders the list empty state when the filter hides everything, keeping the selected detail", () => {
-    const html = reviewView(makeReviewProps({ filter: "decision", selectedId: "p1" }));
+    const html = reviewView(makeReviewProps({ filter: "imports", selectedId: "p1" }));
     expect(html).toContain("Nothing of this kind is waiting for review.");
     // Selection survives the filter — the detail still shows the proposal
     expect(html).toContain("WHAT CHANGED");
@@ -736,24 +738,24 @@ describe("Review — Unified / Side by side / Rendered is ONE segmented switch",
   });
 });
 
-describe("Review — All / Proposals / Decisions is a segmented switch with counts", () => {
-  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] })];
+describe("Review — All / Imports / Written by agents is a segmented switch with counts", () => {
+  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "i1", title: "Imported", importId: 4, importFile: "notes.zip", slug: "imported" })];
   it("picks one view of the same list, each option carrying how many wait", () => {
-    const html = reviewView(makeReviewProps({ items, filter: "proposal" }));
+    const html = reviewView(makeReviewProps({ items, filter: "agents" }));
     expect(html).toMatch(/class="cnpy-seg cnpy-seg--sm" data-seg="review-filter"/);
     expect(html).not.toContain('role="tablist"');
     expect(html).toMatch(/data-act="reviewFilter" data-arg="all"[^>]*>All<span class="cnpy-seg-n">3<\/span>/);
-    expect(html).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Proposals<span class="cnpy-seg-n">2<\/span>/);
-    expect(html).toMatch(/>Decisions<span class="cnpy-seg-n">1<\/span>/);
+    expect(html).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Written by agents<span class="cnpy-seg-n">2<\/span>/);
+    expect(html).toMatch(/>Imports<span class="cnpy-seg-n">1<\/span>/);
   });
   it("shows no count while the queue is still being read (never a made-up 0)", () => {
     expect(reviewFilterSwitch("all", null)).not.toContain("cnpy-seg-n");
     expect(reviewView(makeReviewProps({ items: [], loading: true }))).not.toContain("cnpy-seg-n");
   });
   it("a selection the filter still shows stays selected; one it hides keeps its detail", () => {
-    const shown = reviewView(makeReviewProps({ items, filter: "proposal", selectedId: "p2" }));
+    const shown = reviewView(makeReviewProps({ items, filter: "agents", selectedId: "p2" }));
     expect(shown).toMatch(/class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="p2" aria-current="true">\s*<button aria-current="true" data-act="reviewSelect" data-arg="p2"/);
-    const hidden = reviewView(makeReviewProps({ items, filter: "decision", selectedId: "p2" }));
+    const hidden = reviewView(makeReviewProps({ items, filter: "imports", selectedId: "p2" }));
     expect(hidden).toContain('data-morph-key="rvd:p2"');
   });
 });
@@ -799,7 +801,7 @@ describe("Review — the list is keyed, and a card with a verdict leaves it", ()
   });
 
   it("the sidebar count drops with the card and comes back if the entry is removed (a failed write)", () => {
-    const p = { slug: "a", version: 2, title: "A", section: "Architecture", space: "technical", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a" };
+    const p = { slug: "a", version: 2, title: "A", section: "Architecture", space: "technical", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null };
     const s = { ...initialState(), view: "app" as const, screen: "review" as const, proposals: { status: "ok" as const, data: [p, { ...p, slug: "b" }] }, draftAdrs: { status: "ok" as const, data: [] } };
     expect(triageCounts(s).review).toBe(2);
     const leaving = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: false } } };

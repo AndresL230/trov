@@ -24,6 +24,9 @@
 //   #doc/<slug>       → one doc, in the reader (the screen `docs`)
 //   #docs/new         → New page (the screen `newdoc`). The old #docs and #docs/<space> (the Technical /
 //                       Product tabs) land on #library
+//   #import           → the Markdown import wizard (the screen `import`); #import/<space> with that space picked
+//                       (its step is state, not route)
+//   #imports          → Imports history (the screen `imports`)
 //   #unplaced         → Triage › Unplaced (the screen `maintenance`). Its old addresses still
 //                       resolve: #maintenance here, and #maintenance/identity and
 //                       #maintenance/people — two tabs it had until 2026-10-06 — to
@@ -66,7 +69,7 @@ import { SPACE_SLUG_RE } from "@shared/docs-core";
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
   "mywork", "feed", "library", "review",
-  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts",
+  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports",
 ];
 
 export interface Route {
@@ -115,6 +118,8 @@ export interface Route {
   spaceSlug?: string;
   /** Set only on `docs` (the doc in the reader, `#doc/<slug>`). */
   docSlug?: string;
+  /** Set only on `import`, when a space is picked (`#import/<space>`). */
+  importSpace?: string;
 }
 
 /** One repository's page under Org settings › Repositories: its Apps (`apps`), one app (`app`), or Add an app (`new`). */
@@ -130,7 +135,7 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName && a.askThread === b.askThread
-    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug
+    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug && a.importSpace === b.importSpace
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null)
     && JSON.stringify(a.orgRepo ?? null) === JSON.stringify(b.orgRepo ?? null);
 }
@@ -143,9 +148,10 @@ export function sameRoute(a: Route, b: Route): boolean {
  */
 // Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
 // swaps the conversation in place and never replays the screen's entrance. Nor is the doc in the reader
-// (`docSlug`): picking another page in its tree swaps the reader pane in place.
+// (`docSlug`): picking another page in its tree swaps the reader pane in place. Nor is the import wizard's space
+// (`importSpace`): picking one is a choice on the same page.
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -257,6 +263,12 @@ export function parseHash(hash: string): Route {
     const slug = parts.length === 2 ? seg(parts[1]) : null;
     return slug && SPACE_SLUG_RE.test(slug) ? { screen: "space", ...base, spaceSlug: slug } : none;
   }
+  // The Markdown import wizard, with a space picked or not (an unknown one is checked against the Library on arrival).
+  if (parts[0] === "import") {
+    if (parts.length === 1) return { screen: "import", ...base };
+    const slug = parts.length === 2 ? seg(parts[1]) : null;
+    return slug && SPACE_SLUG_RE.test(slug) ? { screen: "import", ...base, importSpace: slug } : none;
+  }
   if (parts[0] === "doc" && parts.length === 2) {
     const slug = seg(parts[1]);
     return slug ? { screen: "docs", ...base, docSlug: slug } : none;
@@ -366,6 +378,7 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "newdoc") return "#docs/new";
   if (r.screen === "space") return r.spaceSlug ? `#library/${encodeURIComponent(r.spaceSlug)}` : "#library";
   if (r.screen === "docs") return r.docSlug ? `#doc/${encodeURIComponent(r.docSlug)}` : "#library";
+  if (r.screen === "import") return r.importSpace ? `#import/${encodeURIComponent(r.importSpace)}` : "#import";
   if (r.screen === "releases") {
     if (!r.releaseVersion) return "#releases";
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;

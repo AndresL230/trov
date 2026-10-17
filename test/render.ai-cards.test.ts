@@ -63,7 +63,7 @@ export const triageRow = (o: Partial<NeedsTriageRow> = {}): NeedsTriageRow => ({
 export const proposal = (o: Partial<StagedProposal> = {}): StagedProposal => ({
   slug: "auth-flow", version: 3, title: "Auth flow", section: "reference", space: "technical", summary: "Sessions now last 30 days",
   author: "andres", confidence: "high", status: "staged", change_kind: "edit", low_confidence: 0, base_version: 2, current_version: 2,
-  created_at: iso(4 * H), stagedBody: "# Auth flow\n\nA session lasts 30 days.\n", promotedBody: "# Auth flow\n\nA session lasts 7 days.\n",
+  created_at: iso(4 * H), stagedBody: "# Auth flow\n\nA session lasts 30 days.\n", promotedBody: "# Auth flow\n\nA session lasts 7 days.\n", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null, 
   ...o,
 });
 

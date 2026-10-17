@@ -8,13 +8,15 @@ import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
-import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
+import { REVIEW_EXIT_MS, REVIEW_FILTERS, importGroups, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
+import { createImportController } from "./import-actions";
+import { installImportDrop } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
 import type { SidebarBadges } from "@shared/badges";
 import {
-  render, initialState, reviewProps, railCollapsed, spaceName, liveSpaces, HAPPENINGS_LIMIT, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
+  render, initialState, reviewProps, railCollapsed, spaceName, liveSpaces, paneSpaceSlug, HAPPENINGS_LIMIT, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
   stagedPrompts,
 } from "./render";
@@ -22,7 +24,7 @@ import {
   getFeed, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
-  listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
+  listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr, approveImport, rejectImport,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
   getMe, logout, adminPoll, isRateLimited, rateLimitText,
   getOnboardPrefill, checkHandle, submitOnboard,
@@ -206,6 +208,36 @@ const libCtl = createLibraryController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   openDoc: (slug) => dispatch("openDocFrom", slug, null),
   newPage: (space) => dispatch("newDoc", space || null, null),
+});
+// The Markdown import (web/src/import-actions.ts): every `imp…` act — the wizard, the files read in the browser, the run
+// (in module scope, so it keeps going on any screen) and Imports history.
+const impCtl = createImportController({
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e),
+  ensureSpace: (slug) => libCtl.ensureSpace(slug),
+  spaceName: (slug) => spaceName(state, slug),
+  landed: (space) => {
+    // What a run changed: Review's queue (when it is held), the Library's counts, the space's pages, the badges.
+    if (state.proposals.status !== "idle") loadProposals();
+    libCtl.load();
+    const h = state.spaceHome;
+    if (h.data?.space.slug === space) {
+      if (state.screen === "space" || state.screen === "docs" || state.screen === "newdoc") libCtl.openSpace(space);
+      else state.spaceHome = { status: "idle", data: h.data };
+    }
+    loadBadges();
+  },
+});
+// Drop to import (web/src/import-drop.ts): files over a space's page or a sidebar space row open the wizard there.
+installImportDrop({
+  enabled: () => state.view === "app" && state.screen !== "import",
+  mainSpace: () => {
+    if (state.screen !== "space" && state.screen !== "docs" && state.screen !== "newdoc") return null;
+    const slug = paneSpaceSlug(state);
+    return slug && liveSpaces(state).some((x) => x.slug === slug) ? { slug, name: spaceName(state, slug) } : null;
+  },
+  spaceName: (slug) => (liveSpaces(state).some((x) => x.slug === slug) ? spaceName(state, slug) : null),
+  drop: (files, space) => impCtl.dropTo(files, space),
+  bad: (msg) => flash(msg, 4200),
 });
 // New page (web/src/newdoc-actions.ts): every `nd…` act — the template, where it goes, the fields, staging it.
 const ndCtl = createNewDocController({
@@ -806,6 +838,7 @@ function currentRoute(): Route {
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
   if (state.screen === "space" && state.spaceSlug) r.spaceSlug = state.spaceSlug;
   if (state.screen === "docs" && state.docSlug) r.docSlug = state.docSlug;
+  if (state.screen === "import" && state.imp.space) r.importSpace = state.imp.space;
   if (state.screen === "ask" && state.ask.page.threadId !== null) r.askThread = state.ask.page.threadId;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
@@ -856,11 +889,14 @@ function applyRoute(r: Route): void {
   }
   if (r.screen === "docs" && r.docSlug && r.docSlug !== state.docSlug) { state.docSlug = r.docSlug; state.showHistory = false; state.treeMenu = null; state.docDetail = { status: "idle", data: null }; }
   if (r.screen === "ask") askRoute = r.askThread ?? null;
+  if (r.screen === "import") importRoute = r.importSpace ?? null;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
 /** The thread `#ask/<id>` named on arrival (applyRoute), handed to the Ask controller by loadForScreen. */
 let askRoute: number | null = null;
+/** The space `#import/<space>` named on arrival, handed to the import controller by loadForScreen. */
+let importRoute: string | null = null;
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases). Batched: a screen that
 // starts several reads (My Work starts eight) paints once, before this returns — not once per read.
@@ -885,6 +921,8 @@ function startScreenLoads(screen: Screen): void {
     case "prompts": loadPrompts(); break;
     case "prompt": if (state.promptSlug) openPrompt(state.promptSlug); else rerender(); break;
     case "promptedit": openEditor(state.promptMode, state.promptSlug); break;
+    case "import": impCtl.enter(importRoute ?? state.imp.space); importRoute = null; break;
+    case "imports": impCtl.loadHistory(); break;
     case "newdoc": ndCtl.start(liveSpaces(state).some((x) => x.slug === state.nd.space) ? state.nd.space : defaultSpaceSlug(), null); break;
     case "tag": if (state.tagName) tagsCtl.open(state.tagName); else rerender(); break;
     case "search": loadSearchIfNeeded(); break;
@@ -1669,7 +1707,7 @@ function loadProposals(after?: () => void): void {
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); noteGroupTotals(); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
@@ -1744,11 +1782,22 @@ function reviewVerdict(id: string, accept: boolean): void {
   // Only a selection made by hand is moved: with none, the view already shows the first one waiting.
   const selBefore = state.reviewSel;
   let selAfter = selBefore;
+  const props = reviewProps(state);
+  const item = props.items.find((it) => it.id === id);
+  // A page of an import: the next one of its group still waiting, wrapping (the group is its own list).
+  const group = item?.importId != null ? importGroups(props.items).get(item.importId) ?? null : null;
+  const groupLeft = group ? group.items.filter((it) => it.id !== id && !props.leaving?.[it.id]) : [];
   if (selBefore === id) {
-    const p = reviewProps(state);
-    const rows = p.items.filter((it) => (p.filter === "all" || it.kind === p.filter) && (it.id === id || !p.leaving?.[it.id]));
-    const at = rows.findIndex((it) => it.id === id);
-    selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
+    if (group) {
+      const rows = group.items.filter((it) => it.id === id || !props.leaving?.[it.id]);
+      const at = rows.findIndex((it) => it.id === id);
+      selAfter = (rows[at + 1] ?? rows[0] ?? null)?.id ?? null;
+      if (selAfter === id) selAfter = null;
+    } else {
+      const rows = props.items.filter((it) => inReviewFilter(it, props.filter) && it.importId == null && (it.id === id || !props.leaving?.[it.id]));
+      const at = rows.findIndex((it) => it.id === id);
+      selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
+    }
   }
   state.reviewSel = selAfter;
   // The card is seen leaving only on Review, and only when motion is allowed; otherwise it is gone at once.
@@ -1770,7 +1819,8 @@ function reviewVerdict(id: string, accept: boolean): void {
   op.then(() => {
       exit.ok = true;
       reviewRefetch[ref.kind] = true;
-      flash(accept
+      flash(group && groupLeft.length === 0 ? `Every page from ${group.file} has been reviewed`
+        : accept
         ? (ref.kind === "adr" ? "Ratified — the decision is now accepted" : "Promoted — the proposal is live; previous version kept")
         : "Rejected — parked, nothing changed");
       // Refetch the affected list — the read stays the truth (the counts are derived from it).
@@ -1786,6 +1836,72 @@ function reviewVerdict(id: string, accept: boolean): void {
       flash(e instanceof ApiError ? e.message : "Action failed");
       settleReview();
     });
+}
+/** Review › an import group's Approve all / Reject all (cookie-only, `POST /imports/:id/approve-all` / `reject-all`):
+ *  the whole card wears the verdict and leaves by the queue's one exit, optimistically; each call is bounded, so it is
+ *  repeated while `remaining` > 0. A failure before anything was decided puts the group back as it was; one part way
+ *  through lets the refetch say what is left. */
+const groupBusy = new Set<number>();
+function reviewGroupVerdict(importId: number, accept: boolean): void {
+  const props = reviewProps(state);
+  const g = importGroups(props.items).get(importId);
+  const items = g ? g.items.filter((it) => !state.reviewLeaving[it.id]) : [];
+  if (!g || items.length === 0 || groupBusy.has(importId)) return;
+  groupBusy.add(importId);
+  const verdict: ReviewVerdict = accept ? "promoted" : "rejected";
+  const selBefore = state.reviewSel;
+  if (items.some((it) => it.id === selBefore)) state.reviewSel = null;
+  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const exits: ReviewExit[] = [];
+  for (const it of items) {
+    state.reviewLeaving[it.id] = { verdict, gone: !animate };
+    const x: ReviewExit = { kind: "doc", selBefore, selAfter: null, timer: null, ok: false };
+    reviewExits.set(it.id, x);
+    exits.push(x);
+  }
+  if (animate) exits[0].timer = setTimeout(() => {
+    exits[0].timer = null;
+    for (const it of items) { const l = state.reviewLeaving[it.id]; if (l && !l.gone) l.gone = true; }
+    rerender();
+    settleReview();
+  }, REVIEW_EXIT_MS);
+  rerender();
+  let done = 0;
+  const call = accept ? approveImport : rejectImport;
+  const loop = (): ReturnType<typeof approveImport> => call(importId).then((a) => { done += a.done; return a.remaining > 0 && a.done > 0 ? loop() : a; });
+  loop()
+    .then((a) => {
+      groupBusy.delete(importId);
+      for (const x of exits) x.ok = true;
+      reviewRefetch.doc = true;
+      const name = a.space_name ?? spaceName(state, a.space || g.space);
+      const pages = `${done} ${done === 1 ? "page" : "pages"}`;
+      flash(accept ? `${pages} ${done === 1 ? "is" : "are"} now live in ${name}` : `${pages} rejected`, 6000, { label: `Open ${name}`, act: "libOpenSpace", arg: a.space || g.space });
+      if (accept) libCtl.load();
+      loadBadges();
+      settleReview();
+    })
+    .catch((e) => {
+      groupBusy.delete(importId);
+      if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
+      else {
+        if (exits[0].timer !== null) clearTimeout(exits[0].timer);
+        for (const it of items) { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
+        if (state.reviewSel === null) state.reviewSel = selBefore;
+      }
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      flash(e instanceof ApiError ? (rateLimitText(e) ?? (done > 0 ? `${done} of the pages went through, then it stopped. Try again for the rest.` : "Couldn't do that. Try again.")) : "Couldn't do that. Check your connection and try again.", 5000);
+      settleReview();
+      rerender();
+    });
+}
+/** The most pages each import group has held this session (a group's "‹d› of ‹N› reviewed"). */
+function noteGroupTotals(): void {
+  const counts: Record<string, number> = {};
+  for (const p of state.proposals.data) if (p.import_id != null) counts[p.import_id] = (counts[p.import_id] ?? 0) + 1;
+  const next = { ...state.reviewGroupTotals };
+  for (const [id, n] of Object.entries(counts)) next[id] = Math.max(next[id] ?? 0, n);
+  state.reviewGroupTotals = next;
 }
 function loadDraftAdrsIfNeeded(): void {
   if (state.draftAdrs.status === "idle" || state.draftAdrs.status === "error") loadDraftAdrs();
@@ -2888,6 +3004,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "personCardClose": state.personCard = null; break;
     // The Library's home (`goDocs` is its old name: My Work's "Docs you own", quick search).
     case "goLibrary": case "goDocs": state.screen = "library"; libCtl.load(); rerender(); return;
+    // The Markdown import: the wizard (a space preset when there is one) and Imports history (import-actions.ts).
+    case "goImport": impCtl.open(arg || null); return;
+    case "goImports": state.screen = "imports"; impCtl.loadHistory(); return;
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
@@ -3474,8 +3593,19 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "reviewSelect": if (arg) state.reviewSel = arg; break;
     case "reviewBack": state.reviewSel = null; break;   // narrow: back to the list pane
     case "reviewFilter":
-      if (arg === "all" || arg === "proposal" || arg === "decision") state.reviewFilter = arg;
+      if ((REVIEW_FILTERS as readonly string[]).includes(arg ?? "")) state.reviewFilter = arg as ReviewFilter;
       break;
+    // An import's pages, as one group (review.ts `importGroups`): open it page by page, or decide it whole.
+    case "reviewGroupToggle": if (arg) state.reviewGroupsOpen = { ...state.reviewGroupsOpen, [arg]: !state.reviewGroupsOpen[arg] }; break;
+    case "reviewGroupApprove": if (arg) reviewGroupVerdict(Number(arg), true); return;
+    case "reviewGroupReject": if (arg) { state.reviewGroupReject = { id: Number(arg), busy: false }; } break;
+    case "reviewGroupRejectClose": if (state.reviewGroupReject?.busy) return; confirmOut(() => { state.reviewGroupReject = null; rerender(); }); return;
+    case "reviewGroupRejectGo": {
+      const r = state.reviewGroupReject;
+      if (!r) return;
+      confirmOut(() => { state.reviewGroupReject = null; reviewGroupVerdict(r.id, false); });
+      return;
+    }
     case "reviewDiffView":
       if (arg === "unified" || arg === "split" || arg === "rendered") state.reviewDiffView = arg;
       break;
@@ -4186,6 +4316,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       // The Docs Library: Library home, a space's home, the space dialogs (library-actions.ts).
       if (act.startsWith("lib")) { libCtl.act(act, arg, value); return; }
+      if (act.startsWith("imp") && impCtl.act(act, arg, value)) return;
       if (act.startsWith("tree") || act === "docToc") { treeCtl.act(act, arg, value); return; }
       if (act.startsWith("nd") && ndCtl.act(act, arg, value)) return;
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
@@ -4679,11 +4810,29 @@ const artFileTarget = (el: Element, attrName: string): "create" | "nv" => (el.ge
 mount.addEventListener("change", (e) => {
   const el = e.target as HTMLElement;
   if (el instanceof HTMLInputElement && el.type === "file" && el.hasAttribute("data-art-file")) readArtFile(el.files?.[0], artFileTarget(el, "data-art-file"));
+  // The import wizard's Choose files: every file picked (the input is cleared, so the same file can be picked again).
+  if (el instanceof HTMLInputElement && el.type === "file" && el.hasAttribute("data-imp-file")) { impCtl.addFiles(Array.from(el.files ?? [])); el.value = ""; }
 });
 mount.addEventListener("dragover", (e) => {
   if ((e.target as Element | null)?.closest?.("[data-art-drop]")) e.preventDefault();
+  // The import wizard's Files step: its drop zone lights while files are over it.
+  if ((e.target as Element | null)?.closest?.("[data-imp-drop]")) {
+    e.preventDefault();
+    if (!state.imp.dragOver) { state.imp.dragOver = true; rerender(); }
+  }
+});
+mount.addEventListener("dragleave", (e) => {
+  const zone = (e.target as Element | null)?.closest?.("[data-imp-drop]");
+  if (zone && !zone.contains(e.relatedTarget as Node | null) && state.imp.dragOver) { state.imp.dragOver = false; rerender(); }
 });
 mount.addEventListener("drop", (e) => {
+  const imp = (e.target as Element | null)?.closest?.("[data-imp-drop]");
+  if (imp) {
+    e.preventDefault();
+    state.imp.dragOver = false;
+    impCtl.addFiles(Array.from(e.dataTransfer?.files ?? []));
+    return;
+  }
   const zone = (e.target as Element | null)?.closest?.("[data-art-drop]");
   if (!zone) return;
   e.preventDefault();

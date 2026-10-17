@@ -93,6 +93,9 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
   out.feedAuthors = [];
   out.identityDiscarded = [];
   out.repoFetchedAt = null;
+  // The import wizard draws the files the person picked and the run this tab drives: neither is shown under the
+  // preview (Imports history's read is a slice, blanked above with the rest).
+  out.imp = { ...blank.imp, filter: s.imp.filter };
 
   // Artifacts: the library's list (its details stay — one artifact's page is "one thing").
   out.art = { ...s.art, ...blankSlices({ list: s.art.list, attachTickets: s.art.attachTickets }, { list: blank.art.list, attachTickets: blank.art.attachTickets }, mode) };

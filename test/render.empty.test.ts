@@ -39,6 +39,7 @@ import type { HandoffView } from "@shared/handoffs";
 import type { PromptSummary } from "@shared/handoffs";
 import type { ArtifactSummaryDTO } from "@shared/artifacts-core";
 import type { SpaceDTO, LibraryPageDTO } from "@shared/docs-core";
+import type { ImportRunView } from "@shared/docs-import-core";
 import { loadWebChunks } from "./helpers/web-chunks";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
@@ -68,6 +69,7 @@ const EMPTY: Partial<AppState> = {
   handoffs: { status: "ok", data: [] }, promptList: { status: "ok", data: [] },
   repo: { status: "ok", data: null },
   library: { status: "ok", data: { spaces: [], archived: [], recent: [], waiting: 0, can_admin: false } },
+  importRuns: { status: "ok", data: [] },
   // A space's home opens ONE space (it exists): with nothing in it.
   spaceSlug: "security", spaceHome: { status: "ok", data: { space: SPACE, pages: [], can_edit: false, can_admin: false } },
 };
@@ -98,6 +100,11 @@ const artifact: ArtifactSummaryDTO = {
   id: 1, slug: "a-real-artifact", title: "A real artifact", kind: "markdown", area: "ui", repo: "acme/api", author_id: "alice", status: "published",
   visibility: "org", current_version: 1, updated_at: T0, published_at: T0, size_bytes: 1200, excerpt: null, ticket_ids: [], sprint_ids: [],
 } as unknown as ArtifactSummaryDTO;
+const importRun = {
+  id: 3, status: "done", space: "security", space_name: "Security", parent_slug: null, parent_path: [], file_name: "a-real-import.zip", file_size: 2048, file_count: 4,
+  by: "alice", started_at: T0, updated_at: T0, ended_at: T0, cancelled: false, failures: [], waiting: 2,
+  counts: { pages: 2, new_pages: 2, versions: 0, images: 0, skipped_files: 0, skipped_pages: 0, staged: 2, staged_new: 2, staged_versions: 0, unchanged: 0, failed: 0, images_uploaded: 0 },
+} as ImportRunView;
 const doc = { slug: "a-real-doc", title: "A real doc", space: "engineering", section: "Overview", body: "Body.", current_version: 1, updated_at: T0, updated_by: "alice" } as unknown as DocRow;
 
 /** The page body: everything inside the scroll pane (so the sidebar never counts). */
@@ -265,8 +272,13 @@ const CASES: Case[] = [
       spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [{ ...page, slug: "a-real-doc", title: "A real doc" }], can_edit: false, can_admin: false } } }), data: "A real doc" },
   { name: "Library home", screen: "library", empty: ["library"], member: [], admin: ["libNew"],
     withData: (s) => ({ ...s, library: { status: "ok", data: { spaces: [{ ...SPACE, name: "A real space", pages: 1 }], archived: [], recent: [page], waiting: 0, can_admin: false } } }), data: "A real page" },
-  { name: "Space home", screen: "space", empty: ["docs-tree", "space"], member: ["libNewPage"],
+  { name: "Space home", screen: "space", empty: ["docs-tree", "space"], member: ["libNewPage", "goImport"],
     withData: (s) => ({ ...s, spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [page], can_edit: false, can_admin: false } } }), data: "A real page" },
+  // The import wizard needs a space to import into; Imports history lists the runs.
+  { name: "Import", screen: "import", empty: ["import"], member: [], admin: ["libNew"],
+    withData: (s) => ({ ...s, library: { status: "ok", data: { spaces: [{ ...SPACE, name: "A real space" }], archived: [], recent: [], waiting: 0, can_admin: false } } }), data: "A real space" },
+  { name: "Imports", screen: "imports", empty: ["imports"], member: ["goImport"],
+    withData: (s) => ({ ...s, importRuns: { status: "ok", data: [importRun] } }), data: "a-real-import.zip" },
   { name: "Artifacts", screen: "artifacts", empty: ["artifacts"], member: ["artNew"],
     withData: (s) => ({ ...s, art: { ...s.art, list: { status: "ok", data: [artifact] } } }), data: "A real artifact" },
   { name: "Handoffs", screen: "handoffs", empty: ["handoffs"], member: ["newHandoff"],

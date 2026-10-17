@@ -190,6 +190,42 @@ most). Tests: `test/docs-import.test.ts`.
 `import_at` (null when an agent or a person wrote it) and the page's `parent_slug`, so Review groups an import's
 pages under one card; inside a group the read's order (newest first) reversed is the import's own order.
 
+### The import screens (web)
+
+The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts`; drop to import is
+`web/src/import-drop.ts` (one overlay node on `<body>`). Tests: `test/render.import.test.ts`,
+`test/import-actions.test.ts` (the driver against a stubbed API, zips built in the test), and the screens' rows in
+`render.empty`, `render.skeleton`, `render.sidebar` and `hash`.
+
+- **The wizard** (`#import[/<space>]`, screen `import`; the step is state and the space is left out of `pageKey`).
+  The page is morphed as `import` and each step is a `data-morph-key` (`imp:where|files|preview|progress|done`).
+  The browser unzips (`openZip`) and keeps the files' text in the controller; `state.imp` holds only the manifest
+  (path, size, kind, first heading), the conflict choices and renames, and the run's view. A Markdown file that is
+  not valid UTF-8 is left out of the manifest and listed locally as `not_utf8`. The Preview runs the shared
+  `planImport` over that manifest and the target space's pages (`spaceHome`; its `existingSlugs` are that space's
+  slugs), so it is advisory; "Add N pages to Review" starts the run with the choices fixed.
+- **The run** lives in module scope, so it keeps going on any screen (a `beforeunload` prompt while it does): the
+  images some page uses first (a refused image is left out — its page shows the alt text), then the pages in
+  `plan.writes` order in batches of 25 (a folder page by its key with an empty text), then finish. A network error,
+  a 5xx or a 429 stalls it with Retry, which resends the same batch (the ledger replays it); another refusal stops
+  it with its sentence. Cancel import is `finish { cancel: true }`. When a run ends, proposals, the Library, the
+  space and the badges are read again.
+- **Drop to import** works over a space's home, a doc page, New page and the sidebar's space rows (Library home and
+  Imports have no space, so they are not targets): good files open the wizard at Preview with that space; anything
+  else is the design's toast.
+- **Imports history** (`#imports`, screen `imports`) reads `GET /imports`, polling every 4 s while a run is going and
+  the screen is open; statuses are marks (`importRunMark`: In progress, Done, Done with skipped files, Failed, and
+  Stopped / Cancelled for an abandoned run), one row open at a time, Cancel import for the run's starter only.
+- **Review** groups `GET /proposals` by `import_id` (`importGroups`; the server order reversed is the import's
+  tree order, depth from `parent_slug` inside the group): one keyed card per import (`rvg:<id>`), Approve all /
+  Reject all (a red `confirmModal` with the design's copy) looping `approve-all` / `reject-all` until `remaining`
+  is 0 and leaving through Review's exit pattern; the filter is All / Imports / Written by agents. Departures from
+  the design: Review keeps its layout and its Promote / Reject buttons in the detail header; a page decided on its
+  own leaves the list instead of staying dimmed; the default selection skips import pages (they are opened from
+  their group).
+- **The sidebar**: an Imports row in the Library group (its badge `badges.imports`, hidden at 0 — the node is always
+  there) and an Import action; Library home, Space home and an empty space offer Import too.
+
 ## Templates
 
 **`shared/docs-templates-core.ts`**: Guide, How-to, Reference, Runbook (the default), Spec, Product brief, Decision
@@ -281,7 +317,7 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   `dropdown()` that posts `/move`) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
   changed last; each card counts the pages under it), All pages (with its count: the whole tree flattened in tree
-  order, 18px a level), Recently updated, Least recently updated, A to Z (letter groups). No page: "No pages yet" with New page (the design's Import clause waits for Import).
+  order, 18px a level), Recently updated, Least recently updated, A to Z (letter groups). No page: "No pages yet" with New page and Import.
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,
   the 8 colours, a short description (140), the sidebar preview. Created: the new space's home and "Created ‹Name›".

@@ -323,6 +323,9 @@ describe("Handoffs, Prompt Library, Artifacts, Repo, Settings — loading", () =
       ["prompts", ["prompts"]],
       ["prompt", ["prompt"]],
       ["artifacts", ["artifacts"]],
+      // The import wizard waits on the Library (its spaces); Imports history on its own read: six rows on its grid.
+      ["import", ["imp-where"]],
+      ["imports", ["imports"]],
     ];
     for (const [screen, want] of cases) expect(keys(body(render(app(screen)))), screen).toEqual(want);
     expect(body(render(app("prompts")))).toContain('class="cnpy-mw-grid is-3"');
@@ -356,7 +359,7 @@ describe("Handoffs, Prompt Library, Artifacts, Repo, Settings — loading", () =
 });
 
 describe("every loading paint keeps the rules", () => {
-  const screens: Screen[] = ["mywork", "feed", "docs", "library", "space", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings"];
+  const screens: Screen[] = ["mywork", "feed", "docs", "library", "space", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings", "import", "imports"];
   it("is busy-marked, hidden from a screen reader, keeps a status line, and has unique region keys", () => {
     for (const screen of screens) {
       const html = body(render(app(screen)));
