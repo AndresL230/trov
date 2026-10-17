@@ -798,6 +798,14 @@ describe("assignment cards — the item, the people, the change", () => {
     expect(text(cards(withCards([vm]))[0])).toMatch(/^Claim handoff Draft, not done yet #17 Quiz agent fails validation Pending MC Maya Chen to AL Andres Lopez No one else can claim it after Cancel Confirm$/);
   });
 
+  // E2E A-14 (docs/testing/agent-links-test-log.md): a link card's "What it does" — what Confirm does — was dropped.
+  it("an agent-link card ends on what Confirm does", () => {
+    const req: AskActionVm = { id: 81, groupId: null, tool: "request_link", kind: "handoff", state: "proposed", fields: {}, editable: [], note: null, result: null, ref: null, undo: false, at: NOW.toISOString(),
+      preview: { title: "Link request to @maya", lines: [{ label: "With", value: "@maya" }, { label: "Reason", value: "Both of us are in the auth middleware this week." },
+        { label: "What it does", value: "Confirm sends it. @maya accepts or declines it in Trov; once open, their agent's notes reach this thread." }], item: null } };
+    expect(text(cards(withCards([req]))[0])).toMatch(/With @maya Confirm sends it\. @maya accepts or declines it in Trov; once open, their agent(?:'|&#39;)s notes reach this thread\. Cancel Confirm$/);
+  });
+
   it("phone: the picker, the item, Undo and the line's link get the 44px hit area", () => {
     for (const sel of [".ask-act .cnpy-dd::after", "button.ask-asg-item::after", ".ask-undo::after", ".ask-line-link::after"]) expect(css).toContain(`[data-phone="1"] ${sel}`);
   });

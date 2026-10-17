@@ -583,8 +583,11 @@ const stepHtml = (value: string): string => {
 const SHORT_LINE = 40;
 
 /** Any other write (a comment, the plan, a link…): the server's title, its long lines as the card's text, then its
- *  short lines as label-over-value fields in columns across the card (the new ticket's row). */
+ *  short lines as label-over-value fields in columns across the card (the new ticket's row), then what Confirm
+ *  does when the server says (the agent-link cards: "Confirm sends it…", "Confirm opens it at once…"), as the
+ *  publish card ends on it. */
 function genericBody(vm: AskActionVm): string {
+  const what = line(vm, "What it does");
   const lines = (vm.preview?.lines ?? []).filter((l) => l.label !== "What it does");
   const short = lines.filter((l) => l.value.length <= SHORT_LINE && !l.value.includes("\n"));
   const long = lines.filter((l) => !short.includes(l));
@@ -594,6 +597,7 @@ function genericBody(vm: AskActionVm): string {
     <div class="ask-act-title">${esc(vm.preview?.title ?? "Change")}</div>
     ${long.map((l, i) => `<div class="ask-act-desc" data-morph-key="t${i}">${named ? `<span class="ask-fact-k">${esc(l.label)}</span>` : ""}${esc(l.value)}</div>`).join("")}
     ${short.length ? fieldsRow(short.map((l) => label(l.label, `<span class="ask-act-v ask-act-iv">${stepHtml(l.value)}</span>`))) : ""}
+    ${what ? metaRow(`<span class="ask-act-lead" data-morph-key="what">${esc(what)}</span>`, "is-ruled") : ""}
   </div>`;
 }
 
