@@ -1,7 +1,7 @@
 ---
 name: load-context
 description: Orient against Trov (the team's working memory) BEFORE working an existing area. Fire when you start work on a named/existing subsystem, pick up an issue that references an area, or when the person says things like "the X system", "how we do Y", "our approach to Z", "where is the … code/doc" — and ALWAYS before proposing a doc change. Do NOT fire on trivial one-off questions, on a brand-new area with no prior context, or just to chat. Read-only apart from claiming the one handoff the person picks.
-allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__get_my_work, mcp__trov__list_tickets, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__list_handoffs, mcp__trov__get_handoff, mcp__trov__claim_handoff, mcp__trov__get_ticket, mcp__trov__artifact_list, mcp__trov__artifact_get, Bash(git branch:*), mcp__trov__get_connection, Bash(git remote get-url:*)
+allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__get_my_work, mcp__trov__list_tickets, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__list_handoffs, mcp__trov__get_handoff, mcp__trov__claim_handoff, mcp__trov__list_links, mcp__trov__get_ticket, mcp__trov__artifact_list, mcp__trov__artifact_get, Bash(git branch:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Load Context ← Trov
@@ -113,7 +113,7 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
    goes for a `null` figure *inside* an `ok` section (`usage[].requests`, a `product` value,
    `contributors[].reviews`, `ciFailures.rate`, a delta): unknown, never zero — `usage[].seen` says
    whether that source has ever reported.
-10. **At session start, check for handoffs.** Call `mcp__trov__list_handoffs` (no args but `repo` — handoffs
+10. **At session start, check for handoffs and links.** Call `mcp__trov__list_handoffs` (no args but `repo` — handoffs
    left for you plus those left for `anyone`, pending only). If any are pending, tell the person:
    **"You have N handoffs: #12 <task> from <sender>, #9 <task> from <sender>"** and ask which to claim.
    `mcp__trov__get_handoff <id>` shows one in full without claiming it.
@@ -126,11 +126,18 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
      context's `branch`. If they differ, say so and ask whether to switch — don't work on the wrong one.
    - If the claim comes back with a status instead (`claimed` / `expired`), someone else took it or it
      lapsed — tell the person that plainly.
+   - **Also call `mcp__trov__list_links`** (no args but `repo`) and tell the person what is live:
+     link requests **waiting** for them ("@jose asked to link about PR #180 — accept or decline it in
+     Trov › Relay › Links"), their **open** links, and open links of theirs with **no session yet**
+     (`unbound`: "open link #12 from your Ask thread, no session yet — say 'join link 12'"). Say nothing
+     when every box is empty. **Read-only:** never join or request a link from here; joining is the
+     `link` skill, when the person says so.
 
 ## Hard rules
 
 - **Read-only — with one exception.** This skill never proposes, stages, promotes, or ratifies
-  anything. The one write it may make is `claim_handoff`, and only for the handoff the person picked.
+  anything. The one write it may make is `claim_handoff`, and only for the handoff the person picked. It
+  never joins, requests or closes a link.
 - **Never auto-claim a handoff.** List them, ask, claim only on the person's answer.
 - **State the organization before the context.** What you read is one organization's memory; a person
   in two organizations must be able to see which one answered.

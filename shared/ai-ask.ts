@@ -169,6 +169,7 @@ export const AskThreadSummarySchema = z.object({
   contextRef: z.string().nullable(), hasDraft: z.boolean(), group: z.enum(ASK_THREAD_GROUPS), createdAt: z.string(), updatedAt: z.string(),
   shared: z.boolean().optional(), people: z.array(AskSharePersonSchema).optional(), owner: z.string().optional(), viewer: z.boolean().optional(),
   access: z.enum(ASK_SHARE_ACCESS).optional(), direct: z.boolean().optional(),
+  links: z.array(z.object({ id: z.number().int().positive(), with: z.string(), self: z.boolean(), notes: z.number().int().positive() })).optional(),
 }) satisfies z.ZodType<AskThreadSummary>;
 
 export const AskSearchHitSchema = z.object({

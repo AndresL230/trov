@@ -64,6 +64,7 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys", "commit_paths", "pr_files", "pr_file_reads"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
+  { file: "src/platform/sweeps.ts", fn: "expireDueLinks", tables: ["agent_links"], why: "expiry sweep, cross-org and write-only, like the handoffs' (0078_agent_links)" },
   { file: "src/platform/sweeps.ts", fn: "pruneHandoffUploadTokens", tables: ["handoff_upload_tokens"], why: "retention sweep, cross-org and write-only: handoff upload tokens past their 5 minutes" },
   { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
@@ -114,7 +115,7 @@ const PLATFORM_ALLOW: Allow[] = [
   // Deleting an ACCOUNT (src/deletion/person.ts) is a person's act across every org they are in: their own
   // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
   { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_person_prefs", "org_login_map", "feed", "feed_fts", "ai_dirty", "ai_sessions", "person_brief",
-    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "chat_thread_people", "person_ask_settings",
+    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "chat_thread_people", "person_ask_settings", "agent_links",
     "artifact_upload_tokens", "artifact_links", "artifact_versions", "artifacts_fts", "artifact_pages", "handoff_upload_tokens"],
     why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone; the AI router's scopes keyed on them (their brief, their GitHub sessions) go; their Ask Trov threads (0066_ask) are theirs alone, and so are their PRIVATE Ask attachments (the owner's ruling) and every share by name naming them or their threads (0077_ask_people_sharing)" },
   { file: "src/deletion/person.ts", fn: "ASK_ATTACHMENTS_OF", tables: ["artifact_pages", "chat_artifacts"],

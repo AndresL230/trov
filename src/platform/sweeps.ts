@@ -11,11 +11,27 @@ import {
   PRODUCT_GLOB_SQL, PRODUCT_HOURLY_RETENTION_DAYS, USAGE_GLOB_SQL, USAGE_RETENTION_DAYS,
 } from "../repo/store";
 import { SYNC_RUN_RETENTION_DAYS } from "@shared/sync";
+import { LINK_IDLE_MS } from "@shared/links";
 import { COMMIT_PATHS_RETENTION_DAYS } from "../repo/commit-paths";
 
 /** Every pending handoff, in any org, past its `expires_at` flips to expired. Returns how many flipped. */
 export async function expireDueHandoffs(p: PlatformContext, nowMs: number): Promise<number> {
   const res = await run(p, `UPDATE handoffs SET status = 'expired' WHERE status = 'pending' AND expires_at < ?`, new Date(nowMs).toISOString());
+  return res.meta.changes ?? 0;
+}
+
+/**
+ * Every agent link, in any org, past its time (0078_agent_links) becomes `expired`: a draft after 1 h, a request
+ * after 24 h, an open link 7 days after it opened (each its `expires_at`) — or an open link that neither side's
+ * agent has checked, joined or written in 12 h (`LINK_IDLE_MS`; its opening counts as the last sign). Returns how
+ * many expired.
+ */
+export async function expireDueLinks(p: PlatformContext, nowMs: number): Promise<number> {
+  const res = await run(p,
+    `UPDATE agent_links SET state = 'expired', closed_at = ?1
+      WHERE (state IN ('draft', 'requested', 'open') AND expires_at < ?1)
+         OR (state = 'open' AND max(COALESCE(decided_at, ''), COALESCE(requester_seen_at, ''), COALESCE(recipient_seen_at, '')) < ?2)`,
+    new Date(nowMs).toISOString(), new Date(nowMs - LINK_IDLE_MS).toISOString());
   return res.meta.changes ?? 0;
 }
 

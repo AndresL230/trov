@@ -50,7 +50,8 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "New ticket", hint: "File a ticket", keys: "create bug report request file", steps: [["newTicket", null]] },
   { label: "Roadmap", hint: "The plan narrative and sprints", keys: "plan narrative sprints", steps: [["goRoadmap", null]] },
   { label: "Roadmap › Timeline", hint: "Sprints on a timeline", keys: "plan sprints gantt schedule", steps: [["goRoadmap", null], ["roadmapTimeline", null]] },
-  { label: "Handoffs", hint: "Work left for the next session", keys: "inbox claim", steps: [["goHandoffs", null]] },
+  { label: "Relay › Handoffs", hint: "Work left for the next session", keys: "handoffs inbox claim", steps: [["goHandoffs", null]] },
+  { label: "Relay › Links", hint: "Lines between agent sessions whose work overlaps", keys: "agent links notes overlap", steps: [["goLinks", null]] },
   { label: "New handoff", hint: "Leave work for someone", keys: "send create", steps: [["newHandoff", null]] },
   { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["goRepo", "overview"]] },
   { label: "Repo › Summary", hint: "Where the repo stands, written by Trov", keys: "ai state shipped in flight attention written", steps: [["goRepo", "summary"]] },
@@ -81,7 +82,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
 ];
 
 /** What the palette offers before anything is typed. */
-const JUMP_DEFAULTS = ["My Work", "Tickets › Board", "New ticket", "Roadmap", "Handoffs", "Docs", "Settings › MCP access", "Release notes"];
+const JUMP_DEFAULTS = ["My Work", "Tickets › Board", "New ticket", "Roadmap", "Relay › Handoffs", "Docs", "Settings › MCP access", "Release notes"];
 
 /** Word tokens of a query, lowercased (the server's own tokenizer rule). */
 export const tokensOf = (q: string): string[] =>

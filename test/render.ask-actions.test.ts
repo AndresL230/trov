@@ -798,6 +798,34 @@ describe("assignment cards — the item, the people, the change", () => {
     expect(text(cards(withCards([vm]))[0])).toMatch(/^Claim handoff Draft, not done yet #17 Quiz agent fails validation Pending MC Maya Chen to AL Andres Lopez No one else can claim it after Cancel Confirm$/);
   });
 
+  // E2E A-14 (docs/testing/agent-links-test-log.md): a link card's "What it does" — what Confirm does — was dropped.
+  it("an agent-link card ends on what Confirm does", () => {
+    const req: AskActionVm = { id: 81, groupId: null, tool: "request_link", kind: "handoff", state: "proposed", fields: {}, editable: [], note: null, result: null, ref: null, undo: false, at: NOW.toISOString(),
+      preview: { title: "Link request to @maya", lines: [{ label: "With", value: "@maya" }, { label: "Reason", value: "Both of us are in the auth middleware this week." },
+        { label: "What it does", value: "Confirm sends it. @maya accepts or declines it in Trov; once open, their agent's notes reach this thread." }], item: null } };
+    expect(text(cards(withCards([req]))[0])).toMatch(/With @maya Confirm sends it\. @maya accepts or declines it in Trov; once open, their agent(?:'|&#39;)s notes reach this thread\. Cancel Confirm$/);
+  });
+
+  // E2E A-13: Confirm on a join_link card binds THIS thread, so the other side's notes now wait for it — the line at
+  // the top and the list's mark are read again (until a reload the line stayed as it was before the Confirm).
+  it("Confirm on an agent-link card re-reads the thread's waiting notes and the list", async () => {
+    const join: AskActionVm = { id: 82, groupId: null, tool: "join_link", kind: "handoff", state: "proposed", fields: { id: 14 }, editable: [], note: null, result: null, ref: null, undo: false, at: NOW.toISOString(),
+      preview: { title: "Join link #14 from this thread", lines: [{ label: "With", value: "@maya" }], item: null } };
+    const s2 = withCards([join]);
+    s2.ask.page = { ...s2.ask.page, thread: { id: 1, title: "T", pinned: false, mode: "smart", auto: false, origin: "page", contextRef: null, hasDraft: false, group: "today", createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() } };
+    const waiting = [{ id: 14, with: "maya", self: false, notes: 2 }];
+    const confirmAction = vi.fn(async (id: number) => ({ results: [result(id, "confirmed", "link:14", { id: 14, state: "open" }, false)] } satisfies AskActionAnswer));
+    const getThread = vi.fn(async () => ({ thread: { ...s2.ask.page.thread!, links: waiting }, messages: [] }));
+    const { ctx } = ctxOf(s2, { confirmAction, getThread } as unknown as Partial<AskApi>);
+    const reloadThreads = vi.fn();
+    ctx.reloadThreads = reloadThreads;
+    actionsPart.act!(ctx, "askAcConfirm", "82", null);
+    await flush(); await flush();
+    expect(getThread).toHaveBeenCalledWith(1);
+    expect(s2.ask.page.thread?.links).toEqual(waiting);
+    expect(reloadThreads).toHaveBeenCalled();
+  });
+
   it("phone: the picker, the item, Undo and the line's link get the 44px hit area", () => {
     for (const sel of [".ask-act .cnpy-dd::after", "button.ask-asg-item::after", ".ask-undo::after", ".ask-line-link::after"]) expect(css).toContain(`[data-phone="1"] ${sel}`);
   });

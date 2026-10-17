@@ -37,8 +37,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">
@@ -214,8 +214,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">
@@ -391,8 +391,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">
@@ -686,8 +686,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo is-active" data-tip="Repo">
@@ -991,8 +991,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo is-active" data-tip="Repo">
@@ -1215,8 +1215,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
       <div class="cnpy-navrow n-roadmap is-active" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap" aria-current="page"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">

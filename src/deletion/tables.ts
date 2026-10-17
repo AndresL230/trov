@@ -40,6 +40,8 @@ export const ORG_TABLES = [
   "doc_versions", "docs", "docs_fts", "entry_tags", "org_tag_suggestions", "org_tag_runs", "org_tags", "org_ai_settings", "feed", "feed_fts", "adrs", "adrs_fts", "needs_triage", "processed_items",
   // Handoffs and the Prompt Library.
   "handoff_upload_tokens", "handoffs", "prompt_versions", "prompts", "prompts_fts",
+  // Agent links (0078_agent_links): the notes, then the links.
+  "agent_link_notes", "agent_links",
   // What was captured from GitHub, the Repo dashboard, Sync runs.
   "pr_summaries", "issue_summaries", "events", "identity_tasks", "repo_events", "repo_snapshots", "repo_metrics", "sync_runs",
   // What the model suggested and the "Wrong?" people pressed (0055_ai).

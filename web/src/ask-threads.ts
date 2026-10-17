@@ -16,7 +16,7 @@ import { closingAttr, reducedMotion } from "./ask-motion";
 import { skeleton, skList, skLine, skW } from "./skeleton";
 import { askExportName, type AskSearchHit, type AskShareAccess, type AskSharePerson, type AskThreadGroup, type AskThreadSummary } from "@shared/ai-ask-core";
 import { confirmModal } from "./confirm";
-import { sharedMark } from "./marks";
+import { markShape, sharedMark } from "./marks";
 import { personName, refAvatar, type RefLook } from "./ask-refs";
 import { askView, sameHandle } from "./ask-state";
 import { segmented } from "./segmented";
@@ -87,6 +87,18 @@ function menu(v: AskView, t: AskThreadSummary): string {
   </div>`;
 }
 
+/** How many notes wait on the thread's Trov links (`AskThreadSummary.links`): they reach it with the next question. */
+export const threadLinkNotes = (t: Pick<AskThreadSummary, "links">): number => (t.links ?? []).reduce((n, l) => n + l.notes, 0);
+
+/** The row's mark for notes waiting on its links — a small blue dot (marks.ts), its tooltip saying what it means;
+ *  nothing when none. Never a pill. */
+export function threadLinkMark(t: Pick<AskThreadSummary, "links">): string {
+  const n = threadLinkNotes(t);
+  if (!n) return "";
+  const tip = `${n} new ${n === 1 ? "note" : "notes"} on a Trov link. ${n === 1 ? "It reaches" : "They reach"} this thread with your next question.`;
+  return `<span class="ask-th-link" data-ask-th-link="${n}" role="img" aria-label="${attr(tip)}" data-mtip="${attr(tip)}">${markShape("dot", "var(--blue)", 7)}</span>`;
+}
+
 function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string {
   const on = v.app.screen === "ask" && v.ui.page.threadId === t.id;
   const open = v.ui.threadMenu === t.id;
@@ -96,7 +108,7 @@ function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string 
   if (v.ui.renaming?.id === t.id) {
     return `<div class="ask-th" data-morph-key="th:${t.id}"${leaving}><div class="ask-th-in"><input class="ask-th-rename" data-act="askThRenameText" data-arg="${t.id}" data-field="askThRename" data-ask-rename="${t.id}" value="${attr(v.ui.renaming.text)}" aria-label="Thread name" maxlength="80" /></div></div>`;
   }
-  const time = `<span class="ask-th-at">${esc(threadTime(t))}</span>`;
+  const time = `${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span>`;
   // Shared (with the org, or people by name): a quiet mark after the title (private, the normal state, has none).
   const who = sharedWith(askOrgName(v.app), t, v.look);
   const mark = who ? `<span class="ask-th-mark">${sharedMark(ownerSharedTip(who), 13, false)}</span>` : "";
@@ -119,7 +131,7 @@ function sharedRow(v: AskView, t: AskThreadSummary): string {
   const name = personName(v.look, owner);
   const cont = t.direct && t.access === "continue";
   return `<div class="ask-th ask-th--shared" data-morph-key="sh:${t.id}"><div class="ask-th-in"><button type="button" class="ask-th-b ask-th-b--hit ask-th-b--shared${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""} aria-label="${attr(`${t.title || "Untitled thread"}, shared by ${name}${cont ? ", you can continue it" : ""}`)}">
-      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span><span class="ask-th-at">${esc(threadTime(t))}</span></span>
+      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span>${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span></span>
       <span class="ask-th-owner">${refAvatar(v.look, owner, 16)}<span class="ask-th-owner-n">${esc(name)}</span>${cont ? `<span class="ask-th-can">· Can continue</span>` : ""}</span>
     </button></div></div>`;
 }

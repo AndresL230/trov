@@ -19,8 +19,13 @@ describe("the MCP parity", () => {
     const both = names.filter((n) => n in ASK_TOOLS && n in ASK_EXCLUDED_TOOLS);
     expect(neither, "an MCP tool is neither wired into Ask nor in ASK_EXCLUDED_TOOLS").toEqual([]);
     expect(both).toEqual([]);
-    // The design's exclusions, and the one this build adds (a delete is a person's step).
-    expect(Object.keys(ASK_EXCLUDED_TOOLS).sort()).toEqual(["delete_sprint", "get_connection", "record_session", "switch_org", "upload_asset"]);
+    // The design's exclusions, the one this build adds (a delete is a person's step), and `link_inbox`: an Ask thread
+    // is a side of an agent link, and reads its notes in its own turn (the other five link tools are wired).
+    expect(Object.keys(ASK_EXCLUDED_TOOLS).sort()).toEqual([
+      "delete_sprint", "get_connection", "link_inbox", "record_session", "switch_org", "upload_asset",
+    ]);
+    expect(ASK_EXCLUDED_TOOLS.link_inbox).toBe("Ask reads link notes in its own turn.");
+    for (const n of ["request_link", "join_link", "send_link_note", "close_link", "list_links"]) expect(n in ASK_TOOLS, n).toBe(true);
     for (const n of Object.keys(ASK_EXCLUDED_TOOLS)) expect(names, n).toContain(n);
     // Ask's own tools are wired and are not MCP tools.
     for (const n of ASK_ONLY_TOOLS) {
@@ -29,10 +34,15 @@ describe("the MCP parity", () => {
     }
   });
 
-  it("a wired tool's input takes exactly what MCP serves, less `repo`, `org` and `session`", () => {
+  it("a wired tool's input takes exactly what MCP serves, less `repo`, `org` and `session` (and what Ask fills for a link side)", () => {
+    // An Ask thread's link side is always kind `ask` with no branch: request_link / join_link are offered without them.
+    expect(Object.keys((askInputSchema(MCP_TOOLS.find((t) => t.name === "request_link")!.inputSchema, "request_link").properties ?? {}) as Record<string, unknown>).sort())
+      .toEqual(["reason", "target"]);
+    expect(Object.keys((askInputSchema(MCP_TOOLS.find((t) => t.name === "join_link")!.inputSchema, "join_link").properties ?? {}) as Record<string, unknown>).sort())
+      .toEqual(["id", "side"]);
     for (const t of MCP_TOOLS) {
       if (t.name in ASK_EXCLUDED_TOOLS) continue;
-      const served = Object.keys((askInputSchema(t.inputSchema).properties ?? {}) as Record<string, unknown>).sort();
+      const served = Object.keys((askInputSchema(t.inputSchema, t.name).properties ?? {}) as Record<string, unknown>).sort();
       const input = ASK_TOOLS[t.name].input as z.ZodType;
       const shape = (input as unknown as { shape?: Record<string, unknown> }).shape;
       expect(shape, `${t.name} has an object input`).toBeTruthy();
@@ -48,6 +58,11 @@ describe("the MCP parity", () => {
     expect(WRITES.update_plan.confirmOnly).toBeTruthy();
     expect(WRITES.publish_doc.confirmOnly).toBe("Publishing waits for you, even on Auto.");
     expect(WRITES.publish_doc.outsideCap).toBe(true);
+    // Every agent-link card waits for a click, even on Auto (a note goes to someone else's agent).
+    for (const n of ["request_link", "join_link", "send_link_note", "close_link"]) {
+      expect(WRITES[n].confirmOnly, n).toBeTruthy();
+      expect(WRITES[n].outsideCap, n).toBe(true);
+    }
     // The human-only steps are not tools at all.
     for (const n of ["promote_doc", "reject_doc", "ratify_adr", "publish_prompt", "accept_suggestion", "delete_sprint", "delete_ticket"]) {
       expect(n in ASK_TOOLS && !(n in ASK_EXCLUDED_TOOLS), n).toBe(false);
@@ -72,8 +87,19 @@ describe("what each person and mode is offered", () => {
     for (const n of Object.keys(ASK_EXCLUDED_TOOLS)) expect(admin).not.toContain(n);
     for (const t of offeredTools(await tenantCtx(FIXTURE_ADMIN), "smart").filter((x) => MCP_TOOLS.some((m) => m.name === x.name))) {
       expect(Object.keys(((t.input_schema.properties ?? {}) as Record<string, unknown>)), t.name).not.toEqual(expect.arrayContaining(["repo"]));
+      expect(Object.keys(((t.input_schema.properties ?? {}) as Record<string, unknown>)), t.name).not.toEqual(expect.arrayContaining(["session"]));
       expect((t.input_schema as { $schema?: unknown }).$schema).toBeUndefined();
     }
+  });
+
+  it("the link tools are offered with Ask's own words (the thread is the side, Confirm is the Send) and no session, kind or branch", async () => {
+    const offered = offeredTools(await tenantCtx("AndresL230"), "smart");
+    const req = offered.find((t) => t.name === "request_link")!;
+    expect(req.description).toContain("THIS Ask thread");
+    expect(req.description).toContain("never runs by itself, even in Auto");
+    expect(Object.keys(req.input_schema.properties as Record<string, unknown>).sort()).toEqual(["reason", "target"]);
+    expect(offered.map((t) => t.name)).not.toContain("link_inbox");
+    expect(offeredTools(await tenantCtx("AndresL230"), "fast").map((t) => t.name)).toContain("list_links");
   });
 
   it("Fast is offered only the index (search and list tools, stored cards); Smart and Thinking the full catalog", async () => {

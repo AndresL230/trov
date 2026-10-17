@@ -32,6 +32,7 @@ import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody, HandoffClaimResult,
 } from "@shared/handoffs";
+import type { LinkBox, LinkView, LinkDetail, LinkTargetBody } from "@shared/links";
 
 export class Unauthorized extends Error {
   constructor() { super("unauthorized"); }
@@ -42,6 +43,8 @@ export class ApiError extends Error {
   retryAfter: number | null = null;
   /** A 402 `plan_limit`'s body (shared/plans.ts): which limit of the org's plan refused, and its sentence. */
   plan: PlanRefusal | null = null;
+  /** The refusal's `message`, when the route sends one beside its `error` code (the link routes do). */
+  detail: string | null = null;
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
 /** The plan refusal in a refused call's JSON body, if that is what it is. */
@@ -152,8 +155,15 @@ async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
   let retryAfter: number | null = null;
   let plan: PlanRefusal | null = null;
-  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); plan = planOf(j); } catch { /* non-JSON */ }
+  let detail: string | null = null;
+  try {
+    const j = (await res.json()) as { error?: string; message?: unknown; retry_after?: unknown };
+    if (j.error) msg = j.error;
+    if (typeof j.message === "string" && j.message) detail = j.message;
+    retryAfter = retryAfterOf(j); plan = planOf(j);
+  } catch { /* non-JSON */ }
   const err = new ApiError(res.status, msg);
+  err.detail = detail;
   err.retryAfter = retryAfter;
   err.plan = plan;
   return err;
@@ -1018,6 +1028,35 @@ export type { DashboardData };
 export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, NotificationSettingsRow };
 export type { PersonColor };
 export type { PersonSummary, PersonProfile };
+
+// ── Agent links (Relay › Links; src/routes.ts) ─────────────────────────────
+/** One box of the caller's links: waiting (sent to me) · mine (my drafts and sent requests) · open · unbound · closed. */
+export async function listLinks(box: LinkBox): Promise<LinkView[]> {
+  return (await getJson<{ links: LinkView[] }>(`/api/links?box=${encodeURIComponent(box)}`)).links;
+}
+/** One link with its notes; a 404 (`not_found`) when it is not the caller's or does not exist. */
+export async function getLink(id: number): Promise<LinkDetail> {
+  return (await getJson<{ link: LinkDetail }>(`/api/links/${id}`)).link;
+}
+/** A person starts a link from Relay › Links (the "Start a link" card): `requested` at once, or `open` when it is
+ *  with themself. A refusal (`not_member`, `not_found`, `limit`, `bad_request`) is an ApiError with the route's
+ *  `message` as its `detail`. */
+export async function startLink(target: LinkTargetBody, reason: string): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links`, { target, reason })).link;
+}
+/** A person step: Send (requester, draft), Accept / Decline (recipient, requested), Cancel (requester). */
+export async function linkStep(id: number, step: "send" | "accept" | "decline" | "cancel"): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links/${id}/${step}`)).link;
+}
+/** Close an open link (either side). */
+export async function closeLinkWeb(id: number, reason?: string): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links/${id}/close`, reason ? { reason } : {})).link;
+}
+/** A person's note on their own side; answers the refreshed link. `side` only on a self-link (both sides are mine):
+ *  which one the note is FROM (default the requester's). */
+export async function addLinkNote(id: number, body: string, side?: "requester" | "recipient"): Promise<LinkDetail> {
+  return (await postJson<{ link: LinkDetail }>(`/api/links/${id}/notes`, side ? { body, side } : { body })).link;
+}
 
 // ── Handoffs + Prompt Library ────────────────────────────────────────────────
 export async function listHandoffs(box: HandoffBox = "mine"): Promise<HandoffView[]> {

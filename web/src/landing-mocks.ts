@@ -300,7 +300,7 @@ function handoffsMock(): string {
         <div class="fxm-wide" style="margin-top:10px;padding-top:9px;border-top:1px solid var(--border);font-family:var(--label);font-size:10px;color:var(--fg-40)">src/limits/bucket.ts<br>test/limits.test.ts</div>
       </div>
     </div>`;
-  return win("Handoffs", hbtn("New handoff", true), body);
+  return win("Relay", hbtn("New handoff", true), body);
 }
 
 // ── Artifacts: one artifact's page — versions, status, the ratified line ─────
