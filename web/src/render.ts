@@ -2956,7 +2956,7 @@ function screenBody(s: AppState): string {
     });
     case "newdoc": return newDocScreen(s);
     case "import": return importWizardView({ ui: s.imp, library: s.library, pages: s.imp.space && s.spaceHome.data?.space.slug === s.imp.space ? s.spaceHome.data.pages : null, admin: viewerIsAdmin(s) });
-    case "imports": return importsHistoryView({ runs: { status: s.importRuns.status, data: s.importRuns.data }, ui: s.imp, persons: s.persons.data, me: s.me?.handle ?? null, spaces: liveSpaces(s), driver: s.imp.run });
+    case "imports": return importsHistoryView({ runs: { status: s.importRuns.status, data: s.importRuns.data }, ui: s.imp, persons: s.persons.data, me: s.me?.handle ?? null, admin: viewerIsAdmin(s), spaces: liveSpaces(s), driver: s.imp.run });
     case "org": return orgSettingsView(orgProps(s));
     default: return feedView(s);
   }

@@ -517,6 +517,8 @@ export interface ImportsHistoryProps {
   persons: readonly PersonSummary[];
   /** Who is looking (a run's starter may cancel it). */
   me: string | null;
+  /** An admin of the org: may cancel anyone's run (owner ruling IH12; the server's finish allows it). */
+  admin?: boolean;
   /** The live spaces (each row's tile). */
   spaces: readonly SpaceDTO[];
   /** The run this tab drives, if any (its current file). */
@@ -561,7 +563,7 @@ function runDetail(r: ImportRunView, p: ImportsHistoryProps): string {
   switch (runMarkKey(r)) {
     case "running": {
       const pct = r.counts.pages > 0 ? Math.min(100, Math.round((staged / r.counts.pages) * 100)) : 0;
-      const mine = p.me !== null && r.by.toLowerCase() === p.me.toLowerCase();
+      const mine = (p.me !== null && r.by.toLowerCase() === p.me.toLowerCase()) || p.admin === true;
       const current = p.driver && p.driver.id === r.id && p.driver.current ? `Adding ${p.driver.current}` : `${staged} of ${pagesN(r.counts.pages)} in Review so far`;
       const busy = p.ui.cancelling === r.id;
       return `<p>Adding pages to ${esc(into)}. You can leave this page; the import keeps going.</p>

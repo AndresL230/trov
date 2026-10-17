@@ -268,6 +268,8 @@ describe("Imports history (`#imports`)", () => {
     const running = run(1, { status: "running" });
     expect(hist([running], {}, { open: 1 })).toContain('data-act="impHistCancel" data-arg="1"');
     expect(hist([running], { me: "priya" }, { open: 1 })).not.toContain("impHistCancel");
+    // Owner ruling IH12: an admin may stop someone else's run (the server allows it), so the button shows.
+    expect(hist([running], { me: "priya", admin: true }, { open: 1 })).toContain('data-act="impHistCancel" data-arg="1"');
     expect(hist([run(4, { status: "failed", counts: { ...run(4).counts, staged: 0 } })], {}, { open: 4 })).toContain('data-act="impTryAgain" data-arg="engineering"');
   });
 
