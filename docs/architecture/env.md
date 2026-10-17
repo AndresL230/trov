@@ -155,8 +155,10 @@ ignored. The Worker itself never reads it.
 
 `DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above; the seeded local app, its scenarios and the dev sign-in are
 `local-dev.md`), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
-Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
-`http://localhost`, and never honoured beside a live Stripe key. The two stand-ins are described in `.dev.vars.example`.
+Anthropic during a Sync and for Ask Trov's model stream and GitHub lookups (`src/sync/local-upstream.ts`, handed to
+Ask by `src/routes.ts`; `ask.md` › GitHub); ignored unless it is `http://127.0.0.1` or
+`http://localhost`, and never honoured beside a live Stripe key; blank in the test pool (`vitest.config.ts`), so a
+`.dev.vars` that sets it never reaches the suite. The two stand-ins are described in `.dev.vars.example`.
 `LOCAL_AI_PREVIEW` — `ready` | `empty` | `capped` | `proposed`: the AI screens' sample content (`src/ai/preview.ts`,
 `ai.md`) on `/me/dashboard`, `/repo/dashboard` and `/feed`, before anything writes it. The same rule as the stand-ins:
 honoured only for a request to a loopback `http://` origin (what `wrangler dev` serves on; a deployed Worker is never

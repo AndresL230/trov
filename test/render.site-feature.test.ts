@@ -287,7 +287,7 @@ describe("the dialog's motion rules (trov.css)", () => {
     expect(rules).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.site-fx, \.site-fx \*, \.site-fx \*::before, \.site-fx \*::after \{ animation:none !important; transition:none !important; \}\s*\.site-fxcard, \.site-fxcard::after, \.site-explore svg \{ transition:none !important; \}\s*\}/);
   });
   it("a phone gets a full-height sheet with thumb-sized controls", () => {
-    expect(rules).toMatch(/@media \(max-width:640px\) \{[^@]*\.site-fx-panel \{ height:100dvh; \}\s*\.site-fx-nav \{ min-height:44px; \}/);
+    expect(rules).toMatch(/@media \(max-width:640px\) \{[^@]*\.site-fx-panel \{ height:calc\(100 \* var\(--dvh\)\); \}\s*\.site-fx-nav \{ min-height:44px; \}/);
   });
 });
 

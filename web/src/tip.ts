@@ -7,6 +7,8 @@
 // Off for a touch (a tap is a click, not a hover), inside an aria-hidden picture (the site's tour
 // mocks), and without its fade under reduced motion (trov.css `.cnpy-mtip`).
 
+import { clientOf, rectOf } from "./zoom";
+
 export interface TipBox { top: number; left: number; width: number; height: number }
 
 /** Where the bubble goes: centred above the mark, below it when there is no room above, and kept
@@ -72,9 +74,9 @@ export function installMarkTips(root: HTMLElement, doc: Document = document): vo
     b.textContent = text;
     const theme = mark.closest("[data-cnpy-theme]")?.getAttribute("data-cnpy-theme");
     if (theme) b.setAttribute("data-cnpy-theme", theme);
-    // Measured where it is (hidden, but laid out), then moved into place.
-    const p = placeTip(mark.getBoundingClientRect(), b.getBoundingClientRect(),
-      { width: doc.documentElement.clientWidth, height: doc.documentElement.clientHeight });
+    // Measured where it is (hidden, but laid out), then moved into place — in CSS px (zoom.ts: the big-screen zoom
+    // must not move it twice).
+    const p = placeTip(rectOf(mark), rectOf(b), clientOf(doc));
     b.style.left = `${p.left}px`;
     b.style.top = `${p.top}px`;
     b.setAttribute("data-below", p.below ? "1" : "0");

@@ -92,6 +92,10 @@ const EXTRACT: Record<string, (r: unknown, args: Record<string, unknown>) => str
   update_plan: (r) => arr(obj(r)?.sprints).flatMap(sprintRefs),
   save_artifact: one("artifact", "slug"),
   show_items: (r) => arr(obj(r)?.shown).flatMap((x) => (typeof x === "string" ? [x] : [])),
+  // The GitHub tools (./github.ts): a pull request of the PRIMARY repository is the one Trov captures (its keys carry
+  // no repository), so it links as `pr:N`; another repository's stays plain text. Nothing else they read is an item.
+  github_pull_request: (r) => (obj(r)?.primary === true ? one("pr", "number")(r) : []),
+  github_list: (r) => (obj(r)?.primary === true && obj(r)?.what === "pulls" ? pick("pr", obj(r)?.items, "number") : []),
 };
 
 /** The refs a tool's result names (deduped, each a valid `type:key`, a person's handle lower-cased). */

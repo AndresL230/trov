@@ -18,6 +18,7 @@
 // and no reveal replays. Motion is the site's one clock (`--fx-*`, trov.css) and off under reduced motion.
 
 import { FX_EXIT_MS, trapIndex } from "./site-feature-core";
+import { clientOf, viewportOf } from "./zoom";
 
 /** Exit animation length. MUST match `--fx-fast` in trov.css (the tour dialog's own exit). */
 export const MENU_EXIT_MS = FX_EXIT_MS;
@@ -42,7 +43,7 @@ export function createMenuCtl(d: MenuDeps) {
     if (unlock) return;
     const root = document.documentElement;
     const [o, p] = [root.style.overflow, root.style.paddingRight];
-    const bar = innerWidth - root.clientWidth;
+    const bar = Math.round(viewportOf().width - clientOf().width);   // CSS px both (zoom.ts)
     root.style.overflow = "hidden";
     if (bar > 0) root.style.paddingRight = `${bar}px`;
     unlock = () => { root.style.overflow = o; root.style.paddingRight = p; unlock = null; };

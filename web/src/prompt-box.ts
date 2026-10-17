@@ -12,7 +12,7 @@ import { segmented } from "./segmented";
 const MONO_EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 export const COPY_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>`;
 const EXPAND_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>`;
-const ICON_BTN = "width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:var(--fg-55);flex:none";
+export const ICON_BTN = "width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:var(--fg-55);flex:none";
 
 export interface PromptBoxProps {
   title: string;
@@ -74,7 +74,7 @@ export interface PromptModalProps {
 /** The expanded prompt, over everything (render it at the root, like the connect modal). */
 export function promptModal(p: PromptModalProps): string {
   return `<div data-act="${attr(p.closeAct)}" style="position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.5);display:grid;place-items:center;padding:24px">
-    <div data-act="stop" role="dialog" aria-modal="true" aria-label="${attr(p.title)}" class="cnpy-surface" style="width:100%;max-width:620px;max-height:calc(100vh - 48px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 14px 38px rgba(0,0,0,.38);animation:cnpy-pop .2s ease both">
+    <div data-act="stop" role="dialog" aria-modal="true" aria-label="${attr(p.title)}" class="cnpy-surface" style="width:100%;max-width:620px;max-height:calc(100 * var(--vh) - 48px);display:flex;flex-direction:column;border:1px solid var(--border-strong);box-shadow:0 14px 38px rgba(0,0,0,.38);animation:cnpy-pop .2s ease both">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--border)">
         <div style="flex:1;font-size:14px;font-weight:600;letter-spacing:-0.005em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.title)}</div>
         <button data-act="${attr(p.closeAct)}" class="cnpy-xbtn" aria-label="Close" style="width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-55);flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 5l14 14M19 5 5 19"></path></svg></button>

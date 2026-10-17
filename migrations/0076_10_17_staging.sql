@@ -1,13 +1,14 @@
--- 0076_10_17_staging: the 10-17 staging epic (PR #195) — Ask sharing (#193) and handoff prompts by upload (#194) —
--- in ONE migration. It consolidates what were three files (0076_ask_sharing, 0077_ask_people_sharing,
--- 0080_handoff_upload_tokens) before any of them reached production: each part below starts with a
--- `-- ══ part <old name> ══` marker and keeps that file's own header — what it adds, why, and its by-hand rollback
--- (roll back the parts in REVERSE order; each part's `d1_migrations` line names its old file, and the one row to
--- delete once every part is rolled back is `0076_10_17_staging.sql`). Every part is ADDITIVE (one new column and
--- index on `chat_threads`, the tables `chat_thread_people` and `handoff_upload_tokens`, and nullable `asked_by` on
--- `chat_messages` / `chat_actions`), so a Worker from before it keeps working. Applied in one go by
+-- 0076_10_17_staging: the 10-17 staging epic (PR #195) — Ask sharing (#193), handoff prompts by upload (#194) and
+-- Ask Trov's GitHub lookups — in ONE migration. It consolidates what were four files (0076_ask_sharing,
+-- 0077_ask_people_sharing, 0080_handoff_upload_tokens, 0076_ask_github) before any of them reached production: each
+-- part below starts with a `-- ══ part <old name> ══` marker and keeps that file's own header — what it adds, why,
+-- and its by-hand rollback (roll back the parts in REVERSE order, 0076_ask_github first; each part's
+-- `d1_migrations` line names its old file, and the one row to delete once every part is rolled back is
+-- `0076_10_17_staging.sql`). Every part is ADDITIVE (one new column and index on `chat_threads`, the tables
+-- `chat_thread_people` and `handoff_upload_tokens`, nullable `asked_by` on `chat_messages` / `chat_actions`, and
+-- `orgs.ai_chat_github`, default 0), so a Worker from before it keeps working. Applied in one go by
 -- `wrangler d1 migrations apply`.
--- Parts: 0076_ask_sharing, 0077_ask_people_sharing, 0080_handoff_upload_tokens.
+-- Parts: 0076_ask_sharing, 0077_ask_people_sharing, 0080_handoff_upload_tokens, 0076_ask_github.
 
 -- ══ part 0076_ask_sharing ══════════════════════════════════════════════════════════════════════
 -- 0076_ask_sharing — an Ask Trov conversation can be SHARED with its organization, read-only.
@@ -112,3 +113,20 @@ CREATE TABLE IF NOT EXISTS handoff_upload_tokens (
 );
 
 CREATE INDEX IF NOT EXISTS idx_handoff_upload_tokens_expires ON handoff_upload_tokens(expires_at);
+
+-- ══ part 0076_ask_github ══════════════════════════════════════════════════════════════════════
+-- 0076_ask_github — orgs.ai_chat_github, the organization's switch for Ask Trov's GitHub lookups.
+--
+-- ADDITIVE: one new column, nothing else touched. Ask Trov can read an organization's CONNECTED repositories on
+-- GitHub (files, pull requests and their changes, issues, commits, checks) to answer a question, and what it reads
+-- goes to Anthropic (docs/architecture/ask.md › GitHub). An admin turns that on or off for the whole organization in
+-- Org settings › AI (`PUT /api/o/:slug/ai/settings { chatGithub }`, a cookie route — never MCP), audited
+-- `org.ai_chat_github`. It stacks: the AI switch (`ai_automation`) AND this AND each person's own GitHub access.
+-- OFF for every org, existing and new: no organization starts sending source code to Anthropic until an admin
+-- chooses it.
+--
+-- Rollback (by hand, with `wrangler rollback` to the Worker from before it; loses the admins' choices):
+--   ALTER TABLE orgs DROP COLUMN ai_chat_github;
+--   DELETE FROM d1_migrations WHERE name = '0076_ask_github.sql';
+
+ALTER TABLE orgs ADD COLUMN ai_chat_github INTEGER NOT NULL DEFAULT 0 CHECK (ai_chat_github IN (0, 1));

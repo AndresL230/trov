@@ -225,6 +225,18 @@ describe("Ask Trov's import boundary (docs/architecture/ask.md › Never reachab
     for (const f of askFiles()) expect(SOURCES.get(f), f).not.toMatch(/\b(getSecret|resolveCredential|resolveGithubCredential|installationToken)\s*\(|\borg_audit\b|\borg_admin_audit\b/);
   });
 
+  it("Ask's GitHub tools: the credentialed transport (src/repo/ask-github.ts) is the HTTP app's to hand in — no Ask file and nothing MCP reaches imports it", () => {
+    const transport = "src/repo/ask-github.ts";
+    expect(reachable(transport).has("src/github-app/credential.ts"), "the transport resolves through resolveGithubCredential").toBe(true);
+    expect(reachableDirect("src/routes.ts").has(transport)).toBe(true);
+    for (const entry of askFiles()) expect(reachable(entry).has(transport), entry).toBe(false);
+    expect(reachable("src/mcp.ts").has(transport)).toBe(false);
+    // …and it is read-only: it names no method but GET, and no host but api.github.com.
+    const text = SOURCES.get(transport)!;
+    expect(text).not.toMatch(/method:\s*["'](?!GET)/);
+    expect([...text.matchAll(/https:\/\/([a-z0-9.-]+)/g)].map((m) => m[1])).toEqual(["api.github.com"]);
+  });
+
   it("the walker finds Ask from the HTTP app, and MCP still reaches nothing under src/ai/", () => {
     expect(reachable("src/routes.ts").has("src/ai/ask/routes.ts")).toBe(true);
     expect([...reachable("src/mcp.ts")].filter((f) => f.startsWith("src/ai/"))).toEqual([]);

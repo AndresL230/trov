@@ -137,8 +137,10 @@ describe("landing — the banner carried through the page", () => {
   it("is ONE definition with the first-run card's banner", () => {
     expect(rules).toMatch(/\.cnpy-orgs-banner, \.site-banner \{[^}]*linear-gradient\(135deg, #5e66c7 0%, #4d55bb 48%, #3940a2 100%\)/);
     expect(rules).toMatch(/\.cnpy-orgs-banner::after, \.site-banner::after \{[^}]*background-size:16px 16px/);
-    // Dark: the banner follows the theme's accent (the green mark), on the site AND the first-run cards — one rule.
-    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%\)/);
+    // Dark: the same purple one step deeper (the dark accent is the light one's purple), on the site AND the
+    // first-run cards — one rule; nothing on the banner keeps the old olive ink.
+    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \.site-banner, \[data-cnpy-theme="dark"\] \.cnpy-orgs-banner \{[^}]*linear-gradient\(135deg, #5760bf 0%, #464eae 48%, #343b94 100%\)/);
+    expect(rules).not.toContain("#3a4620");
     // …and the glows behind the cards take the mark's colour from the theme, not a fixed purple.
     expect(rules).not.toMatch(/color-mix\(in srgb, #616acb /);
     expect(rules.match(/color-mix\(in srgb, var\(--mark, #616acb\) /g)?.length).toBeGreaterThanOrEqual(3);
@@ -155,6 +157,19 @@ describe("landing — the banner carried through the page", () => {
     const block = rules.slice(from, rules.indexOf(".site-nav {", from));
     expect(from).toBeGreaterThan(0);
     expect(block).not.toMatch(/filter\s*:\s*blur|backdrop-filter/);
+  });
+});
+
+describe("landing — the terminal mocks are Trov's purple, not the old olive (D09)", () => {
+  it("both \"⏺ trov · load-context\" lines use --term-accent, in light and dark; no #9aab65 is left", () => {
+    for (const dark of [false, true]) {
+      const html = landingView({ dark, signInOpen: false, signedIn: false, seen: new Set() });
+      expect(html.toLowerCase()).not.toContain("#9aab65");
+      const lines = [...html.matchAll(/<div[^>]*style="color:([^;"]+)[^"]*"[^>]*>⏺ trov · load-context<\/div>/g)].map((m) => m[1]);
+      expect(lines).toEqual(["var(--term-accent)", "var(--term-accent)"]);
+    }
+    expect(rules).toMatch(/\[data-cnpy-theme="light"\] \{[^}]*--term-accent:#8d94d8;/);
+    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \{[^}]*--term-accent:#8d94d8;/);
   });
 });
 

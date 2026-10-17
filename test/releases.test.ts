@@ -112,20 +112,16 @@ describe("RELEASES — the data", () => {
     expect(next.headsUp?.join(" ")).toMatch(/800 characters/);
   });
 
-  it("keeps the deploy steps of the batches not yet deployed (Unreleased, then 0.11): every migration, the App events, the plugin", () => {
+  it("keeps the deploy steps of the newest cut batch (0.11): every migration, the App events, the plugin", () => {
     const ops = (v: string) => findRelease(v)!.ops!.join(" ");
-    // Unreleased is the Docs Library batch: its one migration and the plugin it needs.
-    if (RELEASES[0].unreleased) {
-      expect(ops("unreleased")).toContain("0081_docs_library");
-      expect(ops("unreleased")).toMatch(/plugin 0\.10\.1/);
-    }
     // 0.11 (formerly 0.34) is #178 cut together with #186 / #187: its own migrations to 0068, the App events, the plugin.
     expect(ops("0.11")).toMatch(/0058_server_ai/);
     expect(ops("0.11")).toMatch(/deployment, release, create and workflow_job/);
     expect(ops("0.11")).toMatch(/plugin 0\.9\.0/);
-    // 0.12 is the 10-17 staging epic (#193 + #194): its three migrations are one file, 0076_10_17_staging.
+    // 0.12 is the 10-17 staging epic (#193 + #194 + #195): its four migrations are one file, 0076_10_17_staging.
     expect(ops("0.12")).toMatch(/0076_10_17_staging/);
-    expect(ops("0.12")).not.toMatch(/0080_handoff_upload_tokens|0077_ask_people_sharing/);
+    expect(ops("0.12")).not.toMatch(/0080_handoff_upload_tokens|0077_ask_people_sharing|0076_ask_github/);
+    expect(ops("0.12")).toMatch(/GitHub lookups/);
   });
 
   it("release notes are for users: highlights, headlines and heads-ups carry no code, PRs, migrations or deploy steps", () => {
@@ -236,7 +232,7 @@ describe("the index — a grid of release cards", () => {
     const html = releasesIndex(withNext);
     expect(html).toContain("cnpy-relcard cnpy-rise is-next");
     expect(html).toContain(">Unreleased<");
-    const r = withNext[1];
+    const r = withNext.find((x) => !x.unreleased)!; // the newest shipped card (a live Unreleased entry may sit before it)
     const n = r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
     expect(html).toContain(`${r.highlights.length} highlights · ${n} patch line${n === 1 ? "" : "s"}`);
     expect(html).not.toContain("cnpy-guide-toc"); // no "On this page" rail on the index

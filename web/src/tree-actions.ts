@@ -9,6 +9,7 @@ import type { AppState, ToastAction } from "./render";
 import { ApiError, PreviewBlocked, Unauthorized, moveDoc } from "./api";
 import { expandedSet } from "./docs-pane";
 import { MAX_DEPTH } from "@shared/docs-tree-core";
+import { rectOf } from "./zoom";
 
 export interface TreeHost {
   state: AppState;
@@ -121,7 +122,7 @@ export function createTreeController(host: TreeHost): TreeController {
     const scroller = host.mount.querySelector<HTMLElement>("#cnpy-libmain");
     const target = scroller?.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`);
     if (!scroller || !target) return;
-    const top = scroller.scrollTop + target.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 24;
+    const top = scroller.scrollTop + rectOf(target).top - rectOf(scroller).top - 24;   // CSS px (zoom.ts), as scrollTop is
     scroller.scrollTo({ top, behavior: host.reducedMotion() ? "auto" : "smooth" });
   }
 

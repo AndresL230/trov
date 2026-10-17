@@ -347,8 +347,8 @@ describe("one tag's page", () => {
     expect(html).toContain(`<div class="cnpy-tagpage-col" style="--span:5;--md:6">`);
     expect(html).toMatch(/style="--span:7;--md:6" data-size="tall" data-tag-group="feed"/);
     for (const t of ["activity", "jev", "people", "seen"]) expect(html).toMatch(new RegExp(`style="--span:3;--md:6" data-size="row" data-tag-tile="${t}"`));
-    // As wide as the widest app screens (ui.ts WORK_SHELL, the queue's and the Artifacts' frame).
-    expect(html).toContain("max-width:1440px");
+    // As wide as the widest app screens (ui.ts WORK_SHELL, the queue's frame: 1440px on a laptop, wider on a big screen).
+    expect(html).toContain("max-width:var(--frame-work)");
     expect(html).toContain("Recent in the feed");
 
     const doc = piece(html, `data-tag-item="doc:how-sign-in-works"`);
@@ -429,7 +429,7 @@ describe("one tag's page", () => {
     expect(vars).toContain("--tp-full:var(--tp-fit)");
     expect(vars).toContain("--tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap))");
     // Sized from the window (the room under the tabs), clamped so a tall window keeps 272 / 320 and a short one scrolls.
-    expect(vars).toContain("--tp-fit:clamp(520px, calc(100dvh - 252px), 888px)");
+    expect(vars).toContain("--tp-fit:clamp(520px, calc(100 * var(--dvh) - 252px), 888px)");
     expect(vars).toContain("--tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px)");
     expect(vars).toContain("--tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2)");
     for (const [size, v] of [["half", "--tp-half"], ["tall", "--tp-tall"], ["row", "--tp-row"], ["rest", "--tp-rest"], ["full", "--tp-full"]]) {

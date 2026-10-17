@@ -9,7 +9,7 @@ import { skeleton, skBar, skList, skRowsShape, skW } from "./skeleton";
 
 export const orgChunk = lazyChunk<typeof OrgChunk>(() => import("./org-chunk"));
 
-const shell = (inner: string): string => `<div data-screen-label="Org settings" class="cnpy-org" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">${inner}</div>`;
+const shell = (inner: string): string => `<div data-screen-label="Org settings" class="cnpy-org" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">${inner}</div>`;
 
 export function orgSettingsView(p: OrgSettingsProps): string {
   const m = orgChunk.get();

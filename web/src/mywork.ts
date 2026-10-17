@@ -566,7 +566,7 @@ export interface MyWorkLayout {
 export function myWorkLayout(p: MyWorkLayout): string {
   // With the brief the page is sized to fit one screen (trov.css `.mw-bento-brief`): tighter padding.
   const fit = p.bento === "brief";
-  return `<div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:${fit ? "20px 32px 16px" : "28px 32px 80px"}">
+  return `<div class="cnpy-scroll" style="max-width:var(--frame-dash);margin:0 auto;padding:${fit ? "20px 32px 16px" : "28px 32px 80px"}">
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:${fit ? 16 : 22}px;min-width:0">
       <div style="min-width:0">
         <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">${p.greeting}</h2>

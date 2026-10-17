@@ -25,6 +25,8 @@ TROV_KEK=replace-with-openssl-rand-base64-32
 # (src/sync/local-upstream.ts, docs/architecture/sync.md › Trying it locally). Requests to
 # api.github.com go to <base>/github/… and to api.anthropic.com to <base>/anthropic/… (a summary is
 # POST <base>/anthropic/v1/messages, answered in the Messages API shape: content [{type:"text", text:<JSON>}]).
+# Ask Trov goes through it too: its model stream (POST <base>/anthropic/v1/messages, streamed) and its GitHub
+# lookups (<base>/github/…) — scripts/dev/ask-github-stub.mjs is such a stand-in (docs/architecture/ask.md › GitHub).
 # The webhook, the cron and sign-in are not rerouted.
 # LOCAL_UPSTREAM=http://127.0.0.1:8862
 #

@@ -90,7 +90,7 @@ const check = (size: number, start: number, extra = "") => `<svg class="site-che
 // ── shared pieces of the canvas's repeated markup ────────────────────────────
 const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)";
 const GROUP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)";
-const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
+const H2 = "margin:0;font-size:clamp(28px, 3.4 * var(--vw), 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
 /** Every section of the page: a phone retunes its top padding and gutter by this class (trov.css). */
@@ -385,7 +385,7 @@ function loop(): string {
       </div>
       <div style="padding:12px 14px 14px;font-family:var(--code);font-size:11px;line-height:1.75">
         <div style="color:rgba(237,233,226,0.6)">${cmd}</div>
-        ${tline("⏺ trov · load-context", "#9aab65", cmdEnd + 250)}
+        ${tline("⏺ trov · load-context", "var(--term-accent)", cmdEnd + 250)}
         ${tline("Read: Rate limiting on the public API", "rgba(237,233,226,0.85)", cmdEnd + 650)}
         <div class="site-st" style="color:rgba(237,233,226,0.85);${at(cmdEnd + 1000)}">Building on ADR-0012, token bucket per org.<span class="site-caret" style="${at(cmdEnd + 1150)}"></span></div>
       </div>
@@ -632,7 +632,7 @@ function tourItems(): TourItem[] {
         ${hsec("Done", ["429s carry Retry-After from the bucket's reset time"], S + 150)}
         ${hsec("Next", ["Add limiter tests for the reset edge", "Note the header in the API doc"], S + 330)}
         <div class="site-st" style="margin-top:14px;border-radius:8px;background:var(--term);color:var(--term-fg);padding:10px 12px;font-family:var(--code);font-size:10.5px;line-height:1.75;${at(S + 800)}">
-          <div style="color:#9aab65">⏺ trov · load-context</div>
+          <div style="color:var(--term-accent)">⏺ trov · load-context</div>
           <div style="color:rgba(237,233,226,0.85)">1 handoff waiting: #17 from @leo. Claim it?</div>
           <div class="site-st" style="color:rgba(237,233,226,0.6);${at(S + 1350)}">&gt; yes</div>
         </div>

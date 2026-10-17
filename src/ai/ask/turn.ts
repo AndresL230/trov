@@ -34,6 +34,7 @@ import { PersonError } from "../../auth/persons";
 import { PlanFeatureError, PlanLimitError } from "../../plans/state";
 import { ChartError } from "./charts";
 import type { AttachmentNotice } from "./attachments";
+import { GithubToolError, githubLine, isGithubTool } from "./github";
 
 export type Emit = <K extends AskEventName>(event: K, data: AskEventMap[K]) => Promise<void>;
 
@@ -94,7 +95,7 @@ export interface TurnResult {
 export function errorBody(err: unknown): { error: string; code?: string } {
   const known = err instanceof TicketError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError
     || err instanceof PromptError || err instanceof PersonError || err instanceof PlanLimitError || err instanceof PlanFeatureError
-    || err instanceof ChartError || err instanceof ChangedSince;
+    || err instanceof ChartError || err instanceof ChangedSince || err instanceof GithubToolError;
   if (known) return { error: (err as Error).message, code: (err as { code?: string }).code };
   // Anything else (a D1 error, a bug) says nothing about its insides.
   console.error("ask tool", err instanceof Error ? err.name : "error");
@@ -131,7 +132,7 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
   };
   if (!chat) return { ...result, ended: "failed" };
 
-  const offered = offeredTools(t.ctx, t.mode);
+  const offered = offeredTools(t.ctx, t.mode, { github: !!t.tool.github });
   const offeredNames = new Set(offered.map((o) => o.name));
   const tools: Anthropic.Tool[] = offered.map((d, i) => ({
     name: d.name, description: d.description, input_schema: d.input_schema as Anthropic.Tool.InputSchema,
@@ -307,7 +308,8 @@ async function runTool(
       }
       const refs = refsFromResult(use.name, out, args);
       for (const r of refs) t.seen.add(r);
-      await finish(refs, spec.searches ? resultLine(refs.length) : refs.length > 1 ? resultLine(refs.length) : undefined);
+      const ghLine = isGithubTool(use.name) ? githubLine(use.name, out, resultLine) : undefined;
+      await finish(refs, ghLine ?? (spec.searches ? resultLine(refs.length) : refs.length > 1 ? resultLine(refs.length) : undefined));
       return { type: "tool_result", tool_use_id: use.id, content: fence(t.nonce, `Result of ${use.name}`, json(out)) };
     }
     if (use.name === "save_artifact") {
@@ -375,7 +377,9 @@ async function runTool(
       return err(body);
     }
   } catch (e) {
-    if (result.activity.some((a) => a.step === step)) await finish(undefined, "Did not work").catch(() => undefined);
+    const GH_LINE: Partial<Record<string, string>> = { not_connected: "Not connected", not_linked: "GitHub not linked", no_access: "No access on GitHub" };
+    const failLine = (e instanceof GithubToolError && GH_LINE[e.code]) || "Did not work";
+    if (result.activity.some((a) => a.step === step)) await finish(undefined, failLine).catch(() => undefined);
     return err(errorBody(e));
   }
 }

@@ -10,6 +10,7 @@
 // floats a pill beside it, with a lighter veil. Files that can't be imported say so while they are over it, and
 // a toast says so when they are dropped. The motion (the edge breathing, the icon bobbing) is off under reduced
 // motion (trov.css `.cnpy-impdrop`).
+import { rectOf } from "./zoom";
 
 /** The MIME types a drag may carry and still be imported (a file's type is all a drag shows before the drop). */
 export const DROP_TYPES: ReadonlySet<string> = new Set([
@@ -96,7 +97,9 @@ export function installImportDrop(host: DropHost, doc: Document = document): () 
     if (theme) n.setAttribute("data-cnpy-theme", theme);
     n.dataset.mode = mode;
     n.dataset.bad = info.bad ? "1" : "0";
-    const main = doc.getElementById("cnpy-main")?.getBoundingClientRect();
+    // CSS px (zoom.ts), as the styles written from them are.
+    const mainEl = doc.getElementById("cnpy-main");
+    const main = mainEl ? rectOf(mainEl) : null;
     if (main) Object.assign(n.style, { left: `${main.left}px`, top: `${main.top}px`, width: `${main.width}px`, height: `${main.height}px` });
     const tile = n.querySelector(".cnpy-impdrop-tile");
     if (tile) tile.innerHTML = info.bad ? BAN : UPLOAD;
@@ -110,7 +113,7 @@ export function installImportDrop(host: DropHost, doc: Document = document): () 
       text(".cnpy-impdrop-pt", info.bad ? DROP_BAD_TITLE : dropTitle(name));
       text(".cnpy-impdrop-pn", info.bad ? "" : `${info.n} ${info.n === 1 ? "file" : "files"}`);
       if (row && main) {
-        const r = row.getBoundingClientRect();
+        const r = rectOf(row);
         Object.assign(pill.style, { left: `${Math.max(8, r.right + 10 - main.left)}px`, top: `${r.top + r.height / 2 - main.top}px` });
       }
     }

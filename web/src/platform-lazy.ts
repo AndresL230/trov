@@ -10,7 +10,7 @@ import { skeleton, skRowsShape } from "./skeleton";
 
 export const platformChunk = lazyChunk<typeof PlatformChunk>(() => import("./platform-chunk"));
 
-const FRAME = "width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box";
+const FRAME = "width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box";
 const waiting = (label: string): string => `<div class="plat" data-screen-label="${label}" style="${FRAME}">${platformChunk.failed()
   ? chunkFailedView("Platform")
   : skeleton("platform", "Loading Platform…", skRowsShape(6, { trail: 72 }))}</div>`;

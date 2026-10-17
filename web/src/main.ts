@@ -4,6 +4,7 @@
 // still render their Phase-1 mock until their task lands.
 
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
@@ -82,6 +83,7 @@ import { isGroupBy } from "@shared/repo-layout-core";
 import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
+import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
@@ -133,6 +135,8 @@ import { isGithubConnectOutcome } from "@shared/github-app";
 import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
 import { createPaintQueue } from "./paint-queue";
 import { onMarkdownLib, prefetchMarkdownLib } from "./markdown-load";
+import { pointOf, rectOf } from "./zoom";
+import { boardCardId, boardDropArg } from "./board-drop";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -635,6 +639,10 @@ function paintApp(): void {
   }
   const active = document.activeElement as HTMLElement | null;
   const field = active?.getAttribute?.("data-field") ?? null;
+  // A focused button (not a field) is put back on its twin after the swap (focus-twin.ts), on the same screen only.
+  const focusAct = !field && active && mount.contains(active) ? active.getAttribute?.("data-act") ?? null : null;
+  const twin = focusAct ? twinSelector({ act: focusAct, arg: active?.getAttribute?.("data-arg") ?? null }) : null;
+  const screenBefore = mount.firstElementChild?.getAttribute("data-screen") ?? null;
   let selStart = 0;
   let selEnd = 0;
   let fieldScroll = 0;
@@ -697,6 +705,7 @@ function paintApp(): void {
       if (box) box.scrollTop = keepTop;
     }
   }
+  restoreTwinFocus(twin, screenBefore);
   updateActiveHeading();
   scrollActiveRow();
   updateGuideToc();
@@ -735,6 +744,15 @@ window.addEventListener("hashchange", () => {
   loadForScreen(r.screen);
 });
 
+/** After a repaint: when a focused button's page was swapped away and nothing else took focus, focus its twin (the
+ *  same act + arg) on the SAME screen — never one on another screen, never over a dialog or menu that moved focus. */
+function restoreTwinFocus(twin: string | null, screenBefore: string | null): void {
+  if (!twin || mount.firstElementChild?.getAttribute("data-screen") !== screenBefore) return;
+  const now = document.activeElement;
+  if (now && now !== document.body && now.isConnected) return;
+  mount.querySelector<HTMLElement>(twin)?.focus({ preventScroll: true });
+}
+
 // Minimal CSS.escape shim for id selectors (heading ids are already slug-safe).
 function cssEscape(v: string): string {
   return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&");
@@ -751,10 +769,10 @@ function updateActiveHeading(): void {
   const ids = new Set(items.map((b) => b.dataset.toc as string));
   const heads = [...pane.querySelectorAll<HTMLElement>(".cnpy-md h2[id], .cnpy-md h3[id], .cnpy-dpg-kh[id]")].filter((h) => ids.has(h.id));
   if (!heads.length) return;
-  const top = pane.getBoundingClientRect().top;
+  const top = rectOf(pane).top;
   let active = heads[0].id;
   for (const h of heads) {
-    if (h.getBoundingClientRect().top - top <= 120) active = h.id;
+    if (rectOf(h).top - top <= 120) active = h.id;
     else break;
   }
   if (pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 4) active = heads[heads.length - 1].id;
@@ -783,10 +801,10 @@ function updateGuideToc(): void {
   const pane = document.getElementById("cnpy-main");
   const heads = [...mount.querySelectorAll<HTMLElement>(".cnpy-guide-anchor[id]")];
   if (!pane || !heads.length) return;
-  const top = pane.getBoundingClientRect().top;
+  const top = rectOf(pane).top;
   let active = heads[0].id;
   for (const h of heads) {
-    if (h.getBoundingClientRect().top - top <= 96) active = h.id;
+    if (rectOf(h).top - top <= 96) active = h.id;
     else break;
   }
   if (pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 4) active = heads[heads.length - 1].id;
@@ -3578,7 +3596,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       rerender();
       const pane = document.getElementById("cnpy-main");
       const target = arg ? document.getElementById(`relgroup-${arg}`) : null;
-      if (pane) pane.scrollTop = target ? Math.max(0, target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 24) : 0;
+      if (pane) pane.scrollTop = target ? Math.max(0, rectOf(target).top - rectOf(pane).top + pane.scrollTop - 24) : 0;
       return;
     }
 
@@ -3674,7 +3692,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const pane = document.getElementById("cnpy-main");
       const target = arg ? document.getElementById(arg) : null;
       if (!pane || !target) return;
-      const top = target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 24;
+      const top = rectOf(target).top - rectOf(pane).top + pane.scrollTop - 24;   // CSS px, as scrollTop is
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
       pane.scrollTo({ top: Math.max(0, top), behavior });
       return;
@@ -3847,6 +3865,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       copyToClipboard(body).then((ok) => flash(ok ? "Prompt copied" : "Couldn't reach the clipboard"));
       return;
     }
+    // A library card's copy button: the plain slug, for an agent's get_prompt. Copy only; the card's
+    // hit area is a sibling, so this click never opens the prompt. Not a use (get_prompt counts that).
+    case "promptCopySlug":
+      if (!arg) return;
+      copyToClipboard(arg).then((ok) => flash(ok ? `Slug copied · ${arg}` : "Couldn't reach the clipboard"));
+      return;
     case "promptExpand": state.promptExpanded = true; break;
     case "promptBoxView":
       if (arg !== "raw" && arg !== "rendered") return;
@@ -4705,11 +4729,11 @@ function moveSlot(slot: HTMLElement, list: HTMLElement, ref: HTMLElement | null)
   const lists = new Set<HTMLElement>([list]);
   if (slot.parentElement instanceof HTMLElement) lists.add(slot.parentElement);
   const cards = [...lists].flatMap((l) => liveCards(l));
-  const before = new Map(cards.map((c) => [c, c.getBoundingClientRect().top]));
+  const before = new Map(cards.map((c) => [c, rectOf(c).top]));     // CSS px (zoom.ts), as the translate is
   list.insertBefore(slot, ref);
   if (reducedMotion()) return;
   for (const c of cards) {
-    const dy = (before.get(c) ?? 0) - c.getBoundingClientRect().top;
+    const dy = (before.get(c) ?? 0) - rectOf(c).top;
     if (Math.abs(dy) < 0.5) continue;
     c.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: SLIDE_MS, easing: "cubic-bezier(.2,.7,.2,1)" });
   }
@@ -4723,13 +4747,17 @@ function clearBoardDrag(p: BoardPress): void {
 pointerDrag<BoardPress>(mount, {
   press(target, e) {
     const card = target.closest<HTMLElement>("[data-tdrag]");
-    if (!card) return null;
-    return { card, id: Number(card.dataset.tdrag), from: card.dataset.status as TicketStatus, x: e.clientX, y: e.clientY, dx: 0, dy: 0, ghost: null, slot: null, homeList: null, homeNext: null };
+    const id = boardCardId(card);
+    if (!card || id === null) return null;
+    return { card, id, from: card.dataset.status as TicketStatus, x: e.clientX, y: e.clientY, dx: 0, dy: 0, ghost: null, slot: null, homeList: null, homeNext: null };
   },
+  // The ghost is placed in CSS px (zoom.ts): `rectOf` / `pointOf`, so under the big-screen zoom it stays under the
+  // pointer. `p.x` / `p.y` stay raw client px — `elementFromPoint` wants those.
   begin(p) {
-    const r = p.card.getBoundingClientRect();
-    p.dx = p.x - r.left;
-    p.dy = p.y - r.top;
+    const r = rectOf(p.card);
+    const at = pointOf({ clientX: p.x, clientY: p.y });
+    p.dx = at.x - r.left;
+    p.dy = at.y - r.top;
     const ghost = p.card.cloneNode(true) as HTMLElement;
     ghost.classList.add("cnpy-tghost");
     ghost.removeAttribute("data-act");
@@ -4753,8 +4781,9 @@ pointerDrag<BoardPress>(mount, {
   over(p, e) {
     const { ghost, slot } = p;
     if (!ghost || !slot) return;
-    ghost.style.left = `${e.clientX - p.dx}px`;
-    ghost.style.top = `${e.clientY - p.dy}px`;
+    const at = pointOf(e);
+    ghost.style.left = `${at.x - p.dx}px`;
+    ghost.style.top = `${at.y - p.dy}px`;
     const col = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-tdrop]") ?? null;
     const list = col ? listOf(col) : null;
     if (list) {
@@ -4772,12 +4801,12 @@ pointerDrag<BoardPress>(mount, {
     const finish = () => {
       clearBoardDrag(p);
       done();
-      if (commit && !unmoved) dispatch("queueDrop", `${p.id}:${to}:${after?.dataset.arg ?? ""}`, null);
+      if (commit && !unmoved) dispatch("queueDrop", boardDropArg(p.id, to, after), null);
     };
     if (!commit || reducedMotion()) { finish(); return; }
     // Glide the lifted card into its slot, then commit.
-    const s = slot.getBoundingClientRect();
-    const g = p.ghost.getBoundingClientRect();
+    const s = rectOf(slot);
+    const g = rectOf(p.ghost);
     const anim = p.ghost.animate(
       [{ transform: "none" }, { transform: `translate(${s.left - g.left}px, ${s.top - g.top}px)`, boxShadow: "none" }],
       { duration: 150, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
@@ -4947,10 +4976,10 @@ mount.addEventListener("pointerdown", (e) => {
   const box = mount.querySelector<HTMLTextAreaElement>('[data-field="ticketComment"]');
   if (!box) return;
   e.preventDefault();                       // no text selection while dragging
-  const startY = e.clientY;
-  const startHeight = box.getBoundingClientRect().height;
+  const startY = pointOf(e).y;              // CSS px (zoom.ts): the box follows the pointer 1:1 at any zoom
+  const startHeight = rectOf(box).height;
   const move = (ev: PointerEvent) => {
-    const h = Math.max(COMMENT_BOX.minHeight, Math.round(startHeight + (ev.clientY - startY)));
+    const h = Math.max(COMMENT_BOX.minHeight, Math.round(startHeight + (pointOf(ev).y - startY)));
     state.commentHeight = h;
     // Paint it straight onto the live element: a rerender per pointermove would
     // rebuild the screen (and steal the caret) dozens of times a second.
@@ -5138,7 +5167,7 @@ function railTip(row: HTMLElement | null): void {
   const tip = mount.querySelector<HTMLElement>(".cnpy-tip");
   if (!tip) return;
   if (!row || !railCollapsed(state)) { tip.removeAttribute("data-on"); return; }
-  const r = row.getBoundingClientRect();
+  const r = rectOf(row);                    // CSS px (zoom.ts), as the tip's top is
   tip.textContent = row.dataset.tip ?? "";
   tip.style.top = `${Math.round(r.top + r.height / 2)}px`;
   tip.setAttribute("data-on", "1");

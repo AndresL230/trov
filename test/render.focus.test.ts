@@ -11,6 +11,7 @@ import { initialDropdownUi } from "../web/src/dropdown";
 import { newSprintPanel, type NewSprintState } from "../web/src/sprints";
 import { segmented, segKeyTarget, type SegOption } from "../web/src/segmented";
 import mainSrc from "../web/src/main.ts?raw";
+import { twinSelector } from "../web/src/focus-twin";
 
 const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
 /** [selector, declarations] of every top-level or nested rule. */
@@ -124,5 +125,27 @@ describe("segmented() — one Tab stop, on the picked option (a roving tabindex)
 
   it("the keyboard is wired once, for every switch on the page", () => {
     expect(mainSrc).toContain('document.addEventListener("keydown", onSegmentedKey);');
+  });
+});
+
+// P04 (docs/testing/10-17-batch-test-log.md): Enter on a Prompt Library card's copy button copied the slug, and the toast's
+// repaint swapped <main> and dropped focus on <body> — the next Tab started over at the top of the page. A focused BUTTON
+// now finds its twin in the new <main> by `data-act` + `data-arg`, as a focused field already did by `data-field`.
+describe("a repaint keeps a focused button focused (its twin in the new page)", () => {
+  it("names the twin by its act and arg — an act alone only matches a twin without an arg", () => {
+    expect(twinSelector({ act: "promptCopySlug", arg: "test-copy-published" })).toBe('[data-act="promptCopySlug"][data-arg="test-copy-published"]');
+    expect(twinSelector({ act: "newPrompt", arg: null })).toBe('[data-act="newPrompt"]:not([data-arg])');
+  });
+  it("quotes and backslashes in an arg cannot break out of the selector", () => {
+    const sel = twinSelector({ act: "x", arg: 'a"b\\c' });
+    expect(sel).toBe('[data-act="x"][data-arg="a\\"b\\\\c"]');
+  });
+  it("nothing to pair on: no act, no twin", () => {
+    expect(twinSelector({ act: null, arg: "a" })).toBeNull();
+    expect(twinSelector({ act: "", arg: null })).toBeNull();
+  });
+  it("rerender restores it last, only when focus was lost and the screen did not change", () => {
+    expect(mainSrc).toMatch(/twinSelector\(\{ act: focusAct, arg: active\?\.getAttribute\?\.\("data-arg"\) \?\? null \}\)/);
+    expect(mainSrc).toContain("restoreTwinFocus(twin, screenBefore)");
   });
 });

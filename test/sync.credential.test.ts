@@ -283,6 +283,11 @@ describe("POST /admin/backfill — the batch reads with the credential the statu
 });
 
 describe("the local stand-ins (LOCAL_UPSTREAM, STRIPE_TEST_API_BASE) pass ONE test — src/platform/loopback.ts", () => {
+  it("the test pool blanks LOCAL_UPSTREAM, so a developer's .dev.vars never routes the suite's GitHub to a local port", () => {
+    expect((env as unknown as Env).LOCAL_UPSTREAM).toBe("");
+    expect(localUpstreamFetch(env as unknown as Env)).toBeUndefined();
+  });
+
   it("loopback http only: any path is dropped; https, another host, a look-alike host and junk are refused", () => {
     expect(loopbackOrigin("http://127.0.0.1:8862")).toBe("http://127.0.0.1:8862");
     expect(loopbackOrigin(" http://localhost:8862/some/path?x=1 ")).toBe("http://localhost:8862");

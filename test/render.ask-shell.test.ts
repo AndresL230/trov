@@ -9,7 +9,7 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
-import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
+import { askLayout, clampInspector, inspectorWidth, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
 import { ASK_BOTTOM_SLACK, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askKeepScroll, askTweenHeights, closingAttr, stickAfterScroll, tweenStart } from "../web/src/ask-motion";
 import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
@@ -143,6 +143,21 @@ describe("the screen — renders end to end with the parts' stubs", () => {
     expect(open(true)).toMatch(/<aside class="ask-insp-frame"[^>]*data-closing="1"/);
     // Under 1640px the list makes room for it.
     expect(open(false)).toContain(`data-threads="hidden"`);
+  });
+
+  it("an artifact opens the inspector narrower (400px) than other items (480px); a width the person dragged to holds for every kind", () => {
+    expect(inspectorWidth(null, "artifact:hosting-oct-17")).toBe(400);
+    expect(inspectorWidth(null, "ticket:14")).toBe(480);
+    expect(inspectorWidth(null, null)).toBe(480);
+    expect(inspectorWidth(560, "artifact:hosting-oct-17")).toBe(560);
+    expect(inspectorWidth(560, "ticket:14")).toBe(560);
+    const frame = (ref: string, width: number | null = null) => render(askState((s) => {
+      s.ask.inspector = { ...s.ask.inspector, stack: [ref], idx: 0, width };
+    }));
+    expect(frame("artifact:hosting-oct-17")).toMatch(/<aside class="ask-insp-frame"[^>]*style="width:400px;--ask-insp-w:400px">/);
+    expect(frame("artifact:hosting-oct-17")).toMatch(/data-ask-resize role="separator"[^>]*aria-valuemin="380" aria-valuemax="720" aria-valuenow="400"/);
+    expect(frame("ticket:14")).toMatch(/<aside class="ask-insp-frame"[^>]*style="width:480px;--ask-insp-w:480px">/);
+    expect(frame("artifact:hosting-oct-17", 560)).toMatch(/<aside class="ask-insp-frame"[^>]*style="width:560px;--ask-insp-w:560px">/);
   });
 
   it("the hover card is a root overlay keyed by its ref (another chip's card pops in again)", () => {

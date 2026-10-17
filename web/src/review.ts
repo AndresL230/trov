@@ -354,7 +354,7 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode, aiUi: AiChi
   // Byline: record type · identifier (label-face, reads as a reference) · author · date.
   const dot = `<span style="color:var(--fg-40)">·</span>`;
   // Keyed by the item: another item REPLACES the body (never patched into it), a repaint of the same one patches.
-  return `<div class="cnpy-rv-body" data-morph-key="rvd:${attr(it.id)}" style="max-width:920px;padding:24px 32px 100px">
+  return `<div class="cnpy-rv-body" data-morph-key="rvd:${attr(it.id)}" style="max-width:var(--frame-reader);padding:24px 32px 100px">
     <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0">
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">${esc(it.title)}</h2>
@@ -397,7 +397,7 @@ function reviewListSkeleton(): string {
   return skeleton("review-list", "Loading review queue&hellip;", skList(4, reviewCardShape));
 }
 
-const DETAIL_FRAME = "max-width:920px;padding:24px 32px 100px";
+const DETAIL_FRAME = "max-width:var(--frame-reader);padding:24px 32px 100px";
 /** The detail pane as shapes: the title, byline and verdict buttons' row, then the record's card. */
 function reviewDetailShapes(paras: number): string {
   return `<div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">

@@ -47,6 +47,10 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   confirmation MODAL (`web/src/confirm.ts` — see "The confirmation modal" under Artifacts; never `window.confirm`),
   then the library with a toast "Deleted “<title>” · Undo" (`flash(msg, ms, action)` — a
   toast may carry ONE `data-act` button) whose Undo calls restore. There is no list of deleted prompts.
+- **A library card's copy button** (top left, `promptCopySlug`) puts the PLAIN slug on the clipboard — what
+  `get_prompt` and the `prompts` skill take — and toasts "Slug copied · <slug>". The card is a `hitArea` card; the
+  copy button is a sibling of the hit (never inside a button) lifted above it by `cnpy-hitctl`, so its click copies
+  and never opens the prompt. Copying a slug is not a use (no `/used` bump; the agent's `get_prompt` counts it).
 - **Routes** (session cookie, `{ error }` on failure): `GET /api/handoffs?box=mine|me|anyone|sent`,
   `GET /api/handoffs/:id`, `POST /api/handoffs`, `POST /api/handoffs/:id/claim`, `POST /api/handoffs/:id/expire`,
   `GET /api/prompts?q&tags&sort`, `GET /api/prompts/:slug`, `GET /api/prompts/:slug/versions`, `POST /api/prompts`,

@@ -128,7 +128,7 @@ describe("narrow layouts — the hooks exist and their rules are there", () => {
   });
 
   it("the app shell fills the visible viewport", () => {
-    expect(rules).toContain("@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }");
+    expect(rules).toContain("@supports (height:100dvh) { .cnpy-shell { height:calc(100 * var(--dvh)) !important; } }");
   });
 });
 

@@ -15,6 +15,7 @@ import { buildTree, childrenOf, indentPx, planMove, type MoveTarget } from "@sha
 import { MAX_DEPTH } from "@shared/docs-tree-core";
 import type { LibraryPageDTO } from "@shared/docs-core";
 import { pointerDrag } from "./pointer-drag";
+import { pointOf, rectOf } from "./zoom";
 
 export interface TreeDragHost {
   /** The pages of the space whose pane holds `slug` (null while not read). */
@@ -104,8 +105,10 @@ export function installTreeDrag(mount: HTMLElement, host: TreeDragHost, onIdle?:
     },
     over(p, e) {
       if (!p.ghost || !p.hint || !p.line) return;
-      p.ghost.style.left = `${e.clientX + 14}px`;
-      p.ghost.style.top = `${e.clientY - 12}px`;
+      // The ghost and the line are placed in CSS px (zoom.ts); the hit tests stay in raw client px.
+      const at = pointOf(e);
+      p.ghost.style.left = `${at.x + 14}px`;
+      p.ghost.style.top = `${at.y - 12}px`;
       const pane = p.row.closest<HTMLElement>(".cnpy-dpane");
       const pages = host.pages();
       clearOver(p);
@@ -134,7 +137,7 @@ export function installTreeDrag(mount: HTMLElement, host: TreeDragHost, onIdle?:
         if (target && over) {
           if (target.kind === "into" || target.kind === "top") { over.classList.add("is-into"); p.over = over; }
           else {
-            const r = over.getBoundingClientRect();
+            const r = rectOf(over);
             const depth = Number(over.dataset.depth ?? 0);
             const left = r.left + 6 + indentPx(depth) + 4;
             p.line.style.left = `${left}px`;

@@ -43,17 +43,30 @@ const COLS = `id, repo, started_by, started_at, updated_at, ended_at, status, ba
 
 const parsed = <T>(json: string, fallback: T): T => { try { return JSON.parse(json) as T; } catch { return fallback; } };
 
+/** A stored failure as the wire shape: only the fields a failure has, each only when it is of its type. A failure
+ *  with no string `code` (an old or hand-written row) reads as `code: null` — unknown, never an invented code —
+ *  and anything else it stored is not passed on. A non-object entry is dropped. */
+function failureView(f: unknown): SyncFailure | null {
+  if (!f || typeof f !== "object") return null;
+  const o = f as Record<string, unknown>;
+  const out: SyncFailure = { code: typeof o.code === "string" ? o.code : null };
+  if (typeof o.status === "number") out.status = o.status;
+  if (o.via === "app" || o.via === "token") out.via = o.via;
+  return out;
+}
+
 /** A row as the wire shape. A `running` row that has not reported within `SYNC_STALE_MS` did not
  *  finish: it reads as `abandoned`, ended when it last reported — whether or not the row says so yet. */
 export function runView(r: RunRow, now: number): SyncRunView {
   const stale = r.status === "running" && Date.parse(r.updated_at) <= now - SYNC_STALE_MS;
   const counts = { ...zeroSyncCounts(), ...parsed<Partial<SyncCounts>>(r.counts, {}) };
-  const failures = parsed<SyncFailure[]>(r.failures, []);
+  const stored = parsed<unknown>(r.failures, []);
+  const failures = Array.isArray(stored) ? stored.map(failureView).filter((f): f is SyncFailure => f !== null) : [];
   return {
     id: r.id, repo: r.repo, by: r.started_by, started_at: r.started_at, updated_at: r.updated_at,
     ended_at: stale ? r.updated_at : r.ended_at, status: stale ? "abandoned" : (r.status as SyncRunStatus),
     batch: r.batch, batches: r.batches, phase: (SYNC_PHASES as readonly string[]).includes(r.phase) ? (r.phase as SyncPhase) : "starting",
-    done: r.done, total: r.total, counts, failures: Array.isArray(failures) ? failures : [], previous_at: r.previous_at,
+    done: r.done, total: r.total, counts, failures, previous_at: r.previous_at,
   };
 }
 

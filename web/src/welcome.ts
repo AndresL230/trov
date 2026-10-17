@@ -189,7 +189,8 @@ export function githubStep(p: WelcomeProps): string {
   }
   if (app === null) return `${notice}${failedNote("the GitHub connection")}<div class="cnpy-wel-quiet">${byName}</div>`;
 
-  if (inst) {
+  // An installation is listed only through the App: without it (`configured: false`) this step is the by-name card below.
+  if (inst && app.configured) {
     if (!live) return `${notice}<div class="cnpy-wel-quiet" data-welcome-github="suspended">${byName}</div>`;
     return `${notice}<div data-welcome-github="pick">
       <p style="${P}">GitHub is connected ${appLeadPhrase(inst)}. Pick the repository your team ships from: the first one you track becomes the primary.</p>

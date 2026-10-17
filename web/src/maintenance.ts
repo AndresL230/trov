@@ -176,7 +176,7 @@ export const UNPLACED_INTRO = "Things an agent produced but couldn't place. Read
 /** The Unplaced screen while its queue's first read is out: the page frame and intro are
  *  real; the two-pane card holds a skeleton (never "All clear" before it is known). */
 export function maintenanceSkeleton(): string {
-  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
     <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>
     ${skeleton("unplaced", "Loading the queue&hellip;", unplacedShapes(4))}
   </div>`;
@@ -198,7 +198,7 @@ function unplacedShapes(n: number): string {
 export const UNPLACED_EMPTY = "Nothing is unplaced, which is this queue's normal state. Anything an agent couldn't confidently place waits here to be routed or discarded.";
 
 export function maintenanceView(p: MaintenanceProps, hint = ""): string {
-  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
     ${hint}<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>
     ${unplacedTab(p)}
   </div>`;

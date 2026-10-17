@@ -44,6 +44,8 @@ export const TROV_TRY = ["Lead with what is blocked, then what shipped.", "Keep 
 export const TROV_SEES = [
   "Tickets, docs, pull requests, sprints, handoffs, the feed and artifacts you can open yourself.",
   "The Repo dashboard: CI, deploys and environment health.",
+  // Ask's GitHub lookups (docs/architecture/ask.md › GitHub): an admin's switch, and each person's own GitHub access.
+  "Connected repositories on GitHub, read-only, when an admin has GitHub lookups on and your linked GitHub account can read them: files, pull requests, issues, commits and checks.",
   "Files and screenshots you attach to a thread.",
 ] as const;
 export const TROV_DOES_NOT = [
