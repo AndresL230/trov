@@ -123,10 +123,9 @@ export const RELEASES: Release[] = [
       "Deleting a shared conversation deletes it for everyone it is shared with, and the confirmation says so.",
     ],
     ops: [
-      "Apply migration `0076_10_17_staging` (one file for Ask sharing, handoff uploads and the switch for Ask's GitHub lookups, off for every organization; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
+      "Apply migration `0076_10_17_staging` (one file for Ask sharing, handoff uploads, the switch for Ask's GitHub lookups, off for every org, and the Docs Library; merging to main applies it; `0077`–`0079` are left to the PR in flight beside it). All additive; each part's header has its rollback.",
       "No new secret, var or GitHub App permission: Ask's GitHub lookups read through the org's existing GitHub connection.",
-      "Apply migrations `0081_docs_library` and `0082_doc_import_manifest` (merging to main applies them). Additive; each header has its rollback. Every organization gets three spaces and every non-Product doc moves to Engineering.",
-      "Apply migration `0083_doc_archive` (merging to main applies it): two additive columns for Archive page; its header has the rollback.",
+      "Its Docs Library part gives every organization the three starter spaces and moves every doc not in Product to Engineering.",
       "Publish the Trov plugin 0.10.1 (the handoff skill uploads long prompts; docs are placed by space): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {

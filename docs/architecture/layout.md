@@ -245,26 +245,24 @@
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
   Then `0076_10_17_staging` — ONE migration for the 10-17 staging epic (#195: Ask sharing #193, handoff prompts by
-  upload #194, Ask Trov's GitHub lookups), consolidated from four files before any reached production; each part
-  keeps its old name as a `-- ══ part … ══` marker and its own header and rollback: `0076_ask_sharing` (Ask Trov)
-  [`chat_threads.shared_at` and the partial index `idx_chat_threads_shared`: a conversation its owner shared with
-  the org, read-only for its other members — `ask.md` › Sharing a conversation], `0077_ask_people_sharing` (Ask
-  Trov) [the table `chat_thread_people` — a conversation shared with named people, each `read` or `continue` — and
-  `asked_by` on `chat_messages` / `chat_actions`, who asked each turn — `ask.md` › Sharing a conversation],
-  `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a pending handoff whose prompt
-  is PUT to the artifact upload route, created only when its bytes land; hash-only, 5 minutes —
-  `handoffs-prompts.md`] and `0076_ask_github` (Ask Trov's GitHub lookups) [`orgs.ai_chat_github`, the admin's
-  switch in Org settings › AI, off for every org — `ask.md` › GitHub]; all additive. `0077`–`0079` are left to the
-  PR in flight beside it (agent links); a gap in the numbers is harmless — D1 applies every file
-  it has not applied, by name.
-  Then `0081_docs_library` (the Docs Library, all three PRs' schema at once) [`doc_spaces`, `doc_space_owners`,
-  `doc_links`, `doc_imports`; `docs.parent_slug` / `tree_rank`; `doc_versions.parent_slug` / `import_id` /
-  `import_path`; three starter spaces per org; `docs.space` remapped to a space slug; additive —
-  `docs-library.md`, held by `test/spaces.migration.test.ts`].
-  Then `0082_doc_import_manifest` (the import PR) [`doc_imports.manifest` — the server's plan of a run — and
-  `doc_imports.images` — its uploaded images' path → sha256; additive — `docs-library.md` › Import].
-  Then `0083_doc_archive` (Archive page) [`docs.archived_at` / `archived_by`; additive — `docs-library.md` ›
-  Archiving a page].
+  upload #194, Ask Trov's GitHub lookups, the Docs Library #197), consolidated from seven files before any reached
+  production; each part keeps its old name as a `-- ══ part … ══` marker and its own header and rollback:
+  `0076_ask_sharing` (Ask Trov) [`chat_threads.shared_at` and the partial index `idx_chat_threads_shared`: a
+  conversation its owner shared with the org, read-only for its other members — `ask.md` › Sharing a conversation],
+  `0077_ask_people_sharing` (Ask Trov) [the table `chat_thread_people` — a conversation shared with named people,
+  each `read` or `continue` — and `asked_by` on `chat_messages` / `chat_actions`, who asked each turn — `ask.md` ›
+  Sharing a conversation], `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a
+  pending handoff whose prompt is PUT to the artifact upload route, created only when its bytes land; hash-only, 5
+  minutes — `handoffs-prompts.md`], `0076_ask_github` (Ask Trov's GitHub lookups) [`orgs.ai_chat_github`, the
+  admin's switch in Org settings › AI, off for every org — `ask.md` › GitHub], `0081_docs_library` (the Docs
+  Library's schema) [`doc_spaces`, `doc_space_owners`, `doc_links`, `doc_imports`; `docs.parent_slug` /
+  `tree_rank`; `doc_versions.parent_slug` / `import_id` / `import_path`; three starter spaces per org; `docs.space`
+  remapped to a space slug — `docs-library.md`, held by `test/spaces.migration.test.ts`, which cuts the file at this
+  part], `0082_doc_import_manifest` (Markdown import) [`doc_imports.manifest` — the server's plan of a run — and
+  `doc_imports.images` — its uploaded images' path → sha256 — `docs-library.md` › Import] and `0083_doc_archive`
+  (Archive page) [`docs.archived_at` / `archived_by` — `docs-library.md` › Archiving a page]; all additive.
+  `0077`–`0079` are left to the PR in flight beside it (agent links); a gap in the numbers is harmless — D1 applies
+  every file it has not applied, by name.
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
   name and slug rules, `placeSpace`, the DTOs), `src/tools/spaces.ts` (reads, the admin / owner writers, the gate's
   `spaceState`), `src/spaces/routes.ts` (the cookie routes at `/spaces`) — `docs-library.md`.

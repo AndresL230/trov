@@ -1,19 +1,33 @@
 /**
- * 0081_docs_library against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is wiped,
- * migrated to just before 0081, loaded with two orgs and docs in every old space value, then given the migration.
+ * 0081_docs_library — now a part of 0076_10_17_staging — against REAL workerd D1: `MT_DB` (the second, empty database
+ * of vitest.config.ts) is wiped, migrated to just before that part, loaded with two orgs and docs in every old space
+ * value, then given the part.
  * The assertions are the header's claims: every org has the three starter spaces (the rows of STARTER_SPACES),
  * every doc not in `product` is in `engineering`, the tree / link / import schema exists, a name is unique among
  * live spaces only, and the statements the Worker from before it runs still work.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { env, applyD1Migrations } from "cloudflare:test";
+import type { D1Migration } from "@cloudflare/vitest-pool-workers";
 import { STARTER_SPACES } from "@shared/docs-core";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 
-const MIGRATION = "0081_docs_library.sql";
+const MIGRATION = "0076_10_17_staging.sql";
 const db = () => env.MT_DB;
-const before = () => env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION);
-const own = () => env.TEST_MIGRATIONS.filter((m) => m.name === MIGRATION);
+/** The consolidated file's statements, cut at the 0081_docs_library part: the parts before it, the part itself
+ *  (it ends where 0082_doc_import_manifest's first statement starts). */
+function cut(): { earlier: D1Migration; part: D1Migration } {
+  const m = env.TEST_MIGRATIONS.find((x) => x.name === MIGRATION)!;
+  const from = m.queries.findIndex((q) => q.includes("CREATE TABLE IF NOT EXISTS doc_spaces"));
+  const to = m.queries.findIndex((q) => q.includes("ALTER TABLE doc_imports ADD COLUMN manifest"));
+  if (from < 1 || to <= from) throw new Error(`${MIGRATION}: the 0081_docs_library part was not found`);
+  return {
+    earlier: { name: `${MIGRATION} (before 0081_docs_library)`, queries: m.queries.slice(0, from) },
+    part: { name: `${MIGRATION} › 0081_docs_library`, queries: m.queries.slice(from, to) },
+  };
+}
+const before = () => [...env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION), cut().earlier];
+const own = () => [cut().part];
 const q = async <T>(sql: string, ...p: unknown[]) => (await db().prepare(sql).bind(...p).all<T>()).results;
 
 /** Drop everything in MT_DB (as test/tags.migration.test.ts does, newest table first). */
@@ -50,7 +64,7 @@ beforeEach(async () => {
   await db().batch(SEED.map((s) => db().prepare(s)));
 });
 
-describe("0081_docs_library", () => {
+describe("0076_10_17_staging › 0081_docs_library", () => {
   it("gives every existing org the three starter spaces — the rows of STARTER_SPACES, in order, by 'system'", async () => {
     await applyD1Migrations(db(), own());
     for (const org of ["org_saplinglearn", "org_two"]) {

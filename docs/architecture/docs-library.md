@@ -3,16 +3,19 @@
 <!-- The area doc for the Docs Library (handoff #16). Built in three stacked PRs: Spaces, the page tree and doc
 page, and Markdown import. Each PR extends this file. Keep it current when you change the area. -->
 
-## The schema (`0081_docs_library`)
+## The schema (`0076_10_17_staging` › `0081_docs_library`)
 
-ONE additive migration holds the schema for the whole feature, so the later PRs never edit a migration:
+The Library's schema is three parts of the 10-17 epic's one migration, `0076_10_17_staging` (`layout.md`): they were
+the files `0081_docs_library`, `0082_doc_import_manifest` and `0083_doc_archive`, and each keeps its name as a
+`-- ══ part … ══` marker with its own header and rollback. The `0081_docs_library` part holds the schema for the whole
+feature:
 `doc_spaces` and `doc_space_owners` (this part), `docs.parent_slug` / `tree_rank`, `doc_versions.parent_slug`,
 `doc_links` (the page tree and links), `doc_versions.import_id` / `import_path` and `doc_imports` (import, modelled
-on `sync_runs`). The import PR adds ONE more, `0082_doc_import_manifest` (two additive columns on `doc_imports`: the
-run's server-side plan and its uploaded images — a run spans many requests, so it must remember what it was asked). Every new table binds `org_id` and is in `ORG_TABLES`, `scripts/seed/reset.mjs` and — for each
+on `sync_runs`). The `0082_doc_import_manifest` part adds two columns on `doc_imports`: the
+run's server-side plan and its uploaded images (a run spans many requests, so it must remember what it was asked). Every new table binds `org_id` and is in `ORG_TABLES`, `scripts/seed/reset.mjs` and — for each
 handle column (`doc_spaces.created_by` / `archived_by`, `doc_space_owners.handle` / `added_by`,
-`doc_imports.started_by`) — `HANDLE_COLUMNS`. Archive page adds `0083_doc_archive` (`docs.archived_at` /
-`archived_by`, the latter in `HANDLE_COLUMNS`; § Archiving a page). The migration seeds every existing org with the three starter spaces
+`doc_imports.started_by`) — `HANDLE_COLUMNS`. Archive page's `0083_doc_archive` part adds `docs.archived_at` /
+`archived_by`, the latter in `HANDLE_COLUMNS` (§ Archiving a page). The `0081_docs_library` part seeds every existing org with the three starter spaces
 and moves every doc not in `product` to `engineering`; `test/spaces.migration.test.ts` holds its claims.
 
 ## Spaces
