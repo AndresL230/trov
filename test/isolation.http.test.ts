@@ -26,6 +26,7 @@ import { append_feed, promote_doc, propose_doc_update, ratify_adr, route_triage,
 import { create_ticket, add_ticket_comment, set_ticket_parent, set_ticket_sprint } from "../src/tools/tickets";
 import { create_sprint, add_sprint_resource } from "../src/tools/sprints";
 import { createHandoff } from "../src/tools/handoffs";
+import { acceptLink, createRequestFromWeb, sendLinkNote } from "../src/tools/links";
 import { savePrompt } from "../src/tools/prompts";
 import { createPage, sha256Hex } from "../src/tools/artifacts";
 import { putSuggestion, recordFeedback } from "../src/data/ai";
@@ -50,7 +51,7 @@ interface Fx {
   cookies: Record<Who, string>;
   alice: string; ownerA: string;
   docSlug: string; promptSlug: string; artifactSlug: string;
-  adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
+  adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number; agentLinkId: number;
   inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
   bTicketId: number; suggestionId: number;
   askThreadId: number; askMessageId: number; askActionId: number;
@@ -105,6 +106,10 @@ async function seed(): Promise<Fx> {
   const linkId = (await first<{ id: number }>(env.DB, `SELECT l.id FROM ticket_links l JOIN tickets t ON t.id = l.ticket_id WHERE t.org_id = ? AND t.number = ?`, ORG_A, ticketId))!.id;
 
   const handoffId = (await createHandoff(A(), ALICE, { body: `${CANARY} handoff body`, context: { task: `${CANARY} task` } })).handoff.id;
+  // An agent link (0078): Alice → A's owner, open, a canary in its reason and in a note; `:id` is its per-org number.
+  const agentLinkId = (await createRequestFromWeb(A(), ALICE, { target: { person: OWNER_A }, reason: `${CANARY} link reason` })).id;
+  await acceptLink(A(), OWNER_A, agentLinkId);
+  await sendLinkNote(A(), platformCtx(), ALICE, { id: agentLinkId, body: `${CANARY} link note` }, "web");
   await savePrompt(A(), ALICE, { slug: "iso-prompt", title: `${CANARY} prompt`, body: `${CANARY} prompt body`, tags: ["review"], status: "published" }, "human");
   const artifactSlug = (await createPage(A(), { title: `${CANARY} artifact`, kind: "markdown", area: "auth", content: `# ${CANARY} artifact content` }, ALICE)).slug;
 
@@ -142,7 +147,7 @@ async function seed(): Promise<Fx> {
 
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
-    docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
+    docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId, agentLinkId,
     inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId, askThreadId, askMessageId, askActionId,
   };
 }
@@ -203,7 +208,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
   switch (name) {
     case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : fx.artifactSlug;
     case "id": return String(
-      under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
+      under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/links") ? fx.agentLinkId : under("/adr") ? fx.adrId
         : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId
         : under("/ai") ? fx.suggestionId : under("/ask/threads") ? fx.askThreadId : under("/ask/messages") ? fx.askMessageId
         : under("/ask/actions") ? fx.askActionId : fx.hookId);
@@ -285,6 +290,10 @@ const TENANT: Record<string, Row> = {
   // src/routes.ts — tenantApi
   "GET /handoffs": { query: "?box=anyone" }, "GET /handoffs/:id": {}, "POST /handoffs": J({ body: "to an A-only person", recipient: ALICE }),
   "POST /handoffs/:id/claim": J({}), "POST /handoffs/:id/expire": J({}),
+  // Agent links (0078): every statement binds the gate's org, and a link reads only for its two people.
+  "GET /links": { query: "?box=open" }, "GET /links/:id": {}, "POST /links": J({ target: { person: ALICE }, reason: "to an A-only person" }),
+  "POST /links/:id/send": J({}), "POST /links/:id/accept": J({}), "POST /links/:id/decline": J({}), "POST /links/:id/cancel": J({}),
+  "POST /links/:id/close": J({ reason: "hijacked" }), "POST /links/:id/notes": J({ body: "hijack" }),
   "GET /prompts": {}, "GET /prompts/:slug": {}, "GET /prompts/:slug/versions": {}, "POST /prompts": J({ slug: "matrix-prompt", title: "t", body: "b" }),
   "POST /prompts/:slug/tags": J({ tags: ["review"] }), "POST /prompts/:slug/used": J({}), "POST /prompts/:slug/publish": J({ version: 1 }),
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
@@ -600,7 +609,7 @@ describe("controls", () => {
     }
     expect(seen).toEqual(expect.arrayContaining([
       "/img/:sha", "/docs", "/doc/:slug", "/doc/:slug/versions/:version", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
-      "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id",
+      "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id", "/links", "/links/:id",
       "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
     ]));
     // …and at the old paths, for a person whose only org is A.

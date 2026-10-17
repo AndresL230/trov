@@ -8,7 +8,8 @@ import { type TenantContext, stmt, batch } from "../data/sql";
  * holds every count to the length of the list it stands for:
  * proposals = `list_proposals`, decisions = `list_adrs("draft")`, unplaced = `list_needs_triage`, logins =
  * `list_identity_tasks`, tickets = `ticket_badge`, handoffs = the web's `handoffsForMe` over
- * `listHandoffs(me, "mine")`, prompts = the staged ones of `listPrompts`.
+ * `listHandoffs(me, "mine")`, links = `listLinks(me, "waiting")` (requests sent to me — a self-link
+ * never waits: it opens on send), prompts = the staged ones of `listPrompts`.
  */
 export async function sidebarBadges(ctx: TenantContext, me: string): Promise<SidebarBadges> {
   const o = ctx.orgId;
@@ -26,7 +27,9 @@ export async function sidebarBadges(ctx: TenantContext, me: string): Promise<Sid
     stmt(ctx, `SELECT COUNT(*) AS n FROM prompts p
                  JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version AND v.org_id = ?
                 WHERE p.org_id = ? AND p.deleted_at IS NULL AND v.status = 'staged'`, o, o),
+    // `listLinks(me, "waiting")`: requested, sent to me (the handle columns are COLLATE NOCASE).
+    stmt(ctx, `SELECT COUNT(*) AS n FROM agent_links WHERE org_id = ? AND state = 'requested' AND recipient = ?`, o, me),
   ]);
   const n = (i: number): number => rows[i]?.results[0]?.n ?? 0;
-  return { proposals: n(0), decisions: n(1), unplaced: n(2), logins: n(3), tickets: n(4), handoffs: n(5), prompts: n(6) };
+  return { proposals: n(0), decisions: n(1), unplaced: n(2), logins: n(3), tickets: n(4), handoffs: n(5), links: n(7), prompts: n(6) };
 }
