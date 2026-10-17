@@ -251,6 +251,16 @@ describe("shared with a person by name: Can continue gives them the composer, an
     expect(actionDropdowns(s).some((d) => d.id.includes("21"))).toBe(false);
   });
 
+  it("a collaborator who deleted their account reads as Deleted user — never their deleted-… handle (e2e C59)", () => {
+    const gone = "deleted-hav45t72pi";
+    const s = twoAskers({ shared: false }, "andres", gone);
+    const html = conversationView(askView(s));
+    expect(html).not.toContain(gone);
+    expect(part(html, "q:m3")).toContain("Deleted user");
+    expect(part(html, "q:m3")).toContain(`data-mtip="Private to Deleted user: you can see its name, not what is in it."`);
+    expect(part(html, "a:m4")).toContain("Waiting for Deleted user to confirm it.");
+  });
+
   it("a thread with one asker shows no who-asked line", () => {
     expect(conversationView(askView(opened({ shared: true })))).not.toContain("ask-q-who");
   });

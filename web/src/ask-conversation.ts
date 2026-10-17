@@ -28,7 +28,8 @@
 import { esc, attr, hitArea, HITBOX, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
 import { askedByMe, askerOf, askersIn, convoOf, ownTurn, readOnly } from "./ask-state";
-import { personLink } from "./people";
+import { deletedUserTag, personLink } from "./people";
+import { isTombstoneHandle } from "@shared/deletion-core";
 import {
   refChip, splitRefTokens, statusCell, viewOf, isHiddenRef, refFallbackText, refLabel, refShort, refTypeWord, refStatusMark,
   repoFactsOf, repoHeadEnv, repoMark, personName, personOf, refAvatar,
@@ -422,6 +423,8 @@ function askedLine(v: AskView, q: AskQuestion): string {
   if (askersIn(v).size < 2) return "";
   if (askedByMe(v, q.askedBy)) return `<div class="ask-q-who">You</div>`;
   const by = askerOf(v, q.askedBy);
+  // A deleted account (a collaborator's turns outlive it) is "Deleted user" as plain text: no picture, no card.
+  if (isTombstoneHandle(by)) return `<div class="ask-q-who">${deletedUserTag(12)}</div>`;
   return `<div class="ask-q-who">${personLink(personOf(v.look, by), by, 16, personName(v.look, by), "color:var(--fg-55)", 6)}</div>`;
 }
 
