@@ -91,6 +91,8 @@ export interface ReviewItem {
   slug?: string;
   space?: string;
   parentSlug?: string | null;
+  /** When it was staged (ISO) — an agent group's "‹when›". */
+  at?: string;
 }
 
 export interface ReviewProps {
@@ -410,31 +412,55 @@ const BACK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
  *  header's — nothing in the page repeats it (org-ui.ts rule 1; Unplaced does the same). */
 export const REVIEW_INTRO = "Agent-produced changes waiting for a verdict.";
 
-// ── an import's pages, as one group ──────────────────────────────────────────
+// ── a group: an import's pages, or one agent's ───────────────────────────────
 
-/** One Markdown import's waiting pages: the run, its pages in the import's tree order (the queue lists them newest
- *  first, so a group's order is the queue's REVERSED — parents were staged first) and each page's depth (from the
- *  `parent_slug` chain inside the group). */
+/** A group of waiting pages, decided page by page or whole: one Markdown import's (keyed by its run id, "7") or the
+ *  doc changes one person's agent staged (keyed "agent:<handle>"). An import's pages are in the import's tree order
+ *  (the queue lists them newest first, so a group's order is the queue's REVERSED — parents were staged first), each
+ *  with its depth (from the `parent_slug` chain inside the group); an agent's are in the queue's order, all at depth 0.
+ *  Drafted decisions are never in a group (they are ratified one by one). */
 export interface ReviewGroup {
+  key: string;
+  kind: "import" | "agent";
+  /** The import's run id; 0 for an agent's group. */
   id: number;
   items: ReviewItem[];
   depth: Record<string, number>;
+  /** The design's ‹short›: the import's file name, or "‹Name›'s agent". */
   file: string;
   by: string | null;
   at: string | null;
+  /** The space every page is in ("" when an agent's pages span spaces). */
   space: string;
 }
 
-/** The import groups among `items`, keyed by import id, in the order their newest page appears. */
-export function importGroups(items: readonly ReviewItem[]): Map<number, ReviewGroup> {
-  const out = new Map<number, ReviewGroup>();
+/** The group an item belongs to: its import's, else — a doc change — its author's agent's; null for a decision. */
+export function groupKeyOf(it: Pick<ReviewItem, "importId" | "kind" | "agent">): string | null {
+  if (it.importId != null) return String(it.importId);
+  return it.kind === "proposal" ? `agent:${it.agent}` : null;
+}
+
+/** "Pia's agent" — the author's first name (their handle when unknown). */
+const agentShort = (it: Pick<ReviewItem, "agent" | "agentName">): string => `${(it.agentName || it.agent).trim().split(/\s+/)[0]}'s agent`;
+
+/** Every group among `items`, keyed by `groupKeyOf`, in the order their first page appears in the queue. */
+export function reviewGroups(items: readonly ReviewItem[]): Map<string, ReviewGroup> {
+  const out = new Map<string, ReviewGroup>();
   for (const it of items) {
-    if (it.importId == null) continue;
-    let g = out.get(it.importId);
-    if (!g) { g = { id: it.importId, items: [], depth: {}, file: it.importFile ?? "an import", by: it.importBy ?? null, at: it.importAt ?? null, space: it.space ?? "" }; out.set(it.importId, g); }
+    const key = groupKeyOf(it);
+    if (key === null) continue;
+    let g = out.get(key);
+    if (!g) {
+      g = it.importId != null
+        ? { key, kind: "import", id: it.importId, items: [], depth: {}, file: it.importFile ?? "an import", by: it.importBy ?? null, at: it.importAt ?? null, space: it.space ?? "" }
+        : { key, kind: "agent", id: 0, items: [], depth: {}, file: agentShort(it), by: it.agent, at: it.at ?? null, space: it.space ?? "" };
+      out.set(key, g);
+    }
+    if (g.kind === "agent" && g.space !== (it.space ?? "")) g.space = "";
     g.items.push(it);
   }
   for (const g of out.values()) {
+    if (g.kind === "agent") { for (const it of g.items) g.depth[it.id] = 0; continue; }
     g.items.reverse();
     const bySlug = new Map(g.items.filter((it) => it.slug).map((it) => [it.slug as string, it]));
     for (const it of g.items) {
@@ -447,51 +473,70 @@ export function importGroups(items: readonly ReviewItem[]): Map<number, ReviewGr
   return out;
 }
 
-/** The group's name without "Import from " (the design's ‹short›: "handbook.zip"). */
+/** The import groups among `items`, keyed by import id. */
+export function importGroups(items: readonly ReviewItem[]): Map<number, ReviewGroup> {
+  return new Map([...reviewGroups(items).values()].filter((g) => g.kind === "import").map((g) => [g.id, g]));
+}
+
+/** The group's name without "Import from " / "Written by " (the design's ‹short›: "handbook.zip", "Pia's agent"). */
 export const groupShort = (g: Pick<ReviewGroup, "file">): string => g.file;
+/** The group card's title (the design's). */
+export const groupTitle = (g: Pick<ReviewGroup, "kind" | "file">): string => g.kind === "agent" ? `Written by ${g.file}` : `Import from ${g.file}`;
+/** A page's kind, in its group's row: an import adds a page or a new version of one; an agent a page or a change. */
+export const groupPageKind = (it: Pick<ReviewItem, "isNew">, kind: ReviewGroup["kind"]): string =>
+  it.isNew ? "New page" : kind === "agent" ? "Change" : "New version";
 
 const UPLOAD = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
+/** The design's agent mark: a spark (an agent group's icon on slate, and the 16px avatar of its meta line). */
+const SPARK = (n: number, sw = 1.9) => `<svg width="${n}" height="${n}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg>`;
 const CHEV_R = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
 
 /** One page row inside an open group: a 2px selection bar, its state's shape, the title, its kind. A keyed row of the
  *  group's own list, so a page decided on its own leaves with the queue's one exit. */
-function groupPageRow(it: ReviewItem, depth: number, selected: boolean, verdict: ReviewVerdict | null): string {
+function groupPageRow(it: ReviewItem, kind: ReviewGroup["kind"], depth: number, selected: boolean, verdict: ReviewVerdict | null): string {
   const shape = verdict === "rejected" ? glyph("declined", "var(--fg-40)", 11) : verdict ? glyph("done", "var(--accent)", 11) : markShape("dashed", "var(--fg-55)", 10);
   return `<div class="cnpy-rv-row" data-morph-key="rvp:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><button type="button" data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-rvg-pg"${selected ? ' aria-current="true"' : ""} style="padding-left:${16 + depth * 16}px">
-    <span class="cnpy-rvg-bar" aria-hidden="true"></span><span style="flex:none;display:inline-flex">${shape}</span><span class="cnpy-rvg-pt">${esc(it.title)}</span><span class="cnpy-rvg-pk">${it.isNew ? "New page" : "New version"}</span>
+    <span class="cnpy-rvg-bar" aria-hidden="true"></span><span style="flex:none;display:inline-flex">${shape}</span><span class="cnpy-rvg-pt">${esc(it.title)}</span><span class="cnpy-rvg-pk">${groupPageKind(it, kind)}</span>
   </button></div></div>`;
 }
 
 function groupCard(g: ReviewGroup, p: ReviewProps, sel: ReviewItem | null, leaving: Record<string, ReviewVerdict>): string {
   const waiting = g.items.filter((it) => !leaving[it.id]);
-  const total = Math.max(p.groupTotals?.[String(g.id)] ?? 0, g.items.length);
+  const total = Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length);
   const decided = total - waiting.length;
-  const open = p.groupsOpen?.[String(g.id)] === true;
+  const open = p.groupsOpen?.[g.key] === true;
   // Every page of it has a verdict (Approve all, Reject all, or the last one decided): the card wears it and leaves.
   const verdicts = new Set(g.items.map((it) => leaving[it.id]).filter(Boolean));
   const groupVerdict = waiting.length === 0 && verdicts.size > 0 ? (verdicts.size === 1 ? [...verdicts][0] as ReviewVerdict : "promoted") : null;
   const person = p.people?.find((x) => x.handle.toLowerCase() === (g.by ?? "").toLowerCase()) ?? null;
   const by = g.by ? (person?.name || g.by).split(/\s+/)[0] : null;
   const space = p.spaceNames?.[g.space] ?? g.space;
-  const meta = [pagesN(waiting.length || g.items.length), space ? `into ${space}` : "", by ? `by ${by}` : "", (g.at ? libraryWhen(g.at) : "")].filter(Boolean).join(" · ");
+  const meta = (g.kind === "agent"
+    ? [pagesN(waiting.length || g.items.length), g.at ? libraryWhen(g.at) : ""]
+    : [pagesN(waiting.length || g.items.length), space ? `into ${space}` : "", by ? `by ${by}` : "", g.at ? libraryWhen(g.at) : ""]).filter(Boolean).join(" · ");
   const selIn = sel !== null && g.items.some((it) => it.id === sel.id);
   const approve = decided > 0 ? `Approve ${waiting.length} left` : `Approve all ${waiting.length}`;
-  const rows = g.items.map((it) => groupPageRow(it, g.depth[it.id] ?? 0, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("");
-  return `<div class="cnpy-rv-row" data-morph-key="rvg:${g.id}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${g.id}">
+  const rows = g.items.map((it) => groupPageRow(it, g.kind, g.depth[it.id] ?? 0, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("");
+  // The meta line's 16px avatar: who ran the import, or — an agent's group — the design's spark on slate.
+  const av = g.kind === "agent"
+    ? `<span class="cnpy-rvg-agav" role="img" aria-label="${attr(`@${g.by ?? ""}'s agent`)}" style="border-radius:5px">${SPARK(11, 2.2)}</span>`
+    : g.by ? personChip(person ? { handle: person.handle, name: person.name, color: person.color, avatar_url: person.avatar_url } : null, 16, g.by) : "";
+  const arg = attr(g.key);
+  return `<div class="cnpy-rv-row" data-morph-key="rvg:${arg}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${arg}" data-kind="${g.kind}">
     <div class="cnpy-rvg-in">
       <div class="cnpy-rvg-head">
-        <span class="cnpy-rvg-ic" style="border-radius:7px">${UPLOAD}</span>
+        <span class="cnpy-rvg-ic" style="border-radius:7px">${g.kind === "agent" ? SPARK(16) : UPLOAD}</span>
         <div style="min-width:0;flex:1">
-          <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Import from ${esc(g.file)}</div>
-          <div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-55);min-width:0">${g.by ? `<span style="flex:none;display:inline-flex">${personChip(person ? { handle: person.handle, name: person.name, color: person.color, avatar_url: person.avatar_url } : null, 16, g.by)}</span>` : ""}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(meta)}</span></div>
+          <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(groupTitle(g))}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-55);min-width:0">${av ? `<span style="flex:none;display:inline-flex">${av}</span>` : ""}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(meta)}</span></div>
         </div>
       </div>
       <div class="cnpy-rvg-acts">
-        <button type="button" data-act="reviewGroupToggle" data-arg="${g.id}" class="cnpy-rvg-tog" aria-expanded="${open}"><span class="cnpy-rvg-chev" aria-hidden="true">${CHEV_R}</span>${open ? "Hide pages" : "Review one by one"}</button>
+        <button type="button" data-act="reviewGroupToggle" data-arg="${arg}" class="cnpy-rvg-tog" aria-expanded="${open}"><span class="cnpy-rvg-chev" aria-hidden="true">${CHEV_R}</span>${open ? "Hide pages" : "Review one by one"}</button>
         <span class="cnpy-rvg-done"${decided > 0 ? "" : " hidden"}>${decided} of ${total} reviewed</span>
         <span style="flex:1"></span>
-        <button type="button" data-act="reviewGroupReject" data-arg="${g.id}" data-confirm-trigger class="cnpy-rejectbtn" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Reject all</button>
-        <button type="button" data-act="reviewGroupApprove" data-arg="${g.id}" class="cnpy-accentbtn" style="height:30px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap">${approve}</button>
+        <button type="button" data-act="reviewGroupReject" data-arg="${arg}" data-confirm-trigger class="cnpy-rejectbtn" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Reject all</button>
+        <button type="button" data-act="reviewGroupApprove" data-arg="${arg}" class="cnpy-accentbtn" style="height:30px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap">${approve}</button>
       </div>
       <div class="cnpy-rvg-list" data-open="${open ? "1" : "0"}"><div class="cnpy-rvg-clip"><div data-morph-list>${open ? rows : ""}</div></div></div>
     </div>
@@ -525,10 +570,10 @@ export function reviewView(p: ReviewProps): string {
   const inFilter = (it: ReviewItem) => inReviewFilter(it, p.filter);
   const visible = p.items.filter(inFilter);            // the rows on screen, the leaving ones among them
   const visibleWaiting = waiting.filter(inFilter);
-  const groups = importGroups(p.items);
+  const groups = reviewGroups(p.items);
   // Selection survives a filter that hides it (the detail keeps showing it); with nothing explicitly selected, the
-  // first visible item still waiting that is NOT a page of an import (those are opened from their group by hand).
-  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => it.importId == null) ?? null;
+  // first visible item still waiting that is in NO group — a drafted decision (a group's pages are opened from it).
+  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => groupKeyOf(it) === null) ?? null;
   const counts: Record<ReviewFilter, number> | null = p.loading ? null : {
     all: waiting.length,
     imports: waiting.filter((it) => it.importId != null).length,
@@ -537,29 +582,31 @@ export function reviewView(p: ReviewProps): string {
 
   // The list is KEYED (`data-morph-list`): rows pair by `data-morph-key`, so a filter or a verdict
   // inserts and removes rows and leaves every other row the element it was. When the last row is
-  // leaving, the empty layout is already under it and rises as the row collapses — no jump. An import's pages are
-  // ONE row: its group card, where its newest page would be.
-  const seen = new Set<number>();
+  // leaving, the empty layout is already under it and rises as the row collapses — no jump. A group's pages (an
+  // import's, an agent's) are ONE row: its group card, where its newest page would be.
+  const seen = new Set<string>();
   const rows = visible.map((it) => {
-    if (it.importId == null) return reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null);
-    if (seen.has(it.importId)) return "";
-    seen.add(it.importId);
-    const g = groups.get(it.importId);
+    const key = groupKeyOf(it);
+    if (key === null) return reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null);
+    if (seen.has(key)) return "";
+    seen.add(key);
+    const g = groups.get(key);
     return g ? groupCard(g, p, sel, leaving) : "";
   }).join("");
   const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
     : `${rows}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
-  const g = sel?.importId != null ? groups.get(sel.importId) ?? null : null;
+  const selKey = sel ? groupKeyOf(sel) : null;
+  const g = selKey !== null ? groups.get(selKey) ?? null : null;
   const detail = p.loading ? reviewDetailSkeleton()
-    : sel ? `${g ? importPageBar(sel, g, leaving, Math.max(p.groupTotals?.[String(g.id)] ?? 0, g.items.length)) : ""}${reviewDetail(sel, p.diffView, p.aiUi)}`
+    : sel ? `${g ? importPageBar(sel, g, leaving, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length)) : ""}${reviewDetail(sel, p.diffView, p.aiUi)}`
     : waiting.length > 0 ? `<div style="${DETAIL_FRAME}"><p style="font-size:13px;line-height:1.5;color:var(--fg-55);max-width:52ch;margin:0 0 18px">${esc(REVIEW_PICK)}</p>${emptyShapes(reviewDetailShapes(2))}</div>`
     : reviewQueueClear();
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
   return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="width:376px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+    <div class="cnpy-rv-list" style="width:420px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
       <div style="padding:16px 20px 0">
         <div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
         ${reviewFilterSwitch(p.filter, counts)}

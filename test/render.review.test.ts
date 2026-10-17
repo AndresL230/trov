@@ -135,14 +135,37 @@ function makeItem(overrides: Partial<ReviewItem> = {}): ReviewItem {
 function makeReviewProps(overrides: Partial<ReviewProps> = {}): ReviewProps {
   return { items: [makeItem()], filter: "all", selectedId: null, diffView: "unified", ...overrides };
 }
+/** A drafted decision: the one kind of item that is a card of its own in the list (a doc change is a page of its
+ *  agent's group — or of its import's). */
+function makeAdr(overrides: Partial<ReviewItem> = {}): ReviewItem {
+  return makeItem({ kind: "decision", eyebrow: "DECISION · ADR-007", diff: undefined, adr: [{ h: "Context", p: "Why." }], ...overrides });
+}
 
 describe("reviewView — populated", () => {
-  it("renders the list card and the detail pane for the default selection", () => {
-    const html = reviewView(makeReviewProps());
-    expect(html).toContain("Test Proposal");
-    expect(html).toContain("WHAT CHANGED");
-    expect(html).toContain("Promote");
-    expect(html).toContain("Reject");
+  it("an agent's doc changes are ONE group card (the design's \"Written by ‹Name›'s agent\"), nothing picked until a page is", () => {
+    const items = [makeItem({ agent: "pia", agentName: "Pia Test-Agent", space: "engineering", at: "2026-10-17T10:00:00Z" }), makeItem({ id: "p2", title: "Second", agent: "pia", agentName: "Pia Test-Agent", space: "engineering", isNew: true })];
+    const html = reviewView(makeReviewProps({ items }));
+    expect(html).toContain('data-morph-key="rvg:agent:pia"');
+    expect(html).toContain("Written by Pia&#39;s agent");
+    expect(html).toMatch(/data-rv-group="agent:pia" data-kind="agent"/);
+    expect(html).toMatch(/class="cnpy-rvg-agav" role="img" aria-label="@pia&#39;s agent"/);
+    expect(html).toMatch(/2 pages · /);
+    expect(html).toMatch(/data-act="reviewGroupApprove" data-arg="agent:pia"[^>]*>Approve all 2</);
+    expect(html).toContain('data-act="reviewGroupReject" data-arg="agent:pia"');
+    expect(html).not.toContain('data-morph-key="rv:p1"');   // no card of its own
+    expect(html).not.toContain('data-morph-key="rvd:');     // nothing picked by default
+    // Opened, its pages are rows: a change to a live page reads "Change", a page nothing is live under "New page".
+    const open = reviewView(makeReviewProps({ items, groupsOpen: { "agent:pia": true }, selectedId: "p1" }));
+    expect(open).toMatch(/data-arg="p1" class="cnpy-rvg-pg" aria-current="true"[\s\S]*?<span class="cnpy-rvg-pk">Change<\/span>/);
+    expect(open).toMatch(/data-arg="p2" class="cnpy-rvg-pg"[\s\S]*?<span class="cnpy-rvg-pk">New page<\/span>/);
+    expect(open).toContain("Page 1 of 2 · Pia&#39;s agent");
+    expect(open).toContain('data-morph-key="rvd:p1"');
+    // Each author is a group of their own; a decision stays a card.
+    const two = reviewView(makeReviewProps({ items: [...items, makeItem({ id: "p3", agent: "max" }), makeAdr({ id: "d1" })] }));
+    expect(two).toContain('data-morph-key="rvg:agent:max"');
+    expect(two).toContain("Written by max&#39;s agent");
+    expect(two).toContain('data-morph-key="rv:d1"');
+    expect(two).toContain('data-morph-key="rvd:d1"');        // the decision is the default selection
   });
 
   it("labels the accept action Ratify for decisions and renders the ADR record", () => {
@@ -159,27 +182,27 @@ describe("reviewView — populated", () => {
 
   it("shows the stale-base warning only when stale", () => {
     const stale = makeItem({ stale: true, staleNote: "Proposed from v6 — live is v8." });
-    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain(">Stale base</span>");
-    expect(reviewView(makeReviewProps())).not.toContain("Stale base");
+    expect(reviewView(makeReviewProps({ items: [stale], selectedId: "p1" }))).toContain(">Stale base</span>");
+    expect(reviewView(makeReviewProps({ selectedId: "p1" }))).not.toContain("Stale base");
   });
 
   it("filter hides what it does not hold: Imports shows the import groups, Written by agents everything else", () => {
     const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" })];
     const imports = reviewView(makeReviewProps({ items, filter: "imports" }));
     expect(imports).toContain("Import from handbook.zip");
-    // The agent rows are filtered out of the list (their titles appear nowhere else): nothing is picked by default.
-    expect(imports).not.toContain("Test Proposal");
+    // The agent rows are filtered out of the list: nothing is picked by default (a decision the filter hides is not).
+    expect(imports).not.toContain("rvg:agent:");
     expect(imports).not.toContain("A Decision");
     const agents = reviewView(makeReviewProps({ items, filter: "agents" }));
     expect(agents).toContain("A Decision");
-    expect(agents).toContain("Test Proposal");
+    expect(agents).toContain('data-morph-key="rvg:agent:');
     expect(agents).not.toContain("Import from handbook.zip");
   });
 });
 
 describe("reviewView — surface cards", () => {
   it("queue cards are clickable surfaces; every diff mode and the ADR record is one surface", () => {
-    const list = reviewView(makeReviewProps());
+    const list = reviewView(makeReviewProps({ items: [makeAdr()] }));
     // RV-OWNER-1: the card is a surface with a hit area (the author's avatar is its own button inside it).
     expect(list).toContain('class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox"');
     expect(list).toMatch(/<button( aria-current="true")? data-act="reviewSelect" data-arg="[^"]+" class="cnpy-hit" aria-label="[^"]+"><\/button>/);
@@ -202,7 +225,7 @@ describe("reviewView — surface cards", () => {
 
 describe("reviewView — diff view modes", () => {
   it("unified mode renders +/− prefixed lines", () => {
-    const html = reviewView(makeReviewProps({ diffView: "unified" }));
+    const html = reviewDetail(makeItem(), "unified");
     expect(html).toContain("old line");
     expect(html).toContain("new line");
     expect(html).toContain("−");
@@ -210,14 +233,14 @@ describe("reviewView — diff view modes", () => {
   });
 
   it("split mode renders the LIVE and PROPOSED column headers", () => {
-    const html = reviewView(makeReviewProps({ diffView: "split" }));
+    const html = reviewDetail(makeItem(), "split");
     expect(html).toContain("LIVE (v2)");
     expect(html).toContain("PROPOSED");
     expect(html).toContain("grid-template-columns:1fr 1fr");
   });
 
   it("rendered mode renders the two BODIES through the markdown renderer, not the line-cut diff", () => {
-    const html = reviewView(makeReviewProps({ diffView: "rendered", items: [makeItem({ liveBody: "## Heading\n\nold line", proposedBody: "## Heading\n\nnew line" })] }));
+    const html = reviewDetail(makeItem({ liveBody: "## Heading\n\nold line", proposedBody: "## Heading\n\nnew line" }), "rendered");
     expect(html).toContain('class="cnpy-md cnpy-rv-md"');
     expect(html).toContain('<div class="mock-md">new line</div>');
     expect(html).toContain("added in this proposal");
@@ -280,12 +303,12 @@ describe("reviewCard — restructured to match the detail header", () => {
 
 describe("reviewView — agent handle carries the mapped person's color", () => {
   it("renders the agent's colored handle tag when agentColor is set, muted when it isn't", () => {
-    const colored = makeItem({ agent: "AndresL230", agentColor: "sky" });
+    const colored = makeAdr({ agent: "AndresL230", agentColor: "sky" });
     const html = reviewView(makeReviewProps({ items: [colored] }));
     expect(html).toContain("var(--p-sky)");
     expect(html).toContain("@AndresL230");
 
-    const uncolored = makeItem();
+    const uncolored = makeAdr();
     const plain = reviewView(makeReviewProps({ items: [uncolored] }));
     expect(plain).toContain(`@${uncolored.agent}`);
     expect(plain).not.toContain("var(--p-");
@@ -336,10 +359,10 @@ describe("diff viewer — ellipsis rows (collapsed unchanged runs)", () => {
 
 describe("reviewView — flagged marker (low-confidence scrutiny signal)", () => {
   it("marks Low confidence only on flagged items — an amber triangle and the words, never a tag", () => {
-    const flagged = reviewView(makeReviewProps({ items: [makeItem({ flagged: true })] }));
+    const flagged = reviewView(makeReviewProps({ items: [makeAdr({ flagged: true })] }));
     expect(flagged).toContain(LOW_CONFIDENCE(12));
     expect(flagged).not.toContain("FLAGGED");
-    expect(reviewView(makeReviewProps())).not.toContain("Low confidence");
+    expect(reviewView(makeReviewProps({ items: [makeAdr()] }))).not.toContain("Low confidence");
   });
 });
 
@@ -373,13 +396,13 @@ describe("XSS: review item fields are escaped in text and attributes", () => {
   });
 
   it("does not emit the raw attribute-breakout payload", () => {
-    const html = reviewView(makeReviewProps({ items: [hostile] }));
+    const html = reviewView(makeReviewProps({ items: [hostile], selectedId: hostile.id, groupsOpen: { [`agent:${hostile.agent}`]: true } }));
     expect(html).not.toContain('" onmouseover="');
     expect(html).toContain("&quot;");
   });
 
   it("escapes angle brackets in titles and diff lines", () => {
-    const html = reviewView(makeReviewProps({ items: [hostile] }));
+    const html = reviewView(makeReviewProps({ items: [hostile], selectedId: hostile.id, groupsOpen: { [`agent:${hostile.agent}`]: true } }));
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;");
@@ -739,7 +762,7 @@ describe("Review — Unified / Side by side / Rendered is ONE segmented switch",
 });
 
 describe("Review — All / Imports / Written by agents is a segmented switch with counts", () => {
-  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "i1", title: "Imported", importId: 4, importFile: "notes.zip", slug: "imported" })];
+  const items = [makeAdr(), makeAdr({ id: "p2", title: "Second" }), makeItem({ id: "i1", title: "Imported", importId: 4, importFile: "notes.zip", slug: "imported" })];
   it("picks one view of the same list, each option carrying how many wait", () => {
     const html = reviewView(makeReviewProps({ items, filter: "agents" }));
     expect(html).toMatch(/class="cnpy-seg cnpy-seg--sm" data-seg="review-filter"/);
@@ -761,7 +784,7 @@ describe("Review — All / Imports / Written by agents is a segmented switch wit
 });
 
 describe("Review — the list is keyed, and a card with a verdict leaves it", () => {
-  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "p3", title: "Third" })];
+  const items = [makeAdr(), makeAdr({ id: "p2", title: "Second" }), makeAdr({ id: "p3", title: "Third" })];
   const rowKeys = (html: string) => [...html.matchAll(/class="cnpy-rv-row" data-morph-key="([^"]+)"/g)].map((m) => m[1]);
 
   it("every row is a keyed child of a data-morph-list container, and the screen is patched in place", () => {
@@ -806,11 +829,26 @@ describe("Review — the list is keyed, and a card with a verdict leaves it", ()
     expect(triageCounts(s).review).toBe(2);
     const leaving = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: false } } };
     expect(triageCounts(leaving).review).toBe(1);
-    expect(render(leaving)).toMatch(/data-morph-key="rv:doc:a@2" data-verdict="promoted" inert/);
+    // Both are pages of x's agent's group: the one decided counts as reviewed while it leaves.
+    expect(render(leaving)).toMatch(/data-morph-key="rvg:agent:x"/);
+    expect(render(leaving)).toContain(">1 of 2 reviewed<");
     const gone = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: true } } };
     expect(triageCounts(gone).review).toBe(1);
     expect(render(gone)).not.toContain('data-morph-key="rv:doc:a@2"');
     expect(triageCounts({ ...s, reviewLeaving: {} }).review).toBe(2);
+  });
+
+  it("an agent's group: Reject all asks in the design's agent words; deciding it whole goes through each page's own cookie route", () => {
+    const p = { slug: "a", version: 2, title: "A", section: "reference", space: "engineering", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null };
+    const s = { ...initialState(), view: "app" as const, screen: "review" as const, proposals: { status: "ok" as const, data: [p, { ...p, slug: "b" }] }, draftAdrs: { status: "ok" as const, data: [] }, reviewGroupReject: { id: "agent:x", busy: false } };
+    const html = render(s);
+    expect(html).toContain("Reject 2 pages from x&#39;s agent?");
+    expect(html).toContain("The agent&#39;s changes are thrown away. The live pages stay as they are.");
+    expect(html).toMatch(/data-act="reviewGroupRejectGo" data-arg="agent:x"[^>]*>Reject 2 pages</);
+    const fn = mainSrc.slice(mainSrc.indexOf("function reviewGroupVerdict"), mainSrc.indexOf("function noteGroupTotals"));
+    // No new write: the agent's pages are promoted / rejected one by one, oldest first, by the routes a person uses.
+    expect(fn).toContain("[...items].reverse()");
+    expect(fn).toContain("accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version)");
   });
 
   it("the write is optimistic but restorable: main.ts deletes the entry and restores the selection when it fails", () => {

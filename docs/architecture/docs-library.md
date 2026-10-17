@@ -220,10 +220,15 @@ The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts
   the screen is open; statuses are marks (`importRunMark`: In progress, Done, Done with skipped files, Failed, and
   Stopped / Cancelled for an abandoned run), one row open at a time, Cancel import for the run's starter and for an
   admin (the server's finish lets an admin cancel).
-- **Review** groups `GET /proposals` by `import_id` (`importGroups`; the server order reversed is the import's
-  tree order, depth from `parent_slug` inside the group): one keyed card per import (`rvg:<id>`), Approve all /
-  Reject all (a red `confirmModal` with the design's copy) looping `approve-all` / `reject-all` until `remaining`
-  is 0 and leaving through Review's exit pattern; the filter is All / Imports / Written by agents. Departures from
+- **Review** groups `GET /proposals` (`reviewGroups`, keyed by `groupKeyOf`): an import's pages by `import_id` (the
+  server order reversed is the import's tree order, depth from `parent_slug` inside the group), and every other doc
+  change by its author — the design's "Written by ‹Name›'s agent" (a spark on slate; "N pages · ‹when›"; its rows
+  read "Change" or "New page"). A drafted decision is never in a group: it stays a card of its own. One keyed card
+  per group (`rvg:<key>`: `7`, `agent:<handle>`), Approve all / Reject all (a red `confirmModal` with the design's
+  copy for an import or an agent) leaving through Review's exit pattern: an import's loops `approve-all` /
+  `reject-all` until `remaining` is 0; an agent's calls each page's own promote / reject route (the ones a person
+  uses page by page), oldest first, so a page's newest change goes live last — no new write. The filter is All /
+  Imports / Written by agents. Departures from
   the design: Review keeps its layout and its Promote / Reject buttons in the detail header; a page decided on its
   own leaves the list instead of staying dimmed; the default selection skips import pages (they are opened from
   their group).

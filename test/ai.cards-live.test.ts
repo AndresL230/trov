@@ -178,7 +178,7 @@ describe("real rows → real reads → the SPA's render → the AI kit's Accept"
     const proposals = await api.listStagedProposals();
     const p = proposals.find((x) => x.slug === "auth-flow")!;
     expect(p.ai?.map((s) => [s.kind, s.label])).toEqual([["review.risk", "Changes a decision"]]);
-    const html = web.render(screen({ screen: "review", proposals: { status: "ok", data: proposals }, draftAdrs: { status: "ok", data: await api.listAdrs("draft") } }));
+    const html = web.render(screen({ screen: "review", reviewSel: `doc:auth-flow@${p.version}`, proposals: { status: "ok", data: proposals }, draftAdrs: { status: "ok", data: await api.listAdrs("draft") } }));
     expect(html).toContain("cnpy-ai-risk-line");
     expect(html).toContain("Changes a decision");
     expect(html).not.toContain('data-act="aiAccept"');

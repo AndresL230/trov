@@ -67,7 +67,7 @@ export function proposalReviewItem(p: StagedProposal): ReviewItem {
     ...(p.ai ? { ai: p.ai } : {}),
     ...(p.askFlags?.length ? { askFlags: p.askFlags } : {}),
     // Its place in its space's tree, and — for a page of a Markdown import — the run (Review groups by it).
-    slug: p.slug, space: p.space, parentSlug: p.parent_slug ?? null,
+    slug: p.slug, space: p.space, parentSlug: p.parent_slug ?? null, at: p.created_at,
     ...(p.import_id != null ? { importId: p.import_id, importPath: p.import_path ?? null, importFile: p.import_file_name ?? null, importBy: p.import_by ?? null, importAt: p.import_at ?? null } : {}),
   };
 }

@@ -4266,6 +4266,9 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg-pg { color:var(--fg-55); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg { border-color:color-mix(in srgb, var(--rv-tone) 55%, transparent); background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg-in { opacity:.14; }
+/* An agent's group (the design's): the spark on slate, and the 16px spark avatar of its meta line. */
+.cnpy-rvg[data-kind="agent"] .cnpy-rvg-ic { background:color-mix(in srgb, var(--p-slate) 12%, transparent); color:var(--p-slate); }
+.cnpy-rvg-agav { width:16px; height:16px; flex:none; display:inline-grid; place-items:center; background:var(--p-slate); color:var(--p-ink); }
 .cnpy-rvg-bar-top { display:flex; align-items:center; justify-content:space-between; gap:12px; height:46px; padding:0 32px; border-bottom:1px solid var(--border); }
 /* Drop to import (import-drop.ts): ONE node on <body>, laid over the main column. */
 .cnpy-impdrop { position:fixed; z-index:60; pointer-events:none; }

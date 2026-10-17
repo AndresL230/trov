@@ -312,7 +312,7 @@ describe("Review — an import's pages are one group", () => {
     expect(g.depth).toEqual({ "doc:handbook@1": 0, "doc:first-week@1": 1 });
   });
 
-  it("is one keyed card with the design's header and actions; the agent's proposal stays a card of its own", () => {
+  it("is one keyed card with the design's header and actions; the agent's proposal is its agent's group", () => {
     const html = reviewView(rv());
     expect(html).toContain('data-morph-key="rvg:7"');
     expect(html).toContain("Import from handbook.zip");
@@ -321,9 +321,10 @@ describe("Review — an import's pages are one group", () => {
     expect(html).toContain("Review one by one");
     expect(html).toMatch(/data-act="reviewGroupApprove" data-arg="7"[^>]*>Approve all 2</);
     expect(html).toContain('data-act="reviewGroupReject" data-arg="7"');
-    expect(html).toContain('data-morph-key="rv:doc:rate-limits@3"');
-    // The agent's proposal is the default selection; an import's page is opened from its group by hand.
-    expect(html).toContain('data-morph-key="rvd:doc:rate-limits@3"');
+    expect(html).toContain('data-morph-key="rvg:agent:andres"');
+    expect(html).toContain("Written by andres&#39;s agent");
+    // Nothing is picked by default: a group's page is opened from its group by hand.
+    expect(html).not.toContain('data-morph-key="rvd:');
     expect(html).toMatch(/>Imports<span class="cnpy-seg-n">2<\/span>/);
     expect(html).toMatch(/>Written by agents<span class="cnpy-seg-n">1<\/span>/);
   });
@@ -359,7 +360,7 @@ describe("Review — an import's pages are one group", () => {
       import_id: 7, import_path: `${slug}.md`, import_file_name: "handbook.zip", import_by: "andres", import_at: T0,
     });
     const s: AppState = { ...initialState(), view: "app", screen: "review", proposals: { status: "ok", data: [p("a", 1), p("b", 1)] }, draftAdrs: { status: "ok", data: [] },
-      library: { status: "ok", data: LIB }, reviewGroupReject: { id: 7, busy: false } };
+      library: { status: "ok", data: LIB }, reviewGroupReject: { id: "7", busy: false } };
     const html = render(s);
     expect(html).toContain("Reject 2 pages from handbook.zip?");
     expect(html).toContain("They won&#39;t be added to Engineering. The import stays in Imports, so you can run it again later.");
