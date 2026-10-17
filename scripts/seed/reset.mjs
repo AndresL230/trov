@@ -130,6 +130,12 @@ export const RESET_STATEMENTS = [
   "DELETE FROM sprints",
   "DELETE FROM doc_versions",
   "DELETE FROM docs",
+  // The Docs Library (0076_docs_library): links and import runs, then a space's owners before the space; each
+  // seed org is back to the three starter spaces below.
+  "DELETE FROM doc_links",
+  "DELETE FROM doc_imports",
+  "DELETE FROM doc_space_owners",
+  "DELETE FROM doc_spaces",
   "DELETE FROM feed",
   "DELETE FROM entry_tags",
   // The org's tag list (0056_org_tags): suggestions go, and each seed org is back to the six starters below.
@@ -191,6 +197,10 @@ export const RESET_STATEMENTS = [
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'api', 'Routes and what they return', 'sky', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'ui', 'Screens and components', 'rose', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'data', 'Tables, migrations, storage', 'fern', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  // …and the three starter spaces (0076_docs_library; the rows of shared/docs-core.ts STARTER_SPACES — test/spaces.migration.test.ts compares them).
+  "INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT id, 'engineering', 'Engineering', 'braces', '#525cc3', '', 1024, '2026-10-06T00:00:00.000Z', 'system' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT id, 'product', 'Product', 'compass', '#2f7d57', '', 2048, '2026-10-06T00:00:00.000Z', 'system' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT id, 'design', 'Design', 'pen', '#a84a68', '', 3072, '2026-10-06T00:00:00.000Z', 'system' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle NOT IN ('github-webhook', 'trov')",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",

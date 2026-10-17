@@ -1,4 +1,4 @@
-// Docs › New doc — ported from the Claude Design `Canopy.dc.html` (project
+// Library › New page (the screen `newdoc`, `#docs/new`) — ported from the Claude Design `Canopy.dc.html` (project
 // 2c8cfa50). A person stages a doc the same way an agent does, and it lands in
 // Review through POST /api/docs/propose (the same gate). A handoff's "Promote to
 // doc" opens this form prefilled, with a FROM HANDOFF banner. Purely presentational.
@@ -6,6 +6,10 @@
 import { esc, attr, surface, WORK_SHELL } from "./ui";
 import { primaryStyle } from "./handoffs";
 import { segmented } from "./segmented";
+import { dropdown, initialDropdownUi, type DropdownUi } from "./dropdown";
+
+/** Up to this many spaces the Space picker is a switch; past it, a dropdown (render.ts draws its menu). */
+export const NEW_DOC_SPACE_SWITCH_MAX = 4;
 
 export interface NewDocDraft {
   title: string; body: string; space: string; section: string; summary: string;
@@ -20,7 +24,10 @@ export const defaultSection = (sections: string[]): string =>
 
 export interface NewDocProps {
   draft: NewDocDraft;
+  /** The org's live spaces (the Library's), in its order. */
   spaces: { key: string; label: string }[];
+  /** The open dropdown (the Space picker, past NEW_DOC_SPACE_SWITCH_MAX spaces). */
+  dd?: DropdownUi;
   /** The sections the gate accepts (@shared/vocabulary SECTIONS, minus needs-triage). */
   sections: string[];
 }
@@ -42,19 +49,21 @@ export function newDocView(p: NewDocProps): string {
       <button data-act="openHandoff" data-arg="${d.from}" class="cnpy-link" style="font-size:12.5px;font-weight:500;color:var(--accent)">Open handoff</button>
     </div>`
     : "";
-  return `<div data-screen-label="New doc" style="${WORK_SHELL}">
+  return `<div data-screen-label="New page" style="${WORK_SHELL}">
   ${fromBanner}
   <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label for="nd-title" style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>
-        <input id="nd-title" data-act="ndField" data-arg="title" data-field="nd-title" value="${attr(d.title)}" class="cnpy-input" placeholder="What is this doc about?" style="width:100%;height:40px;padding:0 13px;${FIELD};font-size:14px">
+        <input id="nd-title" data-act="ndField" data-arg="title" data-field="nd-title" value="${attr(d.title)}" class="cnpy-input" placeholder="What is this page about?" style="width:100%;height:40px;padding:0 13px;${FIELD};font-size:14px">
         <label for="nd-body" style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Body <span style="font-weight:400;color:var(--fg-40)">— markdown</span></label>
         <textarea id="nd-body" data-act="ndField" data-arg="body" data-field="nd-body" style="width:100%;flex:1;min-height:300px;padding:12px 14px;${FIELD};font-size:12.5px;line-height:1.65;resize:vertical;font-family:var(--code)">${esc(d.body)}</textarea>
       </div>
       <div style="min-width:0;border-left:1px solid var(--border);padding-left:26px">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Space</label>
-        ${segmented({ id: "nd-space", ariaLabel: "Space", act: "ndSpace", value: d.space, options: p.spaces.map((s) => ({ value: s.key, label: s.label })) })}
+        ${p.spaces.length <= NEW_DOC_SPACE_SWITCH_MAX
+          ? segmented({ id: "nd-space", ariaLabel: "Space", act: "ndSpace", value: d.space, options: p.spaces.map((s) => ({ value: s.key, label: s.label })) })
+          : dropdown({ id: "nd-space", act: "ndSpace", value: d.space, ariaLabel: "Space", fill: true, options: p.spaces.map((s) => ({ value: s.key, label: s.label })) }, p.dd ?? initialDropdownUi())}
         <label style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Section</label>
         <div style="display:flex;gap:6px;flex-wrap:wrap">${sections.map((s) => `<button data-act="ndSection" data-arg="${attr(s)}" class="cnpy-pickchip${d.section === s ? " is-on" : ""}" style="${pickStyle(d.section === s)}">${esc(s)}</button>`).join("")}</div>
         <label for="nd-summary" style="display:block;font-size:13px;font-weight:500;margin:20px 0 8px">Summary <span style="font-weight:400;color:var(--fg-40)">— optional</span></label>
@@ -63,7 +72,7 @@ export function newDocView(p: NewDocProps): string {
       </div>
     </div>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
-      <button data-act="goDocs" class="cnpy-outlinebtn" style="padding:8px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);transition:all .12s ease;white-space:nowrap">Cancel</button>
+      <button data-act="ndCancel" class="cnpy-outlinebtn" style="padding:8px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);transition:all .12s ease;white-space:nowrap">Cancel</button>
       <button data-act="ndSubmit" class="${can ? "cnpy-accentbtn" : ""}" style="${primaryStyle(can)}">Stage for review</button>
     </div>
   </div>

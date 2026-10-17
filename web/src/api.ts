@@ -759,7 +759,8 @@ export function rejectAdr(id: number): Promise<{ ok: true }> {
 export function discardTriage(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/discard`);
 }
-export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: "technical" | "product"; tags?: string[]; }
+/** `space`: a live space's slug (the Library's), or none (the gate's default space). */
+export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: string; tags?: string[]; }
 export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/assign`, target);
 }
@@ -1232,3 +1233,37 @@ export function undoTagRun(name: string): Promise<{ ok: true; removed: number }>
 export function setTagSuggestions(enabled: boolean): Promise<{ ok: true; enabled: boolean }> { return orgSend("PUT", "/api/tag-settings", { enabled }); }
 /** Replace the tags of one feed entry, doc or decision (any member). */
 export function setItemTags(type: TagT.TagItemType, id: string, tags: string[]): Promise<{ ok: true; tags: string[] }> { return orgSend("POST", "/api/item-tags", { type, id, tags }); }
+
+// ── the Docs Library's spaces (`/spaces…`, docs/architecture/docs-library.md) ──
+// Cookie-only. A refusal is `{ error, message, field? }` — an `OrgApiError` (code, sentence, field).
+import type * as DocsT from "@shared/docs-core";
+const spacePath = (slug: string, rest = ""): string => `/spaces/${encodeURIComponent(slug)}${rest}`;
+/** Library home and the sidebar's Library group: the live spaces in order, an admin's archived ones, the pages changed last. */
+export function getLibrary(): Promise<DocsT.LibraryDTO> { return getJson<DocsT.LibraryDTO>("/spaces"); }
+/** One space's home: the space and every page in it (staged-only ones too). Unknown → `NotFound`. */
+export function getSpaceHome(slug: string): Promise<DocsT.SpaceHomeDTO> {
+  return getJson<DocsT.SpaceHomeDTO>(spacePath(slug)).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
+    throw e;
+  });
+}
+/** Create a space (an admin): the slug is derived from the name on the server, and the creator is its only owner. */
+export function createSpace(body: { name: string; icon: DocsT.SpaceIcon; color: DocsT.SpaceColor; description?: string }): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("POST", "/spaces", body);
+}
+/** Change a space: its name, icon and colour (an admin), its description (an admin or an owner). */
+export function editSpace(slug: string, body: { name?: string; icon?: DocsT.SpaceIcon; color?: DocsT.SpaceColor; description?: string }): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("PUT", spacePath(slug), body);
+}
+/** Replace a space's owners (an admin or an owner): handles of the org's members. */
+export function setSpaceOwners(slug: string, owners: string[]): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("PUT", spacePath(slug, "/owners"), { owners });
+}
+/** Put a space right after `after` in the Library's order (null = first). An admin. */
+export function moveSpace(slug: string, after: string | null): Promise<{ ok: true; spaces: DocsT.SpaceDTO[] }> {
+  return orgSend("POST", spacePath(slug, "/move"), { after });
+}
+/** Archive a space (an admin): soft — it leaves the sidebar and the Library, and its slug stays reserved. */
+export function archiveSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/archive")); }
+/** Restore an archived space (an admin). 409 `name_taken` when a live space has its name now. */
+export function restoreSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/restore")); }

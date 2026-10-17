@@ -2,6 +2,7 @@ import type { DocRow, DocVersionRow, AdrRow, NeedsTriageRow, IdentityTaskRow } f
 import { DocProposal, AdrDraft, FeedEntry } from "@shared/contract";
 import { isSection } from "@shared/vocabulary";
 import { normalizeTagName } from "@shared/tags-core";
+import { DEFAULT_SPACE } from "@shared/docs-core";
 import { liveTagNames } from "./tags";
 import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
@@ -66,7 +67,7 @@ export async function propose_doc_update(
     change_summary: string;
     confidence: "high" | "low";
     // Reconciler-computed metadata (set by the gate; defaulted for direct callers).
-    space?: "technical" | "product";
+    space?: string;               // a live doc_spaces slug — the gate resolves and checks it (0076_docs_library)
     content_hash?: string | null;
     base_version?: number | null;
     change_kind?: "new" | "edit" | "rewrite" | null;
@@ -80,7 +81,7 @@ export async function propose_doc_update(
   if (!existing) {
     // Title resolution on first creation only: proposal.title ?? humanizeSlug(slug).
     // (On an existing doc we never rewrite title/section — a human may have set them.)
-    // `space` (audit F4) is persisted on the INSERT, defaulting to 'technical'.
+    // `space` (audit F4) is persisted on the INSERT: the space the gate checked, else the default space.
     const title = proposal.title ?? humanizeSlug(proposal.slug);
     await run(
       ctx,
@@ -92,7 +93,7 @@ export async function propose_doc_update(
       title,
       created_at,
       author,
-      proposal.space ?? "technical",
+      proposal.space ?? DEFAULT_SPACE,
       // `owner` (0035) = the proposer of the FIRST version, set here once and never
       // overwritten — later proposals and promotions leave it alone.
       author
@@ -455,7 +456,7 @@ export type AssignType = "doc" | "adr" | "feed";
 export interface AssignTarget {
   type?: AssignType;
   section?: string;          // doc: the corrected section (the human's placement)
-  space?: "technical" | "product";
+  space?: string;            // doc: a live space of the org (Unplaced offers the Library's spaces); the gate checks it
   tags?: string[];           // feed: corrected tags
 }
 
@@ -505,7 +506,7 @@ export async function assign_triage(
       ...raw,
       section,
       confidence: "high",            // human-vouched on assign
-      space: target.space ?? (raw.space as "technical" | "product" | undefined),
+      space: target.space ?? (typeof raw.space === "string" ? raw.space : undefined),
     });
     const r = await ingestDocProposal(ctx, proposal, by, ledger);
     if (r.outcome === "triaged" || r.outcome === "refused") throw new Error(`could not place doc: ${r.reason}`);

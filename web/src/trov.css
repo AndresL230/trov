@@ -3948,6 +3948,67 @@ a.ask-btn { text-decoration:none; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-head > .ask-iconbtn { width:44px; height:44px; border-radius:8px; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-body { padding:20px 16px calc(40px + env(safe-area-inset-bottom)); }
 
+/* ── the Docs Library (library.ts; docs/architecture/docs-library.md › The screens) ─────────────────────────
+   A space's tile (`spaceTile`): its corner is `--spt-r` (min(4.8px, size × .25)), scaled in the corners block.
+   The cards and rows are hitArea cards (ui.ts); the Create space dialog is a confirmModal with a form in it.
+   No radius is declared here: each one is in the corners block below. */
+.cnpy-spt { display:inline-grid; place-items:center; flex:none; color:#fff; }
+.cnpy-lib-row { position:relative; display:grid; align-items:center; gap:16px; }
+.cnpy-lib-row.cnpy-hitbox:hover { background:var(--hover); }
+.cnpy-lib-th { font-weight:500; }
+.cnpy-lib-card { cursor:pointer; }
+.cnpy-lib-newcard { cursor:pointer; transition:border-color .14s ease, background .14s ease; }
+.cnpy-lib-newcard:hover { border-color:var(--fg-40) !important; background:var(--hover); }
+.cnpy-lib-newcard:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-lib-wait:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-lib-descbtn:hover { background:var(--hover); color:var(--fg) !important; }
+@media (max-width:980px) { .cnpy-lib-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } }
+@media (max-width:640px) {
+  .cnpy-lib { padding-left:16px !important; padding-right:16px !important; }
+  .cnpy-lib-grid { grid-template-columns:minmax(0,1fr) !important; }
+  .cnpy-lib-row { grid-template-columns:minmax(0,1fr) !important; gap:4px; }
+  .cnpy-lib-th > :not(:first-child) { display:none; }
+}
+/* The space dialogs (Create / Edit space, the owners). */
+.cnpy-libm { display:flex; flex-direction:column; gap:15px; margin-top:16px; }
+.cnpy-libm-l { display:flex; align-items:baseline; gap:6px; margin-bottom:6px; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-libm-opt { font-weight:400; color:var(--fg-40); }
+.cnpy-libm-n { margin-left:auto; font-weight:400; font-size:11.5px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.cnpy-libm-in { display:block; width:100%; box-sizing:border-box; height:36px; padding:0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13.5px; font-family:var(--sans); outline:none; }
+.cnpy-libm-ta { height:auto; min-height:56px; padding:8px 11px; line-height:1.5; resize:none; }
+.cnpy-libm-in:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-libm-in[aria-invalid="true"] { border-color:var(--red) !important; box-shadow:0 0 0 3px color-mix(in srgb, var(--red) 12%, transparent); }
+.cnpy-libm-err { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; line-height:1.45; color:var(--red); }
+.cnpy-libm-err[hidden] { display:none; }
+.cnpy-libm-icons { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:4px; }
+.cnpy-libm-ic { display:grid; place-items:center; aspect-ratio:1; min-width:0; border:1px solid var(--border); color:var(--fg-55); cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
+.cnpy-libm-ic:hover { color:var(--fg); border-color:var(--border-strong); }
+.cnpy-libm-ic.is-on { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
+.cnpy-libm-ic:focus-visible, .cnpy-libm-sw:focus-visible, .cnpy-libm-person:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-libm-sws { display:flex; flex-wrap:wrap; gap:10px; padding:2px; }
+.cnpy-libm-sw { width:22px; height:22px; flex:none; cursor:pointer; }
+.cnpy-libm-sw.is-on { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--sw); }
+.cnpy-libm-prev { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px; background:var(--bg); font-size:12px; color:var(--fg-55); }
+.cnpy-libm-people { display:flex; flex-direction:column; gap:2px; max-height:300px; overflow-y:auto; margin-top:14px; }
+.cnpy-libm-person { display:flex; align-items:center; gap:10px; width:100%; padding:6px 8px; text-align:left; cursor:pointer; }
+.cnpy-libm-person:hover { background:var(--hover); }
+.cnpy-libm-person.is-on { background:var(--accent-soft); }
+.cnpy-libm-pn { font-size:13px; font-weight:500; color:var(--fg); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-libm-ph { font-size:12px; color:var(--fg-55); white-space:nowrap; }
+.cnpy-libm-ck { margin-left:auto; color:var(--accent); visibility:hidden; }
+.cnpy-libm-person.is-on .cnpy-libm-ck { visibility:visible; }
+/* The sidebar's Library group (sidebar.ts): a space row is the tile and the name; "No spaces yet" and its hollow
+   row; "+ New space" (admins). The rows keep `.cnpy-sub-i`'s bar on the guide line. */
+.cnpy-sub-i.cnpy-sub-sp, .cnpy-sub-i.cnpy-sub-new { display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-sub-sp > .cnpy-sub-n { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-sub-new { color:var(--fg-40); font-size:12px; }
+.cnpy-sub-new[hidden], .cnpy-sub-none[hidden] { display:none; }
+.cnpy-sub-none { padding:5px 8px 5px 10px; font-size:12px; color:var(--fg-40); }
+.cnpy-sub-ghost { display:flex; align-items:center; gap:8px; margin-top:7px; }
+.cnpy-sub-ghost > span:first-child { width:14px; height:14px; box-shadow:inset 0 0 0 1px var(--border-strong); }
+.cnpy-sub-ghost > span:last-child { width:70px; height:8px; box-shadow:inset 0 0 0 1px var(--border-strong); }
+@media (prefers-reduced-motion: reduce) { .cnpy-lib-newcard, .cnpy-libm-ic { transition:none; } }
+
 /* ── the site on a phone ──────────────────────────────────────────────────────
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
    or touch screen, in ONE place. Nothing here applies at 961px and up: every rule sits behind a width
@@ -4244,6 +4305,16 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .cnpy-treechev,
 [data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
+/* The Docs Library (library.ts): a space's tile by its own --spt-r, the dialog's fields, icons and people rows,
+   the swatches (round), and the sidebar's hollow "No spaces yet" row. */
+[data-cnpy-theme] .cnpy-spt { border-radius:calc(var(--spt-r, 4px) * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-in,
+[data-cnpy-theme] .cnpy-libm-prev { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-ic,
+[data-cnpy-theme] .cnpy-libm-person,
+[data-cnpy-theme] .cnpy-sub-ghost > span { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-sw { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-lib-newcard { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* Empty layouts (skeleton.ts `emptyLayout`): the sentence's dashed card, and its one action. */
 [data-cnpy-theme] .cnpy-empty-say { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-empty-act { border-radius:calc(8px * var(--corner-scale)) !important; }

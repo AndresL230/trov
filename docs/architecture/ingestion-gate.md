@@ -26,6 +26,14 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   flag (`low_confidence = 1`) for human scrutiny. Only low-conf new slugs go directly to triage.
 - Out-of-vocab **section** → routed to `needs_triage` (nothing is guessed). Sections are fixed
   (`shared/vocabulary.ts` `SECTIONS`).
+- **A doc's space is one of the ORGANIZATION's Library spaces** (`0076_docs_library`; `docs-library.md`). The
+  proposal's `space` resolves through `shared/docs-core.ts` `SPACE_ALIASES` (`technical` → `engineering`), then
+  `src/tools/spaces.ts` `spaceState`: a space that was SENT must be live — **unknown or archived → `needs_triage`**
+  (`unknown space: <slug>` / `archived space: <slug>`), never guessed. With no space, a NEW doc goes to
+  `engineering` only while that space is live (else triage); an existing doc keeps its own space either way — a
+  proposal never moves a doc, and an edit of a page in an archived space still stages. Unplaced › assign passes
+  the space the person picked (any live one) back through this same check. A person's `POST /docs/propose`
+  refuses an unknown or archived space with a 400 instead of sending their page to triage.
 - **Feed tags are the ORGANIZATION's own list** (`0056_org_tags`; `feed-and-search.md` › Tags), read inside
   `ingestFeedEntry` through `sortAgentTags` (`src/tools/tags.ts`) — never a constant. An agent's tag is
   normalized (`normalizeTagName`: case, spaces, underscores) and sorted: **on the list and live** → written

@@ -130,10 +130,12 @@ export function priorityMark(p: TicketPriority, size = 12.5, tip = `${PRIORITY_L
 /** A shape per meaning, so a mark reads without its colour (Carbon's shape indicators):
  *  dot = fine, ring = waiting, triangle = a warning, diamond = failing, square = stopped,
  *  check = settled by a person. */
-export type MarkShape = "dot" | "ring" | "triangle" | "diamond" | "square" | "check";
+export type MarkShape = "dot" | "ring" | "dashed" | "triangle" | "diamond" | "square" | "check";
 const SHAPE: Record<MarkShape, string> = {
   dot: `<circle cx="5" cy="5" r="4" fill="currentColor"/>`,
   ring: `<circle cx="5" cy="5" r="3.6" stroke="currentColor" stroke-width="1.6"/>`,
+  // Not there yet at all: the ring drawn dashed (a page nobody has approved — the Docs Library's "Not yet approved").
+  dashed: `<circle cx="5" cy="5" r="3.6" stroke="currentColor" stroke-width="1.6" stroke-dasharray="1.9 1.4"/>`,
   triangle: `<path d="M5 .8 9.5 9H.5Z" fill="currentColor"/>`,
   diamond: `<path d="M5 .3 9.7 5 5 9.7.3 5Z" fill="currentColor"/>`,
   square: `<rect x=".8" y=".8" width="8.4" height="8.4" rx="1.2" fill="currentColor"/>`,
@@ -245,17 +247,18 @@ export function aiMark(size = 12, tip: string | null = null, label: string | nul
 
 // ── search authority ─────────────────────────────────────────────────────────
 
-/** A search hit's authority. Live is the normal state, so it has no mark; the rest are not
- *  settled yet and say so in words, after an open ring (waiting) — never a LIVE / PENDING tag. */
-export const AUTHORITY_MARK: Record<Authority, { word: string; tone: string; hint: string } | null> = {
+/** A search hit's — and a Docs Library page's — authority. Live is the normal state, so it has no mark; the rest
+ *  are not settled yet and say so in words (the Library design's), after a shape that says how far from settled:
+ *  a ring (a newer change waits) or a dashed ring (never approved) — never a LIVE / PENDING tag. */
+export const AUTHORITY_MARK: Record<Authority, { word: string; tone: string; shape: MarkShape; hint: string } | null> = {
   live: null,
-  staged_pending: { word: "Awaiting review", tone: "var(--amber)", hint: "An agent proposed a change. A person has not promoted it yet." },
-  unpromoted: { word: "Not yet promoted", tone: "var(--amber)", hint: "Nothing here is live yet: no version has been promoted." },
-  draft: { word: "Draft", tone: "var(--blue)", hint: "A drafted decision. Nobody has ratified it yet." },
+  staged_pending: { word: "Change pending review", tone: "var(--amber)", shape: "ring", hint: "Everyone still reads the live version. A newer change is waiting in Review." },
+  unpromoted: { word: "Not yet approved", tone: "var(--fg-55)", shape: "dashed", hint: "Only people who can review see this page until someone approves it." },
+  draft: { word: "Draft", tone: "var(--blue)", shape: "ring", hint: "A drafted decision. Nobody has ratified it yet." },
 };
 export function authorityMark(a: Authority, size = 12): string {
   const m = AUTHORITY_MARK[a];
-  return m ? stateMark(m.word, m.tone, "ring", size, m.hint) : "";
+  return m ? stateMark(m.word, m.tone, m.shape, size, m.hint) : "";
 }
 
 // ── tags ─────────────────────────────────────────────────────────────────────

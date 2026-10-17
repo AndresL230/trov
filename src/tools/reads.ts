@@ -3,6 +3,7 @@ import { tagsOfItems } from "./tags";
 import { isFeedImportance, type FeedImportance } from "@shared/ai-core";
 import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
+import { resolveSpaceAlias } from "@shared/docs-core";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -77,11 +78,15 @@ export async function list_doc_tree(ctx: TenantContext, section?: string): Promi
   }));
 }
 
-export async function list_docs(ctx: TenantContext, section?: string): Promise<DocRow[]> {
-  if (section) {
-    return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section);
-  }
-  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? ORDER BY slug ASC`, ctx.orgId);
+/** MCP `list_docs`: every doc with its body, optionally narrowed to a section and/or a space (a space's slug or an
+ *  alias — shared/docs-core.ts SPACE_ALIASES; an unknown space matches nothing, never a guess). */
+export async function list_docs(ctx: TenantContext, section?: string, space?: string): Promise<DocRow[]> {
+  const clauses: string[] = [];
+  const params: unknown[] = [ctx.orgId];
+  if (section) { clauses.push("section = ?"); params.push(section); }
+  const sp = resolveSpaceAlias(space);
+  if (sp) { clauses.push("space = ?"); params.push(sp); }
+  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ?${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
 }
 
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
@@ -632,7 +637,8 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
   const pointerLimit = Math.trunc(Math.min(Math.max(req.pointer_limit ?? 20, 0), 100));
   const includeStaged = req.include_staged ?? false;
   const section = req.section;
-  const space = req.space;
+  // A space's slug or an alias (`technical` → `engineering`); an unknown one matches no doc.
+  const space = resolveSpaceAlias(req.space) ?? undefined;
   // A section/space filter only makes sense for docs (feed/adrs carry neither),
   // so those types drop out when either is set — mirroring the old engine.
   const docsOnly = section !== undefined || space !== undefined;

@@ -48,7 +48,8 @@ export type AssignKind = "doc" | "adr" | "feed";
 export interface AssignOptions {
   kinds: { key: AssignKind; label: string }[];
   sections: string[];
-  spaces: string[];
+  /** The org's live spaces (the Library's), filled in by render.ts — there is no fixed set any more. */
+  spaces: { key: string; label: string }[];
   tags: string[];
 }
 
@@ -95,7 +96,7 @@ export function assignPanel(itemId: string, assign: AssignOptions, kind: AssignK
   if (kind === "doc") {
     target = `<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:18px">
       <div><div style="${EYEBROW};margin-bottom:8px">Section</div><div style="display:flex;gap:6px;flex-wrap:wrap">${assign.sections.map((t) => pickChip(t, section === t, "maintAssignSection", t, true)).join("")}</div></div>
-      <div><div style="${EYEBROW};margin-bottom:8px">Space <span style="text-transform:none;letter-spacing:0;font-weight:500">· optional</span></div><div style="display:flex;gap:6px;flex-wrap:wrap">${assign.spaces.map((t) => pickChip(t, space === t, "maintAssignSpace", t, true)).join("")}</div></div>
+      <div><div style="${EYEBROW};margin-bottom:8px">Space <span style="text-transform:none;letter-spacing:0;font-weight:500">· optional</span></div><div style="display:flex;gap:6px;flex-wrap:wrap">${assign.spaces.map((t) => pickChip(t.label, space === t.key, "maintAssignSpace", t.key)).join("")}</div></div>
     </div>`;
   } else if (kind === "feed") {
     target = `<div style="${EYEBROW};margin:18px 0 8px">Tags <span style="text-transform:none;letter-spacing:0;font-weight:500">· optional</span></div>

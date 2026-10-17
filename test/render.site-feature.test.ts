@@ -104,7 +104,7 @@ describe("the feature dialog", () => {
       .replace(/\$\{g(?:Strong|Code|Em)\("([^"]*)"\)\}/g, "$1").replace(/&amp;/g, "&");
     // For each fact, a phrase of it that must still stand in the Guide.
     const anchors: Record<TourKey, string[]> = {
-      docs: ["split into Technical and Product spaces, each grouped into sections like Architecture and Decisions", "Version history keeps every earlier version", "The live doc stays untouched until a person promotes", "New doc lets you propose one yourself"],
+      docs: ["split into spaces your team defines, like Engineering, Product and Design, each grouped into sections like Architecture and Decisions", "Version history keeps every earlier version", "The live doc stays untouched until a person promotes", "New doc lets you propose one yourself"],
       feed: ["A timeline of everything that shipped, from people and agents alike", "a short brief in plain words", "says whether an agent wrote it", "Filter by author, tag, or time"],
       tickets: ["Anyone can file a bug, request, question, or access ask", "Drag a card to change its status or its place in a column", "the same tickets grouped by sprint", "only a person closes a ticket: a merged PR never does"],
       roadmap: ["Narrative reads the plan and its sprint cards", "each bar runs from a sprint's start to its due date", "tickets closed", "always a person's call"],

@@ -103,6 +103,36 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The Docs Library, in three stacked PRs: spaces first (this entry opens with it), then the page tree and the
+  // doc page, then Markdown import. Cut into 0.12 by the PR that merges the batch.
+  {
+    version: "Unreleased",
+    date: "2026-10-17",
+    unreleased: true,
+    title: "The Docs Library",
+    headline: "Docs become a Library: spaces your team defines, each with a home of its own.",
+    highlights: [
+      "Docs are now a Library of spaces, each for one team or topic. Every organization starts with Engineering, Product and Design.",
+      "Admins create, rename, reorder and archive spaces; a space's owners keep its description and owner list up to date.",
+      "Each space has a home: its pages by recent change, oldest change or title, with what is waiting for review marked.",
+    ],
+    headsUp: [
+      "Docs moved into the Library in the sidebar. Technical docs are now in Engineering; Product docs stay in Product.",
+    ],
+    ops: [
+      "Apply migration `0076_docs_library` (merging to main applies it). Additive; its header has the rollback. It gives every organization three spaces and moves every non-Product doc to Engineering.",
+      "Publish the Trov plugin 0.10.0 (skill text only): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working: `technical` still means Engineering.",
+    ],
+    patches: {
+      added: [
+        "The Library: spaces for a team or a topic, a home for each, and an admin's Create space, with agents placing pages through `list_spaces` (#TBD)",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {

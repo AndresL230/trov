@@ -13,7 +13,9 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Library home
+(`library`) and a space's home (`space:<slug>`; their dialogs are `data-overlay`s, the tab bar's panel a
+`data-morph-key`), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -563,7 +565,12 @@ animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` h
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`trov.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
+sticks and is what persists (`trov.navOpen`). Only the **Library** owns a sub-page list (`NAV_GROUPS`): one row
+per live space (its 14px tile and name, from the `GET /spaces` read at boot), then "No spaces yet" with a hollow
+row and an admin's "+ New space" — both ALWAYS emitted and shown by `hidden`, so the read landing or the viewer's
+role never restructures the rail; the space rows follow the data. Its label goes to Library home, its chevron folds
+the group, and a space's home, a doc in it and New page in it light that space (the Library was Docs, with a fixed
+Technical / Product pair, until 2026-10; a stored `docs` key is read as `library`; docs-library.md › The screens);
 Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
 and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)

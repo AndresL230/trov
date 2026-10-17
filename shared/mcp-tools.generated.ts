@@ -8,6 +8,7 @@ export const MCP_TOOL_NAMES: readonly McpToolName[] = [
   {"name":"query","admin":false},
   {"name":"get_doc","admin":false},
   {"name":"list_docs","admin":false},
+  {"name":"list_spaces","admin":false},
   {"name":"get_feed","admin":false},
   {"name":"list_tags","admin":false},
   {"name":"append_feed","admin":false},
@@ -81,11 +82,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
           "type": "string"
         },
         "space": {
-          "type": "string",
-          "enum": [
-            "technical",
-            "product"
-          ]
+          "type": "string"
         },
         "include_staged": {
           "type": "boolean"
@@ -135,7 +132,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "list_docs",
-    "description": "List docs, optionally filtered by section.",
+    "description": "List docs, optionally filtered by section and/or space (a space's slug from list_spaces).",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -143,6 +140,28 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
         "section": {
           "type": "string"
         },
+        "space": {
+          "type": "string"
+        },
+        "repo": {
+          "description": "The GitHub repository you are working in, as owner/name (from `git remote get-url origin`). A connection that follows the repository acts in the organization that has it connected, and reads and writes nothing without it; any other connection ignores it. With no checkout (a chat on the web), ask the person which repository they mean — never guess one.",
+          "type": "string"
+        },
+        "org": {
+          "description": "An organization's slug, to act there for THIS call only — one this connection is allowed to use (see get_connection). Omit it to act in the connection's organization.",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    }
+  },
+  {
+    "name": "list_spaces",
+    "description": "List this organization's Library spaces: each has a `slug` (what `space` takes in propose_doc_update, list_docs and query), a `name`, a one-line `description` and its page count. The spaces are the organization's own (its admins create and archive them), so read them rather than assuming one. Read-only.",
+    "admin": false,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
         "repo": {
           "description": "The GitHub repository you are working in, as owner/name (from `git remote get-url origin`). A connection that follows the repository acts in the organization that has it connected, and reads and writes nothing without it; any other connection ignores it. With no checkout (a chat on the web), ask the person which repository they mean — never guess one.",
           "type": "string"
@@ -267,7 +286,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "propose_doc_update",
-    "description": "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space ('technical' for engineering docs or 'product' for product docs; defaults 'technical') to place a new doc, and force to stage an identical body.",
+    "description": "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space (a slug from list_spaces, e.g. 'engineering' or 'product'; defaults 'engineering') to place a NEW doc — an unknown or archived space routes to needs_triage, and an existing doc keeps its own space — and force to stage an identical body.",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -295,11 +314,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
           ]
         },
         "space": {
-          "type": "string",
-          "enum": [
-            "technical",
-            "product"
-          ]
+          "type": "string"
         },
         "base_version": {
           "type": "number"
@@ -992,10 +1007,8 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
               },
               "space": {
                 "type": "string",
-                "enum": [
-                  "technical",
-                  "product"
-                ]
+                "minLength": 1,
+                "maxLength": 64
               },
               "base_version": {
                 "type": "number"

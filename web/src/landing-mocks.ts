@@ -85,7 +85,7 @@ function docsMock(): string {
         <span style="flex:1;min-width:0;font-size:11.5px;line-height:1.45;color:var(--fg-70)">You're viewing the <b style="font-weight:600;color:var(--fg)">promoted</b> version. A newer proposal is awaiting review.</span>
         <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;color:var(--accent);white-space:nowrap">Review proposal ${ARROW}</span>
       </div>
-      <div style="margin-top:16px">${cap("Technical <span style=\"opacity:.5\">/</span> Operations", "9px")}</div>
+      <div style="margin-top:16px">${cap("Engineering <span style=\"opacity:.5\">/</span> Operations", "9px")}</div>
       <div style="margin-top:6px;font-size:22px;font-weight:650;letter-spacing:-0.02em">Deploy process</div>
       <div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border)">
         ${initials("LP", 20, "8px")}<span style="font-size:11.5px;color:var(--fg-55)">Updated by <span style="color:var(--blue)">@leo</span> · 2d ago</span>

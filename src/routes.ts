@@ -78,6 +78,9 @@ import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
+import { spacesApp } from "./spaces/routes";
+import { resolveSpaceAlias } from "@shared/docs-core";
+import { spaceState } from "./tools/spaces";
 
 export const app = new Hono<AppEnv>();
 
@@ -211,6 +214,8 @@ tenantApi.route("/notifications", notificationsApp);
 tenantApi.route("/tags", tagsApp);
 tenantApi.route("/item-tags", itemTagsApp);
 tenantApi.route("/tag-settings", tagSettingsApp);
+// The Docs Library's spaces (0076_docs_library): any member reads, an admin shapes them, an owner edits one's description.
+tenantApi.route("/spaces", spacesApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
 // Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same
@@ -318,8 +323,8 @@ tenantRoot.get("/search", async (c) => {
   const types = typesCsv
     ? (typesCsv.split(",").map((t) => t.trim()).filter((t): t is QueryType => QueryType.safeParse(t).success))
     : undefined;
-  const spaceRaw = c.req.query("space");
-  const space = spaceRaw === "technical" || spaceRaw === "product" ? spaceRaw : undefined;
+  // A space's slug, or an alias (`technical` → `engineering`, shared/docs-core.ts SPACE_ALIASES); query() resolves it.
+  const space = c.req.query("space")?.trim() || undefined;
   const limit = c.req.query("limit");
   const result = await query(c.var.ctx, {
     q: c.req.query("q") ?? "",
@@ -505,7 +510,7 @@ tenantApi.post("/prompts/:slug/restore", async (c) => {
 const DocPropose = z.object({
   title: z.string().trim().min(1).max(200),
   section: z.string().trim().min(1),
-  space: z.enum(["technical", "product"]),
+  space: z.string().trim().min(1).max(64),   // a LIVE space of the org (an alias is resolved)
   body: z.string().refine((b) => b.trim().length > 0, "body required"),
   summary: z.string().max(300).optional(),
   slug: z.string().regex(/^[a-z0-9][a-z0-9_/-]*$/).optional(),
@@ -515,12 +520,17 @@ tenantApi.post("/docs/propose", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   const d = parsed.data;
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
+  // A person's New page names a space they picked: refuse an unknown or archived one here rather than send
+  // their page to triage (an agent's proposal with such a space goes to needs_triage in the gate).
+  const space = resolveSpaceAlias(d.space) as string;
+  const state = await spaceState(c.var.ctx, space);
+  if (state !== "live") return c.json({ error: state === "archived" ? `the ${space} space is archived` : `unknown space: ${space}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
   if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.var.ctx,
-    { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
+    { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
@@ -601,13 +611,13 @@ tenantRoot.post("/needs-triage/:id/assign", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   const body = (await c.req.json().catch(() => ({}))) as {
-    type?: AssignType; section?: string; space?: "technical" | "product"; tags?: string[];
+    type?: AssignType; section?: string; space?: string; tags?: string[];
   } | null;
   try {
     const res = await assign_triage(c.var.ctx, id, c.get("principal").handle, {
       type: body?.type,
       section: body?.section,
-      space: body?.space,
+      space: typeof body?.space === "string" ? body.space : undefined,
       tags: body?.tags,
     });
     return c.json({ ok: true, ...res });

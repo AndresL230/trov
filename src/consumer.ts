@@ -20,6 +20,8 @@ import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-
 import { routeAi } from "./tools/ai-route";
 import { docImageProblems } from "./tools/doc-images";
 import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
+import { spaceState } from "./tools/spaces";
+import { DEFAULT_SPACE, resolveSpaceAlias } from "@shared/docs-core";
 
 /** What marks a feed entry as written BY TROV (0061_ai_digests): the model that wrote it and the member it is for
  *  (null when the session's GitHub login maps to no member). Only the AI pass's digest job passes it. */
@@ -172,6 +174,23 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
   const existing = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
   const lowConf = proposal.confidence === "low";
 
+  // The space (0076_docs_library): an alias resolves (`technical` → `engineering`), then a space that was SENT
+  // must be a live space of the org — an unknown or archived one goes to triage, never guessed. With none sent,
+  // a NEW doc goes to `engineering` only while that space is live (else triage); an existing doc keeps its own
+  // space either way (a proposal never moves a doc).
+  const sentSpace = resolveSpaceAlias(proposal.space);
+  const space = sentSpace ?? (existing ? existing.space : DEFAULT_SPACE);
+  if (sentSpace !== null || !existing) {
+    const state = await spaceState(ctx, space);
+    if (state !== "live") {
+      const reason = sentSpace === null ? `no space given, and the default space (${DEFAULT_SPACE}) is ${state === "archived" ? "archived" : "missing"}`
+        : state === "archived" ? `archived space: ${space}` : `unknown space: ${space}`;
+      await route_triage(ctx, { raw: proposal, reason, source_author: author });
+      if (ledger) await ledgerRecord(ctx, ledger, "doc", "triaged", null);
+      return { outcome: "triaged", reason };
+    }
+  }
+
   // Low confidence: a NEW slug is too uncertain to even create — triage. An
   // EXISTING slug stages but is flagged for human scrutiny.
   if (lowConf && !existing) {
@@ -222,7 +241,7 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
       body: proposal.body,
       change_summary: proposal.change_summary,
       confidence: proposal.confidence,
-      space: proposal.space ?? "technical",
+      space: existing ? existing.space : space,
       content_hash: hash,
       base_version,
       change_kind,

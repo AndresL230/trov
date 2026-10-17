@@ -37,6 +37,7 @@ import type { SprintView, SprintDetail } from "@shared/sprints";
 import type { HandoffView } from "@shared/handoffs";
 import type { PromptSummary } from "@shared/handoffs";
 import type { ArtifactSummaryDTO } from "@shared/artifacts-core";
+import type { SpaceDTO, LibraryPageDTO } from "@shared/docs-core";
 import { loadWebChunks } from "./helpers/web-chunks";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
@@ -51,6 +52,8 @@ const base = (screen: Screen, role: "member" | "admin", over: Partial<AppState> 
   orgMe: { status: "ok", data: { org: { slug: "acme", name: "Acme" }, role, title: null, responsibilities: null, repos: { primary: null, all: [] } } as never },
   ...over,
 });
+const SPACE = { slug: "security", name: "Security", icon: "shield", color: "#b4562c", description: "Threat models.", sort_rank: 1024, created_at: T0, created_by: "alice", archived: false, archived_at: null, owners: ["alice"], pages: 0, waiting: 0 } as SpaceDTO;
+const page = { slug: "a-real-page", title: "A real page", space: "security", section: "reference", parent_slug: null, tree_rank: null, path: [], authority: "live", current_version: 1, updated_at: T0, updated_by: "alice", owner: "alice" } as LibraryPageDTO;
 /** Every read answered, with nothing: what a brand-new organization holds. */
 const EMPTY: Partial<AppState> = {
   persons: { status: "ok", data: [] },
@@ -63,6 +66,9 @@ const EMPTY: Partial<AppState> = {
   tickets: { status: "ok", data: [] }, sprints: { status: "ok", data: [] },
   handoffs: { status: "ok", data: [] }, promptList: { status: "ok", data: [] },
   repo: { status: "ok", data: null },
+  library: { status: "ok", data: { spaces: [], archived: [], recent: [], waiting: 0, can_admin: false } },
+  // A space's home opens ONE space (it exists): with nothing in it.
+  spaceSlug: "security", spaceHome: { status: "ok", data: { space: SPACE, pages: [], can_edit: false, can_admin: false } },
 };
 const emptyState = (screen: Screen, role: "member" | "admin" = "member", over: Partial<AppState> = {}): AppState => {
   const s = base(screen, role, { ...EMPTY, ...over });
@@ -91,7 +97,7 @@ const artifact: ArtifactSummaryDTO = {
   id: 1, slug: "a-real-artifact", title: "A real artifact", kind: "markdown", area: "ui", repo: "acme/api", author_id: "alice", status: "published",
   visibility: "org", current_version: 1, updated_at: T0, published_at: T0, size_bytes: 1200, excerpt: null, ticket_ids: [], sprint_ids: [],
 } as unknown as ArtifactSummaryDTO;
-const doc = { slug: "a-real-doc", title: "A real doc", space: "technical", section: "Overview", body: "Body.", current_version: 1, updated_at: T0, updated_by: "alice" } as unknown as DocRow;
+const doc = { slug: "a-real-doc", title: "A real doc", space: "engineering", section: "Overview", body: "Body.", current_version: 1, updated_at: T0, updated_by: "alice" } as unknown as DocRow;
 
 /** The page body: everything inside the scroll pane (so the sidebar never counts). */
 const body = (html: string): string => html.slice(html.indexOf('id="cnpy-main"'), html.indexOf('class="cnpy-scrim"'));
@@ -254,6 +260,10 @@ const CASES: Case[] = [
     withData: (s) => ({ ...s, feed: { status: "ok", data: [feedRow] } }), data: "Shipped the thing.", gone: ["feed"] },
   { name: "Docs", screen: "docs", empty: ["docs-tree", "doc"], member: ["newDoc"],
     withData: (s) => ({ ...s, docsList: { status: "ok", data: [{ ...doc, outline: [] }] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } } }), data: "A real doc" },
+  { name: "Library home", screen: "library", empty: ["library"], member: [], admin: ["libNew"],
+    withData: (s) => ({ ...s, library: { status: "ok", data: { spaces: [{ ...SPACE, name: "A real space", pages: 1 }], archived: [], recent: [page], waiting: 0, can_admin: false } } }), data: "A real page" },
+  { name: "Space home", screen: "space", empty: ["space"], member: ["libNewPage"],
+    withData: (s) => ({ ...s, spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [page], can_edit: false, can_admin: false } } }), data: "A real page" },
   { name: "Artifacts", screen: "artifacts", empty: ["artifacts"], member: ["artNew"],
     withData: (s) => ({ ...s, art: { ...s.art, list: { status: "ok", data: [artifact] } } }), data: "A real artifact" },
   { name: "Handoffs", screen: "handoffs", empty: ["handoffs"], member: ["newHandoff"],
@@ -418,6 +428,8 @@ describe("preview — every screen, whatever the organization holds", () => {
       mwSessions: { status: "ok", data: [feedRow] }, mwDocs: { status: "ok", data: [] },
       feed: { status: "ok", data: [feedRow] }, feedAuthors: ["alice"], feedStats: { status: "ok", data: { days: [{ date: "2026-09-14", count: 3 }], total: 3, people: 1, topTags: [], topAuthors: [{ author: "alice", count: 3 }] } },
       docsList: { status: "ok", data: [{ ...doc, outline: [] }] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } },
+      library: { status: "ok", data: { spaces: [{ ...SPACE, pages: 1, owners: ["alice"] }], archived: [], recent: [{ ...page, title: "A real doc" }], waiting: 0, can_admin: true } },
+      spaceSlug: "security", spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [{ ...page, title: "A real doc" }], can_edit: true, can_admin: true } },
       roadmap: { status: "ok", data: { narrative: "The real plan.", version: 1, updated_at: T0, updated_by: "alice", sprints: [sprint] } }, roadmapFeed: { status: "ok", data: [feedRow] },
       proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] }, needsTriage: { status: "ok", data: [] },
       tickets: { status: "ok", data: [ticket] }, ticketBadge: 4, sprints: { status: "ok", data: [sprint] },
@@ -427,7 +439,7 @@ describe("preview — every screen, whatever the organization holds", () => {
     return { ...s, art: { ...s.art, list: { status: "ok", data: [artifact] } } };
   };
   const REAL = ["A real ticket", "A real sprint", "Shipped the thing.", "A real doc", "A real artifact", "A real handoff.", "A real prompt", "The real plan.", "Bob Realname"];
-  const SCREENS: Screen[] = ["mywork", "tickets", "roadmap", "feed", "docs", "artifacts", "handoffs", "prompts", "review", "maintenance", "repo"];
+  const SCREENS: Screen[] = ["mywork", "tickets", "roadmap", "feed", "docs", "library", "space", "artifacts", "handoffs", "prompts", "review", "maintenance", "repo"];
 
   it("off: the screens show the data (so the fixtures below prove something)", () => {
     expect(render(full("tickets"))).toContain("A real ticket");

@@ -14,7 +14,7 @@ import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
 import type { SidebarBadges } from "@shared/badges";
 import {
-  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
+  render, initialState, reviewProps, railCollapsed, spaceName, liveSpaces, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
   stagedPrompts,
 } from "./render";
@@ -47,6 +47,8 @@ import { selectedUnplacedId } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { blankDoc, defaultSection } from "./newdoc";
+import { createLibraryController } from "./library-actions";
+import { DEFAULT_SPACE } from "@shared/docs-core";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
@@ -195,6 +197,12 @@ const orgCtl: OrgCtl = {
 const tagsCtl = createTagsController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   search: (q) => { openSearchScreen(q); }, planChanged: () => orgCtl.loadPlan(), goList: () => dispatch("orgGo", "tags", null),
+});
+// The Docs Library (web/src/library-actions.ts): every `lib…` act, the Library's read, a space's home.
+const libCtl = createLibraryController({
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  openDoc: (slug) => dispatch("openDocFrom", slug, null),
+  newPage: (space) => dispatch("newDoc", space || null, null),
 });
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
@@ -346,7 +354,9 @@ try {
   const c = localStorage.getItem("trov.collapsed");
   if (c) state.collapsed = c === "1";
   const open = JSON.parse(localStorage.getItem("trov.navOpen") ?? "{}") as Record<string, unknown>;
-  // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored.
+  // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored. The Library was
+  // Docs: a stored `docs` is read as `library` until the next write replaces it.
+  if (typeof open.library !== "boolean" && typeof open.docs === "boolean") open.library = open.docs;
   for (const g of NAV_GROUPS) if (typeof open[g] === "boolean") state.navOpen[g] = open[g] as boolean;
 } catch { /* localStorage unavailable, or a hand-edited value */ }
 
@@ -776,6 +786,8 @@ function currentRoute(): Route {
     if (state.org.tab === "repos" && state.org.repoPage) r.orgRepo = state.org.repoPage;
   }
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
+  if (state.screen === "space" && state.spaceSlug) r.spaceSlug = state.spaceSlug;
+  if (state.screen === "docs" && state.docSlug) r.docSlug = state.docSlug;
   if (state.screen === "ask" && state.ask.page.threadId !== null) r.askThread = state.ask.page.threadId;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
@@ -819,6 +831,12 @@ function applyRoute(r: Route): void {
   // Org settings › Repositories: one repository's Apps page, or the list.
   if (r.screen === "org") state.org.repoPage = r.orgRepo ?? null;
   if (r.tagName) state.tagName = r.tagName;
+  // The Library: another space starts on its Overview; another doc is read again (loadForScreen).
+  if (r.screen === "space" && r.spaceSlug) {
+    if (r.spaceSlug !== state.spaceSlug) { state.spaceTab = "overview"; state.libUi.desc = null; }
+    state.spaceSlug = r.spaceSlug;
+  }
+  if (r.screen === "docs" && r.docSlug && r.docSlug !== state.docSlug) { state.docSlug = r.docSlug; state.showHistory = false; state.docOutlineOpen[r.docSlug] = true; state.docDetail = { status: "idle", data: null }; }
   if (r.screen === "ask") askRoute = r.askThread ?? null;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
@@ -834,7 +852,12 @@ function loadForScreen(screen: Screen): void {
 function startScreenLoads(screen: Screen): void {
   switch (screen) {
     case "feed": loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); break;
-    case "docs": loadDocsIfNeeded(); break;
+    case "docs":
+      loadDocsIfNeeded();
+      if (state.docSlug && (state.docDetail.status === "idle" || state.docDetail.data?.doc.slug !== state.docSlug)) loadDoc(state.docSlug);
+      break;
+    case "library": libCtl.load(); rerender(); break;
+    case "space": libCtl.openSpace(state.spaceSlug); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
     case "maintenance": loadNeedsTriageIfNeeded(); break;
@@ -941,8 +964,15 @@ function openEditor(mode: "new" | "edit" | "version", slug: string | null): void
     .then((p) => { if (state.screen !== "promptedit" || state.promptSlug !== slug) return; state.promptEd = draftFromPrompt(p, mode); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't load that prompt"); state.screen = "prompts"; loadPrompts(); });
 }
+/** Where a new page goes when nothing says: the default space while it is live, else the Library's first. */
+function defaultSpaceSlug(): string {
+  const live = liveSpaces(state);
+  return live.length === 0 || live.some((s) => s.slug === DEFAULT_SPACE) ? DEFAULT_SPACE : live[0].slug;
+}
 function startNewDoc(): void {
-  state.nd = blankDoc(state.docSpace, ""); // the view defaults the section once the space's docs are known
+  const live = liveSpaces(state);
+  const space = live.length === 0 || live.some((s) => s.slug === state.docSpace) ? state.docSpace : defaultSpaceSlug();
+  state.nd = blankDoc(space, ""); // the view defaults the section once the space's docs are known
   if (state.docsList.status === "idle") loadDocs(); else rerender();
 }
 /** The org's primary repository as `owner/repo` ("" when none is connected, or not known yet). */
@@ -1116,6 +1146,8 @@ function enterOrgNow(slug: string, hash: string): void {
   loadPersons();
   // The org's tag list backs the Feed's filter, the Unplaced picker, a doc's Tags row and Org settings › Tags.
   tagsCtl.load();
+  // The Library's spaces back the sidebar's Library group on every screen (and the space pickers).
+  if (state.library.status === "idle") libCtl.load();
 }
 /** A write's failure as a toast: the server's `{ error }` (a 409's "handoff is claimed"), else a fallback. */
 function writeErr(e: unknown, fallback: string): void {
@@ -1543,7 +1575,7 @@ function closeDocsTree(): void {
   const box = mount.querySelector(".cnpy-docs");
   box?.setAttribute("data-tree", "0");
   const btn = box?.querySelector<HTMLElement>('[data-act="docsTree"]');
-  if (btn) { btn.setAttribute("aria-expanded", "false"); btn.lastChild!.textContent = `${spaceLabel(state.docSpace)} pages`; }
+  if (btn) { btn.setAttribute("aria-expanded", "false"); btn.lastChild!.textContent = `${spaceName(state, state.docSpace)} pages`; }
 }
 
 function toggleOutlineFor(slug: string): void {
@@ -1574,6 +1606,9 @@ function refreshReaderPane(): void {
   const pane = document.getElementById("cnpy-reader");
   if (!pane) { rerender(); return; }
   pane.innerHTML = docReaderHtml(state);
+  // The doc is in the address (`#doc/<slug>`), so a reload lands on it — written here too, as this path paints no page.
+  const want = hashForRoute(currentRoute());
+  if (state.view === "app" && location.hash !== want) history.replaceState(null, "", want);
   if (state.pendingScrollId) {
     const target = pane.querySelector<HTMLElement>(`.cnpy-md [id="${cssEscape(state.pendingScrollId)}"]`);
     if (target) { state.pendingScrollId = null; requestAnimationFrame(() => target.scrollIntoView({ block: "start" })); }
@@ -2901,7 +2936,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "navSub": {
       // `<group>:<page>` — each page is an existing destination, reached in one click.
       const [g, page = ""] = (arg ?? "").split(":");
-      if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
+      if (g === "library" && page) { libCtl.act("libOpenSpace", page, null); return; }
       return;
     }
     // Uncontrolled: the box holds its own text; each keystroke feeds the search
@@ -2924,7 +2959,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Org settings › Members) opens it over the page; the backdrop, × and Escape close it.
     case "openPerson": if (!arg) return; openPersonCard(arg); return;
     case "personCardClose": state.personCard = null; break;
-    case "goDocs": state.screen = "docs"; loadDocsIfNeeded(); return;
+    // The Library's home (`goDocs` is its old name: My Work's "Docs you own", quick search).
+    case "goLibrary": case "goDocs": state.screen = "library"; libCtl.load(); rerender(); return;
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
@@ -3535,15 +3571,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "openDocFrom":
       if (arg) { state.screen = "docs"; state.docSlug = arg; state.showHistory = false; state.docOutlineOpen[arg] = true; loadDocsIfNeeded(); loadDoc(arg); }
       return;
-    case "setDocSpace": {
-      if (!arg || arg === state.docSpace) return;
-      state.docSpace = arg;
-      state.showHistory = false;
-      const first = firstDocForSpace(state.docsList.data, arg);
-      if (first) { state.docSlug = first.slug; state.docOutlineOpen[first.slug] = true; loadDoc(first.slug); }
-      else { state.docSlug = null; state.docDetail = { status: "ok", data: null }; rerender(); }
-      return;
-    }
     case "toggleHistory": state.showHistory = !state.showHistory; break;
     // Expand/collapse a page's in-page outline without navigating to it (the chevron).
     case "toggleOutline":
@@ -3675,7 +3702,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (!h || h.id !== Number(arg)) return;
       const d = docDraftFromHandoff(h);
       state.screen = "newdoc";
-      state.nd = { ...blankDoc("technical", "reference"), ...d, from: h.id };
+      state.nd = { ...blankDoc(defaultSpaceSlug(), "reference"), ...d, from: h.id };
       if (state.docsList.status === "idle") loadDocs(); else rerender();
       return;
     }
@@ -3857,7 +3884,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
 
     // ── Docs › New doc — stages a version-1 proposal through the gate ─────────
-    case "newDoc": state.screen = "newdoc"; startNewDoc(); return;
+    // New page: in the space it was opened from (a space's home passes it; the reader's is the doc's own).
+    case "newDoc": if (arg) state.docSpace = arg; state.screen = "newdoc"; startNewDoc(); return;
+    case "ndCancel": {
+      const sp = state.nd.space;
+      if (sp && liveSpaces(state).some((s) => s.slug === sp)) libCtl.act("libOpenSpace", sp, null);
+      else dispatch("goLibrary", null, null);
+      return;
+    }
     case "ndField": {
       if (arg !== "title" && arg !== "body" && arg !== "summary") return;
       state.nd[arg] = value ?? "";
@@ -3865,9 +3899,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
     case "ndSpace": {
-      if (!arg) return;
-      if (arg === state.nd.space) return;
-      state.nd.space = arg;
+      // A switch's option (arg) or, past four spaces, the dropdown's pick (value).
+      const v = arg ?? value;
+      if (!v || v === state.nd.space) return;
+      state.nd.space = v;
       state.nd.section = ""; // back to the new space's default
       break;
     }
@@ -3930,7 +3965,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const target: AssignTarget = { type: kind };
       if (kind === "doc") {
         target.section = state.assignSection ?? undefined;
-        target.space = state.assignSpace === "technical" || state.assignSpace === "product" ? state.assignSpace : undefined;
+        target.space = state.assignSpace ?? undefined; // a live space's slug, or none (the gate's default space)
       }
       if (kind === "feed") target.tags = state.assignTags;
       assignTriage(id, target)
@@ -4290,6 +4325,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("ask") && askCtl.act(act, arg, value)) return;
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
+      // The Docs Library: Library home, a space's home, the space dialogs (library-actions.ts).
+      if (act.startsWith("lib")) { libCtl.act(act, arg, value); return; }
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) {
         if (act === "orgGo") {
@@ -4993,6 +5030,8 @@ document.addEventListener("keydown", (e) => {
   if (state.view !== "app" && state.view !== "platform") return;
   const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
   if (!dlg) return;
+  // A dropdown open over the dialog (Edit space's Position) owns its own keys (dropdown.ts).
+  if (state.dd.open && (e.target as Element | null)?.closest?.("[data-dd-pop]")) return;
   const t = e.target instanceof HTMLButtonElement ? e.target : null;
   const what = confirmKeyAction(e.key, { onDialogButton: !!t && dlg.contains(t) && !t.disabled, busy: dlg.hasAttribute("data-busy"), repeat: e.repeat });
   if (what === null || what === "native") return;
@@ -5002,13 +5041,24 @@ document.addEventListener("keydown", (e) => {
   else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
   else if (what === "trap") {
     // Its buttons, and a deletion's typed confirmation field (confirm.ts `typed`).
-    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])"));
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled])"));
     if (!items.length) { dlg.focus(); return; }
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
     items[next].focus();
   }
 }, true);
+
+// ── a space's description, edited in place (library.ts): Enter saves, Esc cancels, leaving the field saves ──
+mount.addEventListener("keydown", (e) => {
+  if (!(e.target as Element | null)?.closest?.("[data-lib-desc]")) return;
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); dispatch("libDescSave", null, null); }
+  else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); dispatch("libDescCancel", null, null); }
+});
+mount.addEventListener("focusout", (e) => {
+  if (!(e.target as Element | null)?.closest?.("[data-lib-desc]") || state.libUi.desc === null) return;
+  dispatch("libDescSave", null, null);
+});
 
 // ── sidebar: ⌘K / Ctrl+K, the search box, and the collapsed-rail tooltip ──────
 document.addEventListener("keydown", (e) => {

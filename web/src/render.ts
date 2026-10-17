@@ -51,6 +51,8 @@ import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, bl
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, type NewDocDraft } from "./newdoc";
+import { libraryHomeView, spaceHomeView, spaceDialog, ownersDialog, archiveDialog, spacePositionDropdown, initialLibraryUi, type LibraryUi, type SpaceTab } from "./library";
+import { DEFAULT_SPACE, type LibraryDTO, type SpaceHomeDTO, type SpaceDTO } from "@shared/docs-core";
 import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
@@ -100,8 +102,7 @@ import { phoneHeaderControls } from "./ask-phone";
 import { cmdjHeaderButton } from "./ask-cmdj";
 import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } from "./app-root";
 
-// A docs "space" is a free-form top-level grouping shown as a toggle (e.g.
-// Technical | Product). Values come from the data, not a fixed union.
+// A docs "space" is one of the org's own spaces (the Docs Library, 0076_docs_library): its slug.
 export type DocSpace = string;
 
 export type Screen =
@@ -124,7 +125,9 @@ export type Screen =
   | "handoffs" | "handoff" | "newhandoff"
   // Prompt Library (Knowledge): the library, one prompt, the editor (new / edit / new version).
   | "prompts" | "prompt" | "promptedit"
-  // Docs › New doc.
+  // The Docs Library: its home (`#library`), a space's home (`#library/<space>`); a doc (`#doc/<slug>`, the
+  // screen `docs`, the reader) and New page (`#docs/new`, the screen `newdoc`) sit under it too.
+  | "library" | "space"
   | "newdoc"
   // Help › What's new: the release grid, and each release's notes / patch notes (releases.ts, static data).
   | "releases"
@@ -244,6 +247,17 @@ export interface AppState {
    *  unfiltered — refreshed on each entry to the Feed, never by a filter change. */
   feedStats: Loadable<FeedStats | null>;
   docsList: Loadable<DocListRow[]>;
+  /** The Docs Library (`GET /spaces`): the live spaces (the sidebar's Library group, the reader's breadcrumb, the
+   *  space pickers), Library home's lists. Read once per org at boot, again after every space write. */
+  library: Loadable<LibraryDTO | null>;
+  /** The open space's home (`GET /spaces/:slug`). */
+  spaceHome: Loadable<SpaceHomeDTO | null>;
+  /** The space whose home is open (`#library/<space>`). */
+  spaceSlug: string | null;
+  /** Its tab (in state, not the route: a switch never replays the page's entrance). */
+  spaceTab: SpaceTab;
+  /** The Library screens' dialogs and the description edited in place (library.ts). */
+  libUi: LibraryUi;
   docDetail: Loadable<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] } | null>;
   /** The organization's tag list (`GET /api/tags`): the Feed's filter, the Unplaced picker, a doc's
    *  Tags row and Org settings › Tags all draw from it. Read once per org, again after a write. */
@@ -256,6 +270,7 @@ export interface AppState {
   docSlug: string | null;
   /** Narrow screens only: the Docs page list is showing instead of the reader. */
   docsTree: boolean;
+  /** The space of the doc in the reader (its tree lists that space's docs), or where New page was opened. */
   docSpace: DocSpace;
   /** Docs-tree pages whose outline (in-page headings) is expanded, keyed by slug. */
   docOutlineOpen: Record<string, boolean>;
@@ -545,6 +560,11 @@ export function initialState(): AppState {
     feedAuthors: [],
     feedStats: { status: "idle", data: null },
     docsList: { status: "idle", data: [] },
+    library: { status: "idle", data: null },
+    spaceHome: { status: "idle", data: null },
+    spaceSlug: null,
+    spaceTab: "overview",
+    libUi: initialLibraryUi(),
     docDetail: { status: "idle", data: null },
     tags: { status: "idle", data: null },
     tagsUi: initialTagsUi(),
@@ -552,7 +572,7 @@ export function initialState(): AppState {
     tagPage: { status: "idle", data: null },
     docSlug: null,
     docsTree: false,
-    docSpace: "technical",
+    docSpace: DEFAULT_SPACE,
     docOutlineOpen: {},
     pendingScrollId: null,
     roadmapTab: "narrative", // the Roadmap opens on Narrative (the combined narrative + sprints + aside)
@@ -672,7 +692,7 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     discardArm: s.maintDiscardArm,
     unplaced: s.needsTriage.data.map(unplacedFromRow),
     // Feed tags a person may pick: the org's live list.
-    assign: { ...ASSIGN_OPTIONS, tags: (s.tags.data?.tags ?? []).filter((t) => !t.retired).map((t) => t.name) },
+    assign: { ...ASSIGN_OPTIONS, tags: (s.tags.data?.tags ?? []).filter((t) => !t.retired).map((t) => t.name), spaces: liveSpaces(s).map((sp) => ({ key: sp.slug, label: sp.name })) },
     assignOpen: s.assignOpen,
     assignKind: s.assignKind,
     assignSection: s.assignSection,
@@ -883,8 +903,10 @@ function sidebar(s: AppState): string {
     navOpen: s.navOpen,
     qView: s.qView,
     roadmapTab: s.roadmapTab,
-    docSpace: s.docSpace,
-    docSpaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })),
+    librarySpace: s.screen === "space" ? s.spaceSlug : s.screen === "newdoc" ? s.nd.space : s.docSpace,
+    spaces: liveSpaces(s).map((sp) => ({ key: sp.slug, label: sp.name, icon: sp.icon, color: sp.color })),
+    spacesLoaded: s.library.status === "ok" && s.library.data !== null,
+    canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
     counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
@@ -907,7 +929,9 @@ function headerCrumb(s: AppState): string {
     if (!ed) return "";
     return ed.mode === "new" ? "New prompt" : `${ed.mode === "edit" ? "Edit" : "New version"} · ${ed.title}`;
   }
-  if (s.screen === "newdoc") return "New doc";
+  if (s.screen === "newdoc") return "New page";
+  if (s.screen === "space") return s.spaceHome.data?.space.slug === s.spaceSlug ? s.spaceHome.data.space.name : spaceName(s, s.spaceSlug ?? "");
+  if (s.screen === "docs") return spaceName(s, s.docDetail.data?.doc.space ?? s.docSpace);
   if (s.screen === "tag") return s.tagName ?? "";
   if (s.screen === "platformorg") return platformCrumb(s.plat);
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
@@ -919,7 +943,7 @@ function headerCrumb(s: AppState): string {
 
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
-    mywork: "My Work", feed: "Feed", docs: "Docs", roadmap: "Roadmap", review: "Review",
+    mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
     maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
     site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
@@ -928,7 +952,7 @@ function header(s: AppState): string {
     artifacts: "Artifacts", artifactnew: "Artifacts", artifact: "Artifacts",
     handoffs: "Handoffs", handoff: "Handoffs", newhandoff: "Handoffs",
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
-    newdoc: "Docs",
+    newdoc: "Library",
     releases: "What's new",
     platform: "Platform", platformorg: "Platform",
     org: "Org settings", tag: "Tags",
@@ -950,10 +974,9 @@ function header(s: AppState): string {
     ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
     : "";
 
-  // The Technical / Product space is picked from the sidebar's Docs sub-pages, so the
-  // header carries only New doc (it had a second copy of the same switcher).
+  // The reader's header carries New page, in the doc's own space (a space's home has its own button).
   const docsControls = s.screen === "docs"
-    ? `<button data-act="newDoc" class="cnpy-outlinebtn" style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${PLUS_ICON}New doc</button>`
+    ? `<button data-act="newDoc" class="cnpy-outlinebtn" style="display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${PLUS_ICON}New page</button>`
     : "";
   const accentNew = (act: string, label: string) =>
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
@@ -997,12 +1020,13 @@ function header(s: AppState): string {
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
+    || s.screen === "space" || s.screen === "docs"
     || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag";
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
-    : s.screen === "newdoc" ? "goDocs"
+    : s.screen === "newdoc" || s.screen === "space" || s.screen === "docs" ? "goLibrary"
     : s.screen === "releases" ? "goReleases"
     : s.screen === "platformorg" ? "platGo"
     : s.screen === "tag" ? "tagsGo"
@@ -1397,11 +1421,15 @@ const sectionRank = (sec: string): number => {
   return i < 0 ? DOC_SECTION_ORDER.length : i;
 };
 
-// The Docs space toggle is a FIXED two-tab set, in this order — the tabs are NOT
-// derived from the data, so a stray/foreign `space` value can never add or change
-// a tab. New docs are constrained to these values at the write boundary too.
-export const DOC_SPACES = ["technical", "product"] as const;
-export const spaceLabel = (k: string): string => (k ? k.charAt(0).toUpperCase() + k.slice(1) : k);
+// A doc's space is one of the org's own (the Library's): the reader's tree lists the docs of the open doc's space,
+// and its breadcrumb names the space by the Library's name for it.
+/** The org's live spaces, in the Library's order ([] until the read lands). */
+export const liveSpaces = (s: Pick<AppState, "library">): SpaceDTO[] => s.library.data?.spaces ?? [];
+/** A space's name: the Library's, else the slug as written (a space the read does not list — archived, or not in yet). */
+export function spaceName(s: Pick<AppState, "library">, slug: string): string {
+  const sp = liveSpaces(s).find((x) => x.slug === slug) ?? s.library.data?.archived.find((x) => x.slug === slug);
+  return sp ? sp.name : slug ? slug.charAt(0).toUpperCase() + slug.slice(1) : slug;
+}
 
 /** First doc of a space in tree display order (section rank, then title) — the
  *  page opened by default when the docs list loads or the space toggles. */
@@ -1435,9 +1463,9 @@ function docTreeGroupShape(g: number, rows: number): string {
   return `<div style="margin-bottom:16px"><div class="cnpy-treesec">${skLine(g ? 96 : 72, 10.5, 1.5)}</div><div style="display:flex;flex-direction:column;gap:1px">${skList(rows, (i) => row(i + g))}</div></div>`;
 }
 /** The Docs reader's empty sentence for a space with no doc: how one gets there (newdoc.ts says the
- *  same of New doc: it "lands in Review as a staged proposal, the same as an agent's"). */
+ *  same of New page: it "lands in Review as a staged proposal, the same as an agent's"). */
 export const docsEmptyText = (space: string): string =>
-  `No ${spaceLabel(space)} docs yet. A doc appears here once its proposal is promoted in Review: one your agent staged, or your own from New doc.`;
+  `No pages in ${space} yet. A page appears here once its proposal is approved in Review: one your agent staged, or your own from New page.`;
 
 function docsView(s: AppState): string {
   // ── tree (left pane) ────────────────────────────────────────────────────────
@@ -1448,12 +1476,12 @@ function docsView(s: AppState): string {
   } else if (s.docsList.status === "error") {
     treeHtml = notice("Couldn't load docs.");
   } else {
-    // Filter to the toggled space (Technical | Product), then group by section.
+    // Filter to the open doc's space, then group by section.
     // Sections are static labels; each page expands to its own headings.
     const spaceDocs = s.docsList.data.filter((d) => d.space === s.docSpace);
     if (spaceDocs.length === 0) {
       // The space has no doc: one section group of page rows, drawn empty (the reader says the rest).
-      treeHtml = emptyLayout("docs-tree", { text: `No ${spaceLabel(s.docSpace)} docs yet.`, plain: true, sayStyle: "padding:2px 8px 14px", shapes: docTreeGroupShape(0, 4) });
+      treeHtml = emptyLayout("docs-tree", { text: `No pages in ${spaceName(s, s.docSpace)} yet.`, plain: true, sayStyle: "padding:2px 8px 14px", shapes: docTreeGroupShape(0, 4) });
     } else {
       const grouped = new Map<string, DocListRow[]>();
       for (const doc of spaceDocs) {
@@ -1477,10 +1505,45 @@ function docsView(s: AppState): string {
   // Narrow (trov.css `.cnpy-docs`): the page list and the reader take turns; the bar's
   // Pages button swaps them (hidden on a wide screen, where both panes show).
   return `<div class="cnpy-docs" data-tree="${s.docsTree ? "1" : "0"}" style="display:flex;height:100%">
-    <div class="cnpy-docs-bar"><button data-act="docsTree" class="cnpy-outlinebtn" aria-expanded="${s.docsTree}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>${s.docsTree ? "Back to the page" : `${esc(spaceLabel(s.docSpace))} pages`}</button></div>
+    <div class="cnpy-docs-bar"><button data-act="docsTree" class="cnpy-outlinebtn" aria-expanded="${s.docsTree}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"></path></svg>${s.docsTree ? "Back to the page" : `${esc(spaceName(s, s.docSpace))} pages`}</button></div>
     <div class="cnpy-scroll cnpy-docs-tree" style="width:252px;flex:none;border-right:1px solid var(--border);overflow-y:auto;padding:18px 12px">${treeHtml}</div>
     <div id="cnpy-reader" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-width:0">${readerHtml}</div>
   </div>`;
+}
+
+// ── the Docs Library: Library home, a space's home, their dialogs (library.ts) ─
+/** A space's home, around the pure view: a failed read keeps its error, an unknown space says so. */
+function spaceScreen(s: AppState): string {
+  const h = s.spaceHome;
+  const mine = h.data !== null && h.data.space.slug === s.spaceSlug;
+  if (h.status === "error" && !mine) return notice("Couldn't load this space.");
+  if (h.status === "ok" && h.data === null) return notice("There is no space here. It may have been renamed, or the link is wrong.");
+  return spaceHomeView({ slug: s.spaceSlug, home: h, tab: s.spaceTab, admin: viewerIsAdmin(s), persons: s.persons.data, descDraft: s.libUi.desc });
+}
+/** The space on screen (a space's home), when its read is in. */
+const openSpaceDTO = (s: AppState): SpaceDTO | null => (s.spaceHome.data && s.spaceHome.data.space.slug === s.spaceSlug ? s.spaceHome.data.space : null);
+/** The Library screens' dialogs — root-level overlays of a page that is patched in place (`data-morph`). */
+function libraryOverlays(s: AppState): string {
+  const ui = s.libUi;
+  const spaces = liveSpaces(s);
+  const sp = openSpaceDTO(s);
+  const out: string[] = [];
+  if (ui.space && viewerIsAdmin(s)) {
+    out.push(spaceDialog(ui.space, spaces, s.dd));
+    if (ui.space.mode === "edit" && s.dd.open) out.push(dropdownMenu([spacePositionDropdown(ui.space, spaces)], s.dd));
+  }
+  if (ui.owners && sp && s.screen === "space") out.push(ownersDialog(sp, ui.owners, s.persons.data));
+  if (ui.archive && sp && s.screen === "space" && viewerIsAdmin(s)) out.push(archiveDialog(sp, ui.archive));
+  return out.join("");
+}
+/** New page's Space picker: the org's live spaces (with the draft's own, should it no longer be one). */
+function newDocSpaces(s: AppState): { key: string; label: string }[] {
+  const list = liveSpaces(s).map((sp) => ({ key: sp.slug, label: sp.name }));
+  return list.some((x) => x.key === s.nd.space) || !s.nd.space ? list : [...list, { key: s.nd.space, label: spaceName(s, s.nd.space) }];
+}
+/** New page's Space picker when there are more spaces than a switch holds (newdoc.ts `NEW_DOC_SPACE_SWITCH_MAX`). */
+function newDocSpaceDropdown(s: AppState): DropdownProps {
+  return { id: "nd-space", act: "ndSpace", value: s.nd.space, ariaLabel: "Space", fill: true, options: newDocSpaces(s).map((x) => ({ value: x.key, label: x.label })) };
 }
 
 /** The doc page while its read is out: the breadcrumb, title and byline rule, then
@@ -1514,7 +1577,7 @@ export function docReaderHtml(real: AppState): string {
     return notice("Couldn't load this doc.");
   } else if (dd.data === null && s.docSlug === null && s.docsList.status === "ok" && !s.docsList.data.some((d) => d.space === s.docSpace)) {
     // The space has no doc to open: the doc page, drawn empty, with the way to the first one.
-    return emptyLayout("doc", { text: docsEmptyText(s.docSpace), action: { label: "New doc", act: "newDoc" }, style: DOC_PAGE_FRAME, sayStyle: "margin-bottom:30px", shapes: docPageShapes(2) });
+    return emptyLayout("doc", { text: docsEmptyText(spaceName(s, s.docSpace)), action: { label: "New page", act: "newDoc" }, style: DOC_PAGE_FRAME, sayStyle: "margin-bottom:30px", shapes: docPageShapes(2) });
   } else if (dd.data === null) {
     return notice(s.docSlug === null ? "Select a doc from the tree." : "Doc not found.");
   } else if (dd.status === "ok" && dd.data !== null) {
@@ -1539,7 +1602,7 @@ export function docReaderHtml(real: AppState): string {
 
     return `<div class="cnpy-docpage" style="max-width:1080px;margin:0 auto;padding:34px 52px 120px">
     ${stagedBanner}
-    <div style="font-family:var(--label);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.11em;color:var(--fg-40);margin-bottom:11px">${esc(spaceLabel(doc.space))} <span style="color:var(--border-strong);margin:0 2px">/</span> ${esc(doc.section)}</div>
+    <div style="font-family:var(--label);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.11em;color:var(--fg-40);margin-bottom:11px"><button type="button" data-act="libOpenSpace" data-arg="${attr(doc.space)}" class="cnpy-link" style="padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit">${esc(spaceName(s, doc.space))}</button> <span style="color:var(--border-strong);margin:0 2px">/</span> ${esc(doc.section)}</div>
     <h1 style="font-size:29px;font-weight:650;letter-spacing:-0.022em;line-height:1.16;margin:0">${esc(doc.title)}</h1>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-top:15px;padding-bottom:17px;border-bottom:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--fg-55)">
@@ -2063,7 +2126,7 @@ function guideView(s: AppState): string {
     ${sec("How it works", "Read, propose, confirm", "How it works")}
 
     ${sub("Reading")}
-    <p style="${gP}">The ${gStrong("Docs")} library is split into ${gStrong("Technical")} and ${gStrong("Product")} spaces, each grouped into sections like ${gStrong("Architecture")} and ${gStrong("Decisions")}. Opening a doc expands its heading outline in the tree, and ${gStrong("Version history")} keeps every earlier version. ${gStrong("New doc")} lets you propose one yourself.</p>
+    <p style="${gP}">The ${gStrong("Library")} is split into spaces your team defines, like ${gStrong("Engineering")}, ${gStrong("Product")} and ${gStrong("Design")}, each grouped into sections like ${gStrong("Architecture")} and ${gStrong("Decisions")}. Opening a doc expands its heading outline in the tree, and ${gStrong("Version history")} keeps every earlier version. ${gStrong("New doc")} lets you propose one yourself.</p>
     ${gFig("docs", `${gEm("Docs")}: the open doc's outline in the tree, and a banner pointing to a proposal awaiting review.`)}
     <p style="${gP};margin-top:14px">${gStrong("Search")} is the box at the top of the sidebar (${gCode("⌘K")}, or ${gCode("Ctrl K")} on Windows and Linux). Type and pause: a dropdown jumps straight to a ticket, doc, decision, sprint, artifact, prompt, handoff, person, or screen. Press ${gCode("Tab")} for the full ${gStrong("Search")} screen, which ranks docs, decisions, the feed, the roadmap, and artifacts. Both show only settled content. Your agent's ${gCode("query")} tool also sees tickets and pending proposals, each labelled, so it can tell settled context from a draft.</p>
     ${gFig("quicksearch", `${gEm("Search everything")}: matches grouped by type as you type, with a jump to the full results.`)}
@@ -2908,6 +2971,8 @@ function screenBody(s: AppState): string {
     case "ask": return askScreenView(s);
     case "feed": return feedView(s);
     case "docs": return docsView(s);
+    case "library": return libraryHomeView({ library: s.library, admin: viewerIsAdmin(s), persons: s.persons.data, restoring: s.libUi.restoring });
+    case "space": return spaceScreen(s);
     case "roadmap": return roadmapView(s);
     case "review": return reviewScreen(s);
     case "maintenance": return maintenanceScreen(s);
@@ -2941,7 +3006,7 @@ function screenBody(s: AppState): string {
       orgName: currentOrg(s)?.name ?? "this organization", who: (h) => handleLink(personFor(s, h), h),
       colorOf: (h) => personFor(s, h)?.color ?? null, tagColorOf: (n) => s.tags.data?.tags.find((t) => t.name === n)?.color ?? null,
     });
-    case "newdoc": return newDocView({ draft: s.nd, spaces: DOC_SPACES.map((k) => ({ key: k, label: spaceLabel(k) })), sections: ASSIGN_OPTIONS.sections });
+    case "newdoc": return newDocView({ draft: s.nd, spaces: newDocSpaces(s), sections: ASSIGN_OPTIONS.sections, dd: s.dd });
     case "org": return orgSettingsView(orgProps(s));
     default: return feedView(s);
   }
@@ -3026,7 +3091,11 @@ function appView(s: AppState): string {
     // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
     // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
     // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).
-    : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative" : "";
+    : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative"
+    // The Library's home and a space's home hold dialogs with forms, a description edited in place and a tab bar:
+    // patched in place, one page per space (a tab switch replaces only the panel).
+    : s.screen === "library" ? "library"
+    : s.screen === "space" ? `space:${s.spaceSlug ?? ""}` : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
   return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
@@ -3094,6 +3163,8 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
+    ${s.view === "app" && (s.screen === "library" || s.screen === "space") ? libraryOverlays(s) : ""}
+    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s)], s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

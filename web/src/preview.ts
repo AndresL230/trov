@@ -132,6 +132,11 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
     out.mywork = { status: "ok", data: { person: s.mywork.data?.person ?? null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false } };
     out.feedStats = { status: "ok", data: { days: [], total: 0, people: 0, topTags: [], topAuthors: [] } };
     out.art = { ...out.art, list: { status: "ok", data: [] }, attachTickets: { status: "ok", data: [] } };
+    // The Docs Library: no space yet (who may create one stays real). A space's home is "one thing" — it keeps
+    // the real space, with nothing in it.
+    out.library = { status: "ok", data: { spaces: [], archived: [], recent: [], waiting: 0, can_admin: s.library.data?.can_admin ?? false } };
+    const home = s.spaceHome.data;
+    out.spaceHome = home ? { status: "ok", data: { ...home, pages: [], space: { ...home.space, pages: 0, waiting: 0 } } } : s.spaceHome;
     out.docSlug = null;
     out.reviewSel = null;
     out.assignOpen = null;

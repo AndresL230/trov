@@ -63,6 +63,8 @@ function personStatements(p, at) {
 const KINDS = [["my_work", "daily"], ["week_recap", "weekly"], ["review_queue", "daily"], ["roadmap_plan", "weekly"], ["ticketq", "daily"]];
 const STARTER_TAGS = [["auth", "Sign-in, sessions, tokens, permissions", "plum"], ["architecture", "How the system is put together", "slate"], ["infra", "Deploys, hosting, CI", "rust"],
   ["api", "Routes and what they return", "sky"], ["ui", "Screens and components", "rose"], ["data", "Tables, migrations, storage", "fern"]];
+/** The three starter spaces of the Library (0076_docs_library; shared/docs-core.ts STARTER_SPACES). */
+const STARTER_SPACES = [["engineering", "Engineering", "braces", "#525cc3", 1024], ["product", "Product", "compass", "#2f7d57", 2048], ["design", "Design", "pen", "#a84a68", 3072]];
 /** What `createOrg` writes for a new org (src/orgs/repo.ts), plus its members. `plan`: [id, source, overrides]. */
 function orgStatements(o, at) {
   const s = [
@@ -75,6 +77,7 @@ function orgStatements(o, at) {
     insert("notification_settings", { org_id: o.id, send_hour: 8, timezone: o.timezone ?? "America/New_York", from_address: "Trov <hello@trov.dev>" }),
     ...KINDS.map(([kind, cadence]) => insert("notification_policy", { org_id: o.id, kind, default_cadence: cadence, enabled: 1, updated_at: at, updated_by: "registry" })),
     ...STARTER_TAGS.map(([name, description, color]) => insert("org_tags", { org_id: o.id, name, description, color, starter: 1, created_at: at, created_by: "migration" })),
+    ...STARTER_SPACES.map(([slug, name, icon, color, sort_rank]) => insert("doc_spaces", { org_id: o.id, slug, name, icon, color, description: "", sort_rank, created_at: at, created_by: "system" })),
     insert("org_admin_audit", { org_id: o.id, actor: o.owner, action: "org.create", target: o.slug, detail: { name: o.name, owner: o.owner, plan: o.plan[0] }, at }),
   ];
   for (const [handle, role, title] of o.members) {

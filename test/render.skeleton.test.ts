@@ -168,8 +168,32 @@ describe("Docs — loading", () => {
     expect(html).toContain('data-empty="doc"');
     expect(html).not.toContain("Select a doc from the tree.");
     // Docs exist in the space, none is picked: the prompt to pick.
-    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", outline: [], current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
+    const doc = { slug: "a", title: "A", space: "engineering", section: "Overview", outline: [], current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
     expect(body(render(app("docs", { docsList: { status: "ok", data: [doc as never] }, docDetail: { status: "ok", data: null } })))).toContain("Select a doc from the tree.");
+  });
+});
+
+describe("the Docs Library — loading", () => {
+  it("Library home: the real title block, then three space cards and five page rows", () => {
+    const html = body(render(app("library")));
+    expect(keys(html)).toEqual(["lib-spaces", "lib-recent"]);
+    expect(html).toContain(">Library</h1>");
+    expect(html).toContain("Guides, runbooks, specs and decisions for the whole team, grouped into spaces.");
+    expect(html).toContain(">Recently updated</h2>");
+    expect(html).not.toContain("waiting for review");
+  });
+  it("a space's home: the header's shape, the real tab bar with no count, then the panel's", () => {
+    const html = body(render(app("space", { spaceSlug: "security", spaceHome: { status: "loading", data: null } })));
+    expect(keys(html)).toEqual(["space-head", "space"]);
+    expect(html).toContain('data-tabs="space-tab"');
+    expect(html).toContain(">All pages</button>");
+    expect(html).not.toContain("cnpy-badge");
+  });
+  it("a space's home keeps what it shows while it is read again", () => {
+    const sp = { slug: "security", name: "Security", icon: "shield", color: "#b4562c", description: "", sort_rank: 1, created_at: "2026-10-01T00:00:00Z", created_by: "alice", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 };
+    const html = body(render(app("space", { spaceSlug: "security", spaceHome: { status: "loading", data: { space: sp as never, pages: [], can_edit: false, can_admin: false } } })));
+    expect(keys(html)).toEqual([]);
+    expect(html).toContain(">Security</h1>");
   });
 });
 
@@ -332,7 +356,7 @@ describe("Handoffs, Prompt Library, Artifacts, Repo, Settings — loading", () =
 });
 
 describe("every loading paint keeps the rules", () => {
-  const screens: Screen[] = ["mywork", "feed", "docs", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings"];
+  const screens: Screen[] = ["mywork", "feed", "docs", "library", "space", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings"];
   it("is busy-marked, hidden from a screen reader, keeps a status line, and has unique region keys", () => {
     for (const screen of screens) {
       const html = body(render(app(screen)));

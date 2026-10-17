@@ -128,6 +128,10 @@ async function seed(): Promise<Fx> {
   const suggestionId = (await putSuggestion(A(), { itemType: "ticket", itemRef: String(ticketId), kind: "category", value: "bug", confidence: 0.9, reason: `${CANARY} reason`, cites: [], model: "m", promptVersion: "1" }))!;
   await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
   // Ask Trov (0066_ask): Alice's thread in A, a question and an answer that carry the canary, a proposed card.
+  // A space of A's Library (0076_docs_library) with A's canary in its name and description, owned by alice.
+  await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) VALUES (?, 'canary-space', ?, 'shield', '#b4562c', ?, 4096, ?, ?)`,
+    ORG_A, `${CANARY} space`, `${CANARY} space description`, T, ALICE);
+  await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'canary-space', ?, ?, ?)`, ORG_A, ALICE, T, ALICE);
   const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T)).meta.last_row_id);
   await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'user', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} question` }), T);
   const askMessageId = Number((await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'assistant', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} answer` }), T)).meta.last_row_id);
@@ -201,7 +205,7 @@ async function send(method: string, path: string, cookie: string, body?: unknown
 function paramValue(suffix: string, name: string, fx: Fx): string {
   const under = (p: string) => suffix.startsWith(p);
   switch (name) {
-    case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : fx.artifactSlug;
+    case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : under("/spaces") ? "canary-space" : fx.artifactSlug;
     case "id": return String(
       under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
         : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId
@@ -289,6 +293,10 @@ const TENANT: Record<string, Row> = {
   "POST /prompts/:slug/tags": J({ tags: ["review"] }), "POST /prompts/:slug/used": J({}), "POST /prompts/:slug/publish": J({ version: 1 }),
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
   "POST /docs/propose": J({ title: "From the matrix", section: "reference", space: "technical", body: "b" }),
+  // src/spaces/routes.ts — the Library's spaces (0076_docs_library): A's `canary-space` in the path is no space of B's
+  "GET /spaces": {}, "GET /spaces/:slug": {}, "POST /spaces": J({ name: "Hijacked", icon: "shield", color: "#b4562c" }),
+  "PUT /spaces/:slug": J({ name: "Hijacked", description: "hijacked" }), "PUT /spaces/:slug/owners": J({ owners: ["boss"] }),
+  "POST /spaces/:slug/move": J({ after: null }), "POST /spaces/:slug/archive": J({}), "POST /spaces/:slug/restore": J({}),
   // src/tags/routes.ts — the org's tag list (0056_org_tags): every statement binds the org the gate resolved
   "GET /tags": {}, "GET /tags/:name": {}, "POST /tags": J({ name: "hijacked" }), "PUT /tags/:name": J({ name: "hijacked" }),
   "POST /tags/:name/merge": J({ into: "ui" }), "POST /tags/:name/retire": J({}), "POST /tags/:name/restore": J({}),

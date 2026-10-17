@@ -24,7 +24,7 @@ describe("parseHash", () => {
   });
 
   it("still parses every pre-existing plain screen", () => {
-    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
+    for (const s of ["mywork", "feed", "library", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
     // The old in-app unsubscribe screen (which turned email off on arrival) is gone: its address opens

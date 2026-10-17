@@ -33,11 +33,16 @@ export interface DocRow {
   current_version: number;
   updated_at: string | null;
   updated_by: string | null;
-  space: string;   // 'technical' | 'product' — the Docs tab this doc lives under (UI grouping, not access)
+  space: string;   // a doc_spaces slug of the org (0076_docs_library) — the Library space the page lives in (grouping, not access)
   /** A person handle: who proposed the doc's FIRST version (0035). Set at creation, never
    *  overwritten by later edits/promotions; renamed with the person. NULL only for a doc
    *  row with no version and no updated_by at backfill time. */
   owner: string | null;
+  /** The page it sits under in its space's tree (0076_docs_library); NULL = top level. Every row read has it;
+   *  optional so a fixture written before the tree need not name it. */
+  parent_slug?: string | null;
+  /** Its place among its siblings; NULL sorts last. */
+  tree_rank?: number | null;
 }
 
 /** A doc without its body — `GET /docs?fields=meta` (My Work's "Docs you own" cell). */

@@ -243,6 +243,13 @@
   Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
+  Then `0076_docs_library` (the Docs Library, all three PRs' schema at once) [`doc_spaces`, `doc_space_owners`,
+  `doc_links`, `doc_imports`; `docs.parent_slug` / `tree_rank`; `doc_versions.parent_slug` / `import_id` /
+  `import_path`; three starter spaces per org; `docs.space` remapped to a space slug; additive —
+  `docs-library.md`, held by `test/spaces.migration.test.ts`].
+- The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
+  name and slug rules, `placeSpace`, the DTOs), `src/tools/spaces.ts` (reads, the admin / owner writers, the gate's
+  `spaceState`), `src/spaces/routes.ts` (the cookie routes at `/spaces`) — `docs-library.md`.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

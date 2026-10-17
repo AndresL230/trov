@@ -418,7 +418,7 @@ function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceP
         { key: "feed", label: "Feed update" },
       ],
       sections: ["reference", "context", "decisions"],
-      spaces: ["technical", "product"],
+      spaces: [{ key: "engineering", label: "Engineering" }, { key: "product", label: "Product" }],
       tags: ["auth", "infra"],
     },
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
@@ -634,11 +634,12 @@ describe("assignPanel — per-type targets from the real vocabulary", () => {
     expect(html).not.toContain("reference");
   });
 
-  it("doc kind offers sections plus an optional space", () => {
+  it("doc kind offers sections plus an optional space — the org's own, by name", () => {
     const html = assignPanel("7", assign, "doc", null, null, []);
     expect(html).toContain("reference");
     expect(html).toContain("decisions");
-    expect(html).toContain("technical");
+    expect(html).toContain('data-act="maintAssignSpace" data-arg="engineering"');
+    expect(html).toContain(">Engineering</button>");
     expect(html).toContain("optional");
   });
 

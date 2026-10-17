@@ -227,7 +227,7 @@ describe("the ways in — signed in", () => {
 
   it("the sidebar has neither: its Help section is Guide and What's new, as before", () => {
     const html = sidebarView({
-      screen: "feed", collapsed: false, navOpen: NAV_CLOSED, qView: "board", roadmapTab: "narrative", docSpace: "", docSpaces: [],
+      screen: "feed", collapsed: false, navOpen: NAV_CLOSED, qView: "board", roadmapTab: "narrative", librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false,
       counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: { handle: "maya", name: "Maya", color: "moss" }, displayName: "Maya", logo: "",
     } as Parameters<typeof sidebarView>[0]);
     expect(html).not.toContain("supportOpen");

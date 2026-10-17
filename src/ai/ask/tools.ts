@@ -26,6 +26,7 @@ import { listPeopleForAgents } from "../../tools/people";
 import { getRepoDashboardForAgent, orgRepoConfig } from "../../tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { listTagRefs } from "../../tools/tags";
+import { listSpacesForAgent } from "../../tools/spaces";
 import { QueryType } from "@shared/contract";
 import { agentArtifactGet, agentArtifactList, artifactsForTicket } from "../../tools/artifacts-agent";
 import { ARTIFACT_AREAS, ARTIFACT_KINDS, ARTIFACT_STATUSES } from "@shared/artifacts";
@@ -72,12 +73,13 @@ const QUERY_AREAS: Record<string, SearchArea> = { doc: "docs", decision: "decisi
 const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescript-eslint/no-explicit-any
   query: read(z.object({
     q: z.string().optional(), types: z.array(QueryType).optional(), section: z.string().optional(),
-    space: z.enum(["technical", "product"]).optional(), include_staged: z.boolean().optional(),
+    space: z.string().optional(), include_staged: z.boolean().optional(),
     limit: z.number().optional(), pointer_limit: z.number().optional(),
   }), "search", (c, a) => query(c.ctx, { ...a, q: a.q ?? "", include_staged: a.include_staged ?? true }, c.handle),
   (a) => (a.types?.length ? a.types : ["doc", "decision", "feed", "sprint", "artifact"]).map((t: string) => [QUERY_AREAS[t], null] as [SearchArea, null])),
   get_doc: read(z.object({ slug: z.string() }), "docs", (c, a) => get_doc(c.ctx, a.slug)),
-  list_docs: read(z.object({ section: z.string().optional() }), "docs", (c, a) => list_docs(c.ctx, a.section), () => [["docs", null]]),
+  list_docs: read(z.object({ section: z.string().optional(), space: z.string().optional() }), "docs", (c, a) => list_docs(c.ctx, a.section, a.space), () => [["docs", null]]),
+  list_spaces: read(z.object({}), "docs", (c) => listSpacesForAgent(c.ctx)),
   get_feed: read(z.object({ author: z.string().optional(), tags: z.array(z.string()).optional(), since: z.string().optional(), limit: z.number().optional() }),
     "feed", (c, a) => get_feed(c.ctx, a), (a) => [["feed", a.since ?? null]]),
   list_tags: read(z.object({}), "read", (c) => listTagRefs(c.ctx)),
@@ -210,10 +212,13 @@ async function searchedScopes(c: AskToolCtx): Promise<{ area: string; scope: str
     let scope = "";
     switch (area) {
       case "docs": {
-        const spaces = await all<{ space: string; n: number }>(c.ctx, `SELECT space, COUNT(*) AS n FROM docs WHERE org_id = ? GROUP BY space`, c.ctx.orgId);
-        const total = spaces.reduce((a, s) => a + Number(s.n), 0);
-        const names = spaces.map((s) => (s.space === "product" ? "Product" : "Technical")).sort((a, b) => (a === "Technical" ? -1 : b === "Technical" ? 1 : 0));
-        scope = `${names.length ? `${names.join(" and ")}, ` : ""}${plural(total, "doc")}`;
+        // The Library's spaces that hold docs, by name, in the Library's order (0076_docs_library).
+        const spaces = await all<{ name: string; n: number }>(c.ctx,
+          `SELECT s.name AS name, COUNT(*) AS n FROM docs d JOIN doc_spaces s ON s.slug = d.space AND s.org_id = ?
+            WHERE d.org_id = ? GROUP BY s.slug ORDER BY (s.sort_rank IS NULL), s.sort_rank, s.created_at, s.slug`, c.ctx.orgId, c.ctx.orgId);
+        const total = await n(`SELECT COUNT(*) AS n FROM docs WHERE org_id = ?`, c.ctx.orgId);
+        const names = spaces.map((s) => s.name);
+        scope = `${names.length ? `${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}, ` : ""}${plural(total, "doc")}`;
         break;
       }
       case "tickets":
@@ -316,7 +321,7 @@ export const ASK_TOOLS: Record<string, ToolSpec> = {
 
 /** Fast's tools (`index`): the search and list tools, the stored cards, and the person's own attachments. */
 export const INDEX_TOOLS = new Set([
-  "query", "list_docs", "get_feed", "list_tags", "get_roadmap", "list_tickets", "list_sprints", "get_my_work", "list_people", "get_events",
+  "query", "list_docs", "list_spaces", "get_feed", "list_tags", "get_roadmap", "list_tickets", "list_sprints", "get_my_work", "list_people", "get_events",
   "artifact_list", "list_handoffs", "search_prompts", "trov_docs", "read_attachment", "show_items", "show_chart", "show_themes", "show_not_found",
 ]);
 
@@ -419,7 +424,8 @@ export function activityLabel(tool: string, a: Record<string, unknown>): string 
   const L: Record<string, () => string> = {
     query: () => (a.q ? `Searched ${a.types && (a.types as string[]).length === 1 && (a.types as string[])[0] === "doc" ? "docs" : "Trov"} for ${q(a.q)}` : "Searched Trov"),
     get_doc: () => `Read the doc ${q(a.slug)}`,
-    list_docs: () => "Listed docs",
+    list_docs: () => (typeof a.space === "string" ? `Listed the docs in ${q(a.space)}` : "Listed docs"),
+    list_spaces: () => "Read the Library's spaces",
     get_feed: () => (a.since ? `Read the feed since ${typeof a.since === "string" ? shortDay(a.since.slice(0, 10)) : ""}` : "Read the feed"),
     list_tags: () => "Read the tag list",
     get_roadmap: () => "Read the roadmap",

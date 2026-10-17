@@ -120,10 +120,10 @@ describe("reconciler — confidence + space", () => {
     expect(v2?.low_confidence).toBe(1);
   });
 
-  it("persists `space` on doc creation (default technical, explicit product)", async () => {
+  it("persists `space` on doc creation (default engineering, explicit product)", async () => {
     await ingestDocProposal(systemCtx(), { slug: "default-space", section: "reference", body: "x", change_summary: "s", confidence: "high" }, AUTHOR);
     await ingestDocProposal(systemCtx(), { slug: "prod", section: "reference", body: "x", change_summary: "s", confidence: "high", space: "product" }, AUTHOR);
-    expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'default-space'`))?.space).toBe("technical");
+    expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'default-space'`))?.space).toBe("engineering");
     expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'prod'`))?.space).toBe("product");
   });
 });
