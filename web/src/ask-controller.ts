@@ -28,6 +28,7 @@ import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, repla
 import { inspectorRef, isViewerConvo, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
 import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type AskMessage, type RefView } from "@shared/ai-ask-core";
+import { pointOf, rectOf, viewportOf } from "./zoom";
 
 export interface AskHost {
   state: AppState;
@@ -454,9 +455,9 @@ export function createAskController(host: AskHost): AskController {
       if (ui().hover?.ref === ref) { cancelExit("hover"); paint(); return; }     // back on the same chip: it stays
       hcTimer = setTimeout(() => {
         if (!el.isConnected || !viewOf(ctx.look(), ref)) return;
-        const r = el.getBoundingClientRect();
+        const r = rectOf(el), view = viewportOf();     // CSS px (zoom.ts), as the card's left / top are
         cancelExit("hover");
-        ui().hover = { ref, at: placeHoverCard(r, window.innerWidth, window.innerHeight) };
+        ui().hover = { ref, at: placeHoverCard(r, view.width, view.height) };
         paint();
       }, HOVER_CARD.delayMs);
     };
@@ -482,11 +483,12 @@ export function createAskController(host: AskHost): AskController {
       if (!edge || e.button !== 0) return;
       e.preventDefault();
       const frame = edge.closest<HTMLElement>(".ask-insp-frame");
-      const x0 = e.clientX, w0 = inspectorWidth(ui().inspector.width, inspectorRef(ui()));
+      // CSS px (zoom.ts `pointOf`): under the big-screen zoom the edge still tracks the pointer 1:1.
+      const x0 = pointOf(e).x, w0 = inspectorWidth(ui().inspector.width, inspectorRef(ui()));
       ui().inspector = { ...ui().inspector, dragging: true };     // no width transition while it follows the pointer
       paint();
       const move = (ev: PointerEvent) => {
-        const w = clampInspector(w0 + (x0 - ev.clientX));
+        const w = clampInspector(w0 + (x0 - pointOf(ev).x));
         ui().inspector = { ...ui().inspector, width: w };
         if (frame) frame.style.width = `${w}px`;     // live, without a repaint per pixel
       };
@@ -502,7 +504,7 @@ export function createAskController(host: AskHost): AskController {
     });
 
     window.addEventListener("resize", () => {
-      const vw = window.innerWidth;
+      const vw = viewportOf().width;           // CSS px: the width the layout really has (zoom.ts)
       const was = layoutBucket(ui().vw);
       ui().vw = vw;
       if (ui().hover) ui().hover = null;

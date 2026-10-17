@@ -32,6 +32,7 @@ import { initialInspectorUi, type InspectorUi } from "./ask-inspector";
 import { initialActionsUi, type ActionsUi } from "./ask-actions";
 import { initialCmdjUi, type CmdjUi } from "./ask-cmdj";
 import { initialPhoneUi, type PhoneUi } from "./ask-phone";
+import { viewportOf } from "./zoom";
 
 /** Which conversation: the Ask page's, or the ⌘J panel's (over any page). */
 export type AskWhere = "page" | "panel";
@@ -95,7 +96,7 @@ export function initialAskUi(): AskUi {
     page: emptyConvo(), panel: emptyConvo(),
     refViews: {},
     threadsForced: null,
-    vw: typeof window !== "undefined" ? window.innerWidth : 1440,
+    vw: typeof window !== "undefined" ? viewportOf(window).width : 1440,
     inspector: { stack: [], idx: -1, width: null, where: "page", dragging: false },
     hover: null,
     closing: {},

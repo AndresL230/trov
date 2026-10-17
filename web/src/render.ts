@@ -805,7 +805,7 @@ function authView(s: AppState): string {
   // rebuilding the card and the backdrop behind it. The other auth cards have nothing to type in.
   // The page's main landmark (a div with the role: the onboarding card's backdrop is the app's own markup,
   // `<main>` included, inert and hidden from assistive tech — a second `<main>` element may not wrap it).
-  return `<div role="main" class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px">
+  return `<div role="main" class="cnpy-authwrap"${s.authStep === "onboard" ? ' data-morph="onboard"' : ""} style="min-height:calc(100 * var(--vh));display:flex;align-items:center;justify-content:center;padding:32px">
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
     ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
@@ -2435,7 +2435,7 @@ export function grantScopeDialog(s: Pick<AppState, "grants" | "grantScope"> & Pa
   return `<div data-overlay="grant-scope" class="cnpy-cmodal">
     <div data-act="grantScopeClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="grant-scope" role="dialog" aria-modal="true" aria-labelledby="grant-scope-t" aria-describedby="grant-scope-d" tabindex="-1" data-grant-scope="${gr.id}"${busy ? ` aria-busy="true"` : ""} class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(460px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+      <div id="grant-scope" role="dialog" aria-modal="true" aria-labelledby="grant-scope-t" aria-describedby="grant-scope-d" tabindex="-1" data-grant-scope="${gr.id}"${busy ? ` aria-busy="true"` : ""} class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(460px, 100%);max-height:calc(100 * var(--vh) - 32px);overflow-y:auto">
         <button type="button" data-act="grantScopeClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${close}</button>
         <div id="grant-scope-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em;overflow-wrap:anywhere">${esc(gr.client_name)} &middot; how it picks an organization</div>
         <div style="display:flex;flex-direction:column;gap:16px;margin-top:14px">
@@ -3029,7 +3029,7 @@ function appView(s: AppState): string {
     : s.screen === "roadmap" && s.roadmapTab === "narrative" ? "roadmap:narrative" : "";
   // The skip link is the shell's first child (a fixed chip, out of the flex row): past the sidebar and the
   // header, to the screen itself. morph.ts patches the aside and swaps <main>; it never touches this.
-  return `<div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+  return `<div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     ${skipLink("cnpy-main")}
     ${sidebar(s)}
     <main${morphKey ? ` data-morph="${attr(morphKey)}"` : ""} style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">

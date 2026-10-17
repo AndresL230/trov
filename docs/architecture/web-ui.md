@@ -798,15 +798,43 @@ frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120
   24px. A NEW screen with a centred frame adds its line there, or its title row floats at 24px on a big screen.
 - A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
   legal) keep their 1120px marketing column.
-- **No UI scaling at 4K 100% (tried, not shipped).** The owner asked for Trov to scale itself up past ~3000px. The
-  only mechanism that scales a UI authored in px (nearly every size is an inline px) is CSS `zoom` on `<html>`, and in
-  Chromium 153 it breaks the app: viewport units are zoomed too (`100dvh` becomes 1.3 × the window, so the shell
-  overflows and the page scrolls; every `calc(100vw - …)` menu or modal overflows), and `getBoundingClientRect()` is
-  in zoomed px while `left` / `top` / `width` written back are multiplied again (a dropdown opened ~550px right of
-  its trigger at 3840; the tooltip, quick search, sync menu and the board's drag ghost do the same math; Ask's
-  inspector resize adds `clientX` deltas to a width, so it would move 1.3× the pointer). Scaling the root font-size
-  does nothing to px. Doing it right means one zoom-aware helper at every rect → style site and a `--vw` / `--vh`
-  pair in place of ~110 raw viewport units, Ask's and Artifacts' included.
+
+### The big-screen zoom — 4K at 100% (`web/src/zoom.ts`)
+
+Past a ~3000px window the frames above run out of sensible width, so Trov enlarges ITSELF (the owner, 2026-10-17):
+CSS `zoom` on `<html>`, 1 up to a 3000px window, growing linearly to **1.3 at 3840** and capped there, and never so
+far that less than 900 CSS px of height is left (`zoomFor(width, height)`, `UI_ZOOM`). At or under 3000px nothing
+is written at all — the page is pixel-identical at 1440 and 2560 (compared screenshot for screenshot). `zoom` is the
+only mechanism that scales a UI authored in px (nearly every size is an inline px; the root font-size changes
+nothing). Everything about it lives in `zoom.ts`:
+
+- **Applying it.** `ZOOM_BOOT`, an inline script in every document's `<head>` (`site-prerender.ts`), sets the zoom
+  before the body parses, so a prerendered page never paints at 1× first. `zoom-boot.ts`, the FIRST import of every
+  page's script (`main.ts`, `landing-page.ts`, `pricing-page.ts`, `legal-page.ts`, `docs-page.ts`), installs the
+  `resize` listener before any other module adds one, so every other resize handler reads the new scale. A zoom
+  change sets `html[data-zooming]` for one frame, which turns transitions off: a resize never animates a width.
+- **Viewport units.** Chromium zooms them too (a `100vh` box is 1.3 × the window under `zoom: 1.3`). Every size
+  relative to the window reads `--vw` / `--vh` / `--dvh` (trov.css `:root`: `calc(1vw / var(--vu, 1))`), written
+  `calc(100 * var(--vh))`, `calc(100 * var(--vw) - 32px)`, `clamp(20px, 2.6 * var(--vw), 46px)` — the `--frame-*`
+  tokens included. `--vu` is MEASURED (a hidden fixed probe 100vh tall against `innerHeight`), not assumed, and is
+  unset at 1×. **A raw `vw` / `vh` / `dvh` in `web/src` is a bug** (`test/render.zoom.test.ts` scans for one; an
+  `@supports` condition and an `<img sizes>` are not CSS lengths and stay raw).
+- **Rect → style.** `getBoundingClientRect()`, a pointer's `clientX` / `clientY` and `innerWidth` / `innerHeight`
+  are in SCREEN px; a `left` / `top` / `width` / `height` / `translate` / an element's `scrollTop` written back is in
+  CSS px and gets zoomed again. Every such site reads through `rectOf(el)`, `pointOf(e)`, `viewportOf()` and
+  `clientOf()` (the root's client box: Chromium reports `documentElement.clientWidth` in screen px in standards
+  mode). The factor (`uiScale()`) is measured off the same probe, so if a browser ever reports rects unzoomed the
+  helpers become the identity, not wrong. Converted: the dropdown, the `data-mtip` bubble, quick search (anchored
+  panel and its height glide), the sync menu, the rail's collapsed tooltips, the board's drag ghost, slot FLIP and
+  settle, the ticket comment box's grip, Ask's hover card, inspector edge (tracks the pointer 1:1), layout width
+  and composer glide, the docs / guide / legal heading spies and their jumps, the FAQ accordion and the site's
+  scroll-lock gutter. `elementFromPoint` takes SCREEN px: pass it the raw `clientX` / `clientY`, never `pointOf`'s.
+  A NEW rect → style site goes through these helpers.
+- What needs nothing: anything CSS places (centred modals, `confirmModal`, the palette, `position:absolute` menus),
+  `offset*` reads (segmented / tab bar indicators), and framed artifacts (an iframe's content is zoomed with the
+  page, so the height it reports is already the box's CSS px).
+- Checked at 3840×2160 (and 3200×1800, 5120×1440) in Chromium 153: the shell is exactly the window, nothing scrolls
+  sideways on any screen or site page, and every overlay above lands on its trigger (offsets = the 1× offsets × 1.3).
 
 ## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
 

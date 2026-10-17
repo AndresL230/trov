@@ -5,11 +5,13 @@
 // the app's own stored choice (`trov.theme`, the same key and reading as web/src/main.ts), and
 // the toggle flips Light ⇄ Dark and stores it, so the app and these pages always agree.
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { syncFavicon } from "./favicon";
 import { followSkipLink, siteRoot } from "./site-chrome";
 import { paintRoot } from "./morph";
 import { migrateBrowserStorage } from "./storage-migrate";
+import { rectOf } from "./zoom";
 
 migrateBrowserStorage(); // canopy.* → trov.* before the theme is read
 
@@ -68,7 +70,7 @@ if (mount && doc) {
     queued = false;
     let current = "";
     for (const sec of mount.querySelectorAll<HTMLElement>(".site-legal-sec")) {
-      if (sec.getBoundingClientRect().top > 120) break;
+      if (rectOf(sec).top > 120) break;      // CSS px (zoom.ts)
       current = sec.id;
     }
     for (const a of mount.querySelectorAll<HTMLElement>("[data-legal-toc]")) {

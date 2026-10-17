@@ -140,13 +140,13 @@ export function relTime(iso: string | null): string {
  *  screen (trov.css `--frame-work`), with a gutter that grows with the viewport. Reading measures are capped per block inside (a ticket body, a
  *  sprint description), never by starving the whole frame. */
 export const WORK_SHELL =
-  "width:100%;max-width:var(--frame-work);margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+  "width:100%;max-width:var(--frame-work);margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px";
 /** A filing form's frame (a new ticket, handoff or doc, the prompt editor): WORK_SHELL's
  *  laptop width, kept on a big screen — a form's fields do not gain from the width a
  *  list does (trov.css `--frame-work`, web-ui.md › Big screens). */
 export const FORM_SHELL =
-  "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+  "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px";
 /** A single ticket's or sprint's page: the same shell, narrower, so one item reads
  *  as a centred document on a wide screen instead of hugging the left edge. */
 export const DETAIL_SHELL =
-  "width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+  "width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px";

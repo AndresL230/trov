@@ -1,8 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`field absent — each screen renders exactly what it did before the AI kit > Feed, both views (no entry carries \`ai\`) > agents 1`] = `
-"<div data-cnpy-theme="light" data-screen="feed" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="feed" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -178,8 +178,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
 `;
 
 exports[`field absent — each screen renders exactly what it did before the AI kit > Feed, both views (no entry carries \`ai\`) > reading 1`] = `
-"<div data-cnpy-theme="light" data-screen="feed" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="feed" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -355,8 +355,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
 `;
 
 exports[`field absent — each screen renders exactly what it did before the AI kit > My Work (no \`brief\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="mywork" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="mywork" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -650,8 +650,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
 `;
 
 exports[`field absent — each screen renders exactly what it did before the AI kit > Repo › Overview and › Planning (no \`state\`, no \`themes\`) > overview 1`] = `
-"<div data-cnpy-theme="light" data-screen="repo" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="repo" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -955,8 +955,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
 `;
 
 exports[`field absent — each screen renders exactly what it did before the AI kit > Repo › Overview and › Planning (no \`state\`, no \`themes\`) > planning 1`] = `
-"<div data-cnpy-theme="light" data-screen="repo" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="repo" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -1179,8 +1179,8 @@ exports[`field absent — each screen renders exactly what it did before the AI 
 `;
 
 exports[`field absent — each screen renders exactly what it did before the AI kit > Roadmap › Narrative, as an admin (no sprint \`forecast\` / \`note\`, no \`drift\`, no \`suggestions\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="roadmap" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="roadmap" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">

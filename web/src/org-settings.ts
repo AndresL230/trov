@@ -673,7 +673,7 @@ export function orgTabBar(tab: OrgTab, role: OrgRole | null, ui: OrgUi, logins =
 export function orgSettingsView(p: OrgSettingsProps): string {
   // Members (a table) grows on a big screen with --frame-dash (1180px up to a ~2100px window, like every other tab);
   // `data-org-wide` lets the header line up with it (trov.css › Big screens).
-  const shell = (inner: string, wide = false) => `<div data-screen-label="Org settings" class="cnpy-org"${wide ? " data-org-wide" : ""} style="width:100%;max-width:${wide ? "var(--frame-dash)" : "1180px"};margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">${inner}</div>`;
+  const shell = (inner: string, wide = false) => `<div data-screen-label="Org settings" class="cnpy-org"${wide ? " data-org-wide" : ""} style="width:100%;max-width:${wide ? "var(--frame-dash)" : "1180px"};margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">${inner}</div>`;
   if (!p.org) {
     if (p.orgsStatus === "error") return shell(failedNote("your orgs"));
     if (p.orgsStatus === "ok") return shell(orgEmpty("This organization isn't open", "Pick an organization from the switcher at the top of the sidebar."));

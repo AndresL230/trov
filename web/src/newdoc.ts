@@ -44,7 +44,7 @@ export function newDocView(p: NewDocProps): string {
     : "";
   return `<div data-screen-label="New doc" style="${FORM_SHELL}">
   ${fromBanner}
-  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label for="nd-title" style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>

@@ -225,7 +225,7 @@ export function promptDeleteModal(x: Pick<PromptDetail, "title" | "version">, ve
 export function promptDetailView(p: PromptDetailProps): string {
   // The page is at least the viewport tall and the body row takes what is left, so the
   // prompt box runs to the bottom of the screen instead of stopping at the rail's height.
-  const shell = (inner: string) => `<div data-screen-label="Prompt detail" class="cnpy-pdetail-page" style="width:100%;max-width:1260px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 28px">${inner}</div>`;
+  const shell = (inner: string) => `<div data-screen-label="Prompt detail" class="cnpy-pdetail-page" style="width:100%;max-width:1260px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 28px">${inner}</div>`;
   const x = p.prompt;
   if (!x) {
     if (p.status === "idle" || p.status === "loading") return shell(skeleton("prompt", "Loading…", skDetail({ rail: 258, paras: 3 })));
@@ -372,7 +372,7 @@ export function promptEditorView(p: PromptEditorProps): string {
   const can = !!ed.title.trim() && !!ed.body.trim() && s.ok && !s.taken;
 
   return shell(`
-  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>

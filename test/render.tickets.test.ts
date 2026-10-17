@@ -710,7 +710,7 @@ describe("tickets — cards are the shared surface", () => {
   });
   it("the new-ticket form card and the comment composer are surfaces", () => {
     const form = newTicketView(formProps());
-    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"');
+    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"');
     expect(form).not.toContain("border-radius:13px");
     const d = ticketDetailView(detailProps(detail({ id: 1, title: "T" })));
     expect(d).toContain("cnpy-surface");
@@ -856,9 +856,9 @@ describe("the ticket screens' frame", () => {
   });
 
   it("runs the form's card and the detail's columns down the window", () => {
-    expect(newTicketView(formProps())).toContain("min-height:calc(100vh - 210px)");
+    expect(newTicketView(formProps())).toContain("min-height:calc(100 * var(--vh) - 210px)");
     // The title now sits inside the grid, so the grid itself takes the full height.
-    expect(ticketDetailView(detailProps(detail({ id: 1, title: "T" })))).toContain("gap:34px;min-height:calc(100vh - 210px)");
+    expect(ticketDetailView(detailProps(detail({ id: 1, title: "T" })))).toContain("gap:34px;min-height:calc(100 * var(--vh) - 210px)");
   });
 });
 
