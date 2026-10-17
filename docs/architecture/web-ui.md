@@ -9,7 +9,10 @@ replaces the page's DOM wholesale (`innerHTML`) unless it is one of: the `<aside
 (a dialog), or a page that names itself with **`data-morph="<key>"`** — which is patched in place while the key
 stays the same. A rebuilt page restarts every entrance animation, skeleton fade, `<img>` and iframe in it, and
 anything decorative behind a form visibly "reloads" per letter. Focus and caret are restored, so the field
-itself looks fine and the bug is easy to miss.
+itself looks fine and the bug is easy to miss. A focused field comes back by its `data-field`; a focused BUTTON by
+its twin, the element with the same `data-act` + `data-arg` (`web/src/focus-twin.ts`, put back at the end of
+`rerender()` only when nothing else took focus and the screen is the same) — so a button whose action just repaints
+the page (a copy button's toast) keeps the keyboard where it was.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,

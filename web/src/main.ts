@@ -76,6 +76,7 @@ import { isGroupBy } from "@shared/repo-layout-core";
 import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
+import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
@@ -557,6 +558,10 @@ function paintApp(): void {
   }
   const active = document.activeElement as HTMLElement | null;
   const field = active?.getAttribute?.("data-field") ?? null;
+  // A focused button (not a field) is put back on its twin after the swap (focus-twin.ts), on the same screen only.
+  const focusAct = !field && active && mount.contains(active) ? active.getAttribute?.("data-act") ?? null : null;
+  const twin = focusAct ? twinSelector({ act: focusAct, arg: active?.getAttribute?.("data-arg") ?? null }) : null;
+  const screenBefore = mount.firstElementChild?.getAttribute("data-screen") ?? null;
   let selStart = 0;
   let selEnd = 0;
   let fieldScroll = 0;
@@ -619,6 +624,7 @@ function paintApp(): void {
       if (box) box.scrollTop = keepTop;
     }
   }
+  restoreTwinFocus(twin, screenBefore);
   // Deferred scroll-to-heading: fires once the reader for the target doc has
   // rendered (may be a later rerender if the doc was still loading). Cleared on
   // hit. The scroll itself waits a frame so layout settles after the innerHTML
@@ -668,6 +674,15 @@ window.addEventListener("hashchange", () => {
   if (r.screen === "ask" && cur.screen === "ask" && !r.askThread) { askCtl.act("askShNew", null, null); return; }
   loadForScreen(r.screen);
 });
+
+/** After a repaint: when a focused button's page was swapped away and nothing else took focus, focus its twin (the
+ *  same act + arg) on the SAME screen — never one on another screen, never over a dialog or menu that moved focus. */
+function restoreTwinFocus(twin: string | null, screenBefore: string | null): void {
+  if (!twin || mount.firstElementChild?.getAttribute("data-screen") !== screenBefore) return;
+  const now = document.activeElement;
+  if (now && now !== document.body && now.isConnected) return;
+  mount.querySelector<HTMLElement>(twin)?.focus({ preventScroll: true });
+}
 
 // Minimal CSS.escape shim for id selectors (heading ids are already slug-safe).
 function cssEscape(v: string): string {
