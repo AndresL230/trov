@@ -56,6 +56,7 @@ import { createLibraryController } from "./library-actions";
 import { createNewDocController } from "./newdoc-actions";
 import { createTreeController } from "./tree-actions";
 import { installTreeDrag, treeKeyTarget } from "./tree-drag";
+import { installCustomizeDrag } from "./customize-drag";
 import { pointerDrag, dragging } from "./pointer-drag";
 import { DEFAULT_SPACE } from "@shared/docs-core";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
@@ -5043,6 +5044,20 @@ installTreeDrag(mount, {
   spaceName: () => state.spaceHome.data?.space.name ?? "",
   commit: (slug, target) => treeCtl.move(slug, target),
 });
+// Customize sidebar's picked spaces: drag one into place (customize-drag.ts) — or Alt+↑ / Alt+↓ on a focused row.
+installCustomizeDrag(mount, {
+  commit: (order) => libCtl.act("libCustomizeOrder", order.join(","), null),
+  cancel: () => rerender(),
+});
+mount.addEventListener("keydown", (e) => {
+  if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  const row = (e.target as Element | null)?.closest?.<HTMLElement>("#lib-customize [data-cdrag]");
+  if (!row) return;
+  e.preventDefault();
+  const slug = row.dataset.cdrag as string;
+  libCtl.act(e.key === "ArrowUp" ? "libCustomizeUp" : "libCustomizeDown", slug, null);
+  requestAnimationFrame(() => mount.querySelector<HTMLElement>(`#lib-customize [data-cdrag="${cssEscape(slug)}"]`)?.focus());
+});
 // …and the same moves from the keyboard: Alt+↑ / Alt+↓ / Alt+→ / Alt+← on a focused row (tree-drag.ts `treeKeyTarget`).
 mount.addEventListener("keydown", (e) => {
   if (!e.altKey || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
@@ -5063,6 +5078,21 @@ mount.addEventListener("click", (e) => {
   const t = e.target as Element | null;
   if (t?.closest?.(".cnpy-dp-menu, [data-act=\"treeMenu\"]")) return;
   state.treeMenu = null;
+  rerender();
+}, true);
+// …and so does a Library card's "…" menu (your own view: pin, sidebar, hide); Escape gives focus back to its "…".
+document.addEventListener("keydown", (e) => {
+  const open = state.libUi.cardMenu;
+  if (e.key !== "Escape" || !open) return;
+  state.libUi.cardMenu = null;
+  rerender();
+  mount.querySelector<HTMLElement>(`[data-act="libCardMenu"][data-arg="${cssEscape(open)}"]`)?.focus();
+});
+mount.addEventListener("click", (e) => {
+  if (!state.libUi.cardMenu) return;
+  const t = e.target as Element | null;
+  if (t?.closest?.(".cnpy-lib-cardmenu, [data-act=\"libCardMenu\"]")) return;
+  state.libUi.cardMenu = null;
   rerender();
 }, true);
 

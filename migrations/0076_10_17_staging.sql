@@ -1,19 +1,19 @@
 -- 0076_10_17_staging: the 10-17 staging epic (PR #195) — Ask sharing (#193), handoff prompts by upload (#194),
 -- Ask Trov's GitHub lookups, agent links (#196) and the Docs Library (#197) — in ONE migration. It consolidates what
--- were eight files (0076_ask_sharing, 0077_ask_people_sharing, 0080_handoff_upload_tokens, 0076_ask_github,
--- 0078_agent_links, 0081_docs_library, 0082_doc_import_manifest, 0083_doc_archive) before any of them reached
--- production: each part below starts with a `-- ══ part <old name> ══` marker and keeps that file's own header — what
--- it adds, why, and its by-hand rollback (roll back the parts in REVERSE order, 0083_doc_archive first; each part's
+-- were nine files (0076_ask_sharing, 0077_ask_people_sharing, 0080_handoff_upload_tokens, 0076_ask_github,
+-- 0078_agent_links, 0081_docs_library, 0082_doc_import_manifest, 0083_doc_archive, 0084_library_prefs) before any of
+-- them reached production: each part below starts with a `-- ══ part <old name> ══` marker and keeps that file's own header — what
+-- it adds, why, and its by-hand rollback (roll back the parts in REVERSE order, 0084_library_prefs first; each part's
 -- `d1_migrations` line names its old file, and the one row to delete once every part is rolled back is
 -- `0076_10_17_staging.sql`). Every part is ADDITIVE but one: one new column and index on `chat_threads`, the tables
 -- `chat_thread_people` and `handoff_upload_tokens`, nullable `asked_by` on `chat_messages` / `chat_actions`,
 -- `orgs.ai_chat_github` (default 0), the tables `agent_links` / `agent_link_notes`, the Library's tables `doc_spaces`,
 -- `doc_space_owners`, `doc_links`, `doc_imports` and its columns on `docs` / `doc_versions`, three starter spaces per
--- org and `docs.space` remapped to a space slug. The exception is 0078_agent_links, which REBUILDS `org_counters`
+-- org, `docs.space` remapped to a space slug and each person's `library_prefs`. The exception is 0078_agent_links, which REBUILDS `org_counters`
 -- (every row copied, a guard fails the whole file unless the copy is exact) so its CHECK accepts 'link'. A Worker from
 -- before it keeps working. Applied in one go, as one transaction, by `wrangler d1 migrations apply`.
 -- Parts: 0076_ask_sharing, 0077_ask_people_sharing, 0080_handoff_upload_tokens, 0076_ask_github, 0078_agent_links,
--- 0081_docs_library, 0082_doc_import_manifest, 0083_doc_archive.
+-- 0081_docs_library, 0082_doc_import_manifest, 0083_doc_archive, 0084_library_prefs.
 
 -- ══ part 0076_ask_sharing ══════════════════════════════════════════════════════════════════════
 -- 0076_ask_sharing — an Ask Trov conversation can be SHARED with its organization, read-only.
@@ -362,14 +362,14 @@ CREATE TABLE IF NOT EXISTS doc_space_owners (
   PRIMARY KEY (org_id, space_slug, handle)      -- no reference to doc_spaces: a space is never deleted (archive is soft)
 );
 
--- The three spaces every org starts with — the same rows as shared/docs-core.ts STARTER_SPACES (a test
+-- The three spaces every org starts with, in A to Z order — the same rows as shared/docs-core.ts STARTER_SPACES (a test
 -- compares them). One statement per space: D1 allows at most five terms in a compound SELECT.
 INSERT OR IGNORE INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by)
-  SELECT id, 'engineering', 'Engineering', 'braces', '#525cc3', '', 1024, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'system' FROM orgs ORDER BY id;
+  SELECT id, 'design', 'Design', 'pen', '#a84a68', '', 1024, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'system' FROM orgs ORDER BY id;
 INSERT OR IGNORE INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by)
-  SELECT id, 'product', 'Product', 'compass', '#2f7d57', '', 2048, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'system' FROM orgs ORDER BY id;
+  SELECT id, 'engineering', 'Engineering', 'braces', '#525cc3', '', 2048, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'system' FROM orgs ORDER BY id;
 INSERT OR IGNORE INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by)
-  SELECT id, 'design', 'Design', 'pen', '#a84a68', '', 3072, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'system' FROM orgs ORDER BY id;
+  SELECT id, 'product', 'Product', 'compass', '#2f7d57', '', 3072, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'system' FROM orgs ORDER BY id;
 
 -- Every doc not in Product is an Engineering doc now ('technical', the old 'canopy' default, any stray value).
 -- docs_fts's update trigger fires only on title / section / body, so this touches no search row.
@@ -466,3 +466,32 @@ ALTER TABLE doc_imports ADD COLUMN images TEXT NOT NULL DEFAULT '[]';
 
 ALTER TABLE docs ADD COLUMN archived_at TEXT;
 ALTER TABLE docs ADD COLUMN archived_by TEXT;
+
+-- ══ part 0084_library_prefs ════════════════════════════════════════════════════════════════════
+-- 0084_library_prefs — each person's own view of the Library, per organization: which spaces their sidebar shows
+-- and in what order, and which space cards they pinned to the top of Library home or hid there
+-- (docs/architecture/docs-library.md › Your own Library; shared/docs-core.ts `LibraryPrefsDTO`).
+--
+-- ADDITIVE: one new table, nothing else touched.
+--   library_prefs  one row per (org, person), written only by that person (`PUT /spaces/prefs/me`, a cookie route —
+--                  never MCP; src/tools/spaces.ts `saveLibraryPrefs`). `sidebar` is a JSON array of space slugs (at
+--                  most 5), NULL = the default (the first five in the Library's order); `pinned` and `hidden` are
+--                  JSON arrays of slugs. Slugs only — a space is never deleted and a slug is reserved forever, so a
+--                  stale one (an archived space) is simply dropped on read. `handle` is in HANDLE_COLUMNS, the
+--                  table in ORG_TABLES; an account's deletion removes the person's rows.
+--
+-- SAFE ON THE WORKER FROM BEFORE IT: it never names the table.
+--
+-- Rollback (by hand, with `wrangler rollback` to the Worker from before it; loses everyone's sidebar choices):
+--   DROP TABLE IF EXISTS library_prefs;
+--   DELETE FROM d1_migrations WHERE name = '0084_library_prefs.sql';
+
+CREATE TABLE IF NOT EXISTS library_prefs (
+  org_id     TEXT NOT NULL REFERENCES orgs(id),
+  handle     TEXT NOT NULL,                  -- the person whose view it is (HANDLE_COLUMNS)
+  sidebar    TEXT,                           -- JSON array of space slugs, at most 5; NULL = the default
+  pinned     TEXT NOT NULL DEFAULT '[]',     -- JSON array of space slugs, pinning order
+  hidden     TEXT NOT NULL DEFAULT '[]',     -- JSON array of space slugs
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (org_id, handle)
+);

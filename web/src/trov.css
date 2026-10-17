@@ -4123,6 +4123,15 @@ a.ask-btn { text-decoration:none; }
 .cnpy-lib-row.cnpy-hitbox:hover { background:var(--hover); }
 .cnpy-lib-th { font-weight:500; }
 .cnpy-lib-card { cursor:pointer; }
+/* A card's "…" (your own view: pin, sidebar, hide): top right, quiet until the card is hovered or it has focus. */
+.cnpy-lib-card .cnpy-lib-more { position:absolute; top:12px; right:12px; width:28px; height:28px; display:grid; place-items:center; color:var(--fg-40); opacity:0; }
+.cnpy-lib-card:hover .cnpy-lib-more, .cnpy-lib-card .cnpy-lib-more:focus-visible, .cnpy-lib-card.has-menu .cnpy-lib-more { opacity:1; }
+@media (hover: none) { .cnpy-lib-card .cnpy-lib-more { opacity:1; } }
+.cnpy-lib-card.has-menu { z-index:5; }
+.cnpy-lib-card .cnpy-lib-cardmenu { top:44px; right:12px; z-index:6; }
+.cnpy-lib-card .cnpy-dp-mi[aria-disabled="true"] { color:var(--fg-40); cursor:default; }
+.cnpy-lib-card.is-hidden { opacity:.62; }
+.cnpy-lib-card.is-hidden:hover { opacity:1; }
 .cnpy-lib-newcard { cursor:pointer; transition:border-color .14s ease, background .14s ease; }
 .cnpy-lib-newcard:hover { border-color:var(--fg-40) !important; background:var(--hover); }
 .cnpy-lib-newcard:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
@@ -4155,7 +4164,6 @@ a.ask-btn { text-decoration:none; }
 .cnpy-libm-sws { display:flex; flex-wrap:wrap; gap:10px; padding:2px; }
 .cnpy-libm-sw { width:22px; height:22px; flex:none; cursor:pointer; }
 .cnpy-libm-sw.is-on { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--sw); }
-.cnpy-libm-prev { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px; background:var(--bg); font-size:12px; color:var(--fg-55); }
 .cnpy-libm-people { display:flex; flex-direction:column; gap:2px; max-height:300px; overflow-y:auto; margin-top:14px; }
 .cnpy-libm-person { display:flex; align-items:center; gap:10px; width:100%; padding:6px 8px; text-align:left; cursor:pointer; }
 .cnpy-libm-person:hover { background:var(--hover); }
@@ -4450,6 +4458,17 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-sub-badge { margin-left:auto; min-width:16px; height:16px; padding:0 5px; box-sizing:border-box; display:inline-grid; place-items:center; border-radius:5px; font-family:var(--label); font-size:10.5px; font-weight:600; color:var(--accent); background:var(--accent-soft); }
 .cnpy-sub-badge[data-n="0"] { display:none; }
 .cnpy-sub-acts { display:flex; align-items:center; flex-wrap:wrap; }
+/* "N more spaces" / "All spaces" and, at its right, the Customize sidebar icon: one row. */
+.cnpy-sub-morerow { display:flex; align-items:center; }
+/* Customize sidebar's picked rows: dragged into order (customize-drag.ts), a grip at the start. */
+.cnpy-libc-row.is-picked { cursor:grab; }
+.cnpy-libc-row.is-picked:hover { background:var(--hover); }
+.cnpy-libc-row.is-picked:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+.cnpy-libc-row.is-lifted { background:var(--surface); box-shadow:0 0 0 1px var(--border-strong), 0 8px 20px rgba(10,10,16,.14); cursor:grabbing; position:relative; z-index:1; }
+.cnpy-libc-grip { display:grid; place-items:center; width:12px; flex:none; color:var(--fg-40); margin-left:-2px; }
+.cnpy-sub-morerow[hidden] { display:none; }
+.cnpy-sub-morerow > .cnpy-sub-more { flex:1; min-width:0; width:auto; }
+.cnpy-sub-morerow > .cnpy-sub-custom { width:auto; flex:none; }
 .cnpy-sub-acts > .cnpy-sub-i { width:auto; }
 .cnpy-sub-i.cnpy-sub-sp.is-drop { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
 /* Review › an import's pages as one group (review.ts `groupCard`): the card, its open list, its page rows. A group
@@ -4846,6 +4865,8 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 [data-cnpy-theme] .cnpy-spt { border-radius:calc(var(--spt-r, 4px) * var(--corner-scale)) !important; }
 /* The docs pane and the doc page (docs-pane.ts, doc-page.ts). */
 [data-cnpy-theme] .cnpy-dp-label,
+[data-cnpy-theme] .cnpy-lib-more,
+[data-cnpy-theme] .cnpy-libc-row,
 [data-cnpy-theme] .cnpy-dp-row,
 [data-cnpy-theme] .cnpy-dp-row::before,
 [data-cnpy-theme] .cnpy-dp-menu,
@@ -4863,7 +4884,6 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 /* The import (import.ts): the sidebar's Imports badge. Everything else of it is an inline radius. */
 [data-cnpy-theme] .cnpy-sub-badge { border-radius:calc(5px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-libm-in,
-[data-cnpy-theme] .cnpy-libm-prev { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-libm-ic,
 [data-cnpy-theme] .cnpy-libm-person,
 [data-cnpy-theme] .cnpy-sub-ghost > span { border-radius:calc(4px * var(--corner-scale)) !important; }

@@ -215,6 +215,7 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM notification_outbox WHERE user_id = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM notification_prefs WHERE user_id = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM notification_person_prefs WHERE user_id = ? COLLATE NOCASE`, h), // 0067: "only when something needs me"
+    stmt(p, `DELETE FROM library_prefs WHERE handle = ? COLLATE NOCASE`, h), // 0084: their own sidebar and cards
     // Ask Trov (0066_ask): their PRIVATE attachments first (`ASK_ATTACHMENTS_OF`; they go with the account — every
     // version, link and search row; the bytes after the commit), then their threads, in every org, with everything
     // that hangs off them, and their settings. An attachment they published to the org, and every answer they SAVED,

@@ -8,9 +8,10 @@
 //   POST /spaces                    admin+: create `{ name, icon, color, description? }`
 //   PUT  /spaces/:slug              `{ name?, icon?, color? }` admin+; `{ description? }` admin+ or an owner
 //   PUT  /spaces/:slug/owners       admin+ or an owner: `{ owners: handle[] }`
-//   POST /spaces/:slug/move         admin+: `{ after: slug | null }` (null = first)
 //   POST /spaces/:slug/archive      admin+ (soft)
 //   POST /spaces/:slug/restore      admin+
+//   PUT  /spaces/prefs/me           any member, their OWN view only: `{ sidebar?: slug[] | null, pinned?: slug[],
+//                                   hidden?: slug[] }` (the sidebar's spaces, at most 5; pinned / hidden cards)
 //
 // Cookie only, NEVER a token and never an MCP tool: a space is a person's to shape (agents stage, humans
 // confirm). A request carrying an `Authorization` header is refused outright. The role is checked in the
@@ -20,7 +21,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
 import { RoleError } from "../data/context";
 import { PlanFeatureError, PlanLimitError } from "../plans/state";
-import { SpaceError, archiveSpace, createSpace, editSpace, moveSpace, readLibrary, readSpaceHome, restoreSpace, setSpaceOwners } from "../tools/spaces";
+import { SpaceError, archiveSpace, createSpace, editSpace, readLibrary, readSpaceHome, restoreSpace, saveLibraryPrefs, setSpaceOwners } from "../tools/spaces";
 
 type C = Context<AppEnv>;
 
@@ -68,12 +69,10 @@ export const spacesApp = (() => {
   });
 
   r.post("/", (c) => guard(c, async () => c.json({ ok: true, space: await createSpace(c.var.ctx, await body(c)) }, 201)));
+  // Two segments, so no space's slug can reach it (`/:slug` is one; `/:slug/owners` names its second).
+  r.put("/prefs/me", (c) => guard(c, async () => c.json({ ok: true, prefs: await saveLibraryPrefs(c.var.ctx, await body(c)) })));
   r.put("/:slug", (c) => guard(c, async () => c.json({ ok: true, space: await editSpace(c.var.ctx, c.req.param("slug"), await body(c)) })));
   r.put("/:slug/owners", (c) => guard(c, async () => c.json({ ok: true, space: await setSpaceOwners(c.var.ctx, c.req.param("slug"), (await body(c)).owners) })));
-  r.post("/:slug/move", (c) => guard(c, async () => {
-    const b = await body(c);
-    return c.json({ ok: true, spaces: await moveSpace(c.var.ctx, c.req.param("slug"), b.after === undefined ? null : b.after) });
-  }));
   r.post("/:slug/archive", (c) => guard(c, async () => c.json({ ok: true, space: await archiveSpace(c.var.ctx, c.req.param("slug")) })));
   r.post("/:slug/restore", (c) => guard(c, async () => c.json({ ok: true, space: await restoreSpace(c.var.ctx, c.req.param("slug")) })));
   return r;

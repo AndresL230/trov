@@ -1328,9 +1328,10 @@ export function editSpace(slug: string, body: { name?: string; icon?: DocsT.Spac
 export function setSpaceOwners(slug: string, owners: string[]): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
   return orgSend("PUT", spacePath(slug, "/owners"), { owners });
 }
-/** Put a space right after `after` in the Library's order (null = first). An admin. */
-export function moveSpace(slug: string, after: string | null): Promise<{ ok: true; spaces: DocsT.SpaceDTO[] }> {
-  return orgSend("POST", spacePath(slug, "/move"), { after });
+/** Save the signed-in person's OWN Library view (any member): their sidebar's spaces (at most five; null = the
+ *  default), the cards pinned to the top of Library home and the ones hidden there. A list left out keeps what was saved. */
+export function saveLibraryPrefs(prefs: Partial<DocsT.LibraryPrefsDTO>): Promise<{ ok: true; prefs: DocsT.LibraryPrefsDTO }> {
+  return orgSend("PUT", "/spaces/prefs/me", prefs);
 }
 /** Archive a space (an admin): soft — it leaves the sidebar and the Library, and its slug stays reserved. */
 export function archiveSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/archive")); }

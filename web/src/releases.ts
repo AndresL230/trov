@@ -136,6 +136,7 @@ export const RELEASES: Release[] = [
         "Ask Trov reads your connected repositories on GitHub when a question needs it, as far as your own GitHub access goes; an admin turns it on (#195)",
         "Prompt Library: a copy button on each card copies its slug for an agent; cards that open something show the pointer on hover (#195)",
         "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, Markdown or .zip import, and archiving a page (#197)",
+        "Library: spaces are in A to Z order; pick up to five for your own sidebar, drag them into your order, and pin or hide cards on Library home (#195)",
       ],
       changed: [
         "Ask Trov: an artifact opens in a narrower side panel; a width you drag to is kept (#195)",

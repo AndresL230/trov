@@ -2,7 +2,7 @@
 // imports it as a value and the Worker keeps one definition: the alias map the gate and the filters apply,
 // the starter spaces every org begins with, the icon and color choices, the name / slug rules, the order,
 // and the DTOs of the space routes (src/spaces/routes.ts).
-import { BOARD_RANK_STEP, placeInColumn } from "./tickets-core";
+import { BOARD_RANK_STEP } from "./tickets-core";
 
 // ── what a space is called on the wire ───────────────────────────────────────
 
@@ -42,9 +42,9 @@ export const NEW_SPACE_COLOR: SpaceColor = "#b4562c";
 /** The three spaces every org starts with — the same rows as 0081_docs_library's seed (a test compares them),
  *  and what src/orgs/repo.ts createOrg writes for a new org. */
 export const STARTER_SPACES: ReadonlyArray<{ slug: string; name: string; icon: SpaceIcon; color: SpaceColor; sort_rank: number }> = [
-  { slug: "engineering", name: "Engineering", icon: "braces", color: "#525cc3", sort_rank: 1024 },
-  { slug: "product", name: "Product", icon: "compass", color: "#2f7d57", sort_rank: 2048 },
-  { slug: "design", name: "Design", icon: "pen", color: "#a84a68", sort_rank: 3072 },
+  { slug: "design", name: "Design", icon: "pen", color: "#a84a68", sort_rank: 1024 },
+  { slug: "engineering", name: "Engineering", icon: "braces", color: "#525cc3", sort_rank: 2048 },
+  { slug: "product", name: "Product", icon: "compass", color: "#2f7d57", sort_rank: 3072 },
 ];
 
 // ── names and slugs ──────────────────────────────────────────────────────────
@@ -94,40 +94,114 @@ export function spaceNamedLike<T extends { name: string; archived?: boolean; slu
 
 // ── order ────────────────────────────────────────────────────────────────────
 
-export interface SpaceOrderKey { slug: string; sort_rank: number | null; created_at: string }
+export interface SpaceOrderKey { slug: string; name: string; sort_rank: number | null; created_at: string }
 
-/** The Library's order: by sort_rank (a space without one last), then oldest first, then slug. */
+/** The Library's order: A to Z by name (case and accents aside), then oldest first, then slug. Nobody sets an org
+ *  order; each person picks their own sidebar and pins their own cards (below). */
 export function spaceOrder(a: SpaceOrderKey, b: SpaceOrderKey): number {
-  const an = a.sort_rank === null, bn = b.sort_rank === null;
-  if (an !== bn) return an ? 1 : -1;
-  if (!an && a.sort_rank !== b.sort_rank) return (a.sort_rank as number) - (b.sort_rank as number);
+  const n = a.name.localeCompare(b.name, "en", { sensitivity: "base" });
+  if (n !== 0) return n;
   if (a.created_at !== b.created_at) return a.created_at < b.created_at ? -1 : 1;
   return a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0;
 }
 
-/** The rank of a space after every other one (a new space goes last). */
+/** The rank of a space after every other one. `sort_rank` no longer orders anything (the order is by name); a new or
+ *  restored space still gets one, so the column stays filled. */
 export function rankAfterAll(spaces: readonly SpaceOrderKey[]): number {
   const ranks = spaces.map((s) => s.sort_rank).filter((r): r is number => r !== null);
   return ranks.length ? Math.max(...ranks) + BOARD_RANK_STEP : BOARD_RANK_STEP;
 }
 
-/**
- * Where `slug` goes when it is put right after `afterSlug` (null = first) among `spaces` (which may include it):
- * its new rank and, when the others had to be respaced (one had no rank, or two were too close), every other
- * space's new rank. The SAME placement as the ticket board (`placeInColumn`), keyed by slug.
- */
-export function placeSpace(spaces: readonly SpaceOrderKey[], slug: string, afterSlug: string | null): { rank: number; renumber: Map<string, number> | null } {
-  const others = spaces.filter((s) => s.slug !== slug).sort(spaceOrder);
-  // placeInColumn reads NULL as "first"; a space without a rank sorts LAST here, so give every one a rank in
-  // this order first (and write those too).
-  let pre: Map<string, number> | null = null;
-  if (others.some((s) => s.sort_rank === null)) pre = new Map(others.map((s, i) => [s.slug, (i + 1) * BOARD_RANK_STEP]));
-  const keyed = others.map((s, i) => ({ id: i + 1, board_rank: pre ? (pre.get(s.slug) as number) : (s.sort_rank as number), updated_at: "" }));
-  const afterIdx = afterSlug === null ? -1 : others.findIndex((s) => s.slug === afterSlug);
-  const { rank, renumber } = placeInColumn(keyed, afterIdx < 0 ? null : afterIdx + 1);
-  let out: Map<string, number> | null = pre;
-  if (renumber) out = new Map(others.map((s, i) => [s.slug, (renumber as Map<number, number>).get(i + 1) as number]));
-  return { rank, renumber: out };
+// ── a person's own Library: the sidebar's spaces, pinned and hidden cards ─────
+// Each person, in each org, shapes their own view (`library_prefs`, 0076_10_17_staging › 0084_library_prefs). The
+// Library's order (A to Z) is the starting point: the sidebar shows the first
+// SIDEBAR_SPACES_MAX spaces until the person picks their own, in their own order; Library home shows pinned cards
+// first (in pinning order), then the rest in the Library's order, and hidden ones only under "Hidden".
+
+export const SIDEBAR_SPACES_MAX = 5;
+
+/** A person's Library view. `sidebar` null = the default (the first five spaces in the Library's order). Slugs only;
+ *  a slug no live space has (archived since) is dropped on read. `pinned` and `hidden` never share a slug. */
+export interface LibraryPrefsDTO { sidebar: string[] | null; pinned: string[]; hidden: string[] }
+export const DEFAULT_LIBRARY_PREFS: LibraryPrefsDTO = { sidebar: null, pinned: [], hidden: [] };
+
+/** The spaces the sidebar shows, at most SIDEBAR_SPACES_MAX: the person's own list, else the first in `spaces`'s
+ *  order (the Library's). */
+export function sidebarSpaces<T extends { slug: string }>(spaces: readonly T[], prefs: LibraryPrefsDTO | null | undefined): T[] {
+  if (!prefs || prefs.sidebar === null) return spaces.slice(0, SIDEBAR_SPACES_MAX);
+  const by = new Map(spaces.map((s) => [s.slug, s]));
+  return prefs.sidebar.map((k) => by.get(k)).filter((s): s is T => s !== undefined).slice(0, SIDEBAR_SPACES_MAX);
+}
+
+/** The slugs the sidebar shows — what Customize starts from, and what "Show in sidebar" adds to. */
+export const sidebarSlugs = (spaces: readonly { slug: string }[], prefs: LibraryPrefsDTO | null | undefined): string[] =>
+  sidebarSpaces(spaces, prefs).map((s) => s.slug);
+
+/** Library home's cards: the pinned ones in pinning order, the rest in the Library's order, the hidden ones apart. */
+export function libraryCards<T extends { slug: string }>(spaces: readonly T[], prefs: LibraryPrefsDTO | null | undefined): { pinned: T[]; rest: T[]; hidden: T[] } {
+  const p = prefs ?? DEFAULT_LIBRARY_PREFS;
+  const by = new Map(spaces.map((s) => [s.slug, s]));
+  const hidden = new Set(p.hidden);
+  const pinned = p.pinned.filter((k) => !hidden.has(k)).map((k) => by.get(k)).filter((s): s is T => s !== undefined);
+  const pinnedSet = new Set(pinned.map((s) => s.slug));
+  return {
+    pinned,
+    rest: spaces.filter((s) => !pinnedSet.has(s.slug) && !hidden.has(s.slug)),
+    hidden: spaces.filter((s) => hidden.has(s.slug)),
+  };
+}
+
+/** Prefs as stored, read back against the org's live spaces: unknown or archived slugs dropped, duplicates dropped,
+ *  the sidebar cut to its cap, a hidden space never also pinned. Never throws (a bad stored value reads as default). */
+export function liveLibraryPrefs(stored: { sidebar: unknown; pinned: unknown; hidden: unknown }, live: ReadonlySet<string>): LibraryPrefsDTO {
+  const list = (v: unknown): string[] => {
+    let a: unknown = v;
+    if (typeof v === "string") { try { a = JSON.parse(v); } catch { return []; } }
+    return Array.isArray(a) ? [...new Set(a.filter((x): x is string => typeof x === "string" && live.has(x)))] : [];
+  };
+  const hidden = list(stored.hidden);
+  const hiddenSet = new Set(hidden);
+  const sidebarRaw = stored.sidebar === null || stored.sidebar === undefined ? null : list(stored.sidebar);
+  return {
+    sidebar: sidebarRaw === null ? null : sidebarRaw.slice(0, SIDEBAR_SPACES_MAX),
+    pinned: list(stored.pinned).filter((k) => !hiddenSet.has(k)),
+    hidden,
+  };
+}
+
+/** Why a save of a person's Library view is refused — in words that say what to change. */
+export type LibraryPrefsRefusal = { field: "sidebar" | "pinned" | "hidden"; message: string };
+
+/** Check a save: each list given must be an array of distinct live space slugs, the sidebar at most
+ *  SIDEBAR_SPACES_MAX (or null for the default), and no space both pinned and hidden. Lists left out keep `current`. */
+export function checkLibraryPrefs(input: Record<string, unknown>, current: LibraryPrefsDTO, live: ReadonlySet<string>): { ok: true; prefs: LibraryPrefsDTO } | { ok: false; refusal: LibraryPrefsRefusal } {
+  const read = (field: "sidebar" | "pinned" | "hidden"): string[] | LibraryPrefsRefusal => {
+    const v = input[field];
+    if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) return { field, message: `${field} is a list of space slugs` };
+    const a = v as string[];
+    if (new Set(a).size !== a.length) return { field, message: `${field} names a space twice` };
+    const unknown = a.find((k) => !live.has(k));
+    if (unknown !== undefined) return { field, message: `${field} names a space this organization doesn't have` };
+    return a;
+  };
+  const next: LibraryPrefsDTO = { ...current };
+  if ("sidebar" in input) {
+    if (input.sidebar === null) next.sidebar = null;
+    else {
+      const r = read("sidebar");
+      if (!Array.isArray(r)) return { ok: false, refusal: r };
+      if (r.length > SIDEBAR_SPACES_MAX) return { ok: false, refusal: { field: "sidebar", message: `the sidebar shows at most ${SIDEBAR_SPACES_MAX} spaces` } };
+      next.sidebar = r;
+    }
+  }
+  for (const field of ["pinned", "hidden"] as const) {
+    if (!(field in input)) continue;
+    const r = read(field);
+    if (!Array.isArray(r)) return { ok: false, refusal: r };
+    next[field] = r;
+  }
+  if (next.pinned.some((k) => next.hidden.includes(k))) return { ok: false, refusal: { field: "pinned", message: "a space can't be both pinned and hidden" } };
+  return { ok: true, prefs: next };
 }
 
 // ── statuses ─────────────────────────────────────────────────────────────────
@@ -182,12 +256,15 @@ export interface LibraryPageDTO {
 /** `GET /spaces` — Library home and the sidebar's Library group. `archived` is filled for an admin only. */
 export interface LibraryDTO {
   spaces: SpaceDTO[];
+  /** The reader's own view: their sidebar's spaces, their pinned and hidden cards (live slugs only). The Worker always
+   *  sends it; absent reads as the default view. */
+  prefs?: LibraryPrefsDTO;
   archived: SpaceDTO[];
   /** The 6 most recently updated pages across the live spaces. */
   recent: LibraryPageDTO[];
   /** Pages waiting for review across the live spaces (the sum of `spaces[].waiting`). */
   waiting: number;
-  /** May the reader create, rename, reorder, archive and restore spaces (an admin)? */
+  /** May the reader create, rename, archive and restore spaces (an admin)? */
   can_admin: boolean;
 }
 

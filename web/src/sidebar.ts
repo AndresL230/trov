@@ -16,6 +16,7 @@ import { spaceTile } from "./library";
 
 /** The Library group's Imports row (a clock with a back arrow) and its Import action (the upload arrow). */
 const HISTORY = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3 2"></path></svg>`;
+const SLIDERS = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>`;
 const UPLOAD = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
 
 /** The nav entries that own a sub-page list — only the Library now (its spaces). Roadmap, Tickets and Repo have
@@ -60,8 +61,11 @@ export interface SidebarProps {
   roadmapTab: "narrative" | "timeline";
   /** The space the screen is in (a space's home, a doc, New page), or null. */
   librarySpace: string | null;
-  /** The org's live spaces, in the Library's order. */
+  /** The spaces this person's sidebar shows (at most five): their own pick and order, else the first five in the
+   *  Library's order (shared/docs-core.ts `sidebarSpaces`). */
   spaces: { key: string; label: string; icon: string; color: string }[];
+  /** How many live spaces the sidebar leaves out (its "N more" row; 0 = none, the row hidden). */
+  moreSpaces?: number;
   /** The spaces read has answered (so an empty list means "no spaces yet", not "not known yet"). */
   spacesLoaded: boolean;
   /** An admin of the org: the group ends with "+ New space". */
@@ -130,8 +134,10 @@ const section = (label: string, first = false): string =>
 export function sidebarView(p: SidebarProps): string {
   const current = navKeyOf(p.screen);
 
-  /** A group's sub-page list. The Library's: one row per live space (its tile and name; a file-drop target, §10),
-   *  then — always emitted, shown by attribute — "No spaces yet" with one hollow row (the read answered with none),
+  /** A group's sub-page list. The Library's: one row per space the person's sidebar shows (at most five; its tile
+   *  and name; a file-drop target, §10), then — always emitted, shown by attribute — one row with "N more spaces" (or
+   *  "All spaces" when none is left out; to Library home) and the Customize sidebar icon, hidden while there is no
+   *  space, "No spaces yet" with one hollow row (the read answered with none),
    *  the Imports row (its accent badge: imports in progress, hidden at 0), and the action row: "+ New space" (an
    *  admin) and "Import" (everyone; the space on screen preset). The space rows follow the DATA; nothing in the list
    *  comes and goes with a UI state. */
@@ -142,13 +148,16 @@ export function sidebarView(p: SidebarProps): string {
       const on = here === s.key;
       return `<button data-act="navSub" data-arg="${attr(`${g}:${s.key}`)}" class="cnpy-sub-i cnpy-sub-sp${on ? " is-active" : ""}"${on ? ' aria-current="page"' : ""} ${tab} data-drop-space="${attr(s.key)}">${spaceTile(s, 14)}<span class="cnpy-sub-n">${esc(s.label)}</span></button>`;
     }).join("");
+    const more = p.moreSpaces ?? 0;
+    const anySpace = p.spaces.length > 0 || more > 0;
+    const moreRow = `<div class="cnpy-sub-morerow"${anySpace ? "" : " hidden"}><button data-act="goLibrary" class="cnpy-sub-i cnpy-sub-new cnpy-sub-more" ${tab}>${more > 0 ? `${more} more ${more === 1 ? "space" : "spaces"}` : "All spaces"}</button><button data-act="libCustomize" data-confirm-trigger class="cnpy-sub-i cnpy-sub-new cnpy-sub-custom" ${tab} aria-label="Customize sidebar" data-mtip="Customize sidebar">${SLIDERS}</button></div>`;
     const none = `<div class="cnpy-sub-none"${p.spacesLoaded && p.spaces.length === 0 ? "" : " hidden"}>No spaces yet<div class="cnpy-sub-ghost" aria-hidden="true"><span></span><span></span></div></div>`;
     const imports = p.counts.imports ?? 0;
     const onImports = p.screen === "imports";
     const history = `<button data-act="goImports" class="cnpy-sub-i cnpy-sub-imp${onImports ? " is-active" : ""}"${onImports ? ' aria-current="page"' : ""} ${tab}>${HISTORY}<span class="cnpy-sub-n">Imports</span><span class="cnpy-sub-badge" data-n="${imports}" aria-label="${imports} in progress">${imports}</span></button>`;
     const add = `<button data-act="libNew" class="cnpy-sub-i cnpy-sub-new"${p.canAdmin ? "" : " hidden"} ${tab}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New space</button>`;
     const imp = `<button data-act="goImport" data-arg="${attr(here && p.spaces.some((s) => s.key === here) ? here : "")}" class="cnpy-sub-i cnpy-sub-new cnpy-sub-impgo" ${tab}>${UPLOAD}Import</button>`;
-    return `${rows}${none}${history}<div class="cnpy-sub-acts">${add}${imp}</div>`;
+    return `${rows}${moreRow}${none}${history}<div class="cnpy-sub-acts">${add}${imp}</div>`;
   };
 
   /** Every count is the SAME badge (one pill style, one collapsed-rail dot): a number

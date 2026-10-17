@@ -185,6 +185,8 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // import they started.
   await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, created_at, created_by, archived_at, archived_by) VALUES (?, 'rename-space', 'Rename space', 'shield', '#b4562c', ?, ?, ?, ?)`, org, nowIso(), handle, nowIso(), handle);
   await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'rename-space', ?, ?, ?)`, org, handle, nowIso(), handle);
+  // 0084_library_prefs: their own sidebar and cards.
+  await run(env.DB, `INSERT INTO library_prefs (org_id, handle, sidebar, pinned, hidden, updated_at) VALUES (?, ?, '["design"]', '[]', '[]', ?)`, org, handle, nowIso());
   await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (?, 'rename-space', 'a.zip', ?, ?, ?, 'done')`, org, handle, nowIso(), nowIso());
   // 0049_support_reports: a report the person sent, and one they resolved (the real writers take the
   // principal from the session: test/support.routes.test.ts renames through them).

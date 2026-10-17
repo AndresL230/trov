@@ -1,12 +1,13 @@
 // The Docs Library's screens (docs/architecture/docs-library.md › The screens) — Library home (`#library`),
 // a space's home (`#library/<space>`), and the space dialogs (Create / Edit space, the owners, Archive). Ported
 // from the Claude Design Library prototype, built from Trov's own pieces: `tabBar()` for the space's tabs,
-// `dropdown()` for a space's position, `confirmModal` for every dialog, `emptyLayout` / `skeleton` for the two
+// `confirmModal` for every dialog, `emptyLayout` / `skeleton` for the two
 // states, `authorityMark` for a page's status, people.ts for every person. Pure: props in, markup out; the
 // reads and writes are web/src/library-actions.ts.
 import {
   SPACE_ICONS, SPACE_COLORS, SPACE_NAME_MAX, SPACE_DESCRIPTION_MAX, NEW_SPACE_ICON, NEW_SPACE_COLOR,
-  isSpaceColor, isSpaceIcon, spaceNamedLike, cleanSpaceName, pagesWord, ownedBy, archivePageText,
+  isSpaceColor, isSpaceIcon, spaceNamedLike, cleanSpaceName, pagesWord, ownedBy, archivePageText, libraryCards, sidebarSlugs,
+  SIDEBAR_SPACES_MAX,
   type SpaceIcon, type SpaceColor, type SpaceDTO, type LibraryDTO, type LibraryPageDTO, type SpaceHomeDTO,
 } from "@shared/docs-core";
 import type { PersonSummary } from "@shared/people";
@@ -15,7 +16,6 @@ import { personChip, personAvatarLink } from "./people";
 import { avatarStack } from "./tickets";
 import { authorityMark, markShape, kindMark } from "./marks";
 import { tabBar, tabPanelAttrs } from "./tabs";
-import { dropdown, type DropdownProps, type DropdownUi } from "./dropdown";
 import { confirmModal } from "./confirm";
 import { skeleton, skBar, skBox, skLine, skList, skCard, skW, emptyLayout, emptyShapes } from "./skeleton";
 import { buildTree, childrenOf, descendantsOf, flattenTree } from "@shared/docs-tree-core";
@@ -146,6 +146,9 @@ export interface LibraryHomeProps {
   persons: readonly PersonSummary[];
   /** The archived space whose Restore is in flight. */
   restoring: string | null;
+  /** The space card whose "…" menu is open, and whether the Hidden cards are shown. */
+  cardMenu?: string | null;
+  showHidden?: boolean;
 }
 
 const LIB_FRAME = "max-width:1120px;margin:0 auto;padding:28px 40px 90px";
@@ -170,13 +173,38 @@ function libraryTitle(p: LibraryHomeProps): string {
   </div>`;
 }
 
-function spaceCard(sp: SpaceDTO, persons: readonly PersonSummary[]): string {
+const DOTS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>`;
+export const SIDEBAR_FULL_TIP = `Your sidebar shows ${SIDEBAR_SPACES_MAX} spaces. Remove one first, or use Customize sidebar.`;
+
+/** Where a card stands in the reader's own view: what its "…" menu offers. */
+interface CardView { open: boolean; pinned: boolean; hidden: boolean; inSidebar: boolean; sidebarFull: boolean }
+
+/** A card's "…" menu: pin it to the top of Library home, put it in (or take it out of) the sidebar, hide it here. */
+function cardMenu(sp: SpaceDTO, v: CardView): string {
+  const item = (act: string, label: string, extra = "") =>
+    `<button type="button" role="menuitem" data-act="${act}" data-arg="${attr(sp.slug)}" class="cnpy-dp-mi"${extra}>${esc(label)}</button>`;
+  const sidebar = v.inSidebar ? item("libSidebarRemove", "Remove from sidebar")
+    : v.sidebarFull ? item("libSidebarAdd", "Show in sidebar", ` aria-disabled="true" data-mtip="${attr(SIDEBAR_FULL_TIP)}"`)
+    : item("libSidebarAdd", "Show in sidebar");
+  return `<div class="cnpy-dp-menu cnpy-lib-cardmenu" role="menu" aria-label="${attr(sp.name)}">
+    ${v.hidden ? "" : v.pinned ? item("libUnpin", "Unpin") : item("libPin", "Pin to top")}
+    ${sidebar}
+    ${v.hidden ? item("libShowCard", "Show on Library home") : item("libHide", "Hide from Library home")}
+  </div>`;
+}
+
+function spaceCard(sp: SpaceDTO, persons: readonly PersonSummary[], v?: CardView): string {
   const pages = sp.pages === 0 ? "No pages yet" : pagesWord(sp.pages);
   const waiting = sp.waiting > 0 ? `<span style="color:var(--border-strong)">·</span><span style="display:inline-flex;align-items:center;gap:5px">${markShape("ring", "var(--amber)", 8)}${sp.waiting} waiting</span>` : "";
-  return `<div${surface("min-height:150px;padding:16px 18px;display:flex;flex-direction:column", { hover: true, cls: `${HITBOX} cnpy-lib-card` })} data-space="${attr(sp.slug)}">
-    <div style="display:flex;align-items:center;gap:11px;min-width:0">${spaceTile(sp, 32)}<span style="font-size:15px;font-weight:500;letter-spacing:-0.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sp.name)}</span></div>
+  // The "…" is a control on the card (a sibling of the hit area, lifted above it), never inside a button.
+  const more = v
+    ? `<button type="button" class="cnpy-iconbtn cnpy-hitctl cnpy-lib-more" data-act="libCardMenu" data-arg="${attr(sp.slug)}" aria-label="${attr(`Options for ${sp.name}`)}" aria-haspopup="menu" aria-expanded="${v.open}">${DOTS}</button>${v.open ? cardMenu(sp, v) : ""}`
+    : "";
+  return `<div${surface("min-height:150px;padding:16px 18px;display:flex;flex-direction:column", { hover: true, cls: `${HITBOX} cnpy-lib-card${v?.hidden ? " is-hidden" : ""}${v?.open ? " has-menu" : ""}` })} data-space="${attr(sp.slug)}">
+    <div style="display:flex;align-items:center;gap:11px;min-width:0;padding-right:${v ? 26 : 0}px">${spaceTile(sp, 32)}<span style="font-size:15px;font-weight:500;letter-spacing:-0.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sp.name)}</span></div>
     <p style="font-size:12.5px;line-height:1.5;margin:10px 0 0;color:${sp.description ? "var(--fg-55)" : "var(--fg-40)"}">${esc(sp.description || "No description yet.")}</p>
     <div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:14px;font-size:12px;color:var(--fg-55);flex-wrap:wrap">${sp.owners.length ? avatarStack(sp.owners, persons as PersonSummary[], 18) : ""}<span>${esc(pages)}</span>${waiting}</div>
+    ${more}
     ${hitArea("libOpenSpace", sp.slug, `Open ${sp.name}`)}
   </div>`;
 }
@@ -240,7 +268,21 @@ export function libraryHomeView(p: LibraryHomeProps): string {
   const waiting = data.waiting > 0
     ? `<button type="button" data-act="goReview" class="cnpy-lib-wait" style="display:inline-flex;align-items:center;gap:7px;margin-top:14px;padding:0;font-size:12.5px;color:var(--fg-70)">${markShape("ring", "var(--amber)", 8)}${esc(waitingWords(data.waiting))}</button>`
     : "";
-  const cards = data.spaces.map((sp) => spaceCard(sp, p.persons)).join("") + (p.admin ? newSpaceCard() : "");
+  // The reader's own view: pinned cards first, the rest in the Library's order, hidden ones under "Hidden".
+  const { pinned, rest, hidden } = libraryCards(data.spaces, data.prefs);
+  const inSidebar = new Set(sidebarSlugs(data.spaces, data.prefs));
+  const view = (sp: SpaceDTO, extra: Partial<CardView> = {}): CardView => ({
+    open: p.cardMenu === sp.slug, pinned: false, hidden: false, inSidebar: inSidebar.has(sp.slug), sidebarFull: inSidebar.size >= SIDEBAR_SPACES_MAX, ...extra,
+  });
+  const grid = (html: string) => `<div class="cnpy-lib-grid cnpy-stagger" style="${LIB_GRID}">${html}</div>`;
+  const spacesHead = (label: string, first: boolean) =>
+    `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:${first ? 26 : 30}px 0 10px"><h2 style="${H2}">${esc(label)}</h2>${first ? `<button type="button" data-act="libCustomize" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)">Customize sidebar</button>` : ""}</div>`;
+  const pinnedBlock = pinned.length ? `${spacesHead("Pinned", true)}${grid(pinned.map((sp) => spaceCard(sp, p.persons, view(sp, { pinned: true }))).join(""))}` : "";
+  const restCards = rest.map((sp) => spaceCard(sp, p.persons, view(sp))).join("") + (p.admin ? newSpaceCard() : "");
+  const restBlock = restCards ? `${spacesHead(pinned.length ? "All spaces" : "Spaces", !pinned.length)}${grid(restCards)}` : "";
+  const hiddenBlock = hidden.length
+    ? `<div style="margin-top:16px"><button type="button" data-act="libHiddenToggle" class="cnpy-link cnpy-lib-hiddengo" aria-expanded="${p.showHidden === true}" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)">${p.showHidden ? "Hide" : "Show"} hidden spaces · ${hidden.length}</button></div>${p.showHidden ? `<div style="margin-top:10px">${grid(hidden.map((sp) => spaceCard(sp, p.persons, view(sp, { hidden: true }))).join(""))}</div>` : ""}`
+    : "";
   const recent = data.recent.length
     ? `<div${surface("padding:0;overflow:hidden")}>${data.recent.map((pg, i) => {
         const sp = byslug.get(pg.space);
@@ -248,8 +290,7 @@ export function libraryHomeView(p: LibraryHomeProps): string {
       }).join("")}</div>`
     : emptyLayout("lib-recent", { text: LIBRARY_RECENT_EMPTY, shapes: recentRowsShape(3), shapesStyle: "margin-top:12px" });
   return `<div class="cnpy-lib" data-screen-label="Library" style="${LIB_FRAME}">${head}${waiting}
-    <h2 style="${H2};margin:26px 0 10px">Spaces</h2>
-    <div class="cnpy-lib-grid cnpy-stagger" style="${LIB_GRID}">${cards}</div>
+    ${pinnedBlock}${restBlock}${hiddenBlock}
     ${recentHead}${recent}
     ${archivedList(p, data.archived)}
   </div>`;
@@ -446,7 +487,7 @@ export function spaceHomeView(p: SpaceHomeProps): string {
 
 // ── the dialogs ──────────────────────────────────────────────────────────────
 
-/** The Create / Edit space dialog's draft. `after` (Edit only) is the space it sits right after (null = first). */
+/** The Create / Edit space dialog's draft. */
 export interface SpaceDraft {
   mode: "create" | "edit";
   /** The space being edited (Edit only). */
@@ -455,12 +496,11 @@ export interface SpaceDraft {
   icon: SpaceIcon;
   color: SpaceColor;
   description: string;
-  after: string | null;
   busy: boolean;
   error: string | null;
 }
 export const blankSpaceDraft = (): SpaceDraft =>
-  ({ mode: "create", slug: null, name: "", icon: NEW_SPACE_ICON, color: NEW_SPACE_COLOR, description: "", after: null, busy: false, error: null });
+  ({ mode: "create", slug: null, name: "", icon: NEW_SPACE_ICON, color: NEW_SPACE_COLOR, description: "", busy: false, error: null });
 
 /** The Library screens' own state (`state.libUi`). */
 export interface LibraryUi {
@@ -477,27 +517,20 @@ export interface LibraryUi {
   pageArchive: { slug: string; title: string; under: number; spaceName: string; busy: boolean; error: string | null } | null;
   /** The archived page whose Restore is out. */
   pageRestoring: string | null;
+  /** Library home: the space card whose "…" menu is open; whether the hidden cards are shown. */
+  cardMenu: string | null;
+  showHidden: boolean;
+  /** Customize sidebar: the spaces picked, in order; `dflt` = untouched since a reset (saved as "the default"). */
+  customize: { list: string[]; dflt: boolean; busy: boolean; error: string | null } | null;
 }
-export const initialLibraryUi = (): LibraryUi => ({ space: null, owners: null, archive: null, desc: null, restoring: null, pageArchive: null, pageRestoring: null });
-
-/** The Position dropdown's value for "first". */
-export const FIRST = "__first";
+export const initialLibraryUi = (): LibraryUi => ({ space: null, owners: null, archive: null, desc: null, restoring: null, pageArchive: null, pageRestoring: null, cardMenu: null, showHidden: false, customize: null });
 
 /** The live space whose name the draft repeats (another one, when editing), or null. */
 export function duplicateOf(d: SpaceDraft, spaces: readonly SpaceDTO[]): SpaceDTO | null {
   return spaceNamedLike(spaces, d.name, d.slug ?? undefined);
 }
 
-/** The Position dropdown of the Edit space dialog: First, then "After ‹Space›" for every other live space. */
-export function spacePositionDropdown(d: SpaceDraft, spaces: readonly SpaceDTO[]): DropdownProps {
-  const others = spaces.filter((s) => s.slug !== d.slug);
-  return {
-    id: "lib-sp-pos", act: "libAfter", value: d.after ?? FIRST, labelledBy: "lib-sp-pos-l", fill: true,
-    options: [{ value: FIRST, label: "First" }, ...others.map((s) => ({ value: s.slug, label: `After ${s.name}` }))],
-  };
-}
-
-export function spaceDialog(d: SpaceDraft, spaces: readonly SpaceDTO[], dd: DropdownUi): string {
+export function spaceDialog(d: SpaceDraft, spaces: readonly SpaceDTO[]): string {
   const dup = duplicateOf(d, spaces);
   const named = cleanSpaceName(d.name);
   const create = d.mode === "create";
@@ -521,8 +554,6 @@ export function spaceDialog(d: SpaceDraft, spaces: readonly SpaceDTO[], dd: Drop
     <div>${label("lib-sp-desc", "Short description", `<span class="cnpy-libm-opt">Optional</span><span class="cnpy-libm-n">${d.description.length}/${SPACE_DESCRIPTION_MAX}</span>`)}
       <textarea id="lib-sp-desc" data-act="libField" data-arg="description" data-field="lib-sp-desc" rows="2" maxlength="${SPACE_DESCRIPTION_MAX}" placeholder="What goes in this space?"${d.busy ? " disabled" : ""} class="cnpy-input cnpy-libm-in cnpy-libm-ta" style="border-radius:8px">${esc(d.description)}</textarea>
     </div>
-    ${create ? "" : `<div><div class="cnpy-libm-l"><span id="lib-sp-pos-l">Position</span></div>${dropdown(spacePositionDropdown(d, spaces), dd)}</div>`}
-    <div class="cnpy-libm-prev" style="border-radius:8px"><span>In the sidebar</span><span style="display:inline-flex;align-items:center;gap:8px;min-width:0;color:var(--fg)">${spaceTile({ icon: d.icon, color: d.color }, 14)}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(named ?? "New space")}</span></span></div>
   </div>`;
   return confirmModal({
     id: "lib-space", title: create ? "New space" : "Edit space",
@@ -547,6 +578,39 @@ export function ownersDialog(sp: SpaceDTO, o: NonNullable<LibraryUi["owners"]>, 
     detail: `<div class="cnpy-libm-people cnpy-scroll" data-scroll-keep="lib-owners">${list}</div>`,
     confirmAct: "libOwnersSave", cancelAct: "libOwnersClose", tone: "neutral", busy: o.busy,
     confirmLabel: "Save owners", busyLabel: "Saving…", error: o.error,
+  });
+}
+
+const GRIP = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"></circle><circle cx="15" cy="6" r="1.6"></circle><circle cx="9" cy="12" r="1.6"></circle><circle cx="15" cy="12" r="1.6"></circle><circle cx="9" cy="18" r="1.6"></circle><circle cx="15" cy="18" r="1.6"></circle></svg>`;
+const REMOVE = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+export const CUSTOMIZE_BODY = `Pick up to ${SIDEBAR_SPACES_MAX} spaces for your sidebar and drag them into your order. Only you see this; every space stays in the Library.`;
+
+/** Customize sidebar: the picked spaces in order — dragged to reorder (customize-drag.ts; Alt+↑ / Alt+↓ on a focused
+ *  row), each with remove — then every other live space (Add, until the sidebar is full), and a reset to the
+ *  Library's order. Saved for this person only. */
+export function customizeSidebarDialog(c: NonNullable<LibraryUi["customize"]>, spaces: readonly SpaceDTO[]): string {
+  const by = new Map(spaces.map((s) => [s.slug, s]));
+  const picked = c.list.map((k) => by.get(k)).filter((s): s is SpaceDTO => s !== undefined);
+  const full = picked.length >= SIDEBAR_SPACES_MAX;
+  const ib = (act: string, slug: string, label: string, icon: string, disabled: boolean) =>
+    `<button type="button" class="cnpy-iconbtn" data-act="${act}" data-arg="${attr(slug)}" aria-label="${attr(label)}" data-mtip="${attr(label)}"${disabled || c.busy ? " disabled" : ""} style="width:26px;height:26px;border-radius:6px;display:grid;place-items:center;color:var(--fg-55)">${icon}</button>`;
+  const rowStyle = "display:flex;align-items:center;gap:10px;min-height:36px;padding:2px 4px 2px 8px";
+  const name = (sp: SpaceDTO) => `${spaceTile(sp, 18)}<span style="flex:1;min-width:0;font-size:13px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sp.name)}</span>`;
+  const pickedRows = picked.length
+    ? picked.map((sp) => `<li class="cnpy-libc-row is-picked" data-cdrag="${attr(sp.slug)}" tabindex="0" aria-label="${attr(`${sp.name}: drag, or press Alt+Up or Alt+Down, to move it`)}" style="${rowStyle}"><span class="cnpy-libc-grip" aria-hidden="true">${GRIP}</span>${name(sp)}${ib("libCustomizeRemove", sp.slug, `Remove ${sp.name} from the sidebar`, REMOVE, false)}</li>`).join("")
+    : `<li style="padding:8px;font-size:12.5px;color:var(--fg-55)">No spaces in your sidebar. Add one below.</li>`;
+  const others = spaces.filter((s) => !c.list.includes(s.slug));
+  const otherRows = others.map((sp) => `<li class="cnpy-libc-row" style="${rowStyle}">${name(sp)}<button type="button" class="cnpy-link" data-act="libCustomizeAdd" data-arg="${attr(sp.slug)}"${full || c.busy ? ` disabled${full ? ` data-mtip="${attr(`The sidebar holds ${SIDEBAR_SPACES_MAX} spaces. Remove one first.`)}"` : ""}` : ""} style="padding:0 6px;font-size:12.5px;font-weight:500;color:${full ? "var(--fg-40)" : "var(--accent)"}">Add</button></li>`).join("");
+  const label = (t: string, n?: string) => `<div style="display:flex;justify-content:space-between;padding:0 8px;margin:14px 0 4px;font-family:var(--label);font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)"><span>${esc(t)}</span>${n ? `<span style="letter-spacing:0;font-variant-numeric:tabular-nums">${esc(n)}</span>` : ""}</div>`;
+  const detail = `<div class="cnpy-libc cnpy-scroll" data-scroll-keep="lib-customize" style="max-height:min(420px, calc(70 * var(--vh)));overflow-y:auto">
+    ${label("In your sidebar", `${picked.length} of ${SIDEBAR_SPACES_MAX}`)}<ol style="list-style:none;margin:0;padding:0">${pickedRows}</ol>
+    ${others.length ? `${label("Other spaces")}<ul style="list-style:none;margin:0;padding:0">${otherRows}</ul>` : ""}
+    <div style="margin:12px 8px 2px"><button type="button" class="cnpy-link" data-act="libCustomizeReset"${c.dflt || c.busy ? " disabled" : ""} style="padding:0;font-size:12.5px;color:var(--fg-55)">Reset to the Library's order</button></div>
+  </div>`;
+  return confirmModal({
+    id: "lib-customize", title: "Customize sidebar", body: CUSTOMIZE_BODY, detail,
+    confirmAct: "libCustomizeSave", cancelAct: "libCustomizeClose", tone: "neutral", busy: c.busy,
+    confirmLabel: "Save", busyLabel: "Saving…", error: c.error,
   });
 }
 

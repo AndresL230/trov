@@ -1,18 +1,19 @@
 // The Docs Library's spaces (0081_docs_library; docs/architecture/docs-library.md › Spaces).
 //
 // An org's Library is a list of SPACES (`doc_spaces`), each holding pages (`docs.space` = its slug). Callers:
-//   • an ADMIN creates, renames, re-icons, reorders, archives and restores a space — `adminOnly` (`hasRole(ctx, "admin")`, refused in words that say what only an admin may do)
+//   • an ADMIN creates, renames, re-icons, archives and restores a space — `adminOnly` (`hasRole(ctx, "admin")`, refused in words that say what only an admin may do)
 //     in each writer here, its `org_admin_audit` row in the SAME batch, reached only from the cookie routes
 //     (src/spaces/routes.ts), never from src/mcp.ts;
 //   • an admin OR AN OWNER of the space edits its description and its owners (`requireSpaceEditor`);
-//   • any MEMBER reads the Library (`readLibrary`) and a space's home (`readSpaceHome`); an agent reads the live
+//   • any MEMBER reads the Library (`readLibrary`) and a space's home (`readSpaceHome`), and shapes their OWN view of
+//     it — their sidebar's spaces, pinned and hidden cards (`saveLibraryPrefs`, `library_prefs`); an agent reads the live
 //     spaces through MCP `list_spaces` (`listSpacesForAgent`);
 //   • the GATE (src/consumer.ts `ingestDocProposal`) asks `spaceState` whether a proposal's space is a live one.
 // A space is never hard-deleted: archive is soft and restorable, and a slug is reserved forever.
 import {
-  NEW_SPACE_COLOR, NEW_SPACE_ICON, SPACE_COLORS, SPACE_ICONS, STARTER_SPACES, cleanSpaceDescription, cleanSpaceName, isSpaceColor, isSpaceIcon,
-  pageAuthority, pageSummary, placeSpace, rankAfterAll, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug,
-  type ArchivedPageDTO, type LibraryDTO, type LibraryPageDTO, type SpaceAuditAction, type SpaceColor, type SpaceDTO, type SpaceErrorCode, type SpaceHomeDTO, type SpaceIcon,
+  NEW_SPACE_COLOR, NEW_SPACE_ICON, SPACE_COLORS, SPACE_ICONS, STARTER_SPACES, checkLibraryPrefs, cleanSpaceDescription, cleanSpaceName,
+  isSpaceColor, isSpaceIcon, liveLibraryPrefs, pageAuthority, pageSummary, rankAfterAll, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug,
+  type ArchivedPageDTO, type LibraryDTO, type LibraryPrefsDTO, type LibraryPageDTO, type SpaceAuditAction, type SpaceColor, type SpaceDTO, type SpaceErrorCode, type SpaceHomeDTO, type SpaceIcon,
 } from "@shared/docs-core";
 import { buildTree, childrenOf } from "@shared/docs-tree-core";
 import { hasRole } from "../data/context";
@@ -125,7 +126,7 @@ const byUpdatedDesc = (a: { updated_at: string | null; slug: string }, b: { upda
 
 /** `GET /spaces` — Library home and the sidebar's Library group. The archived spaces go to an admin only. */
 export async function readLibrary(ctx: TenantContext): Promise<LibraryDTO> {
-  const [rows, owners, pages] = await Promise.all([spaceRows(ctx), ownersOf(ctx), pageRows(ctx)]);
+  const [rows, owners, pages, prefs] = await Promise.all([spaceRows(ctx), ownersOf(ctx), pageRows(ctx), prefsRow(ctx)]);
   const bySpace = new Map<string, PageRow[]>();
   for (const p of pages) bySpace.set(p.space, [...(bySpace.get(p.space) ?? []), p]);
   const dto = (r: SpaceRow) => spaceDto(r, owners.get(r.slug) ?? [], bySpace.get(r.slug) ?? []);
@@ -136,6 +137,7 @@ export async function readLibrary(ctx: TenantContext): Promise<LibraryDTO> {
   const spaces = live.map(dto);
   return {
     spaces,
+    prefs: liveLibraryPrefs(prefs ?? { sidebar: null, pinned: "[]", hidden: "[]" }, liveSlugs),
     archived: admin ? rows.filter((r) => r.archived_at !== null).map(dto) : [],
     recent: pages.filter((p) => liveSlugs.has(p.space)).sort(byUpdatedDesc).slice(0, 6).map((p) => pageDto(p, bySlug)),
     waiting: spaces.reduce((n, s) => n + s.waiting, 0),
@@ -348,21 +350,28 @@ export async function setSpaceOwners(ctx: TenantContext, slug: unknown, owners: 
   return dtoOf(ctx, row.slug);
 }
 
-/** Put a live space right after `after` (null = first) in the Library (admin+). Returns the new order. */
-export async function moveSpace(ctx: TenantContext, slug: unknown, after: unknown): Promise<SpaceDTO[]> {
-  adminOnly(ctx, "reorder the spaces");
-  const row = await existing(ctx, slug);
-  if (row.archived_at !== null) throw new SpaceError("archived", 409, "restore the space before moving it");
-  if (after !== null && typeof after !== "string") throw invalid("after", "after is a space's slug, or null for the first place");
-  const live = (await spaceRows(ctx)).filter((r) => r.archived_at === null);
-  if (after !== null && (after === row.slug || !live.some((r) => r.slug === after))) throw invalid("after", "after is another live space's slug");
-  const { rank, renumber } = placeSpace(live, row.slug, after as string | null);
-  const at = nowIso();
-  const stmts: Stmt[] = [stmt(ctx, `UPDATE doc_spaces SET sort_rank = ? WHERE org_id = ? AND slug = ?`, rank, ctx.orgId, row.slug)];
-  if (renumber) for (const [s, r] of renumber) stmts.push(stmt(ctx, `UPDATE doc_spaces SET sort_rank = ? WHERE org_id = ? AND slug = ?`, r, ctx.orgId, s));
-  stmts.push(auditStmt(ctx, "space.reorder", row.slug, { after }, at));
-  await batch(ctx, stmts);
-  return (await readLibrary(ctx)).spaces;
+// ── a person's own view of the Library ──────────────────────────────────────
+
+interface PrefsRow { sidebar: string | null; pinned: string; hidden: string }
+const prefsRow = (ctx: TenantContext): Promise<PrefsRow | null> =>
+  first<PrefsRow>(ctx, `SELECT sidebar, pinned, hidden FROM library_prefs WHERE org_id = ? AND handle = ? COLLATE NOCASE`, ctx.orgId, ctx.userId);
+
+/** Save the signed-in person's OWN view (any member; never anyone else's — the row is keyed by `ctx.userId`):
+ *  `{ sidebar?: slug[] | null, pinned?: slug[], hidden?: slug[] }`, each list left out keeping what was saved. Every
+ *  slug must be a live space of the org; the sidebar holds at most five; a space is never both pinned and hidden.
+ *  Returns the view as it now reads. */
+export async function saveLibraryPrefs(ctx: TenantContext, input: Record<string, unknown>): Promise<LibraryPrefsDTO> {
+  const [rows, row] = await Promise.all([spaceRows(ctx), prefsRow(ctx)]);
+  const live = new Set(rows.filter((r) => r.archived_at === null).map((r) => r.slug));
+  const current = liveLibraryPrefs(row ?? { sidebar: null, pinned: "[]", hidden: "[]" }, live);
+  const checked = checkLibraryPrefs(input, current, live);
+  if (!checked.ok) throw invalid(checked.refusal.field, checked.refusal.message);
+  const p = checked.prefs;
+  await batch(ctx, [stmt(ctx,
+    `INSERT INTO library_prefs (org_id, handle, sidebar, pinned, hidden, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT (org_id, handle) DO UPDATE SET sidebar = excluded.sidebar, pinned = excluded.pinned, hidden = excluded.hidden, updated_at = excluded.updated_at`,
+    ctx.orgId, ctx.userId, p.sidebar === null ? null : JSON.stringify(p.sidebar), JSON.stringify(p.pinned), JSON.stringify(p.hidden), nowIso())]);
+  return p;
 }
 
 /** Archive a space (admin+): it leaves the Library and the sidebar and takes no new page; its pages stay, readable

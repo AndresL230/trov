@@ -6,7 +6,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
-  STARTER_SPACES, pageSummary, placeSpace, resolveSpaceAlias, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug, ownedBy, pageAuthority,
+  STARTER_SPACES, pageSummary, resolveSpaceAlias, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug, ownedBy, pageAuthority,
   type LibraryDTO, type SpaceDTO, type SpaceHomeDTO,
 } from "@shared/docs-core";
 import { ingestDocProposal } from "../src/consumer";
@@ -48,17 +48,12 @@ describe("the shared core (shared/docs-core.ts)", () => {
     expect(spaceNamedLike(spaces, "Engineering", "a")).toBeNull(); // itself, when renaming
   });
 
-  it("order: by rank (none last), then oldest; placement renumbers when a rank is missing", () => {
+  it("order: A to Z by name (case and accents aside), then oldest, then slug — the rank orders nothing", () => {
     const s = [
-      { slug: "c", sort_rank: null, created_at: "1" }, { slug: "b", sort_rank: 2048, created_at: "1" }, { slug: "a", sort_rank: 1024, created_at: "2" },
+      { slug: "z", name: "zeta", sort_rank: 1, created_at: "1" }, { slug: "b2", name: "Beta", sort_rank: null, created_at: "2" },
+      { slug: "b1", name: "beta", sort_rank: 9000, created_at: "1" }, { slug: "a", name: "Álpha", sort_rank: 5000, created_at: "3" },
     ];
-    expect([...s].sort(spaceOrder).map((x) => x.slug)).toEqual(["a", "b", "c"]);
-    const placed = placeSpace(s, "a", null); // the others hold a space with no rank: every one is given one
-    expect(placed.renumber).not.toBeNull();
-    expect(placed.rank).toBeLessThan(placed.renumber!.get("b")!);
-    expect(placed.renumber!.get("b")!).toBeLessThan(placed.renumber!.get("c")!);
-    const mid = placeSpace([{ slug: "a", sort_rank: 1024, created_at: "1" }, { slug: "b", sort_rank: 2048, created_at: "1" }, { slug: "x", sort_rank: 9000, created_at: "1" }], "x", "a");
-    expect(mid).toEqual({ rank: 1536, renumber: null });
+    expect([...s].sort(spaceOrder).map((x) => x.slug)).toEqual(["a", "b1", "b2", "z"]);
   });
 
   it("a page's card line: its first sentence, Markdown stripped, cut on a word (E2E SH2)", () => {
@@ -147,7 +142,7 @@ describe("the space routes (cookie only)", () => {
     await propose_doc_update(A(), doc("prod-one", "product"), MEMBER);
     const owner = await cookieFor(OWNER);
     const lib = await library(owner);
-    expect(lib.spaces.map((s) => [s.slug, s.pages, s.waiting])).toEqual([["engineering", 2, 1], ["product", 1, 1], ["design", 0, 0]]);
+    expect(lib.spaces.map((s) => [s.slug, s.pages, s.waiting])).toEqual([["design", 0, 0], ["engineering", 2, 1], ["product", 1, 1]]);
     expect(lib.waiting).toBe(2);
     expect(lib.can_admin).toBe(true);
     expect(lib.recent.map((p) => p.slug).sort()).toEqual(["live-one", "prod-one", "waiting-one"]);
@@ -183,12 +178,12 @@ describe("the space routes (cookie only)", () => {
     expect(home.summaries).toEqual({ "top-live": "The one place for plans.", "top-staged": "Only a draft so far" });
   });
 
-  it("create (admin): slug from the name, the creator its owner, last in order, audited; duplicates and bad input refused", async () => {
+  it("create (admin): slug from the name, the creator its owner, in A to Z order, audited; duplicates and bad input refused", async () => {
     const owner = await cookieFor(OWNER);
     const made = await call<{ ok: boolean; space: SpaceDTO }>("POST", "/api/spaces", owner, { name: " Security ", icon: "shield", color: "#B4562C", description: "Threat models." });
     expect(made.status).toBe(201);
     expect(made.json.space).toMatchObject({ slug: "security", name: "Security", icon: "shield", color: "#b4562c", description: "Threat models.", owners: [OWNER], pages: 0, archived: false });
-    expect((await library(owner)).spaces.map((s) => s.slug)).toEqual(["engineering", "product", "design", "security"]);
+    expect((await library(owner)).spaces.map((s) => s.slug)).toEqual(["design", "engineering", "product", "security"]);
 
     expect((await call("POST", "/api/spaces", owner, { name: "security", icon: "shield", color: "#b4562c" })).json).toMatchObject({ error: "name_taken" });
     expect((await call("POST", "/api/spaces", owner, { name: "", icon: "shield", color: "#b4562c" })).json).toMatchObject({ error: "invalid", field: "name" });
@@ -217,7 +212,6 @@ describe("the space routes (cookie only)", () => {
     expect((await call<{ message: string }>("POST", "/api/spaces", member, { name: "Mine" })).json.message).toBe("only an admin can create a space");
     expect((await call<{ message: string }>("PUT", "/api/spaces/design", member, { description: "not mine" })).json).toEqual({ error: "forbidden", message: "only an admin, or an owner of this space, can change its description and owners" });
     expect((await call("PUT", "/api/spaces/design/owners", member, { owners: [MEMBER] })).status).toBe(403);
-    expect((await call<{ message: string }>("POST", "/api/spaces/design/move", member, { after: null })).json.message).toBe("only an admin can reorder the spaces");
     expect((await call<{ message: string }>("POST", "/api/spaces/design/archive", member, {})).json.message).toBe("only an admin can archive a space");
 
     // An admin makes the member an owner of Design.
@@ -243,20 +237,18 @@ describe("the space routes (cookie only)", () => {
       .toMatchObject({ slug: "design", name: "Design system", icon: "book", color: "#7a4f8f" });
   });
 
-  it("move (admin) puts a space after another, or first; archive hides it, restore brings it back last", async () => {
+  it("no org order to set: there is no move route; archive hides a space, restore brings it back in A to Z order", async () => {
     const owner = await cookieFor(OWNER);
-    const moved = await call<{ spaces: SpaceDTO[] }>("POST", "/api/spaces/design/move", owner, { after: null });
-    expect(moved.json.spaces.map((s) => s.slug)).toEqual(["design", "engineering", "product"]);
-    expect((await call<{ spaces: SpaceDTO[] }>("POST", "/api/spaces/design/move", owner, { after: "engineering" })).json.spaces.map((s) => s.slug))
-      .toEqual(["engineering", "design", "product"]);
-    expect((await call("POST", "/api/spaces/design/move", owner, { after: "nope" })).status).toBe(400);
+    expect((await call("POST", "/api/spaces/design/move", owner, { after: null })).status).toBe(404);
     expect((await call("POST", "/api/spaces/engineering/archive", owner, {})).json).toMatchObject({ space: { archived: true } });
-    expect((await call("POST", "/api/spaces/engineering/move", owner, { after: null })).json).toMatchObject({ error: "archived" });
     expect((await library(owner)).spaces.map((s) => s.slug)).toEqual(["design", "product"]);
     // The archived space's home is still read (its pages stay).
     expect((await call<SpaceHomeDTO>("GET", "/api/spaces/engineering", owner)).json.space.archived).toBe(true);
     expect((await call("POST", "/api/spaces/engineering/restore", owner, {})).json).toMatchObject({ space: { archived: false } });
-    expect((await library(owner)).spaces.map((s) => s.slug)).toEqual(["design", "product", "engineering"]);
+    expect((await library(owner)).spaces.map((s) => s.slug)).toEqual(["design", "engineering", "product"]);
+    // A rename moves it to its new place in A to Z.
+    expect((await call("PUT", "/api/spaces/design", owner, { name: "Visual design" })).status).toBe(200);
+    expect((await library(owner)).spaces.map((s) => s.slug)).toEqual(["engineering", "product", "design"]);
   });
 
   it("every space route refuses a request that carries a bearer — never a token's", async () => {
@@ -266,7 +258,7 @@ describe("the space routes (cookie only)", () => {
     for (const [method, path, body] of [
       ["GET", "/api/spaces", undefined], ["GET", "/api/spaces/engineering", undefined], ["POST", "/api/spaces", { name: "Via token" }],
       ["PUT", "/api/spaces/engineering", { description: "via token" }], ["PUT", "/api/spaces/engineering/owners", { owners: [] }],
-      ["POST", "/api/spaces/engineering/move", { after: null }], ["POST", "/api/spaces/engineering/archive", {}], ["POST", "/api/spaces/engineering/restore", {}],
+      ["PUT", "/api/spaces/prefs/me", { sidebar: ["design"] }], ["POST", "/api/spaces/engineering/archive", {}], ["POST", "/api/spaces/engineering/restore", {}],
     ] as const) {
       const res = await call(method, path, owner, body, auth);
       expect(res.status, `${method} ${path}`).toBe(403);

@@ -316,7 +316,7 @@ const TENANT: Record<string, Row> = {
   // src/spaces/routes.ts — the Library's spaces (0081_docs_library): A's `canary-space` in the path is no space of B's
   "GET /spaces": {}, "GET /spaces/:slug": {}, "POST /spaces": J({ name: "Hijacked", icon: "shield", color: "#b4562c" }),
   "PUT /spaces/:slug": J({ name: "Hijacked", description: "hijacked" }), "PUT /spaces/:slug/owners": J({ owners: ["boss"] }),
-  "POST /spaces/:slug/move": J({ after: null }), "POST /spaces/:slug/archive": J({}), "POST /spaces/:slug/restore": J({}),
+  "PUT /spaces/prefs/me": J({ sidebar: [] }), "POST /spaces/:slug/archive": J({}), "POST /spaces/:slug/restore": J({}),
   // src/imports/routes.ts — Markdown import runs (0081/0082): A's run id is no run of B's (404, nothing read or added), and a
   // start in B names A's space (no space of B's — 404, no run started in either org).
   "GET /imports": {}, "GET /imports/:id": {},

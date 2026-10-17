@@ -317,6 +317,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // The Docs Library (0081_docs_library): who created and archived a space, a space's owners and who added them,
   // who started an import.
   ["doc_spaces", "created_by"], ["doc_spaces", "archived_by"], ["doc_space_owners", "handle"], ["doc_space_owners", "added_by"],
+  ["library_prefs", "handle"],
   ["doc_imports", "started_by"],
   // Agent links (0078_agent_links): a link's two sides and who closed it; who wrote a note.
   ["agent_links", "requester"], ["agent_links", "recipient"], ["agent_links", "closed_by"],

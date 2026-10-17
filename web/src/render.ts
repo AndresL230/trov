@@ -58,8 +58,8 @@ import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal,
 import { newDocView, blankDoc, newDocSpaceDropdown, type NewDocDraft } from "./newdoc";
 import { docsPane } from "./docs-pane";
 import { docPageView, type DocPageData } from "./doc-page";
-import { libraryHomeView, spaceHomeView, spaceDialog, ownersDialog, archiveDialog, archivePageDialog, spacePositionDropdown, initialLibraryUi, type LibraryUi, type SpaceTab } from "./library";
-import { DEFAULT_SPACE, type LibraryDTO, type SpaceHomeDTO, type SpaceDTO, type LibraryPageDTO } from "@shared/docs-core";
+import { libraryHomeView, spaceHomeView, spaceDialog, ownersDialog, archiveDialog, archivePageDialog, customizeSidebarDialog, initialLibraryUi, type LibraryUi, type SpaceTab } from "./library";
+import { DEFAULT_SPACE, sidebarSpaces, type LibraryDTO, type SpaceHomeDTO, type SpaceDTO, type LibraryPageDTO } from "@shared/docs-core";
 import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
 import { firstLine } from "@shared/handoffs";
 import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./notifications";
@@ -995,7 +995,8 @@ function sidebar(s: AppState): string {
     qView: s.qView,
     roadmapTab: s.roadmapTab,
     librarySpace: paneSpaceSlug(s) ?? s.docSpace,
-    spaces: liveSpaces(s).map((sp) => ({ key: sp.slug, label: sp.name, icon: sp.icon, color: sp.color })),
+    spaces: sidebarSpaces(liveSpaces(s), s.library.data?.prefs).map((sp) => ({ key: sp.slug, label: sp.name, icon: sp.icon, color: sp.color })),
+    moreSpaces: Math.max(0, liveSpaces(s).length - sidebarSpaces(liveSpaces(s), s.library.data?.prefs).length),
     spacesLoaded: s.library.status === "ok" && s.library.data !== null,
     canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
@@ -1611,8 +1612,7 @@ function libraryOverlays(s: AppState): string {
   const sp = openSpaceDTO(s);
   const out: string[] = [];
   if (ui.space && viewerIsAdmin(s)) {
-    out.push(spaceDialog(ui.space, spaces, s.dd));
-    if (ui.space.mode === "edit" && s.dd.open) out.push(dropdownMenu([spacePositionDropdown(ui.space, spaces)], s.dd));
+    out.push(spaceDialog(ui.space, spaces));
   }
   if (ui.owners && sp && s.screen === "space") out.push(ownersDialog(sp, ui.owners, s.persons.data));
   if (ui.archive && sp && s.screen === "space" && viewerIsAdmin(s)) out.push(archiveDialog(sp, ui.archive));
@@ -2972,7 +2972,7 @@ function screenBody(s: AppState): string {
     case "ask": return askScreenView(s);
     case "feed": return feedView(s);
     case "docs": return docScreen(s);
-    case "library": return libraryHomeView({ library: s.library, admin: viewerIsAdmin(s), persons: s.persons.data, restoring: s.libUi.restoring });
+    case "library": return libraryHomeView({ library: s.library, admin: viewerIsAdmin(s), persons: s.persons.data, restoring: s.libUi.restoring, cardMenu: s.libUi.cardMenu, showHidden: s.libUi.showHidden });
     case "space": return spaceScreen(s);
     case "roadmap": return roadmapView(s);
     case "review": return reviewScreen(s);
@@ -3180,7 +3180,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
-    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
+    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
     ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}

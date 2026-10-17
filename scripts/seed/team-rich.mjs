@@ -622,6 +622,7 @@ export function plumbingDeleteStatements() {
     `DELETE FROM org_integration_config WHERE org_id = ${O} AND kind = 'cloudflare_analytics'`,
     // The Docs Library (0081_docs_library): the spaces' owners, a link between two of the layer's docs, one import run.
     `DELETE FROM doc_space_owners WHERE org_id = ${O}`,
+    `DELETE FROM library_prefs WHERE org_id = ${O}`,
     `DELETE FROM doc_links WHERE org_id = ${O} AND from_slug IN ${inList(DOC_SLUGS)}`,
     `DELETE FROM doc_imports WHERE org_id = ${O} AND file_name = '${DEV}-handbook.zip'`,
   ];
@@ -655,6 +656,8 @@ function plumbingStatements(c) {
     s.push(insert("doc_space_owners", { org_id: O, space_slug: space, handle: who, added_at: c.days(d), added_by: ME }));
   }
   s.push(insert("doc_links", { org_id: O, from_slug: DOC_SLUGS[0], to_slug: DOC_SLUGS[1] }));
+  // Mei's own Library view (0084_library_prefs): Product first in her sidebar and pinned; everyone else has the default.
+  s.push(insert("library_prefs", { org_id: O, handle: MEI, sidebar: JSON.stringify(["product", "engineering"]), pinned: JSON.stringify(["product"]), hidden: "[]", updated_at: c.days(3) }));
   s.push(insert("doc_imports", { org_id: O, space_slug: "engineering", parent_slug: null, file_name: `${DEV}-handbook.zip`, started_by: JOSE, started_at: c.days(6), updated_at: c.days(5.99), ended_at: c.days(5.99), status: "done", counts: { pages: 4, images: 1, skipped: 0 }, failures: [], total: 5 }));
   // Sync GitHub runs, and what the AI pass still has to look at.
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: ME, started_at: c.days(9), updated_at: c.days(8.99), ended_at: c.days(8.99), status: "ok", batch: 4, batches: 4, phase: "done", done: 412, total: 412, counts: { prs: 58, issues: 31, runs: 240, deploys: 83 }, failures: [], previous_at: c.days(30) }));

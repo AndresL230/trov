@@ -64,7 +64,7 @@ const KINDS = [["my_work", "daily"], ["week_recap", "weekly"], ["review_queue", 
 const STARTER_TAGS = [["auth", "Sign-in, sessions, tokens, permissions", "plum"], ["architecture", "How the system is put together", "slate"], ["infra", "Deploys, hosting, CI", "rust"],
   ["api", "Routes and what they return", "sky"], ["ui", "Screens and components", "rose"], ["data", "Tables, migrations, storage", "fern"]];
 /** The three starter spaces of the Library (0081_docs_library; shared/docs-core.ts STARTER_SPACES). */
-const STARTER_SPACES = [["engineering", "Engineering", "braces", "#525cc3", 1024], ["product", "Product", "compass", "#2f7d57", 2048], ["design", "Design", "pen", "#a84a68", 3072]];
+const STARTER_SPACES = [["design", "Design", "pen", "#a84a68", 1024], ["engineering", "Engineering", "braces", "#525cc3", 2048], ["product", "Product", "compass", "#2f7d57", 3072]];
 /** What `createOrg` writes for a new org (src/orgs/repo.ts), plus its members. `plan`: [id, source, overrides]. */
 export function orgStatements(o, at) {
   const s = [

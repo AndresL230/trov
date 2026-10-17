@@ -27,7 +27,7 @@ its owners (`doc_space_owners`). A page's `docs.space` is a space's slug — the
 as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SPACES`, the name / slug rules,
 `spaceOrder`, `placeSpace`, `pageAuthority`, and the DTOs.
 
-- **Every org starts with three**: Engineering (`engineering`), Product (`product`), Design (`design`), created by
+- **Every org starts with three**, in A to Z order: Design (`design`), Engineering (`engineering`), Product (`product`), created by
   `system` — 0081 for the orgs that existed, `src/orgs/repo.ts` `createOrg` (`starterSpaceStmts`, in its one
   batch) for every new one, and the seed scripts.
 - **The old values.** Agents and older plugins may still send `technical` (→ `engineering`) or `product`. ONE
@@ -39,8 +39,9 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
 - **Names are unique per org among the live spaces**, trimmed and case-insensitive: the repository checks
   (`spaceNamedLike`) and the partial unique index `idx_doc_spaces_name … WHERE archived_at IS NULL` settles a race.
   An archived space frees its name; restoring it is refused (409 `name_taken`) while a live space has it.
-- **Order** is `sort_rank` (none last, then oldest): a new or restored space goes last; a move places it with the
-  ticket board's `placeInColumn`, keyed by slug (`placeSpace`, renumbering when a rank is missing or two are too close).
+- **Order** is A to Z by name (`spaceOrder`: case and accents aside, then oldest, then slug), so a rename moves a
+  space to its new place. Nobody sets an org order — there is no move route and no Position field; `sort_rank` is
+  still written (`rankAfterAll`) but orders nothing. Each person shapes their own view of it (below).
 - **Archive is soft** (`archived_at` / `archived_by`): the space leaves the Library, the sidebar and `list_spaces`,
   and takes no NEW page (the gate triages a proposal that names it; the New page route refuses it). Its pages stay —
   readable by link, searchable, and an edit of one still stages in its own space. An admin restores it.
@@ -48,12 +49,34 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
   `staged_pending` ("Change pending review"), `unpromoted` ("Not yet approved"). A space's `waiting` counts its pages
   that are not live.
 
+### Your own Library (`0076_10_17_staging` › `0084_library_prefs`)
+
+Each person, in each org, has their own view (`library_prefs`, PK `(org_id, handle)`; `LibraryPrefsDTO` in
+`shared/docs-core.ts`): `sidebar` (a JSON list of at most `SIDEBAR_SPACES_MAX` = 5 space slugs, in their order; NULL =
+the default, the first five in the org's order), `pinned` (cards pinned to the top of Library home, in pinning order)
+and `hidden` (cards hidden there). Slugs only: a stale one (an archived space) is dropped on read (`liveLibraryPrefs`),
+and a space is never both pinned and hidden.
+- **Read** with the Library: `GET /spaces` carries `prefs` (the reader's own). **Written** only by that person,
+  `PUT /spaces/prefs/me` `{ sidebar?, pinned?, hidden? }` (cookie only; a bearer is refused; a list left out keeps
+  what was saved; `checkLibraryPrefs` refuses a duplicate, an unknown or archived space, more than five in the
+  sidebar, or a space pinned and hidden — 400 `invalid` with its `field`). Never MCP: it is a person's own screen.
+- **The sidebar** shows `sidebarSpaces` (at most five), then — always emitted, shown by attribute — "N more spaces"
+  (to Library home) when it leaves some out, and a Customize icon in its action row.
+- **Library home** (`libraryCards`): Pinned (when any), then All spaces (or Spaces) in the org's order, then "Show
+  hidden spaces · N", which shows the hidden cards dimmed. Each card's "…" (a `hitctl` beside the hit area, shown on
+  hover or focus) opens Pin to top / Unpin, Show in sidebar / Remove from sidebar (when the sidebar is full it says
+  so instead), and Hide from / Show on Library home. Each change applies at once and is saved; a refusal puts it back.
+- **Customize sidebar** (a neutral `confirmModal`, from the sidebar or Library home's "Customize sidebar"): the picked
+  spaces in order with up / down / remove, every other live space with Add (disabled at five), and "Reset to the
+  Library's order" (saved as NULL, so the sidebar follows the org's order again). Renders on any screen.
+- `library_prefs` is in `ORG_TABLES` and `HANDLE_COLUMNS`; deleting an account deletes the person's rows.
+
 ### Who may do what
 
 | | Who | Where |
 | --- | --- | --- |
 | Read the Library, a space's home | any member | `GET /spaces`, `GET /spaces/:slug` (cookie) |
-| Create, rename, re-icon / re-color, reorder, archive, restore | an **admin** (`adminOnly`: `hasRole(ctx, "admin")`; a refusal says what only an admin may do) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/move` / `archive` / `restore` |
+| Create, rename, re-icon / re-color, archive, restore | an **admin** (`adminOnly`: `hasRole(ctx, "admin")`; a refusal says what only an admin may do) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/archive` / `restore` |
 | Edit the description and the owners | an admin **or an owner of that space** | `PUT /spaces/:slug` (`description` only), `PUT /spaces/:slug/owners` |
 | Read the live spaces | an agent | MCP `list_spaces` |
 | Archive / restore a PAGE | an admin **or an owner of the page's space**, while the space is live — never an agent | `POST /doc/:slug/archive` / `restore` (cookie; § Archiving a page) |
@@ -63,7 +86,7 @@ The routes are `src/spaces/routes.ts` (`spacesApp`, mounted on the tenant API: `
 only**: a request carrying an `Authorization` header is refused 403, and none of it is an MCP tool (agents stage,
 humans confirm). A creator is the new space's only owner; an owner must be a member of the org (400
 `not_member`); a space may have no owner (its admins edit it). Each write records its `org_admin_audit` row
-(`space.create` / `edit` / `reorder` / `archive` / `restore` / `owners`) in the same batch. A failed read is a 503
+(`space.create` / `edit` / `archive` / `restore` / `owners`) in the same batch. A failed read is a 503
 `{ error }`; a refusal is `{ error: code, message, field? }` — `invalid` 400, `forbidden` 403, `not_found` 404,
 `name_taken` / `archived` 409.
 
@@ -403,8 +426,8 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
 - *A space's home*: the 40px tile, the name, the description (edited in place for `can_edit`: Enter saves, Esc
   cancels, leaving the field saves; a description-only `PUT`, which is all an owner may send), "Owned by …" with
   the owners' full names and Edit owners (`can_edit`: a dialog of the org's people as checkboxes), the page count
-  and the waiting link; New page; an admin's Edit space (the Create space dialog in edit mode, plus a Position
-  `dropdown()` that posts `/move`) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
+  and the waiting link; New page; an admin's Edit space (the Create space dialog in edit mode: name, icon, colour,
+  description — no position, no sidebar preview) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
   changed last; each card counts the pages under it and carries the page's first sentence — `pageSummary` in
   `shared/docs-core.ts`, derived from the body it shows when `GET /spaces/:slug` is read (`summaries`), nothing

@@ -21,10 +21,9 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import { render, initialState, type AppState } from "../web/src/render";
 import {
-  spaceTile, spaceDialog, spaceHomeView, libraryHomeView, libraryWhen, blankSpaceDraft, duplicateOf, spacePositionDropdown,
-  archiveDialog, SPACE_ICON_PATHS, FIRST, type SpaceHomeProps,
+  spaceTile, spaceDialog, spaceHomeView, libraryHomeView, libraryWhen, blankSpaceDraft, duplicateOf,
+  archiveDialog, SPACE_ICON_PATHS, type SpaceHomeProps,
 } from "../web/src/library";
-import { initialDropdownUi } from "../web/src/dropdown";
 import { SPACE_ICONS, archivePageText, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import { spaceErrorText, createLibraryController, pageArchiveErrorText } from "../web/src/library-actions";
@@ -264,10 +263,9 @@ describe("a space's home", () => {
 });
 
 describe("the Create space dialog", () => {
-  const dd = initialDropdownUi();
   const draft = (over: Partial<ReturnType<typeof blankSpaceDraft>> = {}) => ({ ...blankSpaceDraft(), ...over });
   it("opens empty on shield and rust, with the design's copy, the 12 icons and 8 swatches", () => {
-    const html = spaceDialog(draft(), [ENG, PROD], dd);
+    const html = spaceDialog(draft(), [ENG, PROD]);
     expect(html).toContain(">New space</div>");
     expect(html).toContain("A space holds the pages for one team or topic. Only admins can create one.");
     expect(html).toContain('placeholder="Like Security or Onboarding"');
@@ -278,8 +276,8 @@ describe("the Create space dialog", () => {
     expect((html.match(/data-act="libColor"/g) ?? []).length).toBe(8);
     expect(html).toContain('aria-checked="true" aria-label="Shield"');
     expect(html).toContain('aria-checked="true" aria-label="Rust"');
-    expect(html).toContain("In the sidebar");
-    expect(html).toMatch(/>New space<\/span><\/span><\/div>/); // the preview, before a name is typed
+    // No Position and no sidebar preview (the order is A to Z; each person picks their own sidebar).
+    expect(html).not.toContain("In the sidebar");
     // No name yet: the CTA is disabled; no error is said.
     expect(html).toMatch(/data-act="libSave"[^>]*disabled/);
     expect(html).toContain('<div id="lib-sp-name-e" role="alert" class="cnpy-libm-err" hidden>');
@@ -288,31 +286,27 @@ describe("the Create space dialog", () => {
   it("a name another live space has (any case, any spaces) is refused in words, and the CTA stays off", () => {
     const d = draft({ name: "  engineering " });
     expect(duplicateOf(d, [ENG, PROD])?.slug).toBe("engineering");
-    const html = spaceDialog(d, [ENG, PROD], dd);
+    const html = spaceDialog(d, [ENG, PROD]);
     expect(html).toContain("There&#39;s already a space called Engineering. Pick another name.");
     expect(html).toContain('aria-invalid="true" aria-describedby="lib-sp-name-e"');
     expect(html).toMatch(/data-act="libSave"[^>]*disabled/);
     // An archived space's name is free.
     expect(duplicateOf(d, [{ ...ENG, archived: true }])).toBeNull();
   });
-  it("a fresh name arms Create space and shows in the sidebar preview", () => {
-    const html = spaceDialog(draft({ name: "Security", description: "Threat models" }), [ENG, PROD], dd);
+  it("a fresh name arms Create space", () => {
+    const html = spaceDialog(draft({ name: "Security", description: "Threat models" }), [ENG, PROD]);
     expect(html).not.toMatch(/data-act="libSave"[^>]*disabled/);
     expect(html).toContain(">Create space</button>");
-    expect(html).toMatch(/>Security<\/span><\/span><\/div>/);
     expect(html).toContain("13/140");
   });
-  it("Edit: its own name is no duplicate; Position is a dropdown of First and After ‹Space›", () => {
-    const d = draft({ mode: "edit", slug: "product", name: "Product", after: "engineering" });
-    const html = spaceDialog(d, [ENG, PROD], dd);
+  it("Edit: its own name is no duplicate; no Position field and no sidebar preview", () => {
+    const d = draft({ mode: "edit", slug: "product", name: "Product" });
+    const html = spaceDialog(d, [ENG, PROD]);
     expect(html).toContain(">Edit space</div>");
     expect(html).not.toMatch(/data-act="libSave"[^>]*disabled/);
-    expect(html).toContain('data-dd="lib-sp-pos"');
-    expect(html).not.toContain("<select");
-    const pos = spacePositionDropdown(d, [ENG, PROD]);
-    expect(pos.options.map((o) => o.label)).toEqual(["First", "After Engineering"]);
-    expect(pos.value).toBe("engineering");
-    expect(spacePositionDropdown({ ...d, after: null }, [ENG, PROD]).value).toBe(FIRST);
+    expect(html).not.toContain("lib-sp-pos");
+    expect(html).not.toContain("Position");
+    expect(html).not.toContain("In the sidebar");
   });
   it("render(): only an admin gets the dialog, over Library home", () => {
     const open = { ...initialState().libUi, space: blankSpaceDraft() };
@@ -508,5 +502,102 @@ describe("Archive page (0083_doc_archive): Space home's Archived pages, the conf
     expect(err("forbidden")).toBe("Only an admin, or an owner of this space, can archive or restore its pages.");
     expect(err("space_archived")).toBe("This space is archived. Restore the space first.");
     expect(pageArchiveErrorText(new Error("x"), "Couldn't archive the page.")).toBe("Couldn't archive the page. Check your connection and try again.");
+  });
+});
+
+// ── your own Library: the sidebar's five, pinned and hidden cards, Customize sidebar ──────────────────────────────
+
+describe("your own Library view (0084_library_prefs)", () => {
+  const SIX = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"].map((k) => sp(k, k[0].toUpperCase() + k.slice(1)));
+  const withPrefs = (prefs: LibraryDTO["prefs"], over: Partial<AppState> = {}) =>
+    app("library", "member", { library: { status: "ok", data: lib({ spaces: SIX, prefs }) }, ...over });
+  const sidebarSpaceRows = (html: string) => [...html.matchAll(/data-act="navSub" data-arg="library:([a-z]+)"/g)].map((m) => m[1]);
+
+  it("the sidebar shows the first five in the Library's order, then \"1 more space\" to Library home, and Customize", () => {
+    const html = render(withPrefs(undefined));
+    expect(sidebarSpaceRows(html)).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+    expect(html).toMatch(/<div class="cnpy-sub-morerow"><button data-act="goLibrary" class="cnpy-sub-i cnpy-sub-new cnpy-sub-more" tabindex="-?\d">1 more space<\/button><button data-act="libCustomize" data-confirm-trigger class="cnpy-sub-i cnpy-sub-new cnpy-sub-custom" tabindex="-?\d" aria-label="Customize sidebar"/);
+  });
+
+  it("…or the person's own pick, in their order; with nothing left out the row reads All spaces; with no space it is hidden", () => {
+    expect(sidebarSpaceRows(render(withPrefs({ sidebar: ["foxtrot", "alpha"], pinned: [], hidden: [] })))).toEqual(["foxtrot", "alpha"]);
+    const two = render(app("library", "member"));
+    expect(two).toMatch(/class="cnpy-sub-i cnpy-sub-new cnpy-sub-more" tabindex="-?\d">All spaces<\/button>/);
+    expect(render(app("library", "member", { library: { status: "ok", data: lib({ spaces: [] }) } }))).toContain('<div class="cnpy-sub-morerow" hidden>');
+  });
+
+  it("Library home: pinned cards first under Pinned, the rest under All spaces, hidden ones behind a toggle", () => {
+    const html = libraryHomeView({ library: { status: "ok", data: lib({ spaces: SIX, prefs: { sidebar: null, pinned: ["echo"], hidden: ["bravo"] } }) }, admin: false, persons: PERSONS, restoring: null });
+    const at = (k: string) => html.indexOf(`data-space="${k}"`);
+    expect(html).toMatch(/<h2[^>]*>Pinned<\/h2>/);
+    expect(html).toMatch(/<h2[^>]*>All spaces<\/h2>/);
+    expect(at("echo")).toBeLessThan(at("alpha"));
+    expect(at("bravo")).toBe(-1);
+    expect(html).toContain('data-act="libHiddenToggle"');
+    expect(html).toContain("Show hidden spaces · 1");
+    const shown = libraryHomeView({ library: { status: "ok", data: lib({ spaces: SIX, prefs: { sidebar: null, pinned: [], hidden: ["bravo"] } }) }, admin: false, persons: PERSONS, restoring: null, showHidden: true });
+    expect(shown).toMatch(/class="cnpy-surface[^"]*cnpy-lib-card is-hidden[^"]*"[^>]*data-space="bravo"/);
+  });
+
+  it("each card's \"…\" is a control beside the hit area (never inside a button); its menu pins, sidebars and hides", () => {
+    const view = (prefs: LibraryDTO["prefs"]) => libraryHomeView({ library: { status: "ok", data: lib({ spaces: SIX, prefs }) }, admin: false, persons: PERSONS, restoring: null, cardMenu: "foxtrot" });
+    const html = view(undefined);
+    const card = html.slice(html.indexOf('data-space="foxtrot"'));
+    expect(card).toMatch(/<button type="button" class="cnpy-iconbtn cnpy-hitctl cnpy-lib-more" data-act="libCardMenu" data-arg="foxtrot" aria-label="Options for Foxtrot" aria-haspopup="menu" aria-expanded="true">/);
+    for (const act of ["libPin", "libSidebarAdd", "libHide"]) expect(card).toContain(`data-act="${act}" data-arg="foxtrot"`);
+    // The default sidebar is full (five): Show in sidebar says why it can't, rather than doing nothing.
+    expect(card).toMatch(/data-act="libSidebarAdd" data-arg="foxtrot" class="cnpy-dp-mi" aria-disabled="true" data-mtip="Your sidebar shows 5 spaces/);
+    const pinned = view({ sidebar: ["foxtrot"], pinned: ["foxtrot"], hidden: [] });
+    expect(pinned).toContain('data-act="libUnpin" data-arg="foxtrot"');
+    expect(pinned).toContain('data-act="libSidebarRemove" data-arg="foxtrot"');
+  });
+
+  it("Customize sidebar: the picks in order, dragged (a grip, Alt+arrows on a focused row) with remove; the others with Add until five; a reset", () => {
+    const s = withPrefs({ sidebar: ["charlie", "alpha"], pinned: [], hidden: [] });
+    s.libUi = { ...s.libUi, customize: { list: ["charlie", "alpha"], dflt: false, busy: false, error: null } };
+    const html = render(s);
+    expect(html).toContain('id="lib-customize"');
+    expect(html).toContain("2 of 5");
+    expect([...html.matchAll(/<li class="cnpy-libc-row is-picked" data-cdrag="([a-z]+)" tabindex="0" aria-label="[^"]+: drag, or press Alt\+Up or Alt\+Down, to move it"/g)].map((m) => m[1])).toEqual(["charlie", "alpha"]);
+    expect(html).toContain('class="cnpy-libc-grip"');
+    expect(html).not.toContain('data-act="libCustomizeUp"');
+    expect(html).toContain('data-act="libCustomizeRemove" data-arg="alpha"');
+    expect(html).toMatch(/data-act="libCustomizeAdd" data-arg="bravo"(?![^>]*disabled)/);
+    expect(html).toMatch(/data-act="libCustomizeReset"(?![^>]*disabled)/);
+    // On any screen: the dialog opens from the sidebar too.
+    s.screen = "tickets";
+    expect(render(s)).toContain('id="lib-customize"');
+  });
+
+  it("the controller: Customize adds, moves and saves the person's own list (sidebar only)", async () => {
+    const s = withPrefs(undefined);
+    const sent: unknown[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (_u: unknown, init?: RequestInit) => {
+      sent.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ ok: true, prefs: { sidebar: ["foxtrot", "alpha"], pinned: [], hidden: [] } }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      setApiOrg("acme");
+      const ctl = createLibraryController({ state: s, mount: { querySelector: () => null } as unknown as HTMLElement, rerender() {}, rerenderSoon() {}, flash() {}, unauth() {}, pageChanged() {}, treeChanged() {}, confirmOut: (then) => then(), openDoc() {}, newPage() {} });
+      ctl.act("libCustomize", null, null);
+      expect(s.libUi.customize?.list).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
+      for (const k of ["bravo", "charlie", "delta", "echo"]) ctl.act("libCustomizeRemove", k, null);
+      ctl.act("libCustomizeAdd", "foxtrot", null);
+      // A drop hands the new order; one naming a slug that isn't picked is ignored.
+      ctl.act("libCustomizeOrder", "foxtrot,bravo", null);
+      expect(s.libUi.customize?.list).toEqual(["alpha", "foxtrot"]);
+      ctl.act("libCustomizeOrder", "foxtrot,alpha", null);
+      expect(s.libUi.customize?.list).toEqual(["foxtrot", "alpha"]);
+      ctl.act("libCustomizeDown", "foxtrot", null); // the keyboard's Alt+↓
+      ctl.act("libCustomizeUp", "foxtrot", null);   // …and Alt+↑
+      ctl.act("libCustomizeSave", null, null);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(sent).toEqual([{ sidebar: ["foxtrot", "alpha"] }]);
+      expect(s.library.data?.prefs?.sidebar).toEqual(["foxtrot", "alpha"]);
+      expect(s.libUi.customize).toBeNull();
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 });

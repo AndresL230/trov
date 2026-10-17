@@ -5,12 +5,16 @@
 import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, NotFound, Unauthorized, PreviewBlocked,
-  getLibrary, getSpaceHome, createSpace, editSpace, setSpaceOwners, moveSpace, archiveSpace, restoreSpace, archiveDoc, restoreDoc,
+  getLibrary, getSpaceHome, createSpace, editSpace, setSpaceOwners, archiveSpace, restoreSpace, archiveDoc, restoreDoc,
+  saveLibraryPrefs,
 } from "./api";
 import type { ToastAction } from "./render";
 import { buildTree, childrenOf } from "@shared/docs-tree-core";
-import { blankSpaceDraft, duplicateOf, isSpaceTab, FIRST, type SpaceDraft } from "./library";
-import { cleanSpaceName, cleanSpaceDescription, isSpaceColor, isSpaceIcon, type SpaceDTO, type SpaceColor } from "@shared/docs-core";
+import { blankSpaceDraft, duplicateOf, isSpaceTab, type SpaceDraft } from "./library";
+import {
+  cleanSpaceName, cleanSpaceDescription, isSpaceColor, isSpaceIcon, sidebarSlugs, DEFAULT_LIBRARY_PREFS, SIDEBAR_SPACES_MAX,
+  type SpaceDTO, type SpaceColor, type LibraryPrefsDTO,
+} from "@shared/docs-core";
 
 export interface LibraryHost {
   state: AppState;
@@ -122,6 +126,36 @@ export function createLibraryController(host: LibraryHost): LibraryController {
     }
   }
 
+  // ── the person's own view: the sidebar's spaces, pinned and hidden cards ──
+  const prefsNow = (): LibraryPrefsDTO => state.library.data?.prefs ?? DEFAULT_LIBRARY_PREFS;
+  const setPrefs = (prefs: LibraryPrefsDTO): void => {
+    const lib = state.library.data;
+    if (lib) state.library = { ...state.library, data: { ...lib, prefs } };
+  };
+  /** Apply a change at once and save it; on a refusal put the view back and say why. */
+  function savePrefs(next: LibraryPrefsDTO, done: string): void {
+    const before = prefsNow();
+    setPrefs(next);
+    ui().cardMenu = null;
+    rerender();
+    saveLibraryPrefs(next)
+      .then(({ prefs }) => { setPrefs(prefs); host.flash(done); rerender(); })
+      .catch((e) => { if (fail(e)) return; setPrefs(before); host.flash(spaceErrorText(e, "Couldn't save your Library view.")); rerender(); });
+  }
+  const liveSpaces = (): SpaceDTO[] => state.library.data?.spaces ?? [];
+  const nameOf = (slug: string): string => liveSpaces().find((s) => s.slug === slug)?.name ?? slug;
+
+  function saveCustomize(): void {
+    const c = ui().customize;
+    if (!c || c.busy) return;
+    c.busy = true; c.error = null;
+    rerender();
+    const next: LibraryPrefsDTO = { ...prefsNow(), sidebar: c.dflt ? null : [...c.list] };
+    saveLibraryPrefs({ sidebar: next.sidebar })
+      .then(({ prefs }) => { setPrefs(prefs); host.confirmOut(() => { ui().customize = null; rerender(); giveBack(); }); host.flash("Sidebar saved"); })
+      .catch((e) => { if (fail(e)) return; c.busy = false; c.error = spaceErrorText(e, "Couldn't save your sidebar."); rerender(); });
+  }
+
   function goSpace(slug: string): void {
     if (state.spaceSlug !== slug) state.spaceTab = "overview";
     state.screen = "space";
@@ -187,18 +221,13 @@ export function createLibraryController(host: LibraryHost): LibraryController {
     const slug = d.slug;
     const cur = spaces.find((s) => s.slug === slug) ?? open();
     if (!slug || !cur) { d.busy = false; rerender(); return; }
-    const before = spaces.filter((s) => s.slug !== slug);
-    const at = spaces.findIndex((s) => s.slug === slug);
-    const afterNow = at > 0 ? spaces[at - 1].slug : null;
     const body: { name?: string; icon?: SpaceDTO["icon"]; color?: SpaceColor; description?: string } = {};
     if (name !== cur.name) body.name = name;
     if (d.icon !== cur.icon) body.icon = d.icon;
     if (d.color !== cur.color) body.color = d.color;
     if (description !== cur.description) body.description = description;
-    const moved = d.after !== afterNow && (d.after === null || before.some((s) => s.slug === d.after));
     const edit = Object.keys(body).length ? editSpace(slug, body).then((r) => { landed(r.space); }) : Promise.resolve();
     edit
-      .then(() => (moved ? moveSpace(slug, d.after).then(() => undefined) : undefined))
       .then(() => {
         host.confirmOut(() => { ui().space = null; rerender(); });
         host.flash(`Saved ${name}`);
@@ -320,6 +349,86 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libPageArchiveGo": archivePage(); return;
       case "libPageArchiveClose": if (ui().pageArchive?.busy) return; host.confirmOut(() => { ui().pageArchive = null; rerender(); giveBack(); }); return;
       case "libPageRestore": if (arg) restorePage(arg); return;
+      // ── your own Library view (Library home's cards, the sidebar) ─────────
+      case "libCardMenu": ui().cardMenu = arg && ui().cardMenu !== arg ? arg : null; rerender(); return;
+      case "libHiddenToggle": ui().showHidden = !ui().showHidden; rerender(); return;
+      case "libPin": {
+        if (!arg) return;
+        const p = prefsNow();
+        savePrefs({ ...p, pinned: [arg, ...p.pinned.filter((k) => k !== arg)], hidden: p.hidden.filter((k) => k !== arg) }, `Pinned ${nameOf(arg)}`);
+        return;
+      }
+      case "libUnpin": { if (!arg) return; const p = prefsNow(); savePrefs({ ...p, pinned: p.pinned.filter((k) => k !== arg) }, `Unpinned ${nameOf(arg)}`); return; }
+      case "libHide": {
+        if (!arg) return;
+        const p = prefsNow();
+        savePrefs({ ...p, hidden: [...p.hidden.filter((k) => k !== arg), arg], pinned: p.pinned.filter((k) => k !== arg) }, `Hid ${nameOf(arg)} from Library home`);
+        return;
+      }
+      case "libShowCard": { if (!arg) return; const p = prefsNow(); savePrefs({ ...p, hidden: p.hidden.filter((k) => k !== arg) }, `${nameOf(arg)} is back on Library home`); return; }
+      case "libSidebarAdd": {
+        if (!arg) return;
+        const p = prefsNow();
+        const list = sidebarSlugs(liveSpaces(), p);
+        if (list.includes(arg)) { ui().cardMenu = null; rerender(); return; }
+        if (list.length >= SIDEBAR_SPACES_MAX) { host.flash(`Your sidebar shows ${SIDEBAR_SPACES_MAX} spaces. Remove one first, or use Customize sidebar.`, 5000); return; }
+        savePrefs({ ...p, sidebar: [...list, arg] }, `${nameOf(arg)} is in your sidebar`);
+        return;
+      }
+      case "libSidebarRemove": {
+        if (!arg) return;
+        const p = prefsNow();
+        savePrefs({ ...p, sidebar: sidebarSlugs(liveSpaces(), p).filter((k) => k !== arg) }, `Removed ${nameOf(arg)} from your sidebar`);
+        return;
+      }
+      case "libCustomize": {
+        if (!state.library.data) return;
+        remember();
+        ui().cardMenu = null;
+        const p = prefsNow();
+        ui().customize = { list: sidebarSlugs(liveSpaces(), p), dflt: p.sidebar === null, busy: false, error: null };
+        rerender();
+        host.mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+        return;
+      }
+      case "libCustomizeUp": case "libCustomizeDown": {
+        const c = ui().customize;
+        if (!c || c.busy || !arg) return;
+        const i = c.list.indexOf(arg);
+        const j = act === "libCustomizeUp" ? i - 1 : i + 1;
+        if (i < 0 || j < 0 || j >= c.list.length) return;
+        [c.list[i], c.list[j]] = [c.list[j], c.list[i]];
+        c.dflt = false;
+        rerender();
+        return;
+      }
+      case "libCustomizeOrder": {
+        // A drop (customize-drag.ts): the picked slugs in their new order — only ones already picked, each once.
+        const c = ui().customize;
+        if (!c || c.busy || !arg) return;
+        const order = [...new Set(arg.split(","))].filter((k) => c.list.includes(k));
+        if (order.length !== c.list.length || order.every((k, i) => k === c.list[i])) { rerender(); return; }
+        c.list = order; c.dflt = false;
+        rerender();
+        return;
+      }
+      case "libCustomizeRemove": { const c = ui().customize; if (!c || c.busy || !arg) return; c.list = c.list.filter((k) => k !== arg); c.dflt = false; rerender(); return; }
+      case "libCustomizeAdd": {
+        const c = ui().customize;
+        if (!c || c.busy || !arg || c.list.includes(arg) || c.list.length >= SIDEBAR_SPACES_MAX) return;
+        c.list = [...c.list, arg]; c.dflt = false;
+        rerender();
+        return;
+      }
+      case "libCustomizeReset": {
+        const c = ui().customize;
+        if (!c || c.busy) return;
+        c.list = sidebarSlugs(liveSpaces(), null); c.dflt = true;
+        rerender();
+        return;
+      }
+      case "libCustomizeSave": saveCustomize(); return;
+      case "libCustomizeClose": if (ui().customize?.busy) return; host.confirmOut(() => { ui().customize = null; rerender(); giveBack(); }); return;
       case "libOpenSpace": if (arg) goSpace(arg); return;
       case "libOpenDoc": if (arg) host.openDoc(arg); return;
       case "libNewPage": host.newPage(arg ?? state.spaceSlug ?? ""); return;
@@ -342,14 +451,11 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         return;
       case "libEdit": {
         const sp = open();
-        const spaces = state.library.data?.spaces ?? [];
         if (!sp) return;
         remember();
-        const at = spaces.findIndex((s) => s.slug === sp.slug);
         ui().space = {
           ...blankSpaceDraft(), mode: "edit", slug: sp.slug, name: sp.name, description: sp.description,
           icon: isSpaceIcon(sp.icon) ? sp.icon : blankSpaceDraft().icon, color: isSpaceColor(sp.color) ? sp.color : blankSpaceDraft().color,
-          after: at > 0 ? spaces[at - 1].slug : null,
         };
         rerender();
         // Into the dialog at once, as New space does (a dialog opened from the keyboard must take the focus).
@@ -368,7 +474,6 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       }
       case "libIcon": { const d = ui().space; if (d && !d.busy && isSpaceIcon(arg)) { d.icon = arg; rerender(); } return; }
       case "libColor": { const d = ui().space; if (d && !d.busy && isSpaceColor(arg)) { d.color = arg as SpaceColor; rerender(); } return; }
-      case "libAfter": { const d = ui().space; const v = value ?? arg; if (d && !d.busy && v) { d.after = v === FIRST ? null : v; rerender(); } return; }
       case "libSave": { const d = ui().space; if (d) save(d); return; }
       case "libSpaceClose": if (ui().space?.busy) return; host.confirmOut(() => { ui().space = null; rerender(); giveBack(); }); return;
 
