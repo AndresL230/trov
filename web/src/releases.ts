@@ -138,6 +138,7 @@ export const RELEASES: Release[] = [
         "Ask Trov: an artifact opens in a narrower side panel; a width you drag to is kept (#195)",
         "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
+        "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
       ],
       fixed: [],
       removed: [],
