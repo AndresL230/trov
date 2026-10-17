@@ -57,6 +57,7 @@ const s = [];
 const THREADS = `SELECT id FROM chat_threads WHERE org_id = ${q(SAP)} AND handle LIKE 'test-gh-%'`;
 s.push(`DELETE FROM chat_actions WHERE org_id = ${q(SAP)} AND thread_id IN (${THREADS})`);
 s.push(`DELETE FROM chat_artifacts WHERE org_id = ${q(SAP)} AND thread_id IN (${THREADS})`);
+s.push(`DELETE FROM chat_thread_people WHERE org_id = ${q(SAP)} AND (thread_id IN (${THREADS}) OR handle LIKE 'test-gh-%')`); // shares of, and to, the test people
 s.push(`DELETE FROM chat_messages WHERE org_id = ${q(SAP)} AND thread_id IN (${THREADS})`);
 s.push(`DELETE FROM chat_threads WHERE org_id = ${q(SAP)} AND handle LIKE 'test-gh-%'`);
 s.push(`DELETE FROM person_ask_settings WHERE handle LIKE 'test-gh-%'`);
