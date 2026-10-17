@@ -6,7 +6,12 @@
 //   • Editable before Confirm: a card edits only the fields its tool's input takes (`editable`); `confirm { args }`
 //     applies them, re-validates against the input schema and rebuilds the preview.
 //   • Auto mode runs a write at once (state `auto`), at most ASK_AUTO_WRITES_MAX per answer; past it, and for a
-//     Confirm-only write (`update_plan`, completing a sprint, publishing a doc), the card WAITS (`waiting`).
+//     Confirm-only write (`update_plan`, completing a sprint, publishing a doc, every agent-link card), the card
+//     WAITS (`waiting`).
+//   • Agent links (0078): the thread is a side, its session `ask-thread-<thread id>` (`askThreadSession`). Every link
+//     card runs as the CONFIRMER — the cookie person who presses Confirm — never whoever made the card or the thread.
+//     Confirming `request_link` is the Send step (`requestLinkFromAsk`: requested, or open for a link with oneself);
+//     there is no draft. A note goes to someone else's agent, so a person always clicks: never Auto.
 //   • Undo writes back what was there — but first checks that nobody changed the item since (`changed`).
 //   • Publishing a staged doc is a human step drawn in the thread: Confirm calls the web promote path as the
 //     person, only when they may promote; it never runs in Auto and does not count toward the cap.
@@ -22,7 +27,7 @@ import { FEED_BRIEF_MAX } from "@shared/contract";
 import { ARTIFACT_SUMMARY_MAX } from "@shared/artifacts";
 import { ASK_AUTO_WRITES_MAX, ASK_EXCLUDED_TOOLS, type AskActionKind, type AskActionPreview, type RefView } from "@shared/ai-ask-core";
 import { MCP_TOOLS } from "@shared/mcp-tools.generated";
-import { hasRole, type TenantContext } from "../../data/context";
+import { hasRole, platform, type TenantContext } from "../../data/context";
 import { first } from "../../data/sql";
 import { get_ticket, get_sprint, get_doc } from "../../tools/reads";
 import { TicketError, ticketByNumber, transition_ticket, add_ticket_comment } from "../../tools/tickets";
@@ -40,6 +45,10 @@ import { ArtifactError } from "../../tools/artifacts";
 import { createHandoff, claimHandoffWithReading, readingListAsMarkdown, expireHandoff, handoffAsTask, getHandoff, HandoffCreateInput, HandoffError } from "../../tools/handoffs";
 import { savePrompt, dropStagedVersion, PromptSaveInput } from "../../tools/prompts";
 import { firstLine } from "@shared/handoffs";
+import { LINK_NOTE_MAX, LINK_REASON_MAX, linkTopicLabel, type LinkView } from "@shared/links";
+import {
+  LinkError, askThreadSession, closeLink, getLink, joinLink, previewLinkRequest, requestLinkFromAsk, sendLinkNote,
+} from "../../tools/links";
 import { requireMember } from "../../auth/persons";
 import { artifactCtxOf, type AskToolCtx } from "./context";
 import { resolveViews } from "./refs";
@@ -77,6 +86,9 @@ export interface WriteSpec<A> {
   confirmOnly?: string;
   /** Does not count toward the Auto cap (it never runs in Auto anyway). */
   outsideCap?: boolean;
+  /** It acts AS the thread's side of an agent link (binds it, or writes from it): with the org's AI switch off there
+   *  is no Ask, so no Ask side — Confirm refuses it then (routes.ts; invariant 15). */
+  asSide?: boolean;
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -159,6 +171,41 @@ async function stagedVersion(c: AskToolCtx, slug: string, version?: number) {
     ...[c.ctx.orgId, slug, ...(version !== undefined ? [version] : [])]);
   if (!v) throw new TicketError("not_found", `no staged version of ${slug}${version !== undefined ? ` v${version}` : ""}`);
   return v;
+}
+
+// ── agent links (src/tools/links.ts) ──
+const LinkTargetIn = z.object({
+  pr: z.number().int().optional(), branch: z.string().optional(), ticket: z.number().int().optional(), person: z.string().optional(),
+});
+const LinkRequestIn = z.object({ target: LinkTargetIn, reason: z.string() });
+const LinkJoinIn = z.object({ id: z.number().int(), side: z.enum(["requester", "recipient"]).optional() });
+const LinkNoteIn = z.object({ id: z.number().int(), body: z.string() });
+const LinkCloseIn = z.object({ id: z.number().int(), reason: z.string().optional() });
+
+const sameHandle = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+/** The other side's person, as the viewer sees the link (themself on a link with themself). */
+const linkOther = (l: Pick<LinkView, "requester" | "recipient">, me: string): string =>
+  sameHandle(l.requester.handle, me) ? l.recipient.handle : l.requester.handle;
+const withWords = (l: Pick<LinkView, "requester" | "recipient" | "self">, me: string): string =>
+  l.self ? "You (another session of yours)" : `@${linkOther(l, me)}`;
+/** Which side of the link THIS thread is, for the viewer: the side bound to its session, or null. */
+function threadSide(l: Pick<LinkView, "requester" | "recipient">, me: string, threadId: number): "requester" | "recipient" | null {
+  const s = askThreadSession(threadId);
+  if (sameHandle(l.requester.handle, me) && l.requester.session === s) return "requester";
+  if (sameHandle(l.recipient.handle, me) && l.recipient.session === s) return "recipient";
+  return null;
+}
+/** A link as Ask's model and the done line get it: never another side's session id. */
+const linkResult = (l: LinkView, me: string, threadId: number) => ({
+  id: l.id, state: l.state, url: `#links/${l.id}`, with: linkOther(l, me), self: l.self, topic: linkTopicLabel(l.topic.kind, l.topic.ref),
+  reason: l.reason, this_thread: threadSide(l, me, threadId), expires_at: l.expires_at,
+});
+/** The link the card is about — only for its two people (anyone else reads it as absent), and only while it is open. */
+async function openLinkOf(c: AskToolCtx, id: number) {
+  const l = await getLink(c.ctx, c.handle, id);
+  if (!l) throw new LinkError("not_found", "link not found");
+  if (l.state !== "open") throw new LinkError("conflict", l.state === "draft" || l.state === "requested" ? `link #${id} is ${l.state}: it opens once it is accepted` : `link #${id} is ${l.state}`);
+  return l;
 }
 
 export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -528,6 +575,79 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
     },
   },
 
+  // ── agent links: the thread is a side (Confirm-only, every one; run as the CONFIRMER) ──
+  // Confirming a request is the Send step: sent at once (`requested`), or open for a link with oneself.
+  request_link: {
+    input: LinkRequestIn, card: "handoff", confirmOnly: "Sending a link request waits for you, even on Auto.", outsideCap: true, asSide: true,
+    fields: (a: z.infer<typeof LinkRequestIn>) => ({ target: a.target, reason: a.reason }),
+    async preview(c, a: z.infer<typeof LinkRequestIn>) {
+      if (a.reason.trim().length > LINK_REASON_MAX) throw new LinkError("bad_request", `reason over ${LINK_REASON_MAX} characters`);
+      const p = await previewLinkRequest(c.ctx, c.handle, { target: a.target, reason: a.reason });
+      return card(p.self ? "Open a link with your other session" : `Link request to @${p.recipient}`, [
+        ...line("With", p.self ? "You (another session of yours)" : `@${p.recipient}`),
+        ...line("About", p.topic.kind === "person" ? null : linkTopicLabel(p.topic.kind, p.topic.ref)),
+        ...line("Reason", p.reason),
+        ...line("What it does", p.self
+          ? "Confirm opens it at once, with this thread as one side."
+          : `Confirm sends it. @${p.recipient} accepts or declines it in Trov; once open, their agent's notes reach this thread.`),
+      ]);
+    },
+    async run(c, a: z.infer<typeof LinkRequestIn>) {
+      const l = await requestLinkFromAsk(c.ctx, c.handle, c.threadId, { target: a.target, reason: a.reason });
+      return { result: linkResult(l, c.handle, c.threadId), ref: `link:${l.id}`, undo: null };
+    },
+  },
+  join_link: {
+    input: LinkJoinIn, card: "handoff", confirmOnly: "Joining a link waits for you, even on Auto.", outsideCap: true, asSide: true,
+    fields: (a: z.infer<typeof LinkJoinIn>) => ({ id: a.id }),
+    async preview(c, a: z.infer<typeof LinkJoinIn>) {
+      const l = await openLinkOf(c, a.id);
+      if (!sameHandle(l.requester.handle, c.handle) && !sameHandle(l.recipient.handle, c.handle)) throw new LinkError("forbidden", "only the link's two people can join it");
+      return card(`Join link #${a.id} from this thread`, [
+        ...line("With", withWords(l, c.handle)),
+        ...line("About", l.topic.kind === "person" ? null : linkTopicLabel(l.topic.kind, l.topic.ref)),
+        ...line("What it does", "Notes from the other side reach this thread at the start of your next question, and this thread can leave notes for their agent."),
+      ], await view(c, `link:${a.id}`));
+    },
+    async run(c, a: z.infer<typeof LinkJoinIn>) {
+      const l = await joinLink(c.ctx, c.handle, { id: a.id, session: askThreadSession(c.threadId), side: a.side }, "ask");
+      return { result: linkResult(l, c.handle, c.threadId), ref: `link:${l.id}`, undo: null };
+    },
+  },
+  send_link_note: {
+    input: LinkNoteIn, card: "handoff", confirmOnly: "A note to someone else's agent waits for you, even on Auto.", outsideCap: true, asSide: true,
+    fields: (a: z.infer<typeof LinkNoteIn>) => ({ id: a.id, body: a.body }),
+    async preview(c, a: z.infer<typeof LinkNoteIn>) {
+      if (!a.body.trim()) throw new LinkError("bad_request", "body required");
+      if (a.body.trim().length > LINK_NOTE_MAX) throw new LinkError("bad_request", `body over ${LINK_NOTE_MAX} characters`);
+      const l = await openLinkOf(c, a.id);
+      if (!threadSide(l, c.handle, c.threadId)) throw new LinkError("forbidden", `this thread has not joined link #${a.id}: join it first`);
+      return card(`Note on link #${a.id}`, [
+        ...line("To", l.self ? "Your other session" : `@${linkOther(l, c.handle)}'s side`),
+        ...line("Note", a.body.trim()),
+      ], await view(c, `link:${a.id}`));
+    },
+    async run(c, a: z.infer<typeof LinkNoteIn>) {
+      const n = await sendLinkNote(c.ctx, platform(c.env, c.handle), c.handle, { id: a.id, session: askThreadSession(c.threadId), body: a.body }, "ask");
+      return { result: { link: a.id, note: n.id, side: n.side, created_at: n.created_at }, ref: `link:${a.id}`, undo: null };
+    },
+  },
+  close_link: {
+    input: LinkCloseIn, card: "handoff", confirmOnly: "Closing a link waits for you, even on Auto.", outsideCap: true,
+    fields: (a: z.infer<typeof LinkCloseIn>) => ({ id: a.id, reason: a.reason ?? null }),
+    async preview(c, a: z.infer<typeof LinkCloseIn>) {
+      const l = await openLinkOf(c, a.id);
+      return card(`Close link #${a.id}`, [
+        ...line("With", withWords(l, c.handle)), ...line("Reason", a.reason),
+        ...line("What it does", "Both sides stop getting notes. Its thread stays readable in Trov."),
+      ], await view(c, `link:${a.id}`));
+    },
+    async run(c, a: z.infer<typeof LinkCloseIn>) {
+      const l = await closeLink(c.ctx, c.handle, { id: a.id, reason: a.reason, session: askThreadSession(c.threadId) }, "ask");
+      return { result: linkResult(l, c.handle, c.threadId), ref: `link:${l.id}`, undo: null };
+    },
+  },
+
   // ── admin: the whole plan (Confirm-only) ──
   update_plan: {
     input: z.object({ narrative: PlanNarrative, sprints: z.array(PlanSprintEntry).default([]) }), card: "sprint",
@@ -566,10 +686,15 @@ export function waitingNote(tool: string, state: string): string | null {
   return WRITES[tool]?.confirmOnly ?? `Auto runs up to ${ASK_AUTO_WRITES_MAX} changes per answer.`;
 }
 
+/** The agent-link writes: a person always clicks them, whatever the thread's Auto (a note goes to someone else's
+ *  agent). Each also carries `confirmOnly`; this list is the second lock, so a link card never runs under Auto even
+ *  if its note were dropped. */
+export const LINK_WRITES: ReadonlySet<string> = new Set(["request_link", "join_link", "send_link_note", "close_link"]);
+
 /** May Auto mode run this write (beyond the thread's toggle, the org's switch and the per-answer cap)? */
 export function autoAllowedFor(tool: string): boolean {
   const spec = WRITES[tool];
-  return !!spec && !spec.confirmOnly;
+  return !!spec && !spec.confirmOnly && !LINK_WRITES.has(tool);
 }
 
 /** The card's fields and which of them may be edited. */

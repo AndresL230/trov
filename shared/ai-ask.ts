@@ -163,6 +163,7 @@ export const AskAttachmentSchema = z.object({
 export const AskThreadSummarySchema = z.object({
   id: z.number().int(), title: z.string(), pinned: z.boolean(), mode: AskModeSchema, auto: z.boolean(), origin: z.enum(ASK_ORIGINS),
   contextRef: z.string().nullable(), hasDraft: z.boolean(), group: z.enum(ASK_THREAD_GROUPS), createdAt: z.string(), updatedAt: z.string(),
+  links: z.array(z.object({ id: z.number().int().positive(), with: z.string(), self: z.boolean(), notes: z.number().int().positive() })).optional(),
 }) satisfies z.ZodType<AskThreadSummary>;
 
 export const AskSearchHitSchema = z.object({

@@ -584,6 +584,18 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   return `<div class="ask-a" data-morph-key="a:${attr(a.key)}" data-morph-list data-ask-enter="fade"${live ? ` aria-busy="true"` : ""}>${kids.filter(([, h]) => h).map(([k, h]) => h.replace(/^<(\w+)/, `<$1 data-morph-key="${k}"`)).join("")}</div>`;
 }
 
+/** "Link #12 with @jose: 2 new notes" — the thread's Trov links with notes waiting (`thread.links`, from the thread
+ *  read), ONE line at the top of the thread. The notes reach Trov with the next question (the server delivers them
+ *  into that turn); nothing arrives mid-turn, and the line goes when a turn starts (ask-stream.ts `foldThreadEvent`). */
+export function linkNotesLine(v: Pick<AskView, "ui" | "where">): string {
+  const links = convoOf(v).thread?.links ?? [];
+  if (!links.length) return "";
+  const parts = links.map((l) =>
+    `<a class="ask-links-a" href="#links/${l.id}">Link #${l.id}</a> with ${l.self ? "your other session" : `@${esc(l.with)}`}: ${l.notes} new ${l.notes === 1 ? "note" : "notes"}`);
+  const n = links.reduce((a, l) => a + l.notes, 0);
+  return `<div class="ask-links-line" data-morph-key="links" data-ask-links>${markShape("dot", "var(--blue)", 7)}<span>${parts.join(" · ")}. <span class="ask-links-hint">${n === 1 ? "It reaches" : "They reach"} Trov with your next question.</span></span></div>`;
+}
+
 /** The scroller's contents: every message of the conversation in `v.where`. */
 export function conversationView(v: AskView): string {
   const c = convoOf(v);
@@ -598,7 +610,7 @@ export function conversationView(v: AskView): string {
   const roles = c.messages.map((m) => m.role);
   const lastA = roles.lastIndexOf("assistant");
   const lastQ = roles.lastIndexOf("user");
-  return col(`<div class="ask-msgs" data-morph-key="msgs" data-morph-list data-ask-enter="rise">${c.messages.map((m, i) => (m.role === "user" ? question(v, m, i === lastQ) : answer(v, m, i === lastA))).join("")}</div>`);
+  return col(`${linkNotesLine(v)}<div class="ask-msgs" data-morph-key="msgs" data-morph-list data-ask-enter="rise">${c.messages.map((m, i) => (m.role === "user" ? question(v, m, i === lastQ) : answer(v, m, i === lastA))).join("")}</div>`);
 }
 
 /** A new thread: the mark, the headline, the starters (from `ask/state`, the design's four as the fallback). */

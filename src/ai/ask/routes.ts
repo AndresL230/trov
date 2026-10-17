@@ -17,7 +17,7 @@ import {
   ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
   AskThreadPatchSchema, AskWrongBodySchema, askExportName, parseAskRef,
   type AskAction, type AskActionAnswer, type AskAttachment, type AskAttachmentUpload, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
-  type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadSummary,
+  type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadLink, type AskThreadSummary,
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
@@ -48,6 +48,8 @@ import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachme
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
 import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
+import { LinkError, askThreadLinkNotes } from "../../tools/links";
+import { deliverLinkNotes, linkNotesText, linkRefsOf } from "./links";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
 export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number } = {};
@@ -411,17 +413,39 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     const pending = await pendingAttachments(ctx, thread.id, v.req.attachments);
     attachments = [...attachments, ...(await attachmentsOf(ctx, pending, orgSlug))];
     const context = visibleContext;
-    const content: StoredContent = { text: v.text, command: v.req.command ?? null, context, refs: context, attached: attachments.map((a) => ({ id: a.id, title: a.title })) };
+    // Edit-and-resend keeps the link notes the replaced question carried (they were delivered once, with it).
+    const carried = v.replace ? contentOf(v.replace.question).linkNotes ?? [] : [];
+    const content: StoredContent = {
+      text: v.text, command: v.req.command ?? null, context, refs: [...context, ...linkRefsOf(carried)], attached: attachments.map((a) => ({ id: a.id, title: a.title })),
+      ...(carried.length ? { linkNotes: carried } : {}),
+    };
     const id = await insertMessage(ctx, thread.id, { role: "user", mode, content, attachments });
     await markAttachmentsSent(ctx, pending.map((p) => p.id), id);
     // The words were sent: the thread keeps no draft of them (a reload or another device opens an empty box).
     if (thread.draft) await patchThread(ctx, handle, thread.id, { draft: "" });
     question = (await getMessage(ctx, handle, id))!;
   }
-  const qc = contentOf(question);
-  const seen = seenRefs([...earlier, question]);
+  let qc = contentOf(question);
+  let seen = seenRefs([...earlier, question]);
 
   if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen, rec.parts);
+
+  // Agent links: the notes the other side wrote to this thread's side are delivered NOW, once, into this turn — after
+  // the gate (the AI switch off, no key or the allowance used: nothing is delivered) and never to a `/search` (no
+  // model reads it). Kept on the question so later turns carry them too (./links.ts). A new thread has no side yet.
+  if (v.thread) {
+    const got = await deliverLinkNotes(ctx, handle, thread.id, nowMs());
+    if (got.notes.length || got.more) {
+      const merged: StoredContent = {
+        ...qc, linkNotes: [...(qc.linkNotes ?? []), ...got.notes], linkMore: got.more,
+        refs: [...new Set([...(qc.refs ?? []), ...linkRefsOf(got.notes)])],
+      };
+      await setMessageContent(ctx, question.id, merged);
+      question = { ...question, content_json: JSON.stringify(merged) };
+      qc = merged;
+      seen = seenRefs([...earlier, question]);
+    }
+  }
 
   // The question counts BEFORE the model is called (an attempt, like every AI allowance) — and still counts if stopped.
   const p = platform(env, handle);
@@ -435,8 +459,10 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   // An attachment the model can't take (too large, or no room left in this request) is stored but not read: the
   // model is told, and the person sees a notice (the turn's first activity lines).
   const files = await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce);
+  const linkNotes = linkNotesText(nonce, qc.linkNotes ?? [], qc.linkMore ?? 0);
   const user = [
     ...(actionsNote ? [{ type: "text" as const, text: actionsNote }] : []),
+    ...(linkNotes ? [{ type: "text" as const, text: linkNotes }] : []),
     ...files.blocks,
     ...(ctxViews.size ? [{ type: "text" as const, text: fence(nonce, "Items the person attached as context", JSON.stringify([...ctxViews.values()])) }] : []),
     ...(qc.command && qc.command !== "search" ? [{ type: "text" as const, text: COMMAND_NOTE[qc.command as Exclude<AskCommand, "search">] }] : []),
@@ -621,10 +647,29 @@ export function threadGroup(t: Pick<ChatThreadRow, "pinned" | "updated_at">, now
   return now.getTime() - new Date(t.updated_at).getTime() < 7 * 86_400_000 ? "week" : "earlier";
 }
 
-const summaryOf = (t: ChatThreadRow): AskThreadSummary => ({
+const summaryOf = (t: ChatThreadRow, links: readonly AskThreadLink[] = []): AskThreadSummary => ({
   id: t.id, title: t.title, pinned: t.pinned === 1, mode: t.mode, auto: t.auto_mode === 1, origin: t.origin, contextRef: t.context_ref,
   hasDraft: t.draft.trim().length > 0, group: threadGroup(t, nowDate()), createdAt: t.created_at, updatedAt: t.updated_at,
+  ...(links.length ? { links: [...links] } : {}),
 });
+
+/**
+ * Agent links with notes waiting for the person's threads, by thread — ONE read for the whole list (`askThreadLinkNotes`).
+ * Never fails the list: a failed read is no mark at all (logged), never a guessed count (invariant 7).
+ */
+async function linkNotesByThread(ctx: TenantContext, handle: string): Promise<Map<number, AskThreadLink[]>> {
+  const out = new Map<number, AskThreadLink[]>();
+  try {
+    for (const r of await askThreadLinkNotes(ctx, handle)) {
+      const list = out.get(r.thread) ?? [];
+      list.push({ id: r.id, with: r.with, self: r.self, notes: r.notes });
+      out.set(r.thread, list);
+    }
+  } catch (e) {
+    console.error("ask link notes", e instanceof Error ? e.name : "error");
+  }
+  return out;
+}
 
 /** FTS5's snippet with its marker characters → the text and the match's offsets. */
 export function snippetOffsets(raw: string | null): AskSearchHit["snippet"] {
@@ -642,9 +687,10 @@ export function snippetOffsets(raw: string | null): AskSearchHit["snippet"] {
 
 askApp.get(ASK_ROUTES.threads, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
-  if (!q) return c.json({ threads: (await listThreads(c.var.ctx, me(c))).map(summaryOf) });
+  const [links, list] = await Promise.all([linkNotesByThread(c.var.ctx, me(c)), q ? null : listThreads(c.var.ctx, me(c))]);
+  if (list) return c.json({ threads: list.map((t) => summaryOf(t, links.get(t.id))) });
   const found = await searchThreads(c.var.ctx, me(c), q, buildMatch(q));
-  const hits: AskSearchHit[] = found.map((f) => ({ thread: summaryOf(f.thread), snippet: snippetOffsets(f.snippet), matchCount: f.matchCount }));
+  const hits: AskSearchHit[] = found.map((f) => ({ thread: summaryOf(f.thread, links.get(f.thread.id)), snippet: snippetOffsets(f.snippet), matchCount: f.matchCount }));
   return c.json({ hits });
 });
 
@@ -670,6 +716,8 @@ export function refOfAction(tool: string, state: string, args: unknown, result: 
     case "send_handoff": case "claim_handoff": return ref("handoff", num(r.id) ?? num(a.id));
     case "expire_handoff": return ref("handoff", num(a.id) ?? num(r.id));
     case "save_prompt": return ref("prompt", txt(r.slug));
+    case "request_link": case "join_link": case "close_link": return ref("link", num(r.id) ?? num(a.id));
+    case "send_link_note": return ref("link", num(r.link) ?? num(a.id));
     default: return null;
   }
 }
@@ -710,8 +758,8 @@ async function threadOr404(c: C): Promise<ChatThreadRow | Response> {
 askApp.get("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
   if (t instanceof Response) return t;
-  const [rows, actions] = await Promise.all([listMessages(c.var.ctx, t.id), listActions(c.var.ctx, t.id)]);
-  const body: AskThreadDetail = { thread: { ...summaryOf(t), draft: t.draft }, messages: rows.map((m) => messageOf(m, actions)) };
+  const [rows, actions, links] = await Promise.all([listMessages(c.var.ctx, t.id), listActions(c.var.ctx, t.id), linkNotesByThread(c.var.ctx, me(c))]);
+  const body: AskThreadDetail = { thread: { ...summaryOf(t, links.get(t.id)), draft: t.draft }, messages: rows.map((m) => messageOf(m, actions)) };
   return c.json(body);
 });
 
@@ -838,6 +886,9 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
   const org = await orgIdentityOf(c.var.ctx);
   const tc = toolCtxFor(c, a.thread_id, org?.slug ?? "");
   const results: AskEventMap["action_result"][] = [];
+  // An agent-link card acts AS the thread's side: with the org's AI switch off there is no Ask, so no Ask side
+  // (invariant 15) — read once, only when such a card is confirmed.
+  let aiOn: boolean | null = null;
   for (const one of await targets(c, a, !!parsed.data.only || !!parsed.data.args)) {
     const spec = WRITES[one.tool];
     if (!spec || (one.state !== "proposed" && one.state !== "waiting")) continue;
@@ -864,6 +915,10 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
       // The CONFIRMER's rights now, as if they called the tool themselves — never the rights the card was made
       // under (Q57); each writer's own rule (the lane, the assignment rule…) runs again inside `run`.
       assertMayRunNow(c.var.ctx, one.tool);
+      if (spec.asSide) {
+        aiOn ??= (await standing(c.var.ctx)).enabled;
+        if (!aiOn) throw new LinkError("forbidden", "Ask Trov is off for this org, so this thread can't act on a Trov link.");
+      }
       const ran = await spec.run(tc, spec.input.parse(args));
       await finishAction(c.var.ctx, one.id, "confirmed", ran.result, ran.undo);
       results.push(result(one, "confirmed", ran.result, ran.ref, ran.undo !== null));

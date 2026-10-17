@@ -12,6 +12,7 @@ import { closingAttr } from "./ask-motion";
 import { skeleton, skList, skLine, skW } from "./skeleton";
 import { askExportName, type AskSearchHit, type AskThreadGroup, type AskThreadSummary } from "@shared/ai-ask-core";
 import { confirmModal } from "./confirm";
+import { markShape } from "./marks";
 
 const GROUP_LABEL: Record<AskThreadGroup, string> = { pinned: "Pinned", today: "Today", week: "This week", earlier: "Earlier" };
 const GROUPS: AskThreadGroup[] = ["pinned", "today", "week", "earlier"];
@@ -48,6 +49,18 @@ function menu(v: AskView, t: AskThreadSummary): string {
   </div>`;
 }
 
+/** How many notes wait on the thread's Trov links (`AskThreadSummary.links`): they reach it with the next question. */
+export const threadLinkNotes = (t: Pick<AskThreadSummary, "links">): number => (t.links ?? []).reduce((n, l) => n + l.notes, 0);
+
+/** The row's mark for notes waiting on its links — a small blue dot (marks.ts), its tooltip saying what it means;
+ *  nothing when none. Never a pill. */
+export function threadLinkMark(t: Pick<AskThreadSummary, "links">): string {
+  const n = threadLinkNotes(t);
+  if (!n) return "";
+  const tip = `${n} new ${n === 1 ? "note" : "notes"} on a Trov link. ${n === 1 ? "It reaches" : "They reach"} this thread with your next question.`;
+  return `<span class="ask-th-link" data-ask-th-link="${n}" role="img" aria-label="${attr(tip)}" data-mtip="${attr(tip)}">${markShape("dot", "var(--blue)", 7)}</span>`;
+}
+
 function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string {
   const on = v.app.screen === "ask" && v.ui.page.threadId === t.id;
   const open = v.ui.threadMenu === t.id;
@@ -57,7 +70,7 @@ function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string 
   if (v.ui.renaming?.id === t.id) {
     return `<div class="ask-th" data-morph-key="th:${t.id}"${leaving}><div class="ask-th-in"><input class="ask-th-rename" data-act="askThRenameText" data-arg="${t.id}" data-field="askThRename" data-ask-rename="${t.id}" value="${attr(v.ui.renaming.text)}" aria-label="Thread name" maxlength="80" /></div></div>`;
   }
-  const time = `<span class="ask-th-at">${esc(threadTime(t))}</span>`;
+  const time = `${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span>`;
   const main = hit
     ? `<button type="button" class="ask-th-b ask-th-b--hit${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}>
         <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "New thread")}</span>${time}</span>

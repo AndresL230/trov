@@ -166,7 +166,7 @@ const docTitle = (vm: AskActionVm): string => vm.preview?.item?.title ?? line(vm
 const refWord = (ref: string): string => {
   const p = parseAskRef(ref);
   if (!p) return ref;
-  if (p.type === "ticket" || p.type === "handoff") return `${p.type} #${p.key}`;
+  if (p.type === "ticket" || p.type === "handoff" || p.type === "link") return `${p.type} #${p.key}`;
   if (p.type === "pr") return `PR #${p.key}`;
   return `${p.type} ${p.key}`;
 };
@@ -221,6 +221,15 @@ export function doneText(vms: AskActionVm[], look?: Look): string {
     case "save_prompt": return `Staged the prompt ${str(r.slug) ?? ""}`.trim();
     case "append_feed": return "Added a feed entry";
     case "save_artifact": return `Saved as artifact: ${str(r.title) ?? "Untitled"}`;
+    // Agent links: the thread is a side. A request to oneself opens at once; any other waits for the other person.
+    case "request_link": {
+      const ln = n ? `link #${n}` : "the link";
+      const to = str(r.with);
+      return r.self === true || r.state === "open" ? `Opened ${ln}` : `Sent a link request${to ? ` to @${to}` : ""} (${ln})`;
+    }
+    case "join_link": return `This thread joined ${n ? `link #${n}` : "the link"}`;
+    case "send_link_note": return `Left a note on ${n ? `link #${n}` : "the link"}`;
+    case "close_link": return `Closed ${n ? `link #${n}` : "the link"}`;
     default: return more(vm.preview?.title ?? (vm.ref ? `Changed ${refWord(vm.ref)}` : "Done"));
   }
 }
@@ -234,6 +243,7 @@ export function proposedText(vms: AskActionVm[], look?: Look): string {
     case "send_handoff": return "New handoff";
     case "propose_doc_update": return `Doc edit to ${docTitle(vm)}`;
     case "publish_doc": return `Publish ${docTitle(vm)}`;
+    case "request_link": return vm.preview?.title ?? "Link request";
   }
   const t = vm.preview?.title ?? "Change";
   // A ticket's card says "#14"; the line says "ticket #14".
@@ -242,6 +252,7 @@ export function proposedText(vms: AskActionVm[], look?: Look): string {
 
 const EYEBROW: Record<string, string> = {
   create_ticket: "New ticket", send_handoff: "New handoff", propose_doc_update: "Doc edit", publish_doc: "Publish doc", assign_ticket: "Assignment", claim_handoff: "Claim handoff",
+  request_link: "Trov link", join_link: "Join link", send_link_note: "Link note", close_link: "Close link",
 };
 const KIND_WORD: Record<string, string> = { ticket: "Ticket", handoff: "Handoff", doc_edit: "Doc edit", move: "Move", publish: "Publish doc", sprint: "Sprint", other: "Change" };
 const CREATES = new Set(["create_ticket", "send_handoff", "propose_doc_update", "create_sprint", "save_prompt", "append_feed"]);

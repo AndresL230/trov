@@ -16,6 +16,7 @@ import { pinnedConnection, resolveLinkSession } from "../src/data/bearer";
 import {
   acceptLink, joinLink, requestLink, requestLinkFromAsk, sendLink, sendLinkNote,
 } from "../src/tools/links";
+import { createHandoff } from "../src/tools/handoffs";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { addOrgRepo } from "./helpers/org-config";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, tenantCtx } from "./helpers/tenant";
@@ -181,6 +182,16 @@ describe("the link tools over MCP: an agent drafts, joins, notes and closes — 
     expect(await one(`SELECT * FROM agent_links WHERE org_id = ? AND number = ?`, ORG_B, id)).toEqual(before);
     expect((await one<{ n: number }>(`SELECT COUNT(*) AS n FROM agent_links`))!.n).toBe(1);
     expect((await one<{ n: number }>(`SELECT COUNT(*) AS n FROM agent_link_notes`))!.n).toBe(0);
+  });
+
+  it("only the LINK tools refuse it: claim_handoff with an `ask-thread-` session still works (owner ruling 8)", async () => {
+    const { handoff } = await createHandoff(await ctxOf("bob", ORG_B), "bob", { body: "Pick up the auth rename", recipient: "dana" });
+    const dana = await pasted("dana", ORG_B);
+    const r = await call(dana, "claim_handoff", { id: handoff.id, session: "ask-thread-7" });
+    expect(r.isError).toBe(false);
+    expect(r.text).toContain(`# Handoff #${handoff.id} — claimed`);
+    expect(await one(`SELECT status, claimed_by, claimed_by_session FROM handoffs WHERE org_id = ? AND number = ?`, ORG_B, handoff.id))
+      .toEqual({ status: "claimed", claimed_by: "dana", claimed_by_session: "ask-thread-7" });
   });
 });
 

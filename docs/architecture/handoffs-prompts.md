@@ -87,8 +87,8 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 ## Agent links — a short-lived line between two sessions (0078_agent_links)
 
 Spec: `docs/superpowers/specs/2026-10-17-agent-links.md` (its owner rulings override the text above them).
-Built so far: the data and domain layer, the MCP tools, and the cookie routes and badge. The Links tab, the plugin
-hooks and Ask as a side are later phases.
+Built: the data and domain layer, the MCP tools, the cookie routes and badge, the Links tab and a link's page, the
+plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › Agent links).
 
 - **Storage.** `agent_links` (a per-org `number` from `org_counters` `'link'` by the `agent_links_number_ai`
   trigger — 0078 rebuilt `org_counters` so its CHECK takes `'link'`; `createOrg` seeds it), and
@@ -145,7 +145,15 @@ hooks and Ask as a side are later phases.
   ~11 ms median, ~15 ms p95 — about 2 ms over `get_connection`.
 - The server instructions (`mcpInstructions`) say a session that has joined a link calls `link_inbox` at the start of
   each reply — how a `chat` side checks without hooks. Site group: "Links" (`shared/mcp-tools-core.ts`), all six.
-  Ask excludes all six for now (`ASK_EXCLUDED_TOOLS`).
+- **Ask as a side** (`ask.md` › Agent links): `request_link`, `join_link`, `send_link_note` and `close_link` are
+  Ask write cards — Confirm-only, never Auto, run as the CONFIRMER — and `list_links` a read; only `link_inbox` is in
+  `ASK_EXCLUDED_TOOLS` ("Ask reads link notes in its own turn"). The thread's session is `ask-thread-<thread id>`
+  (kind `ask`, no branch), the id Ask claims handoffs with; only the LINK tools refuse that prefix over MCP, so
+  `claim_handoff` with it still works. Confirming `request_link` is the Send (`requestLinkFromAsk`: `requested`, or
+  `open` to oneself; no draft; `previewLinkRequest` builds the card and refuses a target or a cap bound to fail).
+  A turn delivers the thread's waiting notes once (`readInbox`, fenced in the turn); the thread list and the thread
+  read count them in one query (`askThreadLinkNotes`). Deleting the thread unbinds its side (session, kind and branch
+  go null; the link stays — `src/deletion/ask.ts` `unbindLinkSides`).
 - **The plugin** (0.10.0): the `link` skill (`plugins/trov/skills/link/SKILL.md`) carries the hooks in its OWN
   frontmatter (owner ruling 6), not a plugin-wide `hooks/hooks.json`: `UserPromptSubmit`, and `PostToolUse` on
   `Bash` with `if` `Bash(git commit*)` / `Bash(git push*)`, each an `mcp_tool` call to `plugin:trov:trov` /

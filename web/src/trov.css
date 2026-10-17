@@ -3113,6 +3113,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-th-at { flex:none; font-family:var(--label); font-size:11.5px; font-weight:400; color:var(--fg-40); transition:opacity .12s ease; }
 .ask-th-snip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; font-weight:400; line-height:1.45; color:var(--fg-55); }
 .ask-th-count { font-family:var(--label); font-size:11px; font-weight:400; color:var(--fg-40); }
+/* Notes waiting on the thread's Trov links (agent links): a small dot before the time, its tooltip says what it means. */
+.ask-th-link { flex:none; display:inline-flex; align-items:center; }
 .ask-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:var(--fg); font-weight:600; }
 .ask-th-more { position:absolute; top:5px; right:6px; display:grid; place-items:center; width:24px; height:24px; border-radius:6px; color:var(--fg-55); opacity:0; cursor:pointer; transition:opacity .12s ease, background .12s ease; }
 .ask-th-in:hover .ask-th-more, .ask-th.is-menu .ask-th-more, .ask-th-more:focus-visible { opacity:1; }
@@ -3129,6 +3131,11 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 
 /* ── Ask: conversation ── (ask-conversation.ts; inventory §1b, §2; ask-trov.dc.html L299–L650) */
 .ask-col { animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+/* "Link #12 with @jose: 2 new notes" — one quiet line at the top of the thread (`linkNotesLine`). */
+.ask-links-line { display:flex; align-items:baseline; gap:8px; margin:0 0 14px; padding:0 0 10px; border-bottom:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-links-line > svg { flex:none; align-self:center; }
+.ask-links-a { color:var(--fg); font-weight:500; text-decoration:underline; text-decoration-color:var(--fg-40); text-underline-offset:2px; }
+.ask-links-hint { color:var(--fg-55); }
 .ask-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:safe flex-end; gap:14px; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:40px 28px 18px; text-align:center; animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 [data-phone="1"] .ask-empty { padding:24px 16px 14px; }
 /* The design's spacer under the composer while empty (L770): the empty block and the composer sit mid-column. */
