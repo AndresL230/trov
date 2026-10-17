@@ -343,10 +343,13 @@ lets other people of the SAME org reach it, two ways at once or either:
   ⋯ menu has **Share…** (`askThShare` → `threadShareModal`, a root `role="dialog"` overlay of its own — not
   `confirmModal`, whose Enter would turn a pick in its dropdowns into Save). A `segmented()` "Share with org" / "Share
   with a teammate" picks which half it shows (`ShareDraft.tab`; it always opens on the org's, and both halves are kept
-  while it is open). The org's: "Everyone in <org>", a `segmented()` "No access" / "Can read". A teammate's — the
-  dialog widens — each person (people.ts) with a `dropdown()` Can read / Can continue / Remove, and "Add a person", a
-  `dropdown()` of the org's members other than the owner. Then the privacy line; Cancel / Save — Save is
-  ONE `PATCH { shared, people }`, then the row takes the server's summary. Tab stays inside it; Escape closes an open
+  while it is open). The dialog keeps ONE size (460px wide, a fixed body) whichever half shows and however many
+  people are on it. The org's: "Everyone in <org>", a `segmented()` "No access" / "Can read", then four lines of what
+  that does (`orgFacts`: where it shows, what they read, that they can't ask, how to stop). A teammate's: the people,
+  each (people.ts) with a `dropdown()` Can read / Can continue and a × that takes them off, in a list three rows tall
+  that scrolls past that (its scrollbar's room kept from the first row, so a fourth never moves the buttons; adding
+  one scrolls to them); then "Add a person", a `dropdown()` of the org's members other than the owner. Then the
+  privacy line; Cancel / Save — Save is ONE `PATCH { shared, people }`, then the row takes the server's summary. Tab stays inside it; Escape closes an open
   dropdown first, then the dialog. **Stop sharing** (when shared at all) is `PATCH { shared: false, people: [] }` at
   once, with a flash. A shared row of the owner's carries `sharedMark` (marks.ts, a two-people glyph named "Shared";
   its tooltip who it is shared with: "Shared with SaplingLearn.", "Shared with Mei Lin and 2 others." …), and so does

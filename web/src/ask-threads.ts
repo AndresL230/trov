@@ -11,8 +11,8 @@
 
 import { esc, attr } from "./ui";
 import type { AskCtx, AskPart, AskUi, AskView } from "./ask-state";
-import { askIcon } from "./ask-icons";
-import { closingAttr } from "./ask-motion";
+import { askIcon, type AskIconName } from "./ask-icons";
+import { closingAttr, reducedMotion } from "./ask-motion";
 import { skeleton, skList, skLine, skW } from "./skeleton";
 import { askExportName, type AskSearchHit, type AskShareAccess, type AskSharePerson, type AskThreadGroup, type AskThreadSummary } from "@shared/ai-ask-core";
 import { confirmModal } from "./confirm";
@@ -219,6 +219,8 @@ function download(url: string, name: string): void {
 let focusMenu = false;
 let focusConfirm = false;
 let focusShare = false;
+/** Set when a person is added: the next paint scrolls the people list to them. */
+let scrollShareEnd = false;
 /** What Tab moves between in the Share dialog: its controls (a segmented switch's one Tab stop). */
 const SHARE_FOCUSABLE = "button:not([disabled]):not([tabindex='-1'])";
 let focusMore: number | null = null;
@@ -277,6 +279,17 @@ export function shareDropdowns(app: AppState): DropdownProps[] {
 /** Share: who can open the conversation — everyone in the org (read only), and people by name, each "Can read" or
  *  "Can continue" — and what stays private. A root `data-overlay` dialog (role="dialog", not a confirmation: nothing
  *  is written until Save); its keyboard is the threads part's (Escape, a trapped Tab). */
+/** What sharing with the org does, one line each — every line true of `shared_at` (ask.md › Sharing a conversation). */
+function orgFacts(org: string): string {
+  const facts: [AskIconName, string][] = [
+    ["ask", `It shows under Organization in everyone's Ask list in ${org}.`],
+    ["read", "They read every question and answer, and see who asked each one."],
+    ["lock", "They can't ask in it. To let someone ask, share with them as a teammate."],
+    ["more", "Stop sharing at any time from the ⋯ menu."],
+  ];
+  return facts.map(([icon, line]) => `<li>${askIcon(icon, 13)}<span>${esc(line)}</span></li>`).join("");
+}
+
 export function threadShareModal(app: AppState): string {
   const ui = app.ask;
   const d = ui.threadShare;
@@ -291,15 +304,16 @@ export function threadShareModal(app: AppState): string {
         ${segmented({ id: "ask-share-org", ariaLabel: `Everyone in ${org}`, value: d.org ? "read" : "off", act: "askThShareOrg", size: "sm", inertOn: true,
           options: [{ value: "off", label: "No access", arg: `${arg}|off`, locked: d.busy }, { value: "read", label: "Can read", arg: `${arg}|read`, locked: d.busy }] })}
       </div>
-      <p class="ask-share-note">${esc(`Everyone in ${org} can open it and read it, but not ask in it.`)}</p>
+      <ul class="ask-share-facts">${orgFacts(org)}</ul>
     </div>`;
   const people = d.people.map((p) => `<div class="ask-share-row" data-morph-key="sp:${attr(domKey(p.handle))}">
       <span class="ask-share-who">${refAvatar(v.look, p.handle, 20)}<span class="ask-share-n">${esc(personName(v.look, p.handle))}</span></span>
       ${dropdown(personDropdown(v.look, p, d.busy), app.dd)}
       <button type="button" class="ask-iconbtn ask-share-x" data-act="askThShareRemove" data-arg="${attr(p.handle)}"${off} aria-label="${attr(`Remove ${personName(v.look, p.handle)}`)}" data-tip="Remove">${askIcon("close", 12, null, 2.4)}</button>
     </div>`).join("");
-  const peoplePane = `<div class="ask-share-sec" data-morph-key="sp-people" data-morph-list>
-      ${people || `<p class="ask-share-empty" data-morph-key="sp-none">${esc("Not shared with anyone by name yet.")}</p>`}
+  // The list is three rows tall and scrolls past that, so the dialog keeps one size however many are added.
+  const peoplePane = `<div class="ask-share-sec" data-morph-key="sp-people">
+      <div class="ask-share-list" data-morph-key="sp-list" data-morph-list>${people || `<p class="ask-share-empty" data-morph-key="sp-none">${esc("Not shared with anyone by name yet.")}</p>`}</div>
       <div class="ask-share-row ask-share-add" data-morph-key="sp-add">${dropdown(addDropdown(app, d), app.dd)}</div>
       <p class="ask-share-note" data-morph-key="sp-how">${esc("Can read opens it and reads it. Can continue also asks follow-ups in it, as themselves, and can't change what anyone else asked.")}</p>
     </div>`;
@@ -385,6 +399,11 @@ export const threadsPart: AskPart = {
     // Delete's confirm takes the focus on its destructive button (Enter confirms, Escape cancels — main.ts's one
     // keyboard contract for every `[data-confirm-dialog]`); the Share dialog on its first control.
     if (focusConfirm) { focusConfirm = false; mount.querySelector<HTMLElement>("#ask-th-delete [data-confirm-focus]")?.focus(); }
+    if (scrollShareEnd) {
+      scrollShareEnd = false;
+      const list = mount.querySelector<HTMLElement>("#ask-th-share .ask-share-list");
+      list?.scrollTo({ top: list.scrollHeight, behavior: reducedMotion() ? "auto" : "smooth" });
+    }
     if (focusShare) { focusShare = false; (mount.querySelector<HTMLElement>(`#ask-th-share ${SHARE_FOCUSABLE}`) ?? mount.querySelector<HTMLElement>("#ask-th-share"))?.focus(); }
     if (focusMenu) { focusMenu = false; mount.querySelector<HTMLElement>(MENU_ITEM)?.focus(); }
     if (focusMore !== null) { const id = focusMore; focusMore = null; mount.querySelector<HTMLElement>(`[data-act="askThMore"][data-arg="${id}"]`)?.focus(); }
@@ -474,6 +493,7 @@ export const threadsPart: AskPart = {
         if (!d || d.busy || !value || d.people.some((p) => sameHandle(p.handle, value))) return;
         if (sameHandle(value, ctx.app.me?.handle)) return;
         ctx.ui.threadShare = { ...d, people: [...d.people, { handle: value, access: "read" }], error: null };
+        scrollShareEnd = true;
         ctx.paint();
         return;
       }

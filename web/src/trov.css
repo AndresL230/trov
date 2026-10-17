@@ -3435,13 +3435,20 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
    and people by name, each with what they may do — then what stays private. */
 /* One width for both halves, so switching Share with org / Share with a teammate never moves the switch under the
    pointer; the teammate half is the taller one (the people, each with what they may do, and Add a person). */
-.ask-share { width:min(540px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; box-sizing:border-box; }
+.ask-share { width:min(460px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; box-sizing:border-box; }
 .ask-share-x { margin-left:-4px; }
 /* Both halves sit in one fixed-height body, so the dialog is the same size on either; a long people list scrolls in it
    (the dropdowns are root overlays, never clipped by it). */
-.ask-share-body { height:212px; margin-top:16px; overflow-y:auto; overscroll-behavior:contain; }
+.ask-share-body { height:190px; margin-top:14px; }
+/* Three person rows (32px, 4px apart), then the list scrolls: adding a person never grows the dialog. The bar's room
+   is kept from the first row (as #cnpy-main does), so a fourth person never pushes the buttons in. */
+.ask-share-list { height:104px; display:flex; flex-direction:column; gap:4px; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.ask-share-list > .ask-share-row { flex:none; }
 .ask-share-body > .ask-share-sec { margin-top:0; }
 .ask-share-tabs { margin-top:14px; }
+.ask-share-facts { margin:4px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:9px; font-size:12.5px; line-height:1.45; color:var(--fg-55); }
+.ask-share-facts li { display:flex; align-items:flex-start; gap:9px; }
+.ask-share-facts svg { margin-top:2px; color:var(--fg-40); }
 .ask-share-empty { margin:0; font-size:13px; color:var(--fg-55); }
 .ask-share-h { font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); overflow-wrap:anywhere; }
 .ask-share-sec { margin-top:16px; display:flex; flex-direction:column; gap:8px; }
@@ -3451,7 +3458,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-share-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ask-share-org { flex:none; display:grid; place-items:center; width:20px; height:20px; color:var(--fg-55); }
 .ask-share-add { justify-content:flex-start; }
-.ask-share .ask-share-files { margin-top:16px; }
+.ask-share .ask-share-files { margin-top:12px; }
 .ask-share-err { margin-top:12px; font-size:12.5px; line-height:1.5; color:var(--red); }
 .cnpy-dd-v.is-placeholder { color:var(--fg-55); }
 /* Someone else's conversation the person continues: whose it is, over the box. Who asked each question, once more than

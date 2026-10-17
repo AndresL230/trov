@@ -360,6 +360,8 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     expect(root).toMatch(/data-seg="ask-share-tab"[\s\S]*?class="cnpy-seg-btn is-on"[^>]*>Share with org/);
     expect(root).toContain(`data-tab="org"`);
     expect(root).not.toContain(`data-dd="ask-share-add"`);
+    // The org's half says what sharing with the org does — where it shows, what they read, that they can't ask.
+    expect(root).toMatch(/<ul class="ask-share-facts">[\s\S]*?under Organization[\s\S]*?see who asked each one[\s\S]*?ask in it. To let someone ask[\s\S]*?<\/ul>/);
     expect(root).toContain("Files stay private to whoever attached them");
     threadsPart.act!(ctx, "askThShareTab", `${t.id}|people`, null);
     expect(s.ask.threadShare?.tab).toBe("people");
@@ -367,6 +369,8 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     expect(people).toContain(`data-tab="people"`);
     expect(people).toMatch(/data-dd="ask-share-add"[\s\S]*?<span class="cnpy-dd-v is-placeholder">Add a person<\/span>/);
     expect(people).not.toContain(`data-seg="ask-share-org"`);
+    // The people sit in their own list (three rows tall, scrolling past that), Add a person below it.
+    expect(people).toMatch(/<div class="ask-share-list" data-morph-key="sp-list" data-morph-list>[\s\S]*?<\/div>\s*<div class="ask-share-row ask-share-add"/);
     expect(root).not.toContain("<select");
     // Add a person offers the org's members but never the owner.
     const add = shareDropdowns(s).find((d) => d.id === "ask-share-add")!;
