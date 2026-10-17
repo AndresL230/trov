@@ -3629,8 +3629,23 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // A group of pages (review.ts `reviewGroups`: an import's, an agent's): open it page by page, or decide it whole.
     case "reviewGroupToggle": if (arg) state.reviewGroupsOpen = { ...state.reviewGroupsOpen, [arg]: !state.reviewGroupsOpen[arg] }; break;
     case "reviewGroupApprove": if (arg) reviewGroupVerdict(arg, true); return;
-    case "reviewGroupReject": if (arg) { state.reviewGroupReject = { id: arg, busy: false }; } break;
-    case "reviewGroupRejectClose": if (state.reviewGroupReject?.busy) return; confirmOut(() => { state.reviewGroupReject = null; rerender(); }); return;
+    // Reject all asks first: the dialog takes the focus (its red button), and closing it hands it back to Reject all.
+    case "reviewGroupReject":
+      if (!arg) return;
+      state.reviewGroupReject = { id: arg, busy: false };
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "reviewGroupRejectClose": {
+      const id = state.reviewGroupReject?.id;
+      if (!id || state.reviewGroupReject?.busy) return;
+      confirmOut(() => {
+        state.reviewGroupReject = null;
+        rerender();
+        mount.querySelector<HTMLElement>(`[data-act="reviewGroupReject"][data-arg="${CSS.escape(id)}"]`)?.focus();
+      });
+      return;
+    }
     case "reviewGroupRejectGo": {
       const r = state.reviewGroupReject;
       if (!r) return;

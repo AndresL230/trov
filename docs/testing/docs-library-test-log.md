@@ -10,7 +10,8 @@ leaves open — those are `question`s here, not guesses). Area reference: `docs/
 and decided the 20 questions (below, Matrix). **Batch A** (the owner rulings in code; Sidebar, Library home, Create
 space, Space home, Docs pane, Tree moves, Doc page, New page) and **Batch B** (Import wizard, Drop, Imports history,
 Review, Unplaced, the curl set, Environment) are filled in below; **Batch B2** (the owner's round-2 rulings: Review's
-agent group and page pane built, SH2, RV18, the IW counts, and Batch B's findings fixed) after them; Batch C follows.
+agent group and page pane built, SH2, RV18, the IW counts, and Batch B's findings fixed) after them; then **Batch C**,
+the final pass over all 119 from a clean seed, and the **Report**.
 
 ## Local environment
 
@@ -317,6 +318,179 @@ RV), Space home (SH1–SH2, ENV13–14), the wizard (IW9, IW12–IW26, ENV27–2
 ENV10–12), the spaces routes (API6, API8), Imports history (IH1). The ai-cards snapshot was stale on the branch
 before B2 (Batch A's SB1 label); it is updated now.
 
+## Batch C — final pass (2026-10-17)
+
+Run against `wrangler dev` :8821 on `feat/docs-import` (from ed762bf5), Claude in Chrome (one tab of this session's
+own; desktop 1707 px CSS, light; dark via `localStorage["trov.theme"]`; 360 px = a fresh 360 px iframe of the same page
+per screen), the curl set with `curl` against :8821. Clean seed first (`node scripts/seed/docs-library.mjs`: all 36
+checks hold), re-seeded after every case that wrote (each re-seed: 36 / 36 checks). Expected values are the rows' own,
+unchanged. Screenshots: [`docs-library-shots/batch-c/`](docs-library-shots/batch-c/) (47 files).
+
+**Cases run: 119 of 119** — every kept case once. Fully re-driven (a code path changed since it last passed): all RV,
+SH1–2, ENV13–14, the wizard (IW9, IW12–IW26, ENV27–29), CS* and ENV10–12, API6 and API8, IH1, and the paths Batch A /
+B / B2 fixed (SB1, LH8, SH6, SH23, DP8, DP14, DOC2, DOC13, NP9, NP19, IW51, DR10, IH12, RV3, CR1, ENV39). The rest:
+a quick re-check with evidence. **Result: 119 pass** (CS1 failed first in this batch and passes after its fix).
+
+**Fixes in Batch C** (each: the cause in one line, a test that failed first, the smallest fix, the browser retest, its
+own commit):
+
+| case | what was wrong | cause | fix | test | retested (same path) |
+|---|---|---|---|---|---|
+| CS1 (fail → fixed) | New space was 420 px wide; the design (and CS1's expected) says 480 | the space dialog used `confirmModal`'s 420 px box | dab37e00 (spaces): `#lib-space.cnpy-cmodal-box { width:min(480px, 100%) }`; the owners / archive dialogs keep 420 | `test/render.library.test.ts` "Create / Edit space is the design's 480 px dialog" | CS1 (width 480, Name focused), CS3, CS5, CS9, ENV10 (360 px: 360 = full width), ENV11, ENV12 |
+| RV12 (finding on its path; its expected passed) | Reject all opened with Enter left the focus on its own button behind the modal | `reviewGroupReject` set state and repainted but moved no focus (the other delete confirms do) | 1538fa3c (import): the dialog's red button takes the focus; closing it gives the focus back to that group's Reject all | `test/render.review.test.ts` "a group's Reject all moves the focus into its dialog…" | RV12 (import group: focus on "Reject 4 pages", Escape → back on Reject all), RV14 (Enter, Enter → rejected), the agent group's Reject all ("Reject 7 pages" focused, Escape → back) |
+| SH21 (finding on its path; its expected passed) | Archive Onboarding read "Its 1 page stay as they are" | a fixed plural verb after `pagesWord` | 05a49958 (spaces): one page "stays as it is" | `test/render.library.test.ts` "archive: the sentence agrees with the page count" | SH21 on Onboarding (1 page) and Engineering (45 pages), cancelled |
+| ENV29 path (full suite) | `test/render.focus.test.ts` failed: `.cnpy-imp-h:focus` took the ring away | a8202419 (B2) gave the wizard's step heading the focus with `outline:none` | 8ec54eed (import): the rule removed; the heading shows the focus ring | the existing `test/render.focus.test.ts` (failed in the full run) | ENV29: Enter on Continue → "Add your files" focused, `:focus-visible`, outline auto |
+| SB1 path (full suite) | `test/render.ai-absent.test.ts` failed: 4 snapshots held "Show spaces" | a78d7afd (Batch A) renamed the chevron "Show or hide spaces"; these snapshots were not refreshed (B2 refreshed only ai-cards) | e235df4c (spaces): the snapshots updated — the 6 label strings only | `test/render.ai-absent.test.ts` | SB1 (the label in the browser) |
+
+**Per case** (C = this batch's evidence; screenshots in `batch-c/`):
+
+| cases | result | evidence |
+|---|---|---|
+| SB1 SB2 SB5 SB7 SB11 SB12 | pass ×6 | SB1: chevron "Show or hide spaces", 6 space rows, Imports, + New space, Import (`LH1-SB1-library-admin.jpg`); SB2: member has no + New space, Import shown (`LH2-SB2-library-member.jpg`); SB5: Review badge 11 = the list's 11, none in test-docs-nospaces (`LH10-SB7-nospaces.jpg`); SB7: "No spaces yet" + hollow row (same shot); SB11: 239 sidebar nodes identical across library → engineering → doc → imports → library; SB12: collapsed shows the Library icon only (`SB12-collapsed.jpg`) |
+| LH1 LH2 LH7 LH8 LH10 | pass ×5 | LH1/LH2 the shots above; LH7: Restore Old Wiki → toast "Restored Old Wiki", sidebar row, D1 slug `old-wiki` live; member: no Archived section, no Restore; LH8: Restore Design → "There's already a space called Design", D1 unchanged (`LH8-restore-name-taken.jpg`); LH10 (`LH10-SB7-nospaces.jpg`) |
+| CS1 CS3 CS5 CS9 | pass ×4 (CS1 after dab37e00) | CS1: width 480, Name focused, Shield + Rust picked, Create disabled; CS3 red "There's already a space called Engineering. Pick another name." (`CS1-CS3-dialog-480-duplicate.jpg`); CS5: lands on #library/test-created-space, toast, D1 rocket / #2467af / description, owners = test-dl-admin (`CS5-created-space-home.jpg`); CS9 literal `<b>Test 🚀</b>` in dialog preview, sidebar, header, crumb, toast (`CS9-html-emoji-literal.jpg`) |
+| SH1 SH2 SH4 SH6 SH8 SH11 SH14 SH17 SH21 SH23 | pass ×10 | SH1/SH2 (`SH1-SH2-DP1-engineering-admin.jpg`: owners, 45 pages, 10 waiting, each card's first sentence, Recently updated top 5); SH4 Recently = 70 minutes ago first, Least = 2 weeks ago first; SH6 groups `#ABCDEFGILMNOPRSTUWY`, Ünïcödé under U; SH8 "   test- Batch C description.   " + Enter → D1 `test- Batch C description.`; SH11 member: no edit affordance (`SH11-SH2-engineering-member.jpg`); SH14 Product "No owner yet"; SH17 Security empty states; SH21 see the fix above; SH23 "There is no space here…" and no pane |
+| DP1 DP5 DP8 DP9 DP14 | pass ×5 | DP1 (`SH1-SH2-DP1-engineering-admin.jpg`); DP5 Level ten active and in view, 11 ancestors open (`DP5-deep-row-active.jpg`); DP8 nested row: Copy link / Move to the top level / New page inside, a top-level row: Copy link / New page inside (`DP8-more-menu.jpg`); DP9 Loop A, Loop B, Orphan page, Parent in another space at the top level, 45 counted; DP14 member sees Your first change in the pane and its page, no "Only people who can review" (`DP14-DOC13-staged-member.jpg`) |
+| TM1 TM2 TM4 TM6 TM11 | pass ×5 | TM1 real drag: toast "Moved “Error codes”", D1 ranks auth 1024 / error 1536 / rate 2048; TM2 real drag: "Moved “Data model” inside API", D1 parent `test-api`; TM4 Undo → "Moved “Error codes” back", order restored; TM6 Platform onto Getting started: no move, no toast, D1 parent null; TM11 Alt+↑/↓/→/← each with its toast ("…inside Authentication"), depth 2 → 3 → 2, focus kept on the row |
+| DOC1 DOC2 DOC3 DOC7 DOC9 DOC12 DOC13 DOC14 DOC18 DOC20 | pass ×10 | DOC1/DOC3 member: crumb buttons Engineering / Architecture / API, Live tip "This is the version everyone reads.", no Edit (`DOC1-DOC3-live-member.jpg`); DOC2 v2 muted + Rejected mark (`DOC2-history-rejected.jpg`); DOC7 link opens test-authentication, row active; DOC9 `is-broken` + tip "No page is called “test-no-such-page” yet…"; DOC12 banner, live body, "Version 2 is waiting for review"; DOC13 (`DP14-DOC13-staged-member.jpg`); DOC14 imported banner, Imported from … in test-handbook-v2.zip; DOC18 no img / script / on* / javascript:, alert stub never called; DOC20 "There is no page here…" |
+| NP1 NP5 NP6 NP9 NP11 NP15 NP17 NP19 | pass ×8 | NP1/NP6 Goes in Engineering, 9 templates, Runbook picked; NP5 (`NP5-location-picker.jpg`); NP9 + NP17 double-click Create page → one page `test-np9` (v1 staged by test-dl-member, cur 0), toast "Page created in Engineering" (`NP9-NP17-created-staged.jpg`); NP11 D1 parent `test-api` (`NP11-under-api.jpg`); NP15 toast "…at the top level: that parent page could not take it", D1 parent null; NP19 admin: "No spaces yet" + New space |
+| IW1 IW5 IW9 IW10 IW12 IW13 IW17 IW18 IW19 IW21 IW22 IW23 IW25 IW26 IW30 IW31 IW35 IW39 IW51 | pass ×19 | IW1 member (`IW1-where-member.jpg`); IW5 no-spaces empty layout; IW9 "From 2 files into Engineering", 2 pages, "1 points to a page already in Trov, and 1 to a page that isn't in Trov yet"; IW10 toast "A .zip is imported on its own: only test-handbook.zip was added."; IW12 14 / 6 / 3 / 2 / 7; IW13 Skip → struck + Skipped, 13; Rename → "Local setup (test-handbook)", Renamed (`IW12-IW13-preview-conflicts.jpg`); IW17 "Adding pages to Review 7%", "0 of 14 pages", "1 of 1 image", Imports badge 1; IW18 "14 pages added to Review", 9 / 5 / "1 image" (`IW18-done-card.jpg`); IW19 run 6320 partial, 14 staged versions (5 on existing pages), `handbook` top level of Engineering, 1 doc_images row, README `/img/<sha256>`; IW21 9 pages, no version on Local setup / Deploys / Paging; IW22 new `local-setup` "Local setup (test-handbook)", test-local-setup untouched; IW23 Cancel at 75 → toast "Import cancelled. 75 pages already added stay in Review.", D1 abandoned, staged 75 = 75 rows (a /pages sent after the cancel got 409); IW25 leave prompt armed (synthetic beforeunload defaultPrevented), the handler neutralised, reload → wizard fresh; run 6324 running at 225, 3 minutes later "Stopped · 225", Review 236 = 11 + 225; IW26 first /pages throws → "The connection dropped…", "Nothing more is sent until you press Retry." → Retry → done, 14 versions / 14 slugs (`IW26-stalled-retry.jpg`); IW30 counter at 20 → POST /imports 429, "You've hit today's limit for this; try again after 8:00 PM.", no run (the counter put back to 8); IW31 "This zip is damaged or unsupported.", Check disabled, no request; IW35 "This zip has more than 500 files. Up to 500 files or 50 MB…"; IW39 Ok + The good page, 4 × "The file's name or folder isn't allowed"; IW51 "This zip is over 50 MB unpacked…", huge.md "Larger than 1 MB, the most a page can be" |
+| DR3 DR5 DR10 | pass ×3 | DR3 overlay "Drop to import into Engineering / 2 Markdown files…" → #import/engineering at Preview, 2 pages; DR5 overlay "Only Markdown files can be imported", toast "test-report.pdf isn't a Markdown file…"; DR10 Library home and Imports → #import at Where; Review and #library/old-wiki: no overlay, no navigation |
+| IH1 IH3 IH7 IH8 IH12 | pass ×5 | IH1 6306 … 6301 newest first with sizes, Into paths, marks (`IH1-IH3-IH8-imports.jpg`); IH3 "5 pages went to Review. 3 files were skipped:" + 3 reasons + Open in Review; IH7 "Nothing was added." + wiki/a.md / wiki/b.md reasons; IH8 Stopped / Cancelled grey marks; IH12 admin cancels Max's run in test-docs-one → toast, row Cancelled, D1 abandoned |
+| RV1 RV3 RV5 RV6 RV7 RV10 RV12 RV14 RV18 | pass ×9 | RV1 both group cards (`RV1-groups.jpg`); RV3 Deploys in Pia's agent group, import group 4 pages (`RV3-groups-open.jpg`); RV5 "Page 2 of 4 · test-handbook-v2.zip", crumb, New page, rendered page, ‹ wraps to 4 (`RV5-page-pane-new-page.jpg`); RV6 "New version of Local setup", "1 line added, 1 removed" (`RV6-page-pane-new-version.jpg`); RV7 Approve on page 4 → "Page 1 of 4" Onboarding (imported), "1 of 4 reviewed", "Approve 3 left", focus on ✓ Approve; RV10 toast "3 pages are now live in Engineering · Open Engineering", Review 7, D1 promoted with parents, Deploys v2 still staged; RV12 / RV14 see the fix above (`RV12-*.jpg`), D1 the 4 versions rejected with their bodies; RV18 (`RV18-review-empty.jpg`) |
+| TR2 | pass | Doc section · reference · Engineering → item leaves (Unplaced 2 → 1, Review 11 → 12); D1 needs_triage 6311 assigned `doc:test-triaged-test-nowhere@1` by test-dl-admin; doc in engineering, cur 0 |
+| API4 API6 API8 API10 API22 API29 | pass ×6 | curl: API4 outsider → not_found ×3; API6 member → forbidden "only an admin can create a space"; API8 owner {description} ok, {name} forbidden "only an admin can rename a space or change its icon or color", owners ok; API10 bearer → not_found (never read), no space written; API22 member manifest → 201, plan writes only `ok.md`, 4 × bad_path; API29 → not_found "there is no such import" ×2 |
+| MCP1 MCP4 | pass ×2 | list_spaces: the 6 live spaces (no old-wiki / design-old); propose_doc_update into `test-nowhere` → `{"outcome":"triaged","reason":"unknown space: test-nowhere"}`, needs_triage by test-dl-member, no docs row |
+| CR1 | pass | one `/__scheduled?cron=0+*+*+*+*` → doc_links test-unbackfilled → test-architecture, cursor `\u0001done` |
+| RT2 | pass | #docs/technical → #library, #docs/product → #library |
+| ENV4 ENV5 ENV10 ENV11 ENV12 ENV13 ENV14 ENV21 ENV22 ENV24 ENV25 ENV27 ENV28 ENV29 ENV39 ENV40 ENV42 ENV43 ENV45 | pass ×19 | desktop dark: page 1707 = 1707 on each (`ENV5`, `ENV11`, `ENV14`, `ENV22`, `ENV25`, `ENV28`, `ENV40`, `ENV43` shots); 360 px dark: the page 360 = 360 on each, only the tab bar and a code block scroll inside themselves (`ENV4`, `ENV10`, `ENV13`, `ENV21`, `ENV24`, `ENV27`, `ENV39`, `ENV42` shots); ENV12 focus log: Name → 12 icons → 8 swatches → description → Cancel → Name (trapped), Escape → back on New space; ENV29 Tab: the 5 other space cards, Top level, every tree row and its chevron, Cancel, Continue, each with a ring; Enter on Continue → "Add your files" focused; ENV45 the loaded stylesheet's reduced-motion blocks hold .cnpy-flash, [data-enter], .cnpy-aside, .cnpy-rvg, .cnpy-rv-card-in, .cnpy-rv-verdict, the drop overlay and the tab indicator |
+
+No console error on any screen (read after each block); every `/api/` request answered as expected (the only non-2xx:
+the cases' own 403 / 404 / 409 / 429).
+
+**Found, not fixed (for the owner):**
+- After a tree move, an open doc page's "Pages under ‹Title›" keeps its old list until a reload (TM2's path: on API's
+  page, moving Data model inside API and Error codes above Rate limits left the card list as Authentication / Rate
+  limits / Error codes; a reload shows the new order with Data model). The pane and D1 are right; the page's
+  `children` come from the doc read and a move does not refetch it (`tree-actions.ts` `move`). Tree PR. Not a kept
+  case's expected, so recorded rather than fixed.
+- Seed note: test-docs-one's running run shows "12 of 40 pages in Review so far" but the seed writes no staged rows
+  for it, so after IH12's cancel it reads "Nothing was added." (correct for the rows that exist). The seed's counts,
+  not the product.
+
+**Notes on the run.** Someone else used the same Chrome window during the run (trusted clicks on the docs pane once a
+second, an Alt key, two extra "New Tab"s in this session's group, and finally the group itself removed); nothing they
+did wrote to D1 (checked before each write case), the IW25 attempt they interrupted was rerun from a fresh seed, and the
+run moved to a new tab group. IW25's reload: `preventDefault` and the `returnValue` setter were neutralised for
+`beforeunload` first, so no native prompt showed. IW30's counter was restored to the admin's real 8 starts. Seed re-run
+after the last write.
+
+## Report
+
+**Matrix.** 353 cases (each surface of the map × the dimensions in the code's guards; shown to the owner before
+running). The owner trimmed it to **119** ("do we seriously need to run all 353"); the other 234 rows stay as `skipped`,
+"trimmed by owner 2026-10-17". **Final pass (Batch C, clean seed): 119 of 119 run, 119 pass.**
+
+| final result of the 119 kept cases | count |
+|---|---|
+| pass (passed the first time it ran) | 94 |
+| fail → fixed (failed, fixed with a test, passes now) | 25 — SB1, LH8, CS1, SH2, SH6, SH23, DP8, DP14, DOC2, DOC13, NP9, NP19, IW51, DR10, IH12, RV1, RV3, RV5, RV6, RV7, RV18, CR1, ENV12, ENV13, ENV39 |
+| pre-existing (fails the same way on base) | 0 — two pre-existing bugs were seen beside the cases (below) |
+| question | 0 — the 20 were decided by the owner 2026-10-17; IW12 and RV18 in round 2 |
+| skipped (trimmed by the owner) | 234 |
+
+**Full suite and typecheck vs the Baseline** (run once, after every fix, `npx vitest run --maxWorkers=4`):
+- First run at 05a49958: 403 files, 8848 tests — 7 failed: the known `test/ai.brief.test.ts` case (the baseline's one
+  failure, on base too) + 4 × `test/render.ai-absent.test.ts` + 2 × `test/render.focus.test.ts`. The last six passed on
+  the baseline and were broken by this feature's own E2E fixes (a78d7afd's label, a8202419's `outline:none`); each went
+  through the fix loop (8ec54eed, e235df4c — Batch C's fixes table). After them those files pass (rerun alone, with the
+  touched library / review files: 165 of 166, the one failure being ai.brief). Nothing that passed on the baseline fails
+  now.
+- `npm run typecheck`: 0 errors (as on the baseline).
+
+**Every bug fixed** (case · what was wrong · cause · fix commit, PR · test):
+
+| case | what was wrong | cause | fix | test |
+|---|---|---|---|---|
+| SB1 | the chevron's name flipped "Hide spaces" / "Show spaces" | the label followed the state beside aria-expanded | a78d7afd (spaces); snapshots e235df4c | `test/render.sidebar.test.ts`, `test/render.ai-absent.test.ts` |
+| LH8 | a refused restore showed the server's raw lower-case text | `spaceErrorText` passed name_taken's detail through as written | c4c61170 (spaces) | `test/render.library.test.ts` |
+| CS1 | Name not focused on open | libNew never focused the field | a1287563 (spaces) | `test/render.library.test.ts` |
+| CS1 | the dialog 420 px, not 480 | it used confirmModal's 420 px box | dab37e00 (spaces) | `test/render.library.test.ts` |
+| SH2 | cards had no description | a doc has no description field (owner: the first sentence, derived on read) | 9c4a1d8a (spaces) | `test/spaces.test.ts`, `test/render.library.test.ts` |
+| SH6 | Ü its own group after Z | A–Z grouped by the raw first character (owner ruling) | d93ed284 (tree) | `test/render.library.test.ts` |
+| SH21 | "Its 1 page stay as they are" | a fixed plural verb | 05a49958 (spaces) | `test/render.library.test.ts` |
+| SH23 | an unknown space kept a "Loading pages…" pane | libraryFrame drew the pane whenever the org has spaces | 76714599 (spaces) | `test/render.library.test.ts` |
+| DP8 | no "New page inside" in the … menu | owner ruling | 5ddeffd9 (tree) | `test/render.docs.test.ts` |
+| DP14 / DOC13 | staged copy said only reviewers see it | owner ruling | a9674f0b (tree) | `test/render.docs.test.ts`, `test/render.library.test.ts` |
+| DOC2 | a rejected version left out of History | owner ruling | cfc1f153 (tree) | `test/render.docs.test.ts` |
+| NP9 | Create page did not land on the new page with "Page created in ‹Space›" | owner ruling | b5a97f2e (tree) | `test/render.newdoc.test.ts` |
+| NP19 / IW5 | no spaces: no way on for an admin | owner ruling | 27f64817 (tree) | `test/render.newdoc.test.ts` |
+| IW51 | a skipped page said only "The file is too large" | the reason did not name the limit | 9dfa8638 (import) | `test/docs-import-core.test.ts` |
+| DR10 | a drop on Library home / Imports was ignored | owner ruling (only a space screen took a drop) | 9bacbd2d (import) | `test/import-actions.test.ts`, `test/render.import.test.ts` |
+| IH12 | an admin saw no Cancel on someone else's run | the button checked the starter only (owner ruling); the seed's run had no `writes` (seed) | 47f18886 (import); c79dbee7 (seed) | `test/render.import.test.ts`; the seed's read-back |
+| RV3 | an import's version under a newer agent change was offered alone; the badge read 12 | grouping ignored the newer change on top | 796ad957 (import) | `test/badges.routes.test.ts` |
+| RV1 | the import card scrolled Review's list sideways | a grid row took its card's min-content width | fec5b340 (import) | `test/render.review.test.ts` |
+| RV1 | no "Written by ‹Name›'s agent" group | not built (owner ruling round 2) | 53f7f44a (import) | `test/render.review.test.ts`, `test/render.import.test.ts`, `test/render.ai-cards.test.ts` |
+| RV5 / RV6 / RV7 | the page pane kept the old layout | not built (owner ruling round 2) | 95dd9f50 (import) | `test/render.review.test.ts`, `test/docs-import.test.ts` |
+| RV7 | "Page i of N" shifted as others were decided | decided pages counted as before the one shown | 4f0336c2 (import) | `test/render.review.test.ts` |
+| RV12 | Reject all from the keyboard left the focus behind the modal | the act moved no focus | 1538fa3c (import) | `test/render.review.test.ts` |
+| RV18 | the empty Review kept base's sentence | owner ruling round 2 | 6848bb17 (import) | `test/render.review.test.ts`, `test/render.skeleton.test.ts` |
+| CR1 | the daily backfill could stop before reaching an org | a full 50-page take charged per org even with nothing to read | cd0501f3 (import) | `test/docs-import.test.ts` |
+| ENV12 | closing a space dialog dropped the focus on `<body>` | no focus return | ede930a5 (spaces); doc 2cad7a15 | `test/render.library.test.ts` |
+| ENV12 path | Edit space / Edit owners / Archive from the keyboard kept the focus outside | only New space moved the focus in | cd468a03 (spaces) | `test/render.library.test.ts` |
+| ENV13 | at 360 px the header's buttons pushed the page sideways | one flex:none row | 87a822cb (spaces) | `test/render.library.test.ts` |
+| ENV13 path | "·" at a wrapped meta line's edge | items joined with "·" spans | 3764e15a (spaces) | `test/render.library.test.ts` |
+| ENV29 path | a wizard step change dropped the focus | the step block was replaced with the focused button | a8202419 (import) | `test/render.import.test.ts` |
+| ENV29 path | the focused step heading had no ring | `.cnpy-imp-h:focus { outline:none }` | 8ec54eed (import) | `test/render.focus.test.ts` |
+| ENV39 | at 360 px the Imports rows broke in two | an inline `display:flex` beat the stylesheet | 93b2bab6 (import) | `test/render.import.test.ts` |
+| IW9 path | a `[[slug]]` to no page counted as "already in Trov" | countLinks never knew the org's pages | dc2343e5 (import) | `test/import-actions.test.ts`, `test/render.import.test.ts` |
+| IW12 / IW18 path | "1 pages to add", "1 new pages" | fixed plurals | 4d671075, d0ba2d0d (import) | `test/render.import.test.ts` |
+| IW26 path | a stalled run said "The import keeps going." | one line in every phase | 4f0294f1 (import) | `test/render.import.test.ts` |
+| API8 path | a space owner's rename 403 said owners can | one message for every role refusal | 40f0527f (spaces) | `test/spaces.test.ts` |
+| IH1 path | seeded imports' start times not in id order | seed data | 829577b6 (seed) | the seed's read-back |
+
+All on `feat/docs-import`; the PR in brackets is where each belongs when the stack is split (spaces / tree / import).
+
+**Owner rulings** (2026-10-17). Round 1: the trim to 119; the 20 questions — SH4 (newest / oldest first), NP9 (Create
+page stages and lands on the page with "Page created in ‹Space›"), IW23 (the cancel toast with N), IH12 (admins cancel
+others' runs), RV3 (a version under a newer change sits in the agent's group, not approvable alone), DP14 (every member
+sees staged pages), DOC13 (the agent-staged banner), DOC3 (no Edit button), DOC2 (rejected versions muted with a
+Rejected mark), DP8 (Copy link / Move to the top level / New page inside, no Rename), SB12 (collapsed: the Library icon
+only), SH6 (accents under the base letter; symbols and digits in "#"), SH14 ("No owner yet"), NP19 / IW5 (emptyLayout
+with New space for admins), IW10 (a zip with other files is imported alone, one sentence), IW51 (each limit named),
+DR10 (Library home / Imports drop → the wizard at Where; Review and archived spaces are not targets), IH7 ("Nothing was
+added." + reasons), IH8 (Cancelled / Stopped, neutral marks). Round 2: build Review's agent group and the page pane to
+the design (RV1 / RV5 / RV6 / RV7 — the "What changes" box before the rendered page, as designed); SH2 = the page's
+first sentence, derived on read; RV18 = the design's "Nothing to review"; IW12 / IW18 / IW19 / IW21 — the expected was
+wrong (14 pages, 6 existing titles); fix Batch B's findings outside the kept cases.
+
+**Pre-existing bugs left unfixed** (on `origin/main` too): every toast carries the accent check, errors included
+(`app-root.ts` `toastBlock`; seen on LH8's refusal); the Review badge counts staged versions, so two agent versions of
+one page count twice (base's count).
+
+**Open, for the owner** (not a kept case's expected, so not fixed): after a tree move, an open doc page's "Pages under
+‹Title›" stays stale until a reload (tree PR, `tree-actions.ts` `move` does not refetch the open page — Batch C ›
+Found, not fixed). Left in place by B2: `diffViewer` / `review-rendered.ts` are no longer reached from Review — keep
+or remove.
+
+**Dropped or trimmed.** Dropped before running (cannot occur, or add nothing a kept case does not; Matrix › Dropped
+combinations): 360 px in light; every data state × every viewport; a pure admin (not owner) role; keyboard at 360 px;
+reduced motion beyond one stylesheet read (Claude in Chrome cannot emulate it); drag and drop on a phone; another org ×
+each write (API4 / API29 / MCP cover the gate); Ask Trov parity (needs a real model key); plan limits (none in this
+feature); signed out × every screen. Trimmed by the owner: 234 rows (Matrix › Trimmed) — the HTTP / MCP rows the
+vitest suite pins, near-duplicate wizard fixtures and states, and environment repeats beyond one 360 px dark and one
+desktop dark pass over the 8 main screens plus keyboard on the tree, the wizard and Create space.
+
+**Seed.** `node scripts/seed/docs-library.mjs`, from `~/Projects/trov-docs-library`, against the local D1 its
+`wrangler dev` uses (the server may stay up; local only, never `--remote`). It wipes and rewrites the four test orgs,
+regenerates the 25 import fixtures in `scripts/seed/fixtures/docs-library/`, resets the backfill cursor and reads 36
+checks back; `--list` (the fixtures), `--check` (read back only), `--files` (fixtures only). Then sign in with
+`http://127.0.0.1:8821/auth/dev/as?handle=test-dl-admin` (or `test-dl-member`, `test-dl-spaceowner`,
+`test-dl-agentuser`, `test-dl-outsider`) and open `/test-docs/#library`.
+
+**Screenshots.** One folder, [`docs-library-shots/`](docs-library-shots/): `base/` (the baseline on origin/main),
+`branch/` (setup smoke), `batch-a/`, `batch-b/`, `batch-b2/`, `batch-c/` (the final pass).
+
 ## Owner ruling: 6 levels
 
 The owner ruled (2026-10-17) that a space's tree goes at most **6 levels** (depth 0–5): `MAX_DEPTH = 6`. The cases
@@ -346,7 +520,7 @@ Unless the state says otherwise: org `test-docs`, desktop 1512 px, light.
 
 | id | surface | state | expected | source | actual | result | evidence | fix |
 |---|---|---|---|---|---|---|---|---|
-| SB1 | Sidebar | spaces-many, admin | Knowledge › "Library" row (label → Library home) + a separate chevron button `aria-label` "Show or hide spaces"; group open by default; one row per LIVE space in order (Engineering, Product, Design, Security, the 40-char one, Onboarding), each a 14px tile + name; NO page rows; an "Imports" row; actions "+ New space" and "Import" | design §1.1; brief "The design wins…" | as expected, except the chevron's name flipped "Hide spaces" / "Show spaces" (cause: the label followed the state beside aria-expanded). After the fix: "Show or hide spaces" in both states; group open; the 6 live spaces; Imports row; + New space and Import | fail → fixed | docs-library-shots/batch-a/LH1-SB1-library-admin.jpg; DOM read (aria-label, aria-expanded, data-open) | a78d7afd (spaces) |
+| SB1 | Sidebar | spaces-many, admin | Knowledge › "Library" row (label → Library home) + a separate chevron button `aria-label` "Show or hide spaces"; group open by default; one row per LIVE space in order (Engineering, Product, Design, Security, the 40-char one, Onboarding), each a 14px tile + name; NO page rows; an "Imports" row; actions "+ New space" and "Import" | design §1.1; brief "The design wins…" | as expected, except the chevron's name flipped "Hide spaces" / "Show spaces" (cause: the label followed the state beside aria-expanded). After the fix: "Show or hide spaces" in both states; group open; the 6 live spaces; Imports row; + New space and Import | fail → fixed | docs-library-shots/batch-a/LH1-SB1-library-admin.jpg; DOM read (aria-label, aria-expanded, data-open) | a78d7afd (spaces); e235df4c (its stale ai-absent snapshots, Batch C) |
 | SB2 | Sidebar | spaces-many, member | as SB1 but no "+ New space"; "Import" still there | design §1.1, §12 | member: no + New space in the sidebar (and none in the Library), Import shown | pass | docs-library-shots/batch-a/LH2-SB2-library-member.jpg |  |
 | SB3 | Sidebar | admin | the chevron collapses / expands the group (rotates 90°, rows hidden / shown); the "Library" label still goes to Library home | design §1.1 | trimmed by owner 2026-10-17 | skipped | | |
 | SB4 | Sidebar | admin; visit library, space, doc, newpage, import, imports | the Library row is active on all six; the space row is active (fg, 500, bar on the guide) on space / doc / newpage for that page's space; the Imports row is active on `#imports` | design §1.1 | trimmed by owner 2026-10-17 | skipped | | |
@@ -383,7 +557,7 @@ Unless the state says otherwise: org `test-docs`, desktop 1512 px, light.
 
 | id | surface | state | expected | source | actual | result | evidence | fix |
 |---|---|---|---|---|---|---|---|---|
-| CS1 | Create space | admin, Library header "New space" | 480px modal "New space", intro "A space holds the pages for one team or topic. Only admins can create one.", Name focused and empty (placeholder "Like Security or Onboarding"), shield selected, `#b4562c`, empty description, "Create space" disabled | design §7 | modal, intro, Name empty with the placeholder, maxlength 40, shield + #b4562c selected, Create disabled — but focus stayed on the New space button (cause: libNew never focused the field). After the fix Name is focused on open | fail → fixed | docs-library-shots/batch-a/CS1-CS3-duplicate-name.jpg; document.activeElement before/after | a1287563 (spaces) |
+| CS1 | Create space | admin, Library header "New space" | 480px modal "New space", intro "A space holds the pages for one team or topic. Only admins can create one.", Name focused and empty (placeholder "Like Security or Onboarding"), shield selected, `#b4562c`, empty description, "Create space" disabled | design §7 | modal, intro, Name empty with the placeholder, maxlength 40, shield + #b4562c selected, Create disabled — but focus stayed on the New space button (cause: libNew never focused the field). After the fix Name is focused on open — Batch C: the dialog was 420 px wide, not the design's 480 (cause: it used confirmModal's 420 px box). Fixed: 480 at desktop, the full width at 360 px | fail → fixed | docs-library-shots/batch-a/CS1-CS3-duplicate-name.jpg; document.activeElement before/after; docs-library-shots/batch-c/CS1-CS3-dialog-480-duplicate.jpg (getBoundingClientRect width 480) | a1287563 (spaces); dab37e00 (spaces, Batch C) |
 | CS2 | Create space | admin, from sidebar "+ New space" and from the dashed card | the same reset state from each entry point | design §7 | trimmed by owner 2026-10-17 | skipped | | |
 | CS3 | Create space | admin; Name " engineering " | red border + ring and "There's already a space called Engineering. Pick another name."; Create disabled | design §7 | red border + "There's already a space called Engineering. Pick another name."; Create disabled | pass | docs-library-shots/batch-a/CS1-CS3-duplicate-name.jpg |  |
 | CS4 | Create space | space-archived, admin; Name "Old Wiki" | allowed (an archived space frees its name); the new space's slug is `old-wiki-2` (slugs stay reserved) | brief (Spaces) | trimmed by owner 2026-10-17 | skipped | | |
@@ -421,7 +595,7 @@ Unless the state says otherwise: org `test-docs`, desktop 1512 px, light.
 | SH18 | Space home | Engineering; `/spaces/engineering` delayed | skeleton header (40px square, bars, two avatars, button blocks), tabs without the count, skeleton cards and rows; the pane's skeleton | design §4 loading | trimmed by owner 2026-10-17 | skipped | | |
 | SH19 | Space home › Edit space | Design, admin; rename "Design Test", icon flask, color `#966800`; then rename to "Product" | the name / tile change everywhere, slug stays `design`; renaming to a live space's name is refused with a sentence | brief (rename, slug reserved, unique names) | trimmed by owner 2026-10-17 | skipped | | |
 | SH20 | Space home › position | admin; move Onboarding first | the order changes in the sidebar and the Library and stays after a reload | brief (reorder, sort_rank) | trimmed by owner 2026-10-17 | skipped | | |
-| SH21 | Space home › Archive | Onboarding, admin | a red `confirmModal`; confirmed: it leaves the sidebar and the Library; `#doc/test-welcome` still reads | brief (archive soft); CLAUDE.md (confirmModal) | red confirmModal "Archive Onboarding?" (Cancel / Archive space); confirmed: toast "Archived Onboarding", gone from the sidebar and the Library cards, listed under Archived spaces; #doc/test-welcome reads | pass | docs-library-shots/batch-a/SH21-archive-confirm.jpg; DOM read; re-seeded after |  |
+| SH21 | Space home › Archive | Onboarding, admin | a red `confirmModal`; confirmed: it leaves the sidebar and the Library; `#doc/test-welcome` still reads | brief (archive soft); CLAUDE.md (confirmModal) | red confirmModal "Archive Onboarding?" (Cancel / Archive space); confirmed: toast "Archived Onboarding", gone from the sidebar and the Library cards, listed under Archived spaces; #doc/test-welcome reads — Batch C: the same, but the dialog read "Its 1 page stay as they are" (a finding outside the expected: a fixed plural verb). Fixed: "Its 1 page stays as it is"; Engineering's reads "Its 45 pages stay as they are" | pass | docs-library-shots/batch-a/SH21-archive-confirm.jpg; DOM read; re-seeded after; docs-library-shots/batch-c/SH21-archive-confirm-1-page.jpg | 05a49958 (spaces, Batch C finding) |
 | SH22 | Space home (archived) | space-archived via `#library/old-wiki`; admin, then member | readable with its pages; no way to add a page; an admin can restore it, a member cannot | brief (archive soft: no NEW page; admin restore) | trimmed by owner 2026-10-17 | skipped | | |
 | SH23 | Space home | `#library/test-nope` | a "no such space" sentence; no crash | CLAUDE.md invariant 7 | the sentence "There is no space here…" — but beside it a docs pane stuck on "Loading pages…" for good (cause: libraryFrame drew the pane whenever the org has spaces). After the fix: the sentence alone; real spaces still draw their pane | fail → fixed | docs-library-shots/batch-a/SH23-before-fix-pane-loading-forever.jpg, docs-library-shots/batch-a/SH23-unknown-space-after-fix.jpg; console clean | 76714599 (tree) |
 | SH24 | Space home › All pages | tree-many (Product, 31 pages) | every page listed (Release notes' 25 children indented under it); the page scrolls, no overflow | design §4 | trimmed by owner 2026-10-17 | skipped | | |
@@ -632,7 +806,7 @@ Unless the state says otherwise: org `test-docs`, desktop 1512 px, light.
 | RV9 | Review › progress | 2 decided | "2 of N reviewed"; the button "Approve k left" | design §9 | trimmed by owner 2026-10-17 | skipped | | |
 | RV10 | Review › Approve all | the import group | every undecided page approved; verdict overlay "✓ Approved", the card collapses and goes (~330ms); toast "‹k› pages are now live in Engineering" + "Open Engineering"; DB versions promoted, current_version raised, parents applied, doc_links written | design §9; brief | Approve 3 left → the group leaves; toast "3 pages are now live in Engineering · Open Engineering"; badge 10 → 7; D1: the 3 new pages promoted (current_version 1, parents test-getting-started / test-imp-onboarding), test-local-setup v2 promoted (cur 2); test-deploys v2 (agent's v3 on top) still staged; no [[links]] in these bodies, so no doc_links rows. The ~330 ms verdict overlay was not captured — B2 rerun (fresh seed): Approve all 4 → the group leaves; toast "4 pages are now live in Engineering · Open Engineering"; Review 11 → 7; D1: the 3 new pages promoted (cur 1, parents test-getting-started / test-imp-onboarding), test-local-setup cur 2; test-deploys v2 (the agent's v3 on top) still staged, cur 1 | pass | docs-library-shots/batch-b/RV10-approve-all-toast.jpg; D1; docs-library-shots/batch-b2/RV10-approve-all-toast.jpg; D1 |  |
 | RV11 | Review › Approve all | test-deploys (agent's v3 on top of the import's v2) | Approve all leaves test-deploys alone: still live v1, both staged | code `src/imports/runs.ts` (someone else's change on top) | trimmed by owner 2026-10-17 | skipped | | |
-| RV12 | Review › Reject all | the import group | `confirmModal` "Reject ‹k› pages from test-handbook-v2.zip?" / "They won't be added to Engineering. The import stays in Imports, so you can run it again later." / Cancel + red "Reject ‹k› pages" | design §9; CLAUDE.md (confirmModal) | confirmModal "Reject 4 pages from test-handbook-v2.zip?" / "They won't be added to Engineering. The import stays in Imports, so you can run it again later." / Cancel + red "Reject 4 pages" — B2 rerun: the same dialog, word for word | pass | docs-library-shots/batch-b/RV12-reject-all-confirm.jpg; docs-library-shots/batch-b2/RV12-reject-all-confirm.jpg |  |
+| RV12 | Review › Reject all | the import group | `confirmModal` "Reject ‹k› pages from test-handbook-v2.zip?" / "They won't be added to Engineering. The import stays in Imports, so you can run it again later." / Cancel + red "Reject ‹k› pages" | design §9; CLAUDE.md (confirmModal) | confirmModal "Reject 4 pages from test-handbook-v2.zip?" / "They won't be added to Engineering. The import stays in Imports, so you can run it again later." / Cancel + red "Reject 4 pages" — B2 rerun: the same dialog, word for word — Batch C: the same words; but opened with Enter the focus stayed on Reject all behind the modal (a finding outside the expected). Fixed: the red "Reject 4 pages" takes the focus, Escape gives it back to that group's Reject all (import and agent groups) | pass | docs-library-shots/batch-b/RV12-reject-all-confirm.jpg; docs-library-shots/batch-b2/RV12-reject-all-confirm.jpg; docs-library-shots/batch-c/RV12-reject-all-confirm.jpg, docs-library-shots/batch-c/RV12-reject-all-focus.jpg; document.activeElement | 1538fa3c (import, Batch C finding) |
 | RV13 | Review › Reject all | Cancel | nothing changes | design §9 | trimmed by owner 2026-10-17 | skipped | | |
 | RV14 | Review › Reject all | confirm | the group leaves; toast "‹k› pages rejected" + "Open Engineering"; DB status rejected, bodies kept (soft) | design §9; brief (soft) | the group leaves; toast "4 pages rejected · Open Engineering"; badge 11 → 7; D1: 6302's 4 versions `rejected`, bodies kept; test-deploys v2 left staged — B2 rerun: group leaves; toast "4 pages rejected · Open Engineering"; Review 11 → 7, Imports 0; D1: the 4 versions of 6302 rejected, bodies kept (29–43 B); test-deploys v2 still staged | pass | docs-library-shots/batch-b/RV14-rejected-toast.jpg; D1; docs-library-shots/batch-b2/RV14-rejected-toast.jpg; D1 |  |
 | RV15 | Review › agent group | review-agent-group | Approve all / Reject all on the agent's group; its confirm body "The agent's changes are thrown away. The live pages stay as they are." | design §9 | trimmed by owner 2026-10-17 | skipped | | |
@@ -772,7 +946,7 @@ design §0.1; CLAUDE.md web UI rules.
 | ENV26 | New page | keyboard | location picker (open, choose, Done), templates, Title, Create | prompt | trimmed by owner 2026-10-17 | skipped | | |
 | ENV27 | Import › Where | 360 px, dark | as above | prompt | stepper (numbers past the current step), cards one per row, the pick ring + check; no overflow | pass | docs-library-shots/batch-b/ENV27-import-where-360-dark.png |  |
 | ENV28 | Import › Where | desktop, dark | as above | prompt | stepper and cards readable; no overflow | pass | docs-library-shots/batch-b/ENV28-import-where-dark.jpg |  |
-| ENV29 | Import › Where | keyboard | space cards, tree rows, Continue | prompt | Tab reaches the 6 cards (2px ring), Space picks one (focus kept, aria-checked), then Top level, each tree row and its "Show the pages under …" chevron (Enter expands; Enter on a row picks it: "Pages will go in Engineering › Architecture"), Cancel, Continue; Enter on Continue → Files. Note: after a step change the focus drops to `<body>` — B2: after a step change the focus is on the new step's heading (a8202419): Enter on Continue → "Add your files" focused, Tab → Choose files | pass | focus log |  |
+| ENV29 | Import › Where | keyboard | space cards, tree rows, Continue | prompt | Tab reaches the 6 cards (2px ring), Space picks one (focus kept, aria-checked), then Top level, each tree row and its "Show the pages under …" chevron (Enter expands; Enter on a row picks it: "Pages will go in Engineering › Architecture"), Cancel, Continue; Enter on Continue → Files. Note: after a step change the focus drops to `<body>` — B2: after a step change the focus is on the new step's heading (a8202419): Enter on Continue → "Add your files" focused, Tab → Choose files | pass | focus log | 8ec54eed (the step heading's ring, Batch C full suite) |
 | ENV30 | Import › Files | 360 px, dark | as above | prompt | trimmed by owner 2026-10-17 | skipped | | |
 | ENV31 | Import › Files | desktop, dark | as above | prompt | trimmed by owner 2026-10-17 | skipped | | |
 | ENV32 | Import › Files | keyboard | Choose files, remove ×, Back, Check the files | prompt | trimmed by owner 2026-10-17 | skipped | | |

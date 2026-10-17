@@ -22,7 +22,7 @@ vi.mock("../web/src/markdown", () => ({
 import { render, initialState, type AppState } from "../web/src/render";
 import {
   spaceTile, spaceDialog, spaceHomeView, libraryHomeView, libraryWhen, blankSpaceDraft, duplicateOf, spacePositionDropdown,
-  SPACE_ICON_PATHS, FIRST, type SpaceHomeProps,
+  archiveDialog, SPACE_ICON_PATHS, FIRST, type SpaceHomeProps,
 } from "../web/src/library";
 import { initialDropdownUi } from "../web/src/dropdown";
 import { SPACE_ICONS, archivePageText, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
@@ -339,9 +339,21 @@ describe("the owners and Archive dialogs", () => {
     expect(html).toContain('data-confirm-tone="danger"');
     expect(render(s("member", { archive: { busy: false, error: null } }))).not.toContain("Archive Engineering?");
   });
+  it("archive: the sentence agrees with the page count — one page stays as it is (case SH21, Batch C)", () => {
+    const ask = { busy: false, error: null };
+    expect(archiveDialog({ ...ENG, pages: 1 }, ask)).toContain("Its 1 page stays as it is, and an admin can restore it from the Library.");
+    expect(archiveDialog({ ...ENG, pages: 3 }, ask)).toContain("Its 3 pages stay as they are, and an admin can restore it from the Library.");
+  });
 });
 
 describe("the Create space dialog's focus (case CS1)", () => {
+  it("Create / Edit space is the design's 480 px dialog; the owners and archive dialogs keep the confirm's 420 (case CS1, Batch C)", () => {
+    const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.:()#]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule("#lib-space.cnpy-cmodal-box")).toContain("width:min(480px, 100%)");
+    expect(rule(".cnpy-cmodal-box")).toContain("width:min(420px, 100%)");
+    expect(css).not.toMatch(/#lib-(owners|archive)\.cnpy-cmodal-box \{[^}]*width/);
+  });
+
   it("New space opens the dialog with Name focused at once — no animation frame (a hidden tab never paints one)", () => {
     const focused: string[] = [];
     const mount = { querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
