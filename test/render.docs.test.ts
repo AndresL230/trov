@@ -98,7 +98,7 @@ describe("the docs pane", () => {
     // Tree order; Architecture › API › Authentication open (above the active page), Getting started closed.
     const order = [...html.matchAll(/data-dtree="([^"]+)" data-depth="(\d)"/g)].map((m) => `${m[1]}:${m[2]}`);
     expect(order).toEqual(["start:0", "arch:0", "api:1", "auth:2", "sso:3", "rate:2", "long:0"]);
-    expect(html).toContain('style="padding-left:34px"');                    // depth 2: 6 + 28
+    expect(html).toContain('style="padding-left:34px;--dp-in:32px"');      // depth 2: 6 + 28; the tint starts at the indent
     expect(html.match(/class="cnpy-dp-guide"/g)?.length).toBe(1 + 2 + 3 + 2);
     expect(html).toMatch(/class="cnpy-dp-row cnpy-hitbox is-active"[^>]*data-dtree="auth"/);
     expect(html).toContain('data-act="openDoc" data-arg="auth" class="cnpy-hit" aria-label="Authentication" aria-current="page"');

@@ -74,7 +74,7 @@ function row(pg: LibraryPageDTO, depth: number, hasKids: boolean, isOpen: boolea
         <button type="button" role="menuitem" data-act="treeNew" data-arg="${attr(pg.slug)}" class="cnpy-dp-mi">New page inside</button>
       </div>`
     : "";
-  return `<div class="cnpy-dp-row ${HITBOX}${active ? " is-active" : ""}${depth === 0 ? " is-top" : ""}${menuOpen ? " has-menu" : ""}" data-morph-key="dp:${attr(pg.slug)}" data-dtree="${attr(pg.slug)}" data-depth="${depth}" style="padding-left:${pad}px">
+  return `<div class="cnpy-dp-row ${HITBOX}${active ? " is-active" : ""}${depth === 0 ? " is-top" : ""}${menuOpen ? " has-menu" : ""}" data-morph-key="dp:${attr(pg.slug)}" data-dtree="${attr(pg.slug)}" data-depth="${depth}" style="padding-left:${pad}px;--dp-in:${pad - 2}px">
     ${guides}${chev}
     <span class="cnpy-dp-t">${esc(pg.title)}</span>${statusShape(pg)}
     <span class="cnpy-dp-acts">
