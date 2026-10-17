@@ -81,6 +81,7 @@ import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 import { spacesApp } from "./spaces/routes";
 import { resolveSpaceAlias } from "@shared/docs-core";
 import { spaceState } from "./tools/spaces";
+import { DocTreeError, moveDoc } from "./tools/doc-tree";
 
 export const app = new Hono<AppEnv>();
 
@@ -222,6 +223,8 @@ tenantApi.route("/spaces", spacesApp);
 // inside its sub-app): a request that carries an Authorization header is refused outright, so no future
 // change to `sessionGate` can turn a bearer into a confirmation.
 for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+// Moving a page in its space's tree is a person's direct write too (any signed-in member; never MCP).
+tenantRoot.use("/doc/:slug/move", cookieOnly);
 tenantApi.use("/prompts/:slug/publish", cookieOnly);
 
 tenantRoot.post("/ingest", async (c) => {
@@ -514,6 +517,8 @@ const DocPropose = z.object({
   body: z.string().refine((b) => b.trim().length > 0, "body required"),
   summary: z.string().max(300).optional(),
   slug: z.string().regex(/^[a-z0-9][a-z0-9_/-]*$/).optional(),
+  // The page it goes under (New page's "Goes in"): checked by the gate; an invalid one is ignored and said.
+  parent_slug: z.string().trim().max(200).optional(),
 });
 tenantApi.post("/docs/propose", async (c) => {
   const parsed = DocPropose.safeParse(await c.req.json().catch(() => null));
@@ -530,13 +535,13 @@ tenantApi.post("/docs/propose", async (c) => {
   if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.var.ctx,
-    { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
+    { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high", ...(d.parent_slug ? { parent_slug: d.parent_slug } : {}) },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
   if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
   const proposal = (await list_proposals(c.var.ctx)).find((p) => p.slug === slug && p.version === result.version) ?? null;
-  return c.json({ ok: true, proposal });
+  return c.json({ ok: true, proposal, slug, ...(result.parent_ignored ? { parent_ignored: result.parent_ignored } : {}) });
 });
 
 // Human confirmation (session-gated): promote a staged doc version into the live doc.
@@ -549,6 +554,21 @@ tenantRoot.post("/doc/:slug/promote", async (c) => {
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+// A person moves a page in its space's tree (0081_docs_library; src/tools/doc-tree.ts): into / before / after another
+// page of the SAME space, or to the end of its top level — `planMove`, the rule the docs pane's optimistic drop runs
+// too, with the renumber in one batch. Any signed-in member (the design gates no one); cookie only. A refusal is
+// `{ error: code, message }`: `invalid` 400, `not_found` 404, `cycle` / `too_deep` / `self` / `other_space` /
+// `archived` 409.
+tenantRoot.post("/doc/:slug/move", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  try {
+    return c.json(await moveDoc(c.var.ctx, c.req.param("slug"), body));
+  } catch (e) {
+    if (e instanceof DocTreeError) return c.json({ error: e.code, message: e.message }, e.status);
+    throw e;
   }
 });
 

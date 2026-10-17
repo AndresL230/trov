@@ -253,6 +253,8 @@ const TENANT: Record<string, Row> = {
   "GET /search": { query: "?q=CANARY" }, "GET /search/quick": { query: "?q=CANARY" },
   "GET /needs-triage": {}, "GET /adrs": {}, "GET /proposals": {},
   "POST /doc/:slug/promote": J({ version: 2 }), "POST /doc/:slug/reject": J({ version: 2 }),
+  // The page tree (0081_docs_library): A's doc in the path is no page of B's — 404, nothing moved.
+  "POST /doc/:slug/move": J({ target: "top" }),
   "POST /adr/:id/ratify": J({}), "POST /adr/:id/reject": J({}),
   "POST /needs-triage/:id/discard": J({}), "POST /needs-triage/:id/assign": J({ type: "feed" }),
   "GET /identity-tasks": {}, "POST /identity-tasks/:login/map": J({ person: ALICE }),

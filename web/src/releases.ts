@@ -121,11 +121,12 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0081_docs_library` (merging to main applies it). Additive; its header has the rollback. It gives every organization three spaces and moves every non-Product doc to Engineering.",
-      "Publish the Trov plugin 0.10.0 (skill text only): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working: `technical` still means Engineering.",
+      "Publish the Trov plugin 0.10.1 (skill text only): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working: `technical` still means Engineering.",
     ],
     patches: {
       added: [
         "The Library: spaces for a team or a topic, a home for each, and an admin's Create space, with agents placing pages through `list_spaces` (#TBD)",
+        "Pages nest in a tree you rearrange by dragging, link with [[page]], show their contents and backlinks, and start from a template (#TBD)",
       ],
       changed: [],
       fixed: [],

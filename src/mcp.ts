@@ -181,7 +181,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "propose_doc_update",
-    "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space (a slug from list_spaces, e.g. 'engineering' or 'product'; defaults 'engineering') to place a NEW doc — an unknown or archived space routes to needs_triage, and an existing doc keeps its own space — and force to stage an identical body.",
+    "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space (a slug from list_spaces, e.g. 'engineering' or 'product'; defaults 'engineering') to place a NEW doc — an unknown or archived space routes to needs_triage, and an existing doc keeps its own space — parent_slug (another page's slug in the same space) to put the page under that page in the space's tree — a new doc goes there at once, an existing doc when this version is promoted; a parent that is no valid place (missing, another space, under the page itself, more than 10 levels deep) is ignored and the result says so in parent_ignored — and force to stage an identical body. Link to another page in the body with [[its-slug]] or [[its-slug|the words shown]].",
     {
       slug: z.string(),
       section: z.string(),
@@ -190,6 +190,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
       change_summary: z.string(),
       confidence: z.enum(["high", "low"]),
       space: z.string().optional(),
+      parent_slug: z.string().optional(),
       base_version: z.number().optional(),
       force: z.boolean().optional(),
     },

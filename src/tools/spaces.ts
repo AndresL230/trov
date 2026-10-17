@@ -99,6 +99,14 @@ function pageDto(p: PageRow, bySlug: Map<string, PageRow>): LibraryPageDTO {
   };
 }
 
+/** Every page of the org (or of one space) as the Library lists it — metadata, place in the tree, status; never a
+ *  body. The doc page's tree, links and backlinks resolve against it (src/tools/doc-tree.ts). */
+export async function libraryPages(ctx: TenantContext, space?: string): Promise<LibraryPageDTO[]> {
+  const pages = await pageRows(ctx, space);
+  const bySlug = new Map(pages.map((p) => [p.slug, p]));
+  return pages.map((p) => pageDto(p, bySlug));
+}
+
 const iconOf = (v: string): SpaceIcon => (isSpaceIcon(v) ? v : NEW_SPACE_ICON);
 const colorOf = (v: string): SpaceColor => (isSpaceColor(v) ? (v.toLowerCase() as SpaceColor) : NEW_SPACE_COLOR);
 

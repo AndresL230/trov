@@ -217,3 +217,62 @@ export function ownedBy(names: readonly string[]): string {
   if (names.length === 1) return `Owned by ${names[0]}`;
   return `Owned by ${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
+
+// ── the page tree and the doc page (the tree PR; docs-library.md › The page tree) ──
+
+/** `POST /doc/:slug/move`'s body: put the page into / before / after another page of its space, or at the end of
+ *  the space's top level. */
+export interface DocMoveBody { target: "into" | "before" | "after" | "top"; ref?: string }
+
+/** One page's place after a move — the move's answer carries every page of the space it touched. */
+export interface DocTreePlace { slug: string; parent_slug: string | null; tree_rank: number | null }
+
+/** `POST /doc/:slug/move`'s answer: where the page went, and the new place of every page it renumbered. */
+export interface DocMoveResult { ok: true; slug: string; parent_slug: string | null; tree_rank: number; places: DocTreePlace[] }
+
+/** The move route's refusal codes (`{ error: code, message }`): a bad body (400), no such page (404), the rules of
+ *  the tree (409: `cycle`, `too_deep`, `self`, `other_space`), or a space that is archived (409). */
+export type DocMoveErrorCode = "invalid" | "not_found" | "cycle" | "too_deep" | "self" | "other_space" | "archived";
+
+/** A page another page points at (a `[[slug]]` that resolves), or one that points here (a backlink). */
+export interface DocPageRef {
+  slug: string;
+  title: string;
+  space: string;
+  /** The titles above it in its space, top first ([] = top level). */
+  path: string[];
+  authority: PageAuthority;
+}
+
+/** The doc page's rail: who owns it, who wrote the version shown, its version, and where it was imported from. */
+export interface DocPageInfo {
+  /** Who proposed its first version (0035) — the page's owner. */
+  owner: string | null;
+  /** Who wrote the version shown (the live one; the newest staged one for a page not yet approved), and when. */
+  edited_by: string | null;
+  edited_at: string | null;
+  /** The live version (0 = never approved). */
+  version: number;
+  /** The newest version waiting in Review, when it is newer than the live one. */
+  pending_version: number | null;
+  /** The Markdown file the version shown was imported from (an import run), else null. */
+  imported_from: { path: string; file_name: string | null } | null;
+}
+
+/** `GET /doc/:slug`'s `page`: the doc's place in its tree, its links both ways, and the rail. */
+export interface DocPageDTO {
+  authority: PageAuthority;
+  parent_slug: string | null;
+  /** The pages above it, top first (the breadcrumb). */
+  ancestors: { slug: string; title: string }[];
+  /** The pages right under it, in tree order ("Pages under ‹Title›"). */
+  children: LibraryPageDTO[];
+  /** The body shown: the live body, or — for a page never approved — its newest staged version's. */
+  body: string;
+  /** The pages its `[[slug]]` links reach (those that exist), and the slugs of those that reach nothing. */
+  links: DocPageRef[];
+  broken_links: string[];
+  /** The live pages whose live body links here ("Linked from"). */
+  backlinks: DocPageRef[];
+  info: DocPageInfo;
+}

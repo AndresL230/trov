@@ -117,7 +117,7 @@ describe("RELEASES — the data", () => {
     // Unreleased is the Docs Library batch: its one migration and the plugin it needs.
     if (RELEASES[0].unreleased) {
       expect(ops("unreleased")).toContain("0081_docs_library");
-      expect(ops("unreleased")).toMatch(/plugin 0\.10\.0/);
+      expect(ops("unreleased")).toMatch(/plugin 0\.10\.1/);
     }
     // 0.11 (formerly 0.34) is #178 cut together with #186 / #187: its own migrations to 0068, the App events, the plugin.
     expect(ops("0.11")).toMatch(/0058_server_ai/);

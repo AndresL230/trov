@@ -114,6 +114,9 @@ A pasted token (`trov_mcp_…`, or an older `canopy_mcp_…`) is the old shape: 
 - **`list_spaces`** — the organization's Library spaces (`slug`, `name`, `description`, page count). A doc
   lives in one space; `space` in `propose_doc_update`, `list_docs` and `query` takes a slug from here. The
   spaces are the organization's own (admins create and archive them), so read them rather than assuming.
+  Inside a space the pages form a tree: `get_doc` shows a doc's `parent_slug`, and `propose_doc_update`
+  takes one to place a page under another (people move pages by dragging them in the web app). Pages link
+  to each other with `[[slug]]` in the body.
 - **`list_docs`** — every doc with its body, optionally narrowed by `section` and/or `space`.
 - **`get_feed`** — the activity feed (author / tags / since / limit filters); each entry carries its `tags`.
 - **`list_tags`** — the organization's tag list: the only tags a feed entry may carry, each with what

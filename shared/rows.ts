@@ -67,6 +67,12 @@ export interface DocVersionRow {
   base_version: number | null;   // the version this edit was based on (0009)
   change_kind: "new" | "edit" | "rewrite" | null; // server-classified delta size (0009)
   low_confidence: number;        // 1 = staged-and-flagged (low-conf on an existing slug) (0009)
+  /** The parent page the proposal asked for (0081_docs_library), applied on promote if still valid. Optional so a
+   *  fixture written before the tree need not name it. */
+  parent_slug?: string | null;
+  /** The Markdown import run that staged it (doc_imports.id) and the file's path in it — server-set only. */
+  import_id?: number | null;
+  import_path?: string | null;
 }
 
 /** A doc version without its body — `GET /doc/:slug`'s `versions` (the reader's Version history).

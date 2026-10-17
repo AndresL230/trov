@@ -3,7 +3,8 @@ import { tagsOfItems } from "./tags";
 import { isFeedImportance, type FeedImportance } from "@shared/ai-core";
 import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
-import { resolveSpaceAlias } from "@shared/docs-core";
+import { resolveSpaceAlias, type DocPageDTO } from "@shared/docs-core";
+import { readDocPage } from "./doc-tree";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -38,18 +39,22 @@ export async function get_doc(
 export async function get_doc_page(
   ctx: TenantContext,
   slug: string
-): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[] } | null> {
+): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[]; page: DocPageDTO } | null> {
   const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
   if (!doc) return null;
-  const versions = await all<DocVersionMetaRow>(
-    ctx,
-    `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence
-       FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
-    ctx.orgId,
-    slug
-  );
-  const tags = (await tagsOfItems(ctx, "doc", [slug])).get(slug) ?? [];
-  return { doc, versions, tags };
+  const [versions, tagMap, page] = await Promise.all([
+    all<DocVersionMetaRow>(
+      ctx,
+      `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence, parent_slug, import_id, import_path
+         FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
+      ctx.orgId,
+      slug
+    ),
+    tagsOfItems(ctx, "doc", [slug]),
+    // The doc page (the tree PR of 0081_docs_library): its place in the tree, its links both ways, the rail.
+    readDocPage(ctx, doc),
+  ]);
+  return { doc, versions, tags: tagMap.get(slug) ?? [], page };
 }
 
 /** One version of a doc, body included (`GET /doc/:slug/versions/:version`) — read only when a
