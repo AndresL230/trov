@@ -47,7 +47,7 @@ import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, sk
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
-import { linksView, linkDetailView, linkCancelModal, handoffsTabBar, NO_LINK_BOXES, type LinkBoxes, type HandoffsTab } from "./links";
+import { linksView, linkDetailView, linkCancelModal, handoffsTabBar, NO_LINK_BOXES, type LinkBoxes, type HandoffsTab, type LinkStart } from "./links";
 import type { LinkDetail, LinkSideName } from "@shared/links";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
@@ -455,6 +455,8 @@ export interface AppState {
   linkNoteSide: LinkSideName;
   /** A person step or a note in flight on the link's page. */
   linkBusy: boolean;
+  /** Relay › Links' "Start a link" card: its draft while it is open, else null. */
+  linkStart: LinkStart | null;
   /** Cancel on a SENT request: its confirm modal is open (and `linkCancelBusy` while the write runs). */
   linkCancelArm: boolean;
   linkCancelBusy: boolean;
@@ -641,7 +643,7 @@ export function initialState(): AppState {
     nh: blankHandoff(),
     links: { status: "idle", data: NO_LINK_BOXES },
     linkDetail: { status: "idle", data: null },
-    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkCancelArm: false, linkCancelBusy: false,
+    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkStart: null, linkCancelArm: false, linkCancelBusy: false,
     promptList: { status: "idle", data: [] },
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
     promptSlug: null,
@@ -995,7 +997,7 @@ function header(s: AppState): string {
     : "";
   const accentNew = (act: string, label: string) =>
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
-  const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
+  const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "links" ? accentNew("linkStartOpen", "Start a link") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
 
   // The Roadmap header: New sprint (it opens the panel at the top of whichever tab is
   // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).
@@ -2963,7 +2965,7 @@ function screenBody(s: AppState): string {
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "handoffs") });
-    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links") });
+    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links"), start: s.linkStart });
     case "link": return linkDetailView({
       status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
       draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,
@@ -3066,6 +3068,9 @@ function appView(s: AppState): string {
     : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
     // A link's page, by link: its note composer must keep its focus and text while the count under it updates.
     : s.screen === "link" ? `link:${s.linkId ?? ""}`
+    // The Links tab too: its "Start a link" card holds a form and a running line (link-line.ts) that a rebuild
+    // would restart per keystroke.
+    : s.screen === "links" ? "links"
     // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
     // the conversation its scroll, and nothing that already entered replays its entrance).
     : s.screen === "ask" ? "ask"

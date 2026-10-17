@@ -7,7 +7,12 @@ import type { HandoffView } from "../shared/handoffs";
 import {
   linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal, handoffsTabBar,
   linkSessionHtml, noteAuthorHtml, askThreadOf, LINKS_EMPTY, NO_LINK_BOXES, type LinkAction, type LinkDetailProps,
+  linkStartCard, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, linkStartSpec, type LinkStart,
 } from "../web/src/links";
+import { linkLineState, linkLine, LINE_W, LINE_H } from "../web/src/link-line";
+import linkLineSrc from "../web/src/link-line.ts?raw";
+import orbSrc from "../web/src/thinking-orb.ts?raw";
+import cssSrc from "../web/src/trov.css?raw";
 import { handoffsView } from "../web/src/handoffs";
 import { render, initialState, handoffBadge, handoffOnlyBadge, linkBadge, type AppState } from "../web/src/render";
 import { parseHash, hashForRoute, pageKey, sameRoute } from "../web/src/hash";
@@ -373,5 +378,180 @@ describe("the sidebar's Relay badge counts handoffs + link requests waiting for 
     expect(handoffsForMe([hoff(1)], "andres")).toHaveLength(1);
     expect(mainSrc).toContain('listed("links", waiting.length)');
     expect(mainSrc).toMatch(/listed\("handoffs", handoffsForMe\(data, state\.me\?\.handle \?\? ""\)\.length\)/);
+  });
+});
+
+// ── the link line: two orbs and the particles between them (link-line.ts) ──────
+describe("the link line — the visual follows the state; the words still carry it", () => {
+  const attrs = (html: string) => ({
+    left: html.match(/data-ll-left="([^"]+)"/)?.[1], right: html.match(/data-ll-right="([^"]+)"/)?.[1],
+    flow: html.match(/<canvas[^>]*data-ll-flow="([^"]+)"/)?.[1],
+  });
+
+  it("draft: a flicker from the requester, the recipient asleep; requested: a one-way trickle to a listening orb", () => {
+    expect(linkLineState(link({ state: "draft" }))).toMatchObject({ left: "awake", right: "asleep", flow: "flicker" });
+    expect(linkLineState(link({ state: "requested", requester: side("andres") }))).toMatchObject({ left: "hollow", right: "calling", flow: "trickle" });
+  });
+
+  it("open: flowing both ways; a side with no session yet is a hollow ring", () => {
+    expect(linkLineState(link())).toMatchObject({ left: "awake", right: "hollow", flow: "flow" });
+    expect(linkLineState(link({ recipient: side("jose", { kind: "chat", session: "c" }) }))).toMatchObject({ left: "awake", right: "awake", flow: "flow" });
+  });
+
+  it("ended: the particles stop and both orbs dim (a still frame)", () => {
+    for (const st of ["declined", "cancelled", "expired", "closed"] as const) {
+      expect(linkLineState(link({ state: st, closed_at: T0 }))).toMatchObject({ left: "dim", right: "dimhollow", flow: "stopped" });
+    }
+  });
+
+  it("a note: the count and whose side wrote the last one (a growing count sends a pulse from that side)", () => {
+    const l = link({ notes: [note({ id: 1, side: "recipient" }), note({ id: 2, side: "requester", author: "andres" })] });
+    expect(linkLineState(l)).toMatchObject({ notes: 2, last: "requester" });
+    const html = page(l, "andres");
+    expect(html).toContain('data-ll-notes="2"');
+    expect(html).toContain('data-ll-last="requester"');
+  });
+
+  it("the page head draws it: an aria-hidden canvas sized in the template, the mode in data attributes, the words kept", () => {
+    const html = page(link({ state: "requested" }), "jose");
+    expect(html).toMatch(/<canvas class="cnpy-ll-cv" data-linkline [^>]*width="\d+" height="\d+" aria-hidden="true">/);
+    expect(attrs(html)).toEqual({ left: "awake", right: "calling", flow: "trickle" });
+    expect(html).toContain('data-link-line data-flow="trickle"');
+    // The words under the orbs carry every meaning: who, which side, which session; the state's mark stays.
+    expect(text(html)).toContain("coding session on feat/auth");
+    expect(text(html)).toContain("waiting for a session");
+    expect(text(html)).toContain("Requested");
+    const ended = page(link({ state: "declined", decided_at: T0 }), "andres");
+    expect(attrs(ended)).toEqual({ left: "dim", right: "dimhollow", flow: "stopped" });
+    expect(text(ended)).toContain("Declined");
+  });
+
+  it("the canvas never changes size on a repaint: its width / height are the template's, the CSS keeps its aspect", () => {
+    const a = linkLine({ left: "awake", right: "hollow", flow: "flow" });
+    const b = linkLine({ left: "dim", right: "dim", flow: "stopped" });
+    const size = (h: string) => h.match(/width="(\d+)" height="(\d+)"/)?.slice(1);
+    expect(size(a)).toEqual(size(b));
+    expect(size(a)).toEqual([String(LINE_W), String(LINE_H)]); // 1× outside a browser
+    expect(cssSrc).toContain(`aspect-ratio:${LINE_W} / ${LINE_H}`);
+  });
+
+  it("one loop: it paints on the thinking orb's rAF loop and clock, and reduced motion is one still frame", () => {
+    expect(linkLineSrc).toContain('addOrbPainter({ selector: "canvas[data-linkline]"');
+    expect(linkLineSrc).not.toMatch(/requestAnimationFrame\(|setInterval\(/);
+    expect(orbSrc).toMatch(/if \(more && !still\) raf = requestAnimationFrame\(tick\)/);
+    // A still paint draws the fixed scatter and asks for no more frames.
+    expect(linkLineSrc).toMatch(/if \(still\) \{\s*ps = stillParticles/);
+    expect(linkLineSrc).toContain("const moving = !still &&");
+    expect(cssSrc).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-ll-face > \.cnpy-av, \[data-link-start\] \{ animation:none; \} \}/);
+    // The ink is the theme's --accent; no colour of its own.
+    expect(linkLineSrc).toContain("inkOf(c)");
+    expect(linkLineSrc).not.toMatch(/#[0-9a-f]{6}\b/i);
+  });
+});
+
+// ── Start a link (the card at the top of the Links tab) ──────────────────────────
+describe("Start a link — the card", () => {
+  const card = (d: Partial<LinkStart> = {}, me = "andres") => linkStartCard({ draft: { ...blankLinkStart(), ...d }, me, persons });
+  const sendBtn = (html: string) => html.match(/<button type="button" data-act="linkStartSend"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
+
+  it("the header's Start a link opens it on the Links tab, which is patched in place (the form keeps its focus)", () => {
+    const me = { handle: "andres", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "acme", name: "Acme", role: "member" as const }], superadmin: false, pending_invites: 0 };
+    const base = { ...initialState(), view: "app", screen: "links", me, orgSlug: "acme", persons: { status: "ok", data: persons } } as AppState;
+    const closed = render(base);
+    expect(closed).toContain('data-morph="links"');
+    expect(closed).toContain('data-act="linkStartOpen"');
+    expect(closed).toContain("data-link-start-slot></div>");
+    const open = render({ ...base, linkStart: blankLinkStart() } as AppState);
+    expect(open).toContain("data-link-start ");
+    expect(open).toContain(">Start a link</h3>");
+  });
+
+  it("you on the left, them on the right, one line between; a segmented About and the reason with its count", () => {
+    const html = card();
+    expect(html.match(/<canvas[^>]*data-linkline/g)).toHaveLength(1);
+    expect(html).toContain('data-seg="link-start-kind"');
+    for (const w of ["Person", "Pull request", "Branch", "Ticket"]) expect(text(html)).toContain(w);
+    expect(html).toContain('maxlength="280"');
+    expect(text(html)).toContain("0 / 280");
+    expect(text(html)).toContain("You");
+    expect(text(html)).toContain("Who is it with?");
+    expect(html).not.toContain("<select");
+    expect(nestedButton(html)).toBe(false);
+  });
+
+  it("their orb wakes as it is filled in: asleep → named (their photo inside) → the line reaches further with a reason", () => {
+    expect(linkStartSpec(blankLinkStart(), "andres")).toMatchObject({ left: "awake", right: "asleep", flow: "preview", rate: 0 });
+    const named = { ...blankLinkStart(), person: "jose" };
+    expect(linkStartSpec(named, "andres")).toMatchObject({ right: "named", flow: "preview" });
+    expect(linkStartSpec({ ...named, reason: "x".repeat(40) }, "andres").rate).toBe(1);
+    const html = card({ person: "jose" });
+    expect(html).toMatch(/data-ll-face="right"><div class="cnpy-av"[^>]*>JO<img[^>]*src="https:\/\/example.com\/jose.png"/);
+    expect(text(html)).toContain("@jose");
+    expect(html).toMatch(/data-act="linkStartPerson" data-arg="jose"[^>]*aria-pressed="true"/);
+    // Nothing picked: the right photo slot is there but hidden (the structure never changes).
+    expect(card()).toContain('data-ll-face="right" hidden>');
+  });
+
+  it("a PR, branch or ticket: Trov's searching globe and what it will look up, in words", () => {
+    const pr = { ...blankLinkStart(), kind: "pr" as const, ref: "180" };
+    expect(linkStartSpec(pr, "andres").right).toBe("seeking");
+    const html = card(pr);
+    expect(html).toContain('inputmode="numeric"');
+    expect(text(html)).toContain("PR #180&#39;s author");
+    expect(text(card({ kind: "branch", ref: "feat/x" }))).toContain("Whoever pushed feat/x");
+    expect(text(card({ kind: "ticket", ref: "#12" }))).toContain("Ticket #12&#39;s assignee");
+  });
+
+  it("the target: exactly one of person, pr, branch, ticket — or nothing while it is not valid", () => {
+    expect(linkStartTarget({ kind: "person", person: "jose", ref: "" })).toEqual({ person: "jose" });
+    expect(linkStartTarget({ kind: "person", person: "", ref: "" })).toBeNull();
+    expect(linkStartTarget({ kind: "pr", person: "jose", ref: "#180" })).toEqual({ pr: 180 });
+    expect(linkStartTarget({ kind: "ticket", person: "", ref: "12" })).toEqual({ ticket: 12 });
+    expect(linkStartTarget({ kind: "ticket", person: "", ref: "twelve" })).toBeNull();
+    expect(linkStartTarget({ kind: "branch", person: "", ref: " feat/x " })).toEqual({ branch: "feat/x" });
+  });
+
+  it("Send waits for a target and a reason; a link with yourself says it opens at once", () => {
+    expect(sendBtn(card({ person: "jose" }))).toContain("disabled");
+    expect(linkStartReady({ ...blankLinkStart(), person: "jose", reason: "Both in the session store." })).toBe(true);
+    const ready = sendBtn(card({ person: "jose", reason: "Both in the session store." }));
+    expect(ready).not.toContain("disabled");
+    expect(ready).toContain("Send request");
+    const self = card({ person: "andres", reason: "Two of my sessions." });
+    expect(sendBtn(self)).toContain("Open link");
+    expect(text(self)).toContain("Both sides are yours, so it opens at once.");
+    expect(sendBtn(card({ person: "jose", reason: "x", phase: "sending" }))).toContain("Sending…");
+  });
+
+  it("Send streams the particles across (a burst); sent lights their orb and says what happens next", () => {
+    expect(linkStartSpec({ ...blankLinkStart(), person: "jose", reason: "x", phase: "sending" }, "andres").flow).toBe("burst");
+    const sent = link({ id: 22, state: "requested", requester: side("andres"), recipient: side("jose") });
+    const d = { ...blankLinkStart(), person: "jose", reason: "x", phase: "sent" as const, sent };
+    expect(linkStartSpec(d, "andres")).toMatchObject({ left: "awake", right: "calling", flow: "trickle" });
+    const html = card(d);
+    expect(text(html)).toContain("Sent to Jose. They accept it in Relay");
+    expect(text(html)).toContain("join Trov link #22");
+    expect(html).toContain('data-act="openLink" data-arg="22"');
+    const self = card({ ...d, sent: { ...sent, state: "open", self: true, recipient: side("andres") } });
+    expect(text(self)).toContain("Link #22 is open: both sides are yours.");
+    expect(linkStartSpec({ ...d, sent: { ...sent, state: "open", self: true } }, "andres").flow).toBe("flow");
+  });
+
+  it("a refusal shows in place, in plain words, and both orbs dim", () => {
+    expect(linkStartRefusal("limit", "at most 5 open or requested links per person: close one first")).toBe("You already have 5 open or requested links. Close or cancel one below, then send this one.");
+    expect(linkStartRefusal("not_member", "jose is not a member of this organization")).toBe("Jose is not a member of this organization.");
+    expect(linkStartRefusal("not_found", "Trov has no PR #185")).toBe("Trov has no PR #185. Check the number or the branch's name, or pick the person instead.");
+    expect(linkStartRefusal(null, null)).toBe("Couldn't start this link. Try again in a moment.");
+    const d = { ...blankLinkStart(), person: "jose", reason: "x", phase: "refused" as const, error: "You already have 5 open or requested links." };
+    expect(linkStartSpec(d, "andres")).toMatchObject({ left: "dim", flow: "none" });
+    const html = card(d);
+    expect(html).toMatch(/<div data-link-start-error role="alert" style="[^"]*">You already have 5/);
+    // While nothing is refused the error slot is there, hidden.
+    expect(card({ person: "jose" })).toMatch(/data-link-start-error role="alert" hidden/);
+  });
+
+  it("main.ts posts the card's target and reason, and says a refusal in place (never a toast)", () => {
+    expect(mainSrc).toContain("startLink(target, d.reason.trim())");
+    expect(mainSrc).toContain('phase: "refused", error: linkStartRefusal(');
   });
 });

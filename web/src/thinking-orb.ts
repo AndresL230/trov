@@ -13,6 +13,10 @@
 //                             --accent (olive in dark), a dot's depth its opacity (orbs/engine/core.ts setInk). Colour
 //                             carries meaning only (the owner, 2026-10-16): no hue of its own for "working".
 //   reduced motion            one static frame per paint and no loop (the upstream's frame at 0.6s).
+//   other canvases            `addOrbPainter` puts another kind of canvas on the SAME loop and clock (the agent
+//                             link's two orbs and their particle stream, link-line.ts): one loop for the page, never
+//                             a second one per element. A painter answers whether it still wants frames; the loop
+//                             stops when none does, and rendering such a canvas schedules it again (`scheduleOrbs`).
 
 import { MODE_DRAWS } from "./orbs/engine/registry";
 import { setInk } from "./orbs/engine/core";
@@ -34,7 +38,7 @@ let raf = 0;
 
 /** The orb's ink: its theme's `--accent` (#rgb / #rrggbb / rgb()), read off the canvas; null when it has none. */
 const inks = new Map<string, readonly [number, number, number] | null>();
-function inkOf(c: HTMLCanvasElement): readonly [number, number, number] | null {
+export function inkOf(c: HTMLCanvasElement): readonly [number, number, number] | null {
   const raw = getComputedStyle(c).getPropertyValue("--accent").trim();
   if (inks.has(raw)) return inks.get(raw) ?? null;
   let rgb: [number, number, number] | null = null;
@@ -70,20 +74,31 @@ function paint(c: HTMLCanvasElement, tSec: number): void {
   setInk(null);
 }
 
+/** Another kind of canvas painted on the orbs' loop: `paint` draws one frame at `tSec` (the shared clock; `still`
+ *  under reduced motion, when `tSec` is fixed) and answers whether it wants another frame. */
+export interface OrbPainter { selector: string; paint: (c: HTMLCanvasElement, tSec: number, still: boolean) => boolean }
+const painters: OrbPainter[] = [{ selector: "canvas[data-orb]", paint: (c, t) => { paint(c, t); return true; } }];
+export function addOrbPainter(p: OrbPainter): void { if (!painters.some((x) => x.selector === p.selector)) painters.push(p); }
+
 function tick(): void {
   raf = 0;
-  const orbs = document.querySelectorAll<HTMLCanvasElement>("canvas[data-orb]");
-  if (!orbs.length) return;
   const still = reduced();
   const t = still ? 0.6 : performance.now() / 1000;
-  for (const c of orbs) if (c.getClientRects().length) paint(c, t);
-  if (!still) raf = requestAnimationFrame(tick);
+  let more = false;
+  for (const p of painters) {
+    for (const c of document.querySelectorAll<HTMLCanvasElement>(p.selector)) {
+      if (c.getClientRects().length) { if (p.paint(c, t, still)) more = true; }
+      else more = true; // not laid out yet (a hidden tab panel): look again next frame
+    }
+  }
+  if (more && !still) raf = requestAnimationFrame(tick);
 }
 
 /** Paint on the next frame (the markup is in the DOM by then), and keep painting while an orb is on the page. */
-function schedule(): void {
+export function scheduleOrbs(): void {
   if (browser && !raf) raf = requestAnimationFrame(tick);
 }
+const schedule = scheduleOrbs;
 
 /** A thinking orb: `state` is what it is doing, `size` one of the two tuned presets. Purely decorative when the
  *  words beside it say the same (`label: null`); otherwise an image named for its state. */

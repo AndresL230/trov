@@ -212,8 +212,29 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   Yours, Closed. A row: `#n`, the topic (`linkTopicLabel`; a branch in code), the reason, the other person
   (`personLink`; a self-link reads "You, two sessions"), the state's mark, when it last moved — a `hitArea` row.
   Each empty section says so in a sentence (`LINKS_EMPTY`).
-- **A link's page**: topic and reason; one card per side (a self-link's two name its two sessions) with the
-  person and the session in words — "coding session on `branch`", "web chat" (with "a web chat checks for
+- **Start a link** (`linkStartCard`): the header's "Start a link" (`linkStartOpen`) opens a card in a stable slot at
+  the top of the tab (the tab is `data-morph="links"`, so typing never rebuilds it). About is a `segmented()`
+  (Person / Pull request / Branch / Ticket); a person is a pick chip (the org's members, and "You, two sessions"),
+  a PR or ticket a number, a branch its name; Why is the reason (280, counted). Send → `POST /links` (`startLink`
+  in api.ts, `{ target, reason }`); the answer waits ~1.1 s for the particles to cross (not under reduced
+  motion), then the card says "Sent to X. They accept it in Relay…" with "Open link #n" — a link with yourself
+  "is open: both sides are yours". A refusal is said in place (`linkStartRefusal`: the 5-link cap, not a member,
+  Trov has no PR #n), never a toast.
+- **The link line** (`web/src/link-line.ts`): two orbs and the particles between them on ONE canvas — the
+  requester's on the left, the recipient's on the right — at the head of a link's page and in the start card. It
+  paints on the thinking orb's loop and clock (`thinking-orb.ts` `addOrbPainter`, one rAF loop for the page),
+  in the theme's `--accent` only; the canvas is `aria-hidden` and sized in the template (`data-ll-*` attributes
+  carry its mode, so a morph keeps it and its particles); a line with nothing moving is painted once and asks
+  for no frames; off-screen it is skipped; reduced motion is one still frame. By state (`linkLineState`):
+  draft = a flicker on the requester's side, recipient asleep; requested = a slow one-way trickle to a
+  "listening" orb; open = flowing both ways, a side with no session a hollow ring that sends little; a new note
+  = a pulse from its author's side (the far orb flares as it lands); declined / cancelled / expired / closed =
+  stopped, both orbs dim. The start card: you are awake (your photo inside); theirs is asleep, then their photo
+  in a bright ring (a person) or Trov's searching globe (a PR, branch or ticket), the stream reaching further as
+  the card fills in; Send is a burst, and their orb lights; a refusal dims both. The words under the orbs and
+  the state's mark carry every meaning — the line is never the only place a state is said.
+- **A link's page**: topic and reason; the link line with each side in words under its orb (a self-link's two
+  name its two sessions): the person and the session — "coding session on `branch`", "web chat" (with "a web chat checks for
   notes when you ask it to": that claude.ai polls on its own is not verified), "Ask thread" (a link to `#ask/<id>` on the viewer's OWN side
   only), or "waiting for a session". The notes thread says who wrote each ("@jose's agent", "@jose's Ask
   thread", "@jose"); bodies are text, never markup. A composer (1,000 characters, counted) for the viewer's own
@@ -233,4 +254,4 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   me (`handoffsForMe`, which My Work also counts — links stay out of it) plus link requests waiting for me (the
   Waiting box once loaded, else `GET /badges` `links`). `loadLinks` writes `listed("links", …)`.
 - Tests: `test/render.links.test.ts` (each state as each viewer, each side kind, a self-link, the note authors,
-  the join hint, the routes, the badge sum).
+  the join hint, the routes, the badge sum, the line per state, the start card and its refusals).

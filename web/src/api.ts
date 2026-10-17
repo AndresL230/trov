@@ -32,7 +32,7 @@ import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody, HandoffClaimResult,
 } from "@shared/handoffs";
-import type { LinkBox, LinkView, LinkDetail } from "@shared/links";
+import type { LinkBox, LinkView, LinkDetail, LinkTargetBody } from "@shared/links";
 
 export class Unauthorized extends Error {
   constructor() { super("unauthorized"); }
@@ -1037,6 +1037,12 @@ export async function listLinks(box: LinkBox): Promise<LinkView[]> {
 /** One link with its notes; a 404 (`not_found`) when it is not the caller's or does not exist. */
 export async function getLink(id: number): Promise<LinkDetail> {
   return (await getJson<{ link: LinkDetail }>(`/api/links/${id}`)).link;
+}
+/** A person starts a link from Relay › Links (the "Start a link" card): `requested` at once, or `open` when it is
+ *  with themself. A refusal (`not_member`, `not_found`, `limit`, `bad_request`) is an ApiError with the route's
+ *  `message` as its `detail`. */
+export async function startLink(target: LinkTargetBody, reason: string): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links`, { target, reason })).link;
 }
 /** A person step: Send (requester, draft), Accept / Decline (recipient, requested), Cancel (requester). */
 export async function linkStep(id: number, step: "send" | "accept" | "decline" | "cancel"): Promise<LinkView> {

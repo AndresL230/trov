@@ -76,6 +76,10 @@ export interface LinkNoteView {
 
 export interface LinkDetail extends LinkView { notes: LinkNoteView[] }
 
+/** What a person's web start names (`POST /links` `target`): exactly one of a person's handle, a PR number, a
+ *  branch, a ticket number. The server resolves who the link is with (src/tools/links.ts `resolveTarget`). */
+export type LinkTargetBody = { person: string } | { pr: number } | { branch: string } | { ticket: number };
+
 /** How a topic reads in a sentence: `PR #180`, branch `feat/x`, ticket #12, @jose. */
 export function linkTopicLabel(kind: LinkTopicKind, ref: string): string {
   if (kind === "pr") return `PR #${ref}`;

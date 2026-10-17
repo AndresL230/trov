@@ -38,12 +38,12 @@ import {
   type TicketDetail, type TicketListItem,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
-  listLinks, getLink, linkStep, closeLinkWeb, addLinkNote,
+  listLinks, getLink, linkStep, closeLinkWeb, addLinkNote, startLink,
   createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
   Unauthorized, NotFound, ApiError,
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
-import { linkJoinPhrase } from "./links";
+import { linkJoinPhrase, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, type LinkStartKind } from "./links";
 import { LINK_NOTE_MAX, type LinkView } from "@shared/links";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
 import { selectedUnplacedId } from "./maintenance";
@@ -3710,7 +3710,66 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       else if (arg === "handoffs") { state.screen = "handoffs"; loadHandoffs(); }
       return;
     case "goLinks": state.screen = "links"; state.linkId = null; loadLinks(); return;
-    case "openLink": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "link"; openLinkPage(id); return; }
+    case "openLink": {
+      const id = Number(arg);
+      if (!Number.isInteger(id) || id <= 0) return;
+      if (state.linkStart?.phase === "sent") state.linkStart = null; // its "Open link #n" — the card has done its job
+      state.screen = "link"; openLinkPage(id); return;
+    }
+    // ── Start a link (links.ts `linkStartCard`): the header's button opens the card at the top of the Links tab ──
+    case "linkStartOpen":
+      if (state.screen !== "links") { state.screen = "links"; loadLinks(); }
+      if (!state.linkStart || state.linkStart.phase === "sent") state.linkStart = blankLinkStart();
+      rerender();
+      mount.querySelector<HTMLElement>("[data-link-start]")?.scrollIntoView({ block: "nearest" });
+      mount.querySelector<HTMLElement>('[data-link-start] [data-seg] [tabindex="0"]')?.focus();
+      return;
+    case "linkStartClose": state.linkStart = null; break;
+    case "linkStartKind": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || !(arg === "person" || arg === "pr" || arg === "branch" || arg === "ticket")) return;
+      state.linkStart = { ...d, kind: arg as LinkStartKind, ref: d.kind === arg ? d.ref : "", phase: "edit", error: null };
+      break;
+    }
+    case "linkStartPerson": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || !arg) return;
+      state.linkStart = { ...d, person: d.person.toLowerCase() === arg.toLowerCase() ? "" : arg, phase: "edit", error: null };
+      break;
+    }
+    case "linkStartField": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || (arg !== "ref" && arg !== "reason")) return;
+      state.linkStart = { ...d, [arg]: arg === "reason" ? (value ?? "").slice(0, 280) : (value ?? "").slice(0, 200), phase: "edit", error: null };
+      rerender(); // the Links tab is data-morph'ed: the field keeps its focus and caret while the line and count update
+      return;
+    }
+    case "linkStartSend": {
+      const d = state.linkStart;
+      const target = d ? linkStartTarget(d) : null;
+      if (!d || !target || !linkStartReady(d)) return;
+      const sending = { ...d, phase: "sending" as const, error: null };
+      state.linkStart = sending;
+      rerender();
+      // The stream needs a moment to cross before the far orb lights: the answer waits for it (not under reduced motion).
+      const t0 = performance.now();
+      const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const after = (fn: () => void) => setTimeout(fn, still ? 0 : Math.max(0, 1150 - (performance.now() - t0)));
+      startLink(target, d.reason.trim())
+        .then((link) => after(() => {
+          if (state.linkStart !== sending) return; // closed or edited meanwhile
+          state.linkStart = { ...sending, phase: "sent", sent: link };
+          loadLinks(); // the new link joins Yours (or Open, for a link with yourself)
+        }))
+        .catch((e) => {
+          if (e instanceof Unauthorized) { unauth(e); return; }
+          if (state.linkStart !== sending) return;
+          const code = e instanceof ApiError ? e.message : null;
+          state.linkStart = { ...sending, phase: "refused", error: linkStartRefusal(code, e instanceof ApiError ? e.detail : null) };
+          rerender();
+        });
+      return;
+    }
     case "linkSend": { const id = Number(arg); if (id > 0) runLinkStep(id, "send", (l) => (l.state === "open" ? `Link #${l.id} is open` : `Link #${l.id} sent`), "Couldn't send this link"); return; }
     case "linkAccept": { const id = Number(arg); if (id > 0) runLinkStep(id, "accept", (l) => `Link #${l.id} is open`, "Couldn't accept this link"); return; }
     case "linkDecline": { const id = Number(arg); if (id > 0) runLinkStep(id, "decline", (l) => `Link #${l.id} declined`, "Couldn't decline this link"); return; }

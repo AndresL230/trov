@@ -51,6 +51,21 @@ input, select { font-family: inherit; }
 }
 /* The thinking orb (thinking-orb.ts): a canvas the loop paints; it takes its box and nothing else. */
 .cnpy-orb { display:block; flex:none; }
+/* The link line (link-line.ts): two orbs and the particles between them, one canvas whose width / height are
+   fixed in the template and scaled down here on a narrow screen (the orbs shrink with it; the aspect is the
+   canvas's own, 420 × 104). In the start card a photo sits inside an orb: placed by percentage of the line,
+   sized by its container width, so it shrinks with the orb. The card rises in when opened (not under reduced
+   motion). No radius is declared here (the photo is personChip's own, already in the corners block). */
+.cnpy-ll { position:relative; container-type:inline-size; width:100%; }
+.cnpy-ll-cv { display:block; width:100%; height:auto; aspect-ratio:420 / 104; }
+.cnpy-ll-face { position:absolute; top:50%; width:calc(30 / 420 * 100cqw); aspect-ratio:1; transform:translate(-50%, -50%); pointer-events:none; }
+.cnpy-ll-face[data-ll-face="left"] { left:calc(46 / 420 * 100%); }
+.cnpy-ll-face[data-ll-face="right"] { left:calc(374 / 420 * 100%); }
+.cnpy-ll-face[hidden] { display:none; }
+.cnpy-ll-face > .cnpy-av { width:100% !important; height:100% !important; font-size:calc(11 / 420 * 100cqw) !important; animation:cnpy-ll-face .32s var(--fx-ease) both; }
+@keyframes cnpy-ll-face { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:none; } }
+[data-link-start] { animation:cnpy-pop var(--fx-slow) var(--fx-ease) both; }
+@media (prefers-reduced-motion: reduce) { .cnpy-ll-face > .cnpy-av, [data-link-start] { animation:none; } }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
    crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
 #cnpy-main { scrollbar-gutter: stable; }
