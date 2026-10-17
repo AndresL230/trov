@@ -243,11 +243,12 @@ installImportDrop({
 const ndCtl = createNewDocController({
   state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
   ensureSpace: (slug) => libCtl.ensureSpace(slug),
-  staged: (space) => {
+  staged: (space, slug) => {
+    // The new page, "Not yet approved": the pane's tree is read again (it shows there under its parent, which the
+    // page being read opens) and Review's count with it.
     libCtl.openSpace(space);
-    state.screen = "review";
     loadProposals();
-    loadDraftAdrsIfNeeded();
+    openDocPage(slug);
   },
   cancel: () => {
     const d = state.nd;

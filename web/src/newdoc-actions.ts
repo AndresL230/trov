@@ -1,6 +1,6 @@
 // Library › New page — the controller: every `nd…` act main.ts dispatches lands here (the view is web/src/newdoc.ts,
 // pure). A page is staged through POST /api/docs/propose — the gate, exactly as an agent's proposal — with the
-// template's body and section and the parent picked in "Goes in"; it then waits in Review.
+// template's body and section and the parent picked in "Goes in"; it then waits in Review, and the person lands on it.
 import type { AppState } from "./render";
 import { ApiError, OrgApiError, PreviewBlocked, Unauthorized, proposeDoc } from "./api";
 import { blankDoc } from "./newdoc";
@@ -14,7 +14,7 @@ export interface NewDocHost {
   unauth(e: unknown): void;
   /** Read that space's pages into state.spaceHome unless it already holds them (the pane and the picker show them). */
   ensureSpace(slug: string): void;
-  /** After a page was staged: the parent refreshes the space's pages and goes to Review. */
+  /** After a page was staged: the parent refreshes the space's pages and opens the new page. */
   staged(space: string, slug: string): void;
   /** Cancel: the parent goes back where New page was opened from. */
   cancel(): void;
@@ -70,7 +70,8 @@ export function createNewDocController(host: NewDocHost): NewDocController {
     proposeDoc({ title, section: d.section || t?.section || "reference", space, body, summary: d.summary.trim() || undefined, ...(d.parent ? { parent_slug: d.parent } : {}) })
       .then((r) => {
         d.busy = false;
-        host.flash(r.parent_ignored ? "Staged for review — at the top level: that parent page could not take it" : `Staged for review in ${name}`, r.parent_ignored ? 6000 : undefined);
+        // The design's toast (owner ruling NP9: the page is staged, and the person lands on it, "Not yet approved").
+        host.flash(r.parent_ignored ? `Page created in ${name}, at the top level: that parent page could not take it` : `Page created in ${name}`, r.parent_ignored ? 6000 : undefined);
         host.staged(space, r.slug);
       })
       .catch((e) => {

@@ -3,7 +3,7 @@
  * "Goes in" (a space switch or dropdown, then the space's tree), the section switch and the busy state. Pure:
  * assertions on the markup; the controller is driven with a stub host (no request is made).
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { newDocView, blankDoc, whereLabel, newDocSpaceDropdown, NEW_DOC_SPACE_SWITCH_MAX, NEW_DOC_NO_SPACE, type NewDocDraft, type NewDocProps } from "../web/src/newdoc";
 import { createNewDocController } from "../web/src/newdoc-actions";
 import { initialDropdownUi } from "../web/src/dropdown";
@@ -132,5 +132,25 @@ describe("New page — the controller", () => {
     ctl.act("ndWhereParent", "", null);
     expect(state.nd.parent).toBeNull();
     expect(ctl.act("libTab", null, null)).toBe(false);
+  });
+});
+
+describe("New page — Create page (owner ruling NP9)", () => {
+  it("stages the page, toasts \"Page created in ‹Space›\" and hands the new page's slug on so the app opens it", async () => {
+    const api = await import("../web/src/api");
+    const spy = vi.spyOn(api, "proposeDoc").mockResolvedValue({ ok: true, slug: "test-np9", version: 1 } as never);
+    const state = { nd: { ...blankDoc("engineering"), title: "Test NP9" }, library: { status: "ok", data: { spaces: SPACES } } } as unknown as AppState;
+    const flashes: string[] = [];
+    const staged: string[][] = [];
+    const ctl = createNewDocController({
+      state, mount: {} as HTMLElement, rerender: () => {}, flash: (m) => flashes.push(m), unauth: () => {},
+      ensureSpace: () => {}, staged: (s, slug) => staged.push([s, slug]), cancel: () => {},
+    });
+    ctl.act("ndSubmit", null, null);
+    await vi.waitFor(() => expect(staged).toHaveLength(1));
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ title: "Test NP9", space: "engineering" }));
+    expect(staged[0]).toEqual(["engineering", "test-np9"]);
+    expect(flashes).toEqual(["Page created in Engineering"]);
+    spy.mockRestore();
   });
 });
