@@ -13,14 +13,13 @@
 //     appsTable   → appsTableBlock                     (repo-apps-table.ts)
 //   not shipped                                        where the design draws it: a part with commit groups waiting
 //   this week's figures                                (repo-week.ts)
-//   links into the tabs                                each with a one-line summary read from the facts
+//
+// The design closes with a row of links into the tabs; Trov draws none — they repeated the tab bar above.
 //
 // Each block is wrapped in `<div class="repo-block" data-repo-block="<name>">` so the frame and its tests can see
 // what was drawn whatever a block returns; an empty wrapper is hidden by CSS. "Repo-wide only" (`REPO_WIDE`) has no
 // app rows, so it draws its own short note instead of an opener (the rules would read it as `unseen`).
-import { REPO_WIDE, type FactsPart, type RepoFacts } from "@shared/repo-facts-core";
-import type { RepoTab } from "@shared/repo";
-import { esc, attr } from "./ui";
+import { REPO_WIDE, type RepoFacts } from "@shared/repo-facts-core";
 import type { OverviewBlock, OverviewCtx } from "./repo-overview-ctx";
 import { attentionBlock } from "./repo-attention";
 import { connectBlock } from "./repo-connect";
@@ -37,64 +36,7 @@ import { foundBlock, unseenBlock } from "./repo-found";
 /** The names a block's wrapper carries (`data-repo-block`). */
 export type OverviewBlockName =
   | "state" | "attention" | "connect" | "found" | "unseen" | "release" | "production" | "previews"
-  | "envCards" | "drift" | "appsTable" | "notShipped" | "repoWide" | "week" | "links";
-
-const list = (xs: string[]): string => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
-const uniq = (xs: string[]): string[] => [...new Set(xs)];
-const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
-
-// ── the links row's one-line summaries ───────────────────────────────────────
-
-/** Where usage comes from, read from the parts in view — their capability to report metrics and their
- *  connection, never a provider id: "from Cloudflare Workers and Railway", "not available from Netlify" (no part's
- *  host reports a metric), "not connected" (a host that would report them is not connected). */
-export function usageSummary(parts: readonly FactsPart[]): string {
-  const able = parts.filter((p) => p.reportsMetrics);
-  const live = uniq(able.filter((p) => p.connection === "connected").map((p) => p.host));
-  if (live.length) return `from ${list(live)}`;
-  if (able.length) return "not connected";
-  if (parts.length) return `not available from ${list(uniq(parts.map((p) => p.host)))}`;
-  return "nothing deploys here yet";
-}
-
-/** The CI tab's line: deploys this week, or what the deploy figure waits on. */
-function ciSummary(f: RepoFacts, release: boolean): string {
-  if (release) {
-    const failing = f.ci.filter((c) => c.state === "fail");
-    if (failing.length) return `Checks failing on ${list(failing.map((c) => f.envs.find((e) => e.key === c.env)?.branch ?? c.env))}`;
-    if (f.ci.length && f.ci.every((c) => c.state === "pass")) return "All checks passing";
-    return "Runs and checks";
-  }
-  const deploys = f.week.find((w) => w.key === "deploys")?.value ?? null;
-  if (deploys !== null) return `${plural(deploys, "deploy")} this week`;
-  const host = f.connect?.need === "deploys" ? f.parts.find((p) => p.provider === f.connect?.provider)?.host ?? null : null;
-  return host ? `CI only until ${host} is connected` : "Deploys and runs";
-}
-
-export interface OverviewLink { tab: RepoTab; label: string; text: string }
-
-/** The links into the tabs: each tab of the layout with its summary. */
-export function overviewLinks(f: RepoFacts, x: Pick<OverviewCtx, "layout">): OverviewLink[] {
-  const release = x.layout.rule === "release";
-  const open = f.week.find((w) => w.key === "openPrs")?.value ?? null;
-  const text: Record<RepoTab, string> = {
-    overview: "",
-    code: open === null ? "Pull requests and branches" : `${plural(open, "open pull request")}`,
-    ci: ciSummary(f, release),
-    usage: usageSummary(f.parts),
-    planning: "Roadmap and issues",
-  };
-  return x.layout.tabs.filter(([t]) => t !== "overview").map(([tab, label]) => ({ tab, label, text: text[tab] }));
-}
-
-const linksBlock: OverviewBlock = (f, x) => {
-  const links = overviewLinks(f, x);
-  if (!links.length) return "";
-  return `<div class="repo-links">${links.map((l) => `<button type="button" data-act="setRepoTab" data-arg="${attr(l.tab)}" class="repo-link-cell" data-link="${attr(l.tab)}">
-      <span style="font-size:13px;font-weight:600;color:var(--fg)">${esc(l.label)} <span aria-hidden="true" style="color:var(--fg-40)">→</span></span>
-      <span data-link-text style="font-size:12px;color:var(--fg-55)">${esc(l.text)}</span>
-    </button>`).join("")}</div>`;
-};
+  | "envCards" | "drift" | "appsTable" | "notShipped" | "repoWide" | "week";
 
 /** "Repo-wide only": files outside every app. No app rows, so no opener — what the view is, and the way back. */
 const repoWideBlock: OverviewBlock = () =>
@@ -128,15 +70,13 @@ export function overviewBlocks(f: RepoFacts, x: Pick<OverviewCtx, "layout">): Ov
   // under the Production card, above the previews).
   if (notShipped && !out.includes("notShipped") && f.app !== REPO_WIDE) out.push("notShipped");
   if (f.week.length) out.push("week");
-  // The design gives the found / unseen openers no links row: the page under them is pull requests, CI and figures.
-  if (f.app === REPO_WIDE || (o !== "found" && o !== "unseen")) out.push("links");
   return out;
 }
 
 const BLOCKS: Record<Exclude<OverviewBlockName, "state">, OverviewBlock> = {
   attention: attentionBlock, connect: connectBlock, found: foundBlock, unseen: unseenBlock, release: releaseBlock,
   production: productionBlock, previews: previewsBlock, envCards: envCardsBlock, drift: driftBlock,
-  appsTable: appsTableBlock, notShipped: notShippedBlock, repoWide: repoWideBlock, week: weekBlock, links: linksBlock,
+  appsTable: appsTableBlock, notShipped: notShippedBlock, repoWide: repoWideBlock, week: weekBlock,
 };
 
 /** The Overview from facts: every block the layout asks for, each in its wrapper, with the entrance stagger. */

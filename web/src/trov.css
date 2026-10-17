@@ -4811,11 +4811,6 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .repo-block:empty { display:none; }
 .repo-block + .repo-block:not(:empty) { border-top:1px solid var(--border); }
 .repo-block[data-repo-block="attention"] + .repo-block { border-top:0; }
-.repo-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
-.repo-link-cell { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; padding:14px 22px; text-align:left; border-left:1px solid var(--border); border-top:1px solid var(--border); transition:background .12s ease; cursor:pointer; }
-.repo-link-cell:hover { background:var(--hover); }
-.repo-link-cell:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
-@media (prefers-reduced-motion: reduce) { .repo-link-cell { transition:none; } }
 
 /* ── repo-attention (web/src/repo-attention.ts): Needs attention, first under the state slot ──────────────── */
 .repo-att { padding:14px 22px 6px; background:color-mix(in srgb, var(--accent) 4%, var(--surface)); border-bottom:1px solid var(--border); }
