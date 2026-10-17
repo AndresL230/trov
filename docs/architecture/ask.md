@@ -530,7 +530,8 @@ lets other people of the SAME org reach it, two ways at once or either:
   composer, a note above it ("<owner> shared this with you. You can continue it: your questions are asked as you."),
   its mode, Auto and draft local (never PATCHed). On someone else's turn — for every reader, the owner included — no
   Edit, Regenerate, Try again, Save as artifact or Wrong?; a pending card is a line ("Waiting for <asker> to confirm
-  it."), a done one has no Undo; their file is a chip that is not a control ("· Private", its tooltip whose). In any
+  it."; to the asker themself, once turned from Can continue to Can read, "Waiting for you — you can read this
+  conversation now, not act in it."), a done one has no Undo; their file is a chip that is not a control ("· Private", its tooltip whose). In any
   shared thread (the owner's once shared, a reader's or collaborator's always), a small line under each question says
   who asked it: "You", or the asker's name ("Deleted user" for a gone account). Sending in someone
   else's thread reloads the shared lists, never the person's own. Delete's confirmation names who loses it ("It is
@@ -834,7 +835,7 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
 - **Phone** (`ask-phone.ts`, ≤ 640px; `test/render.ask-phone.test.ts`): the header's Open threads + New thread (the
   app's nav button stays; bug and theme leave the Ask header); the thread list is a modal side drawer (focus in, Tab
   kept in, Escape / scrim / Close / a pick close it through its exit, focus back — it opts out of the app's phone
-  modal-as-bottom-sheet rule); the composer renders `phoneComposerBar(v)` in place of its toolbar: the + menu drives
+  modal-as-bottom-sheet rule; Share… and Delete in a row's menu slide it out first, so their dialog is not under it); the composer renders `phoneComposerBar(v)` in place of its toolbar: the + menu drives
   the composer's OWN controls (Attach clicks its file input, Mention / Run a command type `@` / `/` into its box as a
   real `input` event, Mode / Changes write `ComposerUi.mode / .auto`, from `ask/state` only) and the meta line reads
   "Smart · Asks first"; the inspector is the shell's frame as a full-height sheet (`data-sheet="1"`) with focus kept in

@@ -38,12 +38,15 @@ clean seed: all 60 as below; full suite and typecheck green.
 pending card reads "Waiting for Test Collab to confirm it." — while they ARE Test Collab and can no longer confirm it (the
 server refuses: read access). The spec says nothing. I'd expect either "Waiting for you — you can read this conversation
 now, not act in it." or the card shown as expired for them; left as is until you decide.
+**Ruled 2026-10-17:** the first — the owner's words; the asker's own line now reads "Waiting for you — you can read this
+conversation now, not act in it." (`test/render.ask-sharing.test.ts` › Q-1).
 
 **Pre-existing, recorded, not fixed (same on `main`):**
 - **PRE-1 (C51, C53, C54)** — a link to a thread you can't open (or an unknown id) lands on Ask home with no "not found"
   message. Nothing of the thread shows (the access part passes). Base: `base-unknown-link-home.jpg`.
 - **PRE-2** — on a phone, Delete's confirmation opened from the threads drawer also sits under the drawer (same cause as
-  bug 2: Delete doesn't close the drawer). Fixing it is the same one line in `askThDelete`; left for your word.
+  bug 2: Delete doesn't close the drawer). Fixing it is the same one line in `askThDelete`; left for your word. **Fixed 2026-10-17** at the owner's word:
+  Delete slides the drawer out first (`test/render.ask-sharing.test.ts` › PRE-2).
   `pre-delete-under-drawer-branch.jpg`, `base-delete-under-drawer.jpg`.
 - **OBS-1** — after a new turn, the previous turn's proposed card still shows Confirm / Cancel until a reload (the server
   has already expired it; pressing Confirm would say so). Base the same: `base-OBS1-stale-card.jpg`.

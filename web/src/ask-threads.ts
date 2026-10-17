@@ -538,6 +538,8 @@ export const threadsPart: AskPart = {
       case "askThDelete": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
+        // On a phone the drawer slides out first, as for Share… — else the confirmation sits under it (PRE-2).
+        if (t && ctx.ui.phone.drawer) ctx.exit("drawer", () => { ctx.ui.phone.drawer = false; });
         if (t) { ctx.cancelExit("thdel"); ctx.ui.threadDelete = { id, title: t.title, shared: !!t.shared, who: sharedWith(askOrgName(ctx.app), t, { persons: ctx.app.persons.data }) }; focusConfirm = true; }
         ctx.paint();
         return;

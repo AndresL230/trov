@@ -53,7 +53,7 @@
 
 import { esc, attr, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
-import { askerOf, ownTurn } from "./ask-state";
+import { askedByMe, askerOf, ownTurn } from "./ask-state";
 import { shareDropdowns } from "./ask-threads";
 import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskMsg, type AskTurn } from "./ask-stream";
 import { AskApiError } from "./ask-api";
@@ -774,11 +774,15 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
 }
 
 /** A card on a turn someone ELSE asked (0076 / 0077_ask_sharing): only that person decides it, so everyone else gets
- *  the line it would become — what Trov proposed, and whom it waits for — with no field to edit, no Confirm. */
+ *  the line it would become — what Trov proposed, and whom it waits for — with no field to edit, no Confirm. The
+ *  asker themself reads it too once the owner has turned them from Can continue to Can read (Q-1): it waits for
+ *  them, but they can no longer act in the conversation, and the line says so. */
+export const WAITING_READ_ONLY = "Waiting for you — you can read this conversation now, not act in it.";
 function readerLine(v: AskView, a: AskAnswer, vms: AskActionVm[]): string {
   const by = askerOf(v, a.askedBy);
   const who = by ? personName(v.look, by) : "the person who asked";
-  return `<div class="ask-line is-off" data-morph-key="ln:${vms[0].id}:pending">${SHAPE.waiting()}<span class="ask-line-main"><span class="ask-line-t">${esc(`Proposed: ${lowerFirst(proposedText(vms, v.look))}`)}</span>${why(`Waiting for ${who} to confirm it.`)}</span></div>`;
+  const reason = askedByMe(v, a.askedBy) ? WAITING_READ_ONLY : `Waiting for ${who} to confirm it.`;
+  return `<div class="ask-line is-off" data-morph-key="ln:${vms[0].id}:pending">${SHAPE.waiting()}<span class="ask-line-main"><span class="ask-line-t">${esc(`Proposed: ${lowerFirst(proposedText(vms, v.look))}`)}</span>${why(reason)}</span></div>`;
 }
 
 /** One card / line for consecutive actions of one group (`shownParts`' `actions` entry). The pending ones are one

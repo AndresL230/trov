@@ -224,6 +224,17 @@ describe("shared with a person by name: Can continue gives them the composer, an
     expect(s.ask.conversation.editing).toBeNull();
   });
 
+  it("turned from Can continue to Can read: your own waiting card says it waits for you and that you can only read now (Q-1)", () => {
+    const s = twoAskers({ ...CONTINUE, access: "read" }, "meilin", "andres");
+    const html = conversationView(askView(s));
+    const mine = part(html, "a:m4");
+    expect(mine).toContain("Waiting for you — you can read this conversation now, not act in it.");
+    expect(mine).not.toContain("Waiting for Andres Lopez");
+    for (const act of ["askAcConfirm", "askAcCancel", "askAcUndo"]) expect(mine, act).not.toContain(`data-act="${act}"`);
+    // Someone else's card still waits for them by name.
+    expect(conversationView(askView(opened(VIEWER)))).toContain("Waiting for Mei Lin to confirm it.");
+  });
+
   it("read access by name: no composer, and the line says it was shared with you", () => {
     const bar = composerView(askView(opened({ ...VIEWER, direct: true })));
     expect(bar).toContain("ask-composer--shared");
@@ -342,6 +353,16 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     const { ctx } = shareCtx(s);
     threadsPart.act!(ctx, "askThShare", String(t.id), null);
     expect(s.ask.threadShare?.id).toBe(t.id);
+    expect(s.ask.phone.drawer).toBe(false);
+  });
+
+  it("on a phone, Delete from the threads drawer closes the drawer too, so its confirmation is not left under it (PRE-2)", () => {
+    const s = base();
+    s.ask.phone.drawer = true;
+    const t = s.ask.threads.data[0];
+    const { ctx } = shareCtx(s);
+    threadsPart.act!(ctx, "askThDelete", String(t.id), null);
+    expect(s.ask.threadDelete?.id).toBe(t.id);
     expect(s.ask.phone.drawer).toBe(false);
   });
 
