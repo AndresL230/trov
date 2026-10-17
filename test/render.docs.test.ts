@@ -135,6 +135,10 @@ describe("the docs pane", () => {
     expect(rule(".cnpy-dp-row:not(.is-shape):hover")).toContain("--dp-tint:var(--hover)");
     expect(rule(".cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover")).toContain("--dp-tint:var(--accent-soft)");
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-dp-chev, \.cnpy-dp-acts \{ transition:none; \} \}/);
+    // each row isolates its own stacking (the tint under its content), so the row whose "…" menu is open must sit
+    // over the rows after it, or they paint over its menu (e2e HL5)
+    expect(css).toContain(".cnpy-dp-row { isolation:isolate; }");
+    expect(rule(".cnpy-dp-row.has-menu")).toMatch(/z-index:[1-9]/);
     // the shape is the row's own child, right after the title (the :has selector's premise)
     const html = pane(render(docState()));
     expect(html).toMatch(/<span class="cnpy-dp-t">Rate limits<\/span><span class="cnpy-dp-st"/);

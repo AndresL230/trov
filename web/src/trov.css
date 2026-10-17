@@ -4050,6 +4050,8 @@ a.ask-btn { text-decoration:none; }
 /* A row's tint (hover, the open page, a drop target) starts at its own indent (`--dp-in`, set per row), so the
    indent and the guide lines stay outside it; the tint sits under the row's content. */
 .cnpy-dp-row { isolation:isolate; }
+/* …so the row whose "…" menu is open sits over the rows after it (they would paint over its menu). */
+.cnpy-dp-row.has-menu { z-index:2; }
 .cnpy-dp-row::before { content:""; position:absolute; z-index:-1; top:0; bottom:0; left:var(--dp-in, 0px); right:0; background:var(--dp-tint, transparent); pointer-events:none; }
 /* The tint is ONE value per state (`--dp-tint`): the ::before draws it, and the row's actions lay it over the page. */
 .cnpy-dp-row:not(.is-shape):hover { color:var(--fg); --dp-tint:var(--hover); }
