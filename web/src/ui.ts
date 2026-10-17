@@ -37,8 +37,8 @@ export function surface(style = "", opts: { hover?: boolean; cls?: string } = {}
  *  person card. A button may not hold a button, so the card is a plain container
  *  (`HITBOX`, position:relative) and this empty button, laid over the whole of it as its
  *  LAST child, is the card's own click target and focus stop (`label` its accessible name);
- *  every person button inside (people.ts's links, a linked avatar stack) sits above it
- *  (trov.css). Last, so a card that lays out by `:nth-child` (the queue table's narrow
+ *  every person button inside (people.ts's links, a linked avatar stack) and any other control
+ *  carrying `cnpy-hitctl` (a prompt card's copy button) sits above it (trov.css). Last, so a card that lays out by `:nth-child` (the queue table's narrow
  *  reflow) counts the same children. */
 export function hitArea(act: string, arg: string, label: string): string {
   return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" class="cnpy-hit" aria-label="${attr(label)}"></button>`;

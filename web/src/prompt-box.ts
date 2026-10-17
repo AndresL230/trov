@@ -12,7 +12,7 @@ import { segmented } from "./segmented";
 const MONO_EYEBROW = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 export const COPY_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>`;
 const EXPAND_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6"></path><path d="M9 21H3v-6"></path><path d="M21 3l-7 7"></path><path d="M3 21l7-7"></path></svg>`;
-const ICON_BTN = "width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:var(--fg-55);flex:none";
+export const ICON_BTN = "width:26px;height:26px;display:grid;place-items:center;border-radius:6px;color:var(--fg-55);flex:none";
 
 export interface PromptBoxProps {
   title: string;

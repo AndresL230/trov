@@ -3748,6 +3748,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       copyToClipboard(body).then((ok) => flash(ok ? "Prompt copied" : "Couldn't reach the clipboard"));
       return;
     }
+    // A library card's copy button: the plain slug, for an agent's get_prompt. Copy only; the card's
+    // hit area is a sibling, so this click never opens the prompt. Not a use (get_prompt counts that).
+    case "promptCopySlug":
+      if (!arg) return;
+      copyToClipboard(arg).then((ok) => flash(ok ? `Slug copied · ${arg}` : "Couldn't reach the clipboard"));
+      return;
     case "promptExpand": state.promptExpanded = true; break;
     case "promptBoxView":
       if (arg !== "raw" && arg !== "rendered") return;

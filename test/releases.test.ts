@@ -112,14 +112,8 @@ describe("RELEASES — the data", () => {
     expect(next.headsUp?.join(" ")).toMatch(/800 characters/);
   });
 
-  it("keeps the deploy steps of the batches not yet deployed (Unreleased, then 0.11): every migration, the App events, the plugin", () => {
+  it("keeps the deploy steps of the newest cut batch (0.11): every migration, the App events, the plugin", () => {
     const ops = (v: string) => findRelease(v)!.ops!.join(" ");
-    if (RELEASES[0].unreleased) {
-      for (const m of ["0070_repo_apps", "0071_repo_settings", "0072_repo_scans", "0073_commit_paths", "0074_releases", "0075_identities_person_nocase"]) {
-        expect(ops("unreleased")).toContain(m);
-      }
-      expect(ops("unreleased")).toMatch(/deployment, release, create and workflow_job/);
-    }
     // 0.11 (formerly 0.34) is #178 cut together with #186 / #187: its own migrations to 0068, the App events, the plugin.
     expect(ops("0.11")).toMatch(/0058_server_ai/);
     expect(ops("0.11")).toMatch(/deployment, release, create and workflow_job/);

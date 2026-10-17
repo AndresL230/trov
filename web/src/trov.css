@@ -1212,11 +1212,14 @@ input, select { font-family: inherit; }
 .cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-personlink:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 /* A card that opens something and shows people (ui.ts `hitArea`): an empty button laid over the
-   whole card is its click target, and every person button in it sits above it as its own. */
-.cnpy-hitbox { position:relative; }
+   whole card is its click target, and every person button in it sits above it as its own.
+   The card shows the pointer (the hit inherits it, so a card that sets its own, the board's grab, keeps it).
+   `cnpy-hitctl` is any other control on such a card (a prompt card's copy button), raised the same way. */
+.cnpy-hitbox { position:relative; cursor:pointer; }
 .cnpy-hit { position:absolute; inset:0; z-index:1; padding:0; border-radius:inherit; cursor:inherit; }
 .cnpy-hit:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
-.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack { position:relative; z-index:2; }
+.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack, .cnpy-hitbox .cnpy-hitctl { position:relative; z-index:2; }
+.cnpy-hitctl:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-accentbtn:hover { filter:brightness(1.06); }
 .cnpy-accentbtn:active { transform:translateY(1px); }
