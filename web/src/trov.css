@@ -4267,9 +4267,6 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg-pg { color:var(--fg-55); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg { border-color:color-mix(in srgb, var(--rv-tone) 55%, transparent); background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg-in { opacity:.14; }
-/* Import › each step's heading takes the focus when the step changes (import-actions.ts focusStep): it is not a
-   control, so it shows no ring. */
-.cnpy-imp-h:focus { outline:none; }
 /* Space home › the header's meta (library.ts spaceHeader): each item draws its own "·" in the gap before it; the
    row's left edge clips the dot of whichever item starts a line, so a wrapped line never starts or ends with one. */
 .cnpy-lib-meta { overflow:hidden; margin:7px -4px 0; padding:3px 4px; font-size:12.5px; color:var(--fg-55); }
