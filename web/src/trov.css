@@ -83,7 +83,7 @@ input, select { font-family: inherit; }
 .cnpy-lh-node { width:calc(var(--s) / 720 * 100cqw); aspect-ratio:1; z-index:1; }
 .cnpy-lh-node:hover, .cnpy-lh-node:focus-within { z-index:3; }
 .cnpy-lh-hit { display:grid; place-items:center; width:100%; height:100%; color:var(--accent); text-decoration:none; outline:none; }
-.cnpy-lh-hit:focus-visible { outline:2px solid var(--focus, var(--accent)); outline-offset:2px; }
+.cnpy-lh-hit:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .cnpy-lh-ico { display:grid; place-items:center; width:calc(26 / 720 * 100cqw); aspect-ratio:1; background:var(--surface); border:1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); transition:transform .16s var(--fx-ease); }
 .cnpy-lh-ico svg { width:62%; height:62%; }
 .cnpy-lh-hit .cnpy-av { width:calc(22 / 720 * 100cqw) !important; height:calc(22 / 720 * 100cqw) !important; font-size:calc(8.5 / 720 * 100cqw) !important; transition:transform .16s var(--fx-ease); }

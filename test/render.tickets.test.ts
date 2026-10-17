@@ -1664,9 +1664,11 @@ describe("board drop — the slot's neighbour is sent as after_id (Z17)", () => 
   });
 
   it("main.ts reads the lifted card and the neighbour through board-drop, never a card's data-arg", () => {
-    const drag = mainSrc.slice(mainSrc.indexOf("function startBoardDrag"), mainSrc.indexOf('document.addEventListener("pointerup"'));
+    // The board's drag is on the app's one pointer drag (pointer-drag.ts): its handlers, up to the docs pane's.
+    const drag = mainSrc.slice(mainSrc.indexOf("pointerDrag<BoardPress>(mount, {"), mainSrc.indexOf("installTreeDrag(mount, {"));
+    expect(drag.length).toBeGreaterThan(0);
     expect(drag).toContain("boardCardId(card)");
-    expect(drag).toContain("boardDropArg(id, to, after)");
+    expect(drag).toContain("boardDropArg(p.id, to, after)");
     expect(drag).not.toMatch(/dataset\.arg/);
   });
 });
