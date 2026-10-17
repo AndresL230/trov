@@ -160,6 +160,19 @@ describe("landing — the banner carried through the page", () => {
   });
 });
 
+describe("landing — the terminal mocks are Trov's purple, not the old olive (D09)", () => {
+  it("both \"⏺ trov · load-context\" lines use --term-accent, in light and dark; no #9aab65 is left", () => {
+    for (const dark of [false, true]) {
+      const html = landingView({ dark, signInOpen: false, signedIn: false, seen: new Set() });
+      expect(html.toLowerCase()).not.toContain("#9aab65");
+      const lines = [...html.matchAll(/<div[^>]*style="color:([^;"]+)[^"]*"[^>]*>⏺ trov · load-context<\/div>/g)].map((m) => m[1]);
+      expect(lines).toEqual(["var(--term-accent)", "var(--term-accent)"]);
+    }
+    expect(rules).toMatch(/\[data-cnpy-theme="light"\] \{[^}]*--term-accent:#8d94d8;/);
+    expect(rules).toMatch(/\[data-cnpy-theme="dark"\] \{[^}]*--term-accent:#8d94d8;/);
+  });
+});
+
 describe("landing — a rerender replays nothing", () => {
   it("the page names itself for morph.ts and the dialog is one root-level overlay beside it", () => {
     const closed = render({ ...initialState(), view: "auth", authStep: "login", signInOpen: false });

@@ -1299,7 +1299,9 @@ regress silently:
   `TROV_MARK_COLORS.dark`) is the same hue (235°) and saturation lifted the least that passes: `#8d94d8` — 6.1:1 on
   `--bg`, 5.8:1 on `--surface`, 4.6:1 on its own 14% `--accent-soft` (the tightest pair) — with `--accent-fg`
   `#11132e` (6.4:1) as the ink on it. It was the olive `#9aab65` / `#131a07`; the dark banner went back to the
-  brand purple with it. The semantic `--green` and the `--p-moss` handle colour are unchanged.
+  brand purple with it. The semantic `--green` and the `--p-moss` handle colour are unchanged. The landing's
+  terminal mocks (`--term`, dark in both themes) draw their "⏺ trov · load-context" line in `--term-accent`, the
+  same `#8d94d8` in BOTH themes (it was a hard-coded olive; `render.contrast` holds it at 4.5:1 on `--term`).
 - **New tokens, split where a value served two jobs:** `--border-input` (fields) beside `--border-strong`
   (cards, dividers, the empty layouts' hollow shapes — still quiet); `--red-fg` (text on a filled red button:
   white on light, the dark ink on dark, as `--accent-fg`); `--p-ink` (avatar initials); `--focus` (= `--accent`).

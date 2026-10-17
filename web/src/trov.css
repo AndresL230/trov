@@ -1991,10 +1991,11 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* ── landing (signed-out screen, web/src/landing.ts) ──────────────────────────
    Ported from Canopy Site.dc.html. The page rides the app's three themes; these
    are the tokens the site needs that the app themes don't carry, plus the
-   dc-runtime `style-hover` pseudo-props as real rules. */
+   dc-runtime `style-hover` pseudo-props as real rules. The terminal mocks (--term) are dark in BOTH themes,
+   so their Trov line (--term-accent) is the dark accent's lifted purple in both (it was a hard-coded olive). */
 .cnpy-site { font-size:16px; line-height:normal; text-rendering:optimizeLegibility; }
-[data-cnpy-theme="light"] { --lift-shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; }
-[data-cnpy-theme="dark"] { --lift-shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; }
+[data-cnpy-theme="light"] { --lift-shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; --term-accent:#8d94d8; }
+[data-cnpy-theme="dark"] { --lift-shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; --term-accent:#8d94d8; }
 /* :where keeps this at element specificity so the button-like links below win. */
 :where(.cnpy-site) a { color:var(--accent); text-decoration:none; }
 :where(.cnpy-site) a:hover { text-decoration:underline; text-underline-offset:3px; }
