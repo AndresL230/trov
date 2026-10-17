@@ -329,7 +329,7 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--fg-55)">${meta}${owners ? `<span style="color:var(--border-strong)">·</span>${owners}` : ""}</div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap">${actions}</div>
+    <div style="display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap;max-width:100%">${actions}</div>
   </div>`;
 }
 

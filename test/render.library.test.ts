@@ -173,6 +173,13 @@ describe("a space's home", () => {
     expect(html).toContain('data-act="libEdit"');
     expect(html).toContain('data-act="libArchive"');
   });
+  it("the header's actions wrap inside the column: four buttons never push a phone's page sideways (case ENV13)", () => {
+    const html = home({ admin: true }, { can_edit: true, can_admin: true });
+    // The box holding Edit space / Archive / Import / New page: no wider than the header, so its own wrap applies.
+    const box = html.match(/<div style="([^"]*)">(?:(?!<\/div>)[\s\S])*data-act="libEdit"/)?.[1] ?? "";
+    expect(box).toContain("flex-wrap:wrap");
+    expect(box).toContain("max-width:100%");
+  });
   it("archived: the state mark; no New page and nothing to edit; Restore for an admin only", () => {
     const space = { ...ENG, archived: true, archived_at: T0 };
     const member = home({}, { space, can_edit: true });
