@@ -13,7 +13,7 @@ import { linkTopicLabel, LINK_NOTE_MAX, LINK_REASON_MAX, LINK_LIVE_MAX, ASK_THRE
 import type { PersonSummary } from "./api";
 import { esc, attr, relTime, surface, WORK_SHELL, DETAIL_SHELL, hitArea, HITBOX } from "./ui";
 import { personLink, handleLink, personChip } from "./people";
-import { linkLine, linkLineState, type LineSpec, type LineOrb } from "./link-line";
+import { linkLine, linkLineState, linkHeroCanvas, HERO_SLOTS, HERO_MAX, HERO_W, HERO_H, type LineSpec, type LineOrb, type HeroNode } from "./link-line";
 import { linkMark } from "./marks";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { confirmModal } from "./confirm";
@@ -131,29 +131,61 @@ export interface LinksListProps {
   bar: string;
   /** The "Start a link" card, while it is open (the header's Start a link button opens it). */
   start?: LinkStart | null;
+  /** Whether the Closed section is open (it starts collapsed behind "Closed (N)"). */
+  closedOpen?: boolean;
+  /** A step (Accept / Decline from the constellation or a row) in flight: those buttons wait. */
+  busy?: boolean;
 }
 
-const ROW_COLS = "grid-template-columns:minmax(0,2.6fr) minmax(0,1.2fr) auto 64px";
+const ROW_COLS = "grid-template-columns:34px minmax(0,2.6fr) minmax(0,1.2fr) auto 64px";
+const ROW_COLS_ASK = "grid-template-columns:34px minmax(0,2.6fr) minmax(0,1.2fr) auto auto 64px";
 
-/** One row: `#n`, the topic and the reason, the other person, the state's mark, when it last moved. A `hitArea`
- *  row, so the person's photo and name open their card while the rest opens the link. */
+/** A row's glyph: the link line drawn small and STILL (an inline SVG, no loop) — the requester's orb on the left, the
+ *  recipient's on the right, the dots between saying what flows. Decorative: the row's words and mark say it. */
+export function linkGlyph(spec: LineSpec): string {
+  const orb = (cx: number, o: LineOrb) => {
+    if (o === "awake") return `<circle cx="${cx}" cy="7" r="4.6" fill="currentColor" opacity=".9"/><circle cx="${cx}" cy="7" r="2" fill="var(--surface)" opacity=".55"/>`;
+    if (o === "calling") return `<circle cx="${cx}" cy="7" r="4.6" fill="none" stroke="currentColor" stroke-width="1.1"/><circle cx="${cx}" cy="7" r="1.8" fill="currentColor"/>`;
+    if (o === "dim") return `<circle cx="${cx}" cy="7" r="4.6" fill="currentColor" opacity=".28"/>`;
+    const op = o === "hollow" || o === "named" ? ".75" : ".32";
+    return `<circle cx="${cx}" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.1" stroke-dasharray="1 1.5" opacity="${op}"/>`;
+  };
+  const dot = (x: number, op: number, r = 0.9) => `<circle cx="${x}" cy="7" r="${r}" fill="currentColor" opacity="${op}"/>`;
+  const dots = spec.flow === "flow" ? [dot(13, 0.9), dot(16, 0.6), dot(19, 0.6), dot(22, 0.9)]
+    : spec.flow === "trickle" ? [dot(13, 0.35), dot(16.5, 0.6), dot(20, 0.9)]
+    : spec.flow === "pulse" ? [dot(16, 0.95, 1.5)]
+    : spec.flow === "flicker" ? [dot(13, 0.6)]
+    : spec.flow === "stopped" ? [dot(14, 0.25), dot(17.5, 0.25), dot(21, 0.25)] : [];
+  return `<svg class="cnpy-lglyph" data-glyph="${spec.flow}" width="34" height="14" viewBox="0 0 34 14" aria-hidden="true" focusable="false">${orb(5.5, spec.left)}${dots.join("")}${orb(28.5, spec.right)}</svg>`;
+}
+
+/** One row: the still glyph, `#n` and the topic (set first) over the reason, the other person, the state's mark, when
+ *  it last moved — and, on a request waiting for me, Decline / Accept right there. A `hitArea` row, so the person's
+ *  photo and name and the two buttons are their own while the rest opens the link. */
 function linkRow(l: LinkView, p: LinksListProps): string {
   const sides = viewerSides(l, p.me);
   const sent = sides.includes("requester");
   const other = sent ? l.recipient.handle : l.requester.handle;
   const word = l.self ? "SELF" : l.state === "open" || l.state === "closed" || l.state === "expired" ? "WITH" : sent ? "TO" : "FROM";
   const person = l.self
-    ? personLink(personOf(p.persons, p.me), p.me, 20, "You, two sessions", "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")
-    : personLink(personOf(p.persons, other), other, 20, nameOf(p.persons, other), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap");
+    ? personLink(personOf(p.persons, p.me), p.me, 22, "You, two sessions", "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap")
+    : personLink(personOf(p.persons, other), other, 22, nameOf(p.persons, other), "min-width:0;font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap");
   const live = l.state === "draft" || l.state === "requested" || l.state === "open";
-  return `<div class="cnpy-trow cnpy-hrow${l.state === "requested" && !sent ? " cnpy-attn" : ""} ${HITBOX}" data-link-row="${l.id}" style="display:grid;${ROW_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:12px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
+  const asks = l.state === "requested" && !sent && sides.includes("recipient");
+  const dis = p.busy ? " disabled" : "";
+  const acts = asks
+    ? `<div class="cnpy-lrow-acts" style="display:flex;gap:6px"><button type="button" data-act="linkDecline" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE};padding:5px 11px"${dis}>Decline</button><button type="button" data-act="linkAccept" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT};padding:6px 13px"${dis}>Accept</button></div>`
+    : "";
+  return `<div class="cnpy-trow cnpy-lrow${asks ? " cnpy-attn" : ""} ${HITBOX}" data-link-row="${l.id}" style="display:grid;${asks ? ROW_COLS_ASK : ROW_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
+    <span class="cnpy-lrow-glyph" style="display:flex;color:var(--accent)">${linkGlyph(linkLineState(l))}</span>
     <div style="min-width:0">
-      <div style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="min-width:0;font-size:13.5px;font-weight:${live ? 600 : 500};letter-spacing:-0.005em;color:${live ? "var(--fg)" : "var(--fg-55)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linkTopicHtml(l)}</span></div>
-      <div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.reason)}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="min-width:0;font-size:14.5px;font-weight:${live ? 600 : 500};letter-spacing:-0.01em;color:${live ? "var(--fg)" : "var(--fg-55)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linkTopicHtml(l)}</span></div>
+      <div style="font-size:12px;color:var(--fg-55);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.reason)}</div>
     </div>
-    <div class="cnpy-hrow-who" style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);flex:none;width:32px">${word}</span>${person}</div>
+    <div class="cnpy-lrow-who" style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);flex:none;width:32px">${word}</span>${person}</div>
     <div>${linkMark(l.state)}</div>
-    <div style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${esc(relTime(lastAt(l)))}</div>
+    ${acts}
+    <div class="cnpy-lrow-when" style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${esc(relTime(lastAt(l)))}</div>
     ${hitArea("openLink", String(l.id), `Link #${l.id} about ${linkTopicLabel(l.topic.kind, l.topic.ref)}`)}
   </div>`;
 }
@@ -174,8 +206,8 @@ export const LINKS_EMPTY = {
 } as const;
 
 function linkRowsShape(n: number, off = 0): string {
-  const row = (i: number) => `<div class="cnpy-hrow" style="display:grid;${ROW_COLS};gap:12px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border)">
-      <span>${skLine(skW(i), 13.5, 1.5)}${skLine("50%", 12, 1.5)}</span><span style="display:flex;align-items:center;gap:7px">${skBox(20, 20)}${skBar("60%", 9)}</span>${skBox(60, 20)}${skLine(34, 11.5, 1.5, "justify-content:flex-end")}
+  const row = (i: number) => `<div class="cnpy-lrow" style="display:grid;${ROW_COLS};gap:12px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--border)">
+      ${skBox(34, 14)}<span>${skLine(skW(i), 13.5, 1.5)}${skLine("50%", 12, 1.5)}</span><span style="display:flex;align-items:center;gap:7px">${skBox(20, 20)}${skBar("60%", 9)}</span>${skBox(60, 20)}${skLine(34, 11.5, 1.5, "justify-content:flex-end")}
     </div>`;
   return `<div${surface("overflow:hidden;margin-top:10px")}><div style="margin-bottom:-1px">${skList(n, (i) => row(i + off))}</div></div>`;
 }
@@ -367,8 +399,102 @@ export function linkStartCard(p: LinkStartProps): string {
     </section>`;
 }
 
+// ── the constellation (the top of the Links tab) ─────────────────────────────────
+// You in the centre, a line out to each LIVE link's other person (link-line.ts draws it on one canvas, on the orb
+// loop). Over the canvas sit real HTML hit areas — one link per node, `href="#links/<n>"`, its aria-label saying who,
+// what about and where it stands — with a small card on hover / focus. A request waiting for YOU pulses inward and
+// its orb listens; its Accept / Decline sit in a callout under the picture. Places are filled in link order (the
+// lowest number first), so a re-render never reshuffles them; past HERO_MAX the rest are "+N more" in the list.
+
+/** The links the constellation draws: every live one (waiting for me, open, my drafts and sent requests), once each,
+ *  lowest number first. */
+export function liveLinks(b: LinkBoxes): LinkView[] {
+  const seen = new Map<number, LinkView>();
+  for (const l of [...b.waiting, ...b.open, ...b.mine]) if (LIVE.has(l.state) && !seen.has(l.id)) seen.set(l.id, l);
+  return [...seen.values()].sort((a, c) => a.id - c.id);
+}
+const LIVE = new Set<LinkState>(["draft", "requested", "open"]);
+
+/** Whether this live link is a request waiting for the viewer's answer. */
+const waitsForMe = (l: LinkView, me: string): boolean => l.state === "requested" && !l.self && same(l.recipient.handle, me);
+
+/** One node: where it goes and what its line does, seen from the viewer in the centre. */
+export function heroNodeOf(l: LinkView, slot: number, me: string): HeroNode {
+  const spec = linkLineState(l);
+  const iRequested = same(l.requester.handle, me);
+  const notes = (l as Partial<LinkDetail>).notes ?? [];
+  const last = notes.length ? notes[notes.length - 1].side : null;
+  if (waitsForMe(l, me)) {
+    // Asked of me: their orb listens, a pulse travels inward; my end has no session yet.
+    return { id: l.id, slot, look: "calling", flow: "pulse", out: false, mine: l.recipient.kind ? "awake" : "hollow", notes: notes.length, last };
+  }
+  return iRequested
+    ? { id: l.id, slot, look: spec.right, flow: spec.flow, out: true, mine: spec.left, notes: notes.length, last }
+    : { id: l.id, slot, look: spec.left, flow: spec.flow, out: false, mine: spec.right, notes: notes.length, last };
+}
+
+/** Where a live link stands, as the viewer would say it (a node's label and its card). */
+export function heroStateWords(l: LinkView, me: string): string {
+  const otherH = same(l.requester.handle, me) ? l.recipient.handle : l.requester.handle;
+  if (l.state === "draft") return l.self ? "A draft: not sent yet. Sending opens it at once." : "A draft: not sent yet.";
+  if (waitsForMe(l, me)) return `Asks to link with you. Accept or decline it below.`;
+  if (l.state === "requested") return l.self ? "Requested." : `Waiting for @${otherH} to accept.`;
+  const mineSide = viewerSides(l, me).some((s) => l[s].kind === null);
+  return mineSide ? "Open. Your side has no session yet." : "Open.";
+}
+
+export interface LinksHeroProps { boxes: LinkBoxes; me: string; persons: PersonSummary[]; busy: boolean; status: LinksListProps["status"] }
+
+export function linksHero(p: LinksHeroProps): string {
+  const live = liveLinks(p.boxes);
+  const shown = live.slice(0, HERO_MAX);
+  const more = live.length - shown.length;
+  const nodes = shown.map((l, i) => heroNodeOf(l, i, p.me));
+  const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(2)}%`;
+  const mePerson = personOf(p.persons, p.me);
+  const nodeHtml = shown.map((l, i) => {
+    const [x, y] = HERO_SLOTS[i];
+    const otherH = l.self ? p.me : same(l.requester.handle, p.me) ? l.recipient.handle : l.requester.handle;
+    const who = l.self ? "You" : nameOf(p.persons, otherH);
+    const topic = linkTopicLabel(l.topic.kind, l.topic.ref);
+    const state = heroStateWords(l, p.me);
+    const label = `Link #${l.id} ${l.self ? "between two of your sessions" : `with ${who}`} about ${topic}. ${state} ${l.reason}`;
+    const below = y > HERO_SLOTS[0][1] + 40;
+    return `<div class="cnpy-lh-node${waitsForMe(l, p.me) ? " is-asking" : ""}" data-lh-node="${l.id}" data-lh-state="${l.state}" data-lh-flow="${nodes[i].flow}" style="left:${pct(x, HERO_W)};top:${pct(y, HERO_H)}">
+        <a class="cnpy-lh-hit" href="#links/${l.id}" aria-label="${attr(label)}">${personChip(personOf(p.persons, otherH), 28, otherH)}</a>
+        <span class="cnpy-lh-name" aria-hidden="true">${esc(l.self ? "You, again" : who.split(" ")[0])}</span>
+        <div class="cnpy-lh-card${below ? " is-up" : ""}${x > HERO_W / 2 ? " is-r" : " is-l"}" aria-hidden="true" style="border-radius:8px"><div style="display:flex;align-items:baseline;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="font-size:13px;font-weight:600;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linkTopicHtml(l)}</span></div><div class="cnpy-lh-card-why">${esc(l.reason)}</div><div style="font-size:11.5px;color:var(--fg-40);margin-top:6px">${esc(state)}</div></div>
+      </div>`;
+  }).join("");
+  const asks = shown.filter((l) => waitsForMe(l, p.me));
+  const dis = p.busy ? " disabled" : "";
+  const callouts = asks.map((l) => {
+    const h = l.requester.handle;
+    return `<div class="cnpy-lh-ask" data-lh-ask="${l.id}" style="border-radius:9px" role="group" aria-label="${attr(`Link request #${l.id} from ${nameOf(p.persons, h)}`)}">
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 260px">${personChip(personOf(p.persons, h), 26, h)}<div style="min-width:0"><div style="font-size:13px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="font-weight:600">${esc(nameOf(p.persons, h))}</b> asks to link about ${linkTopicHtml(l)}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.reason)}</div></div></div>
+        <div style="display:flex;gap:8px;flex:none"><button type="button" data-act="linkDecline" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}"${dis}>Decline</button><button type="button" data-act="linkAccept" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}"${dis}>Accept</button></div>
+      </div>`;
+  }).join("");
+  const settled = p.status === "ok" || p.status === "error";
+  const empty = settled && !live.length
+    ? `<div data-lh-empty style="text-align:center;margin-top:6px"><div style="font-size:13px;color:var(--fg-55);line-height:1.55">No live links. When your work and a teammate's touch the same thing, start one and your two sessions leave each other notes.</div><button type="button" data-act="linkStartOpen" class="cnpy-accentbtn" style="${ACCENT};margin-top:14px">Start a link</button></div>`
+    : "";
+  return `<section class="cnpy-lh" data-lh-count="${live.length}" aria-label="Your live links">
+      <div class="cnpy-lh-stage">
+        ${linkHeroCanvas(nodes)}
+        <div class="cnpy-lh-me" aria-hidden="true"><div class="cnpy-lh-face">${personChip(mePerson, 36, p.me)}</div><span class="cnpy-lh-name">You</span></div>
+        ${nodeHtml}
+      </div>
+      <div class="cnpy-lh-under">
+        ${more > 0 ? `<div data-lh-more style="font-size:12px;color:var(--fg-40);text-align:center;margin-top:2px">+${more} more in the list below</div>` : ""}
+        ${empty}
+        <div data-lh-asks style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:${asks.length ? 14 : 0}px">${callouts}</div>
+      </div>
+    </section>`;
+}
+
 export function linksView(p: LinksListProps): string {
-  const intro = `<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 22px;max-width:720px;line-height:1.55">A link is a short-lived line between two sessions whose work overlaps. While it is open, each side leaves short notes for the other. An agent drafts a link; people send and accept it here.</div>`;
+  const intro = `<div data-links-intro style="font-size:12.5px;color:var(--fg-55);margin:18px auto 30px;max-width:620px;line-height:1.55;text-align:center">A link is a short-lived line between two sessions whose work overlaps: while it is open, each side leaves the other short notes.</div>`;
   const b = p.boxes;
   const total = b.waiting.length + b.open.length + b.mine.length + b.closed.length;
   let body: string;
@@ -379,14 +505,19 @@ export function linksView(p: LinksListProps): string {
   else {
     const sec = (label: string, rows: LinkView[], empty: string, top = false) =>
       `${sectionHead(label, rows.length, top)}${rows.length ? table(rows.map((l) => linkRow(l, p)).join("")) : emptyLine(empty)}`;
+    // Closed collapses behind its count: a button (state, not <details>, so a patch never shuts it).
+    const open = !!p.closedOpen;
+    const closed = `<div style="margin-top:36px"><button type="button" data-act="linksClosedToggle" aria-expanded="${open}" aria-controls="links-closed" class="cnpy-mutelink" style="display:inline-flex;align-items:center;gap:6px;padding:0 2px;font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--fg-55);white-space:nowrap"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" style="transition:transform .16s var(--fx-ease);transform:rotate(${open ? 90 : 0}deg)"><path d="M3.5 2l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>CLOSED (${b.closed.length})</button></div>
+      <div id="links-closed" data-links-closed${open ? "" : " hidden"}>${open ? (b.closed.length ? table(b.closed.map((l) => linkRow(l, p)).join("")) : emptyLine(LINKS_EMPTY.closed)) : ""}</div>`;
     body = sec("WAITING FOR YOU", b.waiting, LINKS_EMPTY.waiting, true)
       + sec("OPEN", b.open, LINKS_EMPTY.open)
       + sec("YOURS", b.mine, LINKS_EMPTY.mine)
-      + sec("CLOSED", b.closed, LINKS_EMPTY.closed);
+      + closed;
   }
   // The card's slot is always there (empty while it is closed), so opening it never shifts what morph pairs below.
   const start = `<div data-link-start-slot>${p.start ? linkStartCard({ draft: p.start, me: p.me, persons: p.persons }) : ""}</div>`;
-  return `<div data-screen-label="Links" style="${WORK_SHELL}">${p.bar}<div${handoffsTabPanel("links")} style="padding-top:22px">${start}${intro}${body}</div></div>`;
+  const hero = linksHero({ boxes: b, me: p.me, persons: p.persons, busy: !!p.busy, status: p.status });
+  return `<div data-screen-label="Links" style="${WORK_SHELL}">${p.bar}<div${handoffsTabPanel("links")} style="padding-top:22px">${start}${hero}${intro}${body}</div></div>`;
 }
 
 // ── one link ─────────────────────────────────────────────────────────────────

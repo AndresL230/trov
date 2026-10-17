@@ -457,6 +457,8 @@ export interface AppState {
   linkBusy: boolean;
   /** Relay › Links' "Start a link" card: its draft while it is open, else null. */
   linkStart: LinkStart | null;
+  /** Relay › Links: whether the Closed section is open (it starts collapsed behind "Closed (N)"). */
+  linksClosedOpen: boolean;
   /** Cancel on a SENT request: its confirm modal is open (and `linkCancelBusy` while the write runs). */
   linkCancelArm: boolean;
   linkCancelBusy: boolean;
@@ -643,7 +645,7 @@ export function initialState(): AppState {
     nh: blankHandoff(),
     links: { status: "idle", data: NO_LINK_BOXES },
     linkDetail: { status: "idle", data: null },
-    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkStart: null, linkCancelArm: false, linkCancelBusy: false,
+    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkStart: null, linksClosedOpen: false, linkCancelArm: false, linkCancelBusy: false,
     promptList: { status: "idle", data: [] },
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
     promptSlug: null,
@@ -2965,7 +2967,7 @@ function screenBody(s: AppState): string {
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "handoffs") });
-    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links"), start: s.linkStart });
+    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links"), start: s.linkStart, closedOpen: s.linksClosedOpen, busy: s.linkBusy });
     case "link": return linkDetailView({
       status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
       draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,

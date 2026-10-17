@@ -208,10 +208,21 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   for me. Routes `#links` (screen `links`) and `#links/<n>` (screen `link`), NOT under `#handoffs/` (whose second
   segment is a handoff's number). `pageKey` maps `#links` to `#handoffs`, so the tab switch is one page (the
   underline slides, no entrance replays); a link's page is a child screen (crumb "Link #12", back to Links).
-- **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`) into Waiting for you, Open,
-  Yours, Closed. A row: `#n`, the topic (`linkTopicLabel`; a branch in code), the reason, the other person
-  (`personLink`; a self-link reads "You, two sessions"), the state's mark, when it last moved — a `hitArea` row.
-  Each empty section says so in a sentence (`LINKS_EMPTY`).
+- **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`). It opens on **the
+  constellation** (`linksHero`): you in the centre (your photo in an awake orb), each LIVE link a line out to the
+  other person's orb (their photo), on ONE canvas (`link-line.ts` `linkHeroCanvas`, the shared orb loop). Places
+  are `HERO_SLOTS`, filled in link-number order, so a re-render never reshuffles them; at most `HERO_MAX` (8), the
+  rest "+N more in the list below". Lines follow the state (`heroNodeOf`): open flows both ways, my request trickles
+  out to a listening orb, a draft flickers, a request waiting for ME pulses inward and its orb listens (its node
+  `is-asking`; Accept / Decline in a callout under the picture), a self-link is a second you; a side with no
+  session is a hollow ring (my end: a small socket where the line meets me). Over the canvas each node is a real
+  `<a href="#links/<n>">` whose aria-label says who, what about, where it stands and why; hover / focus shows a
+  card (#n, topic, reason, state). No live links: you alone in a quiet halo and a Start a link button. Under it a
+  one-line explainer, then Waiting for you, Open, Yours, and Closed collapsed behind "CLOSED (N)" (a button,
+  `state.linksClosedOpen`, never `<details>`, which a patch would shut). A row (`linkRow`): a still SVG glyph of its
+  line (`linkGlyph`, no loop), `#n` and the topic set first over the reason, the other person (`personLink`; a
+  self-link "You, two sessions"), the mark, when — and on a request waiting for me, Decline / Accept outside the
+  row's `hitArea`. Each empty section says so in a sentence (`LINKS_EMPTY`).
 - **Start a link** (`linkStartCard`): the header's "Start a link" (`linkStartOpen`) opens a card in a stable slot at
   the top of the tab (the tab is `data-morph="links"`, so typing never rebuilds it). About is a `segmented()`
   (Person / Pull request / Branch / Ticket); a person is a pick chip (the org's members, and "You, two sessions"),
@@ -254,4 +265,4 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   me (`handoffsForMe`, which My Work also counts — links stay out of it) plus link requests waiting for me (the
   Waiting box once loaded, else `GET /badges` `links`). `loadLinks` writes `listed("links", …)`.
 - Tests: `test/render.links.test.ts` (each state as each viewer, each side kind, a self-link, the note authors,
-  the join hint, the routes, the badge sum, the line per state, the start card and its refusals).
+  the join hint, the routes, the badge sum, the line per state, the start card and its refusals, the constellation and the rows).

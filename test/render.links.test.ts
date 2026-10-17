@@ -8,8 +8,9 @@ import {
   linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal, handoffsTabBar,
   linkSessionHtml, noteAuthorHtml, askThreadOf, LINKS_EMPTY, NO_LINK_BOXES, type LinkAction, type LinkDetailProps,
   linkStartCard, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, linkStartSpec, type LinkStart,
+  linksHero, liveLinks, heroNodeOf, linkGlyph,
 } from "../web/src/links";
-import { linkLineState, linkLine, LINE_W, LINE_H } from "../web/src/link-line";
+import { linkLineState, linkLine, LINE_W, LINE_H, HERO_MAX, parseHeroNodes } from "../web/src/link-line";
 import linkLineSrc from "../web/src/link-line.ts?raw";
 import orbSrc from "../web/src/thinking-orb.ts?raw";
 import cssSrc from "../web/src/trov.css?raw";
@@ -271,11 +272,11 @@ describe("the Links tab", () => {
   };
 
   it("four sections — Waiting for you, Open, Yours, Closed — each row #n, topic, reason, the other person, a mark", () => {
-    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar, closedOpen: true });
     const at = (s: string) => html.indexOf(s);
     expect(at("WAITING FOR YOU")).toBeLessThan(at(">OPEN<"));
     expect(at(">OPEN<")).toBeLessThan(at("YOURS"));
-    expect(at("YOURS")).toBeLessThan(at("CLOSED<"));
+    expect(at("YOURS")).toBeLessThan(at("CLOSED (1)"));
     for (const id of [3, 4, 5, 6]) expect(html).toContain(`data-act="openLink" data-arg="${id}"`);
     expect(text(html)).toContain("#3");
     expect(text(html)).toContain("PR #180");
@@ -297,7 +298,7 @@ describe("the Links tab", () => {
   });
 
   it("empty sections say so in plain words", () => {
-    const html = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons, bar, closedOpen: true });
     for (const s of Object.values(LINKS_EMPTY)) expect(html).toContain(s.replace(/'/g, "&#39;"));
   });
 
@@ -440,7 +441,7 @@ describe("the link line — the visual follows the state; the words still carry 
     expect(linkLineSrc).not.toMatch(/requestAnimationFrame\(|setInterval\(/);
     expect(orbSrc).toMatch(/if \(more && !still\) raf = requestAnimationFrame\(tick\)/);
     // A still paint draws the fixed scatter and asks for no more frames.
-    expect(linkLineSrc).toMatch(/if \(still\) \{\s*ps = stillParticles/);
+    expect(linkLineSrc).toMatch(/if \(still\) ps = stillParticles/);
     expect(linkLineSrc).toContain("const moving = !still &&");
     expect(cssSrc).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-ll-face > \.cnpy-av, \[data-link-start\] \{ animation:none; \} \}/);
     // The ink is the theme's --accent; no colour of its own.
@@ -553,5 +554,134 @@ describe("Start a link — the card", () => {
   it("main.ts posts the card's target and reason, and says a refusal in place (never a toast)", () => {
     expect(mainSrc).toContain("startLink(target, d.reason.trim())");
     expect(mainSrc).toContain('phase: "refused", error: linkStartRefusal(');
+  });
+});
+
+// ── the constellation at the top of the Links tab ────────────────────────────────
+describe("the Links tab's constellation — you in the centre, a line to each live link", () => {
+  const L = (over: Partial<LinkDetail>) => link({ notes: [], ...over });
+  const boxesOf = (over: Partial<typeof NO_LINK_BOXES> = {}) => ({ ...NO_LINK_BOXES, ...over });
+  const hero = (b = boxesOf(), busy = false) => linksHero({ boxes: b, me: "andres", persons, busy, status: "ok" });
+  const spread = boxesOf({
+    waiting: [L({ id: 2, state: "requested", requester: side("jose"), recipient: side("andres"), topic: { kind: "person", ref: "andres" } })],
+    open: [L({ id: 4 }), L({ id: 15, self: true, recipient: side("andres", { kind: "ask", session: "ask-thread-3" }) })],
+    mine: [L({ id: 9, state: "draft" }), L({ id: 12, state: "requested", recipient: side("mei") })],
+    closed: [L({ id: 6, state: "closed", closed_at: T0 })],
+  });
+
+  it("one node per LIVE link, lowest number first, each a real link with an aria-label that says it all", () => {
+    expect(liveLinks(spread).map((l) => l.id)).toEqual([2, 4, 9, 12, 15]);
+    const html = hero(spread);
+    expect(html.match(/data-lh-node="/g)).toHaveLength(5);
+    expect(html).not.toContain('data-lh-node="6"'); // an ended link is not drawn
+    for (const id of [2, 4, 9, 12, 15]) expect(html).toContain(`<a class="cnpy-lh-hit" href="#links/${id}"`);
+    expect(html).toMatch(/href="#links\/4" aria-label="Link #4 with Jose about PR #180\. Open\. Both of us touch the session store\."/);
+    expect(html).toMatch(/href="#links\/12" aria-label="Link #12 with Mei about PR #180\. Waiting for @mei to accept\./);
+    expect(html).toMatch(/<canvas class="cnpy-lh-cv" data-linkhero data-lh="[^"]*"[^>]*aria-hidden="true">/);
+    expect(nestedButton(html)).toBe(false);
+  });
+
+  it("the places are stable: they follow link numbers, so a new link takes the next place and nothing moves", () => {
+    const before = hero(boxesOf({ open: [L({ id: 4 }), L({ id: 7 })] }));
+    const after = hero(boxesOf({ open: [L({ id: 4 }), L({ id: 7 }), L({ id: 20 })] }));
+    const place = (h: string, id: number) => h.match(new RegExp(`data-lh-node="${id}"[^>]*style="([^"]+)"`))?.[1];
+    expect(place(after, 4)).toBe(place(before, 4));
+    expect(place(after, 7)).toBe(place(before, 7));
+  });
+
+  it("each line does what its state does: open flows, mine trickles out, a draft flickers, a request to me pulses in", () => {
+    const nodes = parseHeroNodes(hero(spread).match(/data-lh="([^"]*)"/)![1]);
+    const by = (id: number) => nodes.find((n) => n.id === id)!;
+    expect(by(4)).toMatchObject({ flow: "flow", out: true, look: "hollow", mine: "awake" }); // their side has no session
+    expect(by(12)).toMatchObject({ flow: "trickle", out: true, look: "calling" });
+    expect(by(9)).toMatchObject({ flow: "flicker", out: true, look: "asleep" });
+    expect(by(2)).toMatchObject({ flow: "pulse", out: false, look: "calling", mine: "hollow" });
+    expect(by(15)).toMatchObject({ flow: "flow", out: true, look: "awake" }); // a self-link: a second you
+    expect(heroNodeOf(L({ id: 3, requester: side("jose", { kind: "chat", session: "c" }), recipient: side("andres") }), 0, "andres"))
+      .toMatchObject({ out: false, look: "awake", mine: "hollow" }); // their open link to me: from them, my end hollow
+  });
+
+  it("a request waiting for you: its node is marked asking, and Accept / Decline sit in a callout under the picture", () => {
+    const html = hero(spread);
+    expect(html).toMatch(/class="cnpy-lh-node is-asking" data-lh-node="2"/);
+    expect(html).toMatch(/data-lh-ask="2"[^>]*>[\s\S]*Jose<\/b> asks to link about @andres/);
+    expect(html).toContain('data-act="linkDecline" data-arg="2"');
+    expect(html).toContain('data-act="linkAccept" data-arg="2"');
+    expect(html).not.toContain('data-act="linkAccept" data-arg="12"'); // my own request is not mine to accept
+    expect(hero(spread, true)).toMatch(/data-act="linkAccept" data-arg="2"[^>]*disabled/);
+  });
+
+  it("a self-link is a second you: your photo at the far end, named so", () => {
+    const html = hero(spread);
+    expect(html).toMatch(/data-lh-node="15"[\s\S]*?aria-label="Link #15 between two of your sessions about PR #180\. Open\./);
+    expect(html).toMatch(/data-lh-node="15"[\s\S]*?cnpy-lh-name" aria-hidden="true">You, again</);
+  });
+
+  it("empty: you alone with a quiet halo and the Start a link call to action (not while the first read is out)", () => {
+    const html = hero();
+    expect(html).toContain('data-lh-count="0"');
+    expect(html).toContain('data-lh=""');
+    expect(html).toContain("data-lh-empty");
+    expect(html).toContain('data-act="linkStartOpen"');
+    expect(linksHero({ boxes: boxesOf(), me: "andres", persons, busy: false, status: "loading" })).not.toContain("data-lh-empty");
+  });
+
+  it(`at most ${HERO_MAX} nodes; the rest are "+N more"`, () => {
+    const many = boxesOf({ open: Array.from({ length: HERO_MAX + 3 }, (_, i) => L({ id: i + 1 })) });
+    const html = hero(many);
+    expect(html.match(/data-lh-node="/g)).toHaveLength(HERO_MAX);
+    expect(text(html)).toContain("+3 more in the list below");
+  });
+
+  it("it heads the Links tab, above a shorter explainer and the list", () => {
+    const html = linksView({ status: "ok", boxes: spread, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
+    expect(html.indexOf('class="cnpy-lh"')).toBeLessThan(html.indexOf("data-links-intro"));
+    expect(html.indexOf("data-links-intro")).toBeLessThan(html.indexOf("WAITING FOR YOU"));
+  });
+});
+
+describe("the Links tab's rows", () => {
+  const bar = handoffsTabBar("links", { handoffs: 0, links: 1 });
+  const boxes = {
+    ...NO_LINK_BOXES,
+    waiting: [link({ id: 3, state: "requested", requester: side("jose"), recipient: side("andres") })],
+    open: [link({ id: 4 })],
+    closed: [link({ id: 6, state: "closed", closed_at: T0 }), link({ id: 7, state: "expired", closed_at: T0 })],
+  };
+
+  it("each row carries a still glyph of its line (an SVG, no canvas, no loop) before the topic", () => {
+    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
+    const row = html.slice(html.indexOf('data-link-row="4"'));
+    expect(row.indexOf('<svg class="cnpy-lglyph" data-glyph="flow"')).toBeLessThan(row.indexOf("PR #180"));
+    expect(row.slice(0, row.indexOf("cnpy-hit"))).not.toContain("<canvas");
+    expect(linkGlyph({ left: "awake", right: "calling", flow: "trickle" })).toContain('aria-hidden="true"');
+    expect(linkGlyph({ left: "dim", right: "dimhollow", flow: "stopped" })).toContain('data-glyph="stopped"');
+  });
+
+  it("a request waiting for me has Decline / Accept in its row, outside the row's hit area (no button in a button)", () => {
+    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
+    const row = html.slice(html.indexOf('data-link-row="3"'), html.indexOf('data-link-row="4"'));
+    expect(row).toContain('class="cnpy-lrow-acts"');
+    expect(row).toContain('data-act="linkAccept" data-arg="3"');
+    expect(row).toContain('data-act="linkDecline" data-arg="3"');
+    expect(row).toContain("Requested"); // the mark stays
+    expect(nestedButton(html)).toBe(false);
+    // As the requester, the same link has no Accept.
+    const theirs = linksView({ status: "ok", boxes, me: "jose", persons, bar });
+    expect(theirs.slice(theirs.indexOf('data-link-row="3"'))).not.toMatch(/^[\s\S]*?data-act="linkAccept" data-arg="3"[\s\S]*?data-link-row="4"/);
+  });
+
+  it("Closed collapses behind \"Closed (N)\" — a button with aria-expanded, kept open by state, not <details>", () => {
+    const shut = linksView({ status: "ok", boxes, me: "andres", persons, bar });
+    expect(shut).toMatch(/data-act="linksClosedToggle" aria-expanded="false" aria-controls="links-closed"/);
+    expect(text(shut)).toContain("CLOSED (2)");
+    expect(shut).toContain('<div id="links-closed" data-links-closed hidden></div>');
+    expect(shut).not.toContain('data-link-row="6"');
+    expect(shut).not.toContain("<details");
+    const open = linksView({ status: "ok", boxes, me: "andres", persons, bar, closedOpen: true });
+    expect(open).toContain('aria-expanded="true"');
+    expect(open).toContain('data-link-row="6"');
+    expect(open).toContain('data-link-row="7"');
+    expect(mainSrc).toContain('case "linksClosedToggle": state.linksClosedOpen = !state.linksClosedOpen;');
   });
 });

@@ -53,17 +53,61 @@ input, select { font-family: inherit; }
 .cnpy-orb { display:block; flex:none; }
 /* The link line (link-line.ts): two orbs and the particles between them, one canvas whose width / height are
    fixed in the template and scaled down here on a narrow screen (the orbs shrink with it; the aspect is the
-   canvas's own, 420 × 104). In the start card a photo sits inside an orb: placed by percentage of the line,
+   canvas's own, 420 × 110). In the start card a photo sits inside an orb: placed by percentage of the line,
    sized by its container width, so it shrinks with the orb. The card rises in when opened (not under reduced
    motion). No radius is declared here (the photo is personChip's own, already in the corners block). */
 .cnpy-ll { position:relative; container-type:inline-size; width:100%; }
-.cnpy-ll-cv { display:block; width:100%; height:auto; aspect-ratio:420 / 104; }
-.cnpy-ll-face { position:absolute; top:50%; width:calc(30 / 420 * 100cqw); aspect-ratio:1; transform:translate(-50%, -50%); pointer-events:none; }
-.cnpy-ll-face[data-ll-face="left"] { left:calc(46 / 420 * 100%); }
-.cnpy-ll-face[data-ll-face="right"] { left:calc(374 / 420 * 100%); }
+.cnpy-ll-cv { display:block; width:100%; height:auto; aspect-ratio:420 / 110; }
+.cnpy-ll-face { position:absolute; top:50%; width:calc(32 / 420 * 100cqw); aspect-ratio:1; transform:translate(-50%, -50%); pointer-events:none; }
+.cnpy-ll-face[data-ll-face="left"] { left:calc(50 / 420 * 100%); }
+.cnpy-ll-face[data-ll-face="right"] { left:calc(370 / 420 * 100%); }
 .cnpy-ll-face[hidden] { display:none; }
 .cnpy-ll-face > .cnpy-av { width:100% !important; height:100% !important; font-size:calc(11 / 420 * 100cqw) !important; animation:cnpy-ll-face .32s var(--fx-ease) both; }
 @keyframes cnpy-ll-face { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:none; } }
+/* The constellation (links.ts `linksHero`, link-line.ts `linkHeroCanvas`): you in the centre, a line to each live
+   link's other person, on one 600 × 300 canvas scaled to its stage. Over it, positioned by percentage of the
+   stage: your photo, and one node per link — a real link (`.cnpy-lh-hit`, the orb's size) with the person's photo,
+   their first name under it, and a card that shows on hover or focus. Sizes are container units of the stage, so
+   everything shrinks with the picture on a phone. No radius is declared here (the photos are personChip's;
+   the card's is inline). */
+.cnpy-lh { margin:0 auto 4px; max-width:720px; overflow-x:clip; }
+.cnpy-lh-stage { position:relative; container-type:inline-size; width:100%; }
+.cnpy-lh-cv { display:block; width:100%; height:auto; aspect-ratio:600 / 300; }
+.cnpy-lh-me, .cnpy-lh-node { position:absolute; transform:translate(-50%, -50%); }
+.cnpy-lh-me { left:50%; top:50%; width:calc(104 / 600 * 100cqw); aspect-ratio:1; pointer-events:none; }
+.cnpy-lh-me > .cnpy-lh-face { width:100%; height:100%; }
+.cnpy-lh-me > .cnpy-lh-name { color:var(--fg-70); font-weight:600; }
+.cnpy-lh-face, .cnpy-lh-hit { display:grid; place-items:center; }
+.cnpy-lh-me .cnpy-av { width:calc(36 / 600 * 100cqw) !important; height:calc(36 / 600 * 100cqw) !important; font-size:calc(13 / 600 * 100cqw) !important; }
+.cnpy-lh-node { width:calc(72 / 600 * 100cqw); aspect-ratio:1; z-index:1; }
+.cnpy-lh-node:hover, .cnpy-lh-node:focus-within { z-index:3; }
+.cnpy-lh-hit { width:100%; height:100%; color:inherit; text-decoration:none; outline:none; }
+.cnpy-lh-hit:focus-visible { outline:2px solid var(--focus, var(--accent)); outline-offset:2px; }
+.cnpy-lh-hit .cnpy-av { width:calc(28 / 600 * 100cqw) !important; height:calc(28 / 600 * 100cqw) !important; font-size:calc(10.5 / 600 * 100cqw) !important; transition:transform .16s var(--fx-ease); }
+.cnpy-lh-hit:hover .cnpy-av, .cnpy-lh-hit:focus-visible .cnpy-av { transform:scale(1.12); }
+.cnpy-lh-name { position:absolute; left:50%; top:calc(100% - 2px); transform:translateX(-50%); max-width:110px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; font-weight:500; color:var(--fg-55); pointer-events:none; }
+.cnpy-lh-node.is-asking .cnpy-lh-name { color:var(--accent); font-weight:600; }
+.cnpy-lh-card { position:absolute; left:50%; top:calc(100% + 18px); width:240px; transform:translate(-50%, 4px); padding:10px 12px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 10px 28px rgba(0,0,0,.18); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .14s ease, transform .16s var(--fx-ease), visibility 0s linear .14s; text-align:left; }
+.cnpy-lh-card.is-up { top:auto; bottom:calc(100% + 6px); }
+/* The card opens toward the middle of the picture, so it never runs off the stage's edge. */
+.cnpy-lh-card.is-r { left:auto; right:-8px; transform:translate(0, 4px); }
+.cnpy-lh-card.is-l { left:-8px; transform:translate(0, 4px); }
+.cnpy-lh-node:hover .cnpy-lh-card.is-r, .cnpy-lh-node:focus-within .cnpy-lh-card.is-r, .cnpy-lh-node:hover .cnpy-lh-card.is-l, .cnpy-lh-node:focus-within .cnpy-lh-card.is-l { transform:none; }
+.cnpy-lh-node:hover .cnpy-lh-card, .cnpy-lh-node:focus-within .cnpy-lh-card { opacity:1; visibility:visible; transform:translate(-50%, 0); transition:opacity .14s ease, transform .16s var(--fx-ease), visibility 0s; }
+.cnpy-lh-card-why { font-size:12px; line-height:1.5; color:var(--fg-70); margin-top:4px; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.cnpy-lh-under { max-width:620px; margin:0 auto; }
+.cnpy-lh-ask { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:11px 14px; border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); background:color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+@container (max-width: 460px) { .cnpy-lh-name { font-size:10.5px; max-width:70px; } .cnpy-lh-card { width:200px; } }
+/* A link row (links.ts `linkRow`): the still glyph, the topic over its reason, who, the mark, Accept / Decline on a
+   request waiting for me, when. On a phone who and when give way (the grid is inline, hence !important). */
+.cnpy-hitbox .cnpy-lrow-acts { position:relative; z-index:2; }
+.cnpy-lrow { transition:background .12s ease; }
+@media (max-width:760px) {
+  .cnpy-lrow { grid-template-columns:34px minmax(0,1fr) auto !important; }
+  .cnpy-lrow > .cnpy-lrow-who, .cnpy-lrow > .cnpy-lrow-when { display:none !important; }
+  .cnpy-lrow > .cnpy-lrow-acts { grid-column:2 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-lh-card, .cnpy-lh-hit .cnpy-av { transition:none; } }
 [data-link-start] { animation:cnpy-pop var(--fx-slow) var(--fx-ease) both; }
 @media (prefers-reduced-motion: reduce) { .cnpy-ll-face > .cnpy-av, [data-link-start] { animation:none; } }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height

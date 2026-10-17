@@ -3725,6 +3725,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       mount.querySelector<HTMLElement>('[data-link-start] [data-seg] [tabindex="0"]')?.focus();
       return;
     case "linkStartClose": state.linkStart = null; break;
+    case "linksClosedToggle": state.linksClosedOpen = !state.linksClosedOpen; break;
     case "linkStartKind": {
       const d = state.linkStart;
       if (!d || d.phase === "sending" || !(arg === "person" || arg === "pr" || arg === "branch" || arg === "ticket")) return;
