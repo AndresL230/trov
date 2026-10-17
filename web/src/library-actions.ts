@@ -225,6 +225,9 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         if (state.screen !== "library" && state.screen !== "space") { state.screen = "library"; if (state.library.status !== "loading") load(); }
         ui().space = blankSpaceDraft();
         rerender();
+        // Name focused on open (design §7), right after the render — not in an animation frame, which a hidden tab
+        // never paints.
+        host.mount.querySelector<HTMLInputElement>("#lib-sp-name")?.focus();
         return;
       case "libEdit": {
         const sp = open();

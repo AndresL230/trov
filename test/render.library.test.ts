@@ -27,7 +27,7 @@ import {
 import { initialDropdownUi } from "../web/src/dropdown";
 import { SPACE_ICONS, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
 import { AUTHORITY_MARK } from "../web/src/marks";
-import { spaceErrorText } from "../web/src/library-actions";
+import { spaceErrorText, createLibraryController } from "../web/src/library-actions";
 import { OrgApiError } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
@@ -307,5 +307,19 @@ describe("the owners and Archive dialogs", () => {
     expect(html).toContain("Archive Engineering?");
     expect(html).toContain('data-confirm-tone="danger"');
     expect(render(s("member", { archive: { busy: false, error: null } }))).not.toContain("Archive Engineering?");
+  });
+});
+
+describe("the Create space dialog's focus (case CS1)", () => {
+  it("New space opens the dialog with Name focused at once — no animation frame (a hidden tab never paints one)", () => {
+    const focused: string[] = [];
+    const mount = { querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("library", "admin");
+    const ctl = createLibraryController({
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+    });
+    ctl.act("libNew", null, null);
+    expect(state.libUi.space?.mode).toBe("create");
+    expect(focused).toEqual(["#lib-sp-name"]);
   });
 });
