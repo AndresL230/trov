@@ -19,8 +19,22 @@ import { pageAuthority, type DocMoveErrorCode, type DocMoveResult, type DocPageD
 import type { DocRow } from "@shared/rows";
 import { all, batch, first, stmt, type Stmt, type TenantContext } from "../data/sql";
 import { libraryPages, spaceState } from "./spaces";
+import { hasRole } from "../data/context";
 
 export { MAX_DEPTH };
+
+/** May the person archive and restore pages of `space` (0083_doc_archive)? An org admin, or an owner of the space —
+ *  the same people who edit the space's description — and only while the space itself is live (its pages do not
+ *  move). A token never reaches here: the routes are cookie-only and no MCP tool calls it. */
+export async function mayArchiveIn(ctx: TenantContext, space: string): Promise<boolean> {
+  return (await spaceState(ctx, space)) === "live" && (await isPageArchiver(ctx, space));
+}
+
+/** An org admin, or an owner of `space` (the role half of `mayArchiveIn`). */
+export async function isPageArchiver(ctx: TenantContext, space: string): Promise<boolean> {
+  if (hasRole(ctx, "admin")) return true;
+  return !!(await first(ctx, `SELECT 1 AS x FROM doc_space_owners WHERE org_id = ? AND space_slug = ? AND handle = ? COLLATE NOCASE`, ctx.orgId, space, ctx.userId));
+}
 
 /** A refused move. `message` is fixed text naming the rule. */
 export class DocTreeError extends Error {
@@ -38,14 +52,19 @@ const REFUSAL_TEXT: Record<MoveRefusal, string> = {
   other_space: "a page moves only within its own space",
 };
 
-/** Every page of a space as tree nodes (slug, parent, rank, title). */
-const spaceNodes = (ctx: TenantContext, space: string): Promise<DocTreeNode[]> =>
-  all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND space = ?`, ctx.orgId, space);
+/** Every page of a space IN THE LIBRARY as tree nodes (slug, parent, rank, title). An archived page
+ *  (0083_doc_archive) is in no tree: nothing moves next to it, under it, or is placed under it. */
+export const spaceNodes = (ctx: TenantContext, space: string): Promise<DocTreeNode[]> =>
+  all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND space = ? AND archived_at IS NULL`, ctx.orgId, space);
 
+/** The space of a page in the Library (null: no such page of the org, or it is archived). */
 const docSpaceOf = async (ctx: TenantContext, slug: string): Promise<string | null> =>
-  (await first<{ space: string }>(ctx, `SELECT space FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug))?.space ?? null;
+  (await first<{ space: string }>(ctx, `SELECT space FROM docs WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, ctx.orgId, slug))?.space ?? null;
 
-const placeStmt = (ctx: TenantContext, slug: string, parent: string | null, rank: number | null): Stmt =>
+const isArchivedDoc = async (ctx: TenantContext, slug: string): Promise<boolean> =>
+  !!(await first(ctx, `SELECT 1 AS x FROM docs WHERE org_id = ? AND slug = ? AND archived_at IS NOT NULL`, ctx.orgId, slug));
+
+export const placeStmt = (ctx: TenantContext, slug: string, parent: string | null, rank: number | null): Stmt =>
   stmt(ctx, `UPDATE docs SET parent_slug = ?, tree_rank = ? WHERE org_id = ? AND slug = ?`, parent, rank, ctx.orgId, slug);
 
 /** The move route's body, or a 400. */
@@ -63,7 +82,10 @@ function parseTarget(raw: unknown): MoveTarget {
 export async function moveDoc(ctx: TenantContext, slug: string, raw: unknown): Promise<DocMoveResult> {
   const target = parseTarget(raw);
   const space = await docSpaceOf(ctx, slug);
-  if (space === null) throw new DocTreeError("not_found", 404, "there is no such page");
+  if (space === null) {
+    if (await isArchivedDoc(ctx, slug)) throw new DocTreeError("archived", 409, "this page is archived: restore it before moving it");
+    throw new DocTreeError("not_found", 404, "there is no such page");
+  }
   if ((await spaceState(ctx, space)) === "archived") throw new DocTreeError("archived", 409, "restore the space before moving its pages");
   const nodes = await spaceNodes(ctx, space);
   if (target.kind !== "top" && !nodes.some((n) => n.slug === target.ref)) {
@@ -157,11 +179,17 @@ export async function readDocPage(ctx: TenantContext, doc: DocRow): Promise<DocP
   const ref = (p: LibraryPageDTO): DocPageRef => ({ slug: p.slug, title: p.title, space: p.space, path: ancestorsOf(tree, p.slug).map((a) => a.title), authority: p.authority });
   const linked = extractDocLinks(body).filter((s) => s !== doc.slug);
   const links: DocPageRef[] = [];
-  const broken: string[] = [];
+  const missing: string[] = [];
   for (const s of linked) {
     const p = tree.bySlug.get(s);
-    if (p) links.push(ref(p)); else broken.push(s);
+    if (p) links.push(ref(p)); else missing.push(s);
   }
+  // A target that is no page in the Library is either ARCHIVED (0083_doc_archive: drawn as text marked "Archived") or
+  // broken (no such page at all).
+  const archivedSet = missing.length
+    ? new Set((await all<{ slug: string }>(ctx, `SELECT slug FROM docs WHERE org_id = ? AND archived_at IS NOT NULL AND slug IN (SELECT value FROM json_each(?))`, ctx.orgId, JSON.stringify(missing))).map((r) => r.slug))
+    : new Set<string>();
+  const broken = missing.filter((s) => !archivedSet.has(s));
   const backlinks = back
     .map((b) => tree.bySlug.get(b.from_slug))
     .filter((p): p is LibraryPageDTO => !!p && p.current_version > 0 && p.slug !== doc.slug)
@@ -179,6 +207,7 @@ export async function readDocPage(ctx: TenantContext, doc: DocRow): Promise<DocP
     body,
     links,
     broken_links: broken,
+    archived_links: missing.filter((s) => archivedSet.has(s)),
     backlinks,
     info: {
       owner: doc.owner,
@@ -188,5 +217,7 @@ export async function readDocPage(ctx: TenantContext, doc: DocRow): Promise<DocP
       pending_version: pending,
       imported_from: shown && shown.import_id != null && shown.import_path ? { path: shown.import_path, file_name: importName } : null,
     },
+    archived: doc.archived_at ? { at: doc.archived_at, by: doc.archived_by ?? null } : null,
+    can_archive: await mayArchiveIn(ctx, doc.space),
   };
 }

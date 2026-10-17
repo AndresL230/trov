@@ -324,6 +324,15 @@ export async function restore_identity_task(ctx: TenantContext, _p: PlatformCont
   return { login, status: "pending" };
 }
 
+/** A promote of a version of an ARCHIVED page (0083_doc_archive) — the route answers 409 `archived`. */
+export class DocArchivedError extends Error {
+  readonly code = "archived";
+  constructor(slug: string) {
+    super(`${slug} is archived: restore the page before approving a version of it`);
+    this.name = "DocArchivedError";
+  }
+}
+
 /**
  * Human confirmation: promote a staged doc version into the live doc.
  * Non-destructive — prior versions remain. Rejects if the version is missing or not staged.
@@ -346,6 +355,8 @@ export async function promote_doc(
 
   const updated_at = nowIso();
   const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  // An archived page (0083_doc_archive) takes no version: its staged ones wait, hidden from Review, until it is restored.
+  if (doc?.archived_at) throw new DocArchivedError(slug);
   // ONE batch: the version, its risk closed (Q37: open suggestions superseded), the live body, the page's links
   // rebuilt from that body, and — when the version asked for a parent that is still a valid place — the move
   // under it (src/tools/doc-tree.ts; the tree PR of 0081_docs_library).

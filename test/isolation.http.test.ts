@@ -262,6 +262,8 @@ const TENANT: Record<string, Row> = {
   "POST /doc/:slug/promote": J({ version: 2 }), "POST /doc/:slug/reject": J({ version: 2 }),
   // The page tree (0081_docs_library): A's doc in the path is no page of B's — 404, nothing moved.
   "POST /doc/:slug/move": J({ target: "top" }),
+  // Archive page / Restore (0083_doc_archive): A's page is no page of B's — 404 for B's admin, 403 or 404 for its member.
+  "POST /doc/:slug/archive": J({}), "POST /doc/:slug/restore": J({}),
   "POST /adr/:id/ratify": J({}), "POST /adr/:id/reject": J({}),
   "POST /needs-triage/:id/discard": J({}), "POST /needs-triage/:id/assign": J({ type: "feed" }),
   "GET /identity-tasks": {}, "POST /identity-tasks/:login/map": J({ person: ALICE }),

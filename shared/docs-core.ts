@@ -197,9 +197,23 @@ export interface SpaceHomeDTO {
   pages: LibraryPageDTO[];
   /** Each top-level page's card line (`pageSummary` of the body it shows), by slug; a page with none is left out. */
   summaries?: Record<string, string>;
+  /** The space's archived pages (0083_doc_archive), newest archived first — Space home's Archived pages. */
+  archived_pages?: ArchivedPageDTO[];
   /** May the reader edit the description and the owners (an admin, or an owner of this space)? */
   can_edit: boolean;
+  /** May the reader archive and restore its pages (an admin, or an owner of this space; never while the space is
+   *  archived)? */
+  can_archive?: boolean;
   can_admin: boolean;
+}
+
+/** An archived page as its space's Archived pages lists it (0083_doc_archive). */
+export interface ArchivedPageDTO {
+  slug: string;
+  title: string;
+  archived_at: string;
+  archived_by: string | null;
+  current_version: number;
 }
 
 /** `org_admin_audit.action` for a space write. */
@@ -277,6 +291,32 @@ export interface DocPageDTO {
   /** The live pages whose live body links here ("Linked from"). */
   backlinks: DocPageRef[];
   info: DocPageInfo;
+  /** The `[[slug]]` targets that are ARCHIVED pages (0083_doc_archive): drawn as plain text marked "Archived". */
+  archived_links?: string[];
+  /** This page is archived (0083_doc_archive): when and by whom. Read-only then, with Restore for `can_archive`. */
+  archived?: { at: string; by: string | null } | null;
+  /** May the reader archive (or, archived, restore) this page — an org admin or an owner of its space, while the
+   *  space is live? */
+  can_archive?: boolean;
+}
+
+// ── Archive page (0083_doc_archive; docs-library.md › Archiving a page) ──
+
+/** `POST /doc/:slug/archive`'s answer: the page and every page it moved (its children, up a level, and the siblings
+ *  renumbered with them). */
+export interface DocArchiveResult { ok: true; slug: string; archived_at: string; parent_slug: string | null; places: DocTreePlace[] }
+
+/** `POST /doc/:slug/restore`'s answer: where the page went back (its old parent, else the top level). */
+export interface DocRestoreResult { ok: true; slug: string; parent_slug: string | null; tree_rank: number; places: DocTreePlace[] }
+
+/** The refusals of archive / restore (`{ error: code, message }`): no such page of the org (404), not an admin or an
+ *  owner of its space (403), already archived / not archived / its space is archived (409). */
+export type DocArchiveErrorCode = "not_found" | "forbidden" | "archived" | "not_archived" | "space_archived";
+
+/** The Archive page confirmation's sentence (the brief's copy). */
+export function archivePageText(title: string, under: number, spaceName: string): string {
+  const moved = under === 0 ? "" : under === 1 ? " The page under it moves up a level." : ` ${under} pages under it move up a level.`;
+  return `${title} leaves the Library.${moved} You can restore it from ${spaceName}'s Archived pages.`;
 }
 
 // ── a page's card line (Space home's Top-level pages, E2E SH2) ────────────────

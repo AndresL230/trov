@@ -111,6 +111,20 @@ describe("billing is not an agent's", () => {
   });
 });
 
+describe("archiving a Library page is a person's, never an agent's (0083_doc_archive; the owner's rule)", () => {
+  it("nothing reachable from src/mcp.ts imports src/tools/doc-archive.ts or names its writes; the HTTP app does", () => {
+    expect(SOURCES.has("src/tools/doc-archive.ts")).toBe(true);
+    expect(reachable("src/routes.ts").has("src/tools/doc-archive.ts")).toBe(true);
+    const fromMcp = reachable("src/mcp.ts");
+    expect(fromMcp.has("src/tools/doc-tree.ts"), "the walker does reach the tree module").toBe(true);
+    expect(fromMcp.has("src/tools/doc-archive.ts")).toBe(false);
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(archiveDoc|restoreDoc)\s*\(|UPDATE docs SET[^`]*archived_(at|by)\s*=/);
+    // The only writer of the two columns is that module.
+    const writers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /UPDATE docs SET[^`]*archived_(at|by)\s*=/.test(text)).map(([f]) => f);
+    expect(writers).toEqual(["src/tools/doc-archive.ts"]);
+  });
+});
+
 describe("deletion is a person's, never an agent's (invariant 2)", () => {
   it("nothing reachable from src/mcp.ts imports the deletion core, the Stripe cancel, or a deletion route", () => {
     const fromMcp = reachable("src/mcp.ts");

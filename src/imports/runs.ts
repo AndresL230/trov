@@ -103,7 +103,7 @@ async function waitingByRun(ctx: TenantContext, ids: number[]): Promise<Map<numb
   if (!ids.length) return new Map();
   const rows = await all<{ import_id: number; n: number }>(ctx,
     `SELECT v.import_id AS import_id, COUNT(*) AS n FROM doc_versions v JOIN docs d ON d.org_id = ? AND d.slug = v.slug
-      WHERE v.org_id = ? AND v.import_id IS NOT NULL AND v.status = 'staged' AND v.version > d.current_version
+      WHERE v.org_id = ? AND v.import_id IS NOT NULL AND v.status = 'staged' AND v.version > d.current_version AND d.archived_at IS NULL
       GROUP BY v.import_id`, ctx.orgId, ctx.orgId);
   const want = new Set(ids);
   return new Map(rows.filter((r) => want.has(r.import_id)).map((r) => [r.import_id, r.n]));
@@ -211,7 +211,10 @@ export async function checkStart(ctx: TenantContext, raw: unknown, now: number =
   const state = await spaceState(ctx, space);
   if (state === "unknown") throw new ImportError("not_found", 404, "there is no such space");
   if (state === "archived") throw new ImportError("archived", 409, "restore the space before importing into it");
-  const nodes = await all<DocTreeNode & { title: string }>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ?`, ctx.orgId);
+  // Every page of the org, archived ones too (0083_doc_archive): an archived page's slug stays RESERVED, but it is no
+  // place to import under and no title to conflict with — it left the Library.
+  const everyPage = await all<DocTreeNode & { title: string; archived: number }>(ctx, `SELECT slug, parent_slug, tree_rank, space, title, archived_at IS NOT NULL AS archived FROM docs WHERE org_id = ?`, ctx.orgId);
+  const nodes = everyPage.filter((n) => !n.archived);
   let parent: string | null = null;
   if (raw.parent_slug !== undefined && raw.parent_slug !== null && raw.parent_slug !== "") {
     if (typeof raw.parent_slug !== "string") throw bad("parent_slug is a page's slug");
@@ -231,7 +234,7 @@ export async function checkStart(ctx: TenantContext, raw: unknown, now: number =
     const k = n.title.trim().toLowerCase();
     if (!existingTitles.has(k)) existingTitles.set(k, n.slug);
   }
-  const existingSlugs = new Set(nodes.map((n) => n.slug));
+  const existingSlugs = new Set(everyPage.map((n) => n.slug));
   const parentDepth = parent ? depthOf(buildTree(nodes), parent) : 0;
   const plan = planImport(input, { existingTitles, existingSlugs, parentSlug: parent, parentDepth });
   if (plan.error === "too_many_files") throw new ImportError("too_many_files", 413, `an import is at most ${MAX_FILES} files`);
@@ -419,7 +422,7 @@ export async function sendImportPages(ctx: TenantContext, id: number, by: string
   const session = `import:${id}`;
   const ledger = new Map((await all<{ item_index: number; outcome: string }>(ctx,
     `SELECT item_index, outcome FROM processed_items WHERE org_id = ? AND session_id = ?`, ctx.orgId, session)).map((r) => [r.item_index, r.outcome]));
-  const spaceSlugs = new Set((await all<{ slug: string }>(ctx, `SELECT slug FROM docs WHERE org_id = ? AND space = ?`, ctx.orgId, live.row.space_slug)).map((r) => r.slug));
+  const spaceSlugs = new Set((await all<{ slug: string }>(ctx, `SELECT slug FROM docs WHERE org_id = ? AND space = ? AND archived_at IS NULL`, ctx.orgId, live.row.space_slug)).map((r) => r.slug));
   const mine = new Set((await all<{ slug: string }>(ctx, `SELECT DISTINCT slug FROM doc_versions WHERE org_id = ? AND import_id = ?`, ctx.orgId, id)).map((r) => r.slug));
   const fileOf = new Map(m.files.map((f) => [f.path, f]));
   const writeBySlug = new Map(m.writes.filter((w) => w.mode === "new").map((w) => [w.slug, w]));
@@ -551,14 +554,14 @@ interface Target { id: number; slug: string; version: number }
 const waitingTargets = (ctx: TenantContext, id: number, limit: number): Promise<Target[]> =>
   all<Target>(ctx,
     `SELECT v.id AS id, v.slug AS slug, v.version AS version FROM doc_versions v JOIN docs d ON d.org_id = ? AND d.slug = v.slug
-      WHERE v.org_id = ? AND v.import_id = ? AND v.status = 'staged' AND v.version > d.current_version
+      WHERE v.org_id = ? AND v.import_id = ? AND v.status = 'staged' AND v.version > d.current_version AND d.archived_at IS NULL
         AND v.version = (SELECT MAX(w.version) FROM doc_versions w WHERE w.org_id = ? AND w.slug = v.slug AND w.status = 'staged')
       ORDER BY v.id LIMIT ${limit}`, ctx.orgId, ctx.orgId, id, ctx.orgId);
 
 async function waitingCount(ctx: TenantContext, id: number): Promise<number> {
   const r = await first<{ n: number }>(ctx,
     `SELECT COUNT(*) AS n FROM doc_versions v JOIN docs d ON d.org_id = ? AND d.slug = v.slug
-      WHERE v.org_id = ? AND v.import_id = ? AND v.status = 'staged' AND v.version > d.current_version
+      WHERE v.org_id = ? AND v.import_id = ? AND v.status = 'staged' AND v.version > d.current_version AND d.archived_at IS NULL
         AND v.version = (SELECT MAX(w.version) FROM doc_versions w WHERE w.org_id = ? AND w.slug = v.slug AND w.status = 'staged')`,
     ctx.orgId, ctx.orgId, id, ctx.orgId);
   return r?.n ?? 0;

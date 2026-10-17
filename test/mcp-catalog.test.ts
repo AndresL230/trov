@@ -26,6 +26,15 @@ describe("the MCP tool catalog", () => {
     expect(live.map((t) => t.name)).toEqual(expect.arrayContaining(["get_connection", "switch_org", "assign_ticket", "list_people"]));
   });
 
+  it("no tool archives, restores or deletes a Library page — only a person does, in the app (0083_doc_archive; the owner's rule)", async () => {
+    const live = await mcpToolCatalog();
+    const names = live.map((t) => t.name);
+    expect(names.filter((n) => /archive|restore|delete|remove|trash|unpublish/i.test(n) && /doc|page|space|library/i.test(n))).toEqual([]);
+    expect(names.filter((n) => /^(archive|restore)/i.test(n))).toEqual([]);
+    // …and no tool's description or arguments offer it either.
+    for (const t of live) expect(JSON.stringify(t), t.name).not.toMatch(/archive (a |the )?(doc|page)|restore (a |the )?(doc|page)/i);
+  });
+
   it("every registered tool is in exactly one of the site's groups, and no group names a tool the server lacks", async () => {
     const names = (await mcpToolCatalog()).map((t) => t.name);
     expect(groupProblems(names), "add the tool to MCP_TOOL_GROUPS in shared/mcp-tools-core.ts").toEqual({ ungrouped: [], unknown: [] });

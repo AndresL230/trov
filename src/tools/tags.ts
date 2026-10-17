@@ -161,7 +161,7 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
     all<{ slug: string; title: string; section: string; updated_at: string | null; updated_by: string | null }>(ctx,
       `SELECT d.slug, d.title, d.section, d.updated_at, d.updated_by FROM docs d
          JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'doc' AND et.entry_id = d.slug AND et.tag = ?
-        WHERE d.org_id = ? ORDER BY d.updated_at DESC, d.slug LIMIT ${TAG_PAGE_LIMIT}`, ctx.orgId, name, ctx.orgId),
+        WHERE d.org_id = ? AND d.archived_at IS NULL ORDER BY d.updated_at DESC, d.slug LIMIT ${TAG_PAGE_LIMIT}`, ctx.orgId, name, ctx.orgId),
     all<{ id: number; title: string; status: string; created_at: string; created_by: string }>(ctx,
       `SELECT a.id, a.title, a.status, a.created_at, a.created_by FROM adrs a
          JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'adr' AND et.entry_id = CAST(a.id AS TEXT) AND et.tag = ?
@@ -181,7 +181,7 @@ export async function tagPage(ctx: TenantContext, rawName: string): Promise<TagP
          UNION ALL
          SELECT d.updated_by AS handle FROM docs d
            JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'doc' AND et.entry_id = d.slug AND et.tag = ?
-          WHERE d.org_id = ? AND d.updated_by IS NOT NULL
+          WHERE d.org_id = ? AND d.updated_by IS NOT NULL AND d.archived_at IS NULL
          UNION ALL
          SELECT a.created_by AS handle FROM adrs a
            JOIN entry_tags et ON et.org_id = ? AND et.entry_type = 'adr' AND et.entry_id = CAST(a.id AS TEXT) AND et.tag = ?

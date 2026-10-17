@@ -63,7 +63,7 @@ export interface DocDriftInput {
 export async function docDriftInput(ctx: TenantContext, key: string, now: Date = new Date()): Promise<DocDriftInput | null> {
   if (!key || key.startsWith("artifact:")) return null;
   const doc = await first<{ slug: string; section: string; title: string; body: string; current_version: number; updated_at: string | null }>(ctx,
-    `SELECT slug, section, title, body, current_version, updated_at FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, key);
+    `SELECT slug, section, title, body, current_version, updated_at FROM docs WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, ctx.orgId, key);
   if (!doc || doc.current_version <= 0 || !doc.body.trim()) return null;
   const waiting = await first<{ n: number }>(ctx,
     `SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = ? AND slug = ? AND status = 'staged' AND created_by = ?`, ctx.orgId, key, TROV_SYSTEM_HANDLE);

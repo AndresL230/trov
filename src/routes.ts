@@ -19,7 +19,7 @@ import { scanApp } from "./repo/scan-routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
-import { get_doc, get_doc_page, get_doc_version, list_doc_tree, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { doc_slug_taken, get_doc_page, get_doc_version, list_doc_tree, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import { sidebarBadges } from "./tools/badges";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
@@ -30,7 +30,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
-import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
+import { promote_doc, DocArchivedError, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
 import {
   create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint, list_sprints, get_sprint,
   SprintError, SPRINT_ERROR_STATUS,
@@ -83,6 +83,7 @@ import { importsApp } from "./imports/routes";
 import { resolveSpaceAlias } from "@shared/docs-core";
 import { spaceState } from "./tools/spaces";
 import { DocTreeError, moveDoc } from "./tools/doc-tree";
+import { DocArchiveError, archiveDoc, restoreDoc } from "./tools/doc-archive";
 
 export const app = new Hono<AppEnv>();
 
@@ -222,10 +223,10 @@ tenantApi.route("/spaces", spacesApp);
 tenantApi.route("/imports", importsApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
-// Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same
+// Promote / reject a doc version, archive / restore a page, ratify / reject an ADR, publish a prompt (artifact ratify does the same
 // inside its sub-app): a request that carries an Authorization header is refused outright, so no future
 // change to `sessionGate` can turn a bearer into a confirmation.
-for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/doc/:slug/archive", "/doc/:slug/restore", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
 // Moving a page in its space's tree is a person's direct write too (any signed-in member; never MCP).
 tenantRoot.use("/doc/:slug/move", cookieOnly);
 tenantApi.use("/prompts/:slug/publish", cookieOnly);
@@ -535,7 +536,8 @@ tenantApi.post("/docs/propose", async (c) => {
   if (state !== "live") return c.json({ error: state === "archived" ? `the ${space} space is archived` : `unknown space: ${space}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
-  if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
+  // Any page of the org holds its slug — an archived one too (0083_doc_archive: a slug stays reserved).
+  if (await doc_slug_taken(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.var.ctx,
     { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high", ...(d.parent_slug ? { parent_slug: d.parent_slug } : {}) },
@@ -556,6 +558,7 @@ tenantRoot.post("/doc/:slug/promote", async (c) => {
     const res = await promote_doc(c.var.ctx, c.req.param("slug"), version, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
+    if (e instanceof DocArchivedError) return c.json({ error: e.code, message: e.message }, 409);
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
@@ -574,6 +577,23 @@ tenantRoot.post("/doc/:slug/move", async (c) => {
     throw e;
   }
 });
+
+// Archive page / Restore (0083_doc_archive; src/tools/doc-archive.ts): a PERSON's write — an org admin or an owner of the
+// page's space — cookie only (`cookieOnly` above refuses any request carrying an Authorization header) and NEVER an
+// MCP tool (the owner's rule: no agent archives or restores a page). Archive is soft: the page leaves the Library, its
+// children move up a level in the same batch, its slug stays reserved; Restore puts it back under its old parent when it
+// can, else at the top level. A refusal is `{ error: code, message }`: `not_found` 404 (no such page of the org),
+// `forbidden` 403, `archived` / `not_archived` / `space_archived` 409.
+for (const [path, write] of [["/doc/:slug/archive", archiveDoc], ["/doc/:slug/restore", restoreDoc]] as const) {
+  tenantRoot.post(path, async (c) => {
+    try {
+      return c.json(await write(c.var.ctx, c.req.param("slug")));
+    } catch (e) {
+      if (e instanceof DocArchiveError) return c.json({ error: e.code, message: e.message }, e.status);
+      throw e;
+    }
+  });
+}
 
 // Human write-back (session-gated): reject a staged doc version. Soft status flip
 // to 'rejected' so it leaves the proposals queue; the row + body remain.

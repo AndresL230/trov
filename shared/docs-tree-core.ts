@@ -19,7 +19,7 @@
 //   - A page whose parent is missing (or sits in another space, or the data holds a loop) is drawn at the
 //     top level of its own space, never lost.
 
-import { placeAmong } from "./placement-core";
+import { placeAmong, RANK_STEP } from "./placement-core";
 
 export { placeAmong, RANK_STEP } from "./placement-core";
 export type { Placement, RankedKey } from "./placement-core";
@@ -224,6 +224,45 @@ export function applyMove<N extends DocTreeNode>(nodes: readonly N[], slug: stri
     const r = plan.renumber?.get(n.slug);
     return r === undefined ? n : { ...n, tree_rank: r };
   });
+}
+
+// ── Archive page / Restore (0083_doc_archive; docs-library.md › Archiving a page) ──
+
+/** One page's new place (the archive's and the restore's writes). */
+export interface TreePlace { slug: string; parent_slug: string | null; tree_rank: number }
+
+/**
+ * What archiving `slug` does to the tree it leaves (`nodes`: the space's pages in the Library, the page itself
+ * included): its direct children move UP to its own parent (the same space), taking its place among its siblings in
+ * their own order. The new sibling list — the siblings before it, its children, the siblings after it — is renumbered
+ * in that visible order (RANK_STEP apart), so the saved order is the one the person saw. A page with no children
+ * moves nothing (`places` is empty). Never deeper than before: each child goes up a level. Null when `slug` is not
+ * among `nodes`.
+ */
+export function planArchive(nodes: readonly DocTreeNode[] | DocTree, slug: string): { parent_slug: string | null; places: TreePlace[] } | null {
+  const tree = isTree(nodes) ? nodes : buildTree(nodes);
+  const page = tree.bySlug.get(slug);
+  if (!page) return null;
+  const parent = tree.parentOf.get(slug) ?? null;
+  const kids = childrenOf(tree, slug, page.space);
+  if (!kids.length) return { parent_slug: parent, places: [] };
+  const merged = childrenOf(tree, parent, page.space).flatMap((n) => (n.slug === slug ? kids : [n]));
+  return { parent_slug: parent, places: merged.map((n, i) => ({ slug: n.slug, parent_slug: parent, tree_rank: (i + 1) * RANK_STEP })) };
+}
+
+/**
+ * Where a restored page goes (`nodes`: the space's pages in the Library, WITHOUT it): back under `oldParent`, as its
+ * last child, when that page is in the Library, in the same space, and the 6-level cap allows it — else at the end of
+ * the space's top level. It comes back alone: the children it had moved up when it was archived stay where they are.
+ */
+export function planRestore(nodes: readonly DocTreeNode[], page: { slug: string; space: string }, oldParent: string | null): Extract<MovePlan, { ok: true }> {
+  const withPage = [...nodes.filter((n) => n.slug !== page.slug), { slug: page.slug, parent_slug: null, tree_rank: null, space: page.space }];
+  const tree = buildTree(withPage);
+  if (oldParent && oldParent !== page.slug) {
+    const plan = planMove(tree, page.slug, { kind: "into", ref: oldParent });
+    if (plan.ok) return plan;
+  }
+  return planMove(tree, page.slug, { kind: "top" }) as Extract<MovePlan, { ok: true }>;
 }
 
 /** The pane's left indent for a depth: 14px a level to level 4, then 9px a level so deep trees fit. */

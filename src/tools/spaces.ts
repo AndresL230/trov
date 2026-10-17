@@ -12,7 +12,7 @@
 import {
   NEW_SPACE_COLOR, NEW_SPACE_ICON, SPACE_COLORS, SPACE_ICONS, STARTER_SPACES, cleanSpaceDescription, cleanSpaceName, isSpaceColor, isSpaceIcon,
   pageAuthority, pageSummary, placeSpace, rankAfterAll, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug,
-  type LibraryDTO, type LibraryPageDTO, type SpaceAuditAction, type SpaceColor, type SpaceDTO, type SpaceErrorCode, type SpaceHomeDTO, type SpaceIcon,
+  type ArchivedPageDTO, type LibraryDTO, type LibraryPageDTO, type SpaceAuditAction, type SpaceColor, type SpaceDTO, type SpaceErrorCode, type SpaceHomeDTO, type SpaceIcon,
 } from "@shared/docs-core";
 import { buildTree, childrenOf } from "@shared/docs-tree-core";
 import { hasRole } from "../data/context";
@@ -66,11 +66,12 @@ async function ownersOf(ctx: TenantContext, slug?: string): Promise<Map<string, 
   return out;
 }
 
-/** Every page of the org (or of one space) without its body, with its newest staged version. */
+/** Every page of the org (or of one space) IN THE LIBRARY without its body, with its newest staged version. An
+ *  archived page (0083_doc_archive) is left out: it is in no tree, no count and no list but its space's Archived pages. */
 async function pageRows(ctx: TenantContext, space?: string): Promise<PageRow[]> {
   const sel = `SELECT d.slug, d.title, d.space, d.section, d.parent_slug, d.tree_rank, d.current_version, d.updated_at, d.updated_by, d.owner,
                       (SELECT MAX(v.version) FROM doc_versions v WHERE v.org_id = ? AND v.slug = d.slug AND v.status = 'staged') AS staged
-                 FROM docs d WHERE d.org_id = ?`;
+                 FROM docs d WHERE d.org_id = ? AND d.archived_at IS NULL`;
   return space
     ? all<PageRow>(ctx, `${sel} AND d.space = ?`, ctx.orgId, ctx.orgId, space)
     : all<PageRow>(ctx, sel, ctx.orgId, ctx.orgId);
@@ -147,16 +148,28 @@ export async function readLibrary(ctx: TenantContext): Promise<LibraryDTO> {
 export async function readSpaceHome(ctx: TenantContext, slug: string): Promise<SpaceHomeDTO | null> {
   const row = await spaceRow(ctx, slug);
   if (!row) return null;
-  const [owners, pages] = await Promise.all([ownersOf(ctx, slug), pageRows(ctx, slug)]);
+  const [owners, pages, archived] = await Promise.all([ownersOf(ctx, slug), pageRows(ctx, slug), archivedPages(ctx, slug)]);
   const bySlug = new Map(pages.map((p) => [p.slug, p]));
   const list = owners.get(slug) ?? [];
+  const canEdit = hasRole(ctx, "admin") || list.some((h) => h.toLowerCase() === ctx.userId.toLowerCase());
   return {
     space: spaceDto(row, list, pages),
     pages: [...pages].sort(byUpdatedDesc).map((p) => pageDto(p, bySlug)),
     summaries: await topSummaries(ctx, slug, pages),
-    can_edit: hasRole(ctx, "admin") || list.some((h) => h.toLowerCase() === ctx.userId.toLowerCase()),
+    archived_pages: archived,
+    can_edit: canEdit,
+    // Archive page / Restore (0083_doc_archive): the same people as `can_edit` — an admin or an owner of the space —
+    // and never while the space itself is archived (its pages do not move).
+    can_archive: canEdit && row.archived_at === null,
     can_admin: hasRole(ctx, "admin"),
   };
+}
+
+/** A space's archived pages (0083_doc_archive), the newest archived first: what its home's Archived pages list. */
+async function archivedPages(ctx: TenantContext, space: string): Promise<ArchivedPageDTO[]> {
+  return all<ArchivedPageDTO>(ctx,
+    `SELECT slug, title, archived_at, archived_by, current_version FROM docs
+      WHERE org_id = ? AND space = ? AND archived_at IS NOT NULL ORDER BY archived_at DESC, slug ASC`, ctx.orgId, space);
 }
 
 /** The card line of each page at the space's top level (as the forgiving tree draws it), from the body it shows:
@@ -178,7 +191,7 @@ async function topSummaries(ctx: TenantContext, space: string, pages: PageRow[])
 export async function listSpacesForAgent(ctx: TenantContext): Promise<{ spaces: { slug: string; name: string; description: string; pages: number }[] }> {
   const [rows, counts] = await Promise.all([
     spaceRows(ctx),
-    all<{ space: string; n: number }>(ctx, `SELECT space, COUNT(*) AS n FROM docs WHERE org_id = ? GROUP BY space`, ctx.orgId),
+    all<{ space: string; n: number }>(ctx, `SELECT space, COUNT(*) AS n FROM docs WHERE org_id = ? AND archived_at IS NULL GROUP BY space`, ctx.orgId),
   ]);
   const n = new Map(counts.map((c) => [c.space, c.n]));
   return { spaces: rows.filter((r) => r.archived_at === null).map((r) => ({ slug: r.slug, name: r.name, description: r.description, pages: n.get(r.slug) ?? 0 })) };

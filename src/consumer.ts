@@ -184,6 +184,16 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
   const existing = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
   const lowConf = proposal.confidence === "low";
 
+  // An ARCHIVED page (0083_doc_archive) takes nothing from a proposal — no version, no parent, no restore: only a
+  // person archives and restores (cookie routes). It goes to triage, where a person sees it. Its slug stays reserved,
+  // so a "new" page with that slug lands here too.
+  if (existing?.archived_at) {
+    const reason = `archived page: ${proposal.slug}`;
+    await route_triage(ctx, { raw: proposal, reason, source_author: author });
+    if (ledger) await ledgerRecord(ctx, ledger, "doc", "triaged", null);
+    return { outcome: "triaged", reason };
+  }
+
   // The space (0081_docs_library): an alias resolves (`technical` → `engineering`), then a space that was SENT
   // must be a live space of the org — an unknown or archived one goes to triage, never guessed. With none sent,
   // a NEW doc goes to `engineering` only while that space is live (else triage); an existing doc keeps its own
