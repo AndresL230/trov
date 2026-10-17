@@ -22,6 +22,8 @@ export interface TreeHost {
   newPage(space: string, parent: string | null): void;
   /** Is motion reduced? */
   reducedMotion(): boolean;
+  /** A move went through: what is drawn from the doc read (the open page's "Pages under", its breadcrumb) is read again. */
+  treeChanged(): void;
 }
 
 export interface TreeController {
@@ -99,6 +101,7 @@ export function createTreeController(host: TreeHost): TreeController {
           const at = new Map<string, DocTreePlace>(r.places.map((p) => [p.slug, p]));
           setPages(now.map((p) => { const w = at.get(p.slug); return w ? { ...p, parent_slug: w.parent_slug, tree_rank: w.tree_rank } : p; }));
         }
+        host.treeChanged();
         if (isUndo) { host.flash(`Moved “${title}” back`); host.rerender(); return; }
         undoNext = { slug, target: back };
         const words = target.kind === "into" ? `Moved “${title}” inside ${titleOf(target.ref)}`

@@ -19,7 +19,8 @@ import { render, initialState, spaceName } from "../web/src/render";
 import { docsPane, expandedSet } from "../web/src/docs-pane";
 import { linkedBody, brokenLinkTip } from "../web/src/doc-page";
 import { dropHint, rowZone, treeKeyTarget } from "../web/src/tree-drag";
-import { placeOf, moveRefusalText } from "../web/src/tree-actions";
+import { placeOf, moveRefusalText, createTreeController } from "../web/src/tree-actions";
+import { setApiOrg } from "../web/src/api";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import type { DocRow } from "@shared/rows";
 import css from "../web/src/trov.css?raw";
@@ -250,6 +251,33 @@ describe("the doc page", () => {
     expect(render(docState({ docDetail: { status: "ok", data: null } }))).toContain("There is no page here.");
     const loading = render(docState({ docSlug: "x", docDetail: { status: "loading", data: null } }));
     expect(loading).toContain('data-skel="doc"');
+  });
+});
+
+describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, the open bug Batch C recorded)", () => {
+  it("after the Worker takes a move — and after its Undo — the open page is read again, so its \"Pages under\" and breadcrumb follow", async () => {
+    const places = [{ slug: "rate", parent_slug: "api", tree_rank: 512 }];
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true, places }), { status: 200, headers: { "content-type": "application/json" } })));
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    setApiOrg("acme");
+    try {
+      const state = docState({ docSlug: "api" });
+      const changed: number[] = [];
+      const ctl = createTreeController({
+        state, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, flashNext: () => {}, newPage: () => {},
+        reducedMotion: () => true, treeChanged: () => changed.push(1),
+      });
+      ctl.move("rate", { kind: "before", ref: "auth" });
+      expect(changed).toHaveLength(0);                       // not before the Worker has it
+      await new Promise((r) => setTimeout(r, 0));
+      expect(changed).toHaveLength(1);
+      ctl.act("treeUndo", "rate", null);
+      await new Promise((r) => setTimeout(r, 0));
+      expect(changed).toHaveLength(2);
+    } finally {
+      setApiOrg(null);
+      vi.unstubAllGlobals();
+    }
   });
 });
 
