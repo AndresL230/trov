@@ -41,6 +41,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM ai_batch_requests",
   "DELETE FROM ai_batches",
   // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
+  "DELETE FROM chat_thread_people", // 0077_ask_people_sharing: who a thread is shared with by name
   "DELETE FROM chat_actions",
   "DELETE FROM chat_artifacts",
   "DELETE FROM chat_messages",
@@ -102,6 +103,7 @@ export const RESET_STATEMENTS = [
   // artifacts_fts_ad trigger cascades the page DELETE into the index.
   "DELETE FROM artifact_upload_tokens",
   "DELETE FROM doc_image_upload_tokens",
+  "DELETE FROM handoff_upload_tokens",
   "DELETE FROM doc_images",
   "DELETE FROM artifact_links",
   "DELETE FROM artifact_versions",

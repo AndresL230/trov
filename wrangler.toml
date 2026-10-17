@@ -2,7 +2,13 @@ name = "trov"
 account_id = "0bda3a2560ca48711ef7336cc421abed"
 main = "src/index.ts"
 compatibility_date = "2025-11-01"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
+# `global_fetch_strictly_public`: a global fetch() leaves through Cloudflare's front door, as a request from the
+# public Internet would. Without it, a fetch to a host on the Worker's OWN zone skips the front door and goes
+# straight to the zone's origin — and trov.dev has no origin behind this Worker, so Trov's own health ping
+# (`pingHealth`, src/repo/poll.ts — and the app-metrics poll, once a token is set) of trov.dev always failed,
+# and Trov's own Repo dashboard read production as Down while the site was up. Fetches to other zones
+# (GitHub, Stripe, every other org's URLs) are unchanged. docs/architecture/env.md › Compatibility flags.
 # The Worker bundle is minified (about half the bytes to upload and to parse on a cold start), and its source map
 # is uploaded beside it, so Workers Logs and an uncaught error's stack still name the TypeScript file and line.
 # Wrangler's `keep_names` (default true) still keeps every function's and class's `.name`, and each error class

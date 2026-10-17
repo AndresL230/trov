@@ -57,6 +57,8 @@ export interface DropdownProps {
   size?: "md" | "sm";
   /** Stretch across the parent (a form field). */
   fill?: boolean;
+  /** The trigger's text while `value` names no option (an "Add a person" pick that adds and starts again). */
+  placeholder?: string;
 }
 
 /** Which dropdown is open — ONE at a time, app-wide (`state.dd`). */
@@ -81,12 +83,12 @@ const isOpen = (p: DropdownProps, ui: DropdownUi): boolean => !p.disabled && ui.
 /** The trigger. Disabled it is a really disabled button: no act, not a way into a menu. */
 export function dropdown(p: DropdownProps, ui: DropdownUi): string {
   const cur = p.options.find((o) => o.value === p.value);
-  const text = cur ? cur.shown ?? cur.label : "";
+  const text = cur ? cur.shown ?? cur.label : p.placeholder ?? "";
   // Expanded only while it is really open: on its way out the trigger is already at rest.
   const open = isOpen(p, ui) && !ui.closing;
   const name = p.labelledBy ? ` aria-labelledby="${attr(`${p.labelledBy} ${p.id}`)}"` : p.ariaLabel ? ` aria-label="${attr(`${p.ariaLabel}: ${text}`)}"` : "";
   const cls = `cnpy-dd${p.size === "sm" ? " is-sm" : ""}${p.fill ? " is-fill" : ""}${open ? " is-open" : ""}`;
-  const shown = `<span class="cnpy-dd-v">${esc(text)}</span>`;
+  const shown = `<span class="cnpy-dd-v${!cur && p.placeholder ? " is-placeholder" : ""}">${esc(text)}</span>`;
   const lead = cur?.icon ? `<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true">${cur.icon}</span>${shown}</span>` : shown;
   return `<button type="button" id="${attr(p.id)}" data-field="${attr(p.id)}" data-dd="${attr(p.id)}"${p.disabled ? " disabled" : ` data-act="ddToggle" data-arg="${attr(p.id)}"`} class="${cls}" style="border-radius:8px" aria-haspopup="listbox" aria-expanded="${open}"${open ? ` aria-controls="${attr(`${p.id}-menu`)}"` : ""}${name}>${lead}${CARET}</button>`;
 }

@@ -43,12 +43,11 @@ import {
 import { artifactShas, noCandidates, sweepR2, type R2Sweep } from "./r2";
 
 /** The person's PRIVATE Ask attachments, in every org (the owner's ruling — docs/architecture/ask.md › Deleting a
- *  thread or an account): pages they authored, still private, that one of their own threads carries as an
- *  attachment. A subquery; binds ?1 = the handle. */
+ *  thread or an account): pages they authored, still private, that a thread carries as an attachment — one of their
+ *  own threads, or one shared with them to continue (0077_ask_people_sharing). A subquery; binds ?1 = the handle. */
 const ASK_ATTACHMENTS_OF = `SELECT p.id FROM artifact_pages p
     JOIN chat_artifacts ca ON ca.artifact_id = p.id AND ca.org_id = p.org_id AND ca.role = 'attachment'
-    JOIN chat_threads t ON t.id = ca.thread_id AND t.org_id = ca.org_id
-   WHERE t.handle = ?1 COLLATE NOCASE AND p.author_id = ?1 COLLATE NOCASE AND p.visibility = 'private'`;
+   WHERE p.author_id = ?1 COLLATE NOCASE AND p.visibility = 'private'`;
 
 /** The R2 keys of those attachments' versions — read BEFORE the batch, freed after it. */
 async function askAttachmentKeys(p: PlatformContext, handle: string): Promise<string[]> {
@@ -208,6 +207,8 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM oauth_grant_orgs WHERE person = ?1 COLLATE NOCASE OR grant_id IN (SELECT id FROM oauth_grants WHERE person = ?1 COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM oauth_grants WHERE person = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM mcp_tokens WHERE person = ? COLLATE NOCASE`, h),
+    // A handoff they were still uploading the prompt of (0080): it holds their text and was never sent.
+    stmt(p, `DELETE FROM handoff_upload_tokens WHERE principal = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM identities WHERE person = ? COLLATE NOCASE`, h),
     // E-mail: their preferences, and every digest addressed to them (with its dev-only body).
     stmt(p, `DELETE FROM notification_outbox_bodies WHERE idempotency_key IN (SELECT idempotency_key FROM notification_outbox WHERE user_id = ? COLLATE NOCASE)`, h),
@@ -224,6 +225,14 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM artifact_versions WHERE page_id IN (${ASK_ATTACHMENTS_OF})`, h),
     stmt(p, `DELETE FROM artifacts_fts WHERE CAST(page_id AS INTEGER) IN (${ASK_ATTACHMENTS_OF})`, h),
     stmt(p, `DELETE FROM artifact_pages WHERE id IN (${ASK_ATTACHMENTS_OF})`, h),
+    // A file of theirs in someone ELSE's thread (shared with them to continue, 0077) leaves its link behind: it goes
+    // too (their question keeps the file's name, as every reader saw it).
+    stmt(p, `DELETE FROM chat_artifacts WHERE role = 'attachment'
+               AND NOT EXISTS (SELECT 1 FROM artifact_pages p WHERE p.id = chat_artifacts.artifact_id AND p.org_id = chat_artifacts.org_id)`),
+    // Sharing by name (0077): who their threads are shared with, and every share naming them. Their turns in someone
+    // else's thread stay, under the tombstone (`asked_by` is in HANDLE_COLUMNS), so that conversation stays whole.
+    stmt(p, `DELETE FROM chat_thread_people WHERE handle = ? COLLATE NOCASE
+               OR thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h, h),
     stmt(p, `DELETE FROM chat_actions WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM chat_artifacts WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM chat_messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),

@@ -243,6 +243,17 @@
   Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
+  Then `0076_10_17_staging` — ONE migration for the 10-17 staging epic (#195: Ask sharing #193, handoff prompts by
+  upload #194), consolidated from three files before any reached production; each part keeps its old name as a
+  `-- ══ part … ══` marker and its own header and rollback: `0076_ask_sharing` (Ask Trov)
+  [`chat_threads.shared_at` and the partial index `idx_chat_threads_shared`: a conversation its owner shared with
+  the org, read-only for its other members — `ask.md` › Sharing a conversation], `0077_ask_people_sharing` (Ask
+  Trov) [the table `chat_thread_people` — a conversation shared with named people, each `read` or `continue` — and
+  `asked_by` on `chat_messages` / `chat_actions`, who asked each turn — `ask.md` › Sharing a conversation] and
+  `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a pending handoff whose prompt
+  is PUT to the artifact upload route, created only when its bytes land; hash-only, 5 minutes —
+  `handoffs-prompts.md`]; all additive. `0077`–`0079` are left to the PRs in flight beside it (the Docs Library,
+  agent links); a gap in the numbers is harmless — D1 applies every file it has not applied, by name.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

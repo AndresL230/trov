@@ -46,7 +46,7 @@ import {
 } from "@shared/artifacts";
 import { write_plan, get_plan, type PlanWrite } from "./tools/plan";
 import {
-  listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, readingListAsMarkdown, expireHandoff, handoffAsTask, HandoffCreateInput, HandoffError,
+  listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, readingListAsMarkdown, expireHandoff, handoffAsTask, HandoffCreateInput, HandoffError, HandoffUploadInput, mintHandoffUpload,
 } from "./tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, savePrompt, PromptSaveInput, PromptError } from "./tools/prompts";
 import { detectVars, fillVars, firstLine, type HandoffView } from "@shared/handoffs";
@@ -562,7 +562,8 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
   // `session` on send_handoff is the replay key (processed_items, item index 0),
   // so a retried call returns the first call's handoff instead of a second row.
   // A link into the TOKEN'S org (src/tools/org-links.ts): `<origin>/<slug>/#handoffs/<number>`.
-  const handoffUrl = (id: number) => `${appBase(artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), opts.orgSlug)}/#handoffs/${id}`;
+  const handoffBase = appBase(artifactOrigin(env.PUBLIC_ORIGIN, opts.origin), opts.orgSlug);
+  const handoffUrl = (id: number) => `${handoffBase}/#handoffs/${id}`;
   const handoffLine = (h: HandoffView) => ({
     id: h.id, sender: h.sender, recipient: h.recipient, status: h.status, created_at: h.created_at,
     task: h.context.task, excerpt: firstLine(h.body),
@@ -570,7 +571,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "send_handoff",
-    "Leave a handoff for the next session: where a task stands when you stop mid-way (context running out, switching person, ending the session). Send exactly ONE per session and tell the person its id as #N. `recipient` is a person handle, or omit it for 'anyone' (the first session to claim it gets it). Keep `body` under 300 words — its first line is the title, the rest says where things stand. ALWAYS fill `context` with the fixed shape { repo, branch, task, done[], next[], files[] }: task as one line and done/next as short items, always; in a code checkout also repo from the git remote (owner/name), branch from HEAD and files from `git diff --name-only` against main. With no checkout (a chat on the web) leave repo, branch and files out — never invent them. Long step-by-step instructions for the claiming session go in `prompt.body` (with a `prompt.title`), not in body. Pass your session id as `session` (if you have one) so a retry does not send twice. Returns { id, url }.",
+    "Leave a handoff for the next session: where a task stands when you stop mid-way (context running out, switching person, ending the session). Send exactly ONE per session and tell the person its id as #N. `recipient` is a person handle, or omit it for 'anyone' (the first session to claim it gets it). Keep `body` under 300 words — its first line is the title, the rest says where things stand. ALWAYS fill `context` with the fixed shape { repo, branch, task, done[], next[], files[] }: task as one line and done/next as short items, always; in a code checkout also repo from the git remote (owner/name), branch from HEAD and files from `git diff --name-only` against main. With no checkout (a chat on the web) leave repo, branch and files out — never invent them. Long step-by-step instructions for the claiming session go in the prompt (with a `prompt.title`), not in body. Pass your session id as `session` (if you have one) so a retry does not send twice. The prompt comes in one of two forms. INLINE: `prompt: { title, body }` → { id, url }. UPLOAD (only with a shell; use it for a prompt over about 2 KB, so its text is not typed into this call): write the prompt to a file, then pass `prompt: { title, sha256, size_bytes }` — sha256 from `shasum -a 256 prompt.md`, size_bytes from `wc -c < prompt.md` (UTF-8 text, at most 32 KB) — → { upload_url, expires_at } (or { id, url, replayed: true } when this session already sent its handoff: nothing to PUT). Nothing is sent yet: PUT the exact file (single use, 5 minutes) with `curl -X PUT --data-binary @prompt.md -H 'Content-Type: text/markdown' \"<upload_url>\"`; THAT creates the handoff and answers { id, url }. Tell the person #N only after the PUT answers. A PUT whose bytes do not match is a 400 and the link stays usable until it expires; 410 = used or expired, call send_handoff again. With no shell (a chat on the web), always send the prompt inline.",
     {
       body: z.string().min(1),
       recipient: z.string().optional(),
@@ -578,12 +579,25 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
         repo: z.string().optional(), branch: z.string().optional(), task: z.string().optional(),
         done: z.array(z.string()).optional(), next: z.array(z.string()).optional(), files: z.array(z.string()).optional(),
       }).optional(),
-      prompt: z.object({ title: z.string(), body: z.string() }).optional(),
+      // Either { title, body } (inline) or { title, sha256, size_bytes } (upload) — one object, so a client
+      // sees both forms; mixing them is refused below.
+      prompt: z.object({ title: z.string(), body: z.string().optional(), sha256: z.string().optional(), size_bytes: z.number().int().optional() }).optional(),
       session: z.string().optional(),
     },
     async (args) => runTool(async () => {
-      const input = HandoffCreateInput.parse({ body: args.body, recipient: args.recipient, context: args.context, prompt: args.prompt ?? null });
       const ledger = args.session ? { sessionId: args.session, itemIndex: 0 } : undefined;
+      const p = args.prompt;
+      const upload = p !== undefined && (p.sha256 !== undefined || p.size_bytes !== undefined);
+      if (upload && p.body !== undefined) throw new HandoffError("bad_request", "prompt takes { title, body } OR { title, sha256, size_bytes }, not both");
+      if (p !== undefined && !upload && p.body === undefined) throw new HandoffError("bad_request", "prompt needs a body (inline) or sha256 + size_bytes (upload)");
+      if (upload) {
+        const input = HandoffUploadInput.parse({ body: args.body, recipient: args.recipient, context: args.context, prompt: { title: p.title, sha256: p.sha256, size_bytes: p.size_bytes } });
+        const minted = await mintHandoffUpload(ctx, principal.handle, input, handoffBase, ledger);
+        // A session item that already made its handoff answers with it: there is nothing left to PUT.
+        if (minted.replayed) return { id: minted.handoff.id, url: handoffUrl(minted.handoff.id), replayed: true };
+        return { upload_url: `${artifactOrigin(env.PUBLIC_ORIGIN, opts.origin)}${minted.upload_path}`, expires_at: minted.expires_at };
+      }
+      const input = HandoffCreateInput.parse({ body: args.body, recipient: args.recipient, context: args.context, prompt: p ? { title: p.title, body: p.body } : null });
       const { handoff, replayed } = await createHandoff(ctx, principal.handle, input, ledger);
       return { id: handoff.id, url: handoffUrl(handoff.id), ...(replayed ? { replayed: true } : {}) };
     }),

@@ -308,8 +308,8 @@ design's `buildScreen`): `<div data-repo-state-slot>` (the design's place for #1
 opener — always EMPTY: the owner split State out to the Repo screen's Summary tab, `repo-dashboard.md` › Written by
 Trov), Needs attention, the connect card, the opener by `layout.opener` (found / unseen / release / production +
 previews / chain and envCards → environment cards + drift / appsTable), not shipped where a part has commit groups
-waiting, the week tiles, the links row (none under the found / unseen openers). "Repo-wide only" draws its own note
-instead of an opener. Every block is an `OverviewBlock` (`(f, x) => string`, `web/src/repo-overview-ctx.ts`) in its
+waiting, the week tiles. There is NO links row into the tabs: the design closes with one, but it repeated the tab
+bar at the top of the screen, so the owner removed it. "Repo-wide only" draws its own note instead of an opener. Every block is an `OverviewBlock` (`(f, x) => string`, `web/src/repo-overview-ctx.ts`) in its
 own module and `trov.css` section, wrapped in `data-repo-block="<name>"`, worded in the SPA from `RepoFacts` alone,
 `""` when its facts are absent.
 
@@ -345,8 +345,8 @@ Building is a blue ring pulsing by `.repo-kit-pulse`, still under reduced motion
   the commit groups; a disclosure is ONE act, `repoOpen` with the block's key, read back from `ctx.open`).
 - **Week tiles** (`repo-week.ts`): "—" for a null figure (never 0), ▲ / ▼, failed deploys inverted, "vs last week" /
   "since connecting" / "unknown until <host> is connected".
-- **The links row's Usage line** reads `reportsMetrics` and `connection`: "from <hosts>", "not available from
-  <host>" (no host in view reports a metric), or "not connected" — never "not connected" for a thing the repository
+- **`reportsMetrics`** (a capability, never a provider id) is read by the Usage tab's targets (`repo-usage.ts`): a
+  part whose host reports no metric is "Not available from <host>", never "not connected" for a thing the repository
   does not have.
 - **The header** (`repo-header.ts`): the repository menu (`dropdown()`, only with two or more repositories), the App
   menu (monorepos only: All apps, each app with its folder and open PRs, Repo-wide only), the environment pills
@@ -576,7 +576,7 @@ Every number is a worst case, counted from the code; the callers start a unit on
 | Suggestions change nothing until accepted | `scanRepo` writes suggestions only | `test/repo-scan.test.ts` › THE GUARD: a scan with suggestions changes nothing |
 | `decide()` parity SPA ↔ MCP (and core ↔ design) | `shared/repo-layout-core.ts` | `test/repo-facts.parity.test.ts`, `test/repo-layout.test.ts` |
 | Watch-path filtering (≥ 2 apps, only when commits list files) | `computeNotShipped`, `matchesWatch` | `test/repo-facts.reconcile.test.ts` |
-| No "not connected" for absent things, per scenario | the Overview's links row, the Usage targets, found / unseen | `test/render.repo-overview.test.ts`, `test/render.repo-usage.test.ts`, `test/render.repo-found.test.ts` |
+| No "not connected" for absent things, per scenario | the Overview's blocks, the Usage targets, found / unseen | `test/render.repo-overview.test.ts`, `test/render.repo-usage.test.ts`, `test/render.repo-found.test.ts` |
 | A feature claim only from a `feat` prefix or a feature label | `isFeaturePr` | `test/repo-releases.test.ts` |
 | The deploy-signal picker offers only signals seen in 30 days | `pickableSignals` | `test/render.repo-apps.test.ts` |
 

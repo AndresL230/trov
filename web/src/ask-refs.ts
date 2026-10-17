@@ -13,6 +13,7 @@
 // A chip carries `data-ask-ref="<ref>"` (the hover controller in ask-controller.ts watches it) and
 // `data-act="askShOpen"` (open in the inspector).
 
+import { isTombstoneHandle, TOMBSTONE_NAME } from "@shared/deletion-core";
 import { ASK_REF_TOKEN_RE, parseAskRef, type AskRefType, type AskRepoFacts, type AskTone, type PeekResult, type RefStatus, type RefView } from "@shared/ai-ask-core";
 import type { PersonSummary } from "@shared/people";
 import { esc, attr, relTime } from "./ui";
@@ -115,7 +116,10 @@ export const personOf = (look: Pick<RefLook, "persons">, handle: string | null |
 export const refAvatar = (look: Pick<RefLook, "persons">, handle: string, size: number): string =>
   personChip(personOf(look, handle), size, handle);
 /** A person's display name: the directory's, else the handle. */
-export const personName = (look: Pick<RefLook, "persons">, handle: string): string => personOf(look, handle)?.name ?? handle;
+/** A person's name, else their handle — and a deleted account's tombstone (`deleted-…`) is "Deleted user", never its
+ *  handle (a collaborator's turns outlive their account in someone else's shared thread; 0077). */
+export const personName = (look: Pick<RefLook, "persons">, handle: string): string =>
+  isTombstoneHandle(handle) ? TOMBSTONE_NAME : personOf(look, handle)?.name ?? handle;
 
 // ── the chip ─────────────────────────────────────────────────────────────────
 
