@@ -53,7 +53,7 @@ const MB = 1024 * 1024;
 
 // ── the shared shape of a scenario's org ────────────────────────────────────────────────────────────────────────
 /** A made-up person: Google-only, an example.com address. Upserted (persons are global; a rerun keeps the row). */
-function personStatements(p, at) {
+export function personStatements(p, at) {
   return [
     `INSERT INTO persons (handle, name, color, email, created_at, onboarded_at, role, responsibilities) VALUES (${q(p.handle)}, ${q(p.name)}, ${q(p.color)}, ${q(p.email)}, ${q(at)}, ${q(at)}, ${q(p.role ?? null)}, ${q(p.responsibilities ?? null)}) ` +
       `ON CONFLICT(handle) DO UPDATE SET name = excluded.name, color = excluded.color, email = excluded.email, role = excluded.role, responsibilities = excluded.responsibilities`,
@@ -66,7 +66,7 @@ const STARTER_TAGS = [["auth", "Sign-in, sessions, tokens, permissions", "plum"]
 /** The three starter spaces of the Library (0081_docs_library; shared/docs-core.ts STARTER_SPACES). */
 const STARTER_SPACES = [["engineering", "Engineering", "braces", "#525cc3", 1024], ["product", "Product", "compass", "#2f7d57", 2048], ["design", "Design", "pen", "#a84a68", 3072]];
 /** What `createOrg` writes for a new org (src/orgs/repo.ts), plus its members. `plan`: [id, source, overrides]. */
-function orgStatements(o, at) {
+export function orgStatements(o, at) {
   const s = [
     `INSERT INTO orgs (id, slug, name, created_at, created_by, plan, plan_overrides, plan_source, plan_status, plan_changed_at, plan_changed_by) VALUES (${q(o.id)}, ${q(o.slug)}, ${q(o.name)}, ${q(at)}, ${q(o.owner)}, ${q(o.plan[0])}, ${q(JSON.stringify(o.plan[2] ?? {}))}, ${q(o.plan[1])}, 'active', ${q(at)}, ${q(o.owner)}) ` +
       `ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, created_at = excluded.created_at, created_by = excluded.created_by, plan = excluded.plan, plan_overrides = excluded.plan_overrides, ` +
