@@ -85,8 +85,8 @@ function banner(page: DocPageDTO): string {
   const text = pending
     ? `You're reading the <strong style="font-weight:600;color:var(--fg)">live</strong> version. A change to this page is waiting for review.`
     : page.info.imported_from
-      ? "This page isn't live yet. It was imported and is waiting for someone to approve it. Only people who can review see it."
-      : "This page isn't live yet. It is waiting for someone to approve it. Only people who can review see it.";
+      ? "This page isn't live yet. It was imported and is waiting for someone to approve it."
+      : "This page isn't live yet. It is waiting for someone to approve it.";
   const m = AUTHORITY_MARK[page.authority]!;
   return `<div${surface("display:flex;align-items:center;gap:12px;padding:11px 14px;margin-bottom:18px", { cls: "cnpy-dpg-banner" })}>
     ${markShape(m.shape, m.tone, 10)}

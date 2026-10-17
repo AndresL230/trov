@@ -253,7 +253,7 @@ export function aiMark(size = 12, tip: string | null = null, label: string | nul
 export const AUTHORITY_MARK: Record<Authority, { word: string; tone: string; shape: MarkShape; hint: string } | null> = {
   live: null,
   staged_pending: { word: "Change pending review", tone: "var(--amber)", shape: "ring", hint: "Everyone still reads the live version. A newer change is waiting in Review." },
-  unpromoted: { word: "Not yet approved", tone: "var(--fg-55)", shape: "dashed", hint: "Only people who can review see this page until someone approves it." },
+  unpromoted: { word: "Not yet approved", tone: "var(--fg-55)", shape: "dashed", hint: "Nobody has approved this page yet. It goes live once someone approves it in Review." },
   draft: { word: "Draft", tone: "var(--blue)", shape: "ring", hint: "A drafted decision. Nobody has ratified it yet." },
 };
 export function authorityMark(a: Authority, size = 12): string {

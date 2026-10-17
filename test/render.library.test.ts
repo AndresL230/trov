@@ -94,7 +94,7 @@ describe("words", () => {
   it("a page's status: nothing for live; the design's words and tooltips otherwise", () => {
     expect(AUTHORITY_MARK.live).toBeNull();
     expect(AUTHORITY_MARK.staged_pending).toMatchObject({ word: "Change pending review", shape: "ring", hint: "Everyone still reads the live version. A newer change is waiting in Review." });
-    expect(AUTHORITY_MARK.unpromoted).toMatchObject({ word: "Not yet approved", shape: "dashed", hint: "Only people who can review see this page until someone approves it." });
+    expect(AUTHORITY_MARK.unpromoted).toMatchObject({ word: "Not yet approved", shape: "dashed", hint: "Nobody has approved this page yet. It goes live once someone approves it in Review." });
   });
   it("a refusal is a sentence: the server's own when it has one", () => {
     expect(spaceErrorText(new OrgApiError(409, "name_taken", "A space called Product already exists", "name"), "x")).toBe("A space called Product already exists");

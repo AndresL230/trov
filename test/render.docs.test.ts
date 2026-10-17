@@ -20,6 +20,7 @@ import { docsPane, expandedSet } from "../web/src/docs-pane";
 import { linkedBody, brokenLinkTip } from "../web/src/doc-page";
 import { dropHint, rowZone, treeKeyTarget } from "../web/src/tree-drag";
 import { placeOf, moveRefusalText } from "../web/src/tree-actions";
+import { AUTHORITY_MARK } from "../web/src/marks";
 import type { DocRow } from "@shared/rows";
 import type { DocPageDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 
@@ -167,6 +168,15 @@ describe("the doc page", () => {
     expect(staged).toContain("Links from other pages show up once this one is approved.");
     // A page never approved lists no children (its children wait under it in the tree).
     expect(staged).not.toContain("Pages under Authentication");
+  });
+  it("owner rulings DP14 / DOC13: an agent's never-approved page has its own banner, and nothing says only reviewers see it", () => {
+    const agent = render(docState({ docDetail: { status: "ok", data: { doc: doc({ current_version: 0 }), versions: [], page: { ...PAGE, authority: "unpromoted", backlinks: [], info: { ...PAGE.info, version: 0, pending_version: 1, imported_from: null } } } } }));
+    expect(agent).toContain("This page isn't live yet. It is waiting for someone to approve it.</div>");
+    const imported = render(docState({ docDetail: { status: "ok", data: { doc: doc({ current_version: 0 }), versions: [], page: { ...PAGE, authority: "unpromoted", backlinks: [], info: { ...PAGE.info, version: 0, pending_version: 1, imported_from: { path: "a.md", file_name: "a.zip" } } } } } }));
+    expect(imported).toContain("This page isn't live yet. It was imported and is waiting for someone to approve it.</div>");
+    // Every member may review (CLAUDE.md invariant 2): no banner, mark or tooltip says otherwise.
+    for (const html of [agent, imported]) expect(html).not.toContain("Only people who can review");
+    expect(AUTHORITY_MARK.unpromoted!.hint).not.toContain("Only people who can review");
   });
   it("the rail: On this page with Pages under, Owner, Last edited by, Version, Linked from", () => {
     const html = render(docState());
