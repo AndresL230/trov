@@ -361,6 +361,8 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     expect(root).toContain(`data-tab="org"`);
     expect(root).not.toContain(`data-dd="ask-share-add"`);
     expect(root).toContain("Files stay private to whoever attached them");
+    // What Trov wrote from GitHub is shared as written — said always (the switch and the thread aren't known here).
+    expect(root).toContain("Answers drawn from GitHub are shared as written, even with people who can&#39;t open those repositories.");
     threadsPart.act!(ctx, "askThShareTab", `${t.id}|people`, null);
     expect(s.ask.threadShare?.tab).toBe("people");
     const people = render(s);

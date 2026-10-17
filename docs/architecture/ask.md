@@ -183,8 +183,8 @@ credential) and `src/repo/ask-github.ts` (the transport — the credential). Tes
   cookie person's `ctx`). A reader — named `read`, or through the org — can't start a turn (the one 404 on `POST /ask`)
   and no read route calls GitHub, so a reader never sets off a lookup. What an earlier answer SAID from GitHub is part
   of its stored text, so — like a quote from an attachment — it is shared as written with whoever reaches the thread,
-  and a continuing person's history carries it as text whatever their own GitHub access; the tool results themselves
-  are never stored or resent (› Not persisted). `test/ask.github.test.ts` › in a shared conversation.
+  and a continuing person's history carries it as text whatever their own GitHub access (the Share dialog's privacy
+  line says so); the tool results themselves are never stored or resent (› Not persisted). `test/ask.github.test.ts` › in a shared conversation.
 - **What the person is told** is the tool result, relayed by the model; the step's line says "GitHub not linked" or
   "No access on GitHub". Org settings › AI's row, Settings › Trov's "What Trov can see", `AI_NEVER_SENT` and the
   Privacy Policy (Terms 10's Ask passage, the Anthropic row, Privacy 4 — approved 2026-10-17, `PROVIDERS_UPDATED`)
@@ -419,7 +419,8 @@ lets other people of the SAME org reach it, two ways at once or either:
   `test/ask.people-sharing.test.ts`).
 - **What a reader gets** (`asViewer`, routes.ts) — for ANY reader, the owner included, on every turn someone ELSE
   asked: what was asked and what Trov wrote are shared AS WRITTEN (including anything Trov quoted from an attachment,
-  which the Share dialog says); everything the stored answer resolved FOR ITS ASKER is resolved again for the reader,
+  and anything it wrote from a GitHub repository, even for a reader who can't open that repository — the Share dialog
+  says so); everything the stored answer resolved FOR ITS ASKER is resolved again for the reader,
   in one batch: sources, item cards, diagram nodes (a hidden one keeps its label and loses its link), context chips,
   steps' results, cards' items and done lines, a saved page — what the reader can't see is dropped, never its title,
   status or address. Those turns' cards come with `editable: []` and `undo: false`. A viewer's summary has none of
@@ -443,7 +444,10 @@ lets other people of the SAME org reach it, two ways at once or either:
   with a teammate" picks which half it shows (`ShareDraft.tab`; it always opens on the org's, and both halves are kept
   while it is open). The org's: "Everyone in <org>", a `segmented()` "No access" / "Can read". A teammate's — the
   dialog widens — each person (people.ts) with a `dropdown()` Can read / Can continue / Remove, and "Add a person", a
-  `dropdown()` of the org's members other than the owner. Then the privacy line; Cancel / Save — Save is
+  `dropdown()` of the org's members other than the owner. Then the privacy line ("Files stay private to whoever attached
+  them. Answers drawn from GitHub are shared as written, even with people who can't open those repositories. Only you
+  can rename, share or delete it." — the GitHub sentence ALWAYS shows: the org's lookups switch is not on the Ask
+  screen, and a row's thread is not loaded when its ⋯ menu opens the dialog); Cancel / Save — Save is
   ONE `PATCH { shared, people }`, then the row takes the server's summary. Tab stays inside it; Escape closes an open
   dropdown first, then the dialog. **Stop sharing** (when shared at all) is `PATCH { shared: false, people: [] }` at
   once, with a flash. A shared row of the owner's carries `sharedMark` (marks.ts, a two-people glyph named "Shared";

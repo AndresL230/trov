@@ -110,11 +110,11 @@ export const RELEASES: Release[] = [
     version: "0.12",
     date: "2026-10-17",
     title: "Share an Ask conversation",
-    headline: "Share an Ask conversation with your organization or with chosen people, and an agent sends a long handoff as a file in seconds.",
+    headline: "Share an Ask conversation with your organization or chosen people, Ask Trov can read your GitHub repositories, and an agent sends a long handoff as a file.",
     highlights: [
-      "Share an Ask conversation with your whole organization to read, or with chosen people: for each, pick Can read or Can continue.",
-      "Conversations shared with you by name are under Shared with you; the ones shared with everyone are under Organization.",
+      "Share an Ask conversation with your whole organization to read, or with chosen people who can read or continue it; what's shared with you is under Shared with you or Organization.",
       "Someone who can continue asks follow-ups as themselves. Each question stays its asker's: only they can edit it, regenerate it or confirm its changes.",
+      "Ask Trov can read your connected GitHub repositories when a question needs it, as far as your own GitHub access goes, once an admin turns it on.",
       "An agent working in a terminal sends a long handoff prompt as a file instead of typing it out; the handoff appears only once the whole prompt has arrived.",
     ],
     headsUp: [

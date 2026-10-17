@@ -275,7 +275,8 @@ export function shareDropdowns(app: AppState): DropdownProps[] {
 }
 
 /** Share: who can open the conversation — everyone in the org (read only), and people by name, each "Can read" or
- *  "Can continue" — and what stays private. A root `data-overlay` dialog (role="dialog", not a confirmation: nothing
+ *  "Can continue" — and what stays private and what doesn't: answers drawn from GitHub are shared as written (always
+ *  said: the org's GitHub lookups switch isn't on the Ask screen and a row's thread isn't loaded). A root `data-overlay` dialog (role="dialog", not a confirmation: nothing
  *  is written until Save); its keyboard is the threads part's (Escape, a trapped Tab). */
 export function threadShareModal(app: AppState): string {
   const ui = app.ask;
@@ -313,7 +314,7 @@ export function threadShareModal(app: AppState): string {
           options: [{ value: "org", label: "Share with org", arg: `${arg}|org` },
             { value: "people", label: "Share with a teammate", arg: `${arg}|people` }] })}</div>
         <div class="ask-share-body">${d.tab === "org" ? orgPane : peoplePane}</div>
-        <p id="ask-th-share-d" class="ask-share-note ask-share-files">${esc("Files stay private to whoever attached them. Only you can rename, share or delete it.")}</p>
+        <p id="ask-th-share-d" class="ask-share-note ask-share-files">${esc("Files stay private to whoever attached them. Answers drawn from GitHub are shared as written, even with people who can't open those repositories. Only you can rename, share or delete it.")}</p>
         ${err}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
           <button type="button" data-act="askThShareCancel" data-arg="${arg}" class="cnpy-outlinebtn"${off} style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Cancel</button>
