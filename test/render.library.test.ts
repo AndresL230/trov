@@ -22,7 +22,7 @@ vi.mock("../web/src/markdown", () => ({
 import { render, initialState, type AppState } from "../web/src/render";
 import {
   spaceTile, spaceDialog, spaceHomeView, libraryHomeView, libraryWhen, blankSpaceDraft, duplicateOf, spacePositionDropdown,
-  SPACE_ICON_PATHS, FIRST, type SpaceHomeProps,
+  archiveDialog, SPACE_ICON_PATHS, FIRST, type SpaceHomeProps,
 } from "../web/src/library";
 import { initialDropdownUi } from "../web/src/dropdown";
 import { SPACE_ICONS, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
@@ -338,6 +338,11 @@ describe("the owners and Archive dialogs", () => {
     expect(html).toContain("Archive Engineering?");
     expect(html).toContain('data-confirm-tone="danger"');
     expect(render(s("member", { archive: { busy: false, error: null } }))).not.toContain("Archive Engineering?");
+  });
+  it("archive: the sentence agrees with the page count — one page stays as it is (case SH21, Batch C)", () => {
+    const ask = { busy: false, error: null };
+    expect(archiveDialog({ ...ENG, pages: 1 }, ask)).toContain("Its 1 page stays as it is, and an admin can restore it from the Library.");
+    expect(archiveDialog({ ...ENG, pages: 3 }, ask)).toContain("Its 3 pages stay as they are, and an admin can restore it from the Library.");
   });
 });
 

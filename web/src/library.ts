@@ -511,7 +511,7 @@ export function ownersDialog(sp: SpaceDTO, o: NonNullable<LibraryUi["owners"]>, 
 export function archiveDialog(sp: SpaceDTO, a: NonNullable<LibraryUi["archive"]>): string {
   return confirmModal({
     id: "lib-archive", title: `Archive ${sp.name}?`,
-    body: `It leaves the sidebar and the Library for everyone. Its ${pagesWord(sp.pages)} stay as they are, and an admin can restore it from the Library.`,
+    body: `It leaves the sidebar and the Library for everyone. Its ${pagesWord(sp.pages)} ${sp.pages === 1 ? "stays as it is" : "stay as they are"}, and an admin can restore it from the Library.`,
     confirmAct: "libArchiveGo", cancelAct: "libArchiveClose", busy: a.busy,
     confirmLabel: "Archive space", busyLabel: "Archiving…", error: a.error,
   });
