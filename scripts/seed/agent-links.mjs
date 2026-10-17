@@ -206,18 +206,18 @@ export function agentLinksStatements(now = new Date()) {
       preview: { title: "Note on link #16", lines: [line("To", `@${OMAR}'s side`), line("Note", "The progress event's new shape ships tonight: { done, total }.")], item: null } }],
   });
 
-  thread(6404, ME, "E2E: link me with Mei about the rate limit", ago(30 * MIN), { turn: 2 });
-  question(6404, "Ask Mei for a link about the rate limit.", ago(35 * MIN));
-  answer(6404, 1, "Here is the request. It is sent only when you confirm it.", ago(34 * MIN), {
-    cards: [{ id: 6402, tool: "request_link", args: { target: { person: MEI }, reason: "The class-code lookup will sit behind the rate limit." },
-      preview: { title: `Link request to @${MEI}`, lines: [line("With", `@${MEI}`), line("Reason", "The class-code lookup will sit behind the rate limit."),
-        line("What it does", `Confirm sends it. @${MEI} accepts or declines it in Trov; once open, their agent's notes reach this thread.`)], item: null } }],
-  });
-  question(6404, "And open one with my own coding session.", ago(31 * MIN));
-  answer(6404, 2, "Here is a link with your other session. It opens as soon as you confirm it.", ago(30 * MIN), {
-    cards: [{ id: 6403, tool: "request_link", args: { target: { person: ME }, reason: "This thread follows my coding session on the topic grid." },
-      preview: { title: "Open a link with your other session", lines: [line("With", "You (another session of yours)"), line("Reason", "This thread follows my coding session on the topic grid."),
-        line("What it does", "Confirm opens it at once, with this thread as one side.")], item: null } }],
+  // Both request cards in ONE answer of the thread's latest turn: a card from an earlier turn expires with it.
+  thread(6404, ME, "E2E: link me with Mei about the rate limit", ago(30 * MIN));
+  question(6404, "Ask Mei for a link about the rate limit, and open one with my own coding session.", ago(31 * MIN));
+  answer(6404, 1, "Here are both. The request to Mei is sent, and the link with your other session opens, only when you confirm each.", ago(30 * MIN), {
+    cards: [
+      { id: 6402, tool: "request_link", args: { target: { person: MEI }, reason: "The class-code lookup will sit behind the rate limit." },
+        preview: { title: `Link request to @${MEI}`, lines: [line("With", `@${MEI}`), line("Reason", "The class-code lookup will sit behind the rate limit."),
+          line("What it does", `Confirm sends it. @${MEI} accepts or declines it in Trov; once open, their agent's notes reach this thread.`)], item: null } },
+      { id: 6403, tool: "request_link", args: { target: { person: ME }, reason: "This thread follows my coding session on the topic grid." },
+        preview: { title: "Open a link with your other session", lines: [line("With", "You (another session of yours)"), line("Reason", "This thread follows my coding session on the topic grid."),
+          line("What it does", "Confirm opens it at once, with this thread as one side.")], item: null } },
+    ],
   });
 
   const l1 = linkView(1, `Link with @${JOSE} on PR #231`, { owner: JOSE, updated: ago(6 * HOUR), extra: { with: JOSE, self: false, topic: "PR #231", reason: "Both of us are changing the mastery query this week.", state: "open" } });
