@@ -343,14 +343,23 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     const t = s.ask.threads.data[0];
     const { ctx, patched } = shareCtx(s);
     threadsPart.act!(ctx, "askThShare", String(t.id), null);
-    expect(s.ask.threadShare).toEqual({ id: t.id, title: t.title, org: false, people: [], busy: false, error: null });
+    expect(s.ask.threadShare).toEqual({ id: t.id, title: t.title, org: false, people: [], tab: "org", busy: false, error: null });
     const root = render(s);
     expect(root).toMatch(/data-overlay="ask-th-share" class="cnpy-cmodal"[\s\S]*?role="dialog" aria-modal="true" aria-labelledby="ask-th-share-t"/);
     expect(root).toContain(`Share “${t.title}”`);
     expect(root).toContain(`aria-label="Everyone in SaplingLearn"`);
     expect(root).toMatch(/data-seg="ask-share-org"[\s\S]*?class="cnpy-seg-btn is-on"[^>]*>No access/);
-    expect(root).toMatch(/data-dd="ask-share-add"[\s\S]*?<span class="cnpy-dd-v is-placeholder">Add a person<\/span>/);
+    // It opens on Share with org; Share with a teammate opens the bigger half — the people and Add a person.
+    expect(root).toMatch(/data-seg="ask-share-tab"[\s\S]*?class="cnpy-seg-btn is-on"[^>]*>Share with org/);
+    expect(root).toContain(`data-tab="org"`);
+    expect(root).not.toContain(`data-dd="ask-share-add"`);
     expect(root).toContain("Files stay private to whoever attached them");
+    threadsPart.act!(ctx, "askThShareTab", `${t.id}|people`, null);
+    expect(s.ask.threadShare?.tab).toBe("people");
+    const people = render(s);
+    expect(people).toContain(`data-tab="people"`);
+    expect(people).toMatch(/data-dd="ask-share-add"[\s\S]*?<span class="cnpy-dd-v is-placeholder">Add a person<\/span>/);
+    expect(people).not.toContain(`data-seg="ask-share-org"`);
     expect(root).not.toContain("<select");
     // Add a person offers the org's members but never the owner.
     const add = shareDropdowns(s).find((d) => d.id === "ask-share-add")!;

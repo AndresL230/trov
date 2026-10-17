@@ -118,6 +118,8 @@ export interface ShareDraft {
   title: string;
   org: boolean;
   people: AskSharePerson[];
+  /** Which half the dialog shows: sharing with the org (where it opens), or with teammates by name. */
+  tab: "org" | "people";
   /** Save is in flight. */
   busy: boolean;
   /** Why the last Save failed, in a sentence. */

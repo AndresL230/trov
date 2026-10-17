@@ -661,6 +661,28 @@ function threadDefs(x) {
           followups: ["What changed in the document pipeline lately?"] },
       ] });
   }
+  // 13 · A TEAMMATE'S — Mei Lin's, shared with Andres by name to continue: what he sees under Shared with you.
+  {
+    const qAt = c.days(2, 90), aAt = c.days(2, 89);
+    threads.push({ id: 9513, owner: "meilin", title: "Onboarding checklist for new contributors", mode: "fast", turn: 1,
+      messages: [
+        { role: "user", at: qAt, text: "What should a new contributor read first?", context: [] },
+        { role: "assistant", at: aAt, mode: "fast", tokens: [2_900, 140, 2_200],
+          parts: [{ md: "Start with the architecture doc, then the backend AI doc, then the open tickets in the current sprint. The README covers running it locally." }],
+          followups: ["Which tickets are good first picks?"] },
+      ] });
+  }
+  // 14 · A TEAMMATE'S — Jose's, shared with the whole org: what everyone sees under Organization.
+  {
+    const qAt = c.days(3, 200), aAt = c.days(3, 199);
+    threads.push({ id: 9514, owner: "Jose-Gael-Cruz-Lopez", title: "How the OCR step handles scanned PDFs", mode: "fast", turn: 1,
+      messages: [
+        { role: "user", at: qAt, text: "How does the OCR step handle scanned PDFs?", context: [] },
+        { role: "assistant", at: aAt, mode: "fast", tokens: [3_100, 160, 2_400],
+          parts: [{ md: "Scanned pages go through OCR page by page before the text is chunked; a page with no text layer is the only one sent to OCR." }],
+          followups: ["How long does a 50-page scan take?"] },
+      ] });
+  }
   return threads;
 }
 
@@ -733,7 +755,7 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   for (const t of threads) {
     const first = t.messages[0], last = t.messages.at(-1);
     s.push(insert("chat_threads", {
-      id: t.id, org_id: ORG, handle: ME, title: t.title, mode: t.mode, origin: t.origin ?? "page", context_ref: t.contextRef ?? null, pinned: t.pinned ?? 0,
+      id: t.id, org_id: ORG, handle: t.owner ?? ME, title: t.title, mode: t.mode, origin: t.origin ?? "page", context_ref: t.contextRef ?? null, pinned: t.pinned ?? 0,
       auto_mode: t.auto ?? 0, draft: t.draft ?? "", summary: "", summary_through: 0, turn: t.turn, stop_requested: 0, created_at: first.at, updated_at: last.at,
     }));
     let question = null;
@@ -825,6 +847,10 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   s.push(insert("chat_thread_people", { org_id: ORG, thread_id: 9505, handle: "meilin", access: "continue", shared_at: c.days(1) }));
   s.push(insert("chat_thread_people", { org_id: ORG, thread_id: 9505, handle: "Jose-Gael-Cruz-Lopez", access: "read", shared_at: c.days(1) }));
   s.push(`UPDATE chat_threads SET shared_at = '${c.days(1)}' WHERE org_id = '${ORG}' AND id = 9502`);
+  // …and the other way: Mei Lin's onboarding thread shared with Andres by name (Can continue), Jose's OCR thread with
+  // the org — so the dev sign-in itself (Andres) has rows under Shared with you and Organization.
+  s.push(insert("chat_thread_people", { org_id: ORG, thread_id: 9513, handle: ME, access: "continue", shared_at: c.days(1, 30) }));
+  s.push(`UPDATE chat_threads SET shared_at = '${c.days(2)}' WHERE org_id = '${ORG}' AND id = 9514`);
   // Review › "Flagged in Ask": Andres's "out of date" on the migration answer, and teammates' earlier flags (no handle).
   [["doc:sapling-infrastructure", "out_of_date", c.days(1, 170)], ["doc:sapling-infrastructure", "out_of_date", c.days(2, 400)], ["doc:sapling-architecture", "source_wrong", c.days(3, 100)], ["decision:5", "source_wrong", c.days(6, 30)]]
     .forEach(([ref, reason, at], i) => s.push(insert("ask_flags", { id: 9501 + i, org_id: ORG, item_ref: ref, reason, created_at: at })));

@@ -341,9 +341,11 @@ lets other people of the SAME org reach it, two ways at once or either:
   `deleted-…` tombstone, so that conversation stays whole. An org's takes every thread (`ORG_TABLES`).
 - **On the screen** (`web/src/ask-threads.ts`, `ask-state.ts`, `ask-conversation.ts`, `ask-composer.ts`): the owner's
   ⋯ menu has **Share…** (`askThShare` → `threadShareModal`, a root `role="dialog"` overlay of its own — not
-  `confirmModal`, whose Enter would turn a pick in its dropdowns into Save): an Organization row, a `segmented()` "No
-  access" / "Can read"; a People list, each person (people.ts) with a `dropdown()` Can read / Can continue / Remove;
-  "Add a person", a `dropdown()` of the org's members other than the owner; the privacy note; Cancel / Save — Save is
+  `confirmModal`, whose Enter would turn a pick in its dropdowns into Save). A `segmented()` "Share with org" / "Share
+  with a teammate" picks which half it shows (`ShareDraft.tab`; it always opens on the org's, and both halves are kept
+  while it is open). The org's: "Everyone in <org>", a `segmented()` "No access" / "Can read". A teammate's — the
+  dialog widens — each person (people.ts) with a `dropdown()` Can read / Can continue / Remove, and "Add a person", a
+  `dropdown()` of the org's members other than the owner. Then the privacy line; Cancel / Save — Save is
   ONE `PATCH { shared, people }`, then the row takes the server's summary. Tab stays inside it; Escape closes an open
   dropdown first, then the dialog. **Stop sharing** (when shared at all) is `PATCH { shared: false, people: [] }` at
   once, with a flash. A shared row of the owner's carries `sharedMark` (marks.ts, a two-people glyph named "Shared";

@@ -286,29 +286,34 @@ export function threadShareModal(app: AppState): string {
   const org = askOrgName(app);
   const off = d.busy ? " disabled" : "";
   const arg = String(d.id);
-  const orgRow = `<div class="ask-share-row">
-      <span class="ask-share-who"><span class="ask-share-org" aria-hidden="true">${askIcon("share", 14)}</span><span class="ask-share-n" id="ask-share-org-l">${esc(`Everyone in ${org}`)}</span></span>
-      ${segmented({ id: "ask-share-org", ariaLabel: `Everyone in ${org}`, value: d.org ? "read" : "off", act: "askThShareOrg", size: "sm", inertOn: true,
-        options: [{ value: "off", label: "No access", arg: `${arg}|off`, locked: d.busy }, { value: "read", label: "Can read", arg: `${arg}|read`, locked: d.busy }] })}
+  const orgPane = `<div class="ask-share-sec" data-morph-key="sp-org">
+      <div class="ask-share-row">
+        <span class="ask-share-who"><span class="ask-share-org" aria-hidden="true">${askIcon("share", 14)}</span><span class="ask-share-n" id="ask-share-org-l">${esc(`Everyone in ${org}`)}</span></span>
+        ${segmented({ id: "ask-share-org", ariaLabel: `Everyone in ${org}`, value: d.org ? "read" : "off", act: "askThShareOrg", size: "sm", inertOn: true,
+          options: [{ value: "off", label: "No access", arg: `${arg}|off`, locked: d.busy }, { value: "read", label: "Can read", arg: `${arg}|read`, locked: d.busy }] })}
+      </div>
+      <p class="ask-share-note">${esc(`Everyone in ${org} can open it and read it, but not ask in it.`)}</p>
     </div>`;
   const people = d.people.map((p) => `<div class="ask-share-row" data-morph-key="sp:${attr(domKey(p.handle))}">
       <span class="ask-share-who">${refAvatar(v.look, p.handle, 20)}<span class="ask-share-n">${esc(personName(v.look, p.handle))}</span></span>
       ${dropdown(personDropdown(v.look, p, d.busy), app.dd)}
     </div>`).join("");
+  const peoplePane = `<div class="ask-share-sec" data-morph-key="sp-people" data-morph-list>
+      ${people || `<p class="ask-share-empty" data-morph-key="sp-none">${esc("Not shared with anyone by name yet.")}</p>`}
+      <div class="ask-share-row ask-share-add" data-morph-key="sp-add">${dropdown(addDropdown(app, d), app.dd)}</div>
+      <p class="ask-share-note" data-morph-key="sp-how">${esc("Can read opens it and reads it. Can continue also asks follow-ups in it, as themselves, and can't change what anyone else asked.")}</p>
+    </div>`;
   const err = d.error ? `<div role="alert" class="ask-share-err">${esc(d.error)}</div>` : "";
   return `<div data-overlay="ask-th-share" class="cnpy-cmodal"${closingAttr(ui.closing, "thshare")}>
     <div data-act="askThShareCancel" data-arg="${arg}" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="ask-th-share" role="dialog" aria-modal="true" aria-labelledby="ask-th-share-t" aria-describedby="ask-th-share-d" tabindex="-1" data-ask-share${d.busy ? " data-busy" : ""} class="cnpy-surface cnpy-cmodal-box ask-share">
+      <div id="ask-th-share" role="dialog" aria-modal="true" aria-labelledby="ask-th-share-t" aria-describedby="ask-th-share-d" tabindex="-1" data-ask-share data-tab="${d.tab}"${d.busy ? " data-busy" : ""} class="cnpy-surface cnpy-cmodal-box ask-share">
         <div id="ask-th-share-t" class="ask-share-h">${esc(`Share “${d.title || "this thread"}”`)}</div>
-        <p id="ask-th-share-d" class="ask-share-lede">Whoever you share it with can open it and read the whole conversation: the questions and Trov's answers, including anything Trov quoted from an attached file.</p>
-        <div class="ask-share-sec">${orgRow}</div>
-        <div class="ask-share-sec" data-morph-list>
-          <div class="ask-share-label" data-morph-key="sp-head">People</div>
-          ${people}
-          <div class="ask-share-row ask-share-add" data-morph-key="sp-add">${dropdown(addDropdown(app, d), app.dd)}</div>
-        </div>
-        <p class="ask-share-note">${esc("Files stay private to whoever attached them: others see each file's name, not what is in it, and a source only you can see stays hidden from them. Someone who can continue asks as themselves, and can't change or delete what anyone else asked. Only you can rename, share or delete it.")}</p>
+        <div class="ask-share-tabs">${segmented({ id: "ask-share-tab", ariaLabel: "Share with", value: d.tab, act: "askThShareTab", size: "sm", fill: true, inertOn: true,
+          options: [{ value: "org", label: "Share with org", arg: `${arg}|org` },
+            { value: "people", label: "Share with a teammate", arg: `${arg}|people` }] })}</div>
+        ${d.tab === "org" ? orgPane : peoplePane}
+        <p id="ask-th-share-d" class="ask-share-note ask-share-files">${esc("Files stay private to whoever attached them. Only you can rename, share or delete it.")}</p>
         ${err}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
           <button type="button" data-act="askThShareCancel" data-arg="${arg}" class="cnpy-outlinebtn"${off} style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Cancel</button>
@@ -420,9 +425,18 @@ export const threadsPart: AskPart = {
           // On a phone the menu sits in the threads drawer, which layers above root dialogs: it slides out first, as
           // it does when a thread opens (ask-phone.ts `closeDrawer`, not imported — ask-phone imports this module).
           if (ctx.ui.phone.drawer) ctx.exit("drawer", () => { ctx.ui.phone.drawer = false; });
-          ctx.ui.threadShare = { id, title: t.title, org: !!t.shared, people: (t.people ?? []).map((p) => ({ handle: p.handle, access: p.access })), busy: false, error: null };
+          ctx.ui.threadShare = { id, title: t.title, org: !!t.shared, people: (t.people ?? []).map((p) => ({ handle: p.handle, access: p.access })), tab: "org", busy: false, error: null };
           focusShare = true;
         }
+        ctx.paint();
+        return;
+      }
+      // Share with org / Share with a teammate: which half the dialog shows (both are kept, and Save writes both).
+      case "askThShareTab": {
+        const d = ctx.ui.threadShare;
+        const to = (arg ?? "").split("|")[1];
+        if (!d || (to !== "org" && to !== "people")) return;
+        ctx.ui.threadShare = { ...d, tab: to, error: null };
         ctx.paint();
         return;
       }
