@@ -326,4 +326,22 @@ describe("the Create space dialog's focus (case CS1)", () => {
     expect(state.libUi.space?.mode).toBe("create");
     expect(focused).toEqual(["#lib-sp-name"]);
   });
+
+  it("closing a space dialog (Cancel, Escape, the backdrop) gives the focus back to what opened it (case ENV12)", () => {
+    const focused: string[] = [];
+    const opener = (name: string) => ({ isConnected: true, focus: () => focused.push(name) });
+    const doc = { activeElement: null as unknown };
+    const mount = { ownerDocument: doc, querySelector: () => ({ focus: () => {}, value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
+    state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
+    const ctl = createLibraryController({
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+    });
+    for (const [open, close, name] of [["libNew", "libSpaceClose", "new"], ["libOwners", "libOwnersClose", "owners"], ["libArchive", "libArchiveClose", "archive"]] as const) {
+      doc.activeElement = opener(name);
+      ctl.act(open, null, null);
+      ctl.act(close, null, null);
+      expect(focused.at(-1), close).toBe(name);
+    }
+  });
 });
