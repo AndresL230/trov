@@ -385,6 +385,47 @@ run moved to a new tab group. IW25's reload: `preventDefault` and the `returnVal
 `beforeunload` first, so no native prompt showed. IW30's counter was restored to the admin's real 8 starts. Seed re-run
 after the last write.
 
+## Batch D (2026-10-17)
+
+Round 3, after Batch C: the worktree's `feat/docs-import` fast-forwarded to `feat/docs-library` (PR #197's tip
+80d57c73: the 6-level cap 40ad3262, the row tint from the indent d967d8e1, row actions that take no room d7c2ec43,
+Archive page ede755a7…e58ab5d0, migration 0083 applied to :8821's local D1). Clean seed first
+(`node scripts/seed/docs-library.mjs`: 43 / 43 checks), re-seeded after every case that wrote. Fixtures recopied
+(`test-too-deep.zip` changed, `test-exactly-6-levels.zip` new). Screenshots:
+[`docs-library-shots/batch-d/`](docs-library-shots/batch-d/).
+
+**Expected written before running** — the 6-level reruns below (each row's own expected, read with 6 as the "Owner
+ruling: 6 levels" section says), and the new AR* / HL* rows in Cases (§ AR, § HL), from `archive-brief.md` (owner
+2026-10-17), docs-library.md § Archiving a page, and the owner's highlight words.
+
+### The 6-level reruns (expected with 6)
+
+| id | expected (6 levels) | actual | result | evidence | fix |
+|---|---|---|---|---|---|
+| DP2 | `#doc/test-deep-5`: indent 14px a level to level 4, then 9px (depths 0–5 → 0, 14, 28, 42, 56, 65 px + the 6px pad); a guide line per ancestor level; the 6-level chain fits the 252px pane with no horizontal scroll | | | | |
+| DP3 | the level-6 page's 92-character title (and the checklist's) carries its full title as a `data-mtip` tooltip | | | | |
+| DP5 | `#doc/test-deep-5` opened directly: its 5 ancestors open; its row active (accent tint, accent text, 500) and in view | | | | |
+| DOC22 | `#doc/test-deep-5`: the 7-crumb breadcrumb (Engineering + 6 pages) wraps or truncates inside the article; no horizontal scroll | | | | |
+| ENV19 | the deep pane at 360 px, dark: the pane / tree fits (no horizontal scroll of the page) | | | | |
+| ENV20 | the deep pane, desktop, dark: guide lines and status shapes visible | | | | |
+| TM6 | drag Platform (a 6-level subtree) onto Getting started: no target; the pill reads "Pages go at most 6 levels deep"; on release nothing moves (tree + D1 unchanged) | | | | |
+| TM7 | drag Data model into the level-6 page (`test-deep-5`): refused as too deep (the same pill); nothing moves | | | | |
+| NP15 | New page under `test-deep-5` (would be level 7): created at the space's top level; the person is told the parent was ignored | | | | |
+| MCP8 | `propose_doc_update` for a new doc with parent `test-deep-5` / a Product page / a missing slug: staged at the top level; the result notes the parent was ignored; not triaged | | | | |
+| RV24 | promote `test-badparent-on-promote` v2 (asks for parent `test-deep-5`): promoted; the page stays where it was (the top level) | | | | |
+| IW40 | `test-too-deep.zip`: `d1/…/d6/deep.md` (level 7) listed "Nested more than 6 levels deep"; `shallow.md` imported. And `test-exactly-6-levels.zip`: every page imports (at-cap.md at level 6) | | | | |
+| IW41 | `test-two-folders.zip` under `test-deep-4` (level 5): no page lands deeper than level 6; what would go past it is listed (too deep), never stored deeper | | | | |
+| RV1 | as the row (header Review; the import group card and "Written by Pia's agent" with its 7 pages; Review one by one / Reject all / Approve all N; no docs pane); the checklist row is "Checklist for the on-call engineer…" (`test-failover-checklist`) | | | | |
+| RV15 | the agent group's Approve all / Reject all; its confirm body "The agent's changes are thrown away. The live pages stay as they are." | | | | |
+
+### Bug fixed in Batch D
+
+(filled in as it is fixed)
+
+### Per case
+
+(filled in after the run)
+
 ## Report
 
 **Matrix.** 353 cases (each surface of the map × the dimensions in the code's guards; shown to the owner before
@@ -963,3 +1004,38 @@ design §0.1; CLAUDE.md web UI rules.
 | ENV43 | Review | desktop, dark | group cards, diff colors readable | prompt | cards, the group card (fits after RV1's fix), the red / green diff rows readable; no overflow | pass | docs-library-shots/batch-b/ENV43-review-dark.jpg |  |
 | ENV44 | Review | keyboard | filter, one by one, rows, prev / next, Approve all, Reject all + confirm | prompt | trimmed by owner 2026-10-17 | skipped | | |
 | ENV45 | Reduced motion | the shipped stylesheet, read in the browser | its `prefers-reduced-motion` block turns off the new motion: tree row flash, drag ghost, drop overlay bob / breathe, sidebar group open, tab indicator, card entrances, Review card leave | design §0.1 "All of it is off under prefers-reduced-motion"; CLAUDE.md | the loaded stylesheet's reduced-motion blocks cover the row flash and card entrances (.cnpy-flash, [data-enter]), the drop overlay's edge / tile / pill icons, the sidebar group (.cnpy-aside *), the tab indicator, Review's leave (.cnpy-rvg, .cnpy-rv-card-in, .cnpy-rv-verdict) and the wizard's motion; the drag ghost has no animation of its own | pass | CSSOM read in the browser |  |
+
+### AR — Archive page (Batch D; expected from archive-brief.md, owner 2026-10-17)
+
+| id | surface | state | expected | source | actual | result | evidence | fix |
+|---|---|---|---|---|---|---|---|---|
+| AR1 | Docs pane › … › Archive page | admin; Authentication (under API; children Single sign-on, Tokens for agents) | the "…" menu holds "Archive page"; it opens a red `confirmModal` "Authentication leaves the Library. 2 pages under it move up a level. You can restore it from Engineering's Archived pages."; confirming: toast "Archived Authentication" with Undo; the pane drops it and shows API › Single sign-on, Tokens for agents, Rate limits, Error codes in that order; the page count drops by 1; D1: `archived_at` set, `archived_by` test-dl-admin, its `parent_slug` kept (`test-api`); the two children `parent_slug` test-api, ranked before Rate limits / Error codes | brief (Children, UI); docs-library.md § Archiving | | | | |
+| AR2 | Archive confirm | admin; Error codes (no children) | the confirm says "Error codes leaves the Library. You can restore it from Engineering's Archived pages." (no "pages under it" sentence); Cancel and Escape close it with nothing written (D1 unchanged); no native dialog | brief (confirmModal text); CLAUDE.md (confirmModal) | | | | |
+| AR3 | Doc page › Archive page | space owner (test-dl-spaceowner, owner of Engineering, a member); `#doc/test-error-codes` | the doc page's actions offer Archive page; archiving works: toast, the page leaves the pane; D1 `archived_by` test-dl-spaceowner | brief (Who: a space owner can) | | | | |
+| AR4 | Archive — a member | test-dl-member; Engineering pane "…" and `#doc/test-error-codes` | no "Archive page" in the "…" menu nor on the doc page; `POST /doc/test-error-codes/archive` with the member's cookie → 403 `forbidden`; D1 unchanged | brief (Who: others see no Archive action) | | | | |
+| AR5 | `/doc/:slug/archive` + `/restore` — a bearer, another org | curl; an ADMIN's bearer token (a local `trov_mcp_test_…` token for test-dl-admin), alone and beside the admin's cookie; the outsider's cookie | every bearer request to `/archive` and `/restore` refused (403 "…never a token's", or refused before any read) even for the admin's token; the outsider's cookie → 404 `not_found`; D1 unchanged (no `archived_at` change) | brief (cookie-only, never MCP); invariant 2 | | | | |
+| AR6 | MCP | the member's token on `/mcp` | `tools/list` holds no archive / restore / delete-doc tool; `propose_doc_update` for `test-old-runbook` → triaged with reason "archived page: test-old-runbook" (a `needs_triage` row, no new version); `get_doc test-old-runbook` reads as not found | brief (No indirect path); docs-library.md § Archiving | | | | |
+| AR7 | Review + badge | admin; archive Rate limits (an agent's staged v2 waiting) then restore it | archiving: its version leaves Review's list and the sidebar Review badge drops by 1; restoring: it is back in Review and the badge goes back up; D1 the v2 stays `staged` throughout | brief (Pending work); docs-library.md (hidden while archived) | | | | |
+| AR8 | `[[link]]` to an archived page | `#doc/test-links-archived` (links `[[test-old-runbook]]` and `[[test-old-runbook\|the old rota]]`) | both render as plain text (no `<a>`, no `href`) with the "Archived" mark from marks.ts; the mark's tooltip says the page was archived | brief (Reads: links render "Archived") | | | | |
+| AR9 | Archived doc page by URL | `#doc/test-old-runbook`, admin, then member | read-only: the banner "This page is archived." (who, when); admin: a Restore button; member: no Restore; no Archive action, no editing control; the page is not in the pane | brief (doc page of an archived page) | | | | |
+| AR10 | Space home › Archived pages | Engineering, admin then member | an "Archived pages" view (the space home's tab pattern) listing "Old on-call runbook" with who archived it (Olu Test-Owner) and when; Restore for the admin; the member sees the list without Restore; the row opens the page | brief (UI: Archived pages view) | | | | |
+| AR11 | Space home › Archived pages, empty | Design (nothing archived) | the empty layout (`emptyLayout()`) with a sentence saying nothing is archived; no crash | brief (empty state via emptyLayout) | | | | |
+| AR12 | Restore under the old parent | admin; Restore "Old on-call runbook" from Engineering's Archived pages | it comes back under Runbooks (its live old parent), as Runbooks' last child; the toast says where ("under Runbooks"); "Old runbook: first step" stays where it is (not taken back); D1 `archived_at` / `archived_by` NULL; its staged v2 shows in Review again | brief (Restore) | | | | |
+| AR13 | Restore when the parent is gone | admin; archive Single sign-on, then archive Authentication, then restore Single sign-on | Single sign-on comes back at the top level of Engineering (its old parent is archived); the toast says "the top level of Engineering"; D1 `parent_slug` NULL | brief (Restore: … else at the top level) | | | | |
+| AR14 | Undo toast | admin; archive Error codes, press the toast's Undo | the page is restored: back in the pane under API; D1 `archived_at` NULL | Batch D brief (Undo toast) | | | | |
+| AR15 | Slug stays reserved | admin; New page titled "Test old runbook" (slug `test-old-runbook`, the archived page's) | refused with a sentence (409); no docs row and no version written | brief (slug stays reserved; New page with that slug 409) | | | | |
+| AR16 | Keyboard | admin; the pane row's "…" → Archive page; Space home › Archived pages | everything by keyboard: focus the row, open "…", Archive page; the dialog takes the focus, Tab stays inside, Escape closes it and the focus returns to the row's "…" (or the row); the Archived pages tab and its Restore reachable by Tab and work with Enter; each focus visible | prompt (keyboard only) | | | | |
+| AR17 | 360 px, dark | the archive dialog; Engineering › Archived pages; the archived doc page | each fits 360 px with no horizontal scroll of the page; text readable in dark | prompt (environment) | | | | |
+| AR18 | desktop, dark | the same three | readable in dark: the dialog's red action, the tab's list, the banner and the Archived marks | prompt (environment) | | | | |
+
+### HL — Docs pane row highlight and actions (Batch D; owner's highlight ruling, d967d8e1 / d7c2ec43)
+
+| id | surface | state | expected | source | actual | result | evidence | fix |
+|---|---|---|---|---|---|---|---|---|
+| HL1 | Docs pane › active row | `#doc/test-deep-5` (depth 5) and `#doc/test-authentication` (depth 2) | the active tint starts at the row's own indent (not the pane's left edge): its left edge = the row's indent; ancestors' guide lines left of it are not under the tint; a deeper row's tint is narrower | owner ruling (tint from the indent) | | | | |
+| HL2 | Docs pane › hover | hover a depth-0, a depth-2 and a depth-5 row | the hover tint likewise starts at each row's own indent; deeper rows narrower | owner ruling | | | | |
+| HL3 | Docs pane › drop target | drag a page onto the middle of a nested row (API) | the "into" tint and its 1px accent ring start at the target row's own indent | owner ruling | | | | |
+| HL4 | Docs pane › "+" / "…" take no room | a long nested title (the checklist / the level-6 page) at rest | the actions are out of the flow (they take no width at rest): the title runs to the row's right edge (less the status shape where there is one) and is cut there, later than before d7c2ec43 (no ~45px kept for hidden buttons) | owner ruling (row actions take no room) | | | | |
+| HL5 | Docs pane › actions shown | hover; keyboard focus on the row; the "…" menu open | "+" and "…" appear on hover, on keyboard focus within the row, and while the row's menu is open; they sit over the end of the title on the row's own tint (no title text shows through them), left of the status shape; at rest they are invisible | owner ruling; docs-library.md (docs pane) | | | | |
+| HL6 | Docs pane, dark | desktop dark: active, hover and actions | the same geometry; the tint and the actions' backing read as one surface with the pane (no visible patch) | prompt (both themes) | | | | |
+| HL7 | Docs pane, 360 px | phone width, the pane opened (Pages) | the same: tints from the indent, the actions take no room, nothing scrolls sideways | prompt (phone width) | | | | |
