@@ -224,14 +224,17 @@ describe("a space's home", () => {
     expect(over).toContain(">Top-level pages</h2>");
     expect(over).toContain("No pages inside");
     const all = home({ tab: "all" });
-    expect(all).toContain("<div>Page</div><div>Status</div><div>Last updated</div>");
+    // A list, not a table: no column headers; each page an item with its status by the title and who / when under it.
+    expect(all).not.toContain("<div>Page</div><div>Status</div><div>Last updated</div>");
+    expect(all).toMatch(/class="cnpy-lib-item cnpy-hitbox"/);
+    expect(all).toMatch(/API reference<\/span><span style="display:inline-flex;flex:none">[\s\S]*?Change pending review/);
     // The page tree: All pages is the whole tree flattened in tree order, each level indented 18px; the Overview's
     // top-level cards count every page under them.
     const nested = [pg("api", "API reference", { tree_rank: 1024 }), pg("auth", "Authentication", { parent_slug: "api", tree_rank: 1024 }), pg("sso", "Single sign-on", { parent_slug: "auth" })];
     const tree = home({ tab: "all" }, { pages: nested });
     expect(tree.indexOf("API reference")).toBeLessThan(tree.indexOf("Authentication"));
     expect(tree.indexOf("Authentication")).toBeLessThan(tree.indexOf("Single sign-on"));
-    expect(tree).toContain("padding-left:36px");
+    expect(tree).toContain("padding:11px 16px 11px 52px"); // depth 2: 16px + 2 × 18px
     expect(home({}, { pages: nested })).toContain("2 pages inside");
     const recent = home({ tab: "recent" });
     expect(recent.indexOf("API reference")).toBeLessThan(recent.indexOf("Brand voice"));

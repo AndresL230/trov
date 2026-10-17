@@ -443,7 +443,10 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   order, 18px a level), Recently updated (newest first), Least recently updated, A to Z (letter groups; an accented
   letter under its base letter, symbols and digits in one "#" group first), Archived pages (with its count, always
   there: each archived page with who archived it and when — `byCell` — opening it by its link, and Restore for
-  `can_archive`; none: the empty layout `space-archived`). No page: "No pages yet" with New page and
+  `can_archive`; none: the empty layout `space-archived`). Every list of pages (these tabs, the Overview's and
+  Library home's Recently updated) is a LIST, not a table (`pageItem`): the icon or space tile, the title with its
+  status mark beside it (nothing for a live page), and one quiet line under it — where it sits, then who changed it
+  last and when; no column headers. No page: "No pages yet" with New page and
   Import (Archived pages still lists what is archived). An unknown space: a sentence, and no docs pane.
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,

@@ -158,9 +158,9 @@ const spaceCardShape = (i: number): string => skCard(`<div style="display:flex;a
     <div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:14px">${skBox(18, 18)}${skBar(90, 9)}</div>`, "min-height:150px;padding:16px 18px;display:flex;flex-direction:column");
 const LIB_GRID = "display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px";
 /** One "Recently updated" row as shapes, in the row's own grid. */
-const recentRowShape = (i: number, cols = "1fr 210px 200px", first = false): string =>
-  `<div class="cnpy-lib-row" style="grid-template-columns:${cols};min-height:52px;padding:8px 16px${first ? "" : ";border-top:1px solid var(--border)"}"><div style="display:flex;align-items:center;gap:10px">${skBox(14, 14)}<div style="flex:1">${skLine(skW(i), 13.5, 1.3)}${skLine(skW(i + 2, ["34%", "42%", "28%"]), 12, 1.4)}</div></div><div></div><div style="display:flex;align-items:center;gap:7px">${skBox(18, 18)}${skBar(110, 9)}</div></div>`;
-const recentRowsShape = (n: number, cols?: string): string => skCard(skList(n, (i) => recentRowShape(i, cols, i === 0)), "padding:0;overflow:hidden");
+const recentRowShape = (i: number, first = false): string =>
+  `<div style="display:flex;align-items:flex-start;gap:11px;padding:11px 16px${first ? "" : ";border-top:1px solid var(--border)"}">${skBox(14, 14)}<div style="flex:1">${skLine(skW(i), 13.5, 1.3)}<div style="margin-top:6px">${skLine(skW(i + 2, ["34%", "28%", "40%"]), 12, 1.3)}</div></div></div>`;
+const recentRowsShape = (n: number): string => skCard(skList(n, (i) => recentRowShape(i, i === 0)), "padding:0;overflow:hidden");
 
 function libraryTitle(p: LibraryHomeProps): string {
   return `<div class="cnpy-lib-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
@@ -215,15 +215,17 @@ const newSpaceCard = (): string =>
     <span style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:4px">For a team or a topic. Only admins can create spaces.</span>
   </button>`;
 
-/** A page row of a list: title and path in the first column, its status, then who changed it last and when. */
-function pageRow(pg: LibraryPageDTO, o: { persons: readonly PersonSummary[]; lead: string; path: string; cols: string; first: boolean; minH: number; indent?: number; bold?: boolean; noPath?: boolean }): string {
-  return `<div class="cnpy-lib-row ${HITBOX}" style="grid-template-columns:${o.cols};min-height:${o.minH}px;padding:${o.noPath ? "0" : "8px"} 16px${o.first ? "" : ";border-top:1px solid var(--border)"}">
-    <div style="display:flex;align-items:center;gap:10px;min-width:0${o.indent ? `;padding-left:${o.indent}px` : ""}">${o.lead}<div style="min-width:0">
-      <div style="font-size:13.5px;${o.bold ? "font-weight:500;" : ""}color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pg.title)}</div>
-      ${o.noPath ? "" : `<div style="font-size:12px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(o.path)}</div>`}
-    </div></div>
-    <div style="display:flex;align-items:center;min-width:0">${authorityMark(pg.authority, 12)}</div>
-    <div style="display:flex;align-items:center;min-width:0">${byCell(o.persons, pg.updated_by, pg.updated_at)}</div>
+/** A page in a list (Library home's and a space's Recently updated, a space's list tabs): its icon or space tile,
+ *  the title with its status beside it (nothing for a live page), and one quiet line under it — where it sits (unless
+ *  `noPath`), then who changed it last and when. A list, not a table: no columns to line up. */
+function pageItem(pg: LibraryPageDTO, o: { persons: readonly PersonSummary[]; lead: string; path: string; first: boolean; indent?: number; bold?: boolean; noPath?: boolean }): string {
+  const sep = `<span aria-hidden="true" style="color:var(--border-strong)">·</span>`;
+  return `<div class="cnpy-lib-item ${HITBOX}" style="display:flex;align-items:flex-start;gap:11px;padding:11px 16px 11px ${16 + (o.indent ?? 0)}px${o.first ? "" : ";border-top:1px solid var(--border)"}">
+    <span style="display:flex;flex:none;margin-top:2px">${o.lead}</span>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="font-size:13.5px;${o.bold ? "font-weight:500;" : ""}color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(pg.title)}</span>${pg.authority === "live" ? "" : `<span style="display:inline-flex;flex:none">${authorityMark(pg.authority, 12)}</span>`}</div>
+      <div style="display:flex;align-items:center;gap:7px;margin-top:4px;font-size:12px;color:var(--fg-55);min-width:0;flex-wrap:wrap">${o.noPath ? "" : `<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%">${esc(o.path)}</span>${sep}`}${byCell(o.persons, pg.updated_by, pg.updated_at)}</div>
+    </div>
     ${hitArea("libOpenDoc", pg.slug, `Open ${pg.title}`)}
   </div>`;
 }
@@ -285,7 +287,7 @@ export function libraryHomeView(p: LibraryHomeProps): string {
   const recent = data.recent.length
     ? `<div${surface("padding:0;overflow:hidden")}>${data.recent.map((pg, i) => {
         const sp = byslug.get(pg.space);
-        return pageRow(pg, { persons: p.persons, lead: sp ? spaceTile(sp, 14) : pageIcon(14), path: [sp?.name ?? pg.space, ...pg.path].join(" › "), cols: "1fr 210px 200px", first: i === 0, minH: 52 });
+        return pageItem(pg, { persons: p.persons, lead: sp ? spaceTile(sp, 14) : pageIcon(14), path: [sp?.name ?? pg.space, ...pg.path].join(" › "), first: i === 0 });
       }).join("")}</div>`
     : emptyLayout("lib-recent", { text: LIBRARY_RECENT_EMPTY, shapes: recentRowsShape(3), shapesStyle: "margin-top:12px" });
   return `<div class="cnpy-lib" data-screen-label="Library" style="${LIB_FRAME}">${head}${waiting}
@@ -318,7 +320,6 @@ export interface SpaceHomeProps {
 }
 
 const SPACE_FRAME = "max-width:1080px;margin:0 auto;padding:28px 36px 90px";
-const ROW_COLS = "1fr 190px 190px";
 
 const byUpdated = (a: LibraryPageDTO, b: LibraryPageDTO): number => (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
 
@@ -338,7 +339,7 @@ export const ARCHIVED_PAGES_NOTE = "Out of the tree, search and agents' reads. R
 /** The Archived pages tab: each page with who archived it and when, and Restore for an admin or an owner. */
 function archivedPanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const list = d.archived_pages ?? [];
-  if (!list.length) return emptyLayout("space-archived", { text: ARCHIVED_PAGES_EMPTY, shapes: recentRowsShape(2, ARCHIVED_COLS), shapesStyle: "margin-top:12px" });
+  if (!list.length) return emptyLayout("space-archived", { text: ARCHIVED_PAGES_EMPTY, shapes: recentRowsShape(2), shapesStyle: "margin-top:12px" });
   const rows = list.map((a, i) => {
     const busy = p.restoring === a.slug;
     const restore = d.can_archive
@@ -370,7 +371,7 @@ function spaceHeaderSkeleton(): string {
 
 /** The Overview and list panels while the read is out. */
 const spaceBodyShapes = (): string =>
-  `${skBar(120, 11)}<div style="${PAGE_GRID};margin-top:12px">${skList(3, pageCardShape)}</div><div style="margin-top:30px">${skBar(130, 11)}</div><div style="margin-top:12px">${recentRowsShape(5, ROW_COLS)}</div>`;
+  `${skBar(120, 11)}<div style="${PAGE_GRID};margin-top:12px">${skList(3, pageCardShape)}</div><div style="margin-top:30px">${skBar(130, 11)}</div><div style="margin-top:12px">${recentRowsShape(5)}</div>`;
 
 function descriptionBlock(sp: SpaceDTO, canEdit: boolean, draft: string | null): string {
   if (canEdit && !sp.archived && draft !== null) {
@@ -438,16 +439,13 @@ function topCard(pg: LibraryPageDTO, inside: number, persons: readonly PersonSum
   </div>`;
 }
 
-const tableHead = (): string =>
-  `<div class="cnpy-lib-row cnpy-lib-th" style="grid-template-columns:${ROW_COLS};min-height:34px;padding:0 16px;font-size:12px;color:var(--fg-55);border-bottom:1px solid var(--border)"><div>Page</div><div>Status</div><div>Last updated</div></div>`;
-
 function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   if (p.tab === "archived") return archivedPanel(p, d);
   const pages = d.pages;
   const lead = pageIcon(14);
   const pathOf = (pg: LibraryPageDTO): string => (pg.path.length ? pg.path.join(" › ") : "Top level");
   const row = (pg: LibraryPageDTO, i: number, o: { noPath?: boolean; bold?: boolean; indent?: number } = {}) =>
-    pageRow(pg, { persons: p.persons, lead, path: pathOf(pg), cols: ROW_COLS, first: i === 0, minH: o.noPath ? 40 : 52, noPath: o.noPath, bold: o.bold, indent: o.indent });
+    pageItem(pg, { persons: p.persons, lead, path: pathOf(pg), first: i === 0, noPath: o.noPath, bold: o.bold, indent: o.indent });
   // The page tree (shared/docs-tree-core.ts): the top level and each page's children in their saved order.
   const tree = buildTree(pages);
   if (p.tab === "overview") {
@@ -461,7 +459,7 @@ function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   if (p.tab === "all") {
     // The whole tree, every page open, in tree order; each row indented 18px a level.
     const rows = flattenTree(tree, d.space.slug);
-    return `<div${surface("padding:0;overflow:hidden")}>${tableHead()}${rows.map((r, i) => row(r.node, i, { noPath: true, bold: r.depth === 0, indent: r.depth * 18 })).join("")}</div>`;
+    return `<div${surface("padding:0;overflow:hidden")}>${rows.map((r, i) => row(r.node, i, { noPath: true, bold: r.depth === 0, indent: r.depth * 18 })).join("")}</div>`;
   }
   // A to Z's group: the first letter without its accents (Ü under U); a symbol or a digit is "#", sorted first.
   const letterOf = (title: string): string => {
@@ -475,12 +473,12 @@ function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const rows = sorted.map((pg, i) => {
     if (p.tab !== "az") return row(pg, i);
     const letter = letterOf(pg.title);
-    const label = letter !== last ? `<div class="cnpy-lib-letter" style="font-size:11.5px;color:var(--fg-40);padding:12px 16px 4px${i ? ";border-top:1px solid var(--border)" : ""}">${esc(letter)}</div>` : "";
+    const label = letter !== last ? `<div class="cnpy-lib-letter" style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.1em;color:var(--fg-40);padding:12px 16px 2px${i ? ";border-top:1px solid var(--border)" : ""}">${esc(letter)}</div>` : "";
     const first = letter !== last;
     last = letter;
     return label + row(pg, first ? 0 : i);
   }).join("");
-  return `<div${surface("padding:0;overflow:hidden")}>${tableHead()}${rows}</div>`;
+  return `<div${surface("padding:0;overflow:hidden")}>${rows}</div>`;
 }
 
 export function spaceHomeView(p: SpaceHomeProps): string {
@@ -494,7 +492,7 @@ export function spaceHomeView(p: SpaceHomeProps): string {
   const body = d.pages.length === 0 && p.tab !== "archived"
     ? `${emptyLayout("space", { title: "No pages yet", text: SPACE_EMPTY, actionHtml: d.space.archived ? undefined : `<button type="button" data-act="libNewPage" data-arg="${attr(d.space.slug)}" class="cnpy-empty-act">New page</button><button type="button" data-act="goImport" data-arg="${attr(d.space.slug)}" class="cnpy-empty-act">Import</button>` })}
       <h2 style="${H2};color:var(--fg-70);margin:26px 0 12px">Top-level pages</h2>${emptyShapes(`<div style="${PAGE_GRID}">${skList(3, pageCardShape)}</div>`)}
-      <h2 style="${H2};color:var(--fg-70);margin:30px 0 12px">Recently updated</h2>${emptyShapes(recentRowsShape(3, ROW_COLS))}`
+      <h2 style="${H2};color:var(--fg-70);margin:30px 0 12px">Recently updated</h2>${emptyShapes(recentRowsShape(3))}`
     : spacePanel(p, d);
   return `<div class="cnpy-lib" data-screen-label="Space" style="${SPACE_FRAME}">${spaceHeader(p, d)}
     <div style="margin-top:22px">${spaceTabs(p.tab, d.pages.length, (d.archived_pages ?? []).length)}</div>
