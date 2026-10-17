@@ -4049,13 +4049,12 @@ a.ask-btn { text-decoration:none; }
 /* A row's tint (hover, the open page, a drop target) starts at its own indent (`--dp-in`, set per row), so the
    indent and the guide lines stay outside it; the tint sits under the row's content. */
 .cnpy-dp-row { isolation:isolate; }
-.cnpy-dp-row::before { content:""; position:absolute; z-index:-1; top:0; bottom:0; left:var(--dp-in, 0px); right:0; pointer-events:none; }
-.cnpy-dp-row:not(.is-shape):hover { color:var(--fg); }
-.cnpy-dp-row:not(.is-shape):hover::before { background:var(--hover); }
-.cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover { color:var(--accent); font-weight:500; }
-.cnpy-dp-row.is-active::before, .cnpy-dp-row.is-active:hover::before { background:var(--accent-soft); }
-.cnpy-dp-row.is-into, .cnpy-dp-row.is-into:hover { color:var(--accent); }
-.cnpy-dp-row.is-into::before, .cnpy-dp-row.is-into:hover::before { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); }
+.cnpy-dp-row::before { content:""; position:absolute; z-index:-1; top:0; bottom:0; left:var(--dp-in, 0px); right:0; background:var(--dp-tint, transparent); pointer-events:none; }
+/* The tint is ONE value per state (`--dp-tint`): the ::before draws it, and the row's actions lay it over the page. */
+.cnpy-dp-row:not(.is-shape):hover { color:var(--fg); --dp-tint:var(--hover); }
+.cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover { color:var(--accent); font-weight:500; --dp-tint:var(--accent-soft); }
+.cnpy-dp-row.is-into, .cnpy-dp-row.is-into:hover { color:var(--accent); --dp-tint:color-mix(in srgb, var(--accent) 10%, transparent); }
+.cnpy-dp-row.is-into::before { box-shadow:inset 0 0 0 1px var(--accent); }
 .cnpy-dp-row.is-lifted { opacity:.38; }
 .cnpy-dp-guide { position:absolute; top:0; bottom:0; width:1px; background:var(--border); pointer-events:none; }
 .cnpy-dp-chev { position:relative; z-index:2; flex:none; display:grid; place-items:center; width:16px; height:16px; padding:0; color:var(--fg-40); transition:transform .16s ease, color .12s ease; }
@@ -4065,7 +4064,12 @@ a.ask-btn { text-decoration:none; }
 .cnpy-dp-row.is-active .cnpy-dp-chev { color:var(--accent); }
 .cnpy-dp-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .cnpy-dp-st { position:relative; z-index:2; flex:none; display:inline-flex; }
-.cnpy-dp-acts { position:relative; z-index:3; display:flex; align-items:center; gap:1px; flex:none; opacity:0; transition:opacity .12s ease; }
+/* "+" and "…" take NO room in the row (a hidden pair would squeeze a nested title): out of the flow, at the row's
+   right edge — left of the status shape when the row has one, which keeps its place — over the end of the title, on
+   the row's own tint laid over the page so no text shows through, their left edge faded in. Shown on hover, keyboard
+   focus or an open menu. */
+.cnpy-dp-acts { position:absolute; z-index:3; top:4px; bottom:4px; right:6px; display:flex; align-items:center; gap:1px; padding-left:12px; background:linear-gradient(var(--dp-tint, transparent), var(--dp-tint, transparent)), var(--bg); -webkit-mask-image:linear-gradient(to right, transparent, #000 12px); mask-image:linear-gradient(to right, transparent, #000 12px); opacity:0; transition:opacity .12s ease; }
+.cnpy-dp-row:has(> .cnpy-dp-st) .cnpy-dp-acts { right:18px; }
 .cnpy-dp-row:hover .cnpy-dp-acts, .cnpy-dp-row:focus-within .cnpy-dp-acts, .cnpy-dp-row.has-menu .cnpy-dp-acts { opacity:1; }
 .cnpy-dp-act { display:grid; place-items:center; width:20px; height:20px; padding:0; color:var(--fg-40); }
 .cnpy-dp-act:hover { color:var(--fg); background:var(--hover); }

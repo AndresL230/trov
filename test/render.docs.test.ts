@@ -22,6 +22,7 @@ import { dropHint, rowZone, treeKeyTarget } from "../web/src/tree-drag";
 import { placeOf, moveRefusalText } from "../web/src/tree-actions";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import type { DocRow } from "@shared/rows";
+import css from "../web/src/trov.css?raw";
 import type { DocPageDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 
 const T0 = "2026-10-10T00:00:00Z";
@@ -114,6 +115,29 @@ describe("the docs pane", () => {
     expect(html).toContain('data-act="treeNew" data-arg="auth" aria-label="New page inside"');
     expect(html).toContain('data-act="treeMenu" data-arg="auth" aria-label="More"');
     expect(html).not.toContain('role="menu"');
+  });
+  it("the hidden + and … take no room: out of the flow, over the title's end, on the row's tint over the page", () => {
+    const rule = (sel: string) => css.match(new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    const acts = rule(".cnpy-dp-acts");
+    expect(acts).toContain("position:absolute");
+    expect(acts).toContain("right:6px");
+    expect(acts).not.toContain("flex:none");                                          // nothing reserved in the row
+    expect(acts).toContain("opacity:0");
+    expect(acts).toMatch(/background:linear-gradient\(var\(--dp-tint, transparent\), var\(--dp-tint, transparent\)\), var\(--bg\)/);   // opaque: no text through
+    expect(acts).toContain("mask-image:linear-gradient(to right, transparent, #000 12px)");
+    // left of the status shape (8px + the row's 4px gap), which keeps its place in the flow
+    expect(rule(".cnpy-dp-row:has(> .cnpy-dp-st) .cnpy-dp-acts")).toContain("right:18px");
+    expect(rule(".cnpy-dp-st")).toContain("flex:none");
+    expect(css).toContain(".cnpy-dp-row:hover .cnpy-dp-acts, .cnpy-dp-row:focus-within .cnpy-dp-acts, .cnpy-dp-row.has-menu .cnpy-dp-acts { opacity:1; }");
+    // the tint is one value per state, drawn by ::before from the row's indent (d967d8e1) and reused by the actions
+    expect(rule(".cnpy-dp-row::before")).toContain("left:var(--dp-in, 0px)");
+    expect(rule(".cnpy-dp-row::before")).toContain("background:var(--dp-tint, transparent)");
+    expect(rule(".cnpy-dp-row:not(.is-shape):hover")).toContain("--dp-tint:var(--hover)");
+    expect(rule(".cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover")).toContain("--dp-tint:var(--accent-soft)");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-dp-chev, \.cnpy-dp-acts \{ transition:none; \} \}/);
+    // the shape is the row's own child, right after the title (the :has selector's premise)
+    const html = pane(render(docState()));
+    expect(html).toMatch(/<span class="cnpy-dp-t">Rate limits<\/span><span class="cnpy-dp-st"/);
   });
   it("the … menu: Copy link, and Move to the top level for a page that is not there", () => {
     const html = pane(render(docState({ treeMenu: "api" })));

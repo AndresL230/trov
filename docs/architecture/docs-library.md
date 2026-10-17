@@ -281,7 +281,9 @@ is replaced; the old reader's DOM edits (`refreshReaderPane`, `applyTreeActive`)
 plays on the content only. The pane: the head row (the space's tile and name → its home; "+" → New page at its top
 level; while dragging, "the top level"), "PAGES" and the space's page count, then a 28px row per page (`indentPx`, a
 guide per ancestor level, a chevron when it has children, the status SHAPE for a page that is not live, a long
-title's `data-mtip`), and on hover "+" (a page inside) and "…" (Copy link; Move to the top level; New page inside). The page being read
+title's `data-mtip`), and on hover, keyboard focus or an open menu "+" (a page inside) and "…" (Copy link; Move to the
+top level; New page inside) — out of the flow, laid over the end of the title (left of the status shape) on the row's
+tint over the page (`--dp-tint`, the one value its `::before` draws), so hidden they take no room. The page being read
 and every page above it start open; a chevron the person turns wins (`state.treeOpen`). The active row is scrolled
 into view once per page opened. Loading: nine skeleton rows; no page: "No pages yet…" over three hollow rows. Under
 900px the pane and the content take turns (the bar's Pages button, `docsTree`).
