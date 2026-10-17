@@ -188,7 +188,10 @@ most). Tests: `test/docs-import.test.ts`.
 
 **Review** (`GET /proposals`): each proposal carries `import_id`, `import_path`, `import_file_name`, `import_by`,
 `import_at` (null when an agent or a person wrote it) and the page's `parent_slug`, so Review groups an import's
-pages under one card; inside a group the read's order (newest first) reversed is the import's own order.
+pages under one card; inside a group the read's order (newest first) reversed is the import's own order. An import's
+version with a newer staged change of the same page on top (an agent's) is left out of the list — and of the sidebar
+badge, which shares the clause (`NOT_SUPERSEDED_IMPORT`, `src/tools/reads.ts`): the page sits with the newer change,
+and the import's older version is never approved on its own (Approve all leaves it alone too).
 
 ### The import screens (web)
 
@@ -210,12 +213,13 @@ The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts
   a 5xx or a 429 stalls it with Retry, which resends the same batch (the ledger replays it); another refusal stops
   it with its sentence. Cancel import is `finish { cancel: true }`. When a run ends, proposals, the Library, the
   space and the badges are read again.
-- **Drop to import** works over a space's home, a doc page, New page and the sidebar's space rows (Library home and
-  Imports have no space, so they are not targets): good files open the wizard at Preview with that space; anything
-  else is the design's toast.
+- **Drop to import** works over a space's home, a doc page, New page and the sidebar's space rows: good files open the
+  wizard at Preview with that space; over Library home and Imports (no space) at Where with the files kept
+  (`mainDropTarget`); Review and an archived space are no target; anything else is the design's toast.
 - **Imports history** (`#imports`, screen `imports`) reads `GET /imports`, polling every 4 s while a run is going and
   the screen is open; statuses are marks (`importRunMark`: In progress, Done, Done with skipped files, Failed, and
-  Stopped / Cancelled for an abandoned run), one row open at a time, Cancel import for the run's starter only.
+  Stopped / Cancelled for an abandoned run), one row open at a time, Cancel import for the run's starter and for an
+  admin (the server's finish lets an admin cancel).
 - **Review** groups `GET /proposals` by `import_id` (`importGroups`; the server order reversed is the import's
   tree order, depth from `parent_slug` inside the group): one keyed card per import (`rvg:<id>`), Approve all /
   Reject all (a red `confirmModal` with the design's copy) looping `approve-all` / `reject-all` until `remaining`
@@ -256,7 +260,7 @@ is replaced; the old reader's DOM edits (`refreshReaderPane`, `applyTreeActive`)
 plays on the content only. The pane: the head row (the space's tile and name → its home; "+" → New page at its top
 level; while dragging, "the top level"), "PAGES" and the space's page count, then a 28px row per page (`indentPx`, a
 guide per ancestor level, a chevron when it has children, the status SHAPE for a page that is not live, a long
-title's `data-mtip`), and on hover "+" (a page inside) and "…" (Copy link; Move to the top level). The page being read
+title's `data-mtip`), and on hover "+" (a page inside) and "…" (Copy link; Move to the top level; New page inside). The page being read
 and every page above it start open; a chevron the person turns wins (`state.treeOpen`). The active row is scrolled
 into view once per page opened. Loading: nine skeleton rows; no page: "No pages yet…" over three hollow rows. Under
 900px the pane and the content take turns (the bar's Pages button, `docsTree`).
@@ -275,8 +279,8 @@ before / below the page after), Alt+→ (inside the page before), Alt+← (out t
 "You're reading the live version…"; never approved — "This page isn't live yet…", with "It was imported" for an
 import), each with Open in Review; the breadcrumb (the space, each page above, the page); the title; the meta row —
 the status mark ("Live" is said here, the one place, with its tooltip), "Updated ‹when› by ‹Name›" ("Proposed" /
-"Imported" for a page never approved) and History (the versions newest first, rejected ones left out, the live one
-marked); the Tags row; the body, its `[[slug]]` links substituted BEFORE Markdown renders (`linkedBody`: a link that
+"Imported" for a page never approved) and History (the versions newest first, the live one marked, a rejected one
+muted with its "Rejected" mark); the Tags row; the body, its `[[slug]]` links substituted BEFORE Markdown renders (`linkedBody`: a link that
 resolves is `<a class="cnpy-doclink" href="#doc/<slug>">` with its label or the target's title, the target's path as
 its tooltip; one to no page is flagged text — a dashed amber underline — with a tooltip saying no such page exists
 yet; code is left as written); then "Pages under ‹Title›" (not for a page never approved). The 210px sticky rail: On
@@ -293,7 +297,8 @@ each page with its own chevron) — preset to where it was opened (a space's top
 pressed). The nine templates as cards (Runbook preselected) beside a preview of the chosen one's sections; Title
 (placeholder "Untitled ‹template›"), Section (`segmented()`, preset by the template) and the body (seeded with the
 template's; a template switch keeps a body the person edited). Create page stages it through `POST /api/docs/propose`
-with `parent_slug` (the gate; a parent it ignores is said in the toast) and goes to Review. A handoff's "Promote to
+with `parent_slug` (the gate; a parent it ignores is said in the toast) and lands on the new page ("Not yet approved")
+with "Page created in ‹Space›". With no space, the empty layout offers an admin New space. A handoff's "Promote to
 doc" opens it prefilled on Blank. Tests: `test/render.docs.test.ts` (the pane, the doc page, the drag's rules),
 `test/render.newdoc.test.ts`, the screens' rows in `render.empty` / `render.skeleton`.
 
@@ -317,7 +322,9 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   `dropdown()` that posts `/move`) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
   changed last; each card counts the pages under it), All pages (with its count: the whole tree flattened in tree
-  order, 18px a level), Recently updated, Least recently updated, A to Z (letter groups). No page: "No pages yet" with New page and Import.
+  order, 18px a level), Recently updated (newest first), Least recently updated, A to Z (letter groups; an accented
+  letter under its base letter, symbols and digits in one "#" group first). No page: "No pages yet" with New page and
+  Import. An unknown space: a sentence, and no docs pane.
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,
   the 8 colours, a short description (140), the sidebar preview. Created: the new space's home and "Created ‹Name›".
