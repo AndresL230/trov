@@ -236,7 +236,7 @@ describe("the index — a grid of release cards", () => {
     expect(html).toContain(">Unreleased<");
     const r = withNext[1];
     const n = r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
-    expect(html).toContain(`${r.highlights.length} highlights · ${n} patch lines`);
+    expect(html).toContain(`${r.highlights.length} highlights · ${n} patch line${n === 1 ? "" : "s"}`);
     expect(html).not.toContain("cnpy-guide-toc"); // no "On this page" rail on the index
   });
 

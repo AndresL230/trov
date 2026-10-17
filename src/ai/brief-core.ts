@@ -159,20 +159,27 @@ const NUMBER_WORDS: Record<string, string> = {
   two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
   eleven: "11", twelve: "12", thirteen: "13", fourteen: "14", fifteen: "15", twenty: "20", dozen: "12", dozens: "",
 };
-/** Every number in `text` is one the input has: a whole date (`2026-10-14`) only if the input has that date, and
- *  any other run of digits (a PR number, a count) only if the input has it OUTSIDE a date and outside a feed ref —
- *  so "15 failures" does not pass because some date in the input ends in 15. */
+/** A day as `shortDay` writes it ("Oct 17"), the form the server puts in the brief's input. */
+const SHORT_DAY = new RegExp(`\\b(${MONTHS.join("|")})\\s+(\\d{1,2})\\b`, "gi");
+/** One spelling for a short day: "oct  07" and "Oct 7" are the same day. */
+const shortDays = (s: string): string[] =>
+  [...s.matchAll(SHORT_DAY)].map((m) => `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${Number(m[2])}`);
+/** Every number in `text` is one the input has: a whole date (`2026-10-14`, `Oct 14`) only if the input has that
+ *  date in that form, and any other run of digits (a PR number, a count) only if the input has it OUTSIDE a date and
+ *  outside a feed ref — so "15 failures" does not pass because some date in the input ends in 15 or reads "Oct 15". */
 export function numbersGrounded(text: string, input: string): boolean {
   const days = new Set(input.match(ISO_DAY) ?? []);
+  const short = new Set(shortDays(input));
   // A feed entry's ref is a row id, never a number a person reads: it grounds nothing.
-  const have = new Set(input.replace(ISO_DAY, " ").replace(/\bfeed:\d+/g, " ").match(/\d+/g) ?? []);
+  const have = new Set(input.replace(ISO_DAY, " ").replace(SHORT_DAY, " ").replace(/\bfeed:\d+/g, " ").match(/\d+/g) ?? []);
   // A count in words ("five pull requests") is a number too: only one the input says, in words or in digits (the
   // server's own counts, "Open pull requests (2)").
   const inputWords = new Set(input.toLowerCase().match(/[a-z]+/g) ?? []);
   const words = text.toLowerCase().match(/[a-z]+/g) ?? [];
   if (words.some((w) => Object.hasOwn(NUMBER_WORDS, w) && !inputWords.has(w) && !have.has(NUMBER_WORDS[w]))) return false;
   if (!(text.match(ISO_DAY) ?? []).every((d) => days.has(d))) return false;
-  return (text.replace(ISO_DAY, " ").match(/\d+/g) ?? []).every((n) => have.has(n));
+  if (!shortDays(text).every((d) => short.has(d))) return false;
+  return (text.replace(ISO_DAY, " ").replace(SHORT_DAY, " ").match(/\d+/g) ?? []).every((n) => have.has(n));
 }
 
 /** A ref written INTO a sentence (`pr:12`, `feed:107`): refs belong in cites, never in what a person reads. */

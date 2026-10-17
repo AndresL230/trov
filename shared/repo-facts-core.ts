@@ -101,8 +101,8 @@ export interface FactsPart {
   /** Console link for the part on its provider, https only. */
   consoleUrl: string | null;
   /** Whether its provider reports any usage metric (a capability — the registry's `capabilities.metrics` is
-   *  non-empty — never a provider id). The Overview's Usage link reads "not available from <host>" when no
-   *  part in view has it, and never "not connected" for a host that has nothing to connect for. */
+   *  non-empty — never a provider id). The Usage tab reads "Not available from <host>" for a part without
+   *  it, and never "not connected" for a host that has nothing to connect for. */
   reportsMetrics: boolean;
 }
 

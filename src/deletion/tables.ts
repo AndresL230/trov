@@ -48,8 +48,8 @@ export const ORG_TABLES = [
   // and the written repository states (0062_repo_state); each member's brief (0063_person_brief).
   "ai_dirty", "ai_sessions", "repo_state", "person_brief",
   // Ask Trov (0066_ask): the people's threads, their messages and search rows, write cards, attachment links, Ask
-  // settings, and Review's "Flagged in Ask" lines.
-  "chat_actions", "chat_artifacts", "chat_messages", "chat_fts", "chat_threads", "person_ask_settings", "ask_flags",
+  // settings, and Review's "Flagged in Ask" lines; who a thread is shared with by name (0077_ask_people_sharing).
+  "chat_thread_people", "chat_actions", "chat_artifacts", "chat_messages", "chat_fts", "chat_threads", "person_ask_settings", "ask_flags",
   // Repo › Planning's themes (0064_repo_themes): each PR's theme, the captions, the themes.
   "pr_themes", "repo_theme_captions", "repo_themes",
   // What the AI pass's org rollup wrote about the roadmap: sprint notes and plan drift (0065_org_insights).

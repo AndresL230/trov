@@ -250,8 +250,11 @@ export interface AskQuestion {
   context: string[];
   attachments: AskMessage["attachments"];
   command: AskMessage["command"];
+  /** Who asked it (`AskMessage.askedBy`; 0077_ask_people_sharing) — absent = the thread's owner. */
+  askedBy?: string;
 }
-export interface AskAnswer { role: "assistant"; key: string; turn: AskTurn }
+/** `askedBy`: who asked the question this answers — absent = the thread's owner. */
+export interface AskAnswer { role: "assistant"; key: string; turn: AskTurn; askedBy?: string }
 export type AskMsg = AskQuestion | AskAnswer;
 
 export interface AskConvo {
@@ -281,8 +284,8 @@ export function convoFromDetail(d: { thread: AskThreadSummary & { draft?: string
   return {
     uid: `t${d.thread.id}`, threadId: d.thread.id, thread, draft: typeof draft === "string" ? draft : "", title: d.thread.title, status: "ok", busy: false,
     messages: d.messages.map((m): AskMsg => m.role === "user"
-      ? { role: "user", key: `m${m.id}`, id: m.id, text: m.text, context: m.context, attachments: m.attachments, command: m.command }
-      : { role: "assistant", key: `m${m.id}`, turn: turnFromMessage(m) }),
+      ? { role: "user", key: `m${m.id}`, id: m.id, text: m.text, context: m.context, attachments: m.attachments, command: m.command, ...(m.askedBy ? { askedBy: m.askedBy } : {}) }
+      : { role: "assistant", key: `m${m.id}`, turn: turnFromMessage(m), ...(m.askedBy ? { askedBy: m.askedBy } : {}) }),
   };
 }
 

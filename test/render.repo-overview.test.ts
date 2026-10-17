@@ -13,9 +13,9 @@ import { layoutInputOf, narrowFacts, REPO_WIDE, type RepoFacts } from "@shared/r
 import { layoutOf, type GroupBy } from "@shared/repo-layout-core";
 import type { RepoDashboard } from "@shared/repo";
 import { repoControls, repoCrumb, repoDropdowns, repoView, type RepoProps } from "../web/src/repo";
-import { repoSample, repoScenario } from "../web/src/repo-sample";
+import { repoSample, repoScenario, repoScenarioUsage } from "../web/src/repo-sample";
 import { SCENARIO_KEYS, SCENARIO_VARIANTS, type ScenarioKey } from "../web/src/repo-sample-keys";
-import { overviewBlocks, overviewLinks, usageSummary } from "../web/src/repo-overview";
+import { overviewBlocks } from "../web/src/repo-overview";
 import { attentionLine } from "../web/src/repo-attention";
 import { weekTile } from "../web/src/repo-week";
 import { connectCopy } from "../web/src/repo-connect";
@@ -28,7 +28,7 @@ interface DesignScreen {
   s: { apps: { name: string }[] };
   opener: string;
   attention: unknown[]; connect: unknown; envCards: unknown; drift: unknown; table: unknown; production: unknown;
-  previews: unknown; notShipped: unknown; release: unknown; found: unknown; unseen: unknown; links: unknown[];
+  previews: unknown; notShipped: unknown; release: unknown; found: unknown; unseen: unknown;
 }
 const buildScreen = design.buildScreen as (o: Record<string, unknown>) => DesignScreen;
 
@@ -81,11 +81,13 @@ describe("the Overview draws the design's blocks for every scenario", () => {
       // (shared/repo-facts-core.ts narrowFacts) — so under the App menu the facts are the reference.
       attention: (k === "G" && v !== "") || app ? f.attention.length > 0 : d.attention.length > 0,
       connect: k === "G" ? v !== "after" : !!d.connect,
-      links: d.links.length > 0, week: true,
+      week: true,
     };
     for (const [block, on] of Object.entries(want)) expect(drawn.includes(block), `${block}`).toBe(on);
-    // the order of the design's RepoScreen: attention, connect, the opener, not shipped, previews, week, links
-    const order = ["attention", "connect", "found", "unseen", "release", "production", "envCards", "drift", "appsTable", "notShipped", "previews", "week", "links"];
+    // the order of the design's RepoScreen: attention, connect, the opener, not shipped, previews, week. The design's
+    // closing links row is never drawn: it repeated the tab bar.
+    expect(drawn).not.toContain("links");
+    const order = ["attention", "connect", "found", "unseen", "release", "production", "envCards", "drift", "appsTable", "notShipped", "previews", "week"];
     expect(drawn).toEqual([...drawn].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
 
     // the header: the App menu only for a monorepo, Group by only when the layout can draw either, a pill per environment
@@ -214,12 +216,15 @@ describe("no “not connected” for a thing the repository does not have", () =
     }
   });
 
-  it("C's site is on a host with no usage figures: “not available from Netlify”, never “not connected”", () => {
+  it("C's site is on a host with no usage figures: the Usage tab says “Not available from Netlify”, never “not connected”", () => {
     const f = repoScenario("C", "", { now: NOW });
-    const html = panel(repoView(props(f)));
-    expect(html).toContain("not available from Netlify");
-    expect(html).not.toMatch(/not connected/i);
-    expect(usageSummary(repoScenario("D", "", { now: NOW }).parts)).toBe("not available from Vercel");
+    expect(panel(repoView(props(f)))).not.toMatch(/not connected/i);
+    // The Overview has no links row (it repeated the tab bar), so the Usage tab is where the host's answer shows.
+    const usage = panel(repoView(props(f, { tab: "usage", repo: { status: "ok", data: { ...repoSample(NOW), facts: f, ...repoScenarioUsage("C", "", { now: NOW }) } } })));
+    const site = usage.slice(usage.indexOf('data-utarget="production/site"'), usage.indexOf("</div></div></div></div>", usage.indexOf('data-utarget="production/site"')));
+    expect(site).toContain('data-ustate="na"');
+    expect(site).toContain("Not available from Netlify");
+    expect(site).not.toMatch(/not connected/i);
   });
 
   it("B has no Railway, and never mentions it", () => {
@@ -230,23 +235,9 @@ describe("no “not connected” for a thing the repository does not have", () =
       expect(panel(html)).not.toMatch(/not connected/i);
     }
   });
-
-  it("the Usage link reads the parts' capability and connection, never a provider id", () => {
-    const usage = (k: ScenarioKey, v = "") => overviewLinks(repoScenario(k, v, { now: NOW }), { layout: layoutOf(layoutInputOf(repoScenario(k, v, { now: NOW }))) }).find((l) => l.tab === "usage")?.text;
-    expect(usage("A")).toBe("from Cloudflare Workers and Railway");
-    expect(usage("B")).toBe("from Cloudflare Workers");
-    expect(usage("C")).toBe("not available from Netlify");
-    expect(usage("E")).toBe("from Render and Cloudflare Workers"); // Fly.io (jobs) is not connected; Vercel reports none
-    expect(usage("F")).toBe("from Render, Fly.io and Cloudflare Workers");
-    expect(usage("G")).toBe("not connected"); // Railway is there, and not connected
-    expect(usage("G", "after")).toBe("from Railway");
-    expect(usage("H")).toBe("not connected"); // collector's Fly.io is not connected
-    expect(usage("J")).toBe("from Render");
-    expect(usage("I")).toBeUndefined(); // a package has no Usage tab
-  });
 });
 
-describe("week tiles and the links row: unknown is unknown", () => {
+describe("week tiles: unknown is unknown", () => {
   it("G before Railway: deploy figures are “—”, unknown until Railway is connected — never 0", () => {
     const f = repoScenario("G", "", { now: NOW });
     const tiles = f.week.map((w) => weekTile(w, f));
@@ -257,8 +248,6 @@ describe("week tiles and the links row: unknown is unknown", () => {
     expect(deploys).toContain("—");
     expect(deploys).not.toContain("data-count");
     expect(deploys).not.toMatch(/>0</);
-    // and the CI link says what it waits on
-    expect(overviewLinks(f, { layout: layoutOf(layoutInputOf(f)) }).find((l) => l.tab === "ci")?.text).toBe("CI only until Railway is connected");
   });
 
   it("▲ / ▼ deltas, failed deploys read the other way, “since connecting” with no week to compare", () => {
@@ -271,16 +260,6 @@ describe("week tiles and the links row: unknown is unknown", () => {
     expect(weekTile(e.week.find((w) => w.key === "failedDeploys")!, e)).toMatchObject({ delta: "▲ 1", tone: "var(--red)" });
     const l = repoScenario("L", "", { now: NOW });
     expect(weekTile(l.week[0], l)).toMatchObject({ value: "6", delta: "", vs: "since connecting" });
-  });
-
-  it("the links row: the layout's tabs with their summaries; none under the found / unseen openers", () => {
-    const a = repoScenario("A", "", { now: NOW });
-    expect(overviewLinks(a, { layout: layoutOf(layoutInputOf(a)) }).map((l) => [l.label, l.text])).toEqual([
-      ["Code", "7 open pull requests"], ["CI & deploys", "18 deploys this week"], ["Usage", "from Cloudflare Workers and Railway"], ["Planning", "Roadmap and issues"],
-    ]);
-    const i = repoScenario("I", "", { now: NOW });
-    expect(overviewLinks(i, { layout: layoutOf(layoutInputOf(i)) }).map((l) => l.label)).toEqual(["Code", "CI", "Planning"]);
-    for (const k of ["L", "M"] as const) expect(blocksIn(repoView(props(repoScenario(k, "", { now: NOW }))))).not.toContain("links");
   });
 });
 
@@ -375,9 +354,9 @@ describe("the header and the sample switch", () => {
     expect(repoDropdowns(props(repoScenario("B", "", { now: NOW }))).map((d) => d.id)).toEqual(["repo-scope-repo", "repo-sample-scenario", "repo-sample-variant"]);
   });
 
-  it("“Repo-wide only” draws no app rows: its own note, the repository's attention, figures and links", () => {
+  it("“Repo-wide only” draws no app rows: its own note, the repository's attention and figures", () => {
     const html = repoView(props(repoScenario("J", "", { now: NOW }), { app: REPO_WIDE }));
-    expect(blocksIn(html)).toEqual(["attention", "repoWide", "week", "links"]);
+    expect(blocksIn(html)).toEqual(["attention", "repoWide", "week"]);
     expect(repoControls(props(repoScenario("J", "", { now: NOW }), { app: REPO_WIDE }))).not.toContain("data-env-pill");
   });
 
