@@ -63,6 +63,8 @@ export interface NewDocProps {
   sections: string[];
   /** The open dropdown (the space picker, past NEW_DOC_SPACE_SWITCH_MAX spaces). */
   dd: DropdownUi;
+  /** An admin of the org: with no space yet, the empty layout offers New space (owner ruling NP19). */
+  admin?: boolean;
 }
 
 /** The sentence when the org has no live space to put a page in. */
@@ -192,7 +194,7 @@ export function newDocView(p: NewDocProps): string {
   const head = `<h1 style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">New page</h1>`;
   if (p.spaces.length === 0) {
     return `<div class="cnpy-nd" data-screen-label="New page" style="${FRAME}">${head}
-      <div style="margin-top:22px">${emptyLayout("newdoc", { text: NEW_DOC_NO_SPACE })}</div>
+      <div style="margin-top:22px">${emptyLayout("newdoc", { title: "No spaces yet", text: NEW_DOC_NO_SPACE, action: p.admin ? { label: "New space", act: "libNew" } : null })}</div>
     </div>`;
   }
   const d = p.draft;

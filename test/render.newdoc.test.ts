@@ -90,11 +90,14 @@ describe("New page — Goes in", () => {
     expect(newDocSpaceDropdown(blankDoc("s0"), many).options).toHaveLength(NEW_DOC_SPACE_SWITCH_MAX + 1);
   });
 
-  it("no space at all: the empty layout, with no action", () => {
+  it("no space at all (owner ruling NP19): the empty layout; New space for an admin, no action for a member", () => {
     const html = newDocView(props({}, { spaces: [] }));
     expect(html).toContain('data-empty="newdoc"');
     expect(html).toContain(NEW_DOC_NO_SPACE);
     expect(html).not.toContain("cnpy-empty-act");
+    const admin = newDocView(props({}, { spaces: [], admin: true }));
+    expect(admin).toMatch(/data-act="libNew"[^>]*class="cnpy-empty-act"|class="cnpy-empty-act"[^>]*data-act="libNew"/);
+    expect(admin).toContain(">New space<");
   });
 });
 

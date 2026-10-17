@@ -1548,7 +1548,7 @@ function spaceScreen(s: AppState): string {
 }
 /** New page in the frame: the pane shows the space it will go in. */
 function newDocScreen(s: AppState): string {
-  return libraryFrame(s, newDocView({ draft: s.nd, spaces: liveSpaces(s), pages: panePages(s), sections: ASSIGN_OPTIONS.sections, dd: s.dd }), "newdoc");
+  return libraryFrame(s, newDocView({ draft: s.nd, spaces: liveSpaces(s), pages: panePages(s), sections: ASSIGN_OPTIONS.sections, dd: s.dd, admin: viewerIsAdmin(s) }), "newdoc");
 }
 /** The space on screen (a space's home), when its read is in. */
 const openSpaceDTO = (s: AppState): SpaceDTO | null => (s.spaceHome.data && s.spaceHome.data.space.slug === s.spaceSlug ? s.spaceHome.data.space : null);
