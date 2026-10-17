@@ -367,14 +367,18 @@ function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     const rows = flattenTree(tree, d.space.slug);
     return `<div${surface("padding:0;overflow:hidden")}>${tableHead()}${rows.map((r, i) => row(r.node, i, { noPath: true, bold: r.depth === 0, indent: r.depth * 18 })).join("")}</div>`;
   }
+  // A to Z's group: the first letter without its accents (Ü under U); a symbol or a digit is "#", sorted first.
+  const letterOf = (title: string): string => {
+    const ch = title.trim().charAt(0).normalize("NFD").charAt(0).toUpperCase();
+    return /\p{L}/u.test(ch) ? ch : "#";
+  };
   const sorted = p.tab === "recent" ? [...pages].sort(byUpdated)
     : p.tab === "oldest" ? [...pages].sort((a, b) => byUpdated(b, a))
-    : [...pages].sort((a, b) => a.title.localeCompare(b.title));
+    : [...pages].sort((a, b) => Number(letterOf(a.title) !== "#") - Number(letterOf(b.title) !== "#") || a.title.localeCompare(b.title));
   let last = "";
   const rows = sorted.map((pg, i) => {
     if (p.tab !== "az") return row(pg, i);
-    const ch = pg.title.trim().charAt(0).toUpperCase();
-    const letter = /\p{L}/u.test(ch) ? ch : "#";
+    const letter = letterOf(pg.title);
     const label = letter !== last ? `<div class="cnpy-lib-letter" style="font-size:11.5px;color:var(--fg-40);padding:12px 16px 4px${i ? ";border-top:1px solid var(--border)" : ""}">${esc(letter)}</div>` : "";
     const first = letter !== last;
     last = letter;

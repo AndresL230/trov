@@ -205,6 +205,17 @@ describe("a space's home", () => {
     expect(az.indexOf("API reference")).toBeLessThan(az.indexOf("Authentication"));
     expect(recent).toContain("Top level");
   });
+  it("A to Z (owner ruling SH6): an accented title sits under its base letter, symbols and digits in ONE \"#\" group first", () => {
+    const pages = [pg("u1", "Ünïcödé page"), pg("u2", "Upgrades"), pg("x", "<img src=x> title"), pg("n", "2026 plan"), pg("a", "Alpha"), pg("z", "Zeta")];
+    const az = home({ tab: "az" }, { pages });
+    const labels = [...az.matchAll(/class="cnpy-lib-letter"[^>]*>([^<]*)<\/div>/g)].map((m) => m[1]);
+    expect(labels).toEqual(["#", "A", "U", "Z"]);
+    // Both "#" titles sit before "Alpha"; both U titles sit after the U label.
+    expect(az.indexOf("2026 plan")).toBeLessThan(az.indexOf("Alpha"));
+    expect(az.indexOf("&lt;img src=x&gt; title")).toBeLessThan(az.indexOf("Alpha"));
+    expect(az.indexOf(">U</div>")).toBeLessThan(az.indexOf("Ünïcödé page"));
+    expect(az.indexOf("Ünïcödé page")).toBeLessThan(az.indexOf("Zeta"));
+  });
   it("render(): the header crumb names the space, and the page is patched in place per space", () => {
     const s = app("space", "member", { spaceSlug: "engineering", spaceHome: { status: "ok", data: { space: ENG, pages: PAGES, can_edit: false, can_admin: false } } });
     const html = render(s);
