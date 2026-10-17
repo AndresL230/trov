@@ -244,7 +244,8 @@ a thread, and `claim_handoff` with it still works.
   topic, reason, state }`. The inspector draws it with the default view and its page link.
 - **On screen**: `AskThreadSummary.links` — open links whose side is one of the reader's threads with notes not yet
   delivered (`{ id, with, self, notes }`), from ONE query for the whole list (`askThreadLinkNotes`, src/tools/links.ts)
-  on `GET /ask/threads` (and its search) and `GET /ask/threads/:id`; a failed read is no mark (logged), never a
+  on `GET /ask/threads` (and its search), `GET /ask/shared` (a shared thread whose side is the READER's — whoever
+  confirmed its card; never the owner's for it) and `GET /ask/threads/:id`; a failed read is no mark (logged), never a
   guessed count. The thread list draws a small blue dot before the row's time (`threadLinkMark`, marks.ts's
   `markShape`, its `data-mtip` saying how many and when they arrive); the thread draws ONE line at its top
   (`linkNotesLine`: "Link #12 with @jose: 2 new notes. They reach Trov with your next question."). Nothing arrives

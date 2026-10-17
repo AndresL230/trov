@@ -249,3 +249,26 @@ describe("deleting the thread unbinds its side", () => {
     expect((await links())[0]).toMatchObject({ requester_agent_session: askThreadSession(t2), requester_kind: "ask" });
   });
 });
+
+// E2E H-05 (docs/testing/agent-links-test-log.md): a shared thread's Ask side is whoever confirmed its card; the
+// notes waiting for it showed in that person's thread (the line) but never as the mark in their "Shared with you".
+describe("a shared thread's link notes show to the side's own person only", () => {
+  it("GET /ask/shared carries the reader's waiting notes; the owner's list and read carry none", async () => {
+    const MEI = "meilin";
+    const owner = await cookieFor(ME), mei = await cookieFor(MEI);
+    const t = await threadOf(owner);
+    expect((await call("PATCH", `${BASE}/ask/threads/${t}`, owner, { people: [{ handle: MEI, access: "continue" }] })).status).toBe(200);
+    // meilin's side, bound to the owner's thread (what her Confirm on a request card in it does).
+    const l = await requestLinkFromAsk(await tenantCtx(MEI), MEI, t, { target: { person: J }, reason: "the lookup" });
+    await acceptLink(await tenantCtx(J), J, l.id);
+    await joinLink(await tenantCtx(J), J, { id: l.id, session: "jose-s" }, "mcp");
+    await joseNote(l.id, "the lookup retries once now");
+
+    const shared = (await call("GET", `${BASE}/ask/shared`, mei)).json.threads as { id: number; links?: unknown }[];
+    expect(shared.find((x) => x.id === t)?.links).toEqual([{ id: l.id, with: J, self: false, notes: 1 }]);
+    expect((await call("GET", `${BASE}/ask/threads/${t}`, mei)).json.thread.links).toEqual([{ id: l.id, with: J, self: false, notes: 1 }]);
+    const own = (await call("GET", `${BASE}/ask/threads`, owner)).json.threads as { id: number; links?: unknown }[];
+    expect(own.find((x) => x.id === t)?.links).toBeUndefined();
+    expect((await call("GET", `${BASE}/ask/threads/${t}`, owner)).json.thread.links).toBeUndefined();
+  });
+});

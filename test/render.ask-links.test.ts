@@ -9,7 +9,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
 import { initialState, type AppState } from "../web/src/render";
 import { askView } from "../web/src/ask-state";
-import { threadLinkMark, threadLinkNotes, threadsView } from "../web/src/ask-threads";
+import { sharedSection, threadLinkMark, threadLinkNotes, threadsView } from "../web/src/ask-threads";
 import { conversationView, linkNotesLine } from "../web/src/ask-conversation";
 import { emptyConvo, foldThreadEvent } from "../web/src/ask-stream";
 import { refFallbackText, refShort } from "../web/src/ask-refs";
@@ -52,6 +52,22 @@ describe("the thread list's mark", () => {
     expect(threadLinkMark(thread(1, [{ id: 13, with: "luke", self: false, notes: 1 }]))).toContain("1 new note on a Trov link. It reaches this thread");
     expect(threadLinkMark(thread(2))).toBe("");
     expect(threadLinkMark(thread(2, []))).toBe("");
+  });
+});
+
+// E2E H-05: a thread shared WITH me whose link side is mine (I confirmed its card) carries the mark in "Shared with
+// you" too; one with nothing waiting for me carries none.
+describe("the mark on a shared thread", () => {
+  it("draws on the reader's own side only, from the summary's links", () => {
+    const html = sharedSection(askView(state((s) => {
+      s.ask.shared = { status: "ok", data: [
+        { ...thread(7, JOSE), owner: "andres", viewer: true, access: "continue", direct: true },
+        { ...thread(8), owner: "andres", viewer: true, access: "read", direct: true },
+      ] };
+    })));
+    const row7 = html.slice(html.indexOf('data-morph-key="sh:7"'), html.indexOf('data-morph-key="sh:8"'));
+    expect(row7).toContain('data-ask-th-link="2"');
+    expect(html.slice(html.indexOf('data-morph-key="sh:8"'))).not.toContain("data-ask-th-link");
   });
 });
 

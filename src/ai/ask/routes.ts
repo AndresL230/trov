@@ -721,7 +721,13 @@ export function snippetOffsets(raw: string | null): AskSearchHit["snippet"] {
  *  ("Organization"); their own shared ones are in their own list. */
 askApp.get(ASK_ROUTES.shared, async (c) => {
   try {
-    return c.json({ threads: (await listSharedThreads(c.var.ctx, me(c))).map(viewerSummaryOf) });
+    // The link notes waiting for the READER's own side of each (a shared thread's side is whoever confirmed its card;
+    // the owner's side shows in the owner's own list, never here).
+    const [rows, links] = await Promise.all([listSharedThreads(c.var.ctx, me(c)), linkNotesByThread(c.var.ctx, me(c))]);
+    return c.json({ threads: rows.map((r) => {
+      const waiting = links.get(r.thread.id) ?? [];
+      return { ...viewerSummaryOf(r), ...(waiting.length ? { links: [...waiting] } : {}) };
+    }) });
   } catch (e) {
     console.error("ask shared", e instanceof Error ? e.name : "error");
     return c.json({ error: "Couldn't read the shared threads" }, 503);

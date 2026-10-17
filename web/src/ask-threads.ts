@@ -131,7 +131,7 @@ function sharedRow(v: AskView, t: AskThreadSummary): string {
   const name = personName(v.look, owner);
   const cont = t.direct && t.access === "continue";
   return `<div class="ask-th ask-th--shared" data-morph-key="sh:${t.id}"><div class="ask-th-in"><button type="button" class="ask-th-b ask-th-b--hit ask-th-b--shared${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""} aria-label="${attr(`${t.title || "Untitled thread"}, shared by ${name}${cont ? ", you can continue it" : ""}`)}">
-      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span><span class="ask-th-at">${esc(threadTime(t))}</span></span>
+      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span>${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span></span>
       <span class="ask-th-owner">${refAvatar(v.look, owner, 16)}<span class="ask-th-owner-n">${esc(name)}</span>${cont ? `<span class="ask-th-can">· Can continue</span>` : ""}</span>
     </button></div></div>`;
 }
