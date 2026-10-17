@@ -3015,7 +3015,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .plat-thead > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .plat-row { display:grid; gap:12px; align-items:center; transition:background .12s ease; }
 .plat-row:hover { background:var(--hover); }
-.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px 118px minmax(0,1.5fr) 68px 60px 96px 96px; }
+/* The Plan column takes a share (its second line — seats, and a gift's end date — wraps inside it, never over Owners). */
+.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px minmax(130px,1.2fr) minmax(0,1.5fr) 68px 60px 96px 96px; }
 /* Platform › Access / Change plan (platform-access.ts): the five limits, as fields or as figures. */
 .plat-limits { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px 14px; }
 .plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
