@@ -86,7 +86,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
     <main data-morph="review" style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
-      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Review</h1>
       
@@ -143,7 +143,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
-      <div class="cnpy-rv-body" data-morph-key="rvd:doc:auth-flow@3" style="max-width:920px;padding:24px 32px 100px">
+      <div class="cnpy-rv-body" data-morph-key="rvd:doc:auth-flow@3" style="max-width:var(--frame-reader);padding:24px 32px 100px">
     <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0">
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Auth flow</h2>
@@ -284,7 +284,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
     <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
-      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Unplaced</h1>
       
@@ -448,7 +448,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
     <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
-      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0;white-space:nowrap;flex:none"><button data-act="ticketsBack" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);cursor:pointer">Tickets</button></h1>
       <span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">Login page shows a blank screen on Safari</span></span>

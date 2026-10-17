@@ -53,13 +53,15 @@ export const HITBOX = "cnpy-hitbox";
 /** A page in two columns: `main` on the left, `aside` (its boxes) as the sticky right column.
  *  `tabs` heads the page with a tab bar (tabs.ts `tabBar`, passed in as markup — this module
  *  cannot import it) and wraps the columns in its panel (`panel` = `tabPanelAttrs(…)`), 20px
- *  under the bar's line: Roadmap › Narrative. Without it the markup is unchanged (the Feed). */
-export function asideColumns(main: string, aside: string, tabs?: { bar: string; panel: string }): string {
+ *  under the bar's line: Roadmap › Narrative. Without it the markup is unchanged (the Feed).
+ *  `opts.frame` replaces the 1200px cap (the Feed's `--frame-feed`, which grows on a big
+ *  screen — web-ui.md › Big screens); `opts.cls` adds a class to the page. */
+export function asideColumns(main: string, aside: string, tabs?: { bar: string; panel: string }, opts: { frame?: string; cls?: string } = {}): string {
   const cols = `<div class="cnpy-cols">
       <div style="min-width:0">${main}</div>
       <aside class="cnpy-cols-aside cnpy-stagger">${aside}</aside>
     </div>`;
-  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+  return `<div class="cnpy-scroll cnpy-cols-page${opts.cls ? ` ${opts.cls}` : ""}" style="max-width:${opts.frame ?? "1200px"};margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
     ${tabs ? `${tabs.bar}<div${tabs.panel} style="padding-top:20px">${cols}</div>` : cols}
   </div>`;
 }
@@ -134,10 +136,15 @@ export function relTime(iso: string | null): string {
 /** The frame the four ticket/sprint screens sit in. These are WORK surfaces — a
  *  queue table, a filing form, a thread beside a rail — so they take the window
  *  instead of sitting in a narrow column the way Feed and Roadmap (reading
- *  surfaces) deliberately do: fluid to 1440px, with a gutter that grows with the
- *  viewport. Reading measures are capped per block inside (a ticket body, a
+ *  surfaces) deliberately do: fluid to 1440px on a laptop and wider on a big
+ *  screen (trov.css `--frame-work`), with a gutter that grows with the viewport. Reading measures are capped per block inside (a ticket body, a
  *  sprint description), never by starving the whole frame. */
 export const WORK_SHELL =
+  "width:100%;max-width:var(--frame-work);margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+/** A filing form's frame (a new ticket, handoff or doc, the prompt editor): WORK_SHELL's
+ *  laptop width, kept on a big screen — a form's fields do not gain from the width a
+ *  list does (trov.css `--frame-work`, web-ui.md › Big screens). */
+export const FORM_SHELL =
   "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
 /** A single ticket's or sprint's page: the same shell, narrower, so one item reads
  *  as a centred document on a wide screen instead of hugging the left edge. */

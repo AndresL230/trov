@@ -769,6 +769,45 @@ label. It is not a tab bar and not a segmented switch: a step is a page of the f
 route. Its rules declare no radius (every one is inline), and its one moving part — the waiting dot — is
 still under `prefers-reduced-motion`. Tests: `test/render.welcome.test.ts`.
 
+## Big screens — page frames that grow (`--frame-*` in `trov.css`)
+
+The team builds on laptops; a 32" monitor is 2560–3072 CSS px wide at the usual scaling (4K at 150% / 125%, 1440p
+at 100%), and 3840 at 4K 100%. Every screen is a centred frame with a `max-width`, so on such a window a laptop-sized
+frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120×1440 and 1080p at 67% / 80% zoom):
+
+- **Frame tokens on `:root`**, each `clamp(<laptop width>, <n>vw, <ceiling>)`, so they equal the old fixed width
+  up to a ~2100px window (a laptop and a 1080p monitor render exactly as before) and grow after it:
+  `--frame-work` (1440 → 2200: the queue's board and table, Handoffs, the Prompt Library, a tag's page — `WORK_SHELL`
+  in `ui.ts`), `--frame-dash` (1180 → 1720: My Work, the Repo dashboard, Org settings › Members — only that tab,
+  `data-org-wide` on `.cnpy-org`), `--frame-feed` (1200 → 1480: the Feed, `asideColumns`' `opts.frame`) and
+  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list).
+- **A line keeps its measure** when its column grows: a Feed entry's title, brief and body stop at 720px (the width
+  they have in a 1200px frame; `.cnpy-feed-page`).
+- **Reading surfaces keep their frame**: a doc (1080), the Roadmap (`asideColumns`, 1200), the Guide, a ticket or
+  sprint (`DETAIL_SHELL`), a handoff, Settings and Org settings' other tabs. A FORM keeps its laptop width too
+  (`FORM_SHELL`: a new ticket, handoff or doc, the prompt editor) — its fields gain nothing from width.
+- **What grows adds, not stretches**: the board's columns stop at `--board-col-max` (480px) and the board keeps to the
+  left under its toolbar (the owner, 2026-10-17); the Prompt Library's grid adds a card a row past a 2200px window
+  (`auto-fill`, 360px minimum); Repo › Usage's app cards and the Overview's week figures already `auto-fit` (the week
+  figures go to ONE row on a panel ≥1200px, so none is left alone on a second row).
+- **The title row lines up with the frame** above 1440px (the owner, 2026-10-17): the header still spans `<main>` (its
+  hairline does) but its padding is `var(--hdr-pl, 24px)` / `var(--hdr-pr, 24px)`, and `trov.css` gives each screen
+  with ONE centred frame its `--hdr-frame` (the frame's max-width) and `--hdr-pad` (the frame's side padding); the
+  frame centres in `<main>` minus the scroller's reserved scrollbar (`--sb-gutter`, 12px — with overlay scrollbars it
+  is 0 and the title sits 6px off). Screens without one centred frame (Docs, Review, the Guide, Ask, Artifacts) keep
+  24px. A NEW screen with a centred frame adds its line there, or its title row floats at 24px on a big screen.
+- A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
+  legal) keep their 1120px marketing column.
+- **No UI scaling at 4K 100% (tried, not shipped).** The owner asked for Trov to scale itself up past ~3000px. The
+  only mechanism that scales a UI authored in px (nearly every size is an inline px) is CSS `zoom` on `<html>`, and in
+  Chromium 153 it breaks the app: viewport units are zoomed too (`100dvh` becomes 1.3 × the window, so the shell
+  overflows and the page scrolls; every `calc(100vw - …)` menu or modal overflows), and `getBoundingClientRect()` is
+  in zoomed px while `left` / `top` / `width` written back are multiplied again (a dropdown opened ~550px right of
+  its trigger at 3840; the tooltip, quick search, sync menu and the board's drag ghost do the same math; Ask's
+  inspector resize adds `clientX` deltas to a width, so it would move 1.3× the pointer). Scaling the root font-size
+  does nothing to px. Doing it right means one zoom-aware helper at every rect → style site and a `--vw` / `--vh`
+  pair in place of ~110 raw viewport units, Ask's and Artifacts' included.
+
 ## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
 
 A screen that waits on a read never paints a bare "Loading…" line and never paints its empty state early: it

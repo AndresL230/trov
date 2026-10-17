@@ -54,6 +54,44 @@ input, select { font-family: inherit; }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
    crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
 #cnpy-main { scrollbar-gutter: stable; }
+/* Page frames on a big screen (web-ui.md › Big screens). A screen's frame is its laptop width up to a ~2100px
+   window — nothing changes on a laptop or a 1080p monitor — then grows with the window to a ceiling, so a
+   32" monitor (2560–3072 CSS px) is used instead of framing the work in a third of it. Only screens whose
+   content gains from width take one: a list, a board, a dashboard, a diff. Reading pages (a doc, the Feed, the
+   Guide, a ticket, Settings) keep their measure. */
+:root {
+  --frame-work:clamp(1440px, 66vw, 2200px);  /* the queue (board + table), Handoffs, the Prompt Library, a tag's page */
+  --frame-dash:clamp(1180px, 56vw, 1720px);  /* My Work, the Repo dashboard, Org settings › Members */
+  --frame-reader:clamp(920px, 44vw, 1240px); /* Review's reading pane */
+  --frame-feed:clamp(1200px, 52vw, 1480px);  /* the Feed: modestly — its entries' text keeps a line length */
+  --board-col-max:480px;                     /* a board column never gets wider than a card wants */
+  --sb-gutter:12px;                          /* #cnpy-main's reserved scrollbar (the ::-webkit-scrollbar width) */
+}
+/* The Feed's column grows; an entry's words do not: 720px is the measure they already have in a 1200px frame. */
+.cnpy-feed-page .cnpy-cols > div:first-child :is(.cnpy-md-inline, .cnpy-feed-brief, .cnpy-feed-body) { max-width:720px; }
+/* The title row lines up with the screen's frame: the header spans <main> (its hairline does), but its title and
+   actions sit at the content's left and right edges. Each screen names its frame (`--hdr-frame`, the max-width of
+   its page) and the frame's side padding (`--hdr-pad`); the header's inline padding reads `--hdr-pl` / `--hdr-pr`,
+   24px when unset. The page scroller reserves its scrollbar on the right (`scrollbar-gutter`), so the frame centres
+   in <main> minus that gutter. Above 1440px only: a laptop's header is exactly what it was. Screens with no single
+   centred frame (Docs, Review, the Guide, Ask, Artifacts) keep 24px. */
+[data-screen="tickets"], [data-screen="handoffs"], [data-screen="prompts"], [data-screen="tag"] { --hdr-frame:var(--frame-work); --hdr-pad:clamp(20px,2.6vw,46px); }
+[data-screen="newticket"], [data-screen="newhandoff"], [data-screen="newdoc"], [data-screen="promptedit"] { --hdr-frame:1440px; --hdr-pad:clamp(20px,2.6vw,46px); }
+[data-screen="ticketdetail"], [data-screen="sprint"] { --hdr-frame:1120px; --hdr-pad:clamp(20px,2.6vw,46px); }
+[data-screen="handoff"], [data-screen="maintenance"], [data-screen="platform"], [data-screen="platformorg"], [data-screen="org"] { --hdr-frame:1180px; --hdr-pad:clamp(20px,2.6vw,46px); }
+[data-screen="org"]:has(.cnpy-org[data-org-wide]) { --hdr-frame:var(--frame-dash); }
+[data-screen="prompt"] { --hdr-frame:1260px; --hdr-pad:clamp(20px,2.6vw,46px); }
+[data-screen="mywork"], [data-screen="repo"] { --hdr-frame:var(--frame-dash); --hdr-pad:32px; }
+[data-screen="feed"] { --hdr-frame:var(--frame-feed); --hdr-pad:32px; }
+[data-screen="roadmap"] { --hdr-frame:1200px; --hdr-pad:32px; }
+[data-screen="settings"], [data-screen="releases"]:has(.cnpy-relidx) { --hdr-frame:1180px; --hdr-pad:32px; }
+[data-screen="search"] { --hdr-frame:780px; --hdr-pad:24px; }
+@media (min-width:1441px) {
+  .cnpy-hdr {
+    --hdr-pl:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad));
+    --hdr-pr:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad) + var(--sb-gutter));
+  }
+}
 @keyframes cnpy-spin { to { transform: rotate(360deg); } }
 @keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -953,6 +991,8 @@ input, select { font-family: inherit; }
 .cnpy-mw-grid.is-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
 @media (max-width:1180px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .cnpy-mw-grid.is-3 { grid-template-columns:1fr; } }
+/* …and on a big screen, where the frame grows (--frame-work), more cards a row instead of wider ones. */
+@media (min-width:2200px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); } }
 /* Handoffs inbox row: on a phone the who / branch columns give way, leaving the
    title, the status pill and the age (the grid is an inline style, hence !important). */
 @media (max-width:760px) {
@@ -4867,6 +4907,9 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 
 /* ── repo-week (web/src/repo-week.ts): this week's figures ───────────────────────────────────────────────── */
 .repo-week { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+/* On a panel wide enough for every figure (a big screen's --frame-dash), ONE row — auto-fit would leave the last
+   figure alone on a second row between ~1200 and ~1400px. */
+@container (min-width:1200px) { .repo-week { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); } }
 .repo-week-tile { padding:16px 22px; min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
 
 /* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */
