@@ -1029,7 +1029,7 @@ export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, Notific
 export type { PersonColor };
 export type { PersonSummary, PersonProfile };
 
-// ── Agent links (Handoffs › Links; src/routes.ts) ─────────────────────────────
+// ── Agent links (Relay › Links; src/routes.ts) ─────────────────────────────
 /** One box of the caller's links: waiting (sent to me) · mine (my drafts and sent requests) · open · unbound · closed. */
 export async function listLinks(box: LinkBox): Promise<LinkView[]> {
   return (await getJson<{ links: LinkView[] }>(`/api/links?box=${encodeURIComponent(box)}`)).links;

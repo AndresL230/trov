@@ -124,7 +124,7 @@ export type Screen =
   | "platform" | "platformorg"
   // Handoffs (Workspace): the inbox, one handoff, the new-handoff form.
   | "handoffs" | "handoff" | "newhandoff"
-  // Handoffs › Links (the screen's second tab, `#links`) and one agent link's page (`#links/<n>`, web/src/links.ts).
+  // Relay › Links (the screen's second tab, `#links`) and one agent link's page (`#links/<n>`, web/src/links.ts).
   | "links" | "link"
   // Prompt Library (Knowledge): the library, one prompt, the editor (new / edit / new version).
   | "prompts" | "prompt" | "promptedit"
@@ -444,7 +444,7 @@ export interface AppState {
   /** `at`: when an in-page claim drew it (Date.now()) — the list rises in once from then (handoffs.ts `readingListBlock`). */
   handoffReading: { id: number; items: HandoffReadingItem[] | null; at?: number } | null;
   nh: NewHandoffDraft;
-  // ── Handoffs › Links (web/src/links.ts) ──────────────────────────────────────
+  // ── Relay › Links (web/src/links.ts) ──────────────────────────────────────
   /** The Links tab's four boxes (`GET /links?box=…`). */
   links: Loadable<LinkBoxes>;
   linkDetail: Loadable<LinkDetail | null>;
@@ -745,7 +745,7 @@ export function linkBadge(s: AppState): number {
   return s.links.status === "ok" ? s.links.data.waiting.length : s.badges.links ?? s.links.data.waiting.length;
 }
 
-/** The Handoffs screen's tab bar, with each tab's own count of what waits for me. */
+/** The Relay screen's tab bar (Handoffs | Links), with each tab's own count of what waits for me. */
 function handoffsBar(s: AppState, tab: HandoffsTab): string {
   return handoffsTabBar(tab, { handoffs: handoffOnlyBadge(s), links: linkBadge(s) });
 }
@@ -964,7 +964,7 @@ function header(s: AppState): string {
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
     artifacts: "Artifacts", artifactnew: "Artifacts", artifact: "Artifacts",
-    handoffs: "Handoffs", handoff: "Handoffs", newhandoff: "Handoffs", links: "Handoffs", link: "Handoffs",
+    handoffs: "Relay", handoff: "Relay", newhandoff: "Relay", links: "Relay", link: "Relay",
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
     releases: "What's new",
@@ -2008,7 +2008,7 @@ export const GUIDE_ALT: Record<string, string> = {
   roadmap: "The Roadmap's narrative: the plan beside its sprint cards",
   timeline: "The Roadmap's timeline: each sprint as a bar on a calendar",
   sprint: "A sprint opened: its tickets and progress",
-  handoffs: "The Handoffs screen: handoffs left for the next session",
+  handoffs: "Relay: handoffs left for the next session, and links between sessions",
   artifacts: "The Artifacts library",
   artifact: "An artifact opened in the viewer",
   prompts: "The Prompt Library",
@@ -2139,9 +2139,9 @@ function guideView(s: AppState): string {
     ${gFig("timeline", `${gEm("Roadmap › Timeline")}: sprints on the calendar, filled by their done tickets.`)}
     ${gFig("sprint", `${gEm("A sprint")}: its tickets, progress, properties, assignees, and resources.`)}
 
-    ${sub("Handoffs")}
+    ${sub("Relay")}
     <p style="${gP}">A handoff is a note from one session to the next: the task, what's done, what's next, the files that matter, and optionally a ready-to-run prompt. Your agent leaves one with the ${gStrong("handoff")} skill, addressed to you, a teammate, or anyone. At the start of your next session, load-context lists the ones waiting and claims only the one you pick. Unclaimed handoffs expire after 7 days. The sidebar count is what's waiting for you.</p>
-    ${gFig("handoffs", `${gEm("Handoffs")}: pending ones first, then claimed and expired history.`)}
+    ${gFig("handoffs", `${gEm("Relay")}: two tabs. Handoffs lists pending ones first, then claimed and expired history; Links lists requests waiting for you, open links, yours and closed ones.`)}
 
     ${sub("Repo")}
     <p style="${gP}">A dashboard over the product repo in five tabs: ${gStrong("Overview")} (each environment's deploys, checks, health, and drift), ${gStrong("Code")}, ${gStrong("CI &amp; Deploys")}, ${gStrong("Usage")}, and ${gStrong("Team &amp; Planning")}. It reads only what Trov has captured from the GitHub webhook and scheduled polls. A section with nothing yet reads ${gStrong("not connected")} and names what it's waiting on, never a made-up zero. ${gStrong("Preview with sample data")} shows the full layout with labelled placeholder numbers. Admins also get ${gStrong("Poll now")}.</p>

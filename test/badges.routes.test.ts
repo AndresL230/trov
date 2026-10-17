@@ -91,7 +91,7 @@ describe("GET /badges", () => {
       tickets,
       // the web's handoffsForMe: pending, addressed to me in any case — `anyone` is not me
       handoffs: handoffs.filter((h) => h.status === "pending" && h.recipient.toLowerCase() === "andres").length,
-      // link requests waiting for me — the web adds them to the Handoffs badge; `handoffs` stays handoffs only
+      // link requests waiting for me — the web adds them to the Relay badge; `handoffs` stays handoffs only
       links: links.length,
       prompts: prompts.filter((p) => p.status === "staged").length,
     });

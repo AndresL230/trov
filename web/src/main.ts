@@ -911,8 +911,8 @@ function openHandoff(id: number): void {
       rerenderSoon();
     });
 }
-// ── Handoffs › Links ─────────────────────────────────────────────────────────
-/** The Links tab's four boxes, read together. Waiting-for-me is the sidebar's half of the Handoffs badge
+// ── Relay › Links ─────────────────────────────────────────────────────────
+/** The Links tab's four boxes, read together. Waiting-for-me is the sidebar's half of the Relay badge
  *  (`listed("links")`) — never folded into `handoffsForMe`, which My Work counts. */
 function loadLinks(): void {
   state.links = { status: "loading", data: state.links.data };
@@ -3704,7 +3704,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "syncToggle": case "syncClose": case "syncReload": case "syncStart": case "syncDismiss": syncCtl.act(act); return;
     // ── Handoffs ─────────────────────────────────────────────────────────────
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
-    // ── Handoffs › Links ─────────────────────────────────────────────────────
+    // ── Relay › Links ─────────────────────────────────────────────────────
     case "handoffsTab":
       if (arg === "links") { state.screen = "links"; loadLinks(); }
       else if (arg === "handoffs") { state.screen = "handoffs"; loadHandoffs(); }

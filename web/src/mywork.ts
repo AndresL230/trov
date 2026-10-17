@@ -27,12 +27,12 @@ export const MW_REPO_TABS: readonly MwRepoTab[] = ["prs", "ci", "deploys"];
 export type MwLoad = "pending" | "ok" | "error";
 
 /**
- * THE definition of "handoffs waiting on me" — the sidebar's Handoffs badge and My
+ * THE definition of "handoffs waiting on me" — the sidebar's Relay badge and My
  * Work's Your sessions tile both count this, so they can never disagree: PENDING
  * handoffs whose recipient is me (case-insensitive, like persons.handle). A
  * handoff I sent to MYSELF counts — handing off to your own fresh session is the
  * common case. One addressed to `anyone` does not: any session in the org can
- * claim it, so it is not waiting on me in particular (the Handoffs screen has it).
+ * claim it, so it is not waiting on me in particular (the Relay screen has it).
  */
 export function handoffsForMe(handoffs: readonly HandoffView[], me: string): HandoffView[] {
   const m = me.toLowerCase();

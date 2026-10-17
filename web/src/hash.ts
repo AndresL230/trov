@@ -18,7 +18,7 @@
 //                                        `<slug>@v<n>` is accepted, `/v<n>` written back)
 //   #artifacts/<slug>/diff/<a>..<b>    → two of its versions compared
 //   #handoffs         → the handoffs inbox; #handoffs/new the form; #handoffs/<id> one handoff
-//   #links            → Handoffs › Links (the screen's second tab); #links/<n> one agent link (its per-org
+//   #links            → Relay › Links (the screen's second tab); #links/<n> one agent link (its per-org
 //                       number). Not under #handoffs/, whose second segment is a handoff's number
 //   #prompts          → the Prompt Library; #prompts/new the editor; #prompts/<slug> one
 //                       prompt; #prompts/<slug>/edit and #prompts/<slug>/version its editor
@@ -138,7 +138,7 @@ export function sameRoute(a: Route, b: Route): boolean {
  */
 // Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
 // swaps the conversation in place and never replays the screen's entrance.
-// Handoffs › Links is the Handoffs screen's other TAB, so the two lists are one page (the tab bar's underline slides).
+// Relay › Links is the Relay screen's other TAB, so the two lists are one page (the tab bar's underline slides).
 export function pageKey(r: Route): string {
   return hashForRoute({ ...r, screen: r.screen === "links" ? "handoffs" : r.screen, askThread: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }

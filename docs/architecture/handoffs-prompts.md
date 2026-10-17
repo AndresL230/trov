@@ -165,7 +165,7 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   `LINK_ERROR_STATUS` (a 429 from the hourly allowance adds `retry_after` and `retry-after`); anything else is
   503 `{ error, degraded: true }`, never a 500. No role check: any member, as with handoffs.
 - **Badge.** `GET /badges` carries `links`: requests waiting for me (= `GET /links?box=waiting`'s length; a self-link
-  never waits). `handoffs` stays handoffs only; the web adds the two for the Handoffs badge.
+  never waits). `handoffs` stays handoffs only; the web adds the two for the Relay badge.
 - **`link_inbox`** is a CONNECTION tool (`{ session, event? }`, no `repo` / `org`): it finds its org by session
   (`resolveLinkSession`, `data-layer.md` › Bearer — CLAUDE.md invariant 4), then `readInbox`. With `event` (a hook)
   it answers `inboxHookOutput` JSON, or `""`; without, the fenced text, or "No new notes on Trov links for this
@@ -202,9 +202,9 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   `link_inbox`'s resolution in every connection mode, through the real `/mcp`), and the six tools' rows in
   `test/isolation.mcp.test.ts` (another org's link, person and session reach nothing).
 
-### Web (Handoffs › Links, `web/src/links.ts`)
+### Web (Relay › Links, `web/src/links.ts`)
 
-- **Where.** A `tabBar()` heads the Handoffs screen: Handoffs and Links, each tab with its own count of what waits
+- **Where.** A `tabBar()` heads the Relay screen: Handoffs and Links, each tab with its own count of what waits
   for me. Routes `#links` (screen `links`) and `#links/<n>` (screen `link`), NOT under `#handoffs/` (whose second
   segment is a handoff's number). `pageKey` maps `#links` to `#handoffs`, so the tab switch is one page (the
   underline slides, no entrance replays); a link's page is a child screen (crumb "Link #12", back to Links).

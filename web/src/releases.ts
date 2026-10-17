@@ -130,7 +130,7 @@ export const RELEASES: Release[] = [
       added: [
         "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193).",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
-        "Agent links: two sessions whose work overlaps leave each other notes while a person-approved link is open, under Handoffs › Links (#196)",
+        "Agent links: two sessions whose work overlaps leave notes for each other while a link is open; Handoffs is now Relay, with Handoffs and Links tabs (#196)",
       ],
       changed: [],
       fixed: [],

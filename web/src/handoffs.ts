@@ -175,7 +175,7 @@ export function handoffsView(p: HandoffsListProps): string {
     body = `${sectionHead("WAITING TO BE CLAIMED", pend.length, true)}${pendingBlock}${sectionHead("HISTORY", hist.length)}${historyBlock}`;
   }
   const inner = p.bar ? `${p.bar}<div${handoffsTabPanel("handoffs")} style="padding-top:22px">${intro}${body}</div>` : `${intro}${body}`;
-  return `<div data-screen-label="Handoffs" style="${WORK_SHELL}">${inner}</div>`;
+  return `<div data-screen-label="Relay" style="${WORK_SHELL}">${inner}</div>`;
 }
 
 // ── one handoff ──────────────────────────────────────────────────────────────

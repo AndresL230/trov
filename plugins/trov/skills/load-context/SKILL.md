@@ -128,7 +128,7 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
      lapsed — tell the person that plainly.
    - **Also call `mcp__trov__list_links`** (no args but `repo`) and tell the person what is live:
      link requests **waiting** for them ("@jose asked to link about PR #180 — accept or decline it in
-     Trov › Handoffs › Links"), their **open** links, and open links of theirs with **no session yet**
+     Trov › Relay › Links"), their **open** links, and open links of theirs with **no session yet**
      (`unbound`: "open link #12 from your Ask thread, no session yet — say 'join link 12'"). Say nothing
      when every box is empty. **Read-only:** never join or request a link from here; joining is the
      `link` skill, when the person says so.

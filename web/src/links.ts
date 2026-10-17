@@ -1,5 +1,5 @@
-// Handoffs › Links — agent links in the web app (docs/architecture/handoffs-prompts.md › Agent links › Web).
-// The Handoffs screen's second tab (`#links`): the links waiting for me, my open ones, my drafts and sent
+// Relay › Links — agent links in the web app (docs/architecture/handoffs-prompts.md › Agent links › Web).
+// The Relay screen's second tab (`#links`): the links waiting for me, my open ones, my drafts and sent
 // requests, and the recently ended ones; and one link's page (`#links/<n>`): its topic and reason, both sides,
 // the notes thread, a composer for the viewer's OWN side while the link is open, and the person steps the
 // viewer may take. Purely presentational: props in, markup out; clicks are `data-act` dispatched in main.ts,
@@ -20,7 +20,7 @@ import { COPY_ICON } from "./prompt-box";
 import { segmented } from "./segmented";
 import { skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
 
-// ── the Handoffs screen's tab bar ────────────────────────────────────────────
+// ── the Relay screen's tab bar ────────────────────────────────────────────
 export type HandoffsTab = "handoffs" | "links";
 export const HANDOFFS_TAB_BAR = "handoffs-tab";
 
@@ -28,7 +28,7 @@ const tabBadge = (n: number, what: string): string =>
   `<span class="cnpy-badge" data-n="${n}" title="${attr(`${n} ${what} waiting for you`)}">${n}</span>`;
 
 /** Handoffs | Links. Each tab carries its own count of what waits for me — the two numbers the sidebar's
- *  Handoffs badge adds up. */
+ *  Relay badge adds up. */
 export function handoffsTabBar(value: HandoffsTab, counts: { handoffs: number; links: number }): string {
   return tabBar({
     id: HANDOFFS_TAB_BAR, ariaLabel: "Handoffs sections", act: "handoffsTab", value,

@@ -40,7 +40,7 @@ hooks:
 A **link** is a short-lived, one-to-one line between two sessions whose work may affect each other:
 two coding agents, a coding agent and a teammate's chat, or your own Ask thread. While it is open each
 side leaves short notes for the other; when the work lands it closes, and the thread stays readable in
-Trov (Handoffs › Links). A link is not knowledge: no gate, no feed.
+Trov (Relay › Links). A link is not knowledge: no gate, no feed.
 
 **A person starts every link on both ends.** You may **draft** a request (`request_link`) and **join**
 a link a person already accepted (`join_link`). Sending and accepting happen in the Trov web app; there

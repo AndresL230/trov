@@ -1,6 +1,6 @@
-// Handoffs › Links (web/src/links.ts) — the Links tab and a link's page over the real DTOs (shared/links.ts):
+// Relay › Links (web/src/links.ts) — the Links tab and a link's page over the real DTOs (shared/links.ts):
 // each state as each viewer sees it (only the steps that viewer may take, and no others), each side kind, a
-// self-link, who wrote each note, the join hint, the routes, and the sidebar's Handoffs badge = handoffs + links.
+// self-link, who wrote each note, the join hint, the routes, and the sidebar's Relay badge = handoffs + links.
 import { describe, it, expect } from "vitest";
 import type { LinkDetail, LinkView, LinkSideView, LinkNoteView, LinkState } from "../shared/links";
 import type { HandoffView } from "../shared/handoffs";
@@ -301,7 +301,7 @@ describe("the Links tab", () => {
     expect(linksView({ status: "error", boxes: NO_LINK_BOXES, me: "andres", persons, bar })).toContain("Couldn&#39;t load links.");
   });
 
-  it("a tabBar heads the Handoffs screen: Handoffs and Links, each with its own count", () => {
+  it("a tabBar heads the Relay screen: Handoffs and Links, each with its own count", () => {
     const h = handoffsView({ status: "ok", handoffs: [], me: "andres", persons, bar: handoffsTabBar("handoffs", { handoffs: 2, links: 1 }) });
     expect(h).toContain('role="tablist" aria-label="Handoffs sections"');
     expect(h).toContain('data-act="handoffsTab" data-arg="links"');
@@ -338,7 +338,7 @@ describe("routes: #links and #links/<n>", () => {
 });
 
 // ── the sidebar badge: handoffs + links ──────────────────────────────────────
-describe("the sidebar's Handoffs badge counts handoffs + link requests waiting for me", () => {
+describe("the sidebar's Relay badge counts handoffs + link requests waiting for me", () => {
   const me = { handle: "andres", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "acme", name: "Acme", role: "member" as const }], superadmin: false, pending_invites: 0 };
   const hoff = (id: number): HandoffView => ({
     id, sender: "jose", recipient: "andres", status: "pending", created_at: T0, claimed_at: null, claimed_by: null, claimed_by_session: null,

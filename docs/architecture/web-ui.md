@@ -629,7 +629,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
 
-The sidebar's counts (Review, Unplaced, Tickets, Handoffs, Prompts, and the admin's unmatched logins on the
+The sidebar's counts (Review, Unplaced, Tickets, Relay, Prompts, and the admin's unmatched logins on the
 switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
 WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
 `enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
