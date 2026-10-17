@@ -231,7 +231,7 @@ describe("the index — a grid of release cards", () => {
     const html = releasesIndex(withNext);
     expect(html).toContain("cnpy-relcard cnpy-rise is-next");
     expect(html).toContain(">Unreleased<");
-    const r = withNext[1];
+    const r = withNext.find((x) => !x.unreleased)!; // the newest shipped card (a live Unreleased entry may sit before it)
     const n = r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
     expect(html).toContain(`${r.highlights.length} highlights · ${n} patch line${n === 1 ? "" : "s"}`);
     expect(html).not.toContain("cnpy-guide-toc"); // no "On this page" rail on the index

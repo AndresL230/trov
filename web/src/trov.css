@@ -32,7 +32,7 @@
 html, body { margin: 0; padding: 0; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input, select { font-family: inherit; }
-::selection { background: var(--accent, #2BFF88); color: var(--accent-fg, #000); }
+::selection { background: var(--accent, #525cc3); color: var(--accent-fg, #fff); }
 /* THE scrollbar — every scroller in the app and the site (web-ui.md › Scrollbars): no track, no arrows, a slim
    thumb in the theme's ink that darkens and fills out under the pointer. Chromium and Safari draw it from the
    pseudo-elements; Firefox, which has none, from the standard properties (thin, the same ink). A scroller that
@@ -63,7 +63,7 @@ input, select { font-family: inherit; }
 /* THE on/off switch (notifications.ts `switchBtn`): its track fades and its knob slides (inline, .15s) — still under reduced motion. */
 @media (prefers-reduced-motion: reduce) { button[role="switch"], button[role="switch"] > span { transition:none !important; } }
 
-[data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+[data-cnpy-theme="dark"] { --mark:#8d94d8; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#8d94d8; --accent-fg:#11132e; --accent-soft:rgba(141,148,216,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 /* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
    ground, white surfaces with a hairline shadow, an indigo accent. Trov's fonts stay. */
 /* WCAG AA (2026-10, docs/architecture/web-ui.md › Contrast): every token used for TEXT reads at 4.5:1 or more
@@ -73,7 +73,10 @@ input, select { font-family: inherit; }
    light --fg-40 #8e8e98, --accent #5e6ad2 (and --accent-soft), --green #2f9e6b, --amber #c98a1a, --blue #4c8ed9,
    --red #e5484d, --purple #8e5cc7; dark --fg-40 at .40, --red #cc6262. --red-fg is the text on a filled red
    button (white on light; on dark the dark ink, as --accent-fg is). --border-strong stays the quiet edge of
-   cards and dividers; only a field's edge is --border-input. */
+   cards and dividers; only a field's edge is --border-input.
+   Dark --accent (and --mark) is the light accent's purple, same hue (235°) and saturation, lifted the least that
+   passes on the dark grounds and its own soft chip: #8d94d8, dark ink #11132e on it (2026-10-17; it was the
+   olive #9aab65 / #131a07). */
 [data-cnpy-theme="light"] { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --border-input:rgba(20,20,30,0.47); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --focus:var(--accent); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --purple:#804db7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 
 /* ── My Work (web/src/mywork.ts) ──────────────────────────────────────────────
@@ -1966,7 +1969,6 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); text-decoration:none; transition:background .12s ease, color .12s ease; }
 a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
 .site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
-[data-cnpy-theme="dark"] .site-legal-tab[aria-current] { color:#3a4620; }
 .site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4vw, 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
 .site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.92); }
@@ -2092,7 +2094,6 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-plan.is-top .site-plan-tba { font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#fff; }
 .site-plan.is-top .site-plan-cta, .site-plan.is-top .site-plan-cta:hover { border-color:transparent; background:#fff; color:#333c8f; }
 .site-plan.is-top .site-plan-cta:hover { filter:brightness(.96); }
-[data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta, [data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta:hover { color:#3a4620; }
 .site-plan.is-top .site-plan-limits { border-color:rgba(255,255,255,.24); color:rgba(255,255,255,.92); }
 .site-plan.is-top .site-plan-limits b { color:#fff; }
 .site-plan.is-top .site-plan-limits li::before { background:#fff; }
@@ -2260,15 +2261,12 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
    its lower edge; "Agents propose, people decide" is the same card laid on its side; the sign-in dialog is
    the card itself; and each tour mockup stands on a field of the banner's dots, in the page's own accent.
    Everything here is static paint: no filter, no backdrop-filter, nothing that repaints on scroll. */
-/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
-/* Dark: the banner follows the theme's accent. The dark app's accent is the green mark (`--mark` #9aab65), so a
-   purple banner over it read as a second brand. Same gradient, highlight, dots and faint mark — in a deep
-   olive of that green, with the white headline at the same contrast the purple gives it (5:1 at the lightest
-   corner since 2026-10, when both gradients went one step deeper for WCAG AA; was #73844a → #5d6d37 → #485628).
-   One rule for the site's banners AND the first-run cards', so they cannot drift. */
-[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%); }
-[data-cnpy-theme="dark"] .site-banner ::selection { color:#3a4620; }
-[data-cnpy-theme="dark"] .site-btn-onb, [data-cnpy-theme="dark"] .site-btn-onb:hover { color:#3a4620; }
+/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. The dark
+   accent is the light one's purple (2026-10-17), so the banner is the brand's purple in both themes: the same
+   gradient, highlight, dots and faint mark, one step deeper (white text 4.9:1 at the lightest corner). It was a
+   deep olive (#65753c → #4f5f29 → #3b481a) while the dark accent was green; the white button and the selection
+   on it take the light theme's indigo ink again. One rule for the site's banners AND the first-run cards'. */
+[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #5760bf 0%, #464eae 48%, #343b94 100%); }
 .site-banner > * { position:relative; z-index:1; }
 .site-banner > .site-banner-art { position:absolute; z-index:0; display:block; color:#fff; opacity:.11; transform:rotate(-8deg); pointer-events:none; }
 .site-banner-art svg { display:block; width:100%; height:100%; }
