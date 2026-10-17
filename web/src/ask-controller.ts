@@ -21,7 +21,7 @@ import { cmdjPart, cmdjRepaint, cmdjToggle, isCmdjKey, otherModalOpen } from "./
 import { phonePart, closeDrawer } from "./ask-phone";
 import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
-import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
+import { askLayout, clampInspector, inspectorWidth, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
 import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askKeepScroll, askTweenHeights, reducedMotion, type AskBottomMove } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
@@ -482,7 +482,7 @@ export function createAskController(host: AskHost): AskController {
       if (!edge || e.button !== 0) return;
       e.preventDefault();
       const frame = edge.closest<HTMLElement>(".ask-insp-frame");
-      const x0 = e.clientX, w0 = ui().inspector.width;
+      const x0 = e.clientX, w0 = inspectorWidth(ui().inspector.width, inspectorRef(ui()));
       ui().inspector = { ...ui().inspector, dragging: true };     // no width transition while it follows the pointer
       paint();
       const move = (ev: PointerEvent) => {
@@ -497,7 +497,7 @@ export function createAskController(host: AskHost): AskController {
     host.mount.addEventListener("keydown", (e) => {
       if (!(e.target as Element | null)?.closest?.("[data-ask-resize]") || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
       e.preventDefault();
-      ui().inspector = { ...ui().inspector, width: clampInspector(ui().inspector.width + (e.key === "ArrowLeft" ? 16 : -16)) };
+      ui().inspector = { ...ui().inspector, width: clampInspector(inspectorWidth(ui().inspector.width, inspectorRef(ui())) + (e.key === "ArrowLeft" ? 16 : -16)) };
       paint();
     });
 
