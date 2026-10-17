@@ -70,7 +70,8 @@
   the repo scan (repo setups, Phase D — `repo-apps.md` › Detection): `scan.ts` (the guarded reconcile arm),
   `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
   `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
-  again — credentialed) and `scan-routes.ts`,
+  again — credentialed) and `scan-routes.ts`, `ask-github.ts` (Ask Trov's GitHub transport — credentialed, GET-only,
+  handed to the Ask route by `src/routes.ts`; `ask.md` › GitHub),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
@@ -254,6 +255,8 @@
   is PUT to the artifact upload route, created only when its bytes land; hash-only, 5 minutes —
   `handoffs-prompts.md`]; all additive. `0077`–`0079` are left to the PRs in flight beside it (the Docs Library,
   agent links); a gap in the numbers is harmless — D1 applies every file it has not applied, by name.
+  Then `0076_ask_github` (Ask Trov's GitHub lookups) [`orgs.ai_chat_github`, the admin's switch in Org settings › AI,
+  off for every org; additive — `ask.md` › GitHub].
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

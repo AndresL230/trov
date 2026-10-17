@@ -48,6 +48,7 @@ describe("Org settings › AI — GET / PUT /ai/settings", () => {
       enabled: true, canEdit: false, eligibility: "no_key", // the pool has no key
       allowances: { ai_summaries: unlimited, ai_runs: unlimited, jev_checks: unlimited, ai_chat: unlimited },
       chatAuto: true, // 0058: on for every org
+      chatGithub: false, // 0076: off for every org until an admin turns it on
       keys: { anthropic: false, typesafe: false }, planEnded: null, // Q8 / Q10
       sends: [...AI_SENDS], neverSent: AI_NEVER_SENT,
     });

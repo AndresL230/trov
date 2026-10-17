@@ -4,9 +4,9 @@
 // /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`; there is no old-path alias.
 //
 //   GET  /ai/settings                  any member — `AiSettings`; a failed read is 503 `{ error }`, never a 500
-//   PUT  /ai/settings { enabled?, chatAuto? }  admin+ — the AI switch (`orgs.ai_automation`, audited `org.ai`)
-//                                      and/or Ask Trov's Auto switch (`orgs.ai_chat_auto`, audited
-//                                      `org.ai_chat_auto`); → `AiSettings`
+//   PUT  /ai/settings { enabled?, chatAuto?, chatGithub? }  admin+ — the AI switch (`orgs.ai_automation`, audited
+//                                      `org.ai`), Ask Trov's Auto switch (`orgs.ai_chat_auto`, `org.ai_chat_auto`)
+//                                      and/or its GitHub lookups (`orgs.ai_chat_github`, `org.ai_chat_github`) → `AiSettings`
 //   POST /ai/suggestions/:id/accept    the kind's handler's role (./suggestions.ts) — writes AS the caller
 //   POST /ai/suggestions/:id/dismiss   any member
 //   POST /ai/feedback                  any member — "Wrong?": hides the item for the caller, idempotent; an
@@ -21,7 +21,7 @@ import {
   AI_ALLOWANCE_KEYS, AI_NEVER_SENT, AI_ROUTES, AI_SENDS, AiAcceptBodySchema, AiFeedbackBodySchema, AiSettingsPutSchema, type AiSettings,
 } from "@shared/ai";
 import { hasRole, platform, type TenantContext } from "../data/context";
-import { recordFeedback, setAiAutomation, setAiChatAuto } from "../data/ai";
+import { recordFeedback, setAiAutomation, setAiChatAuto, setAiChatGithub } from "../data/ai";
 import { cookieOnly } from "../orgs/routes";
 import { aiShown, planAndAiSettings } from "../plans/gate";
 import { aiAllowance, allowanceUse, eligibilityOf } from "./eligibility";
@@ -51,6 +51,7 @@ export async function aiSettings(env: Pick<Env, "ANTHROPIC_API_KEY" | "TYPESAFE_
     eligibility,
     allowances: Object.fromEntries(AI_ALLOWANCE_KEYS.map((k) => [k, allowanceUse(a.plan, k, a.used[k], now)])) as AiSettings["allowances"],
     chatAuto: a.chatAuto,
+    chatGithub: a.chatGithub,
     // Anthropic's from the eligibility (`no_key` is its one key check), so the key stays read where it is listed.
     keys: { anthropic: eligibility !== "no_key", typesafe: !!env.TYPESAFE_API_KEY },
     planEnded: a.plan.status === "canceled" ? planDef(a.plan.plan).name : null,
@@ -80,11 +81,12 @@ aiApp.get(AI_ROUTES.settings, settingsOr503);
 aiApp.put(AI_ROUTES.settings, async (c) => {
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "forbidden" }, 403);
   const parsed = AiSettingsPutSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: "invalid", message: "Send { enabled: true | false }, { chatAuto: true | false }, or both." }, 400);
+  if (!parsed.success) return c.json({ error: "invalid", message: "Send any of { enabled, chatAuto, chatGithub }: true | false, at least one." }, 400);
   // A failed write is 503 `{ error }`, never a 500 (invariant 7).
   try {
     if (parsed.data.enabled !== undefined) await setAiAutomation(c.var.ctx, parsed.data.enabled);
     if (parsed.data.chatAuto !== undefined) await setAiChatAuto(c.var.ctx, parsed.data.chatAuto);
+    if (parsed.data.chatGithub !== undefined) await setAiChatGithub(c.var.ctx, parsed.data.chatGithub);
   } catch (e) {
     console.error("ai settings write", e instanceof Error ? e.name : "error", `org=${c.var.ctx.orgId}`);
     return c.json({ error: "Couldn't save the AI settings" }, 503);

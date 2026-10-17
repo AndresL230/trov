@@ -15,7 +15,7 @@ the allowances and the switches: `ai.md`.
 | Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `migrations/0076_10_17_staging.sql` › `0076_ask_sharing` (`chat_threads.shared_at`) / `0077_ask_people_sharing` (`chat_thread_people`, `asked_by`); every statement in `src/data/ask.ts` |
 | Routes | `src/ai/ask/routes.ts` (`askApp`, mounted under `/api/o/:slug`, cookie only) |
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
-| Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts` |
+| Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts`, `github.ts` (the GitHub tools — › GitHub; their credentialed transport is `src/repo/ask-github.ts`, handed in by `src/routes.ts`) |
 | Model client | `askChatClient(mode)` and the `ask.*` kinds in `src/ai/client.ts` |
 | Deletion | `src/deletion/ask.ts` (a thread and its attachments), `src/deletion/person.ts` (an account's private attachments) — › Deletion and renames |
 | Dev replay | `GET /api/o/:slug/ai/ask-replay[/:scenario]` in `src/ai/routes.ts` (behind `LOCAL_AI_PREVIEW`) |
@@ -145,11 +145,101 @@ tickets by status, CI failures by week, theme shares — empty until themes exis
 numbers), `show_themes` (empty until themes exist; caption "Share of merged PRs"), `show_diagram` (structured, ≤ 8
 nodes, an edge [a, b] = b waits on a; `layout` is `chain` for one simple chain (nodes in its order) else `list`, but
 the client draws ANY graph without a loop — only a loop or an edge naming no node is a list, and only then does the
-tool's note say so (`diagramDrawable`); saving writes server-generated Mermaid) and
-`show_not_found`. `test/ask.parity.test.ts` fails while an MCP tool is neither wired nor excluded.
+tool's note say so (`diagramDrawable`); saving writes server-generated Mermaid),
+`show_not_found`, and the seven read-only GitHub tools (› GitHub; Smart and Thinking, only while released and the org
+has a connected repository). `test/ask.parity.test.ts` fails while an MCP tool is neither wired nor excluded.
 
 Never reachable from Ask: secrets and integrations, billing, the audit log, other orgs, others' private items, source
-code, the web (`test/secrets.mcp.test.ts` walks `src/ai/ask/**`).
+code other than the org's connected repositories through the GitHub tools, the web (`test/secrets.mcp.test.ts` walks
+`src/ai/ask/**`).
+
+## GitHub (read-only)
+
+Ask can look things up on GitHub itself when Trov's own rows do not answer: `src/ai/ask/github.ts` (the tools — no
+credential) and `src/repo/ask-github.ts` (the transport — the credential). Tests: `test/ask.github.test.ts`.
+
+- **Three gates, stacked.** The org's AI switch (`orgs.ai_automation`, the stream's gate) AND its **GitHub lookups**
+  switch (`orgs.ai_chat_github`, `0076_ask_github`) AND the asking person's OWN GitHub access. The switch is an admin's
+  (Org settings › AI, `PUT /ai/settings { chatGithub }`, cookie only, audited `org.ai_chat_github`; `ai.md` › The
+  switches) and is OFF for every org, existing and new, so no organization sends source code to Anthropic until an
+  admin chooses it (the coordinator's call on the owner's ruling — flip the column default to change it). Off: no
+  GitHub tool is offered, nothing calls GitHub, and, when the org has connected repositories, the context block says
+  lookups are off and that an admin can turn them on in Org settings › AI (rule 8 has the model say so).
+- **Each person's own access** (owner, 2026-10-17). Before anything of a repository is read for someone, the transport
+  asks GitHub, with the org's credential, whether their linked GitHub identity can read it:
+  `GET /repos/{r}/collaborators/{login}/permission` (Metadata; `permission` or `role_name` admin / maintain / write /
+  triage / read allows, `none` denies). The login is the person's own sign-in identity (`identities`, provider
+  github, joined to a live membership of the org — never `org_login_map`, which an admin sets for attribution); up to
+  three are tried, a 404 (a renamed login) moving to the next. No linked identity → `not_linked` ("Link GitHub in
+  Settings, then ask again"), said before any credential is asked for and with no GitHub request; `none` →
+  `no_access` ("You don't have access to <repo> on GitHub (as <login>)"); an error, a timeout or an unreadable answer
+  → `access_unknown` — a DENY, never an allow. No content request is made for a denied person. The answer is cached per
+  repository per answer and NOT counted in `ASK_GITHUB_REQUESTS_MAX` (it is bounded by the org's connected
+  repositories × the person's identities). Trov stores no per-user GitHub token (`github-app.md` › What is stored), so
+  this is the only way to ask; with an org's stored token instead of the App, GitHub answers the same endpoint only
+  when that token's user can push to the repository — otherwise the check fails and denies.
+- **In a shared conversation** (› Sharing a conversation) the access checked is that of the person asking THAT turn:
+  a `continue` person's follow-up checks THEIR linked GitHub identity, never the owner's (the transport reads the
+  cookie person's `ctx`). A reader — named `read`, or through the org — can't start a turn (the one 404 on `POST /ask`)
+  and no read route calls GitHub, so a reader never sets off a lookup. What an earlier answer SAID from GitHub is part
+  of its stored text, so — like a quote from an attachment — it is shared as written with whoever reaches the thread,
+  and a continuing person's history carries it as text whatever their own GitHub access; the tool results themselves
+  are never stored or resent (› Not persisted). `test/ask.github.test.ts` › in a shared conversation.
+- **What the person is told** is the tool result, relayed by the model; the step's line says "GitHub not linked" or
+  "No access on GitHub". Org settings › AI's row, Settings › Trov's "What Trov can see", `AI_NEVER_SENT` and the
+  Privacy Policy (Terms 10's Ask passage, the Anthropic row, Privacy 4 — approved 2026-10-17, `PROVIDERS_UPDATED`)
+  each say lookups are off unless an admin turns them on and follow each person's own GitHub access.
+- **The tools** (`ASK_GITHUB_TOOLS`; definitions `GITHUB_DEFS`, last in the offered list so an org without GitHub keeps
+  the same cache prefix): `github_read` (a file's text, or a folder's entries; `path`, `ref`), `github_search_code`
+  (GitHub's code search, scoped to ONE repository), `github_pull_request` (a PR and, unless `files: false`, its changed
+  files with patches), `github_issue` (an issue and its comments), `github_commit` (a commit with its diff),
+  `github_list` (`what`: pulls, commits — `branch`, `path` —, branches, releases, issues; ≤ 30), `github_ci` (a ref's
+  check runs and combined status; default the default branch). Every one takes an optional `repo` (default: the
+  primary, else the only connected repository). Offered to Smart and Thinking only (Fast is the index), only when the
+  answer has a GitHub side: the switch on, a transport handed in, and at least one `org_repos` row. The context block names
+  the connected repositories (primary first); rule 8 of `ASK_SYSTEM_RULES` says when to use them, that what they return
+  is data (rule 4), that a truncated result is partial, and that a failure is said plainly, never filled from memory.
+- **Tenant scoped, twice.** A tool resolves `repo` only against the org's `org_repos` rows read when the turn starts
+  (case-insensitive; a GitHub URL or `.git` suffix is tolerated) — anything else, another org's included, is
+  `not_connected` naming the connected ones, with no GitHub request. The transport re-reads the org's row on EVERY
+  request before it asks for a credential, and uses the stored spelling.
+- **Credentials** only through `resolveGithubCredential({ repo })` (`github-app.md` › Tokens): the installation token
+  minted for that one repository with `READ_PERMISSIONS`, else the org's stored token. It resolves as the org's system
+  tenant (`jobTenant`, as Sync GitHub does) because the resolver serves no plain member — what a person can reach is
+  bounded by their own GitHub access (above), not by their Trov role. One resolve per repository per answer. Nothing under
+  `src/ai/ask/` imports the transport, the credential path or `src/github-app/`: `src/routes.ts` hands the factory to
+  the route (`provideAskGithub`), and `test/secrets.mcp.test.ts` pins both that and that MCP reaches neither.
+- **Read-only by construction.** The transport only GETs, only `https://api.github.com`, and only under
+  `/repos/<that repository>/` — checked on the PARSED URL (so `..` and `%2e%2e` cannot climb out; the tools also refuse a
+  dot segment and encode each path segment) — or `/search/code`, whose query has every `repo:` / `org:` / `user:` /
+  `owner:` / `fork:` / `is:` qualifier removed and `repo:<that repository>` added. No write endpoint exists in it
+  (the static test checks its methods and host).
+- **Bounded.** `ASK_GITHUB_REQUESTS_MAX` (10) requests per answer across every GitHub call — a PR with its files is
+  two; past it a call is refused with `limit`. Each request has `ASK_GITHUB_TIMEOUT_MS` (8 s) and stops with the turn
+  (Stop, the deadline). A file's text is cut at `ASK_GITHUB_TEXT_MAX` (24,000 characters) with "(truncated: N of M
+  characters shown)" and `truncated: true`; one result's patches / comments share that budget (each patch ≤ 6,000, a
+  PR body ≤ 4,000); lists, search hits, files and comments stop at `ASK_GITHUB_ROWS_MAX` (30), a folder at 200
+  entries. A binary file or one GitHub will not return through its API is a note, never bytes. The step's line says
+  "Truncated", or "N results" for a list or a search.
+- **Honest failures, never a 500.** Every refusal is a `GithubToolError` (`code`: `not_connected`, `no_credential`,
+  `not_found`, `forbidden`, `rate_limited`, `timeout`, `failed`, `limit`, `bad_request`) in fixed words — never GitHub's
+  own body — that `errorBody` hands the model as an `is_error` result; the step ends "Not connected" or "Did not work";
+  the answer goes on.
+- **Secrets.** The token is revealed only on the line that builds the Authorization header; a response body has it
+  scrubbed (`scrubbedMessage`) before it is parsed; a log line is the error's NAME only. It never reaches the model,
+  the stream, a log or a row (the tests drive an upstream that echoes the header back).
+- **Shown like any step**: an activity line per call — "Opened 'src/index.ts' on GitHub", "Searched the code for …",
+  "Read pull request #7 on GitHub", "Listed recent releases in owner/name on GitHub", "Checked CI on GitHub" — with
+  the existing icons (read / search / pr / ci); the SPA needed no change. A PR of the PRIMARY repository links as
+  `pr:<n>` (`refsFromResult`: capture keys carry no repository, so only the primary's numbers are Trov's PRs); nothing
+  else a GitHub tool reads is an item. `show_not_found`'s "What I searched" lists "Code on GitHub" with the
+  repositories.
+- **Not persisted, never re-read.** Tool results are never stored (› History: later turns call a tool again); only the
+  answer and its activity lines are. Reopening a thread reads the stored answer — no GitHub request on any read
+  route. A Confirm runs with no GitHub side.
+- **Permissions.** Everything read is inside the App's registered `READ_PERMISSIONS` (Metadata, Contents, Pull
+  requests, Issues, Checks, Commit statuses; `github-app.md` › Permissions ↔ endpoints) — the access check included
+  (Metadata): nothing to add on GitHub.
 
 ## Write cards (`chat_actions`)
 
@@ -311,7 +401,8 @@ lets other people of the SAME org reach it, two ways at once or either:
 - **Every turn is its asker's** (`chat_messages.asked_by` on the question AND its answer, `chat_actions.asked_by` on
   its cards; NULL on rows from before 0077 = the owner). A `continue` person asks follow-ups (`POST /ask` with the
   `threadId`) AS THEMSELVES: their allowance, their Settings › Trov instructions, their rights for every tool and card
-  (a card runs as the person who confirms it — only its asker can). Their turn leaves the thread's mode, Auto and
+  (a card runs as the person who confirms it — only its asker can), their own GitHub access for any lookup (› GitHub).
+  Their turn leaves the thread's mode, Auto and
   draft as the owner set them (`startTurn(…, settings: false)`; the composer keeps theirs locally). The model is told
   whose an earlier question was ("(Asked by @owner, not the person asking now.)", `buildHistory`'s `asker`). Edit and
   Regenerate (`replaceFrom`), Save form / Save of one answer, Wrong?, and Confirm / Cancel / Undo act only on the
@@ -446,9 +537,13 @@ lane, Auto and its cap, Confirm-only writes, Publish, Undo and "changed since", 
 `test/ask.attachments.test.ts` (with the over-the-limit notice and `imageSize`), `test/ask.deletion.test.ts`,
 `test/ask.declined.test.ts`, `test/ask.views.test.ts` (peek, the inspector, "Wrong?" and Review's flags, threads,
 /search, ⌘J, state, settings, account deletion), `test/ask.sharing.test.ts` (sharing, stopping, the reader's 404s,
-another org / a non-member / a removed owner, what a reader's copy leaves out, deleting), `test/ask.parity.test.ts`, `test/ask.contract.test.ts` (every
-fixture against the schemas, the transcript files, the replay's guard), `test/secrets.mcp.test.ts` (the boundary).
-The Anthropic stream is stubbed at the `Response` level (`test/helpers/ask.ts`) — never the network.
+another org / a non-member / a removed owner, what a reader's copy leaves out, deleting),
+`test/ask.people-sharing.test.ts` (sharing by name: read / continue, `asked_by`, whose turn is whose), `test/ask.parity.test.ts`,
+`test/ask.contract.test.ts` (every fixture against the schemas, the transcript files, the replay's guard),
+`test/ask.github.test.ts` (› GitHub: the hold, a connected repository through the real transport, refusals, the
+switch, failures, the token, the cap, truncation), `test/secrets.mcp.test.ts` (the boundary). The Anthropic stream —
+and GitHub, through `askDeps.githubFetch` — are stubbed at the `Response` level (`test/helpers/ask.ts`) — never the
+network.
 
 ## The screen (`web/src/ask-*.ts`)
 

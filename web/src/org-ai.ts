@@ -106,6 +106,13 @@ export function aiTab(org: MyOrg, slice: OrgSlice<AiSettings | null>, saving: bo
           <div style="${SUB}">On lets a person have Ask Trov make changes without confirming each one, with Undo; every change is still recorded. Off means each change waits for the person to confirm it.</div>
         </div>
         <div style="flex:none">${control(a, "orgAiChatAutoToggle", a.chatAuto, "Auto mode in Ask Trov for this organization", "org-ai-chat-auto-l", saving)}</div>
+      </li>
+      <li style="${ROW}" data-ai-chat-github="${a.chatGithub ? "on" : "off"}">
+        <div style="flex:1 1 260px;min-width:0">
+          <div style="${TITLE}">GitHub lookups in Ask Trov</div>
+          <div style="${SUB}">On lets Ask Trov read your connected repositories on GitHub when a question needs it: files, pull requests, issues, commits and checks, sent to Anthropic to answer. Each person only gets what their own linked GitHub account can read. Off by default.</div>
+        </div>
+        <div style="flex:none">${control(a, "orgAiChatGithubToggle", a.chatGithub, "GitHub lookups in Ask Trov for this organization", "org-ai-chat-github-l", saving)}</div>
       </li></ul>
     </section>`;
 

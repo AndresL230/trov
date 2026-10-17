@@ -292,13 +292,14 @@ the plan, `orgs.ai_automation` and the month's `ai_run:*` — gives `off` when t
   listed**, like `ai_runs`.
 - **The switches** — `orgs.ai_automation` (0055, default on): every AI feature, Sift and PR / issue summaries included. And
   `orgs.ai_chat_auto` (0058, default on): whether Ask Trov's Auto mode (writes run without a Confirm card, with Undo)
-  may be used in the org. Org settings › AI, cookie routes only (`src/ai/routes.ts`, `AI_ROUTES` in
+  may be used in the org. And `orgs.ai_chat_github` (0076, default OFF for every org): whether Ask Trov may read the
+  connected repositories on GitHub (`ask.md` › GitHub; it stacks with the AI switch and each person's own GitHub access). Org settings › AI, cookie routes only (`src/ai/routes.ts`, `AI_ROUTES` in
   `shared/ai-core.ts`; `organizations.md`):
 
 | Route (`/api/o/:slug…`) | Who | Does |
 |---|---|---|
-| `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `canEdit` (admin+), `eligibility`, `keys` (`{ anthropic, typesafe }`: is each provider's key set on this deployment), `planEnded` (the plan's name when it is canceled — AI paused until renewed — else null), `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
-| `PUT /ai/settings { enabled?, chatAuto? }` | admin+ (403 otherwise) | either switch or both (neither, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, in `org_admin_audit`; returns `AiSettings`. A failed write is 503 `{ error }`, never a 500 |
+| `GET /ai/settings` | any member | `AiSettings` from ONE statement (`planAndAiSettings`, `src/plans/gate.ts`): `enabled`, `chatAuto`, `chatGithub`, `canEdit` (admin+), `eligibility`, `keys` (`{ anthropic, typesafe }`: is each provider's key set on this deployment), `planEnded` (the plan's name when it is canceled — AI paused until renewed — else null), `allowances` — `ai_summaries`, `ai_runs`, `jev_checks` (Sift), `ai_chat` (Ask Trov), each `{ used, cap, resumesOn }` (`cap` from `resolveEntitlements`, so Pro's `ai_chat` is already per seat; `resumesOn` = the 1st of next month, only when that allowance is spent) — what is sent to whom (`AI_SENDS`: each line names its provider, Anthropic or TypeSafe AI) and what never is (`AI_NEVER_SENT`). A failed read is 503 `{ error }` |
+| `PUT /ai/settings { enabled?, chatAuto?, chatGithub? }` | admin+ (403 otherwise) | any of the switches, at least one (none, another key or a wrong type is 400): `enabled` audited `org.ai`, `chatAuto` audited `org.ai_chat_auto`, `chatGithub` audited `org.ai_chat_github`, in `org_admin_audit`; returns `AiSettings`. A failed write is 503 `{ error }`, never a 500 |
 
 On the screen, TypeSafe AI's model is **Sift** — never its own name; the providers' legal names appear only where
 the tab says what is SENT (`web-ui.md`, the Privacy Policy).
@@ -815,7 +816,10 @@ thinking, 8 calls, 90 s, counts 5) — gated by the org switch and `ai_chat` (�
 catalog (the same `src/tools/*` functions, as the cookie person) less a short exclusion list; reads run freely and
 every write is a confirm card (`chat_actions`), or runs at once in Auto (at most 5 a turn, with Undo; never
 `update_plan`). Ask imports nothing from `src/mcp.ts`, secrets, the GitHub App or billing (`test/secrets.mcp.test.ts`).
-Attachments are stored as private artifacts before the model sees them. The screen — the Ask page, the ⌘J panel, the
+Its read-only GitHub tools (`ask.md` › GitHub) run inside the same turn — no new call site — through a credentialed
+transport the HTTP app hands in (`src/repo/ask-github.ts`), only while the org's GitHub lookups switch is on
+(`orgs.ai_chat_github`, an admin's, off by default) and only in repositories the asking person's own linked GitHub
+account can read; the Privacy Policy and "Never sent" (`AI_NEVER_SENT`) say so (approved 2026-10-17). Attachments are stored as private artifacts before the model sees them. The screen — the Ask page, the ⌘J panel, the
 composer, the inspector, Settings › Trov — is built from Andres's design (handoff #12): `ask.md` › The screen.
 
 ## The e-mails (Phase E; in full: `notifications.md` › The digest's shape)
