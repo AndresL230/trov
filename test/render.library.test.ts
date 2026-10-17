@@ -154,10 +154,16 @@ describe("a space's home", () => {
     expect(html).toContain('data-act="libNewPage" data-arg="engineering"');
     for (const act of ["libDescEdit", "libOwners", "libEdit", "libArchive", "libRestore"]) expect(html, act).not.toContain(`data-act="${act}"`);
   });
-  it("an owner (can_edit): the description is a button, and Edit owners; still no admin action", () => {
-    const html = home({}, { can_edit: true });
-    expect(html).toContain('data-act="libDescEdit"');
+  it("an owner (can_edit): the header's … menu offers the description and the owners; still no admin action", () => {
+    // Closed: plain text, one "…" and New page — no pencil, no Edit owners link.
+    const closed = home({}, { can_edit: true });
+    expect(closed).toMatch(/<button type="button" class="cnpy-outlinebtn cnpy-lib-headmore" data-act="libHeadMenu" aria-label="More for Engineering" aria-haspopup="menu" aria-expanded="false"/);
+    for (const act of ["libDescEdit", "libOwners", "libEdit", "libArchive"]) expect(closed, act).not.toContain(`data-act="${act}"`);
+    const html = home({ headMenu: true }, { can_edit: true });
+    expect(html).toContain('class="cnpy-dp-menu cnpy-lib-headmenu" role="menu"');
+    expect(html).toContain('data-act="libDescEdit" data-arg="engineering" class="cnpy-dp-mi">Edit description</button>');
     expect(html).toContain('data-act="libOwners"');
+    expect(html).toContain('data-act="goImport" data-arg="engineering"');
     expect(html).not.toContain('data-act="libEdit"');
     expect(html).not.toContain('data-act="libArchive"');
     // Editing: the field, its limit and its keys.
@@ -165,18 +171,18 @@ describe("a space's home", () => {
     expect(editing).toContain('data-lib-desc value="New words" maxlength="140" placeholder="What is this space for?"');
     expect(editing).toContain("Enter to save · Esc to cancel");
     expect(editing).toContain("9/140");
-    // No description yet: the prompt to add one.
-    expect(home({}, { can_edit: true, space: { ...ENG, description: "" } })).toContain("Add a short description");
+    // No description yet: the menu offers to add one.
+    expect(home({ headMenu: true }, { can_edit: true, space: { ...ENG, description: "" } })).toContain(">Add a description</button>");
   });
-  it("an admin: Edit space and Archive beside New page", () => {
-    const html = home({ admin: true }, { can_edit: true, can_admin: true });
+  it("an admin: Edit space and Archive space in the header's … menu, beside New page", () => {
+    const html = home({ admin: true, headMenu: true }, { can_edit: true, can_admin: true });
     expect(html).toContain('data-act="libEdit"');
     expect(html).toContain('data-act="libArchive"');
   });
-  it("the header's actions wrap inside the column: four buttons never push a phone's page sideways (case ENV13)", () => {
+  it("the header's actions wrap inside the column: they never push a phone's page sideways (case ENV13)", () => {
     const html = home({ admin: true }, { can_edit: true, can_admin: true });
-    // The box holding Edit space / Archive / Import / New page: no wider than the header, so its own wrap applies.
-    const box = html.match(/<div style="([^"]*)">(?:(?!<\/div>)[\s\S])*data-act="libEdit"/)?.[1] ?? "";
+    // The box holding the "…" and New page: no wider than the header, so its own wrap applies.
+    const box = html.match(/<div style="([^"]*)">(?:(?!<\/div>)[\s\S])*data-act="libHeadMenu"/)?.[1] ?? "";
     expect(box).toContain("flex-wrap:wrap");
     expect(box).toContain("max-width:100%");
   });
@@ -202,7 +208,7 @@ describe("a space's home", () => {
     const html = home({}, { can_edit: true });
     const meta = html.slice(html.indexOf('class="cnpy-lib-meta"'), html.indexOf("</div></div>", html.indexOf('class="cnpy-lib-meta"')));
     expect(meta).not.toContain("·");
-    expect(meta.match(/class="cnpy-lib-mi"/g)?.length).toBe(4);   // owners, pages, waiting, Edit owners
+    expect(meta.match(/class="cnpy-lib-mi"/g)?.length).toBe(3);   // owners, pages, waiting (Edit owners is in the … menu)
     const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.:()]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
     expect(rule(".cnpy-lib-meta")).toContain("overflow:hidden");
     expect(rule(".cnpy-lib-mi::before")).toContain('content:"·"');

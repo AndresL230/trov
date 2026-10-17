@@ -3130,7 +3130,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // The Library's home (`goDocs` is its old name: My Work's "Docs you own", quick search).
     case "goLibrary": case "goDocs": state.screen = "library"; libCtl.load(); rerender(); return;
     // The Markdown import: the wizard (a space preset when there is one) and Imports history (import-actions.ts).
-    case "goImport": impCtl.open(arg || null); return;
+    case "goImport": state.libUi.headMenu = false; impCtl.open(arg || null); return;
     case "goImports": state.screen = "imports"; impCtl.loadHistory(); return;
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
@@ -5080,19 +5080,27 @@ mount.addEventListener("click", (e) => {
   state.treeMenu = null;
   rerender();
 }, true);
-// …and so does a Library card's "…" menu (your own view: pin, sidebar, hide); Escape gives focus back to its "…".
+// …and so do a Library card's "…" menu (your own view: pin, sidebar, hide) and a space header's "…" menu; Escape
+// gives focus back to the "…".
 document.addEventListener("keydown", (e) => {
-  const open = state.libUi.cardMenu;
-  if (e.key !== "Escape" || !open) return;
-  state.libUi.cardMenu = null;
-  rerender();
-  mount.querySelector<HTMLElement>(`[data-act="libCardMenu"][data-arg="${cssEscape(open)}"]`)?.focus();
+  if (e.key !== "Escape") return;
+  const card = state.libUi.cardMenu;
+  if (card) {
+    state.libUi.cardMenu = null;
+    rerender();
+    mount.querySelector<HTMLElement>(`[data-act="libCardMenu"][data-arg="${cssEscape(card)}"]`)?.focus();
+  } else if (state.libUi.headMenu) {
+    state.libUi.headMenu = false;
+    rerender();
+    mount.querySelector<HTMLElement>('[data-act="libHeadMenu"]')?.focus();
+  }
 });
 mount.addEventListener("click", (e) => {
-  if (!state.libUi.cardMenu) return;
+  if (!state.libUi.cardMenu && !state.libUi.headMenu) return;
   const t = e.target as Element | null;
-  if (t?.closest?.(".cnpy-lib-cardmenu, [data-act=\"libCardMenu\"]")) return;
+  if (t?.closest?.(".cnpy-lib-cardmenu, .cnpy-lib-headmenu, [data-act=\"libCardMenu\"], [data-act=\"libHeadMenu\"]")) return;
   state.libUi.cardMenu = null;
+  state.libUi.headMenu = false;
   rerender();
 }, true);
 

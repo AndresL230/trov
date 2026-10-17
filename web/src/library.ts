@@ -121,9 +121,8 @@ const outlineBtn = (act: string, arg: string | null, label: string, extra = ""):
   `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">${esc(label)}</button>`;
 const H2 = "font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);margin:0";
 const UPLOAD = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
-const ARCHIVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5h17v4h-17z"></path><path d="M5 9v10h14V9"></path><path d="M10 13h4"></path></svg>`;
 /** A small borderless icon button for an action people take now and then: its words are its label and tooltip. It
- *  sits beside the page's title, out of the action bar (Import, Archive space). */
+ *  sits beside the page's title, out of the action bar (Library home's Import). */
 const iconBtn = (act: string, arg: string | null, label: string, icon: string, extra = ""): string =>
   `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-iconbtn" aria-label="${attr(label)}" data-mtip="${attr(label)}" style="display:inline-grid;place-items:center;width:28px;height:28px;border-radius:7px;color:var(--fg-55);flex:none">${icon}</button>`;
 /** The title row's quiet actions, after the name. */
@@ -314,6 +313,8 @@ export interface SpaceHomeProps {
   descDraft: string | null;
   /** The archived page whose Restore is out (0083_doc_archive). */
   restoring?: string | null;
+  /** The header's "…" menu is open. */
+  headMenu?: boolean;
 }
 
 const SPACE_FRAME = "max-width:1080px;margin:0 auto;padding:28px 36px 90px";
@@ -379,10 +380,27 @@ function descriptionBlock(sp: SpaceDTO, canEdit: boolean, draft: string | null):
       <div style="display:flex;justify-content:space-between;gap:12px;margin-top:5px;font-size:11.5px;color:var(--fg-40)"><span>Enter to save · Esc to cancel</span><span style="font-variant-numeric:tabular-nums">${draft.length}/${SPACE_DESCRIPTION_MAX}</span></div>
     </div>`;
   }
-  if (canEdit && !sp.archived) {
-    return `<button type="button" data-act="libDescEdit" class="cnpy-ghostbtn cnpy-lib-descbtn" style="display:inline-flex;align-items:center;gap:7px;max-width:600px;margin:3px 0 0 -7px;padding:3px 7px;border-radius:6px;font-size:13.5px;line-height:1.45;text-align:left;color:${sp.description ? "var(--fg-70)" : "var(--fg-40)"}"><span style="min-width:0">${esc(sp.description || "Add a short description")}</span><span style="flex:none;color:var(--fg-40)">${PENCIL}</span></button>`;
-  }
   return sp.description ? `<p style="font-size:13.5px;line-height:1.45;color:var(--fg-70);max-width:600px;margin:6px 0 0">${esc(sp.description)}</p>` : "";
+}
+
+/** A space's header keeps one button (New page); everything else it can do is in one "…" menu beside it, offered by
+ *  who may: Edit space and Archive space (an admin), the description and the owners (`can_edit`), Import (anyone). */
+function headMenu(p: SpaceHomeProps, d: SpaceHomeDTO): string {
+  const sp = d.space;
+  const open = p.headMenu === true;
+  const item = (act: string, label: string, extra = "") =>
+    `<button type="button" role="menuitem" data-act="${act}" data-arg="${attr(sp.slug)}" class="cnpy-dp-mi"${extra}>${esc(label)}</button>`;
+  const items = [
+    p.admin ? item("libEdit", "Edit space", " data-confirm-trigger") : "",
+    d.can_edit ? item("libDescEdit", sp.description ? "Edit description" : "Add a description") : "",
+    d.can_edit ? item("libOwners", "Edit owners", " data-confirm-trigger") : "",
+    item("goImport", "Import"),
+    p.admin ? item("libArchive", "Archive space", ` data-confirm-trigger style="color:var(--red)"`) : "",
+  ].join("");
+  return `<span class="cnpy-lib-headm" style="position:relative;display:inline-flex">
+    <button type="button" class="cnpy-outlinebtn cnpy-lib-headmore" data-act="libHeadMenu" aria-label="${attr(`More for ${sp.name}`)}" aria-haspopup="menu" aria-expanded="${open}" data-mtip="More" style="display:inline-grid;place-items:center;width:34px;height:32px;border-radius:8px;border:1px solid var(--border-strong);color:var(--fg-70)">${DOTS}</button>
+    ${open ? `<div class="cnpy-dp-menu cnpy-lib-headmenu" role="menu" aria-label="${attr(sp.name)}">${items}</div>` : ""}
+  </span>`;
 }
 
 function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
@@ -393,16 +411,14 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     sp.owners.length ? `<span style="display:inline-flex;align-items:center;gap:8px">${avatarStack(sp.owners, p.persons as PersonSummary[], 20, true)}<span>${esc(ownedBy(names))}</span></span>` : `<span>No owner yet</span>`,
     `<span>${esc(pagesWord(d.pages.length))}</span>`,
     ...(waiting > 0 ? [`<button type="button" data-act="goReview" class="cnpy-lib-wait" style="display:inline-flex;align-items:center;gap:6px;padding:0;font-size:12.5px;color:var(--fg-55)">${markShape("ring", "var(--amber)", 8)}${waiting} waiting for review</button>`] : []),
-    ...(d.can_edit && !sp.archived ? [`<button type="button" data-act="libOwners" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Edit owners</button>`] : []),
   ].map((item) => `<span class="cnpy-lib-mi">${item}</span>`).join("");
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
-    : `${p.admin ? outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger") : ""}${accentBtn("libNewPage", sp.slug, "New page")}`;
-  const quiet = sp.archived ? "" : titleActs(`${importBtn(sp.slug)}${p.admin ? iconBtn("libArchive", null, "Archive space", ARCHIVE, " data-confirm-trigger") : ""}`);
+    : `${headMenu(p, d)}${accentBtn("libNewPage", sp.slug, "New page")}`;
   return `<div class="cnpy-lib-shead" style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
     ${spaceTile(sp, 40)}
     <div style="flex:1;min-width:240px">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}${quiet}</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}
       <div class="cnpy-lib-meta"><div class="cnpy-lib-meta-in">${meta}</div></div>
     </div>
@@ -520,10 +536,12 @@ export interface LibraryUi {
   /** Library home: the space card whose "…" menu is open; whether the hidden cards are shown. */
   cardMenu: string | null;
   showHidden: boolean;
+  /** A space's header "…" menu is open. */
+  headMenu: boolean;
   /** Customize sidebar: the spaces picked, in order; `dflt` = untouched since a reset (saved as "the default"). */
   customize: { list: string[]; dflt: boolean; busy: boolean; error: string | null } | null;
 }
-export const initialLibraryUi = (): LibraryUi => ({ space: null, owners: null, archive: null, desc: null, restoring: null, pageArchive: null, pageRestoring: null, cardMenu: null, showHidden: false, customize: null });
+export const initialLibraryUi = (): LibraryUi => ({ space: null, owners: null, archive: null, desc: null, restoring: null, pageArchive: null, pageRestoring: null, cardMenu: null, showHidden: false, headMenu: false, customize: null });
 
 /** The live space whose name the draft repeats (another one, when editing), or null. */
 export function duplicateOf(d: SpaceDraft, spaces: readonly SpaceDTO[]): SpaceDTO | null {

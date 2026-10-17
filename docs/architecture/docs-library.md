@@ -423,11 +423,14 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   when any wait; the Spaces cards (tile, name, description, owners, page count, waiting) and an admin's dashed
   New space card; Recently updated (the read's six); an admin's Archived spaces, each with Restore (no confirm:
   it undoes). Loading: three card shapes and five row shapes; no space: the empty layout (New space for an admin).
-- *A space's home*: the 40px tile, the name, the description (edited in place for `can_edit`: Enter saves, Esc
-  cancels, leaving the field saves; a description-only `PUT`, which is all an owner may send), "Owned by …" with
-  the owners' full names and Edit owners (`can_edit`: a dialog of the org's people as checkboxes), the page count
-  and the waiting link; New page; an admin's Edit space (the Create space dialog in edit mode: name, icon, colour,
-  description — no position, no sidebar preview) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
+- *A space's home*: the 40px tile, the name and the description as plain text, the meta line ("Owned by …" with the
+  owners' full names, the page count, the waiting link), and on the right ONE button, New page, with a "…" menu
+  beside it holding everything else, offered by who may (`headMenu`): Edit space (an admin: the Create space dialog
+  in edit mode — name, icon, colour, description; no position, no sidebar preview), Edit description / Add a
+  description (`can_edit`: edited in place — Enter saves, Esc cancels, leaving the field saves; a description-only
+  `PUT`, which is all an owner may send), Edit owners (`can_edit`: a dialog of the org's people as checkboxes),
+  Import (anyone), Archive space (an admin: a red `confirmModal`). An item that opens a dialog first hands the focus
+  to the "…", so closing the dialog returns it there; Escape or a click outside closes the menu. Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
   changed last; each card counts the pages under it and carries the page's first sentence — `pageSummary` in
   `shared/docs-core.ts`, derived from the body it shows when `GET /spaces/:slug` is read (`summaries`), nothing

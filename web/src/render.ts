@@ -1597,7 +1597,7 @@ function spaceScreen(s: AppState): string {
   const mine = h.data !== null && h.data.space.slug === s.spaceSlug;
   if (h.status === "error" && !mine) return libraryFrame(s, notice("Couldn't load this space."), "space");
   if (h.status === "ok" && h.data === null) return libraryFrame(s, notice("There is no space here. It may have been renamed, or the link is wrong."), "space");
-  return libraryFrame(s, spaceHomeView({ slug: s.spaceSlug, home: h, tab: s.spaceTab, admin: viewerIsAdmin(s), persons: s.persons.data, descDraft: s.libUi.desc, restoring: s.libUi.pageRestoring }), "space");
+  return libraryFrame(s, spaceHomeView({ slug: s.spaceSlug, home: h, tab: s.spaceTab, admin: viewerIsAdmin(s), persons: s.persons.data, descDraft: s.libUi.desc, restoring: s.libUi.pageRestoring, headMenu: s.libUi.headMenu }), "space");
 }
 /** New page in the frame: the pane shows the space it will go in. */
 function newDocScreen(s: AppState): string {

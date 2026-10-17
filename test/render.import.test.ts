@@ -445,7 +445,7 @@ describe("the sidebar's Imports row and Import action", () => {
 // ── a space's home and Library home offer Import ─────────────────────────────
 
 describe("Import from the Library's own screens", () => {
-  it("Library home has Import for everyone beside its title; a space's home beside the space's name, and in its empty layout", () => {
+  it("Library home has Import for everyone beside its title; a space's home in its header's … menu and its empty layout", () => {
     const lib: AppState = { ...initialState(), view: "app", screen: "library", library: { status: "ok", data: LIB } };
     // A quiet icon button by the title (an action people take now and then), named by its label and tooltip.
     expect(render(lib)).toMatch(/Library<\/h1><span[^>]*><button type="button" data-act="goImport" data-arg="" class="cnpy-iconbtn" aria-label="Import" data-mtip="Import"/);
@@ -453,9 +453,8 @@ describe("Import from the Library's own screens", () => {
       spaceHome: { status: "ok", data: { space: ENG, pages: [], can_edit: false, can_admin: false } } };
     const html = render(home);
     expect(html).toContain("Write the first page, or import Markdown files you already have. Imported pages wait in Review until someone approves them.");
-    // The title row's, the empty layout's, and the sidebar's Import (the space on screen preset).
-    expect(html).toMatch(/Engineering<\/h1><span[^>]*><button type="button" data-act="goImport" data-arg="engineering" class="cnpy-iconbtn"/);
-    expect((html.match(/data-act="goImport" data-arg="engineering"/g) ?? []).length).toBe(3);
+    // A space's Import is in its header's … menu (closed here), so it is the empty layout's and the sidebar's.
+    expect((html.match(/data-act="goImport" data-arg="engineering"/g) ?? []).length).toBe(2);
   });
 });
 

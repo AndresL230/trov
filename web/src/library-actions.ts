@@ -78,6 +78,9 @@ export function spaceErrorText(e: unknown, fallback: string): string {
   }
 }
 
+/** The acts of a space's header "…" menu that the controller runs (Import is main.ts's `goImport`). */
+const HEAD_ITEMS = new Set(["libEdit", "libDescEdit", "libOwners", "libArchive"]);
+
 export function createLibraryController(host: LibraryHost): LibraryController {
   const { state } = host;
   const ui = () => state.libUi;
@@ -161,6 +164,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
     state.screen = "space";
     state.spaceSlug = slug;
     ui().desc = null;
+    ui().headMenu = false;
     openSpace(slug);
   }
 
@@ -333,6 +337,12 @@ export function createLibraryController(host: LibraryHost): LibraryController {
   }
 
   function act(act: string, arg: string | null, value: string | null): void {
+    // An item of a space's header menu: the menu closes and the "…" takes the focus first, so a dialog the item opens
+    // hands the focus back to it when it closes.
+    if (ui().headMenu && HEAD_ITEMS.has(act)) {
+      ui().headMenu = false;
+      host.mount.querySelector<HTMLElement>('[data-act="libHeadMenu"]')?.focus({ preventScroll: true });
+    }
     switch (act) {
       case "libPageArchive": {
         state.treeMenu = null;
@@ -349,6 +359,8 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libPageArchiveGo": archivePage(); return;
       case "libPageArchiveClose": if (ui().pageArchive?.busy) return; host.confirmOut(() => { ui().pageArchive = null; rerender(); giveBack(); }); return;
       case "libPageRestore": if (arg) restorePage(arg); return;
+      // ── a space's header "…" menu ─────────────────────────────────────────
+      case "libHeadMenu": ui().headMenu = !ui().headMenu; rerender(); return;
       // ── your own Library view (Library home's cards, the sidebar) ─────────
       case "libCardMenu": ui().cardMenu = arg && ui().cardMenu !== arg ? arg : null; rerender(); return;
       case "libHiddenToggle": ui().showHidden = !ui().showHidden; rerender(); return;
