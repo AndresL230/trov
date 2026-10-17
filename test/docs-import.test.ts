@@ -192,6 +192,16 @@ describe("one running import per org", () => {
     expect((await first<{ status: string }>(env.DB, `SELECT status FROM doc_imports WHERE id = ?`, s.json.run.id))?.status).toBe("abandoned");
     expect((await pages(member, s.json.run.id, [{ path: "a.md", text: "# A\n" }])).json).toMatchObject({ error: "not_running" });
   });
+
+  it("someone else may not end a run; an admin may stop one (Cancel import)", async () => {
+    const member = await cookieFor(MEMBER);
+    const s = await start(member, { space: "engineering", file_name: "a.md", files: [md("a.md", "# A\n")] });
+    expect((await finish(await cookieFor(OTHER), s.json.run.id, { cancel: true })).status).toBe(403);
+    expect((await finish(await cookieFor(OTHER), s.json.run.id)).status).toBe(403);
+    const owner = await cookieFor(OWNER);
+    expect((await finish(owner, s.json.run.id)).status).toBe(403);   // ending it is the starter's
+    expect((await finish(owner, s.json.run.id, { cancel: true })).json.run).toMatchObject({ status: "abandoned", cancelled: true });
+  });
 });
 
 describe("the caps, the space, the limit", () => {
