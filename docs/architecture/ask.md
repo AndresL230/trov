@@ -313,7 +313,8 @@ still its owner's; sharing lets the rest of the org READ it.
   rule). To show a file to the org the owner publishes it (the inspector's Publish to org), as before. The
   confirmation says: "Files you attached stay private: members see each file's name, not what is in it. A source
   only you can see stays hidden from them."
-- **Deleting**: the owner's Delete deletes the thread for everyone (`deleteAskThread`, unchanged: the same rows); an
+- **Deleting**: the owner's Delete deletes the thread for everyone (`deleteAskThread`, unchanged: the same rows), and
+  its confirmation says so when the thread is shared ("It is shared with <org>, so it goes for everyone there too."); an
   account's deletion takes the person's threads, shared or not; an org's takes every thread (`ORG_TABLES`). Nothing
   new to delete: `shared_at` is a column on a table both already cover.
 - **On the screen**: the ⋯ menu's Share with <org> (`askThShare` → `threadShareModal`, the app's `confirmModal` in

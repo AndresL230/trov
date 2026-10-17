@@ -13,7 +13,7 @@ import { render, initialState, type AppState } from "../web/src/render";
 import { askView, readOnly, type AskCtx, type AskSendInput } from "../web/src/ask-state";
 import { conversationView, conversationPart } from "../web/src/ask-conversation";
 import { composerView, composerPart } from "../web/src/ask-composer";
-import { threadsView, threadsPart, threadShareModal } from "../web/src/ask-threads";
+import { threadsView, threadsPart, threadShareModal, threadDeleteModal } from "../web/src/ask-threads";
 import { askHeader } from "../web/src/ask-screen";
 import { convoFromDetail } from "../web/src/ask-stream";
 import { askRefFixtures, askStateFixture, askThreadsFixture } from "@shared/ai-fixtures";
@@ -227,5 +227,13 @@ describe("the thread list: share, stop sharing, and Shared in <org>", () => {
     expect(patched.at(-1)).toEqual([t.id, { shared: false }]);
     expect(s.ask.threads.data.find((x) => x.id === t.id)?.shared).toBe(false);
     expect(flashes.at(-1)).toBe("Stopped sharing. Only you can read it now.");
+  });
+
+  it("Delete on a shared conversation says it goes for everyone in the org; a private one does not", () => {
+    const shared = threadDeleteModal({ threadDelete: { id: 7, title: "Deploys", shared: true }, closing: {} }, "SaplingLearn");
+    expect(shared).toContain("It is shared with SaplingLearn, so it goes for everyone there too.");
+    const own = threadDeleteModal({ threadDelete: { id: 7, title: "Deploys", shared: false }, closing: {} }, "SaplingLearn");
+    expect(own).toContain("The conversation and the files attached to it are deleted for good. A file");
+    expect(own).not.toContain("shared with");
   });
 });

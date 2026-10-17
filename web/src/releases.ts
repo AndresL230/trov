@@ -115,6 +115,7 @@ export const RELEASES: Release[] = [
     ],
     headsUp: [
       "Files attached to a shared Ask conversation stay private: others see each file's name and size, and what Trov quoted from it, never the file.",
+      "Deleting a shared conversation deletes it for everyone in your organization, and the confirmation says so.",
     ],
     ops: [
       "Apply migration `0076_ask_sharing` (one nullable column on `chat_threads`; merging to main applies it).",

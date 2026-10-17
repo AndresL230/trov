@@ -51,7 +51,7 @@ export interface AskUi {
   threadMenu: number | null;
   renaming: { id: number; text: string } | null;
   /** The thread whose Delete is asking first (`confirmModal`, QA-2): a hard delete with no undo. */
-  threadDelete: { id: number; title: string } | null;
+  threadDelete: { id: number; title: string; shared: boolean } | null;
   /** `GET /ask/shared`: conversations OTHER members shared in this org (read-only here; 0076_ask_sharing). */
   shared: AskLoad<AskThreadSummary[]>;
   /** The thread whose "Share with <org>" is asking first (`confirmModal`): what members will and won't see. */

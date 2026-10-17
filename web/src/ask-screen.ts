@@ -104,5 +104,5 @@ export function askOverlays(app: AppState): string {
   const v = askView(app, "page");
   const hv = ui.hover ? viewOf(v.look, ui.hover.ref) : null;
   const card = ui.hover && hv ? `<div data-overlay="ask-hc" class="ask-hc-layer"${closingAttr(ui.closing, "hover")}>${hoverCard(hv, v.look, ui.hover.at)}</div>` : "";
-  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui)}${threadShareModal(ui, askOrgName(app))}`;
+  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui, askOrgName(app))}${threadShareModal(ui, askOrgName(app))}`;
 }

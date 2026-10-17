@@ -196,13 +196,15 @@ let focusMore: number | null = null;
 const MENU_ITEM = ".ask-th-menu [role='menuitem']";
 
 /** Delete's confirmation (QA-2): a root `data-overlay` (ask-screen.ts `askOverlays`), the app's ONE confirm. */
-export function threadDeleteModal(ui: Pick<AskUi, "threadDelete" | "closing">): string {
+export function threadDeleteModal(ui: Pick<AskUi, "threadDelete" | "closing">, org: string): string {
   const d = ui.threadDelete;
   if (!d) return "";
+  // A shared thread goes for everyone it was shared with too (deleteAskThread: the same rows), so it says so.
+  const shared = d.shared ? ` It is shared with ${org}, so it goes for everyone there too.` : "";
   // Its exit is the confirm's own (`data-closing` on the layer, trov.css), played through `ctx.exit("thdel")`.
   return confirmModal({
     id: "ask-th-delete", title: `Delete “${d.title || "this thread"}”?`,
-    body: "The conversation and the files attached to it are deleted for good. A file a ticket or a doc refers to, or one published to the org, stays in Artifacts.",
+    body: `The conversation and the files attached to it are deleted for good.${shared} A file a ticket or a doc refers to, or one published to the org, stays in Artifacts.`,
     confirmAct: "askThDeleteGo", cancelAct: "askThDeleteCancel", arg: String(d.id),
   }).replace(`class="cnpy-cmodal"`, `class="cnpy-cmodal"${closingAttr(ui.closing, "thdel")}`);
 }
@@ -317,7 +319,7 @@ export const threadsPart: AskPart = {
       case "askThDelete": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;
-        if (t) { ctx.cancelExit("thdel"); ctx.ui.threadDelete = { id, title: t.title }; focusConfirm = true; }
+        if (t) { ctx.cancelExit("thdel"); ctx.ui.threadDelete = { id, title: t.title, shared: !!t.shared }; focusConfirm = true; }
         ctx.paint();
         return;
       }
