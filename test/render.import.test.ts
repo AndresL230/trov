@@ -213,6 +213,15 @@ describe("the import wizard (`#import`)", () => {
     expect(html).not.toContain('data-s="now"');
   });
 
+  it("the done card's figures agree with their words: \"1 new page\", \"1 image\" (found in Batch B2's retest)", () => {
+    const run = { counts: { pages: 1, new_pages: 1, versions: 0, images: 1, skipped_files: 0, skipped_pages: 0, staged: 1, staged_new: 1, staged_versions: 0, unchanged: 0, failed: 0, images_uploaded: 1 } } as ImportRunView;
+    const html = wiz({ step: "run", run: driver({ phase: "done", run, pages: 1, pagesDone: 1, images: 1, imagesDone: 1 }) });
+    const fig = (n: number, words: string) => `>${n}</div><div style="font-size:12px;color:var(--fg-55)">${words}</div>`;
+    expect(html).toContain(fig(1, "new page"));
+    expect(html).toContain(fig(0, "new versions of existing pages"));
+    expect(html).toContain(fig(1, "image"));
+  });
+
   it("words: the links and images sentences say only the parts that are there", () => {
     expect(linkWords({ total: 0, inImport: 0, existing: 0, missing: 0, unmatched: 0, imagesUsed: 0 }, true)).toBe("No page links to another.");
     expect(linkWords({ total: 38, inImport: 31, existing: 5, missing: 0, unmatched: 2, imagesUsed: 0 }, true))

@@ -482,8 +482,8 @@ function doneCard(r: ImportDriverView): string {
   const tile = staged > 0
     ? `<span style="width:40px;height:40px;border-radius:10px;background:var(--accent);color:var(--accent-fg);display:grid;place-items:center">${ic(`<path d="M20 6 9 17l-5-5"></path>`, 20, 2.6)}</span>`
     : `<span style="width:40px;height:40px;border-radius:10px;border:1px solid var(--border-strong);color:var(--fg-55);display:grid;place-items:center">${ALERT}</span>`;
-  const cols = staged > 0 ? `<div class="cnpy-imp-break">${[[c?.staged_new ?? staged, "new pages"], [c?.staged_versions ?? 0, "new versions of existing pages"], [c?.images_uploaded ?? r.imagesDone, "images"]]
-    .map(([n, l]) => `<div><div style="font-size:16px;font-weight:600;font-variant-numeric:tabular-nums">${n}</div><div style="font-size:12px;color:var(--fg-55)">${esc(String(l))}</div></div>`).join("")}</div>` : "";
+  const cols = staged > 0 ? `<div class="cnpy-imp-break">${[[c?.staged_new ?? staged, "new page", "new pages"], [c?.staged_versions ?? 0, "new version of an existing page", "new versions of existing pages"], [c?.images_uploaded ?? r.imagesDone, "image", "images"]]
+    .map(([n, one, many]) => `<div><div style="font-size:16px;font-weight:600;font-variant-numeric:tabular-nums">${n}</div><div style="font-size:12px;color:var(--fg-55)">${esc(String(n === 1 ? one : many))}</div></div>`).join("")}</div>` : "";
   return `<div data-morph-key="imp:done"${surface("max-width:560px;padding:24px 26px 22px", { cls: "cnpy-imp-card" })}>
     ${tile}
     <h2 style="font-size:20px;font-weight:600;letter-spacing:-0.015em;margin:14px 0 0">${esc(title)}</h2>
