@@ -210,17 +210,20 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   underline slides, no entrance replays); a link's page is a child screen (crumb "Link #12", back to Links).
 - **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`). The story (owner, 2026-10-17)
   is linking YOUR OWN sessions — a coding agent, a web chat, an Ask thread; a teammate's session is the second case.
-  It opens on **the constellation** (`linksHero`, `heroModel`): one node per session of yours that is a side of a
-  live link (deduped by `kind:session`, labelled by client with an icon — "Claude Code" + branch, "Web chat", "Ask
-  thread", which links to `#ask/<id>`), self-links first as neighbouring pairs (`SESSION_SLOTS`) with the line between
-  them; a side of yours no session joined is an empty dotted SOCKET ("Not joined", its card says "join Trov link #n").
-  Only sessions on links exist — nothing is said about clients that are not linked. Teammates sit on an outer ring
-  (`PERSON_SLOTS`), ONE orb per person, their lines quieter, off the session of yours that holds the link (a socket
-  while an open one has none; your photo, small in the middle, for a request either way); a request waiting for
-  you pulses inward, its Accept / Decline in a callout under the picture ("Luke asks to link with you"). One canvas
-  (`link-line.ts` `linkHeroCanvas`: orbs + segments as data attributes, the shared orb loop); over it each node is a
-  real `<a>` with an aria-label and a hover / focus card. Past the places, "+N more". No live link: your photo in a
-  quiet halo, `LINKS_LEAD` and "Link two of your sessions". A phone shows sessions by icon alone. Under it
+  It opens on **the arc diagram** (`linksHero`, `heroModel`): one STATION per client kind you have on a live link —
+  Claude Code, Web chat, Ask thread, left to right (`STATION_X`), every session of that kind folded in (its card
+  lists each branch / thread and the links it holds; "Claude Code · 2" only when > 1; the Ask station opens the
+  thread when there is one, else Ask) — on a gentle dotted line that starts at your photo on the left. A link
+  between two of your JOINED sessions is an arc ABOVE the line between their stations (one per pair of kinds,
+  denser for more links; a small loop over a station when both sides are the same kind). A side of yours no
+  session has joined draws nothing: that link is only in the rows, with its join hint. Teammates sit BELOW the line,
+  one orb per person, a quieter arc dropping to them from the station that holds the link (from your photo when your
+  side has no session); a request waiting for you pulses up toward you, its Accept / Decline in a callout under the
+  picture ("Luke asks to link with you"). Words sit under stations and persons, off every arc. One canvas
+  (`link-line.ts` `linkHeroCanvas`: orbs, segments with a shape — `u` over, `d` down, `o` loop — and the line, as
+  data attributes; the shared orb loop); over it each station and person is a real `<a>` with an aria-label and a
+  hover / focus card. Past six people, "+N more". No live link: your photo in a quiet halo, `LINKS_LEAD` and "Link
+  two of your sessions". A phone shows the same diagram compressed, stations by icon alone. Under it
   `LINKS_LEAD`, then Waiting for you, Open, Yours, and Closed collapsed behind "CLOSED (N)" (a button,
   `state.linksClosedOpen`, never `<details>`, which a patch would shut). A row (`linkRow`): a still SVG glyph of its
   line (`linkGlyph`, no loop), `#n` and the topic set first over the reason (a link about a person reads "With

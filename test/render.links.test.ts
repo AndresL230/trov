@@ -8,10 +8,10 @@ import {
   linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal, handoffsTabBar,
   linkSessionHtml, noteAuthorHtml, askThreadOf, LINKS_EMPTY, NO_LINK_BOXES, type LinkAction, type LinkDetailProps,
   linkStartCard, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, linkStartSpec, type LinkStart,
-  linksHero, liveLinks, linkGlyph, heroModel, heroCanvasData, linkAboutHtml, LINKS_LEAD, SESSION_SLOTS, PERSON_SLOTS,
+  linksHero, liveLinks, linkGlyph, heroModel, heroCanvasData, linkAboutHtml, LINKS_LEAD, STATION_X, PERSON_MAX, HERO_BASE_Y, HERO_HUB_X, HERO_PERSON_Y,
 } from "../web/src/links";
 import docsSrc from "../web/src/docs-content.ts?raw";
-import { linkLineState, linkLine, LINE_W, LINE_H, parseHero } from "../web/src/link-line";
+import { linkLineState, linkLine, LINE_W, LINE_H, parseHero, arcHeight } from "../web/src/link-line";
 import linkLineSrc from "../web/src/link-line.ts?raw";
 import orbSrc from "../web/src/thinking-orb.ts?raw";
 import cssSrc from "../web/src/trov.css?raw";
@@ -597,7 +597,7 @@ describe("Start a link — the card", () => {
   });
 });
 
-describe("the Links tab's constellation — your sessions first, teammates on an outer ring", () => {
+describe("the Links tab's arc diagram — your client kinds as stations, teammates below", () => {
   const L = (over: Partial<LinkDetail>) => link({ notes: [], ...over });
   const boxesOf = (over: Partial<typeof NO_LINK_BOXES> = {}) => ({ ...NO_LINK_BOXES, ...over });
   const hero = (b = boxesOf(), busy = false) => linksHero({ boxes: b, me: "andres", persons, busy, status: "ok" });
@@ -605,84 +605,106 @@ describe("the Links tab's constellation — your sessions first, teammates on an
   const spread = boxesOf({
     waiting: [L({ id: 2, state: "requested", requester: side("jose"), recipient: side("andres"), topic: { kind: "person", ref: "andres" } })],
     open: [
-      L({ id: 1, requester: side("jose", code("j-1", "feat/api")), recipient: side("andres", code("a-grid", "feat/grid")) }),
+      L({ id: 1, requester: side("jose", code("j-1", "feat/api")), recipient: side("andres", code("a-export", "feat/export")) }),
+      L({ id: 12, self: true, requester: side("andres"), recipient: side("andres") }), // neither side joined
+      L({ id: 13, self: true, requester: side("andres", { kind: "ask", session: "ask-thread-9" }), recipient: side("andres") }), // one side joined
       L({ id: 14, requester: side("mei", { kind: "chat", session: "m-c" }), recipient: side("andres") }),
       L({ id: 15, self: true, requester: side("andres", code("a-export", "feat/export")), recipient: side("andres", { kind: "chat", session: "a-chat" }) }),
-      L({ id: 16, self: true, requester: side("andres", { kind: "ask", session: "ask-thread-7" }), recipient: side("andres") }),
+      L({ id: 16, self: true, requester: side("andres", code("a-export", "feat/export")), recipient: side("andres", { kind: "ask", session: "ask-thread-7" }) }),
+      L({ id: 17, self: true, requester: side("andres", code("a-export", "feat/export")), recipient: side("andres", code("a-ocr", "fix/ocr")) }),
     ],
-    mine: [L({ id: 11, state: "draft", requester: side("andres", code("a-grid", "feat/grid")), recipient: side("jose") })],
+    mine: [L({ id: 11, state: "draft", requester: side("andres", code("a-export", "feat/export")), recipient: side("jose") })],
   });
 
-  it("one node per SESSION of yours (deduped), self-links first as neighbouring pairs; a side not joined is a socket", () => {
+  it("ONE station per client kind, at most three, left to right: Claude Code, Web chat, Ask thread", () => {
     const m = heroModel(spread, "andres");
-    expect(m.sessions.map((x) => x.key)).toEqual(["code:a-export", "chat:a-chat", "ask:ask-thread-7", "socket:16:recipient", "code:a-grid", "socket:14:recipient"]);
-    expect(m.sessions.find((x) => x.key === "code:a-grid")!.links.map((l) => l.id)).toEqual([1, 11]); // one node, two links
-    expect(hero(spread).match(/data-lh-sess="/g)).toHaveLength(6);
-  });
-
-  it("a session says its client in words with an icon; an Ask thread links to its thread; a socket says how to join", () => {
+    expect(m.kinds.map((k) => k.kind)).toEqual(["code", "chat", "ask"]);
+    expect(m.kinds[0].sessions.map((s) => s.session)).toEqual(["a-export", "a-ocr"]); // two Claude Code sessions fold
+    expect(m.kinds.map((k) => k.x)).toEqual([...STATION_X[3]]);
+    expect(m.kinds.every((k) => k.y === HERO_BASE_Y)).toBe(true);
     const html = hero(spread);
-    expect(html).toMatch(/data-lh-sess="code:a-export" data-kind="code"[\s\S]*?href="#links\/15" aria-label="Claude Code on feat\/export: link #15 with your web chat\."/);
-    expect(html).toMatch(/data-lh-sess="chat:a-chat"[\s\S]*?cnpy-lh-name" aria-hidden="true">Web chat</);
-    expect(html).toMatch(/data-lh-sess="ask:ask-thread-7"[\s\S]*?href="#ask\/7"/);
-    expect(html).toMatch(/data-lh-sess="socket:16:recipient"[\s\S]*?aria-label="Link #16: a side of yours that no session has joined\. Tell a session: join Trov link #16\."/);
-    expect(html).toMatch(/data-lh-sess="code:a-grid"[\s\S]*?aria-label="Claude Code on feat\/grid: link #1 with Jose; link #11 with Jose\."/);
+    expect(html.match(/data-lh-kind="/g)).toHaveLength(3);
+    expect(html).toMatch(/data-lh-kind="code" data-sessions="2"[\s\S]*?cnpy-lh-name" aria-hidden="true">Claude Code<span class="cnpy-lh-count"> · 2<\/span>/);
+    expect(html).toMatch(/data-lh-kind="chat" data-sessions="1"[\s\S]*?>Web chat<\/span>/);
+    expect(html).not.toMatch(/Web chat<span class="cnpy-lh-count">/); // a count only when > 1
   });
 
-  it("teammates: ONE orb per person on the outer ring, quieter lines off the session that holds each link", () => {
+  it("an Ask station opens Ask (the thread when there is one); its card and label list what each session holds", () => {
+    const html = hero(spread);
+    expect(html).toMatch(/data-lh-kind="ask"[\s\S]*?href="#ask"/); // two threads: Ask itself
+    const one = hero(boxesOf({ open: [L({ id: 16, self: true, requester: side("andres", code("a", "b")), recipient: side("andres", { kind: "ask", session: "ask-thread-7" }) })] }));
+    expect(one).toMatch(/data-lh-kind="ask"[\s\S]*?href="#ask\/7"/);
+    expect(html).toMatch(/data-lh-kind="code"[\s\S]*?aria-label="Claude Code, 2 sessions: on feat\/export \(link #1 with Jose; link #11 with Jose; link #15 with your web chat; link #16 with your Ask thread; link #17 with another Claude Code session\); on fix\/ocr \(link #17 with another Claude Code session\)\."/);
+  });
+
+  it("links between your sessions: one arc ABOVE the line per pair of kinds, a loop for the same kind; unjoined sides draw nothing", () => {
     const m = heroModel(spread, "andres");
-    expect(m.people.map((x) => x.handle)).toEqual(["jose", "mei"]); // Jose once, for #1, #2 and #11
+    const self = m.lines.filter((x) => !x.quiet);
+    expect(self.map((x) => [x.links.map((l) => l.id), x.shape])).toEqual([[[15], "u"], [[16], "u"], [[17], "o"]]);
+    for (const id of [12, 13]) expect(m.lines.some((x) => x.links.some((l) => l.id === id))).toBe(false); // only in the rows
+    expect(hero(spread)).not.toMatch(/Not joined|socket/);
+    // Two links between the same two kinds are ONE arc, denser.
+    const twice = heroModel(boxesOf({ open: [spread.open[4], L({ id: 18, self: true, requester: side("andres", code("a-export", "feat/export")), recipient: side("andres", { kind: "chat", session: "b-chat" }) })] }), "andres");
+    expect(twice.lines).toHaveLength(1);
+    const { segs } = heroCanvasData(twice, "andres");
+    expect(segs[0]).toMatchObject({ n: 2, shape: "u", quiet: false, flow: "flow" });
+  });
+
+  it("teammates sit BELOW the line, one per person, an arc dropping from the station that holds the link — or from you", () => {
+    const m = heroModel(spread, "andres");
+    expect(m.people.map((p) => p.handle)).toEqual(["jose", "mei"]);
+    expect(m.people.every((p) => p.y === HERO_PERSON_Y && p.y > HERO_BASE_Y)).toBe(true);
     const { orbs, segs } = heroCanvasData(m, "andres");
-    const self15 = segs.find((g) => g.id === 15)!;
-    expect(self15).toMatchObject({ quiet: false, flow: "flow" });
-    expect(orbs[self15.a].look).toBe("awake");
-    const team1 = segs.find((g) => g.id === 1)!;
-    expect(team1.quiet).toBe(true);
-    expect(orbs[team1.b]).toMatchObject({ look: "awake", size: 76 }); // my end: the Claude Code session on feat/grid
-    const ask2 = segs.find((g) => g.id === 2)!;
-    expect(ask2).toMatchObject({ flow: "pulse", b: 0 }); // a request to me pulses in, to where my photo sits
-    expect(orbs[0].look).toBe("hub");
-    const mei14 = segs.find((g) => g.id === 14)!;
-    expect(orbs[mei14.b].look).toBe("socket"); // my side of an open teammate link not joined: off a socket
+    const jose = segs.filter((g) => g.id === 1);
+    expect(jose).toHaveLength(1); // #1 and #11 leave the same station for the same person: one arc
+    expect(jose[0]).toMatchObject({ shape: "d", quiet: true, n: 2 });
+    expect(orbs[jose[0].b].look).toBe("awake"); // my end: the Claude Code station
+    const mei = segs.find((g) => g.id === 14)!;
+    expect(mei.b).toBe(0); // my side not joined: from my photo
+    const ask = segs.find((g) => g.id === 2)!;
+    expect(ask).toMatchObject({ flow: "pulse", b: 0, shape: "d" }); // the request travels up to me
+    expect(orbs[0]).toMatchObject({ look: "hub", x: HERO_HUB_X, y: HERO_BASE_Y });
     const html = hero(spread);
-    expect(html.match(/data-lh-person="/g)).toHaveLength(2);
-    expect(html).toMatch(/<canvas class="cnpy-lh-cv" data-linkhero data-lh-orbs="[^"]+" data-lh-segs="[^"]+"[^>]*aria-hidden="true">/);
-    expect(parseHero(html.match(/data-lh-orbs="([^"]*)"/)![1], html.match(/data-lh-segs="([^"]*)"/)![1]).segs).toHaveLength(6);
+    expect(html).toMatch(/<canvas class="cnpy-lh-cv" data-linkhero data-lh-base="\d+,\d+,\d+" data-lh-orbs="[^"]+" data-lh-segs="[^"]+"[^>]*aria-hidden="true">/);
+    const back = parseHero(html.match(/data-lh-orbs="([^"]*)"/)![1], html.match(/data-lh-segs="([^"]*)"/)![1]);
+    expect(back.segs.map((g) => g.shape).sort()).toEqual(["d", "d", "d", "o", "u", "u"]);
   });
 
-  it("a request waiting for you: Jose asks to link WITH YOU (a person topic), Accept / Decline in the callout", () => {
+  it("a request waiting for you: 'Jose asks to link with you', Accept / Decline in the callout", () => {
     const html = hero(spread);
     expect(html).toMatch(/class="cnpy-lh-node is-person is-asking" data-lh-person="jose"/);
     expect(text(html)).toContain("Jose asks to link with you");
-    expect(text(html)).not.toContain("about @andres");
     expect(html).toContain('data-act="linkAccept" data-arg="2"');
     expect(html).toContain('data-act="linkDecline" data-arg="2"');
     expect(hero(spread, true)).toMatch(/data-act="linkAccept" data-arg="2"[^>]*disabled/);
     expect(nestedButton(html)).toBe(false);
   });
 
-  it("only sessions on links exist: no link, no node — you alone, the lead sentence and Link two of your sessions", () => {
+  it("one kind: that station and the teammates; nothing linked: you alone, the lead sentence and Link two of your sessions", () => {
+    const solo = heroModel(boxesOf({ open: [spread.open[0]] }), "andres");
+    expect(solo.kinds.map((k) => k.x)).toEqual([...STATION_X[1]]);
     const html = hero();
     expect(html).toContain('data-lh-count="0"');
-    expect(html).toContain('data-lh-sessions="0"');
+    expect(html).toContain('data-lh-kinds=""');
     expect(html).toContain("data-lh-empty");
     expect(text(html)).toContain("Connect your own sessions");
     expect(html).toContain('data-act="linkStartOpen"');
     expect(linksHero({ boxes: boxesOf(), me: "andres", persons, busy: false, status: "loading" })).not.toContain("data-lh-empty");
   });
 
-  it(`at most ${SESSION_SLOTS.length} sessions and ${PERSON_SLOTS.length} people; the rest are "+N more"`, () => {
-    const many = boxesOf({ open: Array.from({ length: 7 }, (_, i) => L({ id: i + 1, self: true, requester: side("andres", code(`s${i}a`, "b")), recipient: side("andres", code(`s${i}b`, "b")) })) });
-    const html = hero(many);
-    expect(html.match(/data-lh-sess="/g)).toHaveLength(SESSION_SLOTS.length);
-    expect(text(html)).toContain("+3 more in the list below");
+  it(`at most ${PERSON_MAX} people, spaced so their names never touch; the rest are "+N more"`, () => {
+    const many = boxesOf({ open: ["jose", "mei", "a", "b", "c", "d", "e", "f"].map((h, i) => L({ id: i + 1, requester: side("andres", code("x", "y")), recipient: side(h) })) });
+    const m = heroModel(many, "andres");
+    expect(m.people).toHaveLength(PERSON_MAX);
+    const xs = m.people.map((p) => p.x).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) expect(xs[i] - xs[i - 1]).toBeGreaterThanOrEqual(90);
+    expect(text(hero(many))).toContain("+2 more in the list below");
   });
 
-  it("the places are stable: a new teammate link never moves your sessions", () => {
-    const before = heroModel(spread, "andres").sessions.map((x) => [x.key, x.x, x.y]);
-    const more = { ...spread, open: [...spread.open, L({ id: 40, requester: side("andres", code("a-new", "x")), recipient: side("mei") })] };
-    const after = heroModel(more, "andres").sessions.map((x) => [x.key, x.x, x.y]);
-    expect(after.slice(0, before.length)).toEqual(before);
+  it("the arcs over the line clear the canvas top, and a station's words sit under it (the arcs leave from its top)", () => {
+    const span = STATION_X[3][2] - STATION_X[3][0];
+    expect(HERO_BASE_Y - 39 - arcHeight(span) * 0.75).toBeGreaterThan(0);
+    expect(cssSrc).toMatch(/\.cnpy-lh-name \{ top:calc\(100% - 2px\)/);
   });
 
   it("it heads the Links tab, above the lead sentence and the list", () => {
@@ -690,6 +712,9 @@ describe("the Links tab's constellation — your sessions first, teammates on an
     expect(html.indexOf('class="cnpy-lh"')).toBeLessThan(html.indexOf("data-links-intro"));
     expect(html).toContain(LINKS_LEAD.replace(/'/g, "&#39;"));
     expect(html.indexOf("data-links-intro")).toBeLessThan(html.indexOf("WAITING FOR YOU"));
+    // The unjoined self-links are in the rows, where the join hint lives.
+    expect(html).toContain('data-link-row="12"');
+    expect(html).toContain('data-link-row="13"');
   });
 });
 

@@ -248,7 +248,7 @@ function workStatements(c) {
   s.push(link(1, {
     state: "open", repo: REPO, topic_kind: "pr", topic_ref: "231", reason: "Both of us are changing the mastery query this week.",
     requester: JOSE, requester_kind: "code", requester_agent_session: "seed-session-jose", requester_branch: "feat/mastery-api",
-    recipient: ME, recipient_kind: "code", recipient_agent_session: "seed-session-andres", recipient_branch: "feat/topic-grid",
+    recipient: ME, recipient_kind: "code", recipient_agent_session: "seed-session-andres", recipient_branch: "feat/stream-export",
     created_at: c.days(0.25), sent_at: c.days(0.24), decided_at: open, expires_at: new Date(Date.parse(open) + 7 * DAY).toISOString(),
     requester_seen_at: seen, recipient_seen_at: seen,
   }));

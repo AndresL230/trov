@@ -13,7 +13,7 @@ import { linkTopicLabel, LINK_NOTE_MAX, LINK_REASON_MAX, LINK_LIVE_MAX, ASK_THRE
 import type { PersonSummary } from "./api";
 import { esc, attr, relTime, surface, WORK_SHELL, DETAIL_SHELL, hitArea, HITBOX } from "./ui";
 import { personLink, handleLink, personChip } from "./people";
-import { linkLine, linkLineState, linkHeroCanvas, HERO_W, HERO_H, type LineSpec, type LineOrb, type LineFlow, type HeroOrb, type HeroSeg } from "./link-line";
+import { linkLine, linkLineState, linkHeroCanvas, HERO_W, HERO_H, type LineSpec, type LineOrb, type LineFlow, type HeroOrb, type HeroSeg, type HeroShape } from "./link-line";
 import { linkMark } from "./marks";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { confirmModal } from "./confirm";
@@ -436,16 +436,19 @@ export function linkStartCard(p: LinkStartProps): string {
     </section>`;
 }
 
-// ── the constellation (the top of the Links tab) ─────────────────────────────────
-// The story is YOUR sessions: each client of yours that is a side of a live link — a coding agent, a web chat, an
-// Ask thread — is one node (one per session, however many links it holds), and a link between two of your own
-// sessions is a line between two nodes. A side of yours no session has joined yet is an empty dotted SOCKET that
-// says how to join it. Teammates sit on an outer ring, one orb per person, their lines quieter, coming off the
-// session (or socket) of yours that holds the link; a request waiting for you pulses in toward your photo, with
-// Accept / Decline in a callout under the picture. Only sessions that are on links exist here: nothing about
-// clients that are not linked. link-line.ts draws it all on one canvas; over it each node is a real link.
+// ── the arc diagram (the top of the Links tab) ─────────────────────────────────
+// The story is YOUR clients: a coding agent, a web chat, an Ask thread. Each KIND of client you have on a live link is
+// one station on a gentle horizontal line (all your Claude Code sessions fold into one "Claude Code" station; its card
+// lists them), your photo where the line starts on the left. A link between two of your own joined sessions is an
+// arc ABOVE the line between their stations (one arc per pair of kinds, denser for more links; a small loop over a
+// station when both sides are the same kind). A side of yours no session has joined draws nothing: that link waits
+// in the rows below, with its "join Trov link #n" hint. Teammates sit BELOW the line, one orb per person, each with a
+// quieter arc dropping to them from the station that holds the link — or from your photo when your side has no
+// session; a request waiting for you is such an arc whose pulse travels up toward you, with Accept / Decline in a
+// callout under the picture. Only clients that are on links exist here. link-line.ts draws it on one canvas; over it
+// each station and person is a real link with a card on hover / focus.
 
-/** The links the constellation draws: every live one (waiting for me, open, my drafts and sent requests), once each,
+/** The links the diagram reads: every live one (waiting for me, open, my drafts and sent requests), once each,
  *  lowest number first. */
 export function liveLinks(b: LinkBoxes): LinkView[] {
   const seen = new Map<number, LinkView>();
@@ -457,21 +460,15 @@ const LIVE = new Set<LinkState>(["draft", "requested", "open"]);
 /** Whether this live link is a request waiting for the viewer's answer. */
 const waitsForMe = (l: LinkView, me: string): boolean => l.state === "requested" && !l.self && same(l.recipient.handle, me);
 
-/** Your sessions' places: neighbouring pairs (left, right, below, above) so a self-link is a short line. */
-export const SESSION_SLOTS: readonly (readonly [number, number])[] = [
-  [188, 132], [188, 228], [532, 132], [532, 228], [271, 282], [449, 282], [271, 78], [449, 78],
-];
-/** Teammates' places, on the outer ring. */
-export const PERSON_SLOTS: readonly (readonly [number, number])[] = [
-  [52, 60], [668, 60], [52, 300], [668, 300], [40, 180], [680, 180],
-];
-const HUB: readonly [number, number] = [360, 180];
-const SESSION_ORB = 76, SOCKET_ORB = 52, PERSON_ORB = 50;
-
-/** The client a session kind is, in words: "Claude Code", "Web chat", "Ask thread". */
-export const CLIENT_WORD: Record<"code" | "chat" | "ask", string> = { code: "Claude Code", chat: "Web chat", ask: "Ask thread" };
+export type ClientKind = "code" | "chat" | "ask";
+/** Stations go left to right in this order (only the kinds you have). */
+export const KIND_ORDER: readonly ClientKind[] = ["code", "chat", "ask"];
+/** The client a session kind is, in words. */
+export const CLIENT_WORD: Record<ClientKind, string> = { code: "Claude Code", chat: "Web chat", ask: "Ask thread" };
+/** The same inside a sentence ("your web chat", "your Ask thread"). */
+const CLIENT_IN_TEXT: Record<ClientKind, string> = { code: "Claude Code session", chat: "web chat", ask: "Ask thread" };
 /** A small line icon per client: a terminal, a speech bubble, Ask's spark. */
-export function clientIcon(kind: "code" | "chat" | "ask" | null): string {
+export function clientIcon(kind: ClientKind | null): string {
   const p = kind === "code" ? '<path d="M3 4.5l3 3-3 3M7.5 11h5"/>'
     : kind === "chat" ? '<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>'
     : kind === "ask" ? '<path d="M8 2.5l1.3 3.7 3.7 1.3-3.7 1.3L8 12.5l-1.3-3.7L3 7.5l3.7-1.3z"/>'
@@ -479,78 +476,97 @@ export function clientIcon(kind: "code" | "chat" | "ask" | null): string {
   return `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${p}</svg>`;
 }
 
-/** One of your sessions (or a socket: a side of yours nobody has joined). */
-export interface HeroSession {
-  key: string; kind: "code" | "chat" | "ask" | null; session: string | null; branch: string | null; seen: string | null;
-  links: LinkView[]; socket: { id: number; side: LinkSideName } | null; x: number; y: number;
-}
+// The geometry, in canvas px (HERO_W × HERO_H).
+export const HERO_BASE_Y = 158;
+export const HERO_HUB_X = 56;
+export const HERO_PERSON_Y = 282;
+const KIND_ORB = 78, PERSON_ORB = 50;
+/** Station x by how many kinds there are. */
+export const STATION_X: Record<1 | 2 | 3, readonly number[]> = { 1: [330], 2: [300, 540], 3: [270, 450, 630] };
+export const PERSON_MAX = 6;
+const PERSON_GAP = 92;
+
+export interface HeroSessionInfo { session: string; branch: string | null; seen: string | null; links: LinkView[] }
+export interface HeroKind { kind: ClientKind; sessions: HeroSessionInfo[]; x: number; y: number }
 export interface HeroPerson { handle: string; links: LinkView[]; x: number; y: number }
-type End = { t: "hub" } | { t: "s"; key: string } | { t: "p"; handle: string };
-export interface HeroLine { link: LinkView; a: End; b: End; flow: LineFlow; quiet: boolean }
-export interface HeroModel { sessions: HeroSession[]; people: HeroPerson[]; lines: HeroLine[]; asks: LinkView[]; hidden: number }
+type End = { t: "hub" } | { t: "k"; kind: ClientKind } | { t: "p"; handle: string };
+export interface HeroLine { links: LinkView[]; a: End; b: End; flow: LineFlow; quiet: boolean; shape: HeroShape }
+export interface HeroModel { kinds: HeroKind[]; people: HeroPerson[]; lines: HeroLine[]; asks: LinkView[]; hidden: number; base: [number, number, number] }
+
+const FLOW_RANK: Record<LineFlow, number> = { pulse: 6, burst: 5, flow: 4, trickle: 3, preview: 2, flicker: 1, stopped: 0, none: 0 };
 
 /** Where everything goes, from the viewer's live links (pure; the tests read it). */
 export function heroModel(b: LinkBoxes, me: string): HeroModel {
   const live = liveLinks(b);
-  const sessions = new Map<string, HeroSession>();
-  const endOf = (l: LinkView, side: LinkSideName): End => {
+  const kinds = new Map<ClientKind, HeroKind>();
+  /** Fold a joined side of mine into its kind's station; null when no session has joined it. */
+  const join = (l: LinkView, side: LinkSideName): ClientKind | null => {
     const s = l[side];
-    if (s.kind && s.session) {
-      const key = `${s.kind}:${s.session}`;
-      const have = sessions.get(key);
-      if (have) { if (!have.links.includes(l)) have.links.push(l); }
-      else sessions.set(key, { key, kind: s.kind, session: s.session, branch: s.branch, seen: s.seen_at, links: [l], socket: null, x: 0, y: 0 });
-      return { t: "s", key };
-    }
-    const key = `socket:${l.id}:${side}`;
-    sessions.set(key, { key, kind: null, session: null, branch: null, seen: null, links: [l], socket: { id: l.id, side }, x: 0, y: 0 });
-    return { t: "s", key };
+    if (!s.kind || !s.session) return null;
+    const k = kinds.get(s.kind) ?? { kind: s.kind, sessions: [], x: 0, y: HERO_BASE_Y };
+    kinds.set(s.kind, k);
+    let info = k.sessions.find((x) => x.session === s.session);
+    if (!info) { info = { session: s.session, branch: s.branch, seen: s.seen_at, links: [] }; k.sessions.push(info); }
+    if (!info.links.includes(l)) info.links.push(l);
+    return s.kind;
   };
-  const lines: HeroLine[] = [];
-  // Your own links first, so their two sessions take neighbouring places.
-  for (const l of live.filter((x) => x.self)) {
-    lines.push({ link: l, a: endOf(l, "requester"), b: endOf(l, "recipient"), flow: linkLineState(l).flow, quiet: false });
-  }
+  const lines = new Map<string, HeroLine>();
+  const add = (key: string, l: LinkView, a: End, b: End, flow: LineFlow, quiet: boolean, shape: HeroShape) => {
+    const have = lines.get(key);
+    if (!have) { lines.set(key, { links: [l], a, b, flow, quiet, shape }); return; }
+    have.links.push(l);
+    if (FLOW_RANK[flow] > FLOW_RANK[have.flow]) have.flow = flow;
+  };
   const people = new Map<string, HeroPerson>();
-  for (const l of live.filter((x) => !x.self)) {
+  for (const l of live) {
+    if (l.self) {
+      const ka = join(l, "requester"), kb = join(l, "recipient");
+      // Both sides joined: an arc between their kinds (a loop when the same); otherwise nothing is drawn.
+      if (ka && kb) {
+        const pair = [ka, kb].sort((x, y) => KIND_ORDER.indexOf(x) - KIND_ORDER.indexOf(y)).join("+");
+        add(`self:${pair}`, l, { t: "k", kind: ka }, { t: "k", kind: kb }, linkLineState(l).flow, false, ka === kb ? "o" : "u");
+      }
+      continue;
+    }
     const mine: LinkSideName = same(l.requester.handle, me) ? "requester" : "recipient";
     const theirs: LinkSideName = mine === "requester" ? "recipient" : "requester";
     const h = l[theirs].handle;
-    const person = people.get(h.toLowerCase()) ?? { handle: h, links: [], x: 0, y: 0 };
+    const person = people.get(h.toLowerCase()) ?? { handle: h, links: [], x: 0, y: HERO_PERSON_Y };
     person.links.push(l);
     people.set(h.toLowerCase(), person);
-    // My end: the session that holds it; a socket while an OPEN link waits for one; else you yourself.
-    const my: End = l[mine].kind && l[mine].session ? endOf(l, mine) : l.state === "open" ? endOf(l, mine) : { t: "hub" };
+    const k = join(l, mine);
+    const my: End = k ? { t: "k", kind: k } : { t: "hub" };
     const them: End = { t: "p", handle: h };
-    const asking = waitsForMe(l, me);
-    lines.push({ link: l, a: mine === "requester" ? my : them, b: mine === "requester" ? them : my, flow: asking ? "pulse" : linkLineState(l).flow, quiet: true });
+    add(`team:${k ?? "hub"}>${h.toLowerCase()}`, l, mine === "requester" ? my : them, mine === "requester" ? them : my, waitsForMe(l, me) ? "pulse" : linkLineState(l).flow, true, "d");
   }
-  // Places: sessions in the order they came (self-link pairs first); people at the free outer place nearest the
-  // session of yours their first line leaves from.
-  const ss = [...sessions.values()].slice(0, SESSION_SLOTS.length);
-  ss.forEach((s, i) => { [s.x, s.y] = SESSION_SLOTS[i]; });
-  const placed = new Set(ss.map((s) => s.key));
-  const free = PERSON_SLOTS.map((_, i) => i);
-  const pp: HeroPerson[] = [];
-  for (const p of people.values()) {
-    if (!free.length) break;
-    const first = lines.find((x) => x.quiet && ((x.a.t === "p" && same(x.a.handle, p.handle)) || (x.b.t === "p" && same(x.b.handle, p.handle))));
-    const myEnd = first ? (first.a.t === "p" ? first.b : first.a) : { t: "hub" as const };
-    const from = myEnd.t === "s" && placed.has(myEnd.key) ? sessions.get(myEnd.key)! : { x: HUB[0], y: HUB[1] };
-    let best = 0;
-    free.forEach((slot, k) => {
-      const d = (q: number) => Math.hypot(PERSON_SLOTS[q][0] - from.x, PERSON_SLOTS[q][1] - from.y);
-      if (d(slot) < d(free[best])) best = k;
-    });
-    const [slot] = free.splice(best, 1);
-    [p.x, p.y] = PERSON_SLOTS[slot];
-    pp.push(p);
-  }
+  // Stations, left to right in KIND_ORDER.
+  const ks = KIND_ORDER.filter((k) => kinds.has(k)).map((k) => kinds.get(k)!);
+  const xs = ks.length ? STATION_X[ks.length as 1 | 2 | 3] : [];
+  ks.forEach((k, i) => { k.x = xs[i]; k.y = HERO_BASE_Y; });
+  const xOf = (e: End) => (e.t === "k" ? kinds.get(e.kind)!.x : HERO_HUB_X);
+  // People below: near the station (or your photo) their first line leaves from, alternating sides, then spaced.
+  const pp = [...people.values()].slice(0, PERSON_MAX);
+  const perOrigin = new Map<string, number>();
+  const want = pp.map((p) => {
+    const line = [...lines.values()].find((x) => x.quiet && [x.a, x.b].some((e) => e.t === "p" && same(e.handle, p.handle)))!;
+    const from = line.a.t === "p" ? line.b : line.a;
+    const key = from.t === "k" ? from.kind : "hub";
+    const n = perOrigin.get(key) ?? 0;
+    perOrigin.set(key, n + 1);
+    // From your photo they go just right of it, under the line's start; from a station, beside it (never under it,
+    // where its words are).
+    const steps = from.t === "hub" ? [70, 160, 250, 340] : [95, -95, 185, -185];
+    return { p, x: xOf(from) + steps[n % steps.length] };
+  }).sort((a, c) => a.x - c.x);
+  for (let i = 0; i < want.length; i++) want[i].x = Math.max(want[i].x, i ? want[i - 1].x + PERSON_GAP : 40);
+  for (let i = want.length - 1; i >= 0; i--) want[i].x = Math.min(want[i].x, i < want.length - 1 ? want[i + 1].x - PERSON_GAP : HERO_W - 40);
+  for (const w of want) { w.p.x = Math.round(w.x); w.p.y = HERO_PERSON_Y; }
   const shownP = new Set(pp.map((p) => p.handle.toLowerCase()));
-  const ok = (e: End) => e.t === "hub" || (e.t === "s" ? placed.has(e.key) : shownP.has(e.handle.toLowerCase()));
-  const shownLines = lines.filter((x) => ok(x.a) && ok(x.b));
-  const hidden = new Set(lines.filter((x) => !shownLines.includes(x)).map((x) => x.link.id)).size;
-  return { sessions: ss, people: pp, lines: shownLines, asks: live.filter((l) => waitsForMe(l, me)), hidden };
+  const all = [...lines.values()];
+  const drawn = all.filter((x) => [x.a, x.b].every((e) => e.t !== "p" || shownP.has(e.handle.toLowerCase())));
+  const hidden = new Set(all.filter((x) => !drawn.includes(x)).flatMap((x) => x.links.map((l) => l.id))).size;
+  const lastX = ks.length ? ks[ks.length - 1].x + 80 : HERO_HUB_X + 220;
+  return { kinds: ks, people: pp, lines: drawn, asks: live.filter((l) => waitsForMe(l, me)), hidden, base: [HERO_HUB_X + 18, lastX, HERO_BASE_Y] };
 }
 
 /** A person's orb: listening while a request is between you, awake when their side of an open link has a session. */
@@ -559,20 +575,21 @@ function personLook(p: HeroPerson, me: string): LineOrb {
   const theirs = (l: LinkView) => (same(l.requester.handle, me) ? l.recipient : l.requester);
   if (p.links.some((l) => l.state === "open" && theirs(l).kind)) return "awake";
   if (p.links.some((l) => l.state === "open")) return "hollow";
-  void me;
   return "asleep";
 }
 
-/** The canvas's orbs and lines for a model: the hub (where your photo sits) first, then sessions, then people. */
+/** The canvas's orbs and segments for a model: your photo (the hub) first, then stations, then people. */
 export function heroCanvasData(m: HeroModel, me: string): { orbs: HeroOrb[]; segs: HeroSeg[] } {
-  const orbs: HeroOrb[] = [{ x: HUB[0], y: HUB[1], size: 28, look: "hub" }];
+  const orbs: HeroOrb[] = [{ x: HERO_HUB_X, y: HERO_BASE_Y, size: 30, look: "hub" }];
   const idx = new Map<string, number>();
-  for (const s of m.sessions) { idx.set(`s:${s.key}`, orbs.length); orbs.push({ x: s.x, y: s.y, size: s.kind ? SESSION_ORB : SOCKET_ORB, look: s.kind ? "awake" : "socket" }); }
+  for (const k of m.kinds) { idx.set(`k:${k.kind}`, orbs.length); orbs.push({ x: k.x, y: k.y, size: KIND_ORB, look: "awake" }); }
   for (const p of m.people) { idx.set(`p:${p.handle.toLowerCase()}`, orbs.length); orbs.push({ x: p.x, y: p.y, size: PERSON_ORB, look: personLook(p, me) }); }
-  const at = (e: End) => (e.t === "hub" ? 0 : idx.get(e.t === "s" ? `s:${e.key}` : `p:${e.handle.toLowerCase()}`) ?? 0);
+  const at = (e: End) => (e.t === "hub" ? 0 : idx.get(e.t === "k" ? `k:${e.kind}` : `p:${e.handle.toLowerCase()}`) ?? 0);
   const segs = m.lines.map((x) => {
-    const notes = (x.link as Partial<LinkDetail>).notes ?? [];
-    return { id: x.link.id, a: at(x.a), b: at(x.b), flow: x.flow, quiet: x.quiet, notes: notes.length, last: notes.length ? notes[notes.length - 1].side : null };
+    const notes = x.links.flatMap((l) => (l as Partial<LinkDetail>).notes ?? []);
+    const lastLink = x.links[x.links.length - 1] as Partial<LinkDetail>;
+    const ln = lastLink.notes ?? [];
+    return { id: x.links[0].id, a: at(x.a), b: at(x.b), flow: x.flow, quiet: x.quiet, notes: notes.length, last: ln.length ? ln[ln.length - 1].side : null, n: x.links.length, shape: x.shape };
   });
   return { orbs, segs };
 }
@@ -589,7 +606,7 @@ export function linkAboutHtml(l: Pick<LinkView, "topic" | "self" | "requester" |
 const aboutText = (l: LinkView, me: string, persons: PersonSummary[]): string =>
   l.topic.kind === "person" ? linkAboutHtml(l, me, persons).replace(/&#39;/g, "'").replace(/&amp;/g, "&") : `about ${linkTopicLabel(l.topic.kind, l.topic.ref).replace(/`/g, "")}`;
 
-/** Where a live link stands, as the viewer would say it (a node's card and label). */
+/** Where a live link stands, as the viewer would say it (a card and a label). */
 export function heroStateWords(l: LinkView, me: string): string {
   const otherH = same(l.requester.handle, me) ? l.recipient.handle : l.requester.handle;
   if (l.state === "draft") return l.self ? "A draft: not sent yet. Sending opens it at once." : "A draft: not sent yet.";
@@ -601,56 +618,48 @@ export function heroStateWords(l: LinkView, me: string): string {
 
 export interface LinksHeroProps { boxes: LinkBoxes; me: string; persons: PersonSummary[]; busy: boolean; status: LinksListProps["status"] }
 
-/** One link in a node's card: `#n`, what it is about, who or what is at the other end. */
-function cardLine(l: LinkView, p: LinksHeroProps, other: string): string {
-  return `<div style="display:flex;align-items:baseline;gap:7px;min-width:0;margin-top:4px"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(other)}, ${linkAboutHtml(l, p.me, p.persons).replace(/^with /, "").replace(/^between your sessions$/, "your sessions")}</span></div>`;
-}
-
 export function linksHero(p: LinksHeroProps): string {
   const m = heroModel(p.boxes, p.me);
   const { orbs, segs } = heroCanvasData(m, p.me);
   const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(2)}%`;
   const at = (x: number, y: number, size: number) => `left:${pct(x, HERO_W)};top:${pct(y, HERO_H)};--s:${size}`;
   const side = (x: number) => (x > HERO_W / 2 ? " is-r" : " is-l");
-  const up = (y: number) => (y > HERO_H / 2 ? " is-up" : "");
-  const card = (x: number, y: number, inner: string) => `<div class="cnpy-lh-card${up(y)}${side(x)}" aria-hidden="true" style="border-radius:8px">${inner}</div>`;
-  // The far end of a self-link, from one of its sessions: "your web chat", "a side not joined yet".
-  const otherEnd = (s: HeroSession, l: LinkView): string => {
+  const card = (x: number, up: boolean, inner: string) => `<div class="cnpy-lh-card${up ? " is-up" : ""}${side(x)}" aria-hidden="true" style="border-radius:8px">${inner}</div>`;
+  /** What is at the other end of one of my links, seen from my session `session` of kind `kind`. */
+  const otherEnd = (kind: ClientKind, session: string, l: LinkView): string => {
     if (!l.self) return nameOf(p.persons, same(l.requester.handle, p.me) ? l.recipient.handle : l.requester.handle);
-    const mySide: LinkSideName = s.socket ? s.socket.side : l.requester.session === s.session && l.requester.kind === s.kind ? "requester" : "recipient";
+    const mySide: LinkSideName = l.requester.kind === kind && l.requester.session === session ? "requester" : "recipient";
     const o = l[mySide === "requester" ? "recipient" : "requester"];
-    return o.kind ? `your ${CLIENT_WORD[o.kind].toLowerCase()}` : "a side not joined yet";
+    return o.kind ? (o.kind === kind ? `another ${CLIENT_WORD[o.kind]} session` : `your ${CLIENT_IN_TEXT[o.kind]}`) : "a session not joined yet";
   };
+  const linkBits = (k: ClientKind, s: HeroSessionInfo) => s.links.map((l) => `link #${l.id} with ${otherEnd(k, s.session, l)}`).join("; ");
 
-  const sessionHtml = m.sessions.map((s) => {
-    if (!s.kind) {
-      const l = s.links[0], phrase = linkJoinPhrase(l.id);
-      const label = `Link #${l.id}: a side of yours that no session has joined. Tell a session: ${phrase}.`;
-      return `<div class="cnpy-lh-node is-socket" data-lh-sess="${attr(s.key)}" style="${at(s.x, s.y, SOCKET_ORB)}">
-          <a class="cnpy-lh-hit" href="#links/${l.id}" aria-label="${attr(label)}"><span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(null)}</span></a>
-          <span class="cnpy-lh-name" aria-hidden="true">Not joined</span><span class="cnpy-lh-sub" aria-hidden="true">#${l.id}</span>
-          ${card(s.x, s.y, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">Not joined yet</div><div style="font-size:12px;line-height:1.5;color:var(--fg-70);margin-top:4px">Tell a coding agent, a chat or an Ask thread: <span style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${esc(phrase)}</span></div>${cardLine(l, p, otherEnd(s, l))}`)}
-        </div>`;
-    }
-    const thread = s.kind === "ask" ? askThreadOf(s.session) : null;
-    const href = thread !== null ? `#ask/${thread}` : `#links/${s.links[0].id}`;
-    const word = CLIENT_WORD[s.kind];
-    const label = `${word}${s.branch ? ` on ${s.branch}` : ""}: ${s.links.map((l) => `link #${l.id} with ${otherEnd(s, l)}`).join("; ")}.${s.seen ? ` Checked for notes ${relTime(s.seen)}.` : ""}`;
-    return `<div class="cnpy-lh-node is-sess" data-lh-sess="${attr(s.key)}" data-kind="${s.kind}" style="${at(s.x, s.y, SESSION_ORB)}">
-        <a class="cnpy-lh-hit" href="${href}" aria-label="${attr(label)}"><span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(s.kind)}</span></a>
-        <span class="cnpy-lh-name" aria-hidden="true">${esc(word)}</span>${s.branch ? `<span class="cnpy-lh-sub" aria-hidden="true">${esc(s.branch)}</span>` : ""}
-        ${card(s.x, s.y, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">${esc(word)}${s.branch ? ` <span style="font-family:var(--code);font-weight:400;font-size:11.5px">${esc(s.branch)}</span>` : ""}</div>${s.links.map((l) => cardLine(l, p, otherEnd(s, l))).join("")}${s.seen ? `<div style="font-size:11.5px;color:var(--fg-40);margin-top:6px">Checked for notes ${esc(relTime(s.seen))}</div>` : ""}`)}
+  const stations = m.kinds.map((k) => {
+    const word = CLIENT_WORD[k.kind];
+    const n = k.sessions.length;
+    const threads = k.kind === "ask" ? k.sessions.map((s) => askThreadOf(s.session)).filter((x): x is number => x !== null) : [];
+    const href = k.kind === "ask" ? (threads.length === 1 ? `#ask/${threads[0]}` : "#ask") : `#links/${k.sessions[0].links[0].id}`;
+    const what = (s: HeroSessionInfo) => (k.kind === "code" && s.branch ? `on ${s.branch}` : k.kind === "ask" ? "a thread" : "a chat");
+    const label = n === 1
+      ? `${word}${k.sessions[0].branch ? ` on ${k.sessions[0].branch}` : ""}: ${linkBits(k.kind, k.sessions[0])}.`
+      : `${word}, ${n} sessions: ${k.sessions.map((s) => `${what(s)} (${linkBits(k.kind, s)})`).join("; ")}.`;
+    const sub = k.kind === "code" && n === 1 && k.sessions[0].branch ? `<span class="cnpy-lh-sub" aria-hidden="true">${esc(k.sessions[0].branch)}</span>` : "";
+    const rows = k.sessions.map((s) => `<div style="margin-top:6px"><div style="font-size:12px;color:var(--fg)">${k.kind === "code" && s.branch ? `<span style="font-family:var(--code);font-size:11.5px">${esc(s.branch)}</span>` : esc(k.kind === "ask" ? "An Ask thread" : "A web chat")}</div>${s.links.map((l) => `<div style="font-size:12px;color:var(--fg-55);margin-top:2px"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">#${l.id}</span> with ${esc(otherEnd(k.kind, s.session, l))}</div>`).join("")}</div>`).join("");
+    return `<div class="cnpy-lh-node is-kind" data-lh-kind="${k.kind}" data-sessions="${n}" style="${at(k.x, k.y, KIND_ORB)}">
+        <a class="cnpy-lh-hit" href="${href}" aria-label="${attr(label)}"><span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(k.kind)}</span></a>
+        <span class="cnpy-lh-name" aria-hidden="true">${esc(word)}${n > 1 ? `<span class="cnpy-lh-count"> · ${n}</span>` : ""}</span>${sub}
+        ${card(k.x, false, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">${esc(word)}${n > 1 ? ` <span style="font-weight:400;color:var(--fg-40)">${n} sessions</span>` : ""}</div>${rows}`)}
       </div>`;
   }).join("");
 
-  const personHtml = m.people.map((q) => {
+  const people = m.people.map((q) => {
     const name = nameOf(p.persons, q.handle);
     const asking = q.links.some((l) => waitsForMe(l, p.me));
     const label = `${name}: ${q.links.map((l) => `link #${l.id} ${aboutText(l, p.me, p.persons)}, ${heroStateWords(l, p.me).replace(/\.$/, "").toLowerCase()}`).join("; ")}.`;
     return `<div class="cnpy-lh-node is-person${asking ? " is-asking" : ""}" data-lh-person="${attr(q.handle)}" style="${at(q.x, q.y, PERSON_ORB)}">
         <a class="cnpy-lh-hit" href="#links/${q.links[0].id}" aria-label="${attr(label)}">${personChip(personOf(p.persons, q.handle), 22, q.handle)}</a>
         <span class="cnpy-lh-name" aria-hidden="true">${esc(name.split(" ")[0])}</span>
-        ${card(q.x, q.y, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">${esc(name)}</div>${q.links.map((l) => `<div style="margin-top:4px;font-size:12px;color:var(--fg-70)"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">#${l.id}</span> ${linkAboutHtml(l, p.me, p.persons)}. ${esc(heroStateWords(l, p.me))}</div>`).join("")}`)}
+        ${card(q.x, true, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">${esc(name)}</div>${q.links.map((l) => `<div style="margin-top:4px;font-size:12px;color:var(--fg-70)"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">#${l.id}</span> ${linkAboutHtml(l, p.me, p.persons)}. ${esc(heroStateWords(l, p.me))}</div>`).join("")}`)}
       </div>`;
   }).join("");
 
@@ -668,11 +677,11 @@ export function linksHero(p: LinksHeroProps): string {
   const empty = settled && !total
     ? `<div data-lh-empty style="text-align:center;margin-top:6px"><div style="font-size:13px;color:var(--fg-55);line-height:1.55;max-width:560px;margin:0 auto">${esc(LINKS_LEAD)}</div><button type="button" data-act="linkStartOpen" class="cnpy-accentbtn" style="${ACCENT};margin-top:14px">Link two of your sessions</button></div>`
     : "";
-  return `<section class="cnpy-lh" data-lh-count="${total}" data-lh-sessions="${m.sessions.length}" data-lh-people="${m.people.length}" aria-label="Your sessions and their links">
+  return `<section class="cnpy-lh" data-lh-count="${total}" data-lh-kinds="${m.kinds.map((k) => k.kind).join(" ")}" data-lh-people="${m.people.length}" aria-label="Your clients and their links">
       <div class="cnpy-lh-stage">
-        ${linkHeroCanvas(orbs, segs)}
-        <div class="cnpy-lh-me" aria-hidden="true">${personChip(personOf(p.persons, p.me), 26, p.me)}</div>
-        ${sessionHtml}${personHtml}
+        ${linkHeroCanvas(orbs, segs, m.base)}
+        <div class="cnpy-lh-me" aria-hidden="true" style="left:${pct(HERO_HUB_X, HERO_W)};top:${pct(HERO_BASE_Y, HERO_H)}">${personChip(personOf(p.persons, p.me), 26, p.me)}<span class="cnpy-lh-you">You</span></div>
+        ${stations}${people}
       </div>
       <div class="cnpy-lh-under">
         ${m.hidden > 0 ? `<div data-lh-more style="font-size:12px;color:var(--fg-40);text-align:center;margin-top:2px">+${m.hidden} more in the list below</div>` : ""}
