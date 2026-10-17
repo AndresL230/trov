@@ -321,6 +321,8 @@ export interface AppState {
   reviewGroupsOpen: Record<string, boolean>;
   /** The most pages each import group has held this session (its "‹d› of ‹N› reviewed"). */
   reviewGroupTotals: Record<string, number>;
+  /** Every page each Review group has held this session, in its order (main.ts noteGroupTotals). */
+  reviewGroupPages: Record<string, string[]>;
   /** The import group whose Reject all asks first (`confirmModal`). */
   reviewGroupReject: { id: string; busy: boolean } | null;
   assignOpen: string | null;
@@ -606,7 +608,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupReject: null,
+    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
     mapPicks: {},
@@ -703,6 +705,7 @@ export function reviewProps(s: AppState): ReviewProps {
     leaving,
     groupsOpen: s.reviewGroupsOpen,
     groupTotals: s.reviewGroupTotals,
+    groupPages: s.reviewGroupPages,
     spaceNames: Object.fromEntries([...liveSpaces(s), ...(s.library.data?.archived ?? [])].map((sp) => [sp.slug, sp.name])),
     people: s.persons.data,
     filter: s.reviewFilter,

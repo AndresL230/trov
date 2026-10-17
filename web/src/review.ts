@@ -106,6 +106,9 @@ export interface ReviewProps {
   groupsOpen?: Record<string, boolean>;
   /** How many pages each import group has held this session — its "‹d› of ‹N› reviewed". */
   groupTotals?: Record<string, number>;
+  /** Every page each group has held this session, in the group's order, by group key — a page's "Page i of N"
+   *  is its place there, so it does not shift when another page of the group is decided and leaves. */
+  groupPages?: Record<string, string[]>;
   /** A space's name by slug (a group's "into ‹Space›"). */
   spaceNames?: Record<string, string>;
   /** Who ran each import, by handle: the person (their avatar and short name). */
@@ -557,12 +560,15 @@ const ARROW_R = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" str
 
 /** The detail pane's bar for a page of an import: "Page 3 of 24 · handbook.zip", and the arrows to the page before
  *  and after it in the group (wrapping). */
-export function importPageBar(it: ReviewItem, g: ReviewGroup, leaving: Record<string, ReviewVerdict>, total: number): string {
+export function importPageBar(it: ReviewItem, g: ReviewGroup, leaving: Record<string, ReviewVerdict>, total: number, order?: readonly string[]): string {
   const waiting = g.items.filter((x) => !leaving[x.id] || x.id === it.id);
   const at = waiting.findIndex((x) => x.id === it.id);
   const prev = waiting[(at - 1 + waiting.length) % waiting.length];
   const next = waiting[(at + 1) % waiting.length];
-  const pos = g.items.findIndex((x) => x.id === it.id) + 1 + Math.max(0, total - g.items.length);
+  // Its place among every page the group has held (decided ones keep theirs); without that record, among those left.
+  const kept = order?.indexOf(it.id) ?? -1;
+  const pos = kept >= 0 ? kept + 1 : g.items.findIndex((x) => x.id === it.id) + 1 + Math.max(0, total - g.items.length);
+  total = kept >= 0 ? Math.max(total, order!.length) : total;
   const arrow = (to: ReviewItem | undefined, label: string, icon: string) =>
     `<button type="button" data-act="reviewSelect" data-arg="${attr(to?.id ?? it.id)}" class="cnpy-iconbtn" aria-label="${label}"${waiting.length < 2 ? " disabled" : ""} style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">${icon}</button>`;
   return `<div class="cnpy-rvg-bar-top" data-morph-key="rvb:${attr(it.id)}"><span style="font-size:12.5px;color:var(--fg-55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Page ${pos} of ${total} · ${esc(g.file)}</span><span style="display:flex;gap:6px;flex:none">${arrow(prev, "Previous page", ARROW_L)}${arrow(next, "Next page", ARROW_R)}</span></div>`;
@@ -620,12 +626,12 @@ function pagePreview(body: string): string {
  *  box for a change, then the page rendered — and the footer: "Approving makes this page live for everyone.",
  *  Reject, ✓ Approve (the queue's own verdict acts, cookie routes). The body is keyed by the page: another page
  *  REPLACES it. */
-export function reviewPagePane(it: ReviewItem, g: ReviewGroup, total: number, leaving: Record<string, ReviewVerdict>, spaceName: string, aiUi: AiChipUi = NO_AI_UI): string {
+export function reviewPagePane(it: ReviewItem, g: ReviewGroup, total: number, leaving: Record<string, ReviewVerdict>, spaceName: string, aiUi: AiChipUi = NO_AI_UI, order?: readonly string[]): string {
   const crumb = [spaceName, ...(it.path ?? [])].filter(Boolean).join(" › ");
   const kind = stateMark(pageKindWord(it, g.kind), "var(--fg-55)", "dashed", 12.5, it.isNew ? PAGE_KIND_TIP.new : PAGE_KIND_TIP.version);
   const id = attr(it.id);
   return `<div class="cnpy-rvp">
-    ${importPageBar(it, g, leaving, total)}
+    ${importPageBar(it, g, leaving, total, order)}
     <div class="cnpy-rv-body cnpy-rvp-body" data-morph-key="rvd:${id}">
       ${crumb ? `<div class="cnpy-rvp-crumb">${esc(crumb)}</div>` : ""}
       <h2 class="cnpy-rvp-h">${esc(it.title)}</h2>
@@ -680,7 +686,7 @@ export function reviewView(p: ReviewProps): string {
   const selKey = sel ? groupKeyOf(sel) : null;
   const g = selKey !== null ? groups.get(selKey) ?? null : null;
   const detail = p.loading ? reviewDetailSkeleton()
-    : sel ? (g ? reviewPagePane(sel, g, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length), leaving, p.spaceNames?.[sel.space ?? ""] ?? sel.space ?? "", p.aiUi) : reviewDetail(sel, p.diffView, p.aiUi))
+    : sel ? (g ? reviewPagePane(sel, g, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length), leaving, p.spaceNames?.[sel.space ?? ""] ?? sel.space ?? "", p.aiUi, p.groupPages?.[g.key]) : reviewDetail(sel, p.diffView, p.aiUi))
     : waiting.length > 0 ? `<div style="${DETAIL_FRAME}"><p style="font-size:13px;line-height:1.5;color:var(--fg-55);max-width:52ch;margin:0 0 18px">${esc(REVIEW_PICK)}</p>${emptyShapes(reviewDetailShapes(2))}</div>`
     : reviewQueueClear();
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —

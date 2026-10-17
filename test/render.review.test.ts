@@ -1032,6 +1032,14 @@ describe("Review — a group's page, picked, is the design's page pane", () => {
     expect(d).not.toContain("cnpy-rvp");
   });
 
+  it("a page keeps its place: \"Page i of N\" does not shift when another page of the group is decided (Batch B finding, RV7)", () => {
+    const page = (id: string) => imp({ id, title: id, slug: id, path: [] });
+    // The queue is newest first: the group reverses it, so its order is a, b, c, d. d was decided and is gone.
+    const html = reviewView(makeReviewProps({ items: [page("c"), page("b"), page("a")], selectedId: "b", groupsOpen: { 7: true }, groupTotals: { 7: 4 }, groupPages: { 7: ["a", "b", "c", "d"] }, spaceNames: { engineering: "Engineering" } }));
+    expect(html).toContain("Page 2 of 4 · handbook.zip");
+    expect(html).toContain(">1 of 4 reviewed<");
+  });
+
   it("the diff box says how many lines changed, in words", () => {
     expect(changedLinesText([{ t: "add", s: "a" }, { t: "add", s: "b" }, { t: "add", s: "c" }, { t: "del", s: "d" }])).toBe("3 lines added, 1 removed");
     expect(changedLinesText([{ t: "add", s: "a" }])).toBe("1 line added");

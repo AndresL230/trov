@@ -65,7 +65,7 @@ import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
 } from "@shared/tickets-core";
-import { decodeReviewId } from "./triage-map";
+import { decodeReviewId, reviewItemsFromReads } from "./triage-map";
 import { QUEUE_FILTER_CATS, declinedLeavers, type QueueFilterCat } from "./tickets";
 import { AI_EXIT_MS } from "./ai-ui";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
@@ -1913,16 +1913,19 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
       rerender();
     });
 }
-/** The most pages each group has held this session (a group's "‹d› of ‹N› reviewed"), by `groupKeyOf`. */
+/** The most pages each group has held this session (a group's "‹d› of ‹N› reviewed"), by `groupKeyOf`, and every
+ *  page it has held in its order (a page's "Page i of N" keeps its place while others are decided and leave). */
 function noteGroupTotals(): void {
-  const counts: Record<string, number> = {};
-  for (const p of state.proposals.data) {
-    const key = groupKeyOf({ importId: p.import_id, kind: "proposal", agent: p.author });
-    if (key !== null) counts[key] = (counts[key] ?? 0) + 1;
+  const totals = { ...state.reviewGroupTotals };
+  const pages = { ...state.reviewGroupPages };
+  for (const [key, g] of reviewGroups(reviewItemsFromReads(state.proposals.data, []))) {
+    const had = pages[key] ?? [];
+    const seen = new Set(had);
+    pages[key] = [...had, ...g.items.map((it) => it.id).filter((id) => !seen.has(id))];
+    totals[key] = Math.max(totals[key] ?? 0, g.items.length);
   }
-  const next = { ...state.reviewGroupTotals };
-  for (const [id, n] of Object.entries(counts)) next[id] = Math.max(next[id] ?? 0, n);
-  state.reviewGroupTotals = next;
+  state.reviewGroupTotals = totals;
+  state.reviewGroupPages = pages;
 }
 function loadDraftAdrsIfNeeded(): void {
   if (state.draftAdrs.status === "idle" || state.draftAdrs.status === "error") loadDraftAdrs();
