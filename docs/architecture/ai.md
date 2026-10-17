@@ -545,9 +545,10 @@ structured (`BriefAnswerSchema`, each part checked on its own: `sections`).
 - **The answer and the server's checks** (`briefFromAnswer`): `now` and `recently` are kept only when the input
   has something for them, their text is ONE sentence (`oneSentence`) ≤ `BRIEF_LINE_MAX` (160) — dropped, never cut —
   has no ISO date (the app writes "Jun 10"), has NO ref written into it
-  (`REF_IN_TEXT`) and no number the input does not have (`numbersGrounded`: a whole date only if the input has it,
-  digits only if the input has them outside a date and a feed ref, a count in words only if the input says it in
-  words or digits), and at least one cite that is a ref of the input (an invented cite is dropped). **Next is the
+  (`REF_IN_TEXT`) and no number the input does not have (`numbersGrounded`: a whole date — ISO `2026-10-17` or
+  `shortDay`'s "Oct 17" — only if the input has that date in that form, digits only if the input has them outside a
+  date and a feed ref, so the day of "failed on Oct 17" never grounds "17 times", a count in words only if the input
+  says it in words or digits), and at least one cite that is a ref of the input (an invented cite is dropped). **Next is the
   server's list**: an item the model names that was not offered is dropped, its order is ignored, and each offered
   item's "why" is the model's when it passes the same checks (≤ `BRIEF_WHY_MAX`, 80) — else the server's own
   plain sentence ("Its sprint, Hosting, was due Oct 12."), built to fit that line too. Nothing valid at all writes nothing (a failed

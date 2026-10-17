@@ -39,6 +39,15 @@ moves only the Worker: the static files `ASSETS` serves before the Worker runs a
 visitor's edge. Nothing in
 the code depends on where the Worker runs; removing the block is a plain deploy.
 
+### Compatibility flags
+
+`compatibility_flags` in `wrangler.toml`, beside `compatibility_date`.
+
+| Flag | Why | Without it |
+|---|---|---|
+| `nodejs_compat` | the Node.js APIs the bundled libraries expect (`src/` itself imports no `node:` module) | a library reaching for one fails |
+| `global_fetch_strictly_public` | a global `fetch()` leaves through Cloudflare's front door, as a request from the public Internet does, even to a host on the Worker's own zone. Trov fetches its own host when its org's Repo dashboard pings trov.dev (`pingHealth`, `repo-dashboard.md` › Health) and, with a token set, polls its app metrics there. Fetches to other zones (GitHub, Anthropic, Stripe, Resend, every other organization's URLs) behave the same either way. Locally (`wrangler dev`, the test pool) there are no zones, and loopback stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) are reached as before | a fetch to trov.dev skips the front door and goes to the zone's origin, and there is none behind the Worker: Trov's own health ping always fails and its Repo dashboard reads production as Down while the site is up |
+
 ### Bundle
 
 `minify = true` with `upload_source_maps = true` (`wrangler.toml`). Wrangler's esbuild bundle of `src/` is

@@ -256,7 +256,12 @@ environment's TWO deployables (the frontend URL, `apiUrl + healthPath`), all CON
 sequentially, four dead targets would burn 4 × the timeout; each target still times itself, so `health_ms`
 is unaffected). `redirect: "follow"` + `res.ok` means a redirect that LANDS on a 200 counts as up — a
 reachability check, not a content check. A thrown fetch is recorded as down, never an exception out of the
-cron. Written as `health_up` (0/1) / `health_ms`, bucketed to the 10-minute tick, so a double-fired tick is a
+cron. **The ping goes out the way a visitor comes in**: `wrangler.toml` sets `global_fetch_strictly_public`, so
+the Worker's `fetch()` passes through Cloudflare's front door even for a host on its own zone. Without the flag
+a fetch to the Worker's own zone skips the front door and goes to the zone's origin, and trov.dev has no origin
+behind the Worker — so the ping of Trov's own deployment always failed and its Repo dashboard read production
+as Down while trov.dev was up (`env.md` › Compatibility flags). Every other organization's URLs are on other
+zones and were never affected. Written as `health_up` (0/1) / `health_ms`, bucketed to the 10-minute tick, so a double-fired tick is a
 no-op. **A health row older than 30 minutes means the cron has stopped** — `getRepoDashboard` treats it as
 ABSENT, both for display and for the pill (a stale "down" cannot drag an environment to `DOWN`). So `health`
 has THREE states: `ok` with any fresh reading, **`empty` when readings exist but every one has aged out**

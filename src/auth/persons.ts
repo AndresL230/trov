@@ -301,6 +301,8 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["org_ai_settings", "updated_by"], ["org_tag_runs", "started_by"], ["org_tag_runs", "undone_by"],
   // Ask Trov (0066_ask): a thread's owner, and a person's Ask settings.
   ["chat_threads", "handle"], ["person_ask_settings", "handle"],
+  // Sharing by name (0077_ask_people_sharing): who a thread is shared with, and who asked each turn and its cards.
+  ["chat_thread_people", "handle"], ["chat_messages", "asked_by"], ["chat_actions", "asked_by"],
   // Repo themes (0064_repo_themes): who proposed (`trov`) and who decided a theme; who set a PR's theme by hand.
   ["repo_themes", "created_by"], ["repo_themes", "decided_by"], ["pr_themes", "set_by"],
   // Apps (0070_repo_apps): who created an app and who last changed it.

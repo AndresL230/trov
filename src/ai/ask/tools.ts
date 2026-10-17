@@ -147,6 +147,11 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
   read_attachment: read(z.object({ id: z.number().int().positive() }), "read", async (c, a) => {
     const row = await threadAttachment(c.ctx, c.threadId, a.id);
     if (!row) throw new TicketError("not_found", "There is no such attachment in this thread.");
+    // A thread shared to continue (0077): a file someone else attached stays private to them — the private artifact's
+    // own rule (readRaw) would refuse it too; this says why.
+    if (row.author_id && row.author_id.toLowerCase() !== c.handle.toLowerCase()) {
+      throw new TicketError("forbidden", "That file was attached by someone else and is private to them: you can see its name, not what is in it.");
+    }
     return { __blocks: await readAttachmentBlocks(c.ctx, c.env.ARTIFACTS_BUCKET, c.handle, row.artifact_id) };
   }),
 };

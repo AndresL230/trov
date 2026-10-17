@@ -185,6 +185,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // 0066_ask: an Ask Trov thread the person owns, and their Ask settings.
   await run(env.DB, `INSERT INTO chat_threads (org_id, handle, created_at, updated_at) VALUES (?, ?, ?, ?)`, org, handle, nowIso(), nowIso());
   await run(env.DB, `INSERT INTO person_ask_settings (org_id, handle, instructions, updated_at) VALUES (?, ?, 'short', ?)`, org, handle, nowIso());
+  // 0077_ask_people_sharing: a thread shared with the person by name, a turn they asked in it, and its card.
+  const shared = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, created_at, updated_at) VALUES (?, 'someone-else', ?, ?)`, org, nowIso(), nowIso())).meta.last_row_id);
+  await run(env.DB, `INSERT INTO chat_thread_people (org_id, thread_id, handle, access, shared_at) VALUES (?, ?, ?, 'continue', ?)`, org, shared, handle, nowIso());
+  await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, created_at, asked_by) VALUES (?, ?, 'user', 'smart', ?, ?)`, org, shared, nowIso(), handle);
+  await run(env.DB, `INSERT INTO chat_actions (org_id, thread_id, turn, tool, state, created_at, asked_by) VALUES (?, ?, 1, 'create_ticket', 'proposed', ?, ?)`, org, shared, nowIso(), handle);
   // 0064_repo_themes: a theme the person proposed (by hand, in this fixture) and decided, and a PR they themed.
   await run(env.DB, `INSERT INTO repo_themes (org_id, repo, name, color_key, status, created_by, created_at, decided_by, decided_at) VALUES (?, 'o/r', 'Rename', 'slate', 'active', ?, ?, ?, ?)`, org, handle, nowIso(), handle, nowIso());
   await run(env.DB, `INSERT INTO pr_themes (org_id, repo, pr_number, theme_id, source, set_by, set_at) VALUES (?, 'o/r', 1, NULL, 'person', ?, ?)`, org, handle, nowIso());

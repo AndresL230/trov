@@ -150,6 +150,7 @@ export function createReplayApi(index: AskReplayIndex, plan: ReplayPlan, speed: 
   return {
     getState: async () => state,
     listThreads: async () => threads,
+    listShared: async () => [],
     searchThreads: async (q) => (q.trim().toLowerCase() === index.search.q ? index.search.hits
       : threads.filter((t) => t.title.toLowerCase().includes(q.trim().toLowerCase())).map((thread) => ({ thread, snippet: null, matchCount: 1 }))),
     getThread: async (id) => {
