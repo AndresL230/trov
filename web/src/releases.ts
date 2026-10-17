@@ -103,7 +103,7 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Ask sharing (#193), handoff prompts by upload (#194) and the Docs Library (#196), merged together through
+  // Ask sharing (#193), handoff prompts by upload (#194) and the Docs Library (#197), merged together through
   // epic/10-17-staging: one deploy, one version.
   {
     version: "0.12",
@@ -130,13 +130,13 @@ export const RELEASES: Release[] = [
       added: [
         "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193).",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
-        "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, and Markdown or .zip import (#196)",
+        "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, and Markdown or .zip import (#197)",
       ],
       changed: [],
       fixed: [],
       removed: [],
     },
-    prs: [193, 194, 196],
+    prs: [193, 194, 197],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
