@@ -198,13 +198,16 @@ function agentLink(it: ReviewItem, chipSize: number): string {
   return personLink(person, it.agent, chipSize, { html: handleTag(p, it.agent) }, "", 6);
 }
 
-/** Review's empty sentence: what the queue holds and what a person does with it (the Guide ›
- *  Review). Nothing here is made by hand, and a clear queue is a normal state, so no action. */
-export const REVIEW_EMPTY = "Nothing is waiting for review. A doc change or a decision an agent stages, and the pages of a Markdown import, show here to approve or reject. Each import is one group.";
-/** The list pane with nothing in it: the sentence, then the queue's cards drawn empty. `all` =
- *  no filter is on; under the Proposals / Decisions filter the other kind may still be waiting. */
+/** Review's empty words — the design's (owner ruling, E2E RV18): a title and what the queue holds. Nothing here is
+ *  made by hand, and a clear queue is a normal state, so no action. */
+export const REVIEW_EMPTY_TITLE = "Nothing to review";
+export const REVIEW_EMPTY = "Pages that are imported or written by agents wait here until someone approves them. You'll see each import as one group.";
+/** The list pane with nothing in it: the words, then the queue's cards drawn empty. `all` =
+ *  no filter is on; under the Imports / Written by agents filter the other kind may still be waiting. */
 export function reviewListEmpty(all = true): string {
-  return emptyLayout("review-list", { text: all ? REVIEW_EMPTY : "Nothing of this kind is waiting for review.", sayStyle: "margin:4px 0 10px", shapes: all ? skList(2, reviewCardShape) : "" });
+  return all
+    ? emptyLayout("review-list", { title: REVIEW_EMPTY_TITLE, text: REVIEW_EMPTY, sayStyle: "margin:4px 0 10px", shapes: skList(2, reviewCardShape) })
+    : emptyLayout("review-list", { text: "Nothing of this kind is waiting for review.", sayStyle: "margin:4px 0 10px", shapes: "" });
 }
 
 // ── detail pane pieces ───────────────────────────────────────────────────────

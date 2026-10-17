@@ -370,7 +370,8 @@ describe("reviewView — empty states", () => {
   it("with no items the list says so and both panes draw their shape empty", () => {
     const html = reviewView(makeReviewProps({ items: [] }));
     expect(html).toContain('data-empty="review-list"');
-    expect(html).toContain("Nothing is waiting for review.");
+    // The design's words (owner ruling, E2E RV18): a title and its sentence.
+    expect(html).toContain('<p class="cnpy-empty-title">Nothing to review</p><p class="cnpy-empty-text">Pages that are imported or written by agents wait here until someone approves them. You&#39;ll see each import as one group.</p>');
     // The detail pane is a picture only: the list carries the one sentence.
     expect(html.split("cnpy-empty-text").length - 1).toBe(1);
     expect(html.split("cnpy-empty-shapes").length - 1).toBe(2);
