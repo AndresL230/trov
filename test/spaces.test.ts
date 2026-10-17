@@ -214,11 +214,11 @@ describe("the space routes (cookie only)", () => {
   it("a member cannot create, rename, reorder, archive or restore; an owner of a space edits its description and owners only", async () => {
     const owner = await cookieFor(OWNER);
     const member = await cookieFor(MEMBER);
-    expect((await call("POST", "/api/spaces", member, { name: "Mine" })).status).toBe(403);
-    expect((await call("PUT", "/api/spaces/design", member, { description: "not mine" })).status).toBe(403);
+    expect((await call<{ message: string }>("POST", "/api/spaces", member, { name: "Mine" })).json.message).toBe("only an admin can create a space");
+    expect((await call<{ message: string }>("PUT", "/api/spaces/design", member, { description: "not mine" })).json).toEqual({ error: "forbidden", message: "only an admin, or an owner of this space, can change its description and owners" });
     expect((await call("PUT", "/api/spaces/design/owners", member, { owners: [MEMBER] })).status).toBe(403);
-    expect((await call("POST", "/api/spaces/design/move", member, { after: null })).status).toBe(403);
-    expect((await call("POST", "/api/spaces/design/archive", member, {})).status).toBe(403);
+    expect((await call<{ message: string }>("POST", "/api/spaces/design/move", member, { after: null })).json.message).toBe("only an admin can reorder the spaces");
+    expect((await call<{ message: string }>("POST", "/api/spaces/design/archive", member, {})).json.message).toBe("only an admin can archive a space");
 
     // An admin makes the member an owner of Design.
     const set = await call<{ space: SpaceDTO }>("PUT", "/api/spaces/design/owners", owner, { owners: [MEMBER.toUpperCase()] });
@@ -229,7 +229,10 @@ describe("the space routes (cookie only)", () => {
     expect(edited.json.space.description).toBe("Principles and components.");
     expect((await call<{ space: SpaceDTO }>("PUT", "/api/spaces/design/owners", member, { owners: [MEMBER, OTHER] })).json.space.owners).toEqual([MEMBER, OTHER]);
     // …but not the name, icon or color, and not another space.
-    expect((await call("PUT", "/api/spaces/design", member, { name: "Mine" })).status).toBe(403);
+    // A refusal says what only an admin may do — never "an owner of this space can" to that owner (Batch B finding).
+    const rename = await call<{ error: string; message: string }>("PUT", "/api/spaces/design", member, { name: "Mine" });
+    expect(rename.status).toBe(403);
+    expect(rename.json).toEqual({ error: "forbidden", message: "only an admin can rename a space or change its icon or color" });
     expect((await call("PUT", "/api/spaces/design", member, { icon: "lock", description: "x" })).status).toBe(403);
     expect((await call("PUT", "/api/spaces/product", member, { description: "x" })).status).toBe(403);
     // Owners must be members of the org.

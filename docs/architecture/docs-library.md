@@ -49,7 +49,7 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
 | | Who | Where |
 | --- | --- | --- |
 | Read the Library, a space's home | any member | `GET /spaces`, `GET /spaces/:slug` (cookie) |
-| Create, rename, re-icon / re-color, reorder, archive, restore | an **admin** (`requireRole(ctx, "admin")`) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/move` / `archive` / `restore` |
+| Create, rename, re-icon / re-color, reorder, archive, restore | an **admin** (`adminOnly`: `hasRole(ctx, "admin")`; a refusal says what only an admin may do) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/move` / `archive` / `restore` |
 | Edit the description and the owners | an admin **or an owner of that space** | `PUT /spaces/:slug` (`description` only), `PUT /spaces/:slug/owners` |
 | Read the live spaces | an agent | MCP `list_spaces` |
 

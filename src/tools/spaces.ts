@@ -1,7 +1,7 @@
 // The Docs Library's spaces (0081_docs_library; docs/architecture/docs-library.md › Spaces).
 //
 // An org's Library is a list of SPACES (`doc_spaces`), each holding pages (`docs.space` = its slug). Callers:
-//   • an ADMIN creates, renames, re-icons, reorders, archives and restores a space — `requireRole(ctx, "admin")`
+//   • an ADMIN creates, renames, re-icons, reorders, archives and restores a space — `adminOnly` (`hasRole(ctx, "admin")`, refused in words that say what only an admin may do)
 //     in each writer here, its `org_admin_audit` row in the SAME batch, reached only from the cookie routes
 //     (src/spaces/routes.ts), never from src/mcp.ts;
 //   • an admin OR AN OWNER of the space edits its description and its owners (`requireSpaceEditor`);
@@ -15,7 +15,7 @@ import {
   type LibraryDTO, type LibraryPageDTO, type SpaceAuditAction, type SpaceColor, type SpaceDTO, type SpaceErrorCode, type SpaceHomeDTO, type SpaceIcon,
 } from "@shared/docs-core";
 import { buildTree, childrenOf } from "@shared/docs-tree-core";
-import { RoleError, hasRole, requireRole } from "../data/context";
+import { hasRole } from "../data/context";
 import { all, batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 
 /** A refused space write. `message` is fixed text: it names the rule, never more than the space's own name. */
@@ -212,11 +212,16 @@ async function existing(ctx: TenantContext, slug: unknown): Promise<SpaceRow> {
 const isUniqueViolation = (e: unknown): boolean => e instanceof Error && /UNIQUE constraint failed/i.test(e.message);
 const nameTaken = (name: string) => new SpaceError("name_taken", 409, `there's already a space called ${name}`, "name");
 
+/** An admin-only write: refused with what only an admin may do, so a space's owner is never told "an owner can". */
+function adminOnly(ctx: TenantContext, what: string): void {
+  if (!hasRole(ctx, "admin")) throw new SpaceError("forbidden", 403, `only an admin can ${what}`);
+}
+
 /** Admin, or an owner of this space — who may change its description and its owners. */
 async function requireSpaceEditor(ctx: TenantContext, slug: string): Promise<void> {
   if (hasRole(ctx, "admin")) return;
   const own = await first(ctx, `SELECT 1 AS x FROM doc_space_owners WHERE org_id = ? AND space_slug = ? AND handle = ? COLLATE NOCASE`, ctx.orgId, slug, ctx.userId);
-  if (!own) throw new RoleError();
+  if (!own) throw new SpaceError("forbidden", 403, "only an admin, or an owner of this space, can change its description and owners");
 }
 
 async function dtoOf(ctx: TenantContext, slug: string): Promise<SpaceDTO> {
@@ -228,7 +233,7 @@ async function dtoOf(ctx: TenantContext, slug: string): Promise<SpaceDTO> {
 /** Create a space (admin+). The slug comes from the name (`-2`, `-3` … when a space ever had it); the creator is
  *  its first owner; it goes last in the Library. */
 export async function createSpace(ctx: TenantContext, input: { name?: unknown; icon?: unknown; color?: unknown; description?: unknown }): Promise<SpaceDTO> {
-  requireRole(ctx, "admin");
+  adminOnly(ctx, "create a space");
   const name = cleanSpaceName(input.name);
   if (!name) throw invalid("name", NAME_RULE);
   const icon = input.icon === undefined ? NEW_SPACE_ICON : input.icon;
@@ -260,7 +265,7 @@ export async function createSpace(ctx: TenantContext, input: { name?: unknown; i
 export async function editSpace(ctx: TenantContext, slug: unknown, input: { name?: unknown; icon?: unknown; color?: unknown; description?: unknown }): Promise<SpaceDTO> {
   const row = await existing(ctx, slug);
   const adminFields = input.name !== undefined || input.icon !== undefined || input.color !== undefined;
-  if (adminFields) requireRole(ctx, "admin");
+  if (adminFields) adminOnly(ctx, "rename a space or change its icon or color");
   else await requireSpaceEditor(ctx, row.slug);
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -332,7 +337,7 @@ export async function setSpaceOwners(ctx: TenantContext, slug: unknown, owners: 
 
 /** Put a live space right after `after` (null = first) in the Library (admin+). Returns the new order. */
 export async function moveSpace(ctx: TenantContext, slug: unknown, after: unknown): Promise<SpaceDTO[]> {
-  requireRole(ctx, "admin");
+  adminOnly(ctx, "reorder the spaces");
   const row = await existing(ctx, slug);
   if (row.archived_at !== null) throw new SpaceError("archived", 409, "restore the space before moving it");
   if (after !== null && typeof after !== "string") throw invalid("after", "after is a space's slug, or null for the first place");
@@ -350,7 +355,7 @@ export async function moveSpace(ctx: TenantContext, slug: unknown, after: unknow
 /** Archive a space (admin+): it leaves the Library and the sidebar and takes no new page; its pages stay, readable
  *  and searchable, and an edit of one still stages. Soft — `restoreSpace` brings it back. */
 export async function archiveSpace(ctx: TenantContext, slug: unknown): Promise<SpaceDTO> {
-  requireRole(ctx, "admin");
+  adminOnly(ctx, "archive a space");
   const row = await existing(ctx, slug);
   if (row.archived_at === null) {
     const at = nowIso();
@@ -364,7 +369,7 @@ export async function archiveSpace(ctx: TenantContext, slug: unknown): Promise<S
 
 /** Restore an archived space (admin+). Refused when a live space has taken its name meanwhile — rename one first. */
 export async function restoreSpace(ctx: TenantContext, slug: unknown): Promise<SpaceDTO> {
-  requireRole(ctx, "admin");
+  adminOnly(ctx, "restore a space");
   const row = await existing(ctx, slug);
   if (row.archived_at !== null) {
     const rows = await spaceRows(ctx);
