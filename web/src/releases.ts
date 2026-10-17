@@ -103,6 +103,28 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Not deployed yet: opened because 0.11 is at RELEASE_CAPS' 20 patch lines. The merging PR cuts it into 0.12.
+  {
+    version: "Unreleased",
+    date: "2026-10-17",
+    unreleased: true,
+    title: "Smaller fixes",
+    headline: "Quicker ways to hand work to an agent, and cards that look as pressable as they are.",
+    highlights: [
+      "Each card in the Prompt Library has a copy button in its top left that copies the prompt's slug, ready to give to an agent.",
+      "Copying a slug leaves the card closed and a short note says what was copied.",
+      "Cards and rows that open something, such as prompts and the Feed's Waiting on review, show the pointing hand when you hover them.",
+    ],
+    patches: {
+      added: [
+        "Prompt Library: a copy button on each card copies its slug for an agent; cards that open something show the pointer on hover (#999)",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [999],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {
