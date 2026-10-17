@@ -119,6 +119,7 @@ export const AskThreadPatchSchema = z.strictObject({
   auto: z.boolean().optional(),
   mode: AskModeSchema.optional(),
   draft: z.string().max(ASK_DRAFT_MAX).optional(),
+  shared: z.boolean().optional(),
 }) satisfies z.ZodType<AskThreadPatch>;
 
 export const AskSaveBodySchema = z.strictObject({
@@ -163,6 +164,7 @@ export const AskAttachmentSchema = z.object({
 export const AskThreadSummarySchema = z.object({
   id: z.number().int(), title: z.string(), pinned: z.boolean(), mode: AskModeSchema, auto: z.boolean(), origin: z.enum(ASK_ORIGINS),
   contextRef: z.string().nullable(), hasDraft: z.boolean(), group: z.enum(ASK_THREAD_GROUPS), createdAt: z.string(), updatedAt: z.string(),
+  shared: z.boolean().optional(), owner: z.string().optional(), viewer: z.boolean().optional(),
 }) satisfies z.ZodType<AskThreadSummary>;
 
 export const AskSearchHitSchema = z.object({
