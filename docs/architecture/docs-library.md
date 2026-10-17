@@ -117,8 +117,8 @@ whose target is no doc is **broken**: it stays in the table (it starts working o
 ("Linked from") read `doc_links WHERE to_slug = the page`, keeping only sources that are live (`current_version >
 0`). **Pages promoted before this shipped** get their rows from a one-pass backfill (`src/platform/doc-links-backfill.ts`
 `backfillDocLinks`, the daily cron): a live page whose body holds `[[` and that has no row gets the rows its promote
-would have written (INSERT OR IGNORE; a page with rows is never touched), at most 300 pages per invocation, org by
-org and slug by slug, resumed from `cron_cursor` job `doc_links_backfill`; once every org has been read the cursor
+would have written (INSERT OR IGNORE; a page with rows is never touched), at most 300 pages read (and 60 queries)
+per invocation — an org with nothing to read costs no page of that budget — org by org and slug by slug, resumed from `cron_cursor` job `doc_links_backfill`; once every org has been read the cursor
 says done and it reads nothing again (every later promote writes its own rows). A computed write: no gate.
 
 ## The doc page's read

@@ -436,4 +436,16 @@ describe("the doc_links backfill", () => {
     expect(await backfillDocLinks(env as unknown as import("../src/env").Env)).toEqual({ pages: 0, links: 0, done: true });
     expect(await all(env.DB, `SELECT 1 FROM doc_links WHERE from_slug = 'p2'`)).toHaveLength(0);
   });
+
+  it("charges the pages it reads, not a full page per org: an org with nothing to read costs no budget (E2E CR1)", async () => {
+    // org_b (read first, by id) has no page. With a budget of one page-read's worth, the run still reaches
+    // SaplingLearn and finishes — before, org_b's empty read used the whole budget and the run stopped short.
+    await livePage("target", "Target");
+    await livePage("p1", "P1", { body: "See [[target]]." });
+    await env.DB.prepare(`DELETE FROM doc_links`).run();
+    await env.DB.prepare(`DELETE FROM cron_cursor WHERE job = ?`).bind(DOC_LINKS_JOB).run();
+    const out = await backfillDocLinks(env as unknown as import("../src/env").Env, 50);
+    expect(out).toEqual({ pages: 1, links: 1, done: true });
+    expect(await all(env.DB, `SELECT org_id, from_slug, to_slug FROM doc_links`)).toEqual([{ org_id: ORG_A, from_slug: "p1", to_slug: "target" }]);
+  });
 });
