@@ -417,6 +417,9 @@ export const threadsPart: AskPart = {
         ctx.ui.threadMenu = null;
         if (t) {
           ctx.cancelExit("thshare");
+          // On a phone the menu sits in the threads drawer, which layers above root dialogs: it slides out first, as
+          // it does when a thread opens (ask-phone.ts `closeDrawer`, not imported — ask-phone imports this module).
+          if (ctx.ui.phone.drawer) ctx.exit("drawer", () => { ctx.ui.phone.drawer = false; });
           ctx.ui.threadShare = { id, title: t.title, org: !!t.shared, people: (t.people ?? []).map((p) => ({ handle: p.handle, access: p.access })), busy: false, error: null };
           focusShare = true;
         }

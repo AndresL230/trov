@@ -318,6 +318,16 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     return { ctx, patched, flashes };
   }
 
+  it("on a phone, Share… from the threads drawer closes the drawer, so the dialog is not left under it (e2e C24)", () => {
+    const s = base();
+    s.ask.phone.drawer = true;
+    const t = s.ask.threads.data[0];
+    const { ctx } = shareCtx(s);
+    threadsPart.act!(ctx, "askThShare", String(t.id), null);
+    expect(s.ask.threadShare?.id).toBe(t.id);
+    expect(s.ask.phone.drawer).toBe(false);
+  });
+
   it("Share… opens the dialog — the org's switch, people with what they may do, Add a person, what stays private; Cancel writes nothing", () => {
     const s = base();
     const t = s.ask.threads.data[0];
