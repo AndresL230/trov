@@ -52,7 +52,7 @@
 import { esc, attr, surface } from "./ui";
 import { segmented } from "./segmented";
 import { stateMark } from "./marks";
-import { SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
+import { ASK_GITHUB_HELD, SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
 
 export interface ReleasePatches {
   added: string[];
@@ -144,6 +144,9 @@ export const RELEASES: Release[] = [
         "Repo › Overview from your apps and environments: what needs attention first, each environment's state, a release view (#186)",
         "An App menu and a repository menu narrow the Repo screen; Org settings › Repositories › Apps accepts the apps Trov detects (#186)",
         "GitHub deployments as a host; Render, Railway and Fly.io detected from GitHub; Repo › Usage has a card per app (#186)",
+        // Ask's GitHub tools ship HELD (ASK_GITHUB_HELD, shared/legal-core.ts): the line shows once they are released.
+        // This entry is at RELEASE_CAPS' 20 lines, so releasing them goes with the next cut (test/releases.test.ts).
+        ...(ASK_GITHUB_HELD ? [] : ["Ask Trov reads your connected repositories on GitHub when a question needs it: files, code search, pull requests, issues, commits and CI (#193)"]),
       ],
       changed: [
         "Digests lead with your brief, the weekly adds This week, and you can get them only when something needs you (#178)",
@@ -162,7 +165,7 @@ export const RELEASES: Release[] = [
         "The digest's per-PR What / Why / Impact cards, its assigned-issue rows and the Roadmap's plan diff (#178)",
       ],
     },
-    prs: [178, 186, 187, 188, 189, 190, 192],
+    prs: [178, 186, 187, 188, 189, 190, 192, 193],
   },
   // Hosting providers (#185): Org settings › Hosting and the Repo dashboard's Hosting section.
   {

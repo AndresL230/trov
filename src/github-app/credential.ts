@@ -11,8 +11,10 @@
 // This module resolves credentials, so NOTHING REACHABLE FROM src/mcp.ts MAY IMPORT IT
 // (test/secrets.mcp.test.ts): it is called from the modules that already resolved the token —
 // src/repo/cron.ts, src/github-hook.ts, src/tools/backfill.ts, src/sync/runs.ts (which only asks
-// WHERE it would come from — `githubCredentialSource`), src/integrations/logo.ts, and this folder's
-// routes and webhook — and the revealed value goes down to the readers as a parameter.
+// WHERE it would come from — `githubCredentialSource`), src/integrations/logo.ts, src/repo/ask-github.ts
+// (Ask Trov's GitHub transport, handed to the Ask route by src/routes.ts — nothing under src/ai/ask/
+// imports this), and this folder's routes and webhook — and the revealed value goes down to the readers
+// as a parameter.
 //
 // An installation that cannot give a token does not cost the org its reads: the failure is recorded on
 // the binding (and ends or suspends it when GitHub says that is what happened), and the stored token

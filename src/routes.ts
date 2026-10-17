@@ -69,7 +69,8 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
-import { askApp } from "./ai/ask/routes";
+import { askApp, provideAskGithub } from "./ai/ask/routes";
+import { askGithubTransport } from "./repo/ask-github";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
@@ -1270,6 +1271,9 @@ app.route("/api/o/:slug", scanApp); // Repositories › a repo › Apps: Scan ag
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
+// Ask's GitHub tools read through the credentialed transport, handed in here: nothing under src/ai/ask/ imports the
+// credential path (src/repo/ask-github.ts; test/secrets.mcp.test.ts). Offered only once ASK_GITHUB_HELD is released.
+provideAskGithub(askGithubTransport);
 app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of

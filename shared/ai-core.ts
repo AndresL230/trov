@@ -15,7 +15,7 @@
 // key, gets NO field at all (or a `not_connected` section where the read already uses
 // `RepoSection`) — never `state: "off"`. A present field is always one of AI_STATES.
 
-import { AI_LEGAL_DRAFT } from "./legal-core";
+import { AI_LEGAL_DRAFT, ASK_GITHUB_HELD } from "./legal-core";
 
 /** The model every kind runs on today (src/ai/client.ts `providerFor`). */
 export const AI_MODEL = "claude-haiku-5-5";
@@ -353,7 +353,10 @@ export const AI_SENDS_ALL: readonly AiSendLine[] = [
 export const AI_SENDS: readonly AiSendLine[] = AI_LEGAL_DRAFT ? [SEND_SUMMARIES, SEND_SIFT] : AI_SENDS_ALL;
 /** Never sent, whatever lands — except a file a person attaches to Ask Trov, which is sent as it is (owner ruling
  *  2026-10-15; the Privacy Policy says the same, web/src/legal.ts › Privacy 4). */
-export const AI_NEVER_SENT = "Source code (unless you attach a file to Ask), diffs, secrets, integration keys, and anything from another organization.";
+export const AI_NEVER_SENT = ASK_GITHUB_HELD
+  ? "Source code (unless you attach a file to Ask), diffs, secrets, integration keys, and anything from another organization."
+  // Drafted for the owner's approval: released with Ask's GitHub tools (ASK_GITHUB_HELD, shared/legal-core.ts).
+  : "Secrets, integration keys, and anything from another organization. Source code and diffs only to Ask: a file you attach, or what it reads from a connected repository when a question needs it.";
 
 /** The four AI allowances Org settings › AI shows, by their `LimitKey` (shared/plans.ts), in order:
  *  capture-time summaries (Anthropic), what the AI pass writes (Anthropic), Sift's checks (TypeSafe AI),

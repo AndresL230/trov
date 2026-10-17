@@ -16,6 +16,7 @@ import { skLine, skBox, skeleton } from "./skeleton";
 import type { Loadable } from "./render";
 import { ASK_INSTRUCTIONS_MAX, ASK_MODES, type AskMode, type AskSettings, type AskState } from "@shared/ai-ask-core";
 import { PLANS, type PlanId } from "@shared/plans";
+import { ASK_GITHUB_HELD } from "@shared/legal-core";
 
 export interface TrovPrefsUi {
   /** The organization these were read for; another org on screen means read again. */
@@ -41,11 +42,13 @@ export const initialTrovPrefs = (): TrovPrefsUi => ({
 // ── the design's copy ────────────────────────────────────────────────────────
 /** "Try:" — appended to what is there. */
 export const TROV_TRY = ["Lead with what is blocked, then what shipped.", "Keep answers under 150 words and link every ticket."] as const;
-export const TROV_SEES = [
+export const TROV_SEES: readonly string[] = [
   "Tickets, docs, pull requests, sprints, handoffs, the feed and artifacts you can open yourself.",
   "The Repo dashboard: CI, deploys and environment health.",
+  // Ask's GitHub tools (docs/architecture/ask.md › GitHub): shown once they are released (ASK_GITHUB_HELD).
+  ...(ASK_GITHUB_HELD ? [] : ["Your connected repositories on GitHub, read-only: files, pull requests and their changes, issues, commits and checks, when a question needs them."]),
   "Files and screenshots you attach to a thread.",
-] as const;
+];
 export const TROV_DOES_NOT = [
   "Read other people's threads or private artifacts.",
   "Write code. It reads PR summaries and files tickets and handoffs for the agents that do.",

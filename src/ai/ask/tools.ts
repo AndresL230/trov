@@ -40,6 +40,10 @@ import { resolveViews, normalRef } from "./refs";
 import { runChart, weekStarts, shortDay } from "./charts";
 import { WRITES, type WriteSpec } from "./actions";
 import { readAttachmentBlocks } from "./attachments";
+import {
+  GITHUB_DEFS, GithubCiIn, GithubCommitIn, GithubIssueIn, GithubListIn, GithubPullIn, GithubReadIn, GithubSearchIn, GithubToolError,
+  githubCi, githubCommit, githubIssue, githubList, githubPullRequest, githubRead, githubSearchCode, isGithubTool, type AskGithub,
+} from "./github";
 
 export type { AskToolCtx } from "./context";
 
@@ -65,6 +69,13 @@ export type ToolSpec = ReadSpec<any> | ShowSpec<any> | (WriteSpec<any> & { kind:
 const id = z.number();
 const read = <A>(input: z.ZodType<A>, icon: AskActivityIcon, run: (c: AskToolCtx, a: A) => Promise<unknown>, searches?: (a: A) => [SearchArea, string | null][]): ReadSpec<A> =>
   ({ kind: "read", input, icon, run, searches });
+
+/** A GitHub read: refused outright when this answer has no GitHub side (the tool is then not offered either). */
+const ghRead = <A>(input: z.ZodType<A>, icon: AskActivityIcon, fn: (gh: AskGithub, a: A) => Promise<unknown>, searches?: (a: A) => [SearchArea, string | null][]): ReadSpec<A> =>
+  read(input, icon, async (c, a) => {
+    if (!c.github) throw new GithubToolError("not_connected", "GitHub is not available in this conversation.");
+    return await fn(c.github, a);
+  }, searches);
 
 const QUERY_AREAS: Record<string, SearchArea> = { doc: "docs", decision: "decisions", feed: "feed", sprint: "sprints", artifact: "artifacts" };
 
@@ -149,6 +160,14 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
     if (!row) throw new TicketError("not_found", "There is no such attachment in this thread.");
     return { __blocks: await readAttachmentBlocks(c.ctx, c.env.ARTIFACTS_BUCKET, c.handle, row.artifact_id) };
   }),
+  // ── GitHub (./github.ts): read-only, the org's connected repositories only, offered only with `c.github` ──
+  github_read: ghRead(GithubReadIn, "read", githubRead),
+  github_search_code: ghRead(GithubSearchIn, "search", githubSearchCode, () => [["github", null]]),
+  github_pull_request: ghRead(GithubPullIn, "pr", githubPullRequest),
+  github_issue: ghRead(GithubIssueIn, "read", githubIssue),
+  github_commit: ghRead(GithubCommitIn, "pr", githubCommit),
+  github_list: ghRead(GithubListIn, "pr", githubList),
+  github_ci: ghRead(GithubCiIn, "ci", githubCi),
 };
 
 // ── show tools ──────────────────────────────────────────────────────────────
@@ -198,7 +217,7 @@ export function chainOrder(nodes: { id: string }[], edges: [string, string][]): 
 
 const SEARCH_LABEL: Record<SearchArea, string> = {
   docs: "Docs", tickets: "Tickets and comments", feed: "Feed", artifacts: "Artifacts", decisions: "Decisions", sprints: "Sprints",
-  prompts: "Prompt Library", handoffs: "Handoffs", trov_docs: "Trov's docs",
+  prompts: "Prompt Library", handoffs: "Handoffs", trov_docs: "Trov's docs", github: "Code on GitHub",
 };
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -232,6 +251,7 @@ async function searchedScopes(c: AskToolCtx): Promise<{ area: string; scope: str
       case "prompts": scope = plural(await n(`SELECT COUNT(*) AS n FROM prompts WHERE org_id = ? AND deleted_at IS NULL`, c.ctx.orgId), "prompt"); break;
       case "handoffs": scope = plural(await n(`SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ?`, c.ctx.orgId), "handoff"); break;
       case "trov_docs": scope = "Trov's own help pages"; break;
+      case "github": scope = (c.github?.repos ?? []).map((r) => r.name).join(", ") || "the connected repositories"; break;
     }
     out.push({ area: SEARCH_LABEL[area], scope });
   }
@@ -382,6 +402,8 @@ const ASK_ONLY_DEFS: { name: string; description: string; input_schema: Record<s
     description: "When nothing you found answers the question: show the not-found card. `query` is what you looked for (a few words); `tries` are two rephrased questions the person could ask instead, about things Trov keeps. The server adds what you searched, with counts.",
     input_schema: { type: "object", properties: { query: { type: "string" }, tries: { type: "array", items: { type: "string" }, maxItems: 2 } }, required: ["query"] },
   },
+  // Last, so an org without GitHub (or while held) keeps the same prefix up to here.
+  ...GITHUB_DEFS,
 ];
 
 /** Arguments the MCP connection adds (`repo`, `org`) and the ones Ask fills itself (`session`) — never offered. */
@@ -400,12 +422,13 @@ export interface OfferedTool { name: string; description: string; input_schema: 
 /**
  * The tools offered to THIS person in THIS mode, in a stable order (the cache prefix): the MCP catalog in its
  * registration order — minus the exclusions, the admin-only ones for a non-admin, and (Fast) everything outside
- * the index — then Ask's own.
+ * the index — then Ask's own. The GitHub tools (Smart and Thinking) only with `github` — this answer has a GitHub side
+ * (./github.ts: released, and the org has a connected repository).
  */
-export function offeredTools(ctx: TenantContext, mode: AskMode): OfferedTool[] {
+export function offeredTools(ctx: TenantContext, mode: AskMode, opts: { github?: boolean } = {}): OfferedTool[] {
   const admin = hasRole(ctx, "admin");
   const index = askMode(mode).tools === "index";
-  const ok = (name: string) => !index || INDEX_TOOLS.has(name);
+  const ok = (name: string) => (!index || INDEX_TOOLS.has(name)) && (!!opts.github || !isGithubTool(name));
   const mcp = MCP_TOOLS
     .filter((t) => !(t.name in ASK_EXCLUDED_TOOLS) && (admin || !t.admin) && t.name in ASK_TOOLS && ok(t.name))
     .map((t) => ({ name: t.name, description: t.description, input_schema: askInputSchema(t.inputSchema) }));
@@ -416,7 +439,16 @@ export function offeredTools(ctx: TenantContext, mode: AskMode): OfferedTool[] {
 export function activityLabel(tool: string, a: Record<string, unknown>): string {
   const q = (v: unknown) => (typeof v === "string" ? `'${v.length > 60 ? `${v.slice(0, 59)}…` : v}'` : "");
   const n = (v: unknown) => (typeof v === "number" ? `#${v}` : "");
+  // A GitHub step names the repository when the call did (else it is the primary's) — always "on GitHub".
+  const on = () => (typeof a.repo === "string" && a.repo ? ` in ${q(a.repo).slice(1, -1)} on GitHub` : " on GitHub");
   const L: Record<string, () => string> = {
+    github_read: () => (typeof a.path === "string" && a.path.replace(/\//g, "") ? `Opened ${q(a.path)}${on()}` : `Opened the repository's files${on()}`),
+    github_search_code: () => `Searched the code for ${q(a.q)}${on()}`,
+    github_pull_request: () => `Read pull request ${n(a.number)}${on()}`,
+    github_issue: () => `Read issue ${n(a.number)}${on()}`,
+    github_commit: () => `Read commit ${typeof a.sha === "string" ? `'${a.sha.slice(0, 12)}'` : ""}${on()}`,
+    github_list: () => `Listed recent ${({ pulls: "pull requests", commits: "commits", branches: "branches", releases: "releases", issues: "issues" } as Record<string, string>)[String(a.what)] ?? "items"}${on()}`,
+    github_ci: () => `Checked CI${typeof a.ref === "string" ? ` on ${q(a.ref)}` : ""}${on()}`,
     query: () => (a.q ? `Searched ${a.types && (a.types as string[]).length === 1 && (a.types as string[])[0] === "doc" ? "docs" : "Trov"} for ${q(a.q)}` : "Searched Trov"),
     get_doc: () => `Read the doc ${q(a.slug)}`,
     list_docs: () => "Listed docs",

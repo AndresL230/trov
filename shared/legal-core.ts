@@ -28,6 +28,19 @@ export const MIN_AGE = 16;
  */
 export const AI_LEGAL_DRAFT: boolean = false;
 
+/**
+ * Ask Trov's GitHub tools (docs/architecture/ask.md › GitHub) — HELD until the owner approves the text that says so.
+ * They read a connected repository's files, diffs, pull requests, issues, commits and CI on GitHub and hand them to
+ * Anthropic, which the approved Privacy Policy (web/src/legal.ts › Privacy 3 and 4), Org settings › AI › "Never sent"
+ * (`AI_NEVER_SENT`, shared/ai-core.ts) and Settings › Trov › "What Trov can see" (web/src/ask-settings.ts) say Trov
+ * never does. While this is true the tools are not offered and nothing reads GitHub for Ask; every one of those
+ * passages keeps its approved words. Release is ONE change: set it to false — the tools are offered and each passage
+ * shows the words drafted beside it, together (bump `PROVIDERS_UPDATED` in web/src/legal.ts and the date
+ * test/render.legal.test.ts pins in the same change; What's new's patch line, web/src/releases.ts, appears too — 0.11
+ * is at its line cap, so release it with the next cut).
+ */
+export const ASK_GITHUB_HELD: boolean = true;
+
 /** The legal pages, as paths (static pages of shared/site-pages.ts, readable signed out). */
 export const TERMS_PATH = "/terms";
 export const PRIVACY_PATH = "/privacy";
