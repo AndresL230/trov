@@ -576,6 +576,7 @@ export function plumbingDeleteStatements() {
     `DELETE FROM mcp_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
     `DELETE FROM artifact_upload_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
     `DELETE FROM doc_image_upload_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
+    `DELETE FROM handoff_upload_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
     `DELETE FROM doc_images WHERE org_id = ${O} AND uploaded_by = '${PRIYA}'`,
     `DELETE FROM processed_items WHERE org_id = ${O} AND session_id LIKE '${DEV}-%'`,
     `DELETE FROM notification_outbox_bodies WHERE org_id = ${O} AND idempotency_key LIKE '${DEV}:%'`,
@@ -607,6 +608,8 @@ function plumbingStatements(c) {
   const img = sha256("dashboard-grid.png");
   s.push(insert("doc_images", { org_id: O, sha256: img, content_type: "image/png", size_bytes: 61440, uploaded_by: PRIYA, created_at: c.days(12) }));
   s.push(insert("doc_image_upload_tokens", { token_hash: `${DEV}-${sha256("img-upload")}`, principal: PRIYA, sha256: img, size_bytes: 61440, content_type: "image/png", expires_at: c.days(11.9), used_at: c.days(11.95), created_at: c.days(12), org_id: O }));
+  // A handoff whose prompt was uploaded (0080): the spent token, kept until the cron's sweep.
+  s.push(insert("handoff_upload_tokens", { token_hash: `${DEV}-${sha256("handoff-upload")}`, org_id: O, principal: JOSE, recipient: "anyone", body: "Gradebook export is half done", context: { repo: REPO, branch: "", task: "Finish the gradebook export", done: [], next: [], files: [] }, prompt_title: "Finish the export", sha256: sha256("export-prompt.md"), size_bytes: 4096, session_id: null, link_base: "http://localhost:8787", expires_at: c.days(2.9), used_at: c.days(2.95), created_at: c.days(3) }));
   // The ingest ledger of two recorded sessions.
   [["feed", "7039", JOSE, 2.9], ["doc", "sapling-gradebook-export@3", JOSE, 2.8], ["feed", "7041", LUKE, 0.25], ["doc", "sapling-teacher-dashboard@4", LUKE, 0.6]].forEach(([type, ref, who, d], i) =>
     s.push(insert("processed_items", { org_id: O, session_id: `${DEV}-${who.toLowerCase()}-${Math.floor(d)}`, item_index: i, item_type: type, outcome: "staged", ref, created_at: c.days(d) })));

@@ -131,7 +131,7 @@ export const PRE_SQL = [
   `SELECT number FROM handoffs WHERE org_id = '${ORG}' AND id = ${IDS.handoff}`,
   `SELECT COALESCE(MAX(number), 0) AS m FROM handoffs WHERE org_id = '${ORG}' AND id <> ${IDS.handoff}`,
   `SELECT occurred_at FROM events WHERE org_id = '${ORG}' AND event_type = 'pr_merged' AND ref_number = 185`,
-  `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('chat_threads', 'person_brief', 'org_insights', 'digest_highlights', 'repo_state', 'repo_apps', 'org_tag_runs')`,
+  `SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('chat_threads', 'chat_thread_people', 'person_brief', 'org_insights', 'digest_highlights', 'repo_state', 'repo_apps', 'org_tag_runs')`,
   `SELECT COUNT(*) AS n FROM memberships WHERE org_id = '${ORG}' AND user_id = '${ME}'`,
 ];
 /** Stage 0's rows → the numbers the owned tickets and handoff carry (kept across runs, else the next free ones). */
@@ -156,6 +156,7 @@ export function preFrom(results) {
 export function deleteStatements(c) {
   const since = c.date(-40);
   const s = [
+    `DELETE FROM chat_thread_people WHERE org_id = '${ORG}' AND ${BLOCK("thread_id")}`,
     `DELETE FROM chat_actions WHERE org_id = '${ORG}' AND ${BLOCK("id")}`,
     `DELETE FROM chat_artifacts WHERE org_id = '${ORG}' AND ${BLOCK("id")}`,
     `DELETE FROM chat_messages WHERE org_id = '${ORG}' AND ${BLOCK("id", 95000, 95999)}`,
@@ -660,6 +661,28 @@ function threadDefs(x) {
           followups: ["What changed in the document pipeline lately?"] },
       ] });
   }
+  // 13 · A TEAMMATE'S — Mei Lin's, shared with Andres by name to continue: what he sees under Shared with you.
+  {
+    const qAt = c.days(2, 90), aAt = c.days(2, 89);
+    threads.push({ id: 9513, owner: "meilin", title: "Onboarding checklist for new contributors", mode: "fast", turn: 1,
+      messages: [
+        { role: "user", at: qAt, text: "What should a new contributor read first?", context: [] },
+        { role: "assistant", at: aAt, mode: "fast", tokens: [2_900, 140, 2_200],
+          parts: [{ md: "Start with the architecture doc, then the backend AI doc, then the open tickets in the current sprint. The README covers running it locally." }],
+          followups: ["Which tickets are good first picks?"] },
+      ] });
+  }
+  // 14 · A TEAMMATE'S — Jose's, shared with the whole org: what everyone sees under Organization.
+  {
+    const qAt = c.days(3, 200), aAt = c.days(3, 199);
+    threads.push({ id: 9514, owner: "Jose-Gael-Cruz-Lopez", title: "How the OCR step handles scanned PDFs", mode: "fast", turn: 1,
+      messages: [
+        { role: "user", at: qAt, text: "How does the OCR step handle scanned PDFs?", context: [] },
+        { role: "assistant", at: aAt, mode: "fast", tokens: [3_100, 160, 2_400],
+          parts: [{ md: "Scanned pages go through OCR page by page before the text is chunked; a page with no text layer is the only one sent to OCR." }],
+          followups: ["How long does a 50-page scan take?"] },
+      ] });
+  }
   return threads;
 }
 
@@ -732,7 +755,7 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   for (const t of threads) {
     const first = t.messages[0], last = t.messages.at(-1);
     s.push(insert("chat_threads", {
-      id: t.id, org_id: ORG, handle: ME, title: t.title, mode: t.mode, origin: t.origin ?? "page", context_ref: t.contextRef ?? null, pinned: t.pinned ?? 0,
+      id: t.id, org_id: ORG, handle: t.owner ?? ME, title: t.title, mode: t.mode, origin: t.origin ?? "page", context_ref: t.contextRef ?? null, pinned: t.pinned ?? 0,
       auto_mode: t.auto ?? 0, draft: t.draft ?? "", summary: "", summary_through: 0, turn: t.turn, stop_requested: 0, created_at: first.at, updated_at: last.at,
     }));
     let question = null;
@@ -818,6 +841,16 @@ export function aiStatements(pre, snap, viewsObj, now = new Date(), opts = {}) {
   // Settings › Trov.
   s.push(insert("person_ask_settings", { org_id: ORG, handle: ME, default_mode: "smart", updated_at: c.days(6),
     instructions: "Lead with the answer in a sentence or two, then bullets. Cite the ticket or PR for every claim. I work on the backend and hosting, so skip frontend detail unless I ask." }));
+  // Sharing (0076_ask_sharing, 0077_ask_people_sharing): the migration-runner thread shared by name — Mei Lin may
+  // continue it, Jose may read it — and the deploy thread with the whole org, so a teammate signed in (`npm run dev:as
+  // -- meilin`) finds rows under Shared with you and Organization.
+  s.push(insert("chat_thread_people", { org_id: ORG, thread_id: 9505, handle: "meilin", access: "continue", shared_at: c.days(1) }));
+  s.push(insert("chat_thread_people", { org_id: ORG, thread_id: 9505, handle: "Jose-Gael-Cruz-Lopez", access: "read", shared_at: c.days(1) }));
+  s.push(`UPDATE chat_threads SET shared_at = '${c.days(1)}' WHERE org_id = '${ORG}' AND id = 9502`);
+  // …and the other way: Mei Lin's onboarding thread shared with Andres by name (Can continue), Jose's OCR thread with
+  // the org — so the dev sign-in itself (Andres) has rows under Shared with you and Organization.
+  s.push(insert("chat_thread_people", { org_id: ORG, thread_id: 9513, handle: ME, access: "continue", shared_at: c.days(1, 30) }));
+  s.push(`UPDATE chat_threads SET shared_at = '${c.days(2)}' WHERE org_id = '${ORG}' AND id = 9514`);
   // Review › "Flagged in Ask": Andres's "out of date" on the migration answer, and teammates' earlier flags (no handle).
   [["doc:sapling-infrastructure", "out_of_date", c.days(1, 170)], ["doc:sapling-infrastructure", "out_of_date", c.days(2, 400)], ["doc:sapling-architecture", "source_wrong", c.days(3, 100)], ["decision:5", "source_wrong", c.days(6, 30)]]
     .forEach(([ref, reason, at], i) => s.push(insert("ask_flags", { id: 9501 + i, org_id: ORG, item_ref: ref, reason, created_at: at })));
@@ -1123,7 +1156,7 @@ async function main() {
 
   // Stage 0.
   const pre = preFrom(d1(PRE_SQL));
-  for (const t of ["chat_threads", "person_brief", "org_insights", "digest_highlights", "repo_state", "org_tag_runs"]) {
+  for (const t of ["chat_threads", "chat_thread_people", "person_brief", "org_insights", "digest_highlights", "repo_state", "org_tag_runs"]) {
     if (!pre.tables.has(t)) { console.error(`ai-showcase: this local D1 has no ${t} — apply the migrations first (npx wrangler d1 migrations apply DB --local).`); process.exit(1); }
   }
   if (!pre.member) { console.error(`ai-showcase: ${ME} is not a member of ${ORG} here — run \`npm run seed\` first.`); process.exit(1); }

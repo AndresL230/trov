@@ -12,7 +12,7 @@ the allowances and the switches: `ai.md`.
 | Contract (zod-free values, SPA-importable) | `shared/ai-ask-core.ts` — modes (`ASK_MODES`, the ONE table; re-exported from `shared/ai.ts`), limits, SSE events, `RefView`, blocks, cards, routes, DTOs |
 | Contract (zod) | `shared/ai-ask.ts` — `AskEventSchemas`, request bodies, DTO schemas |
 | Fixtures | `shared/ai-fixtures.ts` › Ask Trov — one transcript per design scenario, state / settings / threads / search / ref views; the same transcripts as files in `docs/superpowers/specs/ask-transcripts/` |
-| Rows | `migrations/0066_ask.sql`; every statement in `src/data/ask.ts` |
+| Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `migrations/0076_10_17_staging.sql` › `0076_ask_sharing` (`chat_threads.shared_at`) / `0077_ask_people_sharing` (`chat_thread_people`, `asked_by`); every statement in `src/data/ask.ts` |
 | Routes | `src/ai/ask/routes.ts` (`askApp`, mounted under `/api/o/:slug`, cookie only) |
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
 | Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts` |
@@ -137,7 +137,9 @@ The MCP catalog (definitions from `shared/mcp-tools.generated.ts`, less `repo` /
 `src/tools/*` functions with the cookie person's context — `src/ai/ask/**` never imports `src/mcp.ts`, and nothing
 MCP reaches imports `src/ai/`. Excluded (`ASK_EXCLUDED_TOOLS`): `switch_org`, `get_connection`, `record_session`,
 `upload_asset`, and `delete_sprint` (a delete is a person's step). Admin-only tools are offered only to an admin.
-Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
+Narrower than MCP: `send_handoff`'s prompt is inline only — MCP's upload form needs a shell to PUT the file, so
+Ask's input refuses its keys and the schema it offers shows `{ title, body }` (`ASK_NARROWED_ARGS`; same argument
+names, so the parity holds). Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
 `read_attachment`, `save_artifact`, `publish_doc`, `show_items`, `show_chart` (fixed queries: merged PRs by week,
 tickets by status, CI failures by week, theme shares — empty until themes exist —, sprint burn-down; the server's
 numbers), `show_themes` (empty until themes exist; caption "Share of merged PRs"), `show_diagram` (structured, ≤ 8
@@ -246,9 +248,11 @@ is replaced.
   `POST /ask/threads/:id/save { messageId?, block?, title, kind: markdown | html, visibility }` writes it from the
   STORED answer: Markdown with refs as links, or an HTML page rendered by the server (charts as SVG, every string
   escaped). Linked to the thread and to the tickets and sprints it cites.
-- Threads: `GET /ask/threads` (grouped pinned / today / week / earlier), `?q=` (titles and the thread's messages —
+- Threads: `GET /ask/threads` (the person's OWN, grouped pinned / today / week / earlier; each says `shared`), `GET
+  /ask/shared` (what OTHER members shared — › Sharing a conversation), `?q=` (titles and the thread's messages —
   the person's questions AND Trov's answers — through `chat_fts`; the owner kept answers searchable, Q54; `{ thread,
-  snippet { text, matches }, matchCount }`), `PATCH` (title, pinned, auto, mode, draft), `DELETE`, `/export`
+  snippet { text, matches }, matchCount }` — the person's own threads only, never a shared one), `PATCH` (title, pinned,
+  auto, mode, draft, shared), `DELETE`, `/export`
   (markdown, named by `askExportName`: the title transliterated to ASCII — é → e, ß → ss —, `ask-trov` only when
   nothing is left (Q56); the client's download name is the same function). A ⌘J thread records `origin: panel` and
   `context_ref` — the first context item the person can SEE; a hidden item never enters a thread (Q53).
@@ -276,10 +280,94 @@ is replaced.
   an unknown one; `/ask/peek` refuses a malformed ref with `400 invalid` and hides a well-formed one that names
   nothing; every `:id` route answers a non-id with its own 404 / 400.
 
+## Sharing a conversation (`0076_10_17_staging` › `0076_ask_sharing`, `0077_ask_people_sharing`)
+
+The owner's requests (2026-10-17): "making it so chats can be shared across the same org to other people", then a
+section titled Organization, a "Shared with you", and per-person capabilities. A thread is still its owner's; sharing
+lets other people of the SAME org reach it, two ways at once or either:
+
+- **With the org** (`chat_threads.shared_at`; 0076): every LIVE member READS it. `shared_at` is when it was first
+  shared (sharing again keeps it); NULL is not shared with the org.
+- **With people by name** (`chat_thread_people`; 0077): members the owner names, each `read` or `continue` (the
+  owner picks per person). `continue` is only ever given by name; the org's share is always read-only. A person named
+  AND in a thread shared with the org reaches it by name (their access, `direct: true`).
+
+- **Who shares**: the owner only, through `PATCH /ask/threads/:id { shared?, people? }` — the cookie route every other
+  thread setting uses; never an MCP tool and never Ask's own tool (CLAUDE.md invariants 2 and 8). `people` is the
+  WHOLE list, replacing the one before (`setThreadPeople`, one batch; a person kept keeps when they were first added).
+  It is checked whole before anything is written (`sharePeople`): each handle a member of this org (stored in the
+  member's own spelling), never the owner, none twice, at most `ASK_SHARE_PEOPLE_MAX` (50) — else `400 invalid` and
+  nothing changes, the rest of that PATCH included. A pending holder (0068) is never shared: no route opens it.
+- **Who reaches what** (`threadFor`, src/data/ask.ts — the one read; every statement binds `ctx.orgId`): the owner's
+  own thread (`access: "owner"`); else a thread shared with the person by name (their access) or with the org
+  (`read`), while the OWNER is still a member of the org (a removed member could no longer stop sharing, so their
+  shared threads stop showing to everyone; their rows stay, as everything a removed member wrote does). A named person
+  who is no longer a member can't reach the org at all (the tenant gate); their row stays until the owner takes them
+  off. Private, unknown, another org's, a pending holder or a removed owner's is the ONE `404 { error: "not_found" }`
+  — its existence never shows. `GET /ask/shared` lists OTHER people's threads the person reaches, newest share first,
+  each with `viewer`, `owner`, `access` and `direct` (true → the screen's "Shared with you", false → "Organization");
+  the person's own threads are in their own list, with `shared` and `people`. Thread search (`?q=`) stays the person's
+  own.
+- **Every turn is its asker's** (`chat_messages.asked_by` on the question AND its answer, `chat_actions.asked_by` on
+  its cards; NULL on rows from before 0077 = the owner). A `continue` person asks follow-ups (`POST /ask` with the
+  `threadId`) AS THEMSELVES: their allowance, their Settings › Trov instructions, their rights for every tool and card
+  (a card runs as the person who confirms it — only its asker can). Their turn leaves the thread's mode, Auto and
+  draft as the owner set them (`startTurn(…, settings: false)`; the composer keeps theirs locally). The model is told
+  whose an earlier question was ("(Asked by @owner, not the person asking now.)", `buildHistory`'s `asker`). Edit and
+  Regenerate (`replaceFrom`), Save form / Save of one answer, Wrong?, and Confirm / Cancel / Undo act only on the
+  person's OWN turns — the owner's included (`403 forbidden` for a replace, the one 404 for the rest). Stop is anyone's
+  who may continue. Renaming, pinning, sharing, exporting, saving the WHOLE thread and deleting stay the owner's. A
+  `read` person (named or through the org) gets the same 404 for every write (`test/ask.sharing.test.ts`,
+  `test/ask.people-sharing.test.ts`).
+- **What a reader gets** (`asViewer`, routes.ts) — for ANY reader, the owner included, on every turn someone ELSE
+  asked: what was asked and what Trov wrote are shared AS WRITTEN (including anything Trov quoted from an attachment,
+  which the Share dialog says); everything the stored answer resolved FOR ITS ASKER is resolved again for the reader,
+  in one batch: sources, item cards, diagram nodes (a hidden one keeps its label and loses its link), context chips,
+  steps' results, cards' items and done lines, a saved page — what the reader can't see is dropped, never its title,
+  status or address. Those turns' cards come with `editable: []` and `undo: false`. A viewer's summary has none of
+  the owner's own settings (no draft, not pinned, no Auto) nor who else it is shared with.
+- **Files stay their uploader's**: an attachment is its uploader's PRIVATE artifact (› Attachments; legal #4),
+  readable only by its author. Everyone else — the owner too, for a collaborator's file — sees its name, kind and size,
+  never its slug, hash or preview, and cannot open it (`/ask/item/artifact:<slug>` and the raw route keep the
+  artifact's own rule); the model on someone else's turn can't read it either (`read_attachment` refuses with why).
+  A `continue` person may upload into the thread (their own artifact) and send only THEIR unsent files
+  (`pendingAttachments` takes the uploader); they remove their own unsent chip, never another's. To show a file to
+  the org its uploader publishes it (the inspector's Publish to org), as before.
+- **Deleting**: the owner's Delete deletes the thread for everyone (`deleteAskThread`: the same rows, its shares by
+  name too), and its confirmation says so when the thread is shared; a collaborator's file in it is THEIR artifact and
+  stays theirs, private, in their Artifacts (`planThreadAttachments` keeps what someone else authored). An account's
+  deletion takes the person's threads (shared or not) with every share of them, every share naming the person, and
+  their private Ask files wherever they were attached; their turns in someone else's thread stay, under the
+  `deleted-…` tombstone, so that conversation stays whole. An org's takes every thread (`ORG_TABLES`).
+- **On the screen** (`web/src/ask-threads.ts`, `ask-state.ts`, `ask-conversation.ts`, `ask-composer.ts`): the owner's
+  ⋯ menu has **Share…** (`askThShare` → `threadShareModal`, a root `role="dialog"` overlay of its own — not
+  `confirmModal`, whose Enter would turn a pick in its dropdowns into Save). A `segmented()` "Share with org" / "Share
+  with a teammate" picks which half it shows (`ShareDraft.tab`; it always opens on the org's, and both halves are kept
+  while it is open). The org's: "Everyone in <org>", a `segmented()` "No access" / "Can read". A teammate's — the
+  dialog widens — each person (people.ts) with a `dropdown()` Can read / Can continue / Remove, and "Add a person", a
+  `dropdown()` of the org's members other than the owner. Then the privacy line; Cancel / Save — Save is
+  ONE `PATCH { shared, people }`, then the row takes the server's summary. Tab stays inside it; Escape closes an open
+  dropdown first, then the dialog. **Stop sharing** (when shared at all) is `PATCH { shared: false, people: [] }` at
+  once, with a flash. A shared row of the owner's carries `sharedMark` (marks.ts, a two-people glyph named "Shared";
+  its tooltip who it is shared with: "Shared with SaplingLearn.", "Shared with Mei Lin and 2 others." …), and so does
+  the header. Under the person's own groups, **Shared with you** (`direct` rows), then **Organization** (the rest),
+  read on arriving at Ask and again when one of its rows no longer opens (`reloadShared`): each row the title, time,
+  the owner's picture and name, and "· Can continue" when it can; one button that opens `#ask/<id>`, no ⋯ menu.
+  `canContinueConvo` / `readOnly` (ask-state.ts) say what the person may do with the thread; `ownTurn` what they may
+  do with a turn (`askedBy`, missing = the owner). Read access: the composer's place is the owner — a clickable
+  person — "shared this conversation with you / <org>. You can read it, not continue it." Continue access: the full
+  composer, a note above it ("<owner> shared this with you. You can continue it: your questions are asked as you."),
+  its mode, Auto and draft local (never PATCHed). On someone else's turn — for every reader, the owner included — no
+  Edit, Regenerate, Try again, Save as artifact or Wrong?; a pending card is a line ("Waiting for <asker> to confirm
+  it."), a done one has no Undo; their file is a chip that is not a control ("· Private", its tooltip whose). Once a
+  thread has more than one asker, each question says who asked it ("You", or a clickable person). Sending in someone
+  else's thread reloads the shared lists, never the person's own. Delete's confirmation names who loses it ("It is
+  shared with <org>, so it goes for everyone there too." / "… with Mei Lin, so it goes for them too."). Tests: `test/render.ask-sharing.test.ts`.
+
 ## Deletion and renames
 
-Every Ask table is in `ORG_TABLES` and the reset seed; `chat_threads.handle` and `person_ask_settings.handle` are in
-`HANDLE_COLUMNS` (no new table or handle column came with the deletion rules below).
+Every Ask table is in `ORG_TABLES` and the reset seed; `chat_threads.handle`, `person_ask_settings.handle`, and
+(0077) `chat_thread_people.handle`, `chat_messages.asked_by` and `chat_actions.asked_by` are in `HANDLE_COLUMNS`.
 
 **Deleting a thread or an account** (the owner's ruling, 2026-10-15 — legal #4). An attachment is a private artifact
 the upload created (`chat_artifacts.role = 'attachment'`); a SAVED answer (`role = 'saved'`) is something the person
@@ -356,7 +444,8 @@ Stop, regenerate, tenant isolation, the fence), `test/ask.actions.test.ts` (Conf
 lane, Auto and its cap, Confirm-only writes, Publish, Undo and "changed since", groups, saving),
 `test/ask.attachments.test.ts` (with the over-the-limit notice and `imageSize`), `test/ask.deletion.test.ts`,
 `test/ask.declined.test.ts`, `test/ask.views.test.ts` (peek, the inspector, "Wrong?" and Review's flags, threads,
-/search, ⌘J, state, settings, account deletion), `test/ask.parity.test.ts`, `test/ask.contract.test.ts` (every
+/search, ⌘J, state, settings, account deletion), `test/ask.sharing.test.ts` (sharing, stopping, the reader's 404s,
+another org / a non-member / a removed owner, what a reader's copy leaves out, deleting), `test/ask.parity.test.ts`, `test/ask.contract.test.ts` (every
 fixture against the schemas, the transcript files, the replay's guard), `test/secrets.mcp.test.ts` (the boundary).
 The Anthropic stream is stubbed at the `Response` level (`test/helpers/ask.ts`) — never the network.
 

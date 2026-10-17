@@ -244,7 +244,9 @@ when the limit turns over [`abuse-limits.md`].
 
 The last owner can neither leave nor be demoted. Removing a member ends their agents' reach into that
 organization at once — their tokens for it are revoked, and every connected app of theirs stops being able to
-act there (one that could act nowhere else is revoked) — and what they wrote stays. An agent acts as the
+act there (one that could act nowhere else is revoked) — and what they wrote stays. An Ask conversation they
+shared with the organization stops being readable there (they could no longer stop sharing it; `ask.md` › Sharing
+a conversation). An agent acts as the
 person whose connection it holds, in ONE of that person's organizations per call (`data-layer.md` § Bearer:
 the connection's current organization, or the one that has the repository it is working in connected), and
 may only write to tickets assigned to that person

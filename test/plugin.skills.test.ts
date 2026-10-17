@@ -29,6 +29,13 @@ describe("the Trov plugin's skills and the organization a call acts in", () => {
     }
   });
 
+  it("handoff uploads a long prompt when it has a shell, sends it inline without one, and reports #N only after the PUT", () => {
+    const h = SKILLS.handoff;
+    for (const said of ["prompt: { title, sha256, size_bytes }", "prompt: { title, body }", "about 2 KB", "no shell", "curl -sS -X PUT --data-binary @"]) expect(h, said).toContain(said);
+    expect(h).toMatch(/only once the PUT\s+has answered/);
+    for (const tool of ["Bash(shasum -a 256:*)", "Bash(wc -c:*)", "Bash(curl -sS -X PUT:*)"]) expect(allowed(h)).toContain(tool);
+  });
+
   it("load-context opens by asking where it is and saying so; nothing tells a person to add the server twice", () => {
     const lc = SKILLS["load-context"];
     expect(lc.indexOf("mcp__trov__get_connection` with it")).toBeGreaterThan(0);

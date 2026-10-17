@@ -80,7 +80,8 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   only, nothing stored — a Worker cannot resolve DNS first, so rebinding is out of its reach).
 - **Two token-authenticated routes sit in `src/index.ts` BEFORE the session-gated app** (like `/u/`): the upload
   `PUT /api/artifacts/upload/:token` (`src/artifacts/upload.ts`: single use, 5 minutes, bound to principal /
-  page / kind / size / sha256; stored only as a hash; a length or hash mismatch leaves it retryable) and the
+  page / kind / size / sha256; stored only as a hash; a length or hash mismatch leaves it retryable — the same
+  route takes doc-image tokens and a handoff's uploaded prompt, `handoffs-prompts.md`) and the
   agent download `GET /api/artifacts/download/:token` (`src/artifacts/download.ts`: stateless HMAC over
   {handle, page, version, exp} keyed from COOKIE_SECRET with its own purpose label, 5 minutes, reusable, the
   page's visibility RE-CHECKED at download, exact stored bytes as an attachment with `sandbox` CSP).

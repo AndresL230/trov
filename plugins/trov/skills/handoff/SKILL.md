@@ -2,7 +2,7 @@
 name: handoff
 description: Use when a person explicitly asks to leave a handoff for the next session or another teammate (triggers — "leave a handoff", "hand this off", "I'm switching to someone else", "we're running out of context, write it up for the next session"). Explicit invocation only — must never auto-fire at a natural stopping point.
 disable-model-invocation: true
-allowed-tools: Bash(git remote get-url:*), Bash(git branch:*), Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(uuidgen:*), mcp__trov__send_handoff, mcp__trov__list_handoffs, mcp__trov__get_connection
+allowed-tools: Bash(git remote get-url:*), Bash(git branch:*), Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(uuidgen:*), Bash(mktemp:*), Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -sS -X PUT:*), Write, mcp__trov__send_handoff, mcp__trov__list_handoffs, mcp__trov__get_connection
 ---
 
 # Handoff → Trov
@@ -73,9 +73,9 @@ The **body** is a markdown summary, **under 300 words**. Its **first line is the
 shows, so make it say where things stand ("Parser is fixed; prompt and eval aren't."). Then a few
 sentences of what the next session must know: the current state, the trap to avoid, where to start.
 
-Long, step-by-step instructions — the kind you would paste into a fresh session — go in
-**`prompt.body`** (with a short `prompt.title`), not the body. The prompt belongs to this handoff only;
-it is not added to the Prompt Library.
+Long, step-by-step instructions — the kind you would paste into a fresh session — go in the
+**prompt** (with a short `prompt.title`), not the body. The prompt belongs to this handoff only; it is
+not added to the Prompt Library. How the prompt travels depends on its size (step 3).
 
 ### 3. Send exactly one
 
@@ -85,17 +85,36 @@ Call `mcp__trov__send_handoff` with `{ body, recipient, context, prompt?, sessio
 - `session` — one id for this session (`uuidgen` once, reuse it). A retried call with the same session
   does not create a second handoff.
 
-It returns `{ id, url }`.
+**The prompt — inline or uploaded.** Typing a long prompt into the tool call is slow: every character
+is output you have to write out. So:
+
+- **Short prompt (about 2 KB or less), or no shell** (a chat on the web): send it inline,
+  `prompt: { title, body }`. The call returns `{ id, url }`.
+- **Longer prompt, with a shell:** upload it instead of typing it into the call.
+  1. Write the prompt to a temp file (`mktemp`, then the Write tool) — UTF-8 text, at most 32 KB.
+  2. `shasum -a 256 <file>` (or `sha256sum <file>`) for the hex digest, `wc -c < <file>` for the size.
+  3. Call `send_handoff` with `prompt: { title, sha256, size_bytes }` (no `body` in the prompt). It
+     returns `{ upload_url, expires_at }` — **nothing is sent yet**.
+  4. `curl -sS -X PUT --data-binary @<file> -H 'Content-Type: text/markdown' "<upload_url>"` within 5
+     minutes. THAT creates the handoff and answers `{ id, url }`.
+  - A `400` means the bytes did not match what you declared (an edited file, a wrong digest): fix it and
+    PUT again — the link stays usable until it expires. A `410` means it was used or has expired: call
+    `send_handoff` again with the same `session`.
+  - If the call answers `{ id, url, replayed: true }` instead, this session already sent its handoff:
+    there is nothing to PUT.
 
 ### 4. Report it
 
-Tell the person **`Left handoff #N for <recipient>`** with the url. Refer to it as `#N` from then on.
+Tell the person **`Left handoff #N for <recipient>`** with the url — for an upload, only once the PUT
+has answered with the `id`. Refer to it as `#N` from then on.
 
 ## Hard rules
 
 - **Explicit only.** Never leave a handoff on your own at a natural stopping point.
 - **One per session.** Report the existing `#N` instead of sending a second.
 - **Observed, not recalled.** `repo`, `branch` and `files` come from git output, copied verbatim.
-- **Body under 300 words; long instructions in `prompt.body`.**
+- **Body under 300 words; long instructions in the prompt** — uploaded when it is over about 2 KB and you
+  have a shell.
+- **No `#N` before the PUT.** An upload-form call has sent nothing until its PUT answers.
 - You never claim or expire your own handoff to "clean up" — those belong to the receiving session and
   the person.
