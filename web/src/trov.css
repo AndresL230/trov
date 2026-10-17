@@ -4352,6 +4352,21 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 /* The templates and the preview. */
 /* New page's two steps (newdoc.ts): 1 · the template cards, the whole column, each listing its sections; 2 · the
    picked template, Goes in and the fields, one column, Create page at the foot. */
+/* New page's step count (newdoc.ts `stepCount`): "Step 1 of 2 · Template" and two bars, the same on both steps. */
+.cnpy-nd-count { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.cnpy-nd-countl { margin:0; font-size:12px; font-weight:500; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.cnpy-nd-bars { display:flex; gap:6px; flex:none; }
+.cnpy-nd-bar { display:block; width:56px; height:4px; padding:0; border:0; background:var(--border-strong); transition:background .25s ease; }
+.cnpy-nd-bar.is-on, .cnpy-nd-bar.is-done { background:var(--accent); }
+button.cnpy-nd-bar { cursor:pointer; }
+button.cnpy-nd-bar:hover { filter:brightness(1.1); }
+button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
+/* The step's block slides in from the side the person moved toward; the frame and the count stay still. */
+.cnpy-nd-stage[data-dir="fwd"] > .cnpy-nd-step { animation:cnpy-nd-fwd .28s cubic-bezier(.2,.7,.2,1) both; }
+.cnpy-nd-stage[data-dir="back"] > .cnpy-nd-step { animation:cnpy-nd-back .28s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes cnpy-nd-fwd { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:none; } }
+@keyframes cnpy-nd-back { from { opacity:0; transform:translateX(-24px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-nd-stage > .cnpy-nd-step { animation:none !important; } .cnpy-nd-bar { transition:none; } }
 .cnpy-nd-tpls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:20px; }
 .cnpy-nd-tplsec { margin-top:auto; padding-top:10px; font-size:11.5px; line-height:1.45; color:var(--fg-40); }
 .cnpy-nd-chosen { display:flex; align-items:center; gap:12px; margin-top:18px; padding:12px 14px; border:1px solid var(--border); background:var(--surface); }
@@ -4867,6 +4882,7 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 /* The docs pane and the doc page (docs-pane.ts, doc-page.ts). */
 [data-cnpy-theme] .cnpy-dp-label,
 [data-cnpy-theme] .cnpy-lib-more,
+[data-cnpy-theme] .cnpy-nd-bar,
 [data-cnpy-theme] .cnpy-libc-row,
 [data-cnpy-theme] .cnpy-dp-row,
 [data-cnpy-theme] .cnpy-dp-row::before,

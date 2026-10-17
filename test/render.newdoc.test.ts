@@ -12,6 +12,7 @@ import { initialDropdownUi } from "../web/src/dropdown";
 import { DOC_TEMPLATES, templateBody } from "@shared/docs-templates-core";
 import type { LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 import type { AppState } from "../web/src/render";
+import css from "../web/src/trov.css?raw";
 
 const space = (slug: string, name: string): SpaceDTO => ({
   slug, name, icon: "braces", color: "#525cc3", description: "", sort_rank: 1024, created_at: "2026-10-01T00:00:00Z", created_by: "system",
@@ -197,5 +198,27 @@ describe("a refused Create page, in words (newDocErrorText)", () => {
   it("a title whose name a live page has, and one an ARCHIVED page holds — which the Library no longer shows (e2e AR15)", () => {
     expect(newDocErrorText(new ApiError(409, "a doc named guide already exists"))).toBe("A page with that title already exists. Pick another title.");
     expect(newDocErrorText(new ApiError(409, "an archived page is named guide"))).toBe("An archived page has that name. Pick another title, or restore that page from its space's Archived pages.");
+  });
+});
+
+describe("New page keeps one frame across its two steps", () => {
+  const frame = (html: string) => /<div class="cnpy-nd" data-screen-label="New page" data-step="\d" style="([^"]*)">/.exec(html)?.[1];
+  it("the same width on both steps, the step count at the top of each, and only the step's block swapped", () => {
+    const one = newDocView(props({ step: "template" }));
+    const two = newDocView(props({ step: "details" }));
+    expect(frame(one)).toBeTruthy();
+    expect(frame(one)).toBe(frame(two));
+    expect(one.indexOf('class="cnpy-nd-count"')).toBeLessThan(one.indexOf('data-morph-key="nd-step:template"'));
+    expect(one).toContain('<span style="color:var(--fg)">Step 1 of 2</span> · Template');
+    expect(two).toContain('<span style="color:var(--fg)">Step 2 of 2</span> · Details');
+    // On step 2 the first bar is a way back to the template.
+    expect(two).toContain('data-act="ndStep" data-arg="template" class="cnpy-nd-bar is-done" aria-label="Step 1: Template — go back"');
+    expect(one).not.toContain('class="cnpy-nd-bar is-done"');
+  });
+  it("the step slides in from the side the person moved toward; nothing moves on first paint; reduced motion stops it", () => {
+    expect(newDocView(props({ step: "template" }))).toContain('<div class="cnpy-nd-stage">');
+    expect(newDocView(props({ step: "details", dir: "fwd" }))).toContain('<div class="cnpy-nd-stage" data-dir="fwd">');
+    expect(newDocView(props({ step: "template", dir: "back" }))).toContain('<div class="cnpy-nd-stage" data-dir="back">');
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-nd-stage > \.cnpy-nd-step \{ animation:none !important; \}/);
   });
 });

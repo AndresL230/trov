@@ -30,6 +30,8 @@ export type NewDocStep = "template" | "details";
 
 export interface NewDocDraft {
   step: NewDocStep;
+  /** Which way the last step change went (the step slides in from that side); absent = no move yet. */
+  dir?: "fwd" | "back";
   template: DocTemplateId;
   title: string;
   body: string;
@@ -189,10 +191,10 @@ function templateCard(t: DocTemplate, on: boolean): string {
 
 // ── the screen ───────────────────────────────────────────────────────────────
 
-const FRAME = "max-width:920px;margin:0 auto;padding:28px 36px 90px";
+/** ONE frame for both steps, so the page keeps its width when the step changes. */
+const FRAME = "max-width:880px;margin:0 auto;padding:28px 36px 90px";
 const FIELD = "display:block;width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--fg);outline:none";
 const LABEL = "display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin:18px 0 6px";
-const STEP = "font-size:11.5px;font-weight:500;color:var(--fg-40);margin:0 0 4px;font-variant-numeric:tabular-nums";
 
 const fromBanner = (d: NewDocDraft): string =>
   d.from !== null
@@ -203,11 +205,23 @@ const fromBanner = (d: NewDocDraft): string =>
     </div>`
     : "";
 
+/** The step count at the top of both steps: "Step 1 of 2 · Template", and two bars that fill as the person moves
+ *  on. Template is a way back from step 2. Stays in place across the steps (only the step's block is swapped). */
+function stepCount(n: 1 | 2, busy: boolean): string {
+  const name = n === 1 ? "Template" : "Details";
+  const back = n === 2
+    ? `<button type="button" data-act="ndStep" data-arg="template" class="cnpy-nd-bar is-done" aria-label="Step 1: Template — go back"${busy ? " disabled" : ""}></button>`
+    : `<span class="cnpy-nd-bar is-on" aria-hidden="true"></span>`;
+  return `<div class="cnpy-nd-count">
+    <p class="cnpy-nd-countl" aria-live="polite"><span style="color:var(--fg)">Step ${n} of 2</span> · ${name}</p>
+    <div class="cnpy-nd-bars">${back}<span class="cnpy-nd-bar${n === 2 ? " is-on" : ""}" aria-hidden="true"></span></div>
+  </div>`;
+}
+
 /** Step 1: the template cards, the whole page. */
 function templateStep(t: DocTemplate): string {
   const cards = DOC_TEMPLATES.map((x) => templateCard(x, x.id === t.id)).join("");
-  return `<div class="cnpy-nd cnpy-nd-s1" data-screen-label="New page" data-morph-key="nd-step:template" style="${FRAME}">
-  <p style="${STEP}">Step 1 of 2</p>
+  return `<div class="cnpy-nd-step cnpy-nd-s1" data-morph-key="nd-step:template">
   <h1 id="nd-tpl-l" style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">Pick a template</h1>
   <p style="font-size:13px;line-height:1.5;color:var(--fg-55);margin:6px 0 0">It starts the page with its sections. You write the page next.</p>
   <div class="cnpy-nd-tpls" role="radiogroup" aria-labelledby="nd-tpl-l">${cards}</div>
@@ -219,8 +233,7 @@ function detailsStep(p: NewDocProps, t: DocTemplate): string {
   const d = p.draft;
   const sections = p.sections.includes(d.section) || !d.section ? p.sections : [...p.sections, d.section];
   const err = d.error ? `<p role="alert" class="cnpy-nd-err">${esc(d.error)}</p>` : "";
-  return `<div class="cnpy-nd cnpy-nd-s2" data-screen-label="New page" data-morph-key="nd-step:details" style="${FRAME};max-width:760px">
-  <p style="${STEP}">Step 2 of 2</p>
+  return `<div class="cnpy-nd-step cnpy-nd-s2" data-morph-key="nd-step:details">
   <h1 style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">New page</h1>
   ${fromBanner(d)}
   <div class="cnpy-nd-chosen" style="border-radius:10px">
@@ -250,5 +263,11 @@ export function newDocView(p: NewDocProps): string {
     </div>`;
   }
   const t = docTemplate(p.draft.template) ?? (docTemplate(DEFAULT_DOC_TEMPLATE) as DocTemplate);
-  return p.draft.step === "details" ? detailsStep(p, t) : templateStep(t);
+  const two = p.draft.step === "details";
+  // The frame and the step count stay; only the step's own block is swapped, and it slides in from the side the
+  // person moved toward (trov.css `.cnpy-nd-step[data-dir]`; off under reduced motion).
+  return `<div class="cnpy-nd" data-screen-label="New page" data-step="${two ? 2 : 1}" style="${FRAME}">
+  ${stepCount(two ? 2 : 1, p.draft.busy)}
+  <div class="cnpy-nd-stage"${p.draft.dir ? ` data-dir="${p.draft.dir}"` : ""}>${two ? detailsStep(p, t) : templateStep(t)}</div>
+</div>`;
 }

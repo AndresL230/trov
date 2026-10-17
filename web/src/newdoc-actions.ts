@@ -101,7 +101,7 @@ export function createNewDocController(host: NewDocHost): NewDocController {
           d.template = arg;
           d.section = t.section;
         }
-        d.step = "details";
+        d.step = "details"; d.dir = "fwd";
         host.rerender();
         focus("#nd-title");
         return true;
@@ -109,6 +109,7 @@ export function createNewDocController(host: NewDocHost): NewDocController {
       case "ndStep": {
         // "Change template" goes back to step 1 (what was typed is kept), its picked card focused.
         if (d.busy || (arg !== "template" && arg !== "details")) return true;
+        d.dir = arg === "template" ? "back" : "fwd";
         d.step = arg; d.where = false;
         host.rerender();
         focus(arg === "template" ? `[data-tpl="${d.template}"]` : "#nd-title");
