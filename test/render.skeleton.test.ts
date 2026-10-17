@@ -264,11 +264,11 @@ describe("Review, Unplaced, Search — loading", () => {
     expect(html).toContain("Agent-produced changes waiting for a verdict.");
     expect(html).not.toContain("<h1");
     expect(html).toContain('data-seg="review-filter"');
-    expect(html).not.toContain("Nothing is waiting for review.");
+    expect(html).not.toContain("Nothing to review");
     expect(html).not.toContain("data-empty=");
     const clear = body(render(app("review", { proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } })));
     expect(keys(clear)).toEqual([]);
-    expect(clear).toContain("Nothing is waiting for review.");
+    expect(clear).toContain("Nothing to review");
   });
   it("Unplaced keeps its intro; the card is a skeleton until the queue is known", () => {
     const html = body(render(app("maintenance", { needsTriage: { status: "loading", data: [] } })));

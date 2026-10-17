@@ -49,7 +49,7 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
 | | Who | Where |
 | --- | --- | --- |
 | Read the Library, a space's home | any member | `GET /spaces`, `GET /spaces/:slug` (cookie) |
-| Create, rename, re-icon / re-color, reorder, archive, restore | an **admin** (`requireRole(ctx, "admin")`) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/move` / `archive` / `restore` |
+| Create, rename, re-icon / re-color, reorder, archive, restore | an **admin** (`adminOnly`: `hasRole(ctx, "admin")`; a refusal says what only an admin may do) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/move` / `archive` / `restore` |
 | Edit the description and the owners | an admin **or an owner of that space** | `PUT /spaces/:slug` (`description` only), `PUT /spaces/:slug/owners` |
 | Read the live spaces | an agent | MCP `list_spaces` |
 
@@ -220,13 +220,28 @@ The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts
   the screen is open; statuses are marks (`importRunMark`: In progress, Done, Done with skipped files, Failed, and
   Stopped / Cancelled for an abandoned run), one row open at a time, Cancel import for the run's starter and for an
   admin (the server's finish lets an admin cancel).
-- **Review** groups `GET /proposals` by `import_id` (`importGroups`; the server order reversed is the import's
-  tree order, depth from `parent_slug` inside the group): one keyed card per import (`rvg:<id>`), Approve all /
-  Reject all (a red `confirmModal` with the design's copy) looping `approve-all` / `reject-all` until `remaining`
-  is 0 and leaving through Review's exit pattern; the filter is All / Imports / Written by agents. Departures from
-  the design: Review keeps its layout and its Promote / Reject buttons in the detail header; a page decided on its
-  own leaves the list instead of staying dimmed; the default selection skips import pages (they are opened from
-  their group).
+- **Review** groups `GET /proposals` (`reviewGroups`, keyed by `groupKeyOf`): an import's pages by `import_id` (the
+  server order reversed is the import's tree order, depth from `parent_slug` inside the group), and every other doc
+  change by its author — the design's "Written by ‹Name›'s agent" (a spark on slate; "N pages · ‹when›"; its rows
+  read "Change" or "New page"). A drafted decision is never in a group: it stays a card of its own. One keyed card
+  per group (`rvg:<key>`: `7`, `agent:<handle>`), Approve all / Reject all (a red `confirmModal` with the design's
+  copy for an import or an agent) leaving through Review's exit pattern: an import's loops `approve-all` /
+  `reject-all` until `remaining` is 0; an agent's calls each page's own promote / reject route (the ones a person
+  uses page by page), oldest first, so a page's newest change goes live last — no new write. The filter is All /
+  Imports / Written by agents; the list pane is the design's (`.95fr`, at least 420px) beside the page pane
+  (`1.05fr`).
+  A group's page, picked, is the design's **page pane** (`reviewPagePane`): "Page i of N · ‹short›" with the arrows
+  (wrapping in the group); the crumb — the page's own space, then the titles above it (`GET /proposals` carries each
+  page's `path`, read from the org's tree like the Library's); the title; the kind ("New page", "New version of
+  ‹Title›" for an import, "Change to a live page" for an agent) with "from ‹file›" for an import, and the
+  low-confidence mark; Trov's risk line, Ask's flags and a stale base; for a change, the diff box ("What changes",
+  "N lines added, M removed", the collapsed line diff); then the page rendered by the reader's renderer (a `[[link]]`
+  as its words). Its footer — "Approving makes this page live for everyone.", Reject, ✓ Approve — is the queue's own
+  `reviewAccept` / `reviewReject` (cookie routes); deciding moves to the next undecided page of the group, wrapping,
+  and a verdict button that had focus hands it to the next page's. A drafted decision keeps Review's own detail
+  (the record, Ratify / Reject in its header). Departures from the design: a page decided on its own leaves the
+  list instead of staying dimmed with Undo (a promote is not undone); nothing is selected until a page or a
+  decision is picked; the Unified / Side by side / Rendered switch is not on the page pane.
 - **The sidebar**: an Imports row in the Library group (its badge `badges.imports`, hidden at 0 — the node is always
   there) and an Import action; Library home, Space home and an empty space offer Import too.
 
@@ -321,7 +336,9 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   and the waiting link; New page; an admin's Edit space (the Create space dialog in edit mode, plus a Position
   `dropdown()` that posts `/move`) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
-  changed last; each card counts the pages under it), All pages (with its count: the whole tree flattened in tree
+  changed last; each card counts the pages under it and carries the page's first sentence — `pageSummary` in
+  `shared/docs-core.ts`, derived from the body it shows when `GET /spaces/:slug` is read (`summaries`), nothing
+  stored; a page with no text has no line), All pages (with its count: the whole tree flattened in tree
   order, 18px a level), Recently updated (newest first), Least recently updated, A to Z (letter groups; an accented
   letter under its base letter, symbols and digits in one "#" group first). No page: "No pages yet" with New page and
   Import. An unknown space: a sentence, and no docs pane.

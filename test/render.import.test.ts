@@ -37,6 +37,7 @@ import { OrgApiError, PreviewBlocked } from "../web/src/api";
 import type { LibraryDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 import type { ImportRunView, ImportFile } from "@shared/docs-import-core";
 import css from "../web/src/trov.css?raw";
+import actionsSrc from "../web/src/import-actions.ts?raw";
 
 const T0 = "2026-10-15T10:00:00Z";
 const sp = (slug: string, name: string, pages = 0): SpaceDTO => ({
@@ -115,8 +116,18 @@ describe("the import wizard (`#import`)", () => {
     expect(wiz({ step: "files", picks: [zipPick] })).toMatch(/data-act="impStep" data-arg="preview"/);
   });
 
+  it("Preview's summary strip says one in the singular: \"1 page to add\", \"1 link found\" (Batch B finding)", () => {
+    const one = wiz({ step: "preview", picks: [{ id: 1, name: "one.md", size: 90, kind: "md", state: "ready", error: null, inside: null }],
+      files: [{ path: "one.md", size: 90, kind: "md", title: "One" }], links: { total: 1, inImport: 0, existing: 1, missing: 0, unmatched: 0, imagesUsed: 0 } });
+    const label = (n: number, words: string) => new RegExp(`>${n}</div><div style="font-size:12px;color:var\\(--fg-55\\)">${words}</div>`);
+    expect(one).toMatch(label(1, "page to add"));
+    expect(one).toMatch(label(0, "titles already exist"));
+    expect(one).toMatch(label(1, "link found"));
+    expect(one).not.toContain("1 pages");
+  });
+
   it("Preview: the shared planner's pages, conflicts and skipped files, in the design's words", () => {
-    const u = { step: "preview" as const, picks: [zipPick], files: FILES, links: { total: 5, inImport: 3, existing: 1, unmatched: 1, imagesUsed: 1 } };
+    const u = { step: "preview" as const, picks: [zipPick], files: FILES, links: { total: 5, inImport: 3, existing: 1, missing: 0, unmatched: 1, imagesUsed: 1 } };
     const html = wiz(u);
     expect(html).toContain('data-morph-key="imp:preview"');
     expect(html).toContain("From <strong");
@@ -186,6 +197,9 @@ describe("the import wizard (`#import`)", () => {
     const stalled = wiz({ step: "run", run: driver({ phase: "stalled", error: "The connection dropped." }) });
     expect(stalled).toContain('data-act="impRetry"');
     expect(stalled).toMatch(/role="alert"/);
+    // A stalled run does not keep going on its own: the card no longer says so (Batch B finding).
+    expect(stalled).not.toContain("The import keeps going.");
+    expect(stalled).toContain("Nothing more is sent until you press Retry.");
   });
 
   it("Import: the done card — what went to Review, what was skipped, and the three ways on", () => {
@@ -200,10 +214,34 @@ describe("the import wizard (`#import`)", () => {
     expect(html).not.toContain('data-s="now"');
   });
 
+  it("a step change hands the focus to the new step's heading, never <body> (Batch B finding)", () => {
+    const run = { counts: { pages: 1, new_pages: 1, versions: 0, images: 0, skipped_files: 0, skipped_pages: 0, staged: 1, staged_new: 1, staged_versions: 0, unchanged: 0, failed: 0, images_uploaded: 0 } } as ImportRunView;
+    const steps = [wiz({ step: "where" }), wiz({ step: "files", picks: [zipPick] }), wiz({ step: "preview", picks: [zipPick], files: FILES, links: null }),
+      wiz({ step: "run", run: driver() }), wiz({ step: "run", run: driver({ phase: "done", run }) })];
+    for (const html of steps) expect(html).toMatch(/<h2 class="cnpy-imp-h" tabindex="-1"/);
+    // The controller moves it there after each step change, the run's start and its end.
+    expect(actionsSrc.match(/focusStep\(\);/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(actionsSrc).toMatch(/function focusStep\(\): void \{[\s\S]*?h2\.cnpy-imp-h[\s\S]*?focus\(\{ preventScroll: true \}\)/);
+  });
+
+  it("the done card's figures agree with their words: \"1 new page\", \"1 image\" (found in Batch B2's retest)", () => {
+    const run = { counts: { pages: 1, new_pages: 1, versions: 0, images: 1, skipped_files: 0, skipped_pages: 0, staged: 1, staged_new: 1, staged_versions: 0, unchanged: 0, failed: 0, images_uploaded: 1 } } as ImportRunView;
+    const html = wiz({ step: "run", run: driver({ phase: "done", run, pages: 1, pagesDone: 1, images: 1, imagesDone: 1 }) });
+    const fig = (n: number, words: string) => `>${n}</div><div style="font-size:12px;color:var(--fg-55)">${words}</div>`;
+    expect(html).toContain(fig(1, "new page"));
+    expect(html).toContain(fig(0, "new versions of existing pages"));
+    expect(html).toContain(fig(1, "image"));
+  });
+
   it("words: the links and images sentences say only the parts that are there", () => {
-    expect(linkWords({ total: 0, inImport: 0, existing: 0, unmatched: 0, imagesUsed: 0 }, true)).toBe("No page links to another.");
-    expect(linkWords({ total: 38, inImport: 31, existing: 5, unmatched: 2, imagesUsed: 0 }, true))
+    expect(linkWords({ total: 0, inImport: 0, existing: 0, missing: 0, unmatched: 0, imagesUsed: 0 }, true)).toBe("No page links to another.");
+    expect(linkWords({ total: 38, inImport: 31, existing: 5, missing: 0, unmatched: 2, imagesUsed: 0 }, true))
       .toBe("38 links: 31 point to pages in this import, 5 to pages already in Trov, and 2 to files that aren't in the zip. Those 2 stay as plain text.");
+    // A [[slug]] to no page is not "already in Trov" (Batch B finding: test-single.md's [[test-no-such-page]]).
+    expect(linkWords({ total: 2, inImport: 0, existing: 1, missing: 1, unmatched: 0, imagesUsed: 0 }, false))
+      .toBe("2 links: 1 points to a page already in Trov, and 1 to a page that isn't in Trov yet.");
+    expect(linkWords({ total: 2, inImport: 0, existing: 0, missing: 2, unmatched: 0, imagesUsed: 0 }, false))
+      .toBe("2 links: 2 point to pages that aren't in Trov yet.");
     expect(imageWords(14, 14)).toBe("14 images are uploaded with the pages that use them.");
     expect(imageWords(0, 0)).toBe("There are no images.");
     expect(imageWords(3, 2)).toBe("2 images are uploaded with the pages that use them. 1 image no page uses is left out.");
@@ -312,7 +350,7 @@ describe("Review — an import's pages are one group", () => {
     expect(g.depth).toEqual({ "doc:handbook@1": 0, "doc:first-week@1": 1 });
   });
 
-  it("is one keyed card with the design's header and actions; the agent's proposal stays a card of its own", () => {
+  it("is one keyed card with the design's header and actions; the agent's proposal is its agent's group", () => {
     const html = reviewView(rv());
     expect(html).toContain('data-morph-key="rvg:7"');
     expect(html).toContain("Import from handbook.zip");
@@ -321,9 +359,10 @@ describe("Review — an import's pages are one group", () => {
     expect(html).toContain("Review one by one");
     expect(html).toMatch(/data-act="reviewGroupApprove" data-arg="7"[^>]*>Approve all 2</);
     expect(html).toContain('data-act="reviewGroupReject" data-arg="7"');
-    expect(html).toContain('data-morph-key="rv:doc:rate-limits@3"');
-    // The agent's proposal is the default selection; an import's page is opened from its group by hand.
-    expect(html).toContain('data-morph-key="rvd:doc:rate-limits@3"');
+    expect(html).toContain('data-morph-key="rvg:agent:andres"');
+    expect(html).toContain("Written by andres&#39;s agent");
+    // Nothing is picked by default: a group's page is opened from its group by hand.
+    expect(html).not.toContain('data-morph-key="rvd:');
     expect(html).toMatch(/>Imports<span class="cnpy-seg-n">2<\/span>/);
     expect(html).toMatch(/>Written by agents<span class="cnpy-seg-n">1<\/span>/);
   });
@@ -359,7 +398,7 @@ describe("Review — an import's pages are one group", () => {
       import_id: 7, import_path: `${slug}.md`, import_file_name: "handbook.zip", import_by: "andres", import_at: T0,
     });
     const s: AppState = { ...initialState(), view: "app", screen: "review", proposals: { status: "ok", data: [p("a", 1), p("b", 1)] }, draftAdrs: { status: "ok", data: [] },
-      library: { status: "ok", data: LIB }, reviewGroupReject: { id: 7, busy: false } };
+      library: { status: "ok", data: LIB }, reviewGroupReject: { id: "7", busy: false } };
     const html = render(s);
     expect(html).toContain("Reject 2 pages from handbook.zip?");
     expect(html).toContain("They won&#39;t be added to Engineering. The import stays in Imports, so you can run it again later.");

@@ -13,7 +13,7 @@
 import type { AppState } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized, PreviewBlocked, rateLimitText,
-  listImports, startImport, uploadImportImage, sendImportPages, finishImport,
+  listImports, startImport, uploadImportImage, sendImportPages, finishImport, listDocMeta,
 } from "./api";
 import type { ToastAction } from "./app-root";
 import {
@@ -144,6 +144,16 @@ export function createImportController(host: ImportHost): ImportController {
     soon(() => host.mount.querySelector("#cnpy-main")?.scrollTo(0, 0));
   }
 
+  /** A step change replaces the step's whole block, and the button that had the focus with it: the focus goes to
+   *  the new step's heading (a keyboard user carries on from there), unless the person has put it somewhere since. */
+  function focusStep(): void {
+    soon(() => {
+      const a = document.activeElement;
+      if (a && a !== document.body && a.isConnected) return;
+      host.mount.querySelector<HTMLElement>("h2.cnpy-imp-h")?.focus({ preventScroll: true });
+    });
+  }
+
   function goStep(step: ImportStep): void {
     const u = ui();
     if (step !== "where" && !liveSpace(u.space)) return;
@@ -154,6 +164,7 @@ export function createImportController(host: ImportHost): ImportController {
     if (u.space) host.ensureSpace(u.space);
     rerender();
     scrollTop();
+    focusStep();
   }
 
   // ── reading the files ──────────────────────────────────────────────────────
@@ -178,6 +189,18 @@ export function createImportController(host: ImportHost): ImportController {
     rerender();
   }
 
+  /** The organization's page slugs (`/docs?fields=meta`), read once per wizard: whether a `[[slug]]` the files carry
+   *  reaches a page. null until it is in; a failed read counts every such link as existing (as before). */
+  let known: Set<string> | null = null;
+  let knownRead: Promise<void> | null = null;
+  function readKnown(): void {
+    if (knownRead) return;
+    knownRead = listDocMeta()
+      .then((docs) => { known = new Set(docs.map((d) => d.slug)); })
+      .catch(() => { known = null; })
+      .then(() => { if (ui().picks.some((p) => p.state === "ready")) rebuild(); });
+  }
+
   /** The links and images, counted over the files' text with the plan's own path → slug map. */
   function countLinks(files: ImportFile[], recs: FileRec[]): ImportLinks {
     const plan = planImport(files, { existingTitles: new Map(), existingSlugs: new Set() });
@@ -186,17 +209,21 @@ export function createImportController(host: ImportHost): ImportController {
     const imagePaths = plan.images.map((i) => i.path);
     const fake = new Map(imagePaths.map((p) => [p, "0".repeat(64)] as [string, string]));
     const used = new Set<string>();
-    const l: ImportLinks = { total: 0, inImport: 0, existing: 0, unmatched: 0, imagesUsed: 0 };
+    const l: ImportLinks = { total: 0, inImport: 0, existing: 0, missing: 0, unmatched: 0, imagesUsed: 0 };
     for (const pg of plan.pages) {
       if (!pg.path) continue;
       const t = text.get(pg.path);
       if (!t) continue;
       const body = prepareBody(t, { path: pg.path, pathToSlug: plan.pathToSlug, imagePathToSha: fake });
-      for (const slug of body.links) { if (ours.has(slug)) l.inImport++; else l.existing++; }
+      for (const slug of body.links) {
+        if (ours.has(slug)) l.inImport++;
+        else if (!known || known.has(slug)) l.existing++;
+        else l.missing++;
+      }
       l.unmatched += body.unmatchedLinks.length;
       for (const p of imagePathsUsed(t, pg.path, imagePaths)) used.add(p);
     }
-    l.total = l.inImport + l.existing + l.unmatched;
+    l.total = l.inImport + l.existing + l.missing + l.unmatched;
     l.imagesUsed = used.size;
     return l;
   }
@@ -341,6 +368,7 @@ export function createImportController(host: ImportHost): ImportController {
         state.badges = { ...state.badges, imports: Math.max(1, state.badges.imports ?? 0) };
         rerender();
         scrollTop();
+        focusStep();
         void drive();
       })
       .catch((e) => {
@@ -409,7 +437,7 @@ export function createImportController(host: ImportHost): ImportController {
     if (state.screen !== "import" && !error && run) {
       const n = run.counts.staged;
       host.flash(`${n} ${n === 1 ? "page" : "pages"} from ${r?.source ?? run.file_name} ${n === 1 ? "is" : "are"} in Review`, 6000, { label: "Open Review", act: "goReview", arg: "" });
-    } else rerender();
+    } else { rerender(); if (state.screen === "import") focusStep(); }
   }
 
   function retry(): void {
@@ -481,10 +509,13 @@ export function createImportController(host: ImportHost): ImportController {
     if (driverActive(ui().run)) { ui().step = "run"; rerender(); return; }
     reset(liveSpace(space));
     if (ui().space) host.ensureSpace(ui().space as string);
+    known = null; knownRead = null;   // a fresh wizard reads the pages anew
+    readKnown();
     rerender();
   }
 
   function enter(space: string | null): void {
+    readKnown();
     const u = ui();
     const sp = liveSpace(space) ?? (state.library.status === "ok" ? null : space);
     if (sp && sp !== u.space && !driverActive(u.run)) { u.space = sp; u.parent = null; u.whereOpen = {}; }

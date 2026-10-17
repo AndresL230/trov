@@ -8,7 +8,7 @@ import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
-import { REVIEW_EXIT_MS, REVIEW_FILTERS, importGroups, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
+import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
 import { createImportController } from "./import-actions";
 import { installImportDrop, mainDropTarget } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
@@ -65,7 +65,7 @@ import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
 } from "@shared/tickets-core";
-import { decodeReviewId } from "./triage-map";
+import { decodeReviewId, reviewItemsFromReads } from "./triage-map";
 import { QUEUE_FILTER_CATS, declinedLeavers, type QueueFilterCat } from "./tickets";
 import { AI_EXIT_MS } from "./ai-ui";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
@@ -504,8 +504,10 @@ function syncReviewDetail(focusAct: string | null): void {
     const pane = body?.closest<HTMLElement>(".cnpy-rv-detail");
     if (pane) pane.scrollTop = 0;
   }
-  if (body && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !body.contains(document.activeElement)) {
-    body.querySelector<HTMLElement>(`.cnpy-rv-head [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
+  // The verdict buttons are in the body's head (a decision) or in the page pane's footer beside it (a group's page).
+  const detail = body?.closest<HTMLElement>(".cnpy-rv-detail") ?? null;
+  if (body && detail && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !detail.contains(document.activeElement)) {
+    detail.querySelector<HTMLElement>(`:is(.cnpy-rv-head, .cnpy-rvp-foot) [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
   }
 }
 
@@ -644,7 +646,7 @@ function paintApp(): void {
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
-  const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
+  const rvFocus = active?.closest?.(".cnpy-rv-head, .cnpy-rvp-foot") ? active.getAttribute("data-act") : null;
   askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
   aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));
@@ -1784,8 +1786,10 @@ function reviewVerdict(id: string, accept: boolean): void {
   let selAfter = selBefore;
   const props = reviewProps(state);
   const item = props.items.find((it) => it.id === id);
-  // A page of an import: the next one of its group still waiting, wrapping (the group is its own list).
-  const group = item?.importId != null ? importGroups(props.items).get(item.importId) ?? null : null;
+  // A page of a group (an import's, an agent's): the next one of its group still waiting, wrapping (the group is its
+  // own list).
+  const key = item ? groupKeyOf(item) : null;
+  const group = key !== null ? reviewGroups(props.items).get(key) ?? null : null;
   const groupLeft = group ? group.items.filter((it) => it.id !== id && !props.leaving?.[it.id]) : [];
   if (selBefore === id) {
     if (group) {
@@ -1794,7 +1798,7 @@ function reviewVerdict(id: string, accept: boolean): void {
       selAfter = (rows[at + 1] ?? rows[0] ?? null)?.id ?? null;
       if (selAfter === id) selAfter = null;
     } else {
-      const rows = props.items.filter((it) => inReviewFilter(it, props.filter) && it.importId == null && (it.id === id || !props.leaving?.[it.id]));
+      const rows = props.items.filter((it) => inReviewFilter(it, props.filter) && groupKeyOf(it) === null && (it.id === id || !props.leaving?.[it.id]));
       const at = rows.findIndex((it) => it.id === id);
       selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
     }
@@ -1837,17 +1841,19 @@ function reviewVerdict(id: string, accept: boolean): void {
       settleReview();
     });
 }
-/** Review › an import group's Approve all / Reject all (cookie-only, `POST /imports/:id/approve-all` / `reject-all`):
- *  the whole card wears the verdict and leaves by the queue's one exit, optimistically; each call is bounded, so it is
- *  repeated while `remaining` > 0. A failure before anything was decided puts the group back as it was; one part way
- *  through lets the refetch say what is left. */
-const groupBusy = new Set<number>();
-function reviewGroupVerdict(importId: number, accept: boolean): void {
+/** Review › a group's Approve all / Reject all: the whole card wears the verdict and leaves by the queue's one exit,
+ *  optimistically. An import's is `POST /imports/:id/approve-all` / `reject-all` (cookie-only; each call is bounded,
+ *  so it is repeated while `remaining` > 0); an agent's is its pages' own promote / reject routes (cookie-only, the
+ *  same as deciding each by hand), one page after another — oldest first, so a page's newest change goes live last.
+ *  A failure before anything was decided puts the group back as it was; one part way through lets the refetch say
+ *  what is left. */
+const groupBusy = new Set<string>();
+function reviewGroupVerdict(key: string, accept: boolean): void {
   const props = reviewProps(state);
-  const g = importGroups(props.items).get(importId);
+  const g = reviewGroups(props.items).get(key);
   const items = g ? g.items.filter((it) => !state.reviewLeaving[it.id]) : [];
-  if (!g || items.length === 0 || groupBusy.has(importId)) return;
-  groupBusy.add(importId);
+  if (!g || items.length === 0 || groupBusy.has(key)) return;
+  groupBusy.add(key);
   const verdict: ReviewVerdict = accept ? "promoted" : "rejected";
   const selBefore = state.reviewSel;
   if (items.some((it) => it.id === selBefore)) state.reviewSel = null;
@@ -1867,22 +1873,34 @@ function reviewGroupVerdict(importId: number, accept: boolean): void {
   }, REVIEW_EXIT_MS);
   rerender();
   let done = 0;
+  type Answer = { space: string; space_name: string | null };
   const call = accept ? approveImport : rejectImport;
-  const loop = (): ReturnType<typeof approveImport> => call(importId).then((a) => { done += a.done; return a.remaining > 0 && a.done > 0 ? loop() : a; });
-  loop()
+  const importLoop = (): Promise<Answer> => call(g.id).then((a) => { done += a.done; return a.remaining > 0 && a.done > 0 ? importLoop() : a; });
+  const agentLoop = async (): Promise<Answer> => {
+    for (const it of [...items].reverse()) {
+      const ref = decodeReviewId(it.id);
+      if (ref?.kind !== "doc") continue;
+      await (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version));
+      done++;
+    }
+    return { space: g.space, space_name: null };
+  };
+  (g.kind === "agent" ? agentLoop() : importLoop())
     .then((a) => {
-      groupBusy.delete(importId);
+      groupBusy.delete(key);
       for (const x of exits) x.ok = true;
       reviewRefetch.doc = true;
-      const name = a.space_name ?? spaceName(state, a.space || g.space);
+      const slug = a.space || g.space;
+      const name = slug ? a.space_name ?? spaceName(state, slug) : null;
       const pages = `${done} ${done === 1 ? "page" : "pages"}`;
-      flash(accept ? `${pages} ${done === 1 ? "is" : "are"} now live in ${name}` : `${pages} rejected`, 6000, { label: `Open ${name}`, act: "libOpenSpace", arg: a.space || g.space });
+      const verb = done === 1 ? "is" : "are";
+      flash(accept ? `${pages} ${verb} now live${name ? ` in ${name}` : ""}` : `${pages} rejected`, 6000, name ? { label: `Open ${name}`, act: "libOpenSpace", arg: slug } : null);
       if (accept) libCtl.load();
       loadBadges();
       settleReview();
     })
     .catch((e) => {
-      groupBusy.delete(importId);
+      groupBusy.delete(key);
       if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
       else {
         if (exits[0].timer !== null) clearTimeout(exits[0].timer);
@@ -1895,13 +1913,19 @@ function reviewGroupVerdict(importId: number, accept: boolean): void {
       rerender();
     });
 }
-/** The most pages each import group has held this session (a group's "‹d› of ‹N› reviewed"). */
+/** The most pages each group has held this session (a group's "‹d› of ‹N› reviewed"), by `groupKeyOf`, and every
+ *  page it has held in its order (a page's "Page i of N" keeps its place while others are decided and leave). */
 function noteGroupTotals(): void {
-  const counts: Record<string, number> = {};
-  for (const p of state.proposals.data) if (p.import_id != null) counts[p.import_id] = (counts[p.import_id] ?? 0) + 1;
-  const next = { ...state.reviewGroupTotals };
-  for (const [id, n] of Object.entries(counts)) next[id] = Math.max(next[id] ?? 0, n);
-  state.reviewGroupTotals = next;
+  const totals = { ...state.reviewGroupTotals };
+  const pages = { ...state.reviewGroupPages };
+  for (const [key, g] of reviewGroups(reviewItemsFromReads(state.proposals.data, []))) {
+    const had = pages[key] ?? [];
+    const seen = new Set(had);
+    pages[key] = [...had, ...g.items.map((it) => it.id).filter((id) => !seen.has(id))];
+    totals[key] = Math.max(totals[key] ?? 0, g.items.length);
+  }
+  state.reviewGroupTotals = totals;
+  state.reviewGroupPages = pages;
 }
 function loadDraftAdrsIfNeeded(): void {
   if (state.draftAdrs.status === "idle" || state.draftAdrs.status === "error") loadDraftAdrs();
@@ -3595,10 +3619,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "reviewFilter":
       if ((REVIEW_FILTERS as readonly string[]).includes(arg ?? "")) state.reviewFilter = arg as ReviewFilter;
       break;
-    // An import's pages, as one group (review.ts `importGroups`): open it page by page, or decide it whole.
+    // A group of pages (review.ts `reviewGroups`: an import's, an agent's): open it page by page, or decide it whole.
     case "reviewGroupToggle": if (arg) state.reviewGroupsOpen = { ...state.reviewGroupsOpen, [arg]: !state.reviewGroupsOpen[arg] }; break;
-    case "reviewGroupApprove": if (arg) reviewGroupVerdict(Number(arg), true); return;
-    case "reviewGroupReject": if (arg) { state.reviewGroupReject = { id: Number(arg), busy: false }; } break;
+    case "reviewGroupApprove": if (arg) reviewGroupVerdict(arg, true); return;
+    case "reviewGroupReject": if (arg) { state.reviewGroupReject = { id: arg, busy: false }; } break;
     case "reviewGroupRejectClose": if (state.reviewGroupReject?.busy) return; confirmOut(() => { state.reviewGroupReject = null; rerender(); }); return;
     case "reviewGroupRejectGo": {
       const r = state.reviewGroupReject;

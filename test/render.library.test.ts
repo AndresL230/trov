@@ -28,6 +28,7 @@ import { initialDropdownUi } from "../web/src/dropdown";
 import { SPACE_ICONS, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import { spaceErrorText, createLibraryController } from "../web/src/library-actions";
+import css from "../web/src/trov.css?raw";
 import { OrgApiError } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
@@ -142,7 +143,7 @@ describe("Library home", () => {
 });
 
 describe("a space's home", () => {
-  const home = (over: Partial<SpaceHomeProps> = {}, dto: Partial<{ space: SpaceDTO; pages: LibraryPageDTO[]; can_edit: boolean; can_admin: boolean }> = {}): string =>
+  const home = (over: Partial<SpaceHomeProps> = {}, dto: Partial<{ space: SpaceDTO; pages: LibraryPageDTO[]; can_edit: boolean; can_admin: boolean; summaries: Record<string, string> }> = {}): string =>
     spaceHomeView({ slug: "engineering", tab: "overview", admin: false, persons: PERSONS, descDraft: null, home: { status: "ok", data: { space: ENG, pages: PAGES, can_edit: false, can_admin: false, ...dto } }, ...over });
 
   it("a reader who cannot edit: the description as text, owners by full name, New page — no edit or admin action", () => {
@@ -190,6 +191,25 @@ describe("a space's home", () => {
     expect(member).not.toContain('data-act="libRestore"');
     expect(home({ admin: true }, { space, can_edit: true, can_admin: true })).toContain('data-act="libRestore" data-arg="engineering"');
   });
+  it("a top-level card carries the page's first sentence under its title; a page with none has no line (E2E SH2)", () => {
+    const html = home({}, { summaries: { auth: "How a person signs in, and <how> an agent gets a token." } });
+    const card = html.slice(html.indexOf('data-arg="auth"') - 1200, html.indexOf('data-arg="auth"'));
+    expect(card).toContain('<p class="cnpy-lib-sum">How a person signs in, and &lt;how&gt; an agent gets a token.</p>');
+    expect(html.match(/class="cnpy-lib-sum"/g)).toHaveLength(1);
+    expect(home()).not.toContain("cnpy-lib-sum");
+  });
+
+  it("the header's meta: each item draws its own \"·\" in the gap before it, clipped at a line's start, so a wrapped line never starts or ends with one (Batch B finding)", () => {
+    const html = home({}, { can_edit: true });
+    const meta = html.slice(html.indexOf('class="cnpy-lib-meta"'), html.indexOf("</div></div>", html.indexOf('class="cnpy-lib-meta"')));
+    expect(meta).not.toContain("·");
+    expect(meta.match(/class="cnpy-lib-mi"/g)?.length).toBe(4);   // owners, pages, waiting, Edit owners
+    const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.:()]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(".cnpy-lib-meta")).toContain("overflow:hidden");
+    expect(rule(".cnpy-lib-mi::before")).toContain('content:"·"');
+    expect(rule(".cnpy-lib-mi::before")).toContain("position:absolute");
+  });
+
   it("the tabs: All pages carries the count; each tab lists the pages its way", () => {
     const over = home();
     expect(over).toContain('data-tabs="space-tab"');
@@ -332,6 +352,24 @@ describe("the Create space dialog's focus (case CS1)", () => {
     ctl.act("libNew", null, null);
     expect(state.libUi.space?.mode).toBe("create");
     expect(focused).toEqual(["#lib-sp-name"]);
+  });
+
+  it("Edit space, Edit owners and Archive opened from the keyboard move the focus into their dialog (Batch B finding)", () => {
+    const focused: string[] = [];
+    const mount = { ownerDocument: { activeElement: null }, querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
+    state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
+    const ctl = createLibraryController({
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+    });
+    ctl.act("libEdit", null, null);
+    expect(focused.at(-1)).toBe("#lib-sp-name");
+    ctl.act("libSpaceClose", null, null);
+    ctl.act("libOwners", null, null);
+    expect(focused.at(-1)).toBe("#lib-owners .cnpy-libm-person, #lib-owners [data-confirm-focus]");
+    ctl.act("libOwnersClose", null, null);
+    ctl.act("libArchive", null, null);
+    expect(focused.at(-1)).toBe("[data-confirm-focus]");
   });
 
   it("closing a space dialog (Cancel, Escape, the backdrop) gives the focus back to what opened it (case ENV12)", () => {

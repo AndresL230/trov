@@ -317,8 +317,8 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     sp.owners.length ? `<span style="display:inline-flex;align-items:center;gap:8px">${avatarStack(sp.owners, p.persons as PersonSummary[], 20, true)}<span>${esc(ownedBy(names))}</span></span>` : `<span>No owner yet</span>`,
     `<span>${esc(pagesWord(d.pages.length))}</span>`,
     ...(waiting > 0 ? [`<button type="button" data-act="goReview" class="cnpy-lib-wait" style="display:inline-flex;align-items:center;gap:6px;padding:0;font-size:12.5px;color:var(--fg-55)">${markShape("ring", "var(--amber)", 8)}${waiting} waiting for review</button>`] : []),
-  ].join(`<span style="color:var(--border-strong)">·</span>`);
-  const owners = d.can_edit && !sp.archived ? `<button type="button" data-act="libOwners" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Edit owners</button>` : "";
+    ...(d.can_edit && !sp.archived ? [`<button type="button" data-act="libOwners" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Edit owners</button>`] : []),
+  ].map((item) => `<span class="cnpy-lib-mi">${item}</span>`).join("");
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
     : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${outlineBtn("libArchive", null, "Archive", " data-confirm-trigger")}` : ""}${importBtn(sp.slug)}${accentBtn("libNewPage", sp.slug, "New page")}`;
@@ -327,16 +327,17 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     <div style="flex:1;min-width:240px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--fg-55)">${meta}${owners ? `<span style="color:var(--border-strong)">·</span>${owners}` : ""}</div>
+      <div class="cnpy-lib-meta"><div class="cnpy-lib-meta-in">${meta}</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap;max-width:100%">${actions}</div>
   </div>`;
 }
 
-function topCard(pg: LibraryPageDTO, inside: number, persons: readonly PersonSummary[]): string {
+function topCard(pg: LibraryPageDTO, inside: number, persons: readonly PersonSummary[], summary = ""): string {
   return `<div${surface("min-height:136px;padding:14px 16px;display:flex;flex-direction:column", { hover: true, cls: HITBOX })}>
     <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${pageIcon(13)}${esc(insideWords(inside))}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:8px;min-width:0"><span style="font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(pg.title)}</span></div>
+    ${summary ? `<p class="cnpy-lib-sum">${esc(summary)}</p>` : ""}
     ${pg.authority !== "live" ? `<div style="margin-top:6px">${authorityMark(pg.authority, 11.5)}</div>` : ""}
     <div style="display:flex;align-items:center;gap:7px;margin-top:auto;padding-top:12px;font-size:11.5px;color:var(--fg-40)">${pg.updated_by ? personChip(findPerson(persons, pg.updated_by), 16, pg.updated_by) : ""}<span>Updated ${esc(libraryWhen(pg.updated_at))}</span></div>
     ${hitArea("libOpenDoc", pg.slug, `Open ${pg.title}`)}
@@ -358,7 +359,7 @@ function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     const top = childrenOf(tree, null, d.space.slug);
     const inside = (slug: string): number => descendantsOf(tree, slug).length;
     return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px"><h2 style="${H2}">Top-level pages</h2><button type="button" data-act="libTab" data-arg="all" class="cnpy-link" style="padding:0;font-size:12.5px;color:var(--fg-55)">All pages ›</button></div>
-      <div class="cnpy-stagger" style="${PAGE_GRID}">${top.map((pg) => topCard(pg, inside(pg.slug), p.persons)).join("")}</div>
+      <div class="cnpy-stagger" style="${PAGE_GRID}">${top.map((pg) => topCard(pg, inside(pg.slug), p.persons, d.summaries?.[pg.slug])).join("")}</div>
       <h2 style="${H2};margin:30px 0 12px">Recently updated</h2>
       <div${surface("padding:0;overflow:hidden")}>${[...pages].sort(byUpdated).slice(0, 5).map((pg, i) => row(pg, i)).join("")}</div>`;
   }

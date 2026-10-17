@@ -195,6 +195,8 @@ export interface LibraryDTO {
 export interface SpaceHomeDTO {
   space: SpaceDTO;
   pages: LibraryPageDTO[];
+  /** Each top-level page's card line (`pageSummary` of the body it shows), by slug; a page with none is left out. */
+  summaries?: Record<string, string>;
   /** May the reader edit the description and the owners (an admin, or an owner of this space)? */
   can_edit: boolean;
   can_admin: boolean;
@@ -275,4 +277,57 @@ export interface DocPageDTO {
   /** The live pages whose live body links here ("Linked from"). */
   backlinks: DocPageRef[];
   info: DocPageInfo;
+}
+
+// ── a page's card line (Space home's Top-level pages, E2E SH2) ────────────────
+
+/** The longest a card line runs before it is cut on a word with "…". */
+export const PAGE_SUMMARY_MAX = 140;
+
+/** A page's card line: the first sentence of its body, derived when it is read (nothing is stored). Code blocks,
+ *  headings, tables, rules and images are skipped; links keep their words (`[[slug|words]]` too); emphasis, inline
+ *  code marks, HTML tags, quote and list markers go. The first block of text left is taken — a list's first item
+ *  only — and cut after its first sentence (a ".", "!" or "?" before a capital, a digit or the end), then on a word
+ *  at `max`. "" when the body has no such text. */
+export function pageSummary(body: string, max = PAGE_SUMMARY_MAX): string {
+  const lines = (body ?? "").replace(/\r\n?/g, "\n").split("\n");
+  const block: string[] = [];
+  let fence: string | null = null;
+  for (const raw of lines) {
+    const line = raw.trim();
+    const f = line.match(/^(`{3,}|~{3,})/);
+    if (fence) { if (f && line.startsWith(fence)) fence = null; continue; }
+    if (f) { fence = f[1]; if (block.length) break; continue; }
+    const skip = line === "" || /^#{1,6}(\s|$)/.test(line) || /^\|/.test(line) || /^([-*_]\s*){3,}$/.test(line) || /^<!--/.test(line);
+    if (skip) { if (block.length) break; continue; }
+    const item = /^([-*+]|\d+[.)])\s+/.test(line);
+    if (item && block.length) break;
+    const text = inlineText(line.replace(/^(>\s*)+/, "").replace(/^([-*+]|\d+[.)])\s+/, ""));
+    if (!text) continue;
+    block.push(text);
+    if (item) break;
+  }
+  const para = block.join(" ").replace(/\s+/g, " ").trim();
+  if (!para) return "";
+  const end = para.match(/^.*?[.!?](?=\s+["'“(]?[A-Z0-9]|$)/);
+  const sentence = (end ? end[0] : para).trim();
+  if (sentence.length <= max) return sentence;
+  const cut = sentence.slice(0, max - 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > max / 2 ? cut.slice(0, at) : cut).replace(/[\s,;:.]+$/, "")}…`;
+}
+
+/** One line of Markdown as its words. */
+function inlineText(s: string): string {
+  return s
+    .replace(/!\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)/g, "")          // images
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, slug: string, words?: string) => (words ?? slug).trim())
+    .replace(/\[([^\]]+)\]\((?:[^()]|\([^()]*\))*\)/g, "$1")        // links keep their words (a target may hold "(…)")
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?(<\/\1\s*>|$)/gi, "")      // a script or style, and what it holds
+    .replace(/<[^>]+>/g, "")                                      // tags
+    .replace(/`([^`]*)`/g, "$1")                                  // inline code
+    .replace(/(\*\*|__)(.+?)\1/g, "$2")
+    .replace(/(^|[\s(])[*_]([^*_\s][^*_]*?)[*_](?=[\s).,;:!?]|$)/g, "$1$2")
+    .replace(/\s+/g, " ")
+    .trim();
 }

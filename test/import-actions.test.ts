@@ -11,6 +11,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../web/src/api", async (orig) => ({
   ...(await orig<typeof import("../web/src/api")>()),
   startImport: vi.fn(), uploadImportImage: vi.fn(), sendImportPages: vi.fn(), finishImport: vi.fn(), listImports: vi.fn(),
+  listDocMeta: vi.fn(async () => [{ slug: "local-setup" }]),
 }));
 import * as api from "../web/src/api";
 import { createImportController, type ImportHost } from "../web/src/import-actions";
@@ -99,7 +100,16 @@ describe("reading the files", () => {
     expect(state.imp.picks[0]).toMatchObject({ state: "ready", inside: 5, kind: "zip" });
     expect(state.imp.files.find((f) => f.path === "guide/README.md")).toEqual({ path: "guide/README.md", size: expect.any(Number), kind: "md", title: "Guide" });
     expect(state.imp.files.find((f) => f.path === "guide/img/arch.png")?.kind).toBe("image");
-    expect(state.imp.links).toEqual({ total: 2, inImport: 1, existing: 0, unmatched: 1, imagesUsed: 1 });
+    expect(state.imp.links).toEqual({ total: 2, inImport: 1, existing: 0, missing: 0, unmatched: 1, imagesUsed: 1 });
+  });
+
+  it("a [[slug]] the files carry counts as a page already in Trov only when that page exists (Batch B finding)", async () => {
+    const { state, ctl } = setup();
+    ctl.open("engineering");
+    ctl.addFiles([new File(["# One\n\nSee [[local-setup]] and [[test-no-such-page|nothing]].\n"], "one.md")]);
+    await settle();
+    expect(api.listDocMeta).toHaveBeenCalled();
+    expect(state.imp.links).toEqual({ total: 2, inImport: 0, existing: 1, missing: 1, unmatched: 0, imagesUsed: 0 });
   });
 
   it("a damaged zip says so on its row; a file that is not Markdown is refused at once", async () => {

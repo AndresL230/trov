@@ -255,6 +255,8 @@ export function createLibraryController(host: LibraryHost): LibraryController {
           after: at > 0 ? spaces[at - 1].slug : null,
         };
         rerender();
+        // Into the dialog at once, as New space does (a dialog opened from the keyboard must take the focus).
+        host.mount.querySelector<HTMLElement>("#lib-sp-name")?.focus();
         return;
       }
       case "libField": {
@@ -280,7 +282,13 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libDescCancel": if (ui().desc === null) return; ui().desc = null; rerender(); return;
 
       // ── owners ────────────────────────────────────────────────────────────
-      case "libOwners": { const sp = open(); if (!sp) return; remember(); ui().owners = { picks: [...sp.owners], busy: false, error: null }; rerender(); return; }
+      case "libOwners": {
+        const sp = open(); if (!sp) return;
+        remember(); ui().owners = { picks: [...sp.owners], busy: false, error: null }; rerender();
+        // The first person in the list (else Save owners): a keyboard user lands in the dialog, not on its trigger.
+        host.mount.querySelector<HTMLElement>("#lib-owners .cnpy-libm-person, #lib-owners [data-confirm-focus]")?.focus();
+        return;
+      }
       case "libOwnerToggle": {
         const o = ui().owners;
         if (!o || o.busy || !arg) return;
@@ -304,7 +312,12 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libOwnersClose": if (ui().owners?.busy) return; host.confirmOut(() => { ui().owners = null; rerender(); giveBack(); }); return;
 
       // ── archive / restore (an admin) ──────────────────────────────────────
-      case "libArchive": if (!open()) return; remember(); ui().archive = { busy: false, error: null }; rerender(); return;
+      case "libArchive":
+        if (!open()) return;
+        remember(); ui().archive = { busy: false, error: null }; rerender();
+        // The confirmation's contract: its button is focused on open, so Enter / Space press it (confirm.ts).
+        host.mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+        return;
       case "libArchiveGo": {
         const a = ui().archive;
         const sp = open();

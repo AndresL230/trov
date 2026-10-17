@@ -44,7 +44,7 @@ import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, aside
 // The landing is its own chunk in the app (landing-lazy.ts); the signed-out page `/` boots it alone (landing-page.ts).
 import { landingView } from "./landing-lazy";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
-import { reviewView, importGroups, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
+import { reviewView, reviewGroups, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { importWizardView, importsHistoryView, initialImportUi, driverActive, type ImportUi } from "./import";
 import { confirmModal } from "./confirm";
 import type { ImportRunView } from "@shared/docs-import-core";
@@ -321,8 +321,10 @@ export interface AppState {
   reviewGroupsOpen: Record<string, boolean>;
   /** The most pages each import group has held this session (its "‹d› of ‹N› reviewed"). */
   reviewGroupTotals: Record<string, number>;
+  /** Every page each Review group has held this session, in its order (main.ts noteGroupTotals). */
+  reviewGroupPages: Record<string, string[]>;
   /** The import group whose Reject all asks first (`confirmModal`). */
-  reviewGroupReject: { id: number; busy: boolean } | null;
+  reviewGroupReject: { id: string; busy: boolean } | null;
   assignOpen: string | null;
   assignKind: AssignKind | null;
   assignSection: string | null;
@@ -606,7 +608,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupReject: null,
+    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
     mapConfirm: null,
     mapPicks: {},
@@ -703,6 +705,7 @@ export function reviewProps(s: AppState): ReviewProps {
     leaving,
     groupsOpen: s.reviewGroupsOpen,
     groupTotals: s.reviewGroupTotals,
+    groupPages: s.reviewGroupPages,
     spaceNames: Object.fromEntries([...liveSpaces(s), ...(s.library.data?.archived ?? [])].map((sp) => [sp.slug, sp.name])),
     people: s.persons.data,
     filter: s.reviewFilter,
@@ -735,17 +738,18 @@ export function importsBadge(s: Pick<AppState, "badges" | "imp" | "importRuns">)
   return Math.max(listed, driverActive(s.imp.run) ? 1 : 0);
 }
 
-/** Review › an import group's Reject all asks first (the design's copy). */
-function reviewGroupRejectModal(s: AppState, r: { id: number; busy: boolean }): string {
-  const g = importGroups(reviewProps(s).items).get(r.id);
+/** Review › a group's Reject all asks first (the design's copy: an import's, or an agent's). */
+function reviewGroupRejectModal(s: AppState, r: { id: string; busy: boolean }): string {
+  const g = reviewGroups(reviewProps(s).items).get(r.id);
   if (!g) return "";
   const k = g.items.filter((it) => !s.reviewLeaving[it.id]).length;
   const space = spaceName(s, g.space);
   const pages = `${k} ${k === 1 ? "page" : "pages"}`;
   return confirmModal({
     id: "rv-group-reject", title: `Reject ${pages} from ${g.file}?`,
-    body: `They won't be added to ${space}. The import stays in Imports, so you can run it again later.`,
-    confirmAct: "reviewGroupRejectGo", cancelAct: "reviewGroupRejectClose", arg: String(r.id), busy: r.busy,
+    body: g.kind === "agent" ? "The agent's changes are thrown away. The live pages stay as they are."
+      : `They won't be added to ${space}. The import stays in Imports, so you can run it again later.`,
+    confirmAct: "reviewGroupRejectGo", cancelAct: "reviewGroupRejectClose", arg: r.id, busy: r.busy,
     confirmLabel: `Reject ${pages}`, busyLabel: "Rejecting…",
   });
 }
