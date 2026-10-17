@@ -13,7 +13,7 @@ import type { DocRow, DocVersionMetaRow } from "@shared/rows";
 import type { PersonSummary } from "@shared/people";
 import { esc, attr, surface, hitArea, HITBOX } from "./ui";
 import { personLink } from "./people";
-import { stateMark, markShape, AUTHORITY_MARK, authorityMark } from "./marks";
+import { stateMark, glyphMark, markShape, AUTHORITY_MARK, authorityMark } from "./marks";
 import { skeleton, skBar, skBox, skLine, skLines, emptyLayout } from "./skeleton";
 import { renderMarkdown } from "./markdown";
 import { spaceTile, pageIcon, libraryWhen } from "./library";
@@ -36,6 +36,7 @@ export interface DocPageProps {
 
 /** What "Live" means, said on the doc page's mark (the design's STATUS_TIP). */
 export const LIVE_TIP = "This is the version everyone reads.";
+export const REJECTED_TIP = "Someone turned this version down in Review. It never went live.";
 /** A link to a page that does not exist. */
 export const brokenLinkTip = (slug: string): string => `No page is called “${slug}” yet. The link starts working once one is.`;
 /** The doc page with no page picked (a space with no page yet, or a tree with nothing open). */
@@ -120,11 +121,14 @@ function byline(page: DocPageDTO | null, doc: DocRow, persons: readonly PersonSu
 }
 
 function historyPanel(versions: DocVersionMetaRow[], doc: DocRow, persons: readonly PersonSummary[]): string {
-  const rows = [...versions].filter((v) => v.status !== "rejected").sort((a, b) => b.version - a.version).map((v) => {
-    const mark = v.version === doc.current_version ? stateMark("Live", "var(--green)", "dot", 11.5, LIVE_TIP)
+  // A rejected version stays listed, muted, with the faded cross (the design's `rejected` shape) and its word.
+  const rows = [...versions].sort((a, b) => b.version - a.version).map((v) => {
+    const rejected = v.status === "rejected";
+    const mark = rejected ? glyphMark("declined", "var(--fg-40)", "Rejected", 11.5, REJECTED_TIP)
+      : v.version === doc.current_version ? stateMark("Live", "var(--green)", "dot", 11.5, LIVE_TIP)
       : v.status === "staged" && v.version > doc.current_version ? authorityMark(doc.current_version > 0 ? "staged_pending" : "unpromoted", 11.5) : "";
     const p = find(persons, v.created_by);
-    return `<div class="cnpy-dpg-hrow">
+    return `<div class="cnpy-dpg-hrow${rejected ? " is-rejected" : ""}">
       <span class="cnpy-dpg-hv">v${v.version}</span>
       <span class="cnpy-dpg-hs">${esc(v.summary || "No summary")}</span>
       <span class="cnpy-dpg-hw">${personLink(p, v.created_by, 16, `${shortName(persons, v.created_by)} · ${libraryWhen(v.created_at)}`, "font-size:11.5px;color:var(--fg-55);white-space:nowrap", 6)}</span>

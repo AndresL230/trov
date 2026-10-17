@@ -190,11 +190,13 @@ describe("the doc page", () => {
     expect(html).toContain('<h2 id="pages-under" class="cnpy-dpg-kh">Pages under Authentication</h2>');
     expect(html).toContain('data-act="openDoc" data-arg="sso"');
   });
-  it("History lists the versions newest first, rejected ones left out", () => {
+  it("History lists the versions newest first; a rejected one is muted with its Rejected mark (owner ruling DOC2)", () => {
     const v = (version: number, status: "promoted" | "staged" | "rejected", by = "jordan") => ({ id: version, slug: "auth", version, summary: `v${version} words`, status, confidence: null, created_at: T0, created_by: by, content_hash: null, base_version: null, change_kind: null, low_confidence: 0 });
     const html = render(docState({ showHistory: true, docDetail: { status: "ok", data: { doc: doc(), versions: [v(1, "promoted", "priya"), v(2, "rejected"), v(3, "promoted"), v(4, "staged")], page: PAGE } } }));
     const rows = [...html.matchAll(/class="cnpy-dpg-hv">v(\d)</g)].map((m) => m[1]);
-    expect(rows).toEqual(["4", "3", "1"]);
+    expect(rows).toEqual(["4", "3", "2", "1"]);
+    expect(html).toMatch(/class="cnpy-dpg-hrow is-rejected">\s*<span class="cnpy-dpg-hv">v2</);
+    expect(html).toContain(">Rejected</span>");
     expect(html).toContain('aria-pressed="true"');
   });
   it("[[slug]] links become page links; one to no page is flagged text; code is left as written", () => {
