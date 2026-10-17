@@ -489,6 +489,20 @@ describe("Archive page (0083_doc_archive): Space home's Archived pages, the conf
       vi.unstubAllGlobals();
     }
   });
+  it("opened from the pane row's \"…\" menu, closing it gives the focus to that row's \"…\" — the menu item is gone (e2e AR16)", () => {
+    const focused: string[] = [];
+    const item = { isConnected: true, focus: () => focused.push("menu item") };
+    const doc = { activeElement: item as unknown };
+    const mount = { ownerDocument: doc, querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("docs", "admin", { spaceSlug: "engineering", treeMenu: "auth" } as Partial<AppState>);
+    state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_archive: true, can_admin: true } } as unknown as AppState["spaceHome"];
+    const ctl = createLibraryController({
+      state, mount, rerender: () => { item.isConnected = state.treeMenu !== null; }, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {}, pageChanged: () => {}, treeChanged: () => {},
+    });
+    ctl.act("libPageArchive", "auth", null);
+    ctl.act("libPageArchiveClose", null, null);
+    expect(focused.at(-1)).toBe('.cnpy-dp-row[data-dtree="auth"] [data-act="treeMenu"]');
+  });
   it("a refusal is said in words", () => {
     const err = (code: string) => pageArchiveErrorText(new ApiError(409, code), "Couldn't archive the page.");
     expect(err("forbidden")).toBe("Only an admin, or an owner of this space, can archive or restore its pages.");

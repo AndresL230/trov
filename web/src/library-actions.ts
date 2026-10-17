@@ -136,14 +136,19 @@ export function createLibraryController(host: LibraryHost): LibraryController {
   // What opened a space dialog (New space, Edit space, Edit owners, Archive): closing it without a write gives the
   // focus back there (Cancel, Escape, the backdrop), as the confirmation modal's keyboard contract says.
   let opener: { isConnected?: boolean; focus(o?: FocusOptions): void } | null = null;
-  const remember = (): void => {
+  // …or, when what opened it goes with the dialog's opening (a pane row's "…" menu item), this element instead.
+  let openerElse: string | null = null;
+  const remember = (orElse: string | null = null): void => {
     const a = host.mount.ownerDocument?.activeElement as { focus?: unknown } | null | undefined;
     opener = a && typeof a.focus === "function" ? (a as typeof opener) : null;
+    openerElse = orElse;
   };
   const giveBack = (): void => {
     const o = opener;
-    opener = null;
+    const orElse = openerElse;
+    opener = null; openerElse = null;
     if (o && o.isConnected !== false) o.focus({ preventScroll: true });
+    else if (orElse) host.mount.querySelector<HTMLElement>(orElse)?.focus({ preventScroll: true });
   };
 
   function focusSoon(selector: string): void {
@@ -304,7 +309,8 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         state.treeMenu = null;
         const facts = arg ? pageFacts(arg) : null;
         if (!arg || !facts) { rerender(); return; }
-        remember();
+        // From the row's "…" menu the menu item closes with it: the focus comes back to that row's "…".
+        remember(`.cnpy-dp-row[data-dtree="${arg}"] [data-act="treeMenu"]`);
         ui().pageArchive = { slug: arg, title: facts.title, under: facts.under, spaceName: spaceNameOf(facts.space), busy: false, error: null };
         rerender();
         // The confirmation's contract: its button is focused on open, so Enter / Space press it (confirm.ts).
