@@ -317,6 +317,24 @@ RV), Space home (SH1–SH2, ENV13–14), the wizard (IW9, IW12–IW26, ENV27–2
 ENV10–12), the spaces routes (API6, API8), Imports history (IH1). The ai-cards snapshot was stale on the branch
 before B2 (Batch A's SB1 label); it is updated now.
 
+## Owner ruling: 6 levels
+
+The owner ruled (2026-10-17) that a space's tree goes at most **6 levels** (depth 0–5): `MAX_DEPTH = 6`. The cases
+below were written for 10; read them with 6. Their past results stand for the old seed and are not rewritten.
+
+- The seed's `tree-deep-10` is now **`tree-deep-6`**: `test-deep-0` … `test-deep-5`, Platform › … › Regional failover ›
+  "Failing over the edge load balancers when a whole region stops answering health checks" (`test-deep-5`, the deepest
+  page). The on-call checklist (the agent's staged v2) is `test-failover-checklist`, beside it under Regional failover
+  (level 6). `test-deep-6` … `test-deep-9` are gone. 26 fixture files, 38 read-back checks.
+- **DP2, DP3, DP5, DOC22, ENV19, ENV20** — the 6-level chain; `#doc/test-deep-5` where they say `test-deep-9`.
+- **TM6** — the pill reads "Pages go at most 6 levels deep". **TM7** — into the level-6 page (`test-deep-5`).
+- **NP15, MCP8** — the parent is `test-deep-5` (the page would be level 7).
+- **RV24** — `proposal-badparent` asks for `test-deep-5`.
+- **IW40** — `test-too-deep.zip` is now 6 folders + deep.md (level 7): "Nested more than 6 levels deep".
+  `test-exactly-6-levels.zip` (5 folders + at-cap.md, level 6) is the at-the-cap fixture: every page imports.
+  **IW41** — `test-two-folders.zip` under `test-deep-4` (level 5): no page lands past level 6.
+- **RV1, RV15** (`review-agent-group`) — the same 7 agent versions; the checklist's slug is `test-failover-checklist`.
+
 ## Cases
 
 Columns: id · surface · state (fixture, role, viewport, theme) · expected · source · actual · result · evidence · fix.

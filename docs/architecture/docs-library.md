@@ -83,7 +83,13 @@ Inside a space the pages form a tree: `docs.parent_slug` (NULL = the space's top
 place among its siblings; NULL = no saved place yet). The RULES are **`shared/docs-tree-core.ts`** (zod-free; the SPA
 imports it as a value), so the Worker's move route and the docs pane's optimistic drop run the same functions:
 
-- **At most `MAX_DEPTH` = 10 levels** (the top level is depth 0). A move checks the moved page's whole subtree.
+- **At most `MAX_DEPTH` = 6 levels** (depth 0–5; the owner's ruling — the deepest that still reads in the 252px
+  docs pane). A move checks the moved page's whole subtree; so do a proposal's parent (an invalid one is ignored) and
+  the import planner (a folder is a level; what goes past it is skipped, "Nested more than 6 levels deep"). Every
+  message names the constant. **A page already deeper** (stored while the limit was 10) is never moved for you: it
+  reads and renders as usual (`buildTree` / `flattenTree` and the pane have no depth cut; the indent keeps 9px a
+  level), and `planMove` refuses only a move that takes it DEEPER than it already is — a reorder among its siblings
+  or a move up is allowed. Nothing new goes under it.
 - **Never a loop** (`wouldCycle`: not under itself or a page below it), never onto itself (`self`), and **same space
   only** (`other_space`) — a page changes space only by being re-proposed, never by a drag.
 - **Order** (`treeOrder`): ranked siblings by rank, then unranked ones A to Z. The first drop into a list holding an

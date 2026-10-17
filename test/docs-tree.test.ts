@@ -95,6 +95,34 @@ describe("POST /doc/:slug/move — the tree's rules, server-side", () => {
     expect((await move(member, "d0", { target: "into", ref: "loose" })).json).toMatchObject({ error: "too_deep" });
   });
 
+  it("a page stored deeper than MAX_DEPTH stays put and reads; it is refused only a move deeper, and takes no new child", async () => {
+    const member = await cookieFor(MEMBER);
+    // d0 … d5 through the gate (the limit), then deep and deep-sib put one level past it by hand (data from before the cap).
+    await live("d0");
+    for (let i = 1; i < MAX_DEPTH; i++) await live(`d${i}`, { parent: `d${i - 1}` });
+    await live("deep");
+    await live("deep-sib");
+    await env.DB.prepare(`UPDATE docs SET parent_slug = ? WHERE org_id = ? AND slug IN ('deep', 'deep-sib')`).bind(`d${MAX_DEPTH - 1}`, ORG_A).run();
+    // It reads: the doc page carries its whole breadcrumb, the space's read lists it under its parent.
+    const pg = await page(member, "deep");
+    expect(pg.ancestors.map((a) => a.slug)).toEqual(Array.from({ length: MAX_DEPTH }, (_, i) => `d${i}`));
+    const home = await call<{ pages: { slug: string; parent_slug: string | null }[] }>("GET", "/api/spaces/engineering", member);
+    expect(home.json.pages.find((p) => p.slug === "deep")).toMatchObject({ parent_slug: `d${MAX_DEPTH - 1}` });
+    // A reorder at its own depth and a move up are allowed; deeper is refused.
+    expect((await move(member, "deep", { target: "after", ref: "deep-sib" })).status).toBe(200);
+    expect((await move(member, "deep", { target: "into", ref: "deep-sib" })).json).toMatchObject({ error: "too_deep" });
+    expect((await place("deep"))?.parent_slug).toBe(`d${MAX_DEPTH - 1}`);
+    expect((await move(member, "deep-sib", { target: "into", ref: `d${MAX_DEPTH - 2}` })).status).toBe(200);
+    // A new page asking for it (or for the deepest legal page) as its parent lands at the top level, with the note.
+    const r = await ingestDocProposal(A(), doc("under-deep", { parent: "deep" }), OWNER, ledger());
+    expect(r).toMatchObject({ outcome: "written", parent_ignored: { parent_slug: "deep", reason: "too_deep" } });
+    const r2 = await ingestDocProposal(A(), doc("under-last", { parent: `d${MAX_DEPTH - 1}` }), OWNER, ledger());
+    expect(r2).toMatchObject({ outcome: "written", parent_ignored: { reason: "too_deep" } });
+    const r3 = await ingestDocProposal(A(), doc("under-fifth", { parent: `d${MAX_DEPTH - 2}` }), OWNER, ledger());
+    expect(r3).not.toHaveProperty("parent_ignored");
+    expect(await place("under-deep")).toMatchObject({ parent_slug: null });
+  });
+
   it("an archived space's pages do not move; a bearer is refused; another org's page is not found", async () => {
     const member = await cookieFor(MEMBER);
     await live("p1");

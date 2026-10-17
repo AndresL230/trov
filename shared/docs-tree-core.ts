@@ -6,7 +6,9 @@
 //
 // Rules:
 //   - At most MAX_DEPTH levels: the top level is depth 0, so the deepest page is depth MAX_DEPTH − 1.
-//     A move checks the moved page's WHOLE subtree, not just the page.
+//     A move checks the moved page's WHOLE subtree, not just the page. A page already deeper than that (stored
+//     before the limit was lowered) stays where it is and reads as usual; it may move anywhere that does not take
+//     its subtree deeper than it already goes — only moving deeper is refused.
 //   - A page can never be moved under itself or one of its descendants (`cycle`), never next to or into
 //     itself (`self`), and never to another space (`other_space`) — moves are same-space only.
 //   - "into" appends the page as the target's LAST child; "top" appends it at the END of the space root;
@@ -22,8 +24,9 @@ import { placeAmong } from "./placement-core";
 export { placeAmong, RANK_STEP } from "./placement-core";
 export type { Placement, RankedKey } from "./placement-core";
 
-/** The deepest a tree may go, in levels (the top level is level 1, depth 0). */
-export const MAX_DEPTH = 10;
+/** The deepest a tree may go, in levels (the top level is level 1, depth 0): the owner's ruling, 6 — the deepest
+ *  that still reads in the 252px docs pane. */
+export const MAX_DEPTH = 6;
 
 export interface DocTreeNode {
   slug: string;
@@ -192,7 +195,10 @@ export function planMove(nodes: readonly DocTreeNode[] | DocTree, slug: string, 
   }
   if (wouldCycle(tree, slug, parent)) return { ok: false, reason: "cycle" };
   const depth = parent === null ? 0 : depthOf(tree, parent) + 1;
-  if (depth + subtreeHeight(tree, slug) > MAX_DEPTH - 1) return { ok: false, reason: "too_deep" };
+  const height = subtreeHeight(tree, slug);
+  // Past the limit is refused only when it is deeper than the subtree already goes (a page stored deeper than the
+  // limit may still be reordered or moved up).
+  if (depth + height > MAX_DEPTH - 1 && depth > depthOf(tree, slug)) return { ok: false, reason: "too_deep" };
 
   const siblings = childrenOf(tree, parent, space).filter((n) => n.slug !== slug);
   let afterKey: string | null;

@@ -69,7 +69,7 @@ export const SKIP_REASONS = {
   empty: "The file is empty",
   too_large: "Too large: a page can be up to 1 MB, an image up to 10 MB",
   bad_path: "The file's name or folder isn't allowed",
-  too_deep: "Nested more than 10 levels deep",
+  too_deep: `Nested more than ${MAX_DEPTH} levels deep`,
   in_attachments: "In an attachments folder",
   duplicate: "Another file has the same name",
   not_utf8: "The file isn't readable text",

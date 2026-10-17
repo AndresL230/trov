@@ -243,16 +243,29 @@ describe("planImport — refusals, caps and safety", () => {
     expect(p.skipped[0]).toMatchObject({ path: "docs/attachments/readme.md", code: "in_attachments" });
   });
 
-  it("depth: pages past MAX_DEPTH (counted from the parent page) are skipped with their files", () => {
+  it("depth: pages past MAX_DEPTH (counted from the parent page) are skipped with their files; folders are levels", () => {
+    expect(SKIP_REASONS.too_deep).toBe("Nested more than 6 levels deep");
     const chain: ImportFile[] = [];
     let dir = "";
     for (let i = 0; i < 12; i++) { dir = dir ? `${dir}/l${i}` : `l${i}`; chain.push({ path: `${dir}/page.md`, size: 5, kind: "md" }); }
     const p = planImport(chain, empty);
-    expect(Math.max(...p.pages.map((x) => x.depth))).toBe(9);
+    expect(Math.max(...p.pages.map((x) => x.depth))).toBe(5);
     expect(p.skipped.every((s) => s.code === "too_deep")).toBe(true);
     expect(p.skipped.length).toBeGreaterThan(0);
-    const under = planImport(chain, { ...empty, parentSlug: "deep", parentDepth: 5 });
-    expect(Math.max(...under.pages.map((x) => x.depth))).toBe(3);                // 5 + 1 + 3 = 9
+    const under = planImport(chain, { ...empty, parentSlug: "deep", parentDepth: 2 });
+    expect(Math.max(...under.pages.map((x) => x.depth))).toBe(2);                // 2 + 1 + 2 = 5
+    // under the deepest page (depth 5) nothing fits
+    expect(planImport(chain, { ...empty, parentSlug: "deepest", parentDepth: 5 }).pages).toEqual([]);
+  });
+
+  it("depth: the seed's fixtures — five folders and a file is exactly the cap; six folders and a file is one past it", () => {
+    const atCap = planImport([{ path: "d1/d2/d3/d4/d5/at-cap.md", size: 5, kind: "md" }], empty);
+    expect(atCap.pages.map((x) => [x.key, x.depth])).toEqual([["d1/", 0], ["d1/d2/", 1], ["d1/d2/d3/", 2], ["d1/d2/d3/d4/", 3], ["d1/d2/d3/d4/d5/", 4], ["d1/d2/d3/d4/d5/at-cap.md", 5]]);
+    expect(atCap.skipped).toEqual([]);
+    const past = planImport([{ path: "d1/d2/d3/d4/d5/d6/deep.md", size: 5, kind: "md" }, { path: "shallow.md", size: 5, kind: "md" }], empty);
+    expect(Math.max(...past.pages.map((x) => x.depth))).toBe(5);                 // d6/ is the deepest page
+    expect(past.skipped).toEqual([expect.objectContaining({ path: "d1/d2/d3/d4/d5/d6/deep.md", code: "too_deep" })]);
+    expect(past.pages.some((x) => x.key === "shallow.md")).toBe(true);
   });
 
   it("orders siblings naturally", () => {

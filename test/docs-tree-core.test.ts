@@ -146,16 +146,35 @@ describe("planMove", () => {
   });
 
   it("too_deep checks the moved page's whole subtree against MAX_DEPTH", () => {
-    expect(MAX_DEPTH).toBe(10);
-    // a chain d0 … d9: ten levels, the limit
+    expect(MAX_DEPTH).toBe(6);                                                       // the owner's ruling: depth 0–5
+    // a chain d0 … d5: six levels, the limit
     const chain: DocTreeNode[] = Array.from({ length: MAX_DEPTH }, (_, i) => n(`d${i}`, i === 0 ? null : `d${i - 1}`, 1024));
     const loose = [n("leaf", null, 2048), n("pair", null, 3072), n("pair-kid", "pair", 1024)];
     const all = [...chain, ...loose];
-    expect(planMove(all, "leaf", { kind: "into", ref: "d8" }).ok).toBe(true);        // depth 9: the last level
-    expect(planMove(all, "leaf", { kind: "into", ref: "d9" })).toEqual({ ok: false, reason: "too_deep" });
-    expect(planMove(all, "leaf", { kind: "after", ref: "d9" }).ok).toBe(true);       // a sibling of d9 is depth 9
-    expect(planMove(all, "pair", { kind: "into", ref: "d7" }).ok).toBe(true);        // pair 8, kid 9
-    expect(planMove(all, "pair", { kind: "into", ref: "d8" })).toEqual({ ok: false, reason: "too_deep" });
+    expect(planMove(all, "leaf", { kind: "into", ref: "d4" }).ok).toBe(true);        // depth 5: the last level
+    expect(planMove(all, "leaf", { kind: "into", ref: "d5" })).toEqual({ ok: false, reason: "too_deep" });
+    expect(planMove(all, "leaf", { kind: "after", ref: "d5" }).ok).toBe(true);       // a sibling of d5 is depth 5
+    expect(planMove(all, "pair", { kind: "into", ref: "d3" }).ok).toBe(true);        // pair 4, kid 5
+    expect(planMove(all, "pair", { kind: "into", ref: "d4" })).toEqual({ ok: false, reason: "too_deep" });
+  });
+
+  it("a page stored deeper than the limit stays and reads; it moves anywhere but deeper", () => {
+    // d0 … d7: d6 and d7 sit past the limit (written before it was lowered); d7b is d7's sibling.
+    const chain: DocTreeNode[] = Array.from({ length: 8 }, (_, i) => n(`d${i}`, i === 0 ? null : `d${i - 1}`, 1024 * (i + 1)));
+    const all = [...chain, n("d7b", "d6", 512), n("leaf", null, 99999)];
+    const t = buildTree(all);
+    expect(depthOf(t, "d7")).toBe(7);
+    expect(ancestorsOf(t, "d7").map((x) => x.slug)).toEqual(["d0", "d1", "d2", "d3", "d4", "d5", "d6"]);
+    expect(flattenTree(t, "engineering").find((r) => r.node.slug === "d7")).toMatchObject({ depth: 7 });
+    // the same depth (a reorder among its siblings) and shallower are allowed
+    expect(planMove(all, "d7", { kind: "before", ref: "d7b" }).ok).toBe(true);
+    expect(planMove(all, "d7", { kind: "into", ref: "d5" }).ok).toBe(true);          // depth 6: still past, but up
+    expect(planMove(all, "d6", { kind: "after", ref: "d0" }).ok).toBe(true);         // d6 1, its kids 2
+    expect(planMove(all, "d7", { kind: "top" }).ok).toBe(true);
+    // deeper is refused, for the page itself and for a page joining it down there
+    expect(planMove(all, "d7", { kind: "into", ref: "d7b" })).toEqual({ ok: false, reason: "too_deep" });
+    expect(planMove(all, "leaf", { kind: "after", ref: "d7" })).toEqual({ ok: false, reason: "too_deep" });
+    expect(planMove(all, "leaf", { kind: "into", ref: "d5" })).toEqual({ ok: false, reason: "too_deep" });
   });
 
   it("takes a prebuilt tree too, and applyMove writes the plan into the list", () => {
