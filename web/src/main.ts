@@ -969,6 +969,9 @@ function runLinkStep(id: number, step: "send" | "accept" | "decline" | "cancel" 
       state.linkBusy = false;
       state.linkCancelArm = false; state.linkCancelBusy = false;
       linkErr(e, fallback);
+      // A refusal usually means the link moved elsewhere (cancelled, accepted, expired): re-read the page AND the
+      // tab, so the boxes and the sidebar badge stop counting a request that is no longer waiting (E2E B-08).
+      if (!(e instanceof Unauthorized)) loadLinks();
       if (state.linkId === id) openLinkPage(id);
     });
 }
