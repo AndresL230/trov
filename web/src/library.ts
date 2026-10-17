@@ -317,8 +317,8 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     sp.owners.length ? `<span style="display:inline-flex;align-items:center;gap:8px">${avatarStack(sp.owners, p.persons as PersonSummary[], 20, true)}<span>${esc(ownedBy(names))}</span></span>` : `<span>No owner yet</span>`,
     `<span>${esc(pagesWord(d.pages.length))}</span>`,
     ...(waiting > 0 ? [`<button type="button" data-act="goReview" class="cnpy-lib-wait" style="display:inline-flex;align-items:center;gap:6px;padding:0;font-size:12.5px;color:var(--fg-55)">${markShape("ring", "var(--amber)", 8)}${waiting} waiting for review</button>`] : []),
-  ].join(`<span style="color:var(--border-strong)">·</span>`);
-  const owners = d.can_edit && !sp.archived ? `<button type="button" data-act="libOwners" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Edit owners</button>` : "";
+    ...(d.can_edit && !sp.archived ? [`<button type="button" data-act="libOwners" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">Edit owners</button>`] : []),
+  ].map((item) => `<span class="cnpy-lib-mi">${item}</span>`).join("");
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
     : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${outlineBtn("libArchive", null, "Archive", " data-confirm-trigger")}` : ""}${importBtn(sp.slug)}${accentBtn("libNewPage", sp.slug, "New page")}`;
@@ -327,7 +327,7 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     <div style="flex:1;min-width:240px">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--fg-55)">${meta}${owners ? `<span style="color:var(--border-strong)">·</span>${owners}` : ""}</div>
+      <div class="cnpy-lib-meta"><div class="cnpy-lib-meta-in">${meta}</div></div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap;max-width:100%">${actions}</div>
   </div>`;

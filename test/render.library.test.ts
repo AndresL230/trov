@@ -28,6 +28,7 @@ import { initialDropdownUi } from "../web/src/dropdown";
 import { SPACE_ICONS, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import { spaceErrorText, createLibraryController } from "../web/src/library-actions";
+import css from "../web/src/trov.css?raw";
 import { OrgApiError } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
@@ -196,6 +197,17 @@ describe("a space's home", () => {
     expect(card).toContain('<p class="cnpy-lib-sum">How a person signs in, and &lt;how&gt; an agent gets a token.</p>');
     expect(html.match(/class="cnpy-lib-sum"/g)).toHaveLength(1);
     expect(home()).not.toContain("cnpy-lib-sum");
+  });
+
+  it("the header's meta: each item draws its own \"·\" in the gap before it, clipped at a line's start, so a wrapped line never starts or ends with one (Batch B finding)", () => {
+    const html = home({}, { can_edit: true });
+    const meta = html.slice(html.indexOf('class="cnpy-lib-meta"'), html.indexOf("</div></div>", html.indexOf('class="cnpy-lib-meta"')));
+    expect(meta).not.toContain("·");
+    expect(meta.match(/class="cnpy-lib-mi"/g)?.length).toBe(4);   // owners, pages, waiting, Edit owners
+    const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.:()]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(".cnpy-lib-meta")).toContain("overflow:hidden");
+    expect(rule(".cnpy-lib-mi::before")).toContain('content:"·"');
+    expect(rule(".cnpy-lib-mi::before")).toContain("position:absolute");
   });
 
   it("the tabs: All pages carries the count; each tab lists the pages its way", () => {
