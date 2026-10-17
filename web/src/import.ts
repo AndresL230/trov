@@ -364,9 +364,12 @@ function previewStep(p: ImportWizardProps, spaces: SpaceDTO[]): string {
   const writes = new Map<string, ImportWrite>(applyConflictChoices(plan, importChoices(ui, plan, source), source).map((w) => [w.key, w]));
   const conflictKeys = new Set(plan.conflicts.map((c) => c.key));
   const skipped = importSkipped(plan, ui.unreadable);
+  // Each figure's words agree with it: "1 page to add", "2 pages to add" (an unknown count, "—", reads as many).
+  const words = (n: number | string, one: string, many: string): [number | string, string] => [n, n === 1 ? one : many];
   const strip = [
-    [sum.pages, "pages to add"], [sum.conflicts, "titles already exist"], [skipped.length, "files won't be imported"],
-    [sum.images, "images found"], [ui.links ? ui.links.total : "—", "links found"],
+    words(sum.pages, "page to add", "pages to add"), words(sum.conflicts, "title already exists", "titles already exist"),
+    words(skipped.length, "file won't be imported", "files won't be imported"), words(sum.images, "image found", "images found"),
+    words(ui.links ? ui.links.total : "—", "link found", "links found"),
   ].map(([n, l]) => `<div class="cnpy-imp-stat"><div style="font-size:20px;font-weight:600;letter-spacing:-0.01em;font-variant-numeric:tabular-nums">${esc(String(n))}</div><div style="font-size:12px;color:var(--fg-55)">${esc(String(l))}</div></div>`).join("");
 
   const rows = plan.pages.map((pg: PlannedPage) => {

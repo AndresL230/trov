@@ -115,6 +115,16 @@ describe("the import wizard (`#import`)", () => {
     expect(wiz({ step: "files", picks: [zipPick] })).toMatch(/data-act="impStep" data-arg="preview"/);
   });
 
+  it("Preview's summary strip says one in the singular: \"1 page to add\", \"1 link found\" (Batch B finding)", () => {
+    const one = wiz({ step: "preview", picks: [{ id: 1, name: "one.md", size: 90, kind: "md", state: "ready", error: null, inside: null }],
+      files: [{ path: "one.md", size: 90, kind: "md", title: "One" }], links: { total: 1, inImport: 0, existing: 1, missing: 0, unmatched: 0, imagesUsed: 0 } });
+    const label = (n: number, words: string) => new RegExp(`>${n}</div><div style="font-size:12px;color:var\\(--fg-55\\)">${words}</div>`);
+    expect(one).toMatch(label(1, "page to add"));
+    expect(one).toMatch(label(0, "titles already exist"));
+    expect(one).toMatch(label(1, "link found"));
+    expect(one).not.toContain("1 pages");
+  });
+
   it("Preview: the shared planner's pages, conflicts and skipped files, in the design's words", () => {
     const u = { step: "preview" as const, picks: [zipPick], files: FILES, links: { total: 5, inImport: 3, existing: 1, missing: 0, unmatched: 1, imagesUsed: 1 } };
     const html = wiz(u);
