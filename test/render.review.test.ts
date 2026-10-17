@@ -852,6 +852,12 @@ describe("Review — the list is keyed, and a card with a verdict leaves it", ()
     expect(fn).toContain("accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version)");
   });
 
+  it("a group's Reject all moves the focus into its dialog, and closing it gives the focus back to Reject all (case RV12, Batch C)", () => {
+    const at = (act: string) => mainSrc.slice(mainSrc.indexOf(`case "${act}":`), mainSrc.indexOf("case ", mainSrc.indexOf(`case "${act}":`) + 6));
+    expect(at("reviewGroupReject")).toMatch(/rerender\(\);\s*mount\.querySelector<HTMLElement>\("\[data-confirm-focus\]"\)\?\.focus\(\);/);
+    expect(at("reviewGroupRejectClose")).toContain('[data-act="reviewGroupReject"][data-arg="${CSS.escape(id)}"]');
+  });
+
   it("the write is optimistic but restorable: main.ts deletes the entry and restores the selection when it fails", () => {
     const fn = mainSrc.slice(mainSrc.indexOf("function reviewVerdict"), mainSrc.indexOf("function loadDraftAdrsIfNeeded"));
     expect(fn).toMatch(/\.catch\(\(e\) => \{[\s\S]*delete state\.reviewLeaving\[id\];[\s\S]*state\.reviewSel = exit\.selBefore/);
