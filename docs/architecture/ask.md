@@ -320,7 +320,7 @@ still its owner's; sharing lets the rest of the org READ it.
   its neutral tone — what members read, what stays private) / Stop sharing (`askThUnshare`); a shared row of the
   owner's carries `sharedMark` (marks.ts: a two-people glyph named "Shared", its tooltip who can read it — private,
   the normal state, has none), and so does the header beside the title. Under the person's own groups, **Shared in
-  <org>** (`sharedSection`, read on arriving at Ask — `reloadShared`): each row the title, time and the owner's
+  <org>** (`sharedSection`, read on arriving at Ask and again when one of its rows no longer opens — `reloadShared`): each row the title, time and the owner's
   picture and name (people.ts), one button that opens `#ask/<id>`, no ⋯ menu. A thread with `viewer: true` is
   read-only (`readOnly`, ask-state.ts): the composer's place is the owner — a clickable person (`personLink`) —
   "shared this conversation with <org>. Only <name> can continue it." and the shared mark; no Edit, Regenerate,

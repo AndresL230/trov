@@ -345,6 +345,8 @@ export function createAskController(host: AskHost): AskController {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...ui().page, status: "error" });
       fail(e, "Couldn't open this thread.");
+      // A row of Shared in <org> that its owner has since stopped sharing (or deleted): the list is read again.
+      if (ui().shared.data.some((t) => t.id === id)) reloadShared();
     }).finally(paint);
   }
 
@@ -375,7 +377,7 @@ export function createAskController(host: AskHost): AskController {
     paint, flash: (m, ms) => host.flash(m, ms), fail, want,
     refreshTickets: () => host.refreshTickets?.(),
     send: (input) => { void run(input); },
-    stop, openRef, closeInspector, newThread, openThread, reloadThreads, reloadShared, exit, cancelExit,
+    stop, openRef, closeInspector, newThread, openThread, reloadThreads, exit, cancelExit,
   };
 
   // ── the shell's own acts (`askSh…`) ──────────────────────────────────────

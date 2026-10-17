@@ -171,8 +171,6 @@ export interface AskCtx {
   openThread(id: number): void;
   /** Reload the thread list (after a rename, a pin, a share, a delete, a new thread's title). */
   reloadThreads(): void;
-  /** Reload the conversations others shared in the org (`GET /ask/shared`). Optional so a part's test ctx need not. */
-  reloadShared?(): void;
   /** Animate `key` out, then run `apply` (the state change that removes it) and repaint (ask-motion.ts rule 3).
    *  Under reduced motion `apply` runs at once. A second exit of the same key while one runs is ignored. */
   exit(key: string, apply: () => void, ms?: number): void;
