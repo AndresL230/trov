@@ -47,6 +47,9 @@
 //   page-imported-staged test-imp-first-week: never approved, from import 6302 (Imported from …)
 //   page-links           test-links: [[good]], [[good|label]], [[broken]], links in code (not links), a cross-space
 //                        link, a link to a staged page and to a page of the archived space; doc_links rows written
+//   page-archived        test-old-runbook: ARCHIVED (by test-dl-spaceowner) from Engineering › Runbooks; its child
+//                        test-old-runbook-step moved up to Runbooks; a person's staged v2 hidden from Review while
+//                        archived; test-links-archived links to it ([[…]] reads "Archived"). Space home › Archived pages
 //   page-unbackfilled    test-unbackfilled: live, body has [[test-architecture]], NO doc_links row (the cron backfill)
 //   page-xss             test-xss: HTML in the title and body (<img onerror>, <script>, javascript: link)
 //   page-unicode         test-unicode: accents, CJK and an emoji in the title and body
@@ -267,6 +270,7 @@ function page(s, c, org, d) {
     body: promoted ? promoted[5] : "", current_version: live,
     updated_at: c.days(promoted ? promoted[3] : d.versions[0][3]), updated_by: promoted ? promoted[2] : d.versions[0][2],
     owner: d.owner ?? d.versions[0][2], parent_slug: d.parent ?? null, tree_rank: d.rank ?? null,
+    archived_at: d.archived ? c.days(d.archived.days) : null, archived_by: d.archived ? d.archived.by : null,
   }));
   for (const [version, status, by, days, summary, body, extra = {}] of d.versions) {
     s.push(insert("doc_versions", {
@@ -395,6 +399,15 @@ function mainOrg(c) {
   for (const [slug, title, path] of [["test-imp-done-a", "Imported and approved A", "a.md"], ["test-imp-done-b", "Imported and approved B", "b.md"]]) {
     pages.push({ slug, title, space: E, parent: "test-runbooks", versions: [[1, "promoted", ADMIN, 0.08, `Imported from ${path}`, `# ${title}\n\nApproved.\n`, { import_id: IMP.done, import_path: path }]] });
   }
+  // page-archived (0083_doc_archive): Runbooks › "Old on-call runbook", archived by the space's owner. Its old place
+  // (parent_slug) is kept for Restore; its child moved up to Runbooks when it was archived; a person's staged v2 waits,
+  // hidden from Review while it is archived; a live page links to it (the link reads "Archived").
+  pages.push({ slug: "test-old-runbook", title: "Old on-call runbook", space: E, parent: "test-runbooks", rank: 4096, owner: SOWNER,
+    archived: { days: 2, by: SOWNER },
+    versions: [[1, "promoted", SOWNER, 40, "First version", "# Old on-call runbook\n\nThe pager rota before we moved to the new tool.\n"],
+      [2, "staged", MEMBER, 3, "Updated the rota", "# Old on-call runbook\n\nThe pager rota, updated.\n"]] });
+  pages.push(live("test-old-runbook-step", "Old runbook: first step", E, "test-runbooks", "# Old runbook: first step\n\nIt was under the old runbook; archiving moved it up a level.\n", { rank: 4608 }));
+  pages.push(live("test-links-archived", "Links to an archived page", E, null, "# Links to an archived page\n\nThe old runbook was [[test-old-runbook]]. With a label: [[test-old-runbook|the old rota]].\n", { rank: 11264 }));
   pages.push({ slug: "test-imp-release-oct", title: "Release notes: October", space: P, parent: "test-release-notes",
     versions: [[1, "promoted", MEMBER, 1, "Imported from test-release-notes-october.md", "# Release notes: October\n\nShipped.\n", { import_id: IMP.oneMd, import_path: "test-release-notes-october.md" }]] });
   for (const d of pages) page(s, c, MAIN, d);
@@ -406,7 +419,7 @@ function mainOrg(c) {
   // doc_links for the LIVE pages that link (what promote writes); test-unbackfilled is left without.
   const links = [["test-architecture", "test-web-app"], ["test-architecture", "test-api"], ["test-authentication", "test-agent-tokens"], ["test-authentication", "test-sso"],
     ["test-links", "test-authentication"], ["test-links", "test-rate-limits"], ["test-links", "test-no-such-page"], ["test-links", "test-pricing"],
-    ["test-links", "test-first-change"], ["test-links", "test-old-wiki-home"]];
+    ["test-links", "test-first-change"], ["test-links", "test-old-wiki-home"], ["test-links-archived", "test-old-runbook"]];
   for (const [from_slug, to_slug] of links) s.push(insert("doc_links", { org_id: MAIN, from_slug, to_slug }));
 
   // Import runs (imports-history). Their start times follow their ids, as real ones do (an id is given at the start),
@@ -517,6 +530,11 @@ export const CHECKS = [
   ["page-imported-staged: staged pages of import 6302 (3 new + 2 versions)", `SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = ${M} AND import_id = ${IMP.partial} AND status = 'staged'`, 5],
   ["page-links: doc_links rows from test-links (one broken)", `SELECT COUNT(*) AS n FROM doc_links WHERE org_id = ${M} AND from_slug = 'test-links'`, 6],
   ["page-links: the broken link's target is no page", `SELECT COUNT(*) AS n FROM doc_links l WHERE l.org_id = ${M} AND NOT EXISTS (SELECT 1 FROM docs d WHERE d.org_id = l.org_id AND d.slug = l.to_slug)`, 1],
+  ["page-archived: test-old-runbook archived by the space owner, its old place kept", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug = 'test-old-runbook' AND archived_at IS NOT NULL AND archived_by = '${SOWNER}' AND parent_slug = 'test-runbooks'`, 1],
+  ["page-archived: its child moved up to Runbooks", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug = 'test-old-runbook-step' AND parent_slug = 'test-runbooks' AND archived_at IS NULL`, 1],
+  ["page-archived: a live page links to it", `SELECT COUNT(*) AS n FROM doc_links WHERE org_id = ${M} AND from_slug = 'test-links-archived' AND to_slug = 'test-old-runbook'`, 1],
+  ["page-archived: its staged v2 waits, hidden from Review", `SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = ${M} AND slug = 'test-old-runbook' AND version = 2 AND status = 'staged'`, 1],
+  ["page-archived: the only archived page", `SELECT COUNT(*) AS n FROM docs WHERE org_id IN (${ORGS.map(q).join(", ")}) AND archived_at IS NOT NULL`, 1],
   ["page-unbackfilled: no doc_links row yet", `SELECT COUNT(*) AS n FROM doc_links WHERE org_id = ${M} AND from_slug = 'test-unbackfilled'`, 0],
   ["page-unbackfilled: the backfill cursor is reset", `SELECT COUNT(*) AS n FROM cron_cursor WHERE job = 'doc_links_backfill' AND last_key = ''`, 1],
   ["page-xss / page-unicode", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug IN ('test-xss','test-unicode') AND current_version = 1`, 2],
