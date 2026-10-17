@@ -12,29 +12,36 @@
 import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
+import { spaceTile } from "./library";
 
-/** The nav entries that own a sub-page list — only Docs now. Roadmap, Tickets and Repo have
+/** The Library group's Imports row (a clock with a back arrow) and its Import action (the upload arrow). */
+const HISTORY = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"></path><path d="M3 3v5h5"></path><path d="M12 7v5l3 2"></path></svg>`;
+const UPLOAD = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
+
+/** The nav entries that own a sub-page list — only the Library now (its spaces). Roadmap, Tickets and Repo have
  *  none: their switches are on the screen itself (Roadmap's Narrative / Timeline, removed
  *  from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27;
  *  Repo's Overview / Code / CI / Usage / Planning — a tab bar heading the page body —
  *  removed 2026-09-27). Unplaced (the `maintenance` key: it was Maintenance, with Identity and
- *  People tabs that moved into Org settings 2026-10-06) is one queue. A stored `trov.navOpen`
- *  naming a retired group is simply not read back (main.ts). */
-export const NAV_GROUPS = ["docs"] as const;
+ *  People tabs that moved into Org settings 2026-10-06) is one queue. The Library was Docs, with a
+ *  fixed Technical / Product pair, until the spaces (2026-10): a stored `trov.navOpen` `docs` key is read
+ *  as `library` (main.ts); any other retired group is simply not read back. */
+export const NAV_GROUPS = ["library"] as const;
 export type NavGroup = (typeof NAV_GROUPS)[number];
 export type NavOpen = Record<NavGroup, boolean>;
-export const NAV_CLOSED: NavOpen = { docs: false };
+export const NAV_CLOSED: NavOpen = { library: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "docs" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
+export type NavKey = "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
-  mywork: "mywork", ask: "ask", feed: "feed", docs: "docs", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
+  mywork: "mywork", ask: "ask", feed: "feed", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
   handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs", links: "handoffs", link: "handoffs",
   prompts: "prompts", prompt: "prompts", promptedit: "prompts",
-  newdoc: "docs",
+  // The Library: its home, a space's home, a doc (the reader), New page, the import wizard and Imports history.
+  library: "library", space: "library", docs: "library", newdoc: "library", import: "library", imports: "library",
   platform: "platform", platformorg: "platform",
   org: "org",
 };
@@ -51,9 +58,16 @@ export interface SidebarProps {
   navOpen: NavOpen;
   qView: "table" | "board";
   roadmapTab: "narrative" | "timeline";
-  docSpace: string;
-  docSpaces: { key: string; label: string }[];
-  counts: { review: number; maintenance: number; tickets: number; handoffs: number; prompts: number };
+  /** The space the screen is in (a space's home, a doc, New page), or null. */
+  librarySpace: string | null;
+  /** The org's live spaces, in the Library's order. */
+  spaces: { key: string; label: string; icon: string; color: string }[];
+  /** The spaces read has answered (so an empty list means "no spaces yet", not "not known yet"). */
+  spacesLoaded: boolean;
+  /** An admin of the org: the group ends with "+ New space". */
+  canAdmin: boolean;
+  /** `imports` — Markdown imports in progress (the Library's Imports row; absent = none). */
+  counts: { review: number; maintenance: number; tickets: number; handoffs: number; prompts: number; imports?: number };
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
   logo: string;
@@ -77,7 +91,7 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   prompts: ICON(`<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`),
   repo: ICON(`<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`),
   feed: ICON(`<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`),
-  docs: ICON(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`),
+  library: ICON(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`),
   artifacts: ICON(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`),
   review: ICON(`<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`),
   // An inbox tray: the Unplaced queue (the key is still `maintenance`).
@@ -102,16 +116,10 @@ const CHEVRON = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" str
 /** ⌘K on Apple hardware, Ctrl K elsewhere. Guarded: render also runs under vitest. */
 const isMac = (): boolean => typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform ?? "");
 
-/** The sub-page a group is currently showing, or null (e.g. a ticket's detail). */
+/** The sub-page a group is currently showing, or null (e.g. Library home). */
 function activeSub(p: SidebarProps, g: NavGroup): string | null {
   switch (g) {
-    case "docs": return p.screen === "docs" ? p.docSpace : null;
-  }
-}
-
-function subPages(p: SidebarProps, g: NavGroup): { key: string; label: string }[] {
-  switch (g) {
-    case "docs": return p.docSpaces;
+    case "library": return p.screen === "space" || p.screen === "docs" || p.screen === "newdoc" ? p.librarySpace : null;
   }
 }
 
@@ -122,6 +130,27 @@ const section = (label: string, first = false): string =>
 export function sidebarView(p: SidebarProps): string {
   const current = navKeyOf(p.screen);
 
+  /** A group's sub-page list. The Library's: one row per live space (its tile and name; a file-drop target, §10),
+   *  then — always emitted, shown by attribute — "No spaces yet" with one hollow row (the read answered with none),
+   *  the Imports row (its accent badge: imports in progress, hidden at 0), and the action row: "+ New space" (an
+   *  admin) and "Import" (everyone; the space on screen preset). The space rows follow the DATA; nothing in the list
+   *  comes and goes with a UI state. */
+  const subList = (g: NavGroup, open: boolean): string => {
+    const tab = `tabindex="${open && !p.collapsed ? 0 : -1}"`;
+    const here = activeSub(p, g);
+    const rows = p.spaces.map((s) => {
+      const on = here === s.key;
+      return `<button data-act="navSub" data-arg="${attr(`${g}:${s.key}`)}" class="cnpy-sub-i cnpy-sub-sp${on ? " is-active" : ""}"${on ? ' aria-current="page"' : ""} ${tab} data-drop-space="${attr(s.key)}">${spaceTile(s, 14)}<span class="cnpy-sub-n">${esc(s.label)}</span></button>`;
+    }).join("");
+    const none = `<div class="cnpy-sub-none"${p.spacesLoaded && p.spaces.length === 0 ? "" : " hidden"}>No spaces yet<div class="cnpy-sub-ghost" aria-hidden="true"><span></span><span></span></div></div>`;
+    const imports = p.counts.imports ?? 0;
+    const onImports = p.screen === "imports";
+    const history = `<button data-act="goImports" class="cnpy-sub-i cnpy-sub-imp${onImports ? " is-active" : ""}"${onImports ? ' aria-current="page"' : ""} ${tab}>${HISTORY}<span class="cnpy-sub-n">Imports</span><span class="cnpy-sub-badge" data-n="${imports}" aria-label="${imports} in progress">${imports}</span></button>`;
+    const add = `<button data-act="libNew" class="cnpy-sub-i cnpy-sub-new"${p.canAdmin ? "" : " hidden"} ${tab}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New space</button>`;
+    const imp = `<button data-act="goImport" data-arg="${attr(here && p.spaces.some((s) => s.key === here) ? here : "")}" class="cnpy-sub-i cnpy-sub-new cnpy-sub-impgo" ${tab}>${UPLOAD}Import</button>`;
+    return `${rows}${none}${history}<div class="cnpy-sub-acts">${add}${imp}</div>`;
+  };
+
   /** Every count is the SAME badge (one pill style, one collapsed-rail dot): a number
    *  beside an entry always means "this many things are waiting there". */
   const item = (key: NavKey, act: string, label: string, count = 0): string => {
@@ -131,14 +160,9 @@ export function sidebarView(p: SidebarProps): string {
     // Always emitted; `data-n="0"` hides both the count and the collapsed-rail dot.
     const marks = `<span class="cnpy-lbl cnpy-badge" data-n="${count}">${count}</span><span class="cnpy-dot" data-n="${count}"></span>`;
     const chevron = group
-      ? `<button data-act="navToggle" data-arg="${group}" class="cnpy-chev" aria-label="${open ? "Hide" : "Show"} ${attr(label)} pages" aria-expanded="${open}" tabindex="${p.collapsed ? -1 : 0}">${CHEVRON}</button>`
+      ? `<button data-act="navToggle" data-arg="${group}" class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="${open}" tabindex="${p.collapsed ? -1 : 0}">${CHEVRON}</button>`
       : "";
-    const sub = group
-      ? `<div class="cnpy-sub" data-open="${open ? "1" : "0"}"><div class="cnpy-sub-clip"><div class="cnpy-sub-list">${subPages(p, group).map((s) => {
-          const here = activeSub(p, group) === s.key;
-          return `<button data-act="navSub" data-arg="${attr(`${group}:${s.key}`)}" class="cnpy-sub-i${here ? " is-active" : ""}"${here ? ' aria-current="page"' : ""} tabindex="${open && !p.collapsed ? 0 : -1}">${esc(s.label)}</button>`;
-        }).join("")}</div></div></div>`
-      : "";
+    const sub = group ? `<div class="cnpy-sub" data-open="${open ? "1" : "0"}"><div class="cnpy-sub-clip"><div class="cnpy-sub-list">${subList(group, open)}</div></div></div>` : "";
     return `<div class="cnpy-navrow n-${key}${on ? " is-active" : ""}" data-tip="${attr(label)}">
       <button data-act="${act}" class="cnpy-nav-i" aria-label="${attr(label)}"${on ? ' aria-current="page"' : ""}>${ICONS[key]}<span class="cnpy-lbl cnpy-nav-t">${esc(label)}</span>${marks}</button>${chevron}
     </div>${sub}`;
@@ -170,7 +194,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("repo", "goRepo", "Repo")}
       ${item("feed", "goFeed", "Feed")}
       ${section("Knowledge")}
-      ${item("docs", "goDocs", "Docs")}
+      ${item("library", "goLibrary", "Library")}
       ${item("artifacts", "goArtifacts", "Artifacts")}
       ${item("prompts", "goPrompts", "Prompt Library", c.prompts)}
       ${section("Triage")}

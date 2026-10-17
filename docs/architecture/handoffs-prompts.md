@@ -116,7 +116,7 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 - Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs and live links at session start; never
   auto-claims). Links have their own skill, `link` (below).
 
-## Agent links — a short-lived line between two sessions (0078_agent_links)
+## Agent links — a short-lived line between two sessions (0076_10_17_staging › 0078_agent_links)
 
 Spec: `docs/superpowers/specs/2026-10-17-agent-links.md` (its owner rulings override the text above them).
 Built: the data and domain layer, the MCP tools, the cookie routes and badge, the Links tab and a link's page, the

@@ -118,7 +118,7 @@ describe("RELEASES — the data", () => {
     expect(ops("0.11")).toMatch(/0058_server_ai/);
     expect(ops("0.11")).toMatch(/deployment, release, create and workflow_job/);
     expect(ops("0.11")).toMatch(/plugin 0\.9\.0/);
-    // 0.12 is the 10-17 staging epic (#193 + #194 + #195): its four migrations are one file, 0076_10_17_staging.
+    // 0.12 is the 10-17 staging epic (#193 + #194 + #195): its seven migrations are one file, 0076_10_17_staging.
     expect(ops("0.12")).toMatch(/0076_10_17_staging/);
     expect(ops("0.12")).not.toMatch(/0080_handoff_upload_tokens|0077_ask_people_sharing|0076_ask_github/);
     expect(ops("0.12")).toMatch(/GitHub lookups/);

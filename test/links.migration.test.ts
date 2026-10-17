@@ -1,5 +1,5 @@
 /**
- * 0078_agent_links against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is wiped,
+ * 0078_agent_links — now a part of 0076_10_17_staging — against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is wiped,
  * migrated to just before it, given two orgs with tickets and handoffs (so their counters have moved — and one
  * ticket deleted, so the counter is ahead of MAX(number)), and then given the migration. The assertions are the
  * header's claims: org_counters keeps every row and value, its CHECK now takes 'link' and still refuses anything
@@ -8,11 +8,12 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { env, applyD1Migrations } from "cloudflare:test";
+import { migrationPart } from "./helpers/migration-part";
 
-const MIGRATION = "0078_agent_links.sql";
+const cut = () => migrationPart(env.TEST_MIGRATIONS, "0076_10_17_staging.sql", "0078_agent_links", "DROP TRIGGER IF EXISTS tickets_number_ai", "CREATE TABLE IF NOT EXISTS doc_spaces");
 const db = () => env.MT_DB;
-const before = () => env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION);
-const own = () => env.TEST_MIGRATIONS.filter((m) => m.name === MIGRATION);
+const before = () => cut().before;
+const own = () => cut().part;
 const q = async <T>(sql: string, ...p: unknown[]) => (await db().prepare(sql).bind(...p).all<T>()).results;
 const exec = (sql: string, ...p: unknown[]) => db().prepare(sql).bind(...p).run();
 

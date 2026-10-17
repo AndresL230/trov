@@ -143,7 +143,7 @@ describe("route, hash and sidebar", () => {
     expect(hashForRoute(parseHash("#org/integrations"))).toBe("#org");
   });
   it("the rail has NO Org settings row: the org switcher in its header holds it, and reads as the current place there", () => {
-    const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, docSpace: "technical", docSpaces: [], counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
+    const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false, counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
     expect(navKeyOf("org")).toBe("org");
     const html = sidebarView({ ...base, screen: "org", orgSwitcher: "<b>switcher</b>", orgActive: true });
     expect(html).not.toContain('data-act="orgGo"');

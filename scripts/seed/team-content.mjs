@@ -619,17 +619,17 @@ const INCIDENT_V1 = `# Incident: Supabase pool exhausted (exam week)
 export const DOCS = [
   { slug: "sapling-teacher-dashboard", section: "Product Specs", space: "product", title: "Teacher dashboard", owner: MEI,
     versions: [[1, "promoted", MEI, 19, "First spec for the beta", DASH_V1], [2, "promoted", PRIYA, 12, "Filters", DASH_V2, "edit"], [3, "promoted", MEI, 3, "Time zones and the needs-attention sort", DASH_V3, "edit"], [4, "staged", LUKE, 0.6, "Exports are in the beta after all", DASH_V4, "edit"]] },
-  { slug: "sapling-gradebook-export", section: "Architecture", space: "technical", title: "Gradebook export", owner: JOSE,
+  { slug: "sapling-gradebook-export", section: "Architecture", space: "engineering", title: "Gradebook export", owner: JOSE,
     versions: [[1, "promoted", JOSE, 25, "How exports run", EXPORT_V1], [2, "promoted", JOSE, 11, "Progress endpoint", EXPORT_V2, "edit"], [3, "staged", JOSE, 2.8, "The export job replaces the long timeout", EXPORT_V3, "edit"]] },
-  { slug: "sapling-deploys", section: "Operations", space: "technical", title: "Deploys and environments", owner: JACK,
+  { slug: "sapling-deploys", section: "Operations", space: "engineering", title: "Deploys and environments", owner: JACK,
     versions: [[1, "promoted", JACK, 34, "Staging and production", DEPLOY_V1], [2, "promoted", ME, 21, "Rolling back", DEPLOY_V2, "edit"], [3, "promoted", JACK, 8, "Health checks", DEPLOY_V3, "edit"]] },
-  { slug: "sapling-spaced-repetition", section: "AI & Learning Engine", space: "technical", title: "Spaced repetition (SM-2)", owner: JOSE,
+  { slug: "sapling-spaced-repetition", section: "AI & Learning Engine", space: "engineering", title: "Spaced repetition (SM-2)", owner: JOSE,
     versions: [[1, "promoted", JOSE, 42, "The scheduler", SR_V1], [2, "promoted", JOSE, 32, "Retention results", SR_V2, "edit"]] },
   { slug: "sapling-support-playbook", section: "Overview", space: "product", title: "Support playbook", owner: SANA,
     versions: [[1, "promoted", SANA, 28, "First version", SUPPORT_V1], [2, "promoted", ME, 14, "Data deletion answer", SUPPORT_V2, "edit"], [3, "rejected", SANA, 9, "Name the inbox", SUPPORT_V3, "edit"]] },
   { slug: "sapling-offline-mode", section: "Product Specs", space: "product", title: "Offline study mode", owner: MEI,
     versions: [[1, "promoted", MEI, 8, "Draft spec", OFFLINE_V1], [2, "staged", PRIYA, 1.3, "What a sync conflict looks like", OFFLINE_V2, "edit"]] },
-  { slug: "sapling-incident-exam-week", section: "Operations", space: "technical", title: "Incident: Supabase pool exhausted (exam week)", owner: JACK,
+  { slug: "sapling-incident-exam-week", section: "Operations", space: "engineering", title: "Incident: Supabase pool exhausted (exam week)", owner: JACK,
     versions: [[1, "promoted", JACK, 16, "Write-up", INCIDENT_V1]] },
 ];
 /** Sections the layer's docs need (docs.section → sections.name). */

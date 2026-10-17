@@ -10,4 +10,5 @@ export interface SidebarBadges {
   handoffs: number;  // pending handoffs addressed to me
   links: number;     // link requests waiting for me (`GET /links?box=waiting`); the web adds it to the Relay badge
   prompts: number;   // staged prompts
+  imports: number;   // Markdown imports in progress (the Library's Imports row; one at most)
 }

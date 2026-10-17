@@ -7,6 +7,7 @@
 import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import { newDocView, blankDoc } from "../web/src/newdoc";
+import { initialDropdownUi } from "../web/src/dropdown";
 import { newSprintPanel, type NewSprintState } from "../web/src/sprints";
 import { segmented, segKeyTarget, type SegOption } from "../web/src/segmented";
 import mainSrc from "../web/src/main.ts?raw";
@@ -17,6 +18,8 @@ const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
 const rules = [...stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]] as const);
 const focusRules = rules.filter(([sel]) => /:focus(-visible|-within)?\b/.test(sel));
 const FIELD_TYPES_SKIPPED = ["checkbox", "radio", "range", "file", "color", "hidden", "button", "submit", "reset", "image"];
+
+const SPACE_PRODUCT = { slug: "product", name: "Product", icon: "compass", color: "#2f7d57", description: "", sort_rank: 1024, created_at: "t", created_by: "system", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 } as unknown as import("@shared/docs-core").SpaceDTO;
 
 describe("focus — every focusable element shows a ring", () => {
   it("no :focus rule takes the outline away", () => {
@@ -59,7 +62,7 @@ describe("focus — every focusable element shows a ring", () => {
 
   it("the New sprint form and the New doc body are fields the ring covers (they had none)", () => {
     const NS: NewSprintState = { open: true, name: "", start: "", desc: "", urgency: "normal", due: "", lead: null, domain: null, error: null };
-    const doc = newDocView({ draft: blankDoc("product", "reference"), spaces: [{ key: "product", label: "Product" }], sections: ["reference"] });
+    const doc = newDocView({ draft: blankDoc("product"), spaces: [SPACE_PRODUCT], pages: [], sections: ["reference"], dd: initialDropdownUi() });
     const fields = [...newSprintPanel(NS, []).matchAll(/<(input|textarea)\b[^>]*>/g), ...doc.matchAll(/<(input|textarea)\b[^>]*>/g)].map((m) => m[0]);
     expect(fields.some((f) => f.includes('data-arg="body"'))).toBe(true);
     expect(fields.some((f) => f.includes('data-arg="name"'))).toBe(true);

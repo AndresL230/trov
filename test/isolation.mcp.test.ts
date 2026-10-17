@@ -208,9 +208,12 @@ const refused = (args: Record<string, unknown>): Probe => ({ args, expect: "refu
 
 const MATRIX: Record<string, Entry> = {
   // knowledge
-  query: () => [read({ q: "canary" }), read({ q: "canary", types: ["doc", "decision", "feed", "sprint", "artifact"], limit: 50, pointer_limit: 50 })],
+  query: () => [read({ q: "canary" }), read({ q: "canary", types: ["doc", "decision", "feed", "sprint", "artifact"], limit: 50, pointer_limit: 50 }),
+    read({ q: "canary", space: "engineering" }), read({ q: "canary", space: "technical" })],
   get_doc: (o) => [refused({ slug: o.doc }), read({ slug: SHARED_DOC })],
-  list_docs: () => [read(), read({ section: "reference" })],
+  list_docs: () => [read(), read({ section: "reference" }), read({ space: "engineering" }), read({ space: "technical" })],
+  // The Library's spaces (0081_docs_library): the token's own org's. Every org has the same three starter names — no canary to see.
+  list_spaces: () => [{ args: {}, expect: "inert" }],
   get_feed: () => [read(), read({ author: "dana" })],
   // The org's tag list (0056_org_tags): the token's own org's, whatever is passed. It names tags, not content — no canary to see.
   list_tags: () => [{ args: {}, expect: "inert" }],

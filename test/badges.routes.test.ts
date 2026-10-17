@@ -28,6 +28,12 @@ async function seedEverything(): Promise<void> {
     await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('gate', ?, 'b', ?, ?, 'andres')`, v, status, T);
   await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by) VALUES ('old', 'reference', 'Old', 'live', 3, ?, 'andres')`, T);
   await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('old', 2, 'b', 'staged', ?, 'andres')`, T);
+  // Owner ruling RV3: an import's version with a newer staged change on top (an agent's) is not offered on its own —
+  // the page is the newer change's; the import's older one leaves Review's list and so its count.
+  await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by) VALUES ('deploys', 'reference', 'Deploys', 'live', 1, ?, 'andres')`, T);
+  await run(env.DB, `INSERT INTO doc_imports (id, org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (77, 'org_saplinglearn', 'engineering', 'h.zip', 'andres', ?, ?, 'done')`, T, T);
+  await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by, import_id, import_path) VALUES ('deploys', 2, 'imported', 'staged', ?, 'andres', 77, 'deploys.md')`, T);
+  await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('deploys', 3, 'agent', 'staged', ?, 'meilin')`, T);
   // Decisions: drafts count; ratified and rejected do not.
   for (const status of ["draft", "draft", "ratified", "rejected"])
     await run(env.DB, `INSERT INTO adrs (title, context, decision, rationale, status, confidence, created_at, created_by) VALUES ('A', 'c', 'd', 'r', ?, 'high', ?, 'andres')`, status, T);
@@ -51,6 +57,11 @@ async function seedEverything(): Promise<void> {
   await prompt("deleted-staged", ["staged"], true);
   // Tickets: one open, unassigned, native ticket.
   await run(env.DB, `INSERT INTO tickets (title, requester, status, created_at, updated_at) VALUES ('Open', 'andres', 'submitted', ?, ?)`, T, T);
+  // Imports: a running run heard from lately counts; a stale one, an ended one, and another org's do not.
+  const old = new Date(Date.now() - 600_000).toISOString();
+  for (const [status, at] of [["running", T], ["running", old], ["done", T]] as const)
+    await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES ('org_saplinglearn', 'engineering', 'h.zip', 'andres', ?, ?, ?)`, at, at, status);
+  await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (?, 'engineering', 'h.zip', 'x', ?, ?, 'running')`, ORG_B, T, T);
   // Links: a request sent to me (any case) counts; a draft, an open link, a declined one, one I sent and one
   // sent to someone else do not.
   const link = (state: string, requester: string, recipient: string, orgId = "org_saplinglearn") =>
@@ -81,6 +92,7 @@ describe("GET /badges", () => {
     const tickets = (await json<{ count: number }>("/tickets/badge", cookie)).count;
     const handoffs = (await json<{ handoffs: HandoffView[] }>("/api/handoffs?box=mine", cookie)).handoffs;
     const prompts = (await json<{ prompts: { status: string }[] }>("/api/prompts", cookie)).prompts;
+    const imports = (await json<{ running: number }>("/api/imports", cookie)).running;
     const links = (await json<{ links: LinkView[] }>("/api/links?box=waiting", cookie)).links;
 
     expect(badges).toEqual({
@@ -94,9 +106,11 @@ describe("GET /badges", () => {
       // link requests waiting for me — the web adds them to the Relay badge; `handoffs` stays handoffs only
       links: links.length,
       prompts: prompts.filter((p) => p.status === "staged").length,
+      imports,
     });
     // …and the seed above is not vacuous: each count is the one it was built to be.
-    expect(badges).toEqual({ proposals: 1, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, links: 2, prompts: 1 });
+    expect((proposals as { slug: string; version: number }[]).filter((p) => p.slug === "deploys").map((p) => p.version)).toEqual([3]);
+    expect(badges).toEqual({ proposals: 2, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, links: 2, prompts: 1, imports: 1 });
   });
 
   it("a failed read degrades: the badges and the waiting list are a 503 { error }, never a 500", async () => {

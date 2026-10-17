@@ -33,11 +33,20 @@ export interface DocRow {
   current_version: number;
   updated_at: string | null;
   updated_by: string | null;
-  space: string;   // 'technical' | 'product' — the Docs tab this doc lives under (UI grouping, not access)
+  space: string;   // a doc_spaces slug of the org (0081_docs_library) — the Library space the page lives in (grouping, not access)
   /** A person handle: who proposed the doc's FIRST version (0035). Set at creation, never
    *  overwritten by later edits/promotions; renamed with the person. NULL only for a doc
    *  row with no version and no updated_by at backfill time. */
   owner: string | null;
+  /** The page it sits under in its space's tree (0081_docs_library); NULL = top level. Every row read has it;
+   *  optional so a fixture written before the tree need not name it. */
+  parent_slug?: string | null;
+  /** Its place among its siblings; NULL sorts last. */
+  tree_rank?: number | null;
+  /** Archive page (0083_doc_archive): when a person archived it and who (NULL = in the Library). Optional so a
+   *  fixture written before it need not name them. */
+  archived_at?: string | null;
+  archived_by?: string | null;
 }
 
 /** A doc without its body — `GET /docs?fields=meta` (My Work's "Docs you own" cell). */
@@ -62,6 +71,12 @@ export interface DocVersionRow {
   base_version: number | null;   // the version this edit was based on (0009)
   change_kind: "new" | "edit" | "rewrite" | null; // server-classified delta size (0009)
   low_confidence: number;        // 1 = staged-and-flagged (low-conf on an existing slug) (0009)
+  /** The parent page the proposal asked for (0081_docs_library), applied on promote if still valid. Optional so a
+   *  fixture written before the tree need not name it. */
+  parent_slug?: string | null;
+  /** The Markdown import run that staged it (doc_imports.id) and the file's path in it — server-set only. */
+  import_id?: number | null;
+  import_path?: string | null;
 }
 
 /** A doc version without its body — `GET /doc/:slug`'s `versions` (the reader's Version history).

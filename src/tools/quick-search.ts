@@ -128,7 +128,7 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
     plan.push({ type: "doc", stmt: stmt(ctx,
       `SELECT d.slug AS id, d.title, d.section, d.updated_at AS at, d.updated_by AS by, snippet(docs_fts, 3, ${SNIP}) AS snippet
          FROM docs_fts JOIN docs d ON d.slug = docs_fts.slug AND d.org_id = ?
-        WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0
+        WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0 AND d.archived_at IS NULL
         ORDER BY bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
       map: (r) => ({ type: "doc", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.section), by: str(r.by), at: str(r.at) }) });
   }

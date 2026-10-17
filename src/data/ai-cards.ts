@@ -116,7 +116,7 @@ export function proposalCardRow(ctx: TenantContext, slug: string, version: numbe
     `SELECT v.slug AS slug, v.version AS version, d.title AS title, d.section AS section, v.summary AS summary, v.change_kind AS change_kind,
             d.current_version AS current_version, v.body AS staged_body, d.body AS live_body
        FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
-      WHERE v.org_id = ? AND v.slug = ? AND v.version = ? AND v.status = 'staged' AND v.version > d.current_version`,
+      WHERE v.org_id = ? AND v.slug = ? AND v.version = ? AND v.status = 'staged' AND v.version > d.current_version AND d.archived_at IS NULL`,
     ctx.orgId, ctx.orgId, slug, version);
 }
 
@@ -134,7 +134,7 @@ export function docCandidates(ctx: TenantContext, match: string, exceptSlug: str
   return all<DocHitRow>(ctx,
     `SELECT d.slug AS slug, d.title AS title, d.section AS section, d.body AS body, snippet(docs_fts, 3, '', '', '…', 12) AS snippet
        FROM docs_fts JOIN docs d ON d.slug = docs_fts.slug AND d.org_id = ?
-      WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0 AND d.section != 'needs-triage' AND d.slug != ?
+      WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0 AND d.archived_at IS NULL AND d.section != 'needs-triage' AND d.slug != ?
       ORDER BY bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) LIMIT ${Math.max(1, Math.min(10, Math.trunc(limit)))}`,
     ctx.orgId, match, ctx.orgId, exceptSlug ?? "");
 }

@@ -32,7 +32,8 @@ drop (`transition_ticket` and the mirror's `forceStatus` both write `board_rank 
 the status menu, MCP or GitHub surfaces on top). The comparator `boardOrder` and the placement
 `placeInColumn` (`shared/tickets-core.ts`) are ONE definition shared by the Worker and the SPA's optimistic
 drop: a column holding a NULL is renumbered in its visible order first (`BOARD_RANK_STEP` apart), and so is
-one whose neighbours are too close to split. The drag is POINTER-driven (`web/src/main.ts`), never HTML5
+one whose neighbours are too close to split. The drag is POINTER-driven (`web/src/main.ts`, on the app's one pointer
+drag `web/src/pointer-drag.ts`, which the docs pane's page tree shares), never HTML5
 drag-and-drop — the browser's drag image is a shrunken snapshot the page cannot size: a full-size clone
 follows the pointer, a slot the other cards slide around (FLIP) marks where it will land, rerenders are
 HELD for the whole drag, and the click a drag's release fires is swallowed. Mouse and pen only — touch

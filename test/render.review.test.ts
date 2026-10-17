@@ -24,7 +24,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
 import { attachAskFlags } from "../web/src/triage-map";
-import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { reviewView, reviewPagePane, reviewGroups, changedLinesText, pageKindWord, APPROVE_NOTE, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
 import morphSrc from "../web/src/morph.ts?raw";
@@ -135,14 +135,37 @@ function makeItem(overrides: Partial<ReviewItem> = {}): ReviewItem {
 function makeReviewProps(overrides: Partial<ReviewProps> = {}): ReviewProps {
   return { items: [makeItem()], filter: "all", selectedId: null, diffView: "unified", ...overrides };
 }
+/** A drafted decision: the one kind of item that is a card of its own in the list (a doc change is a page of its
+ *  agent's group — or of its import's). */
+function makeAdr(overrides: Partial<ReviewItem> = {}): ReviewItem {
+  return makeItem({ kind: "decision", eyebrow: "DECISION · ADR-007", diff: undefined, adr: [{ h: "Context", p: "Why." }], ...overrides });
+}
 
 describe("reviewView — populated", () => {
-  it("renders the list card and the detail pane for the default selection", () => {
-    const html = reviewView(makeReviewProps());
-    expect(html).toContain("Test Proposal");
-    expect(html).toContain("WHAT CHANGED");
-    expect(html).toContain("Promote");
-    expect(html).toContain("Reject");
+  it("an agent's doc changes are ONE group card (the design's \"Written by ‹Name›'s agent\"), nothing picked until a page is", () => {
+    const items = [makeItem({ agent: "pia", agentName: "Pia Test-Agent", space: "engineering", at: "2026-10-17T10:00:00Z" }), makeItem({ id: "p2", title: "Second", agent: "pia", agentName: "Pia Test-Agent", space: "engineering", isNew: true })];
+    const html = reviewView(makeReviewProps({ items }));
+    expect(html).toContain('data-morph-key="rvg:agent:pia"');
+    expect(html).toContain("Written by Pia&#39;s agent");
+    expect(html).toMatch(/data-rv-group="agent:pia" data-kind="agent"/);
+    expect(html).toMatch(/class="cnpy-rvg-agav" role="img" aria-label="@pia&#39;s agent"/);
+    expect(html).toMatch(/2 pages · /);
+    expect(html).toMatch(/data-act="reviewGroupApprove" data-arg="agent:pia"[^>]*>Approve all 2</);
+    expect(html).toContain('data-act="reviewGroupReject" data-arg="agent:pia"');
+    expect(html).not.toContain('data-morph-key="rv:p1"');   // no card of its own
+    expect(html).not.toContain('data-morph-key="rvd:');     // nothing picked by default
+    // Opened, its pages are rows: a change to a live page reads "Change", a page nothing is live under "New page".
+    const open = reviewView(makeReviewProps({ items, groupsOpen: { "agent:pia": true }, selectedId: "p1" }));
+    expect(open).toMatch(/data-arg="p1" class="cnpy-rvg-pg" aria-current="true"[\s\S]*?<span class="cnpy-rvg-pk">Change<\/span>/);
+    expect(open).toMatch(/data-arg="p2" class="cnpy-rvg-pg"[\s\S]*?<span class="cnpy-rvg-pk">New page<\/span>/);
+    expect(open).toContain("Page 1 of 2 · Pia&#39;s agent");
+    expect(open).toContain('data-morph-key="rvd:p1"');
+    // Each author is a group of their own; a decision stays a card.
+    const two = reviewView(makeReviewProps({ items: [...items, makeItem({ id: "p3", agent: "max" }), makeAdr({ id: "d1" })] }));
+    expect(two).toContain('data-morph-key="rvg:agent:max"');
+    expect(two).toContain("Written by max&#39;s agent");
+    expect(two).toContain('data-morph-key="rv:d1"');
+    expect(two).toContain('data-morph-key="rvd:d1"');        // the decision is the default selection
   });
 
   it("labels the accept action Ratify for decisions and renders the ADR record", () => {
@@ -159,25 +182,27 @@ describe("reviewView — populated", () => {
 
   it("shows the stale-base warning only when stale", () => {
     const stale = makeItem({ stale: true, staleNote: "Proposed from v6 — live is v8." });
-    expect(reviewView(makeReviewProps({ items: [stale] }))).toContain(">Stale base</span>");
-    expect(reviewView(makeReviewProps())).not.toContain("Stale base");
+    expect(reviewView(makeReviewProps({ items: [stale], selectedId: "p1" }))).toContain(">Stale base</span>");
+    expect(reviewView(makeReviewProps({ selectedId: "p1" }))).not.toContain("Stale base");
   });
 
-  it("filter hides non-matching kinds from the list", () => {
-    const props = makeReviewProps({
-      items: [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] })],
-      filter: "decision",
-    });
-    const html = reviewView(props);
-    expect(html).toContain("A Decision");
-    // The proposal row is filtered out of the list (its title appears nowhere else)
-    expect(html).not.toContain("Test Proposal");
+  it("filter hides what it does not hold: Imports shows the import groups, Written by agents everything else", () => {
+    const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" })];
+    const imports = reviewView(makeReviewProps({ items, filter: "imports" }));
+    expect(imports).toContain("Import from handbook.zip");
+    // The agent rows are filtered out of the list: nothing is picked by default (a decision the filter hides is not).
+    expect(imports).not.toContain("rvg:agent:");
+    expect(imports).not.toContain("A Decision");
+    const agents = reviewView(makeReviewProps({ items, filter: "agents" }));
+    expect(agents).toContain("A Decision");
+    expect(agents).toContain('data-morph-key="rvg:agent:');
+    expect(agents).not.toContain("Import from handbook.zip");
   });
 });
 
 describe("reviewView — surface cards", () => {
   it("queue cards are clickable surfaces; every diff mode and the ADR record is one surface", () => {
-    const list = reviewView(makeReviewProps());
+    const list = reviewView(makeReviewProps({ items: [makeAdr()] }));
     // RV-OWNER-1: the card is a surface with a hit area (the author's avatar is its own button inside it).
     expect(list).toContain('class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox"');
     expect(list).toMatch(/<button( aria-current="true")? data-act="reviewSelect" data-arg="[^"]+" class="cnpy-hit" aria-label="[^"]+"><\/button>/);
@@ -200,7 +225,7 @@ describe("reviewView — surface cards", () => {
 
 describe("reviewView — diff view modes", () => {
   it("unified mode renders +/− prefixed lines", () => {
-    const html = reviewView(makeReviewProps({ diffView: "unified" }));
+    const html = reviewDetail(makeItem(), "unified");
     expect(html).toContain("old line");
     expect(html).toContain("new line");
     expect(html).toContain("−");
@@ -208,14 +233,14 @@ describe("reviewView — diff view modes", () => {
   });
 
   it("split mode renders the LIVE and PROPOSED column headers", () => {
-    const html = reviewView(makeReviewProps({ diffView: "split" }));
+    const html = reviewDetail(makeItem(), "split");
     expect(html).toContain("LIVE (v2)");
     expect(html).toContain("PROPOSED");
     expect(html).toContain("grid-template-columns:1fr 1fr");
   });
 
   it("rendered mode renders the two BODIES through the markdown renderer, not the line-cut diff", () => {
-    const html = reviewView(makeReviewProps({ diffView: "rendered", items: [makeItem({ liveBody: "## Heading\n\nold line", proposedBody: "## Heading\n\nnew line" })] }));
+    const html = reviewDetail(makeItem({ liveBody: "## Heading\n\nold line", proposedBody: "## Heading\n\nnew line" }), "rendered");
     expect(html).toContain('class="cnpy-md cnpy-rv-md"');
     expect(html).toContain('<div class="mock-md">new line</div>');
     expect(html).toContain("added in this proposal");
@@ -278,12 +303,12 @@ describe("reviewCard — restructured to match the detail header", () => {
 
 describe("reviewView — agent handle carries the mapped person's color", () => {
   it("renders the agent's colored handle tag when agentColor is set, muted when it isn't", () => {
-    const colored = makeItem({ agent: "AndresL230", agentColor: "sky" });
+    const colored = makeAdr({ agent: "AndresL230", agentColor: "sky" });
     const html = reviewView(makeReviewProps({ items: [colored] }));
     expect(html).toContain("var(--p-sky)");
     expect(html).toContain("@AndresL230");
 
-    const uncolored = makeItem();
+    const uncolored = makeAdr();
     const plain = reviewView(makeReviewProps({ items: [uncolored] }));
     expect(plain).toContain(`@${uncolored.agent}`);
     expect(plain).not.toContain("var(--p-");
@@ -334,10 +359,10 @@ describe("diff viewer — ellipsis rows (collapsed unchanged runs)", () => {
 
 describe("reviewView — flagged marker (low-confidence scrutiny signal)", () => {
   it("marks Low confidence only on flagged items — an amber triangle and the words, never a tag", () => {
-    const flagged = reviewView(makeReviewProps({ items: [makeItem({ flagged: true })] }));
+    const flagged = reviewView(makeReviewProps({ items: [makeAdr({ flagged: true })] }));
     expect(flagged).toContain(LOW_CONFIDENCE(12));
     expect(flagged).not.toContain("FLAGGED");
-    expect(reviewView(makeReviewProps())).not.toContain("Low confidence");
+    expect(reviewView(makeReviewProps({ items: [makeAdr()] }))).not.toContain("Low confidence");
   });
 });
 
@@ -345,7 +370,8 @@ describe("reviewView — empty states", () => {
   it("with no items the list says so and both panes draw their shape empty", () => {
     const html = reviewView(makeReviewProps({ items: [] }));
     expect(html).toContain('data-empty="review-list"');
-    expect(html).toContain("Nothing is waiting for review.");
+    // The design's words (owner ruling, E2E RV18): a title and its sentence.
+    expect(html).toContain('<p class="cnpy-empty-title">Nothing to review</p><p class="cnpy-empty-text">Pages that are imported or written by agents wait here until someone approves them. You&#39;ll see each import as one group.</p>');
     // The detail pane is a picture only: the list carries the one sentence.
     expect(html.split("cnpy-empty-text").length - 1).toBe(1);
     expect(html.split("cnpy-empty-shapes").length - 1).toBe(2);
@@ -353,10 +379,10 @@ describe("reviewView — empty states", () => {
   });
 
   it("renders the list empty state when the filter hides everything, keeping the selected detail", () => {
-    const html = reviewView(makeReviewProps({ filter: "decision", selectedId: "p1" }));
+    const html = reviewView(makeReviewProps({ filter: "imports", selectedId: "p1" }));
     expect(html).toContain("Nothing of this kind is waiting for review.");
-    // Selection survives the filter — the detail still shows the proposal
-    expect(html).toContain("WHAT CHANGED");
+    // Selection survives the filter — the detail still shows the proposal (its agent's page pane)
+    expect(html).toContain("What changes");
   });
 });
 
@@ -371,13 +397,13 @@ describe("XSS: review item fields are escaped in text and attributes", () => {
   });
 
   it("does not emit the raw attribute-breakout payload", () => {
-    const html = reviewView(makeReviewProps({ items: [hostile] }));
+    const html = reviewView(makeReviewProps({ items: [hostile], selectedId: hostile.id, groupsOpen: { [`agent:${hostile.agent}`]: true } }));
     expect(html).not.toContain('" onmouseover="');
     expect(html).toContain("&quot;");
   });
 
   it("escapes angle brackets in titles and diff lines", () => {
-    const html = reviewView(makeReviewProps({ items: [hostile] }));
+    const html = reviewView(makeReviewProps({ items: [hostile], selectedId: hostile.id, groupsOpen: { [`agent:${hostile.agent}`]: true } }));
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;");
@@ -418,7 +444,7 @@ function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceP
         { key: "feed", label: "Feed update" },
       ],
       sections: ["reference", "context", "decisions"],
-      spaces: ["technical", "product"],
+      spaces: [{ key: "engineering", label: "Engineering" }, { key: "product", label: "Product" }],
       tags: ["auth", "infra"],
     },
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
@@ -634,11 +660,12 @@ describe("assignPanel — per-type targets from the real vocabulary", () => {
     expect(html).not.toContain("reference");
   });
 
-  it("doc kind offers sections plus an optional space", () => {
+  it("doc kind offers sections plus an optional space — the org's own, by name", () => {
     const html = assignPanel("7", assign, "doc", null, null, []);
     expect(html).toContain("reference");
     expect(html).toContain("decisions");
-    expect(html).toContain("technical");
+    expect(html).toContain('data-act="maintAssignSpace" data-arg="engineering"');
+    expect(html).toContain(">Engineering</button>");
     expect(html).toContain("optional");
   });
 
@@ -735,30 +762,30 @@ describe("Review — Unified / Side by side / Rendered is ONE segmented switch",
   });
 });
 
-describe("Review — All / Proposals / Decisions is a segmented switch with counts", () => {
-  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] })];
+describe("Review — All / Imports / Written by agents is a segmented switch with counts", () => {
+  const items = [makeAdr(), makeAdr({ id: "p2", title: "Second" }), makeItem({ id: "i1", title: "Imported", importId: 4, importFile: "notes.zip", slug: "imported" })];
   it("picks one view of the same list, each option carrying how many wait", () => {
-    const html = reviewView(makeReviewProps({ items, filter: "proposal" }));
+    const html = reviewView(makeReviewProps({ items, filter: "agents" }));
     expect(html).toMatch(/class="cnpy-seg cnpy-seg--sm" data-seg="review-filter"/);
     expect(html).not.toContain('role="tablist"');
     expect(html).toMatch(/data-act="reviewFilter" data-arg="all"[^>]*>All<span class="cnpy-seg-n">3<\/span>/);
-    expect(html).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Proposals<span class="cnpy-seg-n">2<\/span>/);
-    expect(html).toMatch(/>Decisions<span class="cnpy-seg-n">1<\/span>/);
+    expect(html).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Written by agents<span class="cnpy-seg-n">2<\/span>/);
+    expect(html).toMatch(/>Imports<span class="cnpy-seg-n">1<\/span>/);
   });
   it("shows no count while the queue is still being read (never a made-up 0)", () => {
     expect(reviewFilterSwitch("all", null)).not.toContain("cnpy-seg-n");
     expect(reviewView(makeReviewProps({ items: [], loading: true }))).not.toContain("cnpy-seg-n");
   });
   it("a selection the filter still shows stays selected; one it hides keeps its detail", () => {
-    const shown = reviewView(makeReviewProps({ items, filter: "proposal", selectedId: "p2" }));
+    const shown = reviewView(makeReviewProps({ items, filter: "agents", selectedId: "p2" }));
     expect(shown).toMatch(/class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="p2" aria-current="true">\s*<button aria-current="true" data-act="reviewSelect" data-arg="p2"/);
-    const hidden = reviewView(makeReviewProps({ items, filter: "decision", selectedId: "p2" }));
+    const hidden = reviewView(makeReviewProps({ items, filter: "imports", selectedId: "p2" }));
     expect(hidden).toContain('data-morph-key="rvd:p2"');
   });
 });
 
 describe("Review — the list is keyed, and a card with a verdict leaves it", () => {
-  const items = [makeItem(), makeItem({ id: "p2", title: "Second" }), makeItem({ id: "p3", title: "Third" })];
+  const items = [makeAdr(), makeAdr({ id: "p2", title: "Second" }), makeAdr({ id: "p3", title: "Third" })];
   const rowKeys = (html: string) => [...html.matchAll(/class="cnpy-rv-row" data-morph-key="([^"]+)"/g)].map((m) => m[1]);
 
   it("every row is a keyed child of a data-morph-list container, and the screen is patched in place", () => {
@@ -798,16 +825,37 @@ describe("Review — the list is keyed, and a card with a verdict leaves it", ()
   });
 
   it("the sidebar count drops with the card and comes back if the entry is removed (a failed write)", () => {
-    const p = { slug: "a", version: 2, title: "A", section: "Architecture", space: "technical", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a" };
+    const p = { slug: "a", version: 2, title: "A", section: "Architecture", space: "technical", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null };
     const s = { ...initialState(), view: "app" as const, screen: "review" as const, proposals: { status: "ok" as const, data: [p, { ...p, slug: "b" }] }, draftAdrs: { status: "ok" as const, data: [] } };
     expect(triageCounts(s).review).toBe(2);
     const leaving = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: false } } };
     expect(triageCounts(leaving).review).toBe(1);
-    expect(render(leaving)).toMatch(/data-morph-key="rv:doc:a@2" data-verdict="promoted" inert/);
+    // Both are pages of x's agent's group: the one decided counts as reviewed while it leaves.
+    expect(render(leaving)).toMatch(/data-morph-key="rvg:agent:x"/);
+    expect(render(leaving)).toContain(">1 of 2 reviewed<");
     const gone = { ...s, reviewLeaving: { "doc:a@2": { verdict: "promoted" as const, gone: true } } };
     expect(triageCounts(gone).review).toBe(1);
     expect(render(gone)).not.toContain('data-morph-key="rv:doc:a@2"');
     expect(triageCounts({ ...s, reviewLeaving: {} }).review).toBe(2);
+  });
+
+  it("an agent's group: Reject all asks in the design's agent words; deciding it whole goes through each page's own cookie route", () => {
+    const p = { slug: "a", version: 2, title: "A", section: "reference", space: "engineering", summary: null, author: "x", confidence: null, status: "staged", change_kind: "edit" as const, low_confidence: 0, base_version: 1, current_version: 1, created_at: "2026-10-01T00:00:00Z", stagedBody: "b", promotedBody: "a", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null };
+    const s = { ...initialState(), view: "app" as const, screen: "review" as const, proposals: { status: "ok" as const, data: [p, { ...p, slug: "b" }] }, draftAdrs: { status: "ok" as const, data: [] }, reviewGroupReject: { id: "agent:x", busy: false } };
+    const html = render(s);
+    expect(html).toContain("Reject 2 pages from x&#39;s agent?");
+    expect(html).toContain("The agent&#39;s changes are thrown away. The live pages stay as they are.");
+    expect(html).toMatch(/data-act="reviewGroupRejectGo" data-arg="agent:x"[^>]*>Reject 2 pages</);
+    const fn = mainSrc.slice(mainSrc.indexOf("function reviewGroupVerdict"), mainSrc.indexOf("function noteGroupTotals"));
+    // No new write: the agent's pages are promoted / rejected one by one, oldest first, by the routes a person uses.
+    expect(fn).toContain("[...items].reverse()");
+    expect(fn).toContain("accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version)");
+  });
+
+  it("a group's Reject all moves the focus into its dialog, and closing it gives the focus back to Reject all (case RV12, Batch C)", () => {
+    const at = (act: string) => mainSrc.slice(mainSrc.indexOf(`case "${act}":`), mainSrc.indexOf("case ", mainSrc.indexOf(`case "${act}":`) + 6));
+    expect(at("reviewGroupReject")).toMatch(/rerender\(\);\s*mount\.querySelector<HTMLElement>\("\[data-confirm-focus\]"\)\?\.focus\(\);/);
+    expect(at("reviewGroupRejectClose")).toContain('[data-act="reviewGroupReject"][data-arg="${CSS.escape(id)}"]');
   });
 
   it("the write is optimistic but restorable: main.ts deletes the entry and restores the selection when it fails", () => {
@@ -827,6 +875,11 @@ describe("Review — the exit's CSS (trov.css)", () => {
     expect(rule(".cnpy-rv-row")).toContain("transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease)");
     expect(rule(".cnpy-rv-row[data-verdict]")).toContain("grid-template-rows:0fr");
     expect(rule(".cnpy-rv-row[data-verdict]")).toContain("transition-delay:.13s");
+  });
+  it("a row's box may shrink below its card's content: an import group card never pushes the list sideways (E2E RV1)", () => {
+    // The one track is `auto` wide: without min-width:0 the box takes its card's min-content width (the group card's
+    // header and action row), 17px past the list, and the left pane scrolled sideways.
+    expect(rule(".cnpy-rv-row-in")).toContain("min-width:0");
   });
   it("the script's timer is the hold plus the collapse, and the whole exit stays under 350ms", () => {
     const fast = Number(css.match(/--fx-fast:\.(\d+)s/)?.[1]) * 10;   // ".18s" → 180
@@ -924,5 +977,86 @@ describe("Flagged in Ask (handoff #12 § 2.14)", () => {
     expect("askFlags" in out[1]).toBe(false);
     expect(attachAskFlags([{ id: 7 }], [{ ...flags[0], ref: "decision:7" }], (r) => `decision:${r.id}`)[0].askFlags).toHaveLength(1);
     expect(attachAskFlags(rows, undefined, (r) => `doc:${r.slug}`)).toEqual(rows);
+  });
+});
+
+// ── the page pane (owner ruling round 2, E2E RV5 / RV6 / RV7): a group's page as the design draws it ──────────────
+
+describe("Review — a group's page, picked, is the design's page pane", () => {
+  const imp = (o: Partial<ReviewItem> = {}) => makeItem({ id: "doc:first-week@1", title: "Your first week", importId: 7, importFile: "handbook.zip", importPath: "handbook/onboarding/first-week.md", slug: "first-week", space: "engineering", path: ["Getting started", "Onboarding"], isNew: true, proposedBody: "Welcome.\n\n## Day one\n\nSee [[local-setup|Local setup]].", diff: [{ t: "add", s: "Welcome." }], ...o });
+  const ver = imp({ id: "doc:local-setup@2", title: "Local setup", slug: "local-setup", path: ["Getting started"], isNew: false, proposedBody: "Install Node 20 and pnpm 9.", diff: [{ t: "ctx", s: "# Local setup" }, { t: "del", s: "Install Node 18 and pnpm." }, { t: "add", s: "Install Node 20 and pnpm 9." }, { t: "add", s: "Run pnpm setup." }] });
+  const props = (sel: string, items = [imp(), ver]) => makeReviewProps({ items, selectedId: sel, groupsOpen: { 7: true }, spaceNames: { engineering: "Engineering" } });
+
+  it("a new page: the bar, the crumb (its space, then the pages above it), the title, \"New page\" from its file, the page rendered — no diff box", () => {
+    const html = reviewView(props("doc:first-week@1"));
+    expect(html).toContain("Page 2 of 2 · handbook.zip");   // the queue is newest first: the group reverses it
+    expect(html).toContain('<div class="cnpy-rvp-crumb">Engineering › Getting started › Onboarding</div>');
+    expect(html).toContain('<h2 class="cnpy-rvp-h">Your first week</h2>');
+    expect(html).toMatch(/<div class="cnpy-rvp-kind">[\s\S]*?>New page<\/span>[\s\S]*?<span class="cnpy-rvp-file">from handbook\/onboarding\/first-week.md<\/span>/);
+    expect(html).not.toContain("What changes");
+    // The page as it will read, through the reader's renderer, a [[link]] as its words.
+    expect(html).toContain('<div class="cnpy-md cnpy-rvp-md"><div class="mock-md">Welcome.\n\n## Day one\n\nSee Local setup.</div></div>');
+    // The old byline / Unified-Side by side-Rendered switch / header buttons are not on it.
+    expect(html).not.toContain("WHAT CHANGED");
+    expect(html).not.toContain('data-act="reviewDiffView"');
+    expect(html).not.toContain(">Promote<");
+    expect(html).not.toContain("<h1");
+  });
+
+  it("a new version: \"New version of ‹Title›\", then the diff box (\"What changes\", \"N lines added, M removed\"), then the page", () => {
+    const html = reviewView(props("doc:local-setup@2"));
+    expect(html).toContain(">New version of Local setup</span>");
+    expect(html).toContain('<span style="font-weight:600;color:var(--fg)">What changes</span><span>2 lines added, 1 removed</span>');
+    expect(html).toContain('<div class="cnpy-rvp-dl" data-t="del"><span class="cnpy-rvp-dp" aria-hidden="true">−</span>Install Node 18 and pnpm.</div>');
+    expect(html).toContain('<div class="cnpy-rvp-dl" data-t="add"><span class="cnpy-rvp-dp" aria-hidden="true">+</span>Install Node 20 and pnpm 9.</div>');
+    expect(html.indexOf("What changes")).toBeLessThan(html.indexOf("cnpy-rvp-md"));
+  });
+
+  it("the footer: the design's sentence, Reject and ✓ Approve — the queue's own verdict acts", () => {
+    const html = reviewView(props("doc:local-setup@2"));
+    const foot = html.slice(html.indexOf('class="cnpy-rvp-foot"'));
+    expect(foot).toContain(`<span class="cnpy-rvp-note">${APPROVE_NOTE}</span>`);
+    expect(APPROVE_NOTE).toBe("Approving makes this page live for everyone.");
+    expect(foot).toMatch(/data-act="reviewReject" data-arg="doc:local-setup@2"[^>]*>Reject<\/button>/);
+    expect(foot).toMatch(/data-act="reviewAccept" data-arg="doc:local-setup@2"[^>]*><svg[^>]*>.*?<\/svg>Approve<\/button>/);
+    // A verdict button that had focus hands it on to the next page's (main.ts reads the footer too).
+    expect(mainSrc).toContain('active?.closest?.(".cnpy-rv-head, .cnpy-rvp-foot")');
+  });
+
+  it("an agent's page: \"Change to a live page\" (or \"New page\"), no file; a decision keeps its own detail", () => {
+    const a = makeItem({ id: "doc:rate-limits@2", title: "Rate limits", agent: "pia", agentName: "Pia", space: "engineering", path: ["Architecture", "API"] });
+    const g = reviewGroups([a]).get("agent:pia")!;
+    const pane = reviewPagePane(a, g, 1, {}, "Engineering");
+    expect(pane).toContain("Page 1 of 1 · Pia&#39;s agent");
+    expect(pane).toContain("Engineering › Architecture › API");
+    expect(pane).toContain(">Change to a live page</span>");
+    expect(pane).not.toContain("cnpy-rvp-file");
+    expect(pageKindWord({ isNew: true, title: "X" }, "agent")).toBe("New page");
+    expect(pageKindWord({ isNew: false, title: "X" }, "import")).toBe("New version of X");
+    const d = reviewView(makeReviewProps({ items: [makeAdr({ id: "d1" })] }));
+    expect(d).toContain("PROPOSED RECORD");
+    expect(d).not.toContain("cnpy-rvp");
+  });
+
+  it("a page keeps its place: \"Page i of N\" does not shift when another page of the group is decided (Batch B finding, RV7)", () => {
+    const page = (id: string) => imp({ id, title: id, slug: id, path: [] });
+    // The queue is newest first: the group reverses it, so its order is a, b, c, d. d was decided and is gone.
+    const html = reviewView(makeReviewProps({ items: [page("c"), page("b"), page("a")], selectedId: "b", groupsOpen: { 7: true }, groupTotals: { 7: 4 }, groupPages: { 7: ["a", "b", "c", "d"] }, spaceNames: { engineering: "Engineering" } }));
+    expect(html).toContain("Page 2 of 4 · handbook.zip");
+    expect(html).toContain(">1 of 4 reviewed<");
+  });
+
+  it("the diff box says how many lines changed, in words", () => {
+    expect(changedLinesText([{ t: "add", s: "a" }, { t: "add", s: "b" }, { t: "add", s: "c" }, { t: "del", s: "d" }])).toBe("3 lines added, 1 removed");
+    expect(changedLinesText([{ t: "add", s: "a" }])).toBe("1 line added");
+    expect(changedLinesText([{ t: "del", s: "a" }, { t: "del", s: "b" }])).toBe("2 lines removed");
+    expect(changedLinesText([{ t: "ctx", s: "a" }])).toBe("No line changes");
+  });
+
+  it("hostile words stay text in the crumb, the file and the diff", () => {
+    const html = reviewView(props("doc:first-week@1", [imp({ path: ["<b>x</b>"], importPath: "a/<img src=x>.md", title: "<script>t</script>" })]));
+    expect(html).not.toContain("<b>x</b>");
+    expect(html).not.toContain("<img src=x>");
+    expect(html).not.toContain("<script>t");
   });
 });

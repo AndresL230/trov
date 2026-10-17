@@ -32,7 +32,15 @@ export const DocProposal = z.object({
   body: z.string(),                      // markdown, or mermaid/d2 for diagrams
   change_summary: z.string(),
   confidence: z.enum(["high", "low"]),
-  space: z.enum(["technical", "product"]).optional(),  // server defaults technical on first creation
+  // A space of the org's Library (0081_docs_library): its slug, or an alias (`technical` → `engineering`,
+  // shared/docs-core.ts SPACE_ALIASES). The gate sends an unknown or archived space to needs_triage; with none,
+  // a NEW doc goes to `engineering` while that space is live. An existing doc keeps its own space.
+  space: z.string().trim().min(1).max(64).optional(),
+  // The page this one goes under, in its space's tree (0081_docs_library): a doc's slug. A NEW doc takes it at
+  // once; an existing doc moves under it when this version is promoted (if it is still a valid place). One that is
+  // no valid place (missing, another space, under the page itself, too deep) is ignored with `parent_ignored` in
+  // the result — never triaged. Omitted: a new doc goes at the top level, an existing one stays where it is.
+  parent_slug: z.string().trim().max(200).optional(),
   base_version: z.number().optional(),   // the current_version the writer read before editing
   force: z.boolean().optional(),         // escape hatch: stage even if the body hash is unchanged
 });
@@ -77,7 +85,7 @@ export const QueryRequest = z.object({
   // a private page reaches only its author (query()'s `viewer` argument).
   types: z.array(QueryType).optional(), // default all
   section: z.string().optional(),
-  space: z.enum(["technical", "product"]).optional(),
+  space: z.string().optional(),           // a space's slug or an alias (SPACE_ALIASES); an unknown one matches nothing
   include_staged: z.boolean().optional(), // caller sets the default (MCP true, HTTP false)
   limit: z.number().optional(),           // full-body primary count (default 6)
   pointer_limit: z.number().optional(),   // ranked snippet count (default 20)

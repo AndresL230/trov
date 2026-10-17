@@ -1,7 +1,7 @@
 ---
 name: trov
 description: Overview and entry point for working with Trov, the team's shared context store ("the team brain"). Use when someone asks how Trov works, how to use it, how to connect an agent, what can be read or written, or wants the whole orient→work→record loop — and as the map to the load-context (orient before work) and record-session (record at the end) skills. Read-only itself; it explains the loop and points to the right tool/skill.
-allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_tags, mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_people, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__get_connection, Bash(git remote get-url:*), mcp__trov__switch_org
+allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_spaces, mcp__trov__list_tags, mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_people, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__artifact_list, mcp__trov__artifact_get, mcp__trov__get_connection, Bash(git remote get-url:*), mcp__trov__switch_org
 ---
 
 # Trov — the team's shared context store
@@ -112,6 +112,13 @@ A pasted token (`trov_mcp_…`, or an older `canopy_mcp_…`) is the old shape: 
   patterns** (filter by type/section/space, browse, fan out via pointers, `include_staged`). This is
   the tool `load-context` wraps; call it directly for ad-hoc exploration.
 - **`get_doc <slug>`** — one doc with all its versions (exact fetch).
+- **`list_spaces`** — the organization's Library spaces (`slug`, `name`, `description`, page count). A doc
+  lives in one space; `space` in `propose_doc_update`, `list_docs` and `query` takes a slug from here. The
+  spaces are the organization's own (admins create and archive them), so read them rather than assuming.
+  Inside a space the pages form a tree: `get_doc` shows a doc's `parent_slug`, and `propose_doc_update`
+  takes one to place a page under another (people move pages by dragging them in the web app). Pages link
+  to each other with `[[slug]]` in the body.
+- **`list_docs`** — every doc with its body, optionally narrowed by `section` and/or `space`.
 - **`get_feed`** — the activity feed (author / tags / since / limit filters); each entry carries its `tags`.
 - **`list_tags`** — the organization's tag list: the only tags a feed entry may carry, each with what
   it is for. The list is the organization's own (admins change it in Org settings › Tags), so read it

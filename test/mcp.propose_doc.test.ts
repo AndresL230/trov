@@ -157,7 +157,7 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
 
     expect(result.outcome).toBe("written");
 
-    // The docs row must carry space='product', not the default 'technical'.
+    // The docs row must carry space='product', not the default 'engineering'.
     const doc = await first<DocRow>(
       env.DB,
       `SELECT * FROM docs WHERE slug = 'product-space-doc'`
@@ -166,7 +166,7 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
     expect(doc?.space).toBe("product");
   });
 
-  it("omitted space defaults to 'technical' on the docs row", async () => {
+  it("omitted space defaults to 'engineering' on the docs row; the old 'technical' is its alias", async () => {
     const result = await propose({
       slug: "default-space-doc",
       section: "reference",
@@ -180,14 +180,16 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
       env.DB,
       `SELECT * FROM docs WHERE slug = 'default-space-doc'`
     );
-    expect(doc?.space).toBe("technical");
+    expect(doc?.space).toBe("engineering");
+
+    expect((await propose({ slug: "alias-space-doc", section: "reference", body: "sent as technical", change_summary: "init", confidence: "high", space: "technical" })).outcome).toBe("written");
+    expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'alias-space-doc'`))?.space).toBe("engineering");
   });
 
-  it("an off-vocab space is rejected at the tool boundary (hard enum — never written, never triaged)", async () => {
-    // The registered tool's Zod enum is exactly {technical, product}; a foreign
-    // value fails validation before the gate runs, so the tab set can't be widened
-    // by a write. (Contrast: an out-of-vocab section is triaged, not rejected.)
-    const { isError } = await callTool("propose_doc_update", {
+  it("a space the org does not have goes to needs_triage (0081_docs_library) — never written, never guessed", async () => {
+    // Spaces are the org's own now: a value that is no live space of it is held for a person, like an
+    // out-of-vocab section, and no docs row is created.
+    const result = await propose({
       slug: "bad-space-doc",
       section: "reference",
       body: "should never be written",
@@ -195,15 +197,13 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
       confidence: "high",
       space: "sapling",
     });
-    expect(isError).toBeTruthy();
-
-    // Nothing was written and nothing was triaged — validation short-circuited the call.
+    expect(result).toEqual({ outcome: "triaged", reason: "unknown space: sapling" });
     expect(
       (await all<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'bad-space-doc'`)).length
     ).toBe(0);
     expect(
       (await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).length
-    ).toBe(0);
+    ).toBe(1);
   });
 
   it("low-confidence new slug: routed to needs_triage, no docs or doc_versions row", async () => {

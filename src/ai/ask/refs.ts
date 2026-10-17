@@ -246,13 +246,15 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
         const rows = await fanOut<{ slug: string; title: string; body: string; space: string; current_version: number; owner: string | null; updated_at: string | null; staged: number }>(ctx, keys, (ph) =>
           `SELECT d.slug, d.title, d.body, d.space, d.current_version, d.owner, d.updated_at,
                   (SELECT COUNT(*) FROM doc_versions v WHERE v.org_id = d.org_id AND v.slug = d.slug AND v.status = 'staged') AS staged
-             FROM docs d WHERE d.org_id = ? AND d.slug IN (${ph})`, [ctx.orgId]);
+             FROM docs d WHERE d.org_id = ? AND d.archived_at IS NULL AND d.slug IN (${ph})`, [ctx.orgId]);
         for (const d of rows) put({ ref: `doc:${d.slug}`, type, title: d.title || d.slug, status: d.staged ? DOC_STAGED : DOC_LIVE, owner: d.owner, updated: d.updated_at,
           href: null, extra: { space: d.space, version: d.current_version, owner: d.owner, excerpt: firstPara(d.body), staged: d.staged > 0 } });
         // A NEW doc that exists only as a staged proposal.
         const missing = keys.filter((k) => !rows.some((d) => d.slug === k));
         const staged = await fanOut<{ slug: string; body: string; created_by: string; created_at: string; version: number }>(ctx, missing, (ph) =>
-          `SELECT slug, body, created_by, created_at, version FROM doc_versions WHERE org_id = ? AND status = 'staged' AND slug IN (${ph}) ORDER BY version DESC`, [ctx.orgId]);
+          `SELECT slug, body, created_by, created_at, version FROM doc_versions WHERE org_id = ? AND status = 'staged' AND slug IN (${ph})
+              AND NOT EXISTS (SELECT 1 FROM docs a WHERE a.org_id = doc_versions.org_id AND a.slug = doc_versions.slug AND a.archived_at IS NOT NULL)
+            ORDER BY version DESC`, [ctx.orgId]);
         for (const d of staged) if (!out.has(`doc:${d.slug}`)) put({ ref: `doc:${d.slug}`, type, title: d.slug, status: DOC_STAGED, owner: d.created_by, updated: d.created_at,
           href: null, extra: { space: null, version: d.version, owner: d.created_by, excerpt: firstPara(d.body), staged: true } });
         break;

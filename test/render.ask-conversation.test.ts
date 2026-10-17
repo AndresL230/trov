@@ -329,7 +329,7 @@ describe("`notfound` — what was searched", () => {
     expect(html).toContain(`<button type="button" class="ask-nf-try" data-act="askCvSend" data-arg="What do our docs say about pricing?">`);
     expect(html.match(/class="ask-nf-try"/g)?.length).toBe(2);
     expect(t).toContain("What I searched");
-    expect(t).toContain("Docs Technical and Product, 24 docs No matches");
+    expect(t).toContain("Docs Engineering and Product, 24 docs No matches");
     expect(t).toContain("Searched tickets and comments · No results");
     expect(t).not.toContain("Checked what was searched");
   });

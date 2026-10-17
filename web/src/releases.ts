@@ -103,30 +103,30 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Ask sharing (#193) and handoff prompts by upload (#194), merged together through epic/10-17-staging (#195) with
-  // Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower artifact panel in Ask, the purple dark
-  // accent, the big-monitor layout and agent links (#196): one deploy, one version.
+  // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
+  // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower
+  // artifact panel in Ask, the purple dark accent and the big-monitor layout: one deploy, one version.
   {
     version: "0.12",
     date: "2026-10-17",
-    title: "Share an Ask conversation",
-    headline: "Share an Ask conversation with your organization or chosen people, Ask Trov can read your GitHub repositories, and an agent sends a long handoff as a file.",
+    title: "The Docs Library, and sharing Ask conversations",
+    headline: "Docs become a Library of spaces you can import into, an Ask conversation can be shared, and Ask Trov can read your GitHub repositories.",
     highlights: [
-      "Share an Ask conversation with your whole organization to read, or with chosen people who can read or continue it; what's shared with you is under Shared with you or Organization.",
-      "Someone who can continue asks follow-ups as themselves. Each question stays its asker's: only they can edit it, regenerate it or confirm its changes.",
+      "Docs are now a Library of spaces, each with a home and a tree of pages you rearrange by dragging. Every organization starts with Engineering, Product and Design.",
+      "Bring your docs in: drop Markdown files or a .zip on a space, check what will be added, then approve or reject the whole import in Review.",
+      "Share an Ask conversation with your whole organization to read, or with chosen people who can read or continue it; each question stays its asker's.",
       "Ask Trov can read your connected GitHub repositories when a question needs it, as far as your own GitHub access goes, once an admin turns it on.",
-      "An agent working in a terminal sends a long handoff prompt as a file instead of typing it out; the handoff appears only once the whole prompt has arrived.",
     ],
     headsUp: [
+      "Docs moved into the Library in the sidebar. Technical docs are now in Engineering; Product docs stay in Product.",
       "Files attached to a shared Ask conversation stay private to whoever attached them: others see each file's name and size, and what Trov quoted from it, never the file.",
       "Deleting a shared conversation deletes it for everyone it is shared with, and the confirmation says so.",
-      "Ask Trov and agents in a chat on the web send handoffs as before, with the prompt written in.",
     ],
     ops: [
-      "Apply migration `0076_10_17_staging` (one file for Ask sharing, handoff uploads and the switch for Ask's GitHub lookups, off for every organization; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
+      "Apply migration `0076_10_17_staging` (one file for Ask sharing, handoff uploads, the switch for Ask's GitHub lookups, off for every org, agent links and the Docs Library; merging to main applies it). Each part's header has its rollback.",
       "No new secret, var or GitHub App permission: Ask's GitHub lookups read through the org's existing GitHub connection.",
-      "Apply migration `0078_agent_links` (#196: rebuilds `org_counters` so links get their own numbers, then adds `agent_links` and `agent_link_notes`; ticket and handoff numbering carries on). Merging to main applies it.",
-      "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts; the new link skill): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
+      "Its Docs Library part gives every organization the three starter spaces and moves every doc not in Product to Engineering; its agent links part rebuilds `org_counters` so links get their own numbers (ticket and handoff numbering carries on).",
+      "Publish the Trov plugin 0.10.1 (the handoff skill uploads long prompts; the new link skill; docs are placed by space): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {
       added: [
@@ -135,6 +135,7 @@ export const RELEASES: Release[] = [
         "Agent links: two sessions whose work overlaps leave notes for each other while a link is open; Handoffs is now Relay, with Handoffs and Links tabs (#196)",
         "Ask Trov reads your connected repositories on GitHub when a question needs it, as far as your own GitHub access goes; an admin turns it on (#195)",
         "Prompt Library: a copy button on each card copies its slug for an agent; cards that open something show the pointer on hover (#195)",
+        "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, Markdown or .zip import, and archiving a page (#197)",
       ],
       changed: [
         "Ask Trov: an artifact opens in a narrower side panel; a width you drag to is kept (#195)",
@@ -152,7 +153,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [193, 194, 195, 196],
+    prs: [193, 194, 195, 196, 197],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.

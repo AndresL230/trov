@@ -238,7 +238,7 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["identities", "person"], ["identities", "linked_by"],
   ["sessions", "person"], ["mcp_tokens", "person"],
   ["feed", "author"],
-  ["docs", "updated_by"], ["docs", "owner"], ["doc_versions", "created_by"],
+  ["docs", "updated_by"], ["docs", "owner"], ["docs", "archived_by"], ["doc_versions", "created_by"],
   ["adrs", "created_by"],
   // Sprints (0025 renamed the table in place; `lead` is new there).
   ["sprints", "created_by"], ["sprints", "lead"],
@@ -314,6 +314,10 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["repo_app_suggestions", "decided_by"],
   // The Repo screen's per-repository defaults (0071_repo_settings): who set one.
   ["repo_settings", "updated_by"],
+  // The Docs Library (0081_docs_library): who created and archived a space, a space's owners and who added them,
+  // who started an import.
+  ["doc_spaces", "created_by"], ["doc_spaces", "archived_by"], ["doc_space_owners", "handle"], ["doc_space_owners", "added_by"],
+  ["doc_imports", "started_by"],
   // Agent links (0078_agent_links): a link's two sides and who closed it; who wrote a note.
   ["agent_links", "requester"], ["agent_links", "recipient"], ["agent_links", "closed_by"],
   ["agent_link_notes", "author"],

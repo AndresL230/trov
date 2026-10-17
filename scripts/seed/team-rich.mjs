@@ -620,6 +620,10 @@ export function plumbingDeleteStatements() {
     `DELETE FROM notification_outbox WHERE org_id = ${O} AND idempotency_key LIKE '${DEV}:%'`,
     ...["sync_runs", "ai_dirty", "notification_prefs", "notification_policy", "org_github_installation_repos", "org_github_installations", "org_audit", "org_admin_audit"].map((t) => `DELETE FROM ${t} WHERE org_id = ${O}`),
     `DELETE FROM org_integration_config WHERE org_id = ${O} AND kind = 'cloudflare_analytics'`,
+    // The Docs Library (0081_docs_library): the spaces' owners, a link between two of the layer's docs, one import run.
+    `DELETE FROM doc_space_owners WHERE org_id = ${O}`,
+    `DELETE FROM doc_links WHERE org_id = ${O} AND from_slug IN ${inList(DOC_SLUGS)}`,
+    `DELETE FROM doc_imports WHERE org_id = ${O} AND file_name = '${DEV}-handbook.zip'`,
   ];
 }
 function plumbingStatements(c) {
@@ -646,6 +650,12 @@ function plumbingStatements(c) {
   // The ingest ledger of two recorded sessions.
   [["feed", "7039", JOSE, 2.9], ["doc", "sapling-gradebook-export@3", JOSE, 2.8], ["feed", "7041", LUKE, 0.25], ["doc", "sapling-teacher-dashboard@4", LUKE, 0.6]].forEach(([type, ref, who, d], i) =>
     s.push(insert("processed_items", { org_id: O, session_id: `${DEV}-${who.toLowerCase()}-${Math.floor(d)}`, item_index: i, item_type: type, outcome: "staged", ref, created_at: c.days(d) })));
+  // The Library: who owns each starter space, one [[link]] between two docs, and a finished Markdown import.
+  for (const [space, who, d] of [["engineering", ME, 40], ["engineering", JOSE, 30], ["product", MEI, 35], ["design", LUKE, 25]]) {
+    s.push(insert("doc_space_owners", { org_id: O, space_slug: space, handle: who, added_at: c.days(d), added_by: ME }));
+  }
+  s.push(insert("doc_links", { org_id: O, from_slug: DOC_SLUGS[0], to_slug: DOC_SLUGS[1] }));
+  s.push(insert("doc_imports", { org_id: O, space_slug: "engineering", parent_slug: null, file_name: `${DEV}-handbook.zip`, started_by: JOSE, started_at: c.days(6), updated_at: c.days(5.99), ended_at: c.days(5.99), status: "done", counts: { pages: 4, images: 1, skipped: 0 }, failures: [], total: 5 }));
   // Sync GitHub runs, and what the AI pass still has to look at.
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: ME, started_at: c.days(9), updated_at: c.days(8.99), ended_at: c.days(8.99), status: "ok", batch: 4, batches: 4, phase: "done", done: 412, total: 412, counts: { prs: 58, issues: 31, runs: 240, deploys: 83 }, failures: [], previous_at: c.days(30) }));
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: JACK, started_at: c.days(2), updated_at: c.days(1.99), ended_at: c.days(1.99), status: "partial", batch: 3, batches: 3, phase: "done", done: 120, total: 131, counts: { prs: 14, issues: 6, runs: 100 }, failures: [{ code: "reconcile:deployments", via: "token" }], previous_at: c.days(9) }));

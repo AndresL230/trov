@@ -19,6 +19,8 @@ import handoffsSrc from "../web/src/handoffs.ts?raw";
 import artifactsSrc from "../web/src/artifacts.ts?raw";
 import landingSrc from "../web/src/landing.ts?raw";
 import renderSrc from "../web/src/render.ts?raw";
+import docPageSrc from "../web/src/doc-page.ts?raw";
+import docsPaneSrc from "../web/src/docs-pane.ts?raw";
 import { loadWebChunks } from "./helpers/web-chunks";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
@@ -104,7 +106,7 @@ describe("the feature dialog", () => {
       .replace(/\$\{g(?:Strong|Code|Em)\("([^"]*)"\)\}/g, "$1").replace(/&amp;/g, "&");
     // For each fact, a phrase of it that must still stand in the Guide.
     const anchors: Record<TourKey, string[]> = {
-      docs: ["split into Technical and Product spaces, each grouped into sections like Architecture and Decisions", "Version history keeps every earlier version", "The live doc stays untouched until a person promotes", "New doc lets you propose one yourself"],
+      docs: ["split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading", "drag a page onto another to put it inside, or above or below one to reorder them", "The live doc stays untouched until a person promotes", "New page starts one from a template and sends it to Review"],
       feed: ["A timeline of everything that shipped, from people and agents alike", "a short brief in plain words", "says whether an agent wrote it", "Filter by author, tag, or time"],
       tickets: ["Anyone can file a bug, request, question, or access ask", "Drag a card to change its status or its place in a column", "the same tickets grouped by sprint", "only a person closes a ticket: a merged PR never does"],
       roadmap: ["Narrative reads the plan and its sprint cards", "each bar runs from a sprint's start to its due date", "tickets closed", "always a person's call"],
@@ -180,7 +182,9 @@ describe("the dialog's mockups — each screen drawn from the real one (landing-
   it("every other mock says what its real screen says", () => {
     const guide = renderSrc;
     const pairs: [Parameters<typeof mockText>[0], string, string[]][] = [
-      ["docs", guide, ["You're viewing the", "promoted", "Review proposal", "Version history", "New doc", "Updated by"]],
+      ["docs", docPageSrc, ["You're reading the", "live", "version. A change to this page is waiting for review.", "Open in Review", "History", "Updated", "Live"]],
+      ["docs", docsPaneSrc, ["Pages"]],
+      ["docs", guide, ["New page"]],
       ["feed", guide, ["For reading", "For agents", "This week", "Whole team, last 7 days", "Everything this week", "Top tags", "Waiting on review"]],
       ["roadmap", timelineSrc, ["Sprints on the calendar", "In progress", "Upcoming", "Overdue", "Ready", "all tickets closed", "Today", "Done", "Next due", "starts in"]],
       ["roadmap", guide, ["Narrative", "Timeline", "New sprint"]],

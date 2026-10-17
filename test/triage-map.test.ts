@@ -17,7 +17,7 @@ function makeProposal(overrides: Partial<StagedProposal> = {}): StagedProposal {
     author: "octo-agent", confidence: "high", status: "staged",
     change_kind: "edit", low_confidence: 0, base_version: 6, current_version: 6,
     created_at: "2026-07-01T10:00:00Z",
-    stagedBody: "line one\nline two", promotedBody: "line one\nold line two",
+    stagedBody: "line one\nline two", promotedBody: "line one\nold line two", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null,
     ...overrides,
   };
 }
@@ -218,7 +218,8 @@ describe("ASSIGN_OPTIONS", () => {
     // can become a sprint any more — sprints are authored writes only.
     expect(ASSIGN_OPTIONS.kinds.map((k) => k.key)).toEqual(["doc", "adr", "feed"]);
     expect(ASSIGN_OPTIONS.sections).toEqual(["reference", "context", "decisions"]); // never needs-triage
-    expect(ASSIGN_OPTIONS.spaces).toEqual(["technical", "product"]);
+    // A doc's space is one of the organization's own (the Library's): render.ts fills them in.
+    expect(ASSIGN_OPTIONS.spaces).toEqual([]);
     // A feed entry's tags are the organization's own list (0056_org_tags): render.ts fills them in
     // from the list it read; nothing is fixed here.
     expect(ASSIGN_OPTIONS.tags).toEqual([]);

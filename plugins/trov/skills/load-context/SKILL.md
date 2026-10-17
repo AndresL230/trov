@@ -1,7 +1,7 @@
 ---
 name: load-context
 description: Orient against Trov (the team's working memory) BEFORE working an existing area. Fire when you start work on a named/existing subsystem, pick up an issue that references an area, or when the person says things like "the X system", "how we do Y", "our approach to Z", "where is the … code/doc" — and ALWAYS before proposing a doc change. Do NOT fire on trivial one-off questions, on a brand-new area with no prior context, or just to chat. Read-only apart from claiming the one handoff the person picks.
-allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__get_my_work, mcp__trov__list_tickets, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__list_handoffs, mcp__trov__get_handoff, mcp__trov__claim_handoff, mcp__trov__list_links, mcp__trov__get_ticket, mcp__trov__artifact_list, mcp__trov__artifact_get, Bash(git branch:*), mcp__trov__get_connection, Bash(git remote get-url:*)
+allowed-tools: mcp__trov__query, mcp__trov__get_doc, mcp__trov__list_spaces, mcp__trov__get_my_work, mcp__trov__list_tickets, mcp__trov__get_sprint, mcp__trov__get_repo_dashboard, mcp__trov__list_handoffs, mcp__trov__get_handoff, mcp__trov__claim_handoff, mcp__trov__list_links, mcp__trov__get_ticket, mcp__trov__artifact_list, mcp__trov__artifact_get, Bash(git branch:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Load Context ← Trov

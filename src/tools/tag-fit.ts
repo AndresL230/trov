@@ -187,7 +187,7 @@ async function newestCandidates(ctx: TenantContext, tag: string, limit: number):
       `SELECT f.id, f.summary, f.brief, f.body, f.created_at FROM feed f WHERE f.org_id = ? AND ${notTagged("feed", "CAST(f.id AS TEXT)")}
         ORDER BY f.created_at DESC, f.id DESC LIMIT ${limit}`, o, o, tag, o, tag),
     all<{ slug: string; title: string; body: string; updated_at: string | null }>(ctx,
-      `SELECT d.slug, d.title, d.body, d.updated_at FROM docs d WHERE d.org_id = ? AND d.current_version > 0 AND ${notTagged("doc", "d.slug")}
+      `SELECT d.slug, d.title, d.body, d.updated_at FROM docs d WHERE d.org_id = ? AND d.current_version > 0 AND d.archived_at IS NULL AND ${notTagged("doc", "d.slug")}
         ORDER BY d.updated_at DESC, d.slug LIMIT ${limit}`, o, o, tag, o, tag),
     all<{ id: number; title: string; decision: string | null; created_at: string }>(ctx,
       `SELECT a.id, a.title, a.decision, a.created_at FROM adrs a WHERE a.org_id = ? AND a.status != 'rejected' AND ${notTagged("adr", "CAST(a.id AS TEXT)")}
@@ -211,7 +211,7 @@ async function keywordCandidates(ctx: TenantContext, tag: string, q: string): Pr
         ORDER BY f.created_at DESC, f.id DESC LIMIT ${CANDIDATE_CAP}`, o, q, o, o, tag, o, tag),
     all<{ slug: string; title: string; body: string; updated_at: string | null; snip: string | null }>(ctx,
       `SELECT d.slug, d.title, d.body, d.updated_at, snippet(docs_fts, -1, ${SNIP}) AS snip FROM docs_fts JOIN docs d ON d.org_id = ? AND d.slug = docs_fts.slug
-        WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0 AND ${notTagged("doc", "d.slug")}
+        WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0 AND d.archived_at IS NULL AND ${notTagged("doc", "d.slug")}
         ORDER BY d.updated_at DESC, d.slug LIMIT ${CANDIDATE_CAP}`, o, q, o, o, tag, o, tag),
     all<{ id: number; title: string; decision: string | null; created_at: string; snip: string | null }>(ctx,
       `SELECT a.id, a.title, a.decision, a.created_at, snippet(adrs_fts, -1, ${SNIP}) AS snip FROM adrs_fts JOIN adrs a ON a.org_id = ? AND CAST(a.id AS TEXT) = adrs_fts.adr_id
@@ -303,7 +303,7 @@ export interface ItemFitInput { type: TagItemType; id: string; title: string; te
 
 const ITEM_ROW: Record<TagItemType, string> = {
   feed: `SELECT summary AS title, COALESCE(brief, body) AS text FROM feed WHERE org_id = ? AND CAST(id AS TEXT) = ?`,
-  doc: `SELECT title, body AS text FROM docs WHERE org_id = ? AND slug = ? AND current_version > 0`,
+  doc: `SELECT title, body AS text FROM docs WHERE org_id = ? AND slug = ? AND current_version > 0 AND archived_at IS NULL`,
   adr: `SELECT title, decision AS text FROM adrs WHERE org_id = ? AND CAST(id AS TEXT) = ? AND status != 'rejected'`,
 };
 /** The FTS snippet of the item's text around the tag's words — the same evidence a run shows (`evidenceOf`). */

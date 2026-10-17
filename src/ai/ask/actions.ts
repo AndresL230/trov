@@ -164,7 +164,7 @@ const HandoffIn = z.object({
 });
 const DocProposalIn = z.object({
   slug: z.string(), section: z.string(), title: z.string().optional(), body: z.string(), change_summary: z.string(),
-  confidence: z.enum(["high", "low"]), space: z.enum(["technical", "product"]).optional(), base_version: z.number().optional(), force: z.boolean().optional(),
+  confidence: z.enum(["high", "low"]), space: z.string().optional(), parent_slug: z.string().optional(), base_version: z.number().optional(), force: z.boolean().optional(),
 });
 const PublishIn = z.object({ slug: z.string().min(1), version: z.number().int().optional() });
 
