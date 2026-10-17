@@ -38,7 +38,9 @@ import type { TicketListItem, TicketDetail, TicketLinkRow, TicketCommentRow, Tic
 import { TICKET_STATUS_LABEL, TICKET_STATUSES, type TicketStatus } from "@shared/tickets";
 import type { SprintView } from "@shared/sprints";
 import type { PersonSummary } from "../web/src/api";
-import { WORK_SHELL, DETAIL_SHELL } from "../web/src/ui";
+import { boardCardId, boardDropArg } from "../web/src/board-drop";
+import mainSrc from "../web/src/main.ts?raw";
+import { WORK_SHELL, FORM_SHELL, DETAIL_SHELL } from "../web/src/ui";
 import { ticketStatusIcon, ticketStatusMark, priorityIcon, priorityMark, PRIORITY_LABEL, TICKET_STATUS_TONE } from "../web/src/marks";
 
 /** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
@@ -710,7 +712,7 @@ describe("tickets — cards are the shared surface", () => {
   });
   it("the new-ticket form card and the comment composer are surfaces", () => {
     const form = newTicketView(formProps());
-    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"');
+    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"');
     expect(form).not.toContain("border-radius:13px");
     const d = ticketDetailView(detailProps(detail({ id: 1, title: "T" })));
     expect(d).toContain("cnpy-surface");
@@ -742,7 +744,7 @@ describe("queueView — board columns follow the segment", () => {
   it("all → four columns in status order, Testing between In progress and Done — no Declined (owner, 2026-10-15)", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "all" }));
     expect(columnLabels(html)).toEqual(["Triage", "In progress", "Testing", "Done"]);
-    expect(html).toContain("grid-template-columns:repeat(4,minmax(0,1fr))");
+    expect(html).toContain("grid-template-columns:repeat(4,minmax(0,var(--board-col-max)))");
   });
 
   it("orders a column by saved position: unpositioned (newest first) on top, then by rank", () => {
@@ -817,9 +819,15 @@ describe("queueView — the row", () => {
 // ── new ticket ───────────────────────────────────────────────────────────────
 
 describe("the ticket screens' frame", () => {
-  it("gives the queue and the form the full-width work shell", () => {
-    for (const html of [queueView(queueProps()), newTicketView(formProps())]) {
-      expect(html).toContain(WORK_SHELL);
+  it("gives the queue the work shell that grows on a big screen, and the form the laptop-width form shell", () => {
+    const queue = queueView(queueProps());
+    const form = newTicketView(formProps());
+    expect(queue).toContain(WORK_SHELL);
+    expect(WORK_SHELL).toContain("max-width:var(--frame-work)");
+    expect(form).toContain(FORM_SHELL);
+    expect(form).not.toContain(WORK_SHELL);
+    expect(FORM_SHELL).toContain("max-width:1440px");
+    for (const html of [queue, form]) {
       // Neither is capped at the old narrow measures.
       expect(html).not.toContain("max-width:960px");
       expect(html).not.toContain("max-width:1000px");
@@ -850,9 +858,9 @@ describe("the ticket screens' frame", () => {
   });
 
   it("runs the form's card and the detail's columns down the window", () => {
-    expect(newTicketView(formProps())).toContain("min-height:calc(100vh - 210px)");
+    expect(newTicketView(formProps())).toContain("min-height:calc(100 * var(--vh) - 210px)");
     // The title now sits inside the grid, so the grid itself takes the full height.
-    expect(ticketDetailView(detailProps(detail({ id: 1, title: "T" })))).toContain("gap:34px;min-height:calc(100vh - 210px)");
+    expect(ticketDetailView(detailProps(detail({ id: 1, title: "T" })))).toContain("gap:34px;min-height:calc(100 * var(--vh) - 210px)");
   });
 });
 
@@ -1616,5 +1624,49 @@ describe("the queue's people open their person card (hitArea rows and cards)", (
     expect(card.slice(0, card.indexOf(">"))).toContain("cnpy-hitbox");
     expect(card).toMatch(PERSON_BTN("jose-a", "cnpy-personav"));
     expect(card).toContain('<button data-act="openTicket" data-arg="7" class="cnpy-hit" aria-label="#7 B"></button>');
+  });
+});
+
+// Z17: every board drop landed at the TOP of its column. The drop read the slot's neighbour's `data-arg`, which a
+// board card lost when it became a hitArea (b4fec8db), so `after_id` was always null. The drag now reads both the
+// lifted card and the neighbour through `board-drop.ts`, from the attribute the card actually carries.
+describe("board drop — the slot's neighbour is sent as after_id (Z17)", () => {
+  const col = [
+    ticket({ id: 80, title: "A", status: "in_progress", board_rank: 1024 }),
+    ticket({ id: 87, title: "B", status: "in_progress", board_rank: 2048 }),
+    ticket({ id: 48, title: "C", status: "in_progress", board_rank: 3072 }),
+    ticket({ id: 31, title: "D", status: "in_progress", board_rank: 4096 }),
+    ticket({ id: 12, title: "E", status: "testing", board_rank: 1024 }),
+  ];
+  const html = queueView(queueProps({ tickets: col, view: "board", seg: "all" }));
+  /** Each board card as the drag sees it: its OWN element's data-* attributes, as a dataset. */
+  const cards = [...html.matchAll(/<div([^>]*\bclass="cnpy-tcard[^"]*"[^>]*)>/g)].map((m) => {
+    const dataset: Record<string, string> = {};
+    for (const a of m[1].matchAll(/\bdata-([\w-]+)="([^"]*)"/g)) dataset[a[1].replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = a[2];
+    return { dataset };
+  });
+  const card = (id: number) => cards.find((c) => boardCardId(c) === id) ?? null;
+
+  it("every card yields its ticket number, in board order (the card itself has no data-arg)", () => {
+    expect(cards.map(boardCardId)).toEqual([80, 87, 48, 31, 12]);
+    for (const c of cards) expect(c.dataset.arg).toBeUndefined();
+  });
+
+  it("a reorder within a column sends the card the slot follows", () => {
+    // In progress's second card dragged below its last: the slot follows #31.
+    expect(boardDropArg(87, "in_progress", card(31))).toBe("87:in_progress:31");
+    expect(boardDropArg(31, "in_progress", card(80))).toBe("31:in_progress:80");
+  });
+
+  it("a cross-column drop sends the slot's neighbour; a slot at the top sends none", () => {
+    expect(boardDropArg(48, "testing", card(12))).toBe("48:testing:12");
+    expect(boardDropArg(48, "testing", null)).toBe("48:testing:");
+  });
+
+  it("main.ts reads the lifted card and the neighbour through board-drop, never a card's data-arg", () => {
+    const drag = mainSrc.slice(mainSrc.indexOf("function startBoardDrag"), mainSrc.indexOf('document.addEventListener("pointerup"'));
+    expect(drag).toContain("boardCardId(card)");
+    expect(drag).toContain("boardDropArg(id, to, after)");
+    expect(drag).not.toMatch(/dataset\.arg/);
   });
 });

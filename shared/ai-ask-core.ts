@@ -77,6 +77,16 @@ export const ASK_REFS_MAX = 12;
 export const ASK_PEEK_MAX = 50;
 export const ASK_FOLLOWUPS_MAX = 3;
 export const ASK_DIAGRAM_NODES_MAX = 8;
+/** The GitHub tools (docs/architecture/ask.md › GitHub): requests to GitHub one ANSWER may make, across every
+ *  `github_*` call (a tool that reads two endpoints spends two); past it a call is refused with `limit`. */
+export const ASK_GITHUB_REQUESTS_MAX = 10;
+/** Each GitHub request's own timeout (ms); a timeout is an honest tool error, never content. */
+export const ASK_GITHUB_TIMEOUT_MS = 8_000;
+/** A file's text, a diff's patches, an issue's or PR's body — the most characters handed to the model of each;
+ *  past it, the first part and a note that it was cut. */
+export const ASK_GITHUB_TEXT_MAX = 24_000;
+/** Rows a list, a search, a PR's files or an issue's comments returns at most. */
+export const ASK_GITHUB_ROWS_MAX = 30;
 /** The composer says what is left once less than this share of the month remains. */
 export const ASK_LOW_SHARE = 0.2;
 
@@ -587,8 +597,12 @@ export const ASK_EXCLUDED_TOOLS: Record<string, string> = {
 /** Ask's own tools, on top of the MCP catalog. */
 export const ASK_ONLY_TOOLS = [
   "trov_docs", "read_attachment", "save_artifact", "publish_doc", "show_items", "show_chart", "show_themes", "show_diagram", "show_not_found",
+  "github_read", "github_search_code", "github_pull_request", "github_issue", "github_commit", "github_list", "github_ci",
 ] as const;
 export type AskOnlyTool = (typeof ASK_ONLY_TOOLS)[number];
+/** The read-only GitHub tools (docs/architecture/ask.md › GitHub) — offered only while the org has a connected
+ *  repository and an admin has turned on GitHub lookups (`orgs.ai_chat_github`). */
+export const ASK_GITHUB_TOOLS = ["github_read", "github_search_code", "github_pull_request", "github_issue", "github_commit", "github_list", "github_ci"] as const;
 
 /** The fallback starters (the design's four), when the person's own work suggests none. */
 export const ASK_STARTERS_FALLBACK: readonly string[] = [

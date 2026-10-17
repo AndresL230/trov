@@ -90,7 +90,7 @@ export function orgLogoSection(p: OrgLogoProps): string {
   const tile = orgTile(p.name, SIDE, logo.url, RADIUS);
   const row = "display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:7px 10px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap";
   const menu = open ? `<div data-act="orgLogoMenuClose" style="position:fixed;inset:0;z-index:29"></div>
-      <div role="menu" aria-label="Organization image" data-avatar-menu data-orglogo-menu class="cnpy-avmenu" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:268px;max-width:calc(100vw - 56px);background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;padding:5px;box-shadow:0 14px 38px rgba(0,0,0,.38)">
+      <div role="menu" aria-label="Organization image" data-avatar-menu data-orglogo-menu class="cnpy-avmenu" style="position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:268px;max-width:calc(100 * var(--vw) - 56px);background:var(--bg);border:1px solid var(--border-strong);border-radius:11px;padding:5px;box-shadow:0 14px 38px rgba(0,0,0,.38)">
         <button type="button" role="menuitem" data-act="orgLogoPick" class="cnpy-menurow" style="${row};color:var(--fg-70)">${UPLOAD}${uploaded ? "Change image" : "Upload image"}</button>
         ${uploaded ? `<button type="button" role="menuitem" data-act="orgLogoRemove" class="cnpy-menurow" style="${row};color:var(--red)">${TRASH}Remove image</button>` : ""}
         <div style="height:1px;background:var(--border);margin:5px 4px"></div>

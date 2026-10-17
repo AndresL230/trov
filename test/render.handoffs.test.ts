@@ -190,8 +190,32 @@ describe("surface cards — handoffs, prompts, new doc", () => {
     expect(lib).not.toMatch(OLD_CARD);
   });
 
+  it("a prompt card's top-left copy button copies the slug: labelled, tipped, a sibling of the hit area, never inside a button", () => {
+    const lib = promptLibraryView({ status: "ok", prompts: [summary("smoke-test-artifact")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
+    const card = lib.slice(lib.indexOf('<div class="cnpy-surface cnpy-card cnpy-hitbox"'));
+    const copy = card.match(/<button type="button" data-act="promptCopySlug" data-arg="smoke-test-artifact" class="cnpy-iconbtn cnpy-hitctl" aria-label="Copy slug smoke-test-artifact" data-mtip="[^"]+"[^>]*>([\s\S]*?)<\/button>/);
+    expect(copy).not.toBeNull();
+    expect(copy![1]).not.toContain("<button");          // its icon only — no button inside it
+    // The first control in the card (top left, first in tab order) and before the hit area, which
+    // stays the card's LAST child and empty — so the copy button is never nested in it.
+    expect(card.indexOf('data-act="promptCopySlug"')).toBeLessThan(card.indexOf('data-act="openPrompt"'));
+    expect(card.indexOf("<button")).toBe(card.indexOf('<button type="button" data-act="promptCopySlug"'));
+    expect(card).toContain('<button data-act="openPrompt" data-arg="smoke-test-artifact" class="cnpy-hit" aria-label="smoke-test-artifact"></button>\n  </div>');
+    // The copy act copies the plain slug and toasts; it never opens the prompt.
+    const act = mainSrc.slice(mainSrc.indexOf('case "promptCopySlug":'), mainSrc.indexOf('case "promptExpand":'));
+    expect(act).toContain("copyToClipboard(arg)");
+    expect(act).not.toMatch(/openPrompt|state\.screen/);
+  });
+
+  it("every hitArea card shows the pointer, and a control on one sits above the hit", async () => {
+    const css = (await import("../web/src/trov.css?raw")).default as string;
+    expect(css).toMatch(/\.cnpy-hitbox \{ position:relative; cursor:pointer; \}/);
+    expect(css).toMatch(/\.cnpy-hitbox \.cnpy-hitctl \{ position:relative; z-index:2; \}/);
+    expect(css).toMatch(/\.cnpy-hitctl:focus-visible \{ outline:2px solid var\(--focus\)/);
+  });
+
   it("the three form cards (prompt editor, new handoff, new doc) are surfaces", () => {
-    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"';
+    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"';
     const editor = promptEditorView({ draft: blankPromptDraft(), takenSlugs: [] });
     const handoff = newHandoffView({ draft: blankHandoff(), me: "AndresL230", persons });
     const doc = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces: [{ key: "technical", label: "Technical" }], sections: ["reference"] });

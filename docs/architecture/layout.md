@@ -70,7 +70,8 @@
   the repo scan (repo setups, Phase D — `repo-apps.md` › Detection): `scan.ts` (the guarded reconcile arm),
   `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
   `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
-  again — credentialed) and `scan-routes.ts`,
+  again — credentialed) and `scan-routes.ts`, `ask-github.ts` (Ask Trov's GitHub transport — credentialed, GET-only,
+  handed to the Ask route by `src/routes.ts`; `ask.md` › GitHub),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
@@ -244,16 +245,18 @@
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
   Then `0076_10_17_staging` — ONE migration for the 10-17 staging epic (#195: Ask sharing #193, handoff prompts by
-  upload #194), consolidated from three files before any reached production; each part keeps its old name as a
-  `-- ══ part … ══` marker and its own header and rollback: `0076_ask_sharing` (Ask Trov)
+  upload #194, Ask Trov's GitHub lookups), consolidated from four files before any reached production; each part
+  keeps its old name as a `-- ══ part … ══` marker and its own header and rollback: `0076_ask_sharing` (Ask Trov)
   [`chat_threads.shared_at` and the partial index `idx_chat_threads_shared`: a conversation its owner shared with
   the org, read-only for its other members — `ask.md` › Sharing a conversation], `0077_ask_people_sharing` (Ask
   Trov) [the table `chat_thread_people` — a conversation shared with named people, each `read` or `continue` — and
-  `asked_by` on `chat_messages` / `chat_actions`, who asked each turn — `ask.md` › Sharing a conversation] and
+  `asked_by` on `chat_messages` / `chat_actions`, who asked each turn — `ask.md` › Sharing a conversation],
   `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a pending handoff whose prompt
   is PUT to the artifact upload route, created only when its bytes land; hash-only, 5 minutes —
-  `handoffs-prompts.md`]; all additive. `0077`–`0079` are left to the PRs in flight beside it (the Docs Library,
-  agent links); a gap in the numbers is harmless — D1 applies every file it has not applied, by name.
+  `handoffs-prompts.md`] and `0076_ask_github` (Ask Trov's GitHub lookups) [`orgs.ai_chat_github`, the admin's
+  switch in Org settings › AI, off for every org — `ask.md` › GitHub]; all additive. `0077`–`0079` are left to the
+  PRs in flight beside it (the Docs Library, agent links); a gap in the numbers is harmless — D1 applies every file
+  it has not applied, by name.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
@@ -281,7 +284,10 @@
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components;
   `web/src/marks.ts` is the ONE place a state is drawn (status glyphs, priority bars, a shape and a word —
   never a pill; `web-ui.md` › Status marks), read by every screen, the site and its tour mocks, and
-  `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`); and
+  `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`);
+  `web/src/zoom.ts` is the big-screen zoom (past ~3000px, to 1.3 at 3840) and its CSS-px helpers (`rectOf`,
+  `pointOf`, `viewportOf`, `clientOf`) every rect → style site uses, installed first by `web/src/zoom-boot.ts`
+  (`web-ui.md` › Big screens); and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
   Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set and the Repo-setups scenarios A–N as `RepoFacts` (a

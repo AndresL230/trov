@@ -9,13 +9,13 @@ import { detectVars } from "@shared/handoffs";
 import { TAGS } from "@shared/vocabulary";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { esc, attr, relTime, surface, WORK_SHELL, FORM_SHELL, hitArea, HITBOX } from "./ui";
 import { stateMark } from "./marks";
 import { personLink, handleTag } from "./people";
 import { collapsedLineDiff } from "./diff";
 import { unifiedDiff } from "./review";
 import { primaryStyle } from "./handoffs";
-import { promptBox, promptModal, type PromptView } from "./prompt-box";
+import { promptBox, promptModal, COPY_ICON, ICON_BTN, type PromptView } from "./prompt-box";
 import { segmented } from "./segmented";
 import { dangerTrigger, confirmModal } from "./confirm";
 import { emptyLayout, skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
@@ -94,16 +94,25 @@ function promptFilterMenu(p: PromptLibraryProps): FilterMenuProps {
   };
 }
 
+/** The act a library card's copy button dispatches (arg: the slug). */
+export const PROMPT_COPY_SLUG_ACT = "promptCopySlug";
+
 /** A library card: a `hitArea` card, so the author's photo and handle open their person card
- *  while the rest opens the prompt. */
+ *  while the rest opens the prompt. Top left, a quiet copy button puts the plain slug on the
+ *  clipboard (what `get_prompt` takes, so it can go straight to an agent). It is a sibling of
+ *  the hit area, never inside it, and `cnpy-hitctl` lifts it above the hit, so its click copies
+ *  and never opens the prompt. */
 function promptCard(x: PromptSummary, persons: PersonSummary[]): string {
   const au = personOf(persons, x.author);
   return `<div class="cnpy-surface cnpy-card ${HITBOX}" style="display:flex;flex-direction:column;text-align:left;width:100%;min-width:0;padding:16px 18px">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;width:100%">
-      <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">${esc(x.title)}</div>
+    <div style="display:flex;align-items:flex-start;gap:6px;width:100%">
+      <button type="button" data-act="${PROMPT_COPY_SLUG_ACT}" data-arg="${attr(x.slug)}" class="cnpy-iconbtn cnpy-hitctl" aria-label="${attr(`Copy slug ${x.slug}`)}" data-mtip="Copy the slug to give an agent" style="${ICON_BTN};margin:-4px 0 0 -7px">${COPY_ICON}</button>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg)">${esc(x.title)}</div>
+        <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:3px;overflow-wrap:anywhere">${esc(x.slug)}</div>
+      </div>
       ${x.status === "published" ? "" : `<span style="flex:none;margin-top:1px">${promptBadge(x.status)}</span>`}
     </div>
-    <div style="font-family:var(--sans);font-size:11px;color:var(--fg-40);margin-top:3px">${esc(x.slug)}</div>
     <div style="font-size:12.5px;color:var(--fg-55);margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%">${esc(x.excerpt)}</div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:12px">${tagLine(x.tags)}</div>
     <div style="flex:1"></div>
@@ -124,8 +133,7 @@ export const PROMPTS_EMPTY = "No prompts yet. The team's reusable prompts live h
 /** One prompt card as a shape — the library's loading skeleton and its empty layout. */
 function promptCardShape(i: number): string {
   return `<div class="cnpy-surface" style="display:flex;flex-direction:column;min-width:0;padding:16px 18px">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">${skLine(skW(i), 14, 1.5)}${skBox(58, 18)}</div>
-    <div style="margin-top:3px">${skLine("34%", 11, 1.5)}</div>
+    <div style="display:flex;align-items:flex-start;gap:6px">${skBox(13, 13, "flex:none;margin:4px 6px 0 0")}<div style="flex:1;min-width:0">${skLine(skW(i), 14, 1.5)}<div style="margin-top:3px">${skLine("34%", 11, 1.5)}</div></div>${skBox(58, 18)}</div>
     <div style="margin-top:9px">${skLine("92%", 12.5, 1.5)}</div>
     <div style="display:flex;gap:6px;margin-top:12px">${skBox(54, 20)}${skBox(70, 20)}</div>
     <div style="display:flex;align-items:center;gap:7px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border)">${skBox(18, 18)}${skBar(74, 9)}${skBar(40, 9, "margin-left:auto")}</div>
@@ -217,7 +225,7 @@ export function promptDeleteModal(x: Pick<PromptDetail, "title" | "version">, ve
 export function promptDetailView(p: PromptDetailProps): string {
   // The page is at least the viewport tall and the body row takes what is left, so the
   // prompt box runs to the bottom of the screen instead of stopping at the rail's height.
-  const shell = (inner: string) => `<div data-screen-label="Prompt detail" class="cnpy-pdetail-page" style="width:100%;max-width:1260px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 28px">${inner}</div>`;
+  const shell = (inner: string) => `<div data-screen-label="Prompt detail" class="cnpy-pdetail-page" style="width:100%;max-width:1260px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 28px">${inner}</div>`;
   const x = p.prompt;
   if (!x) {
     if (p.status === "idle" || p.status === "loading") return shell(skeleton("prompt", "Loading…", skDetail({ rail: 258, paras: 3 })));
@@ -351,7 +359,7 @@ const FIELD = "border:1px solid var(--border-strong);border-radius:9px;backgroun
 
 export function promptEditorView(p: PromptEditorProps): string {
   const ed = p.draft;
-  const shell = (inner: string) => `<div data-screen-label="Prompt editor" style="${WORK_SHELL}">${inner}</div>`;
+  const shell = (inner: string) => `<div data-screen-label="Prompt editor" style="${FORM_SHELL}">${inner}</div>`;
   if (!ed) return shell(skeleton("prompt-edit", "Loading…", skDetail({ paras: 3, actions: 2 })));
   const vars = detectVars(ed.body);
   const s = slugState(ed, p.takenSlugs);
@@ -364,7 +372,7 @@ export function promptEditorView(p: PromptEditorProps): string {
   const can = !!ed.title.trim() && !!ed.body.trim() && s.ok && !s.taken;
 
   return shell(`
-  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>

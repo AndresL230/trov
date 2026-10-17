@@ -27,7 +27,7 @@
 
 import { esc, attr, hitArea, HITBOX, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
-import { askedByMe, askerOf, askersIn, convoOf, ownTurn, readOnly } from "./ask-state";
+import { askedByMe, askerOf, askersIn, convoOf, isViewerConvo, ownTurn, readOnly } from "./ask-state";
 import { deletedUserTag, personLink } from "./people";
 import { isTombstoneHandle } from "@shared/deletion-core";
 import {
@@ -417,15 +417,17 @@ function fileView(v: AskView, q: AskQuestion, f: AskAttachment): string {
   return sentFileChip({ kind: f.kind, title: f.title, size: f.size, thumbUrl: f.thumbUrl }, "askCvOpen", cvRef(v.where, q.key, "upload", f.id), closed);
 }
 
-/** Who asked it, over the bubble — only once more than one person asked in the conversation (0077_ask_people_sharing):
- *  "You", or their picture and name (a clickable person, people.ts). */
+/** Who asked it, a small line under the bubble — in any conversation that is shared (0076 / 0077_ask_people_sharing):
+ *  the owner's once they share it, the reader's or collaborator's always, and wherever more than one person asked.
+ *  "You", or the asker's name as plain text (a deleted account is "Deleted user"). */
 function askedLine(v: AskView, q: AskQuestion): string {
-  if (askersIn(v).size < 2) return "";
+  const t = convoOf(v).thread;
+  const shared = isViewerConvo(convoOf(v)) || !!t?.shared || (t?.people?.length ?? 0) > 0 || askersIn(v).size > 1;
+  if (!shared) return "";
   if (askedByMe(v, q.askedBy)) return `<div class="ask-q-who">You</div>`;
   const by = askerOf(v, q.askedBy);
-  // A deleted account (a collaborator's turns outlive it) is "Deleted user" as plain text: no picture, no card.
   if (isTombstoneHandle(by)) return `<div class="ask-q-who">${deletedUserTag(12)}</div>`;
-  return `<div class="ask-q-who">${personLink(personOf(v.look, by), by, 16, personName(v.look, by), "color:var(--fg-55)", 6)}</div>`;
+  return `<div class="ask-q-who">${esc(personName(v.look, by))}</div>`;
 }
 
 function question(v: AskView, q: AskQuestion, last: boolean): string {
@@ -446,7 +448,7 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
           <button type="button" class="ask-btn ask-btn--accent" data-act="askCvEditSend"${ed.text.trim() ? "" : " disabled"}>Send</button></div>
       </div>`
     // The words first, what came with them under the bubble (the owner, 2026-10-16).
-    : `<div class="ask-q-col">${askedLine(v, q)}<div class="ask-q-bubble">${esc(q.text)}</div>${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}${edit}</div>`;
+    : `<div class="ask-q-col"><div class="ask-q-bubble">${esc(q.text)}</div>${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}${askedLine(v, q)}${edit}</div>`;
   // `data-ask-tween`: the bubble ↔ the edit box glides instead of jumping.
   // Edit sits small under the question (the owner), inside its column, so it never shifts the bubble.
   return `<div class="ask-q${canEdit ? " can-edit" : ""}" data-morph-key="q:${attr(q.key)}" data-ask-tween>${body}</div>`;

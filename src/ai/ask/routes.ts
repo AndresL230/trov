@@ -54,9 +54,36 @@ import { shortDay } from "./charts";
 import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
 import { LinkError, askThreadLinkNotes } from "../../tools/links";
 import { deliverLinkNotes, linkNotesText, linkRefsOf } from "./links";
+import { askGithub, connectedRepos, type AskGithub, type GithubTransportFactory } from "./github";
+import type { Env } from "../../env";
 
-/** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
-export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number } = {};
+/** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock;
+ *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint, the access check and every read go
+ *  through it). */
+export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number; githubFetch?: typeof fetch } = {};
+
+/** The credentialed GitHub transport — handed in by the HTTP app (src/routes.ts → src/repo/ask-github.ts). Nothing under
+ *  src/ai/ask/ imports the credential path (test/secrets.mcp.test.ts); without it the GitHub tools are never offered. */
+let githubTransport: GithubTransportFactory | null = null;
+export function provideAskGithub(factory: GithubTransportFactory | null): void { githubTransport = factory; }
+
+/** LOCAL DEVELOPMENT ONLY: the loopback stand-in for Anthropic (`LOCAL_UPSTREAM`, src/sync/local-upstream.ts), handed
+ *  in by the HTTP app — that module reaches the billing config, which nothing under src/ai/ask/ may import. Undefined
+ *  in production and in tests (it answers only a loopback http URL beside no live key). */
+let localModelFetch: ((env: Env) => typeof fetch | undefined) | null = null;
+export function provideAskLocalUpstream(f: ((env: Env) => typeof fetch | undefined) | null): void { localModelFetch = f; }
+const modelFetch = (env: Env): typeof fetch | undefined => askDeps.fetchImpl ?? localModelFetch?.(env);
+
+/** This answer's GitHub side — null unless the org's GitHub lookups switch is on (`orgs.ai_chat_github`, an admin's;
+ *  the AI switch was checked before), a transport was handed in and the org has a connected repository. `offWithRepos`:
+ *  the switch is off while there are repositories to read — the model is told an admin can turn it on. */
+async function githubFor(env: Env, ctx: TenantContext, switchOn: boolean, signal: AbortSignal): Promise<{ github: AskGithub | null; offWithRepos: boolean }> {
+  if (!githubTransport) return { github: null, offWithRepos: false };
+  const repos = await connectedRepos(ctx).catch(() => []);
+  if (!repos.length) return { github: null, offWithRepos: false };
+  if (!switchOn) return { github: null, offWithRepos: true };
+  return { github: askGithub(githubTransport(env, ctx, { fetchImpl: askDeps.githubFetch, signal }), repos), offWithRepos: false };
+}
 
 type C = Context<AppEnv>;
 const nowMs = () => (askDeps.now ? askDeps.now() : Date.now());
@@ -84,6 +111,7 @@ const parseJson = <T>(s: string | null | undefined, fallback: T): T => {
 interface Standing {
   enabled: boolean;
   chatAuto: boolean;
+  chatGithub: boolean;
   plan: Awaited<ReturnType<typeof planAndAiSettings>>["plan"];
   used: number;
   modes: readonly AskMode[];
@@ -91,7 +119,7 @@ interface Standing {
 
 async function standing(ctx: TenantContext): Promise<Standing> {
   const s = await planAndAiSettings(ctx, nowDate());
-  return { enabled: s.enabled, chatAuto: s.chatAuto, plan: s.plan, used: s.used.ai_chat, modes: askModesFor(s.plan.plan) };
+  return { enabled: s.enabled, chatAuto: s.chatAuto, chatGithub: s.chatGithub, plan: s.plan, used: s.used.ai_chat, modes: askModesFor(s.plan.plan) };
 }
 
 /** The person's default mode: Settings › Trov's, when the plan offers it; else Smart. */
@@ -470,7 +498,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
 
   const nonce = newNonce();
-  const compacted = await maybeCompact(env, ctx, thread, earlier, askDeps.fetchImpl);
+  const compacted = await maybeCompact(env, ctx, thread, earlier, modelFetch(env));
   const { messages: history, actionsNote } = await buildHistory(ctx, compacted, earlier, nonce, handle);
   const ctxViews = (qc.context ?? []).length ? await resolveViews(ctx, handle, qc.context ?? [], nowDate()) : new Map();
   // An attachment the model can't take (too large, or no room left in this request) is stored but not read: the
@@ -486,18 +514,23 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     { type: "text" as const, text: qc.text || "(no text)" },
   ];
 
+  // The GitHub side (./github.ts), built here — past the gate, so with the AI switch off nothing reaches GitHub — only
+  // while the org's GitHub lookups switch is on, and only for a mode that is offered the full catalog.
+  const gh = def.tools === "index" ? { github: null, offWithRepos: false } : await githubFor(env, ctx, v.st.chatGithub, v.signal);
+  const github = gh.github;
   const tool: AskToolCtx = {
     env, ctx, handle, orgSlug, origin: new URL(c.req.url).origin, threadId: thread.id,
-    docs: askDeps.docs ?? assetsDocs(env), now: nowDate, searched: new Map(),
+    docs: askDeps.docs ?? assetsDocs(env), github, now: nowDate, searched: new Map(),
   };
   const out = await runTurn({
     env, ctx, tool, mode, turn,
     system: contextBlock({
       orgName: org?.name ?? "this organization", orgSlug, handle, role: ctx.role, mode,
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
+      githubRepos: github?.repos ?? null, githubOff: gh.offWithRepos,
     }),
     history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
-    fetchImpl: askDeps.fetchImpl, now: nowMs, stopPollMs: askDeps.stopPollMs,
+    fetchImpl: modelFetch(env), now: nowMs, stopPollMs: askDeps.stopPollMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);
 
@@ -1023,7 +1056,7 @@ askApp.post("/ask/threads/:id/save", async (c) => {
 function toolCtxFor(c: C, threadId: number, slug: string): AskToolCtx {
   return {
     env: c.env, ctx: c.var.ctx, handle: me(c), orgSlug: slug, origin: new URL(c.req.url).origin, threadId,
-    docs: askDeps.docs ?? assetsDocs(c.env), now: nowDate, searched: new Map(),
+    docs: askDeps.docs ?? assetsDocs(c.env), github: null, now: nowDate, searched: new Map(),
   };
 }
 

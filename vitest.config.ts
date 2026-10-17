@@ -84,6 +84,10 @@ export default defineConfig({
           // The AI screens' local preview (src/ai/preview.ts): unset, as in production — every AI field is
           // omitted. A test that previews passes its own value.
           LOCAL_AI_PREVIEW: "",
+          // The loopback stand-in for GitHub + Anthropic (src/sync/local-upstream.ts; ask.md / sync.md tell a
+          // developer to set it in `.dev.vars`): blank, or every pool request to GitHub would go to a local port
+          // and the tests that stub GitHub at the Response level would 503. A test of the stand-in passes its own.
+          LOCAL_UPSTREAM: "",
           PUBLIC_ORIGIN: "https://trov.test",
           // A FIXED key-encryption key (32 bytes, base64) for per-org secrets (src/data/secrets.ts), so the
           // suite never depends on a developer's `.dev.vars`; TROV_KEK_PREVIOUS is blanked for the same reason.

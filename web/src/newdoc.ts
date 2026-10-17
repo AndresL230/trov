@@ -3,7 +3,7 @@
 // Review through POST /api/docs/propose (the same gate). A handoff's "Promote to
 // doc" opens this form prefilled, with a FROM HANDOFF banner. Purely presentational.
 
-import { esc, attr, surface, WORK_SHELL } from "./ui";
+import { esc, attr, surface, FORM_SHELL } from "./ui";
 import { primaryStyle } from "./handoffs";
 import { segmented } from "./segmented";
 
@@ -42,9 +42,9 @@ export function newDocView(p: NewDocProps): string {
       <button data-act="openHandoff" data-arg="${d.from}" class="cnpy-link" style="font-size:12.5px;font-weight:500;color:var(--accent)">Open handoff</button>
     </div>`
     : "";
-  return `<div data-screen-label="New doc" style="${WORK_SHELL}">
+  return `<div data-screen-label="New doc" style="${FORM_SHELL}">
   ${fromBanner}
-  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label for="nd-title" style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Title</label>

@@ -9,7 +9,10 @@ replaces the page's DOM wholesale (`innerHTML`) unless it is one of: the `<aside
 (a dialog), or a page that names itself with **`data-morph="<key>"`** — which is patched in place while the key
 stays the same. A rebuilt page restarts every entrance animation, skeleton fade, `<img>` and iframe in it, and
 anything decorative behind a form visibly "reloads" per letter. Focus and caret are restored, so the field
-itself looks fine and the bug is easy to miss.
+itself looks fine and the bug is easy to miss. A focused field comes back by its `data-field`; a focused BUTTON by
+its twin, the element with the same `data-act` + `data-arg` (`web/src/focus-twin.ts`, put back at the end of
+`rerender()` only when nothing else took focus and the screen is the same) — so a button whose action just repaints
+the page (a copy button's toast) keeps the keyboard where it was.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
@@ -221,7 +224,7 @@ two providers as a narrow centred pair with an "or" rule between them, a foot. A
 (a border sits outside the banner and showed as a pale frame round it); its edge is a ring in the shadow.
 
 Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
-banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add
+banner's dots in the page's own accent (purple in both themes), mirrored on a flipped row. Do not add
 a fourth banner or a second texture (the tour's dialog has none: its stage is the same dot field); a new section is plain unless it replaces one of the three.
 
 - **Both themes.** The banner is the brand's purple on light AND dark (it is not the app's chrome); on dark it
@@ -769,6 +772,73 @@ label. It is not a tab bar and not a segmented switch: a step is a page of the f
 route. Its rules declare no radius (every one is inline), and its one moving part — the waiting dot — is
 still under `prefers-reduced-motion`. Tests: `test/render.welcome.test.ts`.
 
+## Big screens — page frames that grow (`--frame-*` in `trov.css`)
+
+The team builds on laptops; a 32" monitor is 2560–3072 CSS px wide at the usual scaling (4K at 150% / 125%, 1440p
+at 100%), and 3840 at 4K 100%. Every screen is a centred frame with a `max-width`, so on such a window a laptop-sized
+frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120×1440 and 1080p at 67% / 80% zoom):
+
+- **Frame tokens on `:root`**, each `clamp(<laptop width>, <n>vw, <ceiling>)`, so they equal the old fixed width
+  up to a ~2100px window (a laptop and a 1080p monitor render exactly as before) and grow after it:
+  `--frame-work` (1440 → 2200: the queue's board and table, Handoffs, the Prompt Library, a tag's page — `WORK_SHELL`
+  in `ui.ts`), `--frame-dash` (1180 → 1720: My Work, the Repo dashboard, Org settings › Members — only that tab,
+  `data-org-wide` on `.cnpy-org`), `--frame-feed` (1200 → 1480: the Feed, `asideColumns`' `opts.frame`) and
+  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list).
+- **A line keeps its measure** when its column grows: a Feed entry's title, brief and body stop at 720px (the width
+  they have in a 1200px frame; `.cnpy-feed-page`).
+- **Reading surfaces keep their frame**: a doc (1080), the Roadmap (`asideColumns`, 1200), the Guide, a ticket or
+  sprint (`DETAIL_SHELL`), a handoff, Settings and Org settings' other tabs. A FORM keeps its laptop width too
+  (`FORM_SHELL`: a new ticket, handoff or doc, the prompt editor) — its fields gain nothing from width.
+- **What grows adds, not stretches**: the board's columns stop at `--board-col-max` (480px) and the board keeps to the
+  left under its toolbar (the owner, 2026-10-17); the Prompt Library's grid adds a card a row past a 2200px window
+  (`auto-fill`, 360px minimum); Repo › Usage's app cards and the Overview's week figures already `auto-fit` (the week
+  figures go to ONE row on a panel ≥1200px, so none is left alone on a second row).
+- **The title row lines up with the frame** above 1440px (the owner, 2026-10-17): the header still spans `<main>` (its
+  hairline does) but its padding is `var(--hdr-pl, 24px)` / `var(--hdr-pr, 24px)`, and `trov.css` gives each screen
+  with ONE centred frame its `--hdr-frame` (the frame's max-width) and `--hdr-pad` (the frame's side padding); the
+  frame centres in `<main>` minus the scroller's reserved scrollbar (`--sb-gutter`, 12px — with overlay scrollbars it
+  is 0 and the title sits 6px off). Screens without one centred frame (Docs, Review, the Guide, Ask, Artifacts) keep
+  24px. A NEW screen with a centred frame adds its line there, or its title row floats at 24px on a big screen.
+- A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
+  legal) keep their 1120px marketing column.
+
+### The big-screen zoom — 4K at 100% (`web/src/zoom.ts`)
+
+Past a ~3000px window the frames above run out of sensible width, so Trov enlarges ITSELF (the owner, 2026-10-17):
+CSS `zoom` on `<html>`, 1 up to a 3000px window, growing linearly to **1.3 at 3840** and capped there, and never so
+far that less than 900 CSS px of height is left (`zoomFor(width, height)`, `UI_ZOOM`). At or under 3000px nothing
+is written at all — the page is pixel-identical at 1440 and 2560 (compared screenshot for screenshot). `zoom` is the
+only mechanism that scales a UI authored in px (nearly every size is an inline px; the root font-size changes
+nothing). Everything about it lives in `zoom.ts`:
+
+- **Applying it.** `ZOOM_BOOT`, an inline script in every document's `<head>` (`site-prerender.ts`), sets the zoom
+  before the body parses, so a prerendered page never paints at 1× first. `zoom-boot.ts`, the FIRST import of every
+  page's script (`main.ts`, `landing-page.ts`, `pricing-page.ts`, `legal-page.ts`, `docs-page.ts`), installs the
+  `resize` listener before any other module adds one, so every other resize handler reads the new scale. A zoom
+  change sets `html[data-zooming]` for one frame, which turns transitions off: a resize never animates a width.
+- **Viewport units.** Chromium zooms them too (a `100vh` box is 1.3 × the window under `zoom: 1.3`). Every size
+  relative to the window reads `--vw` / `--vh` / `--dvh` (trov.css `:root`: `calc(1vw / var(--vu, 1))`), written
+  `calc(100 * var(--vh))`, `calc(100 * var(--vw) - 32px)`, `clamp(20px, 2.6 * var(--vw), 46px)` — the `--frame-*`
+  tokens included. `--vu` is MEASURED (a hidden fixed probe 100vh tall against `innerHeight`), not assumed, and is
+  unset at 1×. **A raw `vw` / `vh` / `dvh` in `web/src` is a bug** (`test/render.zoom.test.ts` scans for one; an
+  `@supports` condition and an `<img sizes>` are not CSS lengths and stay raw).
+- **Rect → style.** `getBoundingClientRect()`, a pointer's `clientX` / `clientY` and `innerWidth` / `innerHeight`
+  are in SCREEN px; a `left` / `top` / `width` / `height` / `translate` / an element's `scrollTop` written back is in
+  CSS px and gets zoomed again. Every such site reads through `rectOf(el)`, `pointOf(e)`, `viewportOf()` and
+  `clientOf()` (the root's client box: Chromium reports `documentElement.clientWidth` in screen px in standards
+  mode). The factor (`uiScale()`) is measured off the same probe, so if a browser ever reports rects unzoomed the
+  helpers become the identity, not wrong. Converted: the dropdown, the `data-mtip` bubble, quick search (anchored
+  panel and its height glide), the sync menu, the rail's collapsed tooltips, the board's drag ghost, slot FLIP and
+  settle, the ticket comment box's grip, Ask's hover card, inspector edge (tracks the pointer 1:1), layout width
+  and composer glide, the docs / guide / legal heading spies and their jumps, the FAQ accordion and the site's
+  scroll-lock gutter. `elementFromPoint` takes SCREEN px: pass it the raw `clientX` / `clientY`, never `pointOf`'s.
+  A NEW rect → style site goes through these helpers.
+- What needs nothing: anything CSS places (centred modals, `confirmModal`, the palette, `position:absolute` menus),
+  `offset*` reads (segmented / tab bar indicators), and framed artifacts (an iframe's content is zoomed with the
+  page, so the height it reports is already the box's CSS px).
+- Checked at 3840×2160 (and 3200×1800, 5120×1440) in Chromium 153: the shell is exactly the window, nothing scrolls
+  sideways on any screen or site page, and every overlay above lands on its trigger (offsets = the 1× offsets × 1.3).
+
 ## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
 
 A screen that waits on a read never paints a bare "Loading…" line and never paints its empty state early: it
@@ -1224,6 +1294,14 @@ regress silently:
   `--fg-40` .40 → .52, `--red` #cc6262 → #df7372. The banner's gradient went one step deeper in both themes and
   its text is at least 92% white. `--fg-55` is unchanged, so light `--fg-55` and `--fg-40` now sit close
   (4.67 / 4.53 on `--bg`).
+- **The dark accent is the light accent's purple** (the owner, 2026-10-17: "the same purple instead of that
+  green"). `#525cc3` itself reads only 3.0:1 on the dark `--bg`, so dark `--accent` (and `--mark`, the tab icon,
+  `TROV_MARK_COLORS.dark`) is the same hue (235°) and saturation lifted the least that passes: `#8d94d8` — 6.1:1 on
+  `--bg`, 5.8:1 on `--surface`, 4.6:1 on its own 14% `--accent-soft` (the tightest pair) — with `--accent-fg`
+  `#11132e` (6.4:1) as the ink on it. It was the olive `#9aab65` / `#131a07`; the dark banner went back to the
+  brand purple with it. The semantic `--green` and the `--p-moss` handle colour are unchanged. The landing's
+  terminal mocks (`--term`, dark in both themes) draw their "⏺ trov · load-context" line in `--term-accent`, the
+  same `#8d94d8` in BOTH themes (it was a hard-coded olive; `render.contrast` holds it at 4.5:1 on `--term`).
 - **New tokens, split where a value served two jobs:** `--border-input` (fields) beside `--border-strong`
   (cards, dividers, the empty layouts' hollow shapes — still quiet); `--red-fg` (text on a filled red button:
   white on light, the dark ink on dark, as `--accent-fg`); `--p-ink` (avatar initials); `--focus` (= `--accent`).
@@ -1263,7 +1341,7 @@ wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose w
 for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
 `requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
 left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
-each paint is one static frame. The ink is the theme's `--accent` (olive in dark; the owner, 2026-10-16: colour carries meaning only, so
+each paint is one static frame. The ink is the theme's `--accent` (purple in both themes, lifted in dark; the owner, 2026-10-16: colour carries meaning only, so
 "working" has no hue of its own): `setInk` in
 `orbs/engine/core.ts` — the one local change to the vendored engine, marked — makes a dot's depth its opacity in that
 colour. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`), and the running sweep's highlight is

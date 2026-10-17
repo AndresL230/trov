@@ -6,7 +6,7 @@
 import type { HandoffView, HandoffStatus, HandoffReadingItem, HandoffReadingKind } from "@shared/handoffs";
 import { firstLine, HANDOFF_READING_HEADING } from "@shared/handoffs";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { esc, attr, relTime, surface, WORK_SHELL, FORM_SHELL, hitArea, HITBOX } from "./ui";
 import { personChip, personLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
@@ -198,7 +198,7 @@ const inlineCode = (t: string): string => esc(t).replace(/`([^`]+)`/g, '<span st
 
 
 export function handoffDetailView(p: HandoffDetailProps): string {
-  const shell = (inner: string) => `<div data-screen-label="Handoff detail" style="width:100%;max-width:1180px;margin:0 auto;padding:36px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box;position:relative">${inner}</div>`;
+  const shell = (inner: string) => `<div data-screen-label="Handoff detail" style="width:100%;max-width:1180px;margin:0 auto;padding:36px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box;position:relative">${inner}</div>`;
   const h = p.handoff;
   if (!h) {
     if (p.status === "idle" || p.status === "loading") return shell(skeleton("handoff", "Loading…", skDetail({ paras: 2 })));
@@ -369,8 +369,8 @@ export function newHandoffView(p: NewHandoffProps): string {
     ${area("files", "backend/routes/documents.py", `width:100%;min-height:76px;padding:9px 12px;${FIELD};font-size:12.5px;line-height:1.6;resize:vertical;font-family:var(--label)`)}` : "";
 
   const canSend = !!n.body.trim();
-  return `<div data-screen-label="New handoff" style="${WORK_SHELL}">
-  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)")}>
+  return `<div data-screen-label="New handoff" style="${FORM_SHELL}">
+  <div${surface("padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)")}>
     <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
       <div style="min-width:0;display:flex;flex-direction:column">
         <label style="display:block;font-size:13px;font-weight:500;margin-bottom:8px">Message <span style="font-weight:400;color:var(--fg-40)">— markdown · the first line is the title</span></label>

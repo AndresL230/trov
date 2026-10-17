@@ -8,7 +8,7 @@ import { SYNC_MAX_BATCHES, SYNC_PHASES, SYNC_RUN_RETENTION_DAYS, SYNC_STALE_MS, 
 import { app } from "../src/routes";
 import { runBackfill, type BackfillResult } from "../src/tools/backfill";
 import type { PrSummary, Summarizer } from "../src/tools/summarize";
-import { runSyncBatch, syncStatus, type SyncBatchResult } from "../src/sync/runs";
+import { runSyncBatch, runView, syncStatus, type SyncBatchResult } from "../src/sync/runs";
 import { localUpstreamFetch } from "../src/sync/local-upstream";
 import { pruneSyncRuns } from "../src/platform/sweeps";
 import { putSnapshot } from "../src/repo/store";
@@ -364,5 +364,19 @@ describe("retention, and the local stand-in", () => {
         "http://127.0.0.1:8862/github/next-page",
       ]);
     });
+  });
+});
+
+describe("reading a stored run (Z32)", () => {
+  it("a failure stored without a code reads as code null (unknown), never an invented one; what else it stored is not passed on", () => {
+    const row = {
+      id: 1, repo: "acme/widgets", started_by: "andres", started_at: "2026-10-01T00:00:00.000Z", updated_at: "2026-10-01T00:01:00.000Z",
+      ended_at: "2026-10-01T00:01:00.000Z", status: "partial", batch: 3, batches: 3, phase: "done", done: 120, total: 131,
+      counts: "{}", previous_at: null,
+      failures: JSON.stringify([{ step: "releases", detail: "GitHub answered 502 twice" }, "junk", null, { code: "reconcile:runs", via: "app", status: 502 }, { code: 7, via: "elsewhere", status: "x" }]),
+    };
+    const v = runView(row, Date.parse("2026-10-01T00:02:00.000Z"));
+    expect(v.failures).toEqual([{ code: null }, { code: "reconcile:runs", via: "app", status: 502 }, { code: null }]);
+    expect(JSON.stringify(v)).not.toContain("GitHub answered 502 twice");
   });
 });

@@ -62,8 +62,9 @@ export const zeroSyncCounts = (): SyncCounts => ({
 /** One thing that failed, from a FIXED vocabulary — never upstream text. `status` is GitHub's HTTP
  *  status where there was one. */
 export interface SyncFailure {
-  /** `not_configured` · `list_prs` · `list_issues` · `unexpected` · `reconcile:<arm>` · `reconcile:unexpected`. */
-  code: string;
+  /** `not_configured` · `list_prs` · `list_issues` · `unexpected` · `reconcile:<arm>` · `reconcile:unexpected`;
+   *  null = the stored failure names none (an old or hand-written row): unknown, said as such, never guessed. */
+  code: string | null;
   status?: number;
   /** Which credential the read was made with, where one was — so the fix points at the right place. */
   via?: SyncCredential;
@@ -215,6 +216,7 @@ const fixFor = (f: SyncFailure): string => (f.via === "app" ? APP_FIX : TOKEN_FI
 /** One failure as two plain sentences: what did not happen, and what to do about it. Built from the
  *  code alone — nothing an upstream wrote can reach the screen. */
 export function syncFailureText(f: SyncFailure, repo: string): { what: string; fix: string } {
+  if (typeof f.code !== "string") return { what: "Part of this sync did not finish, and which part was not recorded.", fix: "Whatever it saved is kept. Try again in a few minutes." };
   if (f.code === "list_prs" || f.code === "list_issues") {
     const thing = f.code === "list_prs" ? "pull requests" : "issues";
     const app = f.via === "app";
@@ -329,6 +331,6 @@ export function syncSeenText(c: Pick<SyncCounts, "prs_seen" | "issues_seen">): s
 export function syncFailureTab(f: SyncFailure): "repos" | "integrations" | null {
   const tab = f.via === "app" ? "repos" : "integrations";
   if ((f.code === "list_prs" || f.code === "list_issues") && (f.status === 401 || f.status === 403 || f.status === 404)) return tab;
-  if (f.code.startsWith("reconcile:") && f.code !== "reconcile:unexpected") return tab;
+  if (typeof f.code === "string" && f.code.startsWith("reconcile:") && f.code !== "reconcile:unexpected") return tab;
   return null;
 }
