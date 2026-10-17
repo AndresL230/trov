@@ -328,6 +328,8 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,
   the 8 colours, a short description (140), the sidebar preview. Created: the new space's home and "Created ‹Name›".
+  Name takes the focus on open; closing any space dialog without a write (Create / Edit space, Edit owners, Archive —
+  Cancel, Escape, the backdrop) gives the focus back to what opened it (`library-actions.ts` `remember` / `giveBack`).
 - *A doc page* and *New page*: below; the header crumb reads "Library › ‹Space›" / "Library › New page".
 - Unplaced › assign offers the live spaces by name; a promoted handoff's doc starts in `engineering` while it is
   live, else the Library's first space.
