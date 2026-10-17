@@ -116,7 +116,7 @@ describe("the import wizard (`#import`)", () => {
   });
 
   it("Preview: the shared planner's pages, conflicts and skipped files, in the design's words", () => {
-    const u = { step: "preview" as const, picks: [zipPick], files: FILES, links: { total: 5, inImport: 3, existing: 1, unmatched: 1, imagesUsed: 1 } };
+    const u = { step: "preview" as const, picks: [zipPick], files: FILES, links: { total: 5, inImport: 3, existing: 1, missing: 0, unmatched: 1, imagesUsed: 1 } };
     const html = wiz(u);
     expect(html).toContain('data-morph-key="imp:preview"');
     expect(html).toContain("From <strong");
@@ -201,9 +201,14 @@ describe("the import wizard (`#import`)", () => {
   });
 
   it("words: the links and images sentences say only the parts that are there", () => {
-    expect(linkWords({ total: 0, inImport: 0, existing: 0, unmatched: 0, imagesUsed: 0 }, true)).toBe("No page links to another.");
-    expect(linkWords({ total: 38, inImport: 31, existing: 5, unmatched: 2, imagesUsed: 0 }, true))
+    expect(linkWords({ total: 0, inImport: 0, existing: 0, missing: 0, unmatched: 0, imagesUsed: 0 }, true)).toBe("No page links to another.");
+    expect(linkWords({ total: 38, inImport: 31, existing: 5, missing: 0, unmatched: 2, imagesUsed: 0 }, true))
       .toBe("38 links: 31 point to pages in this import, 5 to pages already in Trov, and 2 to files that aren't in the zip. Those 2 stay as plain text.");
+    // A [[slug]] to no page is not "already in Trov" (Batch B finding: test-single.md's [[test-no-such-page]]).
+    expect(linkWords({ total: 2, inImport: 0, existing: 1, missing: 1, unmatched: 0, imagesUsed: 0 }, false))
+      .toBe("2 links: 1 points to a page already in Trov, and 1 to a page that isn't in Trov yet.");
+    expect(linkWords({ total: 2, inImport: 0, existing: 0, missing: 2, unmatched: 0, imagesUsed: 0 }, false))
+      .toBe("2 links: 2 point to pages that aren't in Trov yet.");
     expect(imageWords(14, 14)).toBe("14 images are uploaded with the pages that use them.");
     expect(imageWords(0, 0)).toBe("There are no images.");
     expect(imageWords(3, 2)).toBe("2 images are uploaded with the pages that use them. 1 image no page uses is left out.");

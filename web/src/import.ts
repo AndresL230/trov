@@ -50,6 +50,8 @@ export interface ImportLinks {
   inImport: number;
   /** `[[slug]]` links the files already carry: to pages in Trov. */
   existing: number;
+  /** `[[slug]]` links to no page of the organization (yet): they stay links, and work once that page exists. */
+  missing: number;
   /** Relative links to files the import does not have (they stay as plain text). */
   unmatched: number;
   /** Images some page uses (only those are uploaded). */
@@ -181,6 +183,7 @@ export function linkWords(l: ImportLinks, zip: boolean): string {
   const parts: string[] = [];
   if (l.inImport) parts.push(`${l.inImport} ${parts.length ? "" : `${l.inImport === 1 ? "points" : "point"} `}to ${l.inImport === 1 ? "a page" : "pages"} in this import`);
   if (l.existing) parts.push(`${l.existing} ${parts.length ? "" : `${l.existing === 1 ? "points" : "point"} `}to ${l.existing === 1 ? "a page" : "pages"} already in Trov`);
+  if (l.missing) parts.push(`${l.missing} ${parts.length ? "" : `${l.missing === 1 ? "points" : "point"} `}to ${l.missing === 1 ? "a page that isn't" : "pages that aren't"} in Trov yet`);
   if (l.unmatched) parts.push(`${l.unmatched} ${parts.length ? "" : `${l.unmatched === 1 ? "points" : "point"} `}to ${l.unmatched === 1 ? "a file that isn't" : "files that aren't"} in the ${zip ? "zip" : "files"}`);
   const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")}, and ${parts[parts.length - 1]}` : parts[0];
   const tail = l.unmatched ? ` ${l.unmatched === 1 ? "That one stays" : `Those ${l.unmatched} stay`} as plain text.` : "";
