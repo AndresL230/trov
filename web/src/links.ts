@@ -13,7 +13,7 @@ import { linkTopicLabel, LINK_NOTE_MAX, LINK_REASON_MAX, LINK_LIVE_MAX, ASK_THRE
 import type { PersonSummary } from "./api";
 import { esc, attr, relTime, surface, WORK_SHELL, DETAIL_SHELL, hitArea, HITBOX } from "./ui";
 import { personLink, handleLink, personChip } from "./people";
-import { linkLine, linkLineState, linkHeroCanvas, HERO_SLOTS, HERO_MAX, HERO_W, HERO_H, type LineSpec, type LineOrb, type HeroNode } from "./link-line";
+import { linkLine, linkLineState, linkHeroCanvas, HERO_W, HERO_H, type LineSpec, type LineOrb, type LineFlow, type HeroOrb, type HeroSeg } from "./link-line";
 import { linkMark } from "./marks";
 import { tabBar, tabPanelAttrs } from "./tabs";
 import { confirmModal } from "./confirm";
@@ -81,6 +81,8 @@ const nameOf = (persons: PersonSummary[], h: string): string => personOf(persons
 
 /** Inline `code` → a monospace span; everything else escaped (a branch topic reads "branch `feat/x`"). */
 const inlineCode = (t: string): string => esc(t).replace(/`([^`]+)`/g, '<span style="font-family:var(--code);font-size:.92em">$1</span>');
+/** "with Luke" → "With Luke" (a row's title). */
+const capFirst = (t: string): string => (t ? t[0].toUpperCase() + t.slice(1) : t);
 /** The topic as markup: `PR #180`, branch `feat/x`, ticket #12, @jose. */
 export const linkTopicHtml = (l: Pick<LinkView, "topic">): string => inlineCode(linkTopicLabel(l.topic.kind, l.topic.ref));
 
@@ -179,7 +181,7 @@ function linkRow(l: LinkView, p: LinksListProps): string {
   return `<div class="cnpy-trow cnpy-lrow${asks ? " cnpy-attn" : ""} ${HITBOX}" data-link-row="${l.id}" style="display:grid;${asks ? ROW_COLS_ASK : ROW_COLS};gap:12px;align-items:center;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);transition:background .12s ease">
     <span class="cnpy-lrow-glyph" style="display:flex;color:var(--accent)">${linkGlyph(linkLineState(l))}</span>
     <div style="min-width:0">
-      <div style="display:flex;align-items:baseline;gap:8px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="min-width:0;font-size:14.5px;font-weight:${live ? 600 : 500};letter-spacing:-0.01em;color:${live ? "var(--fg)" : "var(--fg-55)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linkTopicHtml(l)}</span></div>
+      <div style="display:flex;align-items:baseline;gap:8px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="min-width:0;font-size:14.5px;font-weight:${live ? 600 : 500};letter-spacing:-0.01em;color:${live ? "var(--fg)" : "var(--fg-55)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.topic.kind === "person" ? capFirst(linkAboutHtml(l, p.me, p.persons)) : linkTopicHtml(l)}</span></div>
       <div style="font-size:12px;color:var(--fg-55);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.reason)}</div>
     </div>
     <div class="cnpy-lrow-who" style="display:flex;align-items:center;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--fg-40);flex:none;width:32px">${word}</span>${person}</div>
@@ -213,14 +215,18 @@ function linkRowsShape(n: number, off = 0): string {
 }
 
 // ── Start a link (the card at the top of the Links tab) ─────────────────────────
-// A person starts a link from here (`POST /links`): pick what it is about — a teammate, a pull request, a branch, a
-// ticket — and say why. Their orb on the right wakes as the card fills in (a faint ring → their photo in a bright
+// A person starts a link from here (`POST /links`). First, and the default: BETWEEN MY SESSIONS — a link with
+// yourself, open at once, that two of your clients then join ("join Trov link #n"; an Ask thread from a button that
+// opens Ask with it typed). Second: WITH A TEAMMATE — pick what it is about (a person, a pull request, a branch, a
+// ticket) and say why. Their orb on the right wakes as the card fills in (a faint ring → their photo in a bright
 // ring, or Trov's searching globe while it is a PR, branch or ticket whose person the server will find); Send streams
 // the particles across and lights it. A refusal says why in place and both orbs dim. The card is part of the Links
 // page, which is patched in place (`data-morph="links"`), so typing never rebuilds the page or restarts the line.
 
 export type LinkStartKind = "person" | "pr" | "branch" | "ticket";
 export interface LinkStart {
+  /** self: between two of my own sessions (target = me, opens at once) · team: with a teammate. */
+  mode: "self" | "team";
   kind: LinkStartKind;
   /** The picked teammate's handle (kind person). */
   person: string;
@@ -234,10 +240,11 @@ export interface LinkStart {
   /** The link Send created. */
   sent: LinkView | null;
 }
-export const blankLinkStart = (): LinkStart => ({ kind: "person", person: "", ref: "", reason: "", phase: "edit", error: null, sent: null });
+export const blankLinkStart = (): LinkStart => ({ mode: "self", kind: "person", person: "", ref: "", reason: "", phase: "edit", error: null, sent: null });
 
 /** The `target` the card names, or null while it names nothing valid yet. */
-export function linkStartTarget(d: Pick<LinkStart, "kind" | "person" | "ref">): LinkTargetBody | null {
+export function linkStartTarget(d: Pick<LinkStart, "kind" | "person" | "ref"> & { mode?: LinkStart["mode"] }, me = ""): LinkTargetBody | null {
+  if (d.mode === "self") return me ? { person: me } : null;
   if (d.kind === "person") return d.person ? { person: d.person } : null;
   const ref = d.ref.trim();
   if (d.kind === "branch") return ref && ref.length <= 200 ? { branch: ref } : null;
@@ -246,10 +253,10 @@ export function linkStartTarget(d: Pick<LinkStart, "kind" | "person" | "ref">): 
   return d.kind === "pr" ? { pr: n } : { ticket: n };
 }
 /** Whether Send may go: a target, and a reason of 1..280 characters. */
-export const linkStartReady = (d: LinkStart): boolean =>
-  !!linkStartTarget(d) && !!d.reason.trim() && d.reason.trim().length <= LINK_REASON_MAX && d.phase !== "sending";
+export const linkStartReady = (d: LinkStart, me = ""): boolean =>
+  !!linkStartTarget(d, me) && !!d.reason.trim() && d.reason.trim().length <= LINK_REASON_MAX && d.phase !== "sending";
 /** Whether the card names the viewer themself (a self-link: it opens at once). */
-const startsSelf = (d: LinkStart, me: string): boolean => d.kind === "person" && !!d.person && same(d.person, me);
+const startsSelf = (d: LinkStart, me: string): boolean => d.mode === "self" || (d.kind === "person" && !!d.person && same(d.person, me));
 
 /** A refusal from `POST /links` in plain words: the cap, who is not a member, what Trov has not captured. */
 export function linkStartRefusal(code: string | null, detail: string | null): string {
@@ -265,15 +272,15 @@ export function linkStartRefusal(code: string | null, detail: string | null): st
 
 /** The line as the card stands: you on the left, them on the right. */
 export function linkStartSpec(d: LinkStart, me: string): LineSpec {
-  const target = linkStartTarget(d);
-  const them: LineOrb = !target ? "asleep" : d.kind === "person" ? "named" : "seeking";
+  const target = linkStartTarget(d, me);
+  // Between my sessions: the other orb is another session of yours, a hollow ring until one joins.
+  const them: LineOrb = d.mode === "self" ? "hollow" : !target ? "asleep" : d.kind === "person" ? "named" : "seeking";
   if (d.phase === "sent" && d.sent) {
     const open = d.sent.state === "open";
     return { left: "awake", right: open ? "awake" : "calling", flow: open ? "flow" : "trickle" };
   }
   if (d.phase === "sending") return { left: "awake", right: them, flow: "burst" };
   if (d.phase === "refused") return { left: "dim", right: them === "named" ? "dimhollow" : "dim", flow: "none" };
-  void me;
   const rate = (target ? 0.55 : 0) + (d.reason.trim() ? 0.45 * Math.min(1, d.reason.trim().length / 40) : 0);
   return { left: "awake", right: them, flow: "preview", rate };
 }
@@ -287,11 +294,12 @@ const START_FIELD = "border:1px solid var(--border-strong);border-radius:9px;bac
 function startThem(d: LinkStart, p: LinkStartProps): { name: string; sub: string; known: boolean } {
   if (d.phase === "sent" && d.sent) {
     const h = d.sent.recipient.handle;
-    if (d.sent.self) return { name: "You", sub: "your second session", known: true };
+    if (d.sent.self) return { name: "Your second session", sub: "not joined yet", known: true };
     return { name: nameOf(p.persons, h), sub: `@${h}`, known: true };
   }
+  if (d.mode === "self") return { name: "Another session of yours", sub: "joins once it is open", known: true };
   const ref = d.ref.trim().replace(/^#/, "");
-  const t = linkStartTarget(d);
+  const t = linkStartTarget(d, p.me);
   switch (d.kind) {
     case "person":
       if (!d.person) return { name: "Who is it with?", sub: "Pick a teammate below", known: false };
@@ -303,41 +311,61 @@ function startThem(d: LinkStart, p: LinkStartProps): { name: string; sub: string
   }
 }
 
+/** After a link between your sessions opens: how each kind of client joins it. */
+function joinRows(id: number): string {
+  const phrase = linkJoinPhrase(id);
+  const row = (icon: string, words: string, btn: string) =>
+    `<div style="display:flex;align-items:center;gap:10px 12px;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--border)"><span class="cnpy-lh-ico" style="border-radius:50%;width:26px;color:var(--accent)">${icon}</span><div style="flex:1 1 240px;min-width:0;font-size:13px;line-height:1.5;color:var(--fg-70)">${words}</div>${btn}</div>`;
+  return `<div data-link-start-join style="margin-top:6px">
+      ${row(clientIcon("code"), `<b style="font-weight:600;color:var(--fg)">Claude Code, or a chat</b> (claude.ai, Desktop, Cursor): say <span style="font-family:var(--code);font-size:12.5px;color:var(--fg)">${esc(phrase)}</span>`,
+        `<button type="button" data-act="linkJoinCopy" data-arg="${id}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;${OUTLINE}">${COPY_ICON}Copy</button>`)}
+      ${row(clientIcon("ask"), `<b style="font-weight:600;color:var(--fg)">An Ask thread</b>: a new thread with it typed for you`,
+        `<button type="button" data-act="linkJoinAsk" data-arg="${id}" class="cnpy-outlinebtn" style="${OUTLINE}">Open in Ask</button>`)}
+    </div>`;
+}
+
 /** The card. Rendered in a stable slot at the top of the Links tab while it is open. */
 export function linkStartCard(p: LinkStartProps): string {
   const d = p.draft;
   const self = startsSelf(d, p.me);
+  const mine = d.mode === "self" || !!d.sent?.self;
   const mePerson = personOf(p.persons, p.me);
-  const themHandle = d.phase === "sent" && d.sent ? d.sent.recipient.handle : d.kind === "person" ? d.person : "";
+  const themHandle = d.phase === "sent" && d.sent ? d.sent.recipient.handle : d.mode === "team" && d.kind === "person" ? d.person : "";
   const themPerson = themHandle ? personOf(p.persons, themHandle) : null;
-  const faces = {
-    left: personChip(mePerson, 36, p.me),
-    right: themHandle ? personChip(themPerson, 36, themHandle) : undefined,
-  };
+  // Between my sessions: two client orbs (a session of yours, and the one that joins); with a teammate: two faces.
+  const ico = (k: "code" | "chat" | "ask" | null) => `<span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(k)}</span>`;
+  const faces = mine
+    ? { left: ico("code"), right: ico(d.phase === "sent" ? "chat" : null) }
+    : { left: personChip(mePerson, 36, p.me), right: themHandle ? personChip(themPerson, 36, themHandle) : undefined };
   const them = startThem(d, p);
   const spec = linkStartSpec(d, p.me);
   const sideWords = (name: string, sub: string, right: boolean, muted: boolean) =>
     `<div style="min-width:0;text-align:${right ? "right" : "left"}"><div style="font-size:13.5px;font-weight:600;color:${muted ? "var(--fg-55)" : "var(--fg)"};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(name)}</div><div style="font-size:12px;color:var(--fg-40);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(sub)}</div></div>`;
+  const leftWords = mine
+    ? sideWords(d.phase === "sent" ? "Your first session" : "One session of yours", d.phase === "sent" ? "not joined yet" : "a coding agent, a chat, an Ask thread", false, false)
+    : sideWords("You", d.phase === "sent" ? "your agent joins once it is open" : "starting it from here", false, false);
 
   const line = `<div data-link-start-line style="max-width:520px;margin:4px auto 0">
       ${linkLine(spec, faces)}
       <div data-link-start-sides style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:4px">
-        ${sideWords("You", d.phase === "sent" ? "your agent joins once it is open" : "starting it from here", false, false)}
-        <div data-link-start-them data-known="${them.known}" style="min-width:0">${sideWords(them.name, them.sub, true, !them.known && !linkStartTarget(d))}</div>
+        ${leftWords}
+        <div data-link-start-them data-known="${them.known}" style="min-width:0">${sideWords(them.name, them.sub, true, !them.known && !linkStartTarget(d, p.me))}</div>
       </div>
     </div>`;
 
   if (d.phase === "sent" && d.sent) {
     const l = d.sent;
-    const words = l.state === "open"
-      ? `Link #${l.id} is open: both sides are yours. Tell each of your two agents: <span style="font-family:var(--code);font-size:12.5px">${esc(linkJoinPhrase(l.id))}</span>`
-      : `Sent to ${esc(nameOf(p.persons, l.recipient.handle))}. They accept it in Relay; the request lasts 24 hours. Once it is open, tell your agent: <span style="font-family:var(--code);font-size:12.5px">${esc(linkJoinPhrase(l.id))}</span>`;
+    const body = l.self
+      ? `<p data-link-start-sent role="status" style="margin:0 0 4px;font-size:13px;line-height:1.6;color:var(--fg-70)">Link #${l.id} is open: both sides are yours. Join it from two sessions:</p>${joinRows(l.id)}`
+      : `<p data-link-start-sent role="status" style="margin:0;font-size:13px;line-height:1.6;color:var(--fg-70)">${l.state === "open"
+        ? `Link #${l.id} is open. Tell your agent: <span style="font-family:var(--code);font-size:12.5px">${esc(linkJoinPhrase(l.id))}</span>`
+        : `Sent to ${esc(nameOf(p.persons, l.recipient.handle))}. They accept it in Relay; the request lasts 24 hours. Once it is open, tell your agent: <span style="font-family:var(--code);font-size:12.5px">${esc(linkJoinPhrase(l.id))}</span>`}</p>`;
     return `<section data-link-start data-phase="sent"${surface("padding:20px 22px 18px;margin-bottom:26px")} aria-labelledby="link-start-h">
-      <h3 id="link-start-h" style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.01em">${l.state === "open" ? "Link opened" : "Link request sent"}</h3>
+      <h3 id="link-start-h" style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.01em">${l.state === "open" ? `Link #${l.id} opened` : "Link request sent"}</h3>
       ${line}
-      <div data-morph-key="ls-sent" style="display:flex;align-items:center;justify-content:space-between;gap:12px 18px;flex-wrap:wrap;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
-        <p data-link-start-sent role="status" style="margin:0;flex:1 1 320px;font-size:13px;line-height:1.6;color:var(--fg-70)">${words}</p>
-        <div style="display:flex;gap:8px;flex:none">
+      <div data-morph-key="ls-sent" style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
+        ${body}
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
           <button type="button" data-act="linkStartClose" class="cnpy-outlinebtn" style="${OUTLINE}">Done</button>
           <button type="button" data-act="openLink" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}">Open link #${l.id}</button>
         </div>
@@ -351,24 +379,21 @@ export function linkStartCard(p: LinkStartProps): string {
     return `<button type="button" data-act="linkStartPerson" data-arg="${attr(h)}" data-field="ls-person:${attr(h)}" class="cnpy-pickchip${on ? " is-on" : ""}" aria-pressed="${on}" style="white-space:nowrap;display:inline-flex;align-items:center;gap:7px;padding:5px 12px 5px 6px;border-radius:7px;font-size:12.5px;font-weight:500;transition:all .12s ease;border:1px solid ${on ? "var(--accent)" : "var(--border)"};color:${on ? "var(--accent)" : "var(--fg-55)"};background:${on ? "var(--accent-soft)" : "transparent"}">${av}${esc(label)}</button>`;
   };
   const value = d.kind === "person"
-    ? `<div role="group" aria-label="Who the link is with" style="display:flex;gap:6px;flex-wrap:wrap;max-height:132px;overflow-y:auto">${others.map((x) => chip(x.handle, x.name || x.handle, personChip(x, 20, x.handle))).join("")}${chip(p.me, "You, two sessions", personChip(mePerson, 20, p.me))}</div>`
+    ? `<div role="group" aria-label="Who the link is with" style="display:flex;gap:6px;flex-wrap:wrap;max-height:132px;overflow-y:auto">${others.map((x) => chip(x.handle, x.name || x.handle, personChip(x, 20, x.handle))).join("")}</div>`
     : d.kind === "branch"
       ? `<input id="link-start-ref" data-act="linkStartField" data-arg="ref" data-field="ls-ref-branch" value="${attr(d.ref)}" class="cnpy-input" autocomplete="off" spellcheck="false" placeholder="feat/session-store" aria-label="Branch" style="width:100%;max-width:360px;height:38px;padding:0 12px;${START_FIELD};font-size:13px;font-family:var(--code)">`
       : `<div style="display:flex;align-items:center;gap:8px"><span aria-hidden="true" style="font-family:var(--label);font-size:13px;color:var(--fg-40)">#</span><input id="link-start-ref" data-act="linkStartField" data-arg="ref" data-field="ls-ref-${d.kind}" value="${attr(d.ref)}" class="cnpy-input" inputmode="numeric" autocomplete="off" placeholder="${d.kind === "pr" ? "180" : "12"}" aria-label="${d.kind === "pr" ? "Pull request number" : "Ticket number"}" style="width:120px;height:38px;padding:0 12px;${START_FIELD};font-size:13px;font-family:var(--label)"></div>`;
   const n = d.reason.length;
   const over = n > LINK_REASON_MAX;
-  const ready = linkStartReady(d);
+  const ready = linkStartReady(d, p.me);
   const sending = d.phase === "sending";
   const refused = d.phase === "refused" && !!d.error;
   const hint = self
-    ? "Both sides are yours, so it opens at once."
+    ? "Both sides are yours, so it opens at once. Then each session joins it."
     : "They get the request in Relay to accept or decline. It lasts 24 hours.";
   const label = (t: string, forId: string | null, extra = "") =>
     `<${forId ? `label for="${forId}"` : "div"} style="font-size:13px;font-weight:500;color:var(--fg)${extra}">${t}</${forId ? "label" : "div"}>`;
-  return `<section data-link-start data-phase="${d.phase}"${surface("padding:20px 22px 18px;margin-bottom:26px")} aria-labelledby="link-start-h">
-      <h3 id="link-start-h" style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.01em">Start a link</h3>
-      ${line}
-      <div data-morph-key="ls-form" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(0,1fr);gap:16px">
+  const team = d.mode === "team" ? `<div data-morph-key="ls-team" style="display:grid;grid-template-columns:minmax(0,1fr);gap:16px">
         <div style="display:flex;align-items:center;gap:10px 14px;flex-wrap:wrap">
           ${label("About", null, ";width:52px;flex:none")}
           ${segmented({
@@ -380,10 +405,22 @@ export function linkStartCard(p: LinkStartProps): string {
           <div aria-hidden="true" style="width:52px;flex:none"></div>
           <div style="flex:1 1 280px;min-width:0">${value}</div>
         </div>
+      </div>` : `<div data-morph-key="ls-self"></div>`;
+  return `<section data-link-start data-phase="${d.phase}" data-mode="${d.mode}"${surface("padding:20px 22px 18px;margin-bottom:26px")} aria-labelledby="link-start-h">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap">
+        <h3 id="link-start-h" style="margin:0;font-size:15px;font-weight:600;letter-spacing:-0.01em">Start a link</h3>
+        ${segmented({
+          id: "link-start-mode", ariaLabel: "Who the link is between", act: "linkStartMode", value: d.mode, size: "sm", inertOn: true,
+          options: [{ value: "self", label: "Between my sessions" }, { value: "team", label: "With a teammate" }],
+        })}
+      </div>
+      ${line}
+      <div data-morph-key="ls-form" style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);display:grid;grid-template-columns:minmax(0,1fr);gap:16px">
+        ${team}
         <div style="display:flex;gap:10px 14px;flex-wrap:wrap;align-items:flex-start">
           ${label("Why", "link-start-reason", ";width:52px;flex:none;padding-top:9px")}
           <div style="flex:1 1 280px;min-width:0">
-            <textarea id="link-start-reason" data-act="linkStartField" data-arg="reason" data-field="ls-reason" maxlength="${LINK_REASON_MAX}" aria-describedby="link-start-count" placeholder="What your work and theirs both touch: the session store, the auth routes…" class="cnpy-input" style="display:block;width:100%;box-sizing:border-box;min-height:64px;padding:9px 12px;${START_FIELD};font-size:13.5px;line-height:1.55;resize:vertical;font-family:inherit">${esc(d.reason)}</textarea>
+            <textarea id="link-start-reason" data-act="linkStartField" data-arg="reason" data-field="ls-reason" maxlength="${LINK_REASON_MAX}" aria-describedby="link-start-count" placeholder="${d.mode === "self" ? "What the two sessions share: one fixes the OCR queue while the other plans its copy…" : "What your work and theirs both touch: the session store, the auth routes…"}" class="cnpy-input" style="display:block;width:100%;box-sizing:border-box;min-height:64px;padding:9px 12px;${START_FIELD};font-size:13.5px;line-height:1.55;resize:vertical;font-family:inherit">${esc(d.reason)}</textarea>
             <div id="link-start-count" data-link-start-count style="font-family:var(--label);font-size:11px;margin-top:6px;color:${over ? "var(--red)" : "var(--fg-40)"}">${n.toLocaleString("en-US")} / ${LINK_REASON_MAX}</div>
           </div>
         </div>
@@ -400,11 +437,13 @@ export function linkStartCard(p: LinkStartProps): string {
 }
 
 // ── the constellation (the top of the Links tab) ─────────────────────────────────
-// You in the centre, a line out to each LIVE link's other person (link-line.ts draws it on one canvas, on the orb
-// loop). Over the canvas sit real HTML hit areas — one link per node, `href="#links/<n>"`, its aria-label saying who,
-// what about and where it stands — with a small card on hover / focus. A request waiting for YOU pulses inward and
-// its orb listens; its Accept / Decline sit in a callout under the picture. Places are filled in link order (the
-// lowest number first), so a re-render never reshuffles them; past HERO_MAX the rest are "+N more" in the list.
+// The story is YOUR sessions: each client of yours that is a side of a live link — a coding agent, a web chat, an
+// Ask thread — is one node (one per session, however many links it holds), and a link between two of your own
+// sessions is a line between two nodes. A side of yours no session has joined yet is an empty dotted SOCKET that
+// says how to join it. Teammates sit on an outer ring, one orb per person, their lines quieter, coming off the
+// session (or socket) of yours that holds the link; a request waiting for you pulses in toward your photo, with
+// Accept / Decline in a callout under the picture. Only sessions that are on links exist here: nothing about
+// clients that are not linked. link-line.ts draws it all on one canvas; over it each node is a real link.
 
 /** The links the constellation draws: every live one (waiting for me, open, my drafts and sent requests), once each,
  *  lowest number first. */
@@ -418,83 +457,236 @@ const LIVE = new Set<LinkState>(["draft", "requested", "open"]);
 /** Whether this live link is a request waiting for the viewer's answer. */
 const waitsForMe = (l: LinkView, me: string): boolean => l.state === "requested" && !l.self && same(l.recipient.handle, me);
 
-/** One node: where it goes and what its line does, seen from the viewer in the centre. */
-export function heroNodeOf(l: LinkView, slot: number, me: string): HeroNode {
-  const spec = linkLineState(l);
-  const iRequested = same(l.requester.handle, me);
-  const notes = (l as Partial<LinkDetail>).notes ?? [];
-  const last = notes.length ? notes[notes.length - 1].side : null;
-  if (waitsForMe(l, me)) {
-    // Asked of me: their orb listens, a pulse travels inward; my end has no session yet.
-    return { id: l.id, slot, look: "calling", flow: "pulse", out: false, mine: l.recipient.kind ? "awake" : "hollow", notes: notes.length, last };
-  }
-  return iRequested
-    ? { id: l.id, slot, look: spec.right, flow: spec.flow, out: true, mine: spec.left, notes: notes.length, last }
-    : { id: l.id, slot, look: spec.left, flow: spec.flow, out: false, mine: spec.right, notes: notes.length, last };
+/** Your sessions' places: neighbouring pairs (left, right, below, above) so a self-link is a short line. */
+export const SESSION_SLOTS: readonly (readonly [number, number])[] = [
+  [188, 132], [188, 228], [532, 132], [532, 228], [271, 282], [449, 282], [271, 78], [449, 78],
+];
+/** Teammates' places, on the outer ring. */
+export const PERSON_SLOTS: readonly (readonly [number, number])[] = [
+  [52, 60], [668, 60], [52, 300], [668, 300], [40, 180], [680, 180],
+];
+const HUB: readonly [number, number] = [360, 180];
+const SESSION_ORB = 76, SOCKET_ORB = 52, PERSON_ORB = 50;
+
+/** The client a session kind is, in words: "Claude Code", "Web chat", "Ask thread". */
+export const CLIENT_WORD: Record<"code" | "chat" | "ask", string> = { code: "Claude Code", chat: "Web chat", ask: "Ask thread" };
+/** A small line icon per client: a terminal, a speech bubble, Ask's spark. */
+export function clientIcon(kind: "code" | "chat" | "ask" | null): string {
+  const p = kind === "code" ? '<path d="M3 4.5l3 3-3 3M7.5 11h5"/>'
+    : kind === "chat" ? '<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>'
+    : kind === "ask" ? '<path d="M8 2.5l1.3 3.7 3.7 1.3-3.7 1.3L8 12.5l-1.3-3.7L3 7.5l3.7-1.3z"/>'
+    : '<circle cx="8" cy="8" r="4.5" stroke-dasharray="1.6 1.8"/>';
+  return `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${p}</svg>`;
 }
 
-/** Where a live link stands, as the viewer would say it (a node's label and its card). */
+/** One of your sessions (or a socket: a side of yours nobody has joined). */
+export interface HeroSession {
+  key: string; kind: "code" | "chat" | "ask" | null; session: string | null; branch: string | null; seen: string | null;
+  links: LinkView[]; socket: { id: number; side: LinkSideName } | null; x: number; y: number;
+}
+export interface HeroPerson { handle: string; links: LinkView[]; x: number; y: number }
+type End = { t: "hub" } | { t: "s"; key: string } | { t: "p"; handle: string };
+export interface HeroLine { link: LinkView; a: End; b: End; flow: LineFlow; quiet: boolean }
+export interface HeroModel { sessions: HeroSession[]; people: HeroPerson[]; lines: HeroLine[]; asks: LinkView[]; hidden: number }
+
+/** Where everything goes, from the viewer's live links (pure; the tests read it). */
+export function heroModel(b: LinkBoxes, me: string): HeroModel {
+  const live = liveLinks(b);
+  const sessions = new Map<string, HeroSession>();
+  const endOf = (l: LinkView, side: LinkSideName): End => {
+    const s = l[side];
+    if (s.kind && s.session) {
+      const key = `${s.kind}:${s.session}`;
+      const have = sessions.get(key);
+      if (have) { if (!have.links.includes(l)) have.links.push(l); }
+      else sessions.set(key, { key, kind: s.kind, session: s.session, branch: s.branch, seen: s.seen_at, links: [l], socket: null, x: 0, y: 0 });
+      return { t: "s", key };
+    }
+    const key = `socket:${l.id}:${side}`;
+    sessions.set(key, { key, kind: null, session: null, branch: null, seen: null, links: [l], socket: { id: l.id, side }, x: 0, y: 0 });
+    return { t: "s", key };
+  };
+  const lines: HeroLine[] = [];
+  // Your own links first, so their two sessions take neighbouring places.
+  for (const l of live.filter((x) => x.self)) {
+    lines.push({ link: l, a: endOf(l, "requester"), b: endOf(l, "recipient"), flow: linkLineState(l).flow, quiet: false });
+  }
+  const people = new Map<string, HeroPerson>();
+  for (const l of live.filter((x) => !x.self)) {
+    const mine: LinkSideName = same(l.requester.handle, me) ? "requester" : "recipient";
+    const theirs: LinkSideName = mine === "requester" ? "recipient" : "requester";
+    const h = l[theirs].handle;
+    const person = people.get(h.toLowerCase()) ?? { handle: h, links: [], x: 0, y: 0 };
+    person.links.push(l);
+    people.set(h.toLowerCase(), person);
+    // My end: the session that holds it; a socket while an OPEN link waits for one; else you yourself.
+    const my: End = l[mine].kind && l[mine].session ? endOf(l, mine) : l.state === "open" ? endOf(l, mine) : { t: "hub" };
+    const them: End = { t: "p", handle: h };
+    const asking = waitsForMe(l, me);
+    lines.push({ link: l, a: mine === "requester" ? my : them, b: mine === "requester" ? them : my, flow: asking ? "pulse" : linkLineState(l).flow, quiet: true });
+  }
+  // Places: sessions in the order they came (self-link pairs first); people at the free outer place nearest the
+  // session of yours their first line leaves from.
+  const ss = [...sessions.values()].slice(0, SESSION_SLOTS.length);
+  ss.forEach((s, i) => { [s.x, s.y] = SESSION_SLOTS[i]; });
+  const placed = new Set(ss.map((s) => s.key));
+  const free = PERSON_SLOTS.map((_, i) => i);
+  const pp: HeroPerson[] = [];
+  for (const p of people.values()) {
+    if (!free.length) break;
+    const first = lines.find((x) => x.quiet && ((x.a.t === "p" && same(x.a.handle, p.handle)) || (x.b.t === "p" && same(x.b.handle, p.handle))));
+    const myEnd = first ? (first.a.t === "p" ? first.b : first.a) : { t: "hub" as const };
+    const from = myEnd.t === "s" && placed.has(myEnd.key) ? sessions.get(myEnd.key)! : { x: HUB[0], y: HUB[1] };
+    let best = 0;
+    free.forEach((slot, k) => {
+      const d = (q: number) => Math.hypot(PERSON_SLOTS[q][0] - from.x, PERSON_SLOTS[q][1] - from.y);
+      if (d(slot) < d(free[best])) best = k;
+    });
+    const [slot] = free.splice(best, 1);
+    [p.x, p.y] = PERSON_SLOTS[slot];
+    pp.push(p);
+  }
+  const shownP = new Set(pp.map((p) => p.handle.toLowerCase()));
+  const ok = (e: End) => e.t === "hub" || (e.t === "s" ? placed.has(e.key) : shownP.has(e.handle.toLowerCase()));
+  const shownLines = lines.filter((x) => ok(x.a) && ok(x.b));
+  const hidden = new Set(lines.filter((x) => !shownLines.includes(x)).map((x) => x.link.id)).size;
+  return { sessions: ss, people: pp, lines: shownLines, asks: live.filter((l) => waitsForMe(l, me)), hidden };
+}
+
+/** A person's orb: listening while a request is between you, awake when their side of an open link has a session. */
+function personLook(p: HeroPerson, me: string): LineOrb {
+  if (p.links.some((l) => l.state === "requested")) return "calling";
+  const theirs = (l: LinkView) => (same(l.requester.handle, me) ? l.recipient : l.requester);
+  if (p.links.some((l) => l.state === "open" && theirs(l).kind)) return "awake";
+  if (p.links.some((l) => l.state === "open")) return "hollow";
+  void me;
+  return "asleep";
+}
+
+/** The canvas's orbs and lines for a model: the hub (where your photo sits) first, then sessions, then people. */
+export function heroCanvasData(m: HeroModel, me: string): { orbs: HeroOrb[]; segs: HeroSeg[] } {
+  const orbs: HeroOrb[] = [{ x: HUB[0], y: HUB[1], size: 28, look: "hub" }];
+  const idx = new Map<string, number>();
+  for (const s of m.sessions) { idx.set(`s:${s.key}`, orbs.length); orbs.push({ x: s.x, y: s.y, size: s.kind ? SESSION_ORB : SOCKET_ORB, look: s.kind ? "awake" : "socket" }); }
+  for (const p of m.people) { idx.set(`p:${p.handle.toLowerCase()}`, orbs.length); orbs.push({ x: p.x, y: p.y, size: PERSON_ORB, look: personLook(p, me) }); }
+  const at = (e: End) => (e.t === "hub" ? 0 : idx.get(e.t === "s" ? `s:${e.key}` : `p:${e.handle.toLowerCase()}`) ?? 0);
+  const segs = m.lines.map((x) => {
+    const notes = (x.link as Partial<LinkDetail>).notes ?? [];
+    return { id: x.link.id, a: at(x.a), b: at(x.b), flow: x.flow, quiet: x.quiet, notes: notes.length, last: notes.length ? notes[notes.length - 1].side : null };
+  });
+  return { orbs, segs };
+}
+
+/** How a link reads from the viewer's side: "with Luke" for a link about a person, "between your sessions" for a
+ *  self-link about you, else its topic ("PR #180", branch `feat/x`, ticket #12). Markup. */
+export function linkAboutHtml(l: Pick<LinkView, "topic" | "self" | "requester" | "recipient">, me: string, persons: PersonSummary[]): string {
+  if (l.topic.kind !== "person") return linkTopicHtml(l);
+  if (l.self) return "between your sessions";
+  const other = same(l.requester.handle, me) ? l.recipient.handle : same(l.recipient.handle, me) ? l.requester.handle : l.topic.ref;
+  return `with ${esc(nameOf(persons, other))}`;
+}
+/** The same in plain text (an aria-label). */
+const aboutText = (l: LinkView, me: string, persons: PersonSummary[]): string =>
+  l.topic.kind === "person" ? linkAboutHtml(l, me, persons).replace(/&#39;/g, "'").replace(/&amp;/g, "&") : `about ${linkTopicLabel(l.topic.kind, l.topic.ref).replace(/`/g, "")}`;
+
+/** Where a live link stands, as the viewer would say it (a node's card and label). */
 export function heroStateWords(l: LinkView, me: string): string {
   const otherH = same(l.requester.handle, me) ? l.recipient.handle : l.requester.handle;
   if (l.state === "draft") return l.self ? "A draft: not sent yet. Sending opens it at once." : "A draft: not sent yet.";
   if (waitsForMe(l, me)) return `Asks to link with you. Accept or decline it below.`;
   if (l.state === "requested") return l.self ? "Requested." : `Waiting for @${otherH} to accept.`;
   const mineSide = viewerSides(l, me).some((s) => l[s].kind === null);
-  return mineSide ? "Open. Your side has no session yet." : "Open.";
+  return mineSide ? "Open. A side of yours has no session yet." : "Open.";
 }
 
 export interface LinksHeroProps { boxes: LinkBoxes; me: string; persons: PersonSummary[]; busy: boolean; status: LinksListProps["status"] }
 
+/** One link in a node's card: `#n`, what it is about, who or what is at the other end. */
+function cardLine(l: LinkView, p: LinksHeroProps, other: string): string {
+  return `<div style="display:flex;align-items:baseline;gap:7px;min-width:0;margin-top:4px"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="font-size:12.5px;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(other)}, ${linkAboutHtml(l, p.me, p.persons).replace(/^with /, "").replace(/^between your sessions$/, "your sessions")}</span></div>`;
+}
+
 export function linksHero(p: LinksHeroProps): string {
-  const live = liveLinks(p.boxes);
-  const shown = live.slice(0, HERO_MAX);
-  const more = live.length - shown.length;
-  const nodes = shown.map((l, i) => heroNodeOf(l, i, p.me));
+  const m = heroModel(p.boxes, p.me);
+  const { orbs, segs } = heroCanvasData(m, p.me);
   const pct = (v: number, of: number) => `${((v / of) * 100).toFixed(2)}%`;
-  const mePerson = personOf(p.persons, p.me);
-  const nodeHtml = shown.map((l, i) => {
-    const [x, y] = HERO_SLOTS[i];
-    const otherH = l.self ? p.me : same(l.requester.handle, p.me) ? l.recipient.handle : l.requester.handle;
-    const who = l.self ? "You" : nameOf(p.persons, otherH);
-    const topic = linkTopicLabel(l.topic.kind, l.topic.ref);
-    const state = heroStateWords(l, p.me);
-    const label = `Link #${l.id} ${l.self ? "between two of your sessions" : `with ${who}`} about ${topic}. ${state} ${l.reason}`;
-    const below = y > HERO_SLOTS[0][1] + 40;
-    return `<div class="cnpy-lh-node${waitsForMe(l, p.me) ? " is-asking" : ""}" data-lh-node="${l.id}" data-lh-state="${l.state}" data-lh-flow="${nodes[i].flow}" style="left:${pct(x, HERO_W)};top:${pct(y, HERO_H)}">
-        <a class="cnpy-lh-hit" href="#links/${l.id}" aria-label="${attr(label)}">${personChip(personOf(p.persons, otherH), 28, otherH)}</a>
-        <span class="cnpy-lh-name" aria-hidden="true">${esc(l.self ? "You, again" : who.split(" ")[0])}</span>
-        <div class="cnpy-lh-card${below ? " is-up" : ""}${x > HERO_W / 2 ? " is-r" : " is-l"}" aria-hidden="true" style="border-radius:8px"><div style="display:flex;align-items:baseline;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="font-size:13px;font-weight:600;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${linkTopicHtml(l)}</span></div><div class="cnpy-lh-card-why">${esc(l.reason)}</div><div style="font-size:11.5px;color:var(--fg-40);margin-top:6px">${esc(state)}</div></div>
+  const at = (x: number, y: number, size: number) => `left:${pct(x, HERO_W)};top:${pct(y, HERO_H)};--s:${size}`;
+  const side = (x: number) => (x > HERO_W / 2 ? " is-r" : " is-l");
+  const up = (y: number) => (y > HERO_H / 2 ? " is-up" : "");
+  const card = (x: number, y: number, inner: string) => `<div class="cnpy-lh-card${up(y)}${side(x)}" aria-hidden="true" style="border-radius:8px">${inner}</div>`;
+  // The far end of a self-link, from one of its sessions: "your web chat", "a side not joined yet".
+  const otherEnd = (s: HeroSession, l: LinkView): string => {
+    if (!l.self) return nameOf(p.persons, same(l.requester.handle, p.me) ? l.recipient.handle : l.requester.handle);
+    const mySide: LinkSideName = s.socket ? s.socket.side : l.requester.session === s.session && l.requester.kind === s.kind ? "requester" : "recipient";
+    const o = l[mySide === "requester" ? "recipient" : "requester"];
+    return o.kind ? `your ${CLIENT_WORD[o.kind].toLowerCase()}` : "a side not joined yet";
+  };
+
+  const sessionHtml = m.sessions.map((s) => {
+    if (!s.kind) {
+      const l = s.links[0], phrase = linkJoinPhrase(l.id);
+      const label = `Link #${l.id}: a side of yours that no session has joined. Tell a session: ${phrase}.`;
+      return `<div class="cnpy-lh-node is-socket" data-lh-sess="${attr(s.key)}" style="${at(s.x, s.y, SOCKET_ORB)}">
+          <a class="cnpy-lh-hit" href="#links/${l.id}" aria-label="${attr(label)}"><span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(null)}</span></a>
+          <span class="cnpy-lh-name" aria-hidden="true">Not joined</span><span class="cnpy-lh-sub" aria-hidden="true">#${l.id}</span>
+          ${card(s.x, s.y, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">Not joined yet</div><div style="font-size:12px;line-height:1.5;color:var(--fg-70);margin-top:4px">Tell a coding agent, a chat or an Ask thread: <span style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${esc(phrase)}</span></div>${cardLine(l, p, otherEnd(s, l))}`)}
+        </div>`;
+    }
+    const thread = s.kind === "ask" ? askThreadOf(s.session) : null;
+    const href = thread !== null ? `#ask/${thread}` : `#links/${s.links[0].id}`;
+    const word = CLIENT_WORD[s.kind];
+    const label = `${word}${s.branch ? ` on ${s.branch}` : ""}: ${s.links.map((l) => `link #${l.id} with ${otherEnd(s, l)}`).join("; ")}.${s.seen ? ` Checked for notes ${relTime(s.seen)}.` : ""}`;
+    return `<div class="cnpy-lh-node is-sess" data-lh-sess="${attr(s.key)}" data-kind="${s.kind}" style="${at(s.x, s.y, SESSION_ORB)}">
+        <a class="cnpy-lh-hit" href="${href}" aria-label="${attr(label)}"><span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(s.kind)}</span></a>
+        <span class="cnpy-lh-name" aria-hidden="true">${esc(word)}</span>${s.branch ? `<span class="cnpy-lh-sub" aria-hidden="true">${esc(s.branch)}</span>` : ""}
+        ${card(s.x, s.y, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">${esc(word)}${s.branch ? ` <span style="font-family:var(--code);font-weight:400;font-size:11.5px">${esc(s.branch)}</span>` : ""}</div>${s.links.map((l) => cardLine(l, p, otherEnd(s, l))).join("")}${s.seen ? `<div style="font-size:11.5px;color:var(--fg-40);margin-top:6px">Checked for notes ${esc(relTime(s.seen))}</div>` : ""}`)}
       </div>`;
   }).join("");
-  const asks = shown.filter((l) => waitsForMe(l, p.me));
+
+  const personHtml = m.people.map((q) => {
+    const name = nameOf(p.persons, q.handle);
+    const asking = q.links.some((l) => waitsForMe(l, p.me));
+    const label = `${name}: ${q.links.map((l) => `link #${l.id} ${aboutText(l, p.me, p.persons)}, ${heroStateWords(l, p.me).replace(/\.$/, "").toLowerCase()}`).join("; ")}.`;
+    return `<div class="cnpy-lh-node is-person${asking ? " is-asking" : ""}" data-lh-person="${attr(q.handle)}" style="${at(q.x, q.y, PERSON_ORB)}">
+        <a class="cnpy-lh-hit" href="#links/${q.links[0].id}" aria-label="${attr(label)}">${personChip(personOf(p.persons, q.handle), 22, q.handle)}</a>
+        <span class="cnpy-lh-name" aria-hidden="true">${esc(name.split(" ")[0])}</span>
+        ${card(q.x, q.y, `<div style="font-size:12.5px;font-weight:600;color:var(--fg)">${esc(name)}</div>${q.links.map((l) => `<div style="margin-top:4px;font-size:12px;color:var(--fg-70)"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40)">#${l.id}</span> ${linkAboutHtml(l, p.me, p.persons)}. ${esc(heroStateWords(l, p.me))}</div>`).join("")}`)}
+      </div>`;
+  }).join("");
+
   const dis = p.busy ? " disabled" : "";
-  const callouts = asks.map((l) => {
+  const callouts = m.asks.map((l) => {
     const h = l.requester.handle;
+    const what = l.topic.kind === "person" ? "with you" : `about ${linkTopicHtml(l)}`;
     return `<div class="cnpy-lh-ask" data-lh-ask="${l.id}" style="border-radius:9px" role="group" aria-label="${attr(`Link request #${l.id} from ${nameOf(p.persons, h)}`)}">
-        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 260px">${personChip(personOf(p.persons, h), 26, h)}<div style="min-width:0"><div style="font-size:13px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="font-weight:600">${esc(nameOf(p.persons, h))}</b> asks to link about ${linkTopicHtml(l)}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.reason)}</div></div></div>
+        <div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1 1 260px">${personChip(personOf(p.persons, h), 26, h)}<div style="min-width:0"><div style="font-size:13px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b style="font-weight:600">${esc(nameOf(p.persons, h))}</b> asks to link ${what}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.reason)}</div></div></div>
         <div style="display:flex;gap:8px;flex:none"><button type="button" data-act="linkDecline" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}"${dis}>Decline</button><button type="button" data-act="linkAccept" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}"${dis}>Accept</button></div>
       </div>`;
   }).join("");
+  const total = liveLinks(p.boxes).length;
   const settled = p.status === "ok" || p.status === "error";
-  const empty = settled && !live.length
-    ? `<div data-lh-empty style="text-align:center;margin-top:6px"><div style="font-size:13px;color:var(--fg-55);line-height:1.55">No live links. When your work and a teammate's touch the same thing, start one and your two sessions leave each other notes.</div><button type="button" data-act="linkStartOpen" class="cnpy-accentbtn" style="${ACCENT};margin-top:14px">Start a link</button></div>`
+  const empty = settled && !total
+    ? `<div data-lh-empty style="text-align:center;margin-top:6px"><div style="font-size:13px;color:var(--fg-55);line-height:1.55;max-width:560px;margin:0 auto">${esc(LINKS_LEAD)}</div><button type="button" data-act="linkStartOpen" class="cnpy-accentbtn" style="${ACCENT};margin-top:14px">Link two of your sessions</button></div>`
     : "";
-  return `<section class="cnpy-lh" data-lh-count="${live.length}" aria-label="Your live links">
+  return `<section class="cnpy-lh" data-lh-count="${total}" data-lh-sessions="${m.sessions.length}" data-lh-people="${m.people.length}" aria-label="Your sessions and their links">
       <div class="cnpy-lh-stage">
-        ${linkHeroCanvas(nodes)}
-        <div class="cnpy-lh-me" aria-hidden="true"><div class="cnpy-lh-face">${personChip(mePerson, 36, p.me)}</div><span class="cnpy-lh-name">You</span></div>
-        ${nodeHtml}
+        ${linkHeroCanvas(orbs, segs)}
+        <div class="cnpy-lh-me" aria-hidden="true">${personChip(personOf(p.persons, p.me), 26, p.me)}</div>
+        ${sessionHtml}${personHtml}
       </div>
       <div class="cnpy-lh-under">
-        ${more > 0 ? `<div data-lh-more style="font-size:12px;color:var(--fg-40);text-align:center;margin-top:2px">+${more} more in the list below</div>` : ""}
+        ${m.hidden > 0 ? `<div data-lh-more style="font-size:12px;color:var(--fg-40);text-align:center;margin-top:2px">+${m.hidden} more in the list below</div>` : ""}
         ${empty}
-        <div data-lh-asks style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:${asks.length ? 14 : 0}px">${callouts}</div>
+        <div data-lh-asks style="display:grid;grid-template-columns:minmax(0,1fr);gap:8px;margin-top:${m.asks.length ? 14 : 0}px">${callouts}</div>
       </div>
     </section>`;
 }
 
+/** The lead sentence: the explainer under the picture, the empty state, the public docs. */
+export const LINKS_LEAD = "Connect your own sessions — a coding agent, a web chat, an Ask thread — so they leave each other notes while the work overlaps; you can link with a teammate's session too.";
+
 export function linksView(p: LinksListProps): string {
-  const intro = `<div data-links-intro style="font-size:12.5px;color:var(--fg-55);margin:18px auto 30px;max-width:620px;line-height:1.55;text-align:center">A link is a short-lived line between two sessions whose work overlaps: while it is open, each side leaves the other short notes.</div>`;
+  const intro = `<div data-links-intro style="font-size:12.5px;color:var(--fg-55);margin:18px auto 30px;max-width:620px;line-height:1.55;text-align:center">${esc(LINKS_LEAD)}</div>`;
   const b = p.boxes;
   const total = b.waiting.length + b.open.length + b.mine.length + b.closed.length;
   let body: string;
@@ -597,7 +789,7 @@ function joinHint(l: LinkView): string {
         <div style="font-size:13px;font-weight:500;color:var(--fg)">Your side has no session yet. Tell your agent: <span style="font-family:var(--code);font-size:12.5px">${esc(phrase)}</span></div>
         <div style="font-size:12px;line-height:1.55;color:var(--fg-55);margin-top:4px">A coding session with the Trov plugin then gets new notes at each prompt and commit. A web chat, such as claude.ai, checks for notes when you ask it to.</div>
       </div>
-      <button type="button" data-act="linkJoinCopy" data-arg="${l.id}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;${OUTLINE}">${COPY_ICON}Copy</button>
+      <div style="display:flex;gap:8px;flex:none"><button type="button" data-act="linkJoinCopy" data-arg="${l.id}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;${OUTLINE}">${COPY_ICON}Copy</button><button type="button" data-act="linkJoinAsk" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}">Open in Ask</button></div>
     </div>`;
 }
 
@@ -657,7 +849,7 @@ export function linkDetailView(p: LinkDetailProps): string {
   return shell(`
     <div class="cnpy-dhead" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding-bottom:22px;border-bottom:1px solid var(--border);flex-wrap:wrap">
       <div style="flex:1 1 360px;min-width:0">
-        <h2 style="margin:0;max-width:680px;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.28;text-wrap:pretty">Link about ${linkTopicHtml(l)}</h2>
+        <h2 style="margin:0;max-width:680px;font-size:24px;font-weight:600;letter-spacing:-0.02em;line-height:1.28;text-wrap:pretty">Link ${l.topic.kind === "person" ? linkAboutHtml(l, p.me, p.persons) : `about ${linkTopicHtml(l)}`}</h2>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;font-size:12.5px;color:var(--fg-55)">
           ${linkMark(l.state)}
           <span style="font-family:var(--label);font-size:11.5px;font-weight:600;color:var(--fg-40)">#${l.id}</span>

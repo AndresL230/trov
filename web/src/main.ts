@@ -3726,6 +3726,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "linkStartClose": state.linkStart = null; break;
     case "linksClosedToggle": state.linksClosedOpen = !state.linksClosedOpen; break;
+    case "linkStartMode": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || !(arg === "self" || arg === "team")) return;
+      state.linkStart = { ...d, mode: arg, phase: "edit", error: null };
+      break;
+    }
     case "linkStartKind": {
       const d = state.linkStart;
       if (!d || d.phase === "sending" || !(arg === "person" || arg === "pr" || arg === "branch" || arg === "ticket")) return;
@@ -3747,8 +3753,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     }
     case "linkStartSend": {
       const d = state.linkStart;
-      const target = d ? linkStartTarget(d) : null;
-      if (!d || !target || !linkStartReady(d)) return;
+      const me = state.me?.handle ?? "";
+      const target = d ? linkStartTarget(d, me) : null;
+      if (!d || !target || !linkStartReady(d, me)) return;
       const sending = { ...d, phase: "sending" as const, error: null };
       state.linkStart = sending;
       rerender();
@@ -3823,6 +3830,18 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           rerender();
         })
         .catch((e) => { state.linkBusy = false; linkErr(e, "Couldn't send the note"); rerender(); });
+      return;
+    }
+    // "Open in Ask": a new Ask thread with "join Trov link #n" typed in its composer (the person sends it).
+    case "linkJoinAsk": {
+      const id = Number(arg);
+      if (!(id > 0)) return;
+      state.linkStart = null;
+      state.screen = "ask";
+      askCtl.enter(null);
+      askCtl.act("askShNew", null, null);
+      state.ask.composer.page = { ...state.ask.composer.page, text: linkJoinPhrase(id) };
+      rerender();
       return;
     }
     case "linkJoinCopy": {

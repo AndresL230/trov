@@ -8,9 +8,10 @@ import {
   linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal, handoffsTabBar,
   linkSessionHtml, noteAuthorHtml, askThreadOf, LINKS_EMPTY, NO_LINK_BOXES, type LinkAction, type LinkDetailProps,
   linkStartCard, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, linkStartSpec, type LinkStart,
-  linksHero, liveLinks, heroNodeOf, linkGlyph,
+  linksHero, liveLinks, linkGlyph, heroModel, heroCanvasData, linkAboutHtml, LINKS_LEAD, SESSION_SLOTS, PERSON_SLOTS,
 } from "../web/src/links";
-import { linkLineState, linkLine, LINE_W, LINE_H, HERO_MAX, parseHeroNodes } from "../web/src/link-line";
+import docsSrc from "../web/src/docs-content.ts?raw";
+import { linkLineState, linkLine, LINE_W, LINE_H, parseHero } from "../web/src/link-line";
 import linkLineSrc from "../web/src/link-line.ts?raw";
 import orbSrc from "../web/src/thinking-orb.ts?raw";
 import cssSrc from "../web/src/trov.css?raw";
@@ -452,7 +453,9 @@ describe("the link line — the visual follows the state; the words still carry 
 
 // ── Start a link (the card at the top of the Links tab) ──────────────────────────
 describe("Start a link — the card", () => {
-  const card = (d: Partial<LinkStart> = {}, me = "andres") => linkStartCard({ draft: { ...blankLinkStart(), ...d }, me, persons });
+  // Most of these are the "With a teammate" option; "Between my sessions" (the default) has its own tests below.
+  const blank = (): LinkStart => ({ ...blankLinkStart(), mode: "team" });
+  const card = (d: Partial<LinkStart> = {}, me = "andres") => linkStartCard({ draft: { ...blank(), ...d }, me, persons });
   const sendBtn = (html: string) => html.match(/<button type="button" data-act="linkStartSend"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
 
   it("the header's Start a link opens it on the Links tab, which is patched in place (the form keeps its focus)", () => {
@@ -481,8 +484,8 @@ describe("Start a link — the card", () => {
   });
 
   it("their orb wakes as it is filled in: asleep → named (their photo inside) → the line reaches further with a reason", () => {
-    expect(linkStartSpec(blankLinkStart(), "andres")).toMatchObject({ left: "awake", right: "asleep", flow: "preview", rate: 0 });
-    const named = { ...blankLinkStart(), person: "jose" };
+    expect(linkStartSpec(blank(), "andres")).toMatchObject({ left: "awake", right: "asleep", flow: "preview", rate: 0 });
+    const named = { ...blank(), person: "jose" };
     expect(linkStartSpec(named, "andres")).toMatchObject({ right: "named", flow: "preview" });
     expect(linkStartSpec({ ...named, reason: "x".repeat(40) }, "andres").rate).toBe(1);
     const html = card({ person: "jose" });
@@ -494,7 +497,7 @@ describe("Start a link — the card", () => {
   });
 
   it("a PR, branch or ticket: Trov's searching globe and what it will look up, in words", () => {
-    const pr = { ...blankLinkStart(), kind: "pr" as const, ref: "180" };
+    const pr = { ...blank(), kind: "pr" as const, ref: "180" };
     expect(linkStartSpec(pr, "andres").right).toBe("seeking");
     const html = card(pr);
     expect(html).toContain('inputmode="numeric"');
@@ -514,7 +517,7 @@ describe("Start a link — the card", () => {
 
   it("Send waits for a target and a reason; a link with yourself says it opens at once", () => {
     expect(sendBtn(card({ person: "jose" }))).toContain("disabled");
-    expect(linkStartReady({ ...blankLinkStart(), person: "jose", reason: "Both in the session store." })).toBe(true);
+    expect(linkStartReady({ ...blank(), person: "jose", reason: "Both in the session store." })).toBe(true);
     const ready = sendBtn(card({ person: "jose", reason: "Both in the session store." }));
     expect(ready).not.toContain("disabled");
     expect(ready).toContain("Send request");
@@ -525,9 +528,9 @@ describe("Start a link — the card", () => {
   });
 
   it("Send streams the particles across (a burst); sent lights their orb and says what happens next", () => {
-    expect(linkStartSpec({ ...blankLinkStart(), person: "jose", reason: "x", phase: "sending" }, "andres").flow).toBe("burst");
+    expect(linkStartSpec({ ...blank(), person: "jose", reason: "x", phase: "sending" }, "andres").flow).toBe("burst");
     const sent = link({ id: 22, state: "requested", requester: side("andres"), recipient: side("jose") });
-    const d = { ...blankLinkStart(), person: "jose", reason: "x", phase: "sent" as const, sent };
+    const d = { ...blank(), person: "jose", reason: "x", phase: "sent" as const, sent };
     expect(linkStartSpec(d, "andres")).toMatchObject({ left: "awake", right: "calling", flow: "trickle" });
     const html = card(d);
     expect(text(html)).toContain("Sent to Jose. They accept it in Relay");
@@ -543,7 +546,7 @@ describe("Start a link — the card", () => {
     expect(linkStartRefusal("not_member", "jose is not a member of this organization")).toBe("Jose is not a member of this organization.");
     expect(linkStartRefusal("not_found", "Trov has no PR #185")).toBe("Trov has no PR #185. Check the number or the branch's name, or pick the person instead.");
     expect(linkStartRefusal(null, null)).toBe("Couldn't start this link. Try again in a moment.");
-    const d = { ...blankLinkStart(), person: "jose", reason: "x", phase: "refused" as const, error: "You already have 5 open or requested links." };
+    const d = { ...blank(), person: "jose", reason: "x", phase: "refused" as const, error: "You already have 5 open or requested links." };
     expect(linkStartSpec(d, "andres")).toMatchObject({ left: "dim", flow: "none" });
     const html = card(d);
     expect(html).toMatch(/<div data-link-start-error role="alert" style="[^"]*">You already have 5/);
@@ -555,88 +558,154 @@ describe("Start a link — the card", () => {
     expect(mainSrc).toContain("startLink(target, d.reason.trim())");
     expect(mainSrc).toContain('phase: "refused", error: linkStartRefusal(');
   });
+
+  it("the default is BETWEEN MY SESSIONS: target yourself, two client orbs, opens at once", () => {
+    expect(blankLinkStart().mode).toBe("self");
+    const d = { ...blankLinkStart(), reason: "The terminal and the chat share the export." };
+    expect(linkStartTarget(d, "andres")).toEqual({ person: "andres" });
+    expect(linkStartReady(d, "andres")).toBe(true);
+    expect(linkStartSpec(d, "andres")).toMatchObject({ left: "awake", right: "hollow", flow: "preview" });
+    const html = linkStartCard({ draft: d, me: "andres", persons });
+    expect(html).toMatch(/data-seg="link-start-mode"[\s\S]*?Between my sessions[\s\S]*?With a teammate/);
+    expect(html).toMatch(/aria-pressed="true"[^>]*>Between my sessions</);
+    expect(html).not.toContain('data-seg="link-start-kind"'); // no "about" picker between your own sessions
+    expect(html).toMatch(/data-ll-face="left"><span class="cnpy-lh-ico"/);
+    expect(text(html)).toContain("One session of yours");
+    expect(text(html)).toContain("Another session of yours");
+    expect(sendBtn(html)).toContain("Open link");
+    expect(text(html)).toContain("Both sides are yours, so it opens at once.");
+  });
+
+  it("With a teammate is the second option: the person / PR / branch / ticket picker, no 'You' chip", () => {
+    const html = card();
+    expect(html).toMatch(/aria-pressed="true"[^>]*>With a teammate</);
+    expect(html).toContain('data-seg="link-start-kind"');
+    expect(html).not.toContain("You, two sessions");
+    expect(mainSrc).toContain('case "linkStartMode"');
+  });
+
+  it("after a link between your sessions opens: its number and how each client joins (copy, or Open in Ask)", () => {
+    const sent = link({ id: 30, state: "open", self: true, requester: side("andres"), recipient: side("andres") });
+    const html = linkStartCard({ draft: { ...blankLinkStart(), reason: "x", phase: "sent", sent }, me: "andres", persons });
+    expect(text(html)).toContain("Link #30 opened");
+    expect(text(html)).toContain("Join it from two sessions");
+    expect(text(html)).toContain("join Trov link #30");
+    expect(html).toContain('data-act="linkJoinCopy" data-arg="30"');
+    expect(html).toContain('data-act="linkJoinAsk" data-arg="30"');
+    // Open in Ask: a new thread with the phrase typed in its composer.
+    expect(mainSrc).toMatch(/case "linkJoinAsk"[\s\S]*?askCtl\.act\("askShNew"[\s\S]*?text: linkJoinPhrase\(id\)/);
+  });
 });
 
-// ── the constellation at the top of the Links tab ────────────────────────────────
-describe("the Links tab's constellation — you in the centre, a line to each live link", () => {
+describe("the Links tab's constellation — your sessions first, teammates on an outer ring", () => {
   const L = (over: Partial<LinkDetail>) => link({ notes: [], ...over });
   const boxesOf = (over: Partial<typeof NO_LINK_BOXES> = {}) => ({ ...NO_LINK_BOXES, ...over });
   const hero = (b = boxesOf(), busy = false) => linksHero({ boxes: b, me: "andres", persons, busy, status: "ok" });
+  const code = (session: string, branch: string) => ({ kind: "code" as const, session, branch });
   const spread = boxesOf({
     waiting: [L({ id: 2, state: "requested", requester: side("jose"), recipient: side("andres"), topic: { kind: "person", ref: "andres" } })],
-    open: [L({ id: 4 }), L({ id: 15, self: true, recipient: side("andres", { kind: "ask", session: "ask-thread-3" }) })],
-    mine: [L({ id: 9, state: "draft" }), L({ id: 12, state: "requested", recipient: side("mei") })],
-    closed: [L({ id: 6, state: "closed", closed_at: T0 })],
+    open: [
+      L({ id: 1, requester: side("jose", code("j-1", "feat/api")), recipient: side("andres", code("a-grid", "feat/grid")) }),
+      L({ id: 14, requester: side("mei", { kind: "chat", session: "m-c" }), recipient: side("andres") }),
+      L({ id: 15, self: true, requester: side("andres", code("a-export", "feat/export")), recipient: side("andres", { kind: "chat", session: "a-chat" }) }),
+      L({ id: 16, self: true, requester: side("andres", { kind: "ask", session: "ask-thread-7" }), recipient: side("andres") }),
+    ],
+    mine: [L({ id: 11, state: "draft", requester: side("andres", code("a-grid", "feat/grid")), recipient: side("jose") })],
   });
 
-  it("one node per LIVE link, lowest number first, each a real link with an aria-label that says it all", () => {
-    expect(liveLinks(spread).map((l) => l.id)).toEqual([2, 4, 9, 12, 15]);
+  it("one node per SESSION of yours (deduped), self-links first as neighbouring pairs; a side not joined is a socket", () => {
+    const m = heroModel(spread, "andres");
+    expect(m.sessions.map((x) => x.key)).toEqual(["code:a-export", "chat:a-chat", "ask:ask-thread-7", "socket:16:recipient", "code:a-grid", "socket:14:recipient"]);
+    expect(m.sessions.find((x) => x.key === "code:a-grid")!.links.map((l) => l.id)).toEqual([1, 11]); // one node, two links
+    expect(hero(spread).match(/data-lh-sess="/g)).toHaveLength(6);
+  });
+
+  it("a session says its client in words with an icon; an Ask thread links to its thread; a socket says how to join", () => {
     const html = hero(spread);
-    expect(html.match(/data-lh-node="/g)).toHaveLength(5);
-    expect(html).not.toContain('data-lh-node="6"'); // an ended link is not drawn
-    for (const id of [2, 4, 9, 12, 15]) expect(html).toContain(`<a class="cnpy-lh-hit" href="#links/${id}"`);
-    expect(html).toMatch(/href="#links\/4" aria-label="Link #4 with Jose about PR #180\. Open\. Both of us touch the session store\."/);
-    expect(html).toMatch(/href="#links\/12" aria-label="Link #12 with Mei about PR #180\. Waiting for @mei to accept\./);
-    expect(html).toMatch(/<canvas class="cnpy-lh-cv" data-linkhero data-lh="[^"]*"[^>]*aria-hidden="true">/);
+    expect(html).toMatch(/data-lh-sess="code:a-export" data-kind="code"[\s\S]*?href="#links\/15" aria-label="Claude Code on feat\/export: link #15 with your web chat\."/);
+    expect(html).toMatch(/data-lh-sess="chat:a-chat"[\s\S]*?cnpy-lh-name" aria-hidden="true">Web chat</);
+    expect(html).toMatch(/data-lh-sess="ask:ask-thread-7"[\s\S]*?href="#ask\/7"/);
+    expect(html).toMatch(/data-lh-sess="socket:16:recipient"[\s\S]*?aria-label="Link #16: a side of yours that no session has joined\. Tell a session: join Trov link #16\."/);
+    expect(html).toMatch(/data-lh-sess="code:a-grid"[\s\S]*?aria-label="Claude Code on feat\/grid: link #1 with Jose; link #11 with Jose\."/);
+  });
+
+  it("teammates: ONE orb per person on the outer ring, quieter lines off the session that holds each link", () => {
+    const m = heroModel(spread, "andres");
+    expect(m.people.map((x) => x.handle)).toEqual(["jose", "mei"]); // Jose once, for #1, #2 and #11
+    const { orbs, segs } = heroCanvasData(m, "andres");
+    const self15 = segs.find((g) => g.id === 15)!;
+    expect(self15).toMatchObject({ quiet: false, flow: "flow" });
+    expect(orbs[self15.a].look).toBe("awake");
+    const team1 = segs.find((g) => g.id === 1)!;
+    expect(team1.quiet).toBe(true);
+    expect(orbs[team1.b]).toMatchObject({ look: "awake", size: 76 }); // my end: the Claude Code session on feat/grid
+    const ask2 = segs.find((g) => g.id === 2)!;
+    expect(ask2).toMatchObject({ flow: "pulse", b: 0 }); // a request to me pulses in, to where my photo sits
+    expect(orbs[0].look).toBe("hub");
+    const mei14 = segs.find((g) => g.id === 14)!;
+    expect(orbs[mei14.b].look).toBe("socket"); // my side of an open teammate link not joined: off a socket
+    const html = hero(spread);
+    expect(html.match(/data-lh-person="/g)).toHaveLength(2);
+    expect(html).toMatch(/<canvas class="cnpy-lh-cv" data-linkhero data-lh-orbs="[^"]+" data-lh-segs="[^"]+"[^>]*aria-hidden="true">/);
+    expect(parseHero(html.match(/data-lh-orbs="([^"]*)"/)![1], html.match(/data-lh-segs="([^"]*)"/)![1]).segs).toHaveLength(6);
+  });
+
+  it("a request waiting for you: Jose asks to link WITH YOU (a person topic), Accept / Decline in the callout", () => {
+    const html = hero(spread);
+    expect(html).toMatch(/class="cnpy-lh-node is-person is-asking" data-lh-person="jose"/);
+    expect(text(html)).toContain("Jose asks to link with you");
+    expect(text(html)).not.toContain("about @andres");
+    expect(html).toContain('data-act="linkAccept" data-arg="2"');
+    expect(html).toContain('data-act="linkDecline" data-arg="2"');
+    expect(hero(spread, true)).toMatch(/data-act="linkAccept" data-arg="2"[^>]*disabled/);
     expect(nestedButton(html)).toBe(false);
   });
 
-  it("the places are stable: they follow link numbers, so a new link takes the next place and nothing moves", () => {
-    const before = hero(boxesOf({ open: [L({ id: 4 }), L({ id: 7 })] }));
-    const after = hero(boxesOf({ open: [L({ id: 4 }), L({ id: 7 }), L({ id: 20 })] }));
-    const place = (h: string, id: number) => h.match(new RegExp(`data-lh-node="${id}"[^>]*style="([^"]+)"`))?.[1];
-    expect(place(after, 4)).toBe(place(before, 4));
-    expect(place(after, 7)).toBe(place(before, 7));
-  });
-
-  it("each line does what its state does: open flows, mine trickles out, a draft flickers, a request to me pulses in", () => {
-    const nodes = parseHeroNodes(hero(spread).match(/data-lh="([^"]*)"/)![1]);
-    const by = (id: number) => nodes.find((n) => n.id === id)!;
-    expect(by(4)).toMatchObject({ flow: "flow", out: true, look: "hollow", mine: "awake" }); // their side has no session
-    expect(by(12)).toMatchObject({ flow: "trickle", out: true, look: "calling" });
-    expect(by(9)).toMatchObject({ flow: "flicker", out: true, look: "asleep" });
-    expect(by(2)).toMatchObject({ flow: "pulse", out: false, look: "calling", mine: "hollow" });
-    expect(by(15)).toMatchObject({ flow: "flow", out: true, look: "awake" }); // a self-link: a second you
-    expect(heroNodeOf(L({ id: 3, requester: side("jose", { kind: "chat", session: "c" }), recipient: side("andres") }), 0, "andres"))
-      .toMatchObject({ out: false, look: "awake", mine: "hollow" }); // their open link to me: from them, my end hollow
-  });
-
-  it("a request waiting for you: its node is marked asking, and Accept / Decline sit in a callout under the picture", () => {
-    const html = hero(spread);
-    expect(html).toMatch(/class="cnpy-lh-node is-asking" data-lh-node="2"/);
-    expect(html).toMatch(/data-lh-ask="2"[^>]*>[\s\S]*Jose<\/b> asks to link about @andres/);
-    expect(html).toContain('data-act="linkDecline" data-arg="2"');
-    expect(html).toContain('data-act="linkAccept" data-arg="2"');
-    expect(html).not.toContain('data-act="linkAccept" data-arg="12"'); // my own request is not mine to accept
-    expect(hero(spread, true)).toMatch(/data-act="linkAccept" data-arg="2"[^>]*disabled/);
-  });
-
-  it("a self-link is a second you: your photo at the far end, named so", () => {
-    const html = hero(spread);
-    expect(html).toMatch(/data-lh-node="15"[\s\S]*?aria-label="Link #15 between two of your sessions about PR #180\. Open\./);
-    expect(html).toMatch(/data-lh-node="15"[\s\S]*?cnpy-lh-name" aria-hidden="true">You, again</);
-  });
-
-  it("empty: you alone with a quiet halo and the Start a link call to action (not while the first read is out)", () => {
+  it("only sessions on links exist: no link, no node — you alone, the lead sentence and Link two of your sessions", () => {
     const html = hero();
     expect(html).toContain('data-lh-count="0"');
-    expect(html).toContain('data-lh=""');
+    expect(html).toContain('data-lh-sessions="0"');
     expect(html).toContain("data-lh-empty");
+    expect(text(html)).toContain("Connect your own sessions");
     expect(html).toContain('data-act="linkStartOpen"');
     expect(linksHero({ boxes: boxesOf(), me: "andres", persons, busy: false, status: "loading" })).not.toContain("data-lh-empty");
   });
 
-  it(`at most ${HERO_MAX} nodes; the rest are "+N more"`, () => {
-    const many = boxesOf({ open: Array.from({ length: HERO_MAX + 3 }, (_, i) => L({ id: i + 1 })) });
+  it(`at most ${SESSION_SLOTS.length} sessions and ${PERSON_SLOTS.length} people; the rest are "+N more"`, () => {
+    const many = boxesOf({ open: Array.from({ length: 7 }, (_, i) => L({ id: i + 1, self: true, requester: side("andres", code(`s${i}a`, "b")), recipient: side("andres", code(`s${i}b`, "b")) })) });
     const html = hero(many);
-    expect(html.match(/data-lh-node="/g)).toHaveLength(HERO_MAX);
+    expect(html.match(/data-lh-sess="/g)).toHaveLength(SESSION_SLOTS.length);
     expect(text(html)).toContain("+3 more in the list below");
   });
 
-  it("it heads the Links tab, above a shorter explainer and the list", () => {
+  it("the places are stable: a new teammate link never moves your sessions", () => {
+    const before = heroModel(spread, "andres").sessions.map((x) => [x.key, x.x, x.y]);
+    const more = { ...spread, open: [...spread.open, L({ id: 40, requester: side("andres", code("a-new", "x")), recipient: side("mei") })] };
+    const after = heroModel(more, "andres").sessions.map((x) => [x.key, x.x, x.y]);
+    expect(after.slice(0, before.length)).toEqual(before);
+  });
+
+  it("it heads the Links tab, above the lead sentence and the list", () => {
     const html = linksView({ status: "ok", boxes: spread, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
     expect(html.indexOf('class="cnpy-lh"')).toBeLessThan(html.indexOf("data-links-intro"));
+    expect(html).toContain(LINKS_LEAD.replace(/'/g, "&#39;"));
     expect(html.indexOf("data-links-intro")).toBeLessThan(html.indexOf("WAITING FOR YOU"));
+  });
+});
+
+describe("a link about a person reads WITH them", () => {
+  it("rows and the page title: 'With Jose' / 'Link with Jose', never '@you'", () => {
+    const l = link({ id: 2, state: "requested", requester: side("jose"), recipient: side("andres"), topic: { kind: "person", ref: "andres" } });
+    expect(linkAboutHtml(l, "andres", persons)).toBe("with Jose");
+    expect(linkAboutHtml({ ...l, self: true, requester: side("andres") }, "andres", persons)).toBe("between your sessions");
+    expect(text(page(l, "andres"))).toContain("Link with Jose");
+    const list = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, waiting: [l] }, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
+    expect(text(list.slice(list.indexOf('data-link-row="2"')))).toContain("#2With Jose");
+    expect(text(page(link(), "andres"))).toContain("Link about PR #180"); // other topics unchanged
+  });
+
+  it("the public docs lead with your own sessions", () => {
+    expect(docsSrc).toContain("Connect your own sessions — a coding agent, a web chat, an Ask thread");
   });
 });
 

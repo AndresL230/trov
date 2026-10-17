@@ -17,22 +17,27 @@
 // The people are the team scenario's (made-up `priya-n` / `omar-h` included); nothing here names a real address, key
 // or service. The sessions are obviously fake (`e2e-…`), and an Ask side's session is `ask-thread-<id>`.
 //
-// What it gives AndresL230 (the main viewer) — exactly FIVE live links, the cap (#1, #12, #14, #15, #16), so Send on
-// the draft #11 is refused until one ends:
-//   #11 draft      Andres → Jose, PR #231, Andres's coding session bound            (Send / Cancel at once; the cap)
-//   #12 requested  Andres → meilin, branch feat/rate-limit                          (Cancel request → confirmModal)
+// The story it tells (owner, 2026-10-17): links are mostly between YOUR OWN sessions — a coding agent, a web chat, an
+// Ask thread — and a teammate's session is the second case. What it gives AndresL230 (the main viewer) — exactly
+// FIVE live links, the cap (#1, #12, #14, #15, #16), so Send on the draft #11 is refused until one ends:
+//   #1  open       (team-rich.mjs) Jose ↔ Andres, PR #231: Andres's Claude Code on feat/topic-grid
+//   #11 draft      Andres → Jose, PR #231, from that SAME Claude Code session (one session node, two lines to Jose)
+//   #12 open       Andres ↔ Andres (a self-link), PR #185: an Ask thread (6403) ↔ a side not joined yet (a socket)
+//   #15 open       Andres ↔ Andres: Claude Code on feat/stream-export ↔ a web chat; a note from the chat waiting
+//   #16 open       Andres ↔ Andres: Claude Code on fix/ocr-queue ↔ an Ask thread (6401); notes from the coding side
+//                  waiting for the thread (the thread-list mark), one delivered from the thread
+// CHANGED for the new story (the e2e log's B-cases that used them): #12 is no longer Andres's request to meilin (no
+// "Cancel request" confirm on the seed — start one with Start a link › With a teammate), #15 is no longer Ask ↔
+// unbound, and #16 is no longer the Ask ↔ Ask link with Omar (Ask threads 6402 / 6403 stay, now unlinked / on #12).
 //   #13 requested  Jose → meilin, ticket #23                                        (meilin: Accept; Andres: outsider)
 //   #14 open       priya-n → Andres, ticket #41; priya's web chat; Andres's side unbound (join hint), an agent note
 //                  and a person note from priya
-//   #15 open       Andres ↔ Andres (a self-link), PR #185: first session = Ask thread 6401, second unbound; a person
-//                  note from the second side waiting for the thread (the thread-list mark)
-//   #16 open       Andres → omar-h, branch feat/stream-export: Andres's side = Ask thread 6403, Omar's = his Ask
-//                  thread 6402; two Ask notes from Omar waiting for 6403, one delivered from Andres's
 //   #17 declined   Andres → Jose        #18 cancelled  Andres → sanaok        #19 expired  Jose → Andres
 //   #20 open       sanaok → priya-n: sanaok's coding side has written its 20 notes (the per-side cap, as sanaok)
 //   #21 open       meilin → Jose, ticket #23: meilin's side = Ask thread 6406 (Andres's, shared with her to
 //                  continue); one note from Jose's agent waiting for HER side (her line, never Andres's)
-// Ask threads (Andres's unless said): 6401 self-link side · 6402 Omar's · 6403 #16's side (+ a send_link_note card) ·
+// Luke's request #2 (team-rich.mjs) waits for Andres; it counts toward LUKE's cap, not his.
+// Ask threads (Andres's unless said): 6401 #16's side · 6402 Omar's (no link now) · 6403 #12's side (+ a send_link_note card) ·
 //   6404 a request_link card to meilin and one to himself (a self-link) · 6405 an answer citing [[link:1]] ·
 //   6406 shared with meilin ("Can continue"), her turn proposing a request_link card to Jose · 6407 Auto on, a
 //   join_link card for #14 WAITING (Confirm-only, even on Auto).
@@ -94,12 +99,13 @@ export function agentLinksStatements(now = new Date()) {
 
   s.push(link(11, {
     state: "draft", repo: REPO, topic_kind: "pr", topic_ref: "231", reason: "My topic grid reads the mastery API you are reshaping in PR #231.",
-    requester: ME, requester_kind: "code", requester_agent_session: "e2e-andres-draft", requester_branch: "feat/topic-grid", requester_seen_at: ago(10 * MIN),
+    requester: ME, requester_kind: "code", requester_agent_session: "seed-session-andres", requester_branch: "feat/topic-grid", requester_seen_at: ago(10 * MIN),
     recipient: JOSE, created_at: ago(10 * MIN), expires_at: ahead(50 * MIN),
   }));
   s.push(link(12, {
-    state: "requested", repo: REPO, topic_kind: "branch", topic_ref: "feat/rate-limit", reason: "The class-code lookup will sit behind your rate limit; worth a line while both land.",
-    requester: ME, recipient: MEI, created_at: ago(2 * HOUR), sent_at: ago(2 * HOUR), expires_at: ahead(22 * HOUR),
+    state: "open", repo: REPO, topic_kind: "pr", topic_ref: "185", reason: "My Ask thread follows PR #185 while a coding session finishes it.",
+    requester: ME, requester_kind: "ask", requester_agent_session: "ask-thread-6403", requester_seen_at: ago(25 * MIN),
+    recipient: ME, ...opened(90 * MIN, 90 * MIN),
   }));
   s.push(link(13, {
     state: "requested", topic_kind: "ticket", topic_ref: "23", reason: "Class-code collisions: my fix and your teacher view both touch the lookup.",
@@ -111,15 +117,16 @@ export function agentLinksStatements(now = new Date()) {
     recipient: ME, ...opened(3 * HOUR, 2 * HOUR),
   }));
   s.push(link(15, {
-    state: "open", repo: REPO, topic_kind: "pr", topic_ref: "185", reason: "My Ask thread follows PR #185 while my coding session finishes it.",
-    requester: ME, requester_kind: "ask", requester_agent_session: "ask-thread-6401", requester_seen_at: ago(50 * MIN),
-    recipient: ME, ...opened(HOUR, HOUR),
+    state: "open", repo: REPO, topic_kind: "branch", topic_ref: "feat/stream-export", reason: "The terminal changes the export's progress events; the web chat plans the export screen's copy around them.",
+    requester: ME, requester_kind: "code", requester_agent_session: "e2e-andres-export", requester_branch: "feat/stream-export", requester_seen_at: ago(8 * MIN),
+    recipient: ME, recipient_kind: "chat", recipient_agent_session: "e2e-andres-chat", recipient_seen_at: ago(35 * MIN),
+    ...opened(3 * HOUR, 3 * HOUR),
   }));
   s.push(link(16, {
-    state: "open", repo: REPO, topic_kind: "branch", topic_ref: "feat/stream-export", reason: "Omar is testing the export job while I change its progress events.",
-    requester: ME, requester_kind: "ask", requester_agent_session: "ask-thread-6403", requester_seen_at: ago(2 * HOUR),
-    recipient: OMAR, recipient_kind: "ask", recipient_agent_session: "ask-thread-6402", recipient_seen_at: ago(20 * MIN),
-    ...opened(5 * HOUR, 4 * HOUR),
+    state: "open", repo: REPO, topic_kind: "branch", topic_ref: "fix/ocr-queue", reason: "My Ask thread keeps track of the OCR queue fix while the coding session lands it.",
+    requester: ME, requester_kind: "code", requester_agent_session: "e2e-andres-ocr", requester_branch: "fix/ocr-queue", requester_seen_at: ago(4 * MIN),
+    recipient: ME, recipient_kind: "ask", recipient_agent_session: "ask-thread-6401", recipient_seen_at: ago(50 * MIN),
+    ...opened(HOUR, HOUR),
   }));
   s.push(link(17, {
     state: "declined", topic_kind: "person", topic_ref: JOSE, reason: "Both of us were in the auth middleware.",
@@ -149,10 +156,11 @@ export function agentLinksStatements(now = new Date()) {
   const notes = [
     [6401, 14, "requester", PRIYA, "agent", "e2e-priya-chat", "Renaming the deck screen's empty state copy; nothing in the endpoints changes on my side.", 100, null],
     [6402, 14, "requester", PRIYA, "person", null, "I'll be on the copy until Friday.", 60, null],
-    [6403, 15, "recipient", ME, "person", null, "The coding session pushed the last fix for #185; CI is running.", 20, null],
-    [6404, 16, "recipient", OMAR, "ask", "ask-thread-6402", "The export job passes on staging with 40k rows.", 90, null],
-    [6405, 16, "recipient", OMAR, "ask", "ask-thread-6402", "Progress events arrive every 2 s; the last one is the 100% one.", 45, null],
-    [6406, 16, "requester", ME, "ask", "ask-thread-6403", "Changing the progress event's shape to { done, total } tonight.", 200, 180],
+    [6403, 15, "recipient", ME, "agent", "e2e-andres-chat", "Export screen copy: \"Preparing 3 of 12 files\" reads the new { done, total }.", 30, null],
+    [6404, 16, "requester", ME, "agent", "e2e-andres-ocr", "The OCR queue now retries a page once before it gives up.", 40, null],
+    [6405, 16, "requester", ME, "agent", "e2e-andres-ocr", "Pushed the fix to fix/ocr-queue; CI is running.", 12, null],
+    [6406, 16, "recipient", ME, "ask", "ask-thread-6401", "Luke's export job reads the same queue: keep its page order.", 55, 45],
+    [6408, 12, "requester", ME, "ask", "ask-thread-6403", "PR #185's review asked for one more test; the coding session can pick it up when it joins.", 20, null],
     [6407, 21, "recipient", JOSE, "agent", "e2e-jose-code", "Merged the collision fix; the lookup now retries once on a duplicate code.", 30, null],
   ];
   for (let i = 0; i < 20; i++) notes.push([6420 + i, 20, "requester", SANA, "agent", "e2e-sana-code", `Roster CSV parser, change ${i + 1} of 20: trailing columns are dropped.`, 300 - i * 10, 200 - i * 10]);
@@ -191,19 +199,19 @@ export function agentLinksStatements(now = new Date()) {
   const line = (label, value) => ({ label, value });
   const linkView = (n, title, extra) => ({ ref: `link:${n}`, type: "link", num: n, title, status: null, owner: extra.owner, updated: extra.updated, href: `#links/${n}`, extra: extra.extra });
 
-  thread(6401, ME, "E2E: my two sessions on PR #185", ago(HOUR));
-  question(6401, "Open a link with my coding session on PR #185.", ago(HOUR + MIN));
-  answer(6401, 1, "Link #15 is open with this thread as one side. Your coding session joins the other side when you tell it to.", ago(HOUR));
+  thread(6401, ME, "E2E: following the OCR queue fix", ago(HOUR));
+  question(6401, "Join link 16 from this thread so I hear from the coding session on fix/ocr-queue.", ago(HOUR + MIN));
+  answer(6401, 1, "This thread is now one side of link #16. Notes from your coding session on `fix/ocr-queue` reach it at the start of your next question.", ago(HOUR));
 
   thread(6402, OMAR, "E2E: Omar's export check", ago(20 * MIN));
-  question(6402, "Join link 16 from here.", ago(4 * HOUR));
-  answer(6402, 1, "This thread is now Omar's side of link #16.", ago(4 * HOUR));
+  question(6402, "Does the export job pass on staging?", ago(4 * HOUR));
+  answer(6402, 1, "It passes with 40k rows; progress events arrive every 2 s.", ago(4 * HOUR));
 
-  thread(6403, ME, "E2E: export job with Omar", ago(2 * HOUR));
-  question(6403, "Tell Omar's side the progress event changes tonight.", ago(2 * HOUR + MIN));
-  answer(6403, 1, "Here is the note for link #16. It goes to Omar's side once you confirm it.", ago(2 * HOUR), {
-    cards: [{ id: 6401, tool: "send_link_note", args: { id: 16, body: "The progress event's new shape ships tonight: { done, total }." },
-      preview: { title: "Note on link #16", lines: [line("To", `@${OMAR}'s side`), line("Note", "The progress event's new shape ships tonight: { done, total }.")], item: null } }],
+  thread(6403, ME, "E2E: PR #185 from Ask", ago(25 * MIN));
+  question(6403, "Leave my coding session a note on link 12 that the review wants one more test.", ago(26 * MIN));
+  answer(6403, 1, "Here is the note for link #12. It waits for your other session, which has not joined yet, once you confirm it.", ago(25 * MIN), {
+    cards: [{ id: 6401, tool: "send_link_note", args: { id: 12, body: "The review on PR #185 wants one more test for the empty queue." },
+      preview: { title: "Note on link #12", lines: [line("To", "your other session (not joined yet)"), line("Note", "The review on PR #185 wants one more test for the empty queue.")], item: null } }],
   });
 
   // Both request cards in ONE answer of the thread's latest turn: a card from an earlier turn expires with it.

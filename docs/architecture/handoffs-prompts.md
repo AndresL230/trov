@@ -208,29 +208,33 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   for me. Routes `#links` (screen `links`) and `#links/<n>` (screen `link`), NOT under `#handoffs/` (whose second
   segment is a handoff's number). `pageKey` maps `#links` to `#handoffs`, so the tab switch is one page (the
   underline slides, no entrance replays); a link's page is a child screen (crumb "Link #12", back to Links).
-- **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`). It opens on **the
-  constellation** (`linksHero`): you in the centre (your photo in an awake orb), each LIVE link a line out to the
-  other person's orb (their photo), on ONE canvas (`link-line.ts` `linkHeroCanvas`, the shared orb loop). Places
-  are `HERO_SLOTS`, filled in link-number order, so a re-render never reshuffles them; at most `HERO_MAX` (8), the
-  rest "+N more in the list below". Lines follow the state (`heroNodeOf`): open flows both ways, my request trickles
-  out to a listening orb, a draft flickers, a request waiting for ME pulses inward and its orb listens (its node
-  `is-asking`; Accept / Decline in a callout under the picture), a self-link is a second you; a side with no
-  session is a hollow ring (my end: a small socket where the line meets me). Over the canvas each node is a real
-  `<a href="#links/<n>">` whose aria-label says who, what about, where it stands and why; hover / focus shows a
-  card (#n, topic, reason, state). No live links: you alone in a quiet halo and a Start a link button. Under it a
-  one-line explainer, then Waiting for you, Open, Yours, and Closed collapsed behind "CLOSED (N)" (a button,
+- **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`). The story (owner, 2026-10-17)
+  is linking YOUR OWN sessions — a coding agent, a web chat, an Ask thread; a teammate's session is the second case.
+  It opens on **the constellation** (`linksHero`, `heroModel`): one node per session of yours that is a side of a
+  live link (deduped by `kind:session`, labelled by client with an icon — "Claude Code" + branch, "Web chat", "Ask
+  thread", which links to `#ask/<id>`), self-links first as neighbouring pairs (`SESSION_SLOTS`) with the line between
+  them; a side of yours no session joined is an empty dotted SOCKET ("Not joined", its card says "join Trov link #n").
+  Only sessions on links exist — nothing is said about clients that are not linked. Teammates sit on an outer ring
+  (`PERSON_SLOTS`), ONE orb per person, their lines quieter, off the session of yours that holds the link (a socket
+  while an open one has none; your photo, small in the middle, for a request either way); a request waiting for
+  you pulses inward, its Accept / Decline in a callout under the picture ("Luke asks to link with you"). One canvas
+  (`link-line.ts` `linkHeroCanvas`: orbs + segments as data attributes, the shared orb loop); over it each node is a
+  real `<a>` with an aria-label and a hover / focus card. Past the places, "+N more". No live link: your photo in a
+  quiet halo, `LINKS_LEAD` and "Link two of your sessions". A phone shows sessions by icon alone. Under it
+  `LINKS_LEAD`, then Waiting for you, Open, Yours, and Closed collapsed behind "CLOSED (N)" (a button,
   `state.linksClosedOpen`, never `<details>`, which a patch would shut). A row (`linkRow`): a still SVG glyph of its
-  line (`linkGlyph`, no loop), `#n` and the topic set first over the reason, the other person (`personLink`; a
-  self-link "You, two sessions"), the mark, when — and on a request waiting for me, Decline / Accept outside the
-  row's `hitArea`. Each empty section says so in a sentence (`LINKS_EMPTY`).
+  line (`linkGlyph`, no loop), `#n` and the topic set first over the reason (a link about a person reads "With
+  Luke", its page "Link with Luke": `linkAboutHtml`), the other person, the mark, when — and on a request waiting for
+  me, Decline / Accept outside the row's `hitArea`. Each empty section says so in a sentence (`LINKS_EMPTY`).
 - **Start a link** (`linkStartCard`): the header's "Start a link" (`linkStartOpen`) opens a card in a stable slot at
-  the top of the tab (the tab is `data-morph="links"`, so typing never rebuilds it). About is a `segmented()`
-  (Person / Pull request / Branch / Ticket); a person is a pick chip (the org's members, and "You, two sessions"),
-  a PR or ticket a number, a branch its name; Why is the reason (280, counted). Send → `POST /links` (`startLink`
-  in api.ts, `{ target, reason }`); the answer waits ~1.1 s for the particles to cross (not under reduced
-  motion), then the card says "Sent to X. They accept it in Relay…" with "Open link #n" — a link with yourself
-  "is open: both sides are yours". A refusal is said in place (`linkStartRefusal`: the 5-link cap, not a member,
-  Trov has no PR #n), never a toast.
+  the top of the tab (the tab is `data-morph="links"`, so typing never rebuilds it). A `segmented()` picks who it is
+  between: **Between my sessions** (the default: target = yourself, opens at once; two client orbs) or **With a
+  teammate** (About: Person / Pull request / Branch / Ticket — a pick chip, a number, a branch). Why is the reason
+  (280, counted). Send → `POST /links` (`startLink`, `{ target, reason }`); the answer waits ~1.1 s for the particles
+  to cross (not under reduced motion). A link between your sessions then says how each client joins: Claude Code or a
+  chat — "join Trov link #n" with Copy; Ask — "Open in Ask" (`linkJoinAsk`: a new thread with the phrase typed in its
+  composer; the person sends it; also on a link page's join hint). A teammate request says "Sent to X. They accept
+  it in Relay…". A refusal is said in place (`linkStartRefusal`), never a toast.
 - **The link line** (`web/src/link-line.ts`): two orbs and the particles between them on ONE canvas — the
   requester's on the left, the recipient's on the right — at the head of a link's page and in the start card. It
   paints on the thinking orb's loop and clock (`thinking-orb.ts` `addOrbPainter`, one rAF loop for the page),

@@ -4,7 +4,7 @@
 // state's mark, the hit areas' labels) carry every meaning — the picture only shows the same thing moving.
 //
 //   the markup   `linkLine(spec)` (two orbs: the requester's on the LEFT, the recipient's on the RIGHT) and
-//                `linkHeroCanvas(nodes)` (YOU in the centre, a line out to each live link's other person). Each is a
+//                `linkHeroCanvas(orbs, segs)` (your sessions, the lines between them, teammates on an outer ring). Each is a
 //                <canvas> whose WIDTH / HEIGHT are fixed in the template (a morph never resets them; setting either
 //                clears a canvas), scaled by CSS to its column. What it shows is data attributes only, so a morph
 //                that patches the page keeps the SAME canvas and its particles in flight, and a form beside it keeps
@@ -24,7 +24,8 @@
 //   a note     a pulse — a tight cluster — travelling from its author's side; the other orb flares as it lands.
 //   ended      (declined / cancelled / expired / closed) the particles stop, both orbs dim: one still frame.
 // The start card adds `preview` (the stream reaches further as the card is filled in), `burst` (Send) and `none`;
-// the constellation adds `pulse` (a request waiting for YOU: a cluster travels inward every few seconds).
+// the constellation adds `pulse` (a request waiting for YOU: a cluster travels inward every few seconds), a `socket`
+// orb (a side of yours not joined yet: an empty dotted ring) and `hub` (where your photo sits: no orb drawn).
 
 import type { LinkView, LinkSideView, LinkSideName } from "@shared/links";
 import { LINK_LIVE_STATES } from "@shared/links";
@@ -39,7 +40,7 @@ import type { OrbState } from "./orbs/types";
 /** One orb's look. awake: a session is on it (orbiting dots) · hollow: no session yet (a quiet dotted ring) ·
  *  calling: asked, not answered (the listening wave) · asleep: not asked yet (a faint ring) · seeking: Trov will find
  *  who (the searching globe) · named: a person picked, their photo inside a bright ring · dim / dimhollow: ended. */
-export type LineOrb = "awake" | "hollow" | "calling" | "asleep" | "seeking" | "named" | "dim" | "dimhollow";
+export type LineOrb = "awake" | "hollow" | "calling" | "asleep" | "seeking" | "named" | "dim" | "dimhollow" | "socket" | "hub";
 /** What the particles do (see the header). */
 export type LineFlow = "none" | "flicker" | "trickle" | "flow" | "preview" | "burst" | "stopped" | "pulse";
 
@@ -54,7 +55,7 @@ export interface LineSpec {
   rate?: number;
 }
 
-const ORBS: readonly LineOrb[] = ["awake", "hollow", "calling", "asleep", "seeking", "named", "dim", "dimhollow"];
+const ORBS: readonly LineOrb[] = ["awake", "hollow", "calling", "asleep", "seeking", "named", "dim", "dimhollow", "socket", "hub"];
 const FLOWS: readonly LineFlow[] = ["none", "flicker", "trickle", "flow", "preview", "burst", "stopped", "pulse"];
 /** Orbs and flows that never move: a line made only of these is one still frame. */
 const STILL_ORBS = new Set<LineOrb>(["asleep", "dim", "dimhollow"]);
@@ -96,34 +97,33 @@ export function linkLine(spec: LineSpec, faces: { left?: string; right?: string 
 }
 
 // ── the constellation (the top of the Links tab) ─────────────────────────────
-// You in the centre; each live link a line out to the other person's orb, in one of HERO_SLOTS (filled in link
-// order, so a new link takes the next free place and nothing already there moves).
+// Your sessions in the middle (links.ts `heroModel` places them: self-links first, as neighbouring pairs), the
+// lines between them, and teammates on an outer ring with quieter lines. The canvas only draws what it is told:
+// orbs as `x,y,size,look` and segments as `link,a,b,flow,quiet,notes,last` (a = the requester's end).
 
-export const HERO_W = 600;
-export const HERO_H = 300;
-const HERO_CX = HERO_W / 2;
-const HERO_CY = HERO_H / 2;
-const HERO_ME = 104;
-const HERO_NODE = 72;
-/** The places round you, as [x, y] in canvas px: right, left, then the four diagonals, then the two farther out. */
-export const HERO_SLOTS: readonly (readonly [number, number])[] = [
-  [516, 120], [84, 180], [446, 228], [154, 72], [446, 64], [154, 236], [560, 214], [40, 86],
-];
-export const HERO_MAX = HERO_SLOTS.length;
+export const HERO_W = 720;
+export const HERO_H = 360;
 
-/** One line of the constellation: the link's number, its place, the other orb's look, what flows, and which way.
- *  `out`: the line runs from you (you are the requester); else from them. `mine`: your end's look — a hollow ring
- *  sits where the line meets you when your side has no session. `last` is whose side wrote the newest note. */
-export interface HeroNode {
-  id: number; slot: number; look: LineOrb; flow: LineFlow; out: boolean; mine: LineOrb; notes: number; last: LinkSideName | null;
-}
+export interface HeroOrb { x: number; y: number; size: number; look: LineOrb }
+export interface HeroSeg { id: number; a: number; b: number; flow: LineFlow; quiet: boolean; notes: number; last: LinkSideName | null }
 
-/** The constellation's canvas. Nodes go in `data-lh` as `id,slot,look,flow,out,mine,notes,last;…`. */
-export function linkHeroCanvas(nodes: HeroNode[]): string {
+/** The constellation's canvas. */
+export function linkHeroCanvas(orbs: HeroOrb[], segs: HeroSeg[]): string {
   scheduleOrbs();
   const r = dpr();
-  const data = nodes.map((n) => [n.id, n.slot, n.look, n.flow, n.out ? 1 : 0, n.mine, n.notes, n.last ?? ""].join(",")).join(";");
-  return `<canvas class="cnpy-lh-cv" data-linkhero data-lh="${data}" width="${Math.round(HERO_W * r)}" height="${Math.round(HERO_H * r)}" aria-hidden="true"></canvas>`;
+  const o = orbs.map((x) => [Math.round(x.x), Math.round(x.y), x.size, x.look].join(",")).join(";");
+  const g = segs.map((x) => [x.id, x.a, x.b, x.flow, x.quiet ? 1 : 0, x.notes, x.last ?? ""].join(",")).join(";");
+  return `<canvas class="cnpy-lh-cv" data-linkhero data-lh-orbs="${o}" data-lh-segs="${g}" width="${Math.round(HERO_W * r)}" height="${Math.round(HERO_H * r)}" aria-hidden="true"></canvas>`;
+}
+
+/** The canvas's attributes back into orbs and segments (the inverse of `linkHeroCanvas`). */
+export function parseHero(orbsRaw: string, segsRaw: string): { orbs: HeroOrb[]; segs: HeroSeg[] } {
+  const orbs = orbsRaw ? orbsRaw.split(";").map((p) => { const [x, y, size, look] = p.split(","); return { x: Number(x) || 0, y: Number(y) || 0, size: Number(size) || 40, look: pick(look, ORBS, "hollow") }; }) : [];
+  const segs = segsRaw ? segsRaw.split(";").map((p) => {
+    const [id, a, b, flow, quiet, notes, last] = p.split(",");
+    return { id: Number(id) || 0, a: Number(a) || 0, b: Number(b) || 0, flow: pick(flow, FLOWS, "none"), quiet: quiet === "1", notes: Number(notes) || 0, last: (last === "requester" || last === "recipient" ? last : null) as LinkSideName | null };
+  }).filter((g) => g.id > 0 && g.a < orbs.length && g.b < orbs.length) : [];
+  return { orbs, segs };
 }
 
 // ── the engine: particles on a segment ───────────────────────────────────────
@@ -273,7 +273,9 @@ function drawOrb(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: nu
   const tt = o === "dim" || o === "dimhollow" || still ? 0.6 : t;
   const alpha: Record<LineOrb, number> = {
     awake: 1, calling: 0.85, seeking: 0.75, named: 0.95, hollow: 0.55 + (still ? 0 : 0.12 * Math.sin(t * 1.6)), asleep: 0.24, dim: 0.28, dimhollow: 0.2,
+    socket: 0.42 + (still ? 0 : 0.1 * Math.sin(t * 1.3)), hub: 0,
   };
+  if (o === "hub") return;
   ctx.save();
   ctx.globalAlpha = Math.max(0, Math.min(1, alpha[o] * (dark ? 1.15 : 1) + 0.35 * flash));
   if (state) {
@@ -296,17 +298,6 @@ function drawOrb(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: nu
     }
     paintDots(ctx, dots, dark, 0.3);
     ctx.restore();
-  }
-}
-
-/** A small hollow socket where a line meets an orb whose side has no session yet (the constellation's centre). */
-function socket(ctx: CanvasRenderingContext2D, x: number, y: number, rgb: readonly number[], dark: boolean): void {
-  ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${dark ? 0.7 : 0.55})`;
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(x + Math.cos(a) * 5, y + Math.sin(a) * 5, dark ? 0.9 : 0.75, 0, Math.PI * 2);
-    ctx.fill();
   }
 }
 
@@ -381,73 +372,65 @@ function paintLine(c: HTMLCanvasElement, t: number, still: boolean): boolean {
   return moving;
 }
 
-interface HeroSim { segs: Map<number, Seg>; flash: Map<number, number>; last: number; painted: string; parsed: string; nodes: HeroNode[] }
+interface HeroSim { segs: Map<string, Seg>; flash: number[]; last: number; parsed: string; orbs: HeroOrb[]; list: HeroSeg[] }
 const heroSims = new WeakMap<HTMLCanvasElement, HeroSim>();
-
-/** The `data-lh` string back into nodes (the inverse of `linkHeroCanvas`). */
-export function parseHeroNodes(raw: string): HeroNode[] {
-  if (!raw) return [];
-  return raw.split(";").map((part) => {
-    const [id, slot, look, flow, out, mine, notes, last] = part.split(",");
-    return {
-      id: Number(id) || 0, slot: Math.max(0, Math.min(HERO_MAX - 1, Number(slot) || 0)), look: pick(look, ORBS, "hollow"), flow: pick(flow, FLOWS, "none"),
-      out: out === "1", mine: pick(mine, ORBS, "awake"), notes: Number(notes) || 0, last: (last === "requester" || last === "recipient" ? last : null) as LinkSideName | null,
-    };
-  }).filter((n) => n.id > 0);
-}
 
 function paintHero(c: HTMLCanvasElement, t: number, still: boolean): boolean {
   let s = heroSims.get(c);
-  if (!s) { s = { segs: new Map(), flash: new Map(), last: 0, painted: "", parsed: "", nodes: [] }; heroSims.set(c, s); }
-  const raw = c.dataset.lh ?? "";
-  if (raw !== s.parsed) { s.nodes = parseHeroNodes(raw); s.parsed = raw; }
+  if (!s) { s = { segs: new Map(), flash: [], last: 0, parsed: "", orbs: [], list: [] }; heroSims.set(c, s); }
+  const raw = `${c.dataset.lhOrbs ?? ""}|${c.dataset.lhSegs ?? ""}`;
+  if (raw !== s.parsed) { const h = parseHero(c.dataset.lhOrbs ?? "", c.dataset.lhSegs ?? ""); s.orbs = h.orbs; s.list = h.segs; s.parsed = raw; }
   if (!still && offscreen(c)) { s.last = t; return true; }
-  const nodes = s.nodes;
   const dt = !still && s.last ? Math.max(0, Math.min(0.25, t - s.last)) : 0;
   if (!still) s.last = t;
   const f = begin(c, HERO_W, HERO_H);
   if (!f) return false;
-  const cap = Math.max(24, Math.floor(MAX_PARTICLES / Math.max(1, nodes.length)));
+  const { orbs, list } = s;
+  const cap = Math.max(24, Math.floor(MAX_PARTICLES / Math.max(1, list.length)));
+  while (s.flash.length < orbs.length) s.flash.push(0);
 
-  // You: a quiet halo when there is nothing to link to; awake otherwise.
-  if (!nodes.length) {
-    ring(f.ctx, HERO_CX, HERO_CY, HERO_ME * 1.5, still ? 0.6 : t * 0.6, f.dark, f.dark ? 1.2 : 1);
-  }
-  drawOrb(f.ctx, HERO_CX, HERO_CY, HERO_ME, "awake", t, still, still ? 0 : (s.flash.get(0) ?? 0), f.dark);
+  // Nothing linked: a quiet halo round where you sit.
+  if (!list.length && orbs[0]) ring(f.ctx, orbs[0].x, orbs[0].y, 150, still ? 0.6 : t * 0.6, f.dark, f.dark ? 1.2 : 1);
 
-  const seen = new Set<number>();
-  for (const n of nodes) {
-    seen.add(n.id);
-    const [nx, ny] = HERO_SLOTS[n.slot];
-    // The segment runs requester → recipient: from you when `out`, else from them.
-    const len = Math.hypot(nx - HERO_CX, ny - HERO_CY) || 1;
-    const ux = (nx - HERO_CX) / len, uy = (ny - HERO_CY) / len;
-    const meX = HERO_CX + ux * HERO_ME * 0.36, meY = HERO_CY + uy * HERO_ME * 0.36;
-    const thX = nx - ux * HERO_NODE * 0.36, thY = ny - uy * HERO_NODE * 0.36;
-    const [ax, ay, bx, by] = n.out ? [meX, meY, thX, thY] : [thX, thY, meX, meY];
-    const a = n.out ? n.mine : n.look, b = n.out ? n.look : n.mine;
-    let seg = s.segs.get(n.id);
-    if (!seg) { seg = newSeg(); s.segs.set(n.id, seg); }
+  // Lines first (quiet ones under), then the orbs over their ends.
+  const seen = new Set<string>();
+  const drawn: [Particle[], number, number, number, number, number, boolean][] = [];
+  for (const g of [...list].sort((x, y) => Number(y.quiet) - Number(x.quiet))) {
+    const A = orbs[g.a], B = orbs[g.b];
+    const key = `${g.id}:${g.a}:${g.b}`;
+    seen.add(key);
+    const len = Math.hypot(B.x - A.x, B.y - A.y) || 1;
+    const ux = (B.x - A.x) / len, uy = (B.y - A.y) / len;
+    const rimA = A.look === "hub" ? 14 : A.size * 0.36, rimB = B.look === "hub" ? 14 : B.size * 0.36;
+    const ax = A.x + ux * rimA, ay = A.y + uy * rimA, bx = B.x - ux * rimB, by = B.y - uy * rimB;
+    const la = A.look === "hub" || A.look === "socket" ? "hollow" : A.look, lb = B.look === "hub" || B.look === "socket" ? "hollow" : B.look;
+    let seg = s.segs.get(key);
+    if (!seg) { seg = newSeg(); s.segs.set(key, seg); }
     let ps: Particle[];
-    if (still) ps = stillParticles(n.flow, a, b, 0);
+    if (still) ps = stillParticles(g.flow, la, lb, 0);
     else {
-      if (seg.notes !== null && n.notes > seg.notes && n.last && (n.flow === "flow" || n.flow === "trickle")) pulseCluster(seg, cap, n.last === "requester" ? 1 : -1, 12, [0.55, 0.62]);
-      if (seg.lookB !== null && !lit(seg.lookB) && lit(n.look)) s.flash.set(n.id, 1);
-      seg.notes = n.notes; seg.lookB = n.look;
-      const hit = stepSeg(seg, n.flow, a, b, 0, dt, cap, 0.7);
-      const toThem = n.out ? hit.hitB : hit.hitA, toMe = n.out ? hit.hitA : hit.hitB;
-      s.flash.set(n.id, Math.max(0, Math.min(1, (s.flash.get(n.id) ?? 0) + toThem) - dt * 1.1));
-      s.flash.set(0, Math.max(0, Math.min(1, (s.flash.get(0) ?? 0) + toMe * 0.5) - dt * 1.1));
+      if (seg.notes !== null && g.notes > seg.notes && g.last && (g.flow === "flow" || g.flow === "trickle")) pulseCluster(seg, cap, g.last === "requester" ? 1 : -1, 12, [0.55, 0.62]);
+      seg.notes = g.notes;
+      const hit = stepSeg(seg, g.flow, la, lb, 0, dt, cap, g.quiet ? 0.45 : 1.1);
+      s.flash[g.a] = Math.min(1, s.flash[g.a] + hit.hitA);
+      s.flash[g.b] = Math.min(1, s.flash[g.b] + hit.hitB);
       ps = seg.ps;
-      if (n.flow === "stopped" && !ps.length) ps = stillParticles("stopped", a, b, 0);
+      if (g.flow === "stopped" && !ps.length) ps = stillParticles("stopped", la, lb, 0);
     }
-    drawOrb(f.ctx, nx, ny, HERO_NODE, n.look, t, still, still ? 0 : (s.flash.get(n.id) ?? 0), f.dark);
-    if (n.mine === "hollow") socket(f.ctx, meX, meY, f.rgb, f.dark);
-    drawSeg(f.ctx, ps, t, ax, ay, bx, by, 9, f.rgb, f.dark);
+    drawn.push([ps, ax, ay, bx, by, g.quiet ? 6 : 11, g.quiet]);
   }
-  for (const id of [...s.segs.keys()]) if (!seen.has(id)) s.segs.delete(id);
+  for (const k of [...s.segs.keys()]) if (!seen.has(k)) s.segs.delete(k);
+  for (const [ps, ax, ay, bx, by, amp, quiet] of drawn) {
+    f.ctx.save();
+    if (quiet) f.ctx.globalAlpha = 0.5;
+    drawSeg(f.ctx, ps, t, ax, ay, bx, by, amp, f.rgb, f.dark);
+    f.ctx.restore();
+  }
+  orbs.forEach((o, i) => {
+    drawOrb(f.ctx, o.x, o.y, o.size, o.look, t, still, still ? 0 : s.flash[i] ?? 0, f.dark);
+    if (!still) s.flash[i] = Math.max(0, (s.flash[i] ?? 0) - dt * 1.1);
+  });
   setInk(null);
-  // You are always awake: the constellation moves while it is on screen (and stops under reduced motion).
   return !still;
 }
 
