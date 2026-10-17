@@ -4281,7 +4281,20 @@ a.ask-btn { text-decoration:none; }
 .cnpy-dpg-histdlg { width:min(620px, 100%); }
 @media (prefers-reduced-motion: reduce) { .cnpy-dpg-histbtn svg { transition:none; } }
 /* Tags in the side panel: the row wraps in the panel's width. */
-.cnpy-rail-tags .cnpy-itemtags { flex-wrap:wrap; }
+/* Tags in the side panel: a list, one tag a row, then a quiet "+ Add tag" link (the same picker, no box), with the
+   panel's own spacing under its heading. */
+.cnpy-rail-tags .cnpy-itemtags { flex-direction:column; align-items:stretch; flex-wrap:nowrap; gap:2px; margin-top:0; }
+/* One tag a row (its square and word), the × at the row's end only on hover or keyboard focus. */
+.cnpy-rail-tags .cnpy-itemtag { display:flex; justify-content:space-between; gap:8px; min-height:26px; padding:0 2px 0 0; }
+.cnpy-rail-tags .cnpy-itemtag-x { opacity:0; transition:opacity .12s ease; }
+.cnpy-rail-tags .cnpy-itemtag:hover .cnpy-itemtag-x, .cnpy-rail-tags .cnpy-itemtag-x:focus-visible { opacity:1; }
+@media (hover: none) { .cnpy-rail-tags .cnpy-itemtag-x { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-rail-tags .cnpy-itemtag-x { transition:none; } }
+.cnpy-rail-tags [data-dd="item-tag-add"] { align-self:flex-start; margin-top:6px; }
+.cnpy-rail-tags [data-dd="item-tag-add"] { border:0 !important; background:none !important; box-shadow:none !important; height:auto !important; min-height:0 !important; padding:0 !important; gap:0 !important; font-size:12.5px; font-weight:500; color:var(--accent); }
+.cnpy-rail-tags [data-dd="item-tag-add"] > svg, .cnpy-rail-tags [data-dd="item-tag-add"] .cnpy-dd-chev { display:none; }
+.cnpy-rail-tags [data-dd="item-tag-add"]:hover { text-decoration:underline; }
+.cnpy-rail-tags [data-dd="item-tag-add"]:disabled { color:var(--fg-40); text-decoration:none; }
 .cnpy-dpg-hrow { display:grid; grid-template-columns:28px minmax(0,1fr) auto auto; align-items:center; gap:12px; padding:10px 14px; }
 .cnpy-dpg-hrow + .cnpy-dpg-hrow { border-top:1px solid var(--border); }
 .cnpy-dpg-hv { font-size:12px; font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }

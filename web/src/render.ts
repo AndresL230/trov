@@ -3206,7 +3206,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "settings" && s.dd.open ? dropdownMenu(grantDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "org" ? orgOverlays(orgProps(s)) : ""}
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
-    ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
+    ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, bare: true })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
     ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}

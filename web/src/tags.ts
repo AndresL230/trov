@@ -719,11 +719,11 @@ export interface ItemTagsProps {
 }
 
 /** The picker's dropdown: the live tags the item does not have yet. */
-export function itemTagDropdown(p: Pick<ItemTagsProps, "tags" | "list" | "busy">): DropdownProps {
+export function itemTagDropdown(p: Pick<ItemTagsProps, "tags" | "list" | "busy" | "bare">): DropdownProps {
   const free = (p.list ?? []).filter((t) => !t.retired && !p.tags.includes(t.name));
   return {
     id: "item-tag-add", act: "tagItemAdd", value: "", size: "sm", disabled: p.busy || free.length === 0, ariaLabel: "Add a tag",
-    options: [{ value: "", label: free.length === 0 && p.list ? "No more tags" : "Add a tag" }, ...free.map((t) => ({ value: t.name, label: t.name, hint: t.description || undefined }))],
+    options: [{ value: "", label: free.length === 0 && p.list ? "No more tags" : p.bare ? "+ Add tag" : "Add a tag" }, ...free.map((t) => ({ value: t.name, label: t.name, hint: t.description || undefined }))],
   };
 }
 
