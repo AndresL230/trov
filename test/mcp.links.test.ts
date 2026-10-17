@@ -117,6 +117,14 @@ describe("the link tools over MCP: an agent drafts, joins, notes and closes — 
     expect(names.filter((n) => /link/.test(n)).sort()).toEqual(["add_ticket_link", "close_link", "join_link", "link_inbox", "list_links", "request_link", "send_link_note"]);
   });
 
+  it("the two tools that bind a session point a Claude Code agent at the `link` skill, whose hooks deliver the notes (two-sessions e2e L-01)", async () => {
+    const token = await pasted("dana", ORG_A);
+    const tools = (await rpc(token, "tools/list", {})).result!.tools as { name: string; description: string }[];
+    for (const name of ["request_link", "join_link"]) {
+      expect(tools.find((t) => t.name === name)!.description, name).toMatch(/In Claude Code, invoke the Trov plugin's `link` skill before this call/);
+    }
+  });
+
   it("request_link writes a DRAFT as the bearer's person and returns its id and page; nothing over MCP takes it further", async () => {
     const token = await pasted("dana", ORG_B);
     const r = await call(token, "request_link", { target: { person: "@bob" }, reason: "renaming authSession", session: "dana-s1", kind: "code", branch: "feat/x" });

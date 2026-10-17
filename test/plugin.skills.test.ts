@@ -103,6 +103,12 @@ describe("the link skill registers its hooks from its own frontmatter (owner rul
     expect(link).toContain("Never request without a yes");
   });
 
+  it("its description says to invoke it BEFORE request_link / join_link: a model that calls the tools directly gets no hooks (two-sessions e2e L-01)", () => {
+    const description = /^description: (.*)$/m.exec(frontmatter(link))?.[1] ?? "";
+    expect(description).toMatch(/ALWAYS invoke this skill before calling request_link or join_link/);
+    expect(description).toMatch(/registers the hooks/);
+  });
+
   it("load-context lists links at session start and never joins or requests one", () => {
     const lc = SKILLS["load-context"];
     expect(allowed(lc)).toContain("mcp__trov__list_links");

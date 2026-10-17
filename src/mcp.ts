@@ -723,7 +723,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "request_link",
-    `Draft a Trov link: a short-lived line between this session and another person's agent session, while your work may affect theirs (the same files, their PR, a shared ticket). Ask your person first and never request one without a yes. \`target\` names exactly ONE of \`pr\` (a PR number Trov has captured: its author), \`branch\` (its latest author), \`ticket\` (its assignee) or \`person\` (a handle from list_people); \`repo\` narrows a PR or branch to one repository. \`reason\` (≤ ${LINK_REASON_MAX} characters) says what overlaps. This only DRAFTS it, bound to your session: a person sends it, and the other person accepts it, in the Trov web app — you cannot. Returns { id, url }: give your person the url to send it (a draft lapses after an hour).`,
+    `Draft a Trov link: a short-lived line between this session and another person's agent session, while your work may affect theirs (the same files, their PR, a shared ticket). Ask your person first and never request one without a yes. \`target\` names exactly ONE of \`pr\` (a PR number Trov has captured: its author), \`branch\` (its latest author), \`ticket\` (its assignee) or \`person\` (a handle from list_people); \`repo\` narrows a PR or branch to one repository. \`reason\` (≤ ${LINK_REASON_MAX} characters) says what overlaps. This only DRAFTS it, bound to your session: a person sends it, and the other person accepts it, in the Trov web app — you cannot. Returns { id, url }: give your person the url to send it (a draft lapses after an hour). In Claude Code, invoke the Trov plugin's \`link\` skill before this call: its hooks are what bring the other side's notes into this session.`,
     {
       target: z.object({
         pr: z.number().int().optional().describe("A pull request number."),
@@ -745,7 +745,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "join_link",
-    "Join an OPEN Trov link with this session so its notes reach you, only after your person says so (\"join Trov link #12\"). You must be one of the link's two people. A link still drafted or requested is refused: a person sends and accepts it in the Trov web app first, never an agent. Re-joining your own side moves it to this session (after /clear, or from another session). On a link with yourself whose two sides both have a session, `side` says which one to take over. Notes then reach this session through link_inbox. Returns the link.",
+    "Join an OPEN Trov link with this session so its notes reach you, only after your person says so (\"join Trov link #12\"). You must be one of the link's two people. A link still drafted or requested is refused: a person sends and accepts it in the Trov web app first, never an agent. Re-joining your own side moves it to this session (after /clear, or from another session). On a link with yourself whose two sides both have a session, `side` says which one to take over. Notes then reach this session through link_inbox. In Claude Code, invoke the Trov plugin's `link` skill before this call: its hooks are what call link_inbox for you. Returns the link.",
     {
       id: z.number().int().describe("The link's number (#12)."),
       session: LinkSession,
