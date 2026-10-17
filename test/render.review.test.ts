@@ -831,6 +831,11 @@ describe("Review — the exit's CSS (trov.css)", () => {
     expect(rule(".cnpy-rv-row[data-verdict]")).toContain("grid-template-rows:0fr");
     expect(rule(".cnpy-rv-row[data-verdict]")).toContain("transition-delay:.13s");
   });
+  it("a row's box may shrink below its card's content: an import group card never pushes the list sideways (E2E RV1)", () => {
+    // The one track is `auto` wide: without min-width:0 the box takes its card's min-content width (the group card's
+    // header and action row), 17px past the list, and the left pane scrolled sideways.
+    expect(rule(".cnpy-rv-row-in")).toContain("min-width:0");
+  });
   it("the script's timer is the hold plus the collapse, and the whole exit stays under 350ms", () => {
     const fast = Number(css.match(/--fx-fast:\.(\d+)s/)?.[1]) * 10;   // ".18s" → 180
     expect(REVIEW_EXIT_MS).toBe(130 + fast);

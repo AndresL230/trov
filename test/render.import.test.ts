@@ -36,6 +36,7 @@ import { importErrorText } from "../web/src/import-actions";
 import { OrgApiError, PreviewBlocked } from "../web/src/api";
 import type { LibraryDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 import type { ImportRunView, ImportFile } from "@shared/docs-import-core";
+import css from "../web/src/trov.css?raw";
 
 const T0 = "2026-10-15T10:00:00Z";
 const sp = (slug: string, name: string, pages = 0): SpaceDTO => ({
@@ -278,6 +279,16 @@ describe("Imports history (`#imports`)", () => {
     expect(runWhen("2026-10-17T10:00:00Z", now)).toBe("2 hours ago");
     expect(runWhen("2026-10-16T09:00:00Z", now)).toBe("Yesterday");
     expect(runWhen("2026-10-02T09:00:00Z", now)).toBe("Oct 2");
+  });
+
+  it("at phone width a row is File · Status · chevron: the hidden columns stay hidden over their inline display (case ENV39)", () => {
+    // Into and Run by carry an inline `display:flex`, which beats a plain `display:none` from the stylesheet: at 360 px
+    // they stayed, the three-column grid wrapped them and Status was cut off at the edge.
+    const phone = css.slice(css.indexOf("@media (max-width:900px) {\n  .cnpy-imph-row"));
+    const hide = phone.match(/\.cnpy-imph-row > :nth-child\(2\)[^{]*\{([^}]*)\}/)?.[1] ?? "";
+    expect(hide).toContain("display:none !important");
+    const row = hist([run(1)]);
+    expect(row).toMatch(/<div style="display:flex;align-items:center;gap:7px;min-width:0">/); // Into: an inline display:flex
   });
 });
 

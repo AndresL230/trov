@@ -173,6 +173,13 @@ describe("a space's home", () => {
     expect(html).toContain('data-act="libEdit"');
     expect(html).toContain('data-act="libArchive"');
   });
+  it("the header's actions wrap inside the column: four buttons never push a phone's page sideways (case ENV13)", () => {
+    const html = home({ admin: true }, { can_edit: true, can_admin: true });
+    // The box holding Edit space / Archive / Import / New page: no wider than the header, so its own wrap applies.
+    const box = html.match(/<div style="([^"]*)">(?:(?!<\/div>)[\s\S])*data-act="libEdit"/)?.[1] ?? "";
+    expect(box).toContain("flex-wrap:wrap");
+    expect(box).toContain("max-width:100%");
+  });
   it("archived: the state mark; no New page and nothing to edit; Restore for an admin only", () => {
     const space = { ...ENG, archived: true, archived_at: T0 };
     const member = home({}, { space, can_edit: true });
@@ -325,5 +332,23 @@ describe("the Create space dialog's focus (case CS1)", () => {
     ctl.act("libNew", null, null);
     expect(state.libUi.space?.mode).toBe("create");
     expect(focused).toEqual(["#lib-sp-name"]);
+  });
+
+  it("closing a space dialog (Cancel, Escape, the backdrop) gives the focus back to what opened it (case ENV12)", () => {
+    const focused: string[] = [];
+    const opener = (name: string) => ({ isConnected: true, focus: () => focused.push(name) });
+    const doc = { activeElement: null as unknown };
+    const mount = { ownerDocument: doc, querySelector: () => ({ focus: () => {}, value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
+    state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
+    const ctl = createLibraryController({
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+    });
+    for (const [open, close, name] of [["libNew", "libSpaceClose", "new"], ["libOwners", "libOwnersClose", "owners"], ["libArchive", "libArchiveClose", "archive"]] as const) {
+      doc.activeElement = opener(name);
+      ctl.act(open, null, null);
+      ctl.act(close, null, null);
+      expect(focused.at(-1), close).toBe(name);
+    }
   });
 });

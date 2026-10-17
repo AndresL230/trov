@@ -112,6 +112,19 @@ export function createLibraryController(host: LibraryHost): LibraryController {
   /** The space the open home shows, when its read is in. */
   const open = (): SpaceDTO | null => (state.spaceHome.data && state.spaceHome.data.space.slug === state.spaceSlug ? state.spaceHome.data.space : null);
 
+  // What opened a space dialog (New space, Edit space, Edit owners, Archive): closing it without a write gives the
+  // focus back there (Cancel, Escape, the backdrop), as the confirmation modal's keyboard contract says.
+  let opener: { isConnected?: boolean; focus(o?: FocusOptions): void } | null = null;
+  const remember = (): void => {
+    const a = host.mount.ownerDocument?.activeElement as { focus?: unknown } | null | undefined;
+    opener = a && typeof a.focus === "function" ? (a as typeof opener) : null;
+  };
+  const giveBack = (): void => {
+    const o = opener;
+    opener = null;
+    if (o && o.isConnected !== false) o.focus({ preventScroll: true });
+  };
+
   function focusSoon(selector: string): void {
     requestAnimationFrame(() => {
       const el = host.mount.querySelector<HTMLInputElement>(selector);
@@ -223,6 +236,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libNew":
         // The dialog sits over Library home (or the space's home it was opened from), both patched in place.
         if (state.screen !== "library" && state.screen !== "space") { state.screen = "library"; if (state.library.status !== "loading") load(); }
+        remember();
         ui().space = blankSpaceDraft();
         rerender();
         // Name focused on open (design §7), right after the render — not in an animation frame, which a hidden tab
@@ -233,6 +247,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         const sp = open();
         const spaces = state.library.data?.spaces ?? [];
         if (!sp) return;
+        remember();
         const at = spaces.findIndex((s) => s.slug === sp.slug);
         ui().space = {
           ...blankSpaceDraft(), mode: "edit", slug: sp.slug, name: sp.name, description: sp.description,
@@ -256,7 +271,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libColor": { const d = ui().space; if (d && !d.busy && isSpaceColor(arg)) { d.color = arg as SpaceColor; rerender(); } return; }
       case "libAfter": { const d = ui().space; const v = value ?? arg; if (d && !d.busy && v) { d.after = v === FIRST ? null : v; rerender(); } return; }
       case "libSave": { const d = ui().space; if (d) save(d); return; }
-      case "libSpaceClose": if (ui().space?.busy) return; host.confirmOut(() => { ui().space = null; rerender(); }); return;
+      case "libSpaceClose": if (ui().space?.busy) return; host.confirmOut(() => { ui().space = null; rerender(); giveBack(); }); return;
 
       // ── the description, edited in place ──────────────────────────────────
       case "libDescEdit": { const sp = open(); if (!sp || ui().desc !== null) return; ui().desc = sp.description; rerender(); focusSoon("[data-lib-desc]"); return; }
@@ -265,7 +280,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
       case "libDescCancel": if (ui().desc === null) return; ui().desc = null; rerender(); return;
 
       // ── owners ────────────────────────────────────────────────────────────
-      case "libOwners": { const sp = open(); if (!sp) return; ui().owners = { picks: [...sp.owners], busy: false, error: null }; rerender(); return; }
+      case "libOwners": { const sp = open(); if (!sp) return; remember(); ui().owners = { picks: [...sp.owners], busy: false, error: null }; rerender(); return; }
       case "libOwnerToggle": {
         const o = ui().owners;
         if (!o || o.busy || !arg) return;
@@ -286,10 +301,10 @@ export function createLibraryController(host: LibraryHost): LibraryController {
           .catch((e) => { if (fail(e)) return; o.busy = false; o.error = spaceErrorText(e, "Couldn't save the owners."); rerender(); });
         return;
       }
-      case "libOwnersClose": if (ui().owners?.busy) return; host.confirmOut(() => { ui().owners = null; rerender(); }); return;
+      case "libOwnersClose": if (ui().owners?.busy) return; host.confirmOut(() => { ui().owners = null; rerender(); giveBack(); }); return;
 
       // ── archive / restore (an admin) ──────────────────────────────────────
-      case "libArchive": if (!open()) return; ui().archive = { busy: false, error: null }; rerender(); return;
+      case "libArchive": if (!open()) return; remember(); ui().archive = { busy: false, error: null }; rerender(); return;
       case "libArchiveGo": {
         const a = ui().archive;
         const sp = open();
@@ -301,7 +316,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
           .catch((e) => { if (fail(e)) return; a.busy = false; a.error = spaceErrorText(e, "Couldn't archive the space."); rerender(); });
         return;
       }
-      case "libArchiveClose": if (ui().archive?.busy) return; host.confirmOut(() => { ui().archive = null; rerender(); }); return;
+      case "libArchiveClose": if (ui().archive?.busy) return; host.confirmOut(() => { ui().archive = null; rerender(); giveBack(); }); return;
       case "libRestore": if (arg) restore(arg); return;
     }
   }
