@@ -69,7 +69,8 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
-import { askApp, provideAskGithub } from "./ai/ask/routes";
+import { askApp, provideAskGithub, provideAskLocalUpstream } from "./ai/ask/routes";
+import { localUpstreamFetch } from "./sync/local-upstream";
 import { askGithubTransport } from "./repo/ask-github";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
@@ -1274,6 +1275,8 @@ app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a s
 // Ask's GitHub tools read through the credentialed transport, handed in here: nothing under src/ai/ask/ imports the
 // credential path (src/repo/ask-github.ts; test/secrets.mcp.test.ts). Offered only while the org's GitHub lookups switch is on.
 provideAskGithub(askGithubTransport);
+// LOCAL DEVELOPMENT ONLY: `LOCAL_UPSTREAM` stands in for Anthropic in Ask too (loopback http only, never beside a live key).
+provideAskLocalUpstream(localUpstreamFetch);
 app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of

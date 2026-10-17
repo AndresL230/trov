@@ -29,6 +29,7 @@ import { all, first, type TenantContext } from "../data/sql";
 import { jobTenant } from "../platform/jobs";
 import { resolveGithubCredential, type GithubCredential } from "../github-app/credential";
 import { scrubbedMessage } from "./gh-http";
+import { localUpstreamFetch } from "../sync/local-upstream";
 import type { GithubFailCode, GithubReply, GithubRequest, GithubTransport, GithubTransportFactory } from "../ai/ask/github";
 
 const API = "https://api.github.com";
@@ -66,12 +67,15 @@ type Access = null | GithubReply;
 export const NOT_LINKED = "GitHub lookups follow each person's own GitHub access, and your Trov account is not linked to GitHub. Link GitHub in Settings, then ask again.";
 
 export const askGithubTransport: GithubTransportFactory = (env: Env, ctx: TenantContext, opts): GithubTransport => {
+  // A test's fetch; else, under `wrangler dev` only, the loopback stand-in (`LOCAL_UPSTREAM`, src/sync/local-upstream.ts:
+  // api.github.com → <base>/github/…); else the network. Production has no stand-in (it ignores anything but loopback).
+  const baseFetch = opts.fetchImpl ?? localUpstreamFetch(env);
   // One credential per repository per answer (the installation token is cached per isolate besides).
   const creds = new Map<string, Promise<GithubCredential | null | "error">>();
   const credentialFor = (repo: string) => {
     const key = repo.toLowerCase();
     if (!creds.has(key)) {
-      creds.set(key, resolveGithubCredential(jobTenant(env, ctx), env, { repo, fetchImpl: opts.fetchImpl }).catch((e) => {
+      creds.set(key, resolveGithubCredential(jobTenant(env, ctx), env, { repo, fetchImpl: baseFetch }).catch((e) => {
         console.error("ask github: credential", e instanceof Error ? e.name : "error"); // the name only — never a value
         return "error" as const;
       }));
@@ -83,7 +87,7 @@ export const askGithubTransport: GithubTransportFactory = (env: Env, ctx: Tenant
   async function send(cred: GithubCredential, url: URL, accept: string): Promise<Response | Fail> {
     const token = cred.token.reveal();
     try {
-      return await (cred.fetch(opts.fetchImpl) ?? fetch)(url.toString(), {
+      return await (cred.fetch(baseFetch) ?? fetch)(url.toString(), {
         method: "GET",
         headers: { authorization: `Bearer ${token}`, accept, "user-agent": "trov-worker", "x-github-api-version": API_VERSION },
         signal: requestSignal(opts.signal),

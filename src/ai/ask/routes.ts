@@ -61,6 +61,13 @@ export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () =>
 let githubTransport: GithubTransportFactory | null = null;
 export function provideAskGithub(factory: GithubTransportFactory | null): void { githubTransport = factory; }
 
+/** LOCAL DEVELOPMENT ONLY: the loopback stand-in for Anthropic (`LOCAL_UPSTREAM`, src/sync/local-upstream.ts), handed
+ *  in by the HTTP app — that module reaches the billing config, which nothing under src/ai/ask/ may import. Undefined
+ *  in production and in tests (it answers only a loopback http URL beside no live key). */
+let localModelFetch: ((env: Env) => typeof fetch | undefined) | null = null;
+export function provideAskLocalUpstream(f: ((env: Env) => typeof fetch | undefined) | null): void { localModelFetch = f; }
+const modelFetch = (env: Env): typeof fetch | undefined => askDeps.fetchImpl ?? localModelFetch?.(env);
+
 /** This answer's GitHub side — null unless the org's GitHub lookups switch is on (`orgs.ai_chat_github`, an admin's;
  *  the AI switch was checked before), a transport was handed in and the org has a connected repository. `offWithRepos`:
  *  the switch is off while there are repositories to read — the model is told an admin can turn it on. */
@@ -450,7 +457,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
 
   const nonce = newNonce();
-  const compacted = await maybeCompact(env, ctx, thread, earlier, askDeps.fetchImpl);
+  const compacted = await maybeCompact(env, ctx, thread, earlier, modelFetch(env));
   const { messages: history, actionsNote } = await buildHistory(ctx, compacted, earlier, nonce);
   const ctxViews = (qc.context ?? []).length ? await resolveViews(ctx, handle, qc.context ?? [], nowDate()) : new Map();
   // An attachment the model can't take (too large, or no room left in this request) is stored but not read: the
@@ -480,7 +487,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
       githubRepos: github?.repos ?? null, githubOff: gh.offWithRepos,
     }),
     history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
-    fetchImpl: askDeps.fetchImpl, now: nowMs, stopPollMs: askDeps.stopPollMs,
+    fetchImpl: modelFetch(env), now: nowMs, stopPollMs: askDeps.stopPollMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);
 
