@@ -140,7 +140,12 @@ export const RELEASES: Release[] = [
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
         "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
       ],
-      fixed: [],
+      fixed: [
+        "Sync GitHub: the menu opens again when a past sync's failure has no recorded cause; that part reads as not recorded (#195)",
+        "Prompt Library: after you copy a slug from the keyboard, focus stays on the copy button (#195)",
+        "Tickets board: a dropped card lands where the slot showed, in its own column or another, instead of at the top (#195)",
+        "Tickets board: a card you drag stays under the pointer instead of jumping below the window (#195)",
+      ],
       removed: [],
     },
     prs: [193, 194, 195],
