@@ -53,7 +53,8 @@ export function statements(now = new Date()) {
   const handles = [...PEOPLE.map((p) => p.handle)];
   const list = handles.map(q).join(", ");
   const s = [
-    `DELETE FROM sessions WHERE id LIKE 'test-session-%' AND (person IN (${list}) OR person = 'AndresL230')`,
+    // Every session of its own people (a sign-in through /auth/dev/as makes one too), and only its own of AndresL230's.
+    `DELETE FROM sessions WHERE person IN (${list}) OR (id LIKE 'test-session-%' AND person = 'AndresL230')`,
     `DELETE FROM memberships WHERE user_id IN (${list})`,
     `DELETE FROM identities WHERE person IN (${list})`,
     `DELETE FROM persons WHERE handle IN (${list})`,
