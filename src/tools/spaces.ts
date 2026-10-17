@@ -11,9 +11,10 @@
 // A space is never hard-deleted: archive is soft and restorable, and a slug is reserved forever.
 import {
   NEW_SPACE_COLOR, NEW_SPACE_ICON, SPACE_COLORS, SPACE_ICONS, STARTER_SPACES, cleanSpaceDescription, cleanSpaceName, isSpaceColor, isSpaceIcon,
-  pageAuthority, placeSpace, rankAfterAll, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug,
+  pageAuthority, pageSummary, placeSpace, rankAfterAll, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug,
   type LibraryDTO, type LibraryPageDTO, type SpaceAuditAction, type SpaceColor, type SpaceDTO, type SpaceErrorCode, type SpaceHomeDTO, type SpaceIcon,
 } from "@shared/docs-core";
+import { buildTree, childrenOf } from "@shared/docs-tree-core";
 import { RoleError, hasRole, requireRole } from "../data/context";
 import { all, batch, first, nowIso, stmt, type Stmt, type TenantContext } from "../data/sql";
 
@@ -152,9 +153,25 @@ export async function readSpaceHome(ctx: TenantContext, slug: string): Promise<S
   return {
     space: spaceDto(row, list, pages),
     pages: [...pages].sort(byUpdatedDesc).map((p) => pageDto(p, bySlug)),
+    summaries: await topSummaries(ctx, slug, pages),
     can_edit: hasRole(ctx, "admin") || list.some((h) => h.toLowerCase() === ctx.userId.toLowerCase()),
     can_admin: hasRole(ctx, "admin"),
   };
+}
+
+/** The card line of each page at the space's top level (as the forgiving tree draws it), from the body it shows:
+ *  the live body, or — never approved — its newest staged one. Derived on read, never stored (E2E SH2). */
+async function topSummaries(ctx: TenantContext, space: string, pages: PageRow[]): Promise<Record<string, string>> {
+  const tops = childrenOf(buildTree(pages), null, space).map((p) => p.slug);
+  if (!tops.length) return {};
+  const rows = await all<{ slug: string; body: string | null }>(ctx,
+    `SELECT d.slug AS slug, CASE WHEN d.current_version > 0 THEN substr(d.body, 1, 4000)
+            ELSE (SELECT substr(v.body, 1, 4000) FROM doc_versions v WHERE v.org_id = d.org_id AND v.slug = d.slug AND v.status = 'staged' ORDER BY v.version DESC LIMIT 1) END AS body
+       FROM docs d WHERE d.org_id = ? AND d.space = ? AND d.slug IN (SELECT value FROM json_each(?))`,
+    ctx.orgId, space, JSON.stringify(tops));
+  const out: Record<string, string> = {};
+  for (const r of rows) { const line = pageSummary(r.body ?? ""); if (line) out[r.slug] = line; }
+  return out;
 }
 
 /** MCP `list_spaces`: the LIVE spaces an agent may place a page in — slug, name, description, page count. */

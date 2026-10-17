@@ -336,7 +336,9 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   and the waiting link; New page; an admin's Edit space (the Create space dialog in edit mode, plus a Position
   `dropdown()` that posts `/move`) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
-  changed last; each card counts the pages under it), All pages (with its count: the whole tree flattened in tree
+  changed last; each card counts the pages under it and carries the page's first sentence — `pageSummary` in
+  `shared/docs-core.ts`, derived from the body it shows when `GET /spaces/:slug` is read (`summaries`), nothing
+  stored; a page with no text has no line), All pages (with its count: the whole tree flattened in tree
   order, 18px a level), Recently updated (newest first), Least recently updated, A to Z (letter groups; an accented
   letter under its base letter, symbols and digits in one "#" group first). No page: "No pages yet" with New page and
   Import. An unknown space: a sentence, and no docs pane.

@@ -333,10 +333,11 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   </div>`;
 }
 
-function topCard(pg: LibraryPageDTO, inside: number, persons: readonly PersonSummary[]): string {
+function topCard(pg: LibraryPageDTO, inside: number, persons: readonly PersonSummary[], summary = ""): string {
   return `<div${surface("min-height:136px;padding:14px 16px;display:flex;flex-direction:column", { hover: true, cls: HITBOX })}>
     <div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--fg-40)">${pageIcon(13)}${esc(insideWords(inside))}</div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:8px;min-width:0"><span style="font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(pg.title)}</span></div>
+    ${summary ? `<p class="cnpy-lib-sum">${esc(summary)}</p>` : ""}
     ${pg.authority !== "live" ? `<div style="margin-top:6px">${authorityMark(pg.authority, 11.5)}</div>` : ""}
     <div style="display:flex;align-items:center;gap:7px;margin-top:auto;padding-top:12px;font-size:11.5px;color:var(--fg-40)">${pg.updated_by ? personChip(findPerson(persons, pg.updated_by), 16, pg.updated_by) : ""}<span>Updated ${esc(libraryWhen(pg.updated_at))}</span></div>
     ${hitArea("libOpenDoc", pg.slug, `Open ${pg.title}`)}
@@ -358,7 +359,7 @@ function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     const top = childrenOf(tree, null, d.space.slug);
     const inside = (slug: string): number => descendantsOf(tree, slug).length;
     return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px"><h2 style="${H2}">Top-level pages</h2><button type="button" data-act="libTab" data-arg="all" class="cnpy-link" style="padding:0;font-size:12.5px;color:var(--fg-55)">All pages ›</button></div>
-      <div class="cnpy-stagger" style="${PAGE_GRID}">${top.map((pg) => topCard(pg, inside(pg.slug), p.persons)).join("")}</div>
+      <div class="cnpy-stagger" style="${PAGE_GRID}">${top.map((pg) => topCard(pg, inside(pg.slug), p.persons, d.summaries?.[pg.slug])).join("")}</div>
       <h2 style="${H2};margin:30px 0 12px">Recently updated</h2>
       <div${surface("padding:0;overflow:hidden")}>${[...pages].sort(byUpdated).slice(0, 5).map((pg, i) => row(pg, i)).join("")}</div>`;
   }

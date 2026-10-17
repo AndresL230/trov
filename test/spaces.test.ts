@@ -6,7 +6,7 @@ import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
-  STARTER_SPACES, placeSpace, resolveSpaceAlias, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug, ownedBy, pageAuthority,
+  STARTER_SPACES, pageSummary, placeSpace, resolveSpaceAlias, spaceNamedLike, spaceOrder, spaceSlugFromName, uniqueSpaceSlug, ownedBy, pageAuthority,
   type LibraryDTO, type SpaceDTO, type SpaceHomeDTO,
 } from "@shared/docs-core";
 import { ingestDocProposal } from "../src/consumer";
@@ -59,6 +59,22 @@ describe("the shared core (shared/docs-core.ts)", () => {
     expect(placed.renumber!.get("b")!).toBeLessThan(placed.renumber!.get("c")!);
     const mid = placeSpace([{ slug: "a", sort_rank: 1024, created_at: "1" }, { slug: "b", sort_rank: 2048, created_at: "1" }, { slug: "x", sort_rank: 9000, created_at: "1" }], "x", "a");
     expect(mid).toEqual({ rank: 1536, renumber: null });
+  });
+
+  it("a page's card line: its first sentence, Markdown stripped, cut on a word (E2E SH2)", () => {
+    expect(pageSummary("# Title\n\nSet up your machine, learn the repository and ship a first change. Then more.")).toBe("Set up your machine, learn the repository and ship a first change.");
+    expect(pageSummary("## Why\n\nSee **the** [guide](https://x.test) and `npm test`, then [[deploys|Deploys]]!\nNext")).toBe("See the guide and npm test, then Deploys!");
+    expect(pageSummary("```sh\ncurl x\n```\n\n> Rotate keys every 90 days.\n")).toBe("Rotate keys every 90 days.");
+    expect(pageSummary("- First item of a list\n- second item")).toBe("First item of a list");
+    expect(pageSummary("![a diagram](/img/abc)\n\n| a | b |\n|---|---|\n\n<div>Plain words</div> here")).toBe("Plain words here");
+    expect(pageSummary("# Only a heading\n")).toBe("");
+    expect(pageSummary("<script>alert('x')</script> Safe words.")).toBe("Safe words.");
+    expect(pageSummary("[click me](javascript:alert('x')) now")).toBe("click me now");
+    expect(pageSummary("")).toBe("");
+    const long = pageSummary(`${"word ".repeat(60)}end.`);
+    expect(long.length).toBeLessThanOrEqual(140);
+    expect(long).toMatch(/word…$/);
+    expect(pageSummary("Version 2.5 ships e.g. today")).toBe("Version 2.5 ships e.g. today");
   });
 
   it("statuses and copy", () => {
@@ -154,6 +170,17 @@ describe("the space routes (cookie only)", () => {
     expect(res.json.pages.map((p) => [p.slug, p.authority])).toEqual([["only-staged", "unpromoted"]]);
     expect(res.json).toMatchObject({ can_edit: false, can_admin: false });
     expect((await call("GET", "/api/spaces/nope", await cookieFor(MEMBER))).status).toBe(404);
+  });
+
+  it("GET /spaces/:slug: each top-level page's card line is its first sentence, read from the body it shows (E2E SH2)", async () => {
+    await propose_doc_update(A(), { ...doc("top-live", "product"), body: "# Top live\n\nThe one place for **plans**. And more." }, OWNER);
+    await promote_doc(A(), "top-live", 1, OWNER);
+    await propose_doc_update(A(), { ...doc("top-staged", "product"), body: "Only a [[top-live|draft]] so far" }, OWNER);
+    await propose_doc_update(A(), { ...doc("top-empty", "product"), body: "# Just a heading\n" }, OWNER);
+    await propose_doc_update(A(), { ...doc("child", "product"), body: "Under the top.", parent_slug: "top-live" } as never, OWNER);
+    const home = (await call<SpaceHomeDTO>("GET", "/api/spaces/product", await cookieFor(MEMBER))).json;
+    // Live: the live body; never approved: its newest staged body; nothing but a heading: no line; a child: none sent.
+    expect(home.summaries).toEqual({ "top-live": "The one place for plans.", "top-staged": "Only a draft so far" });
   });
 
   it("create (admin): slug from the name, the creator its owner, last in order, audited; duplicates and bad input refused", async () => {

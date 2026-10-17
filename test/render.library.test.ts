@@ -142,7 +142,7 @@ describe("Library home", () => {
 });
 
 describe("a space's home", () => {
-  const home = (over: Partial<SpaceHomeProps> = {}, dto: Partial<{ space: SpaceDTO; pages: LibraryPageDTO[]; can_edit: boolean; can_admin: boolean }> = {}): string =>
+  const home = (over: Partial<SpaceHomeProps> = {}, dto: Partial<{ space: SpaceDTO; pages: LibraryPageDTO[]; can_edit: boolean; can_admin: boolean; summaries: Record<string, string> }> = {}): string =>
     spaceHomeView({ slug: "engineering", tab: "overview", admin: false, persons: PERSONS, descDraft: null, home: { status: "ok", data: { space: ENG, pages: PAGES, can_edit: false, can_admin: false, ...dto } }, ...over });
 
   it("a reader who cannot edit: the description as text, owners by full name, New page — no edit or admin action", () => {
@@ -190,6 +190,14 @@ describe("a space's home", () => {
     expect(member).not.toContain('data-act="libRestore"');
     expect(home({ admin: true }, { space, can_edit: true, can_admin: true })).toContain('data-act="libRestore" data-arg="engineering"');
   });
+  it("a top-level card carries the page's first sentence under its title; a page with none has no line (E2E SH2)", () => {
+    const html = home({}, { summaries: { auth: "How a person signs in, and <how> an agent gets a token." } });
+    const card = html.slice(html.indexOf('data-arg="auth"') - 1200, html.indexOf('data-arg="auth"'));
+    expect(card).toContain('<p class="cnpy-lib-sum">How a person signs in, and &lt;how&gt; an agent gets a token.</p>');
+    expect(html.match(/class="cnpy-lib-sum"/g)).toHaveLength(1);
+    expect(home()).not.toContain("cnpy-lib-sum");
+  });
+
   it("the tabs: All pages carries the count; each tab lists the pages its way", () => {
     const over = home();
     expect(over).toContain('data-tabs="space-tab"');
