@@ -342,6 +342,13 @@ describe("the owners and Archive dialogs", () => {
 });
 
 describe("the Create space dialog's focus (case CS1)", () => {
+  it("Create / Edit space is the design's 480 px dialog; the owners and archive dialogs keep the confirm's 420 (case CS1, Batch C)", () => {
+    const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.:()#]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule("#lib-space.cnpy-cmodal-box")).toContain("width:min(480px, 100%)");
+    expect(rule(".cnpy-cmodal-box")).toContain("width:min(420px, 100%)");
+    expect(css).not.toMatch(/#lib-(owners|archive)\.cnpy-cmodal-box \{[^}]*width/);
+  });
+
   it("New space opens the dialog with Name focused at once — no animation frame (a hidden tab never paints one)", () => {
     const focused: string[] = [];
     const mount = { querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;

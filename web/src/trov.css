@@ -3937,7 +3937,8 @@ a.ask-btn { text-decoration:none; }
   .cnpy-lib-row { grid-template-columns:minmax(0,1fr) !important; gap:4px; }
   .cnpy-lib-th > :not(:first-child) { display:none; }
 }
-/* The space dialogs (Create / Edit space, the owners). */
+/* The space dialogs (Create / Edit space, the owners). Create / Edit space is the design's 480 px. */
+#lib-space.cnpy-cmodal-box { width:min(480px, 100%); }
 .cnpy-libm { display:flex; flex-direction:column; gap:15px; margin-top:16px; }
 .cnpy-libm-l { display:flex; align-items:baseline; gap:6px; margin-bottom:6px; font-size:12.5px; font-weight:500; color:var(--fg-70); }
 .cnpy-libm-opt { font-weight:400; color:var(--fg-40); }
