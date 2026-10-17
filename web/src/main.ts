@@ -129,6 +129,7 @@ import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
 import { createPaintQueue } from "./paint-queue";
 import { onMarkdownLib, prefetchMarkdownLib } from "./markdown-load";
 import { pointOf, rectOf } from "./zoom";
+import { boardCardId, boardDropArg } from "./board-drop";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -4706,9 +4707,10 @@ function startBoardDrag(p: BoardPress): void {
 mount.addEventListener("pointerdown", (e) => {
   if (e.button !== 0 || e.pointerType === "touch") return;
   const card = (e.target as Element | null)?.closest?.<HTMLElement>("[data-tdrag]");
-  if (!card || boardPress) return;
+  const id = boardCardId(card);
+  if (!card || id === null || boardPress) return;
   boardPress = {
-    card, id: Number(card.dataset.tdrag), from: card.dataset.status as TicketStatus,
+    card, id, from: card.dataset.status as TicketStatus,
     x: e.clientX, y: e.clientY, dx: 0, dy: 0, ghost: null, slot: null, homeList: null, homeNext: null, settling: false,
   };
 });
@@ -4747,7 +4749,7 @@ function endBoardDrag(commit: boolean): void {
   const finish = () => {
     clearBoardDrag();
     if (!commit) return;
-    if (!unmoved) dispatch("queueDrop", `${id}:${to}:${after?.dataset.arg ?? ""}`, null);
+    if (!unmoved) dispatch("queueDrop", boardDropArg(id, to, after), null);
   };
   if (!commit || reducedMotion()) { finish(); return; }
   // Glide the lifted card into its slot, then commit.

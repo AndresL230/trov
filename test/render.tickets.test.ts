@@ -38,6 +38,8 @@ import type { TicketListItem, TicketDetail, TicketLinkRow, TicketCommentRow, Tic
 import { TICKET_STATUS_LABEL, TICKET_STATUSES, type TicketStatus } from "@shared/tickets";
 import type { SprintView } from "@shared/sprints";
 import type { PersonSummary } from "../web/src/api";
+import { boardCardId, boardDropArg } from "../web/src/board-drop";
+import mainSrc from "../web/src/main.ts?raw";
 import { WORK_SHELL, FORM_SHELL, DETAIL_SHELL } from "../web/src/ui";
 import { ticketStatusIcon, ticketStatusMark, priorityIcon, priorityMark, PRIORITY_LABEL, TICKET_STATUS_TONE } from "../web/src/marks";
 
@@ -1622,5 +1624,49 @@ describe("the queue's people open their person card (hitArea rows and cards)", (
     expect(card.slice(0, card.indexOf(">"))).toContain("cnpy-hitbox");
     expect(card).toMatch(PERSON_BTN("jose-a", "cnpy-personav"));
     expect(card).toContain('<button data-act="openTicket" data-arg="7" class="cnpy-hit" aria-label="#7 B"></button>');
+  });
+});
+
+// Z17: every board drop landed at the TOP of its column. The drop read the slot's neighbour's `data-arg`, which a
+// board card lost when it became a hitArea (b4fec8db), so `after_id` was always null. The drag now reads both the
+// lifted card and the neighbour through `board-drop.ts`, from the attribute the card actually carries.
+describe("board drop — the slot's neighbour is sent as after_id (Z17)", () => {
+  const col = [
+    ticket({ id: 80, title: "A", status: "in_progress", board_rank: 1024 }),
+    ticket({ id: 87, title: "B", status: "in_progress", board_rank: 2048 }),
+    ticket({ id: 48, title: "C", status: "in_progress", board_rank: 3072 }),
+    ticket({ id: 31, title: "D", status: "in_progress", board_rank: 4096 }),
+    ticket({ id: 12, title: "E", status: "testing", board_rank: 1024 }),
+  ];
+  const html = queueView(queueProps({ tickets: col, view: "board", seg: "all" }));
+  /** Each board card as the drag sees it: its OWN element's data-* attributes, as a dataset. */
+  const cards = [...html.matchAll(/<div([^>]*\bclass="cnpy-tcard[^"]*"[^>]*)>/g)].map((m) => {
+    const dataset: Record<string, string> = {};
+    for (const a of m[1].matchAll(/\bdata-([\w-]+)="([^"]*)"/g)) dataset[a[1].replace(/-(\w)/g, (_, c: string) => c.toUpperCase())] = a[2];
+    return { dataset };
+  });
+  const card = (id: number) => cards.find((c) => boardCardId(c) === id) ?? null;
+
+  it("every card yields its ticket number, in board order (the card itself has no data-arg)", () => {
+    expect(cards.map(boardCardId)).toEqual([80, 87, 48, 31, 12]);
+    for (const c of cards) expect(c.dataset.arg).toBeUndefined();
+  });
+
+  it("a reorder within a column sends the card the slot follows", () => {
+    // In progress's second card dragged below its last: the slot follows #31.
+    expect(boardDropArg(87, "in_progress", card(31))).toBe("87:in_progress:31");
+    expect(boardDropArg(31, "in_progress", card(80))).toBe("31:in_progress:80");
+  });
+
+  it("a cross-column drop sends the slot's neighbour; a slot at the top sends none", () => {
+    expect(boardDropArg(48, "testing", card(12))).toBe("48:testing:12");
+    expect(boardDropArg(48, "testing", null)).toBe("48:testing:");
+  });
+
+  it("main.ts reads the lifted card and the neighbour through board-drop, never a card's data-arg", () => {
+    const drag = mainSrc.slice(mainSrc.indexOf("function startBoardDrag"), mainSrc.indexOf('document.addEventListener("pointerup"'));
+    expect(drag).toContain("boardCardId(card)");
+    expect(drag).toContain("boardDropArg(id, to, after)");
+    expect(drag).not.toMatch(/dataset\.arg/);
   });
 });
