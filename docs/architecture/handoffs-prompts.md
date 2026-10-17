@@ -77,7 +77,35 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   and Copy as prompt appends it. An empty list draws nothing. Tests: `test/handoffs.reading-list.test.ts`
   (over the dev seed's fixtures — claiming #15 lists the Document Pipeline doc first) and
   `test/render.handoffs.test.ts`.
-- **MCP** (every principal): `send_handoff`, `list_handoffs` (pending `me` + `anyone` by default; only `sent`
+- **A prompt by upload (0080_handoff_upload_tokens).** Typing a long prompt into the tool call costs the agent
+  thousands of output tokens — that writing, not Trov, was the whole delay of a big handoff. So MCP
+  `send_handoff`'s `prompt` takes either `{ title, body }` (inline, as before) or `{ title, sha256, size_bytes }`
+  (UTF-8 text, at most `HANDOFF_BODY_MAX`; both forms at once, or neither, is a `bad_request`). The upload form
+  writes NO handoff: `mintHandoffUpload` checks what a create would (the recipient included) and stores the WHOLE
+  pending handoff — sender (the bearer principal), recipient, body, context, the prompt's title, the declared
+  sha256 + size, the session ledger key and the org's link base — on a single-use token (`handoff_upload_tokens`,
+  only the token's SHA-256 stored, the artifact uploads' 5-minute TTL), answering `{ upload_url, expires_at }`.
+  A session item that already made its handoff answers `{ id, url, replayed: true }` instead and mints nothing.
+  The PUT is the artifact route, `PUT /api/artifacts/upload/<token>` (`src/artifacts/upload.ts` tries doc-image
+  tokens, then handoff tokens, then artifact ones), so there is no new unauthenticated route (CLAUDE.md
+  invariant 8). `consumeHandoffUploadToken`, in order: used or expired → 410 `gone`; a body over the cap → 413;
+  a length or SHA-256 that is not the declared one, or bytes that are not UTF-8 → 400 — none of these touch the
+  token, so it stays usable within its TTL; then ONE conditional UPDATE claims it (a racing second PUT is 410),
+  the sender must still be a member of the org (else the unknown-token 404), and `createHandoff` runs as the
+  sender with the token's ledger key — the feed line, `routeAi` and the replay ledger exactly as an inline send —
+  answering `{ id, url }`. A create that fails releases the claim. Why create on the PUT instead of inserting
+  first and filling in later: a half-made handoff would show in inboxes and badges; this way nothing is visible
+  until it is complete. Every statement binds the token's org (`uploadTokenOrg` → that org's system tenant), so a
+  token can only ever create a handoff where it was minted. The repo cron's every-tick sweep
+  (`pruneHandoffUploadTokens`) deletes tokens whose window has closed, used or not (each holds a pending
+  handoff's text); a used one is kept until then, so a repeated PUT still answers 410. Deleting an account
+  deletes its tokens; the table is in `ORG_TABLES`, `principal` / `recipient` in `HANDLE_COLUMNS`. **Ask has no
+  shell and never mints one**: its `send_handoff` input takes the prompt inline only (a strict object — the
+  upload keys are refused with `ASK_NO_PROMPT_UPLOAD`, never dropped) and the schema Ask offers the model is
+  narrowed to `{ title, body }` (`ASK_NARROWED_ARGS`, `src/ai/ask/tools.ts`). The `handoff` skill uploads a
+  prompt over about 2 KB when it has a shell and reports `#N` only after the PUT answers. Tests:
+  `test/handoffs.upload.test.ts`.
+- **MCP** (every principal): `send_handoff` (inline or upload form, above), `list_handoffs` (pending `me` + `anyone` by default; only `sent`
   shows claimed/expired), `get_handoff`, `claim_handoff` (returns one markdown block: prompt, `## Handoff
   summary`, `## Context`, then `## Read these first (not complete)` when anything matched), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
   `save_prompt` (always staged). There is no per-token rate limit in Trov today.

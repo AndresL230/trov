@@ -208,6 +208,8 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM oauth_grant_orgs WHERE person = ?1 COLLATE NOCASE OR grant_id IN (SELECT id FROM oauth_grants WHERE person = ?1 COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM oauth_grants WHERE person = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM mcp_tokens WHERE person = ? COLLATE NOCASE`, h),
+    // A handoff they were still uploading the prompt of (0080): it holds their text and was never sent.
+    stmt(p, `DELETE FROM handoff_upload_tokens WHERE principal = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM identities WHERE person = ? COLLATE NOCASE`, h),
     // E-mail: their preferences, and every digest addressed to them (with its dev-only body).
     stmt(p, `DELETE FROM notification_outbox_bodies WHERE idempotency_key IN (SELECT idempotency_key FROM notification_outbox WHERE user_id = ? COLLATE NOCASE)`, h),
