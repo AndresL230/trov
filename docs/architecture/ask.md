@@ -137,7 +137,9 @@ The MCP catalog (definitions from `shared/mcp-tools.generated.ts`, less `repo` /
 `src/tools/*` functions with the cookie person's context — `src/ai/ask/**` never imports `src/mcp.ts`, and nothing
 MCP reaches imports `src/ai/`. Excluded (`ASK_EXCLUDED_TOOLS`): `switch_org`, `get_connection`, `record_session`,
 `upload_asset`, and `delete_sprint` (a delete is a person's step). Admin-only tools are offered only to an admin.
-Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
+Narrower than MCP: `send_handoff`'s prompt is inline only — MCP's upload form needs a shell to PUT the file, so
+Ask's input refuses its keys and the schema it offers shows `{ title, body }` (`ASK_NARROWED_ARGS`; same argument
+names, so the parity holds). Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
 `read_attachment`, `save_artifact`, `publish_doc`, `show_items`, `show_chart` (fixed queries: merged PRs by week,
 tickets by status, CI failures by week, theme shares — empty until themes exist —, sprint burn-down; the server's
 numbers), `show_themes` (empty until themes exist; caption "Share of merged PRs"), `show_diagram` (structured, ≤ 8

@@ -257,6 +257,9 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // Handoffs + Prompt Library (0028). `handoffs.recipient` may hold the literal
   // 'anyone'; the rename's WHERE only ever matches a real handle.
   ["handoffs", "sender"], ["handoffs", "recipient"], ["handoffs", "claimed_by"],
+  // A handoff whose prompt is being uploaded (0080_handoff_upload_tokens): its sender, and its recipient
+  // (a handle or 'anyone', like handoffs.recipient).
+  ["handoff_upload_tokens", "principal"], ["handoff_upload_tokens", "recipient"],
   ["prompts", "author"], ["prompts", "deleted_by"], ["prompt_versions", "author"],
   // MCP OAuth (0029): a rename carries a person's connections and in-flight codes.
   ["oauth_grants", "person"], ["oauth_codes", "person"], ["oauth_grant_orgs", "person"],

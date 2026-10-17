@@ -28,7 +28,7 @@ import { PR_FILES_REQUESTS, PR_FILES_SYNC_REQUESTS } from "./pr-files";
 import { describeSources } from "./scan-store";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
-import { expireDueHandoffs, pruneRepoCapture } from "../platform/sweeps";
+import { expireDueHandoffs, pruneHandoffUploadTokens, pruneRepoCapture } from "../platform/sweeps";
 import { listAllParts } from "../hosting/parts";
 import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
 import { PROVIDERS } from "../hosting/registry";
@@ -612,6 +612,8 @@ export async function handleRepoCron(
   // write-only sweep on the platform context, §4.4). D1 only (no subrequest), so it adds nothing to
   // any tick's budget, and it runs BEFORE the :00 early return so no hour is skipped.
   await safely("handoff expiry", () => expireDueHandoffs(p, scheduledTime));
+  // And the handoff upload tokens whose 5 minutes are over (0080): each holds a pending handoff's text.
+  await safely("handoff upload tokens", () => pruneHandoffUploadTokens(p, scheduledTime));
   // Every tick too: a plan given for free until a date ends (0048_plan_gifts, src/plans/gifts.ts) — each
   // org whose gift has lapsed moves to Free, nothing deleted. One read of `orgs`, then one guarded batch
   // per lapsed org; D1 only, and almost always nothing to do. It never throws and is safe to run late.

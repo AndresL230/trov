@@ -110,6 +110,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await setArtifactStatus(systemCtx(), art.slug, "published", handle);
   await ratifyArtifact(systemCtx(), art.slug, 1, handle);
   await mintUploadToken(systemCtx(), { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
+  // A handoff whose prompt is still being uploaded (0080), sent by and to the person: principal + recipient.
+  await run(env.DB, `INSERT INTO handoff_upload_tokens (token_hash, org_id, principal, recipient, body, context, prompt_title, sha256, size_bytes, session_id, link_base, expires_at, used_at, created_at)
+    VALUES (?, ?, ?, ?, 'b', '{}', 't', ?, 1, NULL, 'https://trov.test', ?, NULL, ?)`, `rename-${handle}`, ORG_A, handle, handle, "f".repeat(64), nowIso(), nowIso());
   // artifact_pages.deleted_by (0035 PART D): a second page, soft-deleted by the person.
   const gone = await createArtifact(systemCtx(), { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
   await deleteArtifact(systemCtx(), gone.slug, handle, false);

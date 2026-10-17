@@ -248,6 +248,10 @@
   conversation]. Then `0077_ask_people_sharing` (Ask Trov) [the table `chat_thread_people` — a conversation shared
   with named people, each `read` or `continue` — and `asked_by` on `chat_messages` / `chat_actions`, who asked each
   turn; additive — `ask.md` › Sharing a conversation].
+  Then `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a pending handoff whose
+  prompt is PUT to the artifact upload route, created only when its bytes land; hash-only, 5 minutes; additive —
+  `handoffs-prompts.md`]. `0078`–`0079` were left to the PRs in flight beside it (the Docs Library, agent links);
+  a gap in the numbers is harmless — D1 applies every file it has not applied, by name.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

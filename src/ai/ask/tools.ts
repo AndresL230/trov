@@ -400,6 +400,21 @@ export function askInputSchema(schema: Record<string, unknown>): Record<string, 
   return { ...rest, type: "object", properties: props, ...(req.length ? { required: req } : {}) };
 }
 
+/**
+ * Arguments Ask offers NARROWER than MCP serves them (same names, so the parity holds). `send_handoff`'s prompt is
+ * inline only: MCP's upload form needs a shell to PUT the file, which Ask does not have (its input refuses it too).
+ */
+const ASK_NARROWED_ARGS: Record<string, Record<string, unknown>> = {
+  send_handoff: {
+    prompt: { type: "object", properties: { title: { type: "string" }, body: { type: "string" } }, required: ["title", "body"], additionalProperties: false },
+  },
+};
+
+const narrowed = (name: string, schema: Record<string, unknown>): Record<string, unknown> => {
+  const over = ASK_NARROWED_ARGS[name];
+  return over ? { ...schema, properties: { ...(schema.properties as Record<string, unknown>), ...over } } : schema;
+};
+
 export interface OfferedTool { name: string; description: string; input_schema: Record<string, unknown> }
 
 /**
@@ -413,7 +428,7 @@ export function offeredTools(ctx: TenantContext, mode: AskMode): OfferedTool[] {
   const ok = (name: string) => !index || INDEX_TOOLS.has(name);
   const mcp = MCP_TOOLS
     .filter((t) => !(t.name in ASK_EXCLUDED_TOOLS) && (admin || !t.admin) && t.name in ASK_TOOLS && ok(t.name))
-    .map((t) => ({ name: t.name, description: t.description, input_schema: askInputSchema(t.inputSchema) }));
+    .map((t) => ({ name: t.name, description: t.description, input_schema: narrowed(t.name, askInputSchema(t.inputSchema)) }));
   return [...mcp, ...ASK_ONLY_DEFS.filter((d) => ok(d.name))];
 }
 
