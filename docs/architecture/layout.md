@@ -260,13 +260,16 @@
   `docs-library.md`, held by `test/spaces.migration.test.ts`].
   Then `0082_doc_import_manifest` (the import PR) [`doc_imports.manifest` — the server's plan of a run — and
   `doc_imports.images` — its uploaded images' path → sha256; additive — `docs-library.md` › Import].
+  Then `0083_doc_archive` (Archive page) [`docs.archived_at` / `archived_by`; additive — `docs-library.md` ›
+  Archiving a page].
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
   name and slug rules, `placeSpace`, the DTOs), `src/tools/spaces.ts` (reads, the admin / owner writers, the gate's
   `spaceState`), `src/spaces/routes.ts` (the cookie routes at `/spaces`) — `docs-library.md`.
 - The Docs Library's page tree and links: `shared/docs-tree-core.ts` (the tree's rules, `planMove`), `shared/docs-links-core.ts`
   (`[[slug]]`), `shared/docs-templates-core.ts` (New page's templates), `shared/placement-core.ts` (ranked placement,
   shared with the board and the spaces), `src/tools/doc-tree.ts` (the move route's writer, a proposal's parent, the
-  promote's links, the doc page's read); web: `docs-pane.ts`, `doc-page.ts`, `newdoc.ts` + `newdoc-actions.ts`,
+  promote's links, the doc page's read), `src/tools/doc-archive.ts` (Archive page / Restore — the cookie routes'
+  writer, never reachable from `src/mcp.ts`); web: `docs-pane.ts`, `doc-page.ts`, `newdoc.ts` + `newdoc-actions.ts`,
   `tree-actions.ts`, `tree-drag.ts` on `pointer-drag.ts` (the app's one pointer drag) — `docs-library.md`.
 - The Docs Library's Markdown import: `shared/docs-import-core.ts` (zod-free: the caps, path safety, `planImport`,
   `applyConflictChoices`, `prepareBody`, the run's wire types), `src/imports/runs.ts` (the run record and lock, image

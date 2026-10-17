@@ -35,6 +35,14 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   proposal never moves a doc, and an edit of a page in an archived space still stages. Unplaced › assign passes
   the space the person picked (any live one) back through this same check. A person's `POST /docs/propose`
   refuses an unknown or archived space with a 400 instead of sending their page to triage.
+- **An archived page takes nothing from a proposal** (`0083_doc_archive`; `docs-library.md` › Archiving a page).
+  When the slug is an ARCHIVED page of the org, the proposal goes to `needs_triage` with `archived page: <slug>` —
+  checked right after the section, before the space — so no agent path (`propose_doc_update`, `record_session`,
+  `/ingest`, Ask's mirror, an import, Unplaced › assign) adds a version to it, restores it, or takes its slug (a slug
+  stays reserved: a "new" page with that slug lands here too, and a person's `POST /docs/propose` refuses it 409).
+  Only a person archives and restores, over the cookie routes; there is no MCP tool for either. An archived page is
+  also no PARENT: `checkParent` and the promote's parent read only the pages in the Library, so a parent that is
+  archived is ignored (`not_found`).
 - **A doc's place in its space's page tree** (`docs-library.md` › The page tree). A proposal may carry
   `parent_slug` (contract `DocProposal`, MCP `propose_doc_update`, Ask's mirror, a person's `/docs/propose`):
   `src/tools/doc-tree.ts` `checkParent` runs the tree's rules (`shared/docs-tree-core.ts` `planMove` "into", in the
@@ -148,7 +156,14 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   ONE batch: the version's status, its open risk superseded, the live body, the page's `doc_links` rebuilt from that
   body (`[[slug]]` links, `shared/docs-links-core.ts`), and the version's requested parent applied when still valid.
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
-  and body remain (non-destructive). Idempotent.
+  and body remain (non-destructive). Idempotent. A version of an ARCHIVED page is refused 409 `archived` by promote
+  (`DocArchivedError`): its staged versions stay `staged`, HIDDEN from Review and the badge (every Review read joins
+  `d.archived_at IS NULL`), and come back when the page is restored — hiding, not rejecting, because the gate already
+  keeps an archived page's proposals out (triage) rather than turning them down, and Restore must give back what
+  was waiting.
+- Archive page / Restore (`0083_doc_archive`): `POST /doc/:slug/archive` and `POST /doc/:slug/restore`, cookie only
+  (`cookieOnly` with promote / reject), an org admin or an owner of the page's space — never an MCP tool
+  (`docs-library.md` › Archiving a page).
 - Doc drift (#161, `src/ai/doc-drift.ts`; `ai.md` › Doc drift): when Trov finds a doc that recent feed entries show
   is out of date, its edit is a doc proposal THROUGH THIS GATE — `ingestDocProposal` with `confidence: "low"`, so it
   is staged and flagged like any low-confidence edit of an existing doc — authored by the reserved system person

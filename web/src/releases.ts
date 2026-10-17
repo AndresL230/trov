@@ -124,13 +124,14 @@ export const RELEASES: Release[] = [
     ops: [
       "Apply migration `0076_10_17_staging` (one file for Ask sharing and handoff uploads; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
       "Apply migrations `0081_docs_library` and `0082_doc_import_manifest` (merging to main applies them). Additive; each header has its rollback. Every organization gets three spaces and every non-Product doc moves to Engineering.",
+      "Apply migration `0083_doc_archive` (merging to main applies it): two additive columns for Archive page; its header has the rollback.",
       "Publish the Trov plugin 0.10.1 (the handoff skill uploads long prompts; docs are placed by space): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {
       added: [
         "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193).",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
-        "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, and Markdown or .zip import (#197)",
+        "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, Markdown or .zip import, and archiving a page (#197)",
       ],
       changed: [],
       fixed: [],

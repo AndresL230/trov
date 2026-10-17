@@ -11,7 +11,8 @@ ONE additive migration holds the schema for the whole feature, so the later PRs 
 on `sync_runs`). The import PR adds ONE more, `0082_doc_import_manifest` (two additive columns on `doc_imports`: the
 run's server-side plan and its uploaded images — a run spans many requests, so it must remember what it was asked). Every new table binds `org_id` and is in `ORG_TABLES`, `scripts/seed/reset.mjs` and — for each
 handle column (`doc_spaces.created_by` / `archived_by`, `doc_space_owners.handle` / `added_by`,
-`doc_imports.started_by`) — `HANDLE_COLUMNS`. The migration seeds every existing org with the three starter spaces
+`doc_imports.started_by`) — `HANDLE_COLUMNS`. Archive page adds `0083_doc_archive` (`docs.archived_at` /
+`archived_by`, the latter in `HANDLE_COLUMNS`; § Archiving a page). The migration seeds every existing org with the three starter spaces
 and moves every doc not in `product` to `engineering`; `test/spaces.migration.test.ts` holds its claims.
 
 ## Spaces
@@ -52,6 +53,7 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
 | Create, rename, re-icon / re-color, reorder, archive, restore | an **admin** (`adminOnly`: `hasRole(ctx, "admin")`; a refusal says what only an admin may do) | `POST /spaces`, `PUT /spaces/:slug` (`name` / `icon` / `color`), `POST /spaces/:slug/move` / `archive` / `restore` |
 | Edit the description and the owners | an admin **or an owner of that space** | `PUT /spaces/:slug` (`description` only), `PUT /spaces/:slug/owners` |
 | Read the live spaces | an agent | MCP `list_spaces` |
+| Archive / restore a PAGE | an admin **or an owner of the page's space**, while the space is live — never an agent | `POST /doc/:slug/archive` / `restore` (cookie; § Archiving a page) |
 
 The routes are `src/spaces/routes.ts` (`spacesApp`, mounted on the tenant API: `/api/spaces…` and
 `/api/o/:slug/spaces…`) over `src/tools/spaces.ts`, where the role is checked — no route can forget it. **Cookie
@@ -126,6 +128,50 @@ whose target is no doc is **broken**: it stays in the table (it starts working o
 would have written (INSERT OR IGNORE; a page with rows is never touched), at most 300 pages read (and 60 queries)
 per invocation — an org with nothing to read costs no page of that budget — org by org and slug by slug, resumed from `cron_cursor` job `doc_links_backfill`; once every org has been read the cursor
 says done and it reads nothing again (every later promote writes its own rows). A computed write: no gate.
+
+## Archiving a page (`0083_doc_archive`)
+
+The owner's rule: a page "should not be able to be deleted or archived with the agent mcp". **Archive page** is a
+PERSON's soft write; there is no hard delete of a page anywhere.
+
+- **Who.** An org admin, or an owner of the page's space (`doc_space_owners`) — the people who edit the space's
+  description — while the space is live (`src/tools/doc-tree.ts` `mayArchiveIn` / `isPageArchiver`). `GET
+  /spaces/:slug` carries `can_archive`, `GET /doc/:slug`'s `page` too; others see no Archive action.
+- **The routes.** `POST /doc/:slug/archive` and `POST /doc/:slug/restore` (`src/tools/doc-archive.ts`, the only
+  writer of the two columns), under `cookieOnly` with promote / reject: a request with an `Authorization` header is
+  refused 403 before anything is read. Refusals `{ error, message }`: `not_found` 404 (no such page of the org —
+  another org's page included), `forbidden` 403, `archived` / `not_archived` / `space_archived` 409. **No MCP tool**,
+  no plugin skill text offering it, and nothing reachable from `src/mcp.ts` imports `doc-archive.ts`.
+- **Archive** sets `archived_at` / `archived_by` and, in the SAME batch, moves the page's DIRECT children up to its
+  own parent (same space), taking its place among its siblings in their own order — the new sibling list (siblings
+  before it, its children, siblings after it) is renumbered `RANK_STEP` apart (`shared/docs-tree-core.ts`
+  `planArchive`). Grandchildren stay under their parents. Nothing goes deeper, so the 6-level cap holds. Its own
+  `parent_slug` is KEPT (its old place, for Restore). Its slug stays reserved forever.
+- **Restore** clears the two columns and puts the page back as the LAST child of its old parent when that page is in
+  the Library, in the same space, and the cap allows it — else at the end of the space's top level (`planRestore`).
+  It comes back alone: the children it moved up stay where they are.
+- **Reads.** An archived page is in no tree and no list: Space home's pages and counts, the docs pane, Library
+  home's counts and Recently updated, `GET /docs`, `list_docs` / `get_doc` (MCP and Ask: `null`, exactly as a slug
+  that never existed), `query` (search and browse), quick search, Review and the badge, tag pages, Sift's candidates,
+  Ask's references and doc drift. Space home's **Archived pages** (`archived_pages`: title, who, when) lists them.
+  `GET /doc/:slug` still reads it (`page.archived: { at, by }`) — the doc page shows it read-only.
+- **Links.** A `[[slug]]` to an archived page is `page.archived_links` (`{ slug, title }`, never `broken_links`) and
+  draws as plain text with the "Archived" mark. `doc_links` rows are kept; a backlink FROM an archived page is left
+  out of the other pages' Linked from (the source is no page in the tree).
+- **Pending work.** Its staged versions stay `staged` and are HIDDEN from Review (the list, an import's Approve all /
+  Reject all and counts, the sidebar badge — each joins `d.archived_at IS NULL`); promoting one is refused 409
+  `archived`. Restore brings them back to Review. (Not rejected: the gate keeps an archived page's proposals out by
+  triage rather than turning them down, and Restore must give back what was waiting.)
+- **No indirect path.** The gate triages a proposal for an archived slug (`archived page: <slug>`) — MCP
+  `propose_doc_update`, `record_session`, `/ingest`, Ask, an import and a person's New page alike (`/docs/propose`
+  refuses the slug 409); an archived page is no parent (`checkParent` and the promote's parent read only the pages in
+  the Library, so it is ignored as `not_found`); nothing moves next to or under it (`POST /doc/:slug/move` 409
+  `archived` for the page, 404 for a ref). An import can't target it (404), its title is no conflict, its slug is
+  never reused (the planner's taken slugs include archived pages).
+- **Tests**: `test/docs-archive.test.ts` (the rules, the routes, who, the reads, links, Review, every agent path),
+  `test/mcp-catalog.test.ts` (no tool archives, restores or deletes a page), `test/secrets.mcp.test.ts` (the import
+  graph), `test/isolation.http.test.ts` (both routes in the matrix), `test/rename-handle.test.ts`, and the screens in
+  `render.docs` / `render.library`.
 
 ## The doc page's read
 
@@ -282,7 +328,7 @@ plays on the content only. The pane: the head row (the space's tile and name →
 level; while dragging, "the top level"), "PAGES" and the space's page count, then a 28px row per page (`indentPx`, a
 guide per ancestor level, a chevron when it has children, the status SHAPE for a page that is not live, a long
 title's `data-mtip`), and on hover, keyboard focus or an open menu "+" (a page inside) and "…" (Copy link; Move to the
-top level; New page inside) — out of the flow, laid over the end of the title (left of the status shape) on the row's
+top level; New page inside; Archive page for `can_archive`) — out of the flow, laid over the end of the title (left of the status shape) on the row's
 tint over the page (`--dp-tint`, the one value its `::before` draws), so hidden they take no room. The page being read
 and every page above it start open; a chevron the person turns wins (`state.treeOpen`). The active row is scrolled
 into view once per page opened. Loading: nine skeleton rows; no page: "No pages yet…" over three hollow rows. Under
@@ -313,6 +359,17 @@ motion), Owner, Last edited by, Version (+ History; "Version N is waiting for re
 from, and Linked from. Loading: the article's and the rail's shapes; no page picked: the page drawn empty with New
 page; no such page: a sentence. Not built from the design: an Edit button (editing is a proposal — an agent's, or New
 page), the link hover card (the tooltip says where a link goes), diffs in History.
+
+**Archive page on the screens** (`0083_doc_archive`). For `can_archive` only: "Archive page" in a pane row's "…" menu
+and in the doc page's meta row (beside History). Both open ONE red `confirmModal` (`archivePageDialog`, any Library
+screen): "‹Title› leaves the Library. N pages under it move up a level. You can restore it from ‹Space›'s Archived
+pages." (`archivePageText`; the middle sentence only when it has children). Then a toast "Archived ‹Title›" with
+**Undo** (a Restore), and the space, the Library, Review, the badges and the open doc page are read again
+(`library-actions.ts`; main.ts `pageChanged`). An archived page opened by its link reads READ-ONLY: the banner "This
+page is archived. Archived ‹when› by ‹Name›…" with Restore page for `can_archive`, the "Archived" mark in the meta row
+(a `kindMark` "off", its tooltip says what it means), no Tags row, no Archive. A `[[link]]` to one is its words as
+plain text and the same mark (`.cnpy-doclink-arch`). Restore's toast says where it went ("under ‹Parent›" / "to the
+top level of ‹Space›"). Refusals in words (`pageArchiveErrorText`).
 
 **New page** (`web/src/newdoc.ts`, its acts `web/src/newdoc-actions.ts`). "Goes in": a location button opening a
 picker — the spaces as `segmented()` (a `dropdown()` past four), then the space's tree ("Top level of ‹Space›" first,
@@ -348,8 +405,10 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   `shared/docs-core.ts`, derived from the body it shows when `GET /spaces/:slug` is read (`summaries`), nothing
   stored; a page with no text has no line), All pages (with its count: the whole tree flattened in tree
   order, 18px a level), Recently updated (newest first), Least recently updated, A to Z (letter groups; an accented
-  letter under its base letter, symbols and digits in one "#" group first). No page: "No pages yet" with New page and
-  Import. An unknown space: a sentence, and no docs pane.
+  letter under its base letter, symbols and digits in one "#" group first), Archived pages (with its count, always
+  there: each archived page with who archived it and when — `byCell` — opening it by its link, and Restore for
+  `can_archive`; none: the empty layout `space-archived`). No page: "No pages yet" with New page and
+  Import (Archived pages still lists what is archived). An unknown space: a sentence, and no docs pane.
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,
   the 8 colours, a short description (140), the sidebar preview. Created: the new space's home and "Created ‹Name›".
