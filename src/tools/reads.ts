@@ -37,8 +37,9 @@ export async function get_doc(
 }
 
 /** Does ANY page of the org hold this slug — an archived one too (a slug stays reserved, 0083_doc_archive)? */
-export async function doc_slug_taken(ctx: TenantContext, slug: string): Promise<boolean> {
-  return !!(await first(ctx, `SELECT 1 AS x FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug));
+export async function doc_slug_taken(ctx: TenantContext, slug: string): Promise<"live" | "archived" | null> {
+  const row = await first<{ archived: number }>(ctx, `SELECT archived_at IS NOT NULL AS archived FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  return row ? (row.archived ? "archived" : "live") : null;
 }
 
 /** The Docs screen's read of one doc (`GET /doc/:slug`): the doc with its live body, its tags, and

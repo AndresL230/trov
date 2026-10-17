@@ -132,7 +132,10 @@ describe("POST /doc/:slug/archive — a person's write", () => {
     expect(page.can_archive).toBe(true);
 
     // The slug stays reserved: New page with it is refused, and nothing moves next to or under it.
-    expect((await call("POST", "/api/docs/propose", admin, { title: "Guide", section: "reference", space: "engineering", body: "new", slug: "guide" })).status).toBe(409);
+    const taken = await call<{ error: string }>("POST", "/api/docs/propose", admin, { title: "Guide", section: "reference", space: "engineering", body: "new", slug: "guide" });
+    expect(taken.status).toBe(409);
+    // …and says it is an ARCHIVED page that holds the name — none shows in the Library (e2e AR15)
+    expect(taken.json.error).toBe("an archived page is named guide");
     expect((await call("POST", "/doc/guide/move", admin, { target: "top" })).json).toMatchObject({ error: "archived" });
     expect((await call("POST", "/doc/alpha/move", admin, { target: "into", ref: "guide" })).status).toBe(404);
   });

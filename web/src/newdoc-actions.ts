@@ -35,6 +35,7 @@ export function newDocErrorText(e: unknown): string {
   if (!(e instanceof ApiError)) return "Couldn't create the page. Check your connection and try again.";
   const msg = (e instanceof OrgApiError ? e.detail : null) ?? e.message;
   if (e.status === 409 && /already exists/.test(msg)) return "A page with that title already exists. Pick another title.";
+  if (e.status === 409 && /^an archived page is named /.test(msg)) return "An archived page has that name. Pick another title, or restore that page from its space's Archived pages.";
   return msg ? `Couldn't create the page: ${msg}.`.replace(/\.\.$/, ".") : "Couldn't create the page. Try again.";
 }
 

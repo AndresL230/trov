@@ -536,8 +536,11 @@ tenantApi.post("/docs/propose", async (c) => {
   if (state !== "live") return c.json({ error: state === "archived" ? `the ${space} space is archived` : `unknown space: ${space}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
-  // Any page of the org holds its slug — an archived one too (0083_doc_archive: a slug stays reserved).
-  if (await doc_slug_taken(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
+  // Any page of the org holds its slug — an archived one too (0083_doc_archive: a slug stays reserved), and the
+  // refusal says which: an archived page shows nowhere in the Library.
+  const holder = await doc_slug_taken(c.var.ctx, slug);
+  if (holder === "archived") return c.json({ error: `an archived page is named ${slug}` }, 409);
+  if (holder) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.var.ctx,
     { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high", ...(d.parent_slug ? { parent_slug: d.parent_slug } : {}) },

@@ -5,7 +5,8 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { newDocView, blankDoc, whereLabel, newDocSpaceDropdown, NEW_DOC_SPACE_SWITCH_MAX, NEW_DOC_NO_SPACE, type NewDocDraft, type NewDocProps } from "../web/src/newdoc";
-import { createNewDocController } from "../web/src/newdoc-actions";
+import { createNewDocController, newDocErrorText } from "../web/src/newdoc-actions";
+import { ApiError } from "../web/src/api";
 import { initialDropdownUi } from "../web/src/dropdown";
 import { DOC_TEMPLATES, templateBody } from "@shared/docs-templates-core";
 import type { LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
@@ -155,5 +156,12 @@ describe("New page — Create page (owner ruling NP9)", () => {
     expect(staged[0]).toEqual(["engineering", "test-np9"]);
     expect(flashes).toEqual(["Page created in Engineering"]);
     spy.mockRestore();
+  });
+});
+
+describe("a refused Create page, in words (newDocErrorText)", () => {
+  it("a title whose name a live page has, and one an ARCHIVED page holds — which the Library no longer shows (e2e AR15)", () => {
+    expect(newDocErrorText(new ApiError(409, "a doc named guide already exists"))).toBe("A page with that title already exists. Pick another title.");
+    expect(newDocErrorText(new ApiError(409, "an archived page is named guide"))).toBe("An archived page has that name. Pick another title, or restore that page from its space's Archived pages.");
   });
 });
