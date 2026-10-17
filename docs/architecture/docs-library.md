@@ -228,10 +228,20 @@ The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts
   copy for an import or an agent) leaving through Review's exit pattern: an import's loops `approve-all` /
   `reject-all` until `remaining` is 0; an agent's calls each page's own promote / reject route (the ones a person
   uses page by page), oldest first, so a page's newest change goes live last — no new write. The filter is All /
-  Imports / Written by agents. Departures from
-  the design: Review keeps its layout and its Promote / Reject buttons in the detail header; a page decided on its
-  own leaves the list instead of staying dimmed; the default selection skips import pages (they are opened from
-  their group).
+  Imports / Written by agents; the list pane is the design's (`.95fr`, at least 420px) beside the page pane
+  (`1.05fr`).
+  A group's page, picked, is the design's **page pane** (`reviewPagePane`): "Page i of N · ‹short›" with the arrows
+  (wrapping in the group); the crumb — the page's own space, then the titles above it (`GET /proposals` carries each
+  page's `path`, read from the org's tree like the Library's); the title; the kind ("New page", "New version of
+  ‹Title›" for an import, "Change to a live page" for an agent) with "from ‹file›" for an import, and the
+  low-confidence mark; Trov's risk line, Ask's flags and a stale base; for a change, the diff box ("What changes",
+  "N lines added, M removed", the collapsed line diff); then the page rendered by the reader's renderer (a `[[link]]`
+  as its words). Its footer — "Approving makes this page live for everyone.", Reject, ✓ Approve — is the queue's own
+  `reviewAccept` / `reviewReject` (cookie routes); deciding moves to the next undecided page of the group, wrapping,
+  and a verdict button that had focus hands it to the next page's. A drafted decision keeps Review's own detail
+  (the record, Ratify / Reject in its header). Departures from the design: a page decided on its own leaves the
+  list instead of staying dimmed with Undo (a promote is not undone); nothing is selected until a page or a
+  decision is picked; the Unified / Side by side / Rendered switch is not on the page pane.
 - **The sidebar**: an Imports row in the Library group (its badge `badges.imports`, hidden at 0 — the node is always
   there) and an Import action; Library home, Space home and an empty space offer Import too.
 

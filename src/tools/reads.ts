@@ -5,6 +5,7 @@ import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
 import { resolveSpaceAlias, type DocPageDTO } from "@shared/docs-core";
 import { readDocPage } from "./doc-tree";
+import { buildTree, ancestorsOf, type DocTreeNode } from "@shared/docs-tree-core";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -212,6 +213,8 @@ export interface ProposalRow {
   import_file_name: string | null;
   import_by: string | null;
   import_at: string | null;
+  /** The titles of the page's ancestors in its space's tree, top first ([] = the top level) — Review's crumb. */
+  path: string[];
 }
 
 /** Owner ruling RV3: an import's staged version with a newer staged change of the same page on top (an agent's) is
@@ -221,7 +224,7 @@ export const NOT_SUPERSEDED_IMPORT = `NOT (v.import_id IS NOT NULL AND EXISTS (S
   WHERE w.org_id = v.org_id AND w.slug = v.slug AND w.status = 'staged' AND w.version > v.version))`;
 
 export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]> {
-  return all<ProposalRow>(
+  const rows = await all<Omit<ProposalRow, "path">>(
     ctx,
     `SELECT v.slug AS slug, v.version AS version, d.title AS title, d.section AS section, d.space AS space,
             v.summary AS summary, v.created_by AS author, v.confidence AS confidence, v.status AS status,
@@ -238,6 +241,10 @@ export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]>
     ctx.orgId,
     ctx.orgId
   );
+  if (!rows.length) return [];
+  // Each page's place: the org's tree read once (no bodies), resolved as forgivingly as the Library's own read.
+  const tree = buildTree(await all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ?`, ctx.orgId));
+  return rows.map((r) => ({ ...r, path: ancestorsOf(tree, r.slug).map((a) => a.title ?? a.slug) }));
 }
 
 // ── Identity triage (Maintenance group) ───────────────────────────────────────

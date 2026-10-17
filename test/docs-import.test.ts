@@ -115,8 +115,12 @@ describe("an import run, end to end", () => {
     expect(body("first-week")).not.toContain("# Your first week");
 
     // Review carries the import.
-    const proposals = (await call<{ proposals: { slug: string; import_id: number | null; import_file_name: string | null; import_path: string | null; import_by: string | null; parent_slug: string | null }[] }>("GET", "/api/o/saplinglearn/proposals", cookie)).json.proposals;
+    const proposals = (await call<{ proposals: { slug: string; import_id: number | null; import_file_name: string | null; import_path: string | null; import_by: string | null; parent_slug: string | null; path: string[] }[] }>("GET", "/api/o/saplinglearn/proposals", cookie)).json.proposals;
     expect(proposals.filter((p) => p.import_id === run.id)).toHaveLength(4);
+    // Each carries where it sits — the titles above it, top first (Review's crumb, E2E RV5).
+    expect(Object.fromEntries(proposals.filter((p) => p.import_id === run.id).map((p) => [p.slug, p.path]))).toEqual({
+      handbook: [], onboarding: ["Engineering handbook"], glossary: ["Engineering handbook"], "first-week": ["Engineering handbook", "Onboarding"],
+    });
     expect(proposals.find((p) => p.slug === "first-week")).toMatchObject({ import_file_name: "handbook.zip", import_path: "handbook/onboarding/first-week.md", import_by: MEMBER, parent_slug: "onboarding" });
 
     // Finish: two files were skipped → partial; history lists it, nothing is running.

@@ -100,7 +100,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </div>
   </header>
       <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-rv" data-pane="list" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="width:420px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
       <div style="padding:16px 20px 0">
         <div style="font-size:12.5px;color:var(--fg-55)">Agent-produced changes waiting for a verdict.</div>
         <div style="margin:12px 0 12px"><div class="cnpy-seg cnpy-seg--sm" data-seg="review-filter" data-morph-key="seg:review-filter" role="group" aria-label="Show"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:review-filter:all" class="cnpy-seg-btn is-on" aria-pressed="true">All<span class="cnpy-seg-n">2</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:imports" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="imports" aria-pressed="false">Imports<span class="cnpy-seg-n">0</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:agents" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="agents" aria-pressed="false">Written by agents<span class="cnpy-seg-n">2</span></button></div></div>
@@ -143,7 +143,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <span class="cnpy-rv-verdict" aria-hidden="true"></span>
   </div></div></div></div>
     </div>
-    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
+    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
       <div class="cnpy-rv-body" data-morph-key="rvd:adr:5" style="max-width:920px;padding:24px 32px 100px">
     <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">

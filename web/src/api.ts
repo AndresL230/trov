@@ -704,6 +704,9 @@ export interface StagedProposal {
   import_file_name: string | null;
   import_by: string | null;
   import_at: string | null;
+  /** The titles of the page's ancestors in its space's tree, top first ([] = the top level) — Review's crumb.
+   *  Optional: an older read has none. */
+  path?: string[];
   /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
   ai?: AiSuggestion[];
   /** "Flagged in Ask" on it: each reason and how often (never the thread). Absent when nobody flagged it. */

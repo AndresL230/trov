@@ -504,8 +504,10 @@ function syncReviewDetail(focusAct: string | null): void {
     const pane = body?.closest<HTMLElement>(".cnpy-rv-detail");
     if (pane) pane.scrollTop = 0;
   }
-  if (body && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !body.contains(document.activeElement)) {
-    body.querySelector<HTMLElement>(`.cnpy-rv-head [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
+  // The verdict buttons are in the body's head (a decision) or in the page pane's footer beside it (a group's page).
+  const detail = body?.closest<HTMLElement>(".cnpy-rv-detail") ?? null;
+  if (body && detail && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !detail.contains(document.activeElement)) {
+    detail.querySelector<HTMLElement>(`:is(.cnpy-rv-head, .cnpy-rvp-foot) [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
   }
 }
 
@@ -644,7 +646,7 @@ function paintApp(): void {
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
-  const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
+  const rvFocus = active?.closest?.(".cnpy-rv-head, .cnpy-rvp-foot") ? active.getAttribute("data-act") : null;
   askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
   aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));

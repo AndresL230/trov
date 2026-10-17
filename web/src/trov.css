@@ -624,7 +624,7 @@ input, select { font-family: inherit; }
    `data-pane`), and the detail's header lets its buttons drop under the title. */
 .cnpy-rv-back { display:none; }
 @media (max-width:900px) {
-  .cnpy-rv-list { width:auto !important; flex:1 1 auto !important; border-right:none !important; }
+  .cnpy-rv-list { width:auto !important; min-width:0 !important; flex:1 1 auto !important; border-right:none !important; }
   .cnpy-rv[data-pane="detail"] > .cnpy-rv-list, .cnpy-rv[data-pane="list"] > .cnpy-rv-detail { display:none !important; }
   .cnpy-rv-back { display:inline-flex; align-items:center; gap:4px; min-height:40px; margin:10px 0 0 10px; padding:0 8px; font-size:13px; font-weight:500; color:var(--fg-55); }
   .cnpy-rv-body { padding:8px 20px 80px !important; }
@@ -4270,6 +4270,34 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-rvg[data-kind="agent"] .cnpy-rvg-ic { background:color-mix(in srgb, var(--p-slate) 12%, transparent); color:var(--p-slate); }
 .cnpy-rvg-agav { width:16px; height:16px; flex:none; display:inline-grid; place-items:center; background:var(--p-slate); color:var(--p-ink); }
 .cnpy-rvg-bar-top { display:flex; align-items:center; justify-content:space-between; gap:12px; height:46px; padding:0 32px; border-bottom:1px solid var(--border); }
+/* Review › a group's page, picked (review.ts `reviewPagePane`, the design's right pane): the bar on top, the page,
+   and the footer with the verdict — both bars stay in view while the page scrolls under them. */
+.cnpy-rvp { display:flex; flex-direction:column; min-height:100%; background:var(--surface); }
+.cnpy-rvp > .cnpy-rvg-bar-top { position:sticky; top:0; z-index:2; flex:none; background:var(--surface); padding:0 20px 0 28px; }
+.cnpy-rvp-body { flex:1 0 auto; max-width:860px; padding:24px 32px 40px; }
+.cnpy-rvp-crumb { font-size:12.5px; color:var(--fg-55); }
+.cnpy-rvp-h { margin:8px 0 0; font-size:25px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; color:var(--fg); overflow-wrap:anywhere; }
+.cnpy-rvp-kind { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; margin-top:10px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+.cnpy-rvp-file { font-family:var(--code); font-size:11.5px; color:var(--fg-40); overflow-wrap:anywhere; }
+.cnpy-rvp-diff { margin-top:18px; border:1px solid var(--border); overflow:hidden; }
+.cnpy-rvp-dh { display:flex; justify-content:space-between; gap:12px; padding:8px 12px; font-size:12px; color:var(--fg-55); border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--fg) 2%, var(--surface)); }
+.cnpy-rvp-dls { font-family:var(--code); font-size:12px; line-height:1.7; padding:2px 0; }
+.cnpy-rvp-dl { padding:2px 12px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--fg-55); }
+.cnpy-rvp-dl[data-t="del"] { background:color-mix(in srgb, var(--red) 7%, transparent); color:var(--fg); }
+.cnpy-rvp-dl[data-t="add"] { background:color-mix(in srgb, var(--green) 8%, transparent); color:var(--fg); }
+.cnpy-rvp-dl[data-t="gap"] { font-family:var(--sans); font-size:11px; color:var(--fg-40); text-align:center; }
+.cnpy-rvp-dp { display:inline-block; width:16px; color:var(--fg-40); }
+.cnpy-rvp-dl[data-t="del"] .cnpy-rvp-dp { color:var(--red); }
+.cnpy-rvp-dl[data-t="add"] .cnpy-rvp-dp { color:var(--green); }
+.cnpy-rvp-page { margin-top:20px; }
+.cnpy-md.cnpy-rvp-md { font-size:14.5px; }
+.cnpy-md.cnpy-rvp-md h2 { font-size:17px; }
+.cnpy-rvp-none { margin:0; font-size:13px; color:var(--fg-55); }
+.cnpy-rvp-foot { position:sticky; bottom:0; z-index:2; flex:none; display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:11px 20px 11px 28px; border-top:1px solid var(--border); background:var(--surface); }
+.cnpy-rvp-note { flex:1 1 200px; min-width:0; font-size:12px; color:var(--fg-55); }
+.cnpy-rvp-btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 13px; font-size:12.5px; font-weight:500; }
+@media (max-width:900px) { .cnpy-rvp-body { padding:16px 20px 32px !important; } .cnpy-rvp > .cnpy-rvg-bar-top, .cnpy-rvp-foot { padding-left:20px; padding-right:16px; } }
+@media (max-width:640px) { .cnpy-rvp-note { flex-basis:100%; } .cnpy-rvp-foot > .cnpy-rejectbtn { margin-left:auto; } }
 /* Drop to import (import-drop.ts): ONE node on <body>, laid over the main column. */
 .cnpy-impdrop { position:fixed; z-index:60; pointer-events:none; }
 .cnpy-impdrop[hidden] { display:none; }

@@ -18,6 +18,8 @@ import type { AiSuggestion } from "@shared/ai-core";
 import { ASK_WRONG_LABELS, type AskFlag } from "@shared/ai-ask-core";
 import { reviewRiskLine, type AiChipUi } from "./ai-cards";
 import { libraryWhen } from "./library";
+import { renderMarkdown } from "./markdown";
+import { replaceDocLinks } from "@shared/docs-links-core";
 
 const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
@@ -93,6 +95,8 @@ export interface ReviewItem {
   parentSlug?: string | null;
   /** When it was staged (ISO) — an agent group's "‹when›". */
   at?: string;
+  /** The titles above the page in its space's tree, top first — the page pane's crumb. */
+  path?: string[];
 }
 
 export interface ReviewProps {
@@ -561,6 +565,80 @@ export function importPageBar(it: ReviewItem, g: ReviewGroup, leaving: Record<st
   return `<div class="cnpy-rvg-bar-top" data-morph-key="rvb:${attr(it.id)}"><span style="font-size:12.5px;color:var(--fg-55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Page ${pos} of ${total} · ${esc(g.file)}</span><span style="display:flex;gap:6px;flex:none">${arrow(prev, "Previous page", ARROW_L)}${arrow(next, "Next page", ARROW_R)}</span></div>`;
 }
 
+// ── the page pane: a group's page, as the design draws it ──────────────────────
+
+/** The footer's sentence while the page is undecided (the design's). */
+export const APPROVE_NOTE = "Approving makes this page live for everyone.";
+
+/** "3 lines added, 1 removed" — what the diff box's header says, from the diff's own rows. */
+export function changedLinesText(diff: readonly DiffEntry[]): string {
+  const added = diff.filter((e) => e.t === "add").length, removed = diff.filter((e) => e.t === "del").length;
+  const n = (k: number, w: string) => `${k} ${k === 1 ? "line" : "lines"} ${w}`;
+  if (added && removed) return `${n(added, "added")}, ${removed} removed`;
+  if (added) return n(added, "added");
+  if (removed) return n(removed, "removed");
+  return "No line changes";
+}
+
+/** The page's kind, as the pane's mark says it (the design's): a new page, an import's new version of a live page,
+ *  or an agent's change to one. */
+export function pageKindWord(it: Pick<ReviewItem, "isNew" | "title">, kind: ReviewGroup["kind"]): string {
+  return it.isNew ? "New page" : kind === "import" ? `New version of ${it.title}` : "Change to a live page";
+}
+const PAGE_KIND_TIP = {
+  new: "A page nothing is live under yet. Nobody reads it until it is approved.",
+  version: "A new version of a page that is live. Everyone reads the live one until this is approved.",
+} as const;
+
+/** "What changes" and the lines: removals red with a "−", additions green with a "+", the context between quiet. */
+function changeBox(diff: readonly DiffEntry[]): string {
+  const rows = diff.map((e) => {
+    if (e.t === "gap") return "";
+    if (e.t === "ellipsis") return `<div class="cnpy-rvp-dl" data-t="gap">${esc(e.s ?? "")}</div>`;
+    const ch = e.t === "del" ? "−" : e.t === "add" ? "+" : " ";
+    return `<div class="cnpy-rvp-dl" data-t="${e.t === "del" || e.t === "add" ? e.t : "ctx"}"><span class="cnpy-rvp-dp" aria-hidden="true">${ch}</span>${esc(e.s ?? "")}</div>`;
+  }).join("");
+  return `<div class="cnpy-rvp-diff" style="border-radius:4px">
+      <div class="cnpy-rvp-dh"><span style="font-weight:600;color:var(--fg)">What changes</span><span>${esc(changedLinesText(diff))}</span></div>
+      <div class="cnpy-rvp-dls">${rows}</div>
+    </div>`;
+}
+
+/** The page as it will read: the reader's renderer, each `[[slug]]` as its words (where it goes is the doc page's). */
+function pagePreview(body: string): string {
+  return body.trim()
+    ? `<div class="cnpy-md cnpy-rvp-md">${renderMarkdown(replaceDocLinks(body, (l) => esc(l.label ?? l.slug)))}</div>`
+    : `<p class="cnpy-rvp-none">This page has no text yet.</p>`;
+}
+
+/** A group's page, picked (the design's right pane): "Page i of N · ‹short›" with the arrows, the crumb (its own
+ *  space, then the pages above it), the title, its kind ("New page" / "New version of ‹Title›" / "Change to a live
+ *  page", and "from ‹file›" for an import), Trov's own notes on it (the risk, Ask's flags, a stale base), the diff
+ *  box for a change, then the page rendered — and the footer: "Approving makes this page live for everyone.",
+ *  Reject, ✓ Approve (the queue's own verdict acts, cookie routes). The body is keyed by the page: another page
+ *  REPLACES it. */
+export function reviewPagePane(it: ReviewItem, g: ReviewGroup, total: number, leaving: Record<string, ReviewVerdict>, spaceName: string, aiUi: AiChipUi = NO_AI_UI): string {
+  const crumb = [spaceName, ...(it.path ?? [])].filter(Boolean).join(" › ");
+  const kind = stateMark(pageKindWord(it, g.kind), "var(--fg-55)", "dashed", 12.5, it.isNew ? PAGE_KIND_TIP.new : PAGE_KIND_TIP.version);
+  const id = attr(it.id);
+  return `<div class="cnpy-rvp">
+    ${importPageBar(it, g, leaving, total)}
+    <div class="cnpy-rv-body cnpy-rvp-body" data-morph-key="rvd:${id}">
+      ${crumb ? `<div class="cnpy-rvp-crumb">${esc(crumb)}</div>` : ""}
+      <h2 class="cnpy-rvp-h">${esc(it.title)}</h2>
+      <div class="cnpy-rvp-kind">${kind}${g.kind === "import" && it.importPath ? `<span class="cnpy-rvp-file">from ${esc(it.importPath)}</span>` : ""}${it.flagged ? LOW_CONFIDENCE(12) : ""}</div>
+      ${it.ai ? reviewRiskLine(it.ai, aiUi) : ""}${it.askFlags?.length ? askFlagsLine(it.askFlags) : ""}${it.stale && it.staleNote ? staleBaseWarning(it.staleNote) : ""}
+      ${it.isNew ? "" : changeBox(it.diff ?? [])}
+      <div class="cnpy-rvp-page">${pagePreview(it.proposedBody ?? "")}</div>
+    </div>
+    <div class="cnpy-rvp-foot" data-morph-key="rvf:${id}">
+      <span class="cnpy-rvp-note">${esc(APPROVE_NOTE)}</span>
+      <button type="button" data-act="reviewReject" data-arg="${id}" class="cnpy-rejectbtn cnpy-rvp-btn" style="border-radius:8px;border:1px solid var(--border-strong);color:var(--fg-70);background:transparent">Reject</button>
+      <button type="button" data-act="reviewAccept" data-arg="${id}" class="cnpy-accentbtn cnpy-rvp-btn" style="border-radius:8px;padding:0 14px;font-weight:600;background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent)">${CHECK_ICON}Approve</button>
+    </div>
+  </div>`;
+}
+
 /** The detail pane with groups waiting but no page picked. */
 export const REVIEW_PICK = "Open a group and pick a page to read it here. Or approve a whole group at once.";
 
@@ -599,21 +677,21 @@ export function reviewView(p: ReviewProps): string {
   const selKey = sel ? groupKeyOf(sel) : null;
   const g = selKey !== null ? groups.get(selKey) ?? null : null;
   const detail = p.loading ? reviewDetailSkeleton()
-    : sel ? `${g ? importPageBar(sel, g, leaving, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length)) : ""}${reviewDetail(sel, p.diffView, p.aiUi)}`
+    : sel ? (g ? reviewPagePane(sel, g, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length), leaving, p.spaceNames?.[sel.space ?? ""] ?? sel.space ?? "", p.aiUi) : reviewDetail(sel, p.diffView, p.aiUi))
     : waiting.length > 0 ? `<div style="${DETAIL_FRAME}"><p style="font-size:13px;line-height:1.5;color:var(--fg-55);max-width:52ch;margin:0 0 18px">${esc(REVIEW_PICK)}</p>${emptyShapes(reviewDetailShapes(2))}</div>`
     : reviewQueueClear();
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
   return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="width:420px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
       <div style="padding:16px 20px 0">
         <div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
         ${reviewFilterSwitch(p.filter, counts)}
       </div>
       <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
     </div>
-    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
+    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
       ${detail}
     </div>

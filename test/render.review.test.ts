@@ -24,7 +24,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import { lineDiff, collapsedLineDiff } from "../web/src/diff";
 import { attachAskFlags } from "../web/src/triage-map";
-import { reviewView, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
+import { reviewView, reviewPagePane, reviewGroups, changedLinesText, pageKindWord, APPROVE_NOTE, reviewDetail, reviewCard, reviewFilterSwitch, diffViewer, unifiedDiff, splitDiffRows, staleBaseWarning, REVIEW_EXIT_MS, REVIEW_INTRO, type ReviewItem, type ReviewProps } from "../web/src/review";
 import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
 import morphSrc from "../web/src/morph.ts?raw";
@@ -380,8 +380,8 @@ describe("reviewView — empty states", () => {
   it("renders the list empty state when the filter hides everything, keeping the selected detail", () => {
     const html = reviewView(makeReviewProps({ filter: "imports", selectedId: "p1" }));
     expect(html).toContain("Nothing of this kind is waiting for review.");
-    // Selection survives the filter — the detail still shows the proposal
-    expect(html).toContain("WHAT CHANGED");
+    // Selection survives the filter — the detail still shows the proposal (its agent's page pane)
+    expect(html).toContain("What changes");
   });
 });
 
@@ -970,5 +970,78 @@ describe("Flagged in Ask (handoff #12 § 2.14)", () => {
     expect("askFlags" in out[1]).toBe(false);
     expect(attachAskFlags([{ id: 7 }], [{ ...flags[0], ref: "decision:7" }], (r) => `decision:${r.id}`)[0].askFlags).toHaveLength(1);
     expect(attachAskFlags(rows, undefined, (r) => `doc:${r.slug}`)).toEqual(rows);
+  });
+});
+
+// ── the page pane (owner ruling round 2, E2E RV5 / RV6 / RV7): a group's page as the design draws it ──────────────
+
+describe("Review — a group's page, picked, is the design's page pane", () => {
+  const imp = (o: Partial<ReviewItem> = {}) => makeItem({ id: "doc:first-week@1", title: "Your first week", importId: 7, importFile: "handbook.zip", importPath: "handbook/onboarding/first-week.md", slug: "first-week", space: "engineering", path: ["Getting started", "Onboarding"], isNew: true, proposedBody: "Welcome.\n\n## Day one\n\nSee [[local-setup|Local setup]].", diff: [{ t: "add", s: "Welcome." }], ...o });
+  const ver = imp({ id: "doc:local-setup@2", title: "Local setup", slug: "local-setup", path: ["Getting started"], isNew: false, proposedBody: "Install Node 20 and pnpm 9.", diff: [{ t: "ctx", s: "# Local setup" }, { t: "del", s: "Install Node 18 and pnpm." }, { t: "add", s: "Install Node 20 and pnpm 9." }, { t: "add", s: "Run pnpm setup." }] });
+  const props = (sel: string, items = [imp(), ver]) => makeReviewProps({ items, selectedId: sel, groupsOpen: { 7: true }, spaceNames: { engineering: "Engineering" } });
+
+  it("a new page: the bar, the crumb (its space, then the pages above it), the title, \"New page\" from its file, the page rendered — no diff box", () => {
+    const html = reviewView(props("doc:first-week@1"));
+    expect(html).toContain("Page 2 of 2 · handbook.zip");   // the queue is newest first: the group reverses it
+    expect(html).toContain('<div class="cnpy-rvp-crumb">Engineering › Getting started › Onboarding</div>');
+    expect(html).toContain('<h2 class="cnpy-rvp-h">Your first week</h2>');
+    expect(html).toMatch(/<div class="cnpy-rvp-kind">[\s\S]*?>New page<\/span>[\s\S]*?<span class="cnpy-rvp-file">from handbook\/onboarding\/first-week.md<\/span>/);
+    expect(html).not.toContain("What changes");
+    // The page as it will read, through the reader's renderer, a [[link]] as its words.
+    expect(html).toContain('<div class="cnpy-md cnpy-rvp-md"><div class="mock-md">Welcome.\n\n## Day one\n\nSee Local setup.</div></div>');
+    // The old byline / Unified-Side by side-Rendered switch / header buttons are not on it.
+    expect(html).not.toContain("WHAT CHANGED");
+    expect(html).not.toContain('data-act="reviewDiffView"');
+    expect(html).not.toContain(">Promote<");
+    expect(html).not.toContain("<h1");
+  });
+
+  it("a new version: \"New version of ‹Title›\", then the diff box (\"What changes\", \"N lines added, M removed\"), then the page", () => {
+    const html = reviewView(props("doc:local-setup@2"));
+    expect(html).toContain(">New version of Local setup</span>");
+    expect(html).toContain('<span style="font-weight:600;color:var(--fg)">What changes</span><span>2 lines added, 1 removed</span>');
+    expect(html).toContain('<div class="cnpy-rvp-dl" data-t="del"><span class="cnpy-rvp-dp" aria-hidden="true">−</span>Install Node 18 and pnpm.</div>');
+    expect(html).toContain('<div class="cnpy-rvp-dl" data-t="add"><span class="cnpy-rvp-dp" aria-hidden="true">+</span>Install Node 20 and pnpm 9.</div>');
+    expect(html.indexOf("What changes")).toBeLessThan(html.indexOf("cnpy-rvp-md"));
+  });
+
+  it("the footer: the design's sentence, Reject and ✓ Approve — the queue's own verdict acts", () => {
+    const html = reviewView(props("doc:local-setup@2"));
+    const foot = html.slice(html.indexOf('class="cnpy-rvp-foot"'));
+    expect(foot).toContain(`<span class="cnpy-rvp-note">${APPROVE_NOTE}</span>`);
+    expect(APPROVE_NOTE).toBe("Approving makes this page live for everyone.");
+    expect(foot).toMatch(/data-act="reviewReject" data-arg="doc:local-setup@2"[^>]*>Reject<\/button>/);
+    expect(foot).toMatch(/data-act="reviewAccept" data-arg="doc:local-setup@2"[^>]*><svg[^>]*>.*?<\/svg>Approve<\/button>/);
+    // A verdict button that had focus hands it on to the next page's (main.ts reads the footer too).
+    expect(mainSrc).toContain('active?.closest?.(".cnpy-rv-head, .cnpy-rvp-foot")');
+  });
+
+  it("an agent's page: \"Change to a live page\" (or \"New page\"), no file; a decision keeps its own detail", () => {
+    const a = makeItem({ id: "doc:rate-limits@2", title: "Rate limits", agent: "pia", agentName: "Pia", space: "engineering", path: ["Architecture", "API"] });
+    const g = reviewGroups([a]).get("agent:pia")!;
+    const pane = reviewPagePane(a, g, 1, {}, "Engineering");
+    expect(pane).toContain("Page 1 of 1 · Pia&#39;s agent");
+    expect(pane).toContain("Engineering › Architecture › API");
+    expect(pane).toContain(">Change to a live page</span>");
+    expect(pane).not.toContain("cnpy-rvp-file");
+    expect(pageKindWord({ isNew: true, title: "X" }, "agent")).toBe("New page");
+    expect(pageKindWord({ isNew: false, title: "X" }, "import")).toBe("New version of X");
+    const d = reviewView(makeReviewProps({ items: [makeAdr({ id: "d1" })] }));
+    expect(d).toContain("PROPOSED RECORD");
+    expect(d).not.toContain("cnpy-rvp");
+  });
+
+  it("the diff box says how many lines changed, in words", () => {
+    expect(changedLinesText([{ t: "add", s: "a" }, { t: "add", s: "b" }, { t: "add", s: "c" }, { t: "del", s: "d" }])).toBe("3 lines added, 1 removed");
+    expect(changedLinesText([{ t: "add", s: "a" }])).toBe("1 line added");
+    expect(changedLinesText([{ t: "del", s: "a" }, { t: "del", s: "b" }])).toBe("2 lines removed");
+    expect(changedLinesText([{ t: "ctx", s: "a" }])).toBe("No line changes");
+  });
+
+  it("hostile words stay text in the crumb, the file and the diff", () => {
+    const html = reviewView(props("doc:first-week@1", [imp({ path: ["<b>x</b>"], importPath: "a/<img src=x>.md", title: "<script>t</script>" })]));
+    expect(html).not.toContain("<b>x</b>");
+    expect(html).not.toContain("<img src=x>");
+    expect(html).not.toContain("<script>t");
   });
 });
