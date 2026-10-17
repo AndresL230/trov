@@ -103,6 +103,30 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  {
+    version: "0.12",
+    date: "2026-10-17",
+    title: "Share an Ask conversation with your organization",
+    headline: "Share an Ask conversation with everyone in your organization, and the Repo screen stops calling a working site down.",
+    highlights: [
+      "Share an Ask conversation with your organization: everyone in it can read it, and only you can continue it.",
+      "Conversations others shared are listed under Shared in your organization, with who shared them.",
+      "Trov's brief no longer counts a date as a number, so it never claims something happened 17 times because a date says the 17th.",
+    ],
+    headsUp: [
+      "Files attached to a shared Ask conversation stay private: others see each file's name and size, and what Trov quoted from it, never the file.",
+    ],
+    ops: [
+      "Apply migration `0076_ask_sharing` (one nullable column on `chat_threads`; merging to main applies it).",
+    ],
+    patches: {
+      added: ["Ask: share a conversation with your organization, read-only for everyone else, and find shared ones under Shared in your organization (#193)."],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [193],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {
