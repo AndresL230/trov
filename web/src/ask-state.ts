@@ -26,13 +26,13 @@ import type { AskConvo } from "./ask-stream";
 import { emptyConvo } from "./ask-stream";
 import type { EscEntry } from "./ask-escape";
 import type { HoverAt, RefLook } from "./ask-refs";
-import { ASK_INSPECTOR } from "./ask-layout";
 import { initialConversationUi, type ConversationUi } from "./ask-conversation";
 import { initialComposerUi, type ComposerUi } from "./ask-composer";
 import { initialInspectorUi, type InspectorUi } from "./ask-inspector";
 import { initialActionsUi, type ActionsUi } from "./ask-actions";
 import { initialCmdjUi, type CmdjUi } from "./ask-cmdj";
 import { initialPhoneUi, type PhoneUi } from "./ask-phone";
+import { viewportOf } from "./zoom";
 
 /** Which conversation: the Ask page's, or the ⌘J panel's (over any page). */
 export type AskWhere = "page" | "panel";
@@ -68,8 +68,9 @@ export interface AskUi {
   threadsForced: boolean | null;
   /** The window's width, kept by the controller (only bucket crossings repaint). */
   vw: number;
-  /** The inspector: a stack of refs with a cursor (Back steps down it), its width, and which conversation opened it. */
-  inspector: { stack: string[]; idx: number; width: number; where: AskWhere; dragging: boolean };
+  /** The inspector: a stack of refs with a cursor (Back steps down it), the width the person dragged it to (null until
+   *  they do: the shown kind's opening width, ask-layout.ts `inspectorWidth`), and which conversation opened it. */
+  inspector: { stack: string[]; idx: number; width: number | null; where: AskWhere; dragging: boolean };
   /** The hover card on screen, if any. */
   hover: { ref: string; at: HoverAt } | null;
   /** What is animating out right now (ask-motion.ts rule 3): `inspector`, `cmdj`, `hover`, `menu`, `drawer`, `plus`,
@@ -95,8 +96,8 @@ export function initialAskUi(): AskUi {
     page: emptyConvo(), panel: emptyConvo(),
     refViews: {},
     threadsForced: null,
-    vw: typeof window !== "undefined" ? window.innerWidth : 1440,
-    inspector: { stack: [], idx: -1, width: ASK_INSPECTOR.width, where: "page", dragging: false },
+    vw: typeof window !== "undefined" ? viewportOf(window).width : 1440,
+    inspector: { stack: [], idx: -1, width: null, where: "page", dragging: false },
     hover: null,
     closing: {},
     replay: null,

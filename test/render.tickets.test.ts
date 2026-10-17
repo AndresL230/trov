@@ -38,7 +38,7 @@ import type { TicketListItem, TicketDetail, TicketLinkRow, TicketCommentRow, Tic
 import { TICKET_STATUS_LABEL, TICKET_STATUSES, type TicketStatus } from "@shared/tickets";
 import type { SprintView } from "@shared/sprints";
 import type { PersonSummary } from "../web/src/api";
-import { WORK_SHELL, DETAIL_SHELL } from "../web/src/ui";
+import { WORK_SHELL, FORM_SHELL, DETAIL_SHELL } from "../web/src/ui";
 import { ticketStatusIcon, ticketStatusMark, priorityIcon, priorityMark, PRIORITY_LABEL, TICKET_STATUS_TONE } from "../web/src/marks";
 
 /** The one `.cnpy-sfbar` (search + Filter) element in `html`, balanced by its divs — or null. */
@@ -710,7 +710,7 @@ describe("tickets — cards are the shared surface", () => {
   });
   it("the new-ticket form card and the comment composer are surfaces", () => {
     const form = newTicketView(formProps());
-    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"');
+    expect(form).toContain('class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"');
     expect(form).not.toContain("border-radius:13px");
     const d = ticketDetailView(detailProps(detail({ id: 1, title: "T" })));
     expect(d).toContain("cnpy-surface");
@@ -742,7 +742,7 @@ describe("queueView — board columns follow the segment", () => {
   it("all → four columns in status order, Testing between In progress and Done — no Declined (owner, 2026-10-15)", () => {
     const html = queueView(queueProps({ tickets: rows, view: "board", seg: "all" }));
     expect(columnLabels(html)).toEqual(["Triage", "In progress", "Testing", "Done"]);
-    expect(html).toContain("grid-template-columns:repeat(4,minmax(0,1fr))");
+    expect(html).toContain("grid-template-columns:repeat(4,minmax(0,var(--board-col-max)))");
   });
 
   it("orders a column by saved position: unpositioned (newest first) on top, then by rank", () => {
@@ -817,9 +817,15 @@ describe("queueView — the row", () => {
 // ── new ticket ───────────────────────────────────────────────────────────────
 
 describe("the ticket screens' frame", () => {
-  it("gives the queue and the form the full-width work shell", () => {
-    for (const html of [queueView(queueProps()), newTicketView(formProps())]) {
-      expect(html).toContain(WORK_SHELL);
+  it("gives the queue the work shell that grows on a big screen, and the form the laptop-width form shell", () => {
+    const queue = queueView(queueProps());
+    const form = newTicketView(formProps());
+    expect(queue).toContain(WORK_SHELL);
+    expect(WORK_SHELL).toContain("max-width:var(--frame-work)");
+    expect(form).toContain(FORM_SHELL);
+    expect(form).not.toContain(WORK_SHELL);
+    expect(FORM_SHELL).toContain("max-width:1440px");
+    for (const html of [queue, form]) {
       // Neither is capped at the old narrow measures.
       expect(html).not.toContain("max-width:960px");
       expect(html).not.toContain("max-width:1000px");
@@ -850,9 +856,9 @@ describe("the ticket screens' frame", () => {
   });
 
   it("runs the form's card and the detail's columns down the window", () => {
-    expect(newTicketView(formProps())).toContain("min-height:calc(100vh - 210px)");
+    expect(newTicketView(formProps())).toContain("min-height:calc(100 * var(--vh) - 210px)");
     // The title now sits inside the grid, so the grid itself takes the full height.
-    expect(ticketDetailView(detailProps(detail({ id: 1, title: "T" })))).toContain("gap:34px;min-height:calc(100vh - 210px)");
+    expect(ticketDetailView(detailProps(detail({ id: 1, title: "T" })))).toContain("gap:34px;min-height:calc(100 * var(--vh) - 210px)");
   });
 });
 

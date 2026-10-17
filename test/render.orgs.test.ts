@@ -162,12 +162,12 @@ describe("the org switcher — the sidebar's header", () => {
     expect(name).toContain("flex:1;");
     expect(name).toContain("white-space:nowrap; overflow:hidden; text-overflow:ellipsis;");
     // The menu the chip opens is 248px (was 316px): a little wider than the chip, not a wide sheet.
-    expect(rule(".cnpy-orgmenu")).toContain(" width:248px; max-width:calc(100vw - 20px);");
+    expect(rule(".cnpy-orgmenu")).toContain(" width:248px; max-width:calc(100 * var(--vw) - 20px);");
   });
   it("CSS: the rail is 228px expanded and 64px collapsed; the phone drawer keeps its own width", () => {
     expect(rules).toMatch(/\.cnpy-aside \{ --side-t:\.24s; [^}]*\bwidth:228px; [^}]*transition:width var\(--side-t\) var\(--side-e\);/);
     expect(rules).toContain('[data-collapsed="1"] .cnpy-aside { width:64px; }');
-    expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*width:min\(292px, calc\(100vw - 48px\)\);/);
+    expect(rules).toMatch(/\[data-phone="1"\] \.cnpy-aside \{[^}]*width:min\(292px, calc\(100 \* var\(--vw\) - 48px\)\);/);
   });
 });
 
@@ -357,7 +357,7 @@ describe("the org picker / first run", () => {
     // Patched in place while it stays this page (morph.ts): a keystroke in the dialog over it rebuilds nothing.
     expect(html).toMatch(/<div class="cnpy-orgs" data-morph="orgs"/);
     // The window is the card's frame, so a first run does not scroll the page.
-    expect(rules).toMatch(/\.cnpy-orgs \{ min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center;/);
+    expect(rules).toMatch(/\.cnpy-orgs \{ min-height:calc\(100 \* var\(--vh\)\); min-height:calc\(100 \* var\(--dvh\)\); box-sizing:border-box; display:flex; align-items:center; justify-content:center;/);
   });
 });
 

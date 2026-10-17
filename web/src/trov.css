@@ -32,7 +32,7 @@
 html, body { margin: 0; padding: 0; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input, select { font-family: inherit; }
-::selection { background: var(--accent, #2BFF88); color: var(--accent-fg, #000); }
+::selection { background: var(--accent, #525cc3); color: var(--accent-fg, #fff); }
 /* THE scrollbar — every scroller in the app and the site (web-ui.md › Scrollbars): no track, no arrows, a slim
    thumb in the theme's ink that darkens and fills out under the pointer. Chromium and Safari draw it from the
    pseudo-elements; Firefox, which has none, from the standard properties (thin, the same ink). A scroller that
@@ -54,6 +54,53 @@ input, select { font-family: inherit; }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
    crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
 #cnpy-main { scrollbar-gutter: stable; }
+/* Viewport units that hold under the big-screen zoom (web-ui.md › Big screens; zoom.ts). Past a ~3000px window
+   `zoom` on <html> scales the whole UI, and Chromium zooms viewport units too: a raw `100vh` would be 1.3 × the
+   window. zoom.ts writes `--vu` (how much the browser inflates a viewport unit, MEASURED — unset, so 1, at or
+   under 3000px), and every size relative to the window reads these instead of a raw unit: `calc(100 * var(--vh))`,
+   `calc(100 * var(--vw) - 32px)`, `clamp(20px, 2.6 * var(--vw), 46px)`. A raw vw / vh / dvh in the app is a bug. */
+:root { --vw:calc(1vw / var(--vu, 1)); --vh:calc(1vh / var(--vu, 1)); --dvh:calc(1dvh / var(--vu, 1)); }
+@supports not (height:1dvh) { :root { --dvh:var(--vh); } }
+/* The frame the zoom changes in, nothing animates (zoom.ts): a resize never plays a width or padding transition. */
+html[data-zooming] *, html[data-zooming] *::before, html[data-zooming] *::after { transition:none !important; }
+/* Page frames on a big screen (web-ui.md › Big screens). A screen's frame is its laptop width up to a ~2100px
+   window — nothing changes on a laptop or a 1080p monitor — then grows with the window to a ceiling, so a
+   32" monitor (2560–3072 CSS px) is used instead of framing the work in a third of it. Only screens whose
+   content gains from width take one: a list, a board, a dashboard, a diff. Reading pages (a doc, the Feed, the
+   Guide, a ticket, Settings) keep their measure. */
+:root {
+  --frame-work:clamp(1440px, 66 * var(--vw), 2200px);  /* the queue (board + table), Handoffs, the Prompt Library, a tag's page */
+  --frame-dash:clamp(1180px, 56 * var(--vw), 1720px);  /* My Work, the Repo dashboard, Org settings › Members */
+  --frame-reader:clamp(920px, 44 * var(--vw), 1240px); /* Review's reading pane */
+  --frame-feed:clamp(1200px, 52 * var(--vw), 1480px);  /* the Feed: modestly — its entries' text keeps a line length */
+  --board-col-max:480px;                     /* a board column never gets wider than a card wants */
+  --sb-gutter:12px;                          /* #cnpy-main's reserved scrollbar (the ::-webkit-scrollbar width) */
+}
+/* The Feed's column grows; an entry's words do not: 720px is the measure they already have in a 1200px frame. */
+.cnpy-feed-page .cnpy-cols > div:first-child :is(.cnpy-md-inline, .cnpy-feed-brief, .cnpy-feed-body) { max-width:720px; }
+/* The title row lines up with the screen's frame: the header spans <main> (its hairline does), but its title and
+   actions sit at the content's left and right edges. Each screen names its frame (`--hdr-frame`, the max-width of
+   its page) and the frame's side padding (`--hdr-pad`); the header's inline padding reads `--hdr-pl` / `--hdr-pr`,
+   24px when unset. The page scroller reserves its scrollbar on the right (`scrollbar-gutter`), so the frame centres
+   in <main> minus that gutter. Above 1440px only: a laptop's header is exactly what it was. Screens with no single
+   centred frame (Docs, Review, the Guide, Ask, Artifacts) keep 24px. */
+[data-screen="tickets"], [data-screen="handoffs"], [data-screen="prompts"], [data-screen="tag"] { --hdr-frame:var(--frame-work); --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="newticket"], [data-screen="newhandoff"], [data-screen="newdoc"], [data-screen="promptedit"] { --hdr-frame:1440px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="ticketdetail"], [data-screen="sprint"] { --hdr-frame:1120px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="handoff"], [data-screen="maintenance"], [data-screen="platform"], [data-screen="platformorg"], [data-screen="org"] { --hdr-frame:1180px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="org"]:has(.cnpy-org[data-org-wide]) { --hdr-frame:var(--frame-dash); }
+[data-screen="prompt"] { --hdr-frame:1260px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="mywork"], [data-screen="repo"] { --hdr-frame:var(--frame-dash); --hdr-pad:32px; }
+[data-screen="feed"] { --hdr-frame:var(--frame-feed); --hdr-pad:32px; }
+[data-screen="roadmap"] { --hdr-frame:1200px; --hdr-pad:32px; }
+[data-screen="settings"], [data-screen="releases"]:has(.cnpy-relidx) { --hdr-frame:1180px; --hdr-pad:32px; }
+[data-screen="search"] { --hdr-frame:780px; --hdr-pad:24px; }
+@media (min-width:1441px) {
+  .cnpy-hdr {
+    --hdr-pl:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad));
+    --hdr-pr:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad) + var(--sb-gutter));
+  }
+}
 @keyframes cnpy-spin { to { transform: rotate(360deg); } }
 @keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -63,7 +110,7 @@ input, select { font-family: inherit; }
 /* THE on/off switch (notifications.ts `switchBtn`): its track fades and its knob slides (inline, .15s) — still under reduced motion. */
 @media (prefers-reduced-motion: reduce) { button[role="switch"], button[role="switch"] > span { transition:none !important; } }
 
-[data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+[data-cnpy-theme="dark"] { --mark:#8d94d8; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#8d94d8; --accent-fg:#11132e; --accent-soft:rgba(141,148,216,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 /* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
    ground, white surfaces with a hairline shadow, an indigo accent. Trov's fonts stay. */
 /* WCAG AA (2026-10, docs/architecture/web-ui.md › Contrast): every token used for TEXT reads at 4.5:1 or more
@@ -73,7 +120,10 @@ input, select { font-family: inherit; }
    light --fg-40 #8e8e98, --accent #5e6ad2 (and --accent-soft), --green #2f9e6b, --amber #c98a1a, --blue #4c8ed9,
    --red #e5484d, --purple #8e5cc7; dark --fg-40 at .40, --red #cc6262. --red-fg is the text on a filled red
    button (white on light; on dark the dark ink, as --accent-fg is). --border-strong stays the quiet edge of
-   cards and dividers; only a field's edge is --border-input. */
+   cards and dividers; only a field's edge is --border-input.
+   Dark --accent (and --mark) is the light accent's purple, same hue (235°) and saturation, lifted the least that
+   passes on the dark grounds and its own soft chip: #8d94d8, dark ink #11132e on it (2026-10-17; it was the
+   olive #9aab65 / #131a07). */
 [data-cnpy-theme="light"] { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --border-input:rgba(20,20,30,0.47); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --focus:var(--accent); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --purple:#804db7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 
 /* ── My Work (web/src/mywork.ts) ──────────────────────────────────────────────
@@ -497,7 +547,7 @@ input, select { font-family: inherit; }
 /* A 44×44 touch target (the glyph stays 18px); the negative margins hand back the extra 4px,
    so the header lays out exactly as it did around a 40px button. */
 [data-phone="1"] .cnpy-menubtn { display:grid; place-items:center; flex:none; width:44px; height:44px; margin:-2px -2px -2px -10px; color:var(--fg-70); }
-[data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100vw - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
+[data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100 * var(--vw) - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
 [data-phone="1"][data-drawer="1"] .cnpy-aside { transform:none; visibility:visible; box-shadow:0 0 48px rgba(0,0,0,.32); transition:transform .26s var(--side-e); }
 [data-phone="1"] .cnpy-scrim { display:block; position:fixed; inset:0; z-index:85; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .26s ease; -webkit-tap-highlight-color:transparent; }
 [data-phone="1"][data-drawer="1"] .cnpy-scrim { opacity:1; pointer-events:auto; }
@@ -528,7 +578,7 @@ input, select { font-family: inherit; }
 [data-phone="1"] .cnpy-hdr-r > .cnpy-seg > .cnpy-seg-btn > svg { display:none; }
 [data-phone="1"] .cnpy-hdr-r > .cnpy-accentbtn { padding-left:12px !important; padding-right:12px !important; }
 /* The app shell fills the VISIBLE viewport (100vh on a phone runs under its toolbars). */
-@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }
+@supports (height:100dvh) { .cnpy-shell { height:calc(100 * var(--dvh)) !important; } }
 /* Edge to edge (index.html `viewport-fit=cover`): the shell and the landing keep clear of a
    notch and the status bar; the toast clears the home indicator. All 0 off a notched phone. */
 .cnpy-shell { padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
@@ -669,7 +719,7 @@ input, select { font-family: inherit; }
   [data-cnpy-theme] :has(> [role="dialog"][aria-modal="true"]),
   [data-cnpy-theme] :has(> [role="alertdialog"][aria-modal="true"]) { grid-template-columns:minmax(0,1fr) !important; place-items:end stretch !important; align-items:flex-end !important; padding:env(safe-area-inset-top) 0 0 !important; }
   [data-cnpy-theme] [role="alertdialog"][aria-modal="true"],
-  [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100dvh - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+  [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100 * var(--dvh) - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
 }
 /* The signed-out cards (not a member, not invited, onboarding) at phone width: a phone's
    gutter, and the nested onboarding wrapper adds none of its own. */
@@ -706,7 +756,7 @@ input, select { font-family: inherit; }
 .cnpy-outline-item > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Get Started's table of contents: a sticky rail inside #cnpy-main (the scroller). The
    section rows read like the docs tree's pages, the sub-rows reuse .cnpy-outline-item. */
-.cnpy-guide-toc { position:sticky; top:24px; width:210px; flex:none; max-height:calc(100vh - 110px); overflow-y:auto; display:flex; flex-direction:column; gap:1px; padding-bottom:12px; }
+.cnpy-guide-toc { position:sticky; top:24px; width:210px; flex:none; max-height:calc(100 * var(--vh) - 110px); overflow-y:auto; display:flex; flex-direction:column; gap:1px; padding-bottom:12px; }
 .cnpy-guide-toc-h { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 8px 10px; }
 .cnpy-guide-toc-sec { text-align:left; width:100%; padding:6px 8px; border-radius:7px; font-size:13px; font-weight:500; color:var(--fg-55); background:transparent; transition:color .12s ease, background .12s ease; }
 .cnpy-guide-toc-sec:hover { color:var(--fg); background:var(--hover); }
@@ -895,12 +945,12 @@ input, select { font-family: inherit; }
 @keyframes cnpy-lb-panel-in { from { opacity:0; transform:scale(.965) translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes cnpy-lb-out { from { opacity:1; } to { opacity:0; } }
 @keyframes cnpy-lb-panel-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.975) translateY(6px); } }
-.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4vw, 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
+.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4 * var(--vw), 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
 /* The panel is as wide as the SMALLER of the width and height budgets allow, so the
    frame keeps its ratio (a max-height on the frame alone clamps its height while its
    width stays 100%, stretching the box). 16:10 is the default (the guide's captures);
    lightbox.ts swaps in the image's own ratio once it loads, for doc images of any shape. */
-.cnpy-lightbox-panel { position:relative; width:min(1400px, 100%, calc((100vh - 170px) * 1.6)); max-height:100%; display:flex; flex-direction:column; gap:14px; outline:none; animation:cnpy-lb-panel-in .28s cubic-bezier(.22,1,.36,1) both; }
+.cnpy-lightbox-panel { position:relative; width:min(1400px, 100%, calc((100 * var(--vh) - 170px) * 1.6)); max-height:100%; display:flex; flex-direction:column; gap:14px; outline:none; animation:cnpy-lb-panel-in .28s cubic-bezier(.22,1,.36,1) both; }
 .cnpy-lightbox-frame { position:relative; width:100%; aspect-ratio:16 / 10; border-radius:14px; overflow:hidden; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 30px 80px -30px rgba(0,0,0,.7); }
 .cnpy-lightbox-frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
 .cnpy-lightbox-cap { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
@@ -950,6 +1000,8 @@ input, select { font-family: inherit; }
 .cnpy-mw-grid.is-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
 @media (max-width:1180px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .cnpy-mw-grid.is-3 { grid-template-columns:1fr; } }
+/* …and on a big screen, where the frame grows (--frame-work), more cards a row instead of wider ones. */
+@media (min-width:2200px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); } }
 /* Handoffs inbox row: on a phone the who / branch columns give way, leaving the
    title, the status pill and the age (the grid is an inline style, hence !important). */
 @media (max-width:760px) {
@@ -971,7 +1023,7 @@ input, select { font-family: inherit; }
 .cnpy-pdetail-rail { flex:1 0 240px; max-width:300px; }
 @container cnpy-pdetail (max-width:759px) {
   .cnpy-pdetail { flex-direction:column; }
-  .cnpy-pdetail-main { flex:none; min-height:70vh; }
+  .cnpy-pdetail-main { flex:none; min-height:calc(70 * var(--vh)); }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
@@ -1154,17 +1206,19 @@ input, select { font-family: inherit; }
    rule (in the corners block): setting its size from script re-serialises the
    style attribute as "border-radius: 10px", which the inline-radius selectors no
    longer match. */
-.cnpy-tghost { position:fixed; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--surface); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
+/* `!important`: the lifted card is a hitArea card, and `.cnpy-hitbox { position:relative }` (later, same weight) put the
+   ghost a viewport-height below the pointer. */
+.cnpy-tghost { position:fixed !important; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--surface); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
 .cnpy-grabbing, .cnpy-grabbing * { cursor:grabbing !important; }
 /* The board under a tablet's width: every column keeps a readable width and the board
    scrolls sideways INSIDE itself, bleeding to the screen's edges (the shell's gutter moves
    into its padding), one column per snap. The grid is an inline style, hence !important. */
 @media (max-width:900px) {
-  .cnpy-board { --bg-gut:clamp(20px,2.6vw,46px); grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:minmax(250px,1fr); overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory; scroll-padding-inline:var(--bg-gut); margin-left:calc(-1 * var(--bg-gut)); margin-right:calc(-1 * var(--bg-gut)); padding:0 var(--bg-gut) 6px; scrollbar-width:none; }
+  .cnpy-board { --bg-gut:clamp(20px,2.6 * var(--vw),46px); grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:minmax(250px,1fr); overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory; scroll-padding-inline:var(--bg-gut); margin-left:calc(-1 * var(--bg-gut)); margin-right:calc(-1 * var(--bg-gut)); padding:0 var(--bg-gut) 6px; scrollbar-width:none; }
   .cnpy-board::-webkit-scrollbar { display:none; }
   .cnpy-board > .cnpy-tcol { scroll-snap-align:start; }
 }
-@media (max-width:640px) { .cnpy-board { grid-auto-columns:min(290px, calc(100vw - 64px)); } }
+@media (max-width:640px) { .cnpy-board { grid-auto-columns:min(290px, calc(100 * var(--vw) - 64px)); } }
 @media (max-width:860px) {
   .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:minmax(0,1fr) !important; }
   .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
@@ -1212,11 +1266,14 @@ input, select { font-family: inherit; }
 .cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-personlink:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 /* A card that opens something and shows people (ui.ts `hitArea`): an empty button laid over the
-   whole card is its click target, and every person button in it sits above it as its own. */
-.cnpy-hitbox { position:relative; }
+   whole card is its click target, and every person button in it sits above it as its own.
+   The card shows the pointer (the hit inherits it, so a card that sets its own, the board's grab, keeps it).
+   `cnpy-hitctl` is any other control on such a card (a prompt card's copy button), raised the same way. */
+.cnpy-hitbox { position:relative; cursor:pointer; }
 .cnpy-hit { position:absolute; inset:0; z-index:1; padding:0; border-radius:inherit; cursor:inherit; }
 .cnpy-hit:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
-.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack { position:relative; z-index:2; }
+.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack, .cnpy-hitbox .cnpy-hitctl { position:relative; z-index:2; }
+.cnpy-hitctl:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-accentbtn:hover { filter:brightness(1.06); }
 .cnpy-accentbtn:active { transform:translateY(1px); }
@@ -1278,7 +1335,7 @@ input, select { font-family: inherit; }
 /* The deletion confirmations (deletion.ts): wider, a list of what goes and what stays, and a TYPED field — the
    handle or the slug — with a focus ring that shows (the field takes the focus on open). A tall one scrolls
    inside the window rather than off it. */
-.cnpy-cmodal-box--wide { width:min(540px, 100%); max-height:calc(100dvh - 32px); overflow:auto; }
+.cnpy-cmodal-box--wide { width:min(540px, 100%); max-height:calc(100 * var(--dvh) - 32px); overflow:auto; }
 .cnpy-cm-detail { margin-top:12px; font-size:12.5px; line-height:1.55; color:var(--fg-70); }
 .cnpy-cm-detail ul { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:6px; }
 .cnpy-cm-detail strong { color:var(--fg); font-weight:600; }
@@ -1392,7 +1449,7 @@ input, select { font-family: inherit; }
 [data-cnpy-theme="dark"] { --menu-shadow:0 14px 38px rgba(0,0,0,0.38); }
 .cnpy-dd-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-dd-back { position:absolute; inset:0; }
-.cnpy-dd-pop { position:fixed; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; width:max-content; max-width:min(440px, calc(100vw - 16px)); max-height:298px; padding:5px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--menu-shadow); transform-origin:top left; outline:none; }
+.cnpy-dd-pop { position:fixed; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; width:max-content; max-width:min(440px, calc(100 * var(--vw) - 16px)); max-height:298px; padding:5px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--menu-shadow); transform-origin:top left; outline:none; }
 .cnpy-dd-pop[data-align="right"] { transform-origin:top right; }
 .cnpy-dd-pop[data-side="up"] { transform-origin:bottom left; }
 .cnpy-dd-pop[data-side="up"][data-align="right"] { transform-origin:bottom right; }
@@ -1551,7 +1608,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* Every control here shows where the keyboard is. */
 .cnpy-org button:focus-visible, .cnpy-org select:focus-visible, .cnpy-org-secret button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .cnpy-org .cnpy-input:focus-visible, .cnpy-org-secret .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
-.cnpy-org-secret { width:min(820px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; }
+.cnpy-org-secret { width:min(820px, 100%); max-height:calc(100 * var(--vh) - 32px); overflow-y:auto; }
 .cnpy-org-secretgrid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:24px; margin-top:18px; }
 /* Org settings › Hosting (web/src/hosting.ts). Environments are tiles side by side — comparing staging with
    production is the point — two to a line where the tab has room, one under the other below that. Every
@@ -1776,7 +1833,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* The state preview's banner (web/src/preview.ts): fixed at the app's lower right, over every
    screen, for as long as `?preview=` is on. Amber, the app's "this is not live data" tone
    (the Repo dashboard's sample tag). It does not move. */
-.cnpy-preview { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; align-items:center; gap:10px; max-width:min(560px, calc(100vw - 32px)); padding:9px 10px 9px 13px; border:1px solid color-mix(in srgb,var(--amber) 55%,transparent); border-radius:10px; background:var(--surface); box-shadow:0 8px 30px rgba(0,0,0,.22); font-size:12.5px; line-height:1.45; color:var(--fg-70); }
+.cnpy-preview { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; align-items:center; gap:10px; max-width:min(560px, calc(100 * var(--vw) - 32px)); padding:9px 10px 9px 13px; border:1px solid color-mix(in srgb,var(--amber) 55%,transparent); border-radius:10px; background:var(--surface); box-shadow:0 8px 30px rgba(0,0,0,.22); font-size:12.5px; line-height:1.45; color:var(--fg-70); }
 .cnpy-preview-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--amber); }
 .cnpy-preview-t { min-width:0; }
 .cnpy-preview-t > strong { font-weight:600; color:var(--fg); }
@@ -1956,19 +2013,18 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* The legal pages (/terms, /privacy — web/src/legal.ts). The site's own page: the brand banner carries the
    title (the landing hero's `.site-banner`), then the text with its contents riding beside it. Under 900px
    the contents sit above the text as a box. Section anchors clear the 60px sticky nav. */
-.site-legal-band { padding:clamp(34px, 4.6vw, 58px) var(--hero-pad) clamp(36px, 4.8vw, 60px); }
-.site-legal-band > .site-banner-art { width:clamp(220px, 30vw, 400px); aspect-ratio:1; right:clamp(-70px, -4vw, -30px); top:clamp(-90px, -6vw, -50px); }
+.site-legal-band { padding:clamp(34px, 4.6 * var(--vw), 58px) var(--hero-pad) clamp(36px, 4.8 * var(--vw), 60px); }
+.site-legal-band > .site-banner-art { width:clamp(220px, 30 * var(--vw), 400px); aspect-ratio:1; right:clamp(-70px, -4 * var(--vw), -30px); top:clamp(-90px, -6 * var(--vw), -50px); }
 .site-legal-band-in { max-width:1060px; margin:0 auto; }
 .site-legal-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:rgba(255,255,255,.14); }
 .site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); text-decoration:none; transition:background .12s ease, color .12s ease; }
 a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
 .site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
-[data-cnpy-theme="dark"] .site-legal-tab[aria-current] { color:#3a4620; }
-.site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4vw, 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
+.site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4 * var(--vw), 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
 .site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.92); }
 .site-legal { max-width:1060px; margin:0 auto; padding:52px 24px 0; display:grid; grid-template-columns:232px minmax(0, 1fr); gap:56px; align-items:start; }
-.site-legal-side { position:sticky; top:84px; max-height:calc(100vh - 108px); overflow:auto; scrollbar-width:none; }
+.site-legal-side { position:sticky; top:84px; max-height:calc(100 * var(--vh) - 108px); overflow:auto; scrollbar-width:none; }
 .site-legal-side::-webkit-scrollbar { display:none; }
 .site-legal-text { max-width:700px; }
 .site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
@@ -2057,8 +2113,8 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-price-top { display:flex; align-items:flex-end; flex-wrap:wrap; gap:24px 40px; }
 .site-price-intro { flex:1 1 420px; min-width:0; }
 .site-price-eyebrow { margin-bottom:12px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
-.site-price-title { margin:0; font-size:clamp(28px, 3.4vw, 38px); font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
-.site-price-title.is-page { font-size:clamp(32px, 4vw, 44px); line-height:1.1; }
+.site-price-title { margin:0; font-size:clamp(28px, 3.4 * var(--vw), 38px); font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-price-title.is-page { font-size:clamp(32px, 4 * var(--vw), 44px); line-height:1.1; }
 .site-price-lede { margin:14px 0 0; max-width:560px; font-size:15.5px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
 .site-btn-accent { background:var(--accent); color:var(--accent-fg); }
 .site-btn-accent:hover { filter:brightness(1.06); color:var(--accent-fg); }
@@ -2089,7 +2145,6 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-plan.is-top .site-plan-tba { font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#fff; }
 .site-plan.is-top .site-plan-cta, .site-plan.is-top .site-plan-cta:hover { border-color:transparent; background:#fff; color:#333c8f; }
 .site-plan.is-top .site-plan-cta:hover { filter:brightness(.96); }
-[data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta, [data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta:hover { color:#3a4620; }
 .site-plan.is-top .site-plan-limits { border-color:rgba(255,255,255,.24); color:rgba(255,255,255,.92); }
 .site-plan.is-top .site-plan-limits b { color:#fff; }
 .site-plan.is-top .site-plan-limits li::before { background:#fff; }
@@ -2257,15 +2312,12 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
    its lower edge; "Agents propose, people decide" is the same card laid on its side; the sign-in dialog is
    the card itself; and each tour mockup stands on a field of the banner's dots, in the page's own accent.
    Everything here is static paint: no filter, no backdrop-filter, nothing that repaints on scroll. */
-/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
-/* Dark: the banner follows the theme's accent. The dark app's accent is the green mark (`--mark` #9aab65), so a
-   purple banner over it read as a second brand. Same gradient, highlight, dots and faint mark — in a deep
-   olive of that green, with the white headline at the same contrast the purple gives it (5:1 at the lightest
-   corner since 2026-10, when both gradients went one step deeper for WCAG AA; was #73844a → #5d6d37 → #485628).
-   One rule for the site's banners AND the first-run cards', so they cannot drift. */
-[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%); }
-[data-cnpy-theme="dark"] .site-banner ::selection { color:#3a4620; }
-[data-cnpy-theme="dark"] .site-btn-onb, [data-cnpy-theme="dark"] .site-btn-onb:hover { color:#3a4620; }
+/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. The dark
+   accent is the light one's purple (2026-10-17), so the banner is the brand's purple in both themes: the same
+   gradient, highlight, dots and faint mark, one step deeper (white text 4.9:1 at the lightest corner). It was a
+   deep olive (#65753c → #4f5f29 → #3b481a) while the dark accent was green; the white button and the selection
+   on it take the light theme's indigo ink again. One rule for the site's banners AND the first-run cards'. */
+[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #5760bf 0%, #464eae 48%, #343b94 100%); }
 .site-banner > * { position:relative; z-index:1; }
 .site-banner > .site-banner-art { position:absolute; z-index:0; display:block; color:#fff; opacity:.11; transform:rotate(-8deg); pointer-events:none; }
 .site-banner-art svg { display:block; width:100%; height:100%; }
@@ -2273,11 +2325,11 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-banner a:focus-visible, .site-banner button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 
 /* hero */
-.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; --hero-pad:clamp(22px, 5vw, 66px); }
-.site-hero-band { padding:clamp(52px, 6.4vw, 84px) var(--hero-pad) clamp(170px, 21vw, 268px); }
-.site-hero-band > .site-banner-art { width:clamp(280px, 44vw, 600px); aspect-ratio:1; right:clamp(-90px, -5vw, -40px); top:clamp(-110px, -7vw, -60px); }
+.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; --hero-pad:clamp(22px, 5 * var(--vw), 66px); }
+.site-hero-band { padding:clamp(52px, 6.4 * var(--vw), 84px) var(--hero-pad) clamp(170px, 21 * var(--vw), 268px); }
+.site-hero-band > .site-banner-art { width:clamp(280px, 44 * var(--vw), 600px); aspect-ratio:1; right:clamp(-90px, -5 * var(--vw), -40px); top:clamp(-110px, -7 * var(--vw), -60px); }
 .site-hero-in { max-width:1060px; margin:0 auto; }
-.site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4vw, 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
+.site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4 * var(--vw), 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
 .site-hero-lede { margin:22px 0 0; max-width:600px; font-size:17.5px; line-height:1.6; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-hero-cta { margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; }
 .site-hero-note { margin:18px 0 0; font-size:13.5px; line-height:1.55; color:rgba(255,255,255,.92); }
@@ -2289,7 +2341,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-btn-onb-line:hover { color:#fff; background:rgba(255,255,255,.12); }
 /* The mockup stands on the banner's lower edge, the banner's glow carrying on under it (the first run's
    `.cnpy-fr-bg::after`, as a plain gradient). */
-.site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
+.site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16 * var(--vw), 200px)) auto 0; }
 .site-hero-stage::before { content:""; position:absolute; z-index:0; inset:34% -9% -9% -9%; pointer-events:none;
   background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--mark, #616acb) 20%, transparent) 0%, transparent 72%); }
 .site-hero-mock { position:relative; z-index:1; text-align:left; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden;
@@ -2303,11 +2355,11 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 /* the card on its side: banner | body */
 .site-split { display:grid; grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr); border:0; background:var(--surface); overflow:hidden;
   box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
-.site-split-banner { padding:clamp(30px, 4.6vw, 56px) clamp(24px, 4.4vw, 52px); display:flex; flex-direction:column; justify-content:center; }
-.site-split-banner > .site-banner-art { width:clamp(220px, 26vw, 330px); aspect-ratio:1; right:-56px; top:-70px; }
-.site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4vw, 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-split-banner { padding:clamp(30px, 4.6 * var(--vw), 56px) clamp(24px, 4.4 * var(--vw), 52px); display:flex; flex-direction:column; justify-content:center; }
+.site-split-banner > .site-banner-art { width:clamp(220px, 26 * var(--vw), 330px); aspect-ratio:1; right:-56px; top:-70px; }
+.site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4 * var(--vw), 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
 .site-split-banner p { margin:16px 0 0; max-width:480px; font-size:15.5px; line-height:1.65; color:rgba(255,255,255,.94); text-wrap:pretty; }
-.site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4vw, 44px) clamp(22px, 4vw, 44px); }
+.site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4 * var(--vw), 44px) clamp(22px, 4 * var(--vw), 44px); }
 @media (max-width:860px) { .site-split { grid-template-columns:minmax(0, 1fr); } }
 
 /* a tour mockup on its field of dots: the banner's grid in the page's accent, fading toward the copy */
@@ -2438,7 +2490,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 
 @media (max-width:860px) {
   .site-fx-wrap { padding:16px; }
-  .site-fx-panel { height:min(100%, 100dvh - 32px); }
+  .site-fx-panel { height:min(100%, 100 * var(--dvh) - 32px); }
   .site-fx-main { display:block; overflow-y:auto; }
   .site-fx-titles { padding:22px 60px 0 20px; }
   .site-fx-titles h2 { font-size:22px; }
@@ -2450,7 +2502,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 }
 @media (max-width:640px) {
   /* a full-height sheet (the app's phone rule for modals pins it to the bottom edge); controls under the thumb */
-  .site-fx-panel { height:100dvh; }
+  .site-fx-panel { height:calc(100 * var(--dvh)); }
   .site-fx-nav { min-height:44px; }
   .site-fx-nav span { max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* a phone keeps each screen's most telling pane: the secondary ones (`.fxm-wide`) are dropped, not shrunk */
@@ -2636,7 +2688,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-qs-layer[data-closing] .cnpy-qs { pointer-events:none; animation:cnpy-qs-out .16s ease both; }
 .cnpy-qs-layer[data-closing][data-mode="palette"] { animation:cnpy-qs-fade-out .16s ease both; }
 .cnpy-qs-layer[data-mode="anchor"][data-empty] .cnpy-qs { display:none; }
-.cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:12vh; margin:0 auto; width:min(480px, calc(100vw - 32px)); max-height:min(520px, 76vh); }
+.cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:calc(12 * var(--vh)); margin:0 auto; width:min(480px, calc(100 * var(--vw) - 32px)); max-height:min(520px, 76 * var(--vh)); }
 .cnpy-qs-inbar { display:none; flex:none; align-items:center; gap:9px; height:44px; padding:0 12px; border-bottom:1px solid var(--border); color:var(--fg-40); }
 .cnpy-qs-layer[data-mode="palette"] .cnpy-qs-inbar { display:flex; }
 /* The palette's field shows focus as the tab bars do: a 2px --focus line on its lower edge. */
@@ -2666,7 +2718,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-qs-kbd { margin-right:3px; padding:0 4px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
 @media (max-width: 560px) {
   .cnpy-qs-foot { display:none; }
-  .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { top:16px; max-height:calc(100dvh - 32px); }
+  .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { top:16px; max-height:calc(100 * var(--dvh) - 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cnpy-qs-layer, .cnpy-qs { animation:none !important; transition:none !important; }
@@ -2698,15 +2750,15 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist','Geist Fallback',system-ui,sans-serif; font-weight:600; line-height:1; }
 .cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-orgmenu-back { position:absolute; inset:0; }
-.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
-[data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
+.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100 * var(--vw) - 20px); max-height:calc(100 * var(--dvh) - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+[data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100 * var(--dvh) - 72px); }
 .cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 [data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-orgs-inv { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; }
 /* THE PICKER: one calm column, the app's surfaces. */
 /* The org picker / first run: one card in the middle of the window. It is as tall as its content and
    the window is its frame, so a first run never scrolls; only a long list of organizations does. */
-.cnpy-orgs { min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
+.cnpy-orgs { min-height:calc(100 * var(--vh)); min-height:calc(100 * var(--dvh)); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
 .cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }
 /* Behind a first-run card: the app itself, loading (render.ts `firstRunBackdrop`), softened and washed
    toward the page so the card in front of it is the one thing to read. */
@@ -2749,7 +2801,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    set at the TOP of the window: the form's height is Stripe's and changes as it is filled in, so the card
    grows with it and the page scrolls. Nothing in the card scrolls (no height, no overflow on the stage), so
    there is never a scrollbar inside a scrollbar. Reached by a page load, so no morph crosses the two widths. */
-.cnpy-billco { align-items:flex-start; padding-top:clamp(20px, 7vh, 72px); padding-bottom:40px; }
+.cnpy-billco { align-items:flex-start; padding-top:clamp(20px, 7 * var(--vh), 72px); padding-bottom:40px; }
 .cnpy-billco > .cnpy-orgs-col { max-width:940px; }
 .cnpy-billco [hidden] { display:none !important; }
 /* The stage is Stripe's: its iframe paints its own background (the account's Branding settings), so it sits
@@ -2806,8 +2858,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgs-opt { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:14px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
 /* THE PLATFORM PAGE (`/platform/`, platform.ts `platformPage`): the superadmin's screens outside any
    org — a header on the app header's line and the same frame under it; the window scrolls. */
-.cnpy-platpage { min-height:100vh; display:flex; flex-direction:column; }
-.cnpy-platpage-hdr { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:57px; padding:8px clamp(20px,2.6vw,46px); border-bottom:1px solid var(--border); box-sizing:border-box; }
+.cnpy-platpage { min-height:calc(100 * var(--vh)); display:flex; flex-direction:column; }
+.cnpy-platpage-hdr { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:57px; padding:8px clamp(20px,2.6 * var(--vw),46px); border-bottom:1px solid var(--border); box-sizing:border-box; }
 .cnpy-platpage-l { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; }
 .cnpy-platpage-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .cnpy-platpage-home { display:inline-flex; align-items:center; gap:8px; flex:none; color:var(--fg); text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.02em; border-radius:6px; }
@@ -2921,7 +2973,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* The signed-out Contact form (support.ts, anonymous): the same form in the sign-in dialog's plain card,
    wider, scrolling inside itself on a short window. Its entrance and its reduced-motion rule are the
    sign-in card's own (`.site-signin-back`, `.site-signin-card`). */
-.site-contact-card { width:min(480px, 100%) !important; max-height:calc(100vh - 32px); overflow-y:auto !important; padding:22px 24px 20px; box-sizing:border-box; }
+.site-contact-card { width:min(480px, 100%) !important; max-height:calc(100 * var(--vh) - 32px); overflow-y:auto !important; padding:22px 24px 20px; box-sizing:border-box; }
 /* The honeypot: off screen for everyone — never `display:none`, which a script can test for. */
 .cnpy-support-hp { position:absolute !important; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden; }
 [data-support-dialog] a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
@@ -3435,7 +3487,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
    and people by name, each with what they may do — then what stays private. */
 /* One width for both halves, so switching Share with org / Share with a teammate never moves the switch under the
    pointer; the teammate half is the taller one (the people, each with what they may do, and Add a person). */
-.ask-share { width:min(460px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; box-sizing:border-box; }
+.ask-share { width:min(460px, 100%); max-height:calc(100 * var(--vh) - 32px); overflow-y:auto; box-sizing:border-box; }
 .ask-share-x { margin-left:-4px; }
 /* Both halves sit in one fixed-height body, so the dialog is the same size on either; a long people list scrolls in it
    (the dropdowns are root overlays, never clipped by it). */
@@ -3908,7 +3960,7 @@ a.ask-btn { text-decoration:none; }
 .ask-panel-t { font-size:14px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; }
 .ask-panel-gap { flex:1; }
 /* The panel's inspector: to its left at its own width (never wider than the room beside the panel). */
-.ask-panel-layer > .ask-insp-frame[data-sheet="0"] { position:absolute; top:0; bottom:0; right:420px; z-index:1; max-width:calc(100vw - 420px); box-shadow:var(--lift-shadow); animation:ask-cj-insp-in var(--fx-slow) cubic-bezier(.2,.7,.2,1) both; }
+.ask-panel-layer > .ask-insp-frame[data-sheet="0"] { position:absolute; top:0; bottom:0; right:420px; z-index:1; max-width:calc(100 * var(--vw) - 420px); box-shadow:var(--lift-shadow); animation:ask-cj-insp-in var(--fx-slow) cubic-bezier(.2,.7,.2,1) both; }
 .ask-panel-layer > .ask-insp-frame[data-sheet="0"][data-closing] { animation:ask-cj-insp-out var(--fx-base) var(--fx-ease) both; }
 .ask-panel-layer[data-closing] > .ask-insp-frame[data-sheet="0"] { animation:ask-cj-insp-away var(--fx-base) var(--fx-ease) both; }
 .ask-panel-layer > .ask-insp-frame[data-sheet="1"] { z-index:3; }
@@ -3963,7 +4015,7 @@ a.ask-btn { text-decoration:none; }
 .ask-ph-send { display:grid; place-items:center; flex:none; width:44px; height:44px; border-radius:10px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
 .ask-ph-send.is-on { background:var(--accent); color:var(--accent-fg); }
 .ask-ph-send.is-busy { background:var(--fg); color:var(--bg); }
-.ask-ph-plus { position:absolute; left:16px; right:16px; bottom:calc(100% - 6px); z-index:30; box-sizing:border-box; max-height:calc(100dvh - 140px); overflow-y:auto; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .2s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-ph-plus { position:absolute; left:16px; right:16px; bottom:calc(100% - 6px); z-index:30; box-sizing:border-box; max-height:calc(100 * var(--dvh) - 140px); overflow-y:auto; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .2s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-ph-plus[data-closing] { animation:ask-pop-out .14s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 /* The chips' row above the box: a chip's × gets a 44px hit area (not a bigger look) — the row keeps 6px above the
    chips so the area fits inside it when it scrolls; past two rows it is one line that scrolls sideways. */
@@ -4106,7 +4158,7 @@ a.ask-btn { text-decoration:none; }
   .site-hero-band { padding:38px var(--hero-pad) 156px; }
   .site-hero-band::after { -webkit-mask-image:linear-gradient(180deg, transparent 42%, #000 100%); mask-image:linear-gradient(180deg, transparent 42%, #000 100%); }
   .site-hero-band > .site-banner-art { width:330px; right:-118px; top:auto; bottom:-64px; opacity:.1; }
-  .site-hero-h { font-size:clamp(32px, 9.4vw, 40px); line-height:1.07; }
+  .site-hero-h { font-size:clamp(32px, 9.4 * var(--vw), 40px); line-height:1.07; }
   .site-hero-lede { margin-top:16px; font-size:16.5px; line-height:1.55; }
   .site-hero-cta { margin-top:26px; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; }
   .site-hero-cta > .site-btn { justify-content:center; box-sizing:border-box; min-height:50px; padding:0 14px; font-size:15px; }
@@ -4189,7 +4241,7 @@ a.ask-btn { text-decoration:none; }
   /* sign-in / Get started and Contact: sheets that rise from the bottom edge and stop where the keyboard begins */
   .site-signin-back { touch-action:none; }
   [data-cnpy-theme] .site-signin-wrap:has(> [role="dialog"][aria-modal="true"]) { padding-bottom:var(--site-kb, 0px) !important; }
-  [data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100dvh - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }
+  [data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100 * var(--dvh) - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }
   .site-signin-card { overscroll-behavior:contain; animation:site-sheet-up var(--fx-slow) var(--fx-ease) both; }
   .site-signin-x { top:6px; right:6px; width:44px; height:44px; }
   .site-signin-head { padding:30px 24px 0; }
@@ -4236,7 +4288,7 @@ a.ask-btn { text-decoration:none; }
   .site-docs-tabs .site-legal-tab { flex:1 1 auto; padding:10px 12px; }
   .site-docs-code-h { min-height:44px; }
   .site-docs-copy { min-height:36px; padding:0 14px; }
-  .site-legal-h { margin-top:22px; font-size:clamp(30px, 8.6vw, 36px); }
+  .site-legal-h { margin-top:22px; font-size:clamp(30px, 8.6 * var(--vw), 36px); }
   .site-legal-lede { margin-top:14px; font-size:16px; line-height:1.6; }
   .site-legal { padding:20px 20px 0; gap:20px; }
   .site-legal-toc ol { columns:auto; }
@@ -4536,7 +4588,7 @@ a.ask-btn { text-decoration:none; }
 @container repohead (max-width: 820px) { .sync-repo-l { display:none; } }
 .sync-layer { position:fixed; inset:0; z-index:60; }
 .sync-back { position:absolute; inset:0; }
-.sync-panel { position:absolute; top:var(--sync-top, 63px); right:var(--sync-right, 24px); box-sizing:border-box; width:384px; max-width:calc(100vw - 32px); max-height:calc(100vh - var(--sync-top, 63px) - 16px); display:flex; flex-direction:column; overflow:hidden; border-color:var(--border-strong) !important; border-radius:11px; box-shadow:0 14px 38px rgba(0,0,0,.3); outline:none; transform-origin:top right; animation:sync-in .16s cubic-bezier(.2,.8,.2,1) both; }
+.sync-panel { position:absolute; top:var(--sync-top, 63px); right:var(--sync-right, 24px); box-sizing:border-box; width:384px; max-width:calc(100 * var(--vw) - 32px); max-height:calc(100 * var(--vh) - var(--sync-top, 63px) - 16px); display:flex; flex-direction:column; overflow:hidden; border-color:var(--border-strong) !important; border-radius:11px; box-shadow:0 14px 38px rgba(0,0,0,.3); outline:none; transform-origin:top right; animation:sync-in .16s cubic-bezier(.2,.8,.2,1) both; }
 .sync-head { display:flex; align-items:center; gap:10px; padding:11px 11px 11px 16px; border-bottom:1px solid var(--border); flex:none; }
 .sync-repo { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--code); font-size:11.5px; color:var(--fg-55); }
 .sync-body { padding:14px 16px 16px; overflow-y:auto; min-height:0; }
@@ -4672,7 +4724,7 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
    header, the tag's hero and the tabs — about 252px), so the All tab's two rows end at the bottom of the screen —
    the second row about 38% of it. Clamped: never taller than 556 + 12 + 320 (a tall window keeps those sizes),
    never shorter than 520 (a short one scrolls the page instead of crushing the tiles). */
-.cnpy-tagpage { --tp-gap:12px; --tp-fit:clamp(520px, calc(100dvh - 252px), 888px); --tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px); --tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2); --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-full:var(--tp-fit); --tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap)); }
+.cnpy-tagpage { --tp-gap:12px; --tp-fit:clamp(520px, calc(100 * var(--dvh) - 252px), 888px); --tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px); --tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2); --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-full:var(--tp-fit); --tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap)); }
 .cnpy-tagpage-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:var(--tp-gap); align-items:start; }
 .cnpy-tagpage-grid > * { grid-column:span var(--span, 12); min-width:0; }
 .cnpy-tagpage-rail, .cnpy-tagpage-col { display:flex; flex-direction:column; gap:var(--tp-gap); }
@@ -4802,7 +4854,7 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagshead-more[aria-expanded="true"] { color:var(--fg); }
 /* "What is sent": a small popover under the link, over the page (a click outside or Escape closes it). */
 .cnpy-tagshead-pop { position:relative; display:inline-block; }
-.cnpy-tagshead-info { position:absolute; top:calc(100% + 8px); right:0; z-index:30; width:300px; max-width:calc(100vw - 32px); box-sizing:border-box; margin:0; padding:12px 14px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); font-size:12.5px; line-height:1.55; color:var(--fg-70); text-align:left; transform-origin:top right; animation:cnpy-pop .14s ease both; }
+.cnpy-tagshead-info { position:absolute; top:calc(100% + 8px); right:0; z-index:30; width:300px; max-width:calc(100 * var(--vw) - 32px); box-sizing:border-box; margin:0; padding:12px 14px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); font-size:12.5px; line-height:1.55; color:var(--fg-70); text-align:left; transform-origin:top right; animation:cnpy-pop .14s ease both; }
 @media (prefers-reduced-motion: reduce) { .cnpy-tagshead-info { animation:none; } }
 /* An agent's suggestion as a row of the list (web/src/tags.ts suggestionRow): not on the list yet, so not drawn
    like a tag — a HOLLOW square, the name muted, a "Suggested" mark. Approve is the row's action, in the accent. */
@@ -4873,6 +4925,9 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 
 /* ── repo-week (web/src/repo-week.ts): this week's figures ───────────────────────────────────────────────── */
 .repo-week { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+/* On a panel wide enough for every figure (a big screen's --frame-dash), ONE row — auto-fit would leave the last
+   figure alone on a second row between ~1200 and ~1400px. */
+@container (min-width:1200px) { .repo-week { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); } }
 .repo-week-tile { padding:16px 22px; min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
 
 /* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */

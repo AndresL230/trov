@@ -9,7 +9,7 @@ import {
 } from "../web/src/sync";
 import {
   SYNC_SUMMARIES_PER_RUN, zeroSyncCounts,
-  syncBlockText, syncFailureTab, syncPassLabel, syncResultTitle, syncSummariesText,
+  syncBlockText, syncFailureTab, syncFailureText, syncPassLabel, syncResultTitle, syncSummariesText,
   type SyncCounts, type SyncRunView, type SyncStatusView, type SyncSummariesView,
 } from "@shared/sync";
 
@@ -438,6 +438,20 @@ describe("finished — a result that stays until dismissed", () => {
     expect(html).not.toContain("m<b>");
     expect(text(html)).toContain("The sync stopped before it finished.");
     expect(text(html)).toContain("Could not read part of the repository from GitHub.");
+  });
+  it("a stored failure with no code (Z32: the dev seed's `{ step, detail }`) reads as unknown — no crash, nothing it stored shown", () => {
+    // What reached the menu from an old or hand-written row: no `code` at all, or not a string.
+    const odd = [{ step: "releases", detail: "GitHub answered 502 twice" }, { code: null }, { code: 42 }] as unknown as SyncRunView["failures"];
+    const html = panel({ result: run({ status: "partial", counts: counts({ prs_new: 1 }), failures: odd }) });
+    const t = text(html);
+    expect(t).toContain("Sync finished with 3 problems");
+    expect(t).toContain("Part of this sync did not finish, and which part was not recorded. Whatever it saved is kept. Try again in a few minutes.");
+    expect(t).not.toContain("GitHub answered 502 twice");
+    expect(html).not.toContain('data-act="orgGo"');
+    for (const f of odd) {
+      expect(syncFailureTab(f)).toBeNull();
+      expect(() => syncFailureText(f, "acme/widgets")).not.toThrow();
+    }
   });
   it("the page's own request failing is a fixed sentence too", () => {
     expect(panel({ problem: "offline" })).toContain('role="alert"');

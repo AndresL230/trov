@@ -58,7 +58,7 @@ describe("the confirmation modal's typed field (confirm.ts)", () => {
     // takes the outline away, and it is a bordered `.cnpy-input`, not a `border:none` field the ring skips.
     expect(css).not.toMatch(/\.cnpy-cm-typed[^{]*:focus(-visible)? \{[^}]*outline:none/);
     expect(css).toMatch(/\[data-cnpy-theme\] :is\(input:not\([^)]*\)[^{]*:focus-visible \{ border-color:var\(--focus\) !important;/);
-    expect(css).toMatch(/\.cnpy-cmodal-box--wide \{[^}]*max-height:calc\(100dvh - 32px\); overflow:auto;/);
+    expect(css).toMatch(/\.cnpy-cmodal-box--wide \{[^}]*max-height:calc\(100 \* var\(--dvh\) - 32px\); overflow:auto;/);
   });
 });
 

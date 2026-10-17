@@ -9,8 +9,10 @@
 //   • copies a code block (the `Copy` button over each);
 //   • folds the contents on a narrow screen, and marks the section being read.
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { syncFavicon } from "./favicon";
 import { migrateBrowserStorage } from "./storage-migrate";
+import { rectOf } from "./zoom";
 
 migrateBrowserStorage(); // canopy.* → trov.* before the theme is read
 
@@ -92,7 +94,7 @@ if (root) {
     queued = false;
     let current = "";
     for (const sec of root.querySelectorAll<HTMLElement>(".site-legal-sec")) {
-      if (sec.getBoundingClientRect().top > 120) break;
+      if (rectOf(sec).top > 120) break;      // CSS px (zoom.ts)
       current = sec.id;
     }
     for (const a of root.querySelectorAll<HTMLElement>("[data-docs-toc]")) {

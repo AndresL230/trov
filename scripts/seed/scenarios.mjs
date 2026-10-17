@@ -69,7 +69,7 @@ function orgStatements(o, at) {
     `INSERT INTO orgs (id, slug, name, created_at, created_by, plan, plan_overrides, plan_source, plan_status, plan_changed_at, plan_changed_by) VALUES (${q(o.id)}, ${q(o.slug)}, ${q(o.name)}, ${q(at)}, ${q(o.owner)}, ${q(o.plan[0])}, ${q(JSON.stringify(o.plan[2] ?? {}))}, ${q(o.plan[1])}, 'active', ${q(at)}, ${q(o.owner)}) ` +
       `ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, created_at = excluded.created_at, created_by = excluded.created_by, plan = excluded.plan, plan_overrides = excluded.plan_overrides, ` +
       `plan_source = excluded.plan_source, plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = excluded.plan_changed_at, plan_changed_by = excluded.plan_changed_by, ` +
-      `plan_gift_until = NULL, suspended_at = NULL, suspended_by = NULL, ai_automation = 1, ai_chat_auto = 1`,
+      `plan_gift_until = NULL, suspended_at = NULL, suspended_by = NULL, ai_automation = 1, ai_chat_auto = 1, ai_chat_github = 0`,
     insert("org_counters", { org_id: o.id, name: "ticket", value: 0 }), insert("org_counters", { org_id: o.id, name: "handoff", value: 0 }),
     insert("plan", { org_id: o.id, narrative: "", current_version: 0 }),
     insert("notification_settings", { org_id: o.id, send_hour: 8, timezone: o.timezone ?? "America/New_York", from_address: "Trov <hello@trov.dev>" }),

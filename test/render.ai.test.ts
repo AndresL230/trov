@@ -577,7 +577,7 @@ describe("Org settings › AI", () => {
   const settings = (o: Partial<AiSettings> = {}): AiSettings => ({
     enabled: true, canEdit: true, eligibility: "ok",
     allowances: { ai_summaries: use(212, 3000), ai_runs: use(1212, 3000), jev_checks: use(40, 10000), ai_chat: use(830, 2500) },
-    chatAuto: true, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
+    chatAuto: true, chatGithub: false, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
   });
   const tab = (a: AiSettings | null, status: "ok" | "loading" | "error" = "ok", saving = false) => aiTab(org, { status, data: a }, saving);
 
@@ -587,7 +587,12 @@ describe("Org settings › AI", () => {
     expect(admin).toMatch(/<button data-act="orgAiChatAutoToggle" role="switch" aria-checked="true" aria-label="Auto mode in Ask Trov for this organization"/);
     expect(tab(settings({ chatAuto: false }))).toMatch(/data-act="orgAiChatAutoToggle" role="switch" aria-checked="false"/);
     expect(tab(settings({ chatAuto: false }))).toContain('data-ai-chat-auto="off"');
+    // Ask's GitHub lookups (0076): the same switch, off by default.
+    expect(admin).toMatch(/<button data-act="orgAiChatGithubToggle" role="switch" aria-checked="false" aria-label="GitHub lookups in Ask Trov for this organization"/);
+    expect(admin).toContain('data-ai-chat-github="off"');
+    expect(tab(settings({ chatGithub: true }))).toMatch(/data-act="orgAiChatGithubToggle" role="switch" aria-checked="true"/);
     const member = tab(settings({ canEdit: false, enabled: false, chatAuto: false }));
+    expect(text(member)).toContain("GitHub lookups in Ask Trov");
     expect(member).not.toContain('role="switch"');
     expect(text(member)).toContain("Off");
     expect(text(member)).toContain("Auto mode in Ask Trov");

@@ -119,17 +119,18 @@ export const aiChatUsed = (ctx: TenantContext, now: Date = new Date()): Promise<
   count(ctx, AI_CHAT_USED, ctx.orgId, monthStartDay(now));
 
 /** Everything Org settings › AI reads, in ONE statement: the plan, both of the org's AI switches
- *  (`ai_automation`, 0055; `ai_chat_auto`, 0058) and this month's use of each AI allowance. An org that is not
- *  there reads as switched off. */
+ *  (`ai_automation`, 0055; `ai_chat_auto`, 0058; `ai_chat_github`, 0076) and this month's use of each AI allowance.
+ *  An org that is not there reads as switched off. */
 export async function planAndAiSettings(ctx: TenantContext, now: Date = new Date()): Promise<{
-  plan: OrgPlan; enabled: boolean; chatAuto: boolean; used: Record<AiAllowanceKey, number>;
+  plan: OrgPlan; enabled: boolean; chatAuto: boolean; chatGithub: boolean; used: Record<AiAllowanceKey, number>;
 }> {
-  const row = await first<OrgPlanRow & { ai_automation: number; ai_chat_auto: number; s: number; r: number; j: number; c: number }>(ctx,
-    `SELECT ${PLAN_COLS}, ai_automation, ai_chat_auto, (${SUMMARIES_USED}) AS s, (${AI_RUNS_USED}) AS r, (${JEV_CHECKS_USED}) AS j, (${AI_CHAT_USED}) AS c
+  const row = await first<OrgPlanRow & { ai_automation: number; ai_chat_auto: number; ai_chat_github: number; s: number; r: number; j: number; c: number }>(ctx,
+    `SELECT ${PLAN_COLS}, ai_automation, ai_chat_auto, ai_chat_github, (${SUMMARIES_USED}) AS s, (${AI_RUNS_USED}) AS r, (${JEV_CHECKS_USED}) AS j, (${AI_CHAT_USED}) AS c
        FROM orgs WHERE id = ?1`, ctx.orgId, monthStartDay(now));
   const n = (v: unknown): number => Number(v ?? 0);
   return {
     plan: planOf(row), enabled: !!row && n(row.ai_automation) !== 0, chatAuto: !!row && n(row.ai_chat_auto) !== 0,
+    chatGithub: !!row && n(row.ai_chat_github) !== 0,
     used: { ai_summaries: n(row?.s), ai_runs: n(row?.r), jev_checks: n(row?.j), ai_chat: n(row?.c) },
   };
 }

@@ -202,7 +202,7 @@ export function artifactFrame(o: { kind: string; title: string; raw: string; key
       return `<div style="display:grid;place-items:center;padding:32px 24px;background:var(--bg)"><img src="${attr(o.raw)}" alt="${attr(o.title)}" style="display:block;max-width:100%;height:auto"></div>`;
     case "pdf":
       // NOT sandboxed — see the viewer's pdf case below for why that is safe.
-      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" style="display:block;width:100%;height:78vh;min-height:480px;border:0;background:#fff"></iframe>`;
+      return `<iframe title="${attr(o.title)}" src="${attr(o.raw)}" style="display:block;width:100%;height:calc(78 * var(--vh));min-height:480px;border:0;background:#fff"></iframe>`;
     default:
       return null;
   }

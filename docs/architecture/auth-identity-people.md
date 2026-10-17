@@ -227,7 +227,9 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
   "Deleted user" as plain text, never an `@handle` or a link (`handleTag` / `handleLink` → `deletedUserTag`; Q31). A card or row that opens something else (queue rows and
   board cards, sprint ticket boxes, handoff rows, prompt and artifact cards, the Feed's review rows) is a plain
   container whose own target is an empty button laid over it (`ui.ts` `hitArea` + `HITBOX`), with the people above it
-  — never a button inside a button. Left plain on purpose: pickers and filter menus (a click there selects), the
+  — never a button inside a button. `HITBOX` gives the card the pointer (the hit inherits it, so the board's draggable
+  card keeps its grab); any other control on such a card (a prompt card's copy button) carries `cnpy-hitctl` to sit
+  above the hit as the people do. Left plain on purpose: pickers and filter menus (a click there selects), the
   Review and Unplaced list rows (select buttons; their detail pane links the person), menu rows, anything inside a
   link (a Repo PR row, a ticket's artifact chip), tooltips, the ratify dialog's "Recorded as", the sidebar's account
   chip (it opens Settings), the onboarding preview and the landing page.

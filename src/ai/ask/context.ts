@@ -4,9 +4,10 @@ import type { Env } from "../../env";
 import type { TenantContext } from "../../data/context";
 import { artifactOrigin, type ArtifactAgentCtx } from "../../tools/artifacts-agent";
 import type { DocsSource } from "./docs";
+import type { AskGithub } from "./github";
 
 /** The areas this turn's search calls looked in — what `show_not_found` reports, with counts the server computes. */
-export type SearchArea = "docs" | "tickets" | "feed" | "artifacts" | "decisions" | "sprints" | "prompts" | "handoffs" | "trov_docs";
+export type SearchArea = "docs" | "tickets" | "feed" | "artifacts" | "decisions" | "sprints" | "prompts" | "handoffs" | "trov_docs" | "github";
 
 export interface AskToolCtx {
   env: Env;
@@ -18,6 +19,9 @@ export interface AskToolCtx {
   origin: string;
   threadId: number;
   docs: DocsSource;
+  /** This answer's GitHub side (./github.ts) — null when the tools are not offered: held, no connected repository,
+   *  or not a turn (a Confirm). Never a credential: the transport keeps that. */
+  github: AskGithub | null;
   now: () => Date;
   /** This turn's searches: area → the earliest `since` asked (feed), or null. */
   searched: Map<SearchArea, string | null>;

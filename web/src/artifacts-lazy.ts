@@ -10,7 +10,7 @@ import { skeleton, skCard, skLine, skLines, skList, skW, skProse } from "./skele
 
 export const artifactsChunk = lazyChunk<typeof ArtifactsModule>(() => import("./artifacts"));
 
-const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px";
+const SHELL = "width:100%;max-width:1440px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px";
 const GRID = "display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px;margin-top:18px";
 
 function waiting(p: ArtProps): string {

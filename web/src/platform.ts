@@ -80,7 +80,7 @@ const FIELD_LABEL = "display:block;font-family:var(--label);font-size:10.5px;fon
 const BTN = "height:38px;padding:0 16px;border-radius:8px;font-size:12.5px;font-weight:600;white-space:nowrap";
 const OUTLINE = `${BTN};border:1px solid var(--border-strong);font-weight:500;color:var(--fg-70)`;
 const ROW = "display:flex;align-items:center;gap:12px;padding:11px 20px;border-bottom:1px solid var(--border);margin-bottom:-1px";
-const FRAME = "width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box";
+const FRAME = "width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box";
 const PLUS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>`;
 
 /** An accent button that is inert (and says why it can't be pressed by being muted) until `on`. */
@@ -349,7 +349,7 @@ export function addOrgModal(d: AddOrgDraft, dd: DropdownUi = initialDropdownUi()
   const shell = (inner: string, describedBy = "") => `<div data-overlay="plat-add" class="cnpy-cmodal">
     <div data-act="platAddClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="plat-add" role="dialog" aria-modal="true" aria-labelledby="plat-add-t"${describedBy ? ` aria-describedby="${describedBy}"` : ""} tabindex="-1" data-plat-dialog data-scroll-keep="plat-add" class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(480px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+      <div id="plat-add" role="dialog" aria-modal="true" aria-labelledby="plat-add-t"${describedBy ? ` aria-describedby="${describedBy}"` : ""} tabindex="-1" data-plat-dialog data-scroll-keep="plat-add" class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(480px, 100%);max-height:calc(100 * var(--vh) - 32px);overflow-y:auto">
         <button type="button" data-act="platAddClose" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
         ${inner}
       </div>

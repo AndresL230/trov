@@ -103,17 +103,18 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Ask sharing (#193) and handoff prompts by upload (#194), merged together through epic/10-17-staging: one
-  // deploy, one version.
+  // Ask sharing (#193) and handoff prompts by upload (#194), merged together through epic/10-17-staging (#195) with
+  // Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower artifact panel in Ask, the purple dark
+  // accent and the big-monitor layout: one deploy, one version.
   {
     version: "0.12",
     date: "2026-10-17",
     title: "Share an Ask conversation",
-    headline: "Share an Ask conversation with your organization or with chosen people, and an agent sends a long handoff as a file in seconds.",
+    headline: "Share an Ask conversation with your organization or chosen people, Ask Trov can read your GitHub repositories, and an agent sends a long handoff as a file.",
     highlights: [
-      "Share an Ask conversation with your whole organization to read, or with chosen people: for each, pick Can read or Can continue.",
-      "Conversations shared with you by name are under Shared with you; the ones shared with everyone are under Organization.",
+      "Share an Ask conversation with your whole organization to read, or with chosen people who can read or continue it; what's shared with you is under Shared with you or Organization.",
       "Someone who can continue asks follow-ups as themselves. Each question stays its asker's: only they can edit it, regenerate it or confirm its changes.",
+      "Ask Trov can read your connected GitHub repositories when a question needs it, as far as your own GitHub access goes, once an admin turns it on.",
       "An agent working in a terminal sends a long handoff prompt as a file instead of typing it out; the handoff appears only once the whole prompt has arrived.",
     ],
     headsUp: [
@@ -122,19 +123,27 @@ export const RELEASES: Release[] = [
       "Ask Trov and agents in a chat on the web send handoffs as before, with the prompt written in.",
     ],
     ops: [
-      "Apply migration `0076_10_17_staging` (one file for Ask sharing and handoff uploads; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
+      "Apply migration `0076_10_17_staging` (one file for Ask sharing, handoff uploads and the switch for Ask's GitHub lookups, off for every organization; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
+      "No new secret, var or GitHub App permission: Ask's GitHub lookups read through the org's existing GitHub connection.",
       "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {
       added: [
-        "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193).",
+        "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193)",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
+        "Ask Trov reads your connected repositories on GitHub when a question needs it, as far as your own GitHub access goes; an admin turns it on (#195)",
+        "Prompt Library: a copy button on each card copies its slug for an agent; cards that open something show the pointer on hover (#195)",
       ],
-      changed: [],
+      changed: [
+        "Ask Trov: an artifact opens in a narrower side panel; a width you drag to is kept (#195)",
+        "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
+        "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
+        "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
+      ],
       fixed: [],
       removed: [],
     },
-    prs: [193, 194],
+    prs: [193, 194, 195],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
