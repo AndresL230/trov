@@ -60,8 +60,8 @@ and a space is never both pinned and hidden.
   `PUT /spaces/prefs/me` `{ sidebar?, pinned?, hidden? }` (cookie only; a bearer is refused; a list left out keeps
   what was saved; `checkLibraryPrefs` refuses a duplicate, an unknown or archived space, more than five in the
   sidebar, or a space pinned and hidden — 400 `invalid` with its `field`). Never MCP: it is a person's own screen.
-- **The sidebar** shows `sidebarSpaces` (at most five), then — always emitted, shown by attribute — "N more spaces"
-  (to Library home) when it leaves some out, and a Customize icon in its action row.
+- **The sidebar's Library group** is those spaces only (`sidebarSpaces`, at most five): no "more" row, no Customize,
+  New space, Import or Imports rows — the Library row opens Library home, which holds them.
 - **Library home** (`libraryCards`): Pinned (when any), then All spaces (or Spaces) in the org's order, then "Show
   hidden spaces · N", which shows the hidden cards dimmed. Each card's "…" (a `hitctl` beside the hit area, shown on
   hover or focus) opens Pin to top / Unpin, Show in sidebar / Remove from sidebar (when the sidebar is full it says
@@ -261,8 +261,8 @@ READ BACK from `doc_versions` after each batch so a retry never counts twice; un
 `cancelled` with no path), `total` (the pages planned), and (0082) `manifest` — the SERVER's plan (the accepted
 files with their sizes and headings, the choices, the writes in order, the path → slug map, the image paths), which
 every later request is checked against — and `images`. Only the starter adds to a run (403 `forbidden`); an ended
-run takes nothing (409 `not_running`). The sidebar's badge is `GET /badges` `imports` (a live running run; one at
-most). Tests: `test/docs-import.test.ts`.
+run takes nothing (409 `not_running`). `GET /badges` `imports` counts a live running run (one at most); the sidebar no
+longer draws it. Tests: `test/docs-import.test.ts`.
 
 **Review** (`GET /proposals`): each proposal carries `import_id`, `import_path`, `import_file_name`, `import_by`,
 `import_at` (null when an agent or a person wrote it) and the page's `parent_slug`, so Review groups an import's
@@ -321,8 +321,8 @@ The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts
   (the record, Ratify / Reject in its header). Departures from the design: a page decided on its own leaves the
   list instead of staying dimmed with Undo (a promote is not undone); nothing is selected until a page or a
   decision is picked; the Unified / Side by side / Rendered switch is not on the page pane.
-- **The sidebar**: an Imports row in the Library group (its badge `badges.imports`, hidden at 0 — the node is always
-  there) and an Import action; Library home, Space home and an empty space offer Import too.
+- **Where Import is**: Library home (by its title), a space's "…" menu and an empty space; Imports history is the
+  import screen's header button ("Imports history"). The sidebar has neither.
 
 ## Templates
 

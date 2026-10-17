@@ -206,12 +206,10 @@ describe("sidebar — the Library group", () => {
     expect(sidebarView(props())).toContain('<div class="cnpy-sub-none" hidden>');
   });
 
-  it("\"+ New space\" is an admin's: always emitted, hidden for a member", () => {
-    const member = sidebarView(props());
-    expect(member).toMatch(/<button data-act="libNew" class="cnpy-sub-i cnpy-sub-new" hidden /);
-    const admin = sidebarView(props({ canAdmin: true }));
-    expect(admin).toMatch(/<button data-act="libNew" class="cnpy-sub-i cnpy-sub-new" tabindex="-1">/);
-    expect(admin).toContain("New space</button>");
+  it("the Library group is the spaces and the more / Customize row only: no New space, Import or Imports (the owner's call)", () => {
+    for (const html of [sidebarView(props()), sidebarView(props({ canAdmin: true }))]) {
+      for (const act of ["libNew", "goImport", "goImports"]) expect(html, act).not.toContain(`data-act="${act}"`);
+    }
   });
 
   it("render() feeds the group from the Library read, and the active space from the screen", () => {

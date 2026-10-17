@@ -4457,17 +4457,12 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-sub-badge { margin-left:auto; min-width:16px; height:16px; padding:0 5px; box-sizing:border-box; display:inline-grid; place-items:center; border-radius:5px; font-family:var(--label); font-size:10.5px; font-weight:600; color:var(--accent); background:var(--accent-soft); }
 .cnpy-sub-badge[data-n="0"] { display:none; }
 .cnpy-sub-acts { display:flex; align-items:center; flex-wrap:wrap; }
-/* "N more spaces" / "All spaces" and, at its right, the Customize sidebar icon: one row. */
-.cnpy-sub-morerow { display:flex; align-items:center; }
 /* Customize sidebar's picked rows: dragged into order (customize-drag.ts), a grip at the start. */
 .cnpy-libc-row.is-picked { cursor:grab; }
 .cnpy-libc-row.is-picked:hover { background:var(--hover); }
 .cnpy-libc-row.is-picked:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .cnpy-libc-row.is-lifted { background:var(--surface); box-shadow:0 0 0 1px var(--border-strong), 0 8px 20px rgba(10,10,16,.14); cursor:grabbing; position:relative; z-index:1; }
 .cnpy-libc-grip { display:grid; place-items:center; width:12px; flex:none; color:var(--fg-40); margin-left:-2px; }
-.cnpy-sub-morerow[hidden] { display:none; }
-.cnpy-sub-morerow > .cnpy-sub-more { flex:1; min-width:0; width:auto; }
-.cnpy-sub-morerow > .cnpy-sub-custom { width:auto; flex:none; }
 .cnpy-sub-acts > .cnpy-sub-i { width:auto; }
 .cnpy-sub-i.cnpy-sub-sp.is-drop { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
 /* Review › an import's pages as one group (review.ts `groupCard`): the card, its open list, its page rows. A group
@@ -4498,7 +4493,14 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-rv-row[data-verdict] .cnpy-rvg-in { opacity:.14; }
 /* Space home › the header's meta (library.ts spaceHeader): each item draws its own "·" in the gap before it; the
    row's left edge clips the dot of whichever item starts a line, so a wrapped line never starts or ends with one. */
-.cnpy-lib-meta { overflow:hidden; margin:7px -4px 0; padding:3px 4px; font-size:12.5px; color:var(--fg-55); }
+/* A space's header: tile | the name, description and meta | the actions. The tile is centred on the text block; the
+   actions sit level with the name's 32px line. Under 640px the actions take their own row. */
+.cnpy-lib-shead { display:grid; grid-template-columns:auto minmax(0,1fr) auto; column-gap:16px; row-gap:14px; align-items:center; }
+.cnpy-lib-shead-tile { display:flex; }
+.cnpy-lib-shead-text { min-width:0; }
+.cnpy-lib-shead-acts { align-self:start; }
+@media (max-width:640px) { .cnpy-lib-shead { grid-template-columns:auto minmax(0,1fr); } .cnpy-lib-shead-acts { grid-column:1 / -1; } }
+.cnpy-lib-meta { overflow:hidden; margin:6px -4px 0; padding:3px 4px; font-size:12.5px; color:var(--fg-55); }
 .cnpy-lib-meta-in { display:flex; align-items:center; flex-wrap:wrap; row-gap:6px; margin-left:-17px; }
 .cnpy-lib-mi { position:relative; display:inline-flex; align-items:center; margin-left:17px; min-width:0; }
 .cnpy-lib-mi::before { content:"·"; position:absolute; left:-11px; color:var(--border-strong); }

@@ -147,7 +147,7 @@ describe("a space's home", () => {
 
   it("a reader who cannot edit: the description as text, owners by full name, New page — no edit or admin action", () => {
     const html = home();
-    expect(html).toContain('<p style="font-size:13.5px;line-height:1.45;color:var(--fg-70);max-width:600px;margin:6px 0 0">How we build, run and fix Trov.</p>');
+    expect(html).toContain('<p style="font-size:13.5px;line-height:1.45;color:var(--fg-70);max-width:600px;margin:2px 0 0">How we build, run and fix Trov.</p>');
     expect(html).toContain("Owned by Priya Natarajan and Andres L.");
     expect(html).toContain("3 pages");
     expect(html).toContain("2 waiting for review");
@@ -182,7 +182,9 @@ describe("a space's home", () => {
   it("the header's actions wrap inside the column: they never push a phone's page sideways (case ENV13)", () => {
     const html = home({ admin: true }, { can_edit: true, can_admin: true });
     // The box holding the "…" and New page: no wider than the header, so its own wrap applies.
-    const box = html.match(/<div style="([^"]*)">(?:(?!<\/div>)[\s\S])*data-act="libHeadMenu"/)?.[1] ?? "";
+    const box = html.match(/<div class="cnpy-lib-shead-acts" style="([^"]*)">(?:(?!<\/div>)[\s\S])*data-act="libHeadMenu"/)?.[1] ?? "";
+    // …and the header is a grid that puts them on their own row on a phone.
+    expect(css).toMatch(/@media \(max-width:640px\) \{ \.cnpy-lib-shead \{ grid-template-columns:auto minmax\(0,1fr\); \} \.cnpy-lib-shead-acts \{ grid-column:1 \/ -1; \} \}/);
     expect(box).toContain("flex-wrap:wrap");
     expect(box).toContain("max-width:100%");
   });
@@ -519,17 +521,15 @@ describe("your own Library view (0084_library_prefs)", () => {
     app("library", "member", { library: { status: "ok", data: lib({ spaces: SIX, prefs }) }, ...over });
   const sidebarSpaceRows = (html: string) => [...html.matchAll(/data-act="navSub" data-arg="library:([a-z]+)"/g)].map((m) => m[1]);
 
-  it("the sidebar shows the first five in the Library's order, then \"1 more space\" to Library home, and Customize", () => {
+  it("the sidebar shows the first five in the Library's order and nothing after them (Customize is Library home's)", () => {
     const html = render(withPrefs(undefined));
     expect(sidebarSpaceRows(html)).toEqual(["alpha", "bravo", "charlie", "delta", "echo"]);
-    expect(html).toMatch(/<div class="cnpy-sub-morerow"><button data-act="goLibrary" class="cnpy-sub-i cnpy-sub-new cnpy-sub-more" tabindex="-?\d">1 more space<\/button><button data-act="libCustomize" data-confirm-trigger class="cnpy-sub-i cnpy-sub-new cnpy-sub-custom" tabindex="-?\d" aria-label="Customize sidebar"/);
+    for (const cls of ["cnpy-sub-morerow", "cnpy-sub-more", "cnpy-sub-custom"]) expect(html, cls).not.toContain(cls);
+    expect(html.match(/data-act="libCustomize"/g)?.length).toBe(1); // Library home's "Customize sidebar" only
   });
 
-  it("…or the person's own pick, in their order; with nothing left out the row reads All spaces; with no space it is hidden", () => {
+  it("…or the person's own pick, in their order", () => {
     expect(sidebarSpaceRows(render(withPrefs({ sidebar: ["foxtrot", "alpha"], pinned: [], hidden: [] })))).toEqual(["foxtrot", "alpha"]);
-    const two = render(app("library", "member"));
-    expect(two).toMatch(/class="cnpy-sub-i cnpy-sub-new cnpy-sub-more" tabindex="-?\d">All spaces<\/button>/);
-    expect(render(app("library", "member", { library: { status: "ok", data: lib({ spaces: [] }) } }))).toContain('<div class="cnpy-sub-morerow" hidden>');
   });
 
   it("Library home: pinned cards first under Pinned, the rest under All spaces, hidden ones behind a toggle", () => {

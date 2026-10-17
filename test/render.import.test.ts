@@ -422,23 +422,16 @@ describe("the sidebar's Imports row and Import action", () => {
       expect(tree(sidebarView(sideProps(v))), JSON.stringify(v)).toBe(base);
     }
   });
-  it("the badge is the accent count of imports in progress, hidden at 0; the row lights on Imports history", () => {
-    expect(sidebarView(sideProps())).toContain('<span class="cnpy-sub-badge" data-n="0"');
-    const on = sidebarView(sideProps({ screen: "imports", counts: { ...sideProps().counts, imports: 1 } }));
-    expect(on).toContain('<button data-act="goImports" class="cnpy-sub-i cnpy-sub-imp is-active" aria-current="page"');
-    expect(on).toContain('data-n="1" aria-label="1 in progress">1</span>');
-    expect(on).toContain('class="cnpy-navrow n-library is-active"');
+});
+
+describe("the import screens' way in: not the sidebar", () => {
+  it("the Library's import screens light Library; a space row is still a drop target; Imports history is the import screen's header button", () => {
     expect(navKeyOf("import")).toBe("library");
     expect(navKeyOf("imports")).toBe("library");
-  });
-  it("Import is everyone's and presets the space on screen; a space row is a drop target", () => {
-    expect(sidebarView(sideProps())).toMatch(/data-act="goImport" data-arg="" class="cnpy-sub-i cnpy-sub-new cnpy-sub-impgo"/);
-    expect(sidebarView(sideProps({ screen: "docs", librarySpace: "engineering" }))).toMatch(/data-act="goImport" data-arg="engineering"/);
     expect(sidebarView(sideProps())).toContain('data-drop-space="engineering"');
-  });
-  it("render() counts the run this tab drives even before the badges read says so", () => {
-    const s: AppState = { ...initialState(), view: "app", imp: { ...initialImportUi(), run: { id: 1, phase: "pages", source: "a.zip", space: "e", spaceName: "E", pages: 1, pagesDone: 0, images: 0, imagesDone: 0, current: null, error: null, run: null } } };
-    expect(render(s)).toContain('class="cnpy-sub-badge" data-n="1"');
+    expect(sidebarView(sideProps())).not.toContain('data-act="goImports"');
+    const s: AppState = { ...initialState(), view: "app", screen: "import" };
+    expect(render(s)).toMatch(/<button data-act="goImports" class="cnpy-outlinebtn"[^>]*>Imports history<\/button>/);
   });
 });
 
@@ -454,7 +447,7 @@ describe("Import from the Library's own screens", () => {
     const html = render(home);
     expect(html).toContain("Write the first page, or import Markdown files you already have. Imported pages wait in Review until someone approves them.");
     // A space's Import is in its header's … menu (closed here), so it is the empty layout's and the sidebar's.
-    expect((html.match(/data-act="goImport" data-arg="engineering"/g) ?? []).length).toBe(2);
+    expect((html.match(/data-act="goImport" data-arg="engineering"/g) ?? []).length).toBe(1); // the empty layout's
   });
 });
 

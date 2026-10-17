@@ -996,7 +996,6 @@ function sidebar(s: AppState): string {
     roadmapTab: s.roadmapTab,
     librarySpace: paneSpaceSlug(s) ?? s.docSpace,
     spaces: sidebarSpaces(liveSpaces(s), s.library.data?.prefs).map((sp) => ({ key: sp.slug, label: sp.name, icon: sp.icon, color: sp.color })),
-    moreSpaces: Math.max(0, liveSpaces(s).length - sidebarSpaces(liveSpaces(s), s.library.data?.prefs).length),
     spacesLoaded: s.library.status === "ok" && s.library.data !== null,
     canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
@@ -1083,6 +1082,10 @@ function header(s: AppState): string {
   // The Roadmap header: New sprint (it opens the panel at the top of whichever tab is
   // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).
   const roadmapControls = s.screen === "roadmap" ? accentNew("nsToggle", "New sprint") : "";
+  // The import screen: its history is one step away here (the sidebar has no Imports row).
+  const importControls = s.screen === "import"
+    ? `<button data-act="goImports" class="cnpy-outlinebtn" style="display:flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Imports history</button>`
+    : "";
 
   // Sync GitHub (web/src/sync.ts): the button that opens the Sync panel. On My Work for an admin
   // (and, once a sync has run, a quiet "Synced 12m ago" for everyone else); on EVERY screen while
@@ -1157,7 +1160,7 @@ function header(s: AppState): string {
       ${ask ? ask.crumb : art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${askControls}${newControls}${feedControls}${roadmapControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${askControls}${newControls}${feedControls}${roadmapControls}${importControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }

@@ -361,11 +361,10 @@ const pageCardShape = (i: number): string => skCard(`${skLine(skW(i, ["44%", "52
 const PAGE_GRID = "display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px";
 
 function spaceHeaderSkeleton(): string {
-  return skeleton("space-head", "Loading the space…", `<div style="display:flex;align-items:flex-start;gap:16px">
-    ${skBox(40, 40)}
-    <div style="flex:1;min-width:0">${skBox(200, 20)}<div style="margin-top:10px">${skBar(400, 10)}</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:12px">${skBox(20, 20)}${skBox(20, 20)}${skBar(220, 9)}</div></div>
-    <div style="display:flex;gap:8px;flex:none">${skBox(84, 32)}${skBox(104, 32)}</div>
+  return skeleton("space-head", "Loading the space…", `<div class="cnpy-lib-shead">
+    <div class="cnpy-lib-shead-tile">${skBox(48, 48)}</div>
+    <div class="cnpy-lib-shead-text">${skBox(200, 24)}<div style="display:flex;align-items:center;gap:8px;margin-top:10px">${skBox(20, 20)}${skBox(20, 20)}${skBar(220, 9)}</div></div>
+    <div class="cnpy-lib-shead-acts" style="display:flex;gap:8px">${skBox(34, 32)}${skBox(104, 32)}</div>
   </div>`);
 }
 
@@ -380,7 +379,7 @@ function descriptionBlock(sp: SpaceDTO, canEdit: boolean, draft: string | null):
       <div style="display:flex;justify-content:space-between;gap:12px;margin-top:5px;font-size:11.5px;color:var(--fg-40)"><span>Enter to save · Esc to cancel</span><span style="font-variant-numeric:tabular-nums">${draft.length}/${SPACE_DESCRIPTION_MAX}</span></div>
     </div>`;
   }
-  return sp.description ? `<p style="font-size:13.5px;line-height:1.45;color:var(--fg-70);max-width:600px;margin:6px 0 0">${esc(sp.description)}</p>` : "";
+  return sp.description ? `<p style="font-size:13.5px;line-height:1.45;color:var(--fg-70);max-width:600px;margin:2px 0 0">${esc(sp.description)}</p>` : "";
 }
 
 /** A space's header keeps one button (New page); everything else it can do is in one "…" menu beside it, offered by
@@ -415,14 +414,16 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
     : `${headMenu(p, d)}${accentBtn("libNewPage", sp.slug, "New page")}`;
-  return `<div class="cnpy-lib-shead" style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
-    ${spaceTile(sp, 40)}
-    <div style="flex:1;min-width:240px">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
+  // A grid: the tile is centred on the text beside it (the name, the description, the meta line), and the actions
+  // sit level with the name's line (trov.css `.cnpy-lib-shead`).
+  return `<div class="cnpy-lib-shead">
+    <div class="cnpy-lib-shead-tile">${spaceTile(sp, 48)}</div>
+    <div class="cnpy-lib-shead-text">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:32px;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}
       <div class="cnpy-lib-meta"><div class="cnpy-lib-meta-in">${meta}</div></div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;flex:none;flex-wrap:wrap;max-width:100%">${actions}</div>
+    <div class="cnpy-lib-shead-acts" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:100%">${actions}</div>
   </div>`;
 }
 
