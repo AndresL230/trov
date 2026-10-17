@@ -97,7 +97,10 @@ describe("words", () => {
     expect(AUTHORITY_MARK.unpromoted).toMatchObject({ word: "Not yet approved", shape: "dashed", hint: "Nobody has approved this page yet. It goes live once someone approves it in Review." });
   });
   it("a refusal is a sentence: the server's own when it has one", () => {
-    expect(spaceErrorText(new OrgApiError(409, "name_taken", "A space called Product already exists", "name"), "x")).toBe("A space called Product already exists");
+    expect(spaceErrorText(new OrgApiError(409, "name_taken", "A space called Product already exists", "name"), "x")).toBe("A space called Product already exists.");
+    // Case LH8: the restore route's own words start lower-case; the toast is still a sentence.
+    expect(spaceErrorText(new OrgApiError(409, "name_taken", "there's already a space called Design", null), "x")).toBe("There's already a space called Design.");
+    expect(spaceErrorText(new OrgApiError(400, "not_member", "an owner must be a member", "owners"), "x")).toBe("An owner must be a member.");
     expect(spaceErrorText(new OrgApiError(403, "forbidden", null, null), "x")).toBe("Only an admin, or an owner of this space, can change that.");
   });
 });

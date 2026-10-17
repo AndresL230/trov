@@ -39,7 +39,9 @@ export interface LibraryController {
 export function spaceErrorText(e: unknown, fallback: string): string {
   if (e instanceof PreviewBlocked) return "This is a preview: nothing is changed.";
   if (!(e instanceof ApiError)) return `${fallback} Check your connection and try again.`;
-  const detail = e instanceof OrgApiError ? e.detail : null;
+  // The server's own words, as a sentence: a capital first, a full stop last (case LH8: "there's already a space…").
+  const raw = e instanceof OrgApiError ? e.detail : null;
+  const detail = raw ? `${raw[0].toUpperCase()}${raw.slice(1)}${/[.!?]$/.test(raw) ? "" : "."}` : null;
   switch (e.message) {
     case "name_taken": return detail ?? "A space already has that name. Pick another name.";
     case "forbidden": return "Only an admin, or an owner of this space, can change that.";
@@ -47,7 +49,7 @@ export function spaceErrorText(e: unknown, fallback: string): string {
     case "not_found": return "That space is not there any more. Reload the page.";
     case "not_member": return detail ?? "An owner must be a member of this organization.";
     case "invalid": return detail ?? `${fallback} Check what you entered.`;
-    default: return detail ? `${detail[0].toUpperCase()}${detail.slice(1)}${/[.!?]$/.test(detail) ? "" : "."}` : `${fallback} Try again.`;
+    default: return detail ?? `${fallback} Try again.`;
   }
 }
 
