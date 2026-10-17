@@ -225,7 +225,8 @@ The views are `web/src/import.ts` (pure) and the acts `web/src/import-actions.ts
   change by its author — the design's "Written by ‹Name›'s agent" (a spark on slate; "N pages · ‹when›"; its rows
   read "Change" or "New page"). A drafted decision is never in a group: it stays a card of its own. One keyed card
   per group (`rvg:<key>`: `7`, `agent:<handle>`), Approve all / Reject all (a red `confirmModal` with the design's
-  copy for an import or an agent) leaving through Review's exit pattern: an import's loops `approve-all` /
+  copy for an import or an agent; its red button takes the focus, and closing it gives the focus back to that
+  group's Reject all) leaving through Review's exit pattern: an import's loops `approve-all` /
   `reject-all` until `remaining` is 0; an agent's calls each page's own promote / reject route (the ones a person
   uses page by page), oldest first, so a page's newest change goes live last — no new write. The filter is All /
   Imports / Written by agents; the list pane is the design's (`.95fr`, at least 420px) beside the page pane
@@ -344,7 +345,8 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   Import. An unknown space: a sentence, and no docs pane.
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,
-  the 8 colours, a short description (140), the sidebar preview. Created: the new space's home and "Created ‹Name›".
+  the 8 colours, a short description (140), the sidebar preview, in the design's 480 px dialog (Create and Edit space;
+  the owners and Archive dialogs keep the confirm's 420). Created: the new space's home and "Created ‹Name›".
   Name takes the focus on open; closing any space dialog without a write (Create / Edit space, Edit owners, Archive —
   Cancel, Escape, the backdrop) gives the focus back to what opened it (`library-actions.ts` `remember` / `giveBack`).
 - *A doc page* and *New page*: below; the header crumb reads "Library › ‹Space›" / "Library › New page".
