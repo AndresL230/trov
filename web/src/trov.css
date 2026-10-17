@@ -4350,9 +4350,14 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-nd-wfoot { display:flex; justify-content:flex-end; padding:8px 10px; border-top:1px solid var(--border); }
 .cnpy-nd-wchev:focus-visible, .cnpy-nd-wpick:focus-visible, .cnpy-nd-loc:focus-visible, .cnpy-nd-tpl:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 /* The templates and the preview. */
-.cnpy-nd-grid { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start; margin-top:24px; }
-.cnpy-nd-tpls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-.cnpy-nd-tpl { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-height:118px; padding:14px; text-align:left; border:1px solid var(--border); background:var(--surface); color:var(--fg); cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
+/* New page's two steps (newdoc.ts): 1 · the template cards, the whole column, each listing its sections; 2 · the
+   picked template, Goes in and the fields, one column, Create page at the foot. */
+.cnpy-nd-tpls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:20px; }
+.cnpy-nd-tplsec { margin-top:auto; padding-top:10px; font-size:11.5px; line-height:1.45; color:var(--fg-40); }
+.cnpy-nd-chosen { display:flex; align-items:center; gap:12px; margin-top:18px; padding:12px 14px; border:1px solid var(--border); background:var(--surface); }
+.cnpy-nd-s2 .cnpy-nd-goes { margin-top:14px; }
+.cnpy-nd-foot { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; flex-wrap:wrap; }
+.cnpy-nd-tpl { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-height:150px; padding:14px; text-align:left; border:1px solid var(--border); background:var(--surface); color:var(--fg); cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
 .cnpy-nd-tpl:hover { border-color:var(--border-strong); }
 .cnpy-nd-tpl.is-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:color-mix(in srgb, var(--accent) 3%, var(--surface)); }
 .cnpy-nd-tpl.is-blank { border-style:dashed; border-color:var(--border-strong); background:transparent; }
@@ -4361,15 +4366,8 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
 .cnpy-nd-tpl.is-on .cnpy-nd-tpli { background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent); }
 .cnpy-nd-tpln { font-size:13.5px; font-weight:500; }
 .cnpy-nd-tpld { font-size:12px; line-height:1.45; color:var(--fg-55); }
-.cnpy-nd-mini { margin-top:12px; padding:14px; min-height:150px; box-sizing:border-box; background:color-mix(in srgb, var(--bg) 50%, var(--surface)); border:1px solid var(--border); }
-.cnpy-nd-line { height:6px; margin-top:6px; background:var(--border); }
-.cnpy-nd-line.is-title { height:10px; margin-top:0; background:var(--border-strong); }
-.cnpy-nd-msec { margin-top:12px; }
-.cnpy-nd-msl { font-size:12px; font-weight:500; color:var(--fg); }
-.cnpy-nd-mblank { font-size:12px; color:var(--fg-55); margin:12px 0 0; }
 .cnpy-nd-err { font-size:12px; line-height:1.45; color:var(--red); margin:10px 0 0; }
 @media (max-width:1100px) { .cnpy-nd-tpls { grid-template-columns:repeat(2,minmax(0,1fr)); } }
-@media (max-width:860px) { .cnpy-nd-grid { grid-template-columns:minmax(0,1fr); } }
 @media (max-width:640px) { .cnpy-nd { padding-left:16px !important; padding-right:16px !important; } .cnpy-nd-tpls { grid-template-columns:minmax(0,1fr); } }
 @media (prefers-reduced-motion: reduce) { .cnpy-nd-where { animation:none; } .cnpy-nd-loc, .cnpy-nd-tpl, .cnpy-nd-wchev { transition:none; } }
 /* (end of the New page block) */

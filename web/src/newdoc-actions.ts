@@ -1,6 +1,7 @@
 // Library › New page — the controller: every `nd…` act main.ts dispatches lands here (the view is web/src/newdoc.ts,
-// pure). A page is staged through POST /api/docs/propose — the gate, exactly as an agent's proposal — with the
-// template's body and section and the parent picked in "Goes in"; it then waits in Review, and the person lands on it.
+// pure). Two steps: picking a template (`ndTemplate`) seeds the body and the section and moves on to the details;
+// "Change template" (`ndStep`) goes back. A page is staged through POST /api/docs/propose — the gate, exactly as an
+// agent's proposal — with the parent picked in "Goes in"; it then waits in Review, and the person lands on it.
 import type { AppState } from "./render";
 import { ApiError, OrgApiError, PreviewBlocked, Unauthorized, proposeDoc } from "./api";
 import { blankDoc } from "./newdoc";
@@ -25,7 +26,7 @@ export interface NewDocController {
   act(act: string, arg: string | null, value: string | null): boolean;
   /** Open New page in `space` under `parent` (null = top level). */
   start(space: string, parent: string | null): void;
-  /** A handoff's "Promote to doc": the draft prefilled (template blank, the body kept). */
+  /** A handoff's "Promote to doc": the draft prefilled on step 2 (template blank, the body kept). */
   prefill(p: { title: string; body: string; summary: string; from: number; space: string }): void;
 }
 
@@ -52,7 +53,7 @@ export function createNewDocController(host: NewDocHost): NewDocController {
   function prefill(p: { title: string; body: string; summary: string; from: number; space: string }): void {
     const d = blankDoc(p.space, null);
     const blank = docTemplate("blank");
-    state.nd = { ...d, template: "blank", section: blank?.section ?? d.section, title: p.title, body: p.body, bodyTouched: true, summary: p.summary, from: p.from };
+    state.nd = { ...d, step: "details", template: "blank", section: blank?.section ?? d.section, title: p.title, body: p.body, bodyTouched: true, summary: p.summary, from: p.from };
     if (p.space) host.ensureSpace(p.space);
     host.rerender();
   }
@@ -82,17 +83,35 @@ export function createNewDocController(host: NewDocHost): NewDocController {
       });
   }
 
+  /** Move the keyboard focus to `sel` once the step has painted (the mount is a stub in tests). */
+  const focus = (sel: string): void => { host.mount.querySelector?.<HTMLElement>(sel)?.focus({ preventScroll: true }); };
+
   function act(act: string, arg: string | null, value: string | null): boolean {
     const d = nd();
     switch (act) {
       case "ndTemplate": {
-        if (!arg || !isDocTemplateId(arg) || d.busy || arg === d.template) return true;
+        // Step 1's pick: it seeds the page and moves on to the details. A body the person wrote is kept; one that is
+        // still the old template's seed (untouched, or typed back to it) takes the new template's.
+        if (!arg || !isDocTemplateId(arg) || d.busy) return true;
         const t = docTemplate(arg);
         if (!t) return true;
-        d.template = arg;
-        d.section = t.section;
-        if (!d.bodyTouched) d.body = templateBody(t);
+        if (arg !== d.template) {
+          const old = docTemplate(d.template);
+          if (!d.bodyTouched || (old && d.body === templateBody(old))) { d.body = templateBody(t); d.bodyTouched = false; }
+          d.template = arg;
+          d.section = t.section;
+        }
+        d.step = "details";
         host.rerender();
+        focus("#nd-title");
+        return true;
+      }
+      case "ndStep": {
+        // "Change template" goes back to step 1 (what was typed is kept), its picked card focused.
+        if (d.busy || (arg !== "template" && arg !== "details")) return true;
+        d.step = arg; d.where = false;
+        host.rerender();
+        focus(arg === "template" ? `[data-tpl="${d.template}"]` : "#nd-title");
         return true;
       }
       case "ndField": {

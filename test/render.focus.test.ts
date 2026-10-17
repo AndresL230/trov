@@ -62,7 +62,7 @@ describe("focus — every focusable element shows a ring", () => {
 
   it("the New sprint form and the New doc body are fields the ring covers (they had none)", () => {
     const NS: NewSprintState = { open: true, name: "", start: "", desc: "", urgency: "normal", due: "", lead: null, domain: null, error: null };
-    const doc = newDocView({ draft: blankDoc("product"), spaces: [SPACE_PRODUCT], pages: [], sections: ["reference"], dd: initialDropdownUi() });
+    const doc = newDocView({ draft: { ...blankDoc("product"), step: "details" }, spaces: [SPACE_PRODUCT], pages: [], sections: ["reference"], dd: initialDropdownUi() });
     const fields = [...newSprintPanel(NS, []).matchAll(/<(input|textarea)\b[^>]*>/g), ...doc.matchAll(/<(input|textarea)\b[^>]*>/g)].map((m) => m[0]);
     expect(fields.some((f) => f.includes('data-arg="body"'))).toBe(true);
     expect(fields.some((f) => f.includes('data-arg="name"'))).toBe(true);

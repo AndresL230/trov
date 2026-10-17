@@ -1,6 +1,7 @@
 /**
- * Library › New page (web/src/newdoc.ts, web/src/newdoc-actions.ts; design spec §6): the templates, their preview,
- * "Goes in" (a space switch or dropdown, then the space's tree), the section switch and the busy state. Pure:
+ * Library › New page (web/src/newdoc.ts, web/src/newdoc-actions.ts): two steps — 1 · the templates (each card listing
+ * its sections; picking one moves on), 2 · the details: the template picked with "Change template", "Goes in" (a space
+ * switch or dropdown, then the space's tree), the title, the section switch, the body and the busy state. Pure:
  * assertions on the markup; the controller is driven with a stub host (no request is made).
  */
 import { describe, it, expect, vi } from "vitest";
@@ -23,16 +24,20 @@ const page = (slug: string, title: string, parent: string | null, rank: number, 
 const SPACES = [space("engineering", "Engineering"), space("product", "Product")];
 const PAGES = [page("runbooks", "Runbooks", null, 1), page("deploys", "Deploys", "runbooks", 1), page("rollback", "Rolling back", "deploys", 1), page("arch", "Architecture", null, 2, "unpromoted")];
 const props = (draft: Partial<NewDocDraft> = {}, over: Partial<NewDocProps> = {}): NewDocProps => ({
-  draft: { ...blankDoc("engineering"), ...draft }, spaces: SPACES, pages: PAGES, sections: ["reference", "context", "decisions"], dd: initialDropdownUi(), ...over,
+  draft: { ...blankDoc("engineering"), step: "details", ...draft }, spaces: SPACES, pages: PAGES, sections: ["reference", "context", "decisions"], dd: initialDropdownUi(), ...over,
 });
 
-describe("New page — templates and their preview", () => {
-  it("the nine templates, in order, as radio cards; Runbook is picked by default with its body and section", () => {
+describe("New page — step 1, the templates", () => {
+  it("opens on step 1: the nine templates, in order, as radio cards and nothing else; Runbook preselected with its body and section", () => {
     const d = blankDoc("engineering");
+    expect(d.step).toBe("template");
     expect(d.template).toBe("runbook");
     expect(d.section).toBe("reference");
     expect(d.body).toBe(templateBody("runbook"));
-    const html = newDocView(props());
+    const html = newDocView(props({ step: "template" }));
+    expect(html).toContain("Step 1 of 2");
+    expect(html).toContain('data-morph-key="nd-step:template"');
+    for (const field of ["nd-title", "nd-body", "ndSubmit", "nd-where"]) expect(html, field).not.toContain(field);
     expect([...html.matchAll(/data-tpl="([^"]+)"/g)].map((m) => m[1])).toEqual(DOC_TEMPLATES.map((t) => t.id));
     expect(html).toContain('role="radiogroup"');
     expect(html).toMatch(/aria-checked="true" data-act="ndTemplate" data-arg="runbook"/);
@@ -40,12 +45,22 @@ describe("New page — templates and their preview", () => {
     expect(html).toContain("Pick a template");
   });
 
-  it("the preview lists the picked template's sections; Blank says it is empty", () => {
+  it("each card lists the sections it starts the page with; Blank says it has none", () => {
+    const html = newDocView(props({ step: "template" }));
+    const card = (id: string) => html.slice(html.indexOf(`data-tpl="${id}"`), html.indexOf("</button>", html.indexOf(`data-tpl="${id}"`)));
+    expect(card("runbook")).toContain('<span class="cnpy-nd-tplsec">When to use this · Check first · Fix it · Roll back · Who to tell</span>');
+    expect(card("blank")).toContain("No sections: start from an empty page.");
+  });
+});
+
+describe("New page — step 2, the details", () => {
+  it("names the template picked, with Change template back to step 1; one column, no side panel", () => {
     const html = newDocView(props());
-    for (const s of ["When to use this", "Check first", "Fix it", "Roll back", "Who to tell"]) expect(html).toContain(`<div class="cnpy-nd-msl">${s}</div>`);
-    const blank = newDocView(props({ template: "blank" }));
-    expect(blank).toContain("An empty page, ready for you.");
-    expect(blank).not.toContain("cnpy-nd-msl");
+    expect(html).toContain("Step 2 of 2");
+    expect(html).toContain('data-morph-key="nd-step:details"');
+    expect(html).toMatch(/class="cnpy-nd-chosen"[\s\S]*?Runbook[\s\S]*?data-act="ndStep" data-arg="template"[^>]*>Change template</);
+    expect(html).not.toContain("data-tpl=");
+    expect(html).not.toContain("cnpy-nd-side");
   });
 
   it("the title's placeholder is “Untitled ‹template›”; the section is a switch; Create page is never off for an empty title", () => {
@@ -113,7 +128,17 @@ describe("New page — the controller", () => {
     return { state, ctl, ensured };
   }
 
-  it("a template switch replaces an untouched body and sets its section; an edited body is kept", () => {
+  it("picking a template moves to step 2 — even the preselected one; Change template goes back and keeps the draft", () => {
+    const { state, ctl } = host();
+    expect(state.nd.step).toBe("template");
+    ctl.act("ndTemplate", "runbook", null);
+    expect(state.nd.step).toBe("details");
+    ctl.act("ndField", "title", "My page");
+    ctl.act("ndStep", "template", null);
+    expect(state.nd).toMatchObject({ step: "template", title: "My page", template: "runbook" });
+  });
+
+  it("a template switch replaces an untouched body (or one typed back to the seed) and sets its section; an edited body is kept", () => {
     const { state, ctl } = host();
     expect(ctl.act("ndTemplate", "decision", null)).toBe(true);
     expect(state.nd.body).toBe(templateBody("decision"));
@@ -122,6 +147,15 @@ describe("New page — the controller", () => {
     ctl.act("ndTemplate", "spec", null);
     expect(state.nd.body).toBe("my words");
     expect(state.nd.section).toBe("context");
+    ctl.act("ndField", "body", templateBody("spec"));
+    ctl.act("ndTemplate", "guide", null);
+    expect(state.nd.body).toBe(templateBody("guide"));
+  });
+
+  it("a handoff's Promote to doc opens step 2 directly, on Blank, its body kept", () => {
+    const { state, ctl } = host();
+    ctl.prefill({ title: "From a handoff", body: "Written already.", summary: "", from: 7, space: "engineering" });
+    expect(state.nd).toMatchObject({ step: "details", template: "blank", body: "Written already.", from: 7 });
   });
 
   it("picking a space clears the parent and reads that space; a row picks the parent; other acts are not its", () => {

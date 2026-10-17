@@ -77,8 +77,9 @@ describe("handoffs — numeric ids", () => {
 describe("new doc — the FROM HANDOFF banner", () => {
   const spaces = [ENGINEERING];
   it("shows only when promoted from a handoff, linking back to it", () => {
-    expect(newDocView({ draft: blankDoc("engineering"), spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() })).not.toContain("FROM HANDOFF");
-    const html = newDocView({ draft: { ...blankDoc("engineering"), from: 12 }, spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() });
+    expect(newDocView({ draft: { ...blankDoc("engineering"), step: "details" }, spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() })).not.toContain("FROM HANDOFF");
+    // A promoted handoff opens New page on its details step (newdoc-actions.ts `prefill`).
+    const html = newDocView({ draft: { ...blankDoc("engineering"), step: "details", from: 12 }, spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() });
     expect(html).toContain("FROM HANDOFF");
     expect(html).toContain('data-act="openHandoff" data-arg="12"');
   });
@@ -218,12 +219,12 @@ describe("surface cards — handoffs, prompts, new doc", () => {
     expect(css).toMatch(/\.cnpy-hitctl:focus-visible \{ outline:2px solid var\(--focus\)/);
   });
 
-  it("the form cards (prompt editor, new handoff) are surfaces; New page's side panel is one too", () => {
+  it("the form cards (prompt editor, new handoff) are surfaces; New page's details step names its template in a box", () => {
     const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"';
     const editor = promptEditorView({ draft: blankPromptDraft(), takenSlugs: [] });
     const handoff = newHandoffView({ draft: blankHandoff(), me: "AndresL230", persons });
-    const doc = newDocView({ draft: { ...blankDoc("engineering"), from: 12 }, spaces: [ENGINEERING], pages: [], sections: ["reference"], dd: initialDropdownUi() });
-    expect(doc).toContain('class="cnpy-surface cnpy-nd-side"');
+    const doc = newDocView({ draft: { ...blankDoc("engineering"), step: "details", from: 12 }, spaces: [ENGINEERING], pages: [], sections: ["reference"], dd: initialDropdownUi() });
+    expect(doc).toContain('class="cnpy-nd-chosen"');
     expect(doc).not.toMatch(OLD_CARD);
     for (const html of [editor, handoff]) {
       expect(html).toContain(FORM);

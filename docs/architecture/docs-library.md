@@ -399,15 +399,20 @@ page is archived. Archived ‹when› by ‹Name›…" with Restore page for `c
 plain text and the same mark (`.cnpy-doclink-arch`). Restore's toast says where it went ("under ‹Parent›" / "to the
 top level of ‹Space›"). Refusals in words (`pageArchiveErrorText`).
 
-**New page** (`web/src/newdoc.ts`, its acts `web/src/newdoc-actions.ts`). "Goes in": a location button opening a
-picker — the spaces as `segmented()` (a `dropdown()` past four), then the space's tree ("Top level of ‹Space›" first,
-each page with its own chevron) — preset to where it was opened (a space's top level, or under the row whose "+" was
-pressed). The nine templates as cards (Runbook preselected) beside a preview of the chosen one's sections; Title
-(placeholder "Untitled ‹template›"), Section (`segmented()`, preset by the template) and the body (seeded with the
-template's; a template switch keeps a body the person edited). Create page stages it through `POST /api/docs/propose`
+**New page** (`web/src/newdoc.ts`, its acts `web/src/newdoc-actions.ts`) is TWO STEPS, one centered column each
+(`draft.step`; the owner's call — a short middle beside a long side panel read badly). **Step 1 · Pick a template**:
+the nine templates as radio cards (Runbook preselected), each listing the sections it starts the page with; picking
+one (`ndTemplate`, click or keyboard) seeds the body and the section and moves on, the title focused. **Step 2 ·
+Details**: the template picked, with "Change template" (`ndStep`) back to step 1 — what was typed is kept, and a body
+that is still the old template's seed takes the new one's; "Goes in": a location button opening a picker — the spaces
+as `segmented()` (a `dropdown()` past four), then the space's tree ("Top level of ‹Space›" first, each page with its
+own chevron) — preset to where it was opened (a space's top level, or under the row whose "+" was pressed); Title
+(placeholder "Untitled ‹template›"), Section (`segmented()`, preset by the template), the body (seeded with the
+template's), and at the foot the Review note and Create page. Each step's column is its own `data-morph-key`
+(`nd-step:…`); the fields keep their `data-field` ids. Create page stages it through `POST /api/docs/propose`
 with `parent_slug` (the gate; a parent it ignores is said in the toast) and lands on the new page ("Not yet approved")
 with "Page created in ‹Space›". With no space, the empty layout offers an admin New space. A handoff's "Promote to
-doc" opens it prefilled on Blank. Tests: `test/render.docs.test.ts` (the pane, the doc page, the drag's rules),
+doc" opens step 2 directly, prefilled on Blank (its body is already written). Tests: `test/render.docs.test.ts` (the pane, the doc page, the drag's rules),
 `test/render.newdoc.test.ts`, the screens' rows in `render.empty` / `render.skeleton`.
 
 **State.** `library: Loadable<LibraryDTO | null>` is read once per org at boot (the rail shows it on every screen)

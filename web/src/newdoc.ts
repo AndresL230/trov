@@ -1,13 +1,15 @@
 // Library › New page (the screen `newdoc`, `#docs/new`; docs/architecture/docs-library.md › New page and templates).
-// Ported from the Claude Design Library prototype (spec §6): "Goes in" (a space, then a page of its tree to put it
-// under), a template (shared/docs-templates-core.ts — it only SEEDS the body and the section; it is not stored), a
-// preview of the template's sections, then the title, section and body. A person's page is staged exactly as an
-// agent's is — POST /api/docs/propose, the gate — and waits in Review. A handoff's "Promote to doc" opens this
-// form prefilled, with a FROM HANDOFF banner. Pure: props in, markup out; the acts are web/src/newdoc-actions.ts.
+// TWO STEPS, one centered column each (the owner's call): 1 · Pick a template — the template cards, each listing its
+// sections (shared/docs-templates-core.ts — a template only SEEDS the body and the section; it is not stored);
+// picking one moves on. 2 · Details — the template picked (with "Change template" back to step 1), "Goes in" (a space,
+// then a page of its tree to put it under), the title, section and body, and Create page. A person's page is staged
+// exactly as an agent's is — POST /api/docs/propose, the gate — and waits in Review. A handoff's "Promote to doc"
+// opens step 2 directly, prefilled on Blank, with a FROM HANDOFF banner. Pure: props in, markup out; the acts are
+// web/src/newdoc-actions.ts.
 // This is the CONTENT column only: render.ts draws it beside the docs pane, in a scroller keyed `newdoc`, on a page
 // that is `data-morph`ed (so a field keeps its focus and caret across paints).
 import {
-  DOC_TEMPLATES, DEFAULT_DOC_TEMPLATE, BLANK_TEMPLATE_PREVIEW, docTemplate, templateBody, untitledTitle,
+  DOC_TEMPLATES, DEFAULT_DOC_TEMPLATE, docTemplate, templateBody, untitledTitle,
   type DocTemplate, type DocTemplateId,
 } from "@shared/docs-templates-core";
 import { buildTree, flattenTree, ancestorsOf } from "@shared/docs-tree-core";
@@ -23,7 +25,11 @@ import { skLine, skList, skW, emptyLayout } from "./skeleton";
 /** Up to this many spaces the space picker is a switch; past it, a dropdown (render.ts draws its menu). */
 export const NEW_DOC_SPACE_SWITCH_MAX = 4;
 
+/** Which step New page is on: picking the template, or the page's details. */
+export type NewDocStep = "template" | "details";
+
 export interface NewDocDraft {
+  step: NewDocStep;
   template: DocTemplateId;
   title: string;
   body: string;
@@ -44,11 +50,12 @@ export interface NewDocDraft {
   error: string | null;
 }
 
-/** A fresh draft: the default template (Runbook), its body and its section, in `space` under `parent`. */
+/** A fresh draft on step 1, the default template (Runbook) — its body and its section — preselected, in `space`
+ *  under `parent`. */
 export function blankDoc(space: string, parent: string | null = null): NewDocDraft {
   const t = docTemplate(DEFAULT_DOC_TEMPLATE) as DocTemplate;
   return {
-    template: t.id, title: "", body: templateBody(t), bodyTouched: false, space, parent, section: t.section, summary: "",
+    step: "template", template: t.id, title: "", body: templateBody(t), bodyTouched: false, space, parent, section: t.section, summary: "",
     from: null, where: false, whereOpen: {}, busy: false, error: null,
   };
 }
@@ -169,70 +176,79 @@ function goesIn(p: NewDocProps): string {
 
 // ── the templates ────────────────────────────────────────────────────────────
 
+/** One template: its icon, name and description, and the sections it starts the page with. Picking it moves on. */
 function templateCard(t: DocTemplate, on: boolean): string {
+  const secs = t.sections.length ? t.sections.join(" · ") : "No sections: start from an empty page.";
   return `<button type="button" role="radio" aria-checked="${on}" data-act="ndTemplate" data-arg="${t.id}" data-tpl="${t.id}" class="cnpy-nd-tpl${on ? " is-on" : ""}${t.id === "blank" ? " is-blank" : ""}" style="border-radius:10px">
     <span class="cnpy-nd-tpli" style="border-radius:8px">${templateIcon(t.icon, 16)}</span>
     <span class="cnpy-nd-tpln">${esc(t.name)}</span>
     <span class="cnpy-nd-tpld">${esc(t.description)}</span>
+    <span class="cnpy-nd-tplsec">${esc(secs)}</span>
   </button>`;
-}
-
-function preview(t: DocTemplate): string {
-  const mini = t.sections.length
-    ? t.sections.map((s) => `<div class="cnpy-nd-msec"><div class="cnpy-nd-msl">${esc(s)}</div><div class="cnpy-nd-line" style="width:88%"></div><div class="cnpy-nd-line" style="width:64%"></div></div>`).join("")
-    : `<p class="cnpy-nd-mblank">${esc(BLANK_TEMPLATE_PREVIEW)}</p>`;
-  return `<div class="cnpy-nd-mini" style="border-radius:6px" aria-hidden="true"><div class="cnpy-nd-line is-title" style="width:58%"></div>${mini}</div>`;
 }
 
 // ── the screen ───────────────────────────────────────────────────────────────
 
-const FRAME = "max-width:1040px;margin:0 auto;padding:28px 36px 90px";
+const FRAME = "max-width:920px;margin:0 auto;padding:28px 36px 90px";
 const FIELD = "display:block;width:100%;box-sizing:border-box;border:1px solid var(--border-strong);border-radius:7px;background:var(--surface);color:var(--fg);outline:none";
-const LABEL = "display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin:16px 0 6px";
+const LABEL = "display:block;font-size:12.5px;font-weight:500;color:var(--fg-70);margin:18px 0 6px";
+const STEP = "font-size:11.5px;font-weight:500;color:var(--fg-40);margin:0 0 4px;font-variant-numeric:tabular-nums";
 
-export function newDocView(p: NewDocProps): string {
-  const head = `<h1 style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">New page</h1>`;
-  if (p.spaces.length === 0) {
-    return `<div class="cnpy-nd" data-screen-label="New page" style="${FRAME}">${head}
-      <div style="margin-top:22px">${emptyLayout("newdoc", { title: "No spaces yet", text: NEW_DOC_NO_SPACE, action: p.admin ? { label: "New space", act: "libNew" } : null })}</div>
-    </div>`;
-  }
-  const d = p.draft;
-  const t = docTemplate(d.template) ?? (docTemplate(DEFAULT_DOC_TEMPLATE) as DocTemplate);
-  const fromBanner = d.from !== null
+const fromBanner = (d: NewDocDraft): string =>
+  d.from !== null
     ? `<div class="cnpy-surface" style="border-left:2px solid var(--accent);padding:11px 15px;margin-top:16px;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap">
       <div style="font-family:var(--label);font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--accent);flex:none">FROM HANDOFF</div>
       <div style="font-size:12.5px;color:var(--fg-70);flex:1">Prefilled from handoff #${d.from}. Edit anything before staging.</div>
       <button data-act="openHandoff" data-arg="${d.from}" class="cnpy-link" style="font-size:12.5px;font-weight:500;color:var(--accent)">Open handoff</button>
     </div>`
     : "";
-  const sections = p.sections.includes(d.section) || !d.section ? p.sections : [...p.sections, d.section];
+
+/** Step 1: the template cards, the whole page. */
+function templateStep(t: DocTemplate): string {
   const cards = DOC_TEMPLATES.map((x) => templateCard(x, x.id === t.id)).join("");
+  return `<div class="cnpy-nd cnpy-nd-s1" data-screen-label="New page" data-morph-key="nd-step:template" style="${FRAME}">
+  <p style="${STEP}">Step 1 of 2</p>
+  <h1 id="nd-tpl-l" style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">Pick a template</h1>
+  <p style="font-size:13px;line-height:1.5;color:var(--fg-55);margin:6px 0 0">It starts the page with its sections. You write the page next.</p>
+  <div class="cnpy-nd-tpls" role="radiogroup" aria-labelledby="nd-tpl-l">${cards}</div>
+</div>`;
+}
+
+/** Step 2: the template picked, where the page goes, its title, section and body, and Create page. */
+function detailsStep(p: NewDocProps, t: DocTemplate): string {
+  const d = p.draft;
+  const sections = p.sections.includes(d.section) || !d.section ? p.sections : [...p.sections, d.section];
   const err = d.error ? `<p role="alert" class="cnpy-nd-err">${esc(d.error)}</p>` : "";
-  return `<div class="cnpy-nd" data-screen-label="New page" style="${FRAME}">
-  ${head}
+  return `<div class="cnpy-nd cnpy-nd-s2" data-screen-label="New page" data-morph-key="nd-step:details" style="${FRAME};max-width:760px">
+  <p style="${STEP}">Step 2 of 2</p>
+  <h1 style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">New page</h1>
+  ${fromBanner(d)}
+  <div class="cnpy-nd-chosen" style="border-radius:10px">
+    <span class="cnpy-nd-tpli" style="border-radius:8px;margin:0">${templateIcon(t.icon, 16)}</span>
+    <span style="min-width:0;flex:1"><span class="cnpy-nd-tpln" style="display:block">${esc(t.name)}</span><span class="cnpy-nd-tpld" style="display:block">${esc(t.description)}</span></span>
+    <button type="button" data-act="ndStep" data-arg="template" class="cnpy-link" style="flex:none;padding:0;font-size:12.5px;font-weight:500;color:var(--accent)"${d.busy ? " disabled" : ""}>Change template</button>
+  </div>
   ${goesIn(p)}
-  ${fromBanner}
-  <div class="cnpy-nd-grid">
-    <div style="min-width:0">
-      <h2 id="nd-tpl-l" style="font-size:14px;font-weight:500;margin:0 0 12px">Pick a template</h2>
-      <div class="cnpy-nd-tpls" role="radiogroup" aria-labelledby="nd-tpl-l">${cards}</div>
-    </div>
-    <div class="cnpy-surface cnpy-nd-side" style="padding:16px 18px 18px;border-radius:10px">
-      <div style="font-size:11.5px;color:var(--fg-55)">Preview</div>
-      <div style="font-size:15px;font-weight:600;margin-top:4px">${esc(t.name)}</div>
-      <div style="font-size:12.5px;line-height:1.45;color:var(--fg-55);margin-top:2px">${esc(t.description)}</div>
-      ${preview(t)}
-      <label for="nd-title" style="${LABEL}">Title</label>
-      <input id="nd-title" data-act="ndField" data-arg="title" data-field="nd-title" value="${attr(d.title)}" class="cnpy-input" placeholder="${attr(untitledTitle(t))}" autocomplete="off" maxlength="200"${d.busy ? " disabled" : ""} style="${FIELD};height:34px;padding:0 11px;font-size:13.5px">
-      <div style="${LABEL}">Section</div>
-      ${segmented({ id: "nd-section", ariaLabel: "Section", act: "ndSection", value: d.section, size: "xs", fill: true, options: sections.map((s) => ({ value: s, label: s })) })}
-      <label for="nd-body" style="${LABEL}">Body <span style="font-weight:400;color:var(--fg-40)">Markdown</span></label>
-      <textarea id="nd-body" data-act="ndField" data-arg="body" data-field="nd-body" rows="10"${d.busy ? " disabled" : ""} style="${FIELD};padding:9px 11px;font-size:12.5px;line-height:1.6;resize:vertical;font-family:var(--code)">${esc(d.body)}</textarea>
-      <div style="font-size:11.5px;line-height:1.5;color:var(--fg-40);margin-top:8px">It waits in Review, like an agent's change. Nothing is live until someone approves it.</div>
-      ${err}
-      <button type="button" data-act="ndSubmit" class="${d.busy ? "" : "cnpy-accentbtn"}"${d.busy ? ' disabled aria-busy="true"' : ""} style="${primaryStyle(!d.busy)};width:100%;margin-top:14px">${d.busy ? "Creating…" : "Create page"}</button>
-    </div>
+  <label for="nd-title" style="${LABEL}">Title</label>
+  <input id="nd-title" data-act="ndField" data-arg="title" data-field="nd-title" value="${attr(d.title)}" class="cnpy-input" placeholder="${attr(untitledTitle(t))}" autocomplete="off" maxlength="200"${d.busy ? " disabled" : ""} style="${FIELD};height:38px;padding:0 12px;font-size:14px">
+  <div style="${LABEL}">Section</div>
+  ${segmented({ id: "nd-section", ariaLabel: "Section", act: "ndSection", value: d.section, size: "sm", options: sections.map((s) => ({ value: s, label: s })) })}
+  <label for="nd-body" style="${LABEL}">Body <span style="font-weight:400;color:var(--fg-40)">Markdown</span></label>
+  <textarea id="nd-body" data-act="ndField" data-arg="body" data-field="nd-body" rows="16"${d.busy ? " disabled" : ""} style="${FIELD};padding:10px 12px;font-size:12.5px;line-height:1.6;resize:vertical;font-family:var(--code)">${esc(d.body)}</textarea>
+  ${err}
+  <div class="cnpy-nd-foot">
+    <span style="font-size:12px;line-height:1.5;color:var(--fg-40)">It waits in Review, like an agent's change. Nothing is live until someone approves it.</span>
+    <button type="button" data-act="ndSubmit" class="${d.busy ? "" : "cnpy-accentbtn"}"${d.busy ? ' disabled aria-busy="true"' : ""} style="${primaryStyle(!d.busy)};flex:none">${d.busy ? "Creating…" : "Create page"}</button>
   </div>
 </div>`;
+}
+
+export function newDocView(p: NewDocProps): string {
+  if (p.spaces.length === 0) {
+    return `<div class="cnpy-nd" data-screen-label="New page" style="${FRAME}"><h1 style="font-size:22px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0">New page</h1>
+      <div style="margin-top:22px">${emptyLayout("newdoc", { title: "No spaces yet", text: NEW_DOC_NO_SPACE, action: p.admin ? { label: "New space", act: "libNew" } : null })}</div>
+    </div>`;
+  }
+  const t = docTemplate(p.draft.template) ?? (docTemplate(DEFAULT_DOC_TEMPLATE) as DocTemplate);
+  return p.draft.step === "details" ? detailsStep(p, t) : templateStep(t);
 }
