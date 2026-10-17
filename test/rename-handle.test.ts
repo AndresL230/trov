@@ -192,6 +192,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO person_brief (org_id, handle, version, generated_at, model, prompt_version, input_hash, brief_json) VALUES (?, ?, 1, ?, NULL, 'brief.1', 'h', '{}')`, org, handle, nowIso());
   // 0067_digest_email: the person's "Only when something needs me".
   await run(env.DB, `INSERT INTO notification_person_prefs (org_id, user_id, only_when_needed, updated_at) VALUES (?, ?, 1, ?)`, org, handle, nowIso());
+  // 0078_agent_links: a self-link the person requested, received and closed, and a note they wrote on it.
+  await run(env.DB, `INSERT INTO agent_links (org_id, state, topic_kind, topic_ref, reason, requester, recipient, created_at, expires_at, closed_at, closed_by)
+    VALUES (?, 'closed', 'person', ?, 'r', ?, ?, ?, ?, ?, ?)`, org, handle, handle, handle, nowIso(), nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO agent_link_notes (org_id, link_number, side, author, author_kind, body, created_at)
+    SELECT org_id, number, 'requester', ?, 'person', 'hi', ? FROM agent_links WHERE org_id = ? AND requester = ?`, handle, nowIso(), org, handle);
 }
 
 describe("renamePerson", () => {
