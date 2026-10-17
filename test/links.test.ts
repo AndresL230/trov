@@ -253,7 +253,7 @@ describe("notes", () => {
     expect((await note(J, id, `t-${J}`, "mine")).side).toBe("recipient");
   });
 
-  it(`60 an hour per person, across links and orgs — a person's note takes the same allowance`, async () => {
+  it(`60 an hour per person, across their links — a person's note takes the same allowance`, async () => {
     // (AndresL230 is the seed's superadmin, exempt like every limit's; Luke is not.)
     const id = await openLink(L, J);
     await note(L, id, undefined, "from the page", "web");

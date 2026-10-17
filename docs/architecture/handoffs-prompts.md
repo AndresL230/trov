@@ -82,3 +82,39 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   summary`, `## Context`, then `## Read these first (not complete)` when anything matched), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
   `save_prompt` (always staged). There is no per-token rate limit in Trov today.
 - Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs at session start; never auto-claims).
+
+## Agent links — a short-lived line between two sessions (0078_agent_links)
+
+Spec: `docs/superpowers/specs/2026-10-17-agent-links.md` (its owner rulings override the text above them).
+Built so far: the data and domain layer. The MCP tools, the cookie routes, the Links tab, the plugin hooks and
+Ask as a side are later phases.
+
+- **Storage.** `agent_links` (a per-org `number` from `org_counters` `'link'` by the `agent_links_number_ai`
+  trigger — 0078 rebuilt `org_counters` so its CHECK takes `'link'`; `createOrg` seeds it), and
+  `agent_link_notes` (keyed to its link by `(org_id, link_number)`, with the `side` it was written FROM —
+  stored, because a self-link's two sides are one person). Session columns end in `_agent_session` (Trov's own
+  `ai_sessions` is something else). DTOs and the numbers: `shared/links.ts`.
+- **Writers** (`src/tools/links.ts`): direct, like handoffs — no gate, no feed, no `routeAi`, nothing from
+  `src/ai/`. Every transition is ONE conditional UPDATE, explained on a miss (404 / 403 / 409 / the cap).
+  `requestLink` is an agent's DRAFT (its side bound, due in 1 h); `sendLink` (requester) makes it `requested`
+  (24 h) — a self-link `open` at once; `acceptLink` / `declineLink` (recipient), `cancelLink` (requester, draft or
+  requested), `closeLink` (either side, open only). `createRequestFromWeb` and `requestLinkFromAsk` (Ask's
+  Confirm, the thread bound as `ask-thread-<id>`) create it already sent. An open link lasts 7 days.
+- **Joining** binds the caller's own side (re-join overwrites). On a self-link: the side this session is on,
+  else the one with no session (recipient first), else `side` must say; one session never holds both.
+- **`via`** (`mcp` | `ask` | `web`): over MCP a session starting `ask-thread-` is refused; Ask binds only that;
+  the web binds none. MCP never calls the person steps.
+- **Notes**: from the side the session is bound to (an unbound session is refused), or a person's own side on
+  the page (a self-link's: `side`, default requester). Caps for every author: 1,000 characters, 20 per side per
+  link (re-checked in the INSERT), and `LIMITS.link_note` (60 / person / hour).
+- **The inbox** (`readInbox`): notes from the OTHER side, on open links whose caller's side is bound to the
+  session, at most 5 per read, oldest first, the rest counted. One statement when nothing waits (it stamps the
+  side's `*_seen_at` and counts in its RETURNING); delivery is one `UPDATE … WHERE delivered_at IS NULL …
+  RETURNING`, so each note goes once. `formatInbox` fences each note with a nonce fresh per delivery;
+  `inboxHookOutput` wraps it as hook JSON (≤ 10,000 characters).
+- **The 5-link cap** counts the links a person SENT that are requested or open, plus the ones sent to them that
+  they accepted: a request waiting for someone does not fill their allowance; it is checked at their accept.
+- **Expiry**: `expireDueLinks` (`src/platform/sweeps.ts`) every repo-cron tick — past `expires_at`, or open with
+  no sign from either side (`decided_at`, `*_seen_at`) for 12 h. Deleting an account cancels or closes the
+  person's live links (`src/deletion/person.ts`).
+- Tests: `test/links.test.ts`, `test/links.migration.test.ts`.

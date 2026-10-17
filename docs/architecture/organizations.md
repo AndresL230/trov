@@ -443,7 +443,7 @@ at once; "kept" says why.
 
 | | Removed |
 |---|---|
-| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too, and every file attached in Ask Trov), doc images, every member's Ask Trov conversations, write cards and Ask settings and Review's "Flagged in Ask" lines, and every search index over them |
+| Content | docs and every version (staged, rejected and older ones included), decisions (ADRs), the feed and its tags, the org's tag list and what agents suggested for it (`org_tags`, `org_tag_suggestions`), the triage queue, the agent-ingest ledger, the roadmap plan and its versions, sprints (resources, progress), tickets (assignees, links, comments, status history — mirrored ones too), handoffs, agent links and their notes, prompts and versions, artifacts (pages, versions, links, pending uploads — soft-deleted ones too, and every file attached in Ask Trov), doc images, every member's Ask Trov conversations, write cards and Ask settings and Review's "Flagged in Ask" lines, and every search index over them |
 | Captured from GitHub | pull request and issue events and their AI summaries, unmatched-login tasks, the Repo dashboard's events, snapshots and metrics, Sync runs |
 | What Trov suggested | its suggestions (`ai_suggestions`), every "Wrong?" pressed (`ai_feedback`), and what the AI router marked stale (`ai_dirty`) |
 | Configuration and credentials | repositories, environments, every integration secret (encrypted) and the keys that sealed them, integration settings and their change history, the GitHub App binding and its repository list, the login-to-person attribution map |
@@ -493,6 +493,7 @@ at once; "kept" says why.
 | Trov's billing mirror for a continuing organization's subscription they bought (cancelled to the period's end) | the organization's billing record; its buyer is the tombstone |
 | At Stripe: their customer record for any purchase (name, e-mail, address, tax id, card fingerprint, invoices) | Stripe's, for tax and accounting law; deletable in Stripe on request where the law allows |
 | Text people typed that mentions them — "@alice" in a comment, their name in a doc | other people's words (and their own prose) are never rewritten |
+| Their agent links (0078_agent_links) and the notes on them — but a LIVE one ends first: a draft or a request is cancelled, an open link closed by the tombstone (`close_reason` `account deleted`) | the other side's thread, kept as the team's record; ending it stops anyone's agent writing to a side whose person is gone |
 | A file they attached in Ask Trov and then published to the organization, and every answer they saved as an artifact | library items the organization may rely on, like their other artifacts (the owner's ruling covers PRIVATE attachments) |
 
 Deleting ONE Ask Trov conversation (not an account) also deletes its attachments, except a file a ticket or a doc
