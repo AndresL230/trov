@@ -12,7 +12,7 @@ the allowances and the switches: `ai.md`.
 | Contract (zod-free values, SPA-importable) | `shared/ai-ask-core.ts` — modes (`ASK_MODES`, the ONE table; re-exported from `shared/ai.ts`), limits, SSE events, `RefView`, blocks, cards, routes, DTOs |
 | Contract (zod) | `shared/ai-ask.ts` — `AskEventSchemas`, request bodies, DTO schemas |
 | Fixtures | `shared/ai-fixtures.ts` › Ask Trov — one transcript per design scenario, state / settings / threads / search / ref views; the same transcripts as files in `docs/superpowers/specs/ask-transcripts/` |
-| Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `0076_ask_sharing` (`chat_threads.shared_at`); every statement in `src/data/ask.ts` |
+| Rows | `migrations/0058_server_ai.sql` › `0066_ask` / `0068_ask_pending`, `migrations/0076_10_17_staging.sql` › `0076_ask_sharing` (`chat_threads.shared_at`) / `0077_ask_people_sharing` (`chat_thread_people`, `asked_by`); every statement in `src/data/ask.ts` |
 | Routes | `src/ai/ask/routes.ts` (`askApp`, mounted under `/api/o/:slug`, cookie only) |
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
 | Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts` |
@@ -280,7 +280,7 @@ is replaced.
   an unknown one; `/ask/peek` refuses a malformed ref with `400 invalid` and hides a well-formed one that names
   nothing; every `:id` route answers a non-id with its own 404 / 400.
 
-## Sharing a conversation (`0076_ask_sharing`, `0077_ask_people_sharing`)
+## Sharing a conversation (`0076_10_17_staging` › `0076_ask_sharing`, `0077_ask_people_sharing`)
 
 The owner's requests (2026-10-17): "making it so chats can be shared across the same org to other people", then a
 section titled Organization, a "Shared with you", and per-person capabilities. A thread is still its owner's; sharing

@@ -122,8 +122,7 @@ export const RELEASES: Release[] = [
       "Ask Trov and agents in a chat on the web send handoffs as before, with the prompt written in.",
     ],
     ops: [
-      "Apply migrations `0076_ask_sharing` (one nullable column on `chat_threads`) and `0077_ask_people_sharing` (the table `chat_thread_people` and `asked_by` on `chat_messages` / `chat_actions`); merging to main applies both.",
-      "Apply migration `0080_handoff_upload_tokens` (one new table; merging to main applies it). Additive; its header has the rollback. `0078`–`0079` are left to the PRs in flight beside it.",
+      "Apply migration `0076_10_17_staging` (one file for Ask sharing and handoff uploads; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
       "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {

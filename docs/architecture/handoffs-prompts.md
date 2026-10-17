@@ -77,7 +77,7 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   and Copy as prompt appends it. An empty list draws nothing. Tests: `test/handoffs.reading-list.test.ts`
   (over the dev seed's fixtures — claiming #15 lists the Document Pipeline doc first) and
   `test/render.handoffs.test.ts`.
-- **A prompt by upload (0080_handoff_upload_tokens).** Typing a long prompt into the tool call costs the agent
+- **A prompt by upload (`0076_10_17_staging` › `0080_handoff_upload_tokens`).** Typing a long prompt into the tool call costs the agent
   thousands of output tokens — that writing, not Trov, was the whole delay of a big handoff. So MCP
   `send_handoff`'s `prompt` takes either `{ title, body }` (inline, as before) or `{ title, sha256, size_bytes }`
   (UTF-8 text, at most `HANDOFF_BODY_MAX`; both forms at once, or neither, is a `bad_request`). The upload form
