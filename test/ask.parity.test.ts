@@ -19,8 +19,12 @@ describe("the MCP parity", () => {
     const both = names.filter((n) => n in ASK_TOOLS && n in ASK_EXCLUDED_TOOLS);
     expect(neither, "an MCP tool is neither wired into Ask nor in ASK_EXCLUDED_TOOLS").toEqual([]);
     expect(both).toEqual([]);
-    // The design's exclusions, and the one this build adds (a delete is a person's step).
-    expect(Object.keys(ASK_EXCLUDED_TOOLS).sort()).toEqual(["delete_sprint", "get_connection", "record_session", "switch_org", "upload_asset"]);
+    // The design's exclusions, the one this build adds (a delete is a person's step), and the six agent-link tools
+    // until Ask becomes a side (agent links, Phase 4: then only link_inbox stays).
+    expect(Object.keys(ASK_EXCLUDED_TOOLS).sort()).toEqual([
+      "close_link", "delete_sprint", "get_connection", "join_link", "link_inbox", "list_links", "record_session", "request_link", "send_link_note",
+      "switch_org", "upload_asset",
+    ]);
     for (const n of Object.keys(ASK_EXCLUDED_TOOLS)) expect(names, n).toContain(n);
     // Ask's own tools are wired and are not MCP tools.
     for (const n of ASK_ONLY_TOOLS) {

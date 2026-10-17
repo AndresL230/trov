@@ -136,7 +136,8 @@ live order — a row stored before it has none and reads as text, blocks, cards.
 The MCP catalog (definitions from `shared/mcp-tools.generated.ts`, less `repo` / `org` / `session`), calling the same
 `src/tools/*` functions with the cookie person's context — `src/ai/ask/**` never imports `src/mcp.ts`, and nothing
 MCP reaches imports `src/ai/`. Excluded (`ASK_EXCLUDED_TOOLS`): `switch_org`, `get_connection`, `record_session`,
-`upload_asset`, and `delete_sprint` (a delete is a person's step). Admin-only tools are offered only to an admin.
+`upload_asset`, `delete_sprint` (a delete is a person's step), and the six agent-link tools until Ask becomes a side
+(agent links, Phase 4: then only `link_inbox` stays — "Ask reads link notes in its own turn"). Admin-only tools are offered only to an admin.
 Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
 `read_attachment`, `save_artifact`, `publish_doc`, `show_items`, `show_chart` (fixed queries: merged PRs by week,
 tickets by status, CI failures by week, theme shares — empty until themes exist —, sprint burn-down; the server's

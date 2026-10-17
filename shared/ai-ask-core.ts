@@ -534,6 +534,13 @@ export const ASK_EXCLUDED_TOOLS: Record<string, string> = {
   record_session: "Ask is not a coding session",
   upload_asset: "files come through Ask's own attachment upload, stored as artifacts",
   delete_sprint: "a delete is a person's step on the web, never a tool",
+  // Agent links (0078): Ask becomes a side in a later phase (its cards are Confirm-only); until then, none.
+  request_link: "Agent links reach Ask in a later phase",
+  join_link: "Agent links reach Ask in a later phase",
+  send_link_note: "Agent links reach Ask in a later phase",
+  close_link: "Agent links reach Ask in a later phase",
+  list_links: "Agent links reach Ask in a later phase",
+  link_inbox: "Ask reads link notes in its own turn.",
 };
 
 /** Ask's own tools, on top of the MCP catalog. */

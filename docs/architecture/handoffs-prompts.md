@@ -86,7 +86,7 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 ## Agent links — a short-lived line between two sessions (0078_agent_links)
 
 Spec: `docs/superpowers/specs/2026-10-17-agent-links.md` (its owner rulings override the text above them).
-Built so far: the data and domain layer. The MCP tools, the cookie routes, the Links tab, the plugin hooks and
+Built so far: the data and domain layer, and the MCP tools. The cookie routes, the Links tab, the plugin hooks and
 Ask as a side are later phases.
 
 - **Storage.** `agent_links` (a per-org `number` from `org_counters` `'link'` by the `agent_links_number_ai`
@@ -117,4 +117,21 @@ Ask as a side are later phases.
 - **Expiry**: `expireDueLinks` (`src/platform/sweeps.ts`) every repo-cron tick — past `expires_at`, or open with
   no sign from either side (`decided_at`, `*_seen_at`) for 12 h. Deleting an account cancels or closes the
   person's live links (`src/deletion/person.ts`).
-- Tests: `test/links.test.ts`, `test/links.migration.test.ts`.
+- **Over MCP** (`src/mcp.ts`), as the bearer's person, `via: "mcp"`. Five org tools: `request_link` (a DRAFT,
+  returns `{ id, url, state }` — the person sends it from the url), `join_link` (an OPEN link only), `send_link_note`,
+  `close_link`, and `list_links` (the four live boxes, for `load-context`; each side says whether it has joined, and
+  carries its session id only when it is the caller's own side). There is NO tool for send, accept, decline or
+  cancel. Each refuses an `ask-thread-` session (`bad_request`); `LinkError` codes travel like `HandoffError`'s, with
+  hints for `not_member` and `limit` (`retry_after` on the hourly note limit).
+- **`link_inbox`** is a CONNECTION tool (`{ session, event? }`, no `repo` / `org`): it finds its org by session
+  (`resolveLinkSession`, `data-layer.md` › Bearer — CLAUDE.md invariant 4), then `readInbox`. With `event` (a hook)
+  it answers `inboxHookOutput` JSON, or `""`; without, the fenced text, or "No new notes on Trov links for this
+  session." The empty path (no org, an `ask-thread-` session, nothing waiting) is never `isError` and writes no
+  usage row; only a delivery runs `meterMcpTool`. Measured locally (wrangler dev, pasted token, unknown session):
+  ~11 ms median, ~15 ms p95 — about 2 ms over `get_connection`.
+- The server instructions (`mcpInstructions`) say a session that has joined a link calls `link_inbox` at the start of
+  each reply — how a `chat` side checks without hooks. Site group: "Links" (`shared/mcp-tools-core.ts`), all six.
+  Ask excludes all six for now (`ASK_EXCLUDED_TOOLS`).
+- Tests: `test/links.test.ts`, `test/links.migration.test.ts`, `test/mcp.links.test.ts` (the tools and
+  `link_inbox`'s resolution in every connection mode, through the real `/mcp`), and the six tools' rows in
+  `test/isolation.mcp.test.ts` (another org's link, person and session reach nothing).
