@@ -143,7 +143,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
-      <div class="cnpy-rv-body" data-morph-key="rvd:doc:auth-flow@3" style="max-width:920px;padding:24px 32px 100px">
+      <div class="cnpy-rv-body" data-morph-key="rvd:doc:auth-flow@3" style="max-width:var(--frame-reader);padding:24px 32px 100px">
     <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0">
         <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Auth flow</h2>

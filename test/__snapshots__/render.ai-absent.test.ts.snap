@@ -453,7 +453,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:28px 32px 80px">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-scroll" style="max-width:var(--frame-dash);margin:0 auto;padding:28px 32px 80px">
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:22px;min-width:0">
       <div style="min-width:0">
         <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">Good afternoon, Alice</h2>
@@ -754,7 +754,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="repo-frame" style="max-width:1180px;margin:0 auto;padding:22px 32px 36px" data-screen-label="Overview">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="repo-frame" style="max-width:var(--frame-dash);margin:0 auto;padding:22px 32px 36px" data-screen-label="Overview">
     <div class="cnpy-tabs" data-tabs="repo-tab" data-morph-key="tabs:repo-tab" role="tablist" aria-label="Repo sections"><span class="cnpy-tabs-ind" aria-hidden="true" data-keep></span><button type="button" role="tab" id="repo-tab-overview" class="cnpy-tab is-on" aria-selected="true" aria-controls="repo-tab-panel" tabindex="0" data-field="tab:repo-tab:overview">Overview</button><button type="button" role="tab" id="repo-tab-code" class="cnpy-tab" data-act="setRepoTab" data-arg="code" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:code">Code</button><button type="button" role="tab" id="repo-tab-ci" class="cnpy-tab" data-act="setRepoTab" data-arg="ci" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:ci">CI &amp; Deploys</button><button type="button" role="tab" id="repo-tab-usage" class="cnpy-tab" data-act="setRepoTab" data-arg="usage" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:usage">Usage</button><button type="button" role="tab" id="repo-tab-planning" class="cnpy-tab" data-act="setRepoTab" data-arg="planning" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:planning">Team &amp; Planning</button></div>
     <div role="tabpanel" id="repo-tab-panel" aria-labelledby="repo-tab-overview" data-morph-key="repo-tab-panel:overview" style="padding-top:20px">
       
@@ -1059,7 +1059,7 @@ exports[`field absent — each screen renders exactly what it did before the AI 
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="repo-frame" style="max-width:1180px;margin:0 auto;padding:22px 32px 36px" data-screen-label="Planning">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="repo-frame" style="max-width:var(--frame-dash);margin:0 auto;padding:22px 32px 36px" data-screen-label="Planning">
     <div class="cnpy-tabs" data-tabs="repo-tab" data-morph-key="tabs:repo-tab" role="tablist" aria-label="Repo sections"><span class="cnpy-tabs-ind" aria-hidden="true" data-keep></span><button type="button" role="tab" id="repo-tab-overview" class="cnpy-tab" data-act="setRepoTab" data-arg="overview" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:overview">Overview</button><button type="button" role="tab" id="repo-tab-code" class="cnpy-tab" data-act="setRepoTab" data-arg="code" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:code">Code</button><button type="button" role="tab" id="repo-tab-ci" class="cnpy-tab" data-act="setRepoTab" data-arg="ci" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:ci">CI &amp; Deploys</button><button type="button" role="tab" id="repo-tab-usage" class="cnpy-tab" data-act="setRepoTab" data-arg="usage" aria-selected="false" aria-controls="repo-tab-panel" tabindex="-1" data-field="tab:repo-tab:usage">Usage</button><button type="button" role="tab" id="repo-tab-planning" class="cnpy-tab is-on" aria-selected="true" aria-controls="repo-tab-panel" tabindex="0" data-field="tab:repo-tab:planning">Team &amp; Planning</button></div>
     <div role="tabpanel" id="repo-tab-panel" aria-labelledby="repo-tab-planning" data-morph-key="repo-tab-panel:planning" style="padding-top:20px">
       

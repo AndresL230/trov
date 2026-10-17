@@ -11,7 +11,7 @@ import { skeleton, skBar, skCard, skList, skW } from "./skeleton";
 
 export const repoChunk = lazyChunk<typeof RepoModule>(() => import("./repo"));
 
-const FRAME = "max-width:1180px;margin:0 auto;padding:22px 32px 36px";
+const FRAME = "max-width:var(--frame-dash);margin:0 auto;padding:22px 32px 36px";
 
 export function repoView(p: RepoProps): string {
   const m = repoChunk.get();

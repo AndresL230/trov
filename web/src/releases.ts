@@ -103,6 +103,27 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  {
+    version: "Unreleased",
+    date: "2026-10-17",
+    unreleased: true,
+    title: "Room on a big monitor",
+    headline: "Lists, boards and dashboards use the space on a 32-inch screen instead of sitting in a narrow column.",
+    highlights: [
+      "On a big monitor, Tickets, Handoffs, the Prompt Library, My Work, the Repo dashboard and Review grow into the window; on a laptop nothing changes.",
+      "Board columns stop at a width a card reads well at, and the Prompt Library shows more cards a row instead of wider ones.",
+      "Docs, the Feed, the Guide, a ticket and Settings keep their reading width, so lines never get too long to follow.",
+    ],
+    patches: {
+      added: [],
+      changed: [
+        "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#0)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [0],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {

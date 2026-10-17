@@ -22,7 +22,7 @@ import type { TicketListItem, TicketDetail, TicketSeg, TicketAssigneeFilter } fr
 import type { SprintView } from "@shared/sprints";
 import { sprintDatesLabel } from "@shared/sprints-core";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, primaryBtn, WORK_SHELL, DETAIL_SHELL, SURFACE, surface, hitArea, HITBOX } from "./ui";
+import { esc, attr, relTime, primaryBtn, WORK_SHELL, FORM_SHELL, DETAIL_SHELL, SURFACE, surface, hitArea, HITBOX } from "./ui";
 import { personChip, personLink, personAvatarLink, personNameLink } from "./people";
 import { renderMarkdown } from "./markdown";
 import { mentionCandidates, mentionPickerTop, COMMENT_BOX } from "./mentions";
@@ -547,8 +547,9 @@ function boardView(p: QueueProps, rows: TicketListItem[]): string {
     </div>`;
   }).join("");
   // `.cnpy-board`: under a tablet's width the columns keep a readable width and the board
-  // scrolls sideways inside itself, a column per snap (trov.css).
-  return `<div class="cnpy-board" style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,1fr))">${cols}</div>`;
+  // scrolls sideways inside itself, a column per snap (trov.css). On a big screen a column stops at
+  // --board-col-max and the board keeps to the left under its toolbar (web-ui.md › Big screens).
+  return `<div class="cnpy-board" style="display:grid;gap:14px;align-items:stretch;margin-top:12px;min-height:calc(100vh - 190px);grid-template-columns:repeat(${Math.max(statuses.length, 1)},minmax(0,var(--board-col-max)))">${cols}</div>`;
 }
 
 /** The whole queue screen: toolbar + Board or Table. */
@@ -628,7 +629,7 @@ export function newTicketView(p: NewTicketProps): string {
       personChipButton("ntAssignee", pp.handle, pp.name || pp.handle, p.assignees.includes(pp.handle), personChip(pp, 20, pp.handle))))
     .join("");
 
-  return `<div style="${WORK_SHELL}">
+  return `<div style="${FORM_SHELL}">
     <div${surface(`padding:26px 28px;display:flex;flex-direction:column;min-height:${CARD_MIN_H}`)}>
       <div class="cnpy-nt-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:32px;flex:1;min-height:0">
         <div style="min-width:0;display:flex;flex-direction:column">

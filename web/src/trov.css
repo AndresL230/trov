@@ -54,6 +54,17 @@ input, select { font-family: inherit; }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
    crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
 #cnpy-main { scrollbar-gutter: stable; }
+/* Page frames on a big screen (web-ui.md › Big screens). A screen's frame is its laptop width up to a ~2100px
+   window — nothing changes on a laptop or a 1080p monitor — then grows with the window to a ceiling, so a
+   32" monitor (2560–3072 CSS px) is used instead of framing the work in a third of it. Only screens whose
+   content gains from width take one: a list, a board, a dashboard, a diff. Reading pages (a doc, the Feed, the
+   Guide, a ticket, Settings) keep their measure. */
+:root {
+  --frame-work:clamp(1440px, 66vw, 2200px);  /* the queue (board + table), Handoffs, the Prompt Library, a tag's page */
+  --frame-dash:clamp(1180px, 56vw, 1720px);  /* My Work, the Repo dashboard */
+  --frame-reader:clamp(920px, 44vw, 1240px); /* Review's reading pane */
+  --board-col-max:480px;                     /* a board column never gets wider than a card wants */
+}
 @keyframes cnpy-spin { to { transform: rotate(360deg); } }
 @keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -950,6 +961,8 @@ input, select { font-family: inherit; }
 .cnpy-mw-grid.is-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
 @media (max-width:1180px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .cnpy-mw-grid.is-3 { grid-template-columns:1fr; } }
+/* …and on a big screen, where the frame grows (--frame-work), more cards a row instead of wider ones. */
+@media (min-width:2200px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); } }
 /* Handoffs inbox row: on a phone the who / branch columns give way, leaving the
    title, the status pill and the age (the grid is an inline style, hence !important). */
 @media (max-width:760px) {
@@ -4829,6 +4842,9 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 
 /* ── repo-week (web/src/repo-week.ts): this week's figures ───────────────────────────────────────────────── */
 .repo-week { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+/* On a panel wide enough for every figure (a big screen's --frame-dash), ONE row — auto-fit would leave the last
+   figure alone on a second row between ~1200 and ~1400px. */
+@container (min-width:1200px) { .repo-week { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); } }
 .repo-week-tile { padding:16px 22px; min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
 
 /* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */

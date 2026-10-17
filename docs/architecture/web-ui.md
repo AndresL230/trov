@@ -769,6 +769,28 @@ label. It is not a tab bar and not a segmented switch: a step is a page of the f
 route. Its rules declare no radius (every one is inline), and its one moving part — the waiting dot — is
 still under `prefers-reduced-motion`. Tests: `test/render.welcome.test.ts`.
 
+## Big screens — page frames that grow (`--frame-*` in `trov.css`)
+
+The team builds on laptops; a 32" monitor is 2560–3072 CSS px wide at the usual scaling (4K at 150% / 125%, 1440p
+at 100%), and 3840 at 4K 100%. Every screen is a centred frame with a `max-width`, so on such a window a laptop-sized
+frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120×1440 and 1080p at 67% / 80% zoom):
+
+- **Three frame tokens on `:root`**, each `clamp(<laptop width>, <n>vw, <ceiling>)`, so they equal the old fixed width
+  up to a ~2100px window (a laptop and a 1080p monitor render exactly as before) and grow after it:
+  `--frame-work` (1440 → 2200: the queue's board and table, Handoffs, the Prompt Library, a tag's page — `WORK_SHELL`
+  in `ui.ts`), `--frame-dash` (1180 → 1720: My Work, the Repo dashboard), `--frame-reader` (920 → 1240: Review's
+  reading pane, which stays beside its list).
+- **Reading surfaces keep their measure**: a doc (1080), the Feed and the Roadmap's Narrative (`asideColumns`, 1200),
+  the Guide, a ticket or sprint (`DETAIL_SHELL`), a handoff, Settings and Org settings. A FORM keeps its laptop width
+  too (`FORM_SHELL`: a new ticket, handoff or doc, the prompt editor) — its fields gain nothing from width.
+- **What grows adds, not stretches**: the board's columns stop at `--board-col-max` (480px) and the board keeps to the
+  left under its toolbar; the Prompt Library's grid adds a card a row past a 2200px window (`auto-fill`, 360px
+  minimum); Repo › Usage's app cards and the Overview's week figures already `auto-fit` (the week figures go to ONE
+  row on a panel ≥1200px, so none is left alone on a second row).
+- A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
+  legal) keep their 1120px marketing column. Not done: the app header still spans the whole `<main>` while the frame
+  is centred, and nothing scales TYPE up at 4K 100% (the browser's zoom is the answer there) — both open questions.
+
 ## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
 
 A screen that waits on a read never paints a bare "Loading…" line and never paints its empty state early: it

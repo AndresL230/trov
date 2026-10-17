@@ -9,7 +9,7 @@ import { detectVars } from "@shared/handoffs";
 import { TAGS } from "@shared/vocabulary";
 import { searchFilterBar, type FilterMenuProps } from "./filter-menu";
 import type { PersonSummary } from "./api";
-import { esc, attr, relTime, surface, WORK_SHELL, hitArea, HITBOX } from "./ui";
+import { esc, attr, relTime, surface, WORK_SHELL, FORM_SHELL, hitArea, HITBOX } from "./ui";
 import { stateMark } from "./marks";
 import { personLink, handleTag } from "./people";
 import { collapsedLineDiff } from "./diff";
@@ -351,7 +351,7 @@ const FIELD = "border:1px solid var(--border-strong);border-radius:9px;backgroun
 
 export function promptEditorView(p: PromptEditorProps): string {
   const ed = p.draft;
-  const shell = (inner: string) => `<div data-screen-label="Prompt editor" style="${WORK_SHELL}">${inner}</div>`;
+  const shell = (inner: string) => `<div data-screen-label="Prompt editor" style="${FORM_SHELL}">${inner}</div>`;
   if (!ed) return shell(skeleton("prompt-edit", "Loading…", skDetail({ paras: 3, actions: 2 })));
   const vars = detectVars(ed.body);
   const s = slugState(ed, p.takenSlugs);

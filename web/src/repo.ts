@@ -93,7 +93,7 @@ export interface RepoProps {
 // ── design tokens (verbatim from the .dc.html) ───────────────────────────────
 const LABEL = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
 const LABEL_SM = LABEL.replace("10.5px", "10px");
-const FRAME = "max-width:1180px;margin:0 auto;padding:22px 32px 36px";
+const FRAME = "max-width:var(--frame-dash);margin:0 auto;padding:22px 32px 36px";
 /** The dashboard's one panel: a surface card (`.cnpy-surface`) — its layout only here. */
 const PANEL = "display:flex;flex-direction:column;overflow:hidden";
 const CODE = "font-family:var(--label);font-size:12.5px;color:var(--fg);background:var(--hover);border:1px solid var(--border);border-radius:4px;padding:0 5px";
