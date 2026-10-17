@@ -105,16 +105,28 @@ input, select { font-family: inherit; }
 /* A phone: the same diagram, compressed — a station says its client by its icon alone (the words stay in its
    aria-label and card). */
 @container (max-width: 520px) { .cnpy-lh-name { font-size:10px; max-width:72px; } .cnpy-lh-sub, .is-kind .cnpy-lh-name { display:none; } .cnpy-lh-card { width:210px; } }
-/* The live links as cards (links.ts `linkCard`): a grid of at most three across (two when narrower), one on a phone; each a `hitArea`
-   card whose buttons sit above the hit. A request waiting for you carries an accent border all round (never a
-   coloured left edge). The card's small line keeps the canvas's own aspect. No radius here (surface()'s). */
-.cnpy-lcards { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, max(300px, calc((100% - 28px) / 3))), 1fr)); gap:14px; margin-top:4px; }
-.cnpy-lcard { transition:border-color .14s ease; }
+/* The live links as cards (links.ts `linkCard`): ONE compact shape in every state — five rows always in the same
+   places (strip, title, reason, note, footer), each one line, the footer pinned to the bottom — so the cards of a
+   grid row line up at the same height. At most three across, two when narrower, one on a phone. A request waiting
+   for you carries an accent border all round (never a coloured left edge). No canvas: the diagram carries the
+   motion. The icon disc's radius is inline; no radius is declared here. */
+.cnpy-lcards { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, max(300px, calc((100% - 28px) / 3))), 1fr)); gap:12px; margin-top:4px; align-items:stretch; }
+.cnpy-lcard { display:flex; flex-direction:column; gap:7px; min-width:0; padding:11px 14px 10px; transition:border-color .14s ease; }
 .cnpy-lcard:hover { border-color:var(--border-strong); }
 .cnpy-lcard.is-asking { border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); background:color-mix(in srgb, var(--accent) 4%, var(--surface)); }
-.cnpy-lcard-line { max-width:360px; width:100%; margin:0 auto; }
-.cnpy-lcard-why { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-.cnpy-hitbox .cnpy-lcard-acts { position:relative; z-index:2; }
+.cnpy-lcard-strip, .cnpy-lcard-title, .cnpy-lcard-note, .cnpy-lcard-foot { display:flex; align-items:center; gap:8px; min-width:0; }
+.cnpy-lcard-strip { height:20px; font-size:11.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-lcard-side { display:inline-flex; align-items:center; gap:6px; min-width:0; flex:0 1 auto; }
+.cnpy-lcard-txt { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-lcard-ico { display:grid; place-items:center; width:18px; height:18px; flex:none; color:var(--accent); border:1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.cnpy-lcard-ico svg { width:11px; height:11px; }
+.cnpy-lcard-strip .cnpy-av { width:18px !important; height:18px !important; font-size:8px !important; }
+.cnpy-lcard-title { height:20px; }
+.cnpy-lcard-why { height:18px; font-size:12.5px; line-height:18px; color:var(--fg-55); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-lcard-note { height:20px; font-size:12px; padding-top:6px; border-top:1px solid var(--border); box-sizing:content-box; }
+.cnpy-lcard-foot { height:28px; margin-top:auto; }
+.cnpy-hitbox .cnpy-lcard-acts { position:relative; z-index:2; pointer-events:none; }
+.cnpy-hitbox .cnpy-lcard-acts button { pointer-events:auto; }
 @media (prefers-reduced-motion: reduce) { .cnpy-lcard { transition:none; } }
 /* A link row (links.ts `linkRow`): the still glyph, the topic over its reason, who, the mark, Accept / Decline on a
    request waiting for me, when. On a phone who and when give way (the grid is inline, hence !important). */

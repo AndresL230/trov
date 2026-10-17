@@ -666,22 +666,24 @@ export function liveCardOrder(b: LinkBoxes, me: string): LinkView[] {
   return [...waiting, ...open, ...rest];
 }
 
-/** One side of a link as a client: its face in the card's orb, and its words under it. */
-function sideAsClient(l: LinkView, side: LinkSideName, me: string, persons: PersonSummary[]): { face: string; words: string } {
+/** One side of a link as a client, for a card's strip: a small icon or photo, and its words (plain text too, for the
+ *  strip's title). */
+function sideAsClient(l: LinkView, side: LinkSideName, me: string, persons: PersonSummary[]): { face: string; html: string; text: string } {
   const s = l[side];
+  const ico = (k: ClientKind | null) => `<span class="cnpy-lcard-ico" style="border-radius:50%">${clientIcon(k)}</span>`;
   if (same(s.handle, me)) {
-    if (!s.kind) return { face: `<span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(null)}</span>`, words: `<span style="color:var(--fg-40)">not joined</span>` };
+    if (!s.kind) return { face: ico(null), html: `<span style="color:var(--fg-40)">not joined</span>`, text: "not joined" };
     const k = s.kind as ClientKind;
+    const branch = k === "code" && s.branch ? s.branch : "";
     return {
-      face: `<span class="cnpy-lh-ico" style="border-radius:50%">${clientIcon(k)}</span>`,
-      words: `${esc(CLIENT_WORD[k])}${k === "code" && s.branch ? ` <span style="font-family:var(--code);font-size:11px;color:var(--fg-55)">${esc(s.branch)}</span>` : ""}`,
+      face: ico(k),
+      html: `${esc(CLIENT_WORD[k])}${branch ? ` <span style="font-family:var(--code);font-size:11px;color:var(--fg-55)">${esc(branch)}</span>` : ""}`,
+      text: `${CLIENT_WORD[k]}${branch ? ` · ${branch}` : ""}`,
     };
   }
-  const name = nameOf(persons, s.handle);
-  return {
-    face: personChip(personOf(persons, s.handle), 36, s.handle),
-    words: `${esc(name.split(" ")[0])}<span style="color:var(--fg-40)">, ${s.kind ? esc(s.kind === "chat" ? "web chat" : CLIENT_WORD[s.kind as ClientKind]) : "not joined"}</span>`,
-  };
+  const first = nameOf(persons, s.handle).split(" ")[0];
+  const client = s.kind ? (s.kind === "chat" ? "web chat" : CLIENT_WORD[s.kind as ClientKind]) : "not joined";
+  return { face: personChip(personOf(persons, s.handle), 16, s.handle), html: `${esc(first)}<span style="color:var(--fg-40)">, ${esc(client)}</span>`, text: `${first}, ${client}` };
 }
 
 /** Who wrote a note, in a few words: "Jose's agent", "your Ask thread", "you". */
@@ -695,47 +697,53 @@ function noteWho(last: NonNullable<LinkPreview["last"]>, me: string, persons: Pe
 
 export interface LinkCardProps { me: string; persons: PersonSummary[]; busy: boolean }
 
-/** One live link as a card. */
+/** The dotted connector between a card's two sides: full while the link is open, faint otherwise. Decorative. */
+const strip = (open: boolean) =>
+  `<svg class="cnpy-lcard-dots" width="26" height="6" viewBox="0 0 26 6" aria-hidden="true" focusable="false" style="flex:none;color:var(--accent);opacity:${open ? 0.9 : 0.35}">${[3, 9, 15, 21].map((x) => `<circle cx="${x + 1}" cy="3" r="1.3" fill="currentColor"/>`).join("")}</svg>`;
+
+/**
+ * One live link as a card — the SAME compact shape in every state, five rows always in the same places (a row with
+ * nothing to say keeps its height with a muted placeholder), so the cards of a grid row line up:
+ *   1 the two sides as clients on one slim strip (full text in its title) · 2 #n, the topic, the mark, when ·
+ *   3 the reason, one line · 4 the newest note, one line, "N new" at the right — or "No notes yet" ·
+ *   5 the footer: the join hint (when a side of yours has no session) at the left, the steps at the right.
+ * No canvas on a card: the diagram above carries the motion.
+ */
 export function linkCard(l: LinkView, p: LinkCardProps): string {
   const asking = waitsForMe(l, p.me);
-  const spec = { ...linkLineState(l), mini: true, still: l.state !== "open" };
   const left = sideAsClient(l, "requester", p.me, p.persons), right = sideAsClient(l, "recipient", p.me, p.persons);
   const from = nameOf(p.persons, l.requester.handle).split(" ")[0];
   const title = asking ? `${esc(from)} asks to link ${l.topic.kind === "person" ? "with you" : `about ${linkTopicHtml(l)}`}`
     : l.topic.kind === "person" ? capFirst(linkAboutHtml(l, p.me, p.persons)) : linkTopicHtml(l);
   const pv = l.preview;
   const note = pv?.last
-    ? `<div data-link-card-note style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);min-width:0">
-        <div style="display:flex;align-items:baseline;gap:8px;font-size:11.5px;color:var(--fg-40)"><span style="color:var(--fg-55);font-weight:500">${esc(noteWho(pv.last, p.me, p.persons))}</span><span>${esc(relTime(pv.last.created_at))}</span>${pv.waiting > 0 ? `<span data-link-card-waiting style="margin-left:auto;color:var(--accent);font-weight:600;white-space:nowrap">${pv.waiting} new for your session${l.self ? "s" : ""}</span>` : ""}</div>
-        <div style="font-size:12.5px;color:var(--fg-70);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(pv.last.excerpt)}</div>
-      </div>`
-    : pv ? `<div data-link-card-note style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-40)">${l.state === "open" ? "No notes yet." : "Notes start once it is open."}</div>` : "";
+    ? `<span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:var(--fg-55);font-weight:500">${esc(noteWho(pv.last, p.me, p.persons))}</span> <span style="color:var(--fg-70)">${esc(pv.last.excerpt)}</span></span><span style="flex:none;color:var(--fg-40);font-family:var(--label);font-size:11px">${esc(relTime(pv.last.created_at))}</span>${pv.waiting > 0 ? `<span data-link-card-waiting style="flex:none;color:var(--accent);font-weight:600;font-size:11.5px">${pv.waiting} new</span>` : ""}`
+    : `<span data-link-card-placeholder style="color:var(--fg-40)">${esc(l.state === "open" ? "No notes yet" : "Notes start once it's open")}</span>`;
   const dis = p.busy ? " disabled" : "";
-  const small = ";padding:6px 12px";
+  const sm = ";padding:4px 10px;font-size:12px";
   const b = {
-    accept: `<button type="button" data-act="linkAccept" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}${small}"${dis}>Accept</button>`,
-    decline: `<button type="button" data-act="linkDecline" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${small}"${dis}>Decline</button>`,
-    close: `<button type="button" data-act="linkClose" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${small}"${dis}>Close</button>`,
-    send: `<button type="button" data-act="linkSend" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}${small}"${dis}>Send</button>`,
+    accept: `<button type="button" data-act="linkAccept" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}${sm}"${dis}>Accept</button>`,
+    decline: `<button type="button" data-act="linkDecline" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${sm}"${dis}>Decline</button>`,
+    close: `<button type="button" data-act="linkClose" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${sm}"${dis}>Close</button>`,
+    send: `<button type="button" data-act="linkSend" data-arg="${l.id}" class="cnpy-accentbtn" style="${ACCENT}${sm}"${dis}>Send</button>`,
     cancel: l.state === "requested"
-      ? `<button type="button" data-act="linkCancelArm" data-arg="${l.id}" data-confirm-trigger aria-haspopup="dialog" aria-controls="link-cancel-confirm" class="cnpy-outlinebtn" style="${OUTLINE}${small}"${dis}>Cancel request</button>`
-      : `<button type="button" data-act="linkCancel" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${small}"${dis}>Cancel</button>`,
+      ? `<button type="button" data-act="linkCancelArm" data-arg="${l.id}" data-confirm-trigger aria-haspopup="dialog" aria-controls="link-cancel-confirm" class="cnpy-outlinebtn" style="${OUTLINE}${sm}"${dis}>Cancel request</button>`
+      : `<button type="button" data-act="linkCancel" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${sm}"${dis}>Cancel</button>`,
   };
   const order: LinkAction[] = ["close", "cancel", "decline", "send", "accept"];
   const steps = order.filter((a) => linkActionsFor(l, p.me).includes(a)).map((a) => b[a]).join("");
+  const iconBtn = (act: string, label: string, icon: string) =>
+    `<button type="button" data-act="${act}" data-arg="${l.id}" title="${attr(label)}" aria-label="${attr(label)}" class="cnpy-iconbtn" style="width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${icon}</button>`;
   const join = linkNeedsJoin(l, p.me)
-    ? `<div data-link-card-join style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--fg-55)"><span style="flex:1 1 160px;min-width:0">Tell a session: <span style="font-family:var(--code);font-size:11.5px;color:var(--fg)">${esc(linkJoinPhrase(l.id))}</span></span><span style="display:flex;gap:6px;flex:none"><button type="button" data-act="linkJoinCopy" data-arg="${l.id}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:6px;${OUTLINE}${small}">${COPY_ICON}Copy</button><button type="button" data-act="linkJoinAsk" data-arg="${l.id}" class="cnpy-outlinebtn" style="${OUTLINE}${small}">Open in Ask</button></span></div>`
+    ? `<span data-link-card-join style="display:inline-flex;align-items:center;gap:2px;min-width:0" title="${attr(`A side of yours has no session: tell one "${linkJoinPhrase(l.id)}"`)}"><span style="font-family:var(--code);font-size:11.5px;color:var(--fg-55);white-space:nowrap;margin-right:4px">join #${l.id}</span>${iconBtn("linkJoinCopy", `Copy "${linkJoinPhrase(l.id)}"`, COPY_ICON)}${iconBtn("linkJoinAsk", `Open Ask with "${linkJoinPhrase(l.id)}"`, clientIcon("ask"))}</span>`
     : "";
   const label = `Link #${l.id}: ${asking ? `${from} asks to link with you` : aboutText(l, p.me, p.persons)}`;
-  return `<article data-link-card="${l.id}" data-state="${l.state}"${surface("padding:14px 16px 14px;display:flex;flex-direction:column;min-width:0", { cls: `cnpy-lcard ${HITBOX}${asking ? " is-asking" : ""}` })}>
-      <div class="cnpy-lcard-line" aria-hidden="true">${linkLine(spec, { left: left.face, right: right.face })}
-        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:2px;font-size:11.5px;font-weight:500;color:var(--fg-70)"><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${left.words}</div><div style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${right.words}</div></div>
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:12px"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40)">#${l.id}</span>${linkMark(l.state)}<span style="margin-left:auto;font-size:11.5px;color:var(--fg-40);font-family:var(--label);white-space:nowrap">${esc(relTime(lastAt(l)))}</span></div>
-      <h3 data-link-card-title style="margin:6px 0 0;font-size:15px;font-weight:600;letter-spacing:-0.01em;line-height:1.35;color:var(--fg);overflow-wrap:anywhere">${title}</h3>
-      <p class="cnpy-lcard-why" style="margin:4px 0 0;font-size:12.5px;line-height:1.5;color:var(--fg-55)">${esc(l.reason)}</p>
-      ${note}
-      <div class="cnpy-lcard-acts" style="margin-top:auto">${join}${steps ? `<div style="display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px">${steps}</div>` : ""}</div>
+  return `<article data-link-card="${l.id}" data-state="${l.state}"${surface("", { cls: `cnpy-lcard ${HITBOX}${asking ? " is-asking" : ""}` })}>
+      <div class="cnpy-lcard-strip" data-row="strip" title="${attr(`${left.text} ⟷ ${right.text}`)}"><span class="cnpy-lcard-side">${left.face}<span class="cnpy-lcard-txt">${left.html}</span></span>${strip(l.state === "open")}<span class="cnpy-lcard-side">${right.face}<span class="cnpy-lcard-txt">${right.html}</span></span></div>
+      <div class="cnpy-lcard-title" data-row="title"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span data-link-card-title style="min-width:0;flex:1;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="flex:none">${linkMark(l.state)}</span><span style="flex:none;font-size:11px;color:var(--fg-40);font-family:var(--label);white-space:nowrap">${esc(relTime(lastAt(l)))}</span></div>
+      <div class="cnpy-lcard-why" data-row="why">${esc(l.reason)}</div>
+      <div class="cnpy-lcard-note" data-row="note" data-link-card-note>${note}</div>
+      <div class="cnpy-lcard-foot cnpy-lcard-acts" data-row="foot">${join}<span style="display:flex;gap:6px;margin-left:auto;flex:none">${steps}</span></div>
       ${hitArea("openLink", String(l.id), label)}
     </article>`;
 }

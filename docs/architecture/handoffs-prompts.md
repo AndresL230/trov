@@ -228,14 +228,16 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   data attributes; the shared orb loop); over it each station and person is a real `<a>` with an aria-label and a
   hover / focus card. Past six people, "+N more". No live link: your photo in a quiet halo, `LINKS_LEAD` and "Link
   two of your sessions". A phone shows the same diagram compressed, stations by icon alone. Under it
-  `LINKS_LEAD`, then the live links as CARDS (`linkCard`, a grid of at most three across, one on a phone; order
-  `liveCardOrder`: waiting for you, open by newest activity, then your requests and drafts): the two sides as clients
-  on a small line (icon + "Claude Code `branch`", a teammate's photo and their client, "not joined"; it moves only
-  while the link is open, with a third of the particles — `mini`; any other state is one still frame — `still`), the
-  #n, mark and when, the topic, the reason (two lines), the newest note (who, when, one line) and "N new for your
-  session" from `preview`, and the card's own steps — Accept / Decline (a waiting card has an accent border and is
-  titled "Luke asks to link with you"), Close plus "Tell a session: join Trov link #n" with Copy / Open in Ask when a
-  side of yours has no session, Cancel request (confirmModal, `state.linkCancelId`), Send / Cancel on a draft. The
+  `LINKS_LEAD`, then the live links as CARDS (`linkCard`, a grid of at most three across, two when narrower, one on
+  a phone; order `liveCardOrder`: waiting for you, open by newest activity, then your requests and drafts). Every
+  card is the SAME compact shape (~160 px), five one-line rows always in the same places, each kept when empty: the
+  two sides as clients on a slim strip (icon + "Claude Code `branch`", a teammate's photo and client, "not joined";
+  a dotted connector, full only while open; the full text in its title), #n · the topic · the mark · when, the
+  reason, the newest note (who, excerpt, when) with "N new" at the right — or "No notes yet" / "Notes start once
+  it's open" — and a footer pinned to the bottom: "join #n" with Copy / Open-in-Ask icon buttons when a side of
+  yours has no session, and the steps at the right (Accept / Decline on a waiting card, which has an accent border
+  and reads "Luke asks to link with you"; Close; Cancel request through confirmModal, `state.linkCancelId`; Send /
+  Cancel on a draft). No canvas on a card — the diagram carries the motion. The
   card is a `hitArea`; its buttons sit above it. Then the PAST links, always shown (`pastRow`, latest
   `LINKS_PAST_SHOWN` with "Show all N", `state.linksPastAll`): a dim glyph, the topic, the reason, how it ended in
   words (`linkEndWords`: "Closed by you: Both merged", "Declined by Jose", "Cancelled by you", "Expired after 12 h

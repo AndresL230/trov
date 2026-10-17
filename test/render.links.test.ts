@@ -745,31 +745,44 @@ describe("the Links tab's cards and past links", () => {
     expect(liveCardOrder(b, "andres").map((l) => l.id)).toEqual([3, 9, 4, 6, 5]);
   });
 
-  it("a card shows each side as a client: an icon + 'Claude Code feat/auth', a teammate's photo and their client, 'not joined'", () => {
+  it("a card's strip shows each side as a client on ONE line: an icon + 'Claude Code feat/auth', a teammate's photo and client, 'not joined'", () => {
     const html = card(link({ recipient: side("jose", { kind: "chat", session: "c" }) }));
-    expect(html).toMatch(/data-ll-face="left"><span class="cnpy-lh-ico"[^>]*><svg/);
-    expect(text(html)).toContain("Claude Code feat/auth");
-    expect(html).toMatch(/data-ll-face="right"><div class="cnpy-av"[^>]*>JO<img/);
-    expect(text(html)).toContain("Jose, web chat");
+    expect(html).toMatch(/class="cnpy-lcard-strip" data-row="strip" title="Claude Code · feat\/auth ⟷ Jose, web chat">/);
+    expect(html).toMatch(/data-row="strip"[^>]*><span class="cnpy-lcard-side"><span class="cnpy-lcard-ico"[^>]*><svg/);
+    expect(html).toMatch(/<div class="cnpy-av"[^>]*>JO<img/);
     expect(text(card(link()))).toContain("Jose, not joined");
     expect(text(card(link({ requester: side("andres") })))).toContain("not joined");
   });
 
-  it("its small line moves only while the link is open (fewer particles); any other state is one still frame", () => {
-    expect(card(link())).toMatch(/data-ll-flow="flow"[^>]*data-ll-mini="1"/);
-    expect(card(link())).not.toContain('data-ll-still="1"');
-    for (const st of ["requested", "draft"] as const) expect(card(link({ state: st }))).toContain('data-ll-still="1"');
-    expect(linkLineSrc).toContain('const still = reducedStill || d.llStill === "1";');
+  it("no canvas on a card (the diagram carries the motion); the strip's dots are full only while open", () => {
+    expect(card(link())).not.toContain("<canvas");
+    expect(card(link())).toMatch(/cnpy-lcard-dots[^>]*opacity:0\.9/);
+    for (const st of ["requested", "draft"] as const) expect(card(link({ state: st }))).toMatch(/cnpy-lcard-dots[^>]*opacity:0\.35/);
   });
 
-  it("the newest note (who, when, one line) and how many wait for your session", () => {
+  it("the SAME five rows in the same order on every card, whatever its state — an empty row keeps its place", () => {
+    const states = [
+      link({ id: 3, state: "requested", requester: side("jose"), recipient: side("andres") }),
+      link({ preview: pv() }),
+      link({ requester: side("andres"), preview: { last: null, notes: 0, waiting: 0 } }),
+      link({ state: "requested" }), link({ state: "draft" }), link({ self: true, recipient: side("andres") }),
+    ];
+    for (const l of states) {
+      const rows = [...card(l).matchAll(/data-row="(\w+)"/g)].map((m) => m[1]);
+      expect(rows).toEqual(["strip", "title", "why", "note", "foot"]);
+    }
+    expect(cssSrc).toMatch(/\.cnpy-lcard-foot \{ height:28px; margin-top:auto; \}/);
+    expect(cssSrc).toMatch(/\.cnpy-lcard-why \{ height:18px;[^}]*white-space:nowrap; \}/);
+  });
+
+  it("the newest note on one line (who, excerpt, when) with 'N new' at the right — or a placeholder of the same row", () => {
     const html = card(link({ preview: pv() }));
     expect(text(html)).toContain("Jose&#39;s agent");
     expect(text(html)).toContain("Renaming authSession tonight.");
-    expect(html).toMatch(/data-link-card-waiting[^>]*>2 new for your session</);
+    expect(html).toMatch(/data-link-card-waiting[^>]*>2 new</);
     expect(card(link({ preview: pv({ waiting: 0 }) }))).not.toContain("data-link-card-waiting");
-    expect(text(card(link({ preview: { last: null, notes: 0, waiting: 0 } })))).toContain("No notes yet.");
-    expect(card(link())).not.toContain("data-link-card-note"); // no preview (a degraded read): no note line
+    expect(card(link({ preview: { last: null, notes: 0, waiting: 0 } }))).toMatch(/data-link-card-placeholder[^>]*>No notes yet</);
+    expect(card(link({ state: "requested" }))).toMatch(/data-link-card-placeholder[^>]*>Notes start once it&#39;s open</);
   });
 
   it("each card's own steps: Accept / Decline, Close (+ join when your side has no session), Cancel request, Send / Cancel", () => {
@@ -780,9 +793,8 @@ describe("the Links tab's cards and past links", () => {
     expect(text(asking)).toContain("Jose asks to link about PR #180");
     const open = card(link({ requester: side("andres"), recipient: side("jose", { kind: "code", session: "x" }) }));
     expect(open).toContain('data-act="linkClose" data-arg="12"');
-    expect(open).toContain("data-link-card-join");
-    expect(open).toContain('data-act="linkJoinCopy" data-arg="12"');
-    expect(open).toContain('data-act="linkJoinAsk" data-arg="12"');
+    expect(open).toMatch(/data-row="foot"><span data-link-card-join[^>]*><span[^>]*>join #12<\/span><button[^>]*data-act="linkJoinCopy" data-arg="12"[^>]*class="cnpy-iconbtn"/);
+    expect(open).toMatch(/data-act="linkJoinAsk" data-arg="12" title="Open Ask with &quot;join Trov link #12&quot;"[^>]*class="cnpy-iconbtn"/);
     expect(card(link())).not.toContain("data-link-card-join"); // my side has a session
     const sent = card(link({ state: "requested" }));
     expect(sent).toMatch(/data-act="linkCancelArm" data-arg="12" data-confirm-trigger aria-haspopup="dialog"/);
