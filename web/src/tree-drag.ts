@@ -1,7 +1,7 @@
 // Dragging a page in the docs pane (design spec §1.3) — on the app's one pointer drag (pointer-drag.ts: the slop, the
 // swallowed click, Escape, the held paints). What this adds is the TREE's drop:
 //   • the hit zones: over a row, its top 30% is "before", its bottom 30% "after", the middle "into"; the pane's head
-//     row is "the top level of the space"; the pointer must stay within the rows' x range (−24px … +40px of slack);
+//     "PAGES" row above them is "the top level of the space"; the pointer must stay within the rows' x range (−24px … +40px of slack);
 //   • a target the tree's rules refuse (the page itself, a page under it, too deep — `planMove`, the SAME function the
 //     Worker's move route runs) is no target at all;
 //   • the ghost (a chip with the title, and a pill saying where it goes: "Put inside ‹Title›", "Move above ‹Title›",

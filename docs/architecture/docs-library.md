@@ -328,8 +328,8 @@ Library group.
 scrolls on its own (`#cnpy-libmain`). The page is `data-morph="lib:<space>"` on all three, so the pane — its rows,
 its open chevrons, its scroll — is patched in place across them, and only the content (keyed per screen and per doc)
 is replaced; the old reader's DOM edits (`refreshReaderPane`, `applyTreeActive`) are gone, and the screen's entrance
-plays on the content only. The pane: the head row (the space's tile and name → its home; "+" → New page at its top
-level; while dragging, "the top level"), "PAGES" and the space's page count, then a 28px row per page (`indentPx`, a
+plays on the content only. The pane: "PAGES" and the space's page count (while dragging, "the top level"; the
+space's name and home are the sidebar's and the content's, so the pane has no head row), then a 28px row per page (`indentPx`, a
 guide per ancestor level, a chevron when it has children, the status SHAPE for a page that is not live, a long
 title's `data-mtip`), and on hover, keyboard focus or an open menu "+" (a page inside) and "…" (Copy link; Move to the
 top level; New page inside; Archive page for `can_archive`) — out of the flow, laid over the end of the title (left of the status shape) on the row's
@@ -340,7 +340,7 @@ into view once per page opened. Loading: nine skeleton rows; no page: "No pages 
 
 **Moving pages** (`web/src/tree-drag.ts` on `web/src/pointer-drag.ts`, the app's one pointer drag — the ticket
 board's cards use it too: the slop, the swallowed click, Escape, the held paints). Over a row: its top 30% is before,
-its bottom 30% after, the middle into; the pane's head is the top level; a target the rules refuse is no target ("too
+its bottom 30% after, the middle into; the "PAGES" row is the top level; a target the rules refuse is no target ("too
 deep" says so in the hint). The ghost (the title, and a pill: "Put inside ‹Title›", "Move above / below ‹Title›",
 "Move to the top level of ‹Space›"), the 2px drop line with its square handle, the ringed row. On release
 `web/src/tree-actions.ts` applies the move at once (`applyMove`), posts it, flashes the row and toasts with **Undo**

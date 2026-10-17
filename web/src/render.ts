@@ -1561,7 +1561,6 @@ function libraryFrame(s: AppState, content: string, key: string): string {
     space, pages,
     error: pages === null && h.status === "error" && (h.data === null || h.data.space.slug !== slug),
     activeSlug: s.screen === "docs" ? s.docSlug : null,
-    headActive: s.screen === "space",
     open: s.treeOpen,
     menu: s.treeMenu,
     canArchive: h.data?.space.slug === slug && h.data.can_archive === true,

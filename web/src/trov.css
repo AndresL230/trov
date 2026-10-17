@@ -4192,15 +4192,10 @@ a.ask-btn { text-decoration:none; }
   .cnpy-libframe[data-tree="1"] > .cnpy-dpane { width:auto; flex:1 1 auto; border-right:none; }
   .cnpy-dpane .cnpy-dp-row:not(.is-shape) { height:40px; }
 }
-/* The pane: 252px, its own scroll; the head row (the space), "PAGES" and the count, the rows. */
+/* The pane: 252px, its own scroll; "PAGES" and the count (while dragging, the top level), the rows. */
 .cnpy-dpane { width:252px; flex:none; overflow-y:auto; border-right:1px solid var(--border); padding:14px 12px 28px; box-sizing:border-box; }
-.cnpy-dp-head { display:flex; align-items:center; gap:9px; height:36px; padding:0 6px 0 8px; cursor:pointer; }
-.cnpy-dp-head:not(.is-shape):hover { background:var(--hover); }
-.cnpy-dp-head.is-active { background:var(--surface); box-shadow:0 0 0 1px var(--border), 0 1px 2px rgba(20,20,30,.05); }
-.cnpy-dp-head.is-into { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
-.cnpy-dp-name { flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cnpy-dp-head.is-into .cnpy-dp-name { color:var(--accent); }
-.cnpy-dp-label { display:flex; align-items:center; justify-content:space-between; padding:16px 8px 6px; font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); }
+.cnpy-dp-label { display:flex; align-items:center; justify-content:space-between; padding:2px 8px 6px; font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); }
+.cnpy-dp-label.is-into { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
 .cnpy-dp-n { font-variant-numeric:tabular-nums; letter-spacing:0; }
 .cnpy-dp-note { margin:6px 8px; font-size:12px; line-height:1.45; color:var(--fg-55); }
 .cnpy-dp-rows { display:flex; flex-direction:column; }
@@ -4850,7 +4845,7 @@ a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
    the swatches (round), and the sidebar's hollow "No spaces yet" row. */
 [data-cnpy-theme] .cnpy-spt { border-radius:calc(var(--spt-r, 4px) * var(--corner-scale)) !important; }
 /* The docs pane and the doc page (docs-pane.ts, doc-page.ts). */
-[data-cnpy-theme] .cnpy-dp-head,
+[data-cnpy-theme] .cnpy-dp-label,
 [data-cnpy-theme] .cnpy-dp-row,
 [data-cnpy-theme] .cnpy-dp-row::before,
 [data-cnpy-theme] .cnpy-dp-menu,

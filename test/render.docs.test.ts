@@ -92,10 +92,9 @@ describe("spaces — the org's own, from the Library read", () => {
 describe("the docs pane", () => {
   it("draws the space's tree in order: indented rows, guides, chevrons, the active page and its ancestors open", () => {
     const html = pane(render(docState()));
-    // The head row is the space (its home, and "+" for a page at its top level).
-    expect(html).toContain('data-dtree-head="engineering"');
-    expect(html).toContain('data-act="libOpenSpace" data-arg="engineering"');
-    expect(html).toContain('data-act="libNewPage" data-arg="engineering" aria-label="New page"');
+    // No head row (the space's name and home are the sidebar's and the content's); "PAGES" is the top level for a drag.
+    expect(html).not.toContain("cnpy-dp-head");
+    expect(html).toContain('<div class="cnpy-dp-label" data-dtree-head="engineering">');
     expect(html).toMatch(/<span>Pages<\/span><span class="cnpy-dp-n"[^>]*>8<\/span>/);
     // Tree order; Architecture › API › Authentication open (above the active page), Getting started closed.
     const order = [...html.matchAll(/data-dtree="([^"]+)" data-depth="(\d)"/g)].map((m) => `${m[1]}:${m[2]}`);
@@ -165,13 +164,12 @@ describe("the docs pane", () => {
     expect(expandedSet(PAGES, null, { start: true })).toEqual(new Set(["start"]));
   });
   it("loading is nine skeleton rows; an empty space the hollow tree", () => {
-    const loading = docsPane({ space: SPACES[0], pages: null, activeSlug: null, headActive: false, open: {}, menu: null });
+    const loading = docsPane({ space: SPACES[0], pages: null, activeSlug: null, open: {}, menu: null });
     expect(loading).toContain('data-skel="docs-tree"');
     expect(loading.match(/class="cnpy-dp-row is-shape"/g)?.length).toBe(9);
-    const empty = docsPane({ space: SPACES[0], pages: [], activeSlug: null, headActive: true, open: {}, menu: null });
+    const empty = docsPane({ space: SPACES[0], pages: [], activeSlug: null, open: {}, menu: null });
     expect(empty).toContain('data-empty="docs-tree"');
     expect(empty).toMatch(/<span class="cnpy-dp-n"[^>]*>0<\/span>/);
-    expect(empty).toContain("cnpy-dp-head cnpy-hitbox is-active");
   });
   it("is the same element on a space's home, a doc page and New page (one page per space)", () => {
     const keyOf = (html: string) => /<main data-morph="([^"]+)"/.exec(html)?.[1];

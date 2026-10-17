@@ -1,7 +1,7 @@
 // The docs pane (docs/architecture/docs-library.md › The page tree) — a space's PAGE TREE, 252px beside the content
 // on a space's home, a doc page and New page (the app sidebar lists spaces only; pages never). Design spec §1.2:
-// the head row (the space: its home, and "+" for a page at its top level; while dragging it is "the top level"),
-// "PAGES" and the space's page count, then one 28px row per page — indented by `indentPx(depth)`, a guide line per
+// "PAGES" and the space's page count (while dragging, that row is "the top level" — the space's own name and home
+// are the sidebar's and the content's, so the pane has no head row of its own), then one 28px row per page — indented by `indentPx(depth)`, a guide line per
 // ancestor level, a chevron when it has children, the status shape for a page that is not live (never a word), and
 // on hover "+" (a page inside) and "…" (Copy link / Move to the top level / New page inside / Archive page, for an admin
 // or an owner of the space). The tree's ORDER and rules are
@@ -10,10 +10,9 @@
 // a chevron's turn and the pane's own scroll survive every repaint.
 import { buildTree, ancestorsOf, flattenTree, indentPx } from "@shared/docs-tree-core";
 import { pagesWord, type LibraryPageDTO, type SpaceDTO } from "@shared/docs-core";
-import { esc, attr, hitArea, HITBOX } from "./ui";
+import { esc, attr, HITBOX } from "./ui";
 import { markShape, AUTHORITY_MARK } from "./marks";
 import { skeleton, skBar, emptyLayout } from "./skeleton";
-import { spaceTile } from "./library";
 
 export interface DocsPaneProps {
   /** The space whose tree this is (null while the Library's read is out). */
@@ -24,8 +23,6 @@ export interface DocsPaneProps {
   error?: boolean;
   /** The page being read (the active row). */
   activeSlug: string | null;
-  /** On the space's home: the head row is the active one. */
-  headActive: boolean;
   /** Pages the person opened or closed; a page not named here is open when it is the active page or above it. */
   open: Readonly<Record<string, boolean>>;
   /** The row whose "…" menu is open. */
@@ -103,13 +100,6 @@ const hollowRows = (): string =>
 /** The pane's markup. Its root is the same element on every screen of the space (`data-morph-key`). */
 export function docsPane(p: DocsPaneProps): string {
   const sp = p.space;
-  const head = sp
-    ? `<div class="cnpy-dp-head ${HITBOX}${p.headActive ? " is-active" : ""}" data-dtree-head="${attr(sp.slug)}">
-        ${spaceTile(sp, 20)}<span class="cnpy-dp-name">${esc(sp.name)}</span>
-        ${sp.archived ? "" : `<button type="button" class="cnpy-dp-act is-head" data-act="libNewPage" data-arg="${attr(sp.slug)}" aria-label="New page" data-mtip="New page">${PLUS}</button>`}
-        ${hitArea("libOpenSpace", sp.slug, `${sp.name}: the space's home`)}
-      </div>`
-    : `<div class="cnpy-dp-head is-shape">${skBar(20, 20)}${skBar("52%", 11)}</div>`;
   let body: string;
   let count = "";
   if (p.pages === null) {
@@ -125,8 +115,7 @@ export function docsPane(p: DocsPaneProps): string {
     body = `<div class="cnpy-dp-rows" role="list" data-morph-list>${rows.map((r) => row(r.node, r.depth, r.hasChildren, open.has(r.node.slug), p)).join("")}</div>`;
   }
   return `<nav class="cnpy-dpane cnpy-scroll" data-morph-key="dpane:${attr(sp?.slug ?? "")}" aria-label="${attr(sp ? `Pages in ${sp.name}` : "Pages")}">
-    ${head}
-    <div class="cnpy-dp-label"><span>Pages</span>${count ? `<span class="cnpy-dp-n" aria-label="${attr(pagesWord(Number(count)))}">${count}</span>` : ""}</div>
+    <div class="cnpy-dp-label"${sp ? ` data-dtree-head="${attr(sp.slug)}"` : ""}><span>Pages</span>${count ? `<span class="cnpy-dp-n" aria-label="${attr(pagesWord(Number(count)))}">${count}</span>` : ""}</div>
     ${body}
   </nav>`;
 }
