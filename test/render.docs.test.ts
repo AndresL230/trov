@@ -139,6 +139,9 @@ describe("the docs pane", () => {
     // over the rows after it, or they paint over its menu (e2e HL5)
     expect(css).toContain(".cnpy-dp-row { isolation:isolate; }");
     expect(rule(".cnpy-dp-row.has-menu")).toMatch(/z-index:[1-9]/);
+    // the actions' mask clips whatever is drawn outside their box, so a focused + / … draws its ring INSIDE the
+    // button (a negative offset), never the 1px-out ring that showed only as a bar on its left (e2e HL5)
+    expect(rule(".cnpy-dp-acts .cnpy-dp-act:focus-visible")).toMatch(/outline-offset:-\d+px/);
     // the shape is the row's own child, right after the title (the :has selector's premise)
     const html = pane(render(docState()));
     expect(html).toMatch(/<span class="cnpy-dp-t">Rate limits<\/span><span class="cnpy-dp-st"/);
