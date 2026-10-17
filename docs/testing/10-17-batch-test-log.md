@@ -7,8 +7,7 @@ only through `scripts/dev/ask-github-stub.mjs` (`LOCAL_UPSTREAM`, fake keys). Da
 stored `trov.theme`. A base-branch comparison stops the batch server and runs the base worktree
 (`/tmp/claude-1000/-home-andresl-Projects-trov/70d25bd4-13a0-4b2f-ba96-193a2f49f660/scratchpad/e2e-base`, detached at 17a530a4) on the SAME port, never both at once.
 
-**Status: STOPPED AFTER STEP 1 (the matrix).** The combined matrix is 318 cases, over the prompt's 150: it waits for
-the owner's pick (below). The unit suite and typecheck ran first; nothing in the browser has run yet.
+**Plan: the SMALLER alternative, 144 cases** (the owner's pick, relayed 2026-10-17, of the 318-case matrix below).
 
 ## The batch
 
@@ -45,12 +44,12 @@ No fix commits were needed for the suite.
   has `.cnpy-tghost { position:fixed; … }` at line 1157 and `.cnpy-hitbox { position:relative; }` at line 1216 (same
   specificity, later wins); `startBoardDrag` (`origin/main:web/src/main.ts` 4654) clones the card, which carries
   `HITBOX` (`tickets.ts` 474), so the ghost is `position:relative`. Fixed in the batch by ad75bc8e (`!important`).
-- **Sync-menu crash `reading 'startsWith'` (reported by the 4K builder): PRE-EXISTING on main, not fixed.**
+- **Sync-menu crash `reading 'startsWith'` (reported by the 4K builder): PRE-EXISTING on main; FIXED in the batch at the owner's request (659c1fbc, case Z32).**
   `shared/sync.ts` (unchanged from main) calls `f.code.startsWith("reconcile:")` in `syncFailureText` (227) and
   `syncFailureTab` (332). The server always writes a `code` (`src/sync/runs.ts` 243–261), but the dev seed's
   `scripts/seed/team-rich.mjs` (main 611, batch 614) stores a partial run with `failures: [{ step, detail }]` — no
   `code` — so opening the sync menu on the `team` seed throws. A malformed stored row, reachable only from the dev
-  seed today; recorded, to be shown in the browser on base as case Z32.
+  seed today. Shown in the browser on base, then fixed and retested as case Z32.
 
 ### Still to take (step 3, after the owner's pick)
 
@@ -125,13 +124,25 @@ Dropped as impossible or redundant (one line each):
 - G: model-side wording beyond the step line — the stand-in is scripted; real GitHub rate limiting (`rate_limited`)
   — the stand-in has no such reply, covered by `test/ask.github.test.ts`.
 
-**318 > 150: stopped here.** Two plans for the owner:
+**318 > 150: shown to the owner, who picked the smaller alternative (144).** The two plans offered:
 
 | Plan | What runs | Count |
 | --- | --- | --- |
 | **Recommended: the whole matrix (318)** | All of the above. Option A alone is 148, so any plan that keeps the owner's pick is over 150; the other blocks are what each spec names as its ship condition (Z's list is the owner's own ship-or-not list; G's access rules are a privacy promise). Run order: suite already green → Z and L at 3840 first (the 4K ship decision) → G → A → D → P → R; one server, one Chromium, pages closed as I go. | **318** |
 | Smaller alternative | L at option C (72, instead of A) + Z's ship conditions only: Z01, Z04–Z07, Z09–Z11, Z13–Z20, Z26–Z28, Z32 (20) + G's access and switch rules: G01, G02, G04–G08, G16, G19, G20, G22, G25, G26, G34 (14) + A: the 13 kinds' widths, pointer drag + ←/→, reload, 360, dark, reduced motion (19) + D: the 24 surfaces collapsed to 14 (button, link, focus ring, sidebar, segmented, tab bar, favicon, picker banner, landing banner, pricing CTA, legal tab, done mark, passing CI, diff additions) + P01–P04 (4) + R01 (1) | **144** |
 
+### The plan that runs: 144 cases
+
+| Block | Runs | Dropped from the 318 (by the owner's pick) |
+| --- | --- | --- |
+| P | P01–P04 (4) | P05–P08 |
+| A | A01–A13 the 13 kinds' opening widths; A14 pointer drag then another kind; A15 ←/→; A16 a dragged width after reload; A17 360 phone; A18 dark; A19 reduced motion (19) | the artifact states, slow / failed reads, push / Back / close / thread switch, past max / min, the other viewports, keyboard-only, member, the ⌘J panel, the Artifacts screens |
+| D | D01 primary button, D02 link, D03 focus ring, D04 active sidebar item, D05 `segmented()` selected, D06 `tabBar()` selected, D07 favicon, D08 org-picker banner, D09 landing banner, D10 pricing top-plan CTA, D11 legal tab current, D12 done mark (green), D13 passing CI (green), D14 diff additions (green) — all stored dark (14) | switch, `::selection`, orb, sidebar mark, lost-slug banner, public docs, sign-in dialog, live mark, moss avatar; the system / nothing-stored theme states; the light regression; phone dark |
+| L | option C: 12 surfaces (S1, S2, S4, S5, S7, S9, S13, S15, S18, S20, S22, S30) × {1440, 2560, 3840, 390} light (48) + the 12 dark at 2560 (12) + I1–I8 at 3840 (8) + S34–S37 at 2560 (4) = 72 | option A's other 21 surfaces and its dark / width cells |
+| Z | Z01, Z04, Z05, Z06, Z07, Z09, Z10, Z11, Z13, Z14, Z15, Z16, Z17, Z18, Z19, Z20, Z26, Z27, Z28, Z32 (20) | Z02, Z03, Z08, Z12, Z21–Z25, Z29–Z31, Z33–Z36 |
+| G | G01, G02, G04, G05, G06, G07, G08, G16, G19, G20, G22, G25, G26, G34 (14) | G03, G09–G15, G17, G18, G21, G23, G24, G27–G33 |
+| R | R01 (1) | R02, R03 |
+| **Total** | **144** | 174 dropped |
+
 ## Cases
 
-Not run yet: waiting for the owner's pick of plan.
