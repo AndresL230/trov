@@ -43,6 +43,10 @@ export interface DocRow {
   parent_slug?: string | null;
   /** Its place among its siblings; NULL sorts last. */
   tree_rank?: number | null;
+  /** Archive page (0083_doc_archive): when a person archived it and who (NULL = in the Library). Optional so a
+   *  fixture written before it need not name them. */
+  archived_at?: string | null;
+  archived_by?: string | null;
 }
 
 /** A doc without its body — `GET /docs?fields=meta` (My Work's "Docs you own" cell). */
