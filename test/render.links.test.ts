@@ -2,15 +2,16 @@
 // each state as each viewer sees it (only the steps that viewer may take, and no others), each side kind, a
 // self-link, who wrote each note, the join hint, the routes, and the sidebar's Relay badge = handoffs + links.
 import { describe, it, expect } from "vitest";
-import type { LinkDetail, LinkView, LinkSideView, LinkNoteView, LinkState } from "../shared/links";
+import type { LinkDetail, LinkView, LinkSideView, LinkNoteView, LinkState, LinkPreview } from "../shared/links";
 import type { HandoffView } from "../shared/handoffs";
 import {
   linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal, handoffsTabBar,
   linkSessionHtml, noteAuthorHtml, askThreadOf, LINKS_EMPTY, NO_LINK_BOXES, type LinkAction, type LinkDetailProps,
   linkStartCard, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, linkStartSpec, type LinkStart,
-  linksHero, liveLinks, linkGlyph, heroModel, heroCanvasData, linkAboutHtml, LINKS_LEAD, STATION_X, PERSON_MAX, HERO_BASE_Y, HERO_HUB_X, HERO_PERSON_Y,
+  linksHero, liveLinks, linkGlyph, linkCard, liveCardOrder, linkEndWords, LINKS_PAST_SHOWN, heroModel, heroCanvasData, linkAboutHtml, LINKS_LEAD, STATION_X, PERSON_MAX, HERO_BASE_Y, HERO_HUB_X, HERO_PERSON_Y,
 } from "../web/src/links";
 import docsSrc from "../web/src/docs-content.ts?raw";
+import routesSrc from "../src/routes.ts?raw";
 import { linkLineState, linkLine, LINE_W, LINE_H, parseHero, arcHeight } from "../web/src/link-line";
 import linkLineSrc from "../web/src/link-line.ts?raw";
 import orbSrc from "../web/src/thinking-orb.ts?raw";
@@ -272,35 +273,33 @@ describe("the Links tab", () => {
     closed: [link({ id: 6, state: "closed", closed_at: T0, closed_by: "andres" })],
   };
 
-  it("four sections — Waiting for you, Open, Yours, Closed — each row #n, topic, reason, the other person, a mark", () => {
-    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar, closedOpen: true });
+  it("live links are CARDS (waiting for you first, then open, then yours); ended ones a PAST history below", () => {
+    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
     const at = (s: string) => html.indexOf(s);
-    expect(at("WAITING FOR YOU")).toBeLessThan(at(">OPEN<"));
-    expect(at(">OPEN<")).toBeLessThan(at("YOURS"));
-    expect(at("YOURS")).toBeLessThan(at("CLOSED (1)"));
+    expect(at('data-link-card="3"')).toBeLessThan(at('data-link-card="4"'));
+    expect(at('data-link-card="4"')).toBeLessThan(at('data-link-card="5"'));
+    expect(at('data-link-card="5"')).toBeLessThan(at(">PAST<"));
+    expect(at(">PAST<")).toBeLessThan(at('data-link-row="6"'));
     for (const id of [3, 4, 5, 6]) expect(html).toContain(`data-act="openLink" data-arg="${id}"`);
-    expect(text(html)).toContain("#3");
     expect(text(html)).toContain("PR #180");
     expect(text(html)).toContain("Both of us touch the session store.");
-    expect(html).toContain('data-act="openPerson" data-arg="jose"');
-    expect(text(html)).toMatch(/FROM(JO)?Jose/); // a request sent to me names who sent it
     expect(text(html)).toContain("Requested");
     expect(text(html)).toContain("Draft");
-    // Rows are hit areas: never a button inside a button.
+    expect(html).not.toContain("WAITING FOR YOU");
+    // Cards are hit areas: never a button inside a button.
     expect(nestedButton(html)).toBe(false);
     expect(html).toContain('class="cnpy-hit"');
   });
 
-  it("a branch topic reads in code; a self-link names you", () => {
+  it("a branch topic reads in code on its card", () => {
     const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, mine: [link({ id: 8, state: "draft", self: true, topic: { kind: "branch", ref: "feat/x" }, recipient: side("andres") })] }, me: "andres", persons, bar });
     expect(html).toContain('font-family:var(--code)');
     expect(text(html)).toContain("branch feat/x");
-    expect(text(html)).toContain("You, two sessions");
   });
 
-  it("empty sections say so in plain words", () => {
-    const html = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons, bar, closedOpen: true });
-    for (const s of Object.values(LINKS_EMPTY)) expect(html).toContain(s.replace(/'/g, "&#39;"));
+  it("no past links: says so in plain words", () => {
+    const html = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons, bar });
+    expect(html).toContain(LINKS_EMPTY.past.replace(/'/g, "&#39;"));
   });
 
   it("loading draws the skeleton; a failed read says so", () => {
@@ -670,14 +669,11 @@ describe("the Links tab's arc diagram — your client kinds as stations, teammat
     expect(back.segs.map((g) => g.shape).sort()).toEqual(["d", "d", "d", "o", "u", "u"]);
   });
 
-  it("a request waiting for you: 'Jose asks to link with you', Accept / Decline in the callout", () => {
+  it("a request waiting for you: Jose's orb is marked asking; its Accept / Decline live on its card (no callout here)", () => {
     const html = hero(spread);
     expect(html).toMatch(/class="cnpy-lh-node is-person is-asking" data-lh-person="jose"/);
-    expect(text(html)).toContain("Jose asks to link with you");
-    expect(html).toContain('data-act="linkAccept" data-arg="2"');
-    expect(html).toContain('data-act="linkDecline" data-arg="2"');
-    expect(hero(spread, true)).toMatch(/data-act="linkAccept" data-arg="2"[^>]*disabled/);
-    expect(nestedButton(html)).toBe(false);
+    expect(html).not.toContain('data-act="linkAccept"');
+    expect(html).not.toContain("data-lh-ask");
   });
 
   it("one kind: that station and the teammates; nothing linked: you alone, the lead sentence and Link two of your sessions", () => {
@@ -711,10 +707,10 @@ describe("the Links tab's arc diagram — your client kinds as stations, teammat
     const html = linksView({ status: "ok", boxes: spread, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
     expect(html.indexOf('class="cnpy-lh"')).toBeLessThan(html.indexOf("data-links-intro"));
     expect(html).toContain(LINKS_LEAD.replace(/'/g, "&#39;"));
-    expect(html.indexOf("data-links-intro")).toBeLessThan(html.indexOf("WAITING FOR YOU"));
-    // The unjoined self-links are in the rows, where the join hint lives.
-    expect(html).toContain('data-link-row="12"');
-    expect(html).toContain('data-link-row="13"');
+    expect(html.indexOf("data-links-intro")).toBeLessThan(html.indexOf("data-link-cards"));
+    // The unjoined self-links are in the cards, where the join hint lives.
+    expect(html).toMatch(/data-link-card="12"[\s\S]*?data-link-card-join/);
+    expect(html).toMatch(/data-link-card="13"[\s\S]*?data-link-card-join/);
   });
 });
 
@@ -725,7 +721,9 @@ describe("a link about a person reads WITH them", () => {
     expect(linkAboutHtml({ ...l, self: true, requester: side("andres") }, "andres", persons)).toBe("between your sessions");
     expect(text(page(l, "andres"))).toContain("Link with Jose");
     const list = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, waiting: [l] }, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
-    expect(text(list.slice(list.indexOf('data-link-row="2"')))).toContain("#2With Jose");
+    expect(text(list.slice(list.indexOf('data-link-card="2"')))).toContain("Jose asks to link with you");
+    const past = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: [{ ...l, state: "declined" }] }, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
+    expect(text(past.slice(past.indexOf('data-link-row="2"')))).toContain("#2With Jose");
     expect(text(page(link(), "andres"))).toContain("Link about PR #180"); // other topics unchanged
   });
 
@@ -734,48 +732,111 @@ describe("a link about a person reads WITH them", () => {
   });
 });
 
-describe("the Links tab's rows", () => {
+describe("the Links tab's cards and past links", () => {
   const bar = handoffsTabBar("links", { handoffs: 0, links: 1 });
-  const boxes = {
-    ...NO_LINK_BOXES,
-    waiting: [link({ id: 3, state: "requested", requester: side("jose"), recipient: side("andres") })],
-    open: [link({ id: 4 })],
-    closed: [link({ id: 6, state: "closed", closed_at: T0 }), link({ id: 7, state: "expired", closed_at: T0 })],
-  };
+  const cp = { me: "andres", persons, busy: false };
+  const pv = (over: Partial<LinkPreview> = {}): LinkPreview => ({ last: { side: "recipient", author: "jose", author_kind: "agent", excerpt: "Renaming authSession tonight.", created_at: T0 }, notes: 3, waiting: 2, ...over });
+  const card = (l: LinkView, me = "andres") => linkCard(l, { ...cp, me });
 
-  it("each row carries a still glyph of its line (an SVG, no canvas, no loop) before the topic", () => {
-    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
-    const row = html.slice(html.indexOf('data-link-row="4"'));
-    expect(row.indexOf('<svg class="cnpy-lglyph" data-glyph="flow"')).toBeLessThan(row.indexOf("PR #180"));
-    expect(row.slice(0, row.indexOf("cnpy-hit"))).not.toContain("<canvas");
-    expect(linkGlyph({ left: "awake", right: "calling", flow: "trickle" })).toContain('aria-hidden="true"');
-    expect(linkGlyph({ left: "dim", right: "dimhollow", flow: "stopped" })).toContain('data-glyph="stopped"');
+  it("the order: waiting for you, then open by newest activity, then your requests and drafts", () => {
+    const old = link({ id: 4, preview: pv({ last: { ...pv().last!, created_at: "2026-10-16T10:00:00Z" } }) });
+    const fresh = link({ id: 9, preview: pv() });
+    const b = { ...NO_LINK_BOXES, waiting: [link({ id: 3, state: "requested", requester: side("jose"), recipient: side("andres") })], open: [old, fresh], mine: [link({ id: 5, state: "draft" }), link({ id: 6, state: "requested" })] };
+    expect(liveCardOrder(b, "andres").map((l) => l.id)).toEqual([3, 9, 4, 6, 5]);
   });
 
-  it("a request waiting for me has Decline / Accept in its row, outside the row's hit area (no button in a button)", () => {
-    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
-    const row = html.slice(html.indexOf('data-link-row="3"'), html.indexOf('data-link-row="4"'));
-    expect(row).toContain('class="cnpy-lrow-acts"');
-    expect(row).toContain('data-act="linkAccept" data-arg="3"');
-    expect(row).toContain('data-act="linkDecline" data-arg="3"');
-    expect(row).toContain("Requested"); // the mark stays
+  it("a card shows each side as a client: an icon + 'Claude Code feat/auth', a teammate's photo and their client, 'not joined'", () => {
+    const html = card(link({ recipient: side("jose", { kind: "chat", session: "c" }) }));
+    expect(html).toMatch(/data-ll-face="left"><span class="cnpy-lh-ico"[^>]*><svg/);
+    expect(text(html)).toContain("Claude Code feat/auth");
+    expect(html).toMatch(/data-ll-face="right"><div class="cnpy-av"[^>]*>JO<img/);
+    expect(text(html)).toContain("Jose, web chat");
+    expect(text(card(link()))).toContain("Jose, not joined");
+    expect(text(card(link({ requester: side("andres") })))).toContain("not joined");
+  });
+
+  it("its small line moves only while the link is open (fewer particles); any other state is one still frame", () => {
+    expect(card(link())).toMatch(/data-ll-flow="flow"[^>]*data-ll-mini="1"/);
+    expect(card(link())).not.toContain('data-ll-still="1"');
+    for (const st of ["requested", "draft"] as const) expect(card(link({ state: st }))).toContain('data-ll-still="1"');
+    expect(linkLineSrc).toContain('const still = reducedStill || d.llStill === "1";');
+  });
+
+  it("the newest note (who, when, one line) and how many wait for your session", () => {
+    const html = card(link({ preview: pv() }));
+    expect(text(html)).toContain("Jose&#39;s agent");
+    expect(text(html)).toContain("Renaming authSession tonight.");
+    expect(html).toMatch(/data-link-card-waiting[^>]*>2 new for your session</);
+    expect(card(link({ preview: pv({ waiting: 0 }) }))).not.toContain("data-link-card-waiting");
+    expect(text(card(link({ preview: { last: null, notes: 0, waiting: 0 } })))).toContain("No notes yet.");
+    expect(card(link())).not.toContain("data-link-card-note"); // no preview (a degraded read): no note line
+  });
+
+  it("each card's own steps: Accept / Decline, Close (+ join when your side has no session), Cancel request, Send / Cancel", () => {
+    const asking = card(link({ id: 3, state: "requested", requester: side("jose"), recipient: side("andres") }));
+    expect(asking).toMatch(/class="[^"]*cnpy-lcard cnpy-hitbox is-asking"/);
+    expect(asking).toContain('data-act="linkAccept" data-arg="3"');
+    expect(asking).toContain('data-act="linkDecline" data-arg="3"');
+    expect(text(asking)).toContain("Jose asks to link about PR #180");
+    const open = card(link({ requester: side("andres"), recipient: side("jose", { kind: "code", session: "x" }) }));
+    expect(open).toContain('data-act="linkClose" data-arg="12"');
+    expect(open).toContain("data-link-card-join");
+    expect(open).toContain('data-act="linkJoinCopy" data-arg="12"');
+    expect(open).toContain('data-act="linkJoinAsk" data-arg="12"');
+    expect(card(link())).not.toContain("data-link-card-join"); // my side has a session
+    const sent = card(link({ state: "requested" }));
+    expect(sent).toMatch(/data-act="linkCancelArm" data-arg="12" data-confirm-trigger aria-haspopup="dialog"/);
+    const drafted = card(link({ state: "draft" }));
+    expect(drafted).toContain('data-act="linkSend" data-arg="12"');
+    expect(drafted).toContain('data-act="linkCancel" data-arg="12"');
+    for (const h of [asking, open, sent, drafted]) expect(nestedButton(h)).toBe(false);
+    expect(linkCard(link({ state: "requested" }), { ...cp, busy: true })).toMatch(/data-act="linkCancelArm"[^>]*disabled/);
+  });
+
+  it("Cancel request from a card asks first (confirmModal at the root, by the card's link)", () => {
+    const me = { handle: "andres", name: null, avatar_url: null, color: "moss" as const, identities: [], orgs: [{ slug: "acme", name: "Acme", role: "member" as const }], superadmin: false, pending_invites: 0 };
+    const html = render({ ...initialState(), view: "app", screen: "links", me, orgSlug: "acme", linkCancelArm: true, linkCancelId: 12, links: { status: "ok", data: { ...NO_LINK_BOXES, mine: [link({ state: "requested" })] } } } as AppState);
+    expect(html).toContain('id="link-cancel-confirm"');
+    expect(mainSrc).toContain("state.linkCancelId = Number(arg) || null;");
+  });
+
+  it("a person topic waiting for you reads 'Jose asks to link with you'", () => {
+    expect(text(card(link({ id: 2, state: "requested", requester: side("jose"), recipient: side("andres"), topic: { kind: "person", ref: "andres" } })))).toContain("Jose asks to link with you");
+  });
+
+  it("the past: one line each — the dim glyph, the topic, who, how it ended in words, when, N notes", () => {
+    const H = 3_600_000, t = (ms: number) => new Date(Date.parse(T0) + ms).toISOString();
+    const closed = link({ id: 30, state: "closed", closed_at: T0, closed_by: "andres", close_reason: "The work landed.", preview: pv({ notes: 4 }) });
+    const declined = link({ id: 31, state: "declined", decided_at: T0, closed_at: T0, requester: side("andres"), recipient: side("jose") });
+    const idle = link({ id: 32, state: "expired", sent_at: T0, decided_at: T0, closed_at: t(12 * H) });
+    const unanswered = link({ id: 33, state: "expired", sent_at: T0, decided_at: null, closed_at: t(24 * H) });
+    const cancelled = link({ id: 34, state: "cancelled", closed_at: T0 });
+    expect(linkEndWords(closed, "andres", persons)).toBe("Closed by you: The work landed");
+    expect(linkEndWords(declined, "andres", persons)).toBe("Declined by Jose");
+    expect(linkEndWords(idle, "andres", persons)).toBe("Expired after 12 h idle");
+    expect(linkEndWords(unanswered, "andres", persons)).toBe("Expired: not answered in 24 h");
+    expect(linkEndWords(cancelled, "andres", persons)).toBe("Cancelled by you");
+    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: [closed, declined, idle, unanswered, cancelled] }, me: "andres", persons, bar });
+    expect(html.match(/data-link-row="\d+" data-past/g)).toHaveLength(5);
+    expect(text(html)).toContain("4 notes");
+    expect(html).toMatch(/data-link-row="30" data-past[\s\S]*?data-glyph="stopped"/);
+    expect(html).toContain('data-act="openLink" data-arg="34"');
     expect(nestedButton(html)).toBe(false);
-    // As the requester, the same link has no Accept.
-    const theirs = linksView({ status: "ok", boxes, me: "jose", persons, bar });
-    expect(theirs.slice(theirs.indexOf('data-link-row="3"'))).not.toMatch(/^[\s\S]*?data-act="linkAccept" data-arg="3"[\s\S]*?data-link-row="4"/);
   });
 
-  it("Closed collapses behind \"Closed (N)\" — a button with aria-expanded, kept open by state, not <details>", () => {
-    const shut = linksView({ status: "ok", boxes, me: "andres", persons, bar });
-    expect(shut).toMatch(/data-act="linksClosedToggle" aria-expanded="false" aria-controls="links-closed"/);
-    expect(text(shut)).toContain("CLOSED (2)");
-    expect(shut).toContain('<div id="links-closed" data-links-closed hidden></div>');
-    expect(shut).not.toContain('data-link-row="6"');
-    expect(shut).not.toContain("<details");
-    const open = linksView({ status: "ok", boxes, me: "andres", persons, bar, closedOpen: true });
-    expect(open).toContain('aria-expanded="true"');
-    expect(open).toContain('data-link-row="6"');
-    expect(open).toContain('data-link-row="7"');
-    expect(mainSrc).toContain('case "linksClosedToggle": state.linksClosedOpen = !state.linksClosedOpen;');
+  it(`always visible: the latest ${LINKS_PAST_SHOWN}, then "Show all N"`, () => {
+    const many = Array.from({ length: 14 }, (_, i) => link({ id: 40 + i, state: "closed", closed_at: new Date(Date.parse(T0) - i * 60_000).toISOString() }));
+    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: many }, me: "andres", persons, bar });
+    expect(html.match(/data-past/g)).toHaveLength(LINKS_PAST_SHOWN);
+    expect(html).toMatch(/data-act="linksPastAll" aria-expanded="false"[^>]*>Show all 14</);
+    expect(html).not.toContain("<details");
+    const all = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: many }, me: "andres", persons, bar, pastAll: true });
+    expect(all.match(/data-past/g)).toHaveLength(14);
+    expect(mainSrc).toContain('case "linksPastAll": state.linksPastAll = !state.linksPastAll;');
+  });
+
+  it("each card's waiting count and preview come from the list read (the routes add `preview`)", () => {
+    expect(routesSrc).toContain("linkPreviews(c.var.ctx, me, links.map((l) => l.id))");
   });
 });
+

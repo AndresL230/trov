@@ -53,6 +53,10 @@ export interface LineSpec {
   last?: LinkSideName | null;
   /** `preview` only: how much of the start card is filled in, 0..1 — how far the stream reaches. */
   rate?: number;
+  /** One still frame, never a loop (a card whose link is not open). */
+  still?: boolean;
+  /** A small line among several (a card): about a third of the particles. */
+  mini?: boolean;
 }
 
 const ORBS: readonly LineOrb[] = ["awake", "hollow", "calling", "asleep", "seeking", "named", "dim", "dimhollow", "hub"];
@@ -93,7 +97,7 @@ export function linkLine(spec: LineSpec, faces: { left?: string; right?: string 
   const rate = Math.max(0, Math.min(1, spec.rate ?? 0));
   const face = (side: "left" | "right", html: string | undefined) =>
     `<div class="cnpy-ll-face" data-ll-face="${side}"${html ? "" : " hidden"}>${html ?? ""}</div>`;
-  return `<div class="cnpy-ll" data-ll-flow="${spec.flow}"><canvas class="cnpy-ll-cv" data-linkline data-ll-left="${spec.left}" data-ll-right="${spec.right}" data-ll-flow="${spec.flow}" data-ll-notes="${spec.notes ?? 0}" data-ll-last="${spec.last ?? ""}" data-ll-rate="${rate.toFixed(2)}" width="${Math.round(LINE_W * r)}" height="${Math.round(LINE_H * r)}" aria-hidden="true"></canvas>${face("left", faces.left)}${face("right", faces.right)}</div>`;
+  return `<div class="cnpy-ll" data-ll-flow="${spec.flow}"><canvas class="cnpy-ll-cv" data-linkline data-ll-left="${spec.left}" data-ll-right="${spec.right}" data-ll-flow="${spec.flow}" data-ll-notes="${spec.notes ?? 0}" data-ll-last="${spec.last ?? ""}" data-ll-rate="${rate.toFixed(2)}"${spec.still ? ' data-ll-still="1"' : ""}${spec.mini ? ' data-ll-mini="1"' : ""} width="${Math.round(LINE_W * r)}" height="${Math.round(LINE_H * r)}" aria-hidden="true"></canvas>${face("left", faces.left)}${face("right", faces.right)}</div>`;
 }
 
 // ── the arc diagram (the top of the Links tab) ───────────────────────────────
@@ -346,8 +350,11 @@ const lit = (o: LineOrb | null) => o === "awake" || o === "calling";
 interface LineSim { seg: Seg; last: number; flashL: number; flashR: number; painted: string }
 const lineSims = new WeakMap<HTMLCanvasElement, LineSim>();
 
-function paintLine(c: HTMLCanvasElement, t: number, still: boolean): boolean {
+function paintLine(c: HTMLCanvasElement, t0: number, reducedStill: boolean): boolean {
   const d = c.dataset;
+  // A line marked still (a card whose link is not open) is one frame, as under reduced motion.
+  const still = reducedStill || d.llStill === "1";
+  const t = still ? 0.6 : t0;
   const left = pick(d.llLeft, ORBS, "hollow");
   const right = pick(d.llRight, ORBS, "hollow");
   const flow = pick(d.llFlow, FLOWS, "none");
@@ -380,7 +387,7 @@ function paintLine(c: HTMLCanvasElement, t: number, still: boolean): boolean {
     // A slow or paused frame (a busy page, a tab coming back) moves the stream at most a quarter second.
     const dt = s.last ? Math.max(0, Math.min(0.25, t - s.last)) : 0;
     s.last = t;
-    const hit = stepSeg(s.seg, flow, left, right, rate, dt, MAX_PARTICLES);
+    const hit = stepSeg(s.seg, flow, left, right, rate, dt, d.llMini === "1" ? 90 : MAX_PARTICLES, d.llMini === "1" ? 0.35 : 1);
     s.flashL = Math.max(0, Math.min(1, s.flashL + hit.hitA) - dt * 1.1);
     s.flashR = Math.max(0, Math.min(1, s.flashR + hit.hitB) - dt * 1.1);
     ps = s.seg.ps;

@@ -41,10 +41,10 @@ import {
   listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
 import {
-  listLinks, getLink, createRequestFromWeb, sendLink, acceptLink, declineLink, cancelLink, closeLink, sendLinkNote, linkForViewer,
+  listLinks, linkPreviews, getLink, createRequestFromWeb, sendLink, acceptLink, declineLink, cancelLink, closeLink, sendLinkNote, linkForViewer,
   LinkError, LINK_ERROR_STATUS, type LinkCloseInput, type LinkNoteInput, type LinkWebRequestInput,
 } from "./tools/links";
-import { LINK_BOXES, type LinkBox } from "@shared/links";
+import { LINK_BOXES, type LinkBox, type LinkView } from "@shared/links";
 import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
@@ -469,8 +469,16 @@ tenantApi.get("/links", async (c) => {
   const box = c.req.query("box") ?? "open";
   if (!(LINK_BOXES as readonly string[]).includes(box)) return c.json({ error: "bad_request", message: `unknown box: ${box}` }, 400);
   const me = c.get("principal").handle;
-  try { return c.json({ links: (await listLinks(c.var.ctx, me, box as LinkBox)).map((l) => linkForViewer(l, me)) }); }
+  let links: LinkView[];
+  try { links = (await listLinks(c.var.ctx, me, box as LinkBox)).map((l) => linkForViewer(l, me)); }
   catch (e) { return linkFail(c, e); }
+  // Each link's thread in brief (newest note, counts) — one query for the whole list; if it fails the list still
+  // answers, without `preview` (the cards then show no note line), never a 500.
+  try {
+    const previews = await linkPreviews(c.var.ctx, me, links.map((l) => l.id));
+    links = links.map((l) => ({ ...l, preview: previews.get(l.id) ?? { last: null, notes: 0, waiting: 0 } }));
+  } catch (e) { console.error("link previews failed", e instanceof Error ? e.message : String(e)); }
+  return c.json({ links });
 });
 tenantApi.get("/links/:id", async (c) => {
   const id = linkId(c.req.param("id"));

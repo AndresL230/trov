@@ -155,7 +155,11 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
 - **Cookie routes** (`tenantApi`, `src/routes.ts`, beside the handoffs; `/api/links…` and `/api/o/<slug>/links…`) —
   the ONLY place a link is sent, accepted, declined or cancelled (besides Ask's Confirm). The actor is always the
   session's person; a body's author fields are never read. `:id` is the per-org number.
-  `GET /links?box=waiting|mine|open|unbound|closed` (default `open`; another box is 400) → `{ links }`;
+  `GET /links?box=waiting|mine|open|unbound|closed` (default `open`; another box is 400) → `{ links }`, each with
+  `preview: { last: { side, author, author_kind, excerpt, created_at } | null, notes, waiting }` (`linkPreviews`: ONE
+  windowed query for the listed links; `waiting` = undelivered notes from the other side, either side on a self-link;
+  the excerpt is the newest note's first line cut to `LINK_EXCERPT_MAX`; a handle and a kind, never a session id; if
+  it fails the list still answers without `preview`, never a 500);
   `GET /links/:id` → `{ link }` with its notes, 404 `not_found` for anyone but its two people; every answer is
   `linkForViewer`'s: the OTHER side's `session` is null (its kind, branch and seen stay), as on MCP and in Ask;
   `POST /links` `{ target, reason, repo? }` → `{ link }` (`createRequestFromWeb`: `requested`, or `open` to oneself);
@@ -224,11 +228,19 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   data attributes; the shared orb loop); over it each station and person is a real `<a>` with an aria-label and a
   hover / focus card. Past six people, "+N more". No live link: your photo in a quiet halo, `LINKS_LEAD` and "Link
   two of your sessions". A phone shows the same diagram compressed, stations by icon alone. Under it
-  `LINKS_LEAD`, then Waiting for you, Open, Yours, and Closed collapsed behind "CLOSED (N)" (a button,
-  `state.linksClosedOpen`, never `<details>`, which a patch would shut). A row (`linkRow`): a still SVG glyph of its
-  line (`linkGlyph`, no loop), `#n` and the topic set first over the reason (a link about a person reads "With
-  Luke", its page "Link with Luke": `linkAboutHtml`), the other person, the mark, when — and on a request waiting for
-  me, Decline / Accept outside the row's `hitArea`. Each empty section says so in a sentence (`LINKS_EMPTY`).
+  `LINKS_LEAD`, then the live links as CARDS (`linkCard`, a grid of at most three across, one on a phone; order
+  `liveCardOrder`: waiting for you, open by newest activity, then your requests and drafts): the two sides as clients
+  on a small line (icon + "Claude Code `branch`", a teammate's photo and their client, "not joined"; it moves only
+  while the link is open, with a third of the particles — `mini`; any other state is one still frame — `still`), the
+  #n, mark and when, the topic, the reason (two lines), the newest note (who, when, one line) and "N new for your
+  session" from `preview`, and the card's own steps — Accept / Decline (a waiting card has an accent border and is
+  titled "Luke asks to link with you"), Close plus "Tell a session: join Trov link #n" with Copy / Open in Ask when a
+  side of yours has no session, Cancel request (confirmModal, `state.linkCancelId`), Send / Cancel on a draft. The
+  card is a `hitArea`; its buttons sit above it. Then the PAST links, always shown (`pastRow`, latest
+  `LINKS_PAST_SHOWN` with "Show all N", `state.linksPastAll`): a dim glyph, the topic, the reason, how it ended in
+  words (`linkEndWords`: "Closed by you: Both merged", "Declined by Jose", "Cancelled by you", "Expired after 12 h
+  idle", "Expired: not answered in 24 h", "Expired: never sent"), when, and its note count. A link about a person
+  reads "With Luke" in the history, "Link with Luke" on its page (`linkAboutHtml`).
 - **Start a link** (`linkStartCard`): the header's "Start a link" (`linkStartOpen`) opens a card in a stable slot at
   the top of the tab (the tab is `data-morph="links"`, so typing never rebuilds it). A `segmented()` picks who it is
   between: **Between my sessions** (the default: target = yourself, opens at once; two client orbs) or **With a

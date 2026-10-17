@@ -3725,7 +3725,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       mount.querySelector<HTMLElement>('[data-link-start] [data-seg] [tabindex="0"]')?.focus();
       return;
     case "linkStartClose": state.linkStart = null; break;
-    case "linksClosedToggle": state.linksClosedOpen = !state.linksClosedOpen; break;
+    case "linksPastAll": state.linksPastAll = !state.linksPastAll; break;
     case "linkStartMode": {
       const d = state.linkStart;
       if (!d || d.phase === "sending" || !(arg === "self" || arg === "team")) return;
@@ -3786,6 +3786,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Cancel on a SENT request asks first (links.ts `linkCancelModal`); a draft's Cancel acts at once (above).
     case "linkCancelArm":
       state.linkCancelArm = true;
+      state.linkCancelId = Number(arg) || null; // a card's Cancel request names its link (the link page has linkId)
       rerender();
       mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
       return;
@@ -3794,7 +3795,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       confirmOut(() => {
         state.linkCancelArm = false;
         rerender();
-        mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+        const id = state.linkCancelId;
+        (mount.querySelector<HTMLElement>(`[data-confirm-trigger][data-arg="${id}"]`) ?? mount.querySelector<HTMLElement>("[data-confirm-trigger]"))?.focus();
       });
       return;
     }

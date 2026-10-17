@@ -62,7 +62,21 @@ export interface LinkView {
   closed_by: string | null;
   close_reason: string | null;
   expires_at: string;
+  /** On a LIST read only (`GET /links`), for the Links tab's cards and history: the newest note, how many notes the
+   *  link has, and how many of them are waiting for the reader's own session(s). Absent when that read degraded. */
+  preview?: LinkPreview;
 }
+
+/** A link's thread in brief (`GET /links`). `last.excerpt` is the newest note's first line, cut; the author is a
+ *  handle and a kind — never a session id. `waiting`: notes written on the OTHER side (on a self-link, either side)
+ *  that no session has received yet. */
+export interface LinkPreview {
+  last: { side: LinkSideName; author: string; author_kind: LinkNoteAuthorKind; excerpt: string; created_at: string } | null;
+  notes: number;
+  waiting: number;
+}
+/** How long a preview's excerpt may be. */
+export const LINK_EXCERPT_MAX = 140;
 
 export interface LinkNoteView {
   id: number;

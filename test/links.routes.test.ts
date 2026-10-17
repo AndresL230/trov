@@ -284,3 +284,33 @@ describe("a link's other side keeps its session id to itself on the web", () => 
     expect(l).toMatchObject({ state: "open", self: true, requester: { session: `s-${J}` } });
   });
 });
+
+describe("the list's thread preview (the Links tab's cards and history)", () => {
+  it("each listed link carries its newest note, its note count and how many wait for the reader's own session", async () => {
+    const l = await opened(J, L);
+    expect((await listOf(J, "open"))[0].preview).toEqual({ last: null, notes: 0, waiting: 0 });
+    await detailOf(post(J, `/links/${l.id}/notes`, { body: "Renaming authSession tonight." }));
+    await detailOf(post(L, `/links/${l.id}/notes`, { body: `First line of a long note ${"x".repeat(200)}\nsecond line` }));
+    const mine = (await listOf(J, "open"))[0].preview!;
+    expect(mine.notes).toBe(2);
+    expect(mine.waiting).toBe(1); // L's note waits for J's side; J's own does not count for J
+    expect(mine.last).toMatchObject({ side: "recipient", author: L, author_kind: "person" });
+    expect(mine.last!.excerpt.length).toBeLessThanOrEqual(140);
+    expect(mine.last!.excerpt.endsWith("…")).toBe(true);
+    expect(mine.last!.excerpt).not.toContain("second line");
+    expect(JSON.stringify(mine)).not.toMatch(/session/); // a handle and a kind, never a session id
+    expect((await listOf(L, "open"))[0].preview).toMatchObject({ notes: 2, waiting: 1 });
+    // Once delivered, nothing waits.
+    await run(env.DB, `UPDATE agent_link_notes SET delivered_at = ? WHERE org_id = ? AND link_number = ?`, new Date().toISOString(), ORG_A, l.id);
+    expect((await listOf(J, "open"))[0].preview!.waiting).toBe(0);
+  });
+
+  it("a self-link: every undelivered note waits for one of the reader's sessions; the closed box carries previews too", async () => {
+    const self = await start(J, J);
+    await detailOf(post(J, `/links/${self.id}/notes`, { body: "from the first session" }));
+    await detailOf(post(J, `/links/${self.id}/notes`, { body: "from the second", side: "recipient" }));
+    expect((await listOf(J, "open")).find((x) => x.id === self.id)!.preview).toMatchObject({ notes: 2, waiting: 2 });
+    await linkOf(post(J, `/links/${self.id}/close`, { reason: "done" }));
+    expect((await listOf(J, "closed")).find((x) => x.id === self.id)!.preview).toMatchObject({ notes: 2, last: { excerpt: "from the second" } });
+  });
+});

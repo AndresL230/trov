@@ -105,6 +105,17 @@ input, select { font-family: inherit; }
 /* A phone: the same diagram, compressed — a station says its client by its icon alone (the words stay in its
    aria-label and card). */
 @container (max-width: 520px) { .cnpy-lh-name { font-size:10px; max-width:72px; } .cnpy-lh-sub, .is-kind .cnpy-lh-name { display:none; } .cnpy-lh-card { width:210px; } }
+/* The live links as cards (links.ts `linkCard`): a grid of at most three across (two when narrower), one on a phone; each a `hitArea`
+   card whose buttons sit above the hit. A request waiting for you carries an accent border all round (never a
+   coloured left edge). The card's small line keeps the canvas's own aspect. No radius here (surface()'s). */
+.cnpy-lcards { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, max(300px, calc((100% - 28px) / 3))), 1fr)); gap:14px; margin-top:4px; }
+.cnpy-lcard { transition:border-color .14s ease; }
+.cnpy-lcard:hover { border-color:var(--border-strong); }
+.cnpy-lcard.is-asking { border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); background:color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.cnpy-lcard-line { max-width:360px; width:100%; margin:0 auto; }
+.cnpy-lcard-why { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.cnpy-hitbox .cnpy-lcard-acts { position:relative; z-index:2; }
+@media (prefers-reduced-motion: reduce) { .cnpy-lcard { transition:none; } }
 /* A link row (links.ts `linkRow`): the still glyph, the topic over its reason, who, the mark, Accept / Decline on a
    request waiting for me, when. On a phone who and when give way (the grid is inline, hence !important). */
 .cnpy-hitbox .cnpy-lrow-acts { position:relative; z-index:2; }

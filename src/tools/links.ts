@@ -30,8 +30,8 @@ import { takeLimit } from "../platform/limits";
 import { orgAppBase } from "./org-links";
 import {
   ASK_THREAD_SESSION_PREFIX, LINK_DRAFT_TTL_MS, LINK_INBOX_BATCH, LINK_LIVE_MAX, LINK_NOTE_MAX, LINK_NOTES_PER_SIDE,
-  LINK_OPEN_TTL_MS, LINK_REASON_MAX, LINK_REQUEST_TTL_MS, linkTopicLabel,
-  type LinkBox, type LinkDetail, type LinkNoteAuthorKind, type LinkNoteView, type LinkSideKind, type LinkSideName,
+  LINK_OPEN_TTL_MS, LINK_REASON_MAX, LINK_REQUEST_TTL_MS, LINK_EXCERPT_MAX, linkTopicLabel,
+  type LinkBox, type LinkPreview, type LinkDetail, type LinkNoteAuthorKind, type LinkNoteView, type LinkSideKind, type LinkSideName,
   type LinkState, type LinkTopicKind, type LinkView,
 } from "@shared/links";
 
@@ -683,6 +683,40 @@ export async function listLinks(ctx: TenantContext, actor: string, box: LinkBox)
     `SELECT * FROM agent_links WHERE ${BOX_WHERE[box]} AND org_id = ?2 ORDER BY COALESCE(closed_at, created_at) DESC, id DESC LIMIT ${LIST_MAX}`,
     actor, ctx.orgId);
   return rows.map(toLinkView);
+}
+
+/**
+ * The Links tab's thread previews for the links a list read returned, in ONE query (a window over their notes):
+ * each link's newest note (first line, cut to LINK_EXCERPT_MAX), its note count, and how many notes wait for the
+ * reader's own session(s) — undelivered notes written on the other side, or on either side of a self-link. Only
+ * the reader's links are asked for (the caller passes numbers from their own list). The author is a handle and a
+ * kind; no session id leaves here. A link with no notes has no row: the caller fills `{ last: null, 0, 0 }`.
+ */
+export async function linkPreviews(ctx: TenantContext, actor: string, numbers: number[]): Promise<Map<number, LinkPreview>> {
+  const out = new Map<number, LinkPreview>();
+  const ids = [...new Set(numbers.filter((n) => Number.isInteger(n) && n > 0))].slice(0, LIST_MAX);
+  if (!ids.length) return out;
+  const marks = ids.map((_, i) => `?${i + 3}`).join(", ");
+  const rows = await all<{ link_number: number; side: LinkSideName; author: string; author_kind: LinkNoteAuthorKind; body: string; created_at: string; total: number; waiting: number }>(ctx,
+    `SELECT link_number, side, author, author_kind, body, created_at, total, waiting FROM (
+       SELECT n.link_number, n.side, n.author, n.author_kind, n.body, n.created_at,
+              ROW_NUMBER() OVER (PARTITION BY n.link_number ORDER BY n.id DESC) AS rn,
+              COUNT(*) OVER (PARTITION BY n.link_number) AS total,
+              SUM(CASE WHEN n.delivered_at IS NULL AND (
+                    (l.requester = ?2 COLLATE NOCASE AND l.recipient = ?2 COLLATE NOCASE)
+                 OR (n.side = 'requester' AND l.recipient = ?2 COLLATE NOCASE)
+                 OR (n.side = 'recipient' AND l.requester = ?2 COLLATE NOCASE)) THEN 1 ELSE 0 END) OVER (PARTITION BY n.link_number) AS waiting
+         FROM agent_link_notes n JOIN agent_links l ON l.org_id = n.org_id AND l.number = n.link_number
+        WHERE n.org_id = ?1 AND n.link_number IN (${marks})
+          AND (l.requester = ?2 COLLATE NOCASE OR l.recipient = ?2 COLLATE NOCASE)
+     ) WHERE rn = 1`,
+    ctx.orgId, actor, ...ids);
+  for (const r of rows) {
+    const line = r.body.split("\n").find((x) => x.trim())?.trim() ?? "";
+    const excerpt = line.length > LINK_EXCERPT_MAX ? `${line.slice(0, LINK_EXCERPT_MAX - 1).trimEnd()}…` : line;
+    out.set(r.link_number, { last: { side: r.side, author: r.author, author_kind: r.author_kind, excerpt, created_at: r.created_at }, notes: Number(r.total) || 0, waiting: Number(r.waiting) || 0 });
+  }
+  return out;
 }
 
 /**

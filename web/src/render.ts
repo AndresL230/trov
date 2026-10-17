@@ -457,8 +457,10 @@ export interface AppState {
   linkBusy: boolean;
   /** Relay › Links' "Start a link" card: its draft while it is open, else null. */
   linkStart: LinkStart | null;
-  /** Relay › Links: whether the Closed section is open (it starts collapsed behind "Closed (N)"). */
-  linksClosedOpen: boolean;
+  /** Relay › Links: whether the past links show all (else the latest ten). */
+  linksPastAll: boolean;
+  /** Which link's Cancel request is being confirmed (a card on the Links tab arms it; the link page uses linkId). */
+  linkCancelId: number | null;
   /** Cancel on a SENT request: its confirm modal is open (and `linkCancelBusy` while the write runs). */
   linkCancelArm: boolean;
   linkCancelBusy: boolean;
@@ -645,7 +647,7 @@ export function initialState(): AppState {
     nh: blankHandoff(),
     links: { status: "idle", data: NO_LINK_BOXES },
     linkDetail: { status: "idle", data: null },
-    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkStart: null, linksClosedOpen: false, linkCancelArm: false, linkCancelBusy: false,
+    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkStart: null, linksPastAll: false, linkCancelId: null, linkCancelArm: false, linkCancelBusy: false,
     promptList: { status: "idle", data: [] },
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
     promptSlug: null,
@@ -2967,7 +2969,7 @@ function screenBody(s: AppState): string {
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
     case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "handoffs") });
-    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links"), start: s.linkStart, closedOpen: s.linksClosedOpen, busy: s.linkBusy });
+    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links"), start: s.linkStart, pastAll: s.linksPastAll, busy: s.linkBusy });
     case "link": return linkDetailView({
       status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
       draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,
@@ -3148,7 +3150,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
-    ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
+    ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
     ${real.preview && s !== real ? previewBanner(real.preview) : ""}
   `);

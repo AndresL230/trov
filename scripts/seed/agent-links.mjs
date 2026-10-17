@@ -36,7 +36,9 @@
 //   #13 requested  Jose → meilin, ticket #23                                        (meilin: Accept; Andres: outsider)
 //   #14 open       priya-n → Andres, ticket #41; priya's web chat; Andres's side unbound (join hint), an agent note
 //                  and a person note from priya
-//   #17 declined   Andres → Jose        #18 cancelled  Andres → sanaok        #19 expired  Jose → Andres
+//   #17 declined   Andres → Jose        #18 cancelled  Andres → sanaok
+//   #19 expired    Jose → Andres: accepted, then 12 h idle (one note) — with team-rich's #3 (closed by Andres, "Both
+//                  merged.") the Links tab's PAST history shows all four endings
 //   #20 open       sanaok → priya-n: sanaok's coding side has written its 20 notes (the per-side cap, as sanaok)
 //   #21 open       meilin → Jose, ticket #23: meilin's side = Ask thread 6406 (Andres's, shared with her to
 //                  continue); one note from Jose's agent waiting for HER side (her line, never Andres's)
@@ -141,7 +143,9 @@ export function agentLinksStatements(now = new Date()) {
   }));
   s.push(link(19, {
     state: "expired", repo: REPO, topic_kind: "pr", topic_ref: "219", reason: "The streak counters moved; your cache reads them.",
-    requester: JOSE, recipient: ME, created_at: ago(3 * DAY), sent_at: ago(3 * DAY), expires_at: ago(2 * DAY), closed_at: ago(2 * DAY),
+    requester: JOSE, requester_kind: "code", requester_agent_session: "e2e-jose-streak", requester_branch: "fix/streak-cache",
+    recipient: ME, created_at: ago(3 * DAY), sent_at: ago(3 * DAY), decided_at: ago(3 * DAY - HOUR),
+    expires_at: ago(3 * DAY - 13 * HOUR), closed_at: ago(3 * DAY - 13 * HOUR), // accepted, then 12 h with no sign: expired idle
   }));
   s.push(link(20, {
     state: "open", topic_kind: "person", topic_ref: PRIYA, reason: "The roster import screens and the CSV parser change together.",
@@ -164,6 +168,8 @@ export function agentLinksStatements(now = new Date()) {
     [6405, 16, "requester", ME, "agent", "seed-session-andres", "Pushed to feat/stream-export; CI is running.", 12, null],
     [6406, 16, "recipient", ME, "ask", "ask-thread-6401", "Luke's OCR queue feeds the export job: keep its page order.", 55, 45],
     [6407, 21, "recipient", JOSE, "agent", "e2e-jose-code", "Merged the collision fix; the lookup now retries once on a duplicate code.", 30, null],
+    [6409, 12, "requester", ME, "person", null, "PR #185's review wants one more test for the empty queue; whichever session joins first takes it.", 20, null],
+    [6410, 19, "requester", JOSE, "agent", "e2e-jose-streak", "Streak counters now reset at local midnight.", 3 * 24 * 60 - 90, 3 * 24 * 60 - 80],
   ];
   for (let i = 0; i < 20; i++) notes.push([6420 + i, 20, "requester", SANA, "agent", "e2e-sana-code", `Roster CSV parser, change ${i + 1} of 20: trailing columns are dropped.`, 300 - i * 10, 200 - i * 10]);
   for (const [id, n, side, author, kind, session, body, m, d] of notes) {
