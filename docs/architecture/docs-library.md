@@ -432,7 +432,7 @@ and a space's home keeps the real space with no page (preview.ts); a doc page sh
   owners' full names, the page count, the waiting link), and on the right ONE button, New page, with a "…" menu
   beside it holding everything else, offered by who may (`headMenu`): Edit space (an admin: the Create space dialog
   in edit mode — name, icon, colour, description; no position, no sidebar preview), Edit description / Add a
-  description (`can_edit`: edited in place — Enter saves, Esc cancels, leaving the field saves; a description-only
+  description (an owner who is not an admin — an admin has the description in Edit space: edited in place — Enter saves, Esc cancels, leaving the field saves; a description-only
   `PUT`, which is all an owner may send), Edit owners (`can_edit`: a dialog of the org's people as checkboxes),
   Import (anyone), Archive space (an admin: a red `confirmModal`). An item that opens a dialog first hands the focus
   to the "…", so closing the dialog returns it there; Escape or a click outside closes the menu. Archived: the "Archived" mark, nothing to

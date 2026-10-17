@@ -384,7 +384,8 @@ function descriptionBlock(sp: SpaceDTO, canEdit: boolean, draft: string | null):
 }
 
 /** A space's header keeps one button (New page); everything else it can do is in one "…" menu beside it, offered by
- *  who may: Edit space and Archive space (an admin), the description and the owners (`can_edit`), Import (anyone). */
+ *  who may: Edit space and Archive space (an admin), Edit owners (`can_edit`), Edit description (an owner who is not
+ *  an admin — an admin has it in Edit space), Import (anyone). */
 function headMenu(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const sp = d.space;
   const open = p.headMenu === true;
@@ -392,7 +393,8 @@ function headMenu(p: SpaceHomeProps, d: SpaceHomeDTO): string {
     `<button type="button" role="menuitem" data-act="${act}" data-arg="${attr(sp.slug)}" class="cnpy-dp-mi"${extra}>${esc(label)}</button>`;
   const items = [
     p.admin ? item("libEdit", "Edit space", " data-confirm-trigger") : "",
-    d.can_edit ? item("libDescEdit", sp.description ? "Edit description" : "Add a description") : "",
+    // An admin edits the description in Edit space; an owner who is not an admin has only this.
+    d.can_edit && !p.admin ? item("libDescEdit", sp.description ? "Edit description" : "Add a description") : "",
     d.can_edit ? item("libOwners", "Edit owners", " data-confirm-trigger") : "",
     item("goImport", "Import"),
     p.admin ? item("libArchive", "Archive space", ` data-confirm-trigger style="color:var(--red)"`) : "",

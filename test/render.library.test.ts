@@ -174,8 +174,9 @@ describe("a space's home", () => {
     // No description yet: the menu offers to add one.
     expect(home({ headMenu: true }, { can_edit: true, space: { ...ENG, description: "" } })).toContain(">Add a description</button>");
   });
-  it("an admin: Edit space and Archive space in the header's … menu, beside New page", () => {
+  it("an admin: Edit space and Archive space in the header's … menu, beside New page — and no Edit description (Edit space has it)", () => {
     const html = home({ admin: true, headMenu: true }, { can_edit: true, can_admin: true });
+    expect(html).not.toContain('data-act="libDescEdit"');
     expect(html).toContain('data-act="libEdit"');
     expect(html).toContain('data-act="libArchive"');
   });
