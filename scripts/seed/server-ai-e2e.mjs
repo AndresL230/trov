@@ -181,6 +181,8 @@ function contentFor(o, c, s, { rich }) {
   s.push(insert("org_repos", { id: `hook_${o.id}`, org_id: o.id, repo_full_name: repo, is_primary: 1, legacy_hook: 0, created_at: c.days(90), created_by: owner }));
   // The six starter tags (0056) — copied from the seed org's rows, which the reset just wrote.
   s.push(`INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT ${q(o.id)}, name, description, color, starter, created_at, created_by FROM org_tags WHERE org_id = 'org_saplinglearn' AND starter = 1`);
+  // The three starter spaces (0081_docs_library) — copied from the seed org's rows, like the tags.
+  s.push(`INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT ${q(o.id)}, slug, name, icon, color, description, sort_rank, created_at, created_by FROM doc_spaces WHERE org_id = 'org_saplinglearn' AND created_by = 'system'`);
   s.push(insert("org_tags", { org_id: o.id, name: "test-hosting", description: "test- Hosting providers and deploys", color: "ochre", starter: 0, created_at: c.days(30), created_by: owner }));
 
   // Sprints: one active (started 10 days ago, due in 4 — a forecast), one upcoming, one done.
@@ -238,7 +240,7 @@ function contentFor(o, c, s, { rich }) {
     ["test-auth-sessions", "test-Auth sessions", "# Auth sessions\n\nSessions last 30 days. We decided on cookie sessions in ADR-1."],
   ];
   for (const [slug, title, body] of docs) {
-    s.push(insert("docs", { org_id: o.id, slug, section: "reference", space: "technical", title, body, current_version: 1, updated_at: c.days(10), updated_by: owner, owner }));
+    s.push(insert("docs", { org_id: o.id, slug, section: "reference", space: "engineering", title, body, current_version: 1, updated_at: c.days(10), updated_by: owner, owner }));
     s.push(insert("doc_versions", { org_id: o.id, slug, version: 1, body, summary: "first version", status: "promoted", confidence: "high", created_at: c.days(10), created_by: owner, change_kind: "new", base_version: null, low_confidence: 0 }));
   }
   s.push(insert("doc_versions", { org_id: o.id, slug: "test-auth-sessions", version: 2, body: "# Auth sessions\n\nSessions now last 7 days, and we move to bearer tokens for the web app.", summary: "test- Shorter sessions; bearer tokens on the web", status: "staged", confidence: "medium", created_at: c.ago(90), created_by: member, change_kind: "edit", base_version: 1, low_confidence: 0 }));

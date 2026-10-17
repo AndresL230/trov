@@ -369,7 +369,7 @@ function loop(): string {
     </div>`;
   const orient = `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:11.5px;color:var(--fg-55)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>${search}</div>
-      ${hit("Rate limiting on the public API", "Doc · Technical / API", "", true, searchEnd + 200)}
+      ${hit("Rate limiting on the public API", "Doc · Engineering / API", "", true, searchEnd + 200)}
       ${hit("Retry budget for webhook callers", "Decision · ADR-0012", authorityMark("staged_pending", 11), false, searchEnd + 360)}
     </div>`;
 
@@ -445,10 +445,10 @@ import type { TourKey } from "./site-feature-core";
  *  is new copy — when the Guide changes, change this with it. */
 export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
   docs: [
-    "The library is split into Technical and Product spaces, each grouped into sections like Architecture and Decisions.",
-    "Opening a doc expands its heading outline in the tree, and Version history keeps every earlier version.",
+    "The library is split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading.",
+    "Drag a page onto another to put it inside, or above or below one to reorder them. History keeps every earlier version.",
     "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
-    "New doc lets you propose one yourself.",
+    "New page starts one from a template and sends it to Review.",
   ],
   feed: [
     "A timeline of everything that shipped, from people and agents alike.",
@@ -499,7 +499,7 @@ function tourItems(): TourItem[] {
   const docs = `
       <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;font-weight:600">Docs</span>
-        <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Technical", true)}${segTab("Product", false, true)}</span>
+        <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Engineering", true)}${segTab("Product", false, true)}</span>
       </div>
       <div style="display:flex;min-height:250px">
         <div class="site-hide-sm" style="width:180px;flex:none;border-right:1px solid var(--border);padding:12px 8px">
@@ -512,7 +512,7 @@ function tourItems(): TourItem[] {
           ${tree(4, `${TREE_ROW};color:var(--fg-55)`, `${treeChev(false)}${treeTitle("ADR-0012 · Retry budget")}`)}
         </div>
         <div style="flex:1;min-width:0;padding:16px 20px">
-          <div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">Technical / Operations</div>
+          <div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">Engineering / Operations</div>
           <div style="margin-top:6px;display:flex;align-items:center;gap:10px">
             <span style="font-size:17px;font-weight:650">Deploy process</span>
             <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</span>
@@ -660,7 +660,7 @@ function tourItems(): TourItem[] {
       </div>`;
 
   return [
-    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
+    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Spaces for each team or topic, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
     { key: "feed", name: "Feed", title: "A timeline of what shipped", body: "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", mockStyle: `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, mock: feed },
     { key: "tickets", name: "Tickets", title: "A board the whole team files into", body: "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", mockStyle: MOCK, mock: tickets },
     { key: "roadmap", name: "Roadmap", title: "Sprints on a calendar", body: "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", mockStyle: MOCK, mock: roadmap },

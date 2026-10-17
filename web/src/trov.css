@@ -632,19 +632,6 @@ input, select { font-family: inherit; }
   .cnpy-rv-head > :last-child { flex-wrap:wrap; }
 }
 @media (max-width:640px) { .cnpy-rv-body { padding-left:16px !important; padding-right:16px !important; } }
-/* Docs under ~760px: the page list and the reader take turns (render.ts `.cnpy-docs`
-   `data-tree`), swapped by the Pages button in the bar above them; the reader's page
-   keeps a phone's gutter instead of the desktop's 52px. */
-.cnpy-docs-bar { display:none; }
-@media (max-width:760px) {
-  .cnpy-docs { flex-direction:column; }
-  .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
-  .cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-weight:500; color:var(--fg-70); }
-  .cnpy-docs > .cnpy-docs-tree { width:auto !important; flex:1 1 auto !important; min-height:0; border-right:none !important; padding:14px 10px !important; }
-  .cnpy-docs[data-tree="0"] > .cnpy-docs-tree, .cnpy-docs[data-tree="1"] > #cnpy-reader { display:none !important; }
-  .cnpy-docpage { padding:22px 16px 96px !important; }
-  .cnpy-docs .cnpy-tree, .cnpy-docs .cnpy-outline-item { min-height:40px; }
-}
 /* A detail page's head — title on the left, its actions on the right (a handoff, a prompt):
    at phone width the actions drop under the title instead of squeezing it to a column. */
 @media (max-width:640px) {
@@ -678,26 +665,7 @@ input, select { font-family: inherit; }
   .cnpy-authwrap .cnpy-authwrap { padding:0 !important; min-height:0 !important; }
   .cnpy-authcard { padding:26px 20px !important; }
 }
-/* ── docs nav tree (static section labels · pages · per-page outline) ───────── */
-.cnpy-treesec { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 10px 7px 8px; }
-.cnpy-tree { display:flex; align-items:center; gap:5px; width:100%; text-align:left; padding:6px 10px 6px 6px; border-radius:7px; font-size:13px; font-weight:400; color:var(--fg-55); background:transparent; transition:background .12s ease, color .12s ease; }
-.cnpy-tree:hover { color:var(--fg); }
-.cnpy-tree.is-active { color:var(--accent); font-weight:500; }
-.cnpy-tree.is-active:hover { color:var(--accent); }
-.cnpy-treechev { flex:none; display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--fg-40); transition:transform .16s ease, color .12s ease, background .12s ease; }
-.cnpy-treechev.is-open { transform:rotate(90deg); }
-.cnpy-treechev:hover { color:var(--fg-70); }
-.cnpy-tree.is-active .cnpy-treechev { color:var(--accent); }
-.cnpy-treechev.is-empty, .cnpy-treechev.is-empty:hover { background:transparent; pointer-events:none; }
-/* Grid-rows trick animates to the exact content height. Only one transition runs at
-   a time — the chevron is a single toggle, and the accordion collapses the previous
-   outline instantly (main.ts) — so two fr transitions never overlap (that wedges).
-   Vertical breathing room rides on the last item → a collapsed outline is a true 0px. */
-.cnpy-outline { display:grid; grid-template-rows:0fr; transition:grid-template-rows .22s cubic-bezier(.4,0,.2,1); }
-.cnpy-outline.is-open { grid-template-rows:1fr; }
-.cnpy-outline-inner { overflow:hidden; min-height:0; display:flex; flex-direction:column; gap:1px; padding-left:23px; }
-.cnpy-outline-inner > :last-child { margin-bottom:5px; }
-@media (prefers-reduced-motion: reduce) { .cnpy-outline { transition:none; } }
+/* ── the Guide's table-of-contents sub-rows (.cnpy-outline-item) ── */
 .cnpy-outline-item { text-align:left; width:100%; padding:4px 8px 4px 11px; border-radius:6px; font-size:12px; color:var(--fg-40); background:transparent; transition:color .12s ease, background .12s ease; }
 .cnpy-outline-item:hover { color:var(--fg-70); }
 .cnpy-outline-item.is-current { color:var(--accent); font-weight:500; }
@@ -3986,6 +3954,385 @@ a.ask-btn { text-decoration:none; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-head > .ask-iconbtn { width:44px; height:44px; border-radius:8px; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-body { padding:20px 16px calc(40px + env(safe-area-inset-bottom)); }
 
+/* ── the Docs Library (library.ts; docs/architecture/docs-library.md › The screens) ─────────────────────────
+   A space's tile (`spaceTile`): its corner is `--spt-r` (min(4.8px, size × .25)), scaled in the corners block.
+   The cards and rows are hitArea cards (ui.ts); the Create space dialog is a confirmModal with a form in it.
+   No radius is declared here: each one is in the corners block below. */
+.cnpy-spt { display:inline-grid; place-items:center; flex:none; color:#fff; }
+.cnpy-lib-row { position:relative; display:grid; align-items:center; gap:16px; }
+.cnpy-lib-row.cnpy-hitbox:hover { background:var(--hover); }
+.cnpy-lib-th { font-weight:500; }
+.cnpy-lib-card { cursor:pointer; }
+.cnpy-lib-newcard { cursor:pointer; transition:border-color .14s ease, background .14s ease; }
+.cnpy-lib-newcard:hover { border-color:var(--fg-40) !important; background:var(--hover); }
+.cnpy-lib-newcard:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-lib-wait:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-lib-descbtn:hover { background:var(--hover); color:var(--fg) !important; }
+@media (max-width:980px) { .cnpy-lib-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } }
+@media (max-width:640px) {
+  .cnpy-lib { padding-left:16px !important; padding-right:16px !important; }
+  .cnpy-lib-grid { grid-template-columns:minmax(0,1fr) !important; }
+  .cnpy-lib-row { grid-template-columns:minmax(0,1fr) !important; gap:4px; }
+  .cnpy-lib-th > :not(:first-child) { display:none; }
+}
+/* The space dialogs (Create / Edit space, the owners). */
+.cnpy-libm { display:flex; flex-direction:column; gap:15px; margin-top:16px; }
+.cnpy-libm-l { display:flex; align-items:baseline; gap:6px; margin-bottom:6px; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-libm-opt { font-weight:400; color:var(--fg-40); }
+.cnpy-libm-n { margin-left:auto; font-weight:400; font-size:11.5px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.cnpy-libm-in { display:block; width:100%; box-sizing:border-box; height:36px; padding:0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13.5px; font-family:var(--sans); outline:none; }
+.cnpy-libm-ta { height:auto; min-height:56px; padding:8px 11px; line-height:1.5; resize:none; }
+.cnpy-libm-in:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-libm-in[aria-invalid="true"] { border-color:var(--red) !important; box-shadow:0 0 0 3px color-mix(in srgb, var(--red) 12%, transparent); }
+.cnpy-libm-err { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; line-height:1.45; color:var(--red); }
+.cnpy-libm-err[hidden] { display:none; }
+.cnpy-libm-icons { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:4px; }
+.cnpy-libm-ic { display:grid; place-items:center; aspect-ratio:1; min-width:0; border:1px solid var(--border); color:var(--fg-55); cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
+.cnpy-libm-ic:hover { color:var(--fg); border-color:var(--border-strong); }
+.cnpy-libm-ic.is-on { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
+.cnpy-libm-ic:focus-visible, .cnpy-libm-sw:focus-visible, .cnpy-libm-person:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-libm-sws { display:flex; flex-wrap:wrap; gap:10px; padding:2px; }
+.cnpy-libm-sw { width:22px; height:22px; flex:none; cursor:pointer; }
+.cnpy-libm-sw.is-on { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--sw); }
+.cnpy-libm-prev { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 12px; background:var(--bg); font-size:12px; color:var(--fg-55); }
+.cnpy-libm-people { display:flex; flex-direction:column; gap:2px; max-height:300px; overflow-y:auto; margin-top:14px; }
+.cnpy-libm-person { display:flex; align-items:center; gap:10px; width:100%; padding:6px 8px; text-align:left; cursor:pointer; }
+.cnpy-libm-person:hover { background:var(--hover); }
+.cnpy-libm-person.is-on { background:var(--accent-soft); }
+.cnpy-libm-pn { font-size:13px; font-weight:500; color:var(--fg); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-libm-ph { font-size:12px; color:var(--fg-55); white-space:nowrap; }
+.cnpy-libm-ck { margin-left:auto; color:var(--accent); visibility:hidden; }
+.cnpy-libm-person.is-on .cnpy-libm-ck { visibility:visible; }
+/* The sidebar's Library group (sidebar.ts): a space row is the tile and the name; "No spaces yet" and its hollow
+   row; "+ New space" (admins). The rows keep `.cnpy-sub-i`'s bar on the guide line. */
+.cnpy-sub-i.cnpy-sub-sp, .cnpy-sub-i.cnpy-sub-new { display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-sub-sp > .cnpy-sub-n { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-sub-new { color:var(--fg-40); font-size:12px; }
+.cnpy-sub-new[hidden], .cnpy-sub-none[hidden] { display:none; }
+.cnpy-sub-none { padding:5px 8px 5px 10px; font-size:12px; color:var(--fg-40); }
+.cnpy-sub-ghost { display:flex; align-items:center; gap:8px; margin-top:7px; }
+.cnpy-sub-ghost > span:first-child { width:14px; height:14px; box-shadow:inset 0 0 0 1px var(--border-strong); }
+.cnpy-sub-ghost > span:last-child { width:70px; height:8px; box-shadow:inset 0 0 0 1px var(--border-strong); }
+@media (prefers-reduced-motion: reduce) { .cnpy-lib-newcard, .cnpy-libm-ic { transition:none; } }
+
+/* ── the docs pane, the page tree and its drag (docs-pane.ts, tree-drag.ts) ─────────────────────────────── */
+/* The Library's frame (render.ts `libraryFrame`): the pane beside the content, each scrolling on its own. Under 900px
+   the two take turns (`data-tree`), swapped by the Pages button in the bar above them. */
+.cnpy-libframe { display:flex; height:100%; min-height:0; }
+.cnpy-libmain { flex:1; min-width:0; overflow-y:auto; }
+.cnpy-libframe > .cnpy-docs-bar { display:none; }
+.cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); font-size:13px; font-weight:500; color:var(--fg-70); }
+[data-enter] #cnpy-main > .cnpy-libframe { animation:none; }
+[data-enter] .cnpy-libframe > .cnpy-libmain { animation:cnpy-screen .32s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--enter-t, 0ms); }
+@media (max-width:900px) {
+  .cnpy-libframe { flex-direction:column; }
+  .cnpy-libframe > .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
+  .cnpy-libframe[data-tree="0"] > .cnpy-dpane, .cnpy-libframe[data-tree="1"] > .cnpy-libmain { display:none; }
+  .cnpy-libframe[data-tree="1"] > .cnpy-dpane { width:auto; flex:1 1 auto; border-right:none; }
+  .cnpy-dpane .cnpy-dp-row:not(.is-shape) { height:40px; }
+}
+/* The pane: 252px, its own scroll; the head row (the space), "PAGES" and the count, the rows. */
+.cnpy-dpane { width:252px; flex:none; overflow-y:auto; border-right:1px solid var(--border); padding:14px 12px 28px; box-sizing:border-box; }
+.cnpy-dp-head { display:flex; align-items:center; gap:9px; height:36px; padding:0 6px 0 8px; cursor:pointer; }
+.cnpy-dp-head:not(.is-shape):hover { background:var(--hover); }
+.cnpy-dp-head.is-active { background:var(--surface); box-shadow:0 0 0 1px var(--border), 0 1px 2px rgba(20,20,30,.05); }
+.cnpy-dp-head.is-into { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+.cnpy-dp-name { flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-head.is-into .cnpy-dp-name { color:var(--accent); }
+.cnpy-dp-label { display:flex; align-items:center; justify-content:space-between; padding:16px 8px 6px; font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); }
+.cnpy-dp-n { font-variant-numeric:tabular-nums; letter-spacing:0; }
+.cnpy-dp-note { margin:6px 8px; font-size:12px; line-height:1.45; color:var(--fg-55); }
+.cnpy-dp-rows { display:flex; flex-direction:column; }
+.cnpy-dp-row { position:relative; display:flex; align-items:center; gap:4px; height:28px; padding-right:6px; box-sizing:border-box; font-size:13px; color:var(--fg-55); cursor:pointer; user-select:none; }
+.cnpy-dp-row.is-shape { cursor:default; }
+.cnpy-dp-row.is-top { color:var(--fg-70); font-weight:500; }
+.cnpy-dp-row:not(.is-shape):hover { color:var(--fg); background:var(--hover); }
+.cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+.cnpy-dp-row.is-into, .cnpy-dp-row.is-into:hover { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+.cnpy-dp-row.is-lifted { opacity:.38; }
+.cnpy-dp-guide { position:absolute; top:0; bottom:0; width:1px; background:var(--border); pointer-events:none; }
+.cnpy-dp-chev { position:relative; z-index:2; flex:none; display:grid; place-items:center; width:16px; height:16px; padding:0; color:var(--fg-40); transition:transform .16s ease, color .12s ease; }
+.cnpy-dp-chev.is-open { transform:rotate(90deg); }
+.cnpy-dp-chev:not(.is-empty):hover { color:var(--fg-70); }
+.cnpy-dp-chev.is-empty { visibility:hidden; }
+.cnpy-dp-row.is-active .cnpy-dp-chev { color:var(--accent); }
+.cnpy-dp-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-st { position:relative; z-index:2; flex:none; display:inline-flex; }
+.cnpy-dp-acts { position:relative; z-index:3; display:flex; align-items:center; gap:1px; flex:none; opacity:0; transition:opacity .12s ease; }
+.cnpy-dp-row:hover .cnpy-dp-acts, .cnpy-dp-row:focus-within .cnpy-dp-acts, .cnpy-dp-row.has-menu .cnpy-dp-acts { opacity:1; }
+.cnpy-dp-act { display:grid; place-items:center; width:20px; height:20px; padding:0; color:var(--fg-40); }
+.cnpy-dp-act:hover { color:var(--fg); background:var(--hover); }
+.cnpy-dp-act.is-head { position:relative; z-index:2; width:24px; height:24px; color:var(--fg-55); }
+.cnpy-dp-act:focus-visible, .cnpy-dp-chev:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.cnpy-dp-menu { position:absolute; right:4px; top:calc(100% + 2px); z-index:20; min-width:180px; padding:4px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 10px 28px rgba(10,10,16,.16); cursor:default; }
+.cnpy-dp-mi { text-align:left; padding:7px 9px; font-size:12.5px; font-weight:400; color:var(--fg-70); }
+.cnpy-dp-mi:hover { background:var(--hover); color:var(--fg); }
+.cnpy-dp-mi:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+/* The drag (tree-drag.ts): the ghost chip and its pill, the drop line with its square handle. */
+.cnpy-dp-ghost { position:fixed; z-index:90; pointer-events:none; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+.cnpy-dp-chip { display:flex; align-items:center; gap:7px; height:30px; min-width:150px; max-width:230px; padding:0 11px; box-sizing:border-box; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 12px 32px rgba(10,10,16,.2); font-size:13px; font-weight:500; color:var(--fg); }
+.cnpy-dp-chip svg { flex:none; color:var(--fg-40); }
+.cnpy-dp-chip span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-hint { padding:3px 8px; background:var(--accent); color:var(--accent-fg); font-size:11.5px; font-weight:500; white-space:nowrap; }
+.cnpy-dp-line { position:fixed; z-index:89; height:2px; background:var(--accent); pointer-events:none; }
+.cnpy-dp-line[hidden] { display:none; }
+.cnpy-dp-line > i { position:absolute; left:-4px; top:-3px; width:8px; height:8px; box-sizing:border-box; border:2px solid var(--accent); background:var(--bg); }
+@media (prefers-reduced-motion: reduce) { .cnpy-dp-chev, .cnpy-dp-acts { transition:none; } }
+/* (end of the docs pane block) */
+
+/* ── the doc page (doc-page.ts) ─────────────────────────────────────────────────────────────────────────── */
+/* The article beside its 210px sticky rail. */
+.cnpy-dpg { max-width:1040px; margin:0 auto; padding:24px 36px 120px; box-sizing:border-box; }
+.cnpy-dpg-grid { display:grid; grid-template-columns:minmax(0,1fr) 210px; gap:40px; align-items:start; }
+.cnpy-dpg-note { margin:24px 0; font-size:13px; line-height:1.5; color:var(--fg-55); }
+.cnpy-dpg-crumbs { display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-dpg-crumb { display:inline-flex; align-items:center; gap:6px; padding:0; color:var(--fg-55); }
+.cnpy-dpg-crumb:hover { color:var(--fg); text-decoration:underline; text-underline-offset:2px; }
+.cnpy-dpg-sep { color:var(--fg-40); }
+.cnpy-dpg-here { color:var(--fg); }
+.cnpy-dpg-title { font-size:29px; font-weight:650; letter-spacing:-0.022em; line-height:1.16; margin:12px 0 0; overflow-wrap:anywhere; }
+.cnpy-dpg-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:14px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+.cnpy-dpg-by { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--fg-55); }
+.cnpy-dpg-btn { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 11px; border:1px solid var(--border); font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-dpg-btn:hover { background:var(--hover); color:var(--fg); }
+.cnpy-dpg-btn.is-on { background:var(--hover); color:var(--fg); border-color:var(--border-strong); }
+.cnpy-dpg-hist { margin-top:14px; }
+.cnpy-dpg-hrow { display:grid; grid-template-columns:28px minmax(0,1fr) auto auto; align-items:center; gap:12px; padding:10px 14px; }
+.cnpy-dpg-hrow + .cnpy-dpg-hrow { border-top:1px solid var(--border); }
+.cnpy-dpg-hv { font-size:12px; font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-dpg-hs { font-size:12.5px; color:var(--fg-70); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dpg-hrow.is-rejected .cnpy-dpg-hv, .cnpy-dpg-hrow.is-rejected .cnpy-dpg-hs { color:var(--fg-40); }
+.cnpy-dpg-md { margin-top:26px; font-size:15px; line-height:1.75; }
+.cnpy-dpg-md h2 { font-size:18.5px; }
+.cnpy-dpg-md h3 { font-size:16px; }
+.cnpy-dpg-md h2, .cnpy-dpg-md h3, .cnpy-dpg-kh { scroll-margin-top:24px; }
+/* A [[slug]] link: the accent, a soft underline, a page icon before it; one to no page is flagged text. */
+.cnpy-doclink { color:var(--accent); text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 34%, transparent); text-decoration-thickness:1px; text-underline-offset:2px; white-space:nowrap; }
+.cnpy-doclink::before { content:""; display:inline-block; width:12px; height:12px; margin-right:3px; vertical-align:-1px; background:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M6 3h7l5 5v13H6z'/%3E%3Cpath d='M13 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M6 3h7l5 5v13H6z'/%3E%3Cpath d='M13 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; }
+a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
+.cnpy-doclink.is-broken { color:var(--fg-55); text-decoration-style:dashed; text-decoration-color:var(--amber); cursor:help; }
+.cnpy-doclink.is-broken::before { background:var(--amber); }
+.cnpy-dpg-kids { margin-top:40px; }
+.cnpy-dpg-kh { font-size:14px; font-weight:500; margin:0 0 12px; }
+.cnpy-dpg-kgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:10px; }
+/* The rail: On this page (scroll-spied), the page's facts, Linked from. */
+.cnpy-dpg-rail { position:sticky; top:24px; display:flex; flex-direction:column; gap:20px; min-width:0; }
+.cnpy-rail-g { display:flex; flex-direction:column; gap:12px; }
+.cnpy-rail-h { font-size:12px; font-weight:600; color:var(--fg); }
+.cnpy-rail-n { margin-left:4px; font-size:11px; font-weight:400; color:var(--fg-40); }
+.cnpy-toc { display:flex; flex-direction:column; margin-top:-4px; }
+.cnpy-toc-i { position:relative; text-align:left; padding:4px 0 4px 10px; font-size:12.5px; line-height:1.4; color:var(--fg-55); }
+.cnpy-toc-i.is-sub { padding-left:22px; font-size:12px; }
+.cnpy-toc-i:hover { color:var(--fg); }
+.cnpy-toc-i.is-current { color:var(--accent); font-weight:500; }
+.cnpy-toc-i.is-current::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); }
+.cnpy-rail-f { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.cnpy-rail-l { font-size:11.5px; color:var(--fg-55); }
+.cnpy-rail-v { font-size:12.5px; color:var(--fg); min-width:0; }
+.cnpy-rail-note { font-size:12px; color:var(--fg-55); }
+.cnpy-rail-link { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:5px 6px; margin:0 -6px; text-align:left; }
+.cnpy-rail-link:hover { background:var(--hover); }
+.cnpy-rail-lt { font-size:12.5px; color:var(--fg); }
+.cnpy-rail-lp { font-size:11.5px; color:var(--fg-40); }
+.cnpy-rail-empty { margin:0; font-size:12px; line-height:1.45; color:var(--fg-40); }
+@media (max-width:1100px) {
+  .cnpy-dpg-grid { grid-template-columns:minmax(0,1fr); }
+  .cnpy-dpg-rail { position:static; }
+  .cnpy-dpg-rail .cnpy-rail-g:first-child { display:none; }
+}
+@media (max-width:640px) { .cnpy-dpg { padding:20px 16px 96px; } }
+/* (end of the doc page block) */
+
+/* ── New page (newdoc.ts) ───────────────────────────────────────────────────────────────────────────────── */
+/* "Goes in": the location button and its picker (a popover inside the morphed page, under the button). The cards
+   are radio buttons; a picked one takes the accent border and ring. Every radius is inline (6/7/8/10px). */
+.cnpy-nd-goes { display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+.cnpy-nd-anchor { position:relative; min-width:0; }
+.cnpy-nd-loc { display:inline-flex; align-items:center; gap:8px; max-width:100%; height:30px; padding:0 10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13px; cursor:pointer; transition:border-color .12s ease; }
+.cnpy-nd-loc:hover { border-color:var(--fg-40); }
+.cnpy-nd-locl { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-nd-where { position:absolute; z-index:30; top:calc(100% + 6px); left:0; width:340px; max-width:calc(100vw - 32px); background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:cnpy-nd-pop .14s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes cnpy-nd-pop { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.cnpy-nd-wlist { max-height:300px; overflow-y:auto; padding:0 6px 6px; }
+.cnpy-nd-wrow { display:flex; align-items:center; gap:4px; height:30px; padding-right:8px; font-size:12.5px; color:var(--fg-70); }
+.cnpy-nd-wrow:hover { background:var(--hover); }
+.cnpy-nd-wrow.is-on { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+.cnpy-nd-wchev { width:16px; height:16px; flex:none; display:grid; place-items:center; color:var(--fg-40); cursor:pointer; transition:transform .16s ease; }
+.cnpy-nd-wchev.is-empty { cursor:default; }
+.cnpy-nd-wchev.is-open { transform:rotate(90deg); }
+.cnpy-nd-wpick { flex:1; min-width:0; display:flex; align-items:center; gap:6px; height:100%; padding:0 2px; text-align:left; color:inherit; font:inherit; cursor:pointer; }
+.cnpy-nd-wt { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-nd-wmark { flex:none; display:inline-flex; }
+.cnpy-nd-wck { width:13px; flex:none; display:inline-flex; color:var(--accent); }
+.cnpy-nd-wfoot { display:flex; justify-content:flex-end; padding:8px 10px; border-top:1px solid var(--border); }
+.cnpy-nd-wchev:focus-visible, .cnpy-nd-wpick:focus-visible, .cnpy-nd-loc:focus-visible, .cnpy-nd-tpl:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+/* The templates and the preview. */
+.cnpy-nd-grid { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start; margin-top:24px; }
+.cnpy-nd-tpls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.cnpy-nd-tpl { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-height:118px; padding:14px; text-align:left; border:1px solid var(--border); background:var(--surface); color:var(--fg); cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
+.cnpy-nd-tpl:hover { border-color:var(--border-strong); }
+.cnpy-nd-tpl.is-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:color-mix(in srgb, var(--accent) 3%, var(--surface)); }
+.cnpy-nd-tpl.is-blank { border-style:dashed; border-color:var(--border-strong); background:transparent; }
+.cnpy-nd-tpl.is-blank.is-on { border-style:solid; border-color:var(--accent); }
+.cnpy-nd-tpli { width:32px; height:32px; display:grid; place-items:center; margin-bottom:6px; background:var(--bg); color:var(--fg-55); }
+.cnpy-nd-tpl.is-on .cnpy-nd-tpli { background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent); }
+.cnpy-nd-tpln { font-size:13.5px; font-weight:500; }
+.cnpy-nd-tpld { font-size:12px; line-height:1.45; color:var(--fg-55); }
+.cnpy-nd-mini { margin-top:12px; padding:14px; min-height:150px; box-sizing:border-box; background:color-mix(in srgb, var(--bg) 50%, var(--surface)); border:1px solid var(--border); }
+.cnpy-nd-line { height:6px; margin-top:6px; background:var(--border); }
+.cnpy-nd-line.is-title { height:10px; margin-top:0; background:var(--border-strong); }
+.cnpy-nd-msec { margin-top:12px; }
+.cnpy-nd-msl { font-size:12px; font-weight:500; color:var(--fg); }
+.cnpy-nd-mblank { font-size:12px; color:var(--fg-55); margin:12px 0 0; }
+.cnpy-nd-err { font-size:12px; line-height:1.45; color:var(--red); margin:10px 0 0; }
+@media (max-width:1100px) { .cnpy-nd-tpls { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:860px) { .cnpy-nd-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:640px) { .cnpy-nd { padding-left:16px !important; padding-right:16px !important; } .cnpy-nd-tpls { grid-template-columns:minmax(0,1fr); } }
+@media (prefers-reduced-motion: reduce) { .cnpy-nd-where { animation:none; } .cnpy-nd-loc, .cnpy-nd-tpl, .cnpy-nd-wchev { transition:none; } }
+/* (end of the New page block) */
+
+/* ── the Markdown import (import.ts, import-drop.ts; docs-library.md › The import screens) ──────────────────
+   The wizard: a stepper, then one keyed step (`imp:<step>`). Radii are inline (the corners block scales them by
+   value); the classes here hold layout, colour and motion. Everything that moves is still under reduced motion. */
+.cnpy-imp-steps { display:flex; align-items:center; gap:10px; max-width:640px; list-style:none; margin:0 0 28px; padding:0; }
+.cnpy-imp-step { display:flex; align-items:center; gap:8px; flex:none; font-size:13px; color:var(--fg-40); }
+.cnpy-imp-dot { width:22px; height:22px; box-sizing:border-box; display:grid; place-items:center; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; flex:none; }
+.cnpy-imp-step[data-s="done"] { color:var(--fg-70); }
+.cnpy-imp-step[data-s="done"] .cnpy-imp-dot { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.cnpy-imp-step[data-s="now"] { color:var(--fg); font-weight:600; }
+.cnpy-imp-step[data-s="now"] .cnpy-imp-dot { border-color:var(--accent); color:var(--accent); }
+.cnpy-imp-line { flex:1 1 auto; min-width:14px; height:1px; background:var(--border-strong); }
+.cnpy-imp-line[data-s="done"] { background:var(--accent); }
+.cnpy-imp-sps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.cnpy-imp-sp { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--border); background:var(--surface); text-align:left; color:inherit; font:inherit; cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease; min-width:0; }
+.cnpy-imp-sp:hover { border-color:var(--border-strong); }
+.cnpy-imp-sp.is-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.cnpy-imp-sp:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-imp-spt { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.cnpy-imp-spn { font-size:13.5px; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-imp-spc { font-size:12px; color:var(--fg-55); }
+.cnpy-imp-ck { width:12px; flex:none; display:inline-flex; color:var(--accent); }
+.cnpy-imp-tree { max-height:340px; overflow-y:auto; }
+.cnpy-imp-stepfoot { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:24px; padding-top:16px; border-top:1px solid var(--border); }
+.cnpy-imp-off { cursor:default; }
+.cnpy-imp-drop { height:200px; margin-top:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; border:1.5px dashed var(--border-strong); background:color-mix(in srgb, var(--surface) 60%, transparent); transition:border-color .12s ease, background-color .12s ease; }
+.cnpy-imp-drop[data-over="1"] { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 5%, transparent); }
+.cnpy-imp-dropic { width:40px; height:40px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
+.cnpy-imp-file { display:flex; align-items:center; gap:12px; padding:10px 10px 10px 16px; min-width:0; }
+.cnpy-imp-file + .cnpy-imp-file { border-top:1px solid var(--border); }
+.cnpy-imp-rs { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-55); flex:0 1 auto; max-width:48%; min-width:0; }
+.cnpy-imp-rs > svg { flex:none; }
+.cnpy-imp-spin { animation:cnpy-spin .8s linear infinite; flex:none; }
+.cnpy-imp-strip { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); }
+.cnpy-imp-stat { padding:12px 16px; min-width:0; }
+.cnpy-imp-stat + .cnpy-imp-stat { border-left:1px solid var(--border); }
+.cnpy-imp-pgrid { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:14px; margin-top:14px; align-items:start; }
+.cnpy-imp-side { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.cnpy-imp-h3 { font-size:13.5px; font-weight:600; margin:0; color:var(--fg); }
+.cnpy-imp-prow { display:flex; align-items:center; gap:8px; height:32px; padding-right:16px; font-size:13px; min-width:0; }
+.cnpy-imp-prow.is-conflict { background:color-mix(in srgb, var(--amber) 5%, transparent); }
+.cnpy-imp-pt { flex:0 1 auto; min-width:0; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-imp-prow.is-skip .cnpy-imp-pt { text-decoration:line-through; color:var(--fg-40); }
+.cnpy-imp-pp { flex:1 1 0; min-width:0; font-size:11px; color:var(--fg-40); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-imp-conf { padding-top:12px; margin-top:12px; border-top:1px solid var(--border); }
+.cnpy-imp-skip { display:flex; align-items:flex-start; gap:8px; padding-top:9px; }
+.cnpy-imp-skip > svg { margin-top:2px; }
+.cnpy-imp-alert { display:flex; align-items:flex-start; gap:8px; margin:16px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.cnpy-imp-alert > svg { flex:none; margin-top:2px; color:var(--red); }
+.cnpy-imp-foot { position:sticky; bottom:16px; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:20px; padding:12px 14px 12px 16px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow, 0 10px 30px rgba(0,0,0,.14)); }
+.cnpy-imp-bar { position:relative; height:6px; margin:16px 0 10px; background:var(--border); overflow:hidden; }
+.cnpy-imp-bar > span { display:block; height:100%; background:var(--accent); transition:width .3s var(--fx-ease); }
+.cnpy-imp-now { display:flex; align-items:center; gap:8px; margin-top:14px; padding:8px 10px; background:var(--bg); font-size:11.5px; color:var(--fg-70); min-width:0; }
+.cnpy-imp-break { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+/* Imports history: the 7-column grid (its columns are inline), one row open at a time. */
+.cnpy-imph-row { display:grid; align-items:center; gap:14px; min-height:56px; padding:8px 16px; box-sizing:border-box; }
+.cnpy-imph-th { min-height:34px; padding-top:0; padding-bottom:0; font-size:12px; color:var(--fg-55); border-bottom:1px solid var(--border); }
+.cnpy-imph-item.is-open { background:color-mix(in srgb, var(--fg) 2.5%, transparent); }
+.cnpy-imph-chev { display:grid; place-items:center; color:var(--fg-40); transition:transform .16s ease; }
+.cnpy-imph-item.is-open .cnpy-imph-chev { transform:rotate(90deg); }
+.cnpy-imph-detail { max-width:760px; padding:0 16px 16px 58px; font-size:12.5px; line-height:1.55; color:var(--fg-70); }
+.cnpy-imph-detail[hidden] { display:none; }
+.cnpy-imph-detail p { margin:0 0 8px; }
+.cnpy-imph-fails { border:1px solid var(--border); background:var(--surface); }
+.cnpy-imph-fail { display:flex; justify-content:space-between; gap:12px; padding:7px 12px; }
+.cnpy-imph-fail + .cnpy-imph-fail { border-top:1px solid var(--border); }
+@media (max-width:980px) { .cnpy-imp-pgrid { grid-template-columns:minmax(0,1fr); } .cnpy-imp-sps { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:900px) {
+  .cnpy-imph-row { grid-template-columns:minmax(0,1fr) auto 20px !important; }
+  .cnpy-imph-row > :nth-child(2), .cnpy-imph-row > :nth-child(4), .cnpy-imph-row > :nth-child(5), .cnpy-imph-row > :nth-child(6) { display:none; }
+  .cnpy-imph-detail { padding-left:16px; }
+}
+@media (max-width:640px) {
+  .cnpy-imp, .cnpy-imph { padding-left:16px !important; padding-right:16px !important; }
+  .cnpy-imp-sps, .cnpy-imp-break { grid-template-columns:minmax(0,1fr); }
+  .cnpy-imp-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cnpy-imp-stat + .cnpy-imp-stat { border-left:0; }
+  .cnpy-imp-steps .cnpy-imp-step:not([data-s="now"]) .cnpy-imp-sl { display:none; }
+}
+/* The sidebar's Imports row and its badge (imports in progress, an accent tint; hidden at 0), the action row
+   (+ New space, Import), and a space row with files over it. */
+.cnpy-sub-i.cnpy-sub-imp { display:flex; align-items:center; gap:8px; }
+.cnpy-sub-imp > svg { flex:none; color:var(--fg-40); }
+.cnpy-sub-badge { margin-left:auto; min-width:16px; height:16px; padding:0 5px; box-sizing:border-box; display:inline-grid; place-items:center; border-radius:5px; font-family:var(--label); font-size:10.5px; font-weight:600; color:var(--accent); background:var(--accent-soft); }
+.cnpy-sub-badge[data-n="0"] { display:none; }
+.cnpy-sub-acts { display:flex; align-items:center; flex-wrap:wrap; }
+.cnpy-sub-acts > .cnpy-sub-i { width:auto; }
+.cnpy-sub-i.cnpy-sub-sp.is-drop { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+/* Review › an import's pages as one group (review.ts `groupCard`): the card, its open list, its page rows. A group
+   that is decided whole wears the verdict and leaves by the queue's one exit (`.cnpy-rv-row`). */
+.cnpy-rvg { position:relative; margin-bottom:8px; padding:12px 14px; transition:border-color .12s ease; }
+.cnpy-rvg[data-sel] { border-color:var(--border-strong); }
+.cnpy-rvg-head { display:flex; align-items:center; gap:10px; min-width:0; }
+.cnpy-rvg-ic { width:30px; height:30px; flex:none; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
+.cnpy-rvg-acts { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.cnpy-rvg-tog { display:inline-flex; align-items:center; gap:5px; padding:4px 2px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
+.cnpy-rvg-chev { display:inline-flex; color:var(--fg-40); transition:transform .16s ease; }
+.cnpy-rvg-tog[aria-expanded="true"] .cnpy-rvg-chev { transform:rotate(90deg); }
+.cnpy-rvg-done { font-size:12px; color:var(--fg-55); }
+.cnpy-rvg-done[hidden] { display:none; }
+.cnpy-rvg-list { display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--fx-base) var(--fx-ease); }
+.cnpy-rvg-list[data-open="1"] { grid-template-rows:1fr; }
+.cnpy-rvg-clip { min-height:0; overflow:hidden; margin:0 -14px -12px; }
+.cnpy-rvg-list[data-open="1"] .cnpy-rvg-clip { margin-top:10px; border-top:1px solid var(--border); padding-bottom:6px; }
+.cnpy-rvg-pg { position:relative; display:flex; align-items:center; gap:8px; width:100%; height:32px; padding-right:12px; font-size:12.5px; color:var(--fg-70); text-align:left; cursor:pointer; }
+.cnpy-rvg-pg:hover { background:var(--hover); }
+.cnpy-rvg-pg[aria-current="true"] { background:color-mix(in srgb, var(--accent) 8%, transparent); color:var(--accent); font-weight:500; }
+.cnpy-rvg-bar { position:absolute; left:0; top:4px; bottom:4px; width:2px; background:transparent; }
+.cnpy-rvg-pg[aria-current="true"] .cnpy-rvg-bar { background:var(--accent); }
+.cnpy-rvg-pt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-rvg-pk { flex:none; font-size:11.5px; font-weight:400; color:var(--fg-40); }
+.cnpy-rv-row[data-verdict] .cnpy-rvg-pg { color:var(--fg-55); }
+.cnpy-rv-row[data-verdict] .cnpy-rvg { border-color:color-mix(in srgb, var(--rv-tone) 55%, transparent); background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
+.cnpy-rv-row[data-verdict] .cnpy-rvg-in { opacity:.14; }
+.cnpy-rvg-bar-top { display:flex; align-items:center; justify-content:space-between; gap:12px; height:46px; padding:0 32px; border-bottom:1px solid var(--border); }
+/* Drop to import (import-drop.ts): ONE node on <body>, laid over the main column. */
+.cnpy-impdrop { position:fixed; z-index:60; pointer-events:none; }
+.cnpy-impdrop[hidden] { display:none; }
+.cnpy-impdrop-veil { position:absolute; inset:0; background:color-mix(in srgb, var(--bg) 86%, transparent); }
+.cnpy-impdrop[data-mode="side"] .cnpy-impdrop-veil { background:color-mix(in srgb, var(--bg) 55%, transparent); }
+.cnpy-impdrop-edge { position:absolute; inset:14px; border:1.5px dashed var(--accent); animation:cnpy-impdrop-breathe 1.6s ease-in-out infinite; }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-edge { border-color:color-mix(in srgb, var(--red) 55%, transparent); }
+.cnpy-impdrop-box { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; text-align:center; }
+.cnpy-impdrop[data-mode="side"] .cnpy-impdrop-edge, .cnpy-impdrop[data-mode="side"] .cnpy-impdrop-box { display:none; }
+.cnpy-impdrop-tile { width:48px; height:48px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
+.cnpy-impdrop-tile > svg, .cnpy-impdrop-pi > svg { animation:cnpy-impdrop-bob 1.4s ease-in-out infinite; }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-tile { background:color-mix(in srgb, var(--red) 12%, transparent); color:var(--red); }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-tile > svg { animation:none; }
+.cnpy-impdrop-t { font-size:17px; font-weight:600; color:var(--fg); }
+.cnpy-impdrop-s { max-width:380px; font-size:13px; line-height:1.5; color:var(--fg-70); }
+.cnpy-impdrop-pill { position:absolute; display:none; align-items:center; gap:8px; transform:translateY(-50%); padding:7px 12px; background:var(--accent); color:var(--accent-fg); font-size:12.5px; font-weight:600; white-space:nowrap; box-shadow:var(--lift-shadow, 0 10px 30px rgba(0,0,0,.18)); }
+.cnpy-impdrop[data-mode="side"] .cnpy-impdrop-pill { display:inline-flex; }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-pill { background:var(--red); }
+.cnpy-impdrop-pi { display:inline-flex; }
+.cnpy-impdrop-pi > svg { width:14px; height:14px; }
+.cnpy-impdrop-pn { font-weight:500; opacity:.85; }
+@keyframes cnpy-impdrop-breathe { 50% { opacity:.55; } }
+@keyframes cnpy-impdrop-bob { 50% { transform:translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-imp-spin, .cnpy-impdrop-edge, .cnpy-impdrop-tile > svg, .cnpy-impdrop-pi > svg { animation:none; }
+  .cnpy-imp-sp, .cnpy-imp-drop, .cnpy-imp-bar > span, .cnpy-imph-chev, .cnpy-rvg, .cnpy-rvg-chev, .cnpy-rvg-list { transition:none; }
+}
+
 /* ── the site on a phone ──────────────────────────────────────────────────────
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
    or touch screen, in ONE place. Nothing here applies at 961px and up: every rule sits behind a width
@@ -4279,9 +4626,35 @@ a.ask-btn { text-decoration:none; }
 /* trov.css classes, by the radius each declares above. */
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-qs-kbd,
-[data-cnpy-theme] .cnpy-treechev,
 [data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
+/* The Docs Library (library.ts): a space's tile by its own --spt-r, the dialog's fields, icons and people rows,
+   the swatches (round), and the sidebar's hollow "No spaces yet" row. */
+[data-cnpy-theme] .cnpy-spt { border-radius:calc(var(--spt-r, 4px) * var(--corner-scale)) !important; }
+/* The docs pane and the doc page (docs-pane.ts, doc-page.ts). */
+[data-cnpy-theme] .cnpy-dp-head,
+[data-cnpy-theme] .cnpy-dp-row,
+[data-cnpy-theme] .cnpy-dp-menu,
+[data-cnpy-theme] .cnpy-dpg-btn { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-dp-chev,
+[data-cnpy-theme] .cnpy-dp-act,
+[data-cnpy-theme] .cnpy-dp-mi,
+[data-cnpy-theme] .cnpy-rail-link,
+[data-cnpy-theme] .cnpy-dp-chip { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-dp-hint { border-radius:min(calc(999px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-dp-line > i { border-radius:calc(2px * var(--corner-scale)) !important; }
+/* (end of the docs pane corners) */
+/* New page (newdoc.ts). */
+/* (end of the New page corners) */
+/* The import (import.ts): the sidebar's Imports badge. Everything else of it is an inline radius. */
+[data-cnpy-theme] .cnpy-sub-badge { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-in,
+[data-cnpy-theme] .cnpy-libm-prev { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-ic,
+[data-cnpy-theme] .cnpy-libm-person,
+[data-cnpy-theme] .cnpy-sub-ghost > span { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-sw { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-lib-newcard { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* Empty layouts (skeleton.ts `emptyLayout`): the sentence's dashed card, and its one action. */
 [data-cnpy-theme] .cnpy-empty-say { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-empty-act { border-radius:calc(8px * var(--corner-scale)) !important; }
@@ -4307,7 +4680,6 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .cnpy-collapse .cnpy-nav-i,
 [data-cnpy-theme] .cnpy-tip,
 [data-cnpy-theme] .cnpy-achip,
-[data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
 /* The mark tooltip carries the theme attribute itself (it lives on <body>), so its rule keys on it. */

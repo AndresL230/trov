@@ -408,7 +408,7 @@ function libraryCells(lib: MwLibrary): { docs: string; arts: string; handoffs: s
       : quiet("No handoffs queued.")
 
   return {
-    docs: cell("Docs you own", { act: "goDocs", label: "Docs" }, docs),
+    docs: cell("Docs you own", { act: "goLibrary", label: "Library" }, docs),
     arts: cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts),
     handoffs: cell("Queued handoffs", { act: "goHandoffs", label: "Handoffs" }, handoffs),
   };

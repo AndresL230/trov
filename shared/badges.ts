@@ -9,4 +9,5 @@ export interface SidebarBadges {
   tickets: number;   // native, open, unassigned tickets
   handoffs: number;  // pending handoffs addressed to me
   prompts: number;   // staged prompts
+  imports: number;   // Markdown imports in progress (the Library's Imports row; one at most)
 }

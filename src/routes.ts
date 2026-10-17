@@ -78,6 +78,11 @@ import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
+import { spacesApp } from "./spaces/routes";
+import { importsApp } from "./imports/routes";
+import { resolveSpaceAlias } from "@shared/docs-core";
+import { spaceState } from "./tools/spaces";
+import { DocTreeError, moveDoc } from "./tools/doc-tree";
 
 export const app = new Hono<AppEnv>();
 
@@ -211,12 +216,18 @@ tenantApi.route("/notifications", notificationsApp);
 tenantApi.route("/tags", tagsApp);
 tenantApi.route("/item-tags", itemTagsApp);
 tenantApi.route("/tag-settings", tagSettingsApp);
+// The Docs Library's spaces (0081_docs_library): any member reads, an admin shapes them, an owner edits one's description.
+tenantApi.route("/spaces", spacesApp);
+// Markdown import runs (0081/0082): any member imports into a live space; Approve all / Reject all for one import — cookie only.
+tenantApi.route("/imports", importsApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
 // Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same
 // inside its sub-app): a request that carries an Authorization header is refused outright, so no future
 // change to `sessionGate` can turn a bearer into a confirmation.
 for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+// Moving a page in its space's tree is a person's direct write too (any signed-in member; never MCP).
+tenantRoot.use("/doc/:slug/move", cookieOnly);
 tenantApi.use("/prompts/:slug/publish", cookieOnly);
 
 tenantRoot.post("/ingest", async (c) => {
@@ -318,8 +329,8 @@ tenantRoot.get("/search", async (c) => {
   const types = typesCsv
     ? (typesCsv.split(",").map((t) => t.trim()).filter((t): t is QueryType => QueryType.safeParse(t).success))
     : undefined;
-  const spaceRaw = c.req.query("space");
-  const space = spaceRaw === "technical" || spaceRaw === "product" ? spaceRaw : undefined;
+  // A space's slug, or an alias (`technical` → `engineering`, shared/docs-core.ts SPACE_ALIASES); query() resolves it.
+  const space = c.req.query("space")?.trim() || undefined;
   const limit = c.req.query("limit");
   const result = await query(c.var.ctx, {
     q: c.req.query("q") ?? "",
@@ -505,28 +516,35 @@ tenantApi.post("/prompts/:slug/restore", async (c) => {
 const DocPropose = z.object({
   title: z.string().trim().min(1).max(200),
   section: z.string().trim().min(1),
-  space: z.enum(["technical", "product"]),
+  space: z.string().trim().min(1).max(64),   // a LIVE space of the org (an alias is resolved)
   body: z.string().refine((b) => b.trim().length > 0, "body required"),
   summary: z.string().max(300).optional(),
   slug: z.string().regex(/^[a-z0-9][a-z0-9_/-]*$/).optional(),
+  // The page it goes under (New page's "Goes in"): checked by the gate; an invalid one is ignored and said.
+  parent_slug: z.string().trim().max(200).optional(),
 });
 tenantApi.post("/docs/propose", async (c) => {
   const parsed = DocPropose.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   const d = parsed.data;
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
+  // A person's New page names a space they picked: refuse an unknown or archived one here rather than send
+  // their page to triage (an agent's proposal with such a space goes to needs_triage in the gate).
+  const space = resolveSpaceAlias(d.space) as string;
+  const state = await spaceState(c.var.ctx, space);
+  if (state !== "live") return c.json({ error: state === "archived" ? `the ${space} space is archived` : `unknown space: ${space}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
   if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.var.ctx,
-    { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
+    { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high", ...(d.parent_slug ? { parent_slug: d.parent_slug } : {}) },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
   if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
   const proposal = (await list_proposals(c.var.ctx)).find((p) => p.slug === slug && p.version === result.version) ?? null;
-  return c.json({ ok: true, proposal });
+  return c.json({ ok: true, proposal, slug, ...(result.parent_ignored ? { parent_ignored: result.parent_ignored } : {}) });
 });
 
 // Human confirmation (session-gated): promote a staged doc version into the live doc.
@@ -539,6 +557,21 @@ tenantRoot.post("/doc/:slug/promote", async (c) => {
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+// A person moves a page in its space's tree (0081_docs_library; src/tools/doc-tree.ts): into / before / after another
+// page of the SAME space, or to the end of its top level — `planMove`, the rule the docs pane's optimistic drop runs
+// too, with the renumber in one batch. Any signed-in member (the design gates no one); cookie only. A refusal is
+// `{ error: code, message }`: `invalid` 400, `not_found` 404, `cycle` / `too_deep` / `self` / `other_space` /
+// `archived` 409.
+tenantRoot.post("/doc/:slug/move", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  try {
+    return c.json(await moveDoc(c.var.ctx, c.req.param("slug"), body));
+  } catch (e) {
+    if (e instanceof DocTreeError) return c.json({ error: e.code, message: e.message }, e.status);
+    throw e;
   }
 });
 
@@ -601,13 +634,13 @@ tenantRoot.post("/needs-triage/:id/assign", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   const body = (await c.req.json().catch(() => ({}))) as {
-    type?: AssignType; section?: string; space?: "technical" | "product"; tags?: string[];
+    type?: AssignType; section?: string; space?: string; tags?: string[];
   } | null;
   try {
     const res = await assign_triage(c.var.ctx, id, c.get("principal").handle, {
       type: body?.type,
       section: body?.section,
-      space: body?.space,
+      space: typeof body?.space === "string" ? body.space : undefined,
       tags: body?.tags,
     });
     return c.json({ ok: true, ...res });

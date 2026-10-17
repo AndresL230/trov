@@ -23,7 +23,7 @@ event: activity
 data: {"step":4,"tool":"show_not_found","icon":"search","label":"Checked what was searched","state":"run"}
 
 event: block
-data: {"kind":"not_found","notFound":{"query":"the customer say about SSO pricing on the last call","tries":["What do our docs say about pricing?","What's in the Release 0.30 notes?"],"searched":[{"area":"Docs","scope":"Technical and Product, 24 docs"},{"area":"Tickets and comments","scope":"31 tickets, 212 comments"},{"area":"Feed","scope":"41 entries since Sep 1"},{"area":"Artifacts","scope":"12 artifacts"}]}}
+data: {"kind":"not_found","notFound":{"query":"the customer say about SSO pricing on the last call","tries":["What do our docs say about pricing?","What's in the Release 0.30 notes?"],"searched":[{"area":"Docs","scope":"Engineering and Product, 24 docs"},{"area":"Tickets and comments","scope":"31 tickets, 212 comments"},{"area":"Feed","scope":"41 entries since Sep 1"},{"area":"Artifacts","scope":"12 artifacts"}]}}
 
 event: activity
 data: {"step":4,"state":"done"}

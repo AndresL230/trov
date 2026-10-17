@@ -2,7 +2,7 @@
 name: record-session
 description: Use when a person explicitly asks to wrap up, record, log, or capture the current Claude Code session into Trov (triggers — "record this session", "session-end", "log this to Trov", "save what we did"). Explicit invocation only — must never auto-fire at a natural stopping point.
 disable-model-invocation: true
-allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__list_tags, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*), mcp__trov__get_connection, Bash(git remote get-url:*)
+allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__list_spaces, mcp__trov__list_tags, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
 # Record Session → Trov
@@ -107,8 +107,13 @@ Build at most one of each, only for what the session genuinely touched:
   that one. A session that only shipped code, with nothing decided, found or broken, writes **no feed
   entry** (it may still stage a doc or an ADR). **Its size and shape are fixed — see "Feed entry format" below.**
 - **Doc** — only when the session durably changed a convention/architecture note that belongs in a doc.
-  `{ slug, section, space, title?, body, change_summary, confidence, base_version }` (`base_version`
-  from step 2; `space` is `product` for product docs, `technical` for engineering/tooling docs — the default).
+  `{ slug, section, space, parent_slug?, title?, body, change_summary, confidence, base_version }`
+  (`base_version` from step 2; `space` is a slug from `list_spaces` — e.g. `engineering` for
+  engineering/tooling docs (the default), `product` for product docs; an unknown or archived space sends the
+  doc to triage, and an existing doc keeps its own space whatever you send). `parent_slug` (optional) is
+  another page of the same space the doc sits under in the space's page tree; one that is no valid place is
+  ignored (the result says `parent_ignored`). Link to another page in the body with `[[its-slug]]` or
+  `[[its-slug|the words shown]]`.
   **Images in a doc** — only uploaded ones: for each picture, `upload_asset { destination: "doc",
   sha256, size_bytes, content_type }` (png / jpeg / gif / webp, ≤ 10 MB), PUT the bytes to its
   `upload_url` unless it answers `uploaded: true`, then write `![what it shows](/img/<sha256>)` in the

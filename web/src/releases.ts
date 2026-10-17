@@ -103,38 +103,40 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Ask sharing (#193) and handoff prompts by upload (#194), merged together through epic/10-17-staging: one
-  // deploy, one version.
+  // Ask sharing (#193), handoff prompts by upload (#194) and the Docs Library (#197), merged together through
+  // epic/10-17-staging: one deploy, one version.
   {
     version: "0.12",
     date: "2026-10-17",
-    title: "Share an Ask conversation",
-    headline: "Share an Ask conversation with your organization or with chosen people, and an agent sends a long handoff as a file in seconds.",
+    title: "The Docs Library, and sharing Ask conversations",
+    headline: "Docs become a Library of spaces you can import into, and an Ask conversation can be shared with your organization or with chosen people.",
     highlights: [
-      "Share an Ask conversation with your whole organization to read, or with chosen people: for each, pick Can read or Can continue.",
-      "Conversations shared with you by name are under Shared with you; the ones shared with everyone are under Organization.",
-      "Someone who can continue asks follow-ups as themselves. Each question stays its asker's: only they can edit it, regenerate it or confirm its changes.",
+      "Docs are now a Library of spaces, each with a home and a tree of pages you rearrange by dragging. Every organization starts with Engineering, Product and Design.",
+      "Bring your docs in: drop Markdown files or a .zip on a space, check what will be added, then approve or reject the whole import in Review.",
+      "Share an Ask conversation with your whole organization to read, or with chosen people who can read or continue it; each question stays its asker's.",
       "An agent working in a terminal sends a long handoff prompt as a file instead of typing it out; the handoff appears only once the whole prompt has arrived.",
     ],
     headsUp: [
+      "Docs moved into the Library in the sidebar. Technical docs are now in Engineering; Product docs stay in Product.",
       "Files attached to a shared Ask conversation stay private to whoever attached them: others see each file's name and size, and what Trov quoted from it, never the file.",
       "Deleting a shared conversation deletes it for everyone it is shared with, and the confirmation says so.",
-      "Ask Trov and agents in a chat on the web send handoffs as before, with the prompt written in.",
     ],
     ops: [
       "Apply migration `0076_10_17_staging` (one file for Ask sharing and handoff uploads; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
-      "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
+      "Apply migrations `0081_docs_library` and `0082_doc_import_manifest` (merging to main applies them). Additive; each header has its rollback. Every organization gets three spaces and every non-Product doc moves to Engineering.",
+      "Publish the Trov plugin 0.10.1 (the handoff skill uploads long prompts; docs are placed by space): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {
       added: [
         "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193).",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
+        "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, and Markdown or .zip import (#197)",
       ],
       changed: [],
       fixed: [],
       removed: [],
     },
-    prs: [193, 194],
+    prs: [193, 194, 197],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.

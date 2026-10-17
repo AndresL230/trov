@@ -545,7 +545,7 @@ describe("My Work — audit fixes", () => {
   const proposal = (slug: string, created_at: string): StagedProposal => ({
     slug, version: 2, title: `Doc ${slug}`, section: "architecture", space: "technical", summary: null, author: "kai",
     confidence: "high", status: "staged", change_kind: "edit", low_confidence: 0, base_version: 1, current_version: 1,
-    created_at, stagedBody: "a\nb\nc", promotedBody: "a\nc",
+    created_at, stagedBody: "a\nb\nc", promotedBody: "a\nc", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null,
   });
   const adr = (id: number, created_at: string): AdrRow => ({
     id, title: `ADR ${id}`, context: null, decision: "We do it.", rationale: null, status: "draft", confidence: null,

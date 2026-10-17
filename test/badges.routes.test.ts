@@ -27,6 +27,12 @@ async function seedEverything(): Promise<void> {
     await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('gate', ?, 'b', ?, ?, 'andres')`, v, status, T);
   await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by) VALUES ('old', 'reference', 'Old', 'live', 3, ?, 'andres')`, T);
   await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('old', 2, 'b', 'staged', ?, 'andres')`, T);
+  // Owner ruling RV3: an import's version with a newer staged change on top (an agent's) is not offered on its own —
+  // the page is the newer change's; the import's older one leaves Review's list and so its count.
+  await run(env.DB, `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by) VALUES ('deploys', 'reference', 'Deploys', 'live', 1, ?, 'andres')`, T);
+  await run(env.DB, `INSERT INTO doc_imports (id, org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (77, 'org_saplinglearn', 'engineering', 'h.zip', 'andres', ?, ?, 'done')`, T, T);
+  await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by, import_id, import_path) VALUES ('deploys', 2, 'imported', 'staged', ?, 'andres', 77, 'deploys.md')`, T);
+  await run(env.DB, `INSERT INTO doc_versions (slug, version, body, status, created_at, created_by) VALUES ('deploys', 3, 'agent', 'staged', ?, 'meilin')`, T);
   // Decisions: drafts count; ratified and rejected do not.
   for (const status of ["draft", "draft", "ratified", "rejected"])
     await run(env.DB, `INSERT INTO adrs (title, context, decision, rationale, status, confidence, created_at, created_by) VALUES ('A', 'c', 'd', 'r', ?, 'high', ?, 'andres')`, status, T);
@@ -50,6 +56,11 @@ async function seedEverything(): Promise<void> {
   await prompt("deleted-staged", ["staged"], true);
   // Tickets: one open, unassigned, native ticket.
   await run(env.DB, `INSERT INTO tickets (title, requester, status, created_at, updated_at) VALUES ('Open', 'andres', 'submitted', ?, ?)`, T, T);
+  // Imports: a running run heard from lately counts; a stale one, an ended one, and another org's do not.
+  const old = new Date(Date.now() - 600_000).toISOString();
+  for (const [status, at] of [["running", T], ["running", old], ["done", T]] as const)
+    await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES ('org_saplinglearn', 'engineering', 'h.zip', 'andres', ?, ?, ?)`, at, at, status);
+  await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (?, 'engineering', 'h.zip', 'x', ?, ?, 'running')`, ORG_B, T, T);
   // Another org's rows never count here.
   await run(env.DB, `INSERT INTO adrs (org_id, title, context, decision, rationale, status, confidence, created_at, created_by) VALUES (?, 'B', 'c', 'd', 'r', 'draft', 'high', ?, 'x')`, ORG_B, T);
   await run(env.DB, `INSERT INTO needs_triage (org_id, raw, reason, created_at) VALUES (?, '{}', 'b', ?)`, ORG_B, T);
@@ -70,6 +81,7 @@ describe("GET /badges", () => {
     const tickets = (await json<{ count: number }>("/tickets/badge", cookie)).count;
     const handoffs = (await json<{ handoffs: HandoffView[] }>("/api/handoffs?box=mine", cookie)).handoffs;
     const prompts = (await json<{ prompts: { status: string }[] }>("/api/prompts", cookie)).prompts;
+    const imports = (await json<{ running: number }>("/api/imports", cookie)).running;
 
     expect(badges).toEqual({
       proposals: proposals.length,
@@ -80,9 +92,11 @@ describe("GET /badges", () => {
       // the web's handoffsForMe: pending, addressed to me in any case — `anyone` is not me
       handoffs: handoffs.filter((h) => h.status === "pending" && h.recipient.toLowerCase() === "andres").length,
       prompts: prompts.filter((p) => p.status === "staged").length,
+      imports,
     });
     // …and the seed above is not vacuous: each count is the one it was built to be.
-    expect(badges).toEqual({ proposals: 1, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1 });
+    expect((proposals as { slug: string; version: number }[]).filter((p) => p.slug === "deploys").map((p) => p.version)).toEqual([3]);
+    expect(badges).toEqual({ proposals: 2, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1, imports: 1 });
   });
 
 });

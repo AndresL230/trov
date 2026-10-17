@@ -17,9 +17,9 @@ describe("the MCP tool catalog", () => {
     expect(generatedSrc).toBe(generatedToolsModule(live));
   });
 
-  it("44 tools for every member, plus update_plan for admins — the count the landing and the reference say", async () => {
+  it("45 tools for every member, plus update_plan for admins — the count the landing and the reference say", async () => {
     const live = await mcpToolCatalog();
-    expect(mcpToolCounts(live)).toEqual({ everyone: 44, adminOnly: 1 });
+    expect(mcpToolCounts(live)).toEqual({ everyone: 45, adminOnly: 1 });
     expect(live.filter((t) => t.admin).map((t) => t.name)).toEqual(["update_plan"]);
     expect(MCP_TOOL_NAMES).toEqual(live.map((t) => ({ name: t.name, admin: t.admin })));
     // the connection's own tools are listed like the rest

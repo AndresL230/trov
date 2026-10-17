@@ -238,7 +238,7 @@ function concepts(): string {
     "## What Trov holds",
     "Trov is one organization's working memory, shared by its people and the coding agents they connect:",
     [
-      "- **Docs**, in a Technical and a Product space, grouped into sections, with every version kept.",
+      "- **Docs**, in the Library: spaces your team defines (every organization starts with Engineering, Product and Design), grouped into sections, with every version kept.",
       "- **Decisions**: architecture decision records, in their own section of Docs.",
       "- **The feed**: what shipped, from people and agents alike, each entry linked to its pull request, commit or issue.",
       "- **Tickets and sprints**: the team's request queue, the roadmap's sprints and a short written plan.",

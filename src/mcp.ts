@@ -34,6 +34,7 @@ import { ingestFeedEntry, ingestDocProposal, recordBatch } from "./consumer";
 import { feedEntryFromMcpArgs } from "./mcp-args";
 // The tag list is READ here and nowhere written: changing it is an admin's cookie route (src/tags/routes.ts).
 import { listTagRefs } from "./tools/tags";
+import { listSpacesForAgent } from "./tools/spaces";
 import { FEED_BRIEF_MAX, IngestPayload, QueryType } from "@shared/contract";
 import { ArtifactError } from "./tools/artifacts";
 import { PlanFeatureError, PlanLimitError } from "./plans/state";
@@ -109,7 +110,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
       q: z.string().optional(),
       types: z.array(QueryType).optional(),
       section: z.string().optional(),
-      space: z.enum(["technical", "product"]).optional(),
+      space: z.string().optional(),
       include_staged: z.boolean().optional(),
       limit: z.number().optional(),
       pointer_limit: z.number().optional(),
@@ -124,8 +125,18 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     runTool(() => get_doc(ctx, slug))
   );
 
-  server.tool("list_docs", "List docs, optionally filtered by section.", { section: z.string().optional() }, async ({ section }) =>
-    runTool(() => list_docs(ctx, section))
+  server.tool(
+    "list_docs",
+    "List docs, optionally filtered by section and/or space (a space's slug from list_spaces).",
+    { section: z.string().optional(), space: z.string().optional() },
+    async ({ section, space }) => runTool(() => list_docs(ctx, section, space))
+  );
+
+  server.tool(
+    "list_spaces",
+    "List this organization's Library spaces: each has a `slug` (what `space` takes in propose_doc_update, list_docs and query), a `name`, a one-line `description` and its page count. The spaces are the organization's own (its admins create and archive them), so read them rather than assuming one. Read-only.",
+    {},
+    async () => runTool(() => listSpacesForAgent(ctx))
   );
 
   server.tool(
@@ -170,7 +181,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
 
   server.tool(
     "propose_doc_update",
-    "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space ('technical' for engineering docs or 'product' for product docs; defaults 'technical') to place a new doc, and force to stage an identical body.",
+    "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space (a slug from list_spaces, e.g. 'engineering' or 'product'; defaults 'engineering') to place a NEW doc — an unknown or archived space routes to needs_triage, and an existing doc keeps its own space — parent_slug (another page's slug in the same space) to put the page under that page in the space's tree — a new doc goes there at once, an existing doc when this version is promoted; a parent that is no valid place (missing, another space, under the page itself, more than 10 levels deep) is ignored and the result says so in parent_ignored — and force to stage an identical body. Link to another page in the body with [[its-slug]] or [[its-slug|the words shown]].",
     {
       slug: z.string(),
       section: z.string(),
@@ -178,7 +189,8 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
       body: z.string(),
       change_summary: z.string(),
       confidence: z.enum(["high", "low"]),
-      space: z.enum(["technical", "product"]).optional(),
+      space: z.string().optional(),
+      parent_slug: z.string().optional(),
       base_version: z.number().optional(),
       force: z.boolean().optional(),
     },

@@ -8,7 +8,7 @@
 // no inline data.
 
 import { esc, attr, MONO_LABEL, surface, SURFACE, HITBOX, hitArea } from "./ui";
-import { LOW_CONFIDENCE, kindMark } from "./marks";
+import { LOW_CONFIDENCE, kindMark, stateMark, markShape, glyph } from "./marks";
 import { segmented } from "./segmented";
 import { renderedDoc } from "./review-rendered";
 import { personChip, personLink, personAvatarLink, handleTag } from "./people";
@@ -17,12 +17,19 @@ import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skLines, skLi
 import type { AiSuggestion } from "@shared/ai-core";
 import { ASK_WRONG_LABELS, type AskFlag } from "@shared/ai-ask-core";
 import { reviewRiskLine, type AiChipUi } from "./ai-cards";
+import { libraryWhen } from "./library";
 
 const NO_AI_UI: AiChipUi = { busy: [], unavailable: [], reasonOpen: null };
 
 // ── prop shapes (loose for now — reshaped at wire time) ──────────────────────
 export type ReviewKind = "proposal" | "decision";
-export type ReviewFilter = "all" | ReviewKind;
+/** All / Imports / Written by agents: an import's pages, or everything else (an agent's or a person's proposals and
+ *  drafted decisions). */
+export type ReviewFilter = "all" | "imports" | "agents";
+export const REVIEW_FILTERS: readonly ReviewFilter[] = ["all", "imports", "agents"];
+/** Whether an item shows under a filter. */
+export const inReviewFilter = (it: Pick<ReviewItem, "importId">, f: ReviewFilter): boolean =>
+  f === "all" || (f === "imports" ? it.importId != null : it.importId == null);
 export type DiffViewMode = "unified" | "split" | "rendered";
 /** What a person just decided about an item — the word its card wears while it leaves the queue. */
 export type ReviewVerdict = "promoted" | "ratified" | "rejected";
@@ -73,11 +80,30 @@ export interface ReviewItem {
   /** "Flagged in Ask" (handoff #12 § 2.14): the reasons people gave on Ask answers that cited it, and how often —
    *  never the question, the answer or who asked. Absent when nobody did. */
   askFlags?: AskFlag[];
+  /** A page of a Markdown import (Review groups by it): the run, the file's path in it, the run's file name, who
+   *  ran it and when. Absent for everything an agent or a person wrote. */
+  importId?: number | null;
+  importPath?: string | null;
+  importFile?: string | null;
+  importBy?: string | null;
+  importAt?: string | null;
+  /** The page's slug, space and requested parent (an import group's tree). */
+  slug?: string;
+  space?: string;
+  parentSlug?: string | null;
 }
 
 export interface ReviewProps {
   /** Items still pending a verdict (unfiltered). */
   items: ReviewItem[];
+  /** Import groups opened with "Review one by one", by import id. */
+  groupsOpen?: Record<string, boolean>;
+  /** How many pages each import group has held this session — its "‹d› of ‹N› reviewed". */
+  groupTotals?: Record<string, number>;
+  /** A space's name by slug (a group's "into ‹Space›"). */
+  spaceNames?: Record<string, string>;
+  /** Who ran each import, by handle: the person (their avatar and short name). */
+  people?: readonly { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null }[];
   filter: ReviewFilter;
   /** null → default to the first visible item. */
   selectedId: string | null;
@@ -93,7 +119,7 @@ export interface ReviewProps {
 }
 
 // ── list pane ────────────────────────────────────────────────────────────────
-/** All / Proposals / Decisions: ONE list, three views of it — a pick-one, so `segmented()`
+/** All / Imports / Written by agents: ONE list, three views of it — a pick-one, so `segmented()`
  *  (not a tab bar: the page below does not change section, the list narrows). Each option
  *  carries how many are waiting; a zero stays, so the switch never changes width. */
 export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFilter, number> | null): string {
@@ -102,8 +128,8 @@ export function reviewFilterSwitch(filter: ReviewFilter, counts: Record<ReviewFi
     id: "review-filter", ariaLabel: "Show", act: "reviewFilter", value: filter, size: "sm", inertOn: true,
     options: [
       { value: "all", label: "All", trail: n("all") },
-      { value: "proposal", label: "Proposals", trail: n("proposal") },
-      { value: "decision", label: "Decisions", trail: n("decision") },
+      { value: "imports", label: "Imports", trail: n("imports") },
+      { value: "agents", label: "Written by agents", trail: n("agents") },
     ],
   })}</div>`;
 }
@@ -168,7 +194,7 @@ function agentLink(it: ReviewItem, chipSize: number): string {
 
 /** Review's empty sentence: what the queue holds and what a person does with it (the Guide ›
  *  Review). Nothing here is made by hand, and a clear queue is a normal state, so no action. */
-export const REVIEW_EMPTY = "Nothing is waiting for review. A doc change or a decision an agent stages shows here, to promote, ratify or reject.";
+export const REVIEW_EMPTY = "Nothing is waiting for review. A doc change or a decision an agent stages, and the pages of a Markdown import, show here to approve or reject. Each import is one group.";
 /** The list pane with nothing in it: the sentence, then the queue's cards drawn empty. `all` =
  *  no filter is on; under the Proposals / Decisions filter the other kind may still be waiting. */
 export function reviewListEmpty(all = true): string {
@@ -325,7 +351,7 @@ export function reviewDetail(it: ReviewItem, diffView: DiffViewMode, aiUi: AiChi
           ${id ? `${dot}<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">${esc(id)}</span>` : ""}
           ${dot}<span style="display:inline-flex;align-items:center;gap:6px">${agentLink(it, 18)}</span>
           ${dot}<span style="color:var(--fg-40)">${esc(it.time)}</span>
-        </div>
+        </div>${it.importId != null ? `<div class="cnpy-rv-from" style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:var(--fg-55)">${stateMark(it.isNew ? "New page" : "New version", "var(--fg-55)", "dashed", 12, it.isNew ? "A page the import adds. Nothing is live until it is approved." : "A new version of a page that is live. Everyone reads the live one until this is approved.")}${it.importPath ? `<span style="font-size:11.5px;color:var(--fg-40);overflow-wrap:anywhere">from ${esc(it.importPath)}</span>` : ""}</div>` : ""}
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px">
         ${it.flagged ? `<span style="margin-right:4px">${LOW_CONFIDENCE()}</span>` : ""}
@@ -384,27 +410,151 @@ const BACK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" s
  *  header's — nothing in the page repeats it (org-ui.ts rule 1; Unplaced does the same). */
 export const REVIEW_INTRO = "Agent-produced changes waiting for a verdict.";
 
+// ── an import's pages, as one group ──────────────────────────────────────────
+
+/** One Markdown import's waiting pages: the run, its pages in the import's tree order (the queue lists them newest
+ *  first, so a group's order is the queue's REVERSED — parents were staged first) and each page's depth (from the
+ *  `parent_slug` chain inside the group). */
+export interface ReviewGroup {
+  id: number;
+  items: ReviewItem[];
+  depth: Record<string, number>;
+  file: string;
+  by: string | null;
+  at: string | null;
+  space: string;
+}
+
+/** The import groups among `items`, keyed by import id, in the order their newest page appears. */
+export function importGroups(items: readonly ReviewItem[]): Map<number, ReviewGroup> {
+  const out = new Map<number, ReviewGroup>();
+  for (const it of items) {
+    if (it.importId == null) continue;
+    let g = out.get(it.importId);
+    if (!g) { g = { id: it.importId, items: [], depth: {}, file: it.importFile ?? "an import", by: it.importBy ?? null, at: it.importAt ?? null, space: it.space ?? "" }; out.set(it.importId, g); }
+    g.items.push(it);
+  }
+  for (const g of out.values()) {
+    g.items.reverse();
+    const bySlug = new Map(g.items.filter((it) => it.slug).map((it) => [it.slug as string, it]));
+    for (const it of g.items) {
+      let d = 0;
+      let cur = it.parentSlug ? bySlug.get(it.parentSlug) : undefined;
+      while (cur && d < 12) { d++; cur = cur.parentSlug ? bySlug.get(cur.parentSlug) : undefined; }
+      g.depth[it.id] = d;
+    }
+  }
+  return out;
+}
+
+/** The group's name without "Import from " (the design's ‹short›: "handbook.zip"). */
+export const groupShort = (g: Pick<ReviewGroup, "file">): string => g.file;
+
+const UPLOAD = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
+const CHEV_R = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
+
+/** One page row inside an open group: a 2px selection bar, its state's shape, the title, its kind. A keyed row of the
+ *  group's own list, so a page decided on its own leaves with the queue's one exit. */
+function groupPageRow(it: ReviewItem, depth: number, selected: boolean, verdict: ReviewVerdict | null): string {
+  const shape = verdict === "rejected" ? glyph("declined", "var(--fg-40)", 11) : verdict ? glyph("done", "var(--accent)", 11) : markShape("dashed", "var(--fg-55)", 10);
+  return `<div class="cnpy-rv-row" data-morph-key="rvp:${attr(it.id)}"${verdict ? ` data-verdict="${verdict}" inert` : ""}><div class="cnpy-rv-row-in"><button type="button" data-act="reviewSelect" data-arg="${attr(it.id)}" class="cnpy-rvg-pg"${selected ? ' aria-current="true"' : ""} style="padding-left:${16 + depth * 16}px">
+    <span class="cnpy-rvg-bar" aria-hidden="true"></span><span style="flex:none;display:inline-flex">${shape}</span><span class="cnpy-rvg-pt">${esc(it.title)}</span><span class="cnpy-rvg-pk">${it.isNew ? "New page" : "New version"}</span>
+  </button></div></div>`;
+}
+
+function groupCard(g: ReviewGroup, p: ReviewProps, sel: ReviewItem | null, leaving: Record<string, ReviewVerdict>): string {
+  const waiting = g.items.filter((it) => !leaving[it.id]);
+  const total = Math.max(p.groupTotals?.[String(g.id)] ?? 0, g.items.length);
+  const decided = total - waiting.length;
+  const open = p.groupsOpen?.[String(g.id)] === true;
+  // Every page of it has a verdict (Approve all, Reject all, or the last one decided): the card wears it and leaves.
+  const verdicts = new Set(g.items.map((it) => leaving[it.id]).filter(Boolean));
+  const groupVerdict = waiting.length === 0 && verdicts.size > 0 ? (verdicts.size === 1 ? [...verdicts][0] as ReviewVerdict : "promoted") : null;
+  const person = p.people?.find((x) => x.handle.toLowerCase() === (g.by ?? "").toLowerCase()) ?? null;
+  const by = g.by ? (person?.name || g.by).split(/\s+/)[0] : null;
+  const space = p.spaceNames?.[g.space] ?? g.space;
+  const meta = [pagesN(waiting.length || g.items.length), space ? `into ${space}` : "", by ? `by ${by}` : "", (g.at ? libraryWhen(g.at) : "")].filter(Boolean).join(" · ");
+  const selIn = sel !== null && g.items.some((it) => it.id === sel.id);
+  const approve = decided > 0 ? `Approve ${waiting.length} left` : `Approve all ${waiting.length}`;
+  const rows = g.items.map((it) => groupPageRow(it, g.depth[it.id] ?? 0, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("");
+  return `<div class="cnpy-rv-row" data-morph-key="rvg:${g.id}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${g.id}">
+    <div class="cnpy-rvg-in">
+      <div class="cnpy-rvg-head">
+        <span class="cnpy-rvg-ic" style="border-radius:7px">${UPLOAD}</span>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Import from ${esc(g.file)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-55);min-width:0">${g.by ? `<span style="flex:none;display:inline-flex">${personChip(person ? { handle: person.handle, name: person.name, color: person.color, avatar_url: person.avatar_url } : null, 16, g.by)}</span>` : ""}<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(meta)}</span></div>
+        </div>
+      </div>
+      <div class="cnpy-rvg-acts">
+        <button type="button" data-act="reviewGroupToggle" data-arg="${g.id}" class="cnpy-rvg-tog" aria-expanded="${open}"><span class="cnpy-rvg-chev" aria-hidden="true">${CHEV_R}</span>${open ? "Hide pages" : "Review one by one"}</button>
+        <span class="cnpy-rvg-done"${decided > 0 ? "" : " hidden"}>${decided} of ${total} reviewed</span>
+        <span style="flex:1"></span>
+        <button type="button" data-act="reviewGroupReject" data-arg="${g.id}" data-confirm-trigger class="cnpy-rejectbtn" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Reject all</button>
+        <button type="button" data-act="reviewGroupApprove" data-arg="${g.id}" class="cnpy-accentbtn" style="height:30px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap">${approve}</button>
+      </div>
+      <div class="cnpy-rvg-list" data-open="${open ? "1" : "0"}"><div class="cnpy-rvg-clip"><div data-morph-list>${open ? rows : ""}</div></div></div>
+    </div>
+    <span class="cnpy-rv-verdict" aria-hidden="true">${groupVerdict ? `${groupVerdict === "rejected" ? X_ICON : CHECK_ICON}${VERDICT_LABEL[groupVerdict === "rejected" ? "rejected" : "promoted"]}` : ""}</span>
+  </div></div></div>`;
+}
+
+const pagesN = (n: number): string => `${n} ${n === 1 ? "page" : "pages"}`;
+const ARROW_L = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>`;
+const ARROW_R = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
+
+/** The detail pane's bar for a page of an import: "Page 3 of 24 · handbook.zip", and the arrows to the page before
+ *  and after it in the group (wrapping). */
+export function importPageBar(it: ReviewItem, g: ReviewGroup, leaving: Record<string, ReviewVerdict>, total: number): string {
+  const waiting = g.items.filter((x) => !leaving[x.id] || x.id === it.id);
+  const at = waiting.findIndex((x) => x.id === it.id);
+  const prev = waiting[(at - 1 + waiting.length) % waiting.length];
+  const next = waiting[(at + 1) % waiting.length];
+  const pos = g.items.findIndex((x) => x.id === it.id) + 1 + Math.max(0, total - g.items.length);
+  const arrow = (to: ReviewItem | undefined, label: string, icon: string) =>
+    `<button type="button" data-act="reviewSelect" data-arg="${attr(to?.id ?? it.id)}" class="cnpy-iconbtn" aria-label="${label}"${waiting.length < 2 ? " disabled" : ""} style="width:28px;height:28px;border-radius:7px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">${icon}</button>`;
+  return `<div class="cnpy-rvg-bar-top" data-morph-key="rvb:${attr(it.id)}"><span style="font-size:12.5px;color:var(--fg-55);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Page ${pos} of ${total} · ${esc(g.file)}</span><span style="display:flex;gap:6px;flex:none">${arrow(prev, "Previous page", ARROW_L)}${arrow(next, "Next page", ARROW_R)}</span></div>`;
+}
+
+/** The detail pane with groups waiting but no page picked. */
+export const REVIEW_PICK = "Open a group and pick a page to read it here. Or approve a whole group at once.";
+
 export function reviewView(p: ReviewProps): string {
   const leaving = p.leaving ?? {};
   const waiting = p.items.filter((it) => !leaving[it.id]);
-  const inFilter = (it: ReviewItem) => p.filter === "all" || it.kind === p.filter;
+  const inFilter = (it: ReviewItem) => inReviewFilter(it, p.filter);
   const visible = p.items.filter(inFilter);            // the rows on screen, the leaving ones among them
   const visibleWaiting = waiting.filter(inFilter);
-  // Selection survives a filter that hides it (the detail keeps showing it);
-  // with nothing explicitly selected, default to the first visible item still waiting.
-  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting[0] ?? null;
+  const groups = importGroups(p.items);
+  // Selection survives a filter that hides it (the detail keeps showing it); with nothing explicitly selected, the
+  // first visible item still waiting that is NOT a page of an import (those are opened from their group by hand).
+  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => it.importId == null) ?? null;
   const counts: Record<ReviewFilter, number> | null = p.loading ? null : {
     all: waiting.length,
-    proposal: waiting.filter((it) => it.kind === "proposal").length,
-    decision: waiting.filter((it) => it.kind === "decision").length,
+    imports: waiting.filter((it) => it.importId != null).length,
+    agents: waiting.filter((it) => it.importId == null).length,
   };
 
   // The list is KEYED (`data-morph-list`): rows pair by `data-morph-key`, so a filter or a verdict
   // inserts and removes rows and leaves every other row the element it was. When the last row is
-  // leaving, the empty layout is already under it and rises as the row collapses — no jump.
+  // leaving, the empty layout is already under it and rises as the row collapses — no jump. An import's pages are
+  // ONE row: its group card, where its newest page would be.
+  const seen = new Set<number>();
+  const rows = visible.map((it) => {
+    if (it.importId == null) return reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null);
+    if (seen.has(it.importId)) return "";
+    seen.add(it.importId);
+    const g = groups.get(it.importId);
+    return g ? groupCard(g, p, sel, leaving) : "";
+  }).join("");
   const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
-    : `${visible.map((it) => reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null)).join("")}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
+    : `${rows}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
+  const g = sel?.importId != null ? groups.get(sel.importId) ?? null : null;
+  const detail = p.loading ? reviewDetailSkeleton()
+    : sel ? `${g ? importPageBar(sel, g, leaving, Math.max(p.groupTotals?.[String(g.id)] ?? 0, g.items.length)) : ""}${reviewDetail(sel, p.diffView, p.aiUi)}`
+    : waiting.length > 0 ? `<div style="${DETAIL_FRAME}"><p style="font-size:13px;line-height:1.5;color:var(--fg-55);max-width:52ch;margin:0 0 18px">${esc(REVIEW_PICK)}</p>${emptyShapes(reviewDetailShapes(2))}</div>`
+    : reviewQueueClear();
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
@@ -418,7 +568,7 @@ export function reviewView(p: ReviewProps): string {
     </div>
     <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${p.loading ? reviewDetailSkeleton() : sel ? reviewDetail(sel, p.diffView, p.aiUi) : reviewQueueClear()}
+      ${detail}
     </div>
   </div>`;
 }

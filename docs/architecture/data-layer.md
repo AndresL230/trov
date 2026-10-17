@@ -157,7 +157,8 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`) and `ai_dirty` (0058 —
   the router's stale scopes; nothing writes it yet),
   and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
-  `src/tools/tags.ts`; `feed-and-search.md` › Tags).
+  `src/tools/tags.ts`; `feed-and-search.md` › Tags), and the Docs Library's `doc_spaces`, `doc_space_owners`,
+  `doc_links`, `doc_imports` (0081_docs_library — `src/tools/spaces.ts`; `docs-library.md`).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
@@ -243,6 +244,7 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
 | `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself; exactly `/hosting/<provider>/callback` is a platform path in `src/data/gate.ts` |
 | Test connection's 401 on an install / OAuth credential (`src/integrations/probe.ts` → `endRefusedConnection`) | the admin's session tenant | `jobTenant(env, ctx)` — `systemRevocationDeleteStmts` deletes the secret |
+| the `doc_links` backfill `backfillDocLinks` (`src/platform/doc-links-backfill.ts`, from the daily cron) | `listActiveOrgIds`, resumed on `cron_cursor` job `doc_links_backfill` (`<org>\t<slug>`; `\u0001done` once every org was read — then it reads nothing) | `systemTenant(p, org, "system")` per org; at most 300 pages read (and 60 queries) per invocation (`docs-library.md` › Links) |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every

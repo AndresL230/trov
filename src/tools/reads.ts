@@ -3,6 +3,8 @@ import { tagsOfItems } from "./tags";
 import { isFeedImportance, type FeedImportance } from "@shared/ai-core";
 import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
+import { resolveSpaceAlias, type DocPageDTO } from "@shared/docs-core";
+import { readDocPage } from "./doc-tree";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -37,18 +39,22 @@ export async function get_doc(
 export async function get_doc_page(
   ctx: TenantContext,
   slug: string
-): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[] } | null> {
+): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[]; page: DocPageDTO } | null> {
   const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
   if (!doc) return null;
-  const versions = await all<DocVersionMetaRow>(
-    ctx,
-    `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence
-       FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
-    ctx.orgId,
-    slug
-  );
-  const tags = (await tagsOfItems(ctx, "doc", [slug])).get(slug) ?? [];
-  return { doc, versions, tags };
+  const [versions, tagMap, page] = await Promise.all([
+    all<DocVersionMetaRow>(
+      ctx,
+      `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence, parent_slug, import_id, import_path
+         FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
+      ctx.orgId,
+      slug
+    ),
+    tagsOfItems(ctx, "doc", [slug]),
+    // The doc page (the tree PR of 0081_docs_library): its place in the tree, its links both ways, the rail.
+    readDocPage(ctx, doc),
+  ]);
+  return { doc, versions, tags: tagMap.get(slug) ?? [], page };
 }
 
 /** One version of a doc, body included (`GET /doc/:slug/versions/:version`) — read only when a
@@ -77,11 +83,15 @@ export async function list_doc_tree(ctx: TenantContext, section?: string): Promi
   }));
 }
 
-export async function list_docs(ctx: TenantContext, section?: string): Promise<DocRow[]> {
-  if (section) {
-    return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section);
-  }
-  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? ORDER BY slug ASC`, ctx.orgId);
+/** MCP `list_docs`: every doc with its body, optionally narrowed to a section and/or a space (a space's slug or an
+ *  alias — shared/docs-core.ts SPACE_ALIASES; an unknown space matches nothing, never a guess). */
+export async function list_docs(ctx: TenantContext, section?: string, space?: string): Promise<DocRow[]> {
+  const clauses: string[] = [];
+  const params: unknown[] = [ctx.orgId];
+  if (section) { clauses.push("section = ?"); params.push(section); }
+  const sp = resolveSpaceAlias(space);
+  if (sp) { clauses.push("space = ?"); params.push(sp); }
+  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ?${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
 }
 
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
@@ -195,7 +205,20 @@ export interface ProposalRow {
   created_at: string;    // doc_versions.created_at (when the proposal was staged)
   stagedBody: string;    // doc_versions.body (the proposed body)
   promotedBody: string;  // docs.body (the current live body)
+  parent_slug: string | null;       // docs.parent_slug (where the page sits in its space's tree)
+  // The Markdown import the version came from (0081_docs_library; Review groups by it) — all null otherwise.
+  import_id: number | null;
+  import_path: string | null;
+  import_file_name: string | null;
+  import_by: string | null;
+  import_at: string | null;
 }
+
+/** Owner ruling RV3: an import's staged version with a newer staged change of the same page on top (an agent's) is
+ *  not offered on its own — Review shows the page with the newer change (Approve all leaves it alone too, runs.ts).
+ *  Over `doc_versions v`; the sidebar's badge counts with the same clause. */
+export const NOT_SUPERSEDED_IMPORT = `NOT (v.import_id IS NOT NULL AND EXISTS (SELECT 1 FROM doc_versions w
+  WHERE w.org_id = v.org_id AND w.slug = v.slug AND w.status = 'staged' AND w.version > v.version))`;
 
 export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]> {
   return all<ProposalRow>(
@@ -204,10 +227,14 @@ export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]>
             v.summary AS summary, v.created_by AS author, v.confidence AS confidence, v.status AS status,
             v.change_kind AS change_kind, v.low_confidence AS low_confidence, v.base_version AS base_version,
             d.current_version AS current_version, v.created_at AS created_at,
-            v.body AS stagedBody, d.body AS promotedBody
+            v.body AS stagedBody, d.body AS promotedBody, d.parent_slug AS parent_slug,
+            v.import_id AS import_id, v.import_path AS import_path, i.file_name AS import_file_name,
+            i.started_by AS import_by, i.started_at AS import_at
        FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
-      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version
+       LEFT JOIN doc_imports i ON i.org_id = ? AND i.id = v.import_id
+      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version AND ${NOT_SUPERSEDED_IMPORT}
       ORDER BY v.created_at DESC, v.id DESC`,
+    ctx.orgId,
     ctx.orgId,
     ctx.orgId
   );
@@ -632,7 +659,8 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
   const pointerLimit = Math.trunc(Math.min(Math.max(req.pointer_limit ?? 20, 0), 100));
   const includeStaged = req.include_staged ?? false;
   const section = req.section;
-  const space = req.space;
+  // A space's slug or an alias (`technical` → `engineering`); an unknown one matches no doc.
+  const space = resolveSpaceAlias(req.space) ?? undefined;
   // A section/space filter only makes sense for docs (feed/adrs carry neither),
   // so those types drop out when either is set — mirroring the old engine.
   const docsOnly = section !== undefined || space !== undefined;

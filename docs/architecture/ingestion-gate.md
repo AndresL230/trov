@@ -9,7 +9,8 @@
 per-type **gate** functions in `src/consumer.ts` (`ingestFeedEntry` / `ingestDocProposal` /
 `ingestAdrDraft` / `ingestEvent` / `ingestRepoEvent`). The ingestion entry points are thin
 adapters over these: `/ingest` and the MCP `record_session` batch tool (both via `consume`), the
-per-entry MCP write tools (`append_feed`, `propose_doc_update`), and the GitHub webhooks (`/webhook/github/:hookId`,
+per-entry MCP write tools (`append_feed`, `propose_doc_update`), a person's Markdown import (`POST /imports/:id/pages`,
+`src/imports/runs.ts` — every page into `ingestDocProposal`; see below), and the GitHub webhooks (`/webhook/github/:hookId`,
 the App's `/webhook/github/app` and the legacy `/webhook/github` — all through `captureDelivery`), which
 call `ingestEvent` (into `events`, for My Work) AND, independently, `ingestRepoEvent` (into `repo_events`,
 for the Repo dashboard — see below) off the SAME verified delivery. The gate **reconciles**, not just routes:
@@ -26,6 +27,38 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   flag (`low_confidence = 1`) for human scrutiny. Only low-conf new slugs go directly to triage.
 - Out-of-vocab **section** → routed to `needs_triage` (nothing is guessed). Sections are fixed
   (`shared/vocabulary.ts` `SECTIONS`).
+- **A doc's space is one of the ORGANIZATION's Library spaces** (`0081_docs_library`; `docs-library.md`). The
+  proposal's `space` resolves through `shared/docs-core.ts` `SPACE_ALIASES` (`technical` → `engineering`), then
+  `src/tools/spaces.ts` `spaceState`: a space that was SENT must be live — **unknown or archived → `needs_triage`**
+  (`unknown space: <slug>` / `archived space: <slug>`), never guessed. With no space, a NEW doc goes to
+  `engineering` only while that space is live (else triage); an existing doc keeps its own space either way — a
+  proposal never moves a doc, and an edit of a page in an archived space still stages. Unplaced › assign passes
+  the space the person picked (any live one) back through this same check. A person's `POST /docs/propose`
+  refuses an unknown or archived space with a 400 instead of sending their page to triage.
+- **A doc's place in its space's page tree** (`docs-library.md` › The page tree). A proposal may carry
+  `parent_slug` (contract `DocProposal`, MCP `propose_doc_update`, Ask's mirror, a person's `/docs/propose`):
+  `src/tools/doc-tree.ts` `checkParent` runs the tree's rules (`shared/docs-tree-core.ts` `planMove` "into", in the
+  page's OWN space). A valid parent is taken by a **new** doc's row at insert (it is unpromoted, so it shows "Not yet
+  approved" under its parent; its rank is the plan's unless the siblings needed a renumber — the gate never writes
+  another page's row) and recorded on every version (`doc_versions.parent_slug`); an **existing** doc moves under it
+  only when that version is promoted, and only if it is still a valid place then (else the tree is left as it is).
+  An invalid parent (missing, another space, the page itself, under it, too deep) is **ignored** — the page stages
+  anyway and the result carries `parent_ignored: { parent_slug, reason }`. It is never a reason to triage.
+- **Server-only options.** `ingestDocProposal(ctx, proposal, author, ledger?, opts?)`: `opts` is
+  `{ importId?, importPath? }` (`DocIngestOptions`), written to `doc_versions.import_id` / `import_path` — the
+  Markdown import run a version came from and the file's path in it. It is NOT part of the contract: no agent or
+  person can set it (a proposal's own `import_id` field is dropped by the schema). Only the import routes pass it.
+- **A Markdown import is an ingestion path INTO this gate, never a second surface** (`docs-library.md` › Import).
+  `POST /imports/:id/pages` (cookie only — a person's import, recorded as that person) re-validates each page
+  against the run's server-side plan, prepares its body (the shared `prepareBody`: the first heading out as the
+  title, relative links → `[[slug]]`, images → the run's uploaded `/img/<sha256>`), then calls
+  `ingestDocProposal` with `confidence: "high"`, section `reference`, the run's space, the planned `parent_slug`,
+  the ledger `{ sessionId: "import:<run id>", itemIndex: <the page's index in the plan> }` — so a retried batch is
+  dropped by the replay ledger like any re-POST — and the server-only `{ importId, importPath }`. Every check above
+  applies unchanged: an archived space triages, an identical body is `unchanged`, an image that is not one of the
+  org's is refused (the import drops an image it could not upload to its alt text first, so that is rare). Every
+  page STAGES; nothing an import sends is live until a person approves it (one by one, or the import's "Approve
+  all" in Review, which runs `promote_doc` per page).
 - **Feed tags are the ORGANIZATION's own list** (`0056_org_tags`; `feed-and-search.md` › Tags), read inside
   `ingestFeedEntry` through `sortAgentTags` (`src/tools/tags.ts`) — never a constant. An agent's tag is
   normalized (`normalizeTagName`: case, spaces, underscores) and sorted: **on the list and live** → written
@@ -111,7 +144,9 @@ stay direct in the promote class.
 Agents only ever stage; humans confirm via **authenticated HTTP routes that are NEVER MCP tools**:
 
 - Docs: `propose_doc_update` stages a `doc_versions` row (status `staged`); `POST /doc/:slug/promote`
-  copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain).
+  copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain). The promote is
+  ONE batch: the version's status, its open risk superseded, the live body, the page's `doc_links` rebuilt from that
+  body (`[[slug]]` links, `shared/docs-links-core.ts`), and the version's requested parent applied when still valid.
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
   and body remain (non-destructive). Idempotent.
 - Doc drift (#161, `src/ai/doc-drift.ts`; `ai.md` › Doc drift): when Trov finds a doc that recent feed entries show

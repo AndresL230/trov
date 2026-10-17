@@ -114,11 +114,10 @@ describe("RELEASES — the data", () => {
 
   it("keeps the deploy steps of the batches not yet deployed (Unreleased, then 0.11): every migration, the App events, the plugin", () => {
     const ops = (v: string) => findRelease(v)!.ops!.join(" ");
+    // Unreleased is the Docs Library batch: its one migration and the plugin it needs.
     if (RELEASES[0].unreleased) {
-      for (const m of ["0070_repo_apps", "0071_repo_settings", "0072_repo_scans", "0073_commit_paths", "0074_releases", "0075_identities_person_nocase"]) {
-        expect(ops("unreleased")).toContain(m);
-      }
-      expect(ops("unreleased")).toMatch(/deployment, release, create and workflow_job/);
+      expect(ops("unreleased")).toContain("0081_docs_library");
+      expect(ops("unreleased")).toMatch(/plugin 0\.10\.1/);
     }
     // 0.11 (formerly 0.34) is #178 cut together with #186 / #187: its own migrations to 0068, the App events, the plugin.
     expect(ops("0.11")).toMatch(/0058_server_ai/);

@@ -13,7 +13,11 @@ itself looks fine and the bug is easy to miss.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Library home
+(`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
+the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
+the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -119,9 +123,10 @@ a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block
 a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
 repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
 `tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
-reads) must join the key. Results are strings, so a cached one cannot be mutated. The Docs tree computes no
-outline: `GET /docs` sends each doc's outline instead of its body (`shared/doc-outline.ts`; `feed-and-search.md` ›
-The Docs screen's reads), and `web/src/outline.ts` only re-exports `slugifyHeading` for the reader's heading ids.
+reads) must join the key. Results are strings, so a cached one cannot be mutated. The doc page's `[[slug]]` links are
+substituted into the body BEFORE it renders (`doc-page.ts` `linkedBody`), so a link's title or broken state is part of
+the body the cache is keyed on; its On this page is `extractOutline` over the same body, and `web/src/outline.ts` only
+re-exports `slugifyHeading` for the heading ids.
 `sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
 
 ## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
@@ -563,7 +568,15 @@ animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` h
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`trov.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
+sticks and is what persists (`trov.navOpen`). Only the **Library** owns a sub-page list (`NAV_GROUPS`): one row
+per live space (its 14px tile and name, from the `GET /spaces` read at boot), then "No spaces yet" with a hollow
+row, the **Imports** row (Imports history; its accent badge `.cnpy-sub-badge` counts the imports in progress and
+`data-n="0"` hides it) and the action row (`.cnpy-sub-acts`: an admin's "+ New space", and everyone's "Import" with the
+space on screen preset) — all ALWAYS emitted and shown by `hidden` / attributes, so the read landing, a run starting or
+the viewer's role never restructures the rail; the space rows follow the data, and each is a file-drop target
+(`data-drop-space`, "Drop to import" below). Its label goes to Library home, its chevron folds
+the group, and a space's home, a doc in it and New page in it light that space (the Library was Docs, with a fixed
+Technical / Product pair, until 2026-10; a stored `docs` key is read as `library`; docs-library.md › The screens);
 Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
 and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
@@ -687,9 +700,9 @@ several verdicts 90ms apart. Tests: `test/render.review.test.ts` (the keyed list
 markup, the CSS and its reduced-motion rule, `REVIEW_EXIT_MS` against `--fx-fast`).
 
 **Review's page** is named once, by the app header (as every screen is: `org-ui.ts` rule 1); the
-list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Proposals / Decisions is a
+list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Imports / Written by agents is a
 `segmented()` switch (one list, three views of it; not a tab bar, since nothing below changes
-section) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
+section; "Written by agents" is everything not from an import, drafted decisions included) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
 while the queue is still being read). Unified / Side by side / Rendered is a second one; the diff
 body under it is keyed by mode (`diff:<mode>`) and the detail body by item (`rvd:<id>`), so a
 switch replaces only that part. **Rendered** (`web/src/review-rendered.ts`) is the Docs reader's
@@ -707,6 +720,39 @@ quotes and let the rest be parsed as elements), only text tokens are wrapped, no
 kept, and markup the tokenizer cannot account for refuses the merge (the two blocks are then shown whole).
 More than 60% of the words changed is two texts, not one edited: also shown whole. A strike is set ONCE, on
 the removed box — never again on an inline child, which draws a second line.
+
+**An import's pages are ONE row of the list** (`review.ts` `importGroups` / `groupCard`, keyed `rvg:<import id>`): the
+card with its upload tile, "Import from ‹file›", "‹N› pages · into ‹Space› · by ‹Name› · ‹when›", Review one by one /
+Hide pages (its own keyed list of page rows, `rvp:<id>`, indented by the `parent_slug` chain inside the group — the
+queue lists newest first, so a group's tree order is the queue's reversed), "‹d› of ‹N› reviewed" (the most pages the
+group held this session, `state.reviewGroupTotals`), Reject all (a red `confirmModal` in the design's words) and Approve
+all ‹N› / Approve ‹k› left. A whole-group verdict is the same exit: every page gets its `reviewLeaving` entry at once,
+so the card wears the verdict and collapses; the cookie routes `approve-all` / `reject-all` are called again while
+`remaining` > 0 (`main.ts` `reviewGroupVerdict`), and a failure before anything was decided puts the card back. A page
+of a group is picked by hand (the default selection is the first item NOT from an import); the detail pane then has the
+"Page ‹i› of ‹N› · ‹file›" bar with the arrows (wrapping within the group), and its byline the kind and "from ‹path›".
+
+## The import wizard — steps on one page, a run that is not the screen's (`web/src/import.ts`, `import-actions.ts`)
+
+A flow of steps inside an org screen is ONE `data-morph`ed page whose step is a keyed part (`imp:where`, `imp:files`,
+`imp:preview`, `imp:progress`, `imp:done`): the stepper (`importStepper`, an `<ol>` with `aria-current="step"`, done
+steps a check; the progress and done cards both sit on the last step) is patched in place and only the step's body is
+replaced. The step is STATE, not route (`#import[/<space>]` carries the space only, and is left out of `pageKey`), so a
+step never replays the screen's entrance. Work that outlives the screen lives in the controller's module scope, never
+in the view: the run (`job` in `import-actions.ts`) keeps going on any screen, and `state.imp.run` is the one thing the
+screens read (the progress card, the sidebar's badge via `importsBadge`, Imports history's current file); a tab that
+is closed mid-run asks first (`beforeunload`). The files' TEXT is never state: the controller keeps it beside the run,
+and the state holds only the manifest (path, size, kind, first heading). Under the preview the wizard is blank
+(`previewState` resets `state.imp`). Tests: `test/render.import.test.ts`, `test/import-actions.test.ts`.
+
+**Drop to import** (`web/src/import-drop.ts`) is ONE overlay node on `<body>` (outside the mount, its theme copied from
+the app's root), placed over `#cnpy-main` and filled on each `dragover` — a drag never repaints the app. Over a space's
+page (its home, a doc, New page) it veils the main column with the breathing dashed edge; over a sidebar space row it
+lights the row (`.is-drop`, a class toggled on the living element) and floats a pill beside it, with a lighter veil.
+It goes when the `dragover`s stop (no `dragleave` is reliable across children). What a drag may carry is its MIME
+type (`DROP_TYPES`, all a drag shows); what a drop takes is the file NAMES (`.md`, `.markdown`, `.zip`), and a refused
+one is a toast. Never on the import screen (its Files step has its own drop zone). The motion is off under reduced
+motion.
 
 ## Personal Settings — a bento whose tiles are as tall as what they hold
 
@@ -947,7 +993,10 @@ Polaris Badge, the 2026 Atlassian lozenge, Linear). There is no `statusBadge` an
 3. **A small shape and a sentence-case word** (`stateMark`) for a state worth flagging: each meaning has its
    own shape (dot = fine, ring = waiting, triangle = warning, diamond = failing, square = stopped, check =
    settled by a person) so it reads without colour; the hue is on the shape and the word stays in `--fg-70`
-   for contrast. Workflow tables: `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`, `LOW_CONFIDENCE`. The
+   for contrast. Workflow tables: `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`, `LOW_CONFIDENCE`, and the import's
+   `IMPORT_MARK` (a run: In progress = the half ring, Done = the check, Done with skipped files = the triangle, Failed =
+   the red diamond, Stopped / Cancelled = the faded cross; `importRunMark`) and `IMPORT_FLAG` (a title that exists, in
+   the Preview: New version = the triangle, Skipped = the faded cross, Renamed = a ring; `importFlagMark`). The
    screens whose states are not a workflow (settings, connections, billing, the Repo verdicts, the platform
    pages) say what a state MEANS instead — `kindMark(word, kind)` over `STATE_KIND` (good / waiting / warn /
    bad / stopped / done / off) — so "Error" or "Suspended" looks the same on every page and no page picks

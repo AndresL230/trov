@@ -209,12 +209,19 @@ export function listDocMeta(): Promise<DocMetaRow[]> {
   return getJson<{ docs: DocMetaRow[] }>("/docs?fields=meta").then((r) => r.docs);
 }
 
-/** One doc for the reader: its live body, its tags, and its versions WITHOUT their bodies. */
-export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }> {
-  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
+/** One doc for its page: its live body, its tags, its versions WITHOUT their bodies, and `page` — its place in its
+ *  space's tree, its links both ways and the rail (shared/docs-core.ts `DocPageDTO`). */
+export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocsT.DocPageDTO }> {
+  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocsT.DocPageDTO }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
     if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
     throw e;
   });
+}
+/** Move a page in its space's tree (`POST /doc/:slug/move`, a person's write): into / before / after another page of
+ *  the same space, or to the end of the top level. A refusal is an ApiError whose message is its code (`cycle`,
+ *  `too_deep`, `self`, `other_space`, `archived`, `not_found`, `invalid`). */
+export function moveDoc(slug: string, target: DocsT.DocMoveBody): Promise<DocsT.DocMoveResult> {
+  return postJson<DocsT.DocMoveResult>(`/doc/${encodeURIComponent(slug)}/move`, target);
 }
 /** One version of a doc with its body — read only when a version's text is shown. */
 export function getDocVersion(slug: string, version: number): Promise<DocVersionRow> {
@@ -688,6 +695,15 @@ export interface StagedProposal {
   created_at: string;
   stagedBody: string;
   promotedBody: string;
+  /** The page's parent in its space's tree (null = the top level). */
+  parent_slug: string | null;
+  /** The Markdown import this version came from (Review groups by it), the file's path in it, and the run's file
+   *  name, starter and start; all null for a version an agent or a person wrote. */
+  import_id: number | null;
+  import_path: string | null;
+  import_file_name: string | null;
+  import_by: string | null;
+  import_at: string | null;
   /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
   ai?: AiSuggestion[];
   /** "Flagged in Ask" on it: each reason and how often (never the thread). Absent when nobody flagged it. */
@@ -759,7 +775,8 @@ export function rejectAdr(id: number): Promise<{ ok: true }> {
 export function discardTriage(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/discard`);
 }
-export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: "technical" | "product"; tags?: string[]; }
+/** `space`: a live space's slug (the Library's), or none (the gate's default space). */
+export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: string; tags?: string[]; }
 export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/assign`, target);
 }
@@ -1079,8 +1096,10 @@ export async function usePrompt(slug: string): Promise<{ use_count: number; last
   return { use_count: r.use_count, last_used_at: r.last_used_at };
 }
 /** Stage a version-1 doc proposal through the gate (lands in Review). */
-export async function proposeDoc(body: DocProposeBody): Promise<StagedProposal> {
-  return (await postJson<{ ok: true; proposal: StagedProposal }>("/api/docs/propose", body)).proposal;
+/** Stage a person's new page (the gate). `parent_ignored`: the parent asked for could not take it — staged at the top level. */
+export async function proposeDoc(body: DocProposeBody): Promise<{ proposal: StagedProposal | null; slug: string; parent_ignored?: { parent_slug: string; reason: string } }> {
+  const r = await postJson<{ ok: true; proposal: StagedProposal | null; slug: string; parent_ignored?: { parent_slug: string; reason: string } }>("/api/docs/propose", body);
+  return { proposal: r.proposal, slug: r.slug, ...(r.parent_ignored ? { parent_ignored: r.parent_ignored } : {}) };
 }
 export type { HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody };
 
@@ -1232,3 +1251,76 @@ export function undoTagRun(name: string): Promise<{ ok: true; removed: number }>
 export function setTagSuggestions(enabled: boolean): Promise<{ ok: true; enabled: boolean }> { return orgSend("PUT", "/api/tag-settings", { enabled }); }
 /** Replace the tags of one feed entry, doc or decision (any member). */
 export function setItemTags(type: TagT.TagItemType, id: string, tags: string[]): Promise<{ ok: true; tags: string[] }> { return orgSend("POST", "/api/item-tags", { type, id, tags }); }
+
+// ── the Docs Library's spaces (`/spaces…`, docs/architecture/docs-library.md) ──
+// Cookie-only. A refusal is `{ error, message, field? }` — an `OrgApiError` (code, sentence, field).
+import type * as DocsT from "@shared/docs-core";
+const spacePath = (slug: string, rest = ""): string => `/spaces/${encodeURIComponent(slug)}${rest}`;
+/** Library home and the sidebar's Library group: the live spaces in order, an admin's archived ones, the pages changed last. */
+export function getLibrary(): Promise<DocsT.LibraryDTO> { return getJson<DocsT.LibraryDTO>("/spaces"); }
+/** One space's home: the space and every page in it (staged-only ones too). Unknown → `NotFound`. */
+export function getSpaceHome(slug: string): Promise<DocsT.SpaceHomeDTO> {
+  return getJson<DocsT.SpaceHomeDTO>(spacePath(slug)).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
+    throw e;
+  });
+}
+/** Create a space (an admin): the slug is derived from the name on the server, and the creator is its only owner. */
+export function createSpace(body: { name: string; icon: DocsT.SpaceIcon; color: DocsT.SpaceColor; description?: string }): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("POST", "/spaces", body);
+}
+/** Change a space: its name, icon and colour (an admin), its description (an admin or an owner). */
+export function editSpace(slug: string, body: { name?: string; icon?: DocsT.SpaceIcon; color?: DocsT.SpaceColor; description?: string }): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("PUT", spacePath(slug), body);
+}
+/** Replace a space's owners (an admin or an owner): handles of the org's members. */
+export function setSpaceOwners(slug: string, owners: string[]): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("PUT", spacePath(slug, "/owners"), { owners });
+}
+/** Put a space right after `after` in the Library's order (null = first). An admin. */
+export function moveSpace(slug: string, after: string | null): Promise<{ ok: true; spaces: DocsT.SpaceDTO[] }> {
+  return orgSend("POST", spacePath(slug, "/move"), { after });
+}
+/** Archive a space (an admin): soft — it leaves the sidebar and the Library, and its slug stays reserved. */
+export function archiveSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/archive")); }
+/** Restore an archived space (an admin). 409 `name_taken` when a live space has its name now. */
+export function restoreSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/restore")); }
+
+// ── Markdown imports (`/imports…`, docs/architecture/docs-library.md › Import) ──
+// Cookie-only, any member. The browser unzips and sends the files in batches; the Worker re-validates each one
+// against the run's manifest and re-runs the planner. A refusal is `{ error, message }` — an `OrgApiError`.
+import type * as ImpT from "@shared/docs-import-core";
+const importPath = (id: number, rest = ""): string => `/imports/${id}${rest}`;
+/** Imports history, newest first, and how many are in progress. */
+export function listImports(): Promise<ImpT.ImportsDTO> { return getJson<ImpT.ImportsDTO>("/imports"); }
+/** One run. Unknown → `NotFound`. */
+export function getImport(id: number): Promise<{ run: ImpT.ImportRunView }> {
+  return getJson<{ run: ImpT.ImportRunView }>(importPath(id)).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(String(id));
+    throw e;
+  });
+}
+/** Start a run (takes the org's one import lock): the manifest and the conflict choices; answers the run and the
+ *  server's plan. 409 `import_running` while another import is in progress. */
+export function startImport(body: ImpT.ImportStartBody): Promise<ImpT.ImportStartAnswer> { return orgSend("POST", "/imports", body); }
+/** Upload one of the run's images (multipart: `path`, `file`); the sha256 is computed by the server. */
+export async function uploadImportImage(id: number, path: string, file: Blob): Promise<ImpT.ImportImageAnswer> {
+  const fd = new FormData();
+  fd.set("path", path);
+  fd.set("file", file, path.slice(path.lastIndexOf("/") + 1) || "image");
+  const res = await call(importPath(id, "/images"), { method: "POST", body: fd });
+  if (!res.ok) throw await orgRefusal(res);
+  return res.json() as Promise<ImpT.ImportImageAnswer>;
+}
+/** Send up to `IMPORT_PAGES_PER_BATCH` pages (path + text). A retried batch replays: nothing is staged twice. */
+export function sendImportPages(id: number, pages: ImpT.ImportPagesBody["pages"]): Promise<ImpT.ImportPagesAnswer> {
+  return orgSend("POST", importPath(id, "/pages"), { pages });
+}
+/** End the run: done / partial / failed by what reached Review — or, with `cancel`, stop it (pages already sent stay in Review). */
+export function finishImport(id: number, body: ImpT.ImportFinishBody = {}): Promise<ImpT.ImportFinishAnswer> {
+  return orgSend("POST", importPath(id, "/finish"), body);
+}
+/** Review › an import's group: approve its waiting pages (at most `IMPORT_APPROVE_PER_CALL` a call — repeat while `remaining`). */
+export function approveImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/approve-all"), {}); }
+/** Review › an import's group: reject its waiting pages (soft; at most `IMPORT_REJECT_PER_CALL` a call — repeat while `remaining`). */
+export function rejectImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/reject-all"), {}); }

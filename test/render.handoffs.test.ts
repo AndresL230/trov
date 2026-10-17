@@ -4,6 +4,8 @@ import { describe, it, expect } from "vitest";
 import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff, newHandoffView, blankHandoff, readingListBlock, READING_RISE_MS } from "../web/src/handoffs";
 import { promptDetailView, promptLibraryView, filterPrompts, promptEditorView, blankPromptDraft } from "../web/src/prompts";
 import { newDocView, blankDoc } from "../web/src/newdoc";
+import { initialDropdownUi } from "../web/src/dropdown";
+import type { SpaceDTO } from "@shared/docs-core";
 import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
 import { canDeletePrompt, render, initialState } from "../web/src/render";
 import confirmSrc from "../web/src/confirm.ts?raw";
@@ -36,6 +38,8 @@ const h = (over: Partial<HandoffView> = {}): HandoffView => ({
   context: { repo: "SaplingLearn/sapling", branch: "fix/quiz", task: "Get failures under 1%", done: ["Parser"], next: ["Prompt", "Eval"], files: ["a.py"] },
   ...over,
 });
+
+const ENGINEERING = { slug: "engineering", name: "Engineering", icon: "braces", color: "#525cc3", description: "", sort_rank: 1024, created_at: "t", created_by: "system", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 } as SpaceDTO;
 
 describe("handoffs — numeric ids", () => {
   it("list rows carry the numeric id as data-arg and render #12", () => {
@@ -71,10 +75,10 @@ describe("handoffs — numeric ids", () => {
 });
 
 describe("new doc — the FROM HANDOFF banner", () => {
-  const spaces = [{ key: "technical", label: "Technical" }];
+  const spaces = [ENGINEERING];
   it("shows only when promoted from a handoff, linking back to it", () => {
-    expect(newDocView({ draft: blankDoc("technical", ""), spaces, sections: ["reference"] })).not.toContain("FROM HANDOFF");
-    const html = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces, sections: ["reference"] });
+    expect(newDocView({ draft: blankDoc("engineering"), spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() })).not.toContain("FROM HANDOFF");
+    const html = newDocView({ draft: { ...blankDoc("engineering"), from: 12 }, spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() });
     expect(html).toContain("FROM HANDOFF");
     expect(html).toContain('data-act="openHandoff" data-arg="12"');
   });
@@ -190,12 +194,14 @@ describe("surface cards — handoffs, prompts, new doc", () => {
     expect(lib).not.toMatch(OLD_CARD);
   });
 
-  it("the three form cards (prompt editor, new handoff, new doc) are surfaces", () => {
+  it("the form cards (prompt editor, new handoff) are surfaces; New page's side panel is one too", () => {
     const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"';
     const editor = promptEditorView({ draft: blankPromptDraft(), takenSlugs: [] });
     const handoff = newHandoffView({ draft: blankHandoff(), me: "AndresL230", persons });
-    const doc = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces: [{ key: "technical", label: "Technical" }], sections: ["reference"] });
-    for (const html of [editor, handoff, doc]) {
+    const doc = newDocView({ draft: { ...blankDoc("engineering"), from: 12 }, spaces: [ENGINEERING], pages: [], sections: ["reference"], dd: initialDropdownUi() });
+    expect(doc).toContain('class="cnpy-surface cnpy-nd-side"');
+    expect(doc).not.toMatch(OLD_CARD);
+    for (const html of [editor, handoff]) {
       expect(html).toContain(FORM);
       expect(html).not.toMatch(OLD_CARD);
       expect(html).not.toContain(OLD_TINT);

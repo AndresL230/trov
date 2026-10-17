@@ -230,6 +230,10 @@ artifacts repository under the ONE visibility rule (a private page reaches only 
 is `draft` for a draft, `live` once published or ratified. **A ticket is deliberately NOT a query type**:
 `0024_tickets.sql`'s `tickets_fts` stays populated, but it backs quick search (below) and the Tickets screen,
 never the `query` / `/search` fan-out — over MCP tickets are read with `list_tickets` / `get_ticket`.
+**Spaces (0081_docs_library; `docs-library.md`).** `query`'s `space` (MCP, Ask and `GET /search?space=`) and MCP
+`list_docs`'s `space` take a Library space's slug or an alias — `technical` still means `engineering`
+(`shared/docs-core.ts` `resolveSpaceAlias`, the ONE map); an unknown space matches no doc (never a guess, never an
+error). A `section` or `space` filter keeps `query` to docs. MCP `list_spaces` names the org's live spaces.
 MCP `get_doc` is the exact-slug fetch (all versions with their bodies + live body) and MCP `list_docs` every doc
 with its body — agents' contract, unchanged by the screen's leaner reads below; `list_tickets` / `get_ticket` /
 `ticket_badge` are the queue's read projections (no N+1 — grouped queries keyed by ticket id). The
@@ -239,13 +243,14 @@ Roadmap — the sprint's tickets only, never the GitHub issue cache.
 **The Docs screen's reads send no body they do not show** (`src/tools/reads.ts`, cookie routes in
 `src/routes.ts`, tests `test/docs.payload.test.ts`). Each is a 503 `{ error }` on a failed read, never a 500.
 - `GET /docs` (`list_doc_tree`, `DocListRow`) — every doc's metadata plus its H2/H3 `outline`, built on the
-  Worker from the body by `extractOutline` (`shared/doc-outline.ts`), never the body: the tree draws `doc.outline`
-  as it arrives. The reader's heading ids come from the same `slugifyHeading` + de-dup (`web/src/markdown.ts`),
+  Worker from the body by `extractOutline` (`shared/doc-outline.ts`), never the body. (The web's docs pane no longer
+  reads it — it draws a space's tree from `GET /spaces/:slug`, `docs-library.md`; the route stays for its readers.) The reader's heading ids come from the same `slugifyHeading` + de-dup (`web/src/markdown.ts`),
   so an outline link always lands. `?section=` narrows it; `?fields=meta` (My Work's Docs you own) drops the
   outline too. On the dev seed (15 docs) the list went from 119.9 KB to 12.4 KB.
-- `GET /doc/:slug` (`get_doc_page`) — the doc with its live body, its tags, and every version's metadata
-  (`DocVersionMetaRow`: number, status, summary, author, `change_kind`, …) WITHOUT its body; the reader shows
-  only the live text and the history's rows (dev seed: 250 KB → 125 KB over all 15 docs).
+- `GET /doc/:slug` (`get_doc_page`) — the doc with its live body, its tags, every version's metadata
+  (`DocVersionMetaRow`: number, status, summary, author, `change_kind`, …) WITHOUT its body, and `page` — its place
+  in its space's tree, its links both ways and the rail (`docs-library.md` › The doc page's read; for a page never
+  approved, its newest staged body) (dev seed: 250 KB → 125 KB over all 15 docs before `page`).
 - `GET /doc/:slug/versions/:version` (`get_doc_version`, web `getDocVersion`) — ONE version, body included, for
   a view that shows a version's text (none does yet); a version that is not a positive integer is a 400, an
   unknown doc or version (or another org's) a 404. Review's proposals keep their own joined read

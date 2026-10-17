@@ -51,7 +51,7 @@ describe("route — #ask and #ask/<id>", () => {
 });
 
 describe("sidebar — the Trov row", () => {
-  const props = { collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table" as const, roadmapTab: "timeline" as const, docSpace: "technical", docSpaces: [],
+  const props = { collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table" as const, roadmapTab: "timeline" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false,
     counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
   it("sits in Workspace right after My Work, lit on the Ask screen", () => {
     const html = sidebarView({ ...props, screen: "ask" });

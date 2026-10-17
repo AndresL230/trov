@@ -7,12 +7,15 @@
 // called, which categories exist) as VALUES at runtime, and `web/` importing a
 // module that evaluates `z.object(...)` at load time drags the whole of zod into
 // the browser bundle (+70 kB minified, measured). Every other web ↔ shared seam is
-// type-only for exactly that reason. This module has no imports at all, so the
-// SPA gets the one shared definition of the status machine for free.
+// type-only for exactly that reason. This module imports only the zod-free
+// `placement-core` (the shared rank math), so the SPA gets the one shared
+// definition of the status machine for free.
 //
 // The status machine is declared ONCE, here, and enforced everywhere: the routes
 // (`transition_ticket`), the MCP reads, and the detail screen's transition buttons
 // all read the same table.
+
+import { placeAmong, RANK_STEP } from "./placement-core";
 
 // ── controlled vocabulary (must match the CHECK constraints in 0024_tickets.sql,
 //    and for statuses 0033_ticket_testing_rank.sql) ─
@@ -113,7 +116,7 @@ export function boardOrder(a: BoardOrderKey, b: BoardOrderKey): number {
 }
 
 /** Spacing between renumbered positions, so later drops have room to split. */
-export const BOARD_RANK_STEP = 1024;
+export const BOARD_RANK_STEP = RANK_STEP;
 
 /**
  * Where a card dropped into `column` right after `afterId` (null = the top) goes.
@@ -124,23 +127,7 @@ export const BOARD_RANK_STEP = 1024;
  * the top.
  */
 export function placeInColumn(column: BoardOrderKey[], afterId: number | null): { rank: number; renumber: Map<number, number> | null } {
-  let col = [...column].sort(boardOrder);
-  let renumber: Map<number, number> | null = null;
-  const respace = () => {
-    renumber = new Map(col.map((t, i) => [t.id, (i + 1) * BOARD_RANK_STEP]));
-    col = col.map((t) => ({ ...t, board_rank: (renumber as Map<number, number>).get(t.id) as number }));
-  };
-  if (col.some((t) => t.board_rank === null)) respace();
-  const at = afterId === null ? 0 : col.findIndex((t) => t.id === afterId) + 1;   // -1 + 1 = 0: the top
-  const between = () => {
-    const prev = col[at - 1]?.board_rank ?? null;
-    const next = col[at]?.board_rank ?? null;
-    if (prev === null && next === null) return BOARD_RANK_STEP;
-    if (prev === null) return (next as number) - BOARD_RANK_STEP;
-    if (next === null) return prev + BOARD_RANK_STEP;
-    return next - prev > 1e-6 ? (prev + next) / 2 : null;
-  };
-  let rank = between();
-  if (rank === null) { respace(); rank = between() as number; }
-  return { rank, renumber };
+  // The rank math is the shared `placeAmong` (placement-core) over the column in its visible order.
+  const visible = [...column].sort(boardOrder).map((t) => ({ key: t.id, rank: t.board_rank }));
+  return placeAmong(visible, afterId);
 }

@@ -21,7 +21,7 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (svg: string) => svg,
 }));
 import css from "../web/src/trov.css?raw";
-import { render, initialState, docReaderHtml } from "../web/src/render";
+import { render, initialState } from "../web/src/render";
 import type { Screen } from "../web/src/render";
 import { skeleton, skBar, skBox, skLine, skLines, skRow, skList, skCard, skRows, skForm, skTable, skProse, skDetail, skKey, skW, SKEL_DELAY_MS } from "../web/src/skeleton";
 import { loadingNote } from "../web/src/org-ui";
@@ -151,25 +151,49 @@ describe("Feed — loading", () => {
 });
 
 describe("Docs — loading", () => {
-  it("the tree and the reader each hold a skeleton in the real two panes", () => {
-    const html = body(render(app("docs", { docsList: { status: "loading", data: [] } })));
+  const sp = { slug: "security", name: "Security", icon: "shield", color: "#b4562c", description: "", sort_rank: 1, created_at: "2026-10-01T00:00:00Z", created_by: "alice", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 };
+  it("the docs pane and the doc page each hold a skeleton, in the Library's frame", () => {
+    const html = body(render(app("docs", { docSlug: "x", docDetail: { status: "loading", data: null } })));
     expect(keys(html)).toEqual(["docs-tree", "doc"]);
-    expect(html).toContain('class="cnpy-scroll cnpy-docs-tree"');
-    expect(html).toContain('id="cnpy-reader"');
-    expect(html).not.toContain("Select a doc from the tree.");
-    // The reader's skeleton sits in the doc page's own frame.
-    expect(docReaderHtml(app("docs", { docSlug: "x", docDetail: { status: "loading", data: null } }))).toContain("max-width:1080px;margin:0 auto;padding:34px 52px 120px");
+    expect(html).toContain('<nav class="cnpy-dpane cnpy-scroll"');
+    expect(html).toContain('id="cnpy-libmain"');
+    // The page's skeleton sits in the doc page's own frame (the article beside the rail).
+    expect(html).toContain('class="cnpy-dpg"');
+    expect(html).toContain('class="cnpy-dpg-grid"');
   });
-  it("no docs is the empty state; nothing picked is the prompt to pick", () => {
-    const html = body(render(app("docs", { docsList: { status: "ok", data: [] } })));
+  it("a space with no page is the empty tree and the empty page; nothing is a skeleton", () => {
+    const html = body(render(app("docs", {
+      library: { status: "ok", data: { spaces: [sp as never], archived: [], recent: [], waiting: 0, can_admin: false } },
+      spaceHome: { status: "ok", data: { space: sp as never, pages: [], can_edit: false, can_admin: false } },
+      docDetail: { status: "ok", data: null },
+    })));
     expect(keys(html)).toEqual([]);
-    // No doc in the space: the tree and the doc page are drawn empty.
     expect(html).toContain('data-empty="docs-tree"');
     expect(html).toContain('data-empty="doc"');
-    expect(html).not.toContain("Select a doc from the tree.");
-    // Docs exist in the space, none is picked: the prompt to pick.
-    const doc = { slug: "a", title: "A", space: "technical", section: "Overview", outline: [], current_version: 1, updated_at: "2026-01-01T00:00:00Z", updated_by: "alice" };
-    expect(body(render(app("docs", { docsList: { status: "ok", data: [doc as never] }, docDetail: { status: "ok", data: null } })))).toContain("Select a doc from the tree.");
+  });
+});
+
+describe("the Docs Library — loading", () => {
+  it("Library home: the real title block, then three space cards and five page rows", () => {
+    const html = body(render(app("library")));
+    expect(keys(html)).toEqual(["lib-spaces", "lib-recent"]);
+    expect(html).toContain(">Library</h1>");
+    expect(html).toContain("Guides, runbooks, specs and decisions for the whole team, grouped into spaces.");
+    expect(html).toContain(">Recently updated</h2>");
+    expect(html).not.toContain("waiting for review");
+  });
+  it("a space's home: the header's shape, the real tab bar with no count, then the panel's", () => {
+    const html = body(render(app("space", { spaceSlug: "security", spaceHome: { status: "loading", data: null } })));
+    expect(keys(html)).toEqual(["docs-tree", "space-head", "space"]);
+    expect(html).toContain('data-tabs="space-tab"');
+    expect(html).toContain(">All pages</button>");
+    expect(html).not.toContain("cnpy-badge");
+  });
+  it("a space's home keeps what it shows while it is read again", () => {
+    const sp = { slug: "security", name: "Security", icon: "shield", color: "#b4562c", description: "", sort_rank: 1, created_at: "2026-10-01T00:00:00Z", created_by: "alice", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 };
+    const html = body(render(app("space", { spaceSlug: "security", spaceHome: { status: "loading", data: { space: sp as never, pages: [], can_edit: false, can_admin: false } } })));
+    expect(keys(html)).toEqual([]);
+    expect(html).toContain(">Security</h1>");
   });
 });
 
@@ -299,6 +323,9 @@ describe("Handoffs, Prompt Library, Artifacts, Repo, Settings — loading", () =
       ["prompts", ["prompts"]],
       ["prompt", ["prompt"]],
       ["artifacts", ["artifacts"]],
+      // The import wizard waits on the Library (its spaces); Imports history on its own read: six rows on its grid.
+      ["import", ["imp-where"]],
+      ["imports", ["imports"]],
     ];
     for (const [screen, want] of cases) expect(keys(body(render(app(screen)))), screen).toEqual(want);
     expect(body(render(app("prompts")))).toContain('class="cnpy-mw-grid is-3"');
@@ -332,7 +359,7 @@ describe("Handoffs, Prompt Library, Artifacts, Repo, Settings — loading", () =
 });
 
 describe("every loading paint keeps the rules", () => {
-  const screens: Screen[] = ["mywork", "feed", "docs", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings"];
+  const screens: Screen[] = ["mywork", "feed", "docs", "library", "space", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings", "import", "imports"];
   it("is busy-marked, hidden from a screen reader, keeps a status line, and has unique region keys", () => {
     for (const screen of screens) {
       const html = body(render(app(screen)));

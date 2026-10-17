@@ -2,12 +2,14 @@ import type { DocRow, DocVersionRow, AdrRow, NeedsTriageRow, IdentityTaskRow } f
 import { DocProposal, AdrDraft, FeedEntry } from "@shared/contract";
 import { isSection } from "@shared/vocabulary";
 import { normalizeTagName } from "@shared/tags-core";
+import { DEFAULT_SPACE } from "@shared/docs-core";
 import { liveTagNames } from "./tags";
 import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
 import { memberPerson, resolvePersonForLogin } from "../auth/persons";
 import { routeAi } from "./ai-route";
 import { REVIEW_ITEM, reviewRef, supersedeOpenSuggestions } from "../data/ai";
+import { linkStmts, promoteTreeStmts } from "./doc-tree";
 // NOTE: writes.ts ↔ consumer.ts is a deliberate circular import. consumer.ts
 // imports the low-level writers below; assign_triage imports the gate functions.
 // It is safe because every reference is INSIDE a function body (resolved lazily
@@ -66,11 +68,18 @@ export async function propose_doc_update(
     change_summary: string;
     confidence: "high" | "low";
     // Reconciler-computed metadata (set by the gate; defaulted for direct callers).
-    space?: "technical" | "product";
+    space?: string;               // a live doc_spaces slug — the gate resolves and checks it (0081_docs_library)
     content_hash?: string | null;
     base_version?: number | null;
     change_kind?: "new" | "edit" | "rewrite" | null;
     low_confidence?: boolean;
+    // The page tree (0081_docs_library), checked by the gate: the parent asked for (a NEW doc's row takes it, and
+    // `tree_rank`, at insert; every version records it on doc_versions.parent_slug, applied on promote).
+    parent_slug?: string | null;
+    tree_rank?: number | null;
+    // Server-only (never the contract): the import run and the file's path in it.
+    import_id?: number | null;
+    import_path?: string | null;
   },
   author: string
 ): Promise<{ slug: string; version: number; status: "staged" }> {
@@ -80,22 +89,24 @@ export async function propose_doc_update(
   if (!existing) {
     // Title resolution on first creation only: proposal.title ?? humanizeSlug(slug).
     // (On an existing doc we never rewrite title/section — a human may have set them.)
-    // `space` (audit F4) is persisted on the INSERT, defaulting to 'technical'.
+    // `space` (audit F4) is persisted on the INSERT: the space the gate checked, else the default space.
     const title = proposal.title ?? humanizeSlug(proposal.slug);
     await run(
       ctx,
-      `INSERT INTO docs (org_id, slug, section, title, body, current_version, updated_at, updated_by, space, owner)
-       VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, ?)`,
+      `INSERT INTO docs (org_id, slug, section, title, body, current_version, updated_at, updated_by, space, owner, parent_slug, tree_rank)
+       VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, ?, ?, ?)`,
       ctx.orgId,
       proposal.slug,
       proposal.section,
       title,
       created_at,
       author,
-      proposal.space ?? "technical",
+      proposal.space ?? DEFAULT_SPACE,
       // `owner` (0035) = the proposer of the FIRST version, set here once and never
       // overwritten — later proposals and promotions leave it alone.
-      author
+      author,
+      proposal.parent_slug ?? null,
+      proposal.tree_rank ?? null
     );
   }
 
@@ -111,8 +122,8 @@ export async function propose_doc_update(
     ctx,
     `INSERT INTO doc_versions
        (org_id, slug, version, body, summary, status, confidence, created_at, created_by,
-        content_hash, base_version, change_kind, low_confidence)
-     VALUES (?, ?, ?, ?, ?, 'staged', ?, ?, ?, ?, ?, ?, ?)`,
+        content_hash, base_version, change_kind, low_confidence, parent_slug, import_id, import_path)
+     VALUES (?, ?, ?, ?, ?, 'staged', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ctx.orgId,
     proposal.slug,
     version,
@@ -124,7 +135,10 @@ export async function propose_doc_update(
     proposal.content_hash ?? null,
     proposal.base_version ?? null,
     proposal.change_kind ?? null,
-    proposal.low_confidence ? 1 : 0
+    proposal.low_confidence ? 1 : 0,
+    proposal.parent_slug ?? null,
+    proposal.import_id ?? null,
+    proposal.import_path ?? null
   );
 
   // docs.current_version intentionally untouched — promotion is a human action (out of scope).
@@ -331,21 +345,18 @@ export async function promote_doc(
   if (ver.status !== "staged") throw new Error(`doc version not staged: ${slug} v${version} is ${ver.status}`);
 
   const updated_at = nowIso();
-  // A decided proposal closes its risk (Q37): its open suggestions are superseded in the same batch.
+  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  // ONE batch: the version, its risk closed (Q37: open suggestions superseded), the live body, the page's links
+  // rebuilt from that body, and — when the version asked for a parent that is still a valid place — the move
+  // under it (src/tools/doc-tree.ts; the tree PR of 0081_docs_library).
+  const tree = doc ? await promoteTreeStmts(ctx, doc, ver.body, ver.parent_slug ?? null) : linkStmts(ctx, slug, ver.body);
   await batch(ctx, [
     stmt(ctx, `UPDATE doc_versions SET status = 'promoted' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version),
     supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version)),
+    stmt(ctx, `UPDATE docs SET body = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND slug = ?`,
+      ver.body, version, updated_at, author, ctx.orgId, slug),
+    ...tree,
   ]);
-  await run(
-    ctx,
-    `UPDATE docs SET body = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND slug = ?`,
-    ver.body,
-    version,
-    updated_at,
-    author,
-    ctx.orgId,
-    slug
-  );
   await routeAi(ctx, { type: "doc_promoted", slug });
   return { slug, version, status: "promoted" };
 }
@@ -455,7 +466,7 @@ export type AssignType = "doc" | "adr" | "feed";
 export interface AssignTarget {
   type?: AssignType;
   section?: string;          // doc: the corrected section (the human's placement)
-  space?: "technical" | "product";
+  space?: string;            // doc: a live space of the org (Unplaced offers the Library's spaces); the gate checks it
   tags?: string[];           // feed: corrected tags
 }
 
@@ -505,7 +516,7 @@ export async function assign_triage(
       ...raw,
       section,
       confidence: "high",            // human-vouched on assign
-      space: target.space ?? (raw.space as "technical" | "product" | undefined),
+      space: target.space ?? (typeof raw.space === "string" ? raw.space : undefined),
     });
     const r = await ingestDocProposal(ctx, proposal, by, ledger);
     if (r.outcome === "triaged" || r.outcome === "refused") throw new Error(`could not place doc: ${r.reason}`);
