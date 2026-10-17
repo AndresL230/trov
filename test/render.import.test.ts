@@ -445,14 +445,16 @@ describe("the sidebar's Imports row and Import action", () => {
 // ── a space's home and Library home offer Import ─────────────────────────────
 
 describe("Import from the Library's own screens", () => {
-  it("Library home has Import for everyone; a space's home has it beside New page, and in its empty layout", () => {
+  it("Library home has Import for everyone beside its title; a space's home beside the space's name, and in its empty layout", () => {
     const lib: AppState = { ...initialState(), view: "app", screen: "library", library: { status: "ok", data: LIB } };
-    expect(render(lib)).toMatch(/data-act="goImport" data-arg="" class="cnpy-outlinebtn"/);
+    // A quiet icon button by the title (an action people take now and then), named by its label and tooltip.
+    expect(render(lib)).toMatch(/Library<\/h1><span[^>]*><button type="button" data-act="goImport" data-arg="" class="cnpy-iconbtn" aria-label="Import" data-mtip="Import"/);
     const home: AppState = { ...initialState(), view: "app", screen: "space", spaceSlug: "engineering", library: { status: "ok", data: LIB },
       spaceHome: { status: "ok", data: { space: ENG, pages: [], can_edit: false, can_admin: false } } };
     const html = render(home);
     expect(html).toContain("Write the first page, or import Markdown files you already have. Imported pages wait in Review until someone approves them.");
-    // The header's, the empty layout's, and the sidebar's Import (the space on screen preset).
+    // The title row's, the empty layout's, and the sidebar's Import (the space on screen preset).
+    expect(html).toMatch(/Engineering<\/h1><span[^>]*><button type="button" data-act="goImport" data-arg="engineering" class="cnpy-iconbtn"/);
     expect((html.match(/data-act="goImport" data-arg="engineering"/g) ?? []).length).toBe(3);
   });
 });

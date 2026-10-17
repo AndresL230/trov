@@ -122,9 +122,12 @@ const outlineBtn = (act: string, arg: string | null, label: string, extra = ""):
 const H2 = "font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);margin:0";
 const UPLOAD = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"></path></svg>`;
 const ARCHIVE = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5h17v4h-17z"></path><path d="M5 9v10h14V9"></path><path d="M10 13h4"></path></svg>`;
-/** A small outlined icon button, the outline buttons' height: its words are its label and tooltip. */
+/** A small borderless icon button for an action people take now and then: its words are its label and tooltip. It
+ *  sits beside the page's title, out of the action bar (Import, Archive space). */
 const iconBtn = (act: string, arg: string | null, label: string, icon: string, extra = ""): string =>
-  `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-outlinebtn" aria-label="${attr(label)}" data-mtip="${attr(label)}" style="display:inline-grid;place-items:center;width:32px;height:32px;border-radius:8px;border:1px solid var(--border-strong);color:var(--fg-70);flex:none">${icon}</button>`;
+  `<button type="button" data-act="${attr(act)}"${arg !== null ? ` data-arg="${attr(arg)}"` : ""}${extra} class="cnpy-iconbtn" aria-label="${attr(label)}" data-mtip="${attr(label)}" style="display:inline-grid;place-items:center;width:28px;height:28px;border-radius:7px;color:var(--fg-55);flex:none">${icon}</button>`;
+/** The title row's quiet actions, after the name. */
+const titleActs = (btns: string): string => (btns ? `<span style="display:inline-flex;align-items:center;gap:2px;margin-left:-4px">${btns}</span>` : "");
 /** The secondary Import button (Library home, a space's home): opens the import wizard, `space` preset. */
 const importBtn = (space: string | null): string => iconBtn("goImport", space ?? "", "Import", UPLOAD);
 
@@ -160,10 +163,10 @@ const recentRowsShape = (n: number, cols?: string): string => skCard(skList(n, (
 function libraryTitle(p: LibraryHomeProps): string {
   return `<div class="cnpy-lib-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
     <div style="min-width:0">
-      <h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;margin:0;line-height:1.2">Library</h1>
+      <div style="display:flex;align-items:center;gap:12px"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;margin:0;line-height:1.2">Library</h1>${titleActs(importBtn(null))}</div>
       <p style="font-size:13.5px;line-height:1.5;color:var(--fg-70);max-width:560px;margin:6px 0 0">${esc(LIBRARY_SUBTITLE)}</p>
     </div>
-    <div style="display:flex;gap:8px;flex:none">${importBtn(null)}${p.admin ? accentBtn("libNew", null, "New space") : ""}</div>
+    ${p.admin ? `<div style="display:flex;gap:8px;flex:none">${accentBtn("libNew", null, "New space")}</div>` : ""}
   </div>`;
 }
 
@@ -353,11 +356,12 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   ].map((item) => `<span class="cnpy-lib-mi">${item}</span>`).join("");
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
-    : `${p.admin ? `${outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger")}${iconBtn("libArchive", null, "Archive space", ARCHIVE, " data-confirm-trigger")}` : ""}${importBtn(sp.slug)}${accentBtn("libNewPage", sp.slug, "New page")}`;
+    : `${p.admin ? outlineBtn("libEdit", null, "Edit space", " data-confirm-trigger") : ""}${accentBtn("libNewPage", sp.slug, "New page")}`;
+  const quiet = sp.archived ? "" : titleActs(`${importBtn(sp.slug)}${p.admin ? iconBtn("libArchive", null, "Archive space", ARCHIVE, " data-confirm-trigger") : ""}`);
   return `<div class="cnpy-lib-shead" style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
     ${spaceTile(sp, 40)}
     <div style="flex:1;min-width:240px">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:1.25;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}${quiet}</div>
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}
       <div class="cnpy-lib-meta"><div class="cnpy-lib-meta-in">${meta}</div></div>
     </div>
