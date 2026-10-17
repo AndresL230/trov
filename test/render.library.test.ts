@@ -342,6 +342,24 @@ describe("the Create space dialog's focus (case CS1)", () => {
     expect(focused).toEqual(["#lib-sp-name"]);
   });
 
+  it("Edit space, Edit owners and Archive opened from the keyboard move the focus into their dialog (Batch B finding)", () => {
+    const focused: string[] = [];
+    const mount = { ownerDocument: { activeElement: null }, querySelector: (sel: string) => ({ focus: () => focused.push(sel), value: "", setSelectionRange: () => {} }) } as unknown as HTMLElement;
+    const state = app("space", "admin", { spaceSlug: "engineering" } as Partial<AppState>);
+    state.spaceHome = { status: "ok", data: { space: ENG, pages: PAGES, can_edit: true, can_admin: true } } as unknown as AppState["spaceHome"];
+    const ctl = createLibraryController({
+      state, mount, rerender: () => {}, rerenderSoon: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (f) => f(), openDoc: () => {}, newPage: () => {},
+    });
+    ctl.act("libEdit", null, null);
+    expect(focused.at(-1)).toBe("#lib-sp-name");
+    ctl.act("libSpaceClose", null, null);
+    ctl.act("libOwners", null, null);
+    expect(focused.at(-1)).toBe("#lib-owners .cnpy-libm-person, #lib-owners [data-confirm-focus]");
+    ctl.act("libOwnersClose", null, null);
+    ctl.act("libArchive", null, null);
+    expect(focused.at(-1)).toBe("[data-confirm-focus]");
+  });
+
   it("closing a space dialog (Cancel, Escape, the backdrop) gives the focus back to what opened it (case ENV12)", () => {
     const focused: string[] = [];
     const opener = (name: string) => ({ isConnected: true, focus: () => focused.push(name) });
