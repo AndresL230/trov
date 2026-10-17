@@ -228,7 +228,8 @@ describe("Feed — the two-column page", () => {
   it("renders the feed beside the shared sticky aside, This week first", () => {
     const html = render(feedState([feedRow()]));
     const aside = html.indexOf('<aside class="cnpy-cols-aside cnpy-stagger">');
-    expect(html).toContain('class="cnpy-scroll cnpy-cols-page"');
+    // asideColumns' page, in the Feed's own frame: 1200px up to a ~2300px window, then a little wider (web-ui.md › Big screens).
+    expect(html).toContain('class="cnpy-scroll cnpy-cols-page cnpy-feed-page" style="max-width:var(--frame-feed);');
     expect(aside).toBeGreaterThan(html.indexOf("Shipped the colored-handle change."));
     expect(html.indexOf("Feed · This week")).toBeGreaterThan(aside);
     expect(html.indexOf("Feed · Waiting on review")).toBeGreaterThan(html.indexOf("Feed · This week"));

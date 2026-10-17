@@ -53,13 +53,15 @@ export const HITBOX = "cnpy-hitbox";
 /** A page in two columns: `main` on the left, `aside` (its boxes) as the sticky right column.
  *  `tabs` heads the page with a tab bar (tabs.ts `tabBar`, passed in as markup — this module
  *  cannot import it) and wraps the columns in its panel (`panel` = `tabPanelAttrs(…)`), 20px
- *  under the bar's line: Roadmap › Narrative. Without it the markup is unchanged (the Feed). */
-export function asideColumns(main: string, aside: string, tabs?: { bar: string; panel: string }): string {
+ *  under the bar's line: Roadmap › Narrative. Without it the markup is unchanged (the Feed).
+ *  `opts.frame` replaces the 1200px cap (the Feed's `--frame-feed`, which grows on a big
+ *  screen — web-ui.md › Big screens); `opts.cls` adds a class to the page. */
+export function asideColumns(main: string, aside: string, tabs?: { bar: string; panel: string }, opts: { frame?: string; cls?: string } = {}): string {
   const cols = `<div class="cnpy-cols">
       <div style="min-width:0">${main}</div>
       <aside class="cnpy-cols-aside cnpy-stagger">${aside}</aside>
     </div>`;
-  return `<div class="cnpy-scroll cnpy-cols-page" style="max-width:1200px;margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
+  return `<div class="cnpy-scroll cnpy-cols-page${opts.cls ? ` ${opts.cls}` : ""}" style="max-width:${opts.frame ?? "1200px"};margin:0 auto;padding:var(--cols-pad-top) 32px 80px">
     ${tabs ? `${tabs.bar}<div${tabs.panel} style="padding-top:20px">${cols}</div>` : cols}
   </div>`;
 }
