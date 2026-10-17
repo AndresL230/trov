@@ -66,7 +66,7 @@ import { askIcon } from "./ask-icons";
 import { closingAttr } from "./ask-motion";
 import {
   ASK_WRONG_LABELS, ASK_WRONG_REASONS, parseAskRef, type AskActionAnswer, type AskBlock, type AskDocHunk, type AskEventMap, type AskSaveForm,
-  type AskWrongReason,
+  type AskThreadSummary, type AskWrongReason,
 } from "@shared/ai-ask-core";
 import { TICKET_CATEGORIES, TICKET_STATUS_LABEL, type TicketPriority, type TicketStatus } from "@shared/tickets-core";
 import { sprintDatesLabel } from "@shared/sprints-core";
@@ -986,12 +986,33 @@ export async function confirmCards(ctx: AskCtx, ids: number[]): Promise<void> {
     for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.inline[id]; }
     if (failed) ctx.flash(str(rec(failed.result).error) ?? "That change didn't work. Nothing else was changed.");
     else if (done.length) ctx.flash(doneText(done, ctx.look()));
+    if (done.some((x) => LINK_CARD_TOOLS.has(x.tool ?? ""))) void refreshThreadLinks(ctx, live);
   } catch (e) {
     onRefusal(ctx, live, e, "Couldn't make that change.");
   } finally {
     setBusy(ctx, live, false);
     ctx.paint();
   }
+}
+
+/** The agent-link cards (src/ai/ask/actions.ts `LINK_WRITES`). Confirming one changes what waits for THIS thread —
+ *  a join binds it (the other side's notes now wait for it), a close ends that — so its line and the list's mark are
+ *  read again (E2E A-13: until a reload the line stayed as it was before the Confirm). */
+const LINK_CARD_TOOLS: ReadonlySet<string> = new Set(["request_link", "join_link", "send_link_note", "close_link"]);
+async function refreshThreadLinks(ctx: AskCtx, ids: number[]): Promise<void> {
+  for (const where of WHERES) {
+    const c = ctx.ui[where];
+    const tid = c.threadId;
+    if (!tid || !c.thread || !ids.some((id) => c.messages.some((m) => m.role === "assistant" && m.turn.actions[id]))) continue;
+    let links: AskThreadSummary["links"];
+    try { links = (await ctx.api.getThread(tid)).thread.links; } catch { continue; } // a failed read keeps what is shown
+    const now = ctx.ui[where];
+    if (now.threadId !== tid || !now.thread || now.busy) continue;
+    const { links: _old, ...rest } = now.thread;
+    ctx.ui[where] = { ...now, thread: links?.length ? { ...rest, links } : rest };
+  }
+  ctx.reloadThreads();
+  ctx.paint();
 }
 
 export async function cancelCards(ctx: AskCtx, ids: number[]): Promise<void> {

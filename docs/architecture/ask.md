@@ -250,6 +250,8 @@ a thread, and `claim_handoff` with it still works.
   `markShape`, its `data-mtip` saying how many and when they arrive); the thread draws ONE line at its top
   (`linkNotesLine`: "Link #12 with @jose: 2 new notes. They reach Trov with your next question."). Nothing arrives
   mid-turn: the `thread` event of a turn drops the line (`foldThreadEvent`), and the list reloads after the answer.
+  A Confirm on a link card reads the thread's line and the list again (`refreshThreadLinks`, ask-actions.ts): a join
+  makes the other side's notes wait for this thread at once.
 - **The AI switch** (invariant 15): off means no Ask — no turn, so no new card, no delivery; and Confirm refuses a
   card that acts AS the side (`asSide`: request, join, note) with "Ask Trov is off for this org…", so no Ask side is
   made or written from. Closing still works (a person's step). An open link's notes still show on its page, and the
