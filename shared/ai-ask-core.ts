@@ -553,7 +553,7 @@ export const ASK_ONLY_TOOLS = [
 ] as const;
 export type AskOnlyTool = (typeof ASK_ONLY_TOOLS)[number];
 /** The read-only GitHub tools (docs/architecture/ask.md › GitHub) — offered only while the org has a connected
- *  repository and `ASK_GITHUB_HELD` (shared/legal-core.ts) is off. */
+ *  repository and an admin has turned on GitHub lookups (`orgs.ai_chat_github`). */
 export const ASK_GITHUB_TOOLS = ["github_read", "github_search_code", "github_pull_request", "github_issue", "github_commit", "github_list", "github_ci"] as const;
 
 /** The fallback starters (the design's four), when the person's own work suggests none. */

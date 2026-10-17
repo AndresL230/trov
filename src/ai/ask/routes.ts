@@ -49,26 +49,27 @@ import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
 import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
 import { askGithub, connectedRepos, type AskGithub, type GithubTransportFactory } from "./github";
-import { ASK_GITHUB_HELD } from "@shared/legal-core";
 import type { Env } from "../../env";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock;
- *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint and every read go through it) and the
- *  legal hold (`githubHeld`: a test releases it; production reads ASK_GITHUB_HELD). */
-export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number; githubFetch?: typeof fetch; githubHeld?: boolean } = {};
+ *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint, the access check and every read go
+ *  through it). */
+export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number; githubFetch?: typeof fetch } = {};
 
 /** The credentialed GitHub transport — handed in by the HTTP app (src/routes.ts → src/repo/ask-github.ts). Nothing under
  *  src/ai/ask/ imports the credential path (test/secrets.mcp.test.ts); without it the GitHub tools are never offered. */
 let githubTransport: GithubTransportFactory | null = null;
 export function provideAskGithub(factory: GithubTransportFactory | null): void { githubTransport = factory; }
 
-/** This answer's GitHub side, or null: held (ASK_GITHUB_HELD — legal), no transport, or no connected repository. */
-async function githubFor(env: Env, ctx: TenantContext, signal: AbortSignal): Promise<AskGithub | null> {
-  if (askDeps.githubHeld ?? ASK_GITHUB_HELD) return null;
-  if (!githubTransport) return null;
+/** This answer's GitHub side — null unless the org's GitHub lookups switch is on (`orgs.ai_chat_github`, an admin's;
+ *  the AI switch was checked before), a transport was handed in and the org has a connected repository. `offWithRepos`:
+ *  the switch is off while there are repositories to read — the model is told an admin can turn it on. */
+async function githubFor(env: Env, ctx: TenantContext, switchOn: boolean, signal: AbortSignal): Promise<{ github: AskGithub | null; offWithRepos: boolean }> {
+  if (!githubTransport) return { github: null, offWithRepos: false };
   const repos = await connectedRepos(ctx).catch(() => []);
-  if (!repos.length) return null;
-  return askGithub(githubTransport(env, ctx, { fetchImpl: askDeps.githubFetch, signal }), repos);
+  if (!repos.length) return { github: null, offWithRepos: false };
+  if (!switchOn) return { github: null, offWithRepos: true };
+  return { github: askGithub(githubTransport(env, ctx, { fetchImpl: askDeps.githubFetch, signal }), repos), offWithRepos: false };
 }
 
 type C = Context<AppEnv>;
@@ -97,6 +98,7 @@ const parseJson = <T>(s: string | null | undefined, fallback: T): T => {
 interface Standing {
   enabled: boolean;
   chatAuto: boolean;
+  chatGithub: boolean;
   plan: Awaited<ReturnType<typeof planAndAiSettings>>["plan"];
   used: number;
   modes: readonly AskMode[];
@@ -104,7 +106,7 @@ interface Standing {
 
 async function standing(ctx: TenantContext): Promise<Standing> {
   const s = await planAndAiSettings(ctx, nowDate());
-  return { enabled: s.enabled, chatAuto: s.chatAuto, plan: s.plan, used: s.used.ai_chat, modes: askModesFor(s.plan.plan) };
+  return { enabled: s.enabled, chatAuto: s.chatAuto, chatGithub: s.chatGithub, plan: s.plan, used: s.used.ai_chat, modes: askModesFor(s.plan.plan) };
 }
 
 /** The person's default mode: Settings › Trov's, when the plan offers it; else Smart. */
@@ -462,9 +464,10 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     { type: "text" as const, text: qc.text || "(no text)" },
   ];
 
-  // The GitHub side (./github.ts), built here — past the gate, so with the AI switch off nothing reaches GitHub — and
-  // only for a mode that is offered the full catalog.
-  const github = def.tools === "index" ? null : await githubFor(env, ctx, v.signal);
+  // The GitHub side (./github.ts), built here — past the gate, so with the AI switch off nothing reaches GitHub — only
+  // while the org's GitHub lookups switch is on, and only for a mode that is offered the full catalog.
+  const gh = def.tools === "index" ? { github: null, offWithRepos: false } : await githubFor(env, ctx, v.st.chatGithub, v.signal);
+  const github = gh.github;
   const tool: AskToolCtx = {
     env, ctx, handle, orgSlug, origin: new URL(c.req.url).origin, threadId: thread.id,
     docs: askDeps.docs ?? assetsDocs(env), github, now: nowDate, searched: new Map(),
@@ -474,7 +477,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     system: contextBlock({
       orgName: org?.name ?? "this organization", orgSlug, handle, role: ctx.role, mode,
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
-      githubRepos: github?.repos ?? null,
+      githubRepos: github?.repos ?? null, githubOff: gh.offWithRepos,
     }),
     history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
     fetchImpl: askDeps.fetchImpl, now: nowMs, stopPollMs: askDeps.stopPollMs,

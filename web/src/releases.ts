@@ -52,7 +52,7 @@
 import { esc, attr, surface } from "./ui";
 import { segmented } from "./segmented";
 import { stateMark } from "./marks";
-import { ASK_GITHUB_HELD, SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
+import { SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
 
 export interface ReleasePatches {
   added: string[];
@@ -103,6 +103,30 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Ask Trov's GitHub lookups (#195 — a placeholder number until the PR is opened).
+  {
+    version: "0.12",
+    date: "2026-10-17",
+    title: "Ask Trov can look things up on GitHub",
+    headline: "With an admin's say-so, Ask Trov reads your connected repositories on GitHub when Trov's own records don't answer the question.",
+    highlights: [
+      "Ask Trov can read a file, search the code, and open a pull request, issue or commit in your connected repositories, and check CI.",
+      "It only reads what your own linked GitHub account can read, and never changes anything on GitHub.",
+      "GitHub lookups are off until an admin turns them on in Org settings › AI.",
+    ],
+    ops: [
+      "Apply migration `0076_ask_github` (merging to main applies it): one column, the switch, off for every organization. No new secret, var or GitHub App permission.",
+    ],
+    patches: {
+      added: [
+        "Ask Trov reads your connected repositories on GitHub when a question needs it, as far as your own GitHub access goes; an admin turns it on (#195)",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [195],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {
@@ -144,9 +168,6 @@ export const RELEASES: Release[] = [
         "Repo › Overview from your apps and environments: what needs attention first, each environment's state, a release view (#186)",
         "An App menu and a repository menu narrow the Repo screen; Org settings › Repositories › Apps accepts the apps Trov detects (#186)",
         "GitHub deployments as a host; Render, Railway and Fly.io detected from GitHub; Repo › Usage has a card per app (#186)",
-        // Ask's GitHub tools ship HELD (ASK_GITHUB_HELD, shared/legal-core.ts): the line shows once they are released.
-        // This entry is at RELEASE_CAPS' 20 lines, so releasing them goes with the next cut (test/releases.test.ts).
-        ...(ASK_GITHUB_HELD ? [] : ["Ask Trov reads your connected repositories on GitHub when a question needs it: files, code search, pull requests, issues, commits and CI (#193)"]),
       ],
       changed: [
         "Digests lead with your brief, the weekly adds This week, and you can get them only when something needs you (#178)",
@@ -165,7 +186,7 @@ export const RELEASES: Release[] = [
         "The digest's per-PR What / Why / Impact cards, its assigned-issue rows and the Roadmap's plan diff (#178)",
       ],
     },
-    prs: [178, 186, 187, 188, 189, 190, 192, 193],
+    prs: [178, 186, 187, 188, 189, 190, 192],
   },
   // Hosting providers (#185): Org settings › Hosting and the Repo dashboard's Hosting section.
   {

@@ -15,7 +15,7 @@
 // key, gets NO field at all (or a `not_connected` section where the read already uses
 // `RepoSection`) — never `state: "off"`. A present field is always one of AI_STATES.
 
-import { AI_LEGAL_DRAFT, ASK_GITHUB_HELD } from "./legal-core";
+import { AI_LEGAL_DRAFT } from "./legal-core";
 
 /** The model every kind runs on today (src/ai/client.ts `providerFor`). */
 export const AI_MODEL = "claude-haiku-5-5";
@@ -327,7 +327,7 @@ export const AI_SENDS_ALL: readonly AiSendLine[] = [
   SEND_SUMMARIES,
   {
     provider: "Anthropic",
-    what: "The question and the conversation so far, the person's handle and role and what they said about how to answer them, the items Ask Trov reads to answer (only ones that person can see), and any file they attach",
+    what: "The question and the conversation so far, the person's handle and role and what they said about how to answer them, the items Ask Trov reads to answer (only ones that person can see), any file they attach, and, while an admin has GitHub lookups on, what it reads on GitHub from a connected repository that person's own GitHub account can read",
     for: "Ask Trov",
   },
   {
@@ -351,12 +351,10 @@ export const AI_SENDS_ALL: readonly AiSendLine[] = [
  *  are DRAFT (`AI_LEGAL_DRAFT`, shared/legal-core.ts): only the approved lines — summaries and Sift — until the one
  *  flag flips, and then every line, with the policy. */
 export const AI_SENDS: readonly AiSendLine[] = AI_LEGAL_DRAFT ? [SEND_SUMMARIES, SEND_SIFT] : AI_SENDS_ALL;
-/** Never sent, whatever lands — except a file a person attaches to Ask Trov, which is sent as it is (owner ruling
- *  2026-10-15; the Privacy Policy says the same, web/src/legal.ts › Privacy 4). */
-export const AI_NEVER_SENT = ASK_GITHUB_HELD
-  ? "Source code (unless you attach a file to Ask), diffs, secrets, integration keys, and anything from another organization."
-  // Drafted for the owner's approval: released with Ask's GitHub tools (ASK_GITHUB_HELD, shared/legal-core.ts).
-  : "Secrets, integration keys, and anything from another organization. Source code and diffs only to Ask: a file you attach, or what it reads from a connected repository when a question needs it.";
+/** Never sent, whatever lands — and source code and diffs only to Ask Trov: a file a person attaches, sent as it is
+ *  (owner ruling 2026-10-15), or what its GitHub lookups read while an admin has them on, in a repository the person's
+ *  own GitHub account can read (owner, 2026-10-17). The Privacy Policy says the same (web/src/legal.ts › Privacy 4). */
+export const AI_NEVER_SENT = "Secrets, integration keys, and anything from another organization. Source code and diffs only to Ask: a file you attach, or, while an admin has GitHub lookups on, what it reads from a connected repository you can read on GitHub.";
 
 /** The four AI allowances Org settings › AI shows, by their `LimitKey` (shared/plans.ts), in order:
  *  capture-time summaries (Anthropic), what the AI pass writes (Anthropic), Sift's checks (TypeSafe AI),
@@ -379,6 +377,9 @@ export interface AiSettings {
   /** `orgs.ai_chat_auto` (0058) — whether Ask Trov's Auto mode (writes run without a Confirm, with Undo)
    *  may be used in this organization. */
   chatAuto: boolean;
+  /** `orgs.ai_chat_github` (0076) — whether Ask Trov may look things up on GitHub in this organization's connected
+   *  repositories (each person still only in the ones their own GitHub account can read). Off by default. */
+  chatGithub: boolean;
   /** Whether each provider's key is set on this deployment (owner ruling Q8): Org settings › AI says it per provider —
    *  Anthropic for everything Trov writes, TypeSafe AI for Sift. A fact about the deployment, never a secret. */
   keys: { anthropic: boolean; typesafe: boolean };
@@ -389,8 +390,8 @@ export interface AiSettings {
   neverSent: string;
 }
 
-/** `PUT /ai/settings` (admin+): either switch, or both. */
-export interface AiSettingsPut { enabled?: boolean; chatAuto?: boolean }
+/** `PUT /ai/settings` (admin+): any of the switches, at least one. */
+export interface AiSettingsPut { enabled?: boolean; chatAuto?: boolean; chatGithub?: boolean }
 
 // ── Platform › Usage ────────────────────────────────────────────────────────
 /** `OrgUsage.ai?` / `PlatformUsageResponse.ai?`: AI runs and tokens in the window

@@ -1,12 +1,20 @@
 // The CREDENTIALED half of Ask Trov's GitHub tools (docs/architecture/ask.md › GitHub; the tools themselves are
 // src/ai/ask/github.ts, which holds no credential). The HTTP app hands this factory to the Ask route
 // (src/routes.ts → `provideAskGithub`); nothing under src/ai/ask/ imports it, and nothing reachable from src/mcp.ts
-// does either (test/secrets.mcp.test.ts).
+// does either (test/secrets.mcp.test.ts). The route builds it only while the org's AI switch AND its GitHub lookups
+// switch (`orgs.ai_chat_github`, an admin's) are on.
 //
 //   • THE credential path: `resolveGithubCredential` for the ONE repository asked — the org's installation token
 //     minted for that repository with the read permissions it already holds (READ_PERMISSIONS), else the org's
 //     stored token. It is resolved as the org's system tenant (`jobTenant`, as Sync GitHub does), because the
-//     resolver serves no plain member while any member may ask: what reaches the model is bounded below, not by role.
+//     resolver serves no plain member — which is why the next point exists.
+//   • Each person's OWN GitHub access (the owner's ruling, 2026-10-17): before anything of a repository is read for
+//     someone, their linked GitHub identity (`identities`, provider github — the sign-in one, never the org's
+//     attribution map) must hold at least read on it, asked of GitHub with the org's credential:
+//     `GET /repos/{r}/collaborators/{login}/permission` (Metadata). No linked identity → `not_linked` (link GitHub in
+//     Settings); `none` → `no_access`; an error or a timeout → `access_unknown` — a deny, never an allow. Asked once
+//     per repository per answer (cached), and NOT counted in the answer's ASK_GITHUB_REQUESTS_MAX: it is bounded by
+//     the org's connected repositories and the person's linked identities.
 //   • Tenant scoped: the repository must be one of the org's `org_repos` rows, re-read here on every request, before
 //     any credential is asked for. Anything else is `not_connected`.
 //   • Read-only: GET only, to api.github.com only, under /repos/<that repository>/ — checked on the parsed URL, so
@@ -17,7 +25,7 @@
 //     token back has it scrubbed before it is parsed.
 import { ASK_GITHUB_ROWS_MAX, ASK_GITHUB_TIMEOUT_MS } from "@shared/ai-ask-core";
 import type { Env } from "../env";
-import { first, type TenantContext } from "../data/sql";
+import { all, first, type TenantContext } from "../data/sql";
 import { jobTenant } from "../platform/jobs";
 import { resolveGithubCredential, type GithubCredential } from "../github-app/credential";
 import { scrubbedMessage } from "./gh-http";
@@ -25,8 +33,14 @@ import type { GithubFailCode, GithubReply, GithubRequest, GithubTransport, Githu
 
 const API = "https://api.github.com";
 const API_VERSION = "2022-11-28";
+/** A person's linked GitHub identities checked at most (a person rarely has more than one). */
+const IDENTITIES_MAX = 3;
+/** The repository permissions that can read it (`permission` is admin / write / read / none; `role_name` adds
+ *  maintain / triage and custom roles' bases). */
+const READS = new Set(["admin", "maintain", "write", "triage", "read"]);
 
-const fail = (code: GithubFailCode, message: string): GithubReply => ({ ok: false, code, message });
+type Fail = Extract<GithubReply, { ok: false }>;
+const fail = (code: GithubFailCode, message: string): Fail => ({ ok: false, code, message });
 
 /** A code search's words with every scope qualifier taken out, then scoped to `repo` alone. */
 export function scopedSearch(q: string, repo: string): string {
@@ -46,6 +60,11 @@ function requestSignal(outer: AbortSignal | undefined): AbortSignal {
   return ctl.signal;
 }
 
+/** Why a read is not allowed for this person, or null when it is. */
+type Access = null | GithubReply;
+
+export const NOT_LINKED = "GitHub lookups follow each person's own GitHub access, and your Trov account is not linked to GitHub. Link GitHub in Settings, then ask again.";
+
 export const askGithubTransport: GithubTransportFactory = (env: Env, ctx: TenantContext, opts): GithubTransport => {
   // One credential per repository per answer (the installation token is cached per isolate besides).
   const creds = new Map<string, Promise<GithubCredential | null | "error">>();
@@ -59,6 +78,61 @@ export const askGithubTransport: GithubTransportFactory = (env: Env, ctx: Tenant
     }
     return creds.get(key)!;
   };
+
+  /** One GET with the credential: the response, or a failure in fixed words. */
+  async function send(cred: GithubCredential, url: URL, accept: string): Promise<Response | Fail> {
+    const token = cred.token.reveal();
+    try {
+      return await (cred.fetch(opts.fetchImpl) ?? fetch)(url.toString(), {
+        method: "GET",
+        headers: { authorization: `Bearer ${token}`, accept, "user-agent": "trov-worker", "x-github-api-version": API_VERSION },
+        signal: requestSignal(opts.signal),
+      });
+    } catch (e) {
+      const name = e instanceof Error ? e.name : "error";
+      console.error("ask github: request", name);
+      if (opts.signal?.aborted) return fail("failed", "Stopped before GitHub answered.");
+      return name === "TimeoutError" || name === "AbortError"
+        ? fail("timeout", `GitHub did not answer within ${ASK_GITHUB_TIMEOUT_MS / 1000} seconds.`)
+        : fail("failed", "GitHub could not be reached.");
+    }
+  }
+  const isReply = (r: Response | Fail): r is Fail => !(r instanceof Response);
+
+  // The person's linked GitHub logins (their own sign-in identities, while a live member of this org), read once.
+  let logins: Promise<string[]> | null = null;
+  const loginsOf = () => (logins ??= all<{ subject: string }>(ctx,
+    `SELECT i.subject FROM identities i JOIN memberships m ON m.user_id = i.person AND m.org_id = ?
+      WHERE i.person = ? COLLATE NOCASE AND i.provider = 'github' ORDER BY i.linked_at LIMIT ${IDENTITIES_MAX}`, ctx.orgId, ctx.userId)
+    .then((rows) => rows.map((r) => r.subject).filter((s) => /^[A-Za-z0-9-]{1,39}$/.test(s))));
+
+  // Each repository's answer for this person, once per answer.
+  const access = new Map<string, Promise<Access>>();
+  const accessFor = (repo: string, cred: GithubCredential) => {
+    const key = repo.toLowerCase();
+    if (!access.has(key)) access.set(key, checkAccess(repo, cred));
+    return access.get(key)!;
+  };
+  async function checkAccess(repo: string, cred: GithubCredential): Promise<Access> {
+    let mine: string[];
+    try { mine = await loginsOf(); } catch { return fail("access_unknown", `Trov could not check your GitHub access to ${repo}, so nothing of it was read. Try again.`); }
+    if (!mine.length) return fail("not_linked", NOT_LINKED);
+    for (const login of mine) {
+      const r = await send(cred, new URL(`${API}/repos/${repo}/collaborators/${encodeURIComponent(login)}/permission`), "application/vnd.github+json");
+      if (isReply(r)) return fail("access_unknown", `Trov could not check your GitHub access to ${repo} (${r.message.replace(/\.$/, "")}), so nothing of it was read.`);
+      if (r.status === 404) { void r.body?.cancel().catch(() => undefined); continue; } // GitHub knows no such user (a renamed login): the next one
+      if (!r.ok) {
+        void r.body?.cancel().catch(() => undefined);
+        return fail("access_unknown", `Trov could not check your GitHub access to ${repo} (GitHub answered ${r.status}), so nothing of it was read.`);
+      }
+      let body: { permission?: unknown; role_name?: unknown };
+      try { body = JSON.parse(scrubbedMessage(await r.text(), cred.token.reveal())) as typeof body; } catch {
+        return fail("access_unknown", `Trov could not check your GitHub access to ${repo}, so nothing of it was read.`);
+      }
+      if (READS.has(String(body.permission)) || READS.has(String(body.role_name))) return null;
+    }
+    return fail("no_access", `You don't have access to ${repo} on GitHub (as ${mine.join(" or ")}), so Trov can't read it for you. Someone with access can, or ask an admin of the repository on GitHub to add you.`);
+  }
 
   return {
     async get(asked: string, req: GithubRequest): Promise<GithubReply> {
@@ -83,30 +157,21 @@ export const askGithubTransport: GithubTransportFactory = (env: Env, ctx: Tenant
         if (req.accept) accept = req.accept;
       }
 
+      // Not linked to GitHub: said before any credential is asked for.
+      try { if (!(await loginsOf()).length) return fail("not_linked", NOT_LINKED); } catch { /* checkAccess says it */ }
+
       const cred = await credentialFor(repo);
       if (cred === "error") return fail("failed", `Trov could not get its GitHub access for ${repo} just now.`);
       if (!cred) return fail("no_credential", `GitHub is not connected for ${repo} (Org settings › Repositories), so Trov cannot read it.`);
 
-      const token = cred.token.reveal();
-      let res: Response;
-      try {
-        res = await (cred.fetch(opts.fetchImpl) ?? fetch)(url.toString(), {
-          method: "GET",
-          headers: { authorization: `Bearer ${token}`, accept, "user-agent": "trov-worker", "x-github-api-version": API_VERSION },
-          signal: requestSignal(opts.signal),
-        });
-      } catch (e) {
-        const name = e instanceof Error ? e.name : "error";
-        console.error("ask github: request", name);
-        if (opts.signal?.aborted) return fail("failed", "Stopped before GitHub answered.");
-        return name === "TimeoutError" || name === "AbortError"
-          ? fail("timeout", `GitHub did not answer within ${ASK_GITHUB_TIMEOUT_MS / 1000} seconds.`)
-          : fail("failed", "GitHub could not be reached.");
-      }
+      const denied = await accessFor(repo, cred);
+      if (denied) return denied;
 
+      const res = await send(cred, url, accept);
+      if (isReply(res)) return res;
       if (res.ok) {
         try {
-          const text = scrubbedMessage(await res.text(), token);
+          const text = scrubbedMessage(await res.text(), cred.token.reveal());
           void cred.markUsed();
           return { ok: true, status: res.status, body: text ? JSON.parse(text) : null };
         } catch (e) {

@@ -377,7 +377,8 @@ async function runTool(
       return err(body);
     }
   } catch (e) {
-    const failLine = e instanceof GithubToolError && e.code === "not_connected" ? "Not connected" : "Did not work";
+    const GH_LINE: Partial<Record<string, string>> = { not_connected: "Not connected", not_linked: "GitHub not linked", no_access: "No access on GitHub" };
+    const failLine = (e instanceof GithubToolError && GH_LINE[e.code]) || "Did not work";
     if (result.activity.some((a) => a.step === step)) await finish(undefined, failLine).catch(() => undefined);
     return err(errorBody(e));
   }

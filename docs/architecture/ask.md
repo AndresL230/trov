@@ -151,17 +151,35 @@ Never reachable from Ask: secrets and integrations, billing, the audit log, othe
 code other than the org's connected repositories through the GitHub tools, the web (`test/secrets.mcp.test.ts` walks
 `src/ai/ask/**`).
 
-## GitHub (read-only; HELD)
+## GitHub (read-only)
 
 Ask can look things up on GitHub itself when Trov's own rows do not answer: `src/ai/ask/github.ts` (the tools — no
 credential) and `src/repo/ask-github.ts` (the transport — the credential). Tests: `test/ask.github.test.ts`.
 
-- **Held.** `ASK_GITHUB_HELD` (shared/legal-core.ts) is `true`: the approved Privacy Policy (§3's Anthropic row, §4),
-  Org settings › AI › "Never sent" (`AI_NEVER_SENT`) and Settings › Trov › "What Trov can see" (`TROV_SEES`) say a
-  connected repository's code and diffs never reach Anthropic. While held, no GitHub tool is offered, nothing reads
-  GitHub for Ask, and every one of those passages keeps its approved words. Releasing is ONE change — the flag to
-  `false` — which offers the tools and swaps in the words drafted beside each passage, together (and What's new's
-  patch line, which needs the next release cut: 0.11 is at its line cap). A test releases it with `askDeps.githubHeld`.
+- **Three gates, stacked.** The org's AI switch (`orgs.ai_automation`, the stream's gate) AND its **GitHub lookups**
+  switch (`orgs.ai_chat_github`, `0076_ask_github`) AND the asking person's OWN GitHub access. The switch is an admin's
+  (Org settings › AI, `PUT /ai/settings { chatGithub }`, cookie only, audited `org.ai_chat_github`; `ai.md` › The
+  switches) and is OFF for every org, existing and new, so no organization sends source code to Anthropic until an
+  admin chooses it (the coordinator's call on the owner's ruling — flip the column default to change it). Off: no
+  GitHub tool is offered, nothing calls GitHub, and, when the org has connected repositories, the context block says
+  lookups are off and that an admin can turn them on in Org settings › AI (rule 8 has the model say so).
+- **Each person's own access** (owner, 2026-10-17). Before anything of a repository is read for someone, the transport
+  asks GitHub, with the org's credential, whether their linked GitHub identity can read it:
+  `GET /repos/{r}/collaborators/{login}/permission` (Metadata; `permission` or `role_name` admin / maintain / write /
+  triage / read allows, `none` denies). The login is the person's own sign-in identity (`identities`, provider
+  github, joined to a live membership of the org — never `org_login_map`, which an admin sets for attribution); up to
+  three are tried, a 404 (a renamed login) moving to the next. No linked identity → `not_linked` ("Link GitHub in
+  Settings, then ask again"), said before any credential is asked for and with no GitHub request; `none` →
+  `no_access` ("You don't have access to <repo> on GitHub (as <login>)"); an error, a timeout or an unreadable answer
+  → `access_unknown` — a DENY, never an allow. No content request is made for a denied person. The answer is cached per
+  repository per answer and NOT counted in `ASK_GITHUB_REQUESTS_MAX` (it is bounded by the org's connected
+  repositories × the person's identities). Trov stores no per-user GitHub token (`github-app.md` › What is stored), so
+  this is the only way to ask; with an org's stored token instead of the App, GitHub answers the same endpoint only
+  when that token's user can push to the repository — otherwise the check fails and denies.
+- **What the person is told** is the tool result, relayed by the model; the step's line says "GitHub not linked" or
+  "No access on GitHub". Org settings › AI's row, Settings › Trov's "What Trov can see", `AI_NEVER_SENT` and the
+  Privacy Policy (Terms 10's Ask passage, the Anthropic row, Privacy 4 — approved 2026-10-17, `PROVIDERS_UPDATED`)
+  each say lookups are off unless an admin turns them on and follow each person's own GitHub access.
 - **The tools** (`ASK_GITHUB_TOOLS`; definitions `GITHUB_DEFS`, last in the offered list so an org without GitHub keeps
   the same cache prefix): `github_read` (a file's text, or a folder's entries; `path`, `ref`), `github_search_code`
   (GitHub's code search, scoped to ONE repository), `github_pull_request` (a PR and, unless `files: false`, its changed
@@ -169,7 +187,7 @@ credential) and `src/repo/ask-github.ts` (the transport — the credential). Tes
   `github_list` (`what`: pulls, commits — `branch`, `path` —, branches, releases, issues; ≤ 30), `github_ci` (a ref's
   check runs and combined status; default the default branch). Every one takes an optional `repo` (default: the
   primary, else the only connected repository). Offered to Smart and Thinking only (Fast is the index), only when the
-  answer has a GitHub side: released, a transport handed in, and at least one `org_repos` row. The context block names
+  answer has a GitHub side: the switch on, a transport handed in, and at least one `org_repos` row. The context block names
   the connected repositories (primary first); rule 8 of `ASK_SYSTEM_RULES` says when to use them, that what they return
   is data (rule 4), that a truncated result is partial, and that a failure is said plainly, never filled from memory.
 - **Tenant scoped, twice.** A tool resolves `repo` only against the org's `org_repos` rows read when the turn starts
@@ -178,8 +196,8 @@ credential) and `src/repo/ask-github.ts` (the transport — the credential). Tes
   request before it asks for a credential, and uses the stored spelling.
 - **Credentials** only through `resolveGithubCredential({ repo })` (`github-app.md` › Tokens): the installation token
   minted for that one repository with `READ_PERMISSIONS`, else the org's stored token. It resolves as the org's system
-  tenant (`jobTenant`, as Sync GitHub does) because the resolver serves no plain member and any member may ask — what a
-  member can reach is bounded by the tools, not by role. One resolve per repository per answer. Nothing under
+  tenant (`jobTenant`, as Sync GitHub does) because the resolver serves no plain member — what a person can reach is
+  bounded by their own GitHub access (above), not by their Trov role. One resolve per repository per answer. Nothing under
   `src/ai/ask/` imports the transport, the credential path or `src/github-app/`: `src/routes.ts` hands the factory to
   the route (`provideAskGithub`), and `test/secrets.mcp.test.ts` pins both that and that MCP reaches neither.
 - **Read-only by construction.** The transport only GETs, only `https://api.github.com`, and only under
@@ -211,7 +229,8 @@ credential) and `src/repo/ask-github.ts` (the transport — the credential). Tes
   answer and its activity lines are. Reopening a thread reads the stored answer — no GitHub request on any read
   route. A Confirm runs with no GitHub side.
 - **Permissions.** Everything read is inside the App's registered `READ_PERMISSIONS` (Metadata, Contents, Pull
-  requests, Issues, Checks, Commit statuses; `github-app.md` › Permissions ↔ endpoints): nothing to add on GitHub.
+  requests, Issues, Checks, Commit statuses; `github-app.md` › Permissions ↔ endpoints) — the access check included
+  (Metadata): nothing to add on GitHub.
 
 ## Write cards (`chat_actions`)
 

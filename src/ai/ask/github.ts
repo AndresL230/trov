@@ -20,7 +20,7 @@ import type { Env } from "../../env";
 import { all, type TenantContext } from "../../data/sql";
 import { ASK_GITHUB_REQUESTS_MAX, ASK_GITHUB_ROWS_MAX, ASK_GITHUB_TEXT_MAX, ASK_GITHUB_TOOLS } from "@shared/ai-ask-core";
 
-export type GithubFailCode = "not_connected" | "no_credential" | "not_found" | "forbidden" | "rate_limited" | "timeout" | "failed" | "limit" | "bad_request";
+export type GithubFailCode = "not_connected" | "not_linked" | "no_access" | "access_unknown" | "no_credential" | "not_found" | "forbidden" | "rate_limited" | "timeout" | "failed" | "limit" | "bad_request";
 
 /** One GET's answer from the transport: the parsed JSON body, or why there is none (fixed words, no token). */
 export type GithubReply = { ok: true; status: number; body: unknown } | { ok: false; code: GithubFailCode; message: string };

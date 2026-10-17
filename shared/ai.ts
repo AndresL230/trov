@@ -117,9 +117,9 @@ export const AiFeedbackBodySchema = z.object({
 
 export const AiAcceptBodySchema = z.object({ value: z.unknown().optional() }) satisfies z.ZodType<AiAcceptBody>;
 
-/** Either switch, or both — never neither, never another key. */
-export const AiSettingsPutSchema = z.strictObject({ enabled: z.boolean().optional(), chatAuto: z.boolean().optional() })
-  .refine((b) => b.enabled !== undefined || b.chatAuto !== undefined, "send enabled, chatAuto, or both") satisfies z.ZodType<AiSettingsPut>;
+/** Any of the switches — never none, never another key. */
+export const AiSettingsPutSchema = z.strictObject({ enabled: z.boolean().optional(), chatAuto: z.boolean().optional(), chatGithub: z.boolean().optional() })
+  .refine((b) => b.enabled !== undefined || b.chatAuto !== undefined || b.chatGithub !== undefined, "send enabled, chatAuto or chatGithub") satisfies z.ZodType<AiSettingsPut>;
 
 const AiAllowanceUseSchema = z.object({
   used: z.number().int().min(0), cap: z.number().int().min(0).nullable(), resumesOn: isoDay.nullable(),
@@ -133,6 +133,7 @@ export const AiSettingsSchema = z.object({
     ai_summaries: AiAllowanceUseSchema, ai_runs: AiAllowanceUseSchema, jev_checks: AiAllowanceUseSchema, ai_chat: AiAllowanceUseSchema,
   }),
   chatAuto: z.boolean(),
+  chatGithub: z.boolean(),
   keys: z.object({ anthropic: z.boolean(), typesafe: z.boolean() }),
   planEnded: z.string().nullable(),
   sends: z.array(z.object({ provider: z.enum(AI_PROVIDER_NAMES), what: z.string(), for: z.string() })),

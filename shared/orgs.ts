@@ -106,6 +106,8 @@ export const ORG_AUDIT_ACTIONS = [
   // The organization's AI switch (0055_ai) and its Auto switch for Ask Trov (0058_ai_dirty), both in Org
   // settings › AI: an admin turned one on or off.
   "org.ai", "org.ai_chat_auto",
+  // Ask Trov's GitHub lookups (0076_ask_github, Org settings › AI): an admin allowed or stopped them.
+  "org.ai_chat_github",
   // Apps (0070_repo_apps, src/repo/apps.ts): an app written or removed by an admin.
   "app.set", "app.delete",
   // A repository's Repo-screen defaults (0071_repo_settings, src/data/repo-settings.ts): the Overview's Group by.

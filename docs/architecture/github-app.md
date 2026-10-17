@@ -278,7 +278,7 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
 |---|---|---|---|
 | The reconcile, Sync GitHub (backfill), the progress backstop — `resolveGithubCredential({ repo })` | the org's primary repository, by name | Metadata, Contents, Pull requests, Issues, Actions, Checks, Deployments, Commit statuses — all `read` (`READ_PERMISSIONS`) | yes, per (installation, repository) — these callers share one token |
 | The follow-up reads of a webhook delivery (the App's webhook and the per-repository hook), resolved lazily | the delivery's repository | the same | the same entry |
-| Ask Trov's GitHub tools (`src/repo/ask-github.ts`, `ask.md` › GitHub; HELD by `ASK_GITHUB_HELD`) — resolved as the org's system tenant (`jobTenant`), once per repository per answer | the ONE connected repository the call names (any of the org's `org_repos`, not only the primary) | the same | per (installation, repository) — the primary's is the reconcile's entry |
+| Ask Trov's GitHub tools (`src/repo/ask-github.ts`, `ask.md` › GitHub; only while the org's GitHub lookups switch is on) — resolved as the org's system tenant (`jobTenant`), once per repository per answer | the ONE connected repository the call names (any of the org's `org_repos`, not only the primary) | the same | per (installation, repository) — the primary's is the reconcile's entry |
 | The org image's import (`GET /users/{owner}`) | the primary repository | the same — it rides the reconcile's unit and uses that unit's token. The lookup needs no permission; a second, Metadata-only token would add a mint an hour and take nothing away from what the isolate already holds | the same entry |
 | The repository picker and its re-marking (`visibleRepos`), Test connection, the connect flow's no-escalation check — `GET /installation/repositories` | none: the list has to span the installation (a token narrowed to repositories lists only those) | Metadata only (`INSTALLATION_SCOPE`) — it can read no code, pull request or issue | yes, per installation |
 
@@ -350,11 +350,12 @@ Actions, Checks, Deployments, Commit statuses (repository); Email addresses (acc
 | `GET /repos/{r}/commits/{ref}/check-runs` | reconcile (environment head checks) | Checks |
 | `GET /repos/{r}/commits/{ref}/statuses` | reconcile (`canopy/*` statuses) | Commit statuses |
 | `GET /users/{owner}`, then `avatars.githubusercontent.com` | the org image's import | none (public; the avatar is fetched with no token) |
-| `GET /repos/{r}`, `/contents/{path}`, `/commits`, `/commits/{sha}`, `/branches`, `/releases` | Ask's GitHub tools (held) | Metadata, Contents |
-| `GET /search/code?q=… repo:{r}` | Ask's `github_search_code` (held) | Metadata (a repository-scoped installation token searches that repository; not yet run against real GitHub) |
-| `GET /repos/{r}/pulls`, `/pulls/{n}`, `/pulls/{n}/files` | Ask's GitHub tools (held) | Pull requests |
-| `GET /repos/{r}/issues`, `/issues/{n}`, `/issues/{n}/comments` | Ask's GitHub tools (held) | Issues |
-| `GET /repos/{r}/commits/{ref}/check-runs`, `/commits/{ref}/status` | Ask's `github_ci` (held) | Checks, Commit statuses |
+| `GET /repos/{r}`, `/contents/{path}`, `/commits`, `/commits/{sha}`, `/branches`, `/releases` | Ask's GitHub tools | Metadata, Contents |
+| `GET /search/code?q=… repo:{r}` | Ask's `github_search_code` | Metadata (a repository-scoped installation token searches that repository; not yet run against real GitHub) |
+| `GET /repos/{r}/pulls`, `/pulls/{n}`, `/pulls/{n}/files` | Ask's GitHub tools | Pull requests |
+| `GET /repos/{r}/issues`, `/issues/{n}`, `/issues/{n}/comments` | Ask's GitHub tools | Issues |
+| `GET /repos/{r}/commits/{ref}/check-runs`, `/commits/{ref}/status` | Ask's `github_ci` | Checks, Commit statuses |
+| `GET /repos/{r}/collaborators/{login}/permission` | Ask's per-person access check (each person's own linked login, once per repository per answer) | Metadata (per GitHub's docs; it reports team and base-permission access too — not yet run against real GitHub) |
 | `GET /installation/repositories` | the repository picker, Test connection, the no-escalation check | any installation token (Trov's carries Metadata only) |
 | `GET /app/installations/{id}`, `POST …/access_tokens` | binding, minting, Test connection | the App JWT |
 | `GET /user`, `/user/emails` | sign-in, connect | Email addresses (for `/user/emails`) |
