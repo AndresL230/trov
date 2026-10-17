@@ -45,7 +45,7 @@ export function snippetHtml(s: AskSearchHit["snippet"]): string {
 
 /** The org on screen's name ("your organization" before it is known): what "Share with …" names. */
 export const askOrgName = (app: Pick<AppState, "me" | "orgSlug">): string =>
-  app.me?.orgs.find((o) => o.slug === app.orgSlug)?.name ?? "your organization";
+  app.me?.orgs?.find((o) => o.slug === app.orgSlug)?.name ?? "your organization";
 
 /** The shared mark's tooltip, for the owner and for a reader (`owner`: the owner's name). */
 export const sharedTip = (org: string, owner: string | null = null): string =>
