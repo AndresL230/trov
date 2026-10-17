@@ -34,6 +34,19 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   proposal never moves a doc, and an edit of a page in an archived space still stages. Unplaced › assign passes
   the space the person picked (any live one) back through this same check. A person's `POST /docs/propose`
   refuses an unknown or archived space with a 400 instead of sending their page to triage.
+- **A doc's place in its space's page tree** (`docs-library.md` › The page tree). A proposal may carry
+  `parent_slug` (contract `DocProposal`, MCP `propose_doc_update`, Ask's mirror, a person's `/docs/propose`):
+  `src/tools/doc-tree.ts` `checkParent` runs the tree's rules (`shared/docs-tree-core.ts` `planMove` "into", in the
+  page's OWN space). A valid parent is taken by a **new** doc's row at insert (it is unpromoted, so it shows "Not yet
+  approved" under its parent; its rank is the plan's unless the siblings needed a renumber — the gate never writes
+  another page's row) and recorded on every version (`doc_versions.parent_slug`); an **existing** doc moves under it
+  only when that version is promoted, and only if it is still a valid place then (else the tree is left as it is).
+  An invalid parent (missing, another space, the page itself, under it, too deep) is **ignored** — the page stages
+  anyway and the result carries `parent_ignored: { parent_slug, reason }`. It is never a reason to triage.
+- **Server-only options.** `ingestDocProposal(ctx, proposal, author, ledger?, opts?)`: `opts` is
+  `{ importId?, importPath? }` (`DocIngestOptions`), written to `doc_versions.import_id` / `import_path` — the
+  Markdown import run a version came from and the file's path in it. It is NOT part of the contract: no agent or
+  person can set it (a proposal's own `import_id` field is dropped by the schema). Only the import routes pass it.
 - **Feed tags are the ORGANIZATION's own list** (`0056_org_tags`; `feed-and-search.md` › Tags), read inside
   `ingestFeedEntry` through `sortAgentTags` (`src/tools/tags.ts`) — never a constant. An agent's tag is
   normalized (`normalizeTagName`: case, spaces, underscores) and sorted: **on the list and live** → written
@@ -119,7 +132,9 @@ stay direct in the promote class.
 Agents only ever stage; humans confirm via **authenticated HTTP routes that are NEVER MCP tools**:
 
 - Docs: `propose_doc_update` stages a `doc_versions` row (status `staged`); `POST /doc/:slug/promote`
-  copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain).
+  copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain). The promote is
+  ONE batch: the version's status, its open risk superseded, the live body, the page's `doc_links` rebuilt from that
+  body (`[[slug]]` links, `shared/docs-links-core.ts`), and the version's requested parent applied when still valid.
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
   and body remain (non-destructive). Idempotent.
 - Doc drift (#161, `src/ai/doc-drift.ts`; `ai.md` › Doc drift): when Trov finds a doc that recent feed entries show

@@ -23,7 +23,8 @@ vi.mock("../web/src/markdown", () => ({
   sanitizeSvg: (svg: string) => svg,
 }));
 import css from "../web/src/trov.css?raw";
-import { render, initialState, docReaderHtml, shownState } from "../web/src/render";
+import { render, initialState, shownState } from "../web/src/render";
+import { docPageView } from "../web/src/doc-page";
 import type { AppState, Screen } from "../web/src/render";
 import { emptyLayout, emptySay, emptyShapes, skLine, skCard, skBox, CONNECT_AGENT } from "../web/src/skeleton";
 import { parsePreview, previewSearch, withPreview, previewState, previewBanner, PREVIEW_BLOCKED } from "../web/src/preview";
@@ -60,7 +61,7 @@ const EMPTY: Partial<AppState> = {
   mywork: { status: "ok", data: { person: "alice", previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false } },
   mwSessions: { status: "ok", data: [] }, mwDocs: { status: "ok", data: [] },
   feed: { status: "ok", data: [] }, feedStats: { status: "ok", data: { days: [], total: 0, people: 0, topTags: [], topAuthors: [] } },
-  docsList: { status: "ok", data: [] }, docDetail: { status: "ok", data: null },
+  docDetail: { status: "ok", data: null },
   roadmap: { status: "ok", data: { narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] } }, roadmapFeed: { status: "ok", data: [] },
   proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] }, needsTriage: { status: "ok", data: [] },
   tickets: { status: "ok", data: [] }, sprints: { status: "ok", data: [] },
@@ -258,11 +259,13 @@ const CASES: Case[] = [
     withData: (s) => ({ ...s, roadmap: { status: "ok", data: { ...s.roadmap.data, sprints: [sprint] } } }), data: "A real sprint" },
   { name: "Feed", screen: "feed", empty: ["feed", "feed-week", "feed-review"], member: ["welcomeOpen"],
     withData: (s) => ({ ...s, feed: { status: "ok", data: [feedRow] } }), data: "Shipped the thing.", gone: ["feed"] },
-  { name: "Docs", screen: "docs", empty: ["docs-tree", "doc"], member: ["newDoc"],
-    withData: (s) => ({ ...s, docsList: { status: "ok", data: [{ ...doc, outline: [] }] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } } }), data: "A real doc" },
+  // A doc page beside its space's tree (the docs pane): with no page yet, the hollow tree and the page drawn empty.
+  { name: "Docs", screen: "docs", empty: ["docs-tree", "doc"], member: ["libNewPage"],
+    withData: (s) => ({ ...s, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc: { ...doc, space: "security" }, versions: [] } },
+      spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [{ ...page, slug: "a-real-doc", title: "A real doc" }], can_edit: false, can_admin: false } } }), data: "A real doc" },
   { name: "Library home", screen: "library", empty: ["library"], member: [], admin: ["libNew"],
     withData: (s) => ({ ...s, library: { status: "ok", data: { spaces: [{ ...SPACE, name: "A real space", pages: 1 }], archived: [], recent: [page], waiting: 0, can_admin: false } } }), data: "A real page" },
-  { name: "Space home", screen: "space", empty: ["space"], member: ["libNewPage"],
+  { name: "Space home", screen: "space", empty: ["docs-tree", "space"], member: ["libNewPage"],
     withData: (s) => ({ ...s, spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [page], can_edit: false, can_admin: false } } }), data: "A real page" },
   { name: "Artifacts", screen: "artifacts", empty: ["artifacts"], member: ["artNew"],
     withData: (s) => ({ ...s, art: { ...s.art, list: { status: "ok", data: [artifact] } } }), data: "A real artifact" },
@@ -346,8 +349,11 @@ describe("every screen — loading, empty and with data", () => {
     expect(html).not.toContain("0 shown");
   });
 
-  it("the Docs reader draws the empty page through the in-place path too", () => {
-    expect(docReaderHtml(emptyState("docs"))).toContain('data-empty="doc"');
+  it("the doc page with no page picked is drawn empty, with New page in its space", () => {
+    const html = docPageView({ slug: null, detail: { status: "ok", data: null }, space: SPACE, emptySpace: "security", persons: [], showHistory: false, tagsRow: "" });
+    expect(emptyKeys(html)).toEqual(["doc"]);
+    expect(acts(html)).toEqual(["libNewPage"]);
+    expectOnlyBoxes(html);
   });
 
   it("a sprint with no tickets draws its ticket grid empty and points at the queue", () => {
@@ -427,7 +433,7 @@ describe("preview — every screen, whatever the organization holds", () => {
       mywork: { status: "ok", data: { person: "alice", previousActivity: [], todo: [], tickets: [{ id: 7, title: "A real ticket", body: "", category: "bug", priority: "normal", status: "submitted", source: "canopy", requester: "alice", sprint: null, updatedAt: T0, createdAt: T0 }], ticketsTotal: 1, degraded: false } },
       mwSessions: { status: "ok", data: [feedRow] }, mwDocs: { status: "ok", data: [] },
       feed: { status: "ok", data: [feedRow] }, feedAuthors: ["alice"], feedStats: { status: "ok", data: { days: [{ date: "2026-09-14", count: 3 }], total: 3, people: 1, topTags: [], topAuthors: [{ author: "alice", count: 3 }] } },
-      docsList: { status: "ok", data: [{ ...doc, outline: [] }] }, docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc, versions: [] } },
+      docSlug: "a-real-doc", docDetail: { status: "ok", data: { doc: { ...doc, space: "security" }, versions: [] } },
       library: { status: "ok", data: { spaces: [{ ...SPACE, pages: 1, owners: ["alice"] }], archived: [], recent: [{ ...page, title: "A real doc" }], waiting: 0, can_admin: true } },
       spaceSlug: "security", spaceHome: { status: "ok", data: { space: { ...SPACE, pages: 1 }, pages: [{ ...page, title: "A real doc" }], can_edit: true, can_admin: true } },
       roadmap: { status: "ok", data: { narrative: "The real plan.", version: 1, updated_at: T0, updated_by: "alice", sprints: [sprint] } }, roadmapFeed: { status: "ok", data: [feedRow] },

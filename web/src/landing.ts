@@ -445,10 +445,10 @@ import type { TourKey } from "./site-feature-core";
  *  is new copy — when the Guide changes, change this with it. */
 export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
   docs: [
-    "The library is split into spaces your team defines, like Engineering, Product and Design, each grouped into sections like Architecture and Decisions.",
-    "Opening a doc expands its heading outline in the tree, and Version history keeps every earlier version.",
+    "The library is split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading.",
+    "Drag a page onto another to put it inside, or above or below one to reorder them. History keeps every earlier version.",
     "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
-    "New doc lets you propose one yourself.",
+    "New page starts one from a template and sends it to Review.",
   ],
   feed: [
     "A timeline of everything that shipped, from people and agents alike.",

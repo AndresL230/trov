@@ -18,6 +18,7 @@ import { tabBar, tabPanelAttrs } from "./tabs";
 import { dropdown, type DropdownProps, type DropdownUi } from "./dropdown";
 import { confirmModal } from "./confirm";
 import { skeleton, skBar, skBox, skLine, skList, skCard, skW, emptyLayout, emptyShapes } from "./skeleton";
+import { buildTree, childrenOf, descendantsOf, flattenTree } from "@shared/docs-tree-core";
 
 // ── the space tile ───────────────────────────────────────────────────────────
 
@@ -265,12 +266,6 @@ export interface SpaceHomeProps {
 const SPACE_FRAME = "max-width:1080px;margin:0 auto;padding:28px 36px 90px";
 const ROW_COLS = "1fr 190px 190px";
 
-/** Tree order, flat for now (the tree arrives with the page tree): rank, then title. */
-const treeOrder = (a: LibraryPageDTO, b: LibraryPageDTO): number => {
-  const ar = a.tree_rank, br = b.tree_rank;
-  if (ar !== br) { if (ar === null) return 1; if (br === null) return -1; return ar - br; }
-  return a.title.localeCompare(b.title);
-};
 const byUpdated = (a: LibraryPageDTO, b: LibraryPageDTO): number => (b.updated_at ?? "").localeCompare(a.updated_at ?? "");
 
 function spaceTabs(tab: SpaceTab, count: number | null): string {
@@ -351,18 +346,22 @@ function spacePanel(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const pages = d.pages;
   const lead = pageIcon(14);
   const pathOf = (pg: LibraryPageDTO): string => (pg.path.length ? pg.path.join(" › ") : "Top level");
-  const row = (pg: LibraryPageDTO, i: number, o: { noPath?: boolean; bold?: boolean } = {}) =>
-    pageRow(pg, { persons: p.persons, lead, path: pathOf(pg), cols: ROW_COLS, first: i === 0, minH: o.noPath ? 40 : 52, noPath: o.noPath, bold: o.bold });
+  const row = (pg: LibraryPageDTO, i: number, o: { noPath?: boolean; bold?: boolean; indent?: number } = {}) =>
+    pageRow(pg, { persons: p.persons, lead, path: pathOf(pg), cols: ROW_COLS, first: i === 0, minH: o.noPath ? 40 : 52, noPath: o.noPath, bold: o.bold, indent: o.indent });
+  // The page tree (shared/docs-tree-core.ts): the top level and each page's children in their saved order.
+  const tree = buildTree(pages);
   if (p.tab === "overview") {
-    const top = pages.filter((pg) => pg.parent_slug === null).sort(treeOrder);
-    const inside = (slug: string): number => pages.filter((pg) => pg.parent_slug === slug).length;
+    const top = childrenOf(tree, null, d.space.slug);
+    const inside = (slug: string): number => descendantsOf(tree, slug).length;
     return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px"><h2 style="${H2}">Top-level pages</h2><button type="button" data-act="libTab" data-arg="all" class="cnpy-link" style="padding:0;font-size:12.5px;color:var(--fg-55)">All pages ›</button></div>
       <div class="cnpy-stagger" style="${PAGE_GRID}">${top.map((pg) => topCard(pg, inside(pg.slug), p.persons)).join("")}</div>
       <h2 style="${H2};margin:30px 0 12px">Recently updated</h2>
       <div${surface("padding:0;overflow:hidden")}>${[...pages].sort(byUpdated).slice(0, 5).map((pg, i) => row(pg, i)).join("")}</div>`;
   }
   if (p.tab === "all") {
-    return `<div${surface("padding:0;overflow:hidden")}>${tableHead()}${[...pages].sort(treeOrder).map((pg, i) => row(pg, i, { noPath: true, bold: pg.parent_slug === null })).join("")}</div>`;
+    // The whole tree, every page open, in tree order; each row indented 18px a level.
+    const rows = flattenTree(tree, d.space.slug);
+    return `<div${surface("padding:0;overflow:hidden")}>${tableHead()}${rows.map((r, i) => row(r.node, i, { noPath: true, bold: r.depth === 0, indent: r.depth * 18 })).join("")}</div>`;
   }
   const sorted = p.tab === "recent" ? [...pages].sort(byUpdated)
     : p.tab === "oldest" ? [...pages].sort((a, b) => byUpdated(b, a))

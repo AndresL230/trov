@@ -632,19 +632,6 @@ input, select { font-family: inherit; }
   .cnpy-rv-head > :last-child { flex-wrap:wrap; }
 }
 @media (max-width:640px) { .cnpy-rv-body { padding-left:16px !important; padding-right:16px !important; } }
-/* Docs under ~760px: the page list and the reader take turns (render.ts `.cnpy-docs`
-   `data-tree`), swapped by the Pages button in the bar above them; the reader's page
-   keeps a phone's gutter instead of the desktop's 52px. */
-.cnpy-docs-bar { display:none; }
-@media (max-width:760px) {
-  .cnpy-docs { flex-direction:column; }
-  .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
-  .cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-weight:500; color:var(--fg-70); }
-  .cnpy-docs > .cnpy-docs-tree { width:auto !important; flex:1 1 auto !important; min-height:0; border-right:none !important; padding:14px 10px !important; }
-  .cnpy-docs[data-tree="0"] > .cnpy-docs-tree, .cnpy-docs[data-tree="1"] > #cnpy-reader { display:none !important; }
-  .cnpy-docpage { padding:22px 16px 96px !important; }
-  .cnpy-docs .cnpy-tree, .cnpy-docs .cnpy-outline-item { min-height:40px; }
-}
 /* A detail page's head — title on the left, its actions on the right (a handoff, a prompt):
    at phone width the actions drop under the title instead of squeezing it to a column. */
 @media (max-width:640px) {
@@ -678,26 +665,7 @@ input, select { font-family: inherit; }
   .cnpy-authwrap .cnpy-authwrap { padding:0 !important; min-height:0 !important; }
   .cnpy-authcard { padding:26px 20px !important; }
 }
-/* ── docs nav tree (static section labels · pages · per-page outline) ───────── */
-.cnpy-treesec { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 10px 7px 8px; }
-.cnpy-tree { display:flex; align-items:center; gap:5px; width:100%; text-align:left; padding:6px 10px 6px 6px; border-radius:7px; font-size:13px; font-weight:400; color:var(--fg-55); background:transparent; transition:background .12s ease, color .12s ease; }
-.cnpy-tree:hover { color:var(--fg); }
-.cnpy-tree.is-active { color:var(--accent); font-weight:500; }
-.cnpy-tree.is-active:hover { color:var(--accent); }
-.cnpy-treechev { flex:none; display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--fg-40); transition:transform .16s ease, color .12s ease, background .12s ease; }
-.cnpy-treechev.is-open { transform:rotate(90deg); }
-.cnpy-treechev:hover { color:var(--fg-70); }
-.cnpy-tree.is-active .cnpy-treechev { color:var(--accent); }
-.cnpy-treechev.is-empty, .cnpy-treechev.is-empty:hover { background:transparent; pointer-events:none; }
-/* Grid-rows trick animates to the exact content height. Only one transition runs at
-   a time — the chevron is a single toggle, and the accordion collapses the previous
-   outline instantly (main.ts) — so two fr transitions never overlap (that wedges).
-   Vertical breathing room rides on the last item → a collapsed outline is a true 0px. */
-.cnpy-outline { display:grid; grid-template-rows:0fr; transition:grid-template-rows .22s cubic-bezier(.4,0,.2,1); }
-.cnpy-outline.is-open { grid-template-rows:1fr; }
-.cnpy-outline-inner { overflow:hidden; min-height:0; display:flex; flex-direction:column; gap:1px; padding-left:23px; }
-.cnpy-outline-inner > :last-child { margin-bottom:5px; }
-@media (prefers-reduced-motion: reduce) { .cnpy-outline { transition:none; } }
+/* ── the Guide's table-of-contents sub-rows (.cnpy-outline-item) ── */
 .cnpy-outline-item { text-align:left; width:100%; padding:4px 8px 4px 11px; border-radius:6px; font-size:12px; color:var(--fg-40); background:transparent; transition:color .12s ease, background .12s ease; }
 .cnpy-outline-item:hover { color:var(--fg-70); }
 .cnpy-outline-item.is-current { color:var(--accent); font-weight:500; }
@@ -4009,6 +3977,181 @@ a.ask-btn { text-decoration:none; }
 .cnpy-sub-ghost > span:last-child { width:70px; height:8px; box-shadow:inset 0 0 0 1px var(--border-strong); }
 @media (prefers-reduced-motion: reduce) { .cnpy-lib-newcard, .cnpy-libm-ic { transition:none; } }
 
+/* ── the docs pane, the page tree and its drag (docs-pane.ts, tree-drag.ts) ─────────────────────────────── */
+/* The Library's frame (render.ts `libraryFrame`): the pane beside the content, each scrolling on its own. Under 900px
+   the two take turns (`data-tree`), swapped by the Pages button in the bar above them. */
+.cnpy-libframe { display:flex; height:100%; min-height:0; }
+.cnpy-libmain { flex:1; min-width:0; overflow-y:auto; }
+.cnpy-libframe > .cnpy-docs-bar { display:none; }
+.cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); font-size:13px; font-weight:500; color:var(--fg-70); }
+[data-enter] #cnpy-main > .cnpy-libframe { animation:none; }
+[data-enter] .cnpy-libframe > .cnpy-libmain { animation:cnpy-screen .32s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--enter-t, 0ms); }
+@media (max-width:900px) {
+  .cnpy-libframe { flex-direction:column; }
+  .cnpy-libframe > .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
+  .cnpy-libframe[data-tree="0"] > .cnpy-dpane, .cnpy-libframe[data-tree="1"] > .cnpy-libmain { display:none; }
+  .cnpy-libframe[data-tree="1"] > .cnpy-dpane { width:auto; flex:1 1 auto; border-right:none; }
+  .cnpy-dpane .cnpy-dp-row:not(.is-shape) { height:40px; }
+}
+/* The pane: 252px, its own scroll; the head row (the space), "PAGES" and the count, the rows. */
+.cnpy-dpane { width:252px; flex:none; overflow-y:auto; border-right:1px solid var(--border); padding:14px 12px 28px; box-sizing:border-box; }
+.cnpy-dp-head { display:flex; align-items:center; gap:9px; height:36px; padding:0 6px 0 8px; cursor:pointer; }
+.cnpy-dp-head:not(.is-shape):hover { background:var(--hover); }
+.cnpy-dp-head.is-active { background:var(--surface); box-shadow:0 0 0 1px var(--border), 0 1px 2px rgba(20,20,30,.05); }
+.cnpy-dp-head.is-into { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+.cnpy-dp-name { flex:1; min-width:0; font-size:13.5px; font-weight:600; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-head.is-into .cnpy-dp-name { color:var(--accent); }
+.cnpy-dp-label { display:flex; align-items:center; justify-content:space-between; padding:16px 8px 6px; font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); }
+.cnpy-dp-n { font-variant-numeric:tabular-nums; letter-spacing:0; }
+.cnpy-dp-note { margin:6px 8px; font-size:12px; line-height:1.45; color:var(--fg-55); }
+.cnpy-dp-rows { display:flex; flex-direction:column; }
+.cnpy-dp-row { position:relative; display:flex; align-items:center; gap:4px; height:28px; padding-right:6px; box-sizing:border-box; font-size:13px; color:var(--fg-55); cursor:pointer; user-select:none; }
+.cnpy-dp-row.is-shape { cursor:default; }
+.cnpy-dp-row.is-top { color:var(--fg-70); font-weight:500; }
+.cnpy-dp-row:not(.is-shape):hover { color:var(--fg); background:var(--hover); }
+.cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+.cnpy-dp-row.is-into, .cnpy-dp-row.is-into:hover { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+.cnpy-dp-row.is-lifted { opacity:.38; }
+.cnpy-dp-guide { position:absolute; top:0; bottom:0; width:1px; background:var(--border); pointer-events:none; }
+.cnpy-dp-chev { position:relative; z-index:2; flex:none; display:grid; place-items:center; width:16px; height:16px; padding:0; color:var(--fg-40); transition:transform .16s ease, color .12s ease; }
+.cnpy-dp-chev.is-open { transform:rotate(90deg); }
+.cnpy-dp-chev:not(.is-empty):hover { color:var(--fg-70); }
+.cnpy-dp-chev.is-empty { visibility:hidden; }
+.cnpy-dp-row.is-active .cnpy-dp-chev { color:var(--accent); }
+.cnpy-dp-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-st { position:relative; z-index:2; flex:none; display:inline-flex; }
+.cnpy-dp-acts { position:relative; z-index:3; display:flex; align-items:center; gap:1px; flex:none; opacity:0; transition:opacity .12s ease; }
+.cnpy-dp-row:hover .cnpy-dp-acts, .cnpy-dp-row:focus-within .cnpy-dp-acts, .cnpy-dp-row.has-menu .cnpy-dp-acts { opacity:1; }
+.cnpy-dp-act { display:grid; place-items:center; width:20px; height:20px; padding:0; color:var(--fg-40); }
+.cnpy-dp-act:hover { color:var(--fg); background:var(--hover); }
+.cnpy-dp-act.is-head { position:relative; z-index:2; width:24px; height:24px; color:var(--fg-55); }
+.cnpy-dp-act:focus-visible, .cnpy-dp-chev:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.cnpy-dp-menu { position:absolute; right:4px; top:calc(100% + 2px); z-index:20; min-width:180px; padding:4px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 10px 28px rgba(10,10,16,.16); cursor:default; }
+.cnpy-dp-mi { text-align:left; padding:7px 9px; font-size:12.5px; font-weight:400; color:var(--fg-70); }
+.cnpy-dp-mi:hover { background:var(--hover); color:var(--fg); }
+.cnpy-dp-mi:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+/* The drag (tree-drag.ts): the ghost chip and its pill, the drop line with its square handle. */
+.cnpy-dp-ghost { position:fixed; z-index:90; pointer-events:none; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+.cnpy-dp-chip { display:flex; align-items:center; gap:7px; height:30px; min-width:150px; max-width:230px; padding:0 11px; box-sizing:border-box; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 12px 32px rgba(10,10,16,.2); font-size:13px; font-weight:500; color:var(--fg); }
+.cnpy-dp-chip svg { flex:none; color:var(--fg-40); }
+.cnpy-dp-chip span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-hint { padding:3px 8px; background:var(--accent); color:var(--accent-fg); font-size:11.5px; font-weight:500; white-space:nowrap; }
+.cnpy-dp-line { position:fixed; z-index:89; height:2px; background:var(--accent); pointer-events:none; }
+.cnpy-dp-line[hidden] { display:none; }
+.cnpy-dp-line > i { position:absolute; left:-4px; top:-3px; width:8px; height:8px; box-sizing:border-box; border:2px solid var(--accent); background:var(--bg); }
+@media (prefers-reduced-motion: reduce) { .cnpy-dp-chev, .cnpy-dp-acts { transition:none; } }
+/* (end of the docs pane block) */
+
+/* ── the doc page (doc-page.ts) ─────────────────────────────────────────────────────────────────────────── */
+/* The article beside its 210px sticky rail. */
+.cnpy-dpg { max-width:1040px; margin:0 auto; padding:24px 36px 120px; box-sizing:border-box; }
+.cnpy-dpg-grid { display:grid; grid-template-columns:minmax(0,1fr) 210px; gap:40px; align-items:start; }
+.cnpy-dpg-note { margin:24px 0; font-size:13px; line-height:1.5; color:var(--fg-55); }
+.cnpy-dpg-crumbs { display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-dpg-crumb { display:inline-flex; align-items:center; gap:6px; padding:0; color:var(--fg-55); }
+.cnpy-dpg-crumb:hover { color:var(--fg); text-decoration:underline; text-underline-offset:2px; }
+.cnpy-dpg-sep { color:var(--fg-40); }
+.cnpy-dpg-here { color:var(--fg); }
+.cnpy-dpg-title { font-size:29px; font-weight:650; letter-spacing:-0.022em; line-height:1.16; margin:12px 0 0; overflow-wrap:anywhere; }
+.cnpy-dpg-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:14px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+.cnpy-dpg-by { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--fg-55); }
+.cnpy-dpg-btn { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 11px; border:1px solid var(--border); font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-dpg-btn:hover { background:var(--hover); color:var(--fg); }
+.cnpy-dpg-btn.is-on { background:var(--hover); color:var(--fg); border-color:var(--border-strong); }
+.cnpy-dpg-hist { margin-top:14px; }
+.cnpy-dpg-hrow { display:grid; grid-template-columns:28px minmax(0,1fr) auto auto; align-items:center; gap:12px; padding:10px 14px; }
+.cnpy-dpg-hrow + .cnpy-dpg-hrow { border-top:1px solid var(--border); }
+.cnpy-dpg-hv { font-size:12px; font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-dpg-hs { font-size:12.5px; color:var(--fg-70); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dpg-md { margin-top:26px; font-size:15px; line-height:1.75; }
+.cnpy-dpg-md h2 { font-size:18.5px; }
+.cnpy-dpg-md h3 { font-size:16px; }
+.cnpy-dpg-md h2, .cnpy-dpg-md h3, .cnpy-dpg-kh { scroll-margin-top:24px; }
+/* A [[slug]] link: the accent, a soft underline, a page icon before it; one to no page is flagged text. */
+.cnpy-doclink { color:var(--accent); text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 34%, transparent); text-decoration-thickness:1px; text-underline-offset:2px; white-space:nowrap; }
+.cnpy-doclink::before { content:""; display:inline-block; width:12px; height:12px; margin-right:3px; vertical-align:-1px; background:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M6 3h7l5 5v13H6z'/%3E%3Cpath d='M13 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M6 3h7l5 5v13H6z'/%3E%3Cpath d='M13 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; }
+a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
+.cnpy-doclink.is-broken { color:var(--fg-55); text-decoration-style:dashed; text-decoration-color:var(--amber); cursor:help; }
+.cnpy-doclink.is-broken::before { background:var(--amber); }
+.cnpy-dpg-kids { margin-top:40px; }
+.cnpy-dpg-kh { font-size:14px; font-weight:500; margin:0 0 12px; }
+.cnpy-dpg-kgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:10px; }
+/* The rail: On this page (scroll-spied), the page's facts, Linked from. */
+.cnpy-dpg-rail { position:sticky; top:24px; display:flex; flex-direction:column; gap:20px; min-width:0; }
+.cnpy-rail-g { display:flex; flex-direction:column; gap:12px; }
+.cnpy-rail-h { font-size:12px; font-weight:600; color:var(--fg); }
+.cnpy-rail-n { margin-left:4px; font-size:11px; font-weight:400; color:var(--fg-40); }
+.cnpy-toc { display:flex; flex-direction:column; margin-top:-4px; }
+.cnpy-toc-i { position:relative; text-align:left; padding:4px 0 4px 10px; font-size:12.5px; line-height:1.4; color:var(--fg-55); }
+.cnpy-toc-i.is-sub { padding-left:22px; font-size:12px; }
+.cnpy-toc-i:hover { color:var(--fg); }
+.cnpy-toc-i.is-current { color:var(--accent); font-weight:500; }
+.cnpy-toc-i.is-current::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); }
+.cnpy-rail-f { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.cnpy-rail-l { font-size:11.5px; color:var(--fg-55); }
+.cnpy-rail-v { font-size:12.5px; color:var(--fg); min-width:0; }
+.cnpy-rail-note { font-size:12px; color:var(--fg-55); }
+.cnpy-rail-link { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:5px 6px; margin:0 -6px; text-align:left; }
+.cnpy-rail-link:hover { background:var(--hover); }
+.cnpy-rail-lt { font-size:12.5px; color:var(--fg); }
+.cnpy-rail-lp { font-size:11.5px; color:var(--fg-40); }
+.cnpy-rail-empty { margin:0; font-size:12px; line-height:1.45; color:var(--fg-40); }
+@media (max-width:1100px) {
+  .cnpy-dpg-grid { grid-template-columns:minmax(0,1fr); }
+  .cnpy-dpg-rail { position:static; }
+  .cnpy-dpg-rail .cnpy-rail-g:first-child { display:none; }
+}
+@media (max-width:640px) { .cnpy-dpg { padding:20px 16px 96px; } }
+/* (end of the doc page block) */
+
+/* ── New page (newdoc.ts) ───────────────────────────────────────────────────────────────────────────────── */
+/* "Goes in": the location button and its picker (a popover inside the morphed page, under the button). The cards
+   are radio buttons; a picked one takes the accent border and ring. Every radius is inline (6/7/8/10px). */
+.cnpy-nd-goes { display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+.cnpy-nd-anchor { position:relative; min-width:0; }
+.cnpy-nd-loc { display:inline-flex; align-items:center; gap:8px; max-width:100%; height:30px; padding:0 10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13px; cursor:pointer; transition:border-color .12s ease; }
+.cnpy-nd-loc:hover { border-color:var(--fg-40); }
+.cnpy-nd-locl { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-nd-where { position:absolute; z-index:30; top:calc(100% + 6px); left:0; width:340px; max-width:calc(100vw - 32px); background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:cnpy-nd-pop .14s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes cnpy-nd-pop { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.cnpy-nd-wlist { max-height:300px; overflow-y:auto; padding:0 6px 6px; }
+.cnpy-nd-wrow { display:flex; align-items:center; gap:4px; height:30px; padding-right:8px; font-size:12.5px; color:var(--fg-70); }
+.cnpy-nd-wrow:hover { background:var(--hover); }
+.cnpy-nd-wrow.is-on { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+.cnpy-nd-wchev { width:16px; height:16px; flex:none; display:grid; place-items:center; color:var(--fg-40); cursor:pointer; transition:transform .16s ease; }
+.cnpy-nd-wchev.is-empty { cursor:default; }
+.cnpy-nd-wchev.is-open { transform:rotate(90deg); }
+.cnpy-nd-wpick { flex:1; min-width:0; display:flex; align-items:center; gap:6px; height:100%; padding:0 2px; text-align:left; color:inherit; font:inherit; cursor:pointer; }
+.cnpy-nd-wt { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-nd-wmark { flex:none; display:inline-flex; }
+.cnpy-nd-wck { width:13px; flex:none; display:inline-flex; color:var(--accent); }
+.cnpy-nd-wfoot { display:flex; justify-content:flex-end; padding:8px 10px; border-top:1px solid var(--border); }
+.cnpy-nd-wchev:focus-visible, .cnpy-nd-wpick:focus-visible, .cnpy-nd-loc:focus-visible, .cnpy-nd-tpl:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+/* The templates and the preview. */
+.cnpy-nd-grid { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:24px; align-items:start; margin-top:24px; }
+.cnpy-nd-tpls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.cnpy-nd-tpl { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-height:118px; padding:14px; text-align:left; border:1px solid var(--border); background:var(--surface); color:var(--fg); cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
+.cnpy-nd-tpl:hover { border-color:var(--border-strong); }
+.cnpy-nd-tpl.is-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:color-mix(in srgb, var(--accent) 3%, var(--surface)); }
+.cnpy-nd-tpl.is-blank { border-style:dashed; border-color:var(--border-strong); background:transparent; }
+.cnpy-nd-tpl.is-blank.is-on { border-style:solid; border-color:var(--accent); }
+.cnpy-nd-tpli { width:32px; height:32px; display:grid; place-items:center; margin-bottom:6px; background:var(--bg); color:var(--fg-55); }
+.cnpy-nd-tpl.is-on .cnpy-nd-tpli { background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent); }
+.cnpy-nd-tpln { font-size:13.5px; font-weight:500; }
+.cnpy-nd-tpld { font-size:12px; line-height:1.45; color:var(--fg-55); }
+.cnpy-nd-mini { margin-top:12px; padding:14px; min-height:150px; box-sizing:border-box; background:color-mix(in srgb, var(--bg) 50%, var(--surface)); border:1px solid var(--border); }
+.cnpy-nd-line { height:6px; margin-top:6px; background:var(--border); }
+.cnpy-nd-line.is-title { height:10px; margin-top:0; background:var(--border-strong); }
+.cnpy-nd-msec { margin-top:12px; }
+.cnpy-nd-msl { font-size:12px; font-weight:500; color:var(--fg); }
+.cnpy-nd-mblank { font-size:12px; color:var(--fg-55); margin:12px 0 0; }
+.cnpy-nd-err { font-size:12px; line-height:1.45; color:var(--red); margin:10px 0 0; }
+@media (max-width:1100px) { .cnpy-nd-tpls { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:860px) { .cnpy-nd-grid { grid-template-columns:minmax(0,1fr); } }
+@media (max-width:640px) { .cnpy-nd { padding-left:16px !important; padding-right:16px !important; } .cnpy-nd-tpls { grid-template-columns:minmax(0,1fr); } }
+@media (prefers-reduced-motion: reduce) { .cnpy-nd-where { animation:none; } .cnpy-nd-loc, .cnpy-nd-tpl, .cnpy-nd-wchev { transition:none; } }
+/* (end of the New page block) */
+
 /* ── the site on a phone ──────────────────────────────────────────────────────
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
    or touch screen, in ONE place. Nothing here applies at 961px and up: every rule sits behind a width
@@ -4302,12 +4445,26 @@ a.ask-btn { text-decoration:none; }
 /* trov.css classes, by the radius each declares above. */
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-qs-kbd,
-[data-cnpy-theme] .cnpy-treechev,
 [data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
 /* The Docs Library (library.ts): a space's tile by its own --spt-r, the dialog's fields, icons and people rows,
    the swatches (round), and the sidebar's hollow "No spaces yet" row. */
 [data-cnpy-theme] .cnpy-spt { border-radius:calc(var(--spt-r, 4px) * var(--corner-scale)) !important; }
+/* The docs pane and the doc page (docs-pane.ts, doc-page.ts). */
+[data-cnpy-theme] .cnpy-dp-head,
+[data-cnpy-theme] .cnpy-dp-row,
+[data-cnpy-theme] .cnpy-dp-menu,
+[data-cnpy-theme] .cnpy-dpg-btn { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-dp-chev,
+[data-cnpy-theme] .cnpy-dp-act,
+[data-cnpy-theme] .cnpy-dp-mi,
+[data-cnpy-theme] .cnpy-rail-link,
+[data-cnpy-theme] .cnpy-dp-chip { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-dp-hint { border-radius:min(calc(999px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-dp-line > i { border-radius:calc(2px * var(--corner-scale)) !important; }
+/* (end of the docs pane corners) */
+/* New page (newdoc.ts). */
+/* (end of the New page corners) */
 [data-cnpy-theme] .cnpy-libm-in,
 [data-cnpy-theme] .cnpy-libm-prev { border-radius:calc(8px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-libm-ic,
@@ -4340,7 +4497,6 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .cnpy-collapse .cnpy-nav-i,
 [data-cnpy-theme] .cnpy-tip,
 [data-cnpy-theme] .cnpy-achip,
-[data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
 /* The mark tooltip carries the theme attribute itself (it lives on <body>), so its rule keys on it. */

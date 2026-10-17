@@ -14,8 +14,9 @@ itself looks fine and the bug is easy to miss.
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Library home
-(`library`) and a space's home (`space:<slug>`; their dialogs are `data-overlay`s, the tab bar's panel a
-`data-morph-key`), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+(`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
+the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
+the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -121,9 +122,10 @@ a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block
 a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
 repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
 `tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
-reads) must join the key. Results are strings, so a cached one cannot be mutated. The Docs tree computes no
-outline: `GET /docs` sends each doc's outline instead of its body (`shared/doc-outline.ts`; `feed-and-search.md` ›
-The Docs screen's reads), and `web/src/outline.ts` only re-exports `slugifyHeading` for the reader's heading ids.
+reads) must join the key. Results are strings, so a cached one cannot be mutated. The doc page's `[[slug]]` links are
+substituted into the body BEFORE it renders (`doc-page.ts` `linkedBody`), so a link's title or broken state is part of
+the body the cache is keyed on; its On this page is `extractOutline` over the same body, and `web/src/outline.ts` only
+re-exports `slugifyHeading` for the heading ids.
 `sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
 
 ## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)

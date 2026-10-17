@@ -188,6 +188,14 @@ describe("a space's home", () => {
     expect(over).toContain("No pages inside");
     const all = home({ tab: "all" });
     expect(all).toContain("<div>Page</div><div>Status</div><div>Last updated</div>");
+    // The page tree: All pages is the whole tree flattened in tree order, each level indented 18px; the Overview's
+    // top-level cards count every page under them.
+    const nested = [pg("api", "API reference", { tree_rank: 1024 }), pg("auth", "Authentication", { parent_slug: "api", tree_rank: 1024 }), pg("sso", "Single sign-on", { parent_slug: "auth" })];
+    const tree = home({ tab: "all" }, { pages: nested });
+    expect(tree.indexOf("API reference")).toBeLessThan(tree.indexOf("Authentication"));
+    expect(tree.indexOf("Authentication")).toBeLessThan(tree.indexOf("Single sign-on"));
+    expect(tree).toContain("padding-left:36px");
+    expect(home({}, { pages: nested })).toContain("2 pages inside");
     const recent = home({ tab: "recent" });
     expect(recent.indexOf("API reference")).toBeLessThan(recent.indexOf("Brand voice"));
     const oldest = home({ tab: "oldest" });
@@ -200,7 +208,7 @@ describe("a space's home", () => {
   it("render(): the header crumb names the space, and the page is patched in place per space", () => {
     const s = app("space", "member", { spaceSlug: "engineering", spaceHome: { status: "ok", data: { space: ENG, pages: PAGES, can_edit: false, can_admin: false } } });
     const html = render(s);
-    expect(html).toContain('data-morph="space:engineering"');
+    expect(html).toContain('data-morph="lib:engineering"');
     expect(html).toMatch(/›<\/span><span[^>]*>Engineering<\/span>/);
     expect(render(app("library", "member"))).toContain('data-morph="library"');
   });

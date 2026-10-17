@@ -209,12 +209,19 @@ export function listDocMeta(): Promise<DocMetaRow[]> {
   return getJson<{ docs: DocMetaRow[] }>("/docs?fields=meta").then((r) => r.docs);
 }
 
-/** One doc for the reader: its live body, its tags, and its versions WITHOUT their bodies. */
-export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }> {
-  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
+/** One doc for its page: its live body, its tags, its versions WITHOUT their bodies, and `page` — its place in its
+ *  space's tree, its links both ways and the rail (shared/docs-core.ts `DocPageDTO`). */
+export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocsT.DocPageDTO }> {
+  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocsT.DocPageDTO }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
     if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
     throw e;
   });
+}
+/** Move a page in its space's tree (`POST /doc/:slug/move`, a person's write): into / before / after another page of
+ *  the same space, or to the end of the top level. A refusal is an ApiError whose message is its code (`cycle`,
+ *  `too_deep`, `self`, `other_space`, `archived`, `not_found`, `invalid`). */
+export function moveDoc(slug: string, target: DocsT.DocMoveBody): Promise<DocsT.DocMoveResult> {
+  return postJson<DocsT.DocMoveResult>(`/doc/${encodeURIComponent(slug)}/move`, target);
 }
 /** One version of a doc with its body — read only when a version's text is shown. */
 export function getDocVersion(slug: string, version: number): Promise<DocVersionRow> {
@@ -1080,8 +1087,10 @@ export async function usePrompt(slug: string): Promise<{ use_count: number; last
   return { use_count: r.use_count, last_used_at: r.last_used_at };
 }
 /** Stage a version-1 doc proposal through the gate (lands in Review). */
-export async function proposeDoc(body: DocProposeBody): Promise<StagedProposal> {
-  return (await postJson<{ ok: true; proposal: StagedProposal }>("/api/docs/propose", body)).proposal;
+/** Stage a person's new page (the gate). `parent_ignored`: the parent asked for could not take it — staged at the top level. */
+export async function proposeDoc(body: DocProposeBody): Promise<{ proposal: StagedProposal | null; slug: string; parent_ignored?: { parent_slug: string; reason: string } }> {
+  const r = await postJson<{ ok: true; proposal: StagedProposal | null; slug: string; parent_ignored?: { parent_slug: string; reason: string } }>("/api/docs/propose", body);
+  return { proposal: r.proposal, slug: r.slug, ...(r.parent_ignored ? { parent_ignored: r.parent_ignored } : {}) };
 }
 export type { HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody };
 

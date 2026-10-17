@@ -1,7 +1,7 @@
 # The Docs Library: spaces, the page tree, links and import
 
-<!-- The area doc for the Docs Library (handoff #16). Built in three stacked PRs: Spaces (this part), the page
-tree and doc page, and Markdown import. Each PR extends this file. Keep it current when you change the area. -->
+<!-- The area doc for the Docs Library (handoff #16). Built in three stacked PRs: Spaces, the page tree and doc
+page, and Markdown import. Each PR extends this file. Keep it current when you change the area. -->
 
 ## The schema (`0081_docs_library`)
 
@@ -76,6 +76,67 @@ assign offers the org's live spaces and sends the pick back through the same che
 `list_docs` and `query` take `space` as a string (a slug or an alias), Ask Trov mirrors them, and `list_spaces` is
 a read for every principal (Ask wires it too). The plugin's skills (0.10.0) read the spaces rather than assume them.
 
+## The page tree
+
+Inside a space the pages form a tree: `docs.parent_slug` (NULL = the space's top level) and `docs.tree_rank` (its
+place among its siblings; NULL = no saved place yet). The RULES are **`shared/docs-tree-core.ts`** (zod-free; the SPA
+imports it as a value), so the Worker's move route and the docs pane's optimistic drop run the same functions:
+
+- **At most `MAX_DEPTH` = 10 levels** (the top level is depth 0). A move checks the moved page's whole subtree.
+- **Never a loop** (`wouldCycle`: not under itself or a page below it), never onto itself (`self`), and **same space
+  only** (`other_space`) — a page changes space only by being re-proposed, never by a drag.
+- **Order** (`treeOrder`): ranked siblings by rank, then unranked ones A to Z. The first drop into a list holding an
+  unranked page renumbers the whole list in its visible order (`placeAmong`, `shared/placement-core.ts`, the same
+  placement as the ticket board and the spaces).
+- **Reading is forgiving** (`buildTree`): a page whose parent is missing, in another space, or part of a stored loop is
+  drawn at the top level of its own space — never lost.
+- `planMove(nodes, slug, target)` → `{ parent_slug, tree_rank, renumber }` or a refusal (`not_found`, `self`, `cycle`,
+  `too_deep`, `other_space`); `applyMove` applies a plan to a list; `indentPx` is the pane's indent (14px a level to
+  level 4, then 9px, so deep trees fit).
+
+**Moving a page** is `POST /doc/:slug/move` (`src/tools/doc-tree.ts` `moveDoc`): **any signed-in member, cookie only**
+(a bearer is refused 403; there is no MCP move — people arrange the tree). Body `{ target: "into" | "before" | "after"
+| "top", ref? }`. The plan and its renumber are written in ONE batch; `updated_at` is untouched (a move is not an
+edit). The answer is `{ ok, slug, parent_slug, tree_rank, places }` — every page whose place it wrote. Refusals are
+`{ error: code, message }`: `invalid` 400, `not_found` 404 (the page, or a ref that is no page of the org), `cycle` /
+`too_deep` / `self` / `other_space` / `archived` (the space is archived) 409. Tests: `test/docs-tree.test.ts`.
+
+**A proposal's parent.** `DocProposal.parent_slug` (`ingestion-gate.md`): a NEW page takes a valid parent at insert;
+an EXISTING page stores it on `doc_versions.parent_slug` and moves under it when that version is promoted, if it is
+still valid then. An invalid one is ignored with `parent_ignored` in the result, never triaged. MCP `get_doc` shows a
+doc's `parent_slug` (the row); the plugin's skills (0.10.1) say how to send one and how to link.
+
+## Links between pages
+
+`[[slug]]` and `[[slug|the words shown]]` in a body (**`shared/docs-links-core.ts`**: `findDocLinks`,
+`extractDocLinks`, `replaceDocLinks`; a slug follows `DOC_SLUG_RE`, the contract's rule). Inline code spans and fenced
+blocks are never scanned. On **promote**, `doc_links` is rebuilt for the page from the body going live, in the
+promote's own batch (`linkStmts`; a link to itself is not kept) — so the table only ever holds LIVE links. A link
+whose target is no doc is **broken**: it stays in the table (it starts working once that page exists). **Backlinks**
+("Linked from") read `doc_links WHERE to_slug = the page`, keeping only sources that are live (`current_version >
+0`). Pages promoted before this shipped have no rows until their next promote.
+
+## The doc page's read
+
+`GET /doc/:slug` (cookie) keeps its `doc`, `versions` (no bodies) and `tags`, and adds **`page`** (`DocPageDTO`,
+`readDocPage`): `authority`; `parent_slug`; `ancestors` (the breadcrumb, top first); `children` (in tree order);
+`body` — the live body, or for a page never approved its NEWEST STAGED body (the page shows what is waiting);
+`links` (the `[[…]]` targets that exist, each with its title, space, path and status) and `broken_links` (the slugs
+that reach nothing); `backlinks` (live sources only); and `info` — `owner`, `edited_by` / `edited_at` (who wrote the
+version shown), `version`, `pending_version` (a newer staged one), `imported_from` (`{ path, file_name }` from
+`doc_versions.import_id` → `doc_imports.file_name`, when the version shown came from an import). It reads every page
+of the org once (no bodies) and resolves the tree and both kinds of link in memory, as the Library's own read does.
+The pane's tree is the space's home read (`GET /spaces/:slug` — every page with `parent_slug`, `tree_rank`, status).
+
+## Templates
+
+**`shared/docs-templates-core.ts`**: Guide, How-to, Reference, Runbook (the default), Spec, Product brief, Decision
+record, Onboarding, Blank — each a name, a description, its `## ` sections and a default SECTION. A template only
+SEEDS a new page — its body (`templateBody`: one `## ` heading per section) and its section — and is **not stored**.
+The section stays the gate's vocabulary (`shared/vocabulary.ts`): Decision record → `decisions`; Product brief and
+Spec → `context`; the rest → `reference`; the person may change it before staging. A page with no title typed gets
+`untitledTitle` ("Untitled runbook").
+
 ## The screens (web)
 
 The views are `web/src/library.ts` (pure); their reads and writes `web/src/library-actions.ts` (every `lib…` act);
@@ -84,15 +145,67 @@ the API calls `web/src/api.ts` (`getLibrary`, `getSpaceHome`, `createSpace`, `ed
 `render.empty`, `render.skeleton` and `render.sidebar`.
 
 **Routes** (`web/src/hash.ts`). `#library` is Library home (screen `library`); `#library/<space>` a space's home
-(screen `space`; its tab is state, `spaceTab`, so a switch never replays the entrance); `#doc/<slug>` opens a doc
-in the existing reader (screen `docs`; the slug is left out of `pageKey`, and the reader writes the address itself
-when a tree click swaps it in place); `#docs/new` is New page (screen `newdoc`). The old `#docs` and
-`#docs/<space>` land on `#library`. All four screens light the sidebar's Library group.
+(screen `space`; its tab is state, `spaceTab`, so a switch never replays the entrance); `#doc/<slug>` is a doc page
+(screen `docs`; the slug is left out of `pageKey`, so another page never replays the entrance); `#docs/new` is New
+page (screen `newdoc`). The old `#docs` and `#docs/<space>` land on `#library`. All four screens light the sidebar's
+Library group.
+
+**The frame and the docs pane.** A space's home, a doc page and New page sit in ONE frame (render.ts
+`libraryFrame`): the **docs pane** (`web/src/docs-pane.ts`, 252px, the space's page tree) beside the content, which
+scrolls on its own (`#cnpy-libmain`). The page is `data-morph="lib:<space>"` on all three, so the pane — its rows,
+its open chevrons, its scroll — is patched in place across them, and only the content (keyed per screen and per doc)
+is replaced; the old reader's DOM edits (`refreshReaderPane`, `applyTreeActive`) are gone, and the screen's entrance
+plays on the content only. The pane: the head row (the space's tile and name → its home; "+" → New page at its top
+level; while dragging, "the top level"), "PAGES" and the space's page count, then a 28px row per page (`indentPx`, a
+guide per ancestor level, a chevron when it has children, the status SHAPE for a page that is not live, a long
+title's `data-mtip`), and on hover "+" (a page inside) and "…" (Copy link; Move to the top level). The page being read
+and every page above it start open; a chevron the person turns wins (`state.treeOpen`). The active row is scrolled
+into view once per page opened. Loading: nine skeleton rows; no page: "No pages yet…" over three hollow rows. Under
+900px the pane and the content take turns (the bar's Pages button, `docsTree`).
+
+**Moving pages** (`web/src/tree-drag.ts` on `web/src/pointer-drag.ts`, the app's one pointer drag — the ticket
+board's cards use it too: the slop, the swallowed click, Escape, the held paints). Over a row: its top 30% is before,
+its bottom 30% after, the middle into; the pane's head is the top level; a target the rules refuse is no target ("too
+deep" says so in the hint). The ghost (the title, and a pill: "Put inside ‹Title›", "Move above / below ‹Title›",
+"Move to the top level of ‹Space›"), the 2px drop line with its square handle, the ringed row. On release
+`web/src/tree-actions.ts` applies the move at once (`applyMove`), posts it, flashes the row and toasts with **Undo**
+(the reverse move: before the page that followed it, else after the one before it, else into its old parent); a
+refusal puts the tree back and says why. The keyboard does the same on a focused row: Alt+↑ / Alt+↓ (above the page
+before / below the page after), Alt+→ (inside the page before), Alt+← (out to the parent's level).
+
+**The doc page** (`web/src/doc-page.ts`). A banner when the page is not simply live (a change waits in Review —
+"You're reading the live version…"; never approved — "This page isn't live yet…", with "It was imported" for an
+import), each with Open in Review; the breadcrumb (the space, each page above, the page); the title; the meta row —
+the status mark ("Live" is said here, the one place, with its tooltip), "Updated ‹when› by ‹Name›" ("Proposed" /
+"Imported" for a page never approved) and History (the versions newest first, rejected ones left out, the live one
+marked); the Tags row; the body, its `[[slug]]` links substituted BEFORE Markdown renders (`linkedBody`: a link that
+resolves is `<a class="cnpy-doclink" href="#doc/<slug>">` with its label or the target's title, the target's path as
+its tooltip; one to no page is flagged text — a dashed amber underline — with a tooltip saying no such page exists
+yet; code is left as written); then "Pages under ‹Title›" (not for a page never approved). The 210px sticky rail: On
+this page (h2/h3 from the body, plus Pages under; scroll-spied by main.ts `updateActiveHeading` over `#cnpy-libmain` —
+the last heading within 120px of the top; a click smooth-scrolls to it with 24px to spare, instant under reduced
+motion), Owner, Last edited by, Version (+ History; "Version N is waiting for review" / "Not approved yet"), Imported
+from, and Linked from. Loading: the article's and the rail's shapes; no page picked: the page drawn empty with New
+page; no such page: a sentence. Not built from the design: an Edit button (editing is a proposal — an agent's, or New
+page), the link hover card (the tooltip says where a link goes), diffs in History.
+
+**New page** (`web/src/newdoc.ts`, its acts `web/src/newdoc-actions.ts`). "Goes in": a location button opening a
+picker — the spaces as `segmented()` (a `dropdown()` past four), then the space's tree ("Top level of ‹Space›" first,
+each page with its own chevron) — preset to where it was opened (a space's top level, or under the row whose "+" was
+pressed). The nine templates as cards (Runbook preselected) beside a preview of the chosen one's sections; Title
+(placeholder "Untitled ‹template›"), Section (`segmented()`, preset by the template) and the body (seeded with the
+template's; a template switch keeps a body the person edited). Create page stages it through `POST /api/docs/propose`
+with `parent_slug` (the gate; a parent it ignores is said in the toast) and goes to Review. A handoff's "Promote to
+doc" opens it prefilled on Blank. Tests: `test/render.docs.test.ts` (the pane, the doc page, the drag's rules),
+`test/render.newdoc.test.ts`, the screens' rows in `render.empty` / `render.skeleton`.
 
 **State.** `library: Loadable<LibraryDTO | null>` is read once per org at boot (the rail shows it on every screen)
 and again after every space write; `spaceHome: Loadable<SpaceHomeDTO | null>` is the open space's, kept on screen
-while it is read again. `libUi` holds the dialogs and the description edited in place. Under `?preview=empty` the
-Library has no space and a space's home keeps the real space with no page (preview.ts).
+while it is read again — it is also the docs pane's tree on a doc page and New page (the Library controller's
+`ensureSpace` reads a space's pages only when it does not hold them). `docDetail` is the doc page's read (with
+`page`); `treeOpen` the pane's chevrons the person turned; `treeMenu` the row whose "…" is open; `nd` New page's
+draft. `libUi` holds the dialogs and the description edited in place. Under `?preview=empty` the Library has no space
+and a space's home keeps the real space with no page (preview.ts); a doc page shows the empty tree and the empty page.
 
 **Screens.**
 - *Library home*: the title, the subtitle, an admin's New space; "N pages are waiting for review" (to Review)
@@ -105,14 +218,12 @@ Library has no space and a space's home keeps the real space with no page (previ
   and the waiting link; New page; an admin's Edit space (the Create space dialog in edit mode, plus a Position
   `dropdown()` that posts `/move`) and Archive (a red `confirmModal`). Archived: the "Archived" mark, nothing to
   edit, no New page, Restore for an admin. Tabs (`tabBar()`): Overview (Top-level pages cards, then the five
-  changed last), All pages (with its count), Recently updated, Least recently updated, A to Z (letter groups) —
-  flat for now. No page: "No pages yet" with New page (the design's Import clause waits for Import).
+  changed last; each card counts the pages under it), All pages (with its count: the whole tree flattened in tree
+  order, 18px a level), Recently updated, Least recently updated, A to Z (letter groups). No page: "No pages yet" with New page (the design's Import clause waits for Import).
 - *Create space* (an admin; over Library home, or the space's home it was opened from): Name (40, a live
   duplicate check through `spaceNamedLike` that says the other space's name and keeps the CTA off), the 12 icons,
   the 8 colours, a short description (140), the sidebar preview. Created: the new space's home and "Created ‹Name›".
-- *The reader* (`#doc/<slug>`): its tree lists the open doc's space; the breadcrumb and the header crumb
-  ("Library › ‹Space›") name it. *New page*: the Space picker is the live spaces (`segmented()` up to four, a
-  `dropdown()` past that), preset to where it was opened; Cancel goes back to that space.
+- *A doc page* and *New page*: below; the header crumb reads "Library › ‹Space›" / "Library › New page".
 - Unplaced › assign offers the live spaces by name; a promoted handoff's doc starts in `engineering` while it is
   live, else the Library's first space.
 

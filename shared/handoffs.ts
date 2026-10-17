@@ -138,6 +138,8 @@ export interface DocProposeBody {
   body: string;
   summary?: string;
   slug?: string;
+  /** The page it goes under in its space's tree (New page's "Goes in"); omitted = the top level. */
+  parent_slug?: string;
 }
 
 /** The first non-blank line of a markdown body, with its heading / quote marker and inline marks stripped. */

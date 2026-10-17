@@ -31,6 +31,8 @@ export interface LibraryController {
   load(): void;
   /** Open one space's home (its read; the screen is set by the caller or here). */
   openSpace(slug: string | null): void;
+  /** Read a space's pages into `spaceHome` unless it already holds them (the docs pane on a doc page and New page). */
+  ensureSpace(slug: string): void;
 }
 
 /** A refusal of a space route as words that say what to do next. */
@@ -78,6 +80,12 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         state.spaceHome = e instanceof NotFound ? { status: "ok", data: null } : { status: "error", data: same ? state.spaceHome.data : null, error: String(e) };
         host.rerenderSoon();
       });
+  }
+
+  function ensureSpace(slug: string): void {
+    const h = state.spaceHome;
+    if (h.data?.space.slug === slug && (h.status === "ok" || h.status === "loading")) return;
+    openSpace(slug);
   }
 
   /** A space a write answered with: put it everywhere it shows (the open home, the Library's lists). */
@@ -293,5 +301,5 @@ export function createLibraryController(host: LibraryHost): LibraryController {
     }
   }
 
-  return { act, load, openSpace };
+  return { act, load, openSpace, ensureSpace };
 }

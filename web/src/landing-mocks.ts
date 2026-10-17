@@ -6,8 +6,9 @@
 // then changes the mock, and the test that pins them); the rest is copied from the renderer named
 // beside each mock, and must be changed with it:
 //
-//   docs ...... render.ts `docsView`: the tree's sections, the open doc's outline, the STAGED
-//               banner ("You're viewing the promoted version…" / Review proposal), Version history
+//   docs ...... docs-pane.ts `docsPane` (the space's head row, PAGES, the nested rows, the active page) and
+//               doc-page.ts `docPageView` (the pending banner — "You're reading the live version…" / Open in
+//               Review —, the breadcrumb, Live, History)
 //   feed ...... render.ts `feedView`: Filter, For reading / For agents, an entry's brief, agent
 //               mark and PR / commit / issue chips; the aside's This week and Waiting on review
 //   tickets ... tickets.ts `boardView` / `boardCard` and `tableView` / `groupHeader` / `tableRow`
@@ -69,37 +70,35 @@ function win(title: string, right: string, body: string, grow = true): string {
 }
 const SURF = "border:1px solid var(--border);background:var(--surface);border-radius:9px";
 
-// ── Docs: the tree with the open doc's outline, the reader, the staged banner ──
+// ── Docs: the space's page tree beside the doc page, with its pending banner ──
 function docsMock(): string {
-  const sec = (t: string, top = 14) => `<div style="padding:${top}px 6px 5px">${cap(t, "9px")}</div>`;
-  const row = (t: string, on = false, open = false) => `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px;font-size:11.5px;${on ? "color:var(--accent);font-weight:500" : "color:var(--fg-70)"}">${treeChev(open, on)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span></div>`;
-  const sub = (t: string, on = false) => `<div style="padding:3px 6px 3px 22px;font-size:11px;color:var(--${on ? "accent" : "fg-55"})">${t}</div>`;
-  const tree = `<div class="fxm-wide" style="width:176px;flex:none;border-right:1px solid var(--border);padding:2px 8px 12px;overflow:hidden">
-      ${sec("Operations", 10)}${row("Deploy process", true, true)}${sub("Before you merge")}${sub("Migrations", true)}${sub("Rollbacks")}${row("Onboarding checklist")}${row("Incident runbook")}
-      ${sec("Architecture")}${row("Rate limiting on the public API")}${row("Webhook delivery")}
-      ${sec("Decisions")}${row("ADR-0012 · Retry budget")}${row("ADR-0009 · Token bucket per org")}
+  const row = (t: string, depth: number, o: { on?: boolean; open?: boolean; kids?: boolean; pending?: boolean } = {}) =>
+    `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px 4px ${6 + depth * 12}px;font-size:11.5px;${o.on ? "color:var(--accent);font-weight:500;background:var(--accent-soft);border-radius:5px" : depth === 0 ? "color:var(--fg-70);font-weight:500" : "color:var(--fg-55)"}">${o.kids ? treeChev(!!o.open, !!o.on) : `<span style="width:12px;flex:none"></span>`}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>${o.pending ? markShape("ring", "var(--amber)", 7) : ""}</div>`;
+  const tree = `<div class="fxm-wide" style="width:176px;flex:none;border-right:1px solid var(--border);padding:6px 8px 12px;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:7px;padding:4px 6px;font-size:12px;font-weight:600"><span style="width:14px;height:14px;border-radius:3px;background:var(--accent);flex:none"></span>Engineering</div>
+      <div style="display:flex;justify-content:space-between;padding:10px 6px 5px">${cap("Pages", "9px")}<span style="font-size:9px;color:var(--fg-40)">9</span></div>
+      ${row("Getting started", 0, { kids: true })}${row("Runbooks", 0, { kids: true, open: true })}${row("Deploy process", 1, { on: true, kids: true, open: true })}${row("Rolling back a bad deploy", 2)}${row("Paging and escalation", 1)}
+      ${row("Architecture", 0, { kids: true, open: true })}${row("Rate limiting on the public API", 1, { pending: true })}${row("Webhook delivery", 1)}${row("Decision records", 0, { kids: true })}
     </div>`;
   const reader = `<div style="flex:1;min-width:0;padding:14px 18px 16px;overflow:hidden">
       <div class="fxm-staged" style="${SURF};display:flex;align-items:center;gap:10px;padding:9px 12px">
         ${markShape("ring", "var(--amber)", 10)}
-        <span style="flex:1;min-width:0;font-size:11.5px;line-height:1.45;color:var(--fg-70)">You're viewing the <b style="font-weight:600;color:var(--fg)">promoted</b> version. A newer proposal is awaiting review.</span>
-        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;color:var(--accent);white-space:nowrap">Review proposal ${ARROW}</span>
+        <span style="flex:1;min-width:0;font-size:11.5px;line-height:1.45;color:var(--fg-70)">You're reading the <b style="font-weight:600;color:var(--fg)">live</b> version. A change to this page is waiting for review.</span>
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;color:var(--accent);white-space:nowrap">Open in Review ${ARROW}</span>
       </div>
-      <div style="margin-top:16px">${cap("Engineering <span style=\"opacity:.5\">/</span> Operations", "9px")}</div>
+      <div style="margin-top:14px;font-size:11px;color:var(--fg-55)">Engineering <span style="color:var(--fg-40)">›</span> Runbooks <span style="color:var(--fg-40)">›</span> <span style="color:var(--fg)">Deploy process</span></div>
       <div style="margin-top:6px;font-size:22px;font-weight:650;letter-spacing:-0.02em">Deploy process</div>
       <div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-        ${initials("LP", 20, "8px")}<span style="font-size:11.5px;color:var(--fg-55)">Updated by <span style="color:var(--blue)">@leo</span> · 2d ago</span>
-        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px;white-space:nowrap"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</span>
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg-70)">${markShape("dot", "var(--green)", 8)}Live</span><span style="font-size:11.5px;color:var(--fg-55)">· Updated 2 days ago by Leo</span>
+        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px;white-space:nowrap"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>History</span>
       </div>
       <div style="margin-top:14px;font-size:14.5px;font-weight:600">Before you merge</div>
-      <div style="margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--fg-70)">Open a PR and get one review. CI runs typecheck and tests on every push; a red check blocks the merge.</div>
+      <div style="margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--fg-70)">Open a PR and get one review. CI runs typecheck and tests on every push; a red check blocks the merge. See <span style="color:var(--accent);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 34%,transparent)">Rolling back a bad deploy</span>.</div>
       <div style="margin-top:14px;font-size:14.5px;font-weight:600">Migrations</div>
       <div style="margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--fg-70)">Merges to main deploy automatically. CI applies D1 migrations before the deploy step, so schema and code always land together.</div>
       <div style="margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--hover);padding:9px 12px;font-family:var(--code);font-size:11px;line-height:1.7;color:var(--fg-70)">npm run db:migrate:remote<br>npm run deploy</div>
-      <div style="margin-top:14px;font-size:14.5px;font-weight:600">Rollbacks</div>
-      <div style="margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--fg-70)">Redeploy the previous tag. Migrations are forward-only.</div>
     </div>`;
-  return win("Docs", hbtn("New doc"), `<div style="display:flex;height:100%">${tree}${reader}</div>`);
+  return win("Library", hbtn("New page"), `<div style="display:flex;height:100%">${tree}${reader}</div>`);
 }
 
 // ── Feed: entries with their brief and links, beside This week and Waiting on review ──

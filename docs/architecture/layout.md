@@ -250,6 +250,11 @@
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
   name and slug rules, `placeSpace`, the DTOs), `src/tools/spaces.ts` (reads, the admin / owner writers, the gate's
   `spaceState`), `src/spaces/routes.ts` (the cookie routes at `/spaces`) — `docs-library.md`.
+- The Docs Library's page tree and links: `shared/docs-tree-core.ts` (the tree's rules, `planMove`), `shared/docs-links-core.ts`
+  (`[[slug]]`), `shared/docs-templates-core.ts` (New page's templates), `shared/placement-core.ts` (ranked placement,
+  shared with the board and the spaces), `src/tools/doc-tree.ts` (the move route's writer, a proposal's parent, the
+  promote's links, the doc page's read); web: `docs-pane.ts`, `doc-page.ts`, `newdoc.ts` + `newdoc-actions.ts`,
+  `tree-actions.ts`, `tree-drag.ts` on `pointer-drag.ts` (the app's one pointer drag) — `docs-library.md`.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
