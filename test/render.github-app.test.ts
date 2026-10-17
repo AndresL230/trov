@@ -4,7 +4,7 @@
  * configured on this deployment, not connected, connected, suspended, a repository no longer visible,
  * a request pending on GitHub, and a binding lost from GitHub's side — plus what a member sees.
  */
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { orgSettingsView, orgOverlays, initialOrgUi, setupSteps, orgConfirmCopy, githubOf, type OrgUi, type OrgSettingsProps } from "../web/src/org-settings";
 import { connectNoticeCopy, installationStatus, PICKER_FILTER_FROM } from "../web/src/github-app";
 import { auditSentence } from "../web/src/integrations";
@@ -13,6 +13,8 @@ import { githubInstallHref, setApiOrg, apiUrl, isGlobalPath } from "../web/src/a
 import { GITHUB_CONNECT_OUTCOMES, isGithubConnectOutcome, type GithubAppStatusDTO, type GithubInstallationDTO, type GithubReposDTO } from "@shared/github-app";
 import type { IntegrationDTO, IntegrationKind, OrgRepoDTO } from "@shared/integrations";
 import type { MyOrg, OrgRole, PlatformOrgRow } from "@shared/orgs";
+import { createOrgController } from "../web/src/org-actions";
+import { initialState, type AppState } from "../web/src/render";
 
 const HOOK = "hook_0123456789abcdef0123456789abcdef01234567";
 const ok = <T,>(data: T) => ({ status: "ok" as const, data });
@@ -505,5 +507,57 @@ describe("the page's rules hold in every state", () => {
       expect(src).not.toMatch(/rgba?\(/);
       expect(src).not.toMatch(/font-family:(?!var\()/);
     }
+  });
+});
+
+// Org settings asked GET …/github/repositories on every load where an installation is on record but this Trov has
+// no App (always so locally, with the dev seed's installation), and logged its 404 `not_connected`. Nothing can
+// list an installation without the App, and the status the page already holds says so (`configured: false`), so
+// the client does not ask — and the page shows no picker waiting on a list that cannot come.
+describe("an installation on record, the App not configured here — nothing asks for the picker's list", () => {
+  const noApp = status({ configured: false, installation: inst() });
+
+  it("Repositories shows no picker and no loading state for one; the by-name path leads", () => {
+    const html = page(ui(noApp));
+    expect(html).not.toContain("data-org-github-picker");
+    expect(html).not.toContain("the repositories the App can see");
+    expect(html).toContain("data-org-github-off");
+  });
+
+  describe("the controller's reads", () => {
+    let asked: string[] = [];
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    function load(app: GithubAppStatusDTO): Promise<void> {
+      vi.stubGlobal("document", { addEventListener() { /* the controller's keyboard handlers */ } });
+      vi.stubGlobal("fetch", (input: unknown) => {
+        const url = String(input);
+        asked.push(url);
+        // The connection answers; every other read stays pending (what it would say is not this test's).
+        return url === "/api/o/acme/github" ? Promise.resolve(json(app)) : new Promise<Response>(() => {});
+      });
+      const state: AppState = initialState();
+      state.view = "app"; state.screen = "org"; state.orgSlug = "acme";
+      state.myOrgs = { status: "ok", data: { orgs: [{ slug: "acme", name: "Acme", role: "owner" }], invites: [], can_create: true, superadmin: false } as never };
+      const mount = { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement;
+      const ctl = createOrgController({
+        state, mount, rerender: () => {}, flash: () => {}, unauth: () => {}, confirmOut: (then) => then(),
+        reloadOrgs: () => Promise.resolve(null), leaveOrg: () => {},
+      });
+      ctl.load();
+      return new Promise((r) => setTimeout(r, 0)).then(() => new Promise((r) => setTimeout(r, 0)));
+    }
+    beforeEach(() => { asked = []; });
+    afterEach(() => { vi.unstubAllGlobals(); });
+
+    it("without the App: the connection is read, the installation's repositories never are", async () => {
+      await load(noApp);
+      expect(asked).toContain("/api/o/acme/github");
+      expect(asked.filter((u) => u.includes("/github/repositories"))).toEqual([]);
+    });
+
+    it("with the App and a live installation, it still asks (an admin's read)", async () => {
+      await load(status({ configured: true, installation: inst() }));
+      expect(asked).toContain("/api/o/acme/github/repositories");
+    });
   });
 });

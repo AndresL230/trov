@@ -275,6 +275,11 @@ describe("step 1 — connect a repository", () => {
   it("the link act notes the departure and goes to GitHub's link mode", () => {
     expect(src("welcome-actions.ts")).toContain('case "welcomeLinkGithub": leaveNote("link"); h.go("/auth/login?link=1"); return;');
   });
+  it("an installation on record but no App on this Trov: the by-name card, never a picker waiting on a list that cannot come", () => {
+    const html = view("github", { ui: ui({ github: ok(gh({ configured: false, installation: inst() })) }) });
+    expect(html).toContain('data-welcome-github="manual"');
+    expect(html).not.toContain("data-org-github-picker");
+  });
   it("connected, nothing tracked: the installation's repositories to pick from (Org settings' own picker and acts)", () => {
     const html = view("github", { ui: ui({ github: ok(gh({ installation: inst() })), githubRepos: ok(available(["acme-gh/web", "acme-gh/api"])) }) });
     expect(html).toContain('data-welcome-github="pick"');

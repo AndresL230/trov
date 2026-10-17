@@ -374,7 +374,10 @@ what those permissions cover.
 `appConfigured(env)` = a valid `GITHUB_APP_SLUG`, a numeric `GITHUB_APP_ID` and a `GITHUB_APP_PRIVATE_KEY`.
 Without all three: `GET …/github` says `configured: false`, Repositories offers adding by name as its
 primary action and says the App is not configured on this Trov, the start route redirects back with that
-sentence, and no org's reads change. Without `GITHUB_APP_WEBHOOK_SECRET` every delivery to the App's
+sentence, and no org's reads change. An installation still on record (the local dev seed has one) lists
+nothing without the App, so the SPA neither asks `GET …/github/repositories` (which could only answer 404
+`not_connected`) nor shows the picker, in Org settings or the welcome's GitHub step: it keys on `configured`,
+which the status it already holds carries. Without `GITHUB_APP_WEBHOOK_SECRET` every delivery to the App's
 webhook is the bare 401. A key that does not import behaves like a missing one at use (`credentials`).
 Nothing 500s.
 

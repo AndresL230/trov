@@ -256,7 +256,8 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
     ? `${orgHead("Connected", "", repos.length)}<ul${surface(LIST)}>${rows}</ul>`
     : inst ? ""
     : orgEmpty("No repository connected", admin ? (offered ? "Connect GitHub and pick the repository your team ships from. Trov reads its deployments, checks, pull requests and issues." : "Add the repository your team ships from. Trov reads its deployments, checks, pull requests and issues.") : "An admin has not connected a repository yet.", "", 2);
-  const picker = admin && inst && live ? repoPicker(ui.githubRepos, inst.account_login, {
+  // The picker lists what the installation can see, which only the App can read: none without it (`offered`).
+  const picker = admin && inst && live && offered ? repoPicker(ui.githubRepos, inst.account_login, {
     filter: ui.githubFilter, busy: ui.githubBusy,
     ...(inst.repo_access === "selected" ? { selected: { by: inst.connected_by, href: githubInstallHref(org.slug, { existing: true, account: inst.account_login }) } } : {}),
   }) : "";

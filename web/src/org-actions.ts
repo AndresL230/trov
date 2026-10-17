@@ -209,11 +209,13 @@ export function createOrgController(host: OrgHost): OrgController {
     if (d) d.github_app = status;
     if (!status.installation) ui().githubRepos = { status: "idle", data: null };
   };
-  /** What the installation can see — an admin's read, and only while one is live. */
+  /** What the installation can see — an admin's read, and only while one is live AND this Trov has the App
+   *  (`configured`): without the App nothing can list it, and the route would only answer `not_connected`. */
   function loadGithubRepos(refresh = false): void {
     const slug = ui().slug;
-    const inst = ui().github.data?.installation;
-    if (!slug || !inst || inst.suspended_at || !roleAtLeast(org()?.role, "admin")) return;
+    const app = ui().github.data;
+    const inst = app?.installation;
+    if (!slug || !app?.configured || !inst || inst.suspended_at || !roleAtLeast(org()?.role, "admin")) return;
     const held = ui().githubRepos.data;
     if (ui().githubRepos.status !== "ok" || refresh) ui().githubRepos = { status: "loading", data: held };
     listOrgGithubRepos(slug, refresh)
