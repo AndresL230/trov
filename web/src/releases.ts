@@ -103,6 +103,26 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The Ask inspector's narrower artifact width (#194 — placeholder number until the PR exists). 0.11 is at the
+  // 20-line patch cap, so this opens 0.12; if another PR opens 0.12 first, this line joins that entry.
+  {
+    version: "0.12",
+    date: "2026-10-17",
+    title: "A narrower artifact preview in Ask",
+    headline: "An artifact you open from an Ask conversation slides in narrower, so the conversation keeps its room.",
+    highlights: [
+      "An artifact opened from Ask Trov slides in at a narrower width, leaving more of the conversation in view.",
+      "Tickets, docs, pull requests and everything else Ask opens keep the width they had.",
+      "Drag the panel's edge to any width you like; Ask keeps that width for whatever you open next.",
+    ],
+    patches: {
+      added: [],
+      changed: ["Ask Trov: an artifact opens in a narrower side panel; a width you drag to is kept (#194)"],
+      fixed: [],
+      removed: [],
+    },
+    prs: [194],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {

@@ -14,7 +14,7 @@
 import { esc, attr } from "./ui";
 import type { AppState } from "./render";
 import { askView, convoOf, inspectorRef, type AskView } from "./ask-state";
-import { askLayout } from "./ask-layout";
+import { askLayout, inspectorWidth } from "./ask-layout";
 import { askIcon } from "./ask-icons";
 import { hoverCard, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
 import { threadsView, threadDeleteModal } from "./ask-threads";
@@ -37,10 +37,11 @@ export function inspectorFrame(v: AskView): string {
   const trail = ins.stack.slice(0, ins.idx).map((r) => { const x = viewOf(v.look, r); return x ? refShort(x) : inspectorLocalHead(v, r)?.short ?? refFallbackText(r); });
   const typeWord = view ? refTypeWord(view) : inspectorLocalHead(v, ref)?.typeWord ?? (isCvRef(ref) ? cvRefWord(ref) : "");
   const sheet = v.app.phone;
+  const w = inspectorWidth(ins.width, ref);
   // Opening slides it in from its edge (the column under it makes room smoothly); closing is `data-closing`
   // (ask-motion.ts rule 3); `data-dragging` drops the width transition while the edge follows the pointer.
-  return `<aside class="ask-insp-frame" aria-label="Inspector" data-sheet="${sheet ? "1" : "0"}" data-where="${v.where}" data-dragging="${ins.dragging ? "1" : "0"}"${closingAttr(v.ui.closing, "inspector")} style="${sheet ? "" : `width:${ins.width}px;--ask-insp-w:${ins.width}px`}">
-    ${sheet ? `<div class="ask-insp-grab" aria-hidden="true"><span></span></div>` : `<div class="ask-insp-resize" data-ask-resize role="separator" aria-orientation="vertical" aria-label="Resize inspector" aria-valuemin="380" aria-valuemax="720" aria-valuenow="${ins.width}" tabindex="0"></div>`}
+  return `<aside class="ask-insp-frame" aria-label="Inspector" data-sheet="${sheet ? "1" : "0"}" data-where="${v.where}" data-dragging="${ins.dragging ? "1" : "0"}"${closingAttr(v.ui.closing, "inspector")} style="${sheet ? "" : `width:${w}px;--ask-insp-w:${w}px`}">
+    ${sheet ? `<div class="ask-insp-grab" aria-hidden="true"><span></span></div>` : `<div class="ask-insp-resize" data-ask-resize role="separator" aria-orientation="vertical" aria-label="Resize inspector" aria-valuemin="380" aria-valuemax="720" aria-valuenow="${w}" tabindex="0"></div>`}
     <div class="ask-insp-head">
       <button type="button" class="ask-iconbtn" data-act="askShBack" aria-label="Back"${ins.idx > 0 ? "" : " disabled"}>${askIcon("back", 15, null, 2)}</button>
       <div class="ask-insp-crumb"><span class="ask-insp-type">${esc(typeWord)}</span>${trail.length ? `<span class="ask-insp-from">from ${esc(trail.join(" › "))}</span>` : ""}</div>
