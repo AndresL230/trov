@@ -53,7 +53,7 @@ interface Fx {
   adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
   inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
   bTicketId: number; suggestionId: number;
-  askThreadId: number; askMessageId: number; askActionId: number;
+  askThreadId: number; askMessageId: number; askActionId: number; importId: number;
 }
 
 const doc = (slug: string, text: string) =>
@@ -132,6 +132,10 @@ async function seed(): Promise<Fx> {
   await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) VALUES (?, 'canary-space', ?, 'shield', '#b4562c', ?, 4096, ?, ?)`,
     ORG_A, `${CANARY} space`, `${CANARY} space description`, T, ALICE);
   await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'canary-space', ?, ?, ?)`, ORG_A, ALICE, T, ALICE);
+  // A Markdown import of A's (0081/0082), still running, alice's, with the canary in its file name and its manifest.
+  const importId = Number((await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status, counts, failures, total, manifest)
+     VALUES (?, 'canary-space', ?, ?, ?, ?, 'running', '{}', '[]', 1, ?)`, ORG_A, `${CANARY}.zip`, ALICE, T, new Date().toISOString(),
+    JSON.stringify({ files: [{ path: `${CANARY}.md`, size: 9, title: CANARY }], choices: {}, writes: [{ key: `${CANARY}.md`, path: `${CANARY}.md`, mode: "new", slug: "canary-import", title: CANARY, parent_slug: null }], links: [], images: [`${CANARY}.png`] }))).meta.last_row_id);
   const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T)).meta.last_row_id);
   await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'user', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} question` }), T);
   const askMessageId = Number((await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'assistant', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} answer` }), T)).meta.last_row_id);
@@ -147,7 +151,7 @@ async function seed(): Promise<Fx> {
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
     docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
-    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId, askThreadId, askMessageId, askActionId,
+    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId, askThreadId, askMessageId, askActionId, importId,
   };
 }
 
@@ -210,7 +214,7 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
       under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
         : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId
         : under("/ai") ? fx.suggestionId : under("/ask/threads") ? fx.askThreadId : under("/ask/messages") ? fx.askMessageId
-        : under("/ask/actions") ? fx.askActionId : fx.hookId);
+        : under("/ask/actions") ? fx.askActionId : under("/imports") ? fx.importId : fx.hookId);
     case "linkId": return String(fx.linkId);
     case "login": return fx.login;
     case "handle": return ALICE;
@@ -299,6 +303,12 @@ const TENANT: Record<string, Row> = {
   "GET /spaces": {}, "GET /spaces/:slug": {}, "POST /spaces": J({ name: "Hijacked", icon: "shield", color: "#b4562c" }),
   "PUT /spaces/:slug": J({ name: "Hijacked", description: "hijacked" }), "PUT /spaces/:slug/owners": J({ owners: ["boss"] }),
   "POST /spaces/:slug/move": J({ after: null }), "POST /spaces/:slug/archive": J({}), "POST /spaces/:slug/restore": J({}),
+  // src/imports/routes.ts — Markdown import runs (0081/0082): A's run id is no run of B's (404, nothing read or added), and a
+  // start in B names A's space (no space of B's — 404, no run started in either org).
+  "GET /imports": {}, "GET /imports/:id": {},
+  "POST /imports": J({ space: "canary-space", file_name: "x.md", files: [{ path: "x.md", size: 4, title: "X" }] }),
+  "POST /imports/:id/images": J({}), "POST /imports/:id/pages": J({ pages: [{ path: "CANARY_A.md", text: "# CANARY_A" }] }),
+  "POST /imports/:id/finish": J({ cancel: true }), "POST /imports/:id/approve-all": J({}), "POST /imports/:id/reject-all": J({}),
   // src/tags/routes.ts — the org's tag list (0056_org_tags): every statement binds the org the gate resolved
   "GET /tags": {}, "GET /tags/:name": {}, "POST /tags": J({ name: "hijacked" }), "PUT /tags/:name": J({ name: "hijacked" }),
   "POST /tags/:name/merge": J({ into: "ui" }), "POST /tags/:name/retire": J({}), "POST /tags/:name/restore": J({}),

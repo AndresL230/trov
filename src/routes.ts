@@ -79,6 +79,7 @@ import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions }
 import { readRepoState } from "./tools/repo-state";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
 import { spacesApp } from "./spaces/routes";
+import { importsApp } from "./imports/routes";
 import { resolveSpaceAlias } from "@shared/docs-core";
 import { spaceState } from "./tools/spaces";
 import { DocTreeError, moveDoc } from "./tools/doc-tree";
@@ -217,6 +218,8 @@ tenantApi.route("/item-tags", itemTagsApp);
 tenantApi.route("/tag-settings", tagSettingsApp);
 // The Docs Library's spaces (0081_docs_library): any member reads, an admin shapes them, an owner edits one's description.
 tenantApi.route("/spaces", spacesApp);
+// Markdown import runs (0081/0082): any member imports into a live space; Approve all / Reject all for one import — cookie only.
+tenantApi.route("/imports", importsApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
 // Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same

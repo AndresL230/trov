@@ -9,6 +9,7 @@ import { resolveBearerConnection } from "./data/bearer";
 import { INTERNAL_METRICS_PATH, handleInternalMetrics } from "./internal-metrics";
 import { meterMcp, pruneUsage } from "./data/meter";
 import { pruneSyncRuns } from "./platform/sweeps";
+import { backfillDocLinks } from "./platform/doc-links-backfill";
 import { platform } from "./data/context";
 import { pruneLimits } from "./platform/limits";
 import { mcpUnauthorized, oauthOrigin } from "./auth/oauth";
@@ -150,6 +151,8 @@ export default {
       await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
       await pruneEvents(platform(env, "system")).catch(() => undefined); // billing_events past Stripe's retry horizon
       await pruneSyncRuns(platform(env, "system"), controller.scheduledTime).catch(() => undefined); // sync_runs retention (90 days)
+      // Pages promoted before doc_links existed get their links (0081_docs_library): bounded, resumable, done once.
+      await backfillDocLinks(env).catch((e) => console.error("doc links backfill", e instanceof Error ? e.name : "error"));
       // Ask attachments uploaded with no conversation and never sent: gone after 24 h (0068_ask_pending; ask.md).
       await sweepPendingAskAttachments(platform(env, "system"), env.ARTIFACTS_BUCKET, controller.scheduledTime).catch(() => undefined);
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));

@@ -115,18 +115,21 @@ export const RELEASES: Release[] = [
       "Docs are now a Library of spaces, each for one team or topic. Every organization starts with Engineering, Product and Design.",
       "Admins create, rename, reorder and archive spaces; a space's owners keep its description and owner list up to date.",
       "Each space has a home: its pages by recent change, oldest change or title, with what is waiting for review marked.",
+      "Bring your docs in: drop Markdown files or a .zip on a space, check what will be added, then approve the whole import at once.",
     ],
     headsUp: [
       "Docs moved into the Library in the sidebar. Technical docs are now in Engineering; Product docs stay in Product.",
     ],
     ops: [
       "Apply migration `0081_docs_library` (merging to main applies it). Additive; its header has the rollback. It gives every organization three spaces and moves every non-Product doc to Engineering.",
+      "Apply migration `0082_doc_import_manifest` (merging to main applies it): two additive columns on the import runs; its header has the rollback.",
       "Publish the Trov plugin 0.10.1 (skill text only): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working: `technical` still means Engineering.",
     ],
     patches: {
       added: [
         "The Library: spaces for a team or a topic, a home for each, and an admin's Create space, with agents placing pages through `list_spaces` (#TBD)",
         "Pages nest in a tree you rearrange by dragging, link with [[page]], show their contents and backlinks, and start from a template (#TBD)",
+        "Import Markdown files or a .zip of them into a space: check every page first, then approve or reject the whole import in Review (#TBD)",
       ],
       changed: [],
       fixed: [],

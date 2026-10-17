@@ -8,7 +8,8 @@ page, and Markdown import. Each PR extends this file. Keep it current when you c
 ONE additive migration holds the schema for the whole feature, so the later PRs never edit a migration:
 `doc_spaces` and `doc_space_owners` (this part), `docs.parent_slug` / `tree_rank`, `doc_versions.parent_slug`,
 `doc_links` (the page tree and links), `doc_versions.import_id` / `import_path` and `doc_imports` (import, modelled
-on `sync_runs`). Every new table binds `org_id` and is in `ORG_TABLES`, `scripts/seed/reset.mjs` and — for each
+on `sync_runs`). The import PR adds ONE more, `0082_doc_import_manifest` (two additive columns on `doc_imports`: the
+run's server-side plan and its uploaded images — a run spans many requests, so it must remember what it was asked). Every new table binds `org_id` and is in `ORG_TABLES`, `scripts/seed/reset.mjs` and — for each
 handle column (`doc_spaces.created_by` / `archived_by`, `doc_space_owners.handle` / `added_by`,
 `doc_imports.started_by`) — `HANDLE_COLUMNS`. The migration seeds every existing org with the three starter spaces
 and moves every doc not in `product` to `engineering`; `test/spaces.migration.test.ts` holds its claims.
@@ -114,7 +115,11 @@ blocks are never scanned. On **promote**, `doc_links` is rebuilt for the page fr
 promote's own batch (`linkStmts`; a link to itself is not kept) — so the table only ever holds LIVE links. A link
 whose target is no doc is **broken**: it stays in the table (it starts working once that page exists). **Backlinks**
 ("Linked from") read `doc_links WHERE to_slug = the page`, keeping only sources that are live (`current_version >
-0`). Pages promoted before this shipped have no rows until their next promote.
+0`). **Pages promoted before this shipped** get their rows from a one-pass backfill (`src/platform/doc-links-backfill.ts`
+`backfillDocLinks`, the daily cron): a live page whose body holds `[[` and that has no row gets the rows its promote
+would have written (INSERT OR IGNORE; a page with rows is never touched), at most 300 pages per invocation, org by
+org and slug by slug, resumed from `cron_cursor` job `doc_links_backfill`; once every org has been read the cursor
+says done and it reads nothing again (every later promote writes its own rows). A computed write: no gate.
 
 ## The doc page's read
 
@@ -127,6 +132,63 @@ version shown), `version`, `pending_version` (a newer staged one), `imported_fro
 `doc_versions.import_id` → `doc_imports.file_name`, when the version shown came from an import). It reads every page
 of the org once (no bodies) and resolves the tree and both kinds of link in memory, as the Library's own read does.
 The pane's tree is the space's home read (`GET /spaces/:slug` — every page with `parent_slug`, `tree_rank`, status).
+
+## Import
+
+A person imports Markdown files, or ONE .zip of them, into a space (or under a page of it). **Nothing goes live**:
+every page is a STAGED version through the gate, tagged with the run (`doc_versions.import_id` / `import_path`), and
+waits in Review, grouped by import.
+
+**Why the browser unzips.** The zip is read in the browser (`web/src/zip-reader.ts`: the zip's central directory,
+entries stored or deflated through `DecompressionStream("deflate-raw")`; zip64, encryption, other methods or an index
+that does not add up are "damaged or unsupported"; the declared sizes are checked against the caps BEFORE anything
+is inflated, and each entry stops inflating the moment it passes its declared size, then its CRC is checked). That
+keeps a zip bomb, a 50 MB upload and the inflate CPU out of the Worker, and lets the Preview show everything before
+anything is sent. No dependency. **The Worker never unzips — and trusts nothing the browser worked out**: it gets a
+manifest, re-runs the planner itself, and re-checks every page and image it is sent against its OWN plan.
+
+**The planner** is `shared/docs-import-core.ts` (zod-free; the Preview and the Worker run the same functions):
+`normalizeImportPath` (path safety: no `..`, no absolute path, no control character; hidden and system files
+skipped), `planImport` (folders → nested pages, `name.md` beside `name/` and a folder's README / index merge into
+its page, an `attachments` folder holds images, titles from the first `# ` heading, slugs from the path, unique
+against EVERY slug of the org; title conflicts with the target space's pages; skipped files with the design's
+reasons), `applyConflictChoices` (skip / a new version on the existing page / rename — a skipped or versioned
+page's children go under the existing page), `prepareBody` (the heading out, relative `.md` links → `[[slug]]`,
+relative images → `/img/<sha256>`, anything unmatched left as plain text, code untouched).
+
+**Caps** (constants in the core): 500 files, 50 MB uncompressed, 1 MB per Markdown file, images as doc images (10
+MB, png / jpeg / gif / webp, the type SNIFFED from the bytes). The `doc_import` rate limit (20 starts per person per
+day, `abuse-limits.md`). **No per-org plan limit** (`plans.md`).
+
+**The run** (`doc_imports`, modelled on `sync_runs`; `src/imports/runs.ts`, routes `src/imports/routes.ts`, mounted at
+`/imports` on the tenant API). Cookie only — a request with an `Authorization` header is refused 403, and none of it
+is an MCP tool. Any signed-in member.
+
+| Route | Who | What |
+| --- | --- | --- |
+| `POST /imports` | any member | `{ space, parent_slug?, file_name, file_size?, files: [{ path, size, title }], choices? }` — every Markdown file carries its first heading (the browser read it), so the server's plan and its conflicts are the Preview's. Checked: a live space (`not_found` 404 / `archived` 409), a parent page of it, ≤ 500 files (`too_many_files` 413), ≤ 50 MB (`too_large` 413), some Markdown (`no_markdown` 400). Then the rate limit, then the LOCK — one guarded `INSERT … WHERE NOT EXISTS` a live running run of the org (409 `import_running` with the run). Answers `{ run, plan: { writes, skipped, conflicts, images } }`. The conflict choices are FIXED here: they decide where other pages go. |
+| `POST /imports/:id/images` | the starter | multipart `path` + `file`: a path the plan lists as an image, no larger than the manifest said (and ≤ 10 MB), its type sniffed (`not_an_image`), its sha256 computed HERE; stored at R2 `doc-images/<sha>` with R2's own sha256 check (skipped when the object exists), `doc_images` INSERT OR IGNORE, and `[path, sha]` appended to `doc_imports.images`. Answers `{ path, sha }`. |
+| `POST /imports/:id/pages` | the starter | ≤ 25 `{ path, text }` (a folder page with no file of its own is sent as its key, `folder/`, with no text). The batch is refused whole when an entry is not a page of the plan (`not_in_manifest`), not Markdown (`not_markdown`) or an unsafe path (`bad_path`). Each page: valid text (`not_utf8`), ≤ 1 MB (`too_large`), no longer than the manifest said and with the heading it said (`changed`), not empty; its body prepared with the SERVER's path → slug map and the run's uploaded images; a new page whose slug another page took meanwhile is `slug_taken`. Then INTO THE GATE: `ingestDocProposal` (confidence high, section `reference`, the run's space, the planned parent — or the nearest planned ancestor that exists, else the run's parent — ledger `import:<id>` × the page's index in the plan, `{ importId, importPath }`). A retried batch replays from the ledger: nothing is staged twice and the answer is the same. Answers `{ run, results: [{ path, outcome: staged / unchanged / skipped / failed, code? }] }`. |
+| `POST /imports/:id/finish` | the starter (`cancel`: or an admin) | `done` (everything planned reached Review), `partial` (files were skipped or pages failed), `failed` (nothing reached Review and something failed); a page of the plan never sent is listed as `failed`. `{ cancel: true }` → `abandoned` with `cancelled` — the pages already sent stay in Review. |
+| `GET /imports`, `GET /imports/:id` | any member | history, newest first (100), and `running`. A failed read is a 503. |
+| `POST /imports/:id/approve-all` | any member | Review's Approve all: the import's versions still waiting (staged, the page's NEWEST staged version, newer than live) through `promote_doc` — links and parents apply as for one promote — 25 per call; `{ done, remaining, space, space_name }`, the client repeats while `remaining`. |
+| `POST /imports/:id/reject-all` | any member | Reject all, SOFT (`status = 'rejected'`, the body kept, the open risk closed), 100 per call, the same answer. A page whose newest change is someone else's (an agent's on top) is left alone by both. |
+
+The run record: `status` (`running` / `done` / `partial` / `failed` / `abandoned` — a running run silent for
+`IMPORT_STALE_MS` = 3 minutes reads as abandoned and stops holding the lock; the next start marks it so), `counts`
+(what the plan writes: pages, new pages, versions, images, skipped files and skipped conflicts; what reached Review,
+READ BACK from `doc_versions` after each batch so a retry never counts twice; unchanged, failed, images uploaded),
+`failures` — one entry per path, CODES only (the plan's skip codes, and a page's: `too_large`, `not_utf8`, `empty`,
+`changed`, `slug_taken`, `refused`, `triaged`, `failed`, `unchanged` — not an error: the page already says that;
+`cancelled` with no path), `total` (the pages planned), and (0082) `manifest` — the SERVER's plan (the accepted
+files with their sizes and headings, the choices, the writes in order, the path → slug map, the image paths), which
+every later request is checked against — and `images`. Only the starter adds to a run (403 `forbidden`); an ended
+run takes nothing (409 `not_running`). The sidebar's badge is `GET /badges` `imports` (a live running run; one at
+most). Tests: `test/docs-import.test.ts`.
+
+**Review** (`GET /proposals`): each proposal carries `import_id`, `import_path`, `import_file_name`, `import_by`,
+`import_at` (null when an agent or a person wrote it) and the page's `parent_slug`, so Review groups an import's
+pages under one card; inside a group the read's order (newest first) reversed is the import's own order.
 
 ## Templates
 

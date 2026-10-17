@@ -205,6 +205,13 @@ export interface ProposalRow {
   created_at: string;    // doc_versions.created_at (when the proposal was staged)
   stagedBody: string;    // doc_versions.body (the proposed body)
   promotedBody: string;  // docs.body (the current live body)
+  parent_slug: string | null;       // docs.parent_slug (where the page sits in its space's tree)
+  // The Markdown import the version came from (0081_docs_library; Review groups by it) — all null otherwise.
+  import_id: number | null;
+  import_path: string | null;
+  import_file_name: string | null;
+  import_by: string | null;
+  import_at: string | null;
 }
 
 export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]> {
@@ -214,10 +221,14 @@ export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]>
             v.summary AS summary, v.created_by AS author, v.confidence AS confidence, v.status AS status,
             v.change_kind AS change_kind, v.low_confidence AS low_confidence, v.base_version AS base_version,
             d.current_version AS current_version, v.created_at AS created_at,
-            v.body AS stagedBody, d.body AS promotedBody
+            v.body AS stagedBody, d.body AS promotedBody, d.parent_slug AS parent_slug,
+            v.import_id AS import_id, v.import_path AS import_path, i.file_name AS import_file_name,
+            i.started_by AS import_by, i.started_at AS import_at
        FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
+       LEFT JOIN doc_imports i ON i.org_id = ? AND i.id = v.import_id
       WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version
       ORDER BY v.created_at DESC, v.id DESC`,
+    ctx.orgId,
     ctx.orgId,
     ctx.orgId
   );

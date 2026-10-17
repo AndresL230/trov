@@ -50,6 +50,11 @@ async function seedEverything(): Promise<void> {
   await prompt("deleted-staged", ["staged"], true);
   // Tickets: one open, unassigned, native ticket.
   await run(env.DB, `INSERT INTO tickets (title, requester, status, created_at, updated_at) VALUES ('Open', 'andres', 'submitted', ?, ?)`, T, T);
+  // Imports: a running run heard from lately counts; a stale one, an ended one, and another org's do not.
+  const old = new Date(Date.now() - 600_000).toISOString();
+  for (const [status, at] of [["running", T], ["running", old], ["done", T]] as const)
+    await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES ('org_saplinglearn', 'engineering', 'h.zip', 'andres', ?, ?, ?)`, at, at, status);
+  await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (?, 'engineering', 'h.zip', 'x', ?, ?, 'running')`, ORG_B, T, T);
   // Another org's rows never count here.
   await run(env.DB, `INSERT INTO adrs (org_id, title, context, decision, rationale, status, confidence, created_at, created_by) VALUES (?, 'B', 'c', 'd', 'r', 'draft', 'high', ?, 'x')`, ORG_B, T);
   await run(env.DB, `INSERT INTO needs_triage (org_id, raw, reason, created_at) VALUES (?, '{}', 'b', ?)`, ORG_B, T);
@@ -70,6 +75,7 @@ describe("GET /badges", () => {
     const tickets = (await json<{ count: number }>("/tickets/badge", cookie)).count;
     const handoffs = (await json<{ handoffs: HandoffView[] }>("/api/handoffs?box=mine", cookie)).handoffs;
     const prompts = (await json<{ prompts: { status: string }[] }>("/api/prompts", cookie)).prompts;
+    const imports = (await json<{ running: number }>("/api/imports", cookie)).running;
 
     expect(badges).toEqual({
       proposals: proposals.length,
@@ -80,9 +86,10 @@ describe("GET /badges", () => {
       // the web's handoffsForMe: pending, addressed to me in any case — `anyone` is not me
       handoffs: handoffs.filter((h) => h.status === "pending" && h.recipient.toLowerCase() === "andres").length,
       prompts: prompts.filter((p) => p.status === "staged").length,
+      imports,
     });
     // …and the seed above is not vacuous: each count is the one it was built to be.
-    expect(badges).toEqual({ proposals: 1, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1 });
+    expect(badges).toEqual({ proposals: 1, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1, imports: 1 });
   });
 
 });

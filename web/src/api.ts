@@ -695,6 +695,15 @@ export interface StagedProposal {
   created_at: string;
   stagedBody: string;
   promotedBody: string;
+  /** The page's parent in its space's tree (null = the top level). */
+  parent_slug: string | null;
+  /** The Markdown import this version came from (Review groups by it), the file's path in it, and the run's file
+   *  name, starter and start; all null for a version an agent or a person wrote. */
+  import_id: number | null;
+  import_path: string | null;
+  import_file_name: string | null;
+  import_by: string | null;
+  import_at: string | null;
   /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
   ai?: AiSuggestion[];
   /** "Flagged in Ask" on it: each reason and how often (never the thread). Absent when nobody flagged it. */
@@ -1276,3 +1285,42 @@ export function moveSpace(slug: string, after: string | null): Promise<{ ok: tru
 export function archiveSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/archive")); }
 /** Restore an archived space (an admin). 409 `name_taken` when a live space has its name now. */
 export function restoreSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/restore")); }
+
+// ── Markdown imports (`/imports…`, docs/architecture/docs-library.md › Import) ──
+// Cookie-only, any member. The browser unzips and sends the files in batches; the Worker re-validates each one
+// against the run's manifest and re-runs the planner. A refusal is `{ error, message }` — an `OrgApiError`.
+import type * as ImpT from "@shared/docs-import-core";
+const importPath = (id: number, rest = ""): string => `/imports/${id}${rest}`;
+/** Imports history, newest first, and how many are in progress. */
+export function listImports(): Promise<ImpT.ImportsDTO> { return getJson<ImpT.ImportsDTO>("/imports"); }
+/** One run. Unknown → `NotFound`. */
+export function getImport(id: number): Promise<{ run: ImpT.ImportRunView }> {
+  return getJson<{ run: ImpT.ImportRunView }>(importPath(id)).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(String(id));
+    throw e;
+  });
+}
+/** Start a run (takes the org's one import lock): the manifest and the conflict choices; answers the run and the
+ *  server's plan. 409 `import_running` while another import is in progress. */
+export function startImport(body: ImpT.ImportStartBody): Promise<ImpT.ImportStartAnswer> { return orgSend("POST", "/imports", body); }
+/** Upload one of the run's images (multipart: `path`, `file`); the sha256 is computed by the server. */
+export async function uploadImportImage(id: number, path: string, file: Blob): Promise<ImpT.ImportImageAnswer> {
+  const fd = new FormData();
+  fd.set("path", path);
+  fd.set("file", file, path.slice(path.lastIndexOf("/") + 1) || "image");
+  const res = await call(importPath(id, "/images"), { method: "POST", body: fd });
+  if (!res.ok) throw await orgRefusal(res);
+  return res.json() as Promise<ImpT.ImportImageAnswer>;
+}
+/** Send up to `IMPORT_PAGES_PER_BATCH` pages (path + text). A retried batch replays: nothing is staged twice. */
+export function sendImportPages(id: number, pages: ImpT.ImportPagesBody["pages"]): Promise<ImpT.ImportPagesAnswer> {
+  return orgSend("POST", importPath(id, "/pages"), { pages });
+}
+/** End the run: done / partial / failed by what reached Review — or, with `cancel`, stop it (pages already sent stay in Review). */
+export function finishImport(id: number, body: ImpT.ImportFinishBody = {}): Promise<ImpT.ImportFinishAnswer> {
+  return orgSend("POST", importPath(id, "/finish"), body);
+}
+/** Review › an import's group: approve its waiting pages (at most `IMPORT_APPROVE_PER_CALL` a call — repeat while `remaining`). */
+export function approveImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/approve-all"), {}); }
+/** Review › an import's group: reject its waiting pages (soft; at most `IMPORT_REJECT_PER_CALL` a call — repeat while `remaining`). */
+export function rejectImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/reject-all"), {}); }

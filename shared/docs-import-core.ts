@@ -679,3 +679,147 @@ export function planSummary(
   const versions = writes.filter((w) => w.mode === "version").length;
   return { pages: newPages + versions, newPages, versions, conflicts: plan.conflicts.length, skipped: plan.skipped.length, images: plan.images.length };
 }
+
+// ── the run, on the wire (src/imports/, docs/architecture/docs-library.md › Import) ──────────────────
+
+/** A running import that has reported nothing for this long did not finish (the tab was closed): it stops
+ *  holding the org's lock and reads as `abandoned`. The same window as a Sync GitHub run (shared/sync.ts). */
+export const IMPORT_STALE_MS = 180_000;
+/** The most pages one `POST /imports/:id/pages` takes. */
+export const IMPORT_PAGES_PER_BATCH = 25;
+/** The most pages one `POST /imports/:id/approve-all` promotes (the client repeats while `remaining` > 0). */
+export const IMPORT_APPROVE_PER_CALL = 25;
+/** The most pages one `POST /imports/:id/reject-all` rejects. */
+export const IMPORT_REJECT_PER_CALL = 100;
+/** The longest file name a run keeps. */
+export const IMPORT_FILE_NAME_MAX = 255;
+
+/** `running` · `done` (everything planned is in Review) · `partial` (done, but files were skipped or pages
+ *  failed) · `failed` (nothing reached Review) · `abandoned` (never reported an end, or cancelled). */
+export type ImportRunStatus = "running" | "done" | "partial" | "failed" | "abandoned";
+
+/** One file of the manifest `POST /imports` is sent: its path in the zip (or its name), its size in bytes, and —
+ *  for a Markdown file — its first `# ` heading (`titleFromMarkdown`; null for none). */
+export interface ImportManifestFile { path: string; size: number; title?: string | null }
+
+export interface ImportStartBody {
+  /** A live space of the org (a slug). */
+  space: string;
+  /** A page of that space everything goes under; null / absent = its top level. */
+  parent_slug?: string | null;
+  /** What the person picked: the .zip, the one .md, or "‹N› files". */
+  file_name: string;
+  /** The picked file's size (a zip's compressed size); absent for several files. */
+  file_size?: number | null;
+  files: ImportManifestFile[];
+  /** Conflict choices by page key (absent = a new version). They are fixed for the run: a skipped or versioned
+   *  page's children go under the existing page, so every batch must agree on them. */
+  choices?: Record<string, ConflictResolution | ConflictChoice>;
+}
+
+/** Why a page that was sent did not reach Review (fixed codes, never text). */
+export const IMPORT_PAGE_FAILURES = {
+  too_large: "The file is too large",
+  not_utf8: "The file isn't readable text",
+  empty: "The file is empty",
+  changed: "The file changed after it was checked",
+  slug_taken: "Another page took its place while it was imported",
+  refused: "An image in it couldn't be added",
+  triaged: "It went to Unplaced instead",
+  failed: "It couldn't be added",
+  /** Not an error: the page already says exactly this, so nothing new went to Review. */
+  unchanged: "It's the same as the page already in Trov",
+  /** Path null: the person stopped the run (Cancel import). */
+  cancelled: "The import was cancelled",
+} as const;
+export type ImportPageCode = keyof typeof IMPORT_PAGE_FAILURES;
+
+/** A file that is not in Review: skipped by the plan (`SkipCode`) or failed when it was sent (`ImportPageCode`). */
+export interface ImportFailure { path: string | null; code: SkipCode | ImportPageCode }
+
+/** The sentence for a failure's code. */
+export function importFailureText(code: string): string {
+  return (SKIP_REASONS as Record<string, string>)[code] ?? (IMPORT_PAGE_FAILURES as Record<string, string>)[code] ?? IMPORT_PAGE_FAILURES.failed;
+}
+
+export interface ImportCounts {
+  /** What the plan writes: pages (new + versions), and of them new pages and new versions. */
+  pages: number;
+  new_pages: number;
+  versions: number;
+  /** Images found in the files. */
+  images: number;
+  /** Files the plan does not import, and conflicts the person chose to skip. */
+  skipped_files: number;
+  skipped_pages: number;
+  /** What reached Review so far (read back from doc_versions, never counted twice on a retry). */
+  staged: number;
+  staged_new: number;
+  staged_versions: number;
+  /** Sent pages identical to what the page already says (nothing staged). */
+  unchanged: number;
+  /** Sent pages that failed (`failures`). */
+  failed: number;
+  images_uploaded: number;
+}
+
+export const zeroImportCounts = (): ImportCounts => ({
+  pages: 0, new_pages: 0, versions: 0, images: 0, skipped_files: 0, skipped_pages: 0,
+  staged: 0, staged_new: 0, staged_versions: 0, unchanged: 0, failed: 0, images_uploaded: 0,
+});
+
+export interface ImportRunView {
+  id: number;
+  status: ImportRunStatus;
+  /** The space's slug and name (null name: the space is gone). */
+  space: string;
+  space_name: string | null;
+  parent_slug: string | null;
+  /** The parent's title and the titles above it, top first ("Runbooks" for Engineering › Runbooks). */
+  parent_path: string[];
+  file_name: string;
+  file_size: number | null;
+  /** Files in the manifest. */
+  file_count: number;
+  /** Who started it (a handle). */
+  by: string;
+  started_at: string;
+  updated_at: string;
+  ended_at: string | null;
+  /** True when the person stopped it (Cancel import). */
+  cancelled: boolean;
+  counts: ImportCounts;
+  failures: ImportFailure[];
+  /** Pages of it still waiting in Review. */
+  waiting: number;
+}
+
+/** The server's plan, as `POST /imports` answers it: what each page will be, what is skipped. */
+export interface ImportPlanView {
+  writes: ImportWrite[];
+  skipped: SkippedFile[];
+  conflicts: ImportConflict[];
+  images: PlannedImage[];
+}
+
+export interface ImportStartAnswer { ok: true; run: ImportRunView; plan: ImportPlanView }
+
+export interface ImportPagesBody { pages: { path: string; text: string }[] }
+export type ImportPageOutcome = "staged" | "unchanged" | "skipped" | "failed";
+export interface ImportPageResult { path: string; outcome: ImportPageOutcome; code?: ImportPageCode; slug?: string; version?: number }
+export interface ImportPagesAnswer { ok: true; run: ImportRunView; results: ImportPageResult[] }
+export interface ImportImageAnswer { ok: true; path: string; sha: string }
+export interface ImportFinishBody { cancel?: boolean }
+export interface ImportFinishAnswer { ok: true; run: ImportRunView }
+/** `GET /imports`: newest first, and how many are in progress (the sidebar's badge; one at most). */
+export interface ImportsDTO { imports: ImportRunView[]; running: number }
+export interface ImportReviewAnswer { ok: true; done: number; remaining: number; space: string; space_name: string | null }
+
+export type ImportErrorCode =
+  | "invalid" | "too_many_files" | "too_large" | "no_markdown" | "not_found" | "archived" | "import_running"
+  | "not_running" | "forbidden" | "not_in_manifest" | "not_markdown" | "bad_path" | "not_an_image" | "too_many_pages";
+
+/** "2.4 MB" above 1 MB, else "N KB" (at least 1). */
+export function fileSizeWords(bytes: number): string {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
