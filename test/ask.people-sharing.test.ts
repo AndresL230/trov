@@ -85,6 +85,10 @@ describe("sharing with people by name", () => {
       const r = await call("PATCH", `${BASE}/ask/threads/${t.id}`, owner, { people, title: "Renamed" });
       expect(r.status, JSON.stringify(people)).toBe(400);
     }
+    // More than ASK_SHARE_PEOPLE_MAX: refused in words the Share dialog can show (e2e C22), nothing written.
+    const tooMany = await call("PATCH", `${BASE}/ask/threads/${t.id}`, owner, { people: Array.from({ length: 51 }, (_, i) => ({ handle: `p${i}`, access: "read" })) });
+    expect(tooMany.status).toBe(400);
+    expect(tooMany.json.message).toBe("Share with at most 50 people by name.");
     expect(await all(env.DB, `SELECT handle, access FROM chat_thread_people WHERE thread_id = ? ORDER BY handle`, t.id))
       .toEqual([{ handle: COLLAB, access: "continue" }, { handle: READER, access: "read" }]);
     expect((await first<{ title: string }>(env.DB, `SELECT title FROM chat_threads WHERE id = ?`, t.id))!.title).toBe("Plan");

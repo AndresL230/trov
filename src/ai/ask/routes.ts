@@ -16,7 +16,7 @@ import { planAndAiSettings } from "../../plans/gate";
 import { PLANS, planRefusal, resolveEntitlements } from "@shared/plans";
 import { nextMonthStart } from "@shared/ai-core";
 import {
-  ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES,
+  ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES, ASK_SHARE_PEOPLE_MAX,
   ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
   AskThreadPatchSchema, AskWrongBodySchema, askExportName, parseAskRef,
   type AskAction, type AskActionAnswer, type AskAttachment, type AskAttachmentUpload, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
@@ -835,7 +835,11 @@ askApp.patch("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
   if (t instanceof Response) return t;
   const parsed = AskThreadPatchSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
+  if (!parsed.success) {
+    // The Share dialog shows `message`: the one limit a person can reach from it says so in words.
+    const tooMany = parsed.error.issues.some((i) => i.path[0] === "people" && i.code === "too_big");
+    return c.json({ error: "invalid", ...(tooMany ? { message: `Share with at most ${ASK_SHARE_PEOPLE_MAX} people by name.` } : {}), issues: parsed.error.issues }, 400);
+  }
   const st = await standing(c.var.ctx);
   if (parsed.data.auto === true && !st.chatAuto) return c.json({ error: "auto_off", message: "An admin turned off Auto for this org. Trov asks before every change." }, 409);
   if (parsed.data.mode && !st.modes.includes(parsed.data.mode)) return c.json({ error: "mode_unavailable" }, 403);
