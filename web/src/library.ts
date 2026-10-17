@@ -363,7 +363,7 @@ const PAGE_GRID = "display:grid;grid-template-columns:repeat(auto-fill,minmax(20
 
 function spaceHeaderSkeleton(): string {
   return skeleton("space-head", "Loading the space…", `<div class="cnpy-lib-shead">
-    <div class="cnpy-lib-shead-tile">${skBox(48, 48)}</div>
+    <div class="cnpy-lib-shead-tile">${skBox(32, 32)}</div>
     <div class="cnpy-lib-shead-text">${skBox(200, 24)}<div style="display:flex;align-items:center;gap:8px;margin-top:10px">${skBox(20, 20)}${skBox(20, 20)}${skBar(220, 9)}</div></div>
     <div class="cnpy-lib-shead-acts" style="display:flex;gap:8px">${skBox(34, 32)}${skBox(104, 32)}</div>
   </div>`);
@@ -415,10 +415,10 @@ function spaceHeader(p: SpaceHomeProps, d: SpaceHomeDTO): string {
   const actions = sp.archived
     ? (p.admin ? accentBtn("libRestore", sp.slug, "Restore space", "") : "")
     : `${headMenu(p, d)}${accentBtn("libNewPage", sp.slug, "New page")}`;
-  // A grid: the tile is centred on the text beside it (the name, the description, the meta line), and the actions
-  // sit level with the name's line (trov.css `.cnpy-lib-shead`).
+  // A grid: the tile sits on the name's line, the description and the meta line start under the name, and the
+  // actions sit level with the name (trov.css `.cnpy-lib-shead`).
   return `<div class="cnpy-lib-shead">
-    <div class="cnpy-lib-shead-tile">${spaceTile(sp, 48)}</div>
+    <div class="cnpy-lib-shead-tile">${spaceTile(sp, 32)}</div>
     <div class="cnpy-lib-shead-text">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;line-height:32px;margin:0;overflow-wrap:anywhere">${esc(sp.name)}</h1>${sp.archived ? kindMark("Archived", "off", 12, ARCHIVED_TIP) : ""}</div>
       ${descriptionBlock(sp, d.can_edit, p.descDraft)}

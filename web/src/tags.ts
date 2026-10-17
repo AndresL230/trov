@@ -714,6 +714,8 @@ export interface ItemTagsProps {
   list: readonly TagRef[] | null;
   busy: boolean;
   dd?: DropdownUi;
+  /** No inline "Tags" word (a caller that heads the row itself, like the doc page's side panel). */
+  bare?: boolean;
 }
 
 /** The picker's dropdown: the live tags the item does not have yet. */
@@ -734,7 +736,7 @@ export function itemTagsRow(p: ItemTagsProps): string {
     return `<span class="cnpy-itemtag" data-item-tag="${attr(n)}">${tagMark({ name: n, color: t?.color ?? "slate" }, { size: 12.5, retired: t?.retired })}<button type="button" data-act="tagItemRemove" data-arg="${attr(n)}" aria-label="Remove the tag ${attr(n)}" title="Remove"${p.busy ? " disabled" : ""} class="cnpy-itemtag-x"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></span>`;
   }).join("");
   return `<div class="cnpy-itemtags" data-item-tags>
-      <span style="font-size:12.5px;font-weight:500;color:var(--fg-55);flex:none">Tags</span>
+      ${p.bare ? "" : `<span style="font-size:12.5px;font-weight:500;color:var(--fg-55);flex:none">Tags</span>`}
       ${tags}${dropdown(itemTagDropdown(p), p.dd ?? initialDropdownUi())}
     </div>`;
 }

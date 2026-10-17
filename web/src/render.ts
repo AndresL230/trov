@@ -57,7 +57,7 @@ import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
 import { newDocView, blankDoc, newDocSpaceDropdown, type NewDocDraft } from "./newdoc";
 import { docsPane } from "./docs-pane";
-import { docPageView, type DocPageData } from "./doc-page";
+import { docPageView, docHistoryDialog, type DocPageData } from "./doc-page";
 import { libraryHomeView, spaceHomeView, spaceDialog, ownersDialog, archiveDialog, archivePageDialog, customizeSidebarDialog, initialLibraryUi, type LibraryUi, type SpaceTab } from "./library";
 import { DEFAULT_SPACE, sidebarSpaces, type LibraryDTO, type SpaceHomeDTO, type SpaceDTO, type LibraryPageDTO } from "@shared/docs-core";
 import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion, PromptSort } from "@shared/handoffs";
@@ -1605,7 +1605,7 @@ function docScreen(s: AppState): string {
   const d = s.docDetail.data;
   // An archived page reads read-only (0083_doc_archive): no Tags row to edit.
   const tagsRow = d && (s.docSlug === null || d.doc.slug === s.docSlug) && !d.page?.archived
-    ? itemTagsRow({ tags: d.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, dd: s.dd })
+    ? itemTagsRow({ tags: d.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, dd: s.dd, bare: true })
     : "";
   // No doc named (the tree is open with nothing picked): the page is empty once the tree is in, a skeleton before.
   const detail = s.docSlug === null && panePages(s) === null ? { status: "loading", data: null } : s.docDetail;
@@ -1642,6 +1642,9 @@ function libraryOverlays(s: AppState): string {
   if (ui.owners && sp && s.screen === "space") out.push(ownersDialog(sp, ui.owners, s.persons.data));
   if (ui.archive && sp && s.screen === "space" && viewerIsAdmin(s)) out.push(archiveDialog(sp, ui.archive));
   if (ui.pageArchive && (s.screen === "space" || s.screen === "docs" || s.screen === "newdoc")) out.push(archivePageDialog(ui.pageArchive));
+  // A doc's History, in a dialog over the page.
+  const dd = s.docDetail.data;
+  if (s.screen === "docs" && s.showHistory && dd && (s.docSlug === null || dd.doc.slug === s.docSlug)) out.push(docHistoryDialog(dd.versions, dd.doc, s.persons.data));
   return out.join("");
 }
 

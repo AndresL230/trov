@@ -16,7 +16,7 @@ import { esc, attr, surface, hitArea, HITBOX } from "./ui";
 import { personLink } from "./people";
 import { stateMark, glyphMark, markShape, kindMark, STATE_KIND, AUTHORITY_MARK, authorityMark } from "./marks";
 import { skeleton, skBar, skBox, skLine, skLines, emptyLayout } from "./skeleton";
-import { renderMarkdown } from "./markdown";
+import { renderMarkdown, renderMarkdownInline } from "./markdown";
 import { spaceTile, pageIcon, libraryWhen } from "./library";
 
 export interface DocPageData { doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocPageDTO }
@@ -132,6 +132,42 @@ function byline(page: DocPageDTO | null, doc: DocRow, persons: readonly PersonSu
   return `<span>${verb} ${esc(libraryWhen(at))} by ${esc(shortName(persons, who))}</span>`;
 }
 
+/** The page's lead, out of its body: when the body opens with "# ‹the page's title›" (a heading the page already shows),
+ *  that line goes, and a plain paragraph right under it becomes the lead (shown under the real title). Pure. */
+export function splitLead(body: string, title: string): { lead: string | null; rest: string } {
+  const norm = (t: string) => t.replace(/[*_`]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const m = /^\s*#[ \t]+(.+?)[ \t]*#*[ \t]*(?:\r?\n|$)/.exec(body);
+  if (!m || norm(m[1]) !== norm(title)) return { lead: null, rest: body };
+  const after = body.slice(m[0].length).replace(/^(?:[ \t]*\r?\n)+/, "");
+  const end = after.search(/\r?\n[ \t]*\r?\n/);
+  const block = (end < 0 ? after : after.slice(0, end)).trim();
+  // Only a plain paragraph is a lead: not a heading, list, quote, code, table, rule or image.
+  if (!block || /^(#|[-*+]\s|\d+[.)]\s|>|```|~~~|\||---|___|\*\*\*|!\[|<)/.test(block)) return { lead: null, rest: after };
+  return { lead: block.replace(/\s*\r?\n\s*/g, " "), rest: end < 0 ? "" : after.slice(end) };
+}
+
+/** History, in a dialog over the page (the History button and the side panel's History open it): every version,
+ *  newest first, with who wrote it and when and its state. Escape, the backdrop, × and Done close it. */
+export function docHistoryDialog(versions: DocVersionMetaRow[], doc: DocRow, persons: readonly PersonSummary[]): string {
+  const n = versions.length;
+  return `<div data-overlay="doc-history" data-confirm-layer data-confirm-tone="neutral" class="cnpy-cmodal">
+    <div data-act="toggleHistory" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="doc-history" role="dialog" aria-modal="true" aria-labelledby="doc-history-t" tabindex="-1" data-confirm-dialog data-confirm-act="toggleHistory" data-confirm-cancel="toggleHistory" class="cnpy-surface cnpy-cmodal-box cnpy-cmodal-box--wide cnpy-dpg-histdlg">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div style="min-width:0">
+            <div id="doc-history-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35;overflow-wrap:anywhere">History of ${esc(doc.title)}</div>
+            <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:4px">${n === 1 ? "One version" : `${n} versions`}, newest first.</div>
+          </div>
+          <button type="button" data-act="toggleHistory" class="cnpy-iconbtn" aria-label="Close" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button>
+        </div>
+        <div style="margin-top:14px">${historyPanel(versions, doc, persons)}</div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px"><button type="button" data-act="toggleHistory" data-confirm-focus class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Done</button></div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function historyPanel(versions: DocVersionMetaRow[], doc: DocRow, persons: readonly PersonSummary[]): string {
   // A rejected version stays listed, muted, with the faded cross (the design's `rejected` shape) and its word.
   const rows = [...versions].sort((a, b) => b.version - a.version).map((v) => {
@@ -159,7 +195,7 @@ function childCard(c: LibraryPageDTO, parentTitle: string): string {
   </div>`;
 }
 
-function rail(doc: DocRow, page: DocPageDTO | null, persons: readonly PersonSummary[], outline: { level: number; text: string; id: string }[], showHistory: boolean): string {
+function rail(doc: DocRow, page: DocPageDTO | null, persons: readonly PersonSummary[], outline: { level: number; text: string; id: string }[], showHistory: boolean, tagsRow = ""): string {
   const children = page && page.authority !== "unpromoted" ? page.children : [];
   const toc = [
     ...outline.filter((h) => h.level === 2 || h.level === 3).map((h) => `<button type="button" data-act="docToc" data-arg="${attr(h.id)}" class="cnpy-toc-i${h.level === 3 ? " is-sub" : ""}" data-toc="${attr(h.id)}">${esc(h.text)}</button>`),
@@ -170,7 +206,7 @@ function rail(doc: DocRow, page: DocPageDTO | null, persons: readonly PersonSumm
   const info = page?.info;
   const version = info ? (info.version > 0 ? info.version : info.pending_version ?? 0) : doc.current_version;
   const versionNote = !info ? "" : info.version === 0 ? "Not approved yet" : info.pending_version ? `Version ${info.pending_version} is waiting for review` : "";
-  const versionValue = `<span>Version ${version}</span> <button type="button" data-act="toggleHistory" class="cnpy-link" aria-pressed="${showHistory}" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">History</button>`;
+  const versionValue = `<span>Version ${version}</span> <button type="button" data-act="toggleHistory" class="cnpy-link" aria-haspopup="dialog" aria-expanded="${showHistory}" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">History</button>`;
   const imported = info?.imported_from
     ? field("Imported from", `<span style="font-size:11.5px;overflow-wrap:anywhere">${esc(info.imported_from.path)}</span>`, info.imported_from.file_name ? `in ${esc(info.imported_from.file_name)}` : "")
     : "";
@@ -186,6 +222,7 @@ function rail(doc: DocRow, page: DocPageDTO | null, persons: readonly PersonSumm
       ${field("Version", versionValue, esc(versionNote))}
       ${imported}
     </div>
+    ${tagsRow ? `<div class="cnpy-rail-g cnpy-rail-tags"><div class="cnpy-rail-h">Tags</div>${tagsRow}</div>` : ""}
     <div class="cnpy-rail-g"><div class="cnpy-rail-h">Linked from <span class="cnpy-rail-n">${backs.length}</span></div>${linked}</div>
     ${toc.length ? `<div class="cnpy-rail-g"><div class="cnpy-rail-h">On this page</div><div class="cnpy-toc">${toc.join("")}</div></div>` : ""}
   </aside>`;
@@ -225,12 +262,15 @@ export function docPageView(p: DocPageProps): string {
   const { doc, versions } = data;
   const page = data.page ?? null;
   const body = page ? page.body : doc.body;
+  // A body that opens with the page's own title repeats what the page already shows: that heading goes, and the
+  // paragraph right under it reads as the page's lead, under the real title.
+  const split = splitLead(body, doc.title);
   const outline = extractOutline(outlineBody(body, page));
   const children = page && page.authority !== "unpromoted" ? page.children : [];
   const meta = `<div class="cnpy-dpg-meta">
     <div class="cnpy-dpg-by">${statusMark(page)}<span style="color:var(--fg-40)">·</span>${byline(page, doc, p.persons)}</div>
     <div style="display:flex;align-items:center;gap:8px;flex:none">
-      <button type="button" data-act="toggleHistory" class="cnpy-dpg-btn${p.showHistory ? " is-on" : ""}" aria-pressed="${p.showHistory}">${CLOCK}History</button>
+      <button type="button" data-act="toggleHistory" class="cnpy-dpg-btn cnpy-dpg-histbtn${p.showHistory ? " is-on" : ""}" aria-haspopup="dialog" aria-expanded="${p.showHistory}">${CLOCK}History</button>
       ${page?.can_archive && !page.archived ? `<button type="button" data-act="libPageArchive" data-arg="${attr(doc.slug)}" data-confirm-trigger class="cnpy-dpg-btn">${ARCHIVE}Archive page</button>` : ""}
     </div>
   </div>`;
@@ -243,13 +283,12 @@ export function docPageView(p: DocPageProps): string {
       <article class="cnpy-dpg-art" style="min-width:0">
         ${page?.archived ? archivedBanner(doc.slug, page, p.persons) : page ? banner(page) : ""}
         <h1 class="cnpy-dpg-title">${esc(doc.title)}</h1>
+        ${split.lead ? `<p class="cnpy-dpg-lead">${renderMarkdownInline(split.lead)}</p>` : ""}
         ${meta}
-        ${p.showHistory ? historyPanel(versions, doc, p.persons) : ""}
-        ${p.tagsRow}
-        <div class="cnpy-md cnpy-dpg-md">${body.trim() ? renderMarkdown(linkedBody(body, page)) : `<p class="cnpy-dpg-note">This page has no text yet.</p>`}</div>
+        <div class="cnpy-md cnpy-dpg-md">${split.rest.trim() ? renderMarkdown(linkedBody(split.rest, page)) : `<p class="cnpy-dpg-note">This page has no text yet.</p>`}</div>
         ${kids}
       </article>
-      ${rail(doc, page, p.persons, outline, p.showHistory)}
+      ${rail(doc, page, p.persons, outline, p.showHistory, p.tagsRow)}
     </div>
   </div>`;
 }

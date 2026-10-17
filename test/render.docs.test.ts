@@ -17,7 +17,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import { render, initialState, spaceName } from "../web/src/render";
 import { docsPane, expandedSet } from "../web/src/docs-pane";
-import { linkedBody, brokenLinkTip } from "../web/src/doc-page";
+import { linkedBody, brokenLinkTip, splitLead } from "../web/src/doc-page";
 import { dropHint, rowZone, treeKeyTarget } from "../web/src/tree-drag";
 import { placeOf, moveRefusalText, createTreeController } from "../web/src/tree-actions";
 import { setApiOrg } from "../web/src/api";
@@ -238,7 +238,21 @@ describe("the doc page", () => {
     expect(rows).toEqual(["4", "3", "2", "1"]);
     expect(html).toMatch(/class="cnpy-dpg-hrow is-rejected">\s*<span class="cnpy-dpg-hv">v2</);
     expect(html).toContain(">Rejected</span>");
-    expect(html).toContain('aria-pressed="true"');
+    // History is a dialog over the page now (a root overlay), with its title, × and Done; the button says it opened.
+    expect(html).toMatch(/<div data-overlay="doc-history" data-confirm-layer[\s\S]*?role="dialog" aria-modal="true" aria-labelledby="doc-history-t"/);
+    expect(html).toContain(">History of Authentication</div>");
+    expect(html).toMatch(/class="cnpy-dpg-btn cnpy-dpg-histbtn is-on" aria-haspopup="dialog" aria-expanded="true"/);
+    expect(html.indexOf('data-overlay="doc-history"')).toBeGreaterThan(html.indexOf("</article>"));
+  });
+  it("a body that opens with the page's own title loses that heading; the paragraph under it is the lead under the real title", () => {
+    expect(splitLead("# Authentication\n\nHow people sign in.\nAnd stay in.\n\n## Flow\nSteps.", "Authentication"))
+      .toEqual({ lead: "How people sign in. And stay in.", rest: "\n\n## Flow\nSteps." });
+    expect(splitLead("# Authentication\n\n## Flow\nSteps.", "authentication")).toEqual({ lead: null, rest: "## Flow\nSteps." });
+    expect(splitLead("# Something else\n\nText.", "Authentication")).toEqual({ lead: null, rest: "# Something else\n\nText." });
+    expect(splitLead("Text first.", "Authentication")).toEqual({ lead: null, rest: "Text first." });
+    expect(splitLead("# Authentication\n\n- a list\n- not a lead", "Authentication").lead).toBeNull();
+    const html = render(docState({ docDetail: { status: "ok", data: { doc: doc(), versions: [], page: { ...PAGE, body: "# Authentication\n\nHow people sign in.\n\n## Flow\nSteps." } } } }));
+    expect(html).toContain('<h1 class="cnpy-dpg-title">Authentication</h1>\n        <p class="cnpy-dpg-lead">How people sign in.</p>');
   });
   it("[[slug]] links become page links; one to no page is flagged text; code is left as written", () => {
     const out = linkedBody(PAGE.body, PAGE);
