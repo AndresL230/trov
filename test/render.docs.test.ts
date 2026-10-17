@@ -121,6 +121,12 @@ describe("the docs pane", () => {
     expect(html).toContain('data-act="treeMoveTop" data-arg="api"');
     expect(pane(render(docState({ treeMenu: "arch" })))).not.toContain("treeMoveTop");
   });
+  it("owner ruling DP8: the … menu is Copy link, Move to the top level, New page inside — no Rename", () => {
+    const menu = pane(render(docState({ treeMenu: "api" }))).match(/<div class="cnpy-dp-menu"[\s\S]*?<\/div>/)![0];
+    const items = [...menu.matchAll(/role="menuitem" data-act="(\w+)"[^>]*>([^<]*)</g)].map((m) => `${m[1]}:${m[2]}`);
+    expect(items).toEqual(["treeCopyLink:Copy link", "treeMoveTop:Move to the top level", "treeNew:New page inside"]);
+    expect(menu).not.toMatch(/Rename/);
+  });
   it("the person's choice wins over the open-above-the-page default", () => {
     expect(expandedSet(PAGES, "auth", {}).has("api")).toBe(true);
     expect(expandedSet(PAGES, "auth", { api: false }).has("api")).toBe(false);

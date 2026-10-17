@@ -153,6 +153,7 @@ export function createTreeController(host: TreeHost): TreeController {
         return true;
       }
       case "treeNew": {
+        state.treeMenu = null;
         const sp = space();
         if (sp && arg) host.newPage(sp.slug, arg);
         return true;
