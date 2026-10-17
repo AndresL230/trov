@@ -119,7 +119,10 @@ export type TenantFilter =
   | { kind: "grant"; grantId: number }
   /** The organizations that have this repository connected (`org_repos`: typed by hand or seen through
    *  the org's GitHub App installation — and not one the installation has since lost sight of). */
-  | { kind: "repo"; repo: string };
+  | { kind: "repo"; repo: string }
+  /** The organizations holding an OPEN agent link with this person's side bound to `session`
+   *  (0078_agent_links) — how `link_inbox` finds its org with no `repo` (./bearer.ts `resolveLinkSession`). */
+  | { kind: "link_session"; session: string };
 
 /**
  * A bearer connection's reach (./bearer.ts, 0051): the organizations `userId` is a LIVE member of and
@@ -134,7 +137,12 @@ export async function liveTenants(env: Env, userId: string, filter: TenantFilter
     ? env.DB.prepare(`${base} AND EXISTS (SELECT 1 FROM oauth_grant_orgs a WHERE a.org_id = o.id AND a.grant_id = ?2) ORDER BY o.slug`).bind(userId, filter.grantId)
     : filter.kind === "repo"
       ? env.DB.prepare(`${base} AND EXISTS (SELECT 1 FROM org_repos r WHERE r.org_id = o.id AND r.repo_full_name = ?2 AND r.access_lost_at IS NULL) ORDER BY o.slug`).bind(userId, filter.repo)
-      : env.DB.prepare(`${base} ORDER BY o.slug`).bind(userId);
+      : filter.kind === "link_session"
+        // `requester` / `recipient` are handles, like `m.user_id`: ?1 is the person on either side.
+        ? env.DB.prepare(`${base} AND EXISTS (SELECT 1 FROM agent_links l WHERE l.org_id = o.id AND l.state = 'open'
+            AND ((l.requester = ?1 COLLATE NOCASE AND l.requester_agent_session = ?2) OR (l.recipient = ?1 COLLATE NOCASE AND l.recipient_agent_session = ?2)))
+            ORDER BY o.slug`).bind(userId, filter.session)
+        : env.DB.prepare(`${base} ORDER BY o.slug`).bind(userId);
   const { results } = await q.all<{ id: string; slug: string; name: string; role: OrgRole }>();
   return results.map((r) => ({ ctx: tenant(env, r.id, userId, r.role, "bearer"), slug: r.slug, name: r.name }));
 }

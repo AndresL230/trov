@@ -12,6 +12,7 @@ import { renderMarkdown } from "./markdown";
 import { promptBox, promptModal, type PromptView } from "./prompt-box";
 import { emptyLayout, emptyShapes, skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
 import { handoffMark } from "./marks";
+import { handoffsTabPanel } from "./links";
 
 // ── atoms ────────────────────────────────────────────────────────────────────
 /** Pending / Claimed / Expired — a mark (marks.ts `HANDOFF_MARK`), never a pill. */
@@ -100,6 +101,8 @@ export interface HandoffsListProps {
   handoffs: HandoffView[];
   me: string;
   persons: PersonSummary[];
+  /** The screen's Handoffs | Links bar (links.ts `handoffsTabBar`), heading the page; the inbox is its first tab. */
+  bar?: string;
 }
 
 /** One inbox row: a `hitArea` row, so the other party's photo and name open their person
@@ -171,7 +174,8 @@ export function handoffsView(p: HandoffsListProps): string {
       : `<div style="text-align:center;padding:28px;color:var(--fg-40);font-size:12.5px">No claimed or expired handoffs yet.</div>`;
     body = `${sectionHead("WAITING TO BE CLAIMED", pend.length, true)}${pendingBlock}${sectionHead("HISTORY", hist.length)}${historyBlock}`;
   }
-  return `<div data-screen-label="Handoffs" style="${WORK_SHELL}">${intro}${body}</div>`;
+  const inner = p.bar ? `${p.bar}<div${handoffsTabPanel("handoffs")} style="padding-top:22px">${intro}${body}</div>` : `${intro}${body}`;
+  return `<div data-screen-label="Handoffs" style="${WORK_SHELL}">${inner}</div>`;
 }
 
 // ── one handoff ──────────────────────────────────────────────────────────────

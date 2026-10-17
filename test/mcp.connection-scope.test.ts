@@ -450,8 +450,13 @@ describe("a manual connection", () => {
     expect(names).toContain("get_connection");
     expect(names).toContain("switch_org");
     expect(names.filter((x) => /grant|allow|connect_org|add_org|set_mode/.test(x))).toEqual([]);
-    // Every org tool takes the two optional scope arguments; neither is ever required.
+    // Every org tool takes the two optional scope arguments; neither is ever required. `link_inbox` takes neither:
+    // it finds its org by session, among those the connection reaches (`resolveLinkSession`; test/mcp.links.test.ts).
     for (const t of list.tools) {
+      if (t.name === "link_inbox") {
+        expect(Object.keys(t.inputSchema.properties).sort()).toEqual(["event", "session"]);
+        continue;
+      }
       expect(Object.keys(t.inputSchema.properties), t.name).toContain("org");
       if (t.name !== "switch_org") {
         expect(Object.keys(t.inputSchema.properties), t.name).toContain("repo");

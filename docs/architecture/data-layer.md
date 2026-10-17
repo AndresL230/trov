@@ -77,10 +77,19 @@ organizations.
   exactly one → that org; none → `not_connected` — the SAME BYTES whether the repository is unknown, connected
   nowhere, or connected only in an org the person is not in; several → `ambiguous_org`, listing those slugs,
   settled by `org`, which must be one of them (else the same `not_connected`).
+- **By session — `link_inbox` only** (agent links, 0078; owner ruling 2026-10-17). A Claude Code hook cannot pass
+  `repo`, so `resolveLinkSession(conn, session)` picks the org holding an OPEN `agent_links` row with the person's
+  side bound to that session: `liveTenants` kind `link_session` (the same membership spine as every kind, plus an
+  `EXISTS` on `agent_links` — handles on both sides, `COLLATE NOCASE`), then narrowed to what the connection can
+  ALREADY reach (`conn.orgs`): a token's one org, a manual grant's allowed orgs, a repo grant's live memberships.
+  Exactly one → that org; none or several → nothing is read or written (the tool answers empty, never an error).
+  A session bound in an org the person has left is never found — by the spine, and again by `conn.orgs`. No other
+  tool chooses this way, and it admits nothing (`admitCall` is not run: the call reads only the person's own link).
 - `admitCall` then runs before the tool body: a `repo` grant's FIRST call into an org takes one of the
   person's agent-connection slots there (`admitGrantOrg`, `requirePlan` → `plan_limit`; `plans.md`).
 
-**The connection's own tools** act in no org: `get_connection` (handle, mode, the organization THIS call would
+**The connection's own tools** act in no org — except `link_inbox`, which acts in the org its session resolves
+to (above): `get_connection` (handle, mode, the organization THIS call would
 act in with the role there, a manual connection's current org, the orgs it can reach, and `unresolved` when it
 would act nowhere — it admits nothing and reads no org's data) and `switch_org` (moves a manual connection's
 current org to another it is ALREADY allowed — `setGrantCurrent`, one guarded UPDATE; it applies to every
@@ -113,7 +122,8 @@ in its own batch and revokes a manual grant left with no org. A revoked grant ho
   org the connection can reach, and is `forbidden` on a call that lands where they are not. There is no
   allowlist of handles anywhere.
 - Usage: a tool call is metered in the org it resolved to (`meterMcpTool`); a request with no tool call, in a
-  manual connection's current org (`meterMcp`); a call that resolved nowhere, nowhere.
+  manual connection's current org (`meterMcp`); a call that resolved nowhere, nowhere. `link_inbox` meters itself
+  ONLY when it delivers a note: its empty path (no org, nothing waiting) writes no usage row.
 - `get_repo_dashboard` reads the org's own `org_repos` / `org_environments` (`orgRepoConfig`,
   `src/tools/repo-agent.ts` — it may not import `src/integrations`, see `test/secrets.mcp.test.ts`); a bare
   `#214` resolves against the org's primary repo (`ticketLinkRepo`, `src/tools/tickets.ts`).

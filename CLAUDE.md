@@ -73,9 +73,10 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 4. **Every tenant statement binds `ctx.orgId`.** D1 is reached only through a context, inside `src/data/`
    (`sql.ts` for tenant data, `platform-sql.ts` for the global tables); a static test enforces it
    (`test/data-layer.static.test.ts`). A bearer call acts in ONE org, chosen only among its person's LIVE
-   memberships and only in `src/data/bearer.ts`: a token's org, a manual connection's current org, or the
-   org that has the call's `repo` connected (else nothing is read or written). A ticket's / handoff's `id`
-   on every surface is its per-org NUMBER, never the row id.
+   memberships and only in `src/data/bearer.ts`: a token's org, a manual connection's current org, the
+   org that has the call's `repo` connected, or (`link_inbox` only) the org holding this session's open agent
+   link, among those the connection can already reach (else nothing is read or written). A ticket's /
+   handoff's `id` on every surface is its per-org NUMBER, never the row id.
 5. **Nothing infers a resolution.** `done`/`declined` tickets and `done` sprints are set by a person, never
    by a merge, issue close, webhook or cron — except a ticket MIRRORED from a GitHub issue follows its own
    issue's close/reopen.

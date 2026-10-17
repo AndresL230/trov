@@ -28,7 +28,7 @@ import { PR_FILES_REQUESTS, PR_FILES_SYNC_REQUESTS } from "./pr-files";
 import { describeSources } from "./scan-store";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
-import { expireDueHandoffs, pruneHandoffUploadTokens, pruneRepoCapture } from "../platform/sweeps";
+import { expireDueHandoffs, expireDueLinks, pruneHandoffUploadTokens, pruneRepoCapture } from "../platform/sweeps";
 import { listAllParts } from "../hosting/parts";
 import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
 import { PROVIDERS } from "../hosting/registry";
@@ -509,7 +509,8 @@ export const PROGRESS_COST_ESTIMATE = 40;
  *
  *   every tick   `health` — one unit per (org, environment): 2 pings
  *                (`pingHealth`), 4 for two environments — and the handoff
- *                expiry sweep (`expireDueHandoffs`, D1 only, cross-org), and
+ *                and agent-link expiry sweeps (`expireDueHandoffs`,
+ *                `expireDueLinks`, D1 only, cross-org), and
  *                the end of gifted plans (`expireGifts`, D1 only: an org whose
  *                gift has lapsed moves to Free — src/plans/gifts.ts).
  *   :00          `usage` — one unit per (org, environment), and NOTHING else
@@ -612,6 +613,9 @@ export async function handleRepoCron(
   // write-only sweep on the platform context, §4.4). D1 only (no subrequest), so it adds nothing to
   // any tick's budget, and it runs BEFORE the :00 early return so no hour is skipped.
   await safely("handoff expiry", () => expireDueHandoffs(p, scheduledTime));
+  // …and agent links past their time, the same way (0078_agent_links: a draft 1 h, a request 24 h, an open link
+  // 7 days or 12 h with neither side seen).
+  await safely("link expiry", () => expireDueLinks(p, scheduledTime));
   // And the handoff upload tokens whose 5 minutes are over (0080): each holds a pending handoff's text.
   await safely("handoff upload tokens", () => pruneHandoffUploadTokens(p, scheduledTime));
   // Every tick too: a plan given for free until a date ends (0048_plan_gifts, src/plans/gifts.ts) — each

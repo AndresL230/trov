@@ -29,6 +29,7 @@ import { pkce, sha256Hex } from "../src/auth/crypto";
 import { registerClient, refreshAccessToken, OAuthError, ACCESS_TTL_MS } from "../src/auth/oauth";
 import { removeMember } from "../src/orgs/repo";
 import { promote_doc } from "../src/tools/writes";
+import { acceptLink, joinLink, sendLink, sendLinkNote } from "../src/tools/links";
 import { cookieFor, seedPerson, FIXTURE_ADMIN } from "./helpers/persons";
 import { ENVS, seedOrgRepoConfig } from "./helpers/repo";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
@@ -89,6 +90,8 @@ interface Fixture {
   org: Org; tag: Tag; token: string;
   sprint: number; ticket: number; child: number; handoff: number; artifact: string;
   doc: string; prompt: string;
+  /** An OPEN agent link dana → ONLY[org], dana's side bound to `linkSession`, with an undelivered note to it. */
+  link: number; linkSession: string;
 }
 
 const canary = (tag: Tag, what: string) => `CANARY_${tag}_${what}`;
@@ -116,8 +119,8 @@ async function seedOrg(org: Org): Promise<Fixture> {
   // counters start far ahead: A's rows are #101…, B's #1… The matrix therefore proves both halves: a
   // number that is only the other org's is not found, and no response ever carries the other org's canary.
   if (org === ORG_A) {
-    await env.DB.prepare(`INSERT INTO org_counters (org_id, name, value) VALUES (?, 'ticket', 100), (?, 'handoff', 100)
-                          ON CONFLICT(org_id, name) DO UPDATE SET value = 100`).bind(org, org).run();
+    await env.DB.prepare(`INSERT INTO org_counters (org_id, name, value) VALUES (?, 'ticket', 100), (?, 'handoff', 100), (?, 'link', 100)
+                          ON CONFLICT(org_id, name) DO UPDATE SET value = 100`).bind(org, org, org).run();
   }
   const token = (await mintTokenFor("dana", org)).raw;
   const ids = await withServer(await ctxOf(token), async (call) => {
@@ -142,9 +145,16 @@ async function seedOrg(org: Org): Promise<Fixture> {
     const handoff = (await ok<{ id: number }>("send_handoff", { body: c("handoff"), context: { repo: "x/y", branch: "main", task: c("handoff_task"), done: [c("handoff_done")], next: [], files: [] }, prompt: { title: c("handoff_prompt"), body: c("handoff_prompt_body") } })).id;
     const artifact = (await ok<{ slug: string }>("upload_asset", { title: c("artifact"), kind: "markdown", area: "api", repo: "", visibility: "org", content: c("artifact_body"), summary: c("artifact_summary"), links: [{ target_type: "ticket", target_ref: String(ticket) }] })).slug;
     await ok("update_plan", { narrative: c("narrative"), sprints: [] });
-    return { sprint, ticket, child, handoff, artifact };
+    const link = (await ok<{ id: number }>("request_link", { target: { person: ONLY[org] }, reason: c("link_reason"), session: `iso-link-${tag}` })).id;
+    return { sprint, ticket, child, handoff, artifact, link };
   });
-  return { org, tag, token, ...ids, doc: `only-${tag.toLowerCase()}-doc`, prompt: `only-${tag.toLowerCase()}-prompt` };
+  // The person steps have no tool: sent, accepted and joined through the domain layer; ONLY[org]'s note waits for dana.
+  const as = (h: string) => tenantCtx(h, undefined, { orgId: org });
+  await sendLink(await as("dana"), "dana", ids.link);
+  await acceptLink(await as(ONLY[org]), ONLY[org], ids.link);
+  await joinLink(await as(ONLY[org]), ONLY[org], { id: ids.link, session: `iso-only-${tag}` }, "mcp");
+  await sendLinkNote(await as(ONLY[org]), platformCtx(), ONLY[org], { id: ids.link, session: `iso-only-${tag}`, body: c("link_note") }, "mcp");
+  return { org, tag, token, ...ids, linkSession: `iso-link-${tag}`, doc: `only-${tag.toLowerCase()}-doc`, prompt: `only-${tag.toLowerCase()}-prompt` };
 }
 
 let FX: Record<Org, Fixture>;
@@ -264,6 +274,17 @@ const MATRIX: Record<string, Entry> = {
   search_prompts: () => [read(), read({ q: "canary" }), read({ tags: ["api"] })],
   get_prompt: (o) => [refused({ slug: o.prompt, vars: { name: "x" } }), { args: { slug: SHARED_PROMPT }, expect: "own", sees: true }],
   save_prompt: (o) => [{ args: { slug: o.prompt, title: "t", body: "a prompt of the same slug, in my own org" }, expect: "own" }],
+  // agent links (0078): the other org's link is not found; a person there is not a member here; its session's notes
+  // are never read — `link_inbox` finds an org by session only among the token's own (`resolveLinkSession`).
+  request_link: (o) => [
+    refused({ target: { person: ONLY[o.org] }, reason: "with their member", session: "iso-session" }),
+    refused({ target: { ticket: o.ticket }, reason: "about their ticket", session: "iso-session" }),
+  ],
+  join_link: (o) => [refused({ id: o.link, session: "iso-session" })],
+  send_link_note: (o) => [refused({ id: o.link, session: o.linkSession, body: "hello from the other org" })],
+  close_link: (o) => [refused({ id: o.link, session: o.linkSession })],
+  list_links: () => [read()],
+  link_inbox: (o) => [{ args: { session: o.linkSession }, expect: "inert" }, { args: { session: o.linkSession, event: "UserPromptSubmit" }, expect: "inert" }],
   // The connection's own tools (0051): a token is bound to ONE org — it can be told where it is, and
   // can neither be asked about nor moved to the other one.
   get_connection: (o) => [{ args: {}, expect: "inert" }, { args: { org: SLUG[o.org] }, expect: "inert" }, { args: { repo: `canary-${o.tag.toLowerCase()}/${canary(o.tag, "repo")}` }, expect: "inert" }],

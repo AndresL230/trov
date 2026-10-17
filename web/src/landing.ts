@@ -772,7 +772,7 @@ function agents(): string {
   const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
     + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
-  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
+  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"]);
 
   // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
   // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).

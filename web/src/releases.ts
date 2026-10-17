@@ -103,8 +103,8 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // Ask sharing (#193) and handoff prompts by upload (#194), merged together through epic/10-17-staging: one
-  // deploy, one version.
+  // Ask sharing (#193), handoff prompts by upload (#194) and agent links (#196), merged together through
+  // epic/10-17-staging: one deploy, one version.
   {
     version: "0.12",
     date: "2026-10-17",
@@ -123,18 +123,20 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0076_10_17_staging` (one file for Ask sharing and handoff uploads; merging to main applies it; `0077`–`0079` are left to the PRs in flight beside it). All additive; each part's header has its rollback.",
-      "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
+      "Apply migration `0078_agent_links` (#196: rebuilds `org_counters` so links get their own numbers, then adds `agent_links` and `agent_link_notes`; ticket and handoff numbering carries on). Merging to main applies it.",
+      "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts; the new link skill): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {
       added: [
         "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193).",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
+        "Agent links: two sessions whose work overlaps leave each other notes while a person-approved link is open, under Handoffs › Links (#196)",
       ],
       changed: [],
       fixed: [],
       removed: [],
     },
-    prs: [193, 194],
+    prs: [193, 194, 196],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.

@@ -29,6 +29,7 @@
 import { type TenantContext, type Stmt, all, batch, first, stmt, chunked, ph } from "../data/sql";
 import type { PlatformContext } from "../data/context";
 import { deleteThread } from "../data/ask";
+import { ASK_THREAD_SESSION_PREFIX } from "@shared/links";
 import { artifactShas, noCandidates, sweepR2, type R2Sweep } from "./r2";
 
 export type KeptWhy = "published" | "ticket" | "doc" | "shared";
@@ -107,9 +108,25 @@ export interface DeletedThread { attachments: { deleted: number; kept: ThreadAtt
  */
 export async function deleteAskThread(ctx: TenantContext, p: PlatformContext, bucket: R2Bucket | undefined, handle: string, threadId: number): Promise<DeletedThread | null> {
   const plan = await planThreadAttachments(ctx, handle, threadId);
-  if (!(await deleteThread(ctx, handle, threadId, attachmentDeletes(ctx, handle, plan.going)))) return null;
+  if (!(await deleteThread(ctx, handle, threadId, [...attachmentDeletes(ctx, handle, plan.going), ...unbindLinkSides(ctx, threadId)]))) return null;
   const r2 = await sweepR2(p, bucket, { ...noCandidates(), artifacts: artifactShas(plan.r2Keys) });
   return { attachments: { deleted: plan.going.length, kept: plan.kept }, r2 };
+}
+
+/**
+ * A deleted thread is no longer a side of any agent link (0078_agent_links; ask.md › Agent links): the side bound to
+ * its session (`ask-thread-<id>`) loses its session and kind — in every state, so a link's page never points at a
+ * thread that is gone — and the link itself stays, with its notes, for its two people. An open link's side can be
+ * joined again from another session. In the thread's own batch.
+ */
+export function unbindLinkSides(ctx: TenantContext, threadId: number): Stmt[] {
+  const session = `${ASK_THREAD_SESSION_PREFIX}${threadId}`;
+  return [
+    stmt(ctx, `UPDATE agent_links SET requester_agent_session = NULL, requester_kind = NULL, requester_branch = NULL
+                WHERE org_id = ? AND requester_agent_session = ?`, ctx.orgId, session),
+    stmt(ctx, `UPDATE agent_links SET recipient_agent_session = NULL, recipient_kind = NULL, recipient_branch = NULL
+                WHERE org_id = ? AND recipient_agent_session = ?`, ctx.orgId, session),
+  ];
 }
 
 export type UnsentRefusal = "not_found" | "sent" | "published" | "referenced";

@@ -19,6 +19,7 @@ import { DOCS_PAGES, SITE_ORIGIN, siteUrl, type SitePage } from "@shared/site-pa
 import { PLANS, FREE_PLAN, UPGRADE_PLAN, seatsPhrase } from "@shared/plans";
 import { PRICING, formatPrice } from "@shared/pricing";
 import { ARTIFACT_INLINE_BINARY_MAX } from "@shared/artifacts-core";
+import { LINK_DRAFT_TTL_MS, LINK_IDLE_MS, LINK_LIVE_MAX, LINK_NOTE_MAX, LINK_NOTES_PER_SIDE, LINK_OPEN_TTL_MS, LINK_REQUEST_TTL_MS } from "@shared/links";
 import { PLUGIN_INSTALL, CONNECTION_NOTE, browserConnectCommand } from "./mcp-connect";
 import { TROV_REPO } from "./site-chrome";
 import { mcpToolsMarkdown } from "./docs-tools";
@@ -47,6 +48,9 @@ const page = (key: string): SitePage => {
 const to = (key: string, text?: string): string => `[${text ?? page(key).nav}](${siteUrl(page(key).path)})`;
 const PRICING_URL = siteUrl("/pricing");
 const head = (key: string, title: string): string => `# ${title}\n\n${page(key).description}`;
+const HOUR_MS = 60 * 60 * 1000;
+/** "an hour", "24 hours", "7 days": a link's time limit (shared/links.ts) in words. */
+const span = (ms: number): string => ms === HOUR_MS ? "an hour" : ms % (24 * HOUR_MS) === 0 && ms > 24 * HOUR_MS ? `${ms / (24 * HOUR_MS)} days` : `${ms / HOUR_MS} hours`;
 
 // ── Set up Trov ──────────────────────────────────────────────────────────────
 
@@ -154,7 +158,7 @@ function connect(): string {
       `- **A pasted token** (\`trov_mcp_…\`, or an older \`canopy_mcp_…\`) also works, sent as \`Authorization: Bearer <token>\`; it acts in the one organization it was made for. Settings no longer creates tokens, and a token you already have keeps working. For a client that cannot sign in through a browser (CI, a headless agent), a signed-in person can still mint one with \`POST /api/o/<your-org>/mcp-tokens\`; the token is shown once. The examples below read it from \`$${TOKEN_ENV}\`.`,
     ].join("\n"),
     "## Claude Code",
-    "**With the plugin (recommended).** It adds the MCP server and the skills (`trov`, `load-context`, `record-session`, `my-work`, `tickets`, `handoff`, `prompts`, `artifacts`, `read-plan`, `update-plan`). In Claude Code:",
+    "**With the plugin (recommended).** It adds the MCP server and the skills (`trov`, `load-context`, `record-session`, `my-work`, `tickets`, `handoff`, `link`, `prompts`, `artifacts`, `read-plan`, `update-plan`). In Claude Code:",
     fence("text", PLUGIN_INSTALL),
     "Then run `/mcp`, choose **trov**, then **Authenticate**, and click **Allow** in the browser. Update it later with `/plugin marketplace update trov`.",
     "**Without the plugin.** Add the server for every project (`--scope user`), then `/mcp` › trov › Authenticate as above:",
@@ -181,6 +185,7 @@ function connect(): string {
       "- “Propose this as a change to the onboarding doc.” It is staged, and waits in **Triage › Review** until a person promotes it.",
       "- “Save this as a prompt”, or “make this an artifact”. A prompt is staged until a person publishes it.",
       "- “Leave a handoff for my next coding session.” It says where the task stands; your agent in the repository lists it when it starts.",
+      `- “Join Trov link 12.” Once a link is open (${to("docs-concepts", "Concepts")} › Agent links), the chat leaves notes on it and reads the other side's. It has no hooks, so it reads them when you ask (“any notes on the link?”) or when it checks by itself at the start of a reply, which Trov asks of it but cannot make sure of.`,
     ].join("\n"),
     "**What is different with no repository:**",
     [
@@ -288,6 +293,16 @@ function concepts(): string {
       "3. **Record**, only when a person asks. The agent reads what actually shipped from `git` and GitHub, reads back each doc it touches, and sends one batch (`record_session`). It is staged, and waits for a person.",
     ].join("\n"),
     "Between sessions, a **handoff** carries where a task stands to the next session (yours, a teammate's, or anyone's); unclaimed ones expire after 7 days.",
+    "## Agent links",
+    "When two sessions work on things that may affect each other, a **link** opens a short-lived line between them: two coding agents, or a coding agent and a teammate planning in a chat. While it is open, each side leaves short notes for the other (“renaming `authSession`, merging tonight”). A note informs; it never asks the other side to change its work, which is a conversation for the people. When the work lands, either side closes the link, and its thread stays readable in Trov.",
+    [
+      "- **A person starts every link, on both ends.** An agent that notices an overlap (the same files as an open pull request or another local branch) asks you first, and with your yes drafts a request (`request_link`). You send it from its page in Trov (**Handoffs › Links**), and the other person accepts it there. No agent can send or accept a link. Each side's agent then joins it when its person says so (“join Trov link #12”).",
+      "- **How notes arrive.** A Claude Code agent with the plugin gets them at each prompt and after each `git commit` or `git push`, once the plugin's `link` skill is in use in that session: asking it to request or join a link turns that on. After `/clear`, say “join link 12” again. Nothing arrives while a session sits idle.",
+      "- **In a chat** (claude.ai, Claude Desktop, Cursor's chat) no hooks run. A chat reads its notes when you ask, or when it calls `link_inbox` itself: Trov asks a chat that joined a link to check at the start of each reply, but cannot make sure it does.",
+      "- **An Ask thread can be a side.** Ask Trov to “send this to my agent on PR #180”: it shows the request as a card, and your Confirm sends it, with that thread as your side. The other side's notes reach the thread with your next question, and Trov never joins, writes a note or closes a link without your click, even on Auto.",
+      "- **On the link's page** in the web app, either person reads the whole thread and can write a note on their own side.",
+      `- **Limits.** A note is up to ${LINK_NOTE_MAX.toLocaleString("en-US")} characters, and each side of a link may leave ${LINK_NOTES_PER_SIDE} notes. A person has at most ${LINK_LIVE_MAX} links sent or open at a time in an organization. A draft nobody sent lapses after ${span(LINK_DRAFT_TTL_MS)}, an unanswered request after ${span(LINK_REQUEST_TTL_MS)}, and an open link after ${span(LINK_IDLE_MS)} with no sign from either side, or ${span(LINK_OPEN_TTL_MS)} at most.`,
+    ].join("\n"),
     "## One connection, several organizations",
     `A person can belong to several organizations, and one agent connection can reach all of them. Each call acts in exactly ONE, chosen only among the person's own live memberships: a connection that follows the repository acts in the organization that has the call's \`repo\` connected; a manual one in its current organization; a pasted token in the one it was made for. When no organization fits, nothing is read or written, and the error says what to do. Nothing in a refusal reveals another organization.`,
     `Trov's source is public under AGPL-3.0: [${TROV_REPO.replace("https://", "")}](${TROV_REPO}).`,

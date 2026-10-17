@@ -109,4 +109,127 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   shows claimed/expired), `get_handoff`, `claim_handoff` (returns one markdown block: prompt, `## Handoff
   summary`, `## Context`, then `## Read these first (not complete)` when anything matched), `expire_handoff`, `search_prompts`, `get_prompt` (fills `{{vars}}`, lists `unfilled`),
   `save_prompt` (always staged). There is no per-token rate limit in Trov today.
-- Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs at session start; never auto-claims).
+- Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs and live links at session start; never
+  auto-claims). Links have their own skill, `link` (below).
+
+## Agent links — a short-lived line between two sessions (0078_agent_links)
+
+Spec: `docs/superpowers/specs/2026-10-17-agent-links.md` (its owner rulings override the text above them).
+Built: the data and domain layer, the MCP tools, the cookie routes and badge, the Links tab and a link's page, the
+plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › Agent links).
+
+- **Storage.** `agent_links` (a per-org `number` from `org_counters` `'link'` by the `agent_links_number_ai`
+  trigger — 0078 rebuilt `org_counters` so its CHECK takes `'link'`; `createOrg` seeds it), and
+  `agent_link_notes` (keyed to its link by `(org_id, link_number)`, with the `side` it was written FROM —
+  stored, because a self-link's two sides are one person). Session columns end in `_agent_session` (Trov's own
+  `ai_sessions` is something else). DTOs and the numbers: `shared/links.ts`.
+- **Writers** (`src/tools/links.ts`): direct, like handoffs — no gate, no feed, no `routeAi`, nothing from
+  `src/ai/`. Every transition is ONE conditional UPDATE, explained on a miss (404 / 403 / 409 / the cap).
+  `requestLink` is an agent's DRAFT (its side bound, due in 1 h); `sendLink` (requester) makes it `requested`
+  (24 h) — a self-link `open` at once; `acceptLink` / `declineLink` (recipient), `cancelLink` (requester, draft or
+  requested), `closeLink` (either side, open only). `createRequestFromWeb` and `requestLinkFromAsk` (Ask's
+  Confirm, the thread bound as `ask-thread-<id>`) create it already sent. An open link lasts 7 days.
+- **Joining** binds the caller's own side (re-join overwrites). On a self-link: the side this session is on,
+  else the one with no session (recipient first), else `side` must say; one session never holds both.
+- **`via`** (`mcp` | `ask` | `web`): over MCP a session starting `ask-thread-` is refused; Ask binds only that;
+  the web binds none. MCP never calls the person steps.
+- **Notes**: from the side the session is bound to (an unbound session is refused), or a person's own side on
+  the page (a self-link's: `side`, default requester). Caps for every author: 1,000 characters, 20 per side per
+  link (re-checked in the INSERT), and `LIMITS.link_note` (60 / person / hour).
+- **The inbox** (`readInbox`): notes from the OTHER side, on open links whose caller's side is bound to the
+  session, at most 5 per read, oldest first, the rest counted. One statement when nothing waits (it stamps the
+  side's `*_seen_at` and counts in its RETURNING); delivery is one `UPDATE … WHERE delivered_at IS NULL …
+  RETURNING`, so each note goes once. `formatInbox` fences each note with a nonce fresh per delivery;
+  `inboxHookOutput` wraps it as hook JSON (≤ 10,000 characters).
+- **The 5-link cap** counts the links a person SENT that are requested or open, plus the ones sent to them that
+  they accepted: a request waiting for someone does not fill their allowance; it is checked at their accept.
+- **Expiry**: `expireDueLinks` (`src/platform/sweeps.ts`) every repo-cron tick — past `expires_at`, or open with
+  no sign from either side (`decided_at`, `*_seen_at`) for 12 h. Deleting an account cancels or closes the
+  person's live links (`src/deletion/person.ts`).
+- **Over MCP** (`src/mcp.ts`), as the bearer's person, `via: "mcp"`. Five org tools: `request_link` (a DRAFT,
+  returns `{ id, url, state }` — the person sends it from the url), `join_link` (an OPEN link only), `send_link_note`,
+  `close_link`, and `list_links` (the four live boxes, for `load-context`; each side says whether it has joined, and
+  carries its session id only when it is the caller's own side). There is NO tool for send, accept, decline or
+  cancel. Each refuses an `ask-thread-` session (`bad_request`); `LinkError` codes travel like `HandoffError`'s, with
+  hints for `not_member` and `limit` (`retry_after` on the hourly note limit).
+- **Cookie routes** (`tenantApi`, `src/routes.ts`, beside the handoffs; `/api/links…` and `/api/o/<slug>/links…`) —
+  the ONLY place a link is sent, accepted, declined or cancelled (besides Ask's Confirm). The actor is always the
+  session's person; a body's author fields are never read. `:id` is the per-org number.
+  `GET /links?box=waiting|mine|open|unbound|closed` (default `open`; another box is 400) → `{ links }`;
+  `GET /links/:id` → `{ link }` with its notes, 404 `not_found` for anyone but its two people;
+  `POST /links` `{ target, reason, repo? }` → `{ link }` (`createRequestFromWeb`: `requested`, or `open` to oneself);
+  `POST /links/:id/send|accept|decline|cancel` and `/close` `{ reason? }` → `{ link }`;
+  `POST /links/:id/notes` `{ body, side? }` → `{ link }` with its notes (a person's note, own side, no session —
+  the same caps, `link_note` taken on `c.var.p`). A `LinkError` is `{ error: <code>, message }` at
+  `LINK_ERROR_STATUS` (a 429 from the hourly allowance adds `retry_after` and `retry-after`); anything else is
+  503 `{ error, degraded: true }`, never a 500. No role check: any member, as with handoffs.
+- **Badge.** `GET /badges` carries `links`: requests waiting for me (= `GET /links?box=waiting`'s length; a self-link
+  never waits). `handoffs` stays handoffs only; the web adds the two for the Handoffs badge.
+- **`link_inbox`** is a CONNECTION tool (`{ session, event? }`, no `repo` / `org`): it finds its org by session
+  (`resolveLinkSession`, `data-layer.md` › Bearer — CLAUDE.md invariant 4), then `readInbox`. With `event` (a hook)
+  it answers `inboxHookOutput` JSON, or `""`; without, the fenced text, or "No new notes on Trov links for this
+  session." The empty path (no org, an `ask-thread-` session, nothing waiting) is never `isError` and writes no
+  usage row; only a delivery runs `meterMcpTool`. Measured locally (wrangler dev, pasted token, unknown session):
+  ~11 ms median, ~15 ms p95 — about 2 ms over `get_connection`.
+- The server instructions (`mcpInstructions`) say a session that has joined a link calls `link_inbox` at the start of
+  each reply — how a `chat` side checks without hooks. Site group: "Links" (`shared/mcp-tools-core.ts`), all six.
+- **Ask as a side** (`ask.md` › Agent links): `request_link`, `join_link`, `send_link_note` and `close_link` are
+  Ask write cards — Confirm-only, never Auto, run as the CONFIRMER — and `list_links` a read; only `link_inbox` is in
+  `ASK_EXCLUDED_TOOLS` ("Ask reads link notes in its own turn"). The thread's session is `ask-thread-<thread id>`
+  (kind `ask`, no branch), the id Ask claims handoffs with; only the LINK tools refuse that prefix over MCP, so
+  `claim_handoff` with it still works. Confirming `request_link` is the Send (`requestLinkFromAsk`: `requested`, or
+  `open` to oneself; no draft; `previewLinkRequest` builds the card and refuses a target or a cap bound to fail).
+  A turn delivers the thread's waiting notes once (`readInbox`, fenced in the turn); the thread list and the thread
+  read count them in one query (`askThreadLinkNotes`). Deleting the thread unbinds its side (session, kind and branch
+  go null; the link stays — `src/deletion/ask.ts` `unbindLinkSides`).
+- **The plugin** (0.10.0): the `link` skill (`plugins/trov/skills/link/SKILL.md`) carries the hooks in its OWN
+  frontmatter (owner ruling 6), not a plugin-wide `hooks/hooks.json`: `UserPromptSubmit`, and `PostToolUse` on
+  `Bash` with `if` `Bash(git commit*)` / `Bash(git push*)`, each an `mcp_tool` call to `plugin:trov:trov` /
+  `link_inbox` with `{ session: "${session_id}", event: "${hook_event_name}" }`, timeout 5. Skill hooks register
+  when the skill is first invoked and last the session, so only a session that requests or joins a link ever
+  calls `link_inbox` (and only it would see a hook error when the server is not signed in); `/clear` drops them,
+  so the person says "join link N" again. The skill is model-invocable on purpose (no
+  `disable-model-invocation`): a spoken "join link 12" must load it for the hooks to register; every write in
+  it still waits for the person's word. It covers noticing (the Repo overview's `state.inFlight` + facts, then
+  `git diff --name-only origin/<default>...HEAD` against open PRs and local branches / worktrees), asking,
+  drafting (`kind: "code"`, the session from `$CLAUDE_CODE_SESSION_ID`), joining, notes, closing, and the chat
+  case (its own short id, `kind: "chat"`, `link_inbox` at the start of each reply). `load-context` step 10 calls
+  `list_links` beside `list_handoffs` and never joins or requests. Public docs: Concepts › Agent links
+  (`web/src/docs-content.ts`, numbers from `shared/links.ts`) and a line in Connect's chat section; llms.txt's
+  intro. `test/plugin.skills.test.ts` holds the hooks' shape and where they live.
+- Tests: `test/links.test.ts`, `test/links.migration.test.ts`, `test/mcp.links.test.ts` (the tools and
+  `link_inbox`'s resolution in every connection mode, through the real `/mcp`), and the six tools' rows in
+  `test/isolation.mcp.test.ts` (another org's link, person and session reach nothing).
+
+### Web (Handoffs › Links, `web/src/links.ts`)
+
+- **Where.** A `tabBar()` heads the Handoffs screen: Handoffs and Links, each tab with its own count of what waits
+  for me. Routes `#links` (screen `links`) and `#links/<n>` (screen `link`), NOT under `#handoffs/` (whose second
+  segment is a handoff's number). `pageKey` maps `#links` to `#handoffs`, so the tab switch is one page (the
+  underline slides, no entrance replays); a link's page is a child screen (crumb "Link #12", back to Links).
+- **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`) into Waiting for you, Open,
+  Yours, Closed. A row: `#n`, the topic (`linkTopicLabel`; a branch in code), the reason, the other person
+  (`personLink`; a self-link reads "You, two sessions"), the state's mark, when it last moved — a `hitArea` row.
+  Each empty section says so in a sentence (`LINKS_EMPTY`).
+- **A link's page**: topic and reason; one card per side (a self-link's two name its two sessions) with the
+  person and the session in words — "coding session on `branch`", "web chat" (with "a web chat checks for
+  notes when you ask it to": that claude.ai polls on its own is not verified), "Ask thread" (a link to `#ask/<id>` on the viewer's OWN side
+  only), or "waiting for a session". The notes thread says who wrote each ("@jose's agent", "@jose's Ask
+  thread", "@jose"); bodies are text, never markup. A composer (1,000 characters, counted) for the viewer's own
+  side, only while the link is open; on a self-link a `segmented()` "Write as" switch picks which of the two
+  sessions the note is from (`side` on `POST /links/:id/notes`, default the requester's). An open link whose viewer side has no session shows "Tell your agent: join
+  Trov link #12" with a Copy button.
+- **Steps** (`linkActionsFor`, the one rule the buttons read; the server re-checks): requester on a draft → Send
+  request, Cancel (at once); requester on a request → Cancel request, through `confirmModal`
+  (`linkCancelModal`); recipient on a request → Accept, Decline (at once); either side on an open link → Close.
+  Nothing on an ended link, nothing for anyone else. A step re-reads the page and the tab; a refusal's `message`
+  is shown in the toast (`ApiError.detail`).
+- **States** are `LINK_MARK` / `linkMark` in `marks.ts`: nothing for `open` (the normal state), a ring for a
+  draft or a request, a check for closed, a square for declined, cancelled and expired, each with a `data-mtip`.
+- **The page is `data-morph`ed** (`link:<n>`): the count under the composer rerenders per keystroke without
+  rebuilding the page, so the box keeps its focus and caret.
+- **The badge.** The sidebar's Handoffs count is `handoffOnlyBadge + linkBadge` (`render.ts`): pending handoffs for
+  me (`handoffsForMe`, which My Work also counts — links stay out of it) plus link requests waiting for me (the
+  Waiting box once loaded, else `GET /badges` `links`). `loadLinks` writes `listed("links", …)`.
+- Tests: `test/render.links.test.ts` (each state as each viewer, each side kind, a self-link, the note authors,
+  the join hint, the routes, the badge sum).

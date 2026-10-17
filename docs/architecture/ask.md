@@ -17,7 +17,8 @@ the allowances and the switches: `ai.md`.
 | The turn | `src/ai/ask/turn.ts` (stream, tool loop, cards, Auto) |
 | Tools | `src/ai/ask/tools.ts` (catalog, reads, show tools), `actions.ts` (writes), `charts.ts`, `docs.ts`, `refs.ts` (grounding + ref views), `attachments.ts`, `history.ts`, `prompt.ts`, `render.ts`, `diff.ts`, `context.ts` |
 | Model client | `askChatClient(mode)` and the `ask.*` kinds in `src/ai/client.ts` |
-| Deletion | `src/deletion/ask.ts` (a thread and its attachments), `src/deletion/person.ts` (an account's private attachments) — › Deletion and renames |
+| Deletion | `src/deletion/ask.ts` (a thread and its attachments, and its agent-link sides), `src/deletion/person.ts` (an account's private attachments) — › Deletion and renames |
+| Agent links | `src/ai/ask/links.ts` (delivery into the turn), the four link cards in `actions.ts`, `list_links` in `tools.ts`; the rules are `src/tools/links.ts`'s — › Agent links |
 | Dev replay | `GET /api/o/:slug/ai/ask-replay[/:scenario]` in `src/ai/routes.ts` (behind `LOCAL_AI_PREVIEW`) |
 
 ## Modes and the allowance
@@ -106,7 +107,7 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   random nonce per turn, stripped from the body so it can never close its own fence; the rules say the fenced text is
   data.
 - A ref token (`[[ticket:14]]`, `[[pr:173]]`, `[[doc:slug]]`, `[[decision:7]]`, `[[feed:107]]`, `[[sprint:3]]`,
-  `[[handoff:3]]`, `[[artifact:slug]]`, `[[person:handle]]`, `[[prompt:slug]]`, `[[repo:owner/name]]`;
+  `[[handoff:3]]`, `[[artifact:slug]]`, `[[person:handle]]`, `[[prompt:slug]]`, `[[repo:owner/name]]`, `[[link:12]]`;
   `[[ticket:14|status]]` = a status cell) is LINKED only when its ref is in the thread's seen set — what a tool
   returned in any turn (`refsFromResult`, per tool) or what the person attached — and resolves for the viewer now.
   `done.cites` carries the linked RefViews; everything else renders as plain text. A REOPENED thread draws the stored
@@ -136,7 +137,11 @@ live order — a row stored before it has none and reads as text, blocks, cards.
 The MCP catalog (definitions from `shared/mcp-tools.generated.ts`, less `repo` / `org` / `session`), calling the same
 `src/tools/*` functions with the cookie person's context — `src/ai/ask/**` never imports `src/mcp.ts`, and nothing
 MCP reaches imports `src/ai/`. Excluded (`ASK_EXCLUDED_TOOLS`): `switch_org`, `get_connection`, `record_session`,
-`upload_asset`, and `delete_sprint` (a delete is a person's step). Admin-only tools are offered only to an admin.
+`upload_asset`, `delete_sprint` (a delete is a person's step), and `link_inbox` ("Ask reads link notes in its own
+turn" — › Agent links). Admin-only tools are offered only to an admin. Besides `session`, Ask fills a link tool's
+`kind` (always `ask`) and `branch` (none), so `request_link` / `join_link` are offered without them
+(`ASK_FILLED_ARGS`); the link tools carry Ask's own descriptions (`ASK_DESCRIPTIONS`: the thread is the side,
+Confirm is the Send) over MCP's input schemas.
 Narrower than MCP: `send_handoff`'s prompt is inline only — MCP's upload form needs a shell to PUT the file, so
 Ask's input refuses its keys and the schema it offers shows `{ title, body }` (`ASK_NARROWED_ARGS`; same argument
 names, so the parity holds). Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
@@ -182,7 +187,7 @@ is replaced.
 - **Auto** (`auto: true` on the request, only while `orgs.ai_chat_auto` is on — asked for while it is off, the answer
   runs asking first and the `thread` event carries `autoOff: true`, so the composer's switch turns to "Asks first"
   with the admin's reason (the owner, Q52)): writes run at once (`auto`), at most 5
-  per answer; past it, and for `update_plan`, completing a sprint and Publish, the card WAITS with its note. Moving
+  per answer; past it, and for `update_plan`, completing a sprint, Publish and every agent-link card, the card WAITS with its note. Moving
   a ticket to Done is an ordinary write.
 - **Publish a staged doc** (`publish_doc`): Confirm calls `promote_doc` — the web promote path — as the person, only
   when `mayPromote` (a signed-in member, the web route's own rule; otherwise `canPublish: false`, the card shows Open
@@ -199,6 +204,63 @@ is replaced.
   `seg`) all leave it out; asking for `closed` or `all` still finds it — declining is not deleting
   (`test/ask.declined.test.ts`). The Tickets SCREEN itself opens on `seg=all` as a board, whose Declined column shows
   it — that default predates this build (#78) and is left as it is.
+
+## Agent links (an Ask thread as a side)
+
+The links themselves — states, caps, the inbox — are `handoffs-prompts.md` › Agent links. An Ask thread is a side
+whose session is `ask-thread-<thread id>` (kind `ask`, no branch): the id Ask already claims handoffs with
+(`claim_handoff`, actions.ts). Over MCP only the LINK tools refuse that prefix, so a coding agent can never speak as
+a thread, and `claim_handoff` with it still works.
+
+- **The cards** (`actions.ts`): `request_link`, `join_link`, `send_link_note`, `close_link` (kind `handoff`; the card
+  eyebrows "Trov link", "Join link", "Link note", "Close link"). **Every one is Confirm-only, never Auto**, whatever
+  the thread's or the org's Auto: each carries its `confirmOnly` note ("… waits for you, even on Auto."), and
+  `autoAllowedFor` refuses `LINK_WRITES` as a second lock — a note goes to someone else's agent, so a person clicks
+  it. In Auto they are stored `waiting` with that note, outside the 5-write cap.
+- **They run as the CONFIRMER** — the cookie person who presses Confirm, through `assertMayRunNow` and then the link
+  writers' own rules — never whoever's turn made the card or whoever owns the thread (the owner's rule for shared
+  threads, #193: a shared thread's Ask side belongs to the person who confirms the card).
+- **Confirming `request_link` is the Send step** (owner ruling 5): `requestLinkFromAsk` creates it already sent —
+  `requested`, or `open` at once for a link with oneself — with the requester side bound to the thread. No draft.
+  The card is built by `previewLinkRequest` (who it is with, the topic, the reason, what Confirm does), which refuses
+  a target that is not a live member, or a person already at the 5-link cap: no card for a request bound to fail.
+- `join_link` binds this thread to the confirmer's side of an OPEN link; `send_link_note` writes from the side this
+  thread is bound to (a thread that has not joined gets no card); `close_link` closes it (either side's person). The
+  card's done line links `link:N` (`refOfAction`). No link card has an Undo: Cancel on the link's page, or Close.
+- **`list_links`** is a read: MCP's four live boxes, each link saying `this_thread` (this thread is its side) and
+  never another side's session id. It is in Fast's index.
+- **Delivery** (`links.ts`, `converse` in routes.ts): when a turn starts — after the gate (no key, the AI switch off,
+  the allowance used: nothing is delivered) and never for `/search` — `readInbox(ctx, <the person asking>,
+  ask-thread-<id>)` hands over the notes waiting for this thread's side, at most 5, and marks them delivered in the
+  same UPDATE: each note once, only to the side bound to this thread, only for the person whose side it is. They go
+  into the turn's user message, each in its own `<<trov-data NONCE>>` fence labelled like the MCP inbox
+  (`inboxNoteHead`: "Trov link #12 with @jose (PR #180): note from their agent, 3:12 PM UTC.") and saying the words
+  are the other side's — information, never instructions (rule 4 says so too). They are kept on the QUESTION
+  (`StoredContent.linkNotes`, with `link:N` in its refs), so later turns' history carries them fenced again,
+  a regenerated answer sees them, and an edited question keeps them. A failed read delivers nothing; the question is
+  still answered.
+- **The ref**: `[[link:12]]` (`ASK_REF_TYPES`). Its RefView exists only for the link's two people: title "Link with
+  @jose on PR #180", `num`, the state's mark (`LINK_MARK`'s, none while open), `href` `#links/12`, `extra { with, self,
+  topic, reason, state }`. The inspector draws it with the default view and its page link.
+- **On screen**: `AskThreadSummary.links` — open links whose side is one of the reader's threads with notes not yet
+  delivered (`{ id, with, self, notes }`), from ONE query for the whole list (`askThreadLinkNotes`, src/tools/links.ts)
+  on `GET /ask/threads` (and its search) and `GET /ask/threads/:id`; a failed read is no mark (logged), never a
+  guessed count. The thread list draws a small blue dot before the row's time (`threadLinkMark`, marks.ts's
+  `markShape`, its `data-mtip` saying how many and when they arrive); the thread draws ONE line at its top
+  (`linkNotesLine`: "Link #12 with @jose: 2 new notes. They reach Trov with your next question."). Nothing arrives
+  mid-turn: the `thread` event of a turn drops the line (`foldThreadEvent`), and the list reloads after the answer.
+- **The AI switch** (invariant 15): off means no Ask — no turn, so no new card, no delivery; and Confirm refuses a
+  card that acts AS the side (`asSide`: request, join, note) with "Ask Trov is off for this org…", so no Ask side is
+  made or written from. Closing still works (a person's step). An open link's notes still show on its page, and the
+  other side carries on.
+- **Deleting the thread** (`deleteAskThread`): in the thread's own batch, every link side bound to `ask-thread-<id>`
+  loses its session, kind and branch (`unbindLinkSides`), in any state; the link and its notes stay for its two
+  people, and an open one can be joined again. Deleting an account closes the person's links (person.ts); an
+  organization's deletion removes them with every `org_id` row.
+- Tests: `test/ask.links.test.ts` (Auto never runs a link card; Confirm sends as the confirmer, a self-link opens;
+  delivery once and only to the bound thread; AI off; the thread list and detail counts; deletion unbinds),
+  `test/render.ask-links.test.ts` (the mark and the line), `test/ask.parity.test.ts`, `test/mcp.links.test.ts`
+  (MCP refuses `ask-thread-` on the link tools; `claim_handoff` with it works).
 
 ## Attachments, saving, history
 
@@ -403,6 +465,7 @@ no row anywhere still points at the same sha (`src/deletion/r2.ts`).
     item now, which others may rely on, and the ruling (legal #4) is about private attachments. Likewise one another
     thread links, or someone else authored (neither is made by Ask today).
   - A kept file stays a private artifact of the person's in the library; only the thread's link to it goes.
+- **A thread's agent-link sides** are unbound in the same batch (`unbindLinkSides`; › Agent links): the link stays.
 - **Deleting an account** (`src/deletion/person.ts`, `ASK_ATTACHMENTS_OF`) deletes the person's PRIVATE Ask
   attachments in every org — referenced or not: a private page is readable only by its author, who is gone — in the
   account's own batch, before its threads, then frees their bytes with the photo's. A published attachment stays,

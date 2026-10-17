@@ -38,10 +38,13 @@ import {
   type TicketDetail, type TicketListItem,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
+  listLinks, getLink, linkStep, closeLinkWeb, addLinkNote,
   createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
   Unauthorized, NotFound, ApiError,
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
+import { linkJoinPhrase } from "./links";
+import { LINK_NOTE_MAX, type LinkView } from "@shared/links";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
 import { selectedUnplacedId } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
@@ -761,6 +764,7 @@ function currentRoute(): Route {
   if (state.screen === "releases" && state.releaseVersion) { r.releaseVersion = state.releaseVersion; r.releasePage = state.releasePage; }
   if (state.screen === "artifact") r.art = state.artRoute;
   if (state.screen === "handoff" && state.handoffId) r.handoffId = state.handoffId;
+  if (state.screen === "link" && state.linkId) r.linkId = state.linkId;
   if (state.screen === "prompt" && state.promptSlug) r.promptSlug = state.promptSlug;
   if (state.screen === "promptedit") {
     r.promptMode = state.promptMode;
@@ -809,6 +813,9 @@ function applyRoute(r: Route): void {
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
   if (!state.art.deleteBusy) state.art.deleteArm = false;
   if (r.handoffId) state.handoffId = r.handoffId;
+  // A link's confirm never carries to another link.
+  if (r.linkId !== state.linkId) { state.linkCancelArm = false; state.linkCancelBusy = false; }
+  if (r.linkId) state.linkId = r.linkId;
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.platTab) state.plat.tab = r.platTab;
@@ -841,6 +848,8 @@ function startScreenLoads(screen: Screen): void {
     case "handoffs": loadHandoffs(); break;
     case "handoff": if (state.handoffId) openHandoff(state.handoffId); else rerender(); break;
     case "newhandoff": state.nh = blankHandoff(primaryRepoName()); loadPersons(); break;
+    case "links": loadLinks(); break;
+    case "link": if (state.linkId) openLinkPage(state.linkId); else rerender(); break;
     case "prompts": loadPrompts(); break;
     case "prompt": if (state.promptSlug) openPrompt(state.promptSlug); else rerender(); break;
     case "promptedit": openEditor(state.promptMode, state.promptSlug); break;
@@ -900,6 +909,67 @@ function openHandoff(id: number): void {
       const missing = e instanceof ApiError && e.status === 404;
       state.handoffDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
       rerenderSoon();
+    });
+}
+// ── Handoffs › Links ─────────────────────────────────────────────────────────
+/** The Links tab's four boxes, read together. Waiting-for-me is the sidebar's half of the Handoffs badge
+ *  (`listed("links")`) — never folded into `handoffsForMe`, which My Work counts. */
+function loadLinks(): void {
+  state.links = { status: "loading", data: state.links.data };
+  rerender();
+  Promise.all([listLinks("waiting"), listLinks("open"), listLinks("mine"), listLinks("closed")])
+    .then(([waiting, open, mine, closed]) => {
+      state.links = { status: "ok", data: { waiting, open, mine, closed } };
+      listed("links", waiting.length);
+      rerenderSoon();
+    })
+    .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.links = { status: "error", data: state.links.data, error: String(e) }; rerender(); });
+}
+function openLinkPage(id: number): void {
+  if (state.linkId !== id) { state.linkCancelArm = false; state.linkCancelBusy = false; state.linkNoteSide = "requester"; }
+  state.linkId = id;
+  state.linkBusy = false;
+  // Keep what the tab already holds on screen (no notes yet) while the fresh read lands.
+  const b = state.links.data;
+  const known = state.linkDetail.data?.id === id ? state.linkDetail.data
+    : [...b.waiting, ...b.open, ...b.mine, ...b.closed].find((l) => l.id === id) ?? null;
+  state.linkDetail = { status: "loading", data: known ? { notes: [], ...known } : null };
+  rerender();
+  getLink(id)
+    .then((l) => { if (state.linkId !== id) return; state.linkDetail = { status: "ok", data: l }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      if (state.linkId !== id) return;
+      const missing = e instanceof ApiError && e.status === 404;
+      state.linkDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
+      rerenderSoon();
+    });
+}
+/** A link refusal in words: the route's own sentence when it sent one (`{ error, message }`), else the fallback. */
+function linkErr(e: unknown, fallback: string): void {
+  if (e instanceof Unauthorized) { unauth(e); return; }
+  const detail = e instanceof ApiError ? e.detail : null;
+  flash(detail ? `${fallback}: ${detail}` : fallback, 4000);
+}
+/** A person step on the link's page: run it, show the link as it now stands, refresh the tab (and its badge). */
+function runLinkStep(id: number, step: "send" | "accept" | "decline" | "cancel" | "close", done: (l: LinkView) => string, fallback: string): void {
+  if (state.linkBusy) return;
+  state.linkBusy = true;
+  rerender();
+  (step === "close" ? closeLinkWeb(id) : linkStep(id, step))
+    .then((l) => {
+      state.linkBusy = false;
+      state.linkCancelArm = false; state.linkCancelBusy = false;
+      if (state.linkId === id) state.linkDetail = { status: "ok", data: { ...l, notes: state.linkDetail.data?.notes ?? [] } };
+      loadLinks();
+      if (state.linkId === id) openLinkPage(id);
+      flash(done(l));
+    })
+    .catch((e) => {
+      state.linkBusy = false;
+      state.linkCancelArm = false; state.linkCancelBusy = false;
+      linkErr(e, fallback);
+      if (state.linkId === id) openLinkPage(id);
     });
 }
 function loadPrompts(): void {
@@ -3631,6 +3701,73 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "syncToggle": case "syncClose": case "syncReload": case "syncStart": case "syncDismiss": syncCtl.act(act); return;
     // ── Handoffs ─────────────────────────────────────────────────────────────
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
+    // ── Handoffs › Links ─────────────────────────────────────────────────────
+    case "handoffsTab":
+      if (arg === "links") { state.screen = "links"; loadLinks(); }
+      else if (arg === "handoffs") { state.screen = "handoffs"; loadHandoffs(); }
+      return;
+    case "goLinks": state.screen = "links"; state.linkId = null; loadLinks(); return;
+    case "openLink": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "link"; openLinkPage(id); return; }
+    case "linkSend": { const id = Number(arg); if (id > 0) runLinkStep(id, "send", (l) => (l.state === "open" ? `Link #${l.id} is open` : `Link #${l.id} sent`), "Couldn't send this link"); return; }
+    case "linkAccept": { const id = Number(arg); if (id > 0) runLinkStep(id, "accept", (l) => `Link #${l.id} is open`, "Couldn't accept this link"); return; }
+    case "linkDecline": { const id = Number(arg); if (id > 0) runLinkStep(id, "decline", (l) => `Link #${l.id} declined`, "Couldn't decline this link"); return; }
+    case "linkCancel": { const id = Number(arg); if (id > 0) runLinkStep(id, "cancel", (l) => `Link #${l.id} cancelled`, "Couldn't cancel this link"); return; }
+    case "linkClose": { const id = Number(arg); if (id > 0) runLinkStep(id, "close", (l) => `Link #${l.id} closed`, "Couldn't close this link"); return; }
+    // Cancel on a SENT request asks first (links.ts `linkCancelModal`); a draft's Cancel acts at once (above).
+    case "linkCancelArm":
+      state.linkCancelArm = true;
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "linkCancelDismiss": {
+      if (!state.linkCancelArm || state.linkCancelBusy) return;
+      confirmOut(() => {
+        state.linkCancelArm = false;
+        rerender();
+        mount.querySelector<HTMLElement>("[data-confirm-trigger]")?.focus();
+      });
+      return;
+    }
+    case "linkCancelConfirm": {
+      const id = Number(arg);
+      if (!(id > 0) || !state.linkCancelArm || state.linkCancelBusy) return;
+      state.linkCancelBusy = true;
+      runLinkStep(id, "cancel", (l) => `Link request #${l.id} cancelled`, "Couldn't cancel this request");
+      return;
+    }
+    case "linkNoteField": {
+      const id = Number(arg);
+      if (!(id > 0)) return;
+      state.linkNote = { id, text: (value ?? "").slice(0, LINK_NOTE_MAX) };
+      rerender(); // the count under the box (the page is data-morph'ed: the box keeps its focus and caret)
+      return;
+    }
+    // A self-link's "Write as" switch: which of my two sessions the note is from.
+    case "linkNoteSide": if (arg === "requester" || arg === "recipient") state.linkNoteSide = arg; break;
+    case "linkNoteSend": {
+      const id = Number(arg);
+      const text = state.linkNote && state.linkNote.id === id ? state.linkNote.text.trim() : "";
+      if (!(id > 0) || !text || state.linkBusy) return;
+      state.linkBusy = true;
+      rerender();
+      const self = state.linkDetail.data?.id === id && state.linkDetail.data.self;
+      addLinkNote(id, text, self ? state.linkNoteSide : undefined)
+        .then((l) => {
+          state.linkBusy = false;
+          state.linkNote = null;
+          if (state.linkId === id) state.linkDetail = { status: "ok", data: l };
+          flash("Note sent");
+          rerender();
+        })
+        .catch((e) => { state.linkBusy = false; linkErr(e, "Couldn't send the note"); rerender(); });
+      return;
+    }
+    case "linkJoinCopy": {
+      const id = Number(arg);
+      if (!(id > 0)) return;
+      copyToClipboard(linkJoinPhrase(id)).then((ok) => flash(ok ? "Copied. Paste it to your agent" : "Couldn't reach the clipboard"));
+      return;
+    }
     case "newHandoff": state.screen = "newhandoff"; state.nh = blankHandoff(primaryRepoName()); rerender(); return;
     case "openHandoff": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "handoff"; openHandoff(id); return; }
     case "mwHandoffClaim": {
