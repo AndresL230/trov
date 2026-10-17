@@ -164,7 +164,7 @@ PERSON's soft write; there is no hard delete of a page anywhere.
   triage rather than turning them down, and Restore must give back what was waiting.)
 - **No indirect path.** The gate triages a proposal for an archived slug (`archived page: <slug>`) — MCP
   `propose_doc_update`, `record_session`, `/ingest`, Ask, an import and a person's New page alike (`/docs/propose`
-  refuses the slug 409); an archived page is no parent (`checkParent` and the promote's parent read only the pages in
+  refuses the slug 409 "an archived page is named ‹slug›", which New page words as such); an archived page is no parent (`checkParent` and the promote's parent read only the pages in
   the Library, so it is ignored as `not_found`); nothing moves next to or under it (`POST /doc/:slug/move` 409
   `archived` for the page, 404 for a ref). An import can't target it (404), its title is no conflict, its slug is
   never reused (the planner's taken slugs include archived pages).
@@ -341,7 +341,8 @@ its bottom 30% after, the middle into; the pane's head is the top level; a targe
 deep" says so in the hint). The ghost (the title, and a pill: "Put inside ‹Title›", "Move above / below ‹Title›",
 "Move to the top level of ‹Space›"), the 2px drop line with its square handle, the ringed row. On release
 `web/src/tree-actions.ts` applies the move at once (`applyMove`), posts it, flashes the row and toasts with **Undo**
-(the reverse move: before the page that followed it, else after the one before it, else into its old parent); a
+(the reverse move: before the page that followed it, else after the one before it, else into its old parent); once
+the Worker has a move (or its Undo) the open doc page is read again (its "Pages under" and breadcrumb); a
 refusal puts the tree back and says why. The keyboard does the same on a focused row: Alt+↑ / Alt+↓ (above the page
 before / below the page after), Alt+→ (inside the page before), Alt+← (out to the parent's level).
 
