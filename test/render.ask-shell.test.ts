@@ -241,7 +241,7 @@ describe("QA-2: thread Delete asks first (confirmModal), then deletes", () => {
     } as unknown as AskCtx;
     threadsPart.act!(ctx, "askThDelete", String(t.id), null);
     expect(deleted).toEqual([]);
-    expect(s.ask.threadDelete).toEqual({ id: t.id, title: t.title, shared: !!t.shared });
+    expect(s.ask.threadDelete).toEqual({ id: t.id, title: t.title, shared: !!t.shared, who: null });
     const root = render(s);
     expect(root).toMatch(/data-overlay="confirm-ask-th-delete"[\s\S]*role="alertdialog"/);
     expect(root).toContain(`Delete “${t.title}”?`);

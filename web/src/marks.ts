@@ -247,7 +247,7 @@ export function aiMark(size = 12, tip: string | null = null, label: string | nul
 
 const PEOPLE = `<circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5.2a3.2 3.2 0 0 1 0 5.6M17.6 14.6A5.5 5.5 0 0 1 20.5 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
 
-/** An Ask conversation shared with the org (0076_ask_sharing): two people, muted — private is the normal state and
+/** An Ask conversation shared with the org or with people by name (0076 / 0077_ask_sharing): two people, muted — private is the normal state and
  *  has no mark. `tip` (escaped here) says who can read it. `word` false: the glyph alone, named by its label (a
  *  thread row, where the title takes the room). */
 export function sharedMark(tip: string, size = 12, word = true): string {

@@ -354,7 +354,7 @@ export const ASK_ROUTES = {
   item: (ref: string) => `/ask/item/${encodeURIComponent(ref)}`,      // GET → AskItem (the inspector, where no per-type route exists)
   threads: "/ask/threads",                                            // GET ?q= → AskThreadList | AskSearch
   thread: (id: number) => `/ask/threads/${id}`,                       // GET → AskThreadDetail (the owner's, or a shared one read-only); PATCH AskThreadPatch; DELETE
-  shared: "/ask/shared",                                              // GET → { threads: AskThreadSummary[] } — shared in this org by others
+  shared: "/ask/shared",                                              // GET → { threads: AskThreadSummary[] } — others' threads shared with the person (`direct`) or the org
   exportThread: (id: number) => `/ask/threads/${id}/export`,          // GET → text/markdown
   stop: (id: number) => `/ask/threads/${id}/stop`,                    // POST → { ok }
   saveForm: (messageId: number) => `/ask/messages/${messageId}/save-form`, // POST { block? } → { block: save_form }
@@ -429,13 +429,29 @@ export interface AskThreadSummary {
   group: AskThreadGroup;
   createdAt: string;
   updatedAt: string;
-  /** Shared with the org (0076_ask_sharing): any member can read it, only its owner can continue it. Absent = private. */
+  /** Shared with the whole org (0076_ask_sharing): every member can read it. Absent = not shared with the org. */
   shared?: boolean;
+  /** The owner's own thread only: the people it is shared with BY NAME, each with what they may do
+   *  (0077_ask_people_sharing). Absent = nobody by name. */
+  people?: AskSharePerson[];
   /** Its owner's handle — on a thread someone else shared (`viewer`), and on every `GET /ask/shared` row. */
   owner?: string;
-  /** The person reading is NOT its owner: the thread is someone else's, shared with the org — read-only. */
+  /** The person reading is NOT its owner: the thread is someone else's, shared with them or with the org. */
   viewer?: boolean;
+  /** On a `viewer` thread: what the person may do — `read` (read-only) or `continue` (ask follow-ups in it, as
+   *  themselves). Only a share by name can give `continue`; the org's share is always `read`. */
+  access?: AskShareAccess;
+  /** On a `viewer` thread: shared with the person BY NAME ("Shared with you"); false = through the org only
+   *  ("Organization"). A thread shared both ways is the person's by name. */
+  direct?: boolean;
 }
+
+/** What a person a thread is shared with BY NAME may do (0077_ask_people_sharing): read it, or continue it too. */
+export const ASK_SHARE_ACCESS = ["read", "continue"] as const;
+export type AskShareAccess = (typeof ASK_SHARE_ACCESS)[number];
+/** At most this many people by name on one thread. */
+export const ASK_SHARE_PEOPLE_MAX = 50;
+export interface AskSharePerson { handle: string; access: AskShareAccess }
 
 /** One search hit: the thread, a snippet with the match's offsets, and how many of its messages matched. */
 export interface AskSearchHit {
@@ -478,6 +494,9 @@ export interface AskMessage {
   model: string | null;
   units: number;
   createdAt: string;
+  /** Who asked this turn — on the question and on its answer (0077_ask_people_sharing: a person a thread is shared
+   *  with may continue it). Every message carries it; on rows stored before 0077 it is the thread's owner. */
+  askedBy?: string;
 }
 
 export type AskMessagePart = { kind: "text"; md: string } | { kind: "block"; index: number } | { kind: "action"; id: number };
@@ -487,8 +506,9 @@ export interface AskThreadDetail {
   messages: AskMessage[];
 }
 
-/** `shared`: share the thread with the org (true) or stop sharing it (false) — its owner only. */
-export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string; shared?: boolean }
+/** `shared`: share the thread with the org (true) or stop sharing it (false); `people`: the people it is shared with
+ *  by name — the WHOLE list, replacing the one before (empty = nobody). Its owner only. */
+export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string; shared?: boolean; people?: AskSharePerson[] }
 
 /** `POST /ask/threads/:id/save` — the whole thread (no `messageId`), one answer, or one block of it. */
 export interface AskSaveBody {

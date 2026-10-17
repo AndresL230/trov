@@ -20,7 +20,7 @@
 // and writes through `AskCtx` (below) — never fetch, never main.ts.
 
 import type { AppState } from "./render";
-import type { AskCommand, AskMode, AskSearchHit, AskState, AskThreadSummary, PeekResult } from "@shared/ai-ask-core";
+import type { AskCommand, AskMode, AskSearchHit, AskSharePerson, AskState, AskThreadSummary, PeekResult } from "@shared/ai-ask-core";
 import type { AskApi } from "./ask-api";
 import type { AskConvo } from "./ask-stream";
 import { emptyConvo } from "./ask-stream";
@@ -51,11 +51,14 @@ export interface AskUi {
   threadMenu: number | null;
   renaming: { id: number; text: string } | null;
   /** The thread whose Delete is asking first (`confirmModal`, QA-2): a hard delete with no undo. */
-  threadDelete: { id: number; title: string; shared: boolean } | null;
-  /** `GET /ask/shared`: conversations OTHER members shared in this org (read-only here; 0076_ask_sharing). */
+  /** `shared`: with the org; `who`: everyone it is shared with, as a phrase (ask-threads.ts `sharedWith`). */
+  threadDelete: { id: number; title: string; shared: boolean; who?: string | null } | null;
+  /** `GET /ask/shared`: other people's conversations the person can reach — shared with them by name ("Shared with
+   *  you", `direct`) or with the org ("Organization"); 0076 / 0077. */
   shared: AskLoad<AskThreadSummary[]>;
-  /** The thread whose "Share with <org>" is asking first (`confirmModal`): what members will and won't see. */
-  threadShare: { id: number; title: string } | null;
+  /** The Share dialog's draft (ask-threads.ts `threadShareModal`): the org's read access and the people by name, each
+   *  with what they may do. Nothing is written until Save. */
+  threadShare: ShareDraft | null;
   /** The two conversations. */
   page: AskConvo;
   panel: AskConvo;
@@ -109,6 +112,18 @@ export function initialAskUi(): AskUi {
 /** The ref the inspector shows, or null when it is closed. */
 export const inspectorRef = (ui: Pick<AskUi, "inspector">): string | null => ui.inspector.stack[ui.inspector.idx] ?? null;
 
+/** The Share dialog's draft: whether everyone in the org can read it, and the people it is shared with by name. */
+export interface ShareDraft {
+  id: number;
+  title: string;
+  org: boolean;
+  people: AskSharePerson[];
+  /** Save is in flight. */
+  busy: boolean;
+  /** Why the last Save failed, in a sentence. */
+  error: string | null;
+}
+
 /** What every renderer gets: pure inputs only. */
 export interface AskView {
   app: AppState;
@@ -120,10 +135,43 @@ export interface AskView {
 export const askView = (app: AppState, where: AskWhere = "page"): AskView =>
   ({ app, ui: app.ask, where, look: { views: app.ask.refViews, persons: app.persons.data } });
 export const convoOf = (v: Pick<AskView, "ui" | "where">): AskConvo => v.ui[v.where];
-/** The conversation is someone else's, shared with the org (0076_ask_sharing): it is read, never continued — no
- *  composer, no Edit / Regenerate / Save / Wrong? / follow-ups, no card decided (ask.md › Sharing a conversation). */
+/** The conversation is someone else's, shared with the person or with the org (0076 / 0077_ask_sharing). */
 export const isViewerConvo = (c: Pick<AskConvo, "thread">): boolean => c.thread?.viewer === true;
-export const readOnly = (v: Pick<AskView, "ui" | "where">): boolean => isViewerConvo(convoOf(v));
+/** The person may ask in it: their own, or shared with them by name with "Can continue". */
+export const canContinueConvo = (c: Pick<AskConvo, "thread">): boolean => !isViewerConvo(c) || c.thread?.access === "continue";
+/** Read-only: someone else's conversation the person may only read — no composer, no follow-ups, nothing asked again
+ *  (ask.md › Sharing a conversation). */
+export const readOnly = (v: Pick<AskView, "ui" | "where">): boolean => !canContinueConvo(convoOf(v));
+
+/** Two handles name the same person (handles compare without case). */
+export const sameHandle = (a: string | null | undefined, b: string | null | undefined): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
+
+/** Who asked a turn: its `askedBy`, else the thread's owner — the person themself on their own thread. */
+export function askerOf(v: Pick<AskView, "app" | "ui" | "where">, askedBy: string | undefined): string {
+  if (askedBy) return askedBy;
+  const c = convoOf(v);
+  return isViewerConvo(c) ? c.thread?.owner ?? "" : v.app.me?.handle ?? "";
+}
+
+/** The turn is the person's OWN, in a conversation they may continue: its Edit, Regenerate, Try again, Save as
+ *  artifact, Wrong? and write cards are theirs. Anyone else's turn reads as it was answered — the owner's included. */
+export function ownTurn(v: Pick<AskView, "app" | "ui" | "where">, askedBy: string | undefined): boolean {
+  return canContinueConvo(convoOf(v)) && askedByMe(v, askedBy);
+}
+/** The person asked this turn themself (absent = the thread's owner). What they attached is theirs to open. */
+export function askedByMe(v: Pick<AskView, "app" | "ui" | "where">, askedBy: string | undefined): boolean {
+  const viewer = isViewerConvo(convoOf(v));
+  if (!askedBy) return !viewer;
+  const me = v.app.me?.handle;
+  return me ? sameHandle(askedBy, me) : !viewer;
+}
+
+/** The people who asked in the conversation (lower-cased): more than one, and each question says who asked it. */
+export function askersIn(v: Pick<AskView, "app" | "ui" | "where">): Set<string> {
+  const out = new Set<string>();
+  for (const m of convoOf(v).messages) if (m.role === "user") { const h = askerOf(v, m.askedBy); if (h) out.add(h.toLowerCase()); }
+  return out;
+}
 
 /** One question to send (the composer, a starter, a follow-up, a rephrase chip, edit-and-resend, regenerate). */
 export interface AskSendInput {

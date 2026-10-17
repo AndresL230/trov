@@ -17,7 +17,7 @@ import { askView, convoOf, inspectorRef, type AskView } from "./ask-state";
 import { askLayout } from "./ask-layout";
 import { askIcon } from "./ask-icons";
 import { hoverCard, personName, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
-import { threadsView, threadDeleteModal, threadShareModal, askOrgName, sharedTip } from "./ask-threads";
+import { threadsView, threadDeleteModal, threadShareModal, askOrgName, ownerSharedTip, sharedWith, viewerSharedTip } from "./ask-threads";
 import { sharedMark } from "./marks";
 import { conversationView, emptyView, jumpButton } from "./ask-conversation";
 import { composerView } from "./ask-composer";
@@ -87,9 +87,12 @@ export function askHeader(app: AppState): AskHeaderParts {
   const ui = app.ask;
   const c = ui.page;
   const title = c.title || c.thread?.title || (c.messages[0]?.role === "user" ? c.messages[0].text.slice(0, 48) : "");
-  // A shared thread says so beside its title (0076_ask_sharing): to its owner, and to a member reading it.
-  const owner = c.thread?.viewer ? c.thread.owner ?? null : null;
-  const shared = c.thread?.shared ? `<span class="ask-crumb-mark">${sharedMark(sharedTip(askOrgName(app), owner ? personName({ persons: app.persons.data }, owner) : null), 12)}</span>` : "";
+  // A shared thread says so beside its title (0076 / 0077_ask_sharing): to its owner — with whom — and to whoever
+  // else reads it — who shared it, and what they may do.
+  const look = { persons: app.persons.data };
+  const t = c.thread;
+  const tip = !t ? null : t.viewer ? viewerSharedTip(askOrgName(app), personName(look, t.owner ?? ""), t) : (() => { const who = sharedWith(askOrgName(app), t, look); return who ? ownerSharedTip(who) : null; })();
+  const shared = tip ? `<span class="ask-crumb-mark">${sharedMark(tip, 12)}</span>` : "";
   return {
     lead: "",
     title: `<h1 class="ask-h1"><span class="ask-h1-t${title ? " is-parent" : ""}">Ask Trov</span></h1>`,
@@ -104,5 +107,5 @@ export function askOverlays(app: AppState): string {
   const v = askView(app, "page");
   const hv = ui.hover ? viewOf(v.look, ui.hover.ref) : null;
   const card = ui.hover && hv ? `<div data-overlay="ask-hc" class="ask-hc-layer"${closingAttr(ui.closing, "hover")}>${hoverCard(hv, v.look, ui.hover.at)}</div>` : "";
-  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui, askOrgName(app))}${threadShareModal(ui, askOrgName(app))}`;
+  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui, askOrgName(app))}${threadShareModal(app)}`;
 }

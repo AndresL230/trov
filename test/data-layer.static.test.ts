@@ -113,11 +113,11 @@ const PLATFORM_ALLOW: Allow[] = [
   // Deleting an ACCOUNT (src/deletion/person.ts) is a person's act across every org they are in: their own
   // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
   { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_person_prefs", "org_login_map", "feed", "feed_fts", "ai_dirty", "ai_sessions", "person_brief",
-    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "person_ask_settings",
+    "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "chat_thread_people", "person_ask_settings",
     "artifact_upload_tokens", "artifact_links", "artifact_versions", "artifacts_fts", "artifact_pages"],
-    why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone; the AI router's scopes keyed on them (their brief, their GitHub sessions) go; their Ask Trov threads (0066_ask) are theirs alone, and so are their PRIVATE Ask attachments (the owner's ruling)" },
-  { file: "src/deletion/person.ts", fn: "ASK_ATTACHMENTS_OF", tables: ["artifact_pages", "chat_artifacts", "chat_threads"],
-    why: "the subquery naming the person's own PRIVATE Ask attachments in every org (their threads' attachment links, pages they authored, still private) — ids only" },
+    why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone; the AI router's scopes keyed on them (their brief, their GitHub sessions) go; their Ask Trov threads (0066_ask) are theirs alone, and so are their PRIVATE Ask attachments (the owner's ruling) and every share by name naming them or their threads (0077_ask_people_sharing)" },
+  { file: "src/deletion/person.ts", fn: "ASK_ATTACHMENTS_OF", tables: ["artifact_pages", "chat_artifacts"],
+    why: "the subquery naming the person's own PRIVATE Ask attachments in every org (attachment links to pages they authored, still private — in their threads or one shared with them to continue) — ids only" },
   { file: "src/deletion/person.ts", fn: "askAttachmentKeys", tables: ["artifact_versions"],
     why: "the R2 keys of those attachments, read before the account's batch so their bytes can be freed after it — keys only" },
   { file: "src/deletion/person.ts", fn: "addressesOf", tables: ["org_login_map"], why: "the GitHub logins orgs attribute to the person being deleted, so the audit trail can be scrubbed of them — logins only" },

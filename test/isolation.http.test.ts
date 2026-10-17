@@ -129,6 +129,9 @@ async function seed(): Promise<Fx> {
   await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
   // Ask Trov (0066_ask): Alice's thread in A, a question and an answer that carry the canary, a proposed card.
   const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, shared_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T, T)).meta.last_row_id);
+  // Shared BY NAME too (0077_ask_people_sharing), to continue — with B's bob and the removed `gone`, written straight
+  // in (the route would refuse both): a share row never reaches across orgs, nor outlives a membership.
+  for (const h of ["bob", "gone"]) await run(env.DB, `INSERT INTO chat_thread_people (org_id, thread_id, handle, access, shared_at) VALUES (?, ?, ?, 'continue', ?)`, ORG_A, askThreadId, h, T);
   await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'user', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} question` }), T);
   const askMessageId = Number((await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'assistant', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} answer` }), T)).meta.last_row_id);
   const askActionId = Number((await run(env.DB, `INSERT INTO chat_actions (org_id, thread_id, message_id, turn, tool, kind, args_json, preview_json, state, created_at) VALUES (?, ?, ?, 0, 'create_ticket', 'ticket', ?, ?, 'proposed', ?)`,
@@ -349,7 +352,8 @@ const TENANT: Record<string, Row> = {
   "GET /ai/ask-replay": {}, "GET /ai/ask-replay/:scenario": {},
   // src/ai/ask/routes.ts — Ask Trov: a thread, message, card or attachment is its OWNER's (Alice's, in A). B's members
   // get `not_found` for every A id; what they write lands in B, for themselves. No key in the pool: a stream is `no_key`.
-  // Alice's thread is SHARED with A (0076_ask_sharing): A's members may read it; B's — and a removed member — never.
+  // Alice's thread is SHARED with A (0076_ask_sharing) and by name, to continue, with bob and `gone` (0077): A's
+  // members may read it; B's — and a removed member — never, named or not.
   "POST /ask": { body: (fx: Fx) => ({ text: "hijack", mode: "smart", threadId: fx.askThreadId }) },
   "GET /ask/state": {}, "POST /ask/peek": { body: (fx: Fx) => ({ refs: [`ticket:${fx.ticketId}`, `artifact:${fx.artifactSlug}`, `doc:${fx.docSlug}`] }) },
   "GET /ask/item/:ref": {},
