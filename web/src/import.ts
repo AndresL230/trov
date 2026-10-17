@@ -172,6 +172,8 @@ export const IMPORT_NO_SPACE = "Pages are imported into a space, and this organi
 export const IMPORTS_EMPTY = "Import Markdown files or a .zip of them, and each run is listed here with what was added and what was skipped.";
 const IMPORTS_SUB = "Every Markdown import into the library, newest first.";
 const LEAVE_OK = "You can leave this page. The import keeps going.";
+/** A stalled run waits for the person: nothing goes on until Retry. */
+const STALLED_NOTE = "Nothing more is sent until you press Retry.";
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 const pagesN = (n: number): string => plural(n, "page", "pages");
@@ -458,7 +460,7 @@ function runStep(p: ImportWizardProps): string {
       ? `<p role="alert" class="cnpy-imp-alert" style="margin:14px 0 0">${ALERT}<span>${esc(r.error ?? "The connection dropped.")}</span></p>`
       : `<div class="cnpy-imp-now" style="border-radius:6px">${SPIN}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(now)}</span></div>`}
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px;flex-wrap:wrap">
-      <span style="font-size:12px;color:var(--fg-55)">${esc(LEAVE_OK)}</span>
+      <span style="font-size:12px;color:var(--fg-55)">${esc(stalled ? STALLED_NOTE : LEAVE_OK)}</span>
       <span style="display:flex;gap:8px">${stalled ? btnPrimary("impRetry", "Retry") : ""}${btnOutline("impCancel", "Cancel import", null, r.id === null ? " disabled" : "")}</span>
     </div>
   </div>`;

@@ -196,6 +196,9 @@ describe("the import wizard (`#import`)", () => {
     const stalled = wiz({ step: "run", run: driver({ phase: "stalled", error: "The connection dropped." }) });
     expect(stalled).toContain('data-act="impRetry"');
     expect(stalled).toMatch(/role="alert"/);
+    // A stalled run does not keep going on its own: the card no longer says so (Batch B finding).
+    expect(stalled).not.toContain("The import keeps going.");
+    expect(stalled).toContain("Nothing more is sent until you press Retry.");
   });
 
   it("Import: the done card — what went to Review, what was skipped, and the three ways on", () => {
