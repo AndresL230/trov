@@ -1072,9 +1072,13 @@ function header(s: AppState): string {
     ? `<div style="position:relative;display:flex;align-items:stretch;height:32px">${filterMenuBackdrop(feedMenu)}${filterMenu(feedMenu)}</div>`
     : "";
 
-  const accentNew = (act: string, label: string) =>
-    `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${label}</button>`;
-  const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff") : s.screen === "links" ? accentNew("linkStartOpen", "Start a link") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
+  // `sizeAs`: another label the same slot shows on a sibling tab, laid invisibly in the same grid cell, so the button
+  // is as wide as the longer one and the header's icons beside it stay put when the tab switches (Relay's two tabs).
+  const accentNew = (act: string, label: string, sizeAs?: string) =>
+    `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${sizeAs
+      ? `<span style="display:grid;justify-items:center"><span style="grid-area:1/1">${label}</span><span aria-hidden="true" style="grid-area:1/1;visibility:hidden">${sizeAs}</span></span>`
+      : label}</button>`;
+  const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff", "Start a link") : s.screen === "links" ? accentNew("linkStartOpen", "Start a link", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
 
   // The Roadmap header: New sprint (it opens the panel at the top of whichever tab is
   // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).

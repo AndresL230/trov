@@ -412,3 +412,23 @@ describe("the claim's reading list (#167)", () => {
     expect(mainSrc).toMatch(/state\.handoffReading = \{ id: nh\.id, items: reading_list, at: Date\.now\(\) \}/);
   });
 });
+
+describe("Relay's header button keeps one width across its two tabs", () => {
+  it("New handoff and Start a link each carry the other's label, invisible, in the same cell — the icons beside them never move", () => {
+    const btn = (screen: "handoffs" | "links") => {
+      const html = render({ ...initialState(), view: "app", screen });
+      return html.match(/<button data-act="(newHandoff|linkStartOpen)" class="cnpy-accentbtn"[\s\S]*?<\/button>/)?.[0] ?? "";
+    };
+    const h = btn("handoffs"), l = btn("links");
+    expect(h).toContain('data-act="newHandoff"');
+    expect(l).toContain('data-act="linkStartOpen"');
+    expect(h).toMatch(/<span style="grid-area:1\/1">New handoff<\/span><span aria-hidden="true" style="grid-area:1\/1;visibility:hidden">Start a link<\/span>/);
+    expect(l).toMatch(/<span style="grid-area:1\/1">Start a link<\/span><span aria-hidden="true" style="grid-area:1\/1;visibility:hidden">New handoff<\/span>/);
+  });
+  it("…and above 1440px both tabs line the header up with the same frame (Links was left at 24px)", async () => {
+    const css = (await import("../web/src/trov.css?raw")).default as string;
+    const rule = css.split("\n").find((l) => l.includes('[data-screen="handoffs"]') && l.includes("--hdr-frame")) ?? "";
+    expect(rule).toContain('[data-screen="links"]');
+    expect(css).toMatch(/\[data-screen="link"\][^{]*\{ --hdr-frame:1120px;/); // a link's page: DETAIL_SHELL's 1120px
+  });
+});

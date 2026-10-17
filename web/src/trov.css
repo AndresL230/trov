@@ -173,9 +173,9 @@ html[data-zooming] *, html[data-zooming] *::before, html[data-zooming] *::after 
    24px when unset. The page scroller reserves its scrollbar on the right (`scrollbar-gutter`), so the frame centres
    in <main> minus that gutter. Above 1440px only: a laptop's header is exactly what it was. Screens with no single
    centred frame (Docs, Review, the Guide, Ask, Artifacts) keep 24px. */
-[data-screen="tickets"], [data-screen="handoffs"], [data-screen="prompts"], [data-screen="tag"] { --hdr-frame:var(--frame-work); --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="tickets"], [data-screen="handoffs"], [data-screen="links"], [data-screen="prompts"], [data-screen="tag"] { --hdr-frame:var(--frame-work); --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
 [data-screen="newticket"], [data-screen="newhandoff"], [data-screen="newdoc"], [data-screen="promptedit"] { --hdr-frame:1440px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
-[data-screen="ticketdetail"], [data-screen="sprint"] { --hdr-frame:1120px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="ticketdetail"], [data-screen="sprint"], [data-screen="link"] { --hdr-frame:1120px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
 [data-screen="handoff"], [data-screen="maintenance"], [data-screen="platform"], [data-screen="platformorg"], [data-screen="org"] { --hdr-frame:1180px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
 [data-screen="org"]:has(.cnpy-org[data-org-wide]) { --hdr-frame:var(--frame-dash); }
 [data-screen="prompt"] { --hdr-frame:1260px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
