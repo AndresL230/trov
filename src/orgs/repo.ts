@@ -82,7 +82,7 @@ export interface CreateOrgInput {
 /**
  * THE way an org comes to exist: the `orgs` row, its owner's membership, and every per-org singleton a
  * working org reads — what 0042_organizations seeded for SaplingLearn: the `plan` row, `notification_settings`,
- * one `notification_policy` row per registry kind, both `org_counters`, the six starter tags (0056_org_tags) and the three starter spaces (0076_docs_library) — in ONE batch, on the plan
+ * one `notification_policy` row per registry kind, both `org_counters`, the six starter tags (0056_org_tags) and the three starter spaces (0081_docs_library) — in ONE batch, on the plan
  * `input.plan` names. `p.actor` is recorded as `created_by`. WHO may create one is the caller's to
  * enforce: a superadmin (src/platform `createOrgWithAdmin`), a person using a grant
  * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`), or a person
@@ -121,7 +121,7 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
       sys.orgId, k.id, k.defaultCadence, at)),
     // The six starter tags (0056_org_tags): the org's own list from its first day.
     ...starterTagStmts(sys, at),
-    // The three starter spaces of the Library (0076_docs_library): Engineering, Product, Design.
+    // The three starter spaces of the Library (0081_docs_library): Engineering, Product, Design.
     ...starterSpaceStmts(sys, at),
     auditStmt(p, id, "org.create", slug, { name, owner: input.owner, plan: input.plan.id }, at),
   ];

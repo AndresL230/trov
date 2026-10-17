@@ -128,7 +128,7 @@ async function seed(): Promise<Fx> {
   const suggestionId = (await putSuggestion(A(), { itemType: "ticket", itemRef: String(ticketId), kind: "category", value: "bug", confidence: 0.9, reason: `${CANARY} reason`, cites: [], model: "m", promptVersion: "1" }))!;
   await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
   // Ask Trov (0066_ask): Alice's thread in A, a question and an answer that carry the canary, a proposed card.
-  // A space of A's Library (0076_docs_library) with A's canary in its name and description, owned by alice.
+  // A space of A's Library (0081_docs_library) with A's canary in its name and description, owned by alice.
   await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) VALUES (?, 'canary-space', ?, 'shield', '#b4562c', ?, 4096, ?, ?)`,
     ORG_A, `${CANARY} space`, `${CANARY} space description`, T, ALICE);
   await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'canary-space', ?, ?, ?)`, ORG_A, ALICE, T, ALICE);
@@ -293,7 +293,7 @@ const TENANT: Record<string, Row> = {
   "POST /prompts/:slug/tags": J({ tags: ["review"] }), "POST /prompts/:slug/used": J({}), "POST /prompts/:slug/publish": J({ version: 1 }),
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
   "POST /docs/propose": J({ title: "From the matrix", section: "reference", space: "technical", body: "b" }),
-  // src/spaces/routes.ts — the Library's spaces (0076_docs_library): A's `canary-space` in the path is no space of B's
+  // src/spaces/routes.ts — the Library's spaces (0081_docs_library): A's `canary-space` in the path is no space of B's
   "GET /spaces": {}, "GET /spaces/:slug": {}, "POST /spaces": J({ name: "Hijacked", icon: "shield", color: "#b4562c" }),
   "PUT /spaces/:slug": J({ name: "Hijacked", description: "hijacked" }), "PUT /spaces/:slug/owners": J({ owners: ["boss"] }),
   "POST /spaces/:slug/move": J({ after: null }), "POST /spaces/:slug/archive": J({}), "POST /spaces/:slug/restore": J({}),

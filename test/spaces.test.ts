@@ -1,4 +1,4 @@
-// The Docs Library's spaces (0076_docs_library; docs/architecture/docs-library.md › Spaces): the shared core, the
+// The Docs Library's spaces (0081_docs_library; docs/architecture/docs-library.md › Spaces): the shared core, the
 // gate's space routing, the cookie routes (admin / owner gating, a bearer refused), createOrg's seed, Unplaced's
 // assign, and the MCP `list_spaces` / `space` filters.
 import { describe, it, expect } from "vitest";

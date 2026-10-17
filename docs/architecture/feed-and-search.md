@@ -230,7 +230,7 @@ artifacts repository under the ONE visibility rule (a private page reaches only 
 is `draft` for a draft, `live` once published or ratified. **A ticket is deliberately NOT a query type**:
 `0024_tickets.sql`'s `tickets_fts` stays populated, but it backs quick search (below) and the Tickets screen,
 never the `query` / `/search` fan-out — over MCP tickets are read with `list_tickets` / `get_ticket`.
-**Spaces (0076_docs_library; `docs-library.md`).** `query`'s `space` (MCP, Ask and `GET /search?space=`) and MCP
+**Spaces (0081_docs_library; `docs-library.md`).** `query`'s `space` (MCP, Ask and `GET /search?space=`) and MCP
 `list_docs`'s `space` take a Library space's slug or an alias — `technical` still means `engineering`
 (`shared/docs-core.ts` `resolveSpaceAlias`, the ONE map); an unknown space matches no doc (never a guess, never an
 error). A `section` or `space` filter keeps `query` to docs. MCP `list_spaces` names the org's live spaces.

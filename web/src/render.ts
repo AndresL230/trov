@@ -102,7 +102,7 @@ import { phoneHeaderControls } from "./ask-phone";
 import { cmdjHeaderButton } from "./ask-cmdj";
 import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } from "./app-root";
 
-// A docs "space" is one of the org's own spaces (the Docs Library, 0076_docs_library): its slug.
+// A docs "space" is one of the org's own spaces (the Docs Library, 0081_docs_library): its slug.
 export type DocSpace = string;
 
 export type Screen =

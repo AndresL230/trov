@@ -214,7 +214,7 @@ tenantApi.route("/notifications", notificationsApp);
 tenantApi.route("/tags", tagsApp);
 tenantApi.route("/item-tags", itemTagsApp);
 tenantApi.route("/tag-settings", tagSettingsApp);
-// The Docs Library's spaces (0076_docs_library): any member reads, an admin shapes them, an owner edits one's description.
+// The Docs Library's spaces (0081_docs_library): any member reads, an admin shapes them, an owner edits one's description.
 tenantApi.route("/spaces", spacesApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────

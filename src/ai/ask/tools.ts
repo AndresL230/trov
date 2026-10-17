@@ -212,7 +212,7 @@ async function searchedScopes(c: AskToolCtx): Promise<{ area: string; scope: str
     let scope = "";
     switch (area) {
       case "docs": {
-        // The Library's spaces that hold docs, by name, in the Library's order (0076_docs_library).
+        // The Library's spaces that hold docs, by name, in the Library's order (0081_docs_library).
         const spaces = await all<{ name: string; n: number }>(c.ctx,
           `SELECT s.name AS name, COUNT(*) AS n FROM docs d JOIN doc_spaces s ON s.slug = d.space AND s.org_id = ?
             WHERE d.org_id = ? GROUP BY s.slug ORDER BY (s.sort_rank IS NULL), s.sort_rank, s.created_at, s.slug`, c.ctx.orgId, c.ctx.orgId);

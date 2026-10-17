@@ -582,7 +582,7 @@ export function plumbingDeleteStatements() {
     `DELETE FROM notification_outbox WHERE org_id = ${O} AND idempotency_key LIKE '${DEV}:%'`,
     ...["sync_runs", "ai_dirty", "notification_prefs", "notification_policy", "org_github_installation_repos", "org_github_installations", "org_audit", "org_admin_audit"].map((t) => `DELETE FROM ${t} WHERE org_id = ${O}`),
     `DELETE FROM org_integration_config WHERE org_id = ${O} AND kind = 'cloudflare_analytics'`,
-    // The Docs Library (0076_docs_library): the spaces' owners, a link between two of the layer's docs, one import run.
+    // The Docs Library (0081_docs_library): the spaces' owners, a link between two of the layer's docs, one import run.
     `DELETE FROM doc_space_owners WHERE org_id = ${O}`,
     `DELETE FROM doc_links WHERE org_id = ${O} AND from_slug IN ${inList(DOC_SLUGS)}`,
     `DELETE FROM doc_imports WHERE org_id = ${O} AND file_name = '${DEV}-handbook.zip'`,

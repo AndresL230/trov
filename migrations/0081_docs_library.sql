@@ -1,4 +1,4 @@
--- 0076_docs_library — the Docs Library: an organization's own SPACES, a page TREE inside each, links between
+-- 0081_docs_library — the Docs Library: an organization's own SPACES, a page TREE inside each, links between
 -- pages, and Markdown IMPORT runs (docs/architecture/docs-library.md). ONE migration holds the schema for the
 -- whole feature (spaces, the tree, links, imports) so the later parts never edit a migration.
 --
@@ -49,7 +49,7 @@
 --   DROP TABLE IF EXISTS doc_imports; DROP TABLE IF EXISTS doc_links;
 --   DROP TABLE IF EXISTS doc_space_owners; DROP TABLE IF EXISTS doc_spaces;
 --   DELETE FROM org_admin_audit WHERE action LIKE 'space.%';
---   DELETE FROM d1_migrations WHERE name = '0076_docs_library.sql';
+--   DELETE FROM d1_migrations WHERE name = '0081_docs_library.sql';
 -- A doc moved into a space other than engineering/product folds to 'technical' by the first statement.
 
 -- ── spaces ───────────────────────────────────────────────────────────────────

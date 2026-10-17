@@ -32,7 +32,7 @@ export const DocProposal = z.object({
   body: z.string(),                      // markdown, or mermaid/d2 for diagrams
   change_summary: z.string(),
   confidence: z.enum(["high", "low"]),
-  // A space of the org's Library (0076_docs_library): its slug, or an alias (`technical` → `engineering`,
+  // A space of the org's Library (0081_docs_library): its slug, or an alias (`technical` → `engineering`,
   // shared/docs-core.ts SPACE_ALIASES). The gate sends an unknown or archived space to needs_triage; with none,
   // a NEW doc goes to `engineering` while that space is live. An existing doc keeps its own space.
   space: z.string().trim().min(1).max(64).optional(),

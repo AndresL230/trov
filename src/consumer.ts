@@ -174,7 +174,7 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
   const existing = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
   const lowConf = proposal.confidence === "low";
 
-  // The space (0076_docs_library): an alias resolves (`technical` → `engineering`), then a space that was SENT
+  // The space (0081_docs_library): an alias resolves (`technical` → `engineering`), then a space that was SENT
   // must be a live space of the org — an unknown or archived one goes to triage, never guessed. With none sent,
   // a NEW doc goes to `engineering` only while that space is live (else triage); an existing doc keeps its own
   // space either way (a proposal never moves a doc).

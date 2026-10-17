@@ -1,6 +1,6 @@
 /**
- * 0076_docs_library against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is wiped,
- * migrated to just before 0076, loaded with two orgs and docs in every old space value, then given the migration.
+ * 0081_docs_library against REAL workerd D1: `MT_DB` (the second, empty database of vitest.config.ts) is wiped,
+ * migrated to just before 0081, loaded with two orgs and docs in every old space value, then given the migration.
  * The assertions are the header's claims: every org has the three starter spaces (the rows of STARTER_SPACES),
  * every doc not in `product` is in `engineering`, the tree / link / import schema exists, a name is unique among
  * live spaces only, and the statements the Worker from before it runs still work.
@@ -10,7 +10,7 @@ import { env, applyD1Migrations } from "cloudflare:test";
 import { STARTER_SPACES } from "@shared/docs-core";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 
-const MIGRATION = "0076_docs_library.sql";
+const MIGRATION = "0081_docs_library.sql";
 const db = () => env.MT_DB;
 const before = () => env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION);
 const own = () => env.TEST_MIGRATIONS.filter((m) => m.name === MIGRATION);
@@ -50,7 +50,7 @@ beforeEach(async () => {
   await db().batch(SEED.map((s) => db().prepare(s)));
 });
 
-describe("0076_docs_library", () => {
+describe("0081_docs_library", () => {
   it("gives every existing org the three starter spaces — the rows of STARTER_SPACES, in order, by 'system'", async () => {
     await applyD1Migrations(db(), own());
     for (const org of ["org_saplinglearn", "org_two"]) {

@@ -26,7 +26,7 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   flag (`low_confidence = 1`) for human scrutiny. Only low-conf new slugs go directly to triage.
 - Out-of-vocab **section** → routed to `needs_triage` (nothing is guessed). Sections are fixed
   (`shared/vocabulary.ts` `SECTIONS`).
-- **A doc's space is one of the ORGANIZATION's Library spaces** (`0076_docs_library`; `docs-library.md`). The
+- **A doc's space is one of the ORGANIZATION's Library spaces** (`0081_docs_library`; `docs-library.md`). The
   proposal's `space` resolves through `shared/docs-core.ts` `SPACE_ALIASES` (`technical` → `engineering`), then
   `src/tools/spaces.ts` `spaceState`: a space that was SENT must be live — **unknown or archived → `needs_triage`**
   (`unknown space: <slug>` / `archived space: <slug>`), never guessed. With no space, a NEW doc goes to

@@ -158,7 +158,7 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   the router's stale scopes; nothing writes it yet),
   and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
   `src/tools/tags.ts`; `feed-and-search.md` › Tags), and the Docs Library's `doc_spaces`, `doc_space_owners`,
-  `doc_links`, `doc_imports` (0076_docs_library — `src/tools/spaces.ts`; `docs-library.md`).
+  `doc_links`, `doc_imports` (0081_docs_library — `src/tools/spaces.ts`; `docs-library.md`).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.

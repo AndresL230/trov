@@ -176,7 +176,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_rename', 'cus_rename', ?, 'team', 'active', ?, ?)`, handle, nowIso(), nowIso());
   // 0046_sync_runs: a Sync GitHub run the person started.
   await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
-  // 0076_docs_library: a space the person created and archived, whose owner they are (and who added them), and an
+  // 0081_docs_library: a space the person created and archived, whose owner they are (and who added them), and an
   // import they started.
   await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, created_at, created_by, archived_at, archived_by) VALUES (?, 'rename-space', 'Rename space', 'shield', '#b4562c', ?, ?, ?, ?)`, org, nowIso(), handle, nowIso(), handle);
   await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'rename-space', ?, ?, ?)`, org, handle, nowIso(), handle);

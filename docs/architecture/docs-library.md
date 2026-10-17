@@ -3,7 +3,7 @@
 <!-- The area doc for the Docs Library (handoff #16). Built in three stacked PRs: Spaces (this part), the page
 tree and doc page, and Markdown import. Each PR extends this file. Keep it current when you change the area. -->
 
-## The schema (`0076_docs_library`)
+## The schema (`0081_docs_library`)
 
 ONE additive migration holds the schema for the whole feature, so the later PRs never edit a migration:
 `doc_spaces` and `doc_space_owners` (this part), `docs.parent_slug` / `tree_rank`, `doc_versions.parent_slug`,
@@ -23,7 +23,7 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
 `spaceOrder`, `placeSpace`, `pageAuthority`, and the DTOs.
 
 - **Every org starts with three**: Engineering (`engineering`), Product (`product`), Design (`design`), created by
-  `system` — 0076 for the orgs that existed, `src/orgs/repo.ts` `createOrg` (`starterSpaceStmts`, in its one
+  `system` — 0081 for the orgs that existed, `src/orgs/repo.ts` `createOrg` (`starterSpaceStmts`, in its one
   batch) for every new one, and the seed scripts.
 - **The old values.** Agents and older plugins may still send `technical` (→ `engineering`) or `product`. ONE
   alias map, applied by the gate and by the `space` filters of `query`, `list_docs` and `/search`. An unknown

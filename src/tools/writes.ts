@@ -67,7 +67,7 @@ export async function propose_doc_update(
     change_summary: string;
     confidence: "high" | "low";
     // Reconciler-computed metadata (set by the gate; defaulted for direct callers).
-    space?: string;               // a live doc_spaces slug — the gate resolves and checks it (0076_docs_library)
+    space?: string;               // a live doc_spaces slug — the gate resolves and checks it (0081_docs_library)
     content_hash?: string | null;
     base_version?: number | null;
     change_kind?: "new" | "edit" | "rewrite" | null;

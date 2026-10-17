@@ -44,7 +44,7 @@ use **Add another owner** [`POST /api/platform/orgs/:slug/admin`].
 However it comes to exist, an organization is written by ONE function, `src/orgs/repo.ts` `createOrg`, in ONE
 batch: the `orgs` row, its owner's membership, and every per-org row a working org reads — the `plan` row,
 `notification_settings` and policy, both `org_counters`, the six starter tags (`starterTagStmts`, 0056) and the
-Library's three starter spaces, Engineering / Product / Design (`starterSpaceStmts`, 0076; `docs-library.md`).
+Library's three starter spaces, Engineering / Product / Design (`starterSpaceStmts`, 0081; `docs-library.md`).
 
 ### 1b. …or grants someone an organization of their own
 

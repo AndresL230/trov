@@ -131,7 +131,7 @@ export function decodeReviewId(id: string): ReviewRef | null {
 // ── Unplaced · assign vocabulary ──────────────────────────────────────────
 /** The real assign options: gate types × @shared/vocabulary targets.
  *  'needs-triage' is the queue itself, never an assignable section. `spaces` and `tags` are empty HERE:
- *  a doc's space is one of the organization's own (0076_docs_library) and a feed entry's tags are its own
+ *  a doc's space is one of the organization's own (0081_docs_library) and a feed entry's tags are its own
  *  list (0056_org_tags), which render.ts fills in from `state.library` and `state.tags`. */
 export const ASSIGN_OPTIONS: AssignOptions = {
   kinds: [

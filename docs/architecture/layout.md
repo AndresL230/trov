@@ -243,7 +243,7 @@
   Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
-  Then `0076_docs_library` (the Docs Library, all three PRs' schema at once) [`doc_spaces`, `doc_space_owners`,
+  Then `0081_docs_library` (the Docs Library, all three PRs' schema at once) [`doc_spaces`, `doc_space_owners`,
   `doc_links`, `doc_imports`; `docs.parent_slug` / `tree_rank`; `doc_versions.parent_slug` / `import_id` /
   `import_path`; three starter spaces per org; `docs.space` remapped to a space slug; additive —
   `docs-library.md`, held by `test/spaces.migration.test.ts`].

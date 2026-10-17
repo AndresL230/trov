@@ -1,4 +1,4 @@
-// The Docs Library's spaces (0076_docs_library; docs/architecture/docs-library.md › Spaces).
+// The Docs Library's spaces (0081_docs_library; docs/architecture/docs-library.md › Spaces).
 //
 // An org's Library is a list of SPACES (`doc_spaces`), each holding pages (`docs.space` = its slug). Callers:
 //   • an ADMIN creates, renames, re-icons, reorders, archives and restores a space — `requireRole(ctx, "admin")`
@@ -41,7 +41,7 @@ const auditStmt = (ctx: TenantContext, action: SpaceAuditAction, target: string,
     ctx.orgId, ctx.userId, action, target, JSON.stringify(detail), at);
 
 /** The three starter spaces, as statements for `ctx`'s org — what src/orgs/repo.ts `createOrg` puts in the batch
- *  that creates an org (0076 did the same for the orgs that existed then). */
+ *  that creates an org (0081 did the same for the orgs that existed then). */
 export function starterSpaceStmts(ctx: TenantContext, at: string): Stmt[] {
   return STARTER_SPACES.map((s) => stmt(ctx,
     `INSERT OR IGNORE INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) VALUES (?, ?, ?, ?, ?, '', ?, ?, 'system')`,

@@ -1,4 +1,4 @@
-// The Docs Library's spaces (0076_docs_library; docs/architecture/docs-library.md) — ZOD-FREE, so the SPA
+// The Docs Library's spaces (0081_docs_library; docs/architecture/docs-library.md) — ZOD-FREE, so the SPA
 // imports it as a value and the Worker keeps one definition: the alias map the gate and the filters apply,
 // the starter spaces every org begins with, the icon and color choices, the name / slug rules, the order,
 // and the DTOs of the space routes (src/spaces/routes.ts).
@@ -39,7 +39,7 @@ export const isSpaceColor = (v: unknown): v is SpaceColor => typeof v === "strin
 export const NEW_SPACE_ICON: SpaceIcon = "shield";
 export const NEW_SPACE_COLOR: SpaceColor = "#b4562c";
 
-/** The three spaces every org starts with — the same rows as 0076_docs_library's seed (a test compares them),
+/** The three spaces every org starts with — the same rows as 0081_docs_library's seed (a test compares them),
  *  and what src/orgs/repo.ts createOrg writes for a new org. */
 export const STARTER_SPACES: ReadonlyArray<{ slug: string; name: string; icon: SpaceIcon; color: SpaceColor; sort_rank: number }> = [
   { slug: "engineering", name: "Engineering", icon: "braces", color: "#525cc3", sort_rank: 1024 },

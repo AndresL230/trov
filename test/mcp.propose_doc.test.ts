@@ -186,7 +186,7 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
     expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'alias-space-doc'`))?.space).toBe("engineering");
   });
 
-  it("a space the org does not have goes to needs_triage (0076_docs_library) — never written, never guessed", async () => {
+  it("a space the org does not have goes to needs_triage (0081_docs_library) — never written, never guessed", async () => {
     // Spaces are the org's own now: a value that is no live space of it is held for a person, like an
     // out-of-vocab section, and no docs row is created.
     const result = await propose({
