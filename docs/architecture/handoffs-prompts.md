@@ -180,7 +180,8 @@ hooks and Ask as a side are later phases.
   notes when you ask it to": that claude.ai polls on its own is not verified), "Ask thread" (a link to `#ask/<id>` on the viewer's OWN side
   only), or "waiting for a session". The notes thread says who wrote each ("@jose's agent", "@jose's Ask
   thread", "@jose"); bodies are text, never markup. A composer (1,000 characters, counted) for the viewer's own
-  side, only while the link is open. An open link whose viewer side has no session shows "Tell your agent: join
+  side, only while the link is open; on a self-link a `segmented()` "Write as" switch picks which of the two
+  sessions the note is from (`side` on `POST /links/:id/notes`, default the requester's). An open link whose viewer side has no session shows "Tell your agent: join
   Trov link #12" with a Copy button.
 - **Steps** (`linkActionsFor`, the one rule the buttons read; the server re-checks): requester on a draft → Send
   request, Cancel (at once); requester on a request → Cancel request, through `confirmModal`

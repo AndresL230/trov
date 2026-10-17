@@ -47,6 +47,8 @@ import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, sk
 import { reviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
+import { linksView, linkDetailView, linkCancelModal, handoffsTabBar, NO_LINK_BOXES, type LinkBoxes, type HandoffsTab } from "./links";
+import type { LinkDetail, LinkSideName } from "@shared/links";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -122,6 +124,8 @@ export type Screen =
   | "platform" | "platformorg"
   // Handoffs (Workspace): the inbox, one handoff, the new-handoff form.
   | "handoffs" | "handoff" | "newhandoff"
+  // Handoffs › Links (the screen's second tab, `#links`) and one agent link's page (`#links/<n>`, web/src/links.ts).
+  | "links" | "link"
   // Prompt Library (Knowledge): the library, one prompt, the editor (new / edit / new version).
   | "prompts" | "prompt" | "promptedit"
   // Docs › New doc.
@@ -440,6 +444,20 @@ export interface AppState {
   /** `at`: when an in-page claim drew it (Date.now()) — the list rises in once from then (handoffs.ts `readingListBlock`). */
   handoffReading: { id: number; items: HandoffReadingItem[] | null; at?: number } | null;
   nh: NewHandoffDraft;
+  // ── Handoffs › Links (web/src/links.ts) ──────────────────────────────────────
+  /** The Links tab's four boxes (`GET /links?box=…`). */
+  links: Loadable<LinkBoxes>;
+  linkDetail: Loadable<LinkDetail | null>;
+  linkId: number | null;
+  /** The composer's unsent note, for the link it was typed on. */
+  linkNote: { id: number; text: string } | null;
+  /** On a self-link, which of my two sides a note is written from (links.ts `noteSide`). */
+  linkNoteSide: LinkSideName;
+  /** A person step or a note in flight on the link's page. */
+  linkBusy: boolean;
+  /** Cancel on a SENT request: its confirm modal is open (and `linkCancelBusy` while the write runs). */
+  linkCancelArm: boolean;
+  linkCancelBusy: boolean;
   // ── Prompt Library ─────────────────────────────────────────────────────────
   /** The whole library; the search / tag / sort filter runs client-side over it. */
   promptList: Loadable<PromptSummary[]>;
@@ -621,6 +639,9 @@ export function initialState(): AppState {
     handoffDetail: { status: "idle", data: null },
     handoffId: null, handoffExpireArm: false, handoffPromptOpen: false, handoffReading: null,
     nh: blankHandoff(),
+    links: { status: "idle", data: NO_LINK_BOXES },
+    linkDetail: { status: "idle", data: null },
+    linkId: null, linkNote: null, linkNoteSide: "requester", linkBusy: false, linkCancelArm: false, linkCancelBusy: false,
     promptList: { status: "idle", data: [] },
     promptQ: "", promptTag: null, promptSort: "updated_desc", promptFilterOpen: false, promptFilterCat: "tag",
     promptSlug: null,
@@ -713,7 +734,20 @@ export function identityCount(s: AppState): number {
 /** Sidebar count for Handoffs: pending handoffs left for ME — `handoffsForMe`, the
  *  ONE definition My Work's Your sessions tile counts too. */
 export function handoffBadge(s: AppState): number {
+  return handoffOnlyBadge(s) + linkBadge(s);
+}
+/** The handoffs half: pending handoffs left for me. Links stay OUT of `handoffsForMe` (My Work counts it). */
+export function handoffOnlyBadge(s: AppState): number {
   return badgeCount(s, "handoffs", s.handoffs, (rows) => handoffsForMe(rows, s.me?.handle ?? "").length);
+}
+/** The links half: link requests waiting for me (the Links tab's Waiting for you box, `GET /badges` `links`). */
+export function linkBadge(s: AppState): number {
+  return s.links.status === "ok" ? s.links.data.waiting.length : s.badges.links ?? s.links.data.waiting.length;
+}
+
+/** The Handoffs screen's tab bar, with each tab's own count of what waits for me. */
+function handoffsBar(s: AppState, tab: HandoffsTab): string {
+  return handoffsTabBar(tab, { handoffs: handoffOnlyBadge(s), links: linkBadge(s) });
 }
 
 /** The org on screen with MY role in it — `currentOrg` is the one place that picks it. */
@@ -901,6 +935,10 @@ function headerCrumb(s: AppState): string {
   if (s.screen === "newticket") return "New ticket";
   if (s.screen === "handoff") return s.handoffDetail.data ? firstLine(s.handoffDetail.data.body) : "";
   if (s.screen === "newhandoff") return "New handoff";
+  if (s.screen === "link") {
+    const l = s.linkDetail.data;
+    return l ? `Link #${l.id}` : s.linkId ? `Link #${s.linkId}` : "";
+  }
   if (s.screen === "prompt") return s.promptDetail.data?.prompt.title ?? "";
   if (s.screen === "promptedit") {
     const ed = s.promptEd;
@@ -926,7 +964,7 @@ function header(s: AppState): string {
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
     artifacts: "Artifacts", artifactnew: "Artifacts", artifact: "Artifacts",
-    handoffs: "Handoffs", handoff: "Handoffs", newhandoff: "Handoffs",
+    handoffs: "Handoffs", handoff: "Handoffs", newhandoff: "Handoffs", links: "Handoffs", link: "Handoffs",
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Docs",
     releases: "What's new",
@@ -996,10 +1034,11 @@ function header(s: AppState): string {
   // `ticketsBack` resolves to Tickets, or Roadmap from a sprint (one act, like
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
-    || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
+    || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "link" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
     || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag";
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
+    : s.screen === "link" ? "goLinks"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
     : s.screen === "newdoc" ? "goDocs"
@@ -2923,7 +2962,12 @@ function screenBody(s: AppState): string {
     case "artifacts":
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
-    case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data });
+    case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "handoffs") });
+    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links") });
+    case "link": return linkDetailView({
+      status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
+      draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,
+    });
     case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at });
     case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
@@ -3020,6 +3064,8 @@ function appView(s: AppState): string {
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
     : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
+    // A link's page, by link: its note composer must keep its focus and text while the count under it updates.
+    : s.screen === "link" ? `link:${s.linkId ?? ""}`
     // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
     // the conversation its scroll, and nothing that already entered replays its entrance).
     : s.screen === "ask" ? "ask"
@@ -3095,7 +3141,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
-    ${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
+    ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}
     ${real.preview && s !== real ? previewBanner(real.preview) : ""}
   `);

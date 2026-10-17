@@ -48,6 +48,8 @@ export interface ConfirmModalProps {
   confirmLabel?: string;
   /** Its label while the write runs (default "Deleting…"). */
   busyLabel?: string;
+  /** The dismiss button's label (default "Cancel") — another word when the action itself is a cancel. */
+  cancelLabel?: string;
   confirmAct: string;
   cancelAct: string;
   arg?: string;
@@ -97,7 +99,7 @@ export function confirmModal(p: ConfirmModalProps): string {
         <div class="cnpy-cm-detail">${p.detail}</div>` : ""}${typedField}${p.error ? `
         <div role="alert" style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:12px">${esc(p.error)}</div>` : ""}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
-          <button type="button" data-act="${attr(p.cancelAct)}"${argA} class="cnpy-outlinebtn"${dis} style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Cancel</button>
+          <button type="button" data-act="${attr(p.cancelAct)}"${argA} class="cnpy-outlinebtn"${dis} style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">${esc(p.cancelLabel ?? "Cancel")}</button>
           <button type="button" data-act="${attr(p.confirmAct)}"${argA}${t ? "" : " data-confirm-focus"} class="cnpy-confirm-go${neutral ? " cnpy-confirm-go--neutral" : ""}"${goDis}${p.busy ? ' aria-busy="true"' : ""} style="padding:8px 16px;border-radius:8px;${go};font-size:13px;font-weight:600;white-space:nowrap">${esc(p.busy ? p.busyLabel ?? "Deleting…" : p.confirmLabel ?? "Delete")}</button>
         </div>
       </div>
