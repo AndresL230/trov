@@ -1502,7 +1502,9 @@ function libraryFrame(s: AppState, content: string, key: string): string {
   const slug = paneSpaceSlug(s);
   const space = spaceDTOOf(s, slug);
   const libPending = s.library.status === "idle" || (s.library.status === "loading" && !s.library.data);
-  const showPane = libPending || liveSpaces(s).length > 0 || space !== null;
+  // A space the read says is not there (`#library/<unknown>`): no tree to show, so no pane — never one "loading" forever.
+  const noSuchSpace = s.screen === "space" && space === null && s.spaceHome.status === "ok" && s.spaceHome.data === null;
+  const showPane = !noSuchSpace && (libPending || liveSpaces(s).length > 0 || space !== null);
   if (!showPane) return `<div class="cnpy-libframe is-solo"><div id="cnpy-libmain" class="cnpy-libmain cnpy-scroll" data-morph-key="${attr(key)}">${content}</div></div>`;
   const pages = panePages(s);
   const h = s.spaceHome;

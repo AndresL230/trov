@@ -227,7 +227,11 @@ describe("a space's home", () => {
     expect(render(app("library", "member"))).toContain('data-morph="library"');
   });
   it("an unknown space says so; a failed read keeps its error", () => {
-    expect(render(app("space", "member", { spaceSlug: "nope", spaceHome: { status: "ok", data: null } }))).toContain("There is no space here.");
+    const none = render(app("space", "member", { spaceSlug: "nope", spaceHome: { status: "ok", data: null } }));
+    expect(none).toContain("There is no space here.");
+    // Case SH23: no space, no page tree — never a pane that says "Loading pages…" forever.
+    expect(none).not.toContain("cnpy-dpane");
+    expect(none).not.toContain("Loading pages…");
     expect(render(app("space", "member", { spaceSlug: "nope", spaceHome: { status: "error", data: null } }))).toContain("Couldn't load this space.");
   });
 });
