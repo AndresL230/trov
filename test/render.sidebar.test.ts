@@ -166,7 +166,9 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
 
     const open = sidebarView(props({ navOpen: { ...NAV_CLOSED, library: true } }));
     expect(open).toContain('data-arg="library:product" class="cnpy-sub-i cnpy-sub-sp" tabindex="0"');
-    expect(open).toContain('data-act="navToggle" data-arg="library" class="cnpy-chev" aria-label="Hide spaces" aria-expanded="true"');
+    expect(open).toContain('data-act="navToggle" data-arg="library" class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="true"');
+    // Design §1.1 (case SB1): ONE name in both states — aria-expanded says which.
+    expect(closed).toContain('class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="false"');
     // The label is its own button: it goes to Library home; the chevron only folds the group.
     expect(open).toContain('<button data-act="goLibrary" class="cnpy-nav-i" aria-label="Library">');
   });

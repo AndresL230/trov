@@ -160,7 +160,7 @@ export function sidebarView(p: SidebarProps): string {
     // Always emitted; `data-n="0"` hides both the count and the collapsed-rail dot.
     const marks = `<span class="cnpy-lbl cnpy-badge" data-n="${count}">${count}</span><span class="cnpy-dot" data-n="${count}"></span>`;
     const chevron = group
-      ? `<button data-act="navToggle" data-arg="${group}" class="cnpy-chev" aria-label="${open ? "Hide" : "Show"} spaces" aria-expanded="${open}" tabindex="${p.collapsed ? -1 : 0}">${CHEVRON}</button>`
+      ? `<button data-act="navToggle" data-arg="${group}" class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="${open}" tabindex="${p.collapsed ? -1 : 0}">${CHEVRON}</button>`
       : "";
     const sub = group ? `<div class="cnpy-sub" data-open="${open ? "1" : "0"}"><div class="cnpy-sub-clip"><div class="cnpy-sub-list">${subList(group, open)}</div></div></div>` : "";
     return `<div class="cnpy-navrow n-${key}${on ? " is-active" : ""}" data-tip="${attr(label)}">
