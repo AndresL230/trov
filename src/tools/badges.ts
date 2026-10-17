@@ -2,6 +2,7 @@ import type { SidebarBadges } from "@shared/badges";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { IMPORT_STALE_MS } from "@shared/docs-import-core";
 import { type TenantContext, stmt, batch } from "../data/sql";
+import { NOT_SUPERSEDED_IMPORT } from "./reads";
 
 /**
  * The sidebar's counts in ONE batch (one D1 round trip), so the boot does not fetch seven lists only
@@ -15,7 +16,7 @@ export async function sidebarBadges(ctx: TenantContext, me: string): Promise<Sid
   const o = ctx.orgId;
   const rows = await batch<{ n: number }>(ctx, [
     stmt(ctx, `SELECT COUNT(*) AS n FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
-                WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version`, o, o),
+                WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version AND ${NOT_SUPERSEDED_IMPORT}`, o, o),
     stmt(ctx, `SELECT COUNT(*) AS n FROM adrs WHERE org_id = ? AND status = 'draft'`, o),
     stmt(ctx, `SELECT COUNT(*) AS n FROM needs_triage WHERE org_id = ? AND resolved = 0`, o),
     stmt(ctx, `SELECT COUNT(*) AS n FROM identity_tasks WHERE org_id = ? AND status = 'pending'`, o),

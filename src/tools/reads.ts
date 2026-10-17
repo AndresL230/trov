@@ -214,6 +214,12 @@ export interface ProposalRow {
   import_at: string | null;
 }
 
+/** Owner ruling RV3: an import's staged version with a newer staged change of the same page on top (an agent's) is
+ *  not offered on its own — Review shows the page with the newer change (Approve all leaves it alone too, runs.ts).
+ *  Over `doc_versions v`; the sidebar's badge counts with the same clause. */
+export const NOT_SUPERSEDED_IMPORT = `NOT (v.import_id IS NOT NULL AND EXISTS (SELECT 1 FROM doc_versions w
+  WHERE w.org_id = v.org_id AND w.slug = v.slug AND w.status = 'staged' AND w.version > v.version))`;
+
 export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]> {
   return all<ProposalRow>(
     ctx,
@@ -226,7 +232,7 @@ export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]>
             i.started_by AS import_by, i.started_at AS import_at
        FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
        LEFT JOIN doc_imports i ON i.org_id = ? AND i.id = v.import_id
-      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version
+      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version AND ${NOT_SUPERSEDED_IMPORT}
       ORDER BY v.created_at DESC, v.id DESC`,
     ctx.orgId,
     ctx.orgId,
