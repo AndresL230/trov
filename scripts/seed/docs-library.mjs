@@ -411,7 +411,8 @@ function mainOrg(c) {
     ["test-links", "test-first-change"], ["test-links", "test-old-wiki-home"]];
   for (const [from_slug, to_slug] of links) s.push(insert("doc_links", { org_id: MAIN, from_slug, to_slug }));
 
-  // Import runs (imports-history).
+  // Import runs (imports-history). Their start times follow their ids, as real ones do (an id is given at the start),
+  // so "newest first" by id and by start agree: 6301 (0.1 day ago) … 6306 (0.02).
   const run = (id, status, by, startedDays, file, space, parent, counts, failures, extra = {}) => s.push(insert("doc_imports", {
     id, org_id: MAIN, space_slug: space, parent_slug: parent, file_name: file, started_by: by, started_at: c.days(startedDays),
     updated_at: extra.updated ?? c.days(startedDays - 0.001), ended_at: status === "running" ? null : c.days(startedDays - 0.002), status,
@@ -422,10 +423,10 @@ function mainOrg(c) {
   run(IMP.partial, "partial", ADMIN, 0.06, "test-handbook-v2.zip", E, "test-getting-started",
     { pages: 5, new_pages: 3, versions: 2, skipped_files: 3, staged: 5, staged_new: 3, staged_versions: 2 },
     [{ path: "handbook/design/logo.sketch", code: "not_markdown" }, { path: "handbook/notes/.DS_Store", code: "hidden" }, { path: "handbook/drafts/empty.md", code: "empty" }], { size: 3_100_000, count: 8 });
-  run(IMP.oneMd, "done", MEMBER, 1, "test-release-notes-october.md", P, "test-release-notes", { pages: 1, new_pages: 1, staged: 1, staged_new: 1 }, [], { size: 14_000, count: 1 });
-  run(IMP.failed, "failed", MEMBER, 5, "test-product-wiki.zip", P, null, { pages: 2, new_pages: 2, failed: 2 },
+  run(IMP.oneMd, "done", MEMBER, 0.05, "test-release-notes-october.md", P, "test-release-notes", { pages: 1, new_pages: 1, staged: 1, staged_new: 1 }, [], { size: 14_000, count: 1 });
+  run(IMP.failed, "failed", MEMBER, 0.04, "test-product-wiki.zip", P, null, { pages: 2, new_pages: 2, failed: 2 },
     [{ path: "wiki/a.md", code: "not_utf8" }, { path: "wiki/b.md", code: "failed" }], { size: 41_000_000, count: 2 });
-  run(IMP.cancelled, "abandoned", SOWNER, 3, "test-cancelled.zip", D, null, { pages: 4, new_pages: 4 }, [{ path: null, code: "cancelled" }], { size: 880_000, count: 4 });
+  run(IMP.cancelled, "abandoned", SOWNER, 0.03, "test-cancelled.zip", D, null, { pages: 4, new_pages: 4 }, [{ path: null, code: "cancelled" }], { size: 880_000, count: 4 });
   run(IMP.stale, "running", MEMBER, 0.02, "test-stale-run.zip", E, null, { pages: 3, new_pages: 3 }, [], { size: 12_000, count: 3, updated: c.days(10 / 1440) });
 
   // triage-space: proposals the gate sent to Unplaced for their space.
@@ -521,6 +522,7 @@ export const CHECKS = [
   ["page-xss / page-unicode", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug IN ('test-xss','test-unicode') AND current_version = 1`, 2],
   ["proposal-parent / badparent: staged versions asking for a parent", `SELECT COUNT(*) AS n FROM doc_versions WHERE org_id = ${M} AND status = 'staged' AND parent_slug IS NOT NULL`, 2],
   ["imports-history: runs in test-docs", `SELECT COUNT(*) AS n FROM doc_imports WHERE org_id = ${M}`, 6],
+  ["imports-history: start times follow the ids (no run started after a newer id)", `SELECT COUNT(*) AS n FROM doc_imports a JOIN doc_imports b ON b.org_id = a.org_id AND b.id > a.id WHERE a.org_id = ${M} AND b.started_at <= a.started_at`, 0],
   ["imports-history: one of each stored status (done ×2, partial, failed, abandoned, running-stale)", `SELECT COUNT(DISTINCT status) AS n FROM doc_imports WHERE org_id = ${M}`, 5],
   ["import-running: test-docs-one holds a live running run", `SELECT COUNT(*) AS n FROM doc_imports WHERE org_id = ${q(ONE)} AND status = 'running' AND updated_at > strftime('%Y-%m-%dT%H:%M:%fZ','now')`, 1],
   ["import-plans: every seeded run stores a plan the Worker can read (a writes list)", `SELECT COUNT(*) AS n FROM doc_imports WHERE org_id IN (${ORGS.map(q).join(", ")}) AND json_type(manifest, '$.writes') IS NOT 'array'`, 0],
