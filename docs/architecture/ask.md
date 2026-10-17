@@ -237,6 +237,13 @@ credential) and `src/repo/ask-github.ts` (the transport — the credential). Tes
 - **Not persisted, never re-read.** Tool results are never stored (› History: later turns call a tool again); only the
   answer and its activity lines are. Reopening a thread reads the stored answer — no GitHub request on any read
   route. A Confirm runs with no GitHub side.
+- **Locally** (`wrangler dev` only): `LOCAL_UPSTREAM` (`src/sync/local-upstream.ts`, `env.md`) reaches Ask too — the
+  model stream (`modelFetch(env)`: a test's `askDeps.fetchImpl`, else the stand-in, handed in by `src/routes.ts` through
+  `provideAskLocalUpstream` because that module reads the billing config, which nothing under `src/ai/ask/` imports)
+  and the GitHub transport (`<base>/github/…`). `scripts/dev/ask-github-stub.mjs` is such a stand-in (a scripted model
+  and made-up repositories, the access check answered by login) and `scripts/seed/ask-github.mjs` its local seed (on
+  top of `npm run seed`; local D1 only). A deployed Worker never honours it (loopback only, never beside a live
+  Stripe key); the tests stub at the `Response` level instead.
 - **Permissions.** Everything read is inside the App's registered `READ_PERMISSIONS` (Metadata, Contents, Pull
   requests, Issues, Checks, Commit statuses; `github-app.md` › Permissions ↔ endpoints) — the access check included
   (Metadata): nothing to add on GitHub.
