@@ -8,26 +8,14 @@
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { env, applyD1Migrations } from "cloudflare:test";
-import type { D1Migration } from "@cloudflare/vitest-pool-workers";
+import { migrationPart } from "./helpers/migration-part";
 import { STARTER_SPACES } from "@shared/docs-core";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 
-const MIGRATION = "0076_10_17_staging.sql";
 const db = () => env.MT_DB;
-/** The consolidated file's statements, cut at the 0081_docs_library part: the parts before it, the part itself
- *  (it ends where 0082_doc_import_manifest's first statement starts). */
-function cut(): { earlier: D1Migration; part: D1Migration } {
-  const m = env.TEST_MIGRATIONS.find((x) => x.name === MIGRATION)!;
-  const from = m.queries.findIndex((q) => q.includes("CREATE TABLE IF NOT EXISTS doc_spaces"));
-  const to = m.queries.findIndex((q) => q.includes("ALTER TABLE doc_imports ADD COLUMN manifest"));
-  if (from < 1 || to <= from) throw new Error(`${MIGRATION}: the 0081_docs_library part was not found`);
-  return {
-    earlier: { name: `${MIGRATION} (before 0081_docs_library)`, queries: m.queries.slice(0, from) },
-    part: { name: `${MIGRATION} › 0081_docs_library`, queries: m.queries.slice(from, to) },
-  };
-}
-const before = () => [...env.TEST_MIGRATIONS.filter((m) => m.name < MIGRATION), cut().earlier];
-const own = () => [cut().part];
+const cut = () => migrationPart(env.TEST_MIGRATIONS, "0076_10_17_staging.sql", "0081_docs_library", "CREATE TABLE IF NOT EXISTS doc_spaces", "ALTER TABLE doc_imports ADD COLUMN manifest");
+const before = () => cut().before;
+const own = () => cut().part;
 const q = async <T>(sql: string, ...p: unknown[]) => (await db().prepare(sql).bind(...p).all<T>()).results;
 
 /** Drop everything in MT_DB (as test/tags.migration.test.ts does, newest table first). */

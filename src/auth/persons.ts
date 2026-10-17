@@ -318,6 +318,9 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // who started an import.
   ["doc_spaces", "created_by"], ["doc_spaces", "archived_by"], ["doc_space_owners", "handle"], ["doc_space_owners", "added_by"],
   ["doc_imports", "started_by"],
+  // Agent links (0078_agent_links): a link's two sides and who closed it; who wrote a note.
+  ["agent_links", "requester"], ["agent_links", "recipient"], ["agent_links", "closed_by"],
+  ["agent_link_notes", "author"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

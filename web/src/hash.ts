@@ -18,6 +18,8 @@
 //                                        `<slug>@v<n>` is accepted, `/v<n>` written back)
 //   #artifacts/<slug>/diff/<a>..<b>    → two of its versions compared
 //   #handoffs         → the handoffs inbox; #handoffs/new the form; #handoffs/<id> one handoff
+//   #links            → Relay › Links (the screen's second tab); #links/<n> one agent link (its per-org
+//                       number). Not under #handoffs/, whose second segment is a handoff's number
 //   #prompts          → the Prompt Library; #prompts/new the editor; #prompts/<slug> one
 //                       prompt; #prompts/<slug>/edit and #prompts/<slug>/version its editor
 //   #library          → the Docs Library's home; #library/<space> one space's home (its tab is state, not route)
@@ -88,6 +90,8 @@ export interface Route {
   art?: ArtRoute;
   /** Set only on `handoff` (a positive integer, rendered `#12`). */
   handoffId?: number;
+  /** Set only on `link` (an agent link's per-org number, rendered `#12`). */
+  linkId?: number;
   /** Set only on `prompt` and on `promptedit` for an existing prompt. */
   promptSlug?: string;
   /** Set only on `promptedit`. */
@@ -131,7 +135,7 @@ const APP_KEY_SEG = /^[a-z0-9_-]{1,32}$/;
 export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
     && a.repoSlug === b.repoSlug && a.repoApp === b.repoApp
-    && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
+    && a.handoffId === b.handoffId && a.linkId === b.linkId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName && a.askThread === b.askThread
@@ -150,8 +154,9 @@ export function sameRoute(a: Route, b: Route): boolean {
 // swaps the conversation in place and never replays the screen's entrance. Nor is the doc in the reader
 // (`docSlug`): picking another page in its tree swaps the reader pane in place. Nor is the import wizard's space
 // (`importSpace`): picking one is a choice on the same page.
+// Relay › Links is the Relay screen's other TAB, so the two lists are one page (the tab bar's underline slides).
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, screen: r.screen === "links" ? "handoffs" : r.screen, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -247,6 +252,11 @@ export function parseHash(hash: string): Route {
     if (parts[1] === "new") return { screen: "newhandoff", ...base };
     const id = intSeg(parts[1]);
     return id !== null ? { screen: "handoff", ...base, handoffId: id } : none;
+  }
+  if (parts[0] === "links") {
+    if (parts.length === 1) return { screen: "links", ...base };
+    const id = parts.length === 2 ? intSeg(parts[1]) : null;
+    return id !== null ? { screen: "link", ...base, linkId: id } : none;
   }
   if (parts[0] === "prompts" && (parts.length === 2 || parts.length === 3)) {
     if (parts.length === 2 && parts[1] === "new") return { screen: "promptedit", ...base, promptMode: "new" };
@@ -370,6 +380,7 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "sprint") return r.sprintId !== null ? `#sprints/${r.sprintId}` : "#roadmap";
   if (r.screen === "handoff") return r.handoffId ? `#handoffs/${r.handoffId}` : "#handoffs";
   if (r.screen === "newhandoff") return "#handoffs/new";
+  if (r.screen === "link") return r.linkId ? `#links/${r.linkId}` : "#links";
   if (r.screen === "prompt") return r.promptSlug ? `#prompts/${encodeURIComponent(r.promptSlug)}` : "#prompts";
   if (r.screen === "promptedit") {
     if (r.promptMode === "edit" || r.promptMode === "version") return r.promptSlug ? `#prompts/${encodeURIComponent(r.promptSlug)}/${r.promptMode}` : "#prompts";

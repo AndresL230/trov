@@ -81,12 +81,12 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_invites",
   "DELETE FROM memberships",
   "DELETE FROM org_counters",
-  // …and with the per-org counters (ticket / handoff NUMBERS restart at 1), the two tables' own row-id
+  // …and with the per-org counters (ticket / handoff / link NUMBERS restart at 1), the tables' own row-id
   // counters restart too — so in the seed org a fresh ticket's number equals its row id, exactly as it
   // does for SaplingLearn in production (0042_organizations backfilled number = id). The wire only ever carries the
   // NUMBER (src/tools/tickets.ts); a suite that must tell the two apart offsets the ids itself
   // (test/numbers.per-org.test.ts) or files into the second org.
-  "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs')",
+  "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs', 'agent_links')",
   "DELETE FROM platform_admins",
   "UPDATE cron_cursor SET last_key = ''",
   // Tickets (0024) first: the ticket_* children reference tickets, and tickets
@@ -111,6 +111,10 @@ export const RESET_STATEMENTS = [
   "DELETE FROM processed_items",
   // Handoffs + Prompt Library (0028): prompt_versions references prompts(slug).
   "DELETE FROM handoffs",
+  // Agent links (0078): the notes reference their link (org_id, number). The 'link' counter went with
+  // org_counters above, so link numbers restart at 1.
+  "DELETE FROM agent_link_notes",
+  "DELETE FROM agent_links",
   "DELETE FROM prompt_versions",
   "DELETE FROM prompts",
   "DELETE FROM pr_summaries",

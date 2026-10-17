@@ -38,7 +38,7 @@ const NAV_OF: Record<string, NavKey> = {
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
-  handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs",
+  handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs", links: "handoffs", link: "handoffs",
   prompts: "prompts", prompt: "prompts", promptedit: "prompts",
   // The Library: its home, a space's home, a doc (the reader), New page, the import wizard and Imports history.
   library: "library", space: "library", docs: "library", newdoc: "library", import: "library", imports: "library",
@@ -189,7 +189,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("ask", "goAsk", "Trov")}
       ${item("tickets", "goTickets", "Tickets", c.tickets)}
       ${item("roadmap", "goRoadmap", "Roadmap")}
-      ${item("handoffs", "goHandoffs", "Handoffs", c.handoffs)}
+      ${item("handoffs", "goHandoffs", "Relay", c.handoffs)}
       ${section("Monitor")}
       ${item("repo", "goRepo", "Repo")}
       ${item("feed", "goFeed", "Feed")}

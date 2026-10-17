@@ -40,6 +40,11 @@ import { get_plan } from "./tools/plan";
 import {
   listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
+import {
+  listLinks, linkPreviews, getLink, createRequestFromWeb, sendLink, acceptLink, declineLink, cancelLink, closeLink, sendLinkNote, linkForViewer,
+  LinkError, LINK_ERROR_STATUS, type LinkCloseInput, type LinkNoteInput, type LinkWebRequestInput,
+} from "./tools/links";
+import { LINK_BOXES, type LinkBox, type LinkView } from "@shared/links";
 import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
@@ -448,6 +453,95 @@ tenantApi.post("/handoffs/:id/expire", async (c) => {
   if (id === null) return c.json({ error: "not found" }, 404);
   try { return c.json({ ok: true, handoff: await expireHandoff(c.var.ctx, id, c.get("principal").handle) }); }
   catch (e) { return handoffFail(c, e); }
+});
+
+// ── Agent links (0078_agent_links; docs/architecture/handoffs-prompts.md) — the PERSON steps ──
+// Send, accept, decline and cancel exist ONLY here (and as Ask's Confirm): no MCP tool moves a link to
+// `requested` or `open`. Every rule is src/tools/links.ts's (its zod schemas parse each input); a route only
+// names the actor — always the session's person, never a field of the body — and maps a LinkError to
+// `{ error: <code>, message }` with its status (a 429 from the hourly note allowance also carries
+// `retry_after` and the header). Anything else is a 503, never a 500 (invariant 7). `:id` is the per-org NUMBER.
+const linkFail = (c: Context<AppEnv>, e: unknown): Response => {
+  if (e instanceof LinkError) {
+    const status = LINK_ERROR_STATUS[e.code];
+    if (status === 429 && e.retryAfter !== undefined) {
+      return c.json({ error: e.code, message: e.message, retry_after: e.retryAfter }, 429, { "retry-after": String(e.retryAfter) });
+    }
+    return c.json({ error: e.code, message: e.message }, status);
+  }
+  console.error("links failed", e instanceof Error ? e.message : String(e));
+  return c.json({ error: "links unavailable", degraded: true }, 503);
+};
+const linkId = (raw: string): number | null => (/^\d{1,15}$/.test(raw) && Number(raw) > 0 ? Number(raw) : null);
+const linkBody = async (c: Context<AppEnv>): Promise<Record<string, unknown>> => {
+  const raw: unknown = await c.req.json().catch(() => null);
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+};
+const LINK_STEPS = { send: sendLink, accept: acceptLink, decline: declineLink, cancel: cancelLink } as const;
+
+tenantApi.get("/links", async (c) => {
+  const box = c.req.query("box") ?? "open";
+  if (!(LINK_BOXES as readonly string[]).includes(box)) return c.json({ error: "bad_request", message: `unknown box: ${box}` }, 400);
+  const me = c.get("principal").handle;
+  let links: LinkView[];
+  try { links = (await listLinks(c.var.ctx, me, box as LinkBox)).map((l) => linkForViewer(l, me)); }
+  catch (e) { return linkFail(c, e); }
+  // Each link's thread in brief (newest note, counts) — one query for the whole list; if it fails the list still
+  // answers, without `preview` (the cards then show no note line), never a 500.
+  try {
+    const previews = await linkPreviews(c.var.ctx, me, links.map((l) => l.id));
+    links = links.map((l) => ({ ...l, preview: previews.get(l.id) ?? { last: null, notes: 0, waiting: 0 } }));
+  } catch (e) { console.error("link previews failed", e instanceof Error ? e.message : String(e)); }
+  return c.json({ links });
+});
+tenantApi.get("/links/:id", async (c) => {
+  const id = linkId(c.req.param("id"));
+  try {
+    const me = c.get("principal").handle;
+    const link = id === null ? null : await getLink(c.var.ctx, me, id);
+    return link ? c.json({ link: linkForViewer(link, me) }) : c.json({ error: "not_found" }, 404);
+  } catch (e) { return linkFail(c, e); }
+});
+// A person starts a link: `requested` (24 h), or `open` at once when it is to themself. Only `target`, `reason`
+// and `repo` are read from the body.
+tenantApi.post("/links", async (c) => {
+  const b = await linkBody(c);
+  const input = { target: b.target, reason: b.reason, repo: b.repo } as LinkWebRequestInput;
+  const me = c.get("principal").handle;
+  try { return c.json({ link: linkForViewer(await createRequestFromWeb(c.var.ctx, me, input), me) }); }
+  catch (e) { return linkFail(c, e); }
+});
+for (const step of ["send", "accept", "decline", "cancel"] as const) {
+  tenantApi.post(`/links/:id/${step}`, async (c) => {
+    const id = linkId(c.req.param("id"));
+    if (id === null) return c.json({ error: "not_found" }, 404);
+    const me = c.get("principal").handle;
+    try { return c.json({ link: linkForViewer(await LINK_STEPS[step](c.var.ctx, me, id), me) }); }
+    catch (e) { return linkFail(c, e); }
+  });
+}
+tenantApi.post("/links/:id/close", async (c) => {
+  const id = linkId(c.req.param("id"));
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  const b = await linkBody(c);
+  const me = c.get("principal").handle;
+  try { return c.json({ link: linkForViewer(await closeLink(c.var.ctx, me, { id, reason: b.reason } as LinkCloseInput, "web"), me) }); }
+  catch (e) { return linkFail(c, e); }
+});
+// A person's note, from their own side (a self-link's `side` may name which; default the requester's, so it
+// reaches the session that joined as recipient). No session: a person binds none. It counts against the same
+// caps as an agent's — 20 per side, and `link_note` (60 an hour) on the platform context. Returns the refreshed
+// detail, so the page re-renders from it.
+tenantApi.post("/links/:id/notes", async (c) => {
+  const id = linkId(c.req.param("id"));
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  const b = await linkBody(c);
+  const me = c.get("principal").handle;
+  try {
+    await sendLinkNote(c.var.ctx, c.var.p, me, { id, body: b.body, side: b.side } as LinkNoteInput, "web");
+    const link = await getLink(c.var.ctx, me, id);
+    return link ? c.json({ link: linkForViewer(link, me) }) : c.json({ error: "not_found" }, 404);
+  } catch (e) { return linkFail(c, e); }
 });
 
 tenantApi.get("/prompts", async (c) => {

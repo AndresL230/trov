@@ -49,7 +49,7 @@ describe("the numbers", () => {
       avatar_upload: { max: 20, window: "day" }, org_logo_upload: { max: 20, window: "day" }, handle_check: { max: 60, window: "hour" },
       checkout: { max: 10, window: "day" }, support: { max: 10, window: "day" },
       support_anon_ip: { max: 3, window: "day" }, support_anon_all: { max: 50, window: "day" },
-      ai_filter: { max: 60, window: "hour" }, doc_import: { max: 20, window: "day" },
+      ai_filter: { max: 60, window: "hour" }, doc_import: { max: 20, window: "day" }, link_note: { max: 60, window: "hour" },
     });
   });
 });

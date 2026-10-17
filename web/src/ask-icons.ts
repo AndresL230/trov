@@ -82,7 +82,7 @@ export const ACTIVITY_ICON: Record<AskActivityIcon, AskIconName> = {
 /** A ref type's icon (a chip's lead, a card's eyebrow, a picker row, a source row). */
 export const REF_ICON: Record<AskRefType, AskIconName> = {
   ticket: "tickets", pr: "pr", doc: "docs", decision: "docs", feed: "feed", sprint: "sprint", handoff: "handoffs", artifact: "artifacts",
-  person: "person", prompt: "prompts", repo: "repo",
+  person: "person", prompt: "prompts", repo: "repo", link: "handoffs",
 };
 
 /** The Trov mark (the logo's three squares) in `var(--mark)`. */

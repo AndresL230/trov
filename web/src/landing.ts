@@ -265,7 +265,7 @@ function hero(signedIn: boolean): string {
             ${side(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`, "My Work")}
             ${side(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`, "Tickets")}
             ${side(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`, "Roadmap")}
-            ${side(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`, "Handoffs")}
+            ${side(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`, "Relay")}
           </div>
           ${sideHead("Monitor", "16px")}
           <div style="display:flex;flex-direction:column;gap:1px">
@@ -772,7 +772,7 @@ function agents(): string {
   const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
     + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
-  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
+  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"]);
 
   // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
   // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).

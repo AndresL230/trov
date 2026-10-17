@@ -113,16 +113,17 @@ export function askAttachKind(filename: string, contentType: string): AskAttachK
 // ── Refs and ref views (#12 §2.5, §2.6) ──────────────────────────────────────
 // An answer is markdown with ref tokens: `[[ticket:14]]`, `[[pr:173]]`, `[[doc:auth-flow]]`, `[[decision:7]]`,
 // `[[feed:107]]`, `[[sprint:3]]`, `[[handoff:3]]`, `[[artifact:threat-model]]`, `[[person:meilin]]`,
-// `[[prompt:release-notes]]`, `[[repo:owner/name]]`. `[[ticket:14|status]]` draws that item's live status mark
+// `[[prompt:release-notes]]`, `[[repo:owner/name]]`, `[[link:12]]` (an agent link, `#links/12`, only for its two
+// people). `[[ticket:14|status]]` draws that item's live status mark
 // and word instead (a table's Status column). A token is LINKED only when a tool returned that item in this
 // thread or the person attached it; the server resolves those into RefViews (`done.cites`) — the rest render as
 // plain text.
 
-export const ASK_REF_TYPES = ["ticket", "pr", "doc", "decision", "feed", "sprint", "handoff", "artifact", "person", "prompt", "repo"] as const;
+export const ASK_REF_TYPES = ["ticket", "pr", "doc", "decision", "feed", "sprint", "handoff", "artifact", "person", "prompt", "repo", "link"] as const;
 export type AskRefType = (typeof ASK_REF_TYPES)[number];
 
 /** One ref token, anywhere in a text. Group 1 the type, group 2 the key, group 3 `status` for a status cell. */
-export const ASK_REF_TOKEN_RE = /\[\[(ticket|pr|doc|decision|feed|sprint|handoff|artifact|person|prompt|repo):([A-Za-z0-9][A-Za-z0-9_.@/-]{0,99})(?:\|(status))?\]\]/g;
+export const ASK_REF_TOKEN_RE = /\[\[(ticket|pr|doc|decision|feed|sprint|handoff|artifact|person|prompt|repo|link):([A-Za-z0-9][A-Za-z0-9_.@/-]{0,99})(?:\|(status))?\]\]/g;
 
 /** The refs (`type:key`) a text's tokens name, in order of first appearance, each once. */
 export function askRefTokens(text: string): string[] {
@@ -168,7 +169,7 @@ export interface RefStatus { mark: AskMarkName; tone: AskTone; word: string; tip
 export interface RefView {
   ref: string;
   type: AskRefType;
-  /** A ticket's, PR's or handoff's number. */
+  /** A ticket's, PR's, handoff's or link's number. */
   num?: number;
   title: string;
   /** null when the item has no status (a person, a feed entry). */
@@ -182,7 +183,7 @@ export interface RefView {
    *  head, base, repo, checks, excerpt }; doc: { space, version, owner, excerpt, staged }; decision: { excerpt };
    *  feed: { brief }; person: { handle, role?, workingOn?, openTickets }; sprint: { start, due, progress, excerpt };
    *  handoff: { from, to, task }; artifact: { kind, visibility, version, status }; prompt: { excerpt };
-   *  repo: { facts: AskRepoFacts | null }. `excerpt` is the item's own first paragraph (a ticket's body, a PR's
+   *  repo: { facts: AskRepoFacts | null }; link: { with, self, topic, reason, state }. `excerpt` is the item's own first paragraph (a ticket's body, a PR's
    *  "What", a decision's decision, a sprint's summary, a prompt's description), ≤ 280 chars, or null; a person's
    *  `openTickets` counts the tickets they are on that are not done or declined. */
   extra: Record<string, unknown>;
@@ -454,6 +455,22 @@ export interface AskThreadSummary {
   /** On a `viewer` thread: shared with the person BY NAME ("Shared with you"); false = through the org only
    *  ("Organization"). A thread shared both ways is the person's by name. */
   direct?: boolean;
+  /** Open agent links whose side is THIS thread (its session `ask-thread-<id>`, bound for the reader) with notes
+   *  from the other side not delivered yet — they reach the thread at the start of the reader's next question. The
+   *  thread list's mark and the line at the top of the thread. Absent or empty: none (or the read failed — never a
+   *  guess). */
+  links?: AskThreadLink[];
+}
+
+/** One open link with notes waiting for a thread: "Link #12 with @jose: 2 new notes". */
+export interface AskThreadLink {
+  /** The link's per-org number. */
+  id: number;
+  /** The other side's person (the reader themself on a link with themself). */
+  with: string;
+  self: boolean;
+  /** Undelivered notes from the other side (≥ 1). */
+  notes: number;
 }
 
 /** What a person a thread is shared with BY NAME may do (0077_ask_people_sharing): read it, or continue it too. */
@@ -572,6 +589,9 @@ export const ASK_EXCLUDED_TOOLS: Record<string, string> = {
   record_session: "Ask is not a coding session",
   upload_asset: "files come through Ask's own attachment upload, stored as artifacts",
   delete_sprint: "a delete is a person's step on the web, never a tool",
+  // Agent links (0078): an Ask thread is a side — request_link / join_link / send_link_note / close_link are its
+  // Confirm-only cards and list_links a read (src/ai/ask/actions.ts, tools.ts). Its notes reach it in the turn.
+  link_inbox: "Ask reads link notes in its own turn.",
 };
 
 /** Ask's own tools, on top of the MCP catalog. */

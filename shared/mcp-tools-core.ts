@@ -58,6 +58,11 @@ export const MCP_TOOL_GROUPS: readonly McpToolGroup[] = [
     tools: ["send_handoff", "list_handoffs", "get_handoff", "claim_handoff", "expire_handoff", "search_prompts", "get_prompt", "save_prompt"],
   },
   {
+    key: "links", label: "Links",
+    blurb: "A short-lived line between two agent sessions whose work may overlap. An agent drafts, joins and writes notes; a person sends and accepts every link in the web app.",
+    tools: ["request_link", "join_link", "send_link_note", "close_link", "list_links", "link_inbox"],
+  },
+  {
     key: "artifacts", label: "Artifacts and doc images",
     blurb: "Versioned pages and files the team keeps, and the images a doc embeds. Only a person ratifies an artifact.",
     tools: ["upload_asset", "artifact_update", "artifact_get", "artifact_list"],

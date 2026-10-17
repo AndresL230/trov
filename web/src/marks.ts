@@ -22,6 +22,7 @@ import { TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@sh
 import { esc, attr } from "./ui";
 import type { Authority } from "./api";
 import type { HandoffStatus } from "@shared/handoffs";
+import type { LinkState } from "@shared/links";
 import type { ArtifactStatus } from "@shared/artifacts-core";
 import { tagLineParts, type TagColor } from "@shared/tags-core";
 import { TROV_MARK_PATH } from "@shared/mark";
@@ -190,6 +191,27 @@ export const HANDOFF_MARK: Record<HandoffStatus, { word: string; tone: string; s
 };
 export function handoffMark(status: HandoffStatus, size = 12.5): string {
   const m = HANDOFF_MARK[status];
+  return stateMark(m.word, m.tone, m.shape, size, m.hint);
+}
+
+// ── an agent link ────────────────────────────────────────────────────────────
+
+/** A link's state, as a mark. OPEN is the normal state of a live link and draws NOTHING; the rest say where
+ *  it stands: a draft is not sent yet and a request waits (open rings), a closed link ended as it should (a
+ *  check), a declined or cancelled one was stopped by a person and an expired one by the clock (squares).
+ *  The ONE table: the Links tab and a link's page read it. */
+export const LINK_MARK: Record<Exclude<LinkState, "open">, { word: string; tone: string; shape: MarkShape; hint: string }> = {
+  draft: { word: "Draft", tone: "var(--fg-55)", shape: "ring", hint: "An agent drafted it. Nothing is sent until its person presses Send. A draft expires after an hour." },
+  requested: { word: "Requested", tone: "var(--blue)", shape: "ring", hint: "Sent, and waiting for the other person to accept or decline. A request expires after 24 hours." },
+  declined: { word: "Declined", tone: "var(--fg-40)", shape: "square", hint: "The other person turned the request down." },
+  cancelled: { word: "Cancelled", tone: "var(--fg-40)", shape: "square", hint: "Its sender called it off before it opened." },
+  closed: { word: "Closed", tone: "var(--accent)", shape: "check", hint: "One side ended it. The notes stay readable here." },
+  expired: { word: "Expired", tone: "var(--red)", shape: "square", hint: "Nobody acted in time, or neither session checked in for 12 hours." },
+};
+/** The mark for a link's state, or "" for an open link (the normal state). */
+export function linkMark(state: LinkState, size = 12.5): string {
+  if (state === "open") return "";
+  const m = LINK_MARK[state];
   return stateMark(m.word, m.tone, m.shape, size, m.hint);
 }
 

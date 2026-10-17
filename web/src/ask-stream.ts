@@ -289,9 +289,12 @@ export function convoFromDetail(d: { thread: AskThreadSummary & { draft?: string
   };
 }
 
-/** The `thread` event, applied to the conversation: its id (a new thread), title, mode and switch. */
+/** The `thread` event, applied to the conversation: its id (a new thread), title, mode and switch. A turn has started,
+ *  and a turn takes the notes waiting on the thread's Trov links (the server delivers them into it), so the line
+ *  that announced them goes (`thread.links`; the next read of the thread says what is still waiting). */
 export function foldThreadEvent(c: AskConvo, d: AskEventMap["thread"]): AskConvo {
-  const base: AskThreadSummary = c.thread ?? { id: d.id, title: d.title, pinned: false, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef,
+  const { links: _delivered, ...known } = c.thread ?? ({} as Partial<AskThreadSummary>);
+  const base: AskThreadSummary = c.thread ? (known as AskThreadSummary) : { id: d.id, title: d.title, pinned: false, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef,
     hasDraft: false, group: "today", createdAt: "", updatedAt: "" };
   return { ...c, threadId: d.id, title: d.title || c.title, thread: { ...base, id: d.id, title: d.title || base.title, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef } };
 }

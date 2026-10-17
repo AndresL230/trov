@@ -6,6 +6,7 @@ import { cookieFor, seedPerson } from "./helpers/persons";
 import { ORG_B } from "./helpers/tenant";
 import type { SidebarBadges } from "@shared/badges";
 import type { HandoffView } from "@shared/handoffs";
+import type { LinkView } from "@shared/links";
 
 // GET /badges is the sidebar's counts in one batch, standing in for the seven lists the boot used to
 // fetch only to count. Every count must equal the length of the list it stands for — on rows that
@@ -61,7 +62,17 @@ async function seedEverything(): Promise<void> {
   for (const [status, at] of [["running", T], ["running", old], ["done", T]] as const)
     await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES ('org_saplinglearn', 'engineering', 'h.zip', 'andres', ?, ?, ?)`, at, at, status);
   await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (?, 'engineering', 'h.zip', 'x', ?, ?, 'running')`, ORG_B, T, T);
+  // Links: a request sent to me (any case) counts; a draft, an open link, a declined one, one I sent and one
+  // sent to someone else do not.
+  const link = (state: string, requester: string, recipient: string, orgId = "org_saplinglearn") =>
+    run(env.DB, `INSERT INTO agent_links (org_id, state, topic_kind, topic_ref, reason, requester, recipient, created_at, expires_at)
+                 VALUES (?, ?, 'person', ?, 'r', ?, ?, ?, '2099-01-01T00:00:00Z')`, orgId, state, recipient, requester, recipient, T);
+  for (const [state, requester, recipient] of [
+    ["requested", "meilin", "andres"], ["requested", "meilin", "ANDRES"], ["draft", "meilin", "andres"], ["open", "meilin", "andres"],
+    ["declined", "meilin", "andres"], ["requested", "andres", "meilin"], ["requested", "AndresL230", "meilin"],
+  ] as const) await link(state, requester, recipient);
   // Another org's rows never count here.
+  await link("requested", "x", "andres", ORG_B);
   await run(env.DB, `INSERT INTO adrs (org_id, title, context, decision, rationale, status, confidence, created_at, created_by) VALUES (?, 'B', 'c', 'd', 'r', 'draft', 'high', ?, 'x')`, ORG_B, T);
   await run(env.DB, `INSERT INTO needs_triage (org_id, raw, reason, created_at) VALUES (?, '{}', 'b', ?)`, ORG_B, T);
   await run(env.DB, `INSERT INTO handoffs (org_id, sender, recipient, body, created_at, expires_at) VALUES (?, 'x', 'andres', 'b', ?, '2099-01-01T00:00:00Z')`, ORG_B, T);
@@ -82,6 +93,7 @@ describe("GET /badges", () => {
     const handoffs = (await json<{ handoffs: HandoffView[] }>("/api/handoffs?box=mine", cookie)).handoffs;
     const prompts = (await json<{ prompts: { status: string }[] }>("/api/prompts", cookie)).prompts;
     const imports = (await json<{ running: number }>("/api/imports", cookie)).running;
+    const links = (await json<{ links: LinkView[] }>("/api/links?box=waiting", cookie)).links;
 
     expect(badges).toEqual({
       proposals: proposals.length,
@@ -91,12 +103,37 @@ describe("GET /badges", () => {
       tickets,
       // the web's handoffsForMe: pending, addressed to me in any case — `anyone` is not me
       handoffs: handoffs.filter((h) => h.status === "pending" && h.recipient.toLowerCase() === "andres").length,
+      // link requests waiting for me — the web adds them to the Relay badge; `handoffs` stays handoffs only
+      links: links.length,
       prompts: prompts.filter((p) => p.status === "staged").length,
       imports,
     });
     // …and the seed above is not vacuous: each count is the one it was built to be.
     expect((proposals as { slug: string; version: number }[]).filter((p) => p.slug === "deploys").map((p) => p.version)).toEqual([3]);
-    expect(badges).toEqual({ proposals: 2, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, prompts: 1, imports: 1 });
+    expect(badges).toEqual({ proposals: 2, decisions: 2, unplaced: 1, logins: 1, tickets: 1, handoffs: 2, links: 2, prompts: 1, imports: 1 });
   });
 
+  it("a failed read degrades: the badges and the waiting list are a 503 { error }, never a 500", async () => {
+    const cookie = await cookieFor("andres");
+    // Sessions resolve first; only the links statements hit the broken binding.
+    const realPrepare = env.DB.prepare.bind(env.DB);
+    const DB = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === "prepare") {
+          return (sql: string) => {
+            if (/FROM agent_links/.test(sql)) throw new Error("D1 is down");
+            return realPrepare(sql);
+          };
+        }
+        const v = Reflect.get(target, prop);
+        return typeof v === "function" ? v.bind(target) : v;
+      },
+    });
+    const badges = await app.request("/badges", { headers: { cookie } }, { ...env, DB });
+    expect(badges.status).toBe(503);
+    expect(await badges.json()).toEqual({ error: "badges unavailable" });
+    const waiting = await app.request("/api/links?box=waiting", { headers: { cookie } }, { ...env, DB });
+    expect(waiting.status).toBe(503);
+    expect(await waiting.json()).toEqual({ error: "links unavailable", degraded: true });
+  });
 });

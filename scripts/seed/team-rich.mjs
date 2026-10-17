@@ -133,6 +133,9 @@ export function deleteStatements() {
     `DELETE FROM sprint_progress WHERE org_id = ${O} AND sprint_id ${BLOCK}`,
     `DELETE FROM sprints WHERE org_id = ${O} AND id ${BLOCK}`,
     `DELETE FROM handoffs WHERE org_id = ${O} AND id ${BLOCK}`,
+    // agent links (0078): the notes first — they reference their link by (org_id, number)
+    `DELETE FROM agent_link_notes WHERE org_id = ${O} AND id ${BLOCK}`,
+    `DELETE FROM agent_links WHERE org_id = ${O} AND id ${BLOCK}`,
     // knowledge
     `DELETE FROM entry_tags WHERE org_id = ${O} AND ((entry_type = 'feed' AND CAST(entry_id AS INTEGER) ${BLOCK}) OR (entry_type = 'doc' AND entry_id IN ${inList(DOC_SLUGS)}) OR (entry_type = 'adr' AND CAST(entry_id AS INTEGER) BETWEEN 7 AND 10) OR tag IN (SELECT name FROM org_tags WHERE org_id = ${O} AND id ${BLOCK}))`,
     `DELETE FROM feed WHERE org_id = ${O} AND id ${BLOCK}`,
@@ -233,6 +236,40 @@ function workStatements(c) {
     }));
   }
   s.push(`INSERT INTO org_counters (org_id, name, value) VALUES (${q(ORG)}, 'handoff', (SELECT COALESCE(MAX(number), 0) FROM handoffs WHERE org_id = ${q(ORG)})) ON CONFLICT(org_id, name) DO UPDATE SET value = MAX(org_counters.value, excluded.value)`);
+
+  // Agent links (0078_agent_links), ids 7001–7003 (numbers 1–3): Jose's coding session linked with yours about a PR
+  // (open, both sides joined, two notes), a request from Luke waiting for you, and one you closed with Mei.
+  const open = c.days(0.2), seen = c.days(0.02);
+  const link = (n, row) => insert("agent_links", {
+    id: 7000 + n, org_id: ORG, number: n, repo: null, requester_kind: null, requester_agent_session: null, requester_branch: null,
+    recipient_kind: null, recipient_agent_session: null, recipient_branch: null, sent_at: null, decided_at: null, closed_at: null,
+    closed_by: null, close_reason: null, requester_seen_at: null, recipient_seen_at: null, ...row,
+  });
+  s.push(link(1, {
+    state: "open", repo: REPO, topic_kind: "pr", topic_ref: "231", reason: "Both of us are changing the mastery query this week.",
+    requester: JOSE, requester_kind: "code", requester_agent_session: "seed-session-jose", requester_branch: "feat/mastery-api",
+    recipient: ME, recipient_kind: "code", recipient_agent_session: "seed-session-andres", recipient_branch: "feat/stream-export",
+    created_at: c.days(0.25), sent_at: c.days(0.24), decided_at: open, expires_at: new Date(Date.parse(open) + 7 * DAY).toISOString(),
+    requester_seen_at: seen, recipient_seen_at: seen,
+  }));
+  s.push(link(2, {
+    state: "requested", topic_kind: "person", topic_ref: ME, reason: "My OCR queue work touches your export job; worth a line while we both land.",
+    requester: LUKE, recipient: ME, created_at: c.days(0.1), sent_at: c.days(0.1), expires_at: new Date(Date.parse(c.days(0.1)) + DAY).toISOString(),
+  }));
+  s.push(link(3, {
+    state: "closed", topic_kind: "person", topic_ref: MEI, reason: "Rate limit and the class-code lookup.",
+    requester: ME, recipient: MEI, created_at: c.days(3), sent_at: c.days(3), decided_at: c.days(2.9), closed_at: c.days(2.5),
+    closed_by: ME, close_reason: "Both merged.", expires_at: new Date(Date.parse(c.days(2.9)) + 7 * DAY).toISOString(),
+  }));
+  const linkNotes = [
+    [1, 1, "requester", JOSE, "agent", "seed-session-jose", "Renaming mastery_score to score in the API response; merging tonight.", 0.15, 0.1],
+    [2, 1, "recipient", ME, "agent", "seed-session-andres", "Noted. The topic grid reads `score` from tomorrow.", 0.05, null],
+    [3, 3, "requester", ME, "person", null, "Rate limit is in; the lookup can use it.", 2.6, 2.6],
+  ];
+  for (const [id, n, side, author, kind, session, body, d, delivered] of linkNotes) {
+    s.push(insert("agent_link_notes", { id: 7000 + id, org_id: ORG, link_number: n, side, author, author_kind: kind, author_agent_session: session, body, created_at: c.days(d), delivered_at: delivered == null ? null : c.days(delivered) }));
+  }
+  s.push(`INSERT INTO org_counters (org_id, name, value) VALUES (${q(ORG)}, 'link', (SELECT COALESCE(MAX(number), 0) FROM agent_links WHERE org_id = ${q(ORG)})) ON CONFLICT(org_id, name) DO UPDATE SET value = MAX(org_counters.value, excluded.value)`);
   return s;
 }
 

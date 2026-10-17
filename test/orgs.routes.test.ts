@@ -138,7 +138,7 @@ describe("POST /api/orgs", () => {
       .toEqual({ send_hour: 8, timezone: "America/New_York", from_address: "Trov <hello@trov.dev>" });
     expect((await rows<{ kind: string }>(`SELECT kind FROM notification_policy WHERE org_id = ? ORDER BY kind`, id)).map((r) => r.kind))
       .toEqual(REGISTRY.map((k) => k.id).sort());
-    expect(await rows(`SELECT name, value FROM org_counters WHERE org_id = ? ORDER BY name`, id)).toEqual([{ name: "handoff", value: 0 }, { name: "ticket", value: 0 }]);
+    expect(await rows(`SELECT name, value FROM org_counters WHERE org_id = ? ORDER BY name`, id)).toEqual([{ name: "handoff", value: 0 }, { name: "link", value: 0 }, { name: "ticket", value: 0 }]);
     // …so the new org's first ticket is #1, whatever SaplingLearn's counter says.
     await exec(`INSERT INTO tickets (org_id, title, requester, created_at, updated_at) VALUES (?, 'first', 'founder', '2026-10-06T00:00:00Z', '2026-10-06T00:00:00Z')`, id);
     expect(await one(`SELECT number FROM tickets WHERE org_id = ?`, id)).toEqual({ number: 1 });

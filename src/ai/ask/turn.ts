@@ -30,6 +30,7 @@ import { SprintError } from "../../tools/sprints";
 import { ArtifactError } from "../../tools/artifacts";
 import { HandoffError } from "../../tools/handoffs";
 import { PromptError } from "../../tools/prompts";
+import { LinkError } from "../../tools/links";
 import { PersonError } from "../../auth/persons";
 import { PlanFeatureError, PlanLimitError } from "../../plans/state";
 import { ChartError } from "./charts";
@@ -95,7 +96,7 @@ export interface TurnResult {
 export function errorBody(err: unknown): { error: string; code?: string } {
   const known = err instanceof TicketError || err instanceof SprintError || err instanceof ArtifactError || err instanceof HandoffError
     || err instanceof PromptError || err instanceof PersonError || err instanceof PlanLimitError || err instanceof PlanFeatureError
-    || err instanceof ChartError || err instanceof ChangedSince || err instanceof GithubToolError;
+    || err instanceof ChartError || err instanceof ChangedSince || err instanceof GithubToolError || err instanceof LinkError;
   if (known) return { error: (err as Error).message, code: (err as { code?: string }).code };
   // Anything else (a D1 error, a bug) says nothing about its insides.
   console.error("ask tool", err instanceof Error ? err.name : "error");

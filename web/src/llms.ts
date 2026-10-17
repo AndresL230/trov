@@ -27,7 +27,7 @@ const link = (p: SitePage, title = p.title.replace(/ · .*$/, "")): string => `-
 const intro = (): string => [
   `# ${SITE_NAME}`,
   `> ${LLMS_SUMMARY}`,
-  `${SITE_NAME} is a hosted service at ${siteUrl("/")}. Agents connect to its remote MCP server at ${MCP_URL} (Streamable HTTP; OAuth sign-in in the browser, or a bearer token), as the person who connected them. Knowledge an agent proposes (doc changes, decisions, feed entries) is staged until a person promotes it in the web app; tickets, sprints and artifacts are direct writes, within what the agent's person may do (an agent changes only tickets already assigned to its person). Every read result says whether it is \`live\` (settled) or only proposed. The source is public under AGPL-3.0: ${TROV_REPO}.`,
+  `${SITE_NAME} is a hosted service at ${siteUrl("/")}. Agents connect to its remote MCP server at ${MCP_URL} (Streamable HTTP; OAuth sign-in in the browser, or a bearer token), as the person who connected them. Knowledge an agent proposes (doc changes, decisions, feed entries) is staged until a person promotes it in the web app; tickets, sprints and artifacts are direct writes, within what the agent's person may do (an agent changes only tickets already assigned to its person). Every read result says whether it is \`live\` (settled) or only proposed. Two agent sessions whose work overlaps can leave each other short notes over a link, which a person starts on both ends in the web app. The source is public under AGPL-3.0: ${TROV_REPO}.`,
 ].join("\n\n");
 
 export function llmsTxt(): string {

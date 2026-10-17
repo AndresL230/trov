@@ -156,7 +156,7 @@ describe("every other scenario loads on its own", () => {
 
 describe("the seeds never reach a remote database", () => {
   const SOURCES = import.meta.glob("../scripts/{seed-dev.mjs,seed/*.mjs,dev/*.mjs}", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-  const CLIS = ["../scripts/seed-dev.mjs", "../scripts/seed/team-rich.mjs", "../scripts/seed/ai-showcase.mjs", "../scripts/seed/repo-setups.mjs", "../scripts/dev/ensure-seeded.mjs", "../scripts/dev/as.mjs"];
+  const CLIS = ["../scripts/seed-dev.mjs", "../scripts/seed/team-rich.mjs", "../scripts/seed/ai-showcase.mjs", "../scripts/seed/repo-setups.mjs", "../scripts/seed/agent-links.mjs", "../scripts/dev/ensure-seeded.mjs", "../scripts/dev/as.mjs"];
 
   it("each seed CLI refuses --remote before its first wrangler call", () => {
     for (const path of CLIS) {

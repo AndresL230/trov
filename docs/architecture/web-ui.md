@@ -20,7 +20,7 @@ Platform, personal Settings (its name, handle and digest-address fields), the Ar
 (`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
 the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
 the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
-wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -645,7 +645,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
 
-The sidebar's counts (Review, Unplaced, Tickets, Handoffs, Prompts, and the admin's unmatched logins on the
+The sidebar's counts (Review, Unplaced, Tickets, Relay, Prompts, and the admin's unmatched logins on the
 switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
 WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
 `enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
