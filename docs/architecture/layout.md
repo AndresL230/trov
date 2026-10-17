@@ -243,6 +243,10 @@
   Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
+  Then `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a pending handoff whose
+  prompt is PUT to the artifact upload route, created only when its bytes land; hash-only, 5 minutes; additive —
+  `handoffs-prompts.md`]. `0076`–`0079` were left to the PRs in flight beside it (Ask sharing, the Docs Library,
+  agent links); a gap in the numbers is harmless — D1 applies every file it has not applied, by name.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,

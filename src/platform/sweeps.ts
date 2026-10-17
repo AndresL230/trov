@@ -19,6 +19,14 @@ export async function expireDueHandoffs(p: PlatformContext, nowMs: number): Prom
   return res.meta.changes ?? 0;
 }
 
+/** Handoff upload tokens (0080_handoff_upload_tokens) whose window has closed, in any org — used or not: a
+ *  token holds the pending handoff's body and context, so none outlives its 5 minutes by more than a tick.
+ *  A used token is kept until then, so a repeated PUT within the window still answers 410. */
+export async function pruneHandoffUploadTokens(p: PlatformContext, nowMs: number): Promise<number> {
+  const res = await run(p, `DELETE FROM handoff_upload_tokens WHERE expires_at < ?`, new Date(nowMs).toISOString());
+  return res.meta.changes ?? 0;
+}
+
 /** Sync GitHub run records (0046_sync_runs) older than `SYNC_RUN_RETENTION_DAYS`, in every org — the
  *  daily cron. A run still in progress is far younger than the bound. Returns how many were deleted. */
 export async function pruneSyncRuns(p: PlatformContext, now: number): Promise<number> {

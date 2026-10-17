@@ -64,6 +64,7 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/auth/oauth.ts", fn: "pruneOAuth", tables: ["oauth_grants", "oauth_codes"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "pruneRepoCapture", tables: ["repo_events", "repo_metrics", "hosting_deploys", "commit_paths", "pr_files", "pr_file_reads"], why: "retention sweep, cross-org and write-only" },
   { file: "src/platform/sweeps.ts", fn: "expireDueHandoffs", tables: ["handoffs"], why: "retention sweep, cross-org and write-only (§4.4)" },
+  { file: "src/platform/sweeps.ts", fn: "pruneHandoffUploadTokens", tables: ["handoff_upload_tokens"], why: "retention sweep, cross-org and write-only: handoff upload tokens past their 5 minutes" },
   { file: "src/platform/sweeps.ts", fn: "pruneSyncRuns", tables: ["sync_runs"], why: "retention sweep, cross-org and write-only: Sync GitHub run records past 90 days" },
   // Bearer credentials are looked up by HASH before any org is known: the row is what names the
   // (person, org), and src/data/bearer.ts then checks that membership live (§7.1). Each lookup is listed
@@ -92,7 +93,7 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/auth/oauth.ts", fn: "revokeGrant", tables: ["oauth_grants"], why: "a person revokes their OWN connection — by id AND person — whichever org it is into" },
   // The upload PUT has no session: its single-use token is looked up by hash to learn its org, and
   // everything after runs as that org's system tenant.
-  { file: "src/artifacts/upload.ts", fn: "uploadTokenOrg", tables: ["doc_image_upload_tokens", "artifact_upload_tokens"], why: "upload-token lookup by hash, returning only its org_id" },
+  { file: "src/artifacts/upload.ts", fn: "uploadTokenOrg", tables: ["doc_image_upload_tokens", "handoff_upload_tokens", "artifact_upload_tokens"], why: "upload-token lookup by hash, returning only its org_id" },
   // The superadmin (§5.4): the usage page counts rows per org — counts only, never content — and the
   // audit page merges both trails (`org_admin_audit` + the secret trail). A secret audit row names the
   // action, the kind and the actor, never a value.
@@ -114,7 +115,7 @@ const PLATFORM_ALLOW: Allow[] = [
   // credentials, connections, digests and e-mail preferences go wherever they are — keyed by the person, never by an org.
   { file: "src/deletion/person.ts", fn: "personStmts", tables: ["oauth_grants", "oauth_codes", "oauth_grant_orgs", "mcp_tokens", "notification_outbox_bodies", "notification_outbox", "notification_prefs", "notification_person_prefs", "org_login_map", "feed", "feed_fts", "ai_dirty", "ai_sessions", "person_brief",
     "chat_actions", "chat_artifacts", "chat_messages", "chat_threads", "person_ask_settings",
-    "artifact_upload_tokens", "artifact_links", "artifact_versions", "artifacts_fts", "artifact_pages"],
+    "artifact_upload_tokens", "artifact_links", "artifact_versions", "artifacts_fts", "artifact_pages", "handoff_upload_tokens"],
     why: "an account's deletion removes the person's OWN rows in every org, in one batch — by person, never reading an org's content; the handoff sentence Trov generated with their handle names the tombstone; the AI router's scopes keyed on them (their brief, their GitHub sessions) go; their Ask Trov threads (0066_ask) are theirs alone, and so are their PRIVATE Ask attachments (the owner's ruling)" },
   { file: "src/deletion/person.ts", fn: "ASK_ATTACHMENTS_OF", tables: ["artifact_pages", "chat_artifacts", "chat_threads"],
     why: "the subquery naming the person's own PRIVATE Ask attachments in every org (their threads' attachment links, pages they authored, still private) — ids only" },

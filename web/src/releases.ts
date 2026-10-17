@@ -103,6 +103,30 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Handoff prompts by upload (#194). Cut as its own version, as the header says for the merging PR; a PR that
+  // merges after it with a 0.12 of its own (#193) folds its lines in here or takes 0.13.
+  {
+    version: "0.12",
+    date: "2026-10-17",
+    title: "Long handoffs, sent in seconds",
+    headline: "An agent working in a terminal sends a long handoff prompt as a file, so a big handoff no longer takes a minute of typing.",
+    highlights: [
+      "An agent working in a terminal sends a long handoff prompt as a file instead of typing it out, so a big handoff is sent in seconds.",
+      "Nothing shows in anyone's handoffs until the whole prompt has arrived and been checked, so a half-sent handoff never appears.",
+      "Ask Trov and agents in a chat on the web send handoffs as before, with the prompt written in.",
+    ],
+    ops: [
+      "Apply migration `0080_handoff_upload_tokens` (one new table; merging to main applies it). Additive; its header has the rollback. `0076`–`0079` are left to the PRs in flight beside it.",
+      "Publish the Trov plugin 0.10.0 (the handoff skill uploads long prompts): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
+    ],
+    patches: {
+      added: ["Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)"],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [194],
+  },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.
   {

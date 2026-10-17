@@ -13,7 +13,7 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the ten skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.9.0");
+    expect(plugin.version).toBe("0.10.0");
   });
 
   it("every skill that calls Trov derives `repo` from the git remote, passes it on every call, and may ask where it is", () => {
@@ -27,6 +27,13 @@ describe("the Trov plugin's skills and the organization a call acts in", () => {
       for (const code of ["repo_required", "not_connected", "ambiguous_org", "org_unavailable"]) expect(text, `${name}: ${code}`).toContain(code);
       expect(text, name).toContain("never pass a different repository to get an answer");
     }
+  });
+
+  it("handoff uploads a long prompt when it has a shell, sends it inline without one, and reports #N only after the PUT", () => {
+    const h = SKILLS.handoff;
+    for (const said of ["prompt: { title, sha256, size_bytes }", "prompt: { title, body }", "about 2 KB", "no shell", "curl -sS -X PUT --data-binary @"]) expect(h, said).toContain(said);
+    expect(h).toMatch(/only once the PUT\s+has answered/);
+    for (const tool of ["Bash(shasum -a 256:*)", "Bash(wc -c:*)", "Bash(curl -sS -X PUT:*)"]) expect(allowed(h)).toContain(tool);
   });
 
   it("load-context opens by asking where it is and saying so; nothing tells a person to add the server twice", () => {

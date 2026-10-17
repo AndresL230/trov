@@ -1,7 +1,9 @@
 // The binary upload PUT (issue #52 · Track B; spec:
 // docs/superpowers/specs/2026-09-24-artifacts-implementation.md):
 // `PUT /api/artifacts/upload/:token` — also the PUT for a doc image (MCP upload_asset,
-// destination "doc"; src/tools/doc-images.ts), whose tokens are tried first. NO session — the single-use token minted by
+// destination "doc"; src/tools/doc-images.ts), whose tokens are tried first, and for a handoff's
+// uploaded prompt (MCP send_handoff's upload form; src/tools/handoffs.ts), tried next — the PUT is what
+// creates that handoff, answering `{ id, url }`. NO session — the single-use token minted by
 // `POST /api/artifacts/upload-url` (or the MCP tools) IS the auth, so src/index.ts
 // dispatches this BEFORE the Hono app and its `sessionGate`, like `/u/`.
 //
@@ -15,6 +17,7 @@
 import { ARTIFACT_BINARY_CAP } from "@shared/artifacts";
 import { consumeUploadToken } from "../tools/artifacts";
 import { consumeDocImageToken } from "../tools/doc-images";
+import { consumeHandoffUploadToken, HandoffError, HANDOFF_ERROR_STATUS } from "../tools/handoffs";
 import type { Env } from "../env";
 import { sha256Hex } from "../auth/crypto";
 import { platform, systemTenant } from "../data/context";
@@ -49,8 +52,10 @@ async function uploadTokenOrg(p: PlatformContext, token: string): Promise<string
     `SELECT t.org_id FROM (
        SELECT org_id FROM doc_image_upload_tokens WHERE token_hash = ?
        UNION ALL
+       SELECT org_id FROM handoff_upload_tokens WHERE token_hash = ?
+       UNION ALL
        SELECT org_id FROM artifact_upload_tokens WHERE token_hash = ?
-     ) t JOIN orgs o ON o.id = t.org_id AND o.suspended_at IS NULL LIMIT 1`, hash, hash);
+     ) t JOIN orgs o ON o.id = t.org_id AND o.suspended_at IS NULL LIMIT 1`, hash, hash, hash);
   return row?.org_id ?? null;
 }
 
@@ -70,13 +75,20 @@ export async function handleArtifactUpload(request: Request, env: Env): Promise<
   if (!orgId) return new Response(NOT_FOUND_BODY, { status: 404, headers: { "content-type": "application/json; charset=UTF-8" } });
   const ctx = systemTenant(p, orgId, "system");
   try {
-    // ONE upload route for every asset: a doc-image token (MCP upload_asset with
-    // destination "doc") is looked up first; any other token is an artifact's.
+    // ONE upload route for every upload: a doc-image token (MCP upload_asset with
+    // destination "doc") is looked up first, then a handoff's prompt (MCP send_handoff's
+    // upload form); any other token is an artifact's.
     const image = await consumeDocImageToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
     if (image) return jsonResponse(image, 200);
+    const sent = await consumeHandoffUploadToken(ctx, token, request.body, len);
+    if (sent) return jsonResponse({ id: sent.handoff.id, url: sent.url, ...(sent.replayed ? { replayed: true } : {}) }, 200);
     const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
     return jsonResponse(result, 200);
   } catch (e) {
+    if (e instanceof HandoffError) {
+      if (e.code === "not_found") return new Response(NOT_FOUND_BODY, { status: 404, headers: { "content-type": "application/json; charset=UTF-8" } });
+      return jsonResponse({ error: e.code, message: e.message }, HANDOFF_ERROR_STATUS[e.code]);
+    }
     const res = artifactErrorResponse(e);
     if (res) return res;
     console.error("artifact upload failed", e instanceof Error ? e.message : String(e));
