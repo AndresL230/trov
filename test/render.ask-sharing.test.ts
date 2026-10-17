@@ -205,7 +205,7 @@ describe("shared with a person by name: Can continue gives them the composer, an
     expect(mine).toContain(`data-act="askCvSend" data-arg="What next?"`);
     // Two people asked: each question says who — "You", or the other's picture and name (a clickable person).
     expect(part(html, "q:m3")).toContain(`<div class="ask-q-who">You</div>`);
-    expect(part(html, "q:m1")).toMatch(/<div class="ask-q-who"><button data-act="openPerson" data-arg="meilin"/);
+    expect(part(html, "q:m1")).toContain(`<div class="ask-q-who">Mei Lin</div>`);
     // Their own file opens; the owner's stays closed.
     expect(part(html, "q:m3")).toMatch(/data-act="askCvOpen" data-arg="askcv:page:m3:upload:6"/);
     expect(part(html, "q:m1")).toContain("Private to Mei Lin");
@@ -261,8 +261,15 @@ describe("shared with a person by name: Can continue gives them the composer, an
     expect(part(html, "a:m4")).toContain("Waiting for Deleted user to confirm it.");
   });
 
-  it("a thread with one asker shows no who-asked line", () => {
-    expect(conversationView(askView(opened({ shared: true })))).not.toContain("ask-q-who");
+  it("who asked shows under each question in any shared conversation — never in one only the owner can see", () => {
+    expect(conversationView(askView(opened({ shared: false })))).not.toContain("ask-q-who");
+    // The owner's, once shared (with the org or by name): their own questions say You, under the bubble.
+    for (const t of [{ shared: true }, { shared: false, people: [{ handle: "meilin", access: "read" as const }] }]) {
+      const html = conversationView(askView(opened(t)));
+      expect(html).toMatch(/<div class="ask-q-bubble">[^<]*<\/div>(<div class="ask-q-att">[\s\S]*?<\/div>)?<div class="ask-q-who">You<\/div>/);
+    }
+    // A reader's: the owner's questions carry the owner's name.
+    expect(conversationView(askView(opened(VIEWER)))).toContain(`<div class="ask-q-who">Mei Lin</div>`);
   });
 });
 
@@ -393,7 +400,7 @@ describe("the thread list: Share…, Stop sharing, Shared with you and Organizat
     // Reopened, it shows what is shared; Remove takes the person off, and Save sends the shorter list.
     threadsPart.act!(ctx, "askThShare", String(t.id), null);
     expect(s.ask.threadShare).toMatchObject({ org: true, people: [{ handle: "meilin", access: "continue" }] });
-    threadsPart.act!(ctx, "askThSharePerson", "meilin", "remove");
+    threadsPart.act!(ctx, "askThShareRemove", "meilin", null);
     threadsPart.act!(ctx, "askThShareOrg", `${t.id}|off`, null);
     threadsPart.act!(ctx, "askThShareGo", String(t.id), null);
     await new Promise((r) => setTimeout(r, 0));

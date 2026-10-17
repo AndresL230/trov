@@ -359,8 +359,9 @@ lets other people of the SAME org reach it, two ways at once or either:
   composer, a note above it ("<owner> shared this with you. You can continue it: your questions are asked as you."),
   its mode, Auto and draft local (never PATCHed). On someone else's turn — for every reader, the owner included — no
   Edit, Regenerate, Try again, Save as artifact or Wrong?; a pending card is a line ("Waiting for <asker> to confirm
-  it."), a done one has no Undo; their file is a chip that is not a control ("· Private", its tooltip whose). Once a
-  thread has more than one asker, each question says who asked it ("You", or a clickable person). Sending in someone
+  it."), a done one has no Undo; their file is a chip that is not a control ("· Private", its tooltip whose). In any
+  shared thread (the owner's once shared, a reader's or collaborator's always), a small line under each question says
+  who asked it: "You", or the asker's name ("Deleted user" for a gone account). Sending in someone
   else's thread reloads the shared lists, never the person's own. Delete's confirmation names who loses it ("It is
   shared with <org>, so it goes for everyone there too." / "… with Mei Lin, so it goes for them too."). Tests: `test/render.ask-sharing.test.ts`.
 

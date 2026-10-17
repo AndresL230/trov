@@ -244,14 +244,13 @@ export function threadDeleteModal(ui: Pick<AskUi, "threadDelete" | "closing">, o
 const ACCESS_LABEL: Record<AskShareAccess, string> = { read: "Can read", continue: "Can continue" };
 const domKey = (h: string): string => h.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
 
-/** A person's access in the dialog: Can read, Can continue, or Remove (which takes them off the list). */
+/** A person's access in the dialog: Can read or Can continue (the × beside it takes them off the list). */
 const personDropdown = (look: Pick<RefLook, "persons">, p: AskSharePerson, busy: boolean): DropdownProps => ({
   id: `ask-share-p-${domKey(p.handle)}`, act: "askThSharePerson", arg: p.handle, value: p.access, size: "sm", disabled: busy,
   ariaLabel: `What ${personName(look, p.handle)} can do`,
   options: [
     { value: "read", label: ACCESS_LABEL.read, hint: "Opens it and reads it" },
     { value: "continue", label: ACCESS_LABEL.continue, hint: "Also asks follow-ups in it, as themselves" },
-    { value: "remove", label: "Remove" },
   ],
 });
 
@@ -297,6 +296,7 @@ export function threadShareModal(app: AppState): string {
   const people = d.people.map((p) => `<div class="ask-share-row" data-morph-key="sp:${attr(domKey(p.handle))}">
       <span class="ask-share-who">${refAvatar(v.look, p.handle, 20)}<span class="ask-share-n">${esc(personName(v.look, p.handle))}</span></span>
       ${dropdown(personDropdown(v.look, p, d.busy), app.dd)}
+      <button type="button" class="ask-iconbtn ask-share-x" data-act="askThShareRemove" data-arg="${attr(p.handle)}"${off} aria-label="${attr(`Remove ${personName(v.look, p.handle)}`)}" data-tip="Remove">${askIcon("close", 12, null, 2.4)}</button>
     </div>`).join("");
   const peoplePane = `<div class="ask-share-sec" data-morph-key="sp-people" data-morph-list>
       ${people || `<p class="ask-share-empty" data-morph-key="sp-none">${esc("Not shared with anyone by name yet.")}</p>`}
@@ -312,7 +312,7 @@ export function threadShareModal(app: AppState): string {
         <div class="ask-share-tabs">${segmented({ id: "ask-share-tab", ariaLabel: "Share with", value: d.tab, act: "askThShareTab", size: "sm", fill: true, inertOn: true,
           options: [{ value: "org", label: "Share with org", arg: `${arg}|org` },
             { value: "people", label: "Share with a teammate", arg: `${arg}|people` }] })}</div>
-        ${d.tab === "org" ? orgPane : peoplePane}
+        <div class="ask-share-body">${d.tab === "org" ? orgPane : peoplePane}</div>
         <p id="ask-th-share-d" class="ask-share-note ask-share-files">${esc("Files stay private to whoever attached them. Only you can rename, share or delete it.")}</p>
         ${err}
         <div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px">
@@ -448,6 +448,15 @@ export const threadsPart: AskPart = {
         return;
       }
       // A person's dropdown: Can read / Can continue, or Remove.
+      // The × beside a person: off the list (nothing is written until Save).
+      case "askThShareRemove": {
+        const d = ctx.ui.threadShare;
+        if (!d || d.busy || !arg) return;
+        ctx.ui.threadShare = { ...d, people: d.people.filter((p) => !sameHandle(p.handle, arg)), error: null };
+        focusShare = true;
+        ctx.paint();
+        return;
+      }
       case "askThSharePerson": {
         const d = ctx.ui.threadShare;
         if (!d || d.busy || !arg) return;
