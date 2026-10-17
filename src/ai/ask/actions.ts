@@ -149,6 +149,8 @@ const binaryShape = {
   size_bytes: z.number().int().min(1).optional(), sha256: z.string().optional(), content_type: z.string().max(255).optional(),
   filename: z.string().max(255).optional(), content_base64: z.string().optional(),
 };
+/** Why Ask refuses send_handoff's upload form. */
+export const ASK_NO_PROMPT_UPLOAD = "Ask can't upload a file: send the prompt inline as { title, body }, without sha256 or size_bytes.";
 const HandoffIn = z.object({
   body: z.string().min(1),
   recipient: z.string().optional(),
@@ -156,7 +158,9 @@ const HandoffIn = z.object({
     repo: z.string().optional(), branch: z.string().optional(), task: z.string().optional(),
     done: z.array(z.string()).optional(), next: z.array(z.string()).optional(), files: z.array(z.string()).optional(),
   }).optional(),
-  prompt: z.object({ title: z.string(), body: z.string() }).optional(),
+  // MCP also takes an UPLOAD form ({ title, sha256, size_bytes }, then a PUT from a shell). Ask has no shell, so
+  // its card only ever carries the prompt inline: the upload form's keys are refused, not dropped.
+  prompt: z.strictObject({ title: z.string(), body: z.string() }, ASK_NO_PROMPT_UPLOAD).optional(),
 });
 const DocProposalIn = z.object({
   slug: z.string(), section: z.string(), title: z.string().optional(), body: z.string(), change_summary: z.string(),

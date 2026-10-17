@@ -219,14 +219,14 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 
 | Where | Why |
 |---|---|
-| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
+| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneHandoffUploadTokens`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`, `org_github_installation_repos`, `org_hosting_connections`) | the cron's unit lists, the webhook's hook lookup, the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to), and a hosting provider's installation → org lookup (`connectionsForExternalId`: the uninstall notice, and the connect callback's one-org-per-installation check) — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
 | `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0057): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
 | `src/auth/oauth.ts` `issueRepoAuthorization` | a grant that follows the repository is the person's and no org's: written with `org_id` '' |
-| `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
+| `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash (doc-image, handoff and artifact tokens), returning only its `org_id` |
 | `src/platform/usage.ts` (whole file); `src/platform/repo.ts` `listAudit` (`org_audit`) | the superadmin's cross-org counts and merged audit trail — no content, no secret |
 | `src/orgs/repo.ts` `removeMember` | ends the removed person's credentials' reach into that org, in the same batch (tokens revoked, each grant's row for the org dropped, a grant left with no org revoked) |
 | `src/deletion/person.ts` `personStmts` (also interpolated), `addressesOf` | an ACCOUNT's deletion (`organizations.md` §8): the person's own tokens, connections, digests, prefs and attribution rows in every org, by person; the handoff feed line that names them; the `HANDLE_COLUMNS` rewrite to the tombstone, like a rename |

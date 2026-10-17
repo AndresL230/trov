@@ -53,6 +53,8 @@
 
 import { esc, attr, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
+import { askerOf, ownTurn } from "./ask-state";
+import { shareDropdowns } from "./ask-threads";
 import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskMsg, type AskTurn } from "./ask-stream";
 import { AskApiError } from "./ask-api";
 import { segmented } from "./segmented";
@@ -556,11 +558,13 @@ function cardDropdowns(v: AskView, vm: AskActionVm): DropdownProps[] {
 /** Every open card's dropdowns, for the root overlays: render.ts draws the open one's menu — over the Ask screen and
  *  over any page under the ⌘J panel. The props are the triggers' own. */
 export function actionDropdowns(app: AppState): DropdownProps[] {
-  const out: DropdownProps[] = [];
+  // The Share dialog's (a person's access, Add a person) ride along: one list of Ask's open dropdowns.
+  const out: DropdownProps[] = [...shareDropdowns(app)];
   for (const where of ["page", "panel"] as AskWhere[]) {
     const v: AskView = { app, ui: app.ask, where, look: { views: app.ask.refViews, persons: app.persons.data } };
     for (const m of app.ask[where].messages) {
       if (m.role !== "assistant") continue;
+      if (!ownTurn(v, m.askedBy)) continue;
       for (const vm of Object.values(m.turn.actions)) {
         if (vm.state !== "proposed" && vm.state !== "waiting") continue;
         out.push(...cardDropdowns(v, vm));
@@ -765,16 +769,27 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
     : `<span class="ask-line-t">${esc(text)}</span>`}${reason}</span>${tail}${undo}</div>`;
 }
 
+/** A card on a turn someone ELSE asked (0076 / 0077_ask_sharing): only that person decides it, so everyone else gets
+ *  the line it would become — what Trov proposed, and whom it waits for — with no field to edit, no Confirm. */
+function readerLine(v: AskView, a: AskAnswer, vms: AskActionVm[]): string {
+  const by = askerOf(v, a.askedBy);
+  const who = by ? personName(v.look, by) : "the person who asked";
+  return `<div class="ask-line is-off" data-morph-key="ln:${vms[0].id}:pending">${SHAPE.waiting()}<span class="ask-line-main"><span class="ask-line-t">${esc(`Proposed: ${lowerFirst(proposedText(vms, v.look))}`)}</span>${why(`Waiting for ${who} to confirm it.`)}</span></div>`;
+}
+
 /** One card / line for consecutive actions of one group (`shownParts`' `actions` entry). The pending ones are one
- *  card; the decided ones a line per outcome. */
+ *  card; the decided ones a line per outcome. A reader of someone else's shared conversation gets lines only. */
 export function actionGroupView(v: AskView, a: AskAnswer, ids: number[]): string {
   const vms = ids.map((id) => a.turn.actions[id]).filter((x): x is AskActionVm => !!x);
   if (!vms.length) return "";
+  // The turn's own asker decides its cards; anyone else — the thread's owner too — reads them as lines.
+  const ro = !ownTurn(v, a.askedBy);
   const pending = vms.filter((x) => x.state === "proposed" || x.state === "waiting" || x.state === "running");
   const out: string[] = [];
-  if (pending.length) out.push(cardView(v, pending));
+  if (pending.length) out.push(ro ? readerLine(v, a, pending) : cardView(v, pending));
   for (const cat of ["done", "undone", "cancelled", "expired", "failed"] as LineCat[]) {
-    const these = vms.filter((x) => catOf(x.state) === cat);
+    // A reader's lines never offer Undo: the server sends `undo: false` for them, and this says the same.
+    const these = vms.filter((x) => catOf(x.state) === cat).map((x) => (ro ? { ...x, undo: false } : x));
     if (these.length) out.push(lineView(v, these, cat));
   }
   return `<div class="ask-acts" data-ask-tween data-morph-list>${out.join("")}</div>`;

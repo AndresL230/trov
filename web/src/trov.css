@@ -3001,6 +3001,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
 .ask-crumb-sep { color:var(--fg-40); font-size:15px; }
 .ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+.ask-crumb-mark { flex:none; display:inline-flex; }
 .ask-iconbtn { display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:7px; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-iconbtn:hover { background:var(--hover); color:var(--fg); }
 .ask-iconbtn:disabled { color:var(--fg-40); opacity:.5; cursor:default; background:none; }
@@ -3052,6 +3053,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 @media (prefers-reduced-motion: reduce) {
   .ask-threads, .ask-insp-frame, .ask-insp-resize::after, .ask-th, .ask-th-more, .ask-th-at, .ask-send, .ask-chip, .ask-starters > button, .ask-th-show, .ask-th-hide { transition:none !important; }
+  .ask-share { transition:none !important; }
   .ask-insp-frame, .ask-insp-frame[data-closing], .ask-insp-body, .ask-menu, .ask-menu[data-closing], .ask-hc, .ask-hc-layer[data-closing] .ask-hc,
   .ask-panel, .ask-scrim, .ask-panel-layer[data-closing] .ask-panel, .ask-panel-layer[data-closing] .ask-scrim, .ask-drawer, .ask-drawer-scrim,
   .ask-drawer-layer[data-closing] .ask-drawer, .ask-drawer-layer[data-closing] .ask-drawer-scrim, .ask-empty, .ask-col, .ask-line, .ask-cursor, .ask-step.is-run, .ask-spin { animation:none !important; }
@@ -3113,6 +3115,10 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-th-at { flex:none; font-family:var(--label); font-size:11.5px; font-weight:400; color:var(--fg-40); transition:opacity .12s ease; }
 .ask-th-snip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; font-weight:400; line-height:1.45; color:var(--fg-55); }
 .ask-th-count { font-family:var(--label); font-size:11px; font-weight:400; color:var(--fg-40); }
+/* Sharing (0076 / 0077_ask_sharing): the owner's shared mark after a title; "Shared with you" / "Organization": the owner under the title. */
+.ask-th-mark { flex:none; display:inline-flex; }
+.ask-th-owner { display:flex; align-items:center; gap:6px; min-width:0; font-size:12px; font-weight:400; color:var(--fg-55); }
+.ask-th-owner-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Notes waiting on the thread's Trov links (agent links): a small dot before the time, its tooltip says what it means. */
 .ask-th-link { flex:none; display:inline-flex; align-items:center; }
 .ask-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:var(--fg); font-weight:600; }
@@ -3366,6 +3372,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-nf-tries { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; }
 .ask-nf-try { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border:1px solid var(--border); border-radius:9px; font-size:13px; font-weight:500; color:var(--fg-70); text-align:left; cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
 .ask-nf-try:hover { border-color:var(--border-strong); color:var(--fg); background:var(--surface); }
+.ask-nf-try.is-static, .ask-nf-try.is-static:hover { cursor:default; border-color:var(--border); color:var(--fg-55); background:none; }
 .ask-nf-card { overflow:hidden; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
 .ask-nf-head { padding:10px 14px 6px; font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
 .ask-nf-row { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; padding:9px 14px; border-top:1px solid var(--border); }
@@ -3412,6 +3419,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
    stack grow by padding (min-height); inline and side-by-side controls get an invisible 44px box centred on them. */
 [data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
 [data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-q-chip { position:relative; }
+.ask-q-chip.is-closed { cursor:default; }
 [data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-q-chip::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 /* …and a write card's Cancel / Confirm / Edit, an assignment's item and person picker, and a line's link and Undo / Open
    (actions part). */
@@ -3424,6 +3432,36 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-composer { flex:none; width:100%; box-sizing:border-box; padding:0 28px; }
 [data-phone="1"] .ask-composer, .ask-panel .ask-composer { padding:0 16px; }
 .ask-co-in { position:relative; max-width:720px; margin:0 auto; padding-bottom:14px; }
+/* A conversation someone else shared, in the composer's place: whose it is, and that only they continue it. */
+.ask-ro { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:14px 2px 0; border-top:1px solid var(--border); font-size:13px; line-height:1.5; color:var(--fg-70); }
+.ask-ro-who { display:inline-flex; min-width:0; }
+.ask-ro-t { min-width:0; }
+.ask-ro-mark { margin-left:auto; display:inline-flex; }
+[data-phone="1"] .ask-ro-mark { margin-left:0; }
+.ask-share-note { margin:0; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
+/* The Share dialog (ask-threads.ts threadShareModal; 0077_ask_people_sharing): who can open it — everyone in the org,
+   and people by name, each with what they may do — then what stays private. */
+.ask-share { width:min(460px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; box-sizing:border-box; transition:width .2s ease; }
+/* Share with a teammate opens the bigger half: the people, each with what they may do, and Add a person. */
+.ask-share[data-tab="people"] { width:min(560px, 100%); }
+.ask-share-tabs { margin-top:14px; }
+.ask-share-empty { margin:0; font-size:13px; color:var(--fg-55); }
+.ask-share-h { font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); overflow-wrap:anywhere; }
+.ask-share-sec { margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+.ask-share-label { font-size:12px; font-weight:600; color:var(--fg-55); }
+.ask-share-row { display:flex; align-items:center; gap:10px; min-height:32px; }
+.ask-share-who { flex:1; min-width:0; display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--fg); }
+.ask-share-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-share-org { flex:none; display:grid; place-items:center; width:20px; height:20px; color:var(--fg-55); }
+.ask-share-add { justify-content:flex-start; }
+.ask-share .ask-share-files { margin-top:16px; }
+.ask-share-err { margin-top:12px; font-size:12.5px; line-height:1.5; color:var(--red); }
+.cnpy-dd-v.is-placeholder { color:var(--fg-55); }
+/* Someone else's conversation the person continues: whose it is, over the box. Who asked each question, once more than
+   one person asked. A shared row the person may continue says so after the owner's name. */
+.ask-co-shared { color:var(--fg-55); flex-wrap:wrap; gap:4px 6px; }
+.ask-q-who { display:flex; justify-content:flex-end; font-size:12px; line-height:1.4; color:var(--fg-55); }
+.ask-th-can { flex:none; white-space:nowrap; color:var(--fg-40); }
 .ask-panel .ask-co-in { max-width:none; }
 .ask-co-file { display:none; }
 .ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .15s ease, box-shadow .15s ease; }
@@ -4818,11 +4856,6 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .repo-block:empty { display:none; }
 .repo-block + .repo-block:not(:empty) { border-top:1px solid var(--border); }
 .repo-block[data-repo-block="attention"] + .repo-block { border-top:0; }
-.repo-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
-.repo-link-cell { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; padding:14px 22px; text-align:left; border-left:1px solid var(--border); border-top:1px solid var(--border); transition:background .12s ease; cursor:pointer; }
-.repo-link-cell:hover { background:var(--hover); }
-.repo-link-cell:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
-@media (prefers-reduced-motion: reduce) { .repo-link-cell { transition:none; } }
 
 /* ── repo-attention (web/src/repo-attention.ts): Needs attention, first under the state slot ──────────────── */
 .repo-att { padding:14px 22px 6px; background:color-mix(in srgb, var(--accent) 4%, var(--surface)); border-bottom:1px solid var(--border); }

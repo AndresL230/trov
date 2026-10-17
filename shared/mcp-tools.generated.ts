@@ -1654,7 +1654,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "send_handoff",
-    "description": "Leave a handoff for the next session: where a task stands when you stop mid-way (context running out, switching person, ending the session). Send exactly ONE per session and tell the person its id as #N. `recipient` is a person handle, or omit it for 'anyone' (the first session to claim it gets it). Keep `body` under 300 words — its first line is the title, the rest says where things stand. ALWAYS fill `context` with the fixed shape { repo, branch, task, done[], next[], files[] }: task as one line and done/next as short items, always; in a code checkout also repo from the git remote (owner/name), branch from HEAD and files from `git diff --name-only` against main. With no checkout (a chat on the web) leave repo, branch and files out — never invent them. Long step-by-step instructions for the claiming session go in `prompt.body` (with a `prompt.title`), not in body. Pass your session id as `session` (if you have one) so a retry does not send twice. Returns { id, url }.",
+    "description": "Leave a handoff for the next session: where a task stands when you stop mid-way (context running out, switching person, ending the session). Send exactly ONE per session and tell the person its id as #N. `recipient` is a person handle, or omit it for 'anyone' (the first session to claim it gets it). Keep `body` under 300 words — its first line is the title, the rest says where things stand. ALWAYS fill `context` with the fixed shape { repo, branch, task, done[], next[], files[] }: task as one line and done/next as short items, always; in a code checkout also repo from the git remote (owner/name), branch from HEAD and files from `git diff --name-only` against main. With no checkout (a chat on the web) leave repo, branch and files out — never invent them. Long step-by-step instructions for the claiming session go in the prompt (with a `prompt.title`), not in body. Pass your session id as `session` (if you have one) so a retry does not send twice. The prompt comes in one of two forms. INLINE: `prompt: { title, body }` → { id, url }. UPLOAD (only with a shell; use it for a prompt over about 2 KB, so its text is not typed into this call): write the prompt to a file, then pass `prompt: { title, sha256, size_bytes }` — sha256 from `shasum -a 256 prompt.md`, size_bytes from `wc -c < prompt.md` (UTF-8 text, at most 32 KB) — → { upload_url, expires_at } (or { id, url, replayed: true } when this session already sent its handoff: nothing to PUT). Nothing is sent yet: PUT the exact file (single use, 5 minutes) with `curl -X PUT --data-binary @prompt.md -H 'Content-Type: text/markdown' \"<upload_url>\"`; THAT creates the handoff and answers { id, url }. Tell the person #N only after the PUT answers. A PUT whose bytes do not match is a 400 and the link stays usable until it expires; 410 = used or expired, call send_handoff again. With no shell (a chat on the web), always send the prompt inline.",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -1706,11 +1706,18 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
             },
             "body": {
               "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
             }
           },
           "required": [
-            "title",
-            "body"
+            "title"
           ]
         },
         "session": {

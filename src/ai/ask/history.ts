@@ -67,8 +67,9 @@ function actionNote(a: ChatActionRow): string {
 }
 
 /** The model's messages for the thread's EARLIER turns (everything already stored), plus the note on write
- *  cards decided since the last answer (put in front of the new message by the caller). */
-export async function buildHistory(ctx: TenantContext, thread: ChatThreadRow, rows: readonly ChatMessageRow[], nonce: string): Promise<{ messages: Anthropic.MessageParam[]; actionsNote: string | null }> {
+ *  cards decided since the last answer (put in front of the new message by the caller). `asker` is who asks NOW: in
+ *  a thread shared to continue (0077_ask_people_sharing) a question someone else asked says whose it was. */
+export async function buildHistory(ctx: TenantContext, thread: ChatThreadRow, rows: readonly ChatMessageRow[], nonce: string, asker: string = thread.handle): Promise<{ messages: Anthropic.MessageParam[]; actionsNote: string | null }> {
   const actions = await listActions(ctx, thread.id);
   const msgs: Anthropic.MessageParam[] = [];
   if (thread.summary) {
@@ -89,7 +90,9 @@ export async function buildHistory(ctx: TenantContext, thread: ChatThreadRow, ro
       const cmd = c.command ? `/${c.command} ` : "";
       // Link notes that reached the thread with this question, fenced again (the words are the other side's).
       const links = c.linkNotes?.length ? `${linkNotesText(nonce, c.linkNotes)}\n\n` : "";
-      msgs.push({ role: "user", content: [{ type: "text", text: `${pre}${links}${cmd}${c.text ?? ""}${att}`.trim() || "(empty)" }] });
+      const by = r.asked_by ?? thread.handle;
+      const who = by.toLowerCase() === asker.toLowerCase() ? "" : `(Asked by @${by}, not the person asking now.) `;
+      msgs.push({ role: "user", content: [{ type: "text", text: `${pre}${who}${links}${cmd}${c.text ?? ""}${att}`.trim() || "(empty)" }] });
     } else {
       const text = (c.text ?? "").trim() || (r.stopped ? "(The answer was stopped before it said anything.)" : "(No answer.)");
       msgs.push({ role: "assistant", content: [{ type: "text", text }] });

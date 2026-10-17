@@ -28,7 +28,7 @@ import { PR_FILES_REQUESTS, PR_FILES_SYNC_REQUESTS } from "./pr-files";
 import { describeSources } from "./scan-store";
 import { HEALTH_ON_DEMAND_BUCKET_MS, pingHealth, pollSaplingMetrics } from "./poll";
 import { getSnapshot } from "./store";
-import { expireDueHandoffs, expireDueLinks, pruneRepoCapture } from "../platform/sweeps";
+import { expireDueHandoffs, expireDueLinks, pruneHandoffUploadTokens, pruneRepoCapture } from "../platform/sweeps";
 import { listAllParts } from "../hosting/parts";
 import { type ProviderMap, hostingPollCost, pollPart, pollParts, providerPollCost } from "../hosting/poll";
 import { PROVIDERS } from "../hosting/registry";
@@ -616,6 +616,8 @@ export async function handleRepoCron(
   // …and agent links past their time, the same way (0078_agent_links: a draft 1 h, a request 24 h, an open link
   // 7 days or 12 h with neither side seen).
   await safely("link expiry", () => expireDueLinks(p, scheduledTime));
+  // And the handoff upload tokens whose 5 minutes are over (0080): each holds a pending handoff's text.
+  await safely("handoff upload tokens", () => pruneHandoffUploadTokens(p, scheduledTime));
   // Every tick too: a plan given for free until a date ends (0048_plan_gifts, src/plans/gifts.ts) — each
   // org whose gift has lapsed moves to Free, nothing deleted. One read of `orgs`, then one guarded batch
   // per lapsed org; D1 only, and almost always nothing to do. It never throws and is safe to run late.

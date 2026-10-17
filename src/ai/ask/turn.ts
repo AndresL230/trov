@@ -352,7 +352,7 @@ async function runTool(
     const waitNote = t.autoMode && t.autoAllowed ? (!canAuto ? spec.confirmOnly ?? null : !underCap ? `Auto runs up to ${ASK_AUTO_WRITES_MAX} changes per answer.` : null) : null;
     if (!auto) {
       const state = waitNote ? "waiting" : "proposed";
-      const id = await insertAction(t.ctx, { threadId: t.tool.threadId, turn: t.turn, tool: use.name, kind: spec.card, groupId, toolUseId: use.id, args, preview, state });
+      const id = await insertAction(t.ctx, { threadId: t.tool.threadId, turn: t.turn, tool: use.name, kind: spec.card, groupId, toolUseId: use.id, args, preview, state, askedBy: t.tool.handle });
       await t.emit("action", { id, groupId, tool: use.name, kind: spec.card, preview, fields, editable, note: waitNote, state });
       return {
         type: "tool_result", tool_use_id: use.id,
@@ -361,7 +361,7 @@ async function runTool(
     }
     // Auto mode: it runs now, as the person, still recorded as a chat_actions row (state `auto`).
     if (!spec.outsideCap) st.autoWrites++;
-    const id = await insertAction(t.ctx, { threadId: t.tool.threadId, turn: t.turn, tool: use.name, kind: spec.card, groupId, toolUseId: use.id, args, preview, state: "running" });
+    const id = await insertAction(t.ctx, { threadId: t.tool.threadId, turn: t.turn, tool: use.name, kind: spec.card, groupId, toolUseId: use.id, args, preview, state: "running", askedBy: t.tool.handle });
     try {
       const ran = await spec.run(t.tool, args);
       await finishAction(t.ctx, id, "auto", ran.result, ran.undo);

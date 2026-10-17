@@ -20,8 +20,9 @@
 //   • `doc` — a doc points at it: its address in a doc's body or in any version of it (a staged proposal may still be
 //     promoted; a rejected one is restorable). Docs have no link table: an address is the only way a doc refers to an
 //     artifact. (A doc IMAGE is its own copy — `doc-images/<sha>` in `doc_images` — and never depends on this object.)
-//   • `shared` — another thread links the same artifact, or someone else authored it (neither is made by Ask today;
-//     checked, not assumed).
+//   • `shared` — another thread links the same artifact (not made by Ask today; checked, not assumed), or someone else
+//     authored it: a person the thread was shared with to continue attached it (0077_ask_people_sharing). It is
+//     their private artifact and stays theirs, in their Artifacts.
 // "The artifact's address" is `artifacts/<slug>` (the app's `#artifacts/<slug>`, the API's `/api/artifacts/<slug>`),
 // `raw/a/<slug>` (its bytes), or an Ask ref token `[[artifact:<slug>`, followed by anything that cannot continue a
 // slug — matched with GLOB, so `<slug>-2` never keeps `<slug>`.
@@ -135,6 +136,7 @@ export type DeletedAttachment = { ok: true; r2: R2Sweep } | { ok: false; why: Un
  * Delete ONE of `handle`'s attachments that was never sent (`DELETE /ask/attachments/:id`, the composer removing an
  * uploaded chip) — the owner's ruling for a thread's attachments, applied to one: the same statements as a thread's
  * (`attachmentDeletes`) and its `chat_artifacts` link, in ONE batch, then the R2 bytes when nothing else holds them.
+ * The uploader's own (its artifact's author) — in their thread, or one shared with them to continue (0077).
  * Refused, with nothing deleted: another person's / an unknown id (`not_found`), one already sent with a question
  * (`sent`), one moved out of private (`published`), one a ticket or a doc refers to (`referenced`).
  */
@@ -143,9 +145,8 @@ export async function deleteUnsentAttachment(ctx: TenantContext, p: PlatformCont
     `SELECT ca.id AS link, ca.message_id, pg.id AS page, pg.slug, pg.visibility, pg.author_id,
             EXISTS (SELECT 1 FROM chat_artifacts o WHERE o.org_id = ca.org_id AND o.artifact_id = ca.artifact_id AND o.id <> ca.id) AS elsewhere
        FROM chat_artifacts ca
-       JOIN chat_threads t ON t.id = ca.thread_id AND t.org_id = ca.org_id AND t.handle = ? COLLATE NOCASE
        JOIN artifact_pages pg ON pg.id = ca.artifact_id AND pg.org_id = ca.org_id
-      WHERE ca.org_id = ? AND ca.id = ? AND ca.role = 'attachment'`, handle, ctx.orgId, attachmentId);
+      WHERE ca.org_id = ? AND ca.id = ? AND ca.role = 'attachment'`, ctx.orgId, attachmentId);
   if (!row || row.author_id.toLowerCase() !== handle.toLowerCase()) return { ok: false, why: "not_found" };
   if (row.message_id !== null) return { ok: false, why: "sent" };
   if (row.visibility !== "private") return { ok: false, why: "published" };

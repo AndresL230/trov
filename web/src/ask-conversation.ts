@@ -27,10 +27,12 @@
 
 import { esc, attr, hitArea, HITBOX, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
-import { convoOf } from "./ask-state";
+import { askedByMe, askerOf, askersIn, convoOf, ownTurn, readOnly } from "./ask-state";
+import { deletedUserTag, personLink } from "./people";
+import { isTombstoneHandle } from "@shared/deletion-core";
 import {
   refChip, splitRefTokens, statusCell, viewOf, isHiddenRef, refFallbackText, refLabel, refShort, refTypeWord, refStatusMark,
-  repoFactsOf, repoHeadEnv, repoMark, personName, refAvatar,
+  repoFactsOf, repoHeadEnv, repoMark, personName, personOf, refAvatar,
 } from "./ask-refs";
 import { askIcon, ACTIVITY_ICON, REF_ICON, trovMark } from "./ask-icons";
 import { shownParts, turnLive, type AskAnswer, type AskQuestion, type AskStep, type AskTurn, type AskShownPart } from "./ask-stream";
@@ -358,11 +360,14 @@ function itemCard(v: AskView, it: RefView): string {
   </div>`;
 }
 
-function notFoundView(nf: AskNotFound): string {
+function notFoundView(nf: AskNotFound, ro = false): string {
+  // A reader can't ask in someone else's conversation: the tries are words, not buttons.
+  const tryOf = (t: string) => (ro ? `<span class="ask-nf-try is-static">${askIcon("arrow", 12, null, 2)}<span>${esc(t)}</span></span>`
+    : `<button type="button" class="ask-nf-try" data-act="askCvSend" data-arg="${attr(t)}">${askIcon("arrow", 12, null, 2)}<span>${esc(t)}</span></button>`);
   return `<div class="ask-nf">
     <div class="ask-nf-h">${askIcon("searchMinus", 16, "var(--fg-55)")}<span>I couldn't find that in Trov.</span></div>
     <p class="ask-p">Nothing you can see mentions “${esc(nf.query)}”. It may live somewhere Trov doesn't read, like email or a call. Try asking about something Trov keeps, or name an item:</p>
-    ${nf.tries.length ? `<div class="ask-nf-tries">${nf.tries.map((t) => `<button type="button" class="ask-nf-try" data-act="askCvSend" data-arg="${attr(t)}">${askIcon("arrow", 12, null, 2)}<span>${esc(t)}</span></button>`).join("")}</div>` : ""}
+    ${nf.tries.length ? `<div class="ask-nf-tries">${nf.tries.map(tryOf).join("")}</div>` : ""}
     ${nf.searched.length ? `<div class="ask-nf-card"><div class="ask-nf-head">What I searched</div>${nf.searched.map((s) =>
       `<div class="ask-nf-row">${markShape("ring", "var(--fg-40)", 9)}<span class="ask-nf-a">${esc(s.area)}</span><span class="ask-nf-s">${esc(s.scope)}</span><span style="flex:1"></span><span class="ask-nf-none">No matches</span></div>`).join("")}</div>` : ""}
   </div>`;
@@ -381,7 +386,8 @@ function rich(v: Pick<AskView, "app">, kind: string, inner: string, save: string
 
 function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "block" }>): string {
   const b = p.block;
-  const save = a.turn.messageId !== null ? saveFormArg(a, p.index) : null;   // the actions part's format
+  // The actions part's format; only the turn's own asker saves from it (anyone else reads it as it was answered).
+  const save = a.turn.messageId !== null && ownTurn(v, a.askedBy) ? saveFormArg(a, p.index) : null;
   const open = (kind: "chart" | "themes" | "diagram") => cvRef(v.where, a.key, kind, p.index);
   switch (b.kind) {
     case "items": {
@@ -394,24 +400,41 @@ function blockView(v: AskView, a: AskAnswer, p: Extract<AskShownPart, { kind: "b
     case "chart": return rich(v, "chart", chartFigure(b.chart), save, open("chart"));
     case "themes": return rich(v, "themes", themesFigure(b.themes), save, open("themes"));
     case "diagram": return rich(v, "diagram", diagramFigure(v, b.diagram), save, open("diagram"));
-    case "not_found": return notFoundView(b.notFound);
-    case "save_form": return saveFormView(v, a, b, p.index);
+    case "not_found": return notFoundView(b.notFound, readOnly(v));
+    // A save form is its asker's own step: nobody else sees it.
+    case "save_form": return ownTurn(v, a.askedBy) ? saveFormView(v, a, b, p.index) : "";
   }
 }
 
 // ── the question ─────────────────────────────────────────────────────────────
 
-function fileView(where: AskWhere, q: AskQuestion, f: AskAttachment): string {
+function fileView(v: AskView, q: AskQuestion, f: AskAttachment): string {
   // The composer's chip, the same size for every file (the owner: an image is its 22px thumb, not a bigger card).
-  return sentFileChip({ kind: f.kind, title: f.title, size: f.size, thumbUrl: f.thumbUrl }, "askCvOpen", cvRef(where, q.key, "upload", f.id));
+  // A file someone ELSE attached stays their private artifact — for every reader, the thread's owner included: its
+  // name, never a way in (0077_ask_people_sharing).
+  const by = askerOf(v, q.askedBy);
+  const closed = askedByMe(v, q.askedBy) ? null : `Private to ${by ? personName(v.look, by) : "the person who attached it"}: you can see its name, not what is in it.`;
+  return sentFileChip({ kind: f.kind, title: f.title, size: f.size, thumbUrl: f.thumbUrl }, "askCvOpen", cvRef(v.where, q.key, "upload", f.id), closed);
+}
+
+/** Who asked it, over the bubble — only once more than one person asked in the conversation (0077_ask_people_sharing):
+ *  "You", or their picture and name (a clickable person, people.ts). */
+function askedLine(v: AskView, q: AskQuestion): string {
+  if (askersIn(v).size < 2) return "";
+  if (askedByMe(v, q.askedBy)) return `<div class="ask-q-who">You</div>`;
+  const by = askerOf(v, q.askedBy);
+  // A deleted account (a collaborator's turns outlive it) is "Deleted user" as plain text: no picture, no card.
+  if (isTombstoneHandle(by)) return `<div class="ask-q-who">${deletedUserTag(12)}</div>`;
+  return `<div class="ask-q-who">${personLink(personOf(v.look, by), by, 16, personName(v.look, by), "color:var(--fg-55)", 6)}</div>`;
 }
 
 function question(v: AskView, q: AskQuestion, last: boolean): string {
   const busy = convoOf(v).busy;
   const ed = v.ui.conversation.editing;
   const editing = ed !== null && ed.where === v.where && ed.key === q.key;
-  const canEdit = last && !busy;
-  const files = q.attachments.map((f) => fileView(v.where, q, f)).join("");
+  // Only the person who asked it edits a question, and only in a conversation they may continue.
+  const canEdit = last && !busy && ownTurn(v, q.askedBy);
+  const files = q.attachments.map((f) => fileView(v, q, f)).join("");
   const ctx = q.context.map((r) => sentRefChip(v.look, r)).join("");
   const edit = canEdit && !editing
     ? `<button type="button" class="ask-q-edit" data-act="askCvEdit" data-arg="${attr(`${v.where}:${q.key}`)}" aria-label="Edit message">${askIcon("rename", 11)}<span>Edit</span></button>` : "";
@@ -423,7 +446,7 @@ function question(v: AskView, q: AskQuestion, last: boolean): string {
           <button type="button" class="ask-btn ask-btn--accent" data-act="askCvEditSend"${ed.text.trim() ? "" : " disabled"}>Send</button></div>
       </div>`
     // The words first, what came with them under the bubble (the owner, 2026-10-16).
-    : `<div class="ask-q-col"><div class="ask-q-bubble">${esc(q.text)}</div>${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}${edit}</div>`;
+    : `<div class="ask-q-col">${askedLine(v, q)}<div class="ask-q-bubble">${esc(q.text)}</div>${files || ctx ? `<div class="ask-q-att">${files}${ctx}</div>` : ""}${edit}</div>`;
   // `data-ask-tween`: the bubble ↔ the edit box glides instead of jumping.
   // Edit sits small under the question (the owner), inside its column, so it never shifts the bubble.
   return `<div class="ask-q${canEdit ? " can-edit" : ""}" data-morph-key="q:${attr(q.key)}" data-ask-tween>${body}</div>`;
@@ -490,7 +513,7 @@ function thinkView(v: AskView, a: AskAnswer): string {
 const modesOf = (v: AskView): { id: AskMode; label: string; hint: string }[] => v.ui.state.data?.modes ?? [];
 const modeLabel = (v: AskView, m: AskMode): string => modesOf(v).find((x) => x.id === m)?.label ?? askMode(m).label;
 
-function footer(v: AskView, a: AskAnswer): string {
+function footer(v: AskView, a: AskAnswer, last: boolean): string {
   const t = a.turn;
   const k = a.key;
   const id = `${v.where}:${k}`;
@@ -500,7 +523,9 @@ function footer(v: AskView, a: AskAnswer): string {
   const modes = modesOf(v);
   const regenOpen = v.ui.conversation.regen === id;
   const busy = convoOf(v).busy;
-  const stored = t.messageId !== null;
+  // Regenerate, Save and Wrong? are the turn's own asker's: anyone else gets the sources and Copy. Regenerate only on
+  // the LAST answer — the one the server replaces (once a thread is shared to continue, an earlier one is often yours).
+  const stored = t.messageId !== null && ownTurn(v, a.askedBy);
   const menu = regenOpen ? `<div class="ask-menu ask-regen-menu" role="menu" aria-label="Regenerate with"${closingAttr(v.ui.closing, "menu")}>
       <div class="ask-menu-head" aria-hidden="true">Regenerate with</div>
       ${modes.map((m) => `<button type="button" role="menuitemradio" aria-checked="${m.id === t.mode}" data-act="askCvRegenWith" data-arg="${attr(`${id}:${m.id}`)}"><span class="ask-mi"><span class="ask-mi-l">${esc(m.label)}</span><span class="ask-mi-h">${esc(m.hint)}</span></span>${m.id === t.mode ? askIcon("check", 14, "var(--accent)", 2.4) : ""}</button>`).join("")}
@@ -510,7 +535,7 @@ function footer(v: AskView, a: AskAnswer): string {
     <span class="ask-foot-sep" aria-hidden="true"></span>
     ${n ? `<button type="button" class="ask-fb" data-act="askCvToggle" data-arg="${attr(`${k}:src`)}" aria-expanded="${srcOpen}">${n} ${n === 1 ? "source" : "sources"}${chev(srcOpen, true)}</button>` : `<span class="ask-fb is-static">No sources</span>`}
     <button type="button" class="ask-fb" data-act="askCvCopy" data-arg="${attr(id)}">${askIcon("copy", 13, null, 2)}<span>${v.ui.conversation.copied === id ? "Copied" : "Copy"}</span></button>
-    ${stored ? `<span class="ask-regen"><button type="button" class="ask-fb${modes.length > 1 ? " ask-fb--l" : ""}" data-act="askCvRegen" data-arg="${attr(id)}"${busy ? " disabled" : ""}>${askIcon("regen", 13, null, 2)}<span>Regenerate</span></button>${modes.length > 1
+    ${stored && last ? `<span class="ask-regen"><button type="button" class="ask-fb${modes.length > 1 ? " ask-fb--l" : ""}" data-act="askCvRegen" data-arg="${attr(id)}"${busy ? " disabled" : ""}>${askIcon("regen", 13, null, 2)}<span>Regenerate</span></button>${modes.length > 1
       ? `<button type="button" class="ask-fb ask-fb--r" data-act="askCvRegenMenu" data-arg="${attr(id)}" aria-label="Regenerate with another mode" aria-haspopup="menu" aria-expanded="${regenOpen}"${busy ? " disabled" : ""}>${askIcon("chevDown", 10, null, 2.6)}</button>${menu}` : ""}</span>` : ""}
     ${stored ? `<button type="button" class="ask-fb" data-act="askAcSaveForm" data-arg="${attr(saveFormArg(a))}">${askIcon("saveArtifact", 13, null, 1.9)}<span>Save as artifact</span></button>` : ""}
     ${stored ? `<button type="button" class="ask-fb" data-act="askAcWrong" data-arg="${attr(a.key)}" aria-expanded="${wrongIsOpen(v, a)}">Wrong?</button>` : ""}
@@ -523,11 +548,11 @@ function footer(v: AskView, a: AskAnswer): string {
 function partView(v: AskView, a: AskAnswer, p: AskShownPart, i: number, cur: boolean): string {
   const key = `p${i}`;
   if (p.kind === "text") {
-    const save = a.turn.messageId !== null ? saveFormArg(a) : null;
+    const save = a.turn.messageId !== null && ownTurn(v, a.askedBy) ? saveFormArg(a) : null;
     return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich(v, "table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)))}</div>`;
   }
   if (p.kind === "actions") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${actionGroupView(v, a, p.ids)}</div>`;
-  if (p.block.kind === "save_form") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${blockView(v, a, p)}</div>`;
+  if (p.block.kind === "save_form") return !ownTurn(v, a.askedBy) ? "" : `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${blockView(v, a, p)}</div>`;
   return `<div class="ask-part" data-morph-key="${key}" data-block="${attr(p.block.kind)}">${blockView(v, a, p)}</div>`;
 }
 
@@ -557,18 +582,20 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   // A running step's kind wins — before the answer AND after a block is out (the owner, Q-F1); the ribbon ("Writing…")
   // only once a block is out and no step runs; the cube (thinking) before anything.
   const waitOrb: OrbState = running ? stepOrb(running) : parts.length ? "composing" : "solving";
-  const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>` : "";
+  // Try again asks again: the turn's own asker's step, nobody else's.
+  const retry = !ownTurn(v, a.askedBy) ? "" : `<button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button>`;
+  const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span>${retry}</div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   // Something written: words, a block or a card. A finished answer with none (the model spent its calls on lookups)
   // says so, with Try again, and has no Copy / Save of nothing (Q-F2; the server did not count it).
   const written = parts.some((p) => p.kind !== "text" || p.md.trim() !== "");
   const unwritten = t.done && !t.error && !t.stopped && !written
-    ? `<div class="ask-err ask-err--none" role="status">${markShape("square", "var(--fg-40)", 9)}<span class="ask-err-t">Trov didn't write an answer.</span><span style="flex:1"></span><button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button></div>`
+    ? `<div class="ask-err ask-err--none" role="status">${markShape("square", "var(--fg-40)", 9)}<span class="ask-err-t">Trov didn't write an answer.</span><span style="flex:1"></span>${retry}</div>`
     : "";
   // The footer: a finished answer's — and a stopped one's at once, for what it wrote (QA-4); the stored id that
   // Regenerate, Save and Wrong? need is read back after Stop (ask-controller.ts `readBackStopped`).
-  const foot = (t.done || t.stopped) && !t.error && written ? footer(v, a) : "";
-  const follow = last && t.done && !t.error && !convoOf(v).busy && t.followups.length
+  const foot = (t.done || t.stopped) && !t.error && written ? footer(v, a, last) : "";
+  const follow = last && t.done && !t.error && !convoOf(v).busy && t.followups.length && !readOnly(v)
     ? `<div class="ask-follow" role="list" aria-label="Follow-up questions">${t.followups.map((f) => `<div role="listitem"><button type="button" class="ask-fu" data-act="askCvSend" data-arg="${attr(f)}">${askIcon("followUp", 14, "var(--fg-40)")}<span>${esc(f)}</span></button></div>`).join("")}</div>`
     : "";
   // The answer is itself a keyed list: what comes and goes under it (the cursor, Stopped, the error, the footer,
@@ -740,6 +767,15 @@ export const conversationPart: AskPart = {
   act(ctx, name, arg, value) {
     const ui = ctx.ui.conversation;
     const [w, key, extra] = (arg ?? "").split(":");
+    // A conversation the person may only read is never asked in, and a turn someone else asked is never asked again
+    // (0076 / 0077_ask_sharing): only its own asker edits, regenerates or retries it.
+    if (/^askCv(Retry|Regen|RegenWith|RegenMenu|Edit|EditSend)$/.test(name)) {
+      const where = ui.editing?.where ?? whereOf(w);
+      if (readOnly({ ui: ctx.ui, where })) return;
+      const k = name === "askCvEditSend" ? ui.editing?.key : key;
+      const m = k ? ctx.ui[where].messages.find((x) => x.key === k) : undefined;
+      if (m && !ownTurn({ app: ctx.app, ui: ctx.ui, where }, m.askedBy)) return;
+    }
     switch (name) {
       // A starter, a follow-up, a rephrase chip: send its words as the next question.
       // In the ⌘J panel it carries the panel's context, the page's item first (a panel thread's `contextRef`).
@@ -747,7 +783,7 @@ export const conversationPart: AskPart = {
         if (!arg) return;
         const where: AskWhere = ctx.ui.cmdj.open && ctx.app.screen !== "ask" ? "panel" : "page";
         const see = { ui: ctx.ui, where };
-        if (composerBlock(see)) return; // blocked: nothing is sent (QA-6)
+        if (composerBlock(see) || readOnly(see)) return; // blocked, or someone else's shared thread: nothing is sent (QA-6)
         // The composer's own mode and switch — a mode the allowance can't cover is never sent (Q50).
         const how = { mode: composerMode(see), auto: composerAuto(see) };
         if (where === "panel") {
