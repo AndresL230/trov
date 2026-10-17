@@ -67,7 +67,7 @@ export const SKIP_REASONS = {
   not_markdown: "Not a Markdown file",
   hidden: "Hidden system file",
   empty: "The file is empty",
-  too_large: "The file is too large",
+  too_large: "Too large: a page can be up to 1 MB, an image up to 10 MB",
   bad_path: "The file's name or folder isn't allowed",
   too_deep: "Nested more than 10 levels deep",
   in_attachments: "In an attachments folder",
@@ -83,7 +83,10 @@ export interface SkippedFile {
   reason: string;
 }
 
-const skip = (path: string, code: SkipCode): SkippedFile => ({ path, code, reason: SKIP_REASONS[code] });
+const skip = (path: string, code: SkipCode, reason: string = SKIP_REASONS[code]): SkippedFile => ({ path, code, reason });
+/** An over-limit file's reason names ITS limit (owner ruling IW51). */
+const TOO_LARGE_PAGE = "Larger than 1 MB, the most a page can be";
+const TOO_LARGE_IMAGE = "Larger than 10 MB, the most an image can be";
 
 // ── path safety ──────────────────────────────────────────────────────────────
 
@@ -311,12 +314,12 @@ export function planImport(files: readonly ImportFile[], opts: PlanOptions): Imp
     if (kind === "md") {
       if (inAttachments(f.path)) skipped.push(skip(f.path, "in_attachments"));
       else if (size === 0) skipped.push(skip(f.path, "empty"));
-      else if (size > MAX_MD_BYTES) skipped.push(skip(f.path, "too_large"));
+      else if (size > MAX_MD_BYTES) skipped.push(skip(f.path, "too_large", TOO_LARGE_PAGE));
       else md.push(f);
     } else if (kind === "image") {
       const type = imageTypeFor(f.path) as string;
       if (size === 0) skipped.push(skip(f.path, "empty"));
-      else if (size > MAX_IMAGE_BYTES) skipped.push(skip(f.path, "too_large"));
+      else if (size > MAX_IMAGE_BYTES) skipped.push(skip(f.path, "too_large", TOO_LARGE_IMAGE));
       else images.push({ path: f.path, size, type });
     } else {
       skipped.push(skip(f.path, "not_markdown"));
@@ -719,7 +722,7 @@ export interface ImportStartBody {
 
 /** Why a page that was sent did not reach Review (fixed codes, never text). */
 export const IMPORT_PAGE_FAILURES = {
-  too_large: "The file is too large",
+  too_large: "Too large: a page can be up to 1 MB, an image up to 10 MB",
   not_utf8: "The file isn't readable text",
   empty: "The file is empty",
   changed: "The file changed after it was checked",

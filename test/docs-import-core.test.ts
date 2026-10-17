@@ -201,6 +201,10 @@ describe("planImport — refusals, caps and safety", () => {
     expect(p.skipped.map((s) => [s.path, s.code])).toEqual([
       ["fake.md", "not_markdown"], ["huge.md", "too_large"], ["huge.png", "too_large"], ["notes.txt", "not_markdown"], ["pic.svg", "not_markdown"],
     ]);
+    // Owner ruling IW51: an over-limit message names the limit.
+    expect(p.skipped.find((s) => s.path === "huge.md")!.reason).toContain("1 MB");
+    expect(p.skipped.find((s) => s.path === "huge.png")!.reason).toContain("10 MB");
+    expect(SKIP_REASONS.too_large).toMatch(/1 MB.*10 MB/);
   });
 
   it("path safety: traversal, absolute, NUL refused; separators normalized; system files hidden", () => {
