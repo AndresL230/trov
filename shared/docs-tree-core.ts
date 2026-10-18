@@ -211,6 +211,19 @@ export function planMove(nodes: readonly DocTreeNode[] | DocTree, slug: string, 
   return { ok: true, parent_slug: parent, tree_rank: rank, renumber };
 }
 
+/** Is `slug` in the same place in both lists — the same parent, and the same order among its siblings? A drop there
+ *  (onto the top level when it is already last there, just below the page above it, …) moves nothing: the SPA neither
+ *  posts it nor animates it, and the drag's hint says so. */
+export function samePlace(a: readonly DocTreeNode[], b: readonly DocTreeNode[], slug: string): boolean {
+  const ta = buildTree(a), tb = buildTree(b);
+  const me = ta.bySlug.get(slug);
+  if (!me) return false;
+  const pa = ta.parentOf.get(slug) ?? null, pb = tb.parentOf.get(slug) ?? null;
+  if (pa !== pb) return false;
+  const order = (t: DocTree) => childrenOf(t, pa, me.space).map((n) => n.slug).join("\n");
+  return order(ta) === order(tb);
+}
+
 function isTree(x: readonly DocTreeNode[] | DocTree): x is DocTree {
   return !Array.isArray(x) && (x as DocTree).bySlug instanceof Map;
 }

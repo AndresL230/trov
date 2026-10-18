@@ -19,6 +19,7 @@ import { render, initialState, spaceName } from "../web/src/render";
 import { docsPane, expandedSet } from "../web/src/docs-pane";
 import { linkedBody, brokenLinkTip, splitLead } from "../web/src/doc-page";
 import { dropHint, rowZone, treeKeyTarget } from "../web/src/tree-drag";
+import { planMove, applyMove, samePlace } from "@shared/docs-tree-core";
 import { placeOf, moveRefusalText, createTreeController } from "../web/src/tree-actions";
 import { setApiOrg } from "../web/src/api";
 import { AUTHORITY_MARK } from "../web/src/marks";
@@ -119,16 +120,15 @@ describe("the docs pane", () => {
     expect(style("sso")).toBe("padding-left:48px;--dp-in:60px");
     expect(html).toMatch(/data-dtree="rate"[^>]*>\s*(?:<span class="cnpy-dp-guide"[^>]*><\/span>)*<span class="cnpy-dp-chev is-empty" aria-hidden="true"><\/span>/);
   });
-  it("a moved page lands in place: a tint that fades on the highlight, never the entrance rise that read as floating", () => {
-    const rule = (sel: string) => css.match(new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
-    expect(rule(".cnpy-flash")).toContain("cnpy-rise");                          // the generic one-shot the move's flashNext adds
-    expect(rule(".cnpy-dp-row.cnpy-flash")).toBe(" animation:none; ");             // the row itself never rises
-    expect(rule(".cnpy-dp-row.cnpy-flash::before")).toContain("animation:cnpy-dp-land");  // on ::before: as wide as the highlight
-    const land = css.match(/@keyframes cnpy-dp-land \{([^\n]*)\}\n/)?.[1] ?? "";
-    expect(land).toContain("from { background-color:");
-    expect(land).not.toMatch(/transform|translate|opacity|\bto\b/);               // no motion; no `to`, so it ends on the row's own tint
-    // reduced motion turns it off with every flash (`.cnpy-flash *` never reaches a pseudo-element)
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\n(?:  [^\n]*\n)*?  \[data-enter\] \*, [^\n{]*\.cnpy-flash::before[^\n{]*\{ animation:none !important; \}/);
+  it("a moved page lands in place: Web Animations on the rows, never a class flash a repaint can strip", () => {
+    // The move's repaints (the Worker's answer, the doc read again) rewrite each row's class: a class-driven flash was
+    // stripped two frames in. The landing is animate() on the row itself (tree-actions.ts landMove), so no CSS rule.
+    expect(css).not.toContain(".cnpy-dp-row.cnpy-flash");
+    expect(treeActionsSrc).not.toContain("flashNext");
+    expect(treeActionsSrc).toContain('pseudoElement: "::before"');                         // the tint spans the highlight
+    expect(treeActionsSrc).toContain("r.animate([{ offset: 0, backgroundColor:");             // one keyframe: it ends on the row's own tint
+    expect(treeActionsSrc).toContain("translateY(${dy}px)");                                // the rows that shifted slide (FLIP)
+    expect(treeActionsSrc).not.toMatch(/landMove[\s\S]*?translateY\(10px\)/);           // never the entrance rise
   });
   it("a page that is not live has its shape and no word; a long title its tooltip; hover offers + and …", () => {
     const html = pane(render(docState()));
@@ -305,7 +305,7 @@ describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, th
       const state = docState({ docSlug: "api" });
       const changed: number[] = [];
       const ctl = createTreeController({
-        state, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, flashNext: () => {}, newPage: () => {},
+        state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, newPage: () => {},
         reducedMotion: () => true, treeChanged: () => changed.push(1),
       });
       ctl.move("rate", { kind: "before", ref: "auth" });
@@ -325,7 +325,7 @@ describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, th
 describe("opening and closing a page's children (tree-actions.ts treeToggle)", () => {
   const ctlFor = (state: ReturnType<typeof docState>, renders: number[]) => createTreeController({
     state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => renders.push(1),
-    flash: () => {}, unauth: () => {}, flashNext: () => {}, newPage: () => {}, reducedMotion: () => true, treeChanged: () => {},
+    flash: () => {}, unauth: () => {}, newPage: () => {}, reducedMotion: () => true, treeChanged: () => {},
   });
   it("with reduced motion it opens and closes at once, with no fold", () => {
     vi.stubGlobal("CSS", { escape: (s: string) => s });
@@ -352,6 +352,17 @@ describe("opening and closing a page's children (tree-actions.ts treeToggle)", (
 });
 
 describe("the drag's rules (tree-drag.ts, tree-actions.ts)", () => {
+  it("a drop where the page already is moves nothing (same parent, same order among its siblings)", () => {
+    const at = (target: Parameters<typeof planMove>[2], slug = "long") => {
+      const plan = planMove(PAGES, slug, target);
+      return plan.ok && samePlace(PAGES, applyMove(PAGES, slug, plan), slug);
+    };
+    expect(at({ kind: "top" })).toBe(true);                         // "long" is already last at the top level
+    expect(at({ kind: "after", ref: "arch" })).toBe(true);           // just below the page above it
+    expect(at({ kind: "before", ref: "arch" })).toBe(false);         // a real reorder
+    expect(at({ kind: "into", ref: "start" })).toBe(false);          // a new parent
+    expect(at({ kind: "after", ref: "auth" }, "rate")).toBe(true);   // "rate" is already after "auth" under API
+  });
   it("hit zones: the top 30% of a row is before, the bottom 30% after, the middle into", () => {
     expect(rowZone(102, 100, 28)).toBe("before");
     expect(rowZone(114, 100, 28)).toBe("into");

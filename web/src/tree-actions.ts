@@ -3,7 +3,7 @@
 // (tree-drag.ts), the keyboard or the menu. A move is applied at once (`planMove` + `applyMove`, the rules the Worker
 // runs too), posted (`POST /doc/:slug/move`), and toasted with Undo (the reverse move); a refusal puts the tree back
 // and says why in words. The views are docs-pane.ts / doc-page.ts (pure).
-import { applyMove, buildTree, childrenOf, ancestorsOf, descendantsOf, planMove, type MoveTarget, type MoveRefusal } from "@shared/docs-tree-core";
+import { applyMove, buildTree, childrenOf, ancestorsOf, descendantsOf, planMove, samePlace, type MoveTarget, type MoveRefusal } from "@shared/docs-tree-core";
 import type { LibraryPageDTO, DocTreePlace } from "@shared/docs-core";
 import type { AppState, ToastAction } from "./render";
 import { ApiError, PreviewBlocked, Unauthorized, moveDoc } from "./api";
@@ -17,8 +17,6 @@ export interface TreeHost {
   rerender(): void;
   flash(msg: string, ms?: number, action?: ToastAction | null): void;
   unauth(e: unknown): void;
-  /** Flash these rows once after the next paint (main.ts `pendingFlash`). */
-  flashNext(selector: string): void;
   /** Open New page in `space` under `parent`. */
   newPage(space: string, parent: string | null): void;
   /** Is motion reduced? */
@@ -86,12 +84,17 @@ export function createTreeController(host: TreeHost): TreeController {
     if (!before || !sp) return;
     const plan = planMove(before, slug, target);
     if (!plan.ok) { host.flash(moveRefusalText(plan.reason), 4200); return; }
+    const after = applyMove(before, slug, plan);
+    if (samePlace(before, after, slug)) return;           // dropped where it already is: nothing to move, post or say
     const back = placeOf(before, slug);
-    setPages(applyMove(before, slug, plan));
+    setPages(after);
+    const first = rowTops();
     if (target.kind === "into") state.treeOpen[target.ref] = true;
     state.treeMenu = null;
-    host.flashNext(`.cnpy-dpane [data-dtree="${CSS.escape(slug)}"]`);
     host.rerender();
+    landMove(slug, first);
+    // A page dropped into a long parent can land below the pane's fold: bring it into view.
+    host.mount.querySelector<HTMLElement>(`.cnpy-dpane [data-dtree="${CSS.escape(slug)}"]`)?.scrollIntoView?.({ block: "nearest", behavior: host.reducedMotion() ? "auto" : "smooth" });
     const mine = ++seq;
     const title = titleOf(slug);
     moveDoc(slug, target.kind === "top" ? { target: "top" } : { target: target.kind, ref: target.ref })
@@ -116,6 +119,40 @@ export function createTreeController(host: TreeHost): TreeController {
         host.flash(e instanceof PreviewBlocked ? "This is a preview: nothing is changed." : moveRefusalText(e instanceof ApiError ? e.message : ""), 5000);
         host.rerender();
       });
+  }
+
+  /** Where each pane row is now (CSS px, zoom.ts), by slug: the "first" of the move's FLIP. */
+  function rowTops(): Map<string, number> {
+    const at = new Map<string, number>();
+    for (const r of Array.from(host.mount.querySelectorAll<HTMLElement>(".cnpy-dpane .cnpy-dp-row[data-dtree]"))) at.set(r.dataset.dtree as string, rectOf(r).top);
+    return at;
+  }
+
+  /** After a move's repaint: the moved page (and the pages it carries) lands where it was dropped — it fades in over
+   *  the gap the others open, its highlight tinted once — the rows that only shifted slide to their new place, and the
+   *  rows a parent opened for the drop fade in. Every row is at its final place from the first frame; only the slide moves. Web Animations on the rows themselves, so the repaints that follow (the
+   *  Worker's answer, the doc read again) rewriting a row's class or style never cut them short — a class-driven flash
+   *  was stripped two frames in, and the tint snapped off. */
+  function landMove(slug: string, first: Map<string, number>): void {
+    if (host.reducedMotion() || typeof Element.prototype.animate !== "function") return;
+    const carried = new Set([slug, ...descendantsOf(buildTree(pages() ?? []), slug).map((n) => n.slug)]);
+    for (const r of Array.from(host.mount.querySelectorAll<HTMLElement>(".cnpy-dpane .cnpy-dp-row[data-dtree]"))) {
+      const s = r.dataset.dtree as string;
+      if (carried.has(s)) {
+        r.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 90, easing: "ease-out", fill: "backwards" });
+        if (s === slug) {
+          const accent = getComputedStyle(r).getPropertyValue("--accent").trim();
+          if (accent) r.animate([{ offset: 0, backgroundColor: `color-mix(in srgb, ${accent} 18%, transparent)` }], { duration: 900, easing: "ease-out", pseudoElement: "::before" });
+        }
+        continue;
+      }
+      const was = first.get(s);
+      // A row the drop's parent revealed fades in where it is — never an unfold, whose growing height would push the
+      // landed page down while it appears (that drift read as floating).
+      if (was === undefined) { r.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 160, delay: 90, easing: "ease-out", fill: "backwards" }); continue; }
+      const dy = was - rectOf(r).top;
+      if (Math.abs(dy) > 0.5) r.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: 220, easing: "cubic-bezier(.2,.7,.2,1)" });
+    }
   }
 
   function scrollToHeading(id: string): void {
