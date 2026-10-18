@@ -13,9 +13,10 @@ vi.mock("../web/src/markdown", () => ({
 
 import {
   RELEASES, releasesIndex, releasePageView, releasesScreen, releaseLine, releaseDate, releaseSlug, releaseHash,
-  findRelease, releaseName, prUrl, TROV_REPO_URL, RELEASE_CAPS, type Release,
+  findRelease, releaseName, prUrl, TROV_REPO_URL, RELEASE_CAPS, splitPatchLine, type Release,
 } from "../web/src/releases";
 import * as releasesModule from "../web/src/releases";
+import { esc } from "../web/src/ui";
 import { parseHash, hashForRoute } from "../web/src/hash";
 import { render, initialState } from "../web/src/render";
 import { LATEST_RELEASE, LATEST_VERSION } from "../web/src/release-latest";
@@ -185,7 +186,7 @@ describe("releaseLine / releaseDate / slugs", () => {
     // `#releases/0.34/patches`: the old number of the newest batch opens 0.11's patch notes.
     expect(parseHash("#releases/0.34/patches")).toMatchObject({ releaseVersion: "0.34", releasePage: "patches" });
     expect(findRelease("0.34")!.version).toBe("0.11");
-    expect(releasePageView("0.34", "patches")).toContain('aria-label="Patch notes"');
+    expect(releasePageView("0.34", "patches")).toMatch(/aria-selected="true"[^>]*>Patch notes</);
     expect(releasesScreen("0.34", "patches")).toBe(releasePageView("0.11", "patches"));
   });
 
@@ -219,22 +220,28 @@ const hostile: Release[] = [
   },
 ];
 
-describe("the index — a grid of release cards", () => {
-  it("renders every release as a card linking to its page, newest first", () => {
+describe("the index — the newest release featured, the rest on a timeline (the owner's redesign)", () => {
+  it("features the newest release and lists every other on the timeline, each linking to its page, newest first", () => {
     const html = releasesIndex(withNext);
-    expect(html).toContain('class="cnpy-relgrid"');
-    const hrefs = [...html.matchAll(/<a href="(#releases\/[^"]+)"[^>]*class="cnpy-surface cnpy-card cnpy-relcard/g)].map((m) => m[1]);
-    expect(hrefs).toEqual(withNext.map((r) => `#releases/${releaseSlug(r)}`));
-    expect(hrefs[0]).toBe("#releases/unreleased");
+    const feat = [...html.matchAll(/<a href="(#releases\/[^"]+)"[^>]*class="cnpy-surface cnpy-relfeat/g)].map((m) => m[1]);
+    expect(feat).toEqual(["#releases/unreleased"]);
+    const rows = [...html.matchAll(/<a href="(#releases\/[^"]+)" class="cnpy-reltl-card/g)].map((m) => m[1]);
+    expect(rows).toEqual(withNext.slice(1).map((r) => `#releases/${releaseSlug(r)}`));
+    expect(html.indexOf("cnpy-relfeat")).toBeLessThan(html.indexOf("Earlier releases"));
+    // the featured card carries every highlight; with no Unreleased entry it is the newest shipped one, "Latest release"
+    const live = releasesIndex();
+    for (const h of RELEASES[0].highlights) expect(live).toContain(esc(h).replace(/`([^`]+)`/g, (_m, c) => `<code${c.length <= 28 ? ' class="is-short"' : ""}>${c}</code>`));
+    expect(live).toContain(RELEASES[0].unreleased ? "Coming next" : "Latest release");
   });
 
-  it("tags Unreleased, and each card carries its count line", () => {
+  it("tags Unreleased, and each release carries its change counts", () => {
     const html = releasesIndex(withNext);
-    expect(html).toContain("cnpy-relcard cnpy-rise is-next");
-    expect(html).toContain(">Unreleased<");
-    const r = withNext.find((x) => !x.unreleased)!; // the newest shipped card (a live Unreleased entry may sit before it)
-    const n = r.patches.added.length + r.patches.changed.length + r.patches.fixed.length + r.patches.removed.length;
-    expect(html).toContain(`${r.highlights.length} highlights · ${n} patch line${n === 1 ? "" : "s"}`);
+    expect(html).toContain("cnpy-relfeat cnpy-rise is-next");
+    expect(html).toContain("Coming next");
+    const r = withNext.find((x) => !x.unreleased)!;
+    for (const k of ["added", "changed", "fixed", "removed"] as const) {
+      if (r.patches[k].length) expect(html).toContain(`<b>${r.patches[k].length}</b>${k}`);
+    }
     expect(html).not.toContain("cnpy-guide-toc"); // no "On this page" rail on the index
   });
 
@@ -246,149 +253,79 @@ describe("the index — a grid of release cards", () => {
   });
 });
 
-describe("one release — its notes page and its patches page", () => {
-  it("the notes page: back link, header, Release notes picked, highlights, Heads-up, PRs, newer/older", () => {
+describe("one release — its notes page and its patches page, one reading column", () => {
+  const picked = (html: string, label: string) => new RegExp(`aria-selected="true"[^>]*>${label}<`).test(html);
+  it("the notes page: back link, header, the Release notes tab picked, counts, numbered highlights, Heads-up, newer/older", () => {
     const html = releasePageView("0.8", "notes");
     const r = findRelease("0.8")!;
-    expect(html).toContain('href="#releases" class="cnpy-rel-back"');
+    expect(html).toContain('href="#releases" class="cnpy-rel-back');
     expect(html).toContain("All releases");
     expect(html).toContain(">v0.8<");
     expect(html).toContain(`>${r.title}</h1>`);
-    // The switch sits on the back link's row, right after the back link.
-    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow'), html.indexOf('class="cnpy-reldoc-head-main"'));
-    expect(row).toContain('class="cnpy-rel-back"');
-    expect(row).toContain('data-seg="release-page"');
-    expect(row).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Release notes</);
-    expect(row).toContain('data-act="releasePage" data-arg="patches"');
-    expect(releasePageView("0.3", "notes")).toContain('class="cnpy-reldoc-toprow'); // no note: still there
-    expect(releasePageView("0.99", "notes")).not.toContain('data-seg="release-page"'); // not-found: none
+    // The two pages are the page's sections: a tab bar under the title, the body its panel.
+    expect(html).toContain('role="tablist" aria-label="Release page"');
+    expect(picked(html, "Release notes")).toBe(true);
+    expect(html).toContain('data-act="releasePage" data-arg="patches"');
+    expect(html.indexOf("</header>")).toBeLessThan(html.indexOf('role="tablist"'));
+    expect(html).toContain('role="tabpanel" id="release-page-panel"');
+    expect(releasePageView("0.99", "notes")).not.toContain('role="tablist"'); // not-found: none
     expect(html).toContain(">Highlights<");
-    expect(html).toContain("Heads-up");
+    expect(html).toMatch(/<span class="cnpy-relhl-n" aria-hidden="true">01<\/span><p>/);
+    expect(html).toContain('aria-label="Heads-up"');
     expect(html).not.toContain("/pull/");        // release notes carry no PR links
     expect(html).not.toContain("Upgrade notes");
-    expect(html).not.toContain("cnpy-relpatch-group");       // no patch groups on the notes page
-    // Newer = 0.9, older = 0.7, each keeping the page kind.
+    expect(html).not.toContain("cnpy-relpatch-group");
     expect(html).toContain('href="#releases/0.9"');
     expect(html).toContain('href="#releases/0.7"');
   });
 
-  it("the patches page: Added / Changed / Fixed / Removed with counts; empty groups left out", () => {
+  it("the counts open their group on the patch notes; 'All N patch lines' links there", () => {
+    const notes = releasePageView("0.11", "notes");
+    const r = findRelease("0.11")!;
+    for (const k of ["added", "changed", "fixed", "removed"] as const) {
+      expect(notes).toMatch(new RegExp(`data-act="releaseGroup" data-arg="${k}"[\\s\\S]*?<span class="cnpy-relstat-n">${r.patches[k].length}</span>`));
+      expect(releasePageView("0.11", "patches")).toContain(`id="relgroup-${k}"`);
+    }
+    expect(releasePageView("0.10", "notes")).not.toContain('data-arg="fixed"'); // 0.10 has no fixes
+    expect(notes).toContain('href="#releases/0.11/patches"');
+    const five: Release[] = [{ ...hostile[1], highlights: ["a", "b", "c", "d", "e"] }];
+    expect(releasePageView("0.1", "notes", five)).toContain("cnpy-relhl-list is-long");
+  });
+
+  it("the patches page: the Upgrade notes first, then Added / Changed / Fixed / Removed with counts, each line's PRs as chips", () => {
     const html = releasePageView("0.2", "patches", hostile);
+    expect(picked(html, "Patch notes")).toBe(true);
     expect(html).toContain('<span>Added</span><span class="cnpy-relpatch-n">1</span>');
     expect(html).toContain(">Fixed<");
     expect(html).not.toContain(">Changed<");
     expect(html).not.toContain(">Removed<");
     expect(html).not.toContain(">Highlights<");
     expect(html).toContain("/pull/9");
-    // Older link stays on patches; the newest has no newer link.
     expect(html).toContain('href="#releases/0.1/patches"');
     expect(html).toContain("cnpy-relpager-i is-newer is-none");
+    const p11 = releasePageView("0.11", "patches");
+    const order = ["Added", "Changed", "Fixed", "Removed"].map((g) => p11.indexOf(`<span>${g}</span>`));
+    expect(order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1]))).toBe(true);
+    expect(p11.indexOf('aria-label="Upgrade notes"')).toBeLessThan(p11.indexOf('class="cnpy-relpatch-group"'));
+    // a line's trailing (#N) is a chip at its right, not text in the sentence
+    expect(p11).toMatch(/<span class="cnpy-relpatch-t">[^<]*<\/span><span class="cnpy-relpatch-prs"><a href="https:\/\/github\.com\/AndresL230\/trov\/pull\/\d+"[^>]*class="cnpy-relpr-chip">#\d+<\/a>/);
+    expect(splitPatchLine("Fixed a thing (#12, #13)")).toEqual(["Fixed a thing", [12, 13]]);
+    expect(splitPatchLine("No PR here")).toEqual(["No PR here", []]);
+    expect(p11).toContain("Pull requests");
   });
 
-  it("each page is ONE wide surface card (no nested cards or boxes), the header outside it", () => {
+  it("one reading column, no side column: the callouts flow in the page, no nested cards", () => {
     for (const page of ["notes", "patches"] as const) {
       for (const r of RELEASES) {
         const html = releasePageView(releaseSlug(r), page);
-        expect((html.match(/class="[^"]*\bcnpy-surface\b/g) ?? []).length, `${r.version} ${page}`).toBe(1);
-        expect(html).not.toContain("cnpy-card");
-        expect(html.indexOf("cnpy-reldoc-head")).toBeLessThan(html.indexOf('class="cnpy-surface'));
+        expect((html.match(/class="[^"]*\bcnpy-surface\b/g) ?? []).length, `${r.version} ${page}`).toBeLessThanOrEqual(1);
+        expect(html).not.toMatch(/cnpy-reldoc-grid|cnpy-relheads|cnpy-card\b/);
       }
     }
-    // Notes: the Heads-up is in the page's right column (after the title block, before the card),
-    // never inside the card; the card is the At a glance strip, then the highlights.
-    const notes = releasePageView("0.11", "notes");
-    expect(notes).not.toMatch(/cnpy-reldoc-split|cnpy-reldoc-side/);
-    const at = (h: string, k: string) => h.indexOf(k);
-    const card = at(notes, 'class="cnpy-surface');
-    expect(notes).toContain('class="cnpy-reldoc-grid has-heads"');
-    expect(at(notes, 'class="cnpy-reldoc-head-main"')).toBeLessThan(at(notes, 'class="cnpy-relheads'));
-    expect(at(notes, 'class="cnpy-relheads')).toBeLessThan(card);
-    expect(notes.slice(card)).not.toContain("cnpy-relheads");
-    expect(at(notes, 'class="cnpy-relglance"')).toBeLessThan(at(notes, "cnpy-reldoc-hl"));
-    // The patch notes page puts its Upgrade notes in the same spot — never in the card.
-    const p14 = releasePageView("0.11", "patches");
-    expect(p14).toContain('class="cnpy-reldoc-grid has-heads"');
-    expect(p14).toContain('class="cnpy-relheads cnpy-rise" aria-label="Upgrade notes"');
-    expect(p14).not.toContain('aria-label="Heads-up"');
-    expect(p14.slice(p14.indexOf('class="cnpy-surface'))).not.toContain("cnpy-relheads");
-    // One heads-up item is one line; several are a compact list; none renders nothing.
-    expect(releasePageView("0.2", "notes", hostile)).toContain('class="cnpy-relheads-one"');
-    expect(notes).toContain('class="cnpy-relheads-list"');
-    expect(releasePageView("0.3", "notes")).not.toContain("cnpy-relheads");
-    expect(releasePageView("0.3", "notes")).not.toContain("has-heads");
-    // Five or more highlights may flow into two columns (a very wide card only) — the data stays
-    // under RELEASE_CAPS, so only a fixture has that many.
-    const five: Release[] = [{ ...hostile[1], highlights: ["a", "b", "c", "d", "e"] }];
-    expect(releasePageView("0.1", "notes", five)).toContain("cnpy-reldoc-hl is-long");
-    expect(notes).not.toContain("cnpy-reldoc-hl is-long");
-    // At a glance: a full-width strip ABOVE the columns — version, date, one large figure per
-    // non-empty group (each opening that group on the patch notes), the all-lines link.
-    expect(notes).toContain('class="cnpy-relglance" aria-label="At a glance"');
-    expect(notes.indexOf("cnpy-relglance")).toBeLessThan(notes.indexOf("cnpy-reldoc-hl"));
-    const r14 = findRelease("0.11")!;
-    for (const k of ["added", "changed", "fixed", "removed"] as const) {
-      expect(notes).toMatch(new RegExp(`data-act="releaseGroup" data-arg="${k}"[\\s\\S]*?<span class="cnpy-relstat-n">${r14.patches[k].length}</span>`));
-      expect(releasePageView("0.11", "patches")).toContain(`id="relgroup-${k}"`);
-    }
-    expect(releasePageView("0.10", "notes")).not.toContain('data-arg="fixed"'); // 0.10 has no fixes
-    expect(notes).toContain('href="#releases/0.11/patches"');
-    const patches = releasePageView("0.11", "patches");
-    // Patches: the groups STACKED in order (no side-by-side columns), a long group marked for
-    // two balanced columns at most, PRs as chips; the card STARTS with the groups.
-    const order = ["Added", "Changed", "Fixed", "Removed"].map((g) => patches.indexOf(`<span>${g}</span>`));
-    expect(order.every((x, i) => x > 0 && (i === 0 || x > order[i - 1]))).toBe(true);
-    expect((patches.match(/class="cnpy-relpatch-group"/g) ?? []).length).toBe(4);
-    expect(patches).not.toContain("--cols");
-    expect(patches).toContain('class="cnpy-relpatch-list is-long"');
-    expect(patches.slice(patches.indexOf('class="cnpy-surface')).search(/<[a-z]+ class="cnpy-relpatch-group"/))
-      .toBeLessThan(200);
-    expect(patches).toContain('class="cnpy-relpr-chip"');
-    const row = notes.slice(notes.indexOf('class="cnpy-relheads'), notes.indexOf("</aside>", notes.indexOf('class="cnpy-relheads')));
-    expect(row).toContain("Heads-up");
-    expect(row).not.toMatch(/--amber|color-mix/);
-  });
-
-  // #188: the page's note (Heads-up / Upgrade notes) once sat in the HEADER grid beside the title, so
-  // the body started under the note — 2,000px down on a long Upgrade notes list. It is now a SIBLING
-  // of the body in one two-column grid, and trov.css puts it in a column that spans the body's rows.
-  it("the note and the body are siblings in ONE two-column grid, never body-after-header (#188)", () => {
-    const VOID = new Set(["br", "img", "input", "hr", "meta", "link", "source", "wbr"]);
-    /** The direct children of the first element whose class list has `cls`: "tag.firstClass". */
-    const childrenOf = (html: string, cls: string): string[] => {
-      const start = html.search(new RegExp(`<[a-z]+ [^>]*class="${cls}[" ]`));
-      const out: string[] = [];
-      let depth = 0;
-      for (const m of html.slice(start).matchAll(/<(\/?)([a-z][a-z0-9]*)([^>]*)>/g)) {
-        const [, close, tag, rest] = m;
-        if (close) { if (--depth === 0) break; continue; }
-        if (depth === 1) out.push(`${tag}.${/class="([^" ]+)/.exec(rest)?.[1] ?? ""}`);
-        if (!VOID.has(tag) && !rest.endsWith("/")) depth++;
-      }
-      return out;
-    };
-    for (const [slug, page, label] of [["0.4", "notes", "Heads-up"], ["0.4", "patches", "Upgrade notes"]] as const) {
-      const html = releasePageView(slug, page);
-      expect(html).toContain('class="cnpy-reldoc-grid has-heads"');
-      expect(childrenOf(html, "cnpy-reldoc-grid"), `${slug} ${page}`)
-        .toEqual(["div.cnpy-reldoc-toprow", "header.cnpy-reldoc-head", "aside.cnpy-relheads", "article.cnpy-surface", "nav.cnpy-relpager"]);
-      // The header is the title block only: no note, no body inside it.
-      const head = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-      expect(head).not.toContain("cnpy-relheads");
-      expect(head).not.toContain(label);
-      expect(head).not.toContain("cnpy-surface");
-    }
-    // No note: the same grid, one column, no aside.
-    expect(childrenOf(releasePageView("0.3", "notes"), "cnpy-reldoc-grid"))
-      .toEqual(["div.cnpy-reldoc-toprow", "header.cnpy-reldoc-head", "article.cnpy-surface", "nav.cnpy-relpager"]);
-    // The CSS: from 900px of page the note's area spans the title, body and pager rows, and the LAST
-    // row is the flexible one, so the note's height never grows the title's or the body's row.
-    const block = css.slice(css.indexOf("@container reldoc (min-width: 900px)"));
-    expect(block).toMatch(/grid-template-rows:auto auto auto 1fr;/);
-    expect(block).toMatch(/grid-template-areas:"top top" "head side" "body side" "pager side";/);
-    expect(block).toMatch(/\.cnpy-reldoc-grid\.has-heads > \.cnpy-relheads \{ grid-area:side; \}/);
-    expect(block).toMatch(/\.cnpy-reldoc-grid\.has-heads > \.cnpy-reldoc-card \{ grid-area:body; \}/);
-    // And nothing sticks or scrolls inside itself: the note flows with the page.
-    expect(css).not.toMatch(/\.cnpy-relheads[^{]*\{[^}]*(position:sticky|overflow(-y)?:auto)/);
+    expect(css).toMatch(/\.cnpy-reldoc \{ max-width:1040px;/);
+    expect(releasePageView("0.3", "notes")).not.toContain('aria-label="Heads-up"'); // none: nothing drawn
+    expect(releasePageView("0.2", "notes", hostile)).toContain('class="cnpy-relcall-one"');
+    expect(releasePageView("0.11", "notes")).toContain('class="cnpy-relcall-list"');
   });
 
   it("inline code: a short token is marked to stay on one line, a long path is not", () => {
@@ -416,7 +353,7 @@ describe("one release — its notes page and its patches page", () => {
       const patches = releasePageView(releaseSlug(r), "patches");
       for (const n of r.prs ?? []) expect(patches, r.version).toContain(`/pull/${n}"`);
       if (r.ops?.length) {
-        expect(patches, r.version).toContain(">Upgrade notes<");
+        expect(patches, r.version).toContain("Upgrade notes</div>");
         expect(patches, r.version).toContain(releaseLine(r.ops[0]));
       }
     }
@@ -430,10 +367,8 @@ describe("one release — its notes page and its patches page", () => {
   });
 
   it("releasesScreen is the index without a version, the page with one", () => {
-    expect(releasesScreen(null, "notes")).toContain("cnpy-relgrid");
+    expect(releasesScreen(null, "notes")).toContain("cnpy-relidx");
     expect(releasesScreen("unreleased", "notes", withNext)).toContain("Not deployed yet");
-    // The live index shows "Not deployed yet" exactly while the data carries an Unreleased entry (a branch
-    // between its first shipped change and the merge that cuts the version).
     expect(releasesScreen(null, "notes").includes("Not deployed yet")).toBe(RELEASES[0]?.unreleased === true);
   });
 });
@@ -491,11 +426,11 @@ describe("the release record loads lazily (release-latest.ts, releases-lazy.ts)"
     expect(index).toContain("What's new in Trov");
     expect(index).toContain('data-skel="releases"');
     expect(index).toContain('aria-busy="true"');
-    expect(index).not.toContain("cnpy-relcard-title");
+    expect(index).not.toContain("cnpy-relfeat-title");
     const page = releasesView("0.7", "patches");
     expect(page).toContain('class="cnpy-reldoc"');
     expect(page).toContain('href="#releases" class="cnpy-rel-back"');
-    expect(page).toContain('data-skel="release-body"');
+    expect(page).toContain('data-skel="release-page"');
     expect(releaseCrumb("0.7", "patches")).toBe("v0.7 · Patch notes");
     expect(releaseCrumb("0.25", "notes")).toBe("v0.25"); // an old number reads as typed until the record is in
     expect(releaseCrumb("unreleased", "notes")).toBe("Unreleased");
@@ -518,25 +453,24 @@ describe("the What's new screen in the app", () => {
     me: { handle: "alice", name: "Alice", avatar_url: null, color: "stone", identities: [], org: "SaplingLearn", admin: false },
   } as unknown as ReturnType<typeof initialState>);
 
-  it("the index: titled What's new, the grid, the sidebar entry lit, no global switch", () => {
+  it("the index: titled What's new, the featured release and the timeline, the sidebar entry lit, no switch", () => {
     const html = app(null);
     expect(html).toMatch(/<h1[^>]*>What's new<\/h1>/);
-    expect(html).toContain("cnpy-relgrid");
+    expect(html).toContain("cnpy-relfeat");
     expect(html).toContain('class="cnpy-navrow n-releases is-active"');
     expect(html).not.toContain('data-seg="releases-view"');
-    expect(html).not.toContain('data-seg="release-page"');     // no switch on the index
+    expect(html).not.toContain('aria-label="Release page"');     // no tabs on the index
   });
 
   it("a release page: the title is a back button, the crumb names the release, the entry stays lit", () => {
     const html = app("0.10", "patches");
-    // The switch is in the PAGE header's back-link row — never in the app's top bar.
+    // The tabs are the PAGE's, under its title — never in the app's top bar.
     const top = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
-    expect(top).not.toContain('data-seg="release-page"');
-    const row = html.slice(html.indexOf('class="cnpy-reldoc-toprow'), html.indexOf('class="cnpy-reldoc-head-main"'));
-    expect(row).toMatch(/class="cnpy-seg-btn is-on"[^>]*aria-pressed="true">Patch notes</);
-    expect(row).toContain('data-act="releasePage" data-arg="notes"');
-    expect((html.match(/data-seg="release-page"/g) ?? []).length).toBe(1);
-    expect(app("0.99")).not.toContain('data-seg="release-page"'); // not-found: no switch
+    expect(top).not.toContain('aria-label="Release page"');
+    expect(html).toMatch(/aria-selected="true"[^>]*>Patch notes</);
+    expect(html).toContain('data-act="releasePage" data-arg="notes"');
+    expect((html.match(/aria-label="Release page"/g) ?? []).length).toBe(1);
+    expect(app("0.99")).not.toContain('aria-label="Release page"'); // not-found: no tabs
     expect(html).toContain('data-act="goReleases"');
     expect(html).toContain("v0.10 · Patch notes");
     expect(app("0.29")).toContain("v0.7<"); // an old link's crumb names the entry it lands on

@@ -159,13 +159,15 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
   support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
   to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
   and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
-- **A release page is ONE two-column grid** (`releasePageView`, `.cnpy-reldoc-grid`; #188): the back link and the
-  Release notes / Patch notes switch across the top; down the left column the title block, the body card and the
-  newer / older links; down the right column the page's note (Heads-up on the notes, Upgrade notes on the patches),
-  a SIBLING of the body — never inside the header. From 900px of page the note's area spans the left column's rows
-  and the last row is `1fr`, so a note of any length runs beside the body and never pushes it down; it flows with
-  the page (no sticky box, no inner scroller). Under 900px it stacks in source order: title, note, body. Pinned by
-  `test/releases.test.ts` (the grid's children and the CSS areas).
+- **What's new, the owner's redesign (2026-10-18)** — the old card grid and two-column page were cramped. The
+  INDEX (`releasesIndex`) features the newest release as one wide card (`.cnpy-relfeat`: its title, lede, every
+  highlight two to a row, its change counts) over a timeline of the rest (`.cnpy-reltl`: version and date on a rail,
+  title, lede and counts beside it). A RELEASE PAGE (`releasePageView`, `.cnpy-reldoc`, 1040px like the index) is one
+  column: back link, title block, a `tabBar()` (Release notes / Patch notes — the page's sections), then the page.
+  Release notes: "N changes" over ONE bar split by each group's share, a legend whose entries open that group on the
+  patch notes (`releaseGroup`), the highlights numbered two to a row, the Heads-up as a callout in the flow. Patch
+  notes: the Upgrade notes callout first, each group's lines with their trailing PRs as chips at the right
+  (`splitPatchLine`), every PR; newer / older as two cards at the bottom. Pinned by `test/releases.test.ts`.
 
 ## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
 

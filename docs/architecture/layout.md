@@ -348,9 +348,9 @@
   `site-questions.ts` holds the landing's product questions (its FAQPage).
   The build also writes `fonts/`; `web/src/fonts/` holds the vendored Geist and Archivo Narrow woff2 files and
   their `*-OFL.txt` licenses.
-  `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
+  `web/src/releases.ts` is Help › **What's new**: `#releases` the newest release featured over a timeline; each release has TWO pages,
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
-  builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
+  builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), its two sections in a `tabBar()`;
   `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
   data (`0.N` per milestone, numbered 0.1 … in order, newest first; renumbered in October 2026 — each entry's old
   numbers, which ran to 0.34, are in its `formerly`, so old links still resolve, current numbers first) plus a pure renderer, loaded as its OWN chunk through

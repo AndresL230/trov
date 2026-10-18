@@ -1,4 +1,4 @@
-// What's new (Help › What's new): `#releases` is a grid of every release; each release
+// What's new (Help › What's new): `#releases` features the newest release over a timeline of the rest; each release
 // has two pages, `#releases/<v>` (its release notes) and `#releases/<v>/patches` (its
 // patch notes), where `<v>` is the version ("0.7") or "unreleased".
 //
@@ -50,7 +50,7 @@
 // is traceable to a merged pull request, or — for Unreleased — the working tree it describes.
 
 import { esc, attr, surface } from "./ui";
-import { segmented } from "./segmented";
+import { tabBar, tabPanelAttrs } from "./tabs";
 import { stateMark } from "./marks";
 import { SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
 
@@ -797,153 +797,154 @@ function metaRow(r: Release): string {
 const ARROW_L = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>`;
 const ARROW_R = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
 
-// ── the index ────────────────────────────────────────────────────────────────
-
-function indexCard(r: Release, i: number): string {
-  // Release notes are for users: no PR count here (the patch notes carry the PRs).
-  const counts = `${plural(r.highlights.length, "highlight")} · ${plural(patchCount(r), "patch line")}`;
-  return `<a href="${attr(releaseHash(releaseSlug(r)))}" aria-label="${attr(`${r.unreleased ? "Unreleased" : `v${r.version}`}: ${r.title}`)}"${surface(`--i:${Math.min(i, 8)}`, { hover: true, cls: `cnpy-relcard cnpy-rise${r.unreleased ? " is-next" : ""}` })}>
-    ${metaRow(r)}
-    <h2 class="cnpy-relcard-title">${esc(r.title)}</h2>
-    <p class="cnpy-relcard-headline">${esc(r.headline)}</p>
-    <div class="cnpy-relcard-foot"><span>${counts}</span><span class="cnpy-relcard-go" aria-hidden="true">${ARROW_R}</span></div>
-  </a>`;
-}
-
-/** `#releases`: every release as a card, newest first. */
-export function releasesIndex(releases: readonly Release[] = RELEASES): string {
-  return `<div class="cnpy-relidx">
-    <div class="cnpy-relidx-head">
-      <h1 class="cnpy-relidx-title">What's new in Trov</h1>
-      <p class="cnpy-relidx-intro">Every release, newest first. Open one for its notes, and switch to Patch notes for the full list of changes with links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>. Trov is open source under AGPL-3.0: <a href="${SOURCE_PATH}" target="_blank" rel="noopener" class="cnpy-rel-pr" data-source-link>the source code of the version you are using</a>.</p>
-    </div>
-    <div class="cnpy-relgrid">${releases.map(indexCard).join("")}</div>
-  </div>`;
-}
-
-// ── one release ──────────────────────────────────────────────────────────────
-// A release's two pages are ONE two-column grid (`releasePageView`, #188): the back link
-// and the Release notes / Patch notes switch across the top; down the left column the
-// header (version / date / tag, title, lede) on the page background, the whole body in a
-// SINGLE surface card (hairlines between sections, no box inside it), then the newer /
-// older links; down the right column the page's note (Heads-up / Upgrade notes), beside
-// the title and the body. Everything stacks to one column on a narrow page.
-
-/** A release page's Release notes / Patch notes switch — on the page's back-link row. */
-export function releasePageSwitch(page: ReleasePage): string {
-  return segmented({
-    id: "release-page", ariaLabel: "Release page", act: "releasePage", value: page, inertOn: true,
-    options: [{ value: "notes", label: "Release notes" }, { value: "patches", label: "Patch notes" }],
-  });
-}
+/** A line with `code` but never a link — for text inside a link (an index card) or for users (release notes). */
+const noteLine = (text: string): string =>
+  esc(text).replace(/`([^`]+)`/g, (_m, c: string) => `<code${c.length <= 28 ? ' class="is-short"' : ""}>${c}</code>`);
 
 const dot = (tone: string): string =>
   `<span style="width:7px;height:7px;border-radius:50%;background:${tone};flex:none"></span>`;
 
-function docHead(r: Release, page: ReleasePage): string {
-  // The PR count shows on the patch notes only (release notes are for users).
-  const facts = `${plural(r.highlights.length, "highlight")} · ${plural(patchCount(r), "patch line")}${page === "patches" && r.prs?.length ? ` · ${plural(r.prs.length, "pull request")}` : ""}`;
+/** The change counts, one per non-empty group: its dot, its number, its word. */
+const countsLine = (r: Release): string =>
+  GROUPS.filter((g) => r.patches[g.key].length).map((g) =>
+    `<span class="cnpy-relcount">${dot(g.tone)}<b>${r.patches[g.key].length}</b>${g.label.toLowerCase()}</span>`).join("");
+
+// ── the index ────────────────────────────────────────────────────────────────
+// The owner's redesign (2026-10-18; the old three-across card grid was cramped): the newest release as ONE wide
+// featured card — its title, its lede, every highlight, its counts — then the earlier releases as a timeline, each a
+// row with its version and date on a rail at the left and its title, lede and counts at the right, with room to read.
+
+function featured(r: Release): string {
+  return `<a href="${attr(releaseHash(releaseSlug(r)))}" aria-label="${attr(`${r.unreleased ? "Unreleased" : `v${r.version}`}: ${r.title}`)}"${surface("", { cls: `cnpy-relfeat cnpy-rise${r.unreleased ? " is-next" : ""}` })}>
+    <div class="cnpy-relfeat-top"><span class="cnpy-relfeat-tag">${r.unreleased ? "Coming next" : "Latest release"}</span>${metaRow(r)}</div>
+    <h2 class="cnpy-relfeat-title">${esc(r.title)}</h2>
+    <p class="cnpy-relfeat-lede">${esc(r.headline)}</p>
+    <ul class="cnpy-relfeat-hl">${r.highlights.map((h) => `<li>${noteLine(h)}</li>`).join("")}</ul>
+    <div class="cnpy-relfeat-foot"><span class="cnpy-relcounts">${countsLine(r)}</span><span class="cnpy-relfeat-go">Read the release notes ${ARROW_R}</span></div>
+  </a>`;
+}
+
+function timelineRow(r: Release, i: number): string {
+  return `<li class="cnpy-reltl-item cnpy-rise" style="--i:${Math.min(i + 1, 8)}">
+    <div class="cnpy-reltl-rail">${r.unreleased ? stateMark("Unreleased", "var(--accent)", "ring", 12, "Merged, not deployed yet.") : `<span class="cnpy-reltl-ver">${esc(releaseName(r))}</span><time datetime="${attr(r.date)}">${esc(releaseDate(r.date))}</time>`}</div>
+    <a href="${attr(releaseHash(releaseSlug(r)))}" class="cnpy-reltl-card${r.unreleased ? " is-next" : ""}" aria-label="${attr(`${r.unreleased ? "Unreleased" : `v${r.version}`}: ${r.title}`)}">
+      <h3 class="cnpy-reltl-title">${esc(r.title)}</h3>
+      <p class="cnpy-reltl-lede">${esc(r.headline)}</p>
+      <span class="cnpy-relcounts">${countsLine(r)}<span class="cnpy-reltl-go" aria-hidden="true">${ARROW_R}</span></span>
+    </a>
+  </li>`;
+}
+
+/** `#releases`: the newest release featured, then every earlier one on a timeline, newest first. */
+export function releasesIndex(releases: readonly Release[] = RELEASES): string {
+  const [first, ...rest] = releases;
+  return `<div class="cnpy-relidx">
+    <header class="cnpy-relidx-head">
+      <h1 class="cnpy-relidx-title">What's new in Trov</h1>
+      <p class="cnpy-relidx-intro">Every release, newest first. Each has its release notes, and patch notes with the full list of changes and links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>. Trov is open source under AGPL-3.0: <a href="${SOURCE_PATH}" target="_blank" rel="noopener" class="cnpy-rel-pr" data-source-link>the source code of the version you are using</a>.</p>
+    </header>
+    ${first ? featured(first) : ""}
+    ${rest.length ? `<section class="cnpy-reltl" aria-labelledby="reltl-h"><h2 id="reltl-h" class="cnpy-reltl-h">Earlier releases</h2><ol class="cnpy-reltl-list">${rest.map(timelineRow).join("")}</ol></section>` : ""}
+  </div>`;
+}
+
+// ── one release ──────────────────────────────────────────────────────────────
+// One reading column (the owner's redesign; the old two-column grid squeezed the body beside a grey note): the back
+// link, the title block, the Release notes / Patch notes tab bar, then the page:
+//   • release notes — the change counts (each opens its group on the patch notes) and "All N patch lines", the
+//     highlights numbered with room, then the Heads-up as a callout in the flow;
+//   • patch notes — the Upgrade notes as a callout first (for whoever deploys), then each non-empty group (Added,
+//     Changed, Fixed, Removed) with its lines, each line's pull requests as chips at its right, then every PR;
+// and the newer / older releases as two cards at the bottom.
+
+export const RELEASE_TABS = "release-page";
+
+/** A release page's Release notes / Patch notes — the page's two sections, a tab bar under the title. */
+export function releasePageSwitch(page: ReleasePage): string {
+  return tabBar({
+    id: RELEASE_TABS, ariaLabel: "Release page", act: "releasePage", value: page,
+    tabs: [{ value: "notes", label: "Release notes" }, { value: "patches", label: "Patch notes" }],
+  });
+}
+
+function docHead(r: Release): string {
   return `<header class="cnpy-reldoc-head cnpy-rise">
-    <div class="cnpy-reldoc-head-main">
       ${metaRow(r)}
       <h1 class="cnpy-reldoc-title">${esc(r.title)}</h1>
-      <p class="cnpy-reldoc-lede">${releaseLine(r.headline)}</p>
-      <span class="cnpy-reldoc-facts">${facts}</span>
-    </div>
-  </header>`;
+      <p class="cnpy-reldoc-lede">${noteLine(r.headline)}</p>
+    </header>`;
 }
 
-/** The back link and, right-aligned on the same row, the Release notes / Patch notes switch. */
-const docTopRow = (page: ReleasePage): string => `<div class="cnpy-reldoc-toprow cnpy-rise">
-      <a href="#releases" class="cnpy-rel-back">${ARROW_L}All releases</a>
-      ${releasePageSwitch(page)}
-    </div>`;
+const INFO = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 7.5v.5"></path></svg>`;
+const WRENCH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>`;
 
-const INFO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 7.5v.5"></path></svg>`;
-const WRENCH = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>`;
-
-/** The page's note, in the right column beside the title block and the body: a small icon + label
- *  over a short list (one item is one paragraph) — compact and calm. Omitted when there are no lines. */
-function headerNote(label: string, icon: string, lines: readonly string[]): string {
+/** A callout in the flow: an icon and a label over a short list (one item is one paragraph). "" with no lines. */
+function callout(kind: "heads" | "ops", label: string, icon: string, lines: readonly string[], line: (t: string) => string): string {
   if (!lines.length) return "";
   const body = lines.length === 1
-    ? `<p class="cnpy-relheads-one">${releaseLine(lines[0])}</p>`
-    : `<ul class="cnpy-relheads-list">${lines.map((h) => `<li>${releaseLine(h)}</li>`).join("")}</ul>`;
-  return `<aside class="cnpy-relheads cnpy-rise" aria-label="${attr(label)}" style="border-radius:6px"><span class="cnpy-relheads-l">${icon}${esc(label)}</span>${body}</aside>`;
+    ? `<p class="cnpy-relcall-one">${line(lines[0])}</p>`
+    : `<ul class="cnpy-relcall-list">${lines.map((h) => `<li>${line(h)}</li>`).join("")}</ul>`;
+  return `<aside class="cnpy-relcall is-${kind} cnpy-rise" aria-label="${attr(label)}"><div class="cnpy-relcall-l">${icon}${esc(label)}</div>${body}</aside>`;
 }
 
-/** The release notes' Heads-up (user-facing changes). */
-const headsUp = (r: Release): string => headerNote("Heads-up", INFO, r.headsUp ?? []);
-
-/** The patch notes' Upgrade notes (`ops`): what whoever deploys must do. */
-const upgradeNotes = (r: Release): string => headerNote("Upgrade notes", WRENCH, r.ops ?? []);
-
-/** The patch notes' PR line: one quiet chip per pull request. */
-function prChips(r: Release): string {
-  return r.prs?.length
-    ? r.prs.map((n) => `<a href="${attr(prUrl(n))}" target="_blank" rel="noopener noreferrer" class="cnpy-relpr-chip" style="border-radius:5px">#${n}</a>`).join("")
-    : `<span style="color:var(--fg-40)">None recorded</span>`;
+/** A patch line's text and its trailing pull requests apart: "… (#12, #13)" → ["…", [12, 13]]. */
+export function splitPatchLine(text: string): [string, number[]] {
+  const m = /\s*\((#\d+(?:, #\d+)*)\)\s*$/.exec(text);
+  return m ? [text.slice(0, m.index), m[1].split(", ").map((x) => Number(x.slice(1)))] : [text, []];
 }
+const prChip = (n: number): string =>
+  `<a href="${attr(prUrl(n))}" target="_blank" rel="noopener noreferrer" class="cnpy-relpr-chip">#${n}</a>`;
 
-/** Release notes, one column in one card: the "At a glance" strip (version, date, and the
- *  change counts as large figures — each opens that group on the patch notes), then the
- *  highlights (the Heads-up is in the right column, `releasePageView`) —
- *  in two balanced columns when there are LONG_HIGHLIGHTS or more and the card is very
- *  wide (trov.css, a container query). */
+/** Release notes: what changed at a glance — ONE bar split by each group's share, and under it a legend whose entries
+ *  open that group on the patch notes (the owner's call: the three count boxes were no good) — then the highlights,
+ *  numbered, two to a row on a wide page, then the Heads-up. */
 const LONG_HIGHLIGHTS = 5;
 function notesDoc(r: Release): string {
   const slug = releaseSlug(r);
-  const fact = (label: string, value: string) =>
-    `<div class="cnpy-relglance-fact"><span class="cnpy-relglance-lab">${label}</span><span class="cnpy-relglance-val">${value}</span></div>`;
-  const stats = GROUPS.filter((g) => r.patches[g.key].length).map((g) =>
-    `<button type="button" data-act="releaseGroup" data-arg="${g.key}" class="cnpy-relstat" style="border-radius:6px" title="${attr(`${g.label} — open on the patch notes`)}">
-      <span class="cnpy-relstat-n">${r.patches[g.key].length}</span>
-      <span class="cnpy-relstat-l">${dot(g.tone)}${g.label}</span>
-    </button>`).join("");
-  const glance = `<section class="cnpy-relglance" aria-label="At a glance">
-      ${fact("Version", r.unreleased ? "Unreleased" : `v${esc(r.version)}`)}
-      ${fact(r.unreleased ? "Last updated" : "Released", esc(releaseDate(r.date)))}
-      <div class="cnpy-relglance-stats">${stats}</div>
-      <a href="${attr(releaseHash(slug, "patches"))}" class="cnpy-rel-pr cnpy-relglance-all">All ${plural(patchCount(r), "patch line")}${ARROW_R}</a>
-    </section>`;
-  return `${glance}
-    <section class="cnpy-reldoc-main">
-      <h2 class="cnpy-rel-h3">Highlights</h2>
-      <ul class="cnpy-rel-list cnpy-reldoc-hl${r.highlights.length >= LONG_HIGHLIGHTS ? " is-long" : ""}">${r.highlights.map((h) => `<li>${releaseLine(h)}</li>`).join("")}</ul>
-    </section>`;
+  const present = GROUPS.filter((g) => r.patches[g.key].length);
+  const bar = present.map((g) => `<span class="cnpy-relbar-seg" style="flex:${r.patches[g.key].length};background:${g.tone}"></span>`).join("");
+  const stats = present.map((g) =>
+    `<button type="button" data-act="releaseGroup" data-arg="${g.key}" class="cnpy-relstat" title="${attr(`${g.label} — open on the patch notes`)}">${dot(g.tone)}<span class="cnpy-relstat-n">${r.patches[g.key].length}</span><span class="cnpy-relstat-l">${g.label.toLowerCase()}</span></button>`).join("");
+  return `<section class="cnpy-relstrip" aria-label="At a glance">
+      <div class="cnpy-relstrip-head"><span class="cnpy-relstrip-total">${plural(patchCount(r), "change")}</span><a href="${attr(releaseHash(slug, "patches"))}" class="cnpy-rel-pr cnpy-relstrip-all">All ${plural(patchCount(r), "patch line")}${ARROW_R}</a></div>
+      <div class="cnpy-relbar" aria-hidden="true">${bar}</div>
+      <div class="cnpy-relstrip-stats">${stats}</div>
+    </section>
+    <section class="cnpy-relhl" aria-labelledby="relhl-h">
+      <h2 id="relhl-h" class="cnpy-rel-h2">Highlights</h2>
+      <ol class="cnpy-relhl-list${r.highlights.length >= LONG_HIGHLIGHTS ? " is-long" : ""}">${r.highlights.map((h, i) => `<li><span class="cnpy-relhl-n" aria-hidden="true">${String(i + 1).padStart(2, "0")}</span><p>${noteLine(h)}</p></li>`).join("")}</ol>
+    </section>
+    ${callout("heads", "Heads-up", INFO, r.headsUp ?? [], noteLine)}`;
 }
 
-/** Patch notes (the Upgrade notes are in the right column, `releasePageView`): each non-empty group as a STACKED
- *  full-width section (Added, Changed, Fixed, Removed) — one row per line, a quiet heading
- *  (dot, label, count), hairlines only between groups — then the PRs as one line of chips.
- *  A long group (LONG_GROUP lines or more) may flow into two balanced columns on a very
- *  wide card (trov.css, a container query); never more. */
-const LONG_GROUP = 8;
+/** Patch notes: the Upgrade notes first, each non-empty group with its lines (the PRs as chips), every PR. */
 function patchesDoc(r: Release): string {
   const present = GROUPS.filter((g) => r.patches[g.key].length);
   const groups = present.map((g) => {
     const lines = r.patches[g.key];
     return `<section class="cnpy-relpatch-group" id="relgroup-${g.key}">
       <h2 class="cnpy-relpatch-h">${dot(g.tone)}<span>${g.label}</span><span class="cnpy-relpatch-n">${lines.length}</span></h2>
-      <ul class="cnpy-relpatch-list${lines.length >= LONG_GROUP ? " is-long" : ""}">${lines.map((l) => `<li>${releaseLine(l)}</li>`).join("")}</ul>
+      <ul class="cnpy-relpatch-list">${lines.map((l) => {
+        const [text, prs] = splitPatchLine(l);
+        return `<li><span class="cnpy-relpatch-t">${releaseLine(text)}</span>${prs.length ? `<span class="cnpy-relpatch-prs">${prs.map(prChip).join("")}</span>` : ""}</li>`;
+      }).join("")}</ul>
     </section>`;
   }).join("");
-  return `${present.length
-      ? `<div class="cnpy-relpatch">${groups}</div>`
-      : `<p class="cnpy-rel-empty cnpy-reldoc-pad">No patch notes recorded for this release.</p>`}
-    <footer class="cnpy-relpatch-prs"><span class="cnpy-relpatch-prs-l">Pull requests</span><span class="cnpy-relpatch-chips">${prChips(r)}</span></footer>`;
+  return `${callout("ops", "Upgrade notes", WRENCH, r.ops ?? [], releaseLine)}
+    ${present.length ? `<div${surface("", { cls: "cnpy-relpatch cnpy-rise" })}>${groups}</div>` : `<p class="cnpy-rel-empty">No patch notes recorded for this release.</p>`}
+    <footer class="cnpy-relpatch-all"><span class="cnpy-relpatch-all-l">Pull requests</span><span class="cnpy-relpatch-chips">${r.prs?.length ? r.prs.map(prChip).join("") : `<span style="color:var(--fg-40)">None recorded</span>`}</span></footer>`;
 }
 
-/** Newer / older links under the card (plain links on the page, no boxes). */
+/** The newer and older releases, as two cards at the bottom (each keeps the page kind). */
 function pager(r: Release, page: ReleasePage, releases: readonly Release[]): string {
   const i = releases.indexOf(r);
   const newer = i > 0 ? releases[i - 1] : null;
   const older = i >= 0 && i < releases.length - 1 ? releases[i + 1] : null;
-  const name = (x: Release) => `${x.unreleased ? "Unreleased" : `v${esc(x.version)}`} · ${esc(x.title)}`;
   const link = (x: Release | null, dir: "newer" | "older") => x
     ? `<a href="${attr(releaseHash(releaseSlug(x), page))}" class="cnpy-relpager-i is-${dir}">
         <span class="cnpy-relpager-dir">${dir === "newer" ? `${ARROW_L}Newer` : `Older${ARROW_R}`}</span>
-        <span class="cnpy-relpager-name">${name(x)}</span>
+        <span class="cnpy-relpager-ver">${x.unreleased ? "Unreleased" : `v${esc(x.version)}`}</span>
+        <span class="cnpy-relpager-name">${esc(x.title)}</span>
       </a>`
     : `<span class="cnpy-relpager-i is-${dir} is-none" aria-hidden="true"></span>`;
   return `<nav class="cnpy-relpager" aria-label="Other releases">${link(newer, "newer")}${link(older, "older")}</nav>`;
@@ -954,30 +955,21 @@ export function releasePageView(slug: string, page: ReleasePage, releases: reado
   const r = findRelease(slug, releases);
   if (!r) {
     return `<div class="cnpy-reldoc">
+      <a href="#releases" class="cnpy-rel-back">${ARROW_L}All releases</a>
       <header class="cnpy-reldoc-head">
-        <a href="#releases" class="cnpy-rel-back">${ARROW_L}All releases</a>
         <h1 class="cnpy-reldoc-title">No release called “${esc(slug)}”</h1>
         <p class="cnpy-reldoc-lede">It may have been renamed when it shipped. Every release is listed on the <a href="#releases" class="cnpy-rel-pr">All releases</a> page.</p>
       </header>
     </div>`;
   }
-  // ONE grid (#188): the back-link row across the top; then the title block, the body card and
-  // the newer / older links down the LEFT column, and the page's note (the Heads-up on the release
-  // notes, the Upgrade notes on the patch notes) down the RIGHT one, top-aligned with the title.
-  // The note is a sibling of the body, never part of the header, so a long note runs beside the
-  // body instead of pushing it down. Under 900px of page it is one column in source order:
-  // title, note, body (trov.css).
-  const note = page === "notes" ? headsUp(r) : upgradeNotes(r);
   return `<div class="cnpy-reldoc">
-    <div class="cnpy-reldoc-grid${note ? " has-heads" : ""}">
-    ${docTopRow(page)}
-    ${docHead(r, page)}
-    ${note}
-    <article${surface("--i:1", { cls: "cnpy-reldoc-card cnpy-rise" })} aria-label="${attr(page === "patches" ? "Patch notes" : "Release notes")}">
+    <a href="#releases" class="cnpy-rel-back cnpy-rise">${ARROW_L}All releases</a>
+    ${docHead(r)}
+    ${releasePageSwitch(page)}
+    <div${tabPanelAttrs(RELEASE_TABS, page)} class="cnpy-reldoc-body">
       ${page === "patches" ? patchesDoc(r) : notesDoc(r)}
-    </article>
-    ${pager(r, page, releases)}
     </div>
+    ${pager(r, page, releases)}
   </div>`;
 }
 

@@ -242,7 +242,9 @@ html[data-zooming] *, html[data-zooming] *::before, html[data-zooming] *::after 
 [data-screen="mywork"], [data-screen="repo"] { --hdr-frame:var(--frame-dash); --hdr-pad:32px; }
 [data-screen="feed"] { --hdr-frame:var(--frame-feed); --hdr-pad:32px; }
 [data-screen="roadmap"] { --hdr-frame:1200px; --hdr-pad:32px; }
-[data-screen="settings"], [data-screen="releases"]:has(.cnpy-relidx) { --hdr-frame:1180px; --hdr-pad:32px; }
+[data-screen="settings"] { --hdr-frame:1180px; --hdr-pad:32px; }
+[data-screen="releases"]:has(.cnpy-relidx) { --hdr-frame:1040px; --hdr-pad:32px; }
+[data-screen="releases"]:has(.cnpy-reldoc) { --hdr-frame:1040px; --hdr-pad:32px; }
 [data-screen="search"] { --hdr-frame:780px; --hdr-pad:24px; }
 @media (min-width:1441px) {
   .cnpy-hdr {
@@ -902,169 +904,127 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-guide-anchor { scroll-margin-top:24px; }
 @media (max-width: 1180px) { .cnpy-guide-toc { display:none; } }
 
-/* ── What's new (web/src/releases.ts). The INDEX is a grid of release cards (.cnpy-surface).
-   A release PAGE is one wide document: its header on the page background, then ONE
-   surface card (.cnpy-reldoc-card) holding the body — split by hairlines, no box inside it —
-   with the page's note in a column beside it (.cnpy-reldoc-grid); newer / older links under it. No radius is declared here (the corners layer would need a rule for it). Long
-   `code` runs wrap anywhere, so a phone never scrolls sideways; under 600px every page keeps
-   a 16px gutter and stacks to one column. */
-.cnpy-relidx { max-width:1180px; margin:0 auto; padding:40px 32px 120px; }
-.cnpy-relidx-head { max-width:720px; margin-bottom:28px; }
-.cnpy-relidx-title { margin:0; font-size:26px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; color:var(--fg); }
-.cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
-.cnpy-relgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:16px; }
-.cnpy-relcard { display:flex; flex-direction:column; min-width:0; padding:18px 20px 16px; color:inherit; text-decoration:none; transition:border-color .15s ease; }
-.cnpy-relcard:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.cnpy-relcard.is-next { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
-.cnpy-relcard-title { margin:10px 0 0; font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); text-wrap:balance; }
-.cnpy-relcard-headline { margin:8px 0 0; flex:1; font-size:13.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
-.cnpy-relcard-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-40); }
-.cnpy-relcard-go { display:inline-flex; color:var(--fg-40); transition:transform .15s ease, color .15s ease; }
-.cnpy-relcard:hover .cnpy-relcard-go { color:var(--accent); transform:translateX(2px); }
-
-.cnpy-reldoc { max-width:1180px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; gap:28px; container:reldoc / inline-size; }
-/* The release page is ONE grid (#188): the back link + switch across the top; down the left
-   column the title block, the body card and the newer / older links; down the right column the
-   page's note (the Heads-up on the release notes, the Upgrade notes on the patch notes), from
-   the title to the end of the page. The note spans the left column's rows and the LAST row is
-   1fr, so its height goes into that row and never into the title's or the body's: a note of any
-   length runs beside the body and never pushes it down. It flows with the page (no sticky box,
-   no inner scroller): it is reference text read once, and a 2,000px Upgrade notes list in a
-   nested scroller would hide most of itself. Under 900px of page it is one column in source
-   order — title, note, body, pager. */
-.cnpy-reldoc-grid { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
-@container reldoc (min-width: 900px) {
-  .cnpy-reldoc-grid.has-heads {
-    grid-template-columns:minmax(0, 1fr) minmax(280px, 330px);
-    grid-template-rows:auto auto auto 1fr;
-    grid-template-areas:"top top" "head side" "body side" "pager side";
-  }
-  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-toprow { grid-area:top; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-head { grid-area:head; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-relheads { grid-area:side; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-card { grid-area:body; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-relpager { grid-area:pager; }
-}
-/* The header row is 14px under the back link; the card and the pager keep 28px above them. */
-.cnpy-reldoc-grid > .cnpy-reldoc-card, .cnpy-reldoc-grid > .cnpy-relpager { margin-top:14px; }
-/* The header (the not-found page's, the loading skeleton's, and the real page's title block). */
-.cnpy-reldoc-head { display:flex; flex-direction:column; align-items:stretch; gap:14px; min-width:0; }
-.cnpy-reldoc-head-main { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-width:0; }
-/* The back link and, right-aligned on the same row, the Release notes / Patch notes switch —
-   the row spans the grid, so the switch's right edge is the note's. It wraps under the back
-   link when both do not fit. */
-.cnpy-reldoc-toprow { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
-.cnpy-reldoc-toprow .cnpy-rel-back { margin-bottom:0; }
-.cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; font-size:13px; font-weight:500; color:var(--fg-55); text-decoration:none; }
+/* ── What's new (web/src/releases.ts), the owner's redesign (2026-10-18: the old card grid and two-column page were
+   cramped). The INDEX: the newest release as one wide featured card (.cnpy-relfeat), then the rest on a timeline
+   (.cnpy-reltl: the version and date on a rail, the title, lede and counts beside it). A release PAGE: one reading
+   column (.cnpy-reldoc) — back link, title block, a tab bar (Release notes / Patch notes), the page, newer / older as
+   two cards. Long `code` runs wrap anywhere, so a phone never scrolls sideways. */
+.cnpy-relidx { max-width:1040px; margin:0 auto; padding:40px 32px 120px; }
+.cnpy-relidx-head { max-width:680px; margin-bottom:30px; }
+.cnpy-relidx-title { margin:0; font-size:30px; font-weight:650; letter-spacing:-0.025em; color:var(--fg); }
+.cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.65; color:var(--fg-55); }
+.cnpy-rel-pr { color:var(--accent); text-decoration:none; }
+.cnpy-rel-pr:hover { text-decoration:underline; text-underline-offset:3px; }
+.cnpy-rel-meta { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); flex-wrap:wrap; }
+.cnpy-rel-ver { font-family:var(--label); font-weight:600; color:var(--fg-70); }
+.cnpy-relcounts { display:inline-flex; align-items:center; gap:6px 16px; flex-wrap:wrap; font-size:12.5px; color:var(--fg-55); }
+.cnpy-relcount { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.cnpy-relcount b { font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+/* the featured release */
+.cnpy-relfeat { display:block; padding:30px 34px 26px; text-decoration:none; color:inherit; transition:border-color .16s ease, transform .16s ease; }
+.cnpy-relfeat:hover { border-color:var(--border-strong); transform:translateY(-1px); }
+.cnpy-relfeat-top { display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; }
+.cnpy-relfeat-tag { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+.cnpy-relfeat-title { margin:14px 0 0; font-size:26px; font-weight:650; letter-spacing:-0.02em; line-height:1.25; color:var(--fg); max-width:30ch; }
+.cnpy-relfeat-lede { margin:10px 0 0; font-size:15px; line-height:1.6; color:var(--fg-70); max-width:68ch; }
+.cnpy-relfeat-hl { margin:20px 0 0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 28px; }
+.cnpy-relfeat-hl li { position:relative; padding-left:16px; font-size:13.5px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relfeat-hl li::before { content:""; position:absolute; left:0; top:.6em; width:6px; height:6px; border-radius:50%; background:var(--accent); opacity:.7; }
+.cnpy-relfeat-foot { display:flex; align-items:center; justify-content:space-between; gap:12px 20px; flex-wrap:wrap; margin-top:24px; padding-top:16px; border-top:1px solid var(--border); }
+.cnpy-relfeat-go { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:var(--accent); white-space:nowrap; }
+.cnpy-relfeat-go svg { transition:transform .16s ease; }
+.cnpy-relfeat:hover .cnpy-relfeat-go svg { transform:translateX(3px); }
+/* the timeline */
+.cnpy-reltl { margin-top:44px; }
+.cnpy-reltl-h { margin:0 0 6px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-reltl-list { margin:0; padding:0; list-style:none; }
+.cnpy-reltl-item { display:grid; grid-template-columns:150px minmax(0,1fr); gap:0 28px; position:relative; }
+.cnpy-reltl-item::before { content:""; position:absolute; left:150px; top:0; bottom:0; width:1px; margin-left:13px; background:var(--border); }
+.cnpy-reltl-item::after { content:""; position:absolute; left:150px; top:27px; width:7px; height:7px; margin-left:10px; border-radius:50%; background:var(--bg); box-shadow:0 0 0 1.5px var(--fg-40); }
+.cnpy-reltl-rail { display:flex; flex-direction:column; gap:3px; padding:22px 0; text-align:right; }
+.cnpy-reltl-ver { font-family:var(--label); font-size:13px; font-weight:600; color:var(--fg); }
+.cnpy-reltl-rail time { font-size:12px; color:var(--fg-40); }
+.cnpy-reltl-card { display:block; margin-left:12px; padding:18px 4px 20px 14px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; }
+.cnpy-reltl-item:last-child .cnpy-reltl-card { border-bottom:0; }
+.cnpy-reltl-title { margin:0; font-size:16.5px; font-weight:600; letter-spacing:-0.01em; color:var(--fg); }
+.cnpy-reltl-card:hover .cnpy-reltl-title { color:var(--accent); }
+.cnpy-reltl-lede { margin:6px 0 10px; font-size:13.5px; line-height:1.6; color:var(--fg-55); max-width:72ch; }
+.cnpy-reltl-go { display:inline-flex; color:var(--fg-40); transition:transform .16s ease, color .16s ease; }
+.cnpy-reltl-card:hover .cnpy-reltl-go { color:var(--accent); transform:translateX(3px); }
+/* one release */
+.cnpy-reldoc { max-width:1040px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; }
+.cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; font-size:12.5px; font-weight:500; color:var(--fg-55); text-decoration:none; }
 .cnpy-rel-back:hover { color:var(--fg); }
-.cnpy-reldoc-title { margin:0; max-width:900px; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.15; color:var(--fg); text-wrap:balance; }
-.cnpy-reldoc-lede { margin:0; max-width:780px; font-size:17px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
-.cnpy-reldoc-facts { margin-top:2px; font-size:13px; color:var(--fg-40); }
-.cnpy-reldoc-card { min-width:0; overflow:hidden; }
-.cnpy-reldoc-main { padding:30px 36px 34px; min-width:0; }
-.cnpy-reldoc-hl { font-size:15.5px; gap:14px; max-width:820px; }
-.cnpy-reldoc-hl li { break-inside:avoid; }
-/* The page's note (Heads-up / Upgrade notes) in the right column: compact and calm — a faint
-   neutral fill (its 6px radius is inline), a small icon + label, the lines in --fg-70 at 13px.
-   Its margin-top (the meta row above the title) top-aligns it with the title. */
-.cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:30px; }
-.cnpy-relheads-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
-.cnpy-relheads-one { margin:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; text-wrap:pretty; }
-.cnpy-relheads-list { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:5px; font-size:13px; line-height:1.55; color:var(--fg-70); }
-.cnpy-relheads-list li { overflow-wrap:anywhere; text-wrap:pretty; }
-.cnpy-relheads-list li::marker { color:var(--fg-40); }
-@container reldoc (max-width: 899px) { .cnpy-relheads { margin-top:4px; } }
-/* Release notes' "At a glance": a full-width strip across the card's top — version and date as
-   facts, the change counts as large figures (each a button to that patch group), then the
-   link to every patch line. Stacks under 640px of card (container query below) — the card beside
-   a Heads-up is about 740px wide at 1440px, room for the four figures on one row. */
-.cnpy-relglance { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; align-items:center; gap:14px 40px; padding:14px 32px 15px; border-bottom:1px solid var(--border); }
-.cnpy-relglance-fact { display:flex; flex-direction:column; gap:5px; min-width:0; }
-.cnpy-relglance-lab { font-size:12px; color:var(--fg-40); }
-.cnpy-relglance-val { font-size:16px; font-weight:500; color:var(--fg); white-space:nowrap; font-variant-numeric:tabular-nums; }
-.cnpy-relglance-stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; min-width:0; }
-.cnpy-relstat { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; padding:6px 14px; text-align:left; background:transparent; transition:background .12s ease; }
-.cnpy-relstat:hover { background:var(--hover); }
-.cnpy-relstat:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.cnpy-relstat-n { font-size:26px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; color:var(--fg); font-variant-numeric:tabular-nums; }
-.cnpy-relstat-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); white-space:nowrap; }
-.cnpy-relglance-all { display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
-/* Patch notes: the groups STACKED, full width, one row per line at a readable measure; a
-   hairline between groups only; the PRs as one quiet line of chips. */
-.cnpy-relpatch-group { padding:26px 32px 28px; min-width:0; }
+.cnpy-reldoc-head { margin-top:22px; }
+.cnpy-reldoc-title { margin:10px 0 0; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.2; color:var(--fg); text-wrap:balance; }
+.cnpy-reldoc-lede { margin:12px 0 0; max-width:72ch; font-size:16px; line-height:1.6; color:var(--fg-70); }
+.cnpy-reldoc > .cnpy-tabs { margin-top:26px; }
+.cnpy-reldoc-body { display:flex; flex-direction:column; gap:28px; padding-top:26px; }
+.cnpy-rel-h2 { margin:0 0 14px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-relstrip { display:flex; flex-direction:column; gap:10px; }
+.cnpy-relstrip-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.cnpy-relstrip-total { font-size:14px; font-weight:600; color:var(--fg); }
+.cnpy-relstrip-all { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:500; }
+.cnpy-relbar { display:flex; gap:3px; height:6px; overflow:hidden; }
+.cnpy-relbar-seg { min-width:6px; opacity:.85; }
+.cnpy-relstrip-stats { display:flex; flex-wrap:wrap; gap:4px 18px; }
+.cnpy-relstat { display:inline-flex; align-items:center; gap:7px; padding:3px 0; background:none; border:0; font-size:13px; color:var(--fg-55); cursor:pointer; }
+.cnpy-relstat:hover .cnpy-relstat-l { color:var(--fg); text-decoration:underline; text-underline-offset:3px; }
+.cnpy-relstat:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-relstat-n { font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-relhl-list { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 36px; }
+.cnpy-relhl-list li { display:grid; grid-template-columns:36px minmax(0,1fr); gap:0 4px; padding:18px 0; border-top:1px solid var(--border); }
+.cnpy-relhl-n { font-family:var(--label); font-size:13px; font-weight:600; color:var(--accent); padding-top:2px; font-variant-numeric:tabular-nums; }
+.cnpy-relhl-list p { margin:0; font-size:15px; line-height:1.65; color:var(--fg); }
+.cnpy-relcall { padding:16px 18px; border:1px solid var(--border); background:var(--surface); }
+.cnpy-relcall.is-heads { border-left:3px solid var(--accent); }
+.cnpy-relcall.is-ops { border-left:3px solid var(--fg-40); }
+.cnpy-relcall-l { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--fg); }
+.cnpy-relcall-one { margin:8px 0 0; font-size:14px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relcall-list { margin:8px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:6px; font-size:14px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relpatch { padding:6px 24px; }
+.cnpy-relpatch-group { padding:18px 0; }
 .cnpy-relpatch-group + .cnpy-relpatch-group { border-top:1px solid var(--border); }
-.cnpy-relpatch-h { display:flex; align-items:center; gap:8px; margin:0 0 14px; font-size:14px; font-weight:600; color:var(--fg); }
-.cnpy-relpatch-n { font-size:12.5px; font-weight:500; color:var(--fg-40); font-variant-numeric:tabular-nums; }
-.cnpy-relpatch-list { margin:0; padding-left:20px; max-width:900px; font-size:14.5px; line-height:1.6; color:var(--fg-70); }
-.cnpy-relpatch-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; break-inside:avoid; }
-.cnpy-relpatch-list li + li { margin-top:10px; }
-.cnpy-relpatch-list li::marker { color:var(--fg-40); }
-.cnpy-relpatch-prs { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:16px 32px 18px; border-top:1px solid var(--border); }
-.cnpy-relpatch-prs-l { font-size:12.5px; color:var(--fg-40); }
-.cnpy-relpatch-chips { display:flex; flex-wrap:wrap; gap:6px; }
-.cnpy-relpr-chip { font-size:12.5px; line-height:1; padding:4px 7px; color:var(--fg-55); background:var(--hover); text-decoration:none; font-variant-numeric:tabular-nums; transition:color .12s ease; }
-.cnpy-relpr-chip:hover { color:var(--accent); }
-.cnpy-reldoc-pad { padding:28px 32px; }
+.cnpy-relpatch-h { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:14px; font-weight:600; color:var(--fg); }
+.cnpy-relpatch-n { font-family:var(--label); font-size:11.5px; font-weight:600; color:var(--fg-40); }
+.cnpy-relpatch-list { margin:0; padding:0; list-style:none; }
+.cnpy-relpatch-list li { display:flex; align-items:baseline; justify-content:space-between; gap:6px 18px; padding:9px 0; border-top:1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.cnpy-relpatch-list li:first-child { border-top:0; }
+.cnpy-relpatch-t { min-width:0; font-size:14px; line-height:1.6; color:var(--fg-70); overflow-wrap:anywhere; }
+.cnpy-relpatch-prs { display:inline-flex; gap:5px; flex:none; }
+.cnpy-relpr-chip { display:inline-flex; align-items:center; height:22px; padding:0 8px; border:1px solid var(--border); background:var(--bg); font-family:var(--label); font-size:11.5px; font-weight:600; color:var(--fg-70); text-decoration:none; white-space:nowrap; }
+.cnpy-relpr-chip:hover { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.cnpy-relpatch-all { display:flex; align-items:baseline; gap:8px 14px; flex-wrap:wrap; }
+.cnpy-relpatch-all-l { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-relpatch-chips { display:flex; gap:6px; flex-wrap:wrap; }
 .cnpy-rel-empty { margin:0; font-size:14px; color:var(--fg-55); }
-
-.cnpy-rel-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-40); }
-.cnpy-rel-ver { font-family:var(--label); font-size:12.5px; font-weight:600; color:var(--fg-70); font-variant-numeric:tabular-nums; }
-.cnpy-rel-h3 { display:flex; align-items:center; gap:8px; margin:0 0 16px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
-.cnpy-rel-n { margin-left:auto; font-weight:500; color:var(--fg-40); letter-spacing:0; font-variant-numeric:tabular-nums; }
-.cnpy-rel-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:10px; font-size:15px; line-height:1.6; color:var(--fg-70); }
-.cnpy-rel-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; }
-.cnpy-rel-list li::marker { color:var(--fg-40); }
-.cnpy-rel-log { font-size:13.5px; gap:10px; }
-/* Inline code, light: the code face at .9em on a faint fill, no border; a short token stays on
-   one line (.is-short), a long path may wrap. */
-.cnpy-reldoc code, .cnpy-relidx code { font-family:var(--code); font-size:.9em; color:var(--fg); background:var(--hover); padding:1px 3px; overflow-wrap:anywhere; }
-.cnpy-reldoc code.is-short, .cnpy-relidx code.is-short { white-space:nowrap; }
-.cnpy-rel-pr { color:var(--accent); text-decoration:none; font-variant-numeric:tabular-nums; }
-.cnpy-rel-pr:hover { text-decoration:underline; }
-.cnpy-relpager { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-top:4px; }
-.cnpy-relpager-i { display:flex; flex-direction:column; gap:6px; min-width:0; color:inherit; text-decoration:none; }
+.cnpy-reldoc code { font-family:var(--code); font-size:.92em; padding:1px 5px; background:var(--hover); overflow-wrap:anywhere; }
+.cnpy-reldoc code.is-short { white-space:nowrap; }
+.cnpy-relpager { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:40px; }
+.cnpy-relpager-i { display:flex; flex-direction:column; gap:4px; padding:16px 18px; border:1px solid var(--border); background:var(--surface); text-decoration:none; color:inherit; transition:border-color .14s ease; }
+.cnpy-relpager-i:hover { border-color:var(--border-strong); }
 .cnpy-relpager-i.is-older { text-align:right; align-items:flex-end; }
 .cnpy-relpager-i.is-none { visibility:hidden; }
-.cnpy-relpager-dir { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-40); }
-.cnpy-relpager-name { font-size:15px; font-weight:500; line-height:1.4; color:var(--fg-70); overflow-wrap:anywhere; transition:color .12s ease; }
-.cnpy-relpager-i:hover .cnpy-relpager-name { color:var(--accent); }
-/* The body follows the CARD's width (a container query — the rail collapses, so the
-   viewport lies about the room): At a glance's figures on one row from 640px; LONG highlights
-   or a LONG patch group (.is-long) flow into two balanced columns only on a very wide card
-   (1040px+, so only on a page with no note beside the card). */
-.cnpy-reldoc-card { container-type:inline-size; }
-@container (min-width: 1040px) {
-  .cnpy-reldoc-hl.is-long { display:block; max-width:none; columns:2; column-gap:56px; }
-  .cnpy-reldoc-hl.is-long li { padding-bottom:14px; }
-  .cnpy-relpatch-list.is-long { max-width:none; columns:2; column-gap:56px; }
-  .cnpy-relpatch-list.is-long li + li { margin-top:0; }
-  .cnpy-relpatch-list.is-long li { padding-bottom:10px; }
-}
-@container (max-width: 959px) {
-  .cnpy-relglance { grid-template-columns:auto auto minmax(0, 1fr); }
-  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:2; }
-  .cnpy-relglance-all { justify-self:end; }
-}
-@container (max-width: 639px) {
-  .cnpy-relglance { grid-template-columns:1fr 1fr; gap:16px 20px; }
-  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:auto; grid-template-columns:repeat(2, minmax(0, 1fr)); }
-  .cnpy-relglance-all { grid-column:1 / -1; justify-self:start; }
-}
-@media (max-width: 600px) {
-  .cnpy-relidx { padding:24px 16px 80px; }
-  .cnpy-reldoc { padding:20px 16px 80px; gap:22px; }
-  .cnpy-reldoc-grid > .cnpy-reldoc-card, .cnpy-reldoc-grid > .cnpy-relpager { margin-top:8px; }
-  .cnpy-reldoc-title { font-size:25px; }
-  .cnpy-reldoc-lede { font-size:15.5px; }
-  .cnpy-reldoc-main, .cnpy-relpatch-group { padding:20px 16px 22px; }
-  .cnpy-relglance { padding:14px 16px; }
-  .cnpy-relpatch-prs { padding:14px 16px 16px; }
-  .cnpy-relpatch-list { font-size:14px; padding-left:18px; }
-  .cnpy-rel-list { font-size:14.5px; padding-left:18px; }
-  .cnpy-relpager { grid-template-columns:1fr; gap:16px; }
+.cnpy-relpager-dir { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500; color:var(--fg-55); }
+.cnpy-relpager-ver { font-family:var(--label); font-size:12px; font-weight:600; color:var(--fg-55); }
+.cnpy-relpager-name { font-size:14px; font-weight:600; color:var(--fg); }
+@media (max-width:720px) {
+  .cnpy-relidx, .cnpy-reldoc { padding-left:16px; padding-right:16px; }
+  .cnpy-relfeat { padding:22px 18px 18px; }
+  .cnpy-relfeat-hl { grid-template-columns:minmax(0,1fr); }
+  .cnpy-reltl-item { grid-template-columns:minmax(0,1fr); }
+  .cnpy-reltl-item::before, .cnpy-reltl-item::after { display:none; }
+  .cnpy-reltl-rail { flex-direction:row; gap:10px; text-align:left; padding:18px 0 0; }
+  .cnpy-reltl-card { margin-left:0; padding:6px 0 18px; }
+  .cnpy-reldoc-title { font-size:26px; }
+  .cnpy-relhl-list { grid-template-columns:minmax(0,1fr); }
+  .cnpy-relpatch { padding:4px 16px; }
+  .cnpy-relpatch-list li { flex-direction:column; }
+  .cnpy-relpager { grid-template-columns:1fr; }
   .cnpy-relpager-i.is-older { text-align:left; align-items:flex-start; }
   .cnpy-relpager-i.is-none { display:none; }
 }
+@media (prefers-reduced-motion: reduce) { .cnpy-relfeat, .cnpy-relfeat-go svg, .cnpy-reltl-go { transition:none; } .cnpy-relfeat:hover { transform:none; } }
 /* Guide figures open in the lightbox (web/src/lightbox.ts). The thumbnail lifts on
    hover like Sapling's .cp-shot. */
 .cnpy-guide-shot { display:block; width:100%; padding:0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg); cursor:zoom-in; transition:border-color .22s, box-shadow .22s, transform .22s; }
@@ -4987,6 +4947,8 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .cnpy-nd-bar,
 [data-cnpy-theme] .cnpy-libc-row,
 [data-cnpy-theme] .cnpy-relay-new,
+[data-cnpy-theme] .cnpy-relcall,
+[data-cnpy-theme] .cnpy-relpager-i,
 [data-cnpy-theme] .repo-att-btn,
 [data-cnpy-theme] .repo-st-lane,
 [data-cnpy-theme] .repo-st-item,
@@ -5001,6 +4963,9 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .cnpy-dp-mi,
 [data-cnpy-theme] .cnpy-rail-link,
 [data-cnpy-theme] .repo-st-src,
+[data-cnpy-theme] .cnpy-relbar,
+[data-cnpy-theme] .cnpy-relpr-chip,
+[data-cnpy-theme] .cnpy-reldoc code,
 [data-cnpy-theme] .cnpy-dp-chip { border-radius:calc(5px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-dp-hint { border-radius:min(calc(999px * var(--corner-scale)), 25%) !important; }
 [data-cnpy-theme] .cnpy-dp-line > i { border-radius:calc(2px * var(--corner-scale)) !important; }
@@ -5022,6 +4987,8 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* The state preview's banner (preview.ts). Its dot is a status dot: a small rounded square, like the rest. */
 [data-cnpy-theme] .cnpy-preview { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-preview-b { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-relfeat-hl li::before,
+[data-cnpy-theme] .cnpy-reltl-item::after,
 [data-cnpy-theme] .cnpy-preview-dot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
