@@ -24,6 +24,7 @@ import { setApiOrg } from "../web/src/api";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import type { DocRow } from "@shared/rows";
 import css from "../web/src/trov.css?raw";
+import treeActionsSrc from "../web/src/tree-actions.ts?raw";
 import type { DocPageDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 
 const T0 = "2026-10-10T00:00:00Z";
@@ -318,6 +319,35 @@ describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, th
       setApiOrg(null);
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("opening and closing a page's children (tree-actions.ts treeToggle)", () => {
+  const ctlFor = (state: ReturnType<typeof docState>, renders: number[]) => createTreeController({
+    state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => renders.push(1),
+    flash: () => {}, unauth: () => {}, flashNext: () => {}, newPage: () => {}, reducedMotion: () => true, treeChanged: () => {},
+  });
+  it("with reduced motion it opens and closes at once, with no fold", () => {
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    try {
+      const state = docState();
+      const renders: number[] = [];
+      const ctl = ctlFor(state, renders);
+      ctl.act("treeToggle", "start", null);                   // closed (not above the active page) → open
+      expect(state.treeOpen.start).toBe(true);
+      ctl.act("treeToggle", "api", null);                     // open (above the active page) → closed, no wait
+      expect(state.treeOpen.api).toBe(false);
+      expect(renders).toHaveLength(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("the fold: rows unfold from no height and fold shut before the tree drops them; a drag shows no hover", () => {
+    const src = treeActionsSrc;
+    expect(src).toContain('[{ height: "0px", opacity: 0 }, { height: h, opacity: 1 }]');
+    expect(src).toMatch(/foldRow\(r, false\)\.finished\.then/);            // the close waits for the fold
+    // while a page is dragged, the row under the pointer is not "hovered": only the line or the into ring shows
+    expect(css).toContain(".cnpy-grabbing .cnpy-dp-row:not(.is-active):not(.is-into):hover { --dp-tint:transparent; color:var(--fg-55); }");
+    expect(css).toContain(".cnpy-grabbing .cnpy-dp-row .cnpy-dp-acts { opacity:0; }");
+    expect(css.indexOf(".cnpy-grabbing .cnpy-dp-row .cnpy-dp-acts")).toBeGreaterThan(css.indexOf(".cnpy-dp-row:hover .cnpy-dp-acts"));
   });
 });
 

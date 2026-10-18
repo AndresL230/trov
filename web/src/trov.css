@@ -4319,6 +4319,11 @@ a.ask-btn { text-decoration:none; }
 .cnpy-dp-acts { position:absolute; z-index:3; top:4px; bottom:4px; right:6px; display:flex; align-items:center; gap:1px; padding-left:12px; background:linear-gradient(var(--dp-tint, transparent), var(--dp-tint, transparent)), var(--bg); -webkit-mask-image:linear-gradient(to right, transparent, #000 12px); mask-image:linear-gradient(to right, transparent, #000 12px); opacity:0; transition:opacity .12s ease; }
 .cnpy-dp-row:has(> .cnpy-dp-st) .cnpy-dp-acts { right:18px; }
 .cnpy-dp-row:hover .cnpy-dp-acts, .cnpy-dp-row:focus-within .cnpy-dp-acts, .cnpy-dp-row.has-menu .cnpy-dp-acts { opacity:1; }
+/* While a page is dragged (pointer-drag.ts puts .cnpy-grabbing on <html>) the row under the pointer is not "hovered":
+   the drop shows only as the line (before / after) or the "into" ring, never a hover tint or the row's + and … */
+.cnpy-grabbing .cnpy-dp-row:not(.is-active):not(.is-into):hover { --dp-tint:transparent; color:var(--fg-55); }
+.cnpy-grabbing .cnpy-dp-row.is-top:not(.is-active):not(.is-into):hover { color:var(--fg-70); }
+.cnpy-grabbing .cnpy-dp-row .cnpy-dp-acts { opacity:0; }
 .cnpy-dp-act { display:grid; place-items:center; width:20px; height:20px; padding:0; color:var(--fg-40); }
 .cnpy-dp-act:hover { color:var(--fg); background:var(--hover); }
 .cnpy-dp-act.is-head { position:relative; z-index:2; width:24px; height:24px; color:var(--fg-55); }

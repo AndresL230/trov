@@ -3,7 +3,7 @@
 // (tree-drag.ts), the keyboard or the menu. A move is applied at once (`planMove` + `applyMove`, the rules the Worker
 // runs too), posted (`POST /doc/:slug/move`), and toasted with Undo (the reverse move); a refusal puts the tree back
 // and says why in words. The views are docs-pane.ts / doc-page.ts (pure).
-import { applyMove, buildTree, childrenOf, ancestorsOf, planMove, type MoveTarget, type MoveRefusal } from "@shared/docs-tree-core";
+import { applyMove, buildTree, childrenOf, ancestorsOf, descendantsOf, planMove, type MoveTarget, type MoveRefusal } from "@shared/docs-tree-core";
 import type { LibraryPageDTO, DocTreePlace } from "@shared/docs-core";
 import type { AppState, ToastAction } from "./render";
 import { ApiError, PreviewBlocked, Unauthorized, moveDoc } from "./api";
@@ -126,14 +126,46 @@ export function createTreeController(host: TreeHost): TreeController {
     scroller.scrollTo({ top, behavior: host.reducedMotion() ? "auto" : "smooth" });
   }
 
+  /** Pages whose children are folding away (a second click waits for the first). */
+  const closing = new Set<string>();
+  /** Fold a pane row open (from no height) or shut (to none): height and opacity, clipped while it runs. */
+  function foldRow(row: HTMLElement, opening: boolean, delay = 0): Animation {
+    const h = `${row.offsetHeight}px`;
+    row.style.overflow = "hidden";
+    const frames = [{ height: "0px", opacity: 0 }, { height: h, opacity: 1 }];
+    const a = row.animate(opening ? frames : frames.reverse(), {
+      duration: opening ? 200 : 150, delay, easing: opening ? "cubic-bezier(.2,.7,.2,1)" : "cubic-bezier(.4,0,.6,1)", fill: opening ? "backwards" : "forwards",
+    });
+    a.finished.then(() => { if (opening) row.style.overflow = ""; }, () => { row.style.overflow = ""; });
+    return a;
+  }
+
   function act(act: string, arg: string | null): boolean {
     switch (act) {
       case "treeToggle": {
         const list = pages();
-        if (!arg || !list) return true;
+        if (!arg || !list || closing.has(arg)) return true;
         const open = expandedSet(list, state.screen === "docs" ? state.docSlug : null, state.treeOpen).has(arg);
+        const under = new Set(descendantsOf(buildTree(list), arg).map((n) => n.slug));
+        const shown = (): HTMLElement[] => Array.from(host.mount.querySelectorAll<HTMLElement>(".cnpy-dpane .cnpy-dp-row[data-dtree]"))
+          .filter((r) => under.has(r.dataset.dtree as string));
+        const moving = !host.reducedMotion() && typeof Element.prototype.animate === "function";
+        if (open && moving) {
+          // Close: the rows under it fold away first (height and opacity), then the tree drops them.
+          const rows = shown();
+          closing.add(arg);
+          host.mount.querySelector(`.cnpy-dpane [data-dtree="${CSS.escape(arg)}"] .cnpy-dp-chev`)?.classList.remove("is-open");   // it turns as they fold
+          const done = () => { closing.delete(arg); state.treeOpen[arg] = false; host.rerender(); };
+          if (!rows.length) { done(); return true; }
+          let left = rows.length;
+          for (const r of rows) foldRow(r, false).finished.then(() => { if (--left === 0) done(); }, () => { if (--left === 0) done(); });
+          return true;
+        }
+        const before = new Set(shown());
         state.treeOpen[arg] = !open;
         host.rerender();
+        // Open: the rows that just appeared unfold from the chevron's row, one after another.
+        if (!open && moving) shown().filter((r) => !before.has(r)).forEach((r, i) => foldRow(r, true, Math.min(i, 6) * 18));
         return true;
       }
       case "treeMenu":
