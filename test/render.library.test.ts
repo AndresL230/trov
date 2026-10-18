@@ -21,7 +21,7 @@ vi.mock("../web/src/markdown", () => ({
 }));
 import { render, initialState, type AppState } from "../web/src/render";
 import {
-  spaceTile, spaceDialog, spaceHomeView, libraryHomeView, libraryWhen, blankSpaceDraft, duplicateOf,
+  spaceTile, spaceDialog, spaceHomeView, libraryHomeView, LIBRARY_ALL_HIDDEN, libraryWhen, blankSpaceDraft, duplicateOf,
   archiveDialog, SPACE_ICON_PATHS, type SpaceHomeProps,
 } from "../web/src/library";
 import { SPACE_ICONS, archivePageText, type SpaceDTO, type LibraryPageDTO, type LibraryDTO } from "@shared/docs-core";
@@ -552,6 +552,18 @@ describe("your own Library view (0084_library_prefs)", () => {
     expect(html).toContain("Show hidden spaces · 1");
     const shown = libraryHomeView({ library: { status: "ok", data: lib({ spaces: SIX, prefs: { sidebar: null, pinned: [], hidden: ["bravo"] } }) }, admin: false, persons: PERSONS, restoring: null, showHidden: true });
     expect(shown).toMatch(/class="cnpy-surface[^"]*cnpy-lib-card is-hidden[^"]*"[^>]*data-space="bravo"/);
+  });
+
+  it("a member who hides every space keeps the heading and Customize sidebar, with a line saying why", () => {
+    const all = SIX.map((x) => x.slug);
+    const html = libraryHomeView({ library: { status: "ok", data: lib({ spaces: SIX, prefs: { sidebar: null, pinned: [], hidden: all } }) }, admin: false, persons: PERSONS, restoring: null });
+    expect(html).toMatch(/<h2[^>]*>Spaces<\/h2>/);
+    expect(html).toContain('data-act="libCustomize"');
+    expect(html).toContain('data-empty="lib-all-hidden"');
+    expect(html).toContain(LIBRARY_ALL_HIDDEN.slice(LIBRARY_ALL_HIDDEN.indexOf("hidden every")));
+    expect(html).toContain("Show hidden spaces · 6");
+    // Some cards still shown, or an admin's New space card: no such line.
+    expect(libraryHomeView({ library: { status: "ok", data: lib({ spaces: SIX, prefs: { sidebar: null, pinned: [], hidden: all } }) }, admin: true, persons: PERSONS, restoring: null })).not.toContain("lib-all-hidden");
   });
 
   it("each card's \"…\" is a control beside the hit area (never inside a button); its menu pins, sidebars and hides", () => {

@@ -103,6 +103,8 @@ export const LIBRARY_SUBTITLE = "Guides, runbooks, specs and decisions for the w
 /** Library home with no space (the design's copy). */
 export const LIBRARY_EMPTY = "A space holds the pages for one team or topic, like Engineering or Onboarding. Create one, then write pages in it or import Markdown files you already have.";
 /** Library home with spaces but no page yet. */
+/** Library home when the reader has hidden every space. */
+export const LIBRARY_ALL_HIDDEN = "You've hidden every space. Show them below to bring one back; only you see this.";
 export const LIBRARY_RECENT_EMPTY = "The pages changed last show here, from every space. Write one from a space's New page.";
 /** A space's home with no page (the design's sentence). */
 export const SPACE_EMPTY = "Write the first page, or import Markdown files you already have. Imported pages wait in Review until someone approves them.";
@@ -280,7 +282,9 @@ export function libraryHomeView(p: LibraryHomeProps): string {
     `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:${first ? 26 : 30}px 0 10px"><h2 style="${H2}">${esc(label)}</h2>${first ? `<button type="button" data-act="libCustomize" data-confirm-trigger class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)">Customize sidebar</button>` : ""}</div>`;
   const pinnedBlock = pinned.length ? `${spacesHead("Pinned", true)}${grid(pinned.map((sp) => spaceCard(sp, p.persons, view(sp, { pinned: true }))).join(""))}` : "";
   const restCards = rest.map((sp) => spaceCard(sp, p.persons, view(sp))).join("") + (p.admin ? newSpaceCard() : "");
-  const restBlock = restCards ? `${spacesHead(pinned.length ? "All spaces" : "Spaces", !pinned.length)}${grid(restCards)}` : "";
+  // Every card hidden (a member, so no New space card): the heading and Customize sidebar stay, with a line saying why.
+  const restBlock = restCards ? `${spacesHead(pinned.length ? "All spaces" : "Spaces", !pinned.length)}${grid(restCards)}`
+    : pinned.length ? "" : `${spacesHead("Spaces", true)}${emptyLayout("lib-all-hidden", { text: LIBRARY_ALL_HIDDEN, plain: true })}`;
   const hiddenBlock = hidden.length
     ? `<div style="margin-top:16px"><button type="button" data-act="libHiddenToggle" class="cnpy-link cnpy-lib-hiddengo" aria-expanded="${p.showHidden === true}" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)">${p.showHidden ? "Hide" : "Show"} hidden spaces · ${hidden.length}</button></div>${p.showHidden ? `<div style="margin-top:10px">${grid(hidden.map((sp) => spaceCard(sp, p.persons, view(sp, { hidden: true }))).join(""))}</div>` : ""}`
     : "";
