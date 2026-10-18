@@ -343,4 +343,16 @@ describe("terms and privacy on a phone", () => {
     expect(legalPageSrc.indexOf("if (tocOpen) setToc(false, true);")).toBeGreaterThan(0);
     expect(legalPageSrc.indexOf("if (tocOpen) setToc(false, true);")).toBeLessThan(legalPageSrc.indexOf("sec.scrollIntoView({ behavior:"));
   });
+
+  it("Terms, Privacy and Refunds switch in place, like the docs: no page load, the head and address follow, Back works", () => {
+    const sw = legalPageSrc.slice(legalPageSrc.indexOf("const show = (k: LegalKind"));
+    expect(sw).toContain("kind = k; doc = LEGAL_DOCS[k]; tocOpen = false;");
+    expect(sw).toContain('history.pushState({ legal: k }, "", `/${k}`);');
+    expect(sw).toContain("document.title = page.title;");
+    expect(sw).toContain('setHead(\'meta[name="description"]\', "content", page.description);');
+    expect(sw).toContain('prefers-reduced-motion: reduce');
+    expect(legalPageSrc).toContain('window.addEventListener("popstate", () => {');
+    // a modified click (a new tab) stays the browser's
+    expect(legalPageSrc).toContain("e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;");
+  });
 });

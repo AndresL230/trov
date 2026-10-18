@@ -673,9 +673,10 @@ const CHEV = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke
 
 /** The tab row over each document: every legal document, the current one marked (a link to each other). */
 export function legalTabs(current: LegalKind): string {
-  const tab = (d: LegalDoc): string => d.kind === current
-    ? `<span class="site-legal-tab" aria-current="page" style="border-radius:8px">${esc(d.tab)}</span>`
-    : `<a href="/${d.kind}" class="site-legal-tab" style="border-radius:8px">${esc(d.tab)}</a>`;
+  // Every tab is the same element (a link; the current one `aria-current`), so switching in place (legal-page.ts)
+  // patches the pill across with its transition instead of swapping a span for a link.
+  const tab = (d: LegalDoc): string =>
+    `<a href="/${d.kind}" class="site-legal-tab"${d.kind === current ? ' aria-current="page"' : ""} style="border-radius:8px">${esc(d.tab)}</a>`;
   return `<nav class="site-legal-tabs" aria-label="Legal documents">${LEGAL_ORDER.map((k) => tab(LEGAL_DOCS[k])).join("")}</nav>`;
 }
 

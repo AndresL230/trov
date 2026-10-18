@@ -65,7 +65,7 @@ describe("legal pages", () => {
 
   it("the tab row names every document, the current one marked: links a keyboard reaches, in a labelled nav", () => {
     const row = legalTabs("refunds");
-    expect(row).toBe('<nav class="site-legal-tabs" aria-label="Legal documents"><a href="/terms" class="site-legal-tab" style="border-radius:8px">Terms</a><a href="/privacy" class="site-legal-tab" style="border-radius:8px">Privacy</a><span class="site-legal-tab" aria-current="page" style="border-radius:8px">Refunds</span></nav>');
+    expect(row).toBe('<nav class="site-legal-tabs" aria-label="Legal documents"><a href="/terms" class="site-legal-tab" style="border-radius:8px">Terms</a><a href="/privacy" class="site-legal-tab" style="border-radius:8px">Privacy</a><a href="/refunds" class="site-legal-tab" aria-current="page" style="border-radius:8px">Refunds</a></nav>');
     for (const doc of ALL) expect(legalView(doc, false)).toContain(legalTabs(doc.kind));
     expect(Object.keys(LEGAL_DOCS)).toEqual(["terms", "privacy", "refunds"]);
     expect(LEGAL_ORDER).toEqual(["terms", "privacy", "refunds"]);
