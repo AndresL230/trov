@@ -28,6 +28,7 @@ import { SPACE_ICONS, archivePageText, type SpaceDTO, type LibraryPageDTO, type 
 import { AUTHORITY_MARK } from "../web/src/marks";
 import { spaceErrorText, createLibraryController, pageArchiveErrorText } from "../web/src/library-actions";
 import css from "../web/src/trov.css?raw";
+import pointerDragSrc from "../web/src/pointer-drag.ts?raw";
 import { OrgApiError, ApiError, setApiOrg } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
@@ -577,6 +578,14 @@ describe("your own Library view (0084_library_prefs)", () => {
     // On any screen: the dialog opens from the sidebar too.
     s.screen = "tickets";
     expect(render(s)).toContain('id="lib-customize"');
+  });
+
+  it("dragging a row never selects its text or starts the browser's own drag (pointer-drag.ts, every list)", () => {
+    // A real mouse pressed on a row's name used to select the text as it dragged, and a second try dragged that
+    // selection natively, which cancelled the drag. The engine refuses both while a press it claimed is live.
+    expect(pointerDragSrc).toMatch(/addEventListener\("selectstart", \(e\) => \{ if \(live\) e\.preventDefault\(\); \}\)/);
+    expect(pointerDragSrc).toMatch(/addEventListener\("dragstart", \(e\) => \{ if \(live\) e\.preventDefault\(\); \}\)/);
+    expect(pointerDragSrc).toContain("getSelection()?.removeAllRanges()");
   });
 
   it("the controller: Customize adds, moves and saves the person's own list (sidebar only)", async () => {

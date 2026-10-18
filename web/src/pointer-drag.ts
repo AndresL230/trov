@@ -1,10 +1,11 @@
 // The app's pointer drag, ONCE — the press → drag → drop lifecycle every draggable list shares (the ticket board's
-// cards, main.ts; the docs pane's pages, tree-drag.ts). What each one draws while it drags (a lifted card and its
-// slot; a ghost chip, a drop line, a ringed row) and what a drop commits are its own HANDLERS; this module owns the
-// rules they have in common:
+// cards, main.ts; the docs pane's pages, tree-drag.ts; Customize sidebar's spaces, customize-drag.ts). What each one
+// draws while it drags (a lifted card and its slot; a ghost chip, a drop line, a ringed row) and what a drop commits
+// are its own HANDLERS; this module owns the rules they have in common:
 //   • mouse and pen only — on touch a press must still scroll the list;
 //   • a press becomes a drag only past DRAG_SLOP px, so a plain click still opens what was pressed, and the click a
 //     real drag's release fires is swallowed (it is not an "open");
+//   • a claimed press never selects text or starts the browser's own drag;
 //   • Escape and pointercancel cancel; pointerup drops;
 //   • while a drag is on (and while its drop settles), paints are held — the DOM IS the drag state — and the paint
 //     that was held runs once it is over (`onIdle`).
@@ -60,12 +61,17 @@ function install(mount: HTMLElement): void {
     if (!d.begun) {
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_SLOP) return;
       d.begun = true;
+      document.getSelection()?.removeAllRanges();    // a selection made before the press
       document.documentElement.classList.add("cnpy-grabbing");
       d.handlers.begin(d.p, e);
     }
     e.preventDefault();                              // no text selection mid-drag
     d.handlers.over(d.p, e);
   });
+  // A press an engine claimed is a drag handle: no text selection (the highlight would trail the drag) and no native
+  // drag of a selection or a link (it would cancel this one with a pointercancel).
+  document.addEventListener("selectstart", (e) => { if (live) e.preventDefault(); });
+  document.addEventListener("dragstart", (e) => { if (live) e.preventDefault(); });
   document.addEventListener("pointerup", () => end(true));
   document.addEventListener("pointercancel", () => end(false));
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && live?.begun) { e.preventDefault(); end(false); } });
