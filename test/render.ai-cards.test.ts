@@ -115,11 +115,11 @@ describe("field present — Trov's suggestions on the three screens", () => {
     expect(html).toContain(">other</div>");
   });
 
-  it("Unplaced: a chip above “File it as” on the item, and a mark (no button) on its row", () => {
+  it("Unplaced: a chip above “Place it as” on the item, and a mark (no button) on its row", () => {
     const s = unplacedSuggestionFixture(MODE, 7)!;
     const html = render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [s] }), triageRow({ id: 8, raw: "a free-form note", reason: "Flagged by an agent" })] } }));
     expect(html).toContain("file it as a doc in reference");
-    expect(html.indexOf("cnpy-ai-unplaced")).toBeLessThan(html.indexOf("File it as"));
+    expect(html.indexOf("cnpy-ai-unplaced")).toBeLessThan(html.indexOf("Place it as"));
     expect(html.match(/cnpy-ai-row-mark/g)).toHaveLength(1);
     // e2e EV-UP-chip-P (Phase H): at 360px the row's one-line byline cut the mark's words off mid-quote, no ellipsis.
     // The mark may shrink, and its words end in an ellipsis.
@@ -195,8 +195,11 @@ describe("motion — a suggestion enters with its screen and leaves by the AI ki
     expect(css).toContain(".cnpy-ai-leave[data-inline], [data-enter] .cnpy-ai-leave[data-inline] { display:inline-grid; vertical-align:middle; }");
     expect(Object.keys(initialState())).not.toContain("aiLeaving");
     // main.ts's `decided` re-reads at once: the controller calls it only once the last exit is over.
-    const hook = mainSrc.slice(mainSrc.indexOf("decided: () =>"), mainSrc.indexOf("const aiFilterCtl"));
+    const hook = mainSrc.slice(mainSrc.indexOf("decided: (id, how) =>"), mainSrc.indexOf("const aiFilterCtl"));
     expect(hook).toContain("loadTicketDetail(state.ticketId)");
     expect(hook).not.toContain("setTimeout");
+    // Unplaced: an accepted destination placed its item, so the CARD then leaves by the queue's row exit (the same
+    // one Place uses), and the queue is read again after it.
+    expect(hook).toContain('unplacedVerdict(String(row.id), "placed", () => Promise.resolve(), () => loadProposals())');
   });
 });

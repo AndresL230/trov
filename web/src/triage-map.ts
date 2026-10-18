@@ -5,7 +5,7 @@
 
 import type { StagedProposal, AdrRow, NeedsTriageRow, IdentityTask, DiscardedIdentity, PersonSummary } from "./api";
 import type { ReviewItem } from "./review";
-import type { AssignOptions, UnplacedItem, Person } from "./maintenance";
+import type { AssignOptions, UnplacedItem, UnplacedKind, Person } from "./maintenance";
 import type { IdentityGroup, DiscardedLogin } from "./identity";
 import { collapsedLineDiff } from "./diff";
 import { initialsOf, relTime } from "./ui";
@@ -140,9 +140,9 @@ export function decodeReviewId(id: string): ReviewRef | null {
  *  list (0056_org_tags), which render.ts fills in from `state.library` and `state.tags`. */
 export const ASSIGN_OPTIONS: AssignOptions = {
   kinds: [
-    { key: "doc", label: "Doc section" },
-    { key: "adr", label: "Decision record" },
-    { key: "feed", label: "Feed update" },
+    { key: "doc", label: "Doc" },
+    { key: "adr", label: "Decision" },
+    { key: "feed", label: "Feed entry" },
   ],
   sections: SECTIONS.filter((s) => s !== "needs-triage"),
   spaces: [],
@@ -154,10 +154,22 @@ function clip(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+/** Why an item is here, in a few words — a lossy convenience over the gate's (or the agent's) reason, which always
+ *  rides verbatim in `reasonNote`. The gate's own reasons (before 2026-10-18) are named; anything else an agent
+ *  wrote is "Agent wasn't sure". */
+export function unplacedReasonWord(reason: string): string {
+  const r = reason.toLowerCase();
+  if (r.startsWith("low confidence")) return "Low confidence";
+  if (/out-of-vocab section|unknown section/.test(r)) return "Unknown section";
+  if (/unknown space|archived space|no space given/.test(r)) return "No such space";
+  if (r.startsWith("archived page")) return "Archived page";
+  if (/out-of-vocab tag|unknown tag/.test(r)) return "Unknown tag";
+  return "Agent wasn't sure";
+}
+
 /** Derive the card fields from the stored gate payload: JSON of the gated item
- *  (DocProposal / AdrDraft / FeedEntry) OR a free-form string for agent-flagged
- *  batch items. The two-bucket chip is a lossy convenience — the verbatim gate
- *  reason always rides in reasonNote. */
+ *  (DocProposal / AdrDraft / FeedEntry) OR a free-form string an agent sent as a batch's own triage item (a
+ *  note: it cannot be placed). The verbatim reason always rides in reasonNote. */
 export function unplacedFromRow(r: NeedsTriageRow): UnplacedItem {
   let parsed: Record<string, unknown> | null = null;
   try {
@@ -174,15 +186,33 @@ export function unplacedFromRow(r: NeedsTriageRow): UnplacedItem {
   const snippet = parsed
     ? str("body") ?? str("summary") ?? str("decision") ?? str("change_summary") ?? r.raw
     : r.raw;
+  // What it is, by the shape the gate stored: a doc proposal has a slug and a body, a decision its decision (or its
+  // context and rationale), a feed entry its summary; anything else is a note.
+  const kind: UnplacedKind = !parsed ? "note"
+    : str("slug") !== null && typeof parsed.body === "string" ? "doc"
+    : str("decision") !== null || (str("context") !== null && str("rationale") !== null) ? "decision"
+    : str("summary") !== null ? "feed" : "note";
+  const adr = kind === "decision"
+    ? [{ h: "Context", p: str("context") }, { h: "Decision", p: str("decision") }, { h: "Rationale", p: str("rationale") }]
+        .filter((s): s is { h: string; p: string } => s.p !== null)
+    : undefined;
+  const tags = Array.isArray(parsed?.tags) ? (parsed!.tags as unknown[]).filter((t): t is string => typeof t === "string") : [];
   return {
     id: String(r.id),
     title,
     snippet: clip(snippet, 280),
-    reason: r.reason.toLowerCase().startsWith("low confidence") ? "Low confidence" : "Flagged by an agent",
+    reason: unplacedReasonWord(r.reason),
     meta: `${r.source_author ?? "unknown"} · ${relTime(r.created_at)}`,
     reasonNote: r.reason,
     author: r.source_author ?? null,
     when: relTime(r.created_at),
+    kind,
+    lowConfidence: parsed?.confidence === "low" || r.reason.toLowerCase().startsWith("low confidence"),
+    body: kind === "note" ? r.raw : kind === "doc" ? (str("body") ?? "") : (str("body") ?? str("summary") ?? ""),
+    ...(adr ? { adr } : {}),
+    section: str("section"),
+    space: str("space"),
+    tags,
     ...(r.ai ? { ai: r.ai } : {}),
   };
 }

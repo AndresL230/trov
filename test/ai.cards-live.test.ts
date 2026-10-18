@@ -153,7 +153,7 @@ describe("real rows → real reads → the SPA's render → the AI kit's Accept"
     expect((await api.getTicket(older)).status).toBe("submitted");
   });
 
-  it("Unplaced: the pass's destination renders as a chip on the item; Accept files it as \"File it\" does and the item leaves the queue", async () => {
+  it("Unplaced: the pass's destination renders as a chip on the item; Accept places it as Place does and the item leaves the queue", async () => {
     const id = await route_triage(systemCtx(ORG_A), { raw: { slug: "deploy-checklist", section: "runbooks", title: "Deploy checklist", body: "Before a deploy, run the migrations, then check the health endpoint.", change_summary: "new", confidence: "low" }, reason: "section 'runbooks' is not in the vocabulary", source_author: "AndresL230" });
     await runPass(jevFetch({ destination: () => ["reference", 0.9] }));
 

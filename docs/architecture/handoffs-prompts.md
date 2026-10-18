@@ -11,6 +11,24 @@ Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#han
 tabbed Maintenance until 2026-10-06: Identity and People moved into Org settings › Members and the admin
 email-notification sections into Org settings › Notifications; `#maintenance`, `#maintenance/identity` and
 `#maintenance/people` still resolve (`web/src/hash.ts`).
+
+**Unplaced since 2026-10-18** ("refuse or stage", `ingestion-gate.md`): the gate no longer sends anything here — it
+refuses a doc it cannot place (naming what is valid) and stages what an agent was unsure of, flagged — so the queue
+holds what came before, and what a plugin older than 0.11 still sends as a batch's own `needs_triage`. The screen is
+laid out like Review (`web/src/maintenance.ts`): ONE two-pane frame (`.cnpy-rv`; the panes take turns on a phone, back
+with "All items"), the queue a keyed list of Review's surface cards (title, the Low confidence mark when it was sent
+unsure, two lines, then the author's avatar · what it is · why it is here, in a few words (`unplacedReasonWord`; the
+verbatim reason in its tooltip and on the item) · when), and the item in Review's page pane: "‹i› of ‹N› unplaced",
+the title, what it is, who and when, a "Why it wasn't placed" card, Trov's suggestion, the item itself (a doc through
+the reader's renderer, a decision's parts, a feed entry's or a note's text), then **Place it as** — the kind, a doc's
+section and space as `segmented()` switches (the Space a `dropdown()` past four spaces), a feed entry's tags as
+toggles — and the footer with what Place will do, Discard and Place. The picks START from what the agent sent when it
+is valid (`effectivePicks`: its kind, a vocabulary section, a live space, else the default space), so a well-formed
+item is one press away, and main.ts files exactly what the hint says. A note (free text) cannot be placed: it says
+so and offers Discard only. Place and Discard are optimistic and leave by the app's one row exit (`web-ui.md` › A
+row leaving a list); a refusal (`could not place doc: …`, the gate's words) brings the card and the picks back.
+Discard has no arm step — the toast's Undo restores the item (`POST /needs-triage/:id/restore`). Tests:
+`test/render.unplaced.test.ts`, `test/triage-writeback.test.ts`.
 Storage is `0028_handoffs_prompts` (`handoffs` with an INTEGER id rendered `#12`, `context` JSON
 `{ repo, branch, task, done[], next[], files[] }`, an inline prompt that is both-or-neither, `expires_at` =
 created + 7 days; `prompts` / `prompt_versions`; standalone `prompts_fts` over slug/title/description/body/tags
