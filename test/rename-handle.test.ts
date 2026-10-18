@@ -17,6 +17,7 @@ import {
 } from "../src/tools/writes";
 import { create_ticket, add_ticket_comment } from "../src/tools/tickets";
 import { addOrgRepo } from "./helpers/org-config";
+import { narr } from "./helpers/plan";
 
 // A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
 // so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
@@ -44,7 +45,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // is gone along with the whole proposal queue).
   await write_plan(
     systemCtx(),
-    { narrative: "n", sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
+    { ...narr("n"), sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
     handle
   );
   const tid = await route_triage(systemCtx(), { raw: "x", reason: "y" });
@@ -76,7 +77,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     { semantic_key: "gh:pr:777:merged", event_type: "pr_merged", ref_number: 777, subject_login: "someone-else", raw: "{}", provenance: "backfill" },
     handle
   ); // events.recorded_by
-  await write_plan(systemCtx(), { narrative: "n", sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
+  await write_plan(systemCtx(), { ...narr("n"), sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
   // Tickets (0024): tickets.requester + ticket_assignees.login + ticket_links.created_by
   // + ticket_comments.author + ticket_events.actor — all five through the REAL
   // writers (src/tools/tickets.ts, Phase 2). create_ticket alone covers requester,

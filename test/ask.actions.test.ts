@@ -160,7 +160,7 @@ describe("Auto mode", () => {
     const cookie = await cookieFor(FIXTURE_ADMIN);
     await ingestDocProposal(await tenantCtx("AndresL230"), { slug: "auto-doc", section: "reference", title: "Auto doc", body: "# Auto\n\nv1", change_summary: "new", confidence: "high" }, "AndresL230");
     const calls: StreamBlock[] = [
-      { type: "tool_use", name: "update_plan", input: { narrative: "Now: hosting.", sprints: [] } },
+      { type: "tool_use", name: "update_plan", input: { now: "hosting.", next: "Next.", later: "Later.", sprints: [] } },
       { type: "tool_use", name: "publish_doc", input: { slug: "auto-doc" } },
       ...Array.from({ length: 5 }, (_, i) => ({ type: "tool_use" as const, name: "create_ticket", input: { title: `Plan cap ${i}` } })),
     ];

@@ -368,20 +368,23 @@ describe("sprint drafts — ≥8 open tickets outside any sprint and none active
 });
 
 describe("the weekly narrative proposal — Batch API; an admin's accept is a `write_plan` as that admin", () => {
-  const ANSWER = { narrative: "**Now:** hosting. **Next:** billing.", reason: "the plan still leads with tickets.", cites: [] as string[] };
+  // The model fills the narrative's three parts (Now / Next / Later); the stored suggestion is those parts, and an
+  // accept composes the ONE stored form (`write_plan`).
+  const ANSWER = { now: "Hosting.", next: "Billing.", later: "The public docs.", reason: "the plan still leads with tickets.", cites: [] as string[] };
+  const COMPOSED = "**Now:** Hosting.\n\n**Next:** Billing.\n\n**Later:** The public docs.";
 
   it("writes a suggestion citing what it was given; weekly: no second request within 7 days; accept writes the plan as the admin", async () => {
     const { id: sprintId } = await activeSprint();
     const { r1 } = await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...ANSWER, cites: [`sprint:${sprintId}`, "feed:999"] } });
     expect(r1.batched).toBe(1);
     const sug = await first<{ id: number; value_json: string; cites_json: string }>(env.DB, `SELECT id, value_json, cites_json FROM ai_suggestions WHERE kind = 'plan_narrative'`);
-    expect(JSON.parse(sug!.value_json)).toEqual({ narrative: ANSWER.narrative });
+    expect(JSON.parse(sug!.value_json)).toEqual({ now: ANSWER.now, next: ANSWER.next, later: ANSWER.later });
     expect(JSON.parse(sug!.cites_json).map((c: { ref: string }) => c.ref)).toEqual([`sprint:${sprintId}`]);
     expect((await batchRound([PLAN_NARRATIVE_JOB], {})).r1.batched).toBe(0); // weekly
     expect((await first<{ narrative: string }>(env.DB, `SELECT narrative FROM plan WHERE org_id = ?`, ORG_A))!.narrative).toBe(""); // nothing written yet
     expect((await call("POST", `${BASE}${AI_ROUTES.accept(sug!.id)}`, await cookieFor("roadmap-member"))).status).toBe(403);
     expect((await call("POST", `${BASE}${AI_ROUTES.accept(sug!.id)}`, await cookieFor(FIXTURE_ADMIN))).status).toBe(200);
-    expect(await first(env.DB, `SELECT narrative, updated_by FROM plan WHERE org_id = ?`, ORG_A)).toEqual({ narrative: ANSWER.narrative, updated_by: FIXTURE_ADMIN });
+    expect(await first(env.DB, `SELECT narrative, updated_by FROM plan WHERE org_id = ?`, ORG_A)).toEqual({ narrative: COMPOSED, updated_by: FIXTURE_ADMIN });
     // The sprints the plan write did not list are untouched — still active, never done.
     expect((await first<{ status: string }>(env.DB, `SELECT status FROM sprints WHERE id = ?`, sprintId))!.status).toBe("in_progress");
   });
@@ -395,18 +398,34 @@ describe("the weekly narrative proposal — Batch API; an admin's accept is a `w
     expect((await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state).toBe("open");
   });
 
+  it("a proposal stored before the box ({ narrative }) is accepted when it reads Now / Next / Later — stored in the ONE form", async () => {
+    const id = (await putSuggestion(ctx(), { ...AI_ROADMAP_ITEM, kind: "plan_narrative", value: { narrative: "**Now:** hosting. **Next:** billing. **Later:** docs." }, confidence: null, reason: "Stale.", cites: [], model: "m", promptVersion: "narrative-1" }))!;
+    expect((await call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN))).status).toBe(200);
+    expect((await first<{ narrative: string }>(env.DB, `SELECT narrative FROM plan WHERE org_id = ?`, ORG_A))!.narrative)
+      .toBe("**Now:** hosting.\n\n**Next:** billing.\n\n**Later:** docs.");
+  });
+
   it("GUARD: no valid cite, or a number it was not given, writes no suggestion; an edited narrative over the cap is refused and stays open", async () => {
     const { id: sprintId } = await activeSprint();
     const a = await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...ANSWER, cites: ["sprint:424242"] } });
     expect([a.r1.batched, a.s.batchResults]).toEqual([1, 1]);
     expect(await count(`SELECT COUNT(*) AS n FROM ai_suggestions`)).toBe(0);
-    const b = await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...ANSWER, narrative: "Now: 12 sprints at once.", cites: [`sprint:${sprintId}`] } });
+    const b = await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...ANSWER, next: "12 sprints at once.", cites: [`sprint:${sprintId}`] } });
     expect([b.r1.batched, b.s.batchResults]).toEqual([1, 1]);
+    expect(await count(`SELECT COUNT(*) AS n FROM ai_suggestions`)).toBe(0);
+    // A part missing (the model wrote no "later"), or one carrying a label of its own: no suggestion either.
+    const { later: _later, ...noLater } = ANSWER;
+    await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...noLater, cites: [`sprint:${sprintId}`] } });
+    await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...ANSWER, now: "Hosting. **Next:** billing.", cites: [`sprint:${sprintId}`] } });
     expect(await count(`SELECT COUNT(*) AS n FROM ai_suggestions`)).toBe(0);
     await batchRound([PLAN_NARRATIVE_JOB], { "roadmap.plan_narrative": { ...ANSWER, cites: [`sprint:${sprintId}`] } });
     const id = (await first<{ id: number }>(env.DB, `SELECT id FROM ai_suggestions`))!.id;
-    const r = await call<{ error: string }>("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), { value: { narrative: "x".repeat(900) } });
+    const r = await call<{ error: string }>("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), { value: { ...ANSWER, now: "x".repeat(900) } });
     expect(r).toMatchObject({ status: 400, json: { error: "invalid" } });
+    // An edited value with a part missing, or a legacy free-text narrative, is refused the same way.
+    expect(await call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), { value: { now: "a", next: "b" } })).toMatchObject({ status: 400, json: { error: "invalid" } });
+    expect(await call("POST", `${BASE}${AI_ROUTES.accept(id)}`, await cookieFor(FIXTURE_ADMIN), { value: { narrative: "Ship hosting, then billing." } }))
+      .toMatchObject({ status: 400, json: { error: "invalid", message: expect.stringContaining("before the Now / Next / Later box") } });
     expect((await first<{ state: string }>(env.DB, `SELECT state FROM ai_suggestions WHERE id = ?`, id))!.state).toBe("open");
     expect((await first<{ narrative: string }>(env.DB, `SELECT narrative FROM plan WHERE org_id = ?`, ORG_A))!.narrative).toBe("");
   });

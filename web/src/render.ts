@@ -12,8 +12,8 @@ import type { TicketPriority } from "@shared/tickets";
 import type { SidebarBadges } from "@shared/badges";
 import { queueView, newTicketView, ticketDetailView, ticketDetailSkeleton, ticketDeleteModal, type StatusMenuAnchor, type QueueFilterCat } from "./tickets";
 import { agentMark, aiMark, authorityMark, importanceMark, markShape, stateMark, tagWords } from "./marks";
-import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId } from "./sprints";
-import { sprintDueState, sprintDatesLabel } from "@shared/sprints-core";
+import { sprintCard, newSprintPanel, sprintScreen, sprintSkeleton, nextSprintId, rmRising } from "./sprints";
+import { sprintDueState, sprintDatesLabel, parsePlanNarrative } from "@shared/sprints-core";
 import { roadmapTimeline, timelineShapes } from "./timeline";
 import type { SprintUrgency, SprintDomain } from "@shared/sprints";
 import { initialOnboard, onboardView, personChip, personLink, personAvatarLink, handleTag, handleLink, swatches, type OnboardState } from "./people";
@@ -103,7 +103,7 @@ import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, ty
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiRatingWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
-import { roadmapTrovButton, roadmapTrovCount, roadmapTrovDialog } from "./roadmap-ai";
+import { planNarrativeBox, roadmapTrovButton, roadmapTrovCount, roadmapTrovDialog } from "./roadmap-ai";
 import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
 import { askScreenView, askHeader, askOverlays } from "./ask-screen";
@@ -251,6 +251,9 @@ export interface AppState {
   repoOpen: ReadonlySet<string>;
   /** Roadmap › Narrative: the Trov button's dialog (the suggestions and the drift, roadmap-ai.ts) is open. */
   rmTrovOpen: boolean;
+  /** Roadmap › Narrative: what an accepted suggestion just changed, rising in once the re-read landed (`at`, ms) — the
+   *  narrative's box, and the sprint cards a draft created (ai-actions.ts; `RM_RISE_MS`). Null otherwise. */
+  rmRise: { at: number; narrative: boolean; sprints: number[] } | null;
   /** Repo › Overview: Needs attention's dialog is open (repo-attention.ts). */
   repoAttentionOpen: boolean;
   /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
@@ -605,7 +608,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
-    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(), repoAttentionOpen: false, rmTrovOpen: false,
+    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(), repoAttentionOpen: false, rmTrovOpen: false, rmRise: null,
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
@@ -1750,7 +1753,7 @@ function roadmapSprintGroups(s: AppState): string {
   const renderGroup = (items: SprintView[], heading: string, color: string): string =>
     items.length === 0
       ? ""
-      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now, ai: s.ai })).join("")}</div>`;
+      : `${sectionHeading(heading, color)}<div class="cnpy-stagger">${items.map((sp) => sprintCard(sp, s.persons.data, { done: isDone(sp), nextUp: sp.id === nextId, now, ai: s.ai, riseT: s.rmRise?.sprints.includes(sp.id) ? now - s.rmRise.at : null })).join("")}</div>`;
 
   return `${renderGroup(inProgress, "In Progress", "var(--amber)")}
     ${renderGroup(upcoming, "Upcoming", "var(--blue)")}
@@ -1819,18 +1822,26 @@ function roadmapView(s: AppState): string {
 }
 
 /**
- * The ADMIN-AUTHORED plan narrative (written via the update-plan skill), rendered as markdown
- * inside the digest card idiom (label-face "Narrative" label + h1, matching the rest of the app's
- * section chrome). The narrative is the ONLY thing here that goes through markdownFn — it is
- * DB-sourced prose, so it must be sanitized the same way doc bodies are (real callers pass
- * renderMarkdown, i.e. DOMPurify); it is never additionally esc()'d (that would double-encode
- * markdownFn's own escaping/output). Empty narrative → the existing dashed-card empty-state hint.
+ * The ADMIN-AUTHORED plan narrative — the Roadmap's "What's happening" card. The narrative is three parts, Now /
+ * Next / Later, enforced at write (shared/sprints-core › the plan narrative's shape), so the card draws a STRUCTURED
+ * box: three rows (`.rm-nnl`), each its label in the card's label face beside its text, hairlines between them.
+ * An OLDER free-text narrative that does not parse is drawn as before — plain markdown (legacy fallback). Every
+ * piece of narrative text goes ONLY through markdownFn — it is DB-sourced prose, so it must be sanitized the same
+ * way doc bodies are (real callers pass renderMarkdown, i.e. DOMPurify); it is never additionally esc()'d (that would
+ * double-encode markdownFn's own escaping/output). Empty narrative → the existing dashed-card empty-state hint.
+ * `riseT`: ms since an accepted narrative landed (`AppState.rmRise`) — the box rises in (`rmRising`).
  */
-export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string, trov = ""): string {
-  const body = narrative.trim()
-    ? `<div class="cnpy-md">${markdownFn(narrative)}</div>`
-    : emptyLayout("roadmap-narrative", { text: ROADMAP_EMPTY.narrative, plain: true, sayStyle: "margin-bottom:10px", shapes: skLines(["100%", "94%", "62%"], 14.5, 1.7) });
-  return `<section${surface(`${RM_CARD};padding:18px 20px`, { cls: "cnpy-rise" })}>
+export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string, trov = "", riseT: number | null = null): string {
+  const rise = rmRising(riseT);
+  const riseCls = rise ? " cnpy-flash" : "";
+  const riseStyle = rise ? ` style="animation-delay:-${Math.round(riseT!)}ms"` : "";
+  const parts = narrative.trim() ? parsePlanNarrative(narrative) : null;
+  const body = parts
+    ? planNarrativeBox(parts, markdownFn, { cls: riseCls, attrs: riseStyle })
+    : narrative.trim()
+      ? `<div class="cnpy-md${riseCls}"${riseStyle}>${markdownFn(narrative)}</div>`
+      : emptyLayout("roadmap-narrative", { text: ROADMAP_EMPTY.narrative, plain: true, sayStyle: "margin-bottom:10px", shapes: skLines(["100%", "94%", "62%"], 14.5, 1.7) });
+  return `<section${surface(`${RM_CARD};padding:18px 20px`, { cls: "cnpy-rise rm-narrative" })}>
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;min-height:22px"><div style="font-size:12px;font-weight:500;color:var(--fg-40)">What's happening</div>${trov}</div>
     ${body}
   </section>`;
@@ -1869,7 +1880,9 @@ function roadmapDigest(s: AppState): string {
   // button opens them in a dialog (`rmTrovOpen`, drawn with the overlays). "" when there are none.
   const d = s.roadmap.data;
   const trov = roadmapTrovButton(roadmapTrovCount(d.suggestions, d.drift, s.ai));
-  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(d.narrative, renderMarkdown, trov)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+  // What an Accept just changed rises in (`rmRise`, set by ai-actions.ts once the Roadmap's re-read landed).
+  const riseT = s.rmRise ? Date.now() - s.rmRise.at : null;
+  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(d.narrative, renderMarkdown, trov, s.rmRise?.narrative ? riseT : null)}${roadmapSprintGroups(s)}`, roadmapAside(s),
     { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 

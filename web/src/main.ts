@@ -289,12 +289,23 @@ const aiCtl = createAiController({
   reloadRepo: () => { if (!state.repoSample && state.repo.status !== "loading") loadRepo(); },
   // A decision went through and its exit is over (the controller waits for the last one, ai-ui.ts › Leaving): the
   // screen it was on reads what it changed — the ticket, Unplaced, Review, or the Roadmap (an accepted sprint draft or
-  // narrative changed the plan; a dismissed card goes too).
+  // narrative changed the plan; a dismissed card goes too). The Roadmap's read is handed back: once it lands, what the
+  // Accept changed rises in (ai-actions.ts › THE ROADMAP'S DIALOG).
   decided: () => {
     if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
     else if (state.screen === "maintenance") loadNeedsTriage();
     else if (state.screen === "review") { loadProposals(); loadDraftAdrs(); }
-    else if (state.screen === "roadmap") loadRoadmap();
+    else if (state.screen === "roadmap") return loadRoadmap();
+  },
+  // The Roadmap's Trov dialog lost its last suggestion to a decision: it closes by its own exit, and focus goes back
+  // to its button (or, with nothing left to count, to the page).
+  closeRoadmapTrov: () => {
+    if (!state.rmTrovOpen) return;
+    confirmOut(() => {
+      state.rmTrovOpen = false;
+      rerender();
+      (mount.querySelector<HTMLElement>(".rm-trov-btn") ?? mount.querySelector<HTMLElement>("#cnpy-main"))?.focus({ preventScroll: true });
+    });
   },
 });
 // Ask Trov (web/src/ask-controller.ts): every `ask…` act, the screen's reads and streams, ⌘J over any page,
@@ -1777,10 +1788,11 @@ function quickPick(p: QuickPick): void {
   for (const [act, arg] of p.steps) dispatch(act, arg, null);
 }
 
-function loadRoadmap(): void {
+/** Read the Roadmap; the promise settles once the read has landed in state (it never rejects). */
+function loadRoadmap(): Promise<void> {
   state.roadmap = { status: "loading", data: state.roadmap.data };
   rerender();
-  getRoadmap()
+  return getRoadmap()
     .then((planView) => {
       state.roadmap = { status: "ok", data: planView };
       rerenderSoon();

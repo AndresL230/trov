@@ -178,8 +178,9 @@ refuses a doc whose image is not uploaded yet, or that points anywhere else (an 
 `data:` URI) — outcome `refused`, with the reason. **Confirming** (promote / ratify / reject /
 assign / discard) is done by a human in the web Triage desk over session-cookie routes — **never** MCP
 tools. The roadmap plan itself is **admin-authored**, not staged by agents: the `update-plan` skill
-wraps the `update_plan` MCP tool (direct, non-destructively versioned, promote-class; its narrative is a
-short Now / Next / Later of at most 800 characters, over it nothing is written) — agents cannot
+wraps the `update_plan` MCP tool (direct, non-destructively versioned, promote-class; its narrative is
+three parts — `now`, `next`, `later`, each one short paragraph, at most 800 characters composed — and a
+missing part or over the cap writes nothing) — agents cannot
 propose a sprint at all (the roadmap-proposal queue was retired), and a sprint's `done` is set by a
 person — any member, with `complete_sprint` or on the web, or an admin in the plan write — never inferred.
 

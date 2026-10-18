@@ -10,10 +10,20 @@
 // Everything that goes LEAVES by the AI kit's one exit (ai-ui.ts › Leaving) — on the Roadmap too (its sprint note,
 // the drift, a sprint-draft or narrative card): "Wrong?" collapses the item; an Accept / Dismiss collapses the card
 // and its screen re-reads once the exit is done. Under reduced motion it goes at once.
+//
+// THE ROADMAP'S DIALOG (the owner's call, 2026-10-18 — "not just change the modal to have nothing and then forcing
+// me to reload"): an Accept there runs real writers (a draft creates sprints and moves tickets — seconds, not a
+// blink), so it is NOT optimistic: the card stays, its Accept busy ("Creating 3 sprints…"), until the server answers.
+// Then the dialog closes if no other suggestion is left in it (else the card collapses out of the list), the
+// Roadmap is read again, and what the Accept changed rises in once the read lands (`state.rmRise`: the narrative's
+// box, the sprint cards a draft created — render.ts / sprints.ts `RM_RISE_MS`). A Dismiss stays optimistic, and
+// closes the dialog at once when it took the last suggestion. Under reduced motion nothing moves; the result is the
+// same.
 
 import type { AppState } from "./render";
+import { RM_RISE_MS } from "./sprints";
 import { AI_EXIT_MS, AI_FEED_SOURCES, AI_NOTE_KEY, AI_NOTE_LEAVING, aiHiddenKey, aiSuggestionKey, type AiFeedSource } from "./ai-ui";
-import { AI_ITEM_TYPES, AI_THEME_RANGES, type AiFeedbackBody, type AiThemeRange } from "@shared/ai-core";
+import { AI_ITEM_TYPES, AI_THEME_RANGES, type AiFeedbackBody, type AiSuggestion, type AiThemeRange } from "@shared/ai-core";
 import { ApiError, OrgApiError, PreviewBlocked, Unauthorized, acceptAiSuggestion, dismissAiSuggestion, sendAiFeedback } from "./api";
 
 export interface AiHost {
@@ -25,8 +35,11 @@ export interface AiHost {
   /** Re-read the Repo dashboard (after a proposed theme is decided, so the lane shows what it became). */
   reloadRepo?(): void;
   /** A suggestion was accepted or dismissed: the screen it was on re-reads what changed (Phase C — the ticket, the
-   *  Unplaced queue, Review). */
-  decided?(id: number, how: "accept" | "dismiss"): void;
+   *  Unplaced queue, Review, the Roadmap). A promise settles once that read has landed (the Roadmap's: what an Accept
+   *  changed then rises in). */
+  decided?(id: number, how: "accept" | "dismiss"): void | Promise<unknown>;
+  /** Close the Roadmap's Trov dialog (its own exit, main.ts `confirmOut`): a decision took its last suggestion. */
+  closeRoadmapTrov?(): void;
   /** One-shot `.cnpy-flash` on what matches, after the next paint (main.ts `pendingFlash`). */
   flashNext?(selector: string): void;
 }
@@ -100,23 +113,48 @@ export function createAiController(host: AiHost): AiController {
     }, AI_EXIT_MS);
     return at;
   }
+  /** What an accepted Roadmap suggestion changes, to rise in once the re-read lands: the narrative, new sprints. */
+  type Rise = { narrative: boolean; sprints: boolean };
   /** The screen's re-read after decisions: ONE read, once the LAST exit in flight is over (several cards in a row
-   *  re-read once), so a read never pulls a card out mid-exit. A theme's decision re-reads the Repo dashboard. */
-  let reread: { timer: ReturnType<typeof setTimeout>; due: number; theme: boolean } | null = null;
-  function rereadAfter(id: number, how: "accept" | "dismiss", due: number, theme: boolean): void {
+   *  re-read once), so a read never pulls a card out mid-exit. A theme's decision re-reads the Repo dashboard. An
+   *  accepted Roadmap suggestion's change rises in once the Roadmap's read has landed (`rise`). */
+  let reread: { timer: ReturnType<typeof setTimeout>; due: number; theme: boolean; rise: Rise } | null = null;
+  function rereadAfter(id: number, how: "accept" | "dismiss", due: number, theme: boolean, rise: Rise = { narrative: false, sprints: false }): void {
     const d = Math.max(due, reread?.due ?? 0);
     const th = theme || !!reread?.theme;
+    const r: Rise = { narrative: rise.narrative || !!reread?.rise.narrative, sprints: rise.sprints || !!reread?.rise.sprints };
     if (reread) clearTimeout(reread.timer);
     reread = {
-      due: d, theme: th,
+      due: d, theme: th, rise: r,
       timer: setTimeout(() => {
         reread = null;
         // A theme's answer changes the chart (proposed → active, merged or gone): read it again.
         if (th) host.reloadRepo?.();
-        host.decided?.(id, how);
+        const before = new Set(state.roadmap.data.sprints.map((sp) => sp.id));
+        const read = host.decided?.(id, how);
+        if (!(r.narrative || r.sprints) || !read) return;
+        read.then(() => {
+          if (state.roadmap.status !== "ok") return;
+          const sprints = r.sprints ? state.roadmap.data.sprints.filter((sp) => !before.has(sp.id)).map((sp) => sp.id) : [];
+          if (!r.narrative && !sprints.length) return;
+          const mark = { at: Date.now(), narrative: r.narrative, sprints };
+          state.rmRise = mark;
+          rerender();
+          setTimeout(() => { if (state.rmRise === mark) state.rmRise = null; }, RM_RISE_MS);
+        }, () => { /* the read's own failure is drawn by the screen */ });
       }, Math.max(0, d - Date.now())),
     };
   }
+
+  /** The Roadmap suggestion `id` (on the Roadmap screen), or null. */
+  const roadmapSuggestion = (id: number): AiSuggestion | null =>
+    state.screen === "roadmap" ? state.roadmap.data.suggestions?.find((s) => s.id === id) ?? null : null;
+  /** Whether the Roadmap's dialog holds another suggestion still waiting for a decision (one being decided or
+   *  collapsing does not count). */
+  const othersWaiting = (id: number): boolean => (state.roadmap.data.suggestions ?? []).some((s) =>
+    s.id !== id && s.state === "open" && !!s.reason && !ui().busy.includes(s.id) && !ui().leaving.some((l) => l.key === aiSuggestionKey(s.id)));
+  /** A Roadmap decision took the dialog's last suggestion: the dialog closes by its own exit. */
+  const closeIfLast = (id: number): void => { if (state.rmTrovOpen && !othersWaiting(id)) host.closeRoadmapTrov?.(); };
 
   function wrong(body: AiFeedbackBody): void {
     const key = aiHiddenKey(body.itemType, body.itemRef);
@@ -161,18 +199,25 @@ export function createAiController(host: AiHost): AiController {
     if (u.busy.includes(id)) return;
     u.busy = [...u.busy, id];
     const key = aiSuggestionKey(id);
-    const at = leave(key, true);
+    // A Roadmap Accept waits for the server, busy in place (› THE ROADMAP'S DIALOG); everything else leaves at once.
+    const rm = roadmapSuggestion(id);
+    const wait = !!rm && how === "accept";
+    if (rm && !wait) closeIfLast(id);
+    let at = wait ? null : leave(key, true);
     const theme = Object.values(host.state.repo.data?.themes ?? {}).some((t) => t.lanes.some((l) => l.suggestionId === id));
     rerender();
     const call = how === "accept" ? acceptAiSuggestion(id, value) : dismissAiSuggestion(id);
     call
       .then((r) => {
+        // The Accept went through: the dialog closes if nothing else waits in it, else the card collapses out.
+        if (wait) { closeIfLast(id); at = leave(key, true); }
         if (isPreviewAnswer(r)) { previewDecided(id, how, value, theme); return; }
         u.busy = without(u.busy, id);
         if (u.rename?.id === id) u.rename = null;
         host.flash(how === "accept" ? "Accepted" : "Removed");
         rerender();
-        rereadAfter(id, how, at === null ? 0 : at + AI_EXIT_MS, theme);
+        const rise = { narrative: wait && rm?.kind === "plan_narrative", sprints: wait && rm?.kind === "sprint_draft" };
+        rereadAfter(id, how, at === null ? 0 : at + AI_EXIT_MS, theme, rise);
       })
       .catch((e) => {
         u.busy = without(u.busy, id);

@@ -21,7 +21,7 @@ import { z } from "zod";
 import {
   AI_DRIFT_WINDOW_DAYS, AI_ROADMAP_ITEM, type AiCite, type AiSprintDraftValue, type AiThemeShare,
 } from "@shared/ai";
-import { PLAN_NARRATIVE_MAX, planNarrativeProblem } from "@shared/sprints-core";
+import { PLAN_NARRATIVE_MAX, PLAN_NARRATIVE_PARTS, composePlanNarrative, planNarrativePartsProblem, type PlanNarrativeParts } from "@shared/sprints-core";
 import type { SprintForecast } from "@shared/sprints";
 import { all, first, ph, type TenantContext } from "../data/sql";
 import { lastRoadmapSuggestionAt, planDrift, putInsight, sprintNotes } from "../data/org-insights";
@@ -485,15 +485,21 @@ export async function narrativeInput(ctx: TenantContext, now: Date = new Date())
   };
 }
 
+// The narrative is THREE parts, Now / Next / Later (shared/sprints-core › the plan narrative's shape): the model
+// fills each, and the server composes the stored form when an admin accepts (`write_plan`). Each part is its own
+// section, so the answer is checked part by part; a missing one drops the proposal (all three are required).
+const NARRATIVE_PART = z.string().min(1).max(PLAN_NARRATIVE_MAX);
 export const NarrativeAnswer = sections({
-  narrative: z.string().min(1).max(PLAN_NARRATIVE_MAX),
+  now: NARRATIVE_PART,
+  next: NARRATIVE_PART,
+  later: NARRATIVE_PART,
   reason: z.string().min(1).max(200),
   cites: CITES,
 });
 type NarrativeAnswer = z.infer<typeof NarrativeAnswer>;
 
 export const NARRATIVE_SYSTEM = `${SYSTEM_HEAD}
-Task: propose a fresh plan narrative for the Roadmap's "What's happening" card, from the current narrative, the open sprints, Trov's sprint notes and drift line, and this week's feed entries. Write Now / Next / Later in two to four short sentences, at most ${PLAN_NARRATIVE_MAX - 100} characters; markdown emphasis is allowed, no headings or lists. Keep what is still true from the current narrative; no sprint-by-sprint detail or dated logs. Then one "reason" (at most 160 characters) saying what changed, and 1–4 "cites" (sprint or feed refs) it rests on.`;
+Task: propose a fresh plan narrative for the Roadmap's "What's happening" box, from the current narrative, the open sprints, Trov's sprint notes and drift line, and this week's feed entries. The box has three rows: write "now" (what is happening now), "next" (what comes next) and "later" (what is further out) — each one short sentence or two, together at most ${PLAN_NARRATIVE_MAX - 100} characters, without a "Now:" / "Next:" / "Later:" label (the box has its own). Markdown emphasis is allowed, no headings or lists. When nothing is known for later, say what the plan leaves open in a few words. Keep what is still true from the current narrative; no sprint-by-sprint detail or dated logs. Then one "reason" (at most 160 characters) saying what changed, and 1–4 "cites" (sprint or feed refs) it rests on.`;
 
 export function narrativePrompt(items: readonly JobItem<NarrativeInput>[]): { system: string; input: string } {
   const i = items[0].input;
@@ -503,21 +509,27 @@ export function narrativePrompt(items: readonly JobItem<NarrativeInput>[]): { sy
   };
 }
 
-/** The proposal as it may be suggested, or null: within the cap, different from today's, no number it was not
- *  given, at least one valid cite. */
-export function checkNarrative(i: NarrativeInput, a: Partial<NarrativeAnswer>): { narrative: string; reason: string; cites: AiCite[] } | null {
-  const written = typeof a.narrative === "string" ? a.narrative.replace(/<[^>]*>/g, "").trim() : "";
-  if (!written || !numbersGiven(written, i.allowed)) return null;
-  const narrative = tidyRefs(written, i.offered);
-  if (!narrative || planNarrativeProblem(narrative) || narrative === i.current.trim()) return null;
+/** The proposal as it may be suggested, or null: all three parts written, within the narrative rule (no empty part,
+ *  no label of its own, the composed text within the cap), different from today's, no number it was not given, at
+ *  least one valid cite. */
+export function checkNarrative(i: NarrativeInput, a: Partial<NarrativeAnswer>): { parts: PlanNarrativeParts; reason: string; cites: AiCite[] } | null {
+  const parts = {} as PlanNarrativeParts;
+  for (const k of PLAN_NARRATIVE_PARTS) {
+    const written = typeof a[k] === "string" ? a[k].replace(/<[^>]*>/g, "").trim() : "";
+    if (!written || !numbersGiven(written, i.allowed)) return null;
+    const part = tidyRefs(written, i.offered);
+    if (!part) return null;
+    parts[k] = part;
+  }
+  if (planNarrativePartsProblem(parts) || composePlanNarrative(parts) === i.current.trim()) return null;
   const reason = groundedLine(a.reason, i, 200);
   if (!reason) return null;
   const cites = validCites(a.cites, i.offered, 4);
-  return cites.length ? { narrative, reason, cites } : null;
+  return cites.length ? { parts, reason, cites } : null;
 }
 
 export const PLAN_NARRATIVE_JOB: ClaudeJob<NarrativeInput, NarrativeAnswer> = {
-  provider: "claude", kind: "plan.narrative", name: "roadmap.plan_narrative", scope: "org", promptVersion: "narrative-1",
+  provider: "claude", kind: "plan.narrative", name: "roadmap.plan_narrative", scope: "org", promptVersion: "narrative-2",
   group: 1, batch: true, schema: NarrativeAnswer, maxTokens: 1500,
   input: (ctx) => narrativeInput(ctx),
   prompt: narrativePrompt,
@@ -526,7 +538,7 @@ export const PLAN_NARRATIVE_JOB: ClaudeJob<NarrativeInput, NarrativeAnswer> = {
     const n = checkNarrative(item.input, keep(out).kept);
     if (!n) return [];
     const id = await putSuggestion(ctx, {
-      ...AI_ROADMAP_ITEM, kind: "plan_narrative", value: { narrative: n.narrative }, confidence: null, reason: n.reason, cites: n.cites,
+      ...AI_ROADMAP_ITEM, kind: "plan_narrative", value: n.parts, confidence: null, reason: n.reason, cites: n.cites,
       model: meta.model, promptVersion: PLAN_NARRATIVE_JOB.promptVersion,
     });
     return id === null ? [] : [item.scope.key];

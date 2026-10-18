@@ -33,6 +33,7 @@ import { acceptLink, joinLink, sendLink, sendLinkNote } from "../src/tools/links
 import { cookieFor, seedPerson, FIXTURE_ADMIN } from "./helpers/persons";
 import { ENVS, seedOrgRepoConfig } from "./helpers/repo";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
+import { narr } from "./helpers/plan";
 
 const e = env as unknown as Env;
 const SLUG = { [ORG_A]: "saplinglearn", [ORG_B]: "acme" } as const;
@@ -144,7 +145,7 @@ async function seedOrg(org: Org): Promise<Fixture> {
     }
     const handoff = (await ok<{ id: number }>("send_handoff", { body: c("handoff"), context: { repo: "x/y", branch: "main", task: c("handoff_task"), done: [c("handoff_done")], next: [], files: [] }, prompt: { title: c("handoff_prompt"), body: c("handoff_prompt_body") } })).id;
     const artifact = (await ok<{ slug: string }>("upload_asset", { title: c("artifact"), kind: "markdown", area: "api", repo: "", visibility: "org", content: c("artifact_body"), summary: c("artifact_summary"), links: [{ target_type: "ticket", target_ref: String(ticket) }] })).slug;
-    await ok("update_plan", { narrative: c("narrative"), sprints: [] });
+    await ok("update_plan", { ...narr(c("narrative")), sprints: [] });
     const link = (await ok<{ id: number }>("request_link", { target: { person: ONLY[org] }, reason: c("link_reason"), session: `iso-link-${tag}` })).id;
     return { sprint, ticket, child, handoff, artifact, link };
   });
@@ -231,7 +232,7 @@ const MATRIX: Record<string, Entry> = {
     expect: "inert",
   }],
   get_roadmap: () => [read()],
-  update_plan: (o) => [{ args: { narrative: "n", sprints: [{ id: o.sprint, label: "hijacked", due: "", status: "done" }] }, expect: "own" }],
+  update_plan: (o) => [{ args: { ...narr("n"), sprints: [{ id: o.sprint, label: "hijacked", due: "", status: "done" }] }, expect: "own" }],
   // tickets
   list_tickets: () => [read({ seg: "all" }), read({ seg: "all", assignee: "me" })],
   get_ticket: (o) => [refused({ id: o.ticket })],

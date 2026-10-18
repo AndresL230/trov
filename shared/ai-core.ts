@@ -16,6 +16,7 @@
 // `RepoSection`) — never `state: "off"`. A present field is always one of AI_STATES.
 
 import { AI_LEGAL_DRAFT } from "./legal-core";
+import { parsePlanNarrative, PLAN_NARRATIVE_PARTS, type PlanNarrativeParts } from "./sprints-core";
 
 /** The model every kind runs on today (src/ai/client.ts `providerFor`). */
 export const AI_MODEL = "claude-haiku-5-5";
@@ -268,8 +269,20 @@ export type AiRoadmapSuggestionKind = (typeof AI_ROADMAP_SUGGESTION_KINDS)[numbe
 export const AI_ROADMAP_ITEM = { itemType: "roadmap", itemRef: "org" } as const;
 /** A sprint draft's value: 2–4 sprints, each a name, a one-line goal, and backlog tickets by their NUMBER. */
 export interface AiSprintDraftValue { sprints: { name: string; goal: string; tickets: number[] }[] }
-/** A proposed plan narrative (at most `PLAN_NARRATIVE_MAX` characters). */
-export interface AiPlanNarrativeValue { narrative: string }
+/** A proposed plan narrative: its three parts, Now / Next / Later (`write_plan` composes the stored form; at most
+ *  `PLAN_NARRATIVE_MAX` characters composed). A proposal written before the structure (2026-10-18) is
+ *  `{ narrative }`: it is drawn as the box and accepted only when it parses into the three (`aiNarrativeParts`). */
+export type AiPlanNarrativeValue = PlanNarrativeParts | { narrative: string };
+
+/** A narrative proposal's three parts — or null: not a narrative value, or a legacy one that does not parse. */
+export function aiNarrativeParts(v: unknown): PlanNarrativeParts | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  if (PLAN_NARRATIVE_PARTS.every((k) => typeof o[k] === "string" && (o[k] as string).trim())) {
+    return { now: (o.now as string).trim(), next: (o.next as string).trim(), later: (o.later as string).trim() };
+  }
+  return typeof o.narrative === "string" ? parsePlanNarrative(o.narrative) : null;
+}
 
 /** `POST /ai/feedback` — hides the item for the person who pressed it; never edits the record. */
 export interface AiFeedbackBody {

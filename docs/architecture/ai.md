@@ -671,11 +671,22 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   (owner ruling Q-S2 / RM-14): the read itself leaves it out for a person's context — a `NOT EXISTS` against
   `ai_feedback` in the same statement (`latest`, `src/data/org-insights.ts`), so no extra statement; the pass's
   system context hides nothing.
+- **The narrative proposal is three parts** (prompt `narrative-2`, 2026-10-18): the model answers `now`, `next`,
+  `later` (each its own section), `reason`, `cites`; `checkNarrative` grounds each part (numbers given, refs
+  offered), holds them to the plan's narrative rule (`planNarrativePartsProblem`: none empty, none with a label of
+  its own, ≤ `PLAN_NARRATIVE_MAX` composed) and drops the proposal when the composed text equals today's. The
+  suggestion's value is `{ now, next, later }` (`AiPlanNarrativeValue`); one stored before as `{ narrative }` is
+  drawn and accepted only when it parses (`aiNarrativeParts`, `shared/ai-core.ts`), else its Accept is a 400 saying
+  it predates the box.
 - **Accept** runs the existing writers AS the admin who pressed it: a draft → `create_sprint` per sprint (created
   upcoming), then `set_ticket_sprint` for each of its tickets still open in the backlog (never moved out of another
-  sprint); a narrative → `write_plan` with the narrative and no sprint entries (versioned like any plan write).
+  sprint); a narrative → `write_plan` with its three parts and no sprint entries (versioned like any plan write, and
+  composed into the ONE stored form there — `roadmap-my-work.md`).
 - The UI: `web/src/roadmap-ai.ts` over the AI kit (`aiByline`, `aiCites`, `aiWrongBtn`, `aiSuggestionChip`) — a
-  forecast and a note on each active sprint card, the drift line under the narrative, an admin's cards above it.
+  forecast and a note on each active sprint card; the suggestions and the drift in the narrative card's Trov dialog,
+  a narrative proposal drawn as the card's own Now / Next / Later box. An Accept there waits for the server, busy in
+  place, then closes the dialog (or collapses the card) and the change rises in once the re-read lands
+  (`roadmap-my-work.md` › Motion).
 
 ## Doc drift (#161; `src/ai/doc-drift.ts`)
 

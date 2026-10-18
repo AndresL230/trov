@@ -36,6 +36,7 @@ import { retryFailed } from "../src/notifications/retry";
 import { localDelivery } from "../src/notifications/delivery";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { systemCtx, platformCtx, ensureMember, ORG_A, ORG_B } from "./helpers/tenant";
+import { narr, narrText } from "./helpers/plan";
 
 const A = systemCtx();
 const B = systemCtx(ORG_B);
@@ -294,8 +295,8 @@ describe("sprints", () => {
   });
 
   it("an issue event moves only its own org's sprint progress", async () => {
-    await write_plan(A, { narrative: "", sprints: [{ label: "A", due: "", status: "upcoming", github_ref: [7] }] }, "alice");
-    await write_plan(B, { narrative: "", sprints: [{ label: "B", due: "", status: "upcoming", github_ref: [7] }] }, "bob");
+    await write_plan(A, { ...narr(), sprints: [{ label: "A", due: "", status: "upcoming", github_ref: [7] }] }, "alice");
+    await write_plan(B, { ...narr(), sprints: [{ label: "B", due: "", status: "upcoming", github_ref: [7] }] }, "bob");
     await run(env.DB, `INSERT INTO events (org_id, repo, semantic_key, event_type, ref_number, subject_login, raw, provenance, occurred_at, recorded_at, recorded_by)
                        VALUES (?, 'o/r', 'gh:issue:7:closed:t', 'issue', 7, 'x', ?, 'webhook', '2026-09-10T00:00:00Z', '2026-09-10T00:00:00Z', 'github-webhook')`,
       ORG_A, JSON.stringify({ action: "closed", issue: { number: 7, state: "closed" } }));
@@ -314,8 +315,8 @@ describe("sprints", () => {
 // and while no plan write named another org's sprint.
 describe("shared GitHub group numbers and foreign sprint ids", () => {
   it("a group-number event moves only its own org's sprint, though both orgs claim that number", async () => {
-    await write_plan(A, { narrative: "", sprints: [{ label: "A", due: "", status: "upcoming", github_ref: 3 }] }, "alice");
-    await write_plan(B, { narrative: "", sprints: [{ label: "B", due: "", status: "upcoming", github_ref: 3 }] }, "bob");
+    await write_plan(A, { ...narr(), sprints: [{ label: "A", due: "", status: "upcoming", github_ref: 3 }] }, "alice");
+    await write_plan(B, { ...narr(), sprints: [{ label: "B", due: "", status: "upcoming", github_ref: 3 }] }, "bob");
     const payload = { action: "closed", issue: { number: 41, state: "closed", milestone: { number: 3, open_issues: 1, closed_issues: 4 } } };
     await applyEventProgress(A, payload);
     expect([...(await getProgress(A)).values()].map((p) => [p.closed, p.total])).toEqual([[4, 5]]);
@@ -325,7 +326,7 @@ describe("shared GitHub group numbers and foreign sprint ids", () => {
 
   it("a plan write cannot edit another org's sprint by naming its id", async () => {
     const b = (await create_sprint(B, sprint("B sprint"), "bob")).id;
-    await expect(write_plan(A, { narrative: "x", sprints: [{ id: b, label: "Hijacked", due: "", status: "done" }] }, "alice")).rejects.toThrow(`no such sprint: ${b}`);
+    await expect(write_plan(A, { ...narr("x"), sprints: [{ id: b, label: "Hijacked", due: "", status: "done" }] }, "alice")).rejects.toThrow(`no such sprint: ${b}`);
     expect(await first(env.DB, `SELECT org_id, title, status FROM sprints WHERE id = ?`, b)).toMatchObject({ org_id: ORG_B, title: "B sprint" });
     expect(await count("sprints", ORG_A)).toBe(0);
   });
@@ -348,8 +349,8 @@ describe("shared GitHub group numbers and foreign sprint ids", () => {
 describe("My Work when both orgs captured the same PR key and claim the same group number", () => {
   it("a PR card carries THIS org's summary, and an issue THIS org's sprint", async () => {
     await run(env.DB, `INSERT OR IGNORE INTO identities (provider, subject, label, person, linked_at, linked_by) VALUES ('github', 'carol-gh', 'carol-gh', 'carol', 't', 'seed')`);
-    await write_plan(B, { narrative: "", sprints: [{ label: "B sprint", due: "", status: "upcoming", github_ref: 5 }] }, "bob"); // B first: the lower sprint id
-    await write_plan(A, { narrative: "", sprints: [{ label: "A sprint", due: "", status: "upcoming", github_ref: 5 }] }, "alice");
+    await write_plan(B, { ...narr(), sprints: [{ label: "B sprint", due: "", status: "upcoming", github_ref: 5 }] }, "bob"); // B first: the lower sprint id
+    await write_plan(A, { ...narr(), sprints: [{ label: "A sprint", due: "", status: "upcoming", github_ref: 5 }] }, "alice");
     const pr = JSON.stringify({ action: "closed", pr: { number: 9, title: "PR 9", html_url: "https://github.com/o/r/pull/9", merged: true, merged_at: "2026-09-10T00:00:00Z", user: { login: "carol-gh" } } });
     const issue = JSON.stringify({ action: "assigned", issue: { number: 12, title: "Issue 12", html_url: "https://github.com/o/r/issues/12", state: "open", updated_at: "2026-09-10T00:00:00Z",
       user: { login: "carol-gh" }, assignees: [{ login: "carol-gh" }], labels: [], milestone: { number: 5, title: "GH group", open_issues: 1, closed_issues: 0 } } });
@@ -370,15 +371,15 @@ describe("My Work when both orgs captured the same PR key and claim the same gro
 
 describe("the plan", () => {
   it("each org has its own narrative, versions and sprints", async () => {
-    await write_plan(A, { narrative: "A's plan", sprints: [{ label: "A sprint", due: "", status: "upcoming" }] }, "alice");
-    const b = await write_plan(B, { narrative: "B's plan", sprints: [{ label: "B sprint", due: "", status: "in_progress" }] }, "bob");
+    await write_plan(A, { ...narr("A's plan"), sprints: [{ label: "A sprint", due: "", status: "upcoming" }] }, "alice");
+    const b = await write_plan(B, { ...narr("B's plan"), sprints: [{ label: "B sprint", due: "", status: "in_progress" }] }, "bob");
     expect(b.version).toBe(1);
     expect(b.sprints.map((s) => s.title)).toEqual(["B sprint"]);
 
     const planA = await get_plan(A);
     const planB = await get_plan(B);
-    expect([planA.narrative, planA.version, planA.sprints.map((s) => s.label)]).toEqual(["A's plan", 1, ["A sprint"]]);
-    expect([planB.narrative, planB.version, planB.sprints.map((s) => s.label)]).toEqual(["B's plan", 1, ["B sprint"]]);
+    expect([planA.narrative, planA.version, planA.sprints.map((s) => s.label)]).toEqual([narrText("A's plan"), 1, ["A sprint"]]);
+    expect([planB.narrative, planB.version, planB.sprints.map((s) => s.label)]).toEqual([narrText("B's plan"), 1, ["B sprint"]]);
     expect(await all(env.DB, `SELECT org_id, version FROM plan_versions ORDER BY org_id`)).toEqual([
       { org_id: ORG_B, version: 1 }, { org_id: ORG_A, version: 1 },
     ]);
@@ -387,7 +388,7 @@ describe("the plan", () => {
 
   it("a plan write cannot name another org's sprint, and writes nothing when it tries", async () => {
     const b = (await create_sprint(B, sprint("B sprint"), "bob")).id;
-    await expect(write_plan(A, { narrative: "stolen", sprints: [{ id: b, label: "renamed", due: "", status: "done" }] }, "alice"))
+    await expect(write_plan(A, { ...narr("stolen"), sprints: [{ id: b, label: "renamed", due: "", status: "done" }] }, "alice"))
       .rejects.toThrow(/no such sprint/);
     expect(await first(env.DB, `SELECT title, status FROM sprints WHERE id = ?`, b)).toEqual({ title: "B sprint", status: "upcoming" });
     expect((await get_plan(A)).version).toBe(0);
@@ -410,21 +411,21 @@ describe("a sprint's lead is a member of the sprint's org", () => {
 
   it("the plan write checks every lead before it writes anything: one bad lead refuses the whole plan", async () => {
     const before = await get_plan(A);
-    await expect(write_plan(A, { narrative: "n", sprints: [
+    await expect(write_plan(A, { ...narr("n"), sprints: [
       { label: "ok", due: "2026-12-01", status: "upcoming", lead: "alice" },
       { label: "not ours", due: "2026-12-02", status: "upcoming", lead: "bob" },
     ] }, "alice")).rejects.toMatchObject({ code: "bad_request" });
     expect(await count("sprints", ORG_A)).toBe(0);
     expect((await get_plan(A)).narrative).toBe(before.narrative);
-    const { sprints } = await write_plan(A, { narrative: "n", sprints: [{ label: "ok", due: "2026-12-01", status: "upcoming", lead: "Alice" }] }, "alice");
+    const { sprints } = await write_plan(A, { ...narr("n"), sprints: [{ label: "ok", due: "2026-12-01", status: "upcoming", lead: "Alice" }] }, "alice");
     expect(sprints.map((s) => s.lead)).toEqual(["alice"]);
     // Omitted = unchanged, null = cleared, a non-member = refused with the stored lead left alone.
     const id = sprints[0].id;
-    await write_plan(A, { narrative: "n", sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming" }] }, "alice");
+    await write_plan(A, { ...narr("n"), sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming" }] }, "alice");
     expect((await first<{ lead: string | null }>(env.DB, `SELECT lead FROM sprints WHERE id = ?`, id))!.lead).toBe("alice");
-    await expect(write_plan(A, { narrative: "n", sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming", lead: "bob" }] }, "alice")).rejects.toMatchObject({ code: "bad_request" });
+    await expect(write_plan(A, { ...narr("n"), sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming", lead: "bob" }] }, "alice")).rejects.toMatchObject({ code: "bad_request" });
     expect((await first<{ lead: string | null }>(env.DB, `SELECT lead FROM sprints WHERE id = ?`, id))!.lead).toBe("alice");
-    await write_plan(A, { narrative: "n", sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming", lead: null }] }, "alice");
+    await write_plan(A, { ...narr("n"), sprints: [{ id, label: "ok", due: "2026-12-01", status: "upcoming", lead: null }] }, "alice");
     expect((await first<{ lead: string | null }>(env.DB, `SELECT lead FROM sprints WHERE id = ?`, id))!.lead).toBeNull();
   });
 

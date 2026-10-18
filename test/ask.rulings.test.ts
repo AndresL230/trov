@@ -37,7 +37,7 @@ const confirm = (cookie: string, id: number) => call("POST", `${BASE}/ask/action
 describe("Q57: Confirm re-checks the confirmer's rights NOW — a card never carries the proposer's", () => {
   it("admin-only (update_plan): a card made as an admin does not run once the person is a member", async () => {
     const cookie = await cookieFor(FIXTURE_ADMIN);
-    const { card } = await cardFrom(cookie, "update_plan", { narrative: "Now: Q57 plan.", sprints: [] });
+    const { card } = await cardFrom(cookie, "update_plan", { now: "Q57 plan.", next: "Next.", later: "Later.", sprints: [] });
     expect(card).toMatchObject({ tool: "update_plan", state: "proposed" });
     await setRole(FIXTURE_ADMIN, "member");
     try {
@@ -51,9 +51,22 @@ describe("Q57: Confirm re-checks the confirmer's rights NOW — a card never car
     }
   });
 
+  it("update_plan's narrative is Now / Next / Later: a free-text one makes no card, and the model is told what to send", async () => {
+    const cookie = await cookieFor(FIXTURE_ADMIN);
+    const { card, model } = await cardFrom(cookie, "update_plan", { narrative: "We ship hosting this week.", sprints: [] });
+    expect(card).toBeUndefined();
+    const result = (model.sent[1].messages.at(-1)!.content as { is_error?: boolean; content: string }[])[0];
+    expect(result.is_error).toBe(true);
+    expect(JSON.parse(result.content)).toMatchObject({ code: "bad_request" });
+    expect(JSON.parse(result.content).error).toContain("pass `now`, `next` and `later`");
+    // A legacy narrative that already reads Now / Next / Later is a card.
+    const legacy = await cardFrom(cookie, "update_plan", { narrative: "**Now:** a. **Next:** b. **Later:** c.", sprints: [] });
+    expect(legacy.card).toMatchObject({ tool: "update_plan", state: "proposed" });
+  });
+
   it("admin-only: a member's model naming update_plan (never offered to them) makes no card at all", async () => {
     const cookie = await cookieFor(ME);
-    const { card, model } = await cardFrom(cookie, "update_plan", { narrative: "Now: member plan.", sprints: [] });
+    const { card, model } = await cardFrom(cookie, "update_plan", { now: "member plan.", next: "Next.", later: "Later.", sprints: [] });
     expect(card).toBeUndefined();
     const result = (model.sent[1].messages.at(-1)!.content as { is_error?: boolean; content: string }[])[0];
     expect(result.is_error).toBe(true);
@@ -121,7 +134,7 @@ describe("Q55: a waiting card keeps its note across a reload", () => {
     const cookie = await cookieFor(FIXTURE_ADMIN);
     await run(env.DB, `UPDATE orgs SET ai_chat_auto = 1 WHERE id = ?`, ORG_A);
     const model = fakeModel([[
-      { type: "tool_use", name: "update_plan", input: { narrative: "Now: waiting note.", sprints: [] } },
+      { type: "tool_use", name: "update_plan", input: { now: "waiting note.", next: "Next.", later: "Later.", sprints: [] } },
       ...Array.from({ length: 6 }, (_, i) => ({ type: "tool_use" as const, name: "create_ticket", input: { title: `Q55 cap ${i}` } })),
     ], answer()]);
     const r = await withAsk({ fetchImpl: model.fetchImpl }, () => ask(cookie, { text: "all", auto: true }));
