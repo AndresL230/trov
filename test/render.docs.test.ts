@@ -328,7 +328,7 @@ describe("the drag's rules (tree-drag.ts, tree-actions.ts)", () => {
   });
   it("a refusal is said in words", () => {
     expect(moveRefusalText("cycle")).toBe("A page can't go inside a page that is under it.");
-    expect(moveRefusalText("too_deep")).toBe("Pages go at most 6 levels deep.");
+    expect(moveRefusalText("too_deep")).toBe("Pages go at most 5 levels deep.");
     expect(moveRefusalText("weird")).toBe("Couldn't move the page. Try again.");
   });
 });

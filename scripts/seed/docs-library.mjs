@@ -34,7 +34,7 @@
 //   space-archived-clash test-docs › design-old: archived, NAMED "Design" like the live one → restore is name_taken
 //   spaces-one           test-docs-one: Engineering only (3 pages)
 //   spaces-none          test-docs-nospaces: no space, no page
-//   tree-deep-6          Engineering › Platform … 6 levels (depth 0–5, the MAX), long titles at level 6; the on-call
+//   tree-deep-5          Engineering › Platform … 5 levels (depth 0–4, the MAX), long titles at level 5; the on-call
 //                        checklist (an agent's staged v2) beside the deepest page, under Regional failover
 //   tree-unranked        Engineering › Runbooks: 2 unranked children + 1 ranked (ranked first, then A to Z)
 //   tree-orphan          test-orphan: parent_slug names no page → drawn at the top level
@@ -224,11 +224,11 @@ export function fixtureFiles() {
     { name: "..\\win.md", data: "# Backslash climb\n" },
     { name: "ok/good.md", data: "# The good page\n\nOnly this one is imported.\n" },
   ]);
-  // test-too-deep.zip — Markdown in 6 folders (a folder is a level: d1 … d6 are levels 1–6, deep.md would be 7)
-  // beside a shallow page; test-exactly-6-levels.zip — Markdown in 5 folders: level 6, AT the cap (allowed).
+  // test-too-deep.zip — Markdown in 5 folders (a folder is a level: d1 … d5 are levels 1–5, deep.md would be 6)
+  // beside a shallow page; test-exactly-5-levels.zip — Markdown in 4 folders: level 5, AT the cap (allowed).
   const dirs = (n) => Array.from({ length: n }, (_, i) => `d${i + 1}`).join("/");
-  f["test-too-deep.zip"] = zip([{ name: `${dirs(6)}/deep.md`, data: "# Too deep\n" }, { name: "shallow.md", data: "# Shallow\n" }]);
-  f["test-exactly-6-levels.zip"] = zip([{ name: `${dirs(5)}/at-cap.md`, data: "# At the cap\n\nThe deepest an import may go.\n" }]);
+  f["test-too-deep.zip"] = zip([{ name: `${dirs(5)}/deep.md`, data: "# Too deep\n" }, { name: "shallow.md", data: "# Shallow\n" }]);
+  f["test-exactly-5-levels.zip"] = zip([{ name: `${dirs(4)}/at-cap.md`, data: "# At the cap\n\nThe deepest an import may go.\n" }]);
   // test-big-page.zip — one Markdown file over 1 MB beside a small one.
   f["test-big-page.zip"] = zip([{ name: "huge.md", data: "# Huge\n\n" + "x".repeat(1024 * 1024 + 10) }, { name: "small.md", data: "# Small\n" }]);
   // test-images.zip — a real PNG, a "PNG" that is text (sniffed: not an image), an 11 MB image (over the 10 MB cap).
@@ -358,18 +358,18 @@ function mainOrg(c) {
     { slug: "test-moves-on-promote", title: "Moves on promote", space: E, parent: null, rank: 9216,
       versions: [[1, "promoted", ADMIN, 10, "First version", "# Moves on promote\n\nv1.\n"], [2, "staged", AGENT, 0.04, "Asks to go under Runbooks", "# Moves on promote\n\nv2.\n", { parent_slug: "test-runbooks" }]] },
     { slug: "test-badparent-on-promote", title: "Bad parent on promote", space: E, parent: null, rank: 10240,
-      versions: [[1, "promoted", ADMIN, 10, "First version", "# Bad parent on promote\n\nv1.\n"], [2, "staged", AGENT, 0.04, "Asks for a parent at level 6", "# Bad parent on promote\n\nv2.\n", { parent_slug: "test-deep-5" }]] },
+      versions: [[1, "promoted", ADMIN, 10, "First version", "# Bad parent on promote\n\nv1.\n"], [2, "staged", AGENT, 0.04, "Asks for a parent at level 5", "# Bad parent on promote\n\nv2.\n", { parent_slug: "test-deep-4" }]] },
   ];
-  // tree-deep-6: depth 0 … 5 (6 levels, the most a page may have — the owner's ruling). The last is the deepest page.
+  // tree-deep-5: depth 0 … 4 (5 levels, the most a page may have — the owner's ruling). The last is the deepest page.
   const deep = [
-    "Platform", "Infrastructure", "Networking", "Edge and load balancing", "Regional failover",
+    "Platform", "Infrastructure", "Networking", "Regional failover",
     "Failing over the edge load balancers when a whole region stops answering health checks",
   ];
   deep.forEach((title, i) => pages.push(live(`test-deep-${i}`, title, E, i === 0 ? null : `test-deep-${i - 1}`, `# ${title}\n\nLevel ${i + 1}.\n`, { rank: i === 0 ? 11264 : null })));
-  // The on-call checklist (review-agent-group: an agent's staged v2) sits beside the deepest page, at level 6.
+  // The on-call checklist (review-agent-group: an agent's staged v2) sits beside the deepest page, at level 5.
   const checklist = "Checklist for the on-call engineer during a regional failover, including who to tell and when";
-  pages.push({ slug: "test-failover-checklist", title: checklist, space: E, parent: "test-deep-4",
-    versions: [[1, "promoted", SOWNER, 8, "First version", `# ${checklist}\n\nLevel 6.\n`], [2, "staged", AGENT, 0.06, "Added who to tell", `# ${checklist}\n\nLevel 6. Tell #incidents.\n`]] });
+  pages.push({ slug: "test-failover-checklist", title: checklist, space: E, parent: "test-deep-3",
+    versions: [[1, "promoted", SOWNER, 8, "First version", `# ${checklist}\n\nLevel 5.\n`], [2, "staged", AGENT, 0.06, "Added who to tell", `# ${checklist}\n\nLevel 5. Tell #incidents.\n`]] });
   // Imported (staged) pages of import 6302 (review-import-group): a parent page and two under it, plus a new version of
   // test-local-setup.
   const imp = (slug, title, parent, path) => ({ slug, title, space: E, parent, owner: ADMIN,
@@ -515,10 +515,10 @@ export const CHECKS = [
   ["space owners: test-dl-spaceowner owns Engineering and Design", `SELECT COUNT(*) AS n FROM doc_space_owners WHERE org_id = ${M} AND handle = '${SOWNER}'`, 2],
   ["spaces-one: test-docs-one spaces", `SELECT COUNT(*) AS n FROM doc_spaces WHERE org_id = ${q(ONE)}`, 1],
   ["spaces-none: test-docs-nospaces spaces", `SELECT COUNT(*) AS n FROM doc_spaces WHERE org_id = ${q(NONE)}`, 0],
-  ["tree-deep-6: pages in the deep chain", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug LIKE 'test-deep-%'`, 6],
-  ["tree-deep-6: the level-6 page's parent", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug = 'test-deep-5' AND parent_slug = 'test-deep-4'`, 1],
-  ["tree-deep-6: the checklist at level 6 with a staged v2", `SELECT COUNT(*) AS n FROM doc_versions v JOIN docs d ON d.org_id = v.org_id AND d.slug = v.slug WHERE v.org_id = ${M} AND v.slug = 'test-failover-checklist' AND v.status = 'staged' AND d.parent_slug = 'test-deep-4'`, 1],
-  ["tree-deep-6: no page deeper than the cap", `WITH RECURSIVE t(slug, depth) AS (SELECT slug, 0 FROM docs WHERE org_id = ${M} AND slug = 'test-deep-0' UNION ALL SELECT d.slug, t.depth + 1 FROM docs d JOIN t ON d.parent_slug = t.slug WHERE d.org_id = ${M}) SELECT COUNT(*) AS n FROM t WHERE depth > 5`, 0],
+  ["tree-deep-5: pages in the deep chain", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug LIKE 'test-deep-%'`, 5],
+  ["tree-deep-5: the level-5 page's parent", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug = 'test-deep-4' AND parent_slug = 'test-deep-3'`, 1],
+  ["tree-deep-5: the checklist at level 5 with a staged v2", `SELECT COUNT(*) AS n FROM doc_versions v JOIN docs d ON d.org_id = v.org_id AND d.slug = v.slug WHERE v.org_id = ${M} AND v.slug = 'test-failover-checklist' AND v.status = 'staged' AND d.parent_slug = 'test-deep-3'`, 1],
+  ["tree-deep-5: no page deeper than the cap", `WITH RECURSIVE t(slug, depth) AS (SELECT slug, 0 FROM docs WHERE org_id = ${M} AND slug = 'test-deep-0' UNION ALL SELECT d.slug, t.depth + 1 FROM docs d JOIN t ON d.parent_slug = t.slug WHERE d.org_id = ${M}) SELECT COUNT(*) AS n FROM t WHERE depth > 4`, 0],
   ["tree-unranked: unranked children of Runbooks", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND parent_slug = 'test-runbooks' AND tree_rank IS NULL AND slug IN ('test-paging','test-deploys')`, 2],
   ["tree-orphan: parent is no page", `SELECT COUNT(*) AS n FROM docs d WHERE d.org_id = ${M} AND d.slug = 'test-orphan' AND NOT EXISTS (SELECT 1 FROM docs p WHERE p.org_id = d.org_id AND p.slug = d.parent_slug)`, 1],
   ["tree-loop: two pages that are each other's parent", `SELECT COUNT(*) AS n FROM docs WHERE org_id = ${M} AND slug IN ('test-loop-a','test-loop-b') AND parent_slug IN ('test-loop-a','test-loop-b')`, 2],

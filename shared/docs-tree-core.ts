@@ -24,9 +24,8 @@ import { placeAmong, RANK_STEP } from "./placement-core";
 export { placeAmong, RANK_STEP } from "./placement-core";
 export type { Placement, RankedKey } from "./placement-core";
 
-/** The deepest a tree may go, in levels (the top level is level 1, depth 0): the owner's ruling, 6 — the deepest
- *  that still reads in the 252px docs pane. */
-export const MAX_DEPTH = 6;
+/** The deepest a tree may go, in levels (the top level is level 1, depth 0): the owner's ruling, 5 (it was 6). */
+export const MAX_DEPTH = 5;
 
 export interface DocTreeNode {
   slug: string;
