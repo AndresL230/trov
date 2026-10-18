@@ -2679,6 +2679,9 @@ function confirmOut(then: () => void): void {
   const layer = mount.querySelector<HTMLElement>("[data-confirm-layer]");
   if (layer?.hasAttribute("data-closing")) return; // already on its way out
   if (!layer || matchMedia("(prefers-reduced-motion: reduce)").matches) { then(); return; }
+  // `data-keep` too: a repaint while it leaves (the "Saved" toast a save puts up at once) would otherwise strip
+  // `data-closing` — the dialog popped back in, then vanished. Morph leaves a kept layer alone until `then` closes it.
+  layer.setAttribute("data-keep", "");
   layer.setAttribute("data-closing", "");
   setTimeout(then, CONFIRM_OUT_MS);
 }

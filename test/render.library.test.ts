@@ -31,6 +31,8 @@ import css from "../web/src/trov.css?raw";
 import pointerDragSrc from "../web/src/pointer-drag.ts?raw";
 import customizeDragSrc from "../web/src/customize-drag.ts?raw";
 import libraryActionsSrc from "../web/src/library-actions.ts?raw";
+import mainSrc from "../web/src/main.ts?raw";
+import morphSrc from "../web/src/morph.ts?raw";
 import { OrgApiError, ApiError, setApiOrg } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
@@ -603,6 +605,16 @@ describe("your own Library view (0084_library_prefs)", () => {
     expect(css).toMatch(/\.cnpy-libc-ghost \{ position:fixed !important; z-index:1000;/);
     // Escape mid-drag is the drag's alone: the dialog the list sits in stays open.
     expect(pointerDragSrc).toMatch(/e\.key === "Escape" && live\?\.begun\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); end\(false\); \} \}, true\);/);
+  });
+
+  it("Save closes the dialog smoothly: the toast's repaint never strips the exit (confirmOut keeps the leaving layer)", () => {
+    // Save closes with confirmOut and puts up "Sidebar saved" at once; that repaint used to drop `data-closing`, so
+    // the dialog popped back in and then vanished. A leaving layer is `data-keep`, which morph never patches.
+    expect(libraryActionsSrc).toMatch(/setPrefs\(prefs\); host\.confirmOut\(.*\); host\.flash\("Sidebar saved"\)/);
+    const out = mainSrc.slice(mainSrc.indexOf("function confirmOut("), mainSrc.indexOf("setTimeout(then, CONFIRM_OUT_MS)"));
+    expect(out).toContain('layer.setAttribute("data-keep", "");');
+    expect(out.indexOf('"data-keep"')).toBeLessThan(out.indexOf('layer.setAttribute("data-closing"'));
+    expect(morphSrc).toContain('if (live.hasAttribute("data-keep")) return;');
   });
 
   it("Reset, Add, remove and Alt+arrows slide every row to its new place: keyed rows, the repaint run inside slideRows", () => {
