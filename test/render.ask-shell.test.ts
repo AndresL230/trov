@@ -148,6 +148,9 @@ describe("the screen — renders end to end with the parts' stubs", () => {
   it("an artifact opens the inspector narrower (400px) than other items (480px); a width the person dragged to holds for every kind", () => {
     expect(inspectorWidth(null, "artifact:hosting-oct-17")).toBe(400);
     expect(inspectorWidth(null, "ticket:14")).toBe(480);
+    // A file attached to a question is a private artifact: it opens at the artifact's width too.
+    expect(inspectorWidth(null, "askcv:page:q12:upload:97001")).toBe(400);
+    expect(inspectorWidth(null, "askcv:page:a12:chart:0")).toBe(480);
     expect(inspectorWidth(null, null)).toBe(480);
     expect(inspectorWidth(560, "artifact:hosting-oct-17")).toBe(560);
     expect(inspectorWidth(560, "ticket:14")).toBe(560);
