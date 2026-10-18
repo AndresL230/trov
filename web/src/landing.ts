@@ -25,7 +25,7 @@
 //     or closing Sign in patches the page in place: nothing in it is rebuilt or replays.
 //   • The tour is explorable (2026-10): each mockup is a card that opens the feature
 //     in a large dialog (`featureDialog`, a second `data-overlay`) — the same mockup
-//     drawn big, what the Guide says about it, and previous / next through all seven.
+//     drawn big, what the Guide says about it, and previous / next through all eight.
 //     site-feature.ts owns its opening, stepping, closing, keys and focus.
 //   • A phone (2026-10): under 900px the nav is one row and the rest is the menu (`menuSheet`, a third
 //     `data-overlay`; site-menu.ts). Under 640px the page is re-laid by ONE block in trov.css ("the site on
@@ -49,9 +49,11 @@ import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
 import { productQuestions } from "./site-questions";
 import type { FeatureState } from "./site-feature-core";
 import { pagePath } from "@shared/site-pages";
-import { AGENT_TAG, featureMock, initials, treeChev } from "./landing-mocks";
+import { AGENT_TAG, LINK_CARDS, featureMock, initials, linkCardMock, linksDiagram, treeChev } from "./landing-mocks";
+import { LINK_LIVE_MAX } from "@shared/links";
 import { LOW_CONFIDENCE, artifactStatusMark, authorityMark, handoffMark } from "./marks";
 import { artifactKindLabel } from "@shared/artifacts-core";
+import { STARTER_SPACES, SIDEBAR_SPACES_MAX, spaceOrder } from "@shared/docs-core";
 
 
 // Who says what, ONCE (the 2026-10 redundancy pass — keep it that way):
@@ -196,6 +198,43 @@ function menuSheet(dark: boolean, signedIn: boolean): string {
   </div>`;
 }
 
+// The hero's sidebar is the app's (web/src/sidebar.ts `sidebarView`): the same sections, entries, order, labels and
+// icons: Workspace, Monitor, Knowledge (the Library with its spaces under it: a new organization's three starter
+// spaces, A to Z), Triage, Help. The icon paths are sidebar.ts `ICONS`'s, copied (that module pulls the Library screen
+// in); change them with it. test/render.landing.test.ts holds the two together.
+export const NAV_ICON = {
+  mywork: `<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`,
+  ask: `<circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path>`,
+  tickets: `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`,
+  roadmap: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
+  relay: `<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`,
+  repo: `<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`,
+  feed: `<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`,
+  library: `<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`,
+  artifacts: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`,
+  prompts: `<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`,
+  review: `<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`,
+  unplaced: `<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`,
+  guide: `<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`,
+  releases: `<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`,
+} as const;
+/** The starter spaces' icons (web/src/library.ts `SPACE_ICON_PATHS`, the three a new organization starts with). */
+const STARTER_ICON_PATHS: Record<string, readonly string[]> = {
+  pen: ["M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16z", "M14 7l3 3"],
+  braces: ["M8 4H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1", "M16 4h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"],
+  compass: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z", "M15.5 8.5l-2 5-5 2 2-5z"],
+};
+/** The Library's space rows under its entry, as the sidebar draws them (`subList`: the space's tile, then its name):
+ *  the starter spaces in the Library's order (A to Z), at most the sidebar's five. A tile as library.ts
+ *  `spaceTile` draws it at 14px: the space's colour, its white line icon at 62%, the corner min(4.8, size x .25). */
+function heroSpaces(): string {
+  return [...STARTER_SPACES].map((sp) => ({ ...sp, created_at: "" })).sort(spaceOrder).slice(0, SIDEBAR_SPACES_MAX).map((sp) => {
+    const paths = (STARTER_ICON_PATHS[sp.icon] ?? []).map((d) => `<path d="${d}"></path>`).join("");
+    const tile = `<span class="cnpy-spt" style="--spt-r:3.5px;width:14px;height:14px;background:${sp.color}" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">${paths}</svg></span>`;
+    return `<div data-hero-space="${sp.slug}" style="display:flex;align-items:center;gap:8px;padding:2.5px 8px 2.5px 31px;font-size:11.5px;font-weight:500;color:var(--fg-55)">${tile}${sp.name}</div>`;
+  }).join("");
+}
+
 // ── 1 · hero (with the Review screen mockup) ─────────────────────────────────
 // The signature moment: the headline rises in word by word, the Review mockup
 // lifts into place, then acts out the product — an agent's proposed lines type
@@ -218,10 +257,10 @@ function hero(signedIn: boolean): string {
   const DONE = PRESS + 140;         // label → "Promoted", Reject dims, badge 3 → 2
   const TOAST = DONE + 300;
 
-  const side = (svg: string, label: string) =>
-    `<div style="display:flex;align-items:center;gap:9px;padding:6.5px 8px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--fg-55)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${svg}</svg>${label}</div>`;
+  const side = (svg: string, label: string, after = "") =>
+    `<div style="display:flex;align-items:center;gap:9px;padding:3px 8px;border-radius:7px;font-size:12px;font-weight:500;color:var(--fg-55)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${svg}</svg>${label}${after}</div>`;
   const sideHead = (label: string, top: string) =>
-    `<div style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 8px 5px">${label}</div>`;
+    `<div style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 8px 4px">${label}</div>`;
   // `twin`: the same line stands in the other pane too. A phone shows ONE unified column (trov.css), so it drops the twin.
   const line = (text: string, twin = false) => `<div${twin ? ` class="site-hero-twin"` : ""} style="padding:1px 12px">${text}</div>`;
   const hl = (inner: string, kind: "add" | "del", start: number) => `<div class="site-hl hl-${kind}" style="padding:1px 12px;${at(start)}"><span>${inner}</span></div>`;
@@ -254,34 +293,44 @@ function hero(signedIn: boolean): string {
         <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#review</span>
         <span style="width:44px"></span>
       </div>
-      <div class="site-hero-win" style="display:flex;height:568px;overflow:hidden">
+      <div class="site-hero-win" style="display:flex;height:600px;overflow:hidden">
         <div class="site-hide-sm" style="width:212px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:14px 12px 12px">
-          <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 14px">
+          <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 8px">
             ${mark(17)}
             <span style="font-size:14.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
           </div>
-          ${sideHead("Workspace", "4px")}
+          ${sideHead("Workspace", "2px")}
           <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`, "My Work")}
-            ${side(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`, "Tickets")}
-            ${side(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`, "Roadmap")}
-            ${side(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`, "Relay")}
+            ${side(NAV_ICON.mywork, "My Work")}
+            ${side(NAV_ICON.ask, "Trov")}
+            ${side(NAV_ICON.tickets, "Tickets")}
+            ${side(NAV_ICON.roadmap, "Roadmap")}
+            ${side(NAV_ICON.relay, "Relay")}
           </div>
-          ${sideHead("Monitor", "16px")}
+          ${sideHead("Monitor", "8px")}
           <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(`<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`, "Repo")}
-            ${side(`<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`, "Feed")}
+            ${side(NAV_ICON.repo, "Repo")}
+            ${side(NAV_ICON.feed, "Feed")}
           </div>
-          ${sideHead("Knowledge", "16px")}
+          ${sideHead("Knowledge", "8px")}
           <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`, "Docs")}
-            ${side(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`, "Artifacts")}
-            ${side(`<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`, "Prompt Library")}
+            ${side(NAV_ICON.library, "Library", `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="margin-left:auto;flex:none;color:var(--fg-40);transform:rotate(90deg)" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`)}
+            ${heroSpaces()}
+            ${side(NAV_ICON.artifacts, "Artifacts")}
+            ${side(NAV_ICON.prompts, "Prompt Library")}
           </div>
-          ${sideHead("Triage", "16px")}
-          <div style="display:flex;align-items:center;gap:9px;padding:6.5px 8px;border-radius:7px;font-size:12.5px;font-weight:500;background:var(--accent-soft);color:var(--accent)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none"><rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path></svg>Review<span class="site-swap" style="margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:600;place-items:center;${at(DONE + 150)}"><span>3</span><span>2</span></span></div>
+          ${sideHead("Triage", "8px")}
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <div style="display:flex;align-items:center;gap:9px;padding:2px 8px;border-radius:7px;font-size:12px;font-weight:500;background:var(--accent-soft);color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${NAV_ICON.review}</svg>Review<span class="site-swap" style="margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:600;place-items:center;${at(DONE + 150)}"><span>3</span><span>2</span></span></div>
+            ${side(NAV_ICON.unplaced, "Unplaced")}
+          </div>
+          ${sideHead("Help", "8px")}
+          <div style="display:flex;flex-direction:column;gap:1px">
+            ${side(NAV_ICON.guide, "Guide")}
+            ${side(NAV_ICON.releases, "What's new")}
+          </div>
           <div style="margin-top:auto">
-            <div style="font-size:10.5px;color:var(--fg-40);padding:0 8px 12px">agents produce · humans confirm</div>
+            <div style="font-size:10.5px;color:var(--fg-40);padding:6px 8px 8px">agents produce · humans confirm</div>
             <div style="display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid var(--border)">
               ${initials("MC")}
               <span style="min-width:0"><span style="display:block;font-size:11.5px;font-weight:600">Maya Chen</span><span style="display:block;font-size:10.5px;color:var(--fg-40);font-family:var(--sans)">@maya</span></span>
@@ -446,7 +495,7 @@ import type { TourKey } from "./site-feature-core";
 export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
   docs: [
     "The library is split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading.",
-    "Drag a page onto another to put it inside, or above or below one to reorder them. History keeps every earlier version.",
+    "A page links to another with [[its-slug]], and each page lists the pages that link to it. History keeps every earlier version.",
     "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
     "New page starts one from a template and sends it to Review.",
   ],
@@ -479,6 +528,12 @@ export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
     "Your agent leaves one, addressed to you, a teammate, or anyone.",
     "At the start of your next session the ones waiting are listed, and only the one you pick is claimed.",
     "Unclaimed handoffs expire after 7 days.",
+  ],
+  links: [
+    "Links let two sessions whose work overlaps leave each other short notes: two of yours, or yours and a teammate's.",
+    "A link is one-to-one and short-lived. When the work lands, either side closes it, and its thread stays readable.",
+    "A person starts every link: one between your own sessions opens at once, and a teammate accepts or declines one you send.",
+    `A note reaches the other side when it next checks. You can have at most ${LINK_LIVE_MAX} links sent or open at a time.`,
   ],
   artifacts: [
     "An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file.",
@@ -638,6 +693,13 @@ function tourItems(): TourItem[] {
         </div>
       </div>`;
 
+  // Relay › Links: the arc diagram, still, over the open link between two of Maya's own sessions (landing-mocks.ts
+  // draws both, from links.ts `linksHero` and `linkCard`). The dots never move; the copy reveals as the row does.
+  const links = `
+      <div style="display:flex;align-items:center;gap:6px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600"><span style="color:var(--fg-40);font-weight:500">Relay ›</span> Links</div>
+      <div class="site-st" style="padding:8px 22px 0;${at(S + 100)}">${linksDiagram()}</div>
+      <div class="site-st" style="padding:4px 16px 16px;${at(S + 450)}">${linkCardMock(LINK_CARDS[0])}</div>`;
+
   const kindTag = (k: string) => `<span style="font-size:10.5px;color:var(--fg-55)">${artifactKindLabel(k)}</span>`;
   const bars = (ws: number[]) => ws.map((w) => `<span style="display:block;height:5px;width:${w}%;border-radius:3px;background:var(--border-strong);margin-top:5px"></span>`).join("");
   const artCard = (i: number, preview: string, title: string, kind: string, badge: string) => `<div class="site-st st-pop" style="border:1px solid var(--border);border-radius:9px;overflow:hidden;${at(S + 150 + i * 110)}">
@@ -660,12 +722,13 @@ function tourItems(): TourItem[] {
       </div>`;
 
   return [
-    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Spaces for each team or topic, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
+    { key: "docs", name: "Library", title: "A library that stays reviewed", body: "Spaces for each team or topic, each a tree of pages linked to one another, with full version history. Import Markdown or a .zip, and every page waits in Review.", mockStyle: MOCK, mock: docs },
     { key: "feed", name: "Feed", title: "A timeline of what shipped", body: "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", mockStyle: `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, mock: feed },
     { key: "tickets", name: "Tickets", title: "A board the whole team files into", body: "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", mockStyle: MOCK, mock: tickets },
     { key: "roadmap", name: "Roadmap", title: "Sprints on a calendar", body: "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", mockStyle: MOCK, mock: roadmap },
     { key: "mywork", name: "My Work", title: "Your day on one page", body: "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", mockStyle: `${MOCK};padding:20px 22px 22px`, mock: mywork },
-    { key: "handoffs", name: "Handoffs", title: "Pick up where the last session stopped", body: "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", mockStyle: MOCK, mock: handoffs },
+    { key: "handoffs", name: "Handoffs", title: "Pick up where the last session stopped", body: "On Relay, an agent leaves a handoff for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", mockStyle: MOCK, mock: handoffs },
+    { key: "links", name: "Links", title: "Sessions that keep each other posted", body: "Two of your sessions, or yours and a teammate's, share a link while their work overlaps. Each side leaves the other short notes, like what it just renamed or when it merges, so neither works from a stale picture.", mockStyle: MOCK, mock: links },
     { key: "artifacts", name: "Artifacts", title: "Designs and reports, versioned", body: "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from.", mockStyle: MOCK, mock: artifacts },
   ];
 }
@@ -682,7 +745,7 @@ function tour(): string {
 // ── a feature, opened: the tour's dialog ─────────────────────────────────────
 // The card grown large: the feature's name and promise, the screen itself drawn at the dialog's size
 // (landing-mocks.ts `featureMock` — fuller than the row's teaser, built from the real screen, inert and
-// static, so it is painted before it slides in), what the Guide says about it, and previous / next through all seven
+// static, so it is painted before it slides in), what the Guide says about it, and previous / next through all eight
 // without closing. ONE root-level `data-overlay`, patched in place by morph.ts; only `.site-fx-main`
 // (keyed by the feature) is replaced on a step, which is what plays the step's slide. `data-in` says how
 // it was opened (site-feature.ts): "vt" = a View Transition grew the card into it, "css" = the keyframe
@@ -732,15 +795,18 @@ function extras(): string {
       <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:var(--fg-70)">${body}</p>
     </div>`;
   const t = (text: string) => `<div style="font-size:14.5px;font-weight:650">${text}</div>`;
-  const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(420 + i * 80)}"></span>`;
+  const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(780 + i * 80)}"></span>`;
   return `<section ${SEC} style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("extras", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:16px">
-      ${card(0, t("Decisions"), "Architecture decision records, in their own section of Docs.")}
-      ${card(1, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
-      ${card(2, t("Prompt Library"), "Reusable prompts with variables, and a new version on every save.")}
-      ${card(3, t("Repo dashboard"), "Deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
-      ${card(4, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
-      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Or follow your system.")}
+      ${card(0, t("Ask Trov"), "Ask about your organization in plain words, with every source linked. Share a conversation with the whole organization or with chosen people.")}
+      ${card(1, t("Trov writes the short version"), "With your organization's AI on: your brief on My Work, where each repository stands, and what each session shipped, with sources.")}
+      ${card(2, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
+      ${card(3, t("Decisions"), "Architecture decision records. Agents draft them, and read them before they work in that area.")}
+      ${card(4, t("Prompt Library"), "Reusable prompts with variables, and a new version on every save.")}
+      ${card(5, t("Repo dashboard"), "Each app and environment's deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
+      ${card(6, t("Any host"), "Cloudflare, Railway, Vercel, Netlify, Render, or Fly.io: connect each once, and see every part's deploys and usage.")}
+      ${card(7, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
+      ${card(8,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Or follow your system.")}
     </div>
   </section>`;
 }
@@ -772,7 +838,8 @@ function agents(): string {
   const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
     + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
-  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"]);
+  const SKILLS = ["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"];
+  const skills = chips(SKILLS);
 
   // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
   // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).
@@ -793,7 +860,7 @@ function agents(): string {
       <div ${rv("agents-plugin", "site-agent-card")} style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:13px;padding:26px 28px;${at(120)}">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">Claude Code plugin</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${SKILLS.length} skills</span>
         </div>
         <div style="margin-top:12px">${skills}</div>
         <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">
