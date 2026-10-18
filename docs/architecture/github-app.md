@@ -261,8 +261,9 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
   (`app` / `token` / null) without minting — what Sync GitHub's status asks (`sync.md` › The
   credential). Both are called only from modules `src/mcp.ts` cannot reach
   (`src/repo/cron.ts`, `src/github-hook.ts`, `src/tools/backfill.ts`, `src/sync/runs.ts`,
-  `src/integrations/logo.ts`, `src/github-app/*`) and the revealed token goes down as a parameter; `test/secrets.mcp.test.ts`
-  forbids anything MCP-reachable from importing `src/github-app/` at all.
+  `src/integrations/logo.ts`, `src/repo/ask-github.ts`, `src/github-app/*`) and the revealed token goes down as a parameter; `test/secrets.mcp.test.ts`
+  forbids anything MCP-reachable from importing `src/github-app/` at all — and anything under `src/ai/ask/` (Ask's
+  GitHub transport is handed to the route by `src/routes.ts`; `ask.md` › GitHub).
 - **When GitHub will not issue one.** 404 → the installation is gone: the binding is ended
   (`not_found`), audited as `system`. 403 naming a suspension → `suspended_at` is set. 401 (the App's own
   id / key), an outage, or 422 (the repository is not one the installation covers, or a permission the
@@ -277,6 +278,7 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
 |---|---|---|---|
 | The reconcile, Sync GitHub (backfill), the progress backstop — `resolveGithubCredential({ repo })` | the org's primary repository, by name | Metadata, Contents, Pull requests, Issues, Actions, Checks, Deployments, Commit statuses — all `read` (`READ_PERMISSIONS`) | yes, per (installation, repository) — these callers share one token |
 | The follow-up reads of a webhook delivery (the App's webhook and the per-repository hook), resolved lazily | the delivery's repository | the same | the same entry |
+| Ask Trov's GitHub tools (`src/repo/ask-github.ts`, `ask.md` › GitHub; only while the org's GitHub lookups switch is on) — resolved as the org's system tenant (`jobTenant`), once per repository per answer | the ONE connected repository the call names (any of the org's `org_repos`, not only the primary) | the same | per (installation, repository) — the primary's is the reconcile's entry |
 | The org image's import (`GET /users/{owner}`) | the primary repository | the same — it rides the reconcile's unit and uses that unit's token. The lookup needs no permission; a second, Metadata-only token would add a mint an hour and take nothing away from what the isolate already holds | the same entry |
 | The repository picker and its re-marking (`visibleRepos`), Test connection, the connect flow's no-escalation check — `GET /installation/repositories` | none: the list has to span the installation (a token narrowed to repositories lists only those) | Metadata only (`INSTALLATION_SCOPE`) — it can read no code, pull request or issue | yes, per installation |
 
@@ -348,6 +350,12 @@ Actions, Checks, Deployments, Commit statuses (repository); Email addresses (acc
 | `GET /repos/{r}/commits/{ref}/check-runs` | reconcile (environment head checks) | Checks |
 | `GET /repos/{r}/commits/{ref}/statuses` | reconcile (`canopy/*` statuses) | Commit statuses |
 | `GET /users/{owner}`, then `avatars.githubusercontent.com` | the org image's import | none (public; the avatar is fetched with no token) |
+| `GET /repos/{r}`, `/contents/{path}`, `/commits`, `/commits/{sha}`, `/branches`, `/releases` | Ask's GitHub tools | Metadata, Contents |
+| `GET /search/code?q=… repo:{r}` | Ask's `github_search_code` | Metadata (a repository-scoped installation token searches that repository; not yet run against real GitHub) |
+| `GET /repos/{r}/pulls`, `/pulls/{n}`, `/pulls/{n}/files` | Ask's GitHub tools | Pull requests |
+| `GET /repos/{r}/issues`, `/issues/{n}`, `/issues/{n}/comments` | Ask's GitHub tools | Issues |
+| `GET /repos/{r}/commits/{ref}/check-runs`, `/commits/{ref}/status` | Ask's `github_ci` | Checks, Commit statuses |
+| `GET /repos/{r}/collaborators/{login}/permission` | Ask's per-person access check (each person's own linked login, once per repository per answer) | Metadata (per GitHub's docs; it reports team and base-permission access too — not yet run against real GitHub) |
 | `GET /installation/repositories` | the repository picker, Test connection, the no-escalation check | any installation token (Trov's carries Metadata only) |
 | `GET /app/installations/{id}`, `POST …/access_tokens` | binding, minting, Test connection | the App JWT |
 | `GET /user`, `/user/emails` | sign-in, connect | Email addresses (for `/user/emails`) |
@@ -366,7 +374,10 @@ what those permissions cover.
 `appConfigured(env)` = a valid `GITHUB_APP_SLUG`, a numeric `GITHUB_APP_ID` and a `GITHUB_APP_PRIVATE_KEY`.
 Without all three: `GET …/github` says `configured: false`, Repositories offers adding by name as its
 primary action and says the App is not configured on this Trov, the start route redirects back with that
-sentence, and no org's reads change. Without `GITHUB_APP_WEBHOOK_SECRET` every delivery to the App's
+sentence, and no org's reads change. An installation still on record (the local dev seed has one) lists
+nothing without the App, so the SPA neither asks `GET …/github/repositories` (which could only answer 404
+`not_connected`) nor shows the picker, in Org settings or the welcome's GitHub step: it keys on `configured`,
+which the status it already holds carries. Without `GITHUB_APP_WEBHOOK_SECRET` every delivery to the App's
 webhook is the bare 401. A key that does not import behaves like a missing one at use (`credentials`).
 Nothing 500s.
 

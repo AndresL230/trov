@@ -32,11 +32,15 @@ drop (`transition_ticket` and the mirror's `forceStatus` both write `board_rank 
 the status menu, MCP or GitHub surfaces on top). The comparator `boardOrder` and the placement
 `placeInColumn` (`shared/tickets-core.ts`) are ONE definition shared by the Worker and the SPA's optimistic
 drop: a column holding a NULL is renumbered in its visible order first (`BOARD_RANK_STEP` apart), and so is
-one whose neighbours are too close to split. The drag is POINTER-driven (`web/src/main.ts`), never HTML5
+one whose neighbours are too close to split. The drag is POINTER-driven (`web/src/main.ts`, on the app's one pointer
+drag `web/src/pointer-drag.ts`, which the docs pane's page tree shares), never HTML5
 drag-and-drop — the browser's drag image is a shrunken snapshot the page cannot size: a full-size clone
 follows the pointer, a slot the other cards slide around (FLIP) marks where it will land, rerenders are
 HELD for the whole drag, and the click a drag's release fires is swallowed. Mouse and pen only — touch
-scrolls.
+scrolls. A card is a `hitArea` container (its `openTicket` button holds the `data-arg`), so the drag reads a card's id
+from its own `data-tdrag` — the lifted card's and the `after_id` neighbour's alike — through ONE reader,
+`web/src/board-drop.ts` (a drop that read `data-arg` sent `after_id: null` and landed every card at the top,
+Z17; `test/render.tickets.test.ts` › board drop).
 
 **The default view hides declined** (owner's ruling, 2026-10-15). The queue opens on **All** (`qSeg: "all"`, the
 board), and All is every status BUT `declined`: `SEG_STATUSES` in `web/src/tickets.ts` is both what a segment shows

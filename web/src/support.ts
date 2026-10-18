@@ -148,7 +148,7 @@ export function supportDialog(d: SupportDraft): string {
     : `<div data-overlay="support" data-support-layer class="cnpy-cmodal">
     <div data-act="supportClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div ${dlg} class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(520px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+      <div ${dlg} class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(520px, 100%);max-height:calc(100 * var(--vh) - 32px);overflow-y:auto">
         <button type="button" data-act="supportClose" aria-label="Close" title="Close" class="cnpy-iconbtn"${d.busy ? " disabled" : ""} style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
         <div data-morph-key="${key(k)}">${inner}</div>
       </div>
@@ -191,7 +191,7 @@ export function supportDialog(d: SupportDraft): string {
           <label for="support-message" style="${LABEL}">Message</label>
           <span data-support-counter aria-live="polite" style="font-size:11.5px;font-variant-numeric:tabular-nums;color:${over ? "var(--red)" : "var(--fg-40)"}">${esc(counter)}</span>
         </div>
-        <textarea id="support-message" data-act="supportMessage" data-field="supportMessage" rows="6" maxlength="${SUPPORT_MESSAGE_MAX}" placeholder="${attr(copy.placeholder)}" required aria-required="true" aria-describedby="support-ctx support-err"${off} class="cnpy-input cnpy-scroll" style="${FIELD};min-height:${anon ? 108 : 132}px;max-height:40vh;padding:10px 12px;line-height:1.55;resize:vertical">${esc(d.message)}</textarea>
+        <textarea id="support-message" data-act="supportMessage" data-field="supportMessage" rows="6" maxlength="${SUPPORT_MESSAGE_MAX}" placeholder="${attr(copy.placeholder)}" required aria-required="true" aria-describedby="support-ctx support-err"${off} class="cnpy-input cnpy-scroll" style="${FIELD};min-height:${anon ? 108 : 132}px;max-height:calc(40 * var(--vh));padding:10px 12px;line-height:1.55;resize:vertical">${esc(d.message)}</textarea>
       </div>
       <div style="margin-top:14px">${supportAttached(d.context, anon)}</div>
       <div id="support-err" data-support-error role="alert"${d.error ? "" : " hidden"} style="font-size:12.5px;line-height:1.5;color:var(--red);margin-top:12px">${esc(d.error ?? "")}</div>

@@ -175,6 +175,20 @@ export async function resolveCall(conn: BearerConnection, args: { repo?: unknown
     candidates.map((o) => o.slug));
 }
 
+/**
+ * `link_inbox` (0078_agent_links): the organization holding an OPEN agent link with this person's side bound
+ * to `session` — the one way a call picks its org by session, since a hook cannot pass `repo`. Only among
+ * the organizations this connection can ALREADY reach (`conn.orgs`: a pasted token's one org, a manual
+ * grant's allowed ones, a repo grant's every live membership), each read through `liveTenants`, so a link in
+ * an org the person has left, or one the connection may not use, is never found. Exactly one → it; none or
+ * several → null, and the caller reads and writes nothing. It never chooses for any other tool.
+ */
+export async function resolveLinkSession(conn: BearerConnection, session: string): Promise<OrgTenant | null> {
+  const found = await liveTenants(conn.env, conn.handle, { kind: "link_session", session });
+  const reachable = found.filter((o) => conn.orgs.some((c) => c.ctx.orgId === o.ctx.orgId));
+  return reachable.length === 1 ? reachable[0] : null;
+}
+
 /** Before a call's work runs in the organization it resolved to: a connection that follows the
  *  repository takes one of the person's agent-connection slots there the FIRST time (0044_plans) — or
  *  the plan refuses (`PlanLimitError`), and nothing is read or written. A manual connection's slots

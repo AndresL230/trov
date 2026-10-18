@@ -19,7 +19,7 @@ import { scanApp } from "./repo/scan-routes";
 import { rawApp, rawHeaders } from "./artifacts/raw";
 import { ingestDocProposal, recordBatch } from "./consumer";
 import { runSyncBatch, syncStatus } from "./sync/runs";
-import { get_doc, get_doc_page, get_doc_version, list_doc_tree, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
+import { doc_slug_taken, get_doc_page, get_doc_version, list_doc_tree, list_doc_meta, get_feed, query, list_needs_triage, list_adrs, list_proposals, list_identity_tasks, list_discarded_identities, list_tickets, get_ticket, ticket_badge } from "./tools/reads";
 import { sidebarBadges } from "./tools/badges";
 import {
   create_ticket, edit_ticket, transition_ticket, move_ticket, toggle_assignee, add_ticket_link, remove_ticket_link, delete_ticket,
@@ -30,7 +30,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
-import { promote_doc, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
+import { promote_doc, DocArchivedError, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
 import {
   create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint, list_sprints, get_sprint,
   SprintError, SPRINT_ERROR_STATUS,
@@ -40,6 +40,11 @@ import { get_plan } from "./tools/plan";
 import {
   listHandoffs, getHandoff, createHandoff, claimHandoffWithReading, expireHandoff, HandoffCreateInput, HandoffError, HANDOFF_ERROR_STATUS,
 } from "./tools/handoffs";
+import {
+  listLinks, linkPreviews, getLink, createRequestFromWeb, sendLink, acceptLink, declineLink, cancelLink, closeLink, sendLinkNote, linkForViewer,
+  LinkError, LINK_ERROR_STATUS, type LinkCloseInput, type LinkNoteInput, type LinkWebRequestInput,
+} from "./tools/links";
+import { LINK_BOXES, type LinkBox, type LinkView } from "@shared/links";
 import { listPrompts, getPrompt, recordPromptUse, listPromptVersions, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, PromptSaveInput, PromptError, PROMPT_ERROR_STATUS } from "./tools/prompts";
 import { isSection } from "@shared/vocabulary";
 import { HANDOFF_BOXES, type HandoffBox, type HandoffClaimResult } from "@shared/handoffs";
@@ -69,7 +74,9 @@ import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
-import { askApp } from "./ai/ask/routes";
+import { askApp, provideAskGithub, provideAskLocalUpstream } from "./ai/ask/routes";
+import { localUpstreamFetch } from "./sync/local-upstream";
+import { askGithubTransport } from "./repo/ask-github";
 import { askFlagsFor } from "./data/ask";
 import { repoSettingsApp } from "./repo/settings-routes";
 import { aiPreviewShown, previewFeedRows, withPreviewFeed, withPreviewRoadmap } from "./ai/preview";
@@ -78,6 +85,12 @@ import { roadmapForPerson } from "./data/org-insights";
 import { withReviewSuggestions, withTicketSuggestions, withUnplacedSuggestions } from "./ai/attach";
 import { readRepoState } from "./tools/repo-state";
 import { tagsApp, itemTagsApp, tagSettingsApp } from "./tags/routes";
+import { spacesApp } from "./spaces/routes";
+import { importsApp } from "./imports/routes";
+import { resolveSpaceAlias } from "@shared/docs-core";
+import { spaceState } from "./tools/spaces";
+import { DocTreeError, moveDoc } from "./tools/doc-tree";
+import { DocArchiveError, archiveDoc, restoreDoc } from "./tools/doc-archive";
 
 export const app = new Hono<AppEnv>();
 
@@ -211,12 +224,18 @@ tenantApi.route("/notifications", notificationsApp);
 tenantApi.route("/tags", tagsApp);
 tenantApi.route("/item-tags", itemTagsApp);
 tenantApi.route("/tag-settings", tagSettingsApp);
+// The Docs Library's spaces (0081_docs_library): any member reads, an admin shapes them, an owner edits one's description.
+tenantApi.route("/spaces", spacesApp);
+// Markdown import runs (0081/0082): any member imports into a live space; Approve all / Reject all for one import — cookie only.
+tenantApi.route("/imports", importsApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
-// Promote / reject a doc version, ratify / reject an ADR, publish a prompt (artifact ratify does the same
+// Promote / reject a doc version, archive / restore a page, ratify / reject an ADR, publish a prompt (artifact ratify does the same
 // inside its sub-app): a request that carries an Authorization header is refused outright, so no future
 // change to `sessionGate` can turn a bearer into a confirmation.
-for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/doc/:slug/archive", "/doc/:slug/restore", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+// Moving a page in its space's tree is a person's direct write too (any signed-in member; never MCP).
+tenantRoot.use("/doc/:slug/move", cookieOnly);
 tenantApi.use("/prompts/:slug/publish", cookieOnly);
 
 tenantRoot.post("/ingest", async (c) => {
@@ -318,8 +337,8 @@ tenantRoot.get("/search", async (c) => {
   const types = typesCsv
     ? (typesCsv.split(",").map((t) => t.trim()).filter((t): t is QueryType => QueryType.safeParse(t).success))
     : undefined;
-  const spaceRaw = c.req.query("space");
-  const space = spaceRaw === "technical" || spaceRaw === "product" ? spaceRaw : undefined;
+  // A space's slug, or an alias (`technical` → `engineering`, shared/docs-core.ts SPACE_ALIASES); query() resolves it.
+  const space = c.req.query("space")?.trim() || undefined;
   const limit = c.req.query("limit");
   const result = await query(c.var.ctx, {
     q: c.req.query("q") ?? "",
@@ -436,6 +455,95 @@ tenantApi.post("/handoffs/:id/expire", async (c) => {
   catch (e) { return handoffFail(c, e); }
 });
 
+// ── Agent links (0078_agent_links; docs/architecture/handoffs-prompts.md) — the PERSON steps ──
+// Send, accept, decline and cancel exist ONLY here (and as Ask's Confirm): no MCP tool moves a link to
+// `requested` or `open`. Every rule is src/tools/links.ts's (its zod schemas parse each input); a route only
+// names the actor — always the session's person, never a field of the body — and maps a LinkError to
+// `{ error: <code>, message }` with its status (a 429 from the hourly note allowance also carries
+// `retry_after` and the header). Anything else is a 503, never a 500 (invariant 7). `:id` is the per-org NUMBER.
+const linkFail = (c: Context<AppEnv>, e: unknown): Response => {
+  if (e instanceof LinkError) {
+    const status = LINK_ERROR_STATUS[e.code];
+    if (status === 429 && e.retryAfter !== undefined) {
+      return c.json({ error: e.code, message: e.message, retry_after: e.retryAfter }, 429, { "retry-after": String(e.retryAfter) });
+    }
+    return c.json({ error: e.code, message: e.message }, status);
+  }
+  console.error("links failed", e instanceof Error ? e.message : String(e));
+  return c.json({ error: "links unavailable", degraded: true }, 503);
+};
+const linkId = (raw: string): number | null => (/^\d{1,15}$/.test(raw) && Number(raw) > 0 ? Number(raw) : null);
+const linkBody = async (c: Context<AppEnv>): Promise<Record<string, unknown>> => {
+  const raw: unknown = await c.req.json().catch(() => null);
+  return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+};
+const LINK_STEPS = { send: sendLink, accept: acceptLink, decline: declineLink, cancel: cancelLink } as const;
+
+tenantApi.get("/links", async (c) => {
+  const box = c.req.query("box") ?? "open";
+  if (!(LINK_BOXES as readonly string[]).includes(box)) return c.json({ error: "bad_request", message: `unknown box: ${box}` }, 400);
+  const me = c.get("principal").handle;
+  let links: LinkView[];
+  try { links = (await listLinks(c.var.ctx, me, box as LinkBox)).map((l) => linkForViewer(l, me)); }
+  catch (e) { return linkFail(c, e); }
+  // Each link's thread in brief (newest note, counts) — one query for the whole list; if it fails the list still
+  // answers, without `preview` (the cards then show no note line), never a 500.
+  try {
+    const previews = await linkPreviews(c.var.ctx, me, links.map((l) => l.id));
+    links = links.map((l) => ({ ...l, preview: previews.get(l.id) ?? { last: null, notes: 0, waiting: 0 } }));
+  } catch (e) { console.error("link previews failed", e instanceof Error ? e.message : String(e)); }
+  return c.json({ links });
+});
+tenantApi.get("/links/:id", async (c) => {
+  const id = linkId(c.req.param("id"));
+  try {
+    const me = c.get("principal").handle;
+    const link = id === null ? null : await getLink(c.var.ctx, me, id);
+    return link ? c.json({ link: linkForViewer(link, me) }) : c.json({ error: "not_found" }, 404);
+  } catch (e) { return linkFail(c, e); }
+});
+// A person starts a link: `requested` (24 h), or `open` at once when it is to themself. Only `target`, `reason`
+// and `repo` are read from the body.
+tenantApi.post("/links", async (c) => {
+  const b = await linkBody(c);
+  const input = { target: b.target, reason: b.reason, repo: b.repo } as LinkWebRequestInput;
+  const me = c.get("principal").handle;
+  try { return c.json({ link: linkForViewer(await createRequestFromWeb(c.var.ctx, me, input), me) }); }
+  catch (e) { return linkFail(c, e); }
+});
+for (const step of ["send", "accept", "decline", "cancel"] as const) {
+  tenantApi.post(`/links/:id/${step}`, async (c) => {
+    const id = linkId(c.req.param("id"));
+    if (id === null) return c.json({ error: "not_found" }, 404);
+    const me = c.get("principal").handle;
+    try { return c.json({ link: linkForViewer(await LINK_STEPS[step](c.var.ctx, me, id), me) }); }
+    catch (e) { return linkFail(c, e); }
+  });
+}
+tenantApi.post("/links/:id/close", async (c) => {
+  const id = linkId(c.req.param("id"));
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  const b = await linkBody(c);
+  const me = c.get("principal").handle;
+  try { return c.json({ link: linkForViewer(await closeLink(c.var.ctx, me, { id, reason: b.reason } as LinkCloseInput, "web"), me) }); }
+  catch (e) { return linkFail(c, e); }
+});
+// A person's note, from their own side (a self-link's `side` may name which; default the requester's, so it
+// reaches the session that joined as recipient). No session: a person binds none. It counts against the same
+// caps as an agent's — 20 per side, and `link_note` (60 an hour) on the platform context. Returns the refreshed
+// detail, so the page re-renders from it.
+tenantApi.post("/links/:id/notes", async (c) => {
+  const id = linkId(c.req.param("id"));
+  if (id === null) return c.json({ error: "not_found" }, 404);
+  const b = await linkBody(c);
+  const me = c.get("principal").handle;
+  try {
+    await sendLinkNote(c.var.ctx, c.var.p, me, { id, body: b.body, side: b.side } as LinkNoteInput, "web");
+    const link = await getLink(c.var.ctx, me, id);
+    return link ? c.json({ link: linkForViewer(link, me) }) : c.json({ error: "not_found" }, 404);
+  } catch (e) { return linkFail(c, e); }
+});
+
 tenantApi.get("/prompts", async (c) => {
   const tags = (c.req.query("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const want = c.req.query("sort");
@@ -505,28 +613,39 @@ tenantApi.post("/prompts/:slug/restore", async (c) => {
 const DocPropose = z.object({
   title: z.string().trim().min(1).max(200),
   section: z.string().trim().min(1),
-  space: z.enum(["technical", "product"]),
+  space: z.string().trim().min(1).max(64),   // a LIVE space of the org (an alias is resolved)
   body: z.string().refine((b) => b.trim().length > 0, "body required"),
   summary: z.string().max(300).optional(),
   slug: z.string().regex(/^[a-z0-9][a-z0-9_/-]*$/).optional(),
+  // The page it goes under (New page's "Goes in"): checked by the gate; an invalid one is ignored and said.
+  parent_slug: z.string().trim().max(200).optional(),
 });
 tenantApi.post("/docs/propose", async (c) => {
   const parsed = DocPropose.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   const d = parsed.data;
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
+  // A person's New page names a space they picked: refuse an unknown or archived one here rather than send
+  // their page to triage (an agent's proposal with such a space goes to needs_triage in the gate).
+  const space = resolveSpaceAlias(d.space) as string;
+  const state = await spaceState(c.var.ctx, space);
+  if (state !== "live") return c.json({ error: state === "archived" ? `the ${space} space is archived` : `unknown space: ${space}` }, 400);
   const slug = d.slug ?? d.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 80);
   if (!slug) return c.json({ error: "title has no usable slug" }, 400);
-  if (await get_doc(c.var.ctx, slug)) return c.json({ error: `a doc named ${slug} already exists` }, 409);
+  // Any page of the org holds its slug — an archived one too (0083_doc_archive: a slug stays reserved), and the
+  // refusal says which: an archived page shows nowhere in the Library.
+  const holder = await doc_slug_taken(c.var.ctx, slug);
+  if (holder === "archived") return c.json({ error: `an archived page is named ${slug}` }, 409);
+  if (holder) return c.json({ error: `a doc named ${slug} already exists` }, 409);
   const result = await ingestDocProposal(
     c.var.ctx,
-    { slug, section: d.section, space: d.space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high" },
+    { slug, section: d.section, space, title: d.title, body: d.body, change_summary: d.summary?.trim() || "Created in Trov", confidence: "high", ...(d.parent_slug ? { parent_slug: d.parent_slug } : {}) },
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
   if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
   const proposal = (await list_proposals(c.var.ctx)).find((p) => p.slug === slug && p.version === result.version) ?? null;
-  return c.json({ ok: true, proposal });
+  return c.json({ ok: true, proposal, slug, ...(result.parent_ignored ? { parent_ignored: result.parent_ignored } : {}) });
 });
 
 // Human confirmation (session-gated): promote a staged doc version into the live doc.
@@ -538,9 +657,42 @@ tenantRoot.post("/doc/:slug/promote", async (c) => {
     const res = await promote_doc(c.var.ctx, c.req.param("slug"), version, c.get("principal").handle);
     return c.json({ ok: true, ...res });
   } catch (e) {
+    if (e instanceof DocArchivedError) return c.json({ error: e.code, message: e.message }, 409);
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
   }
 });
+
+// A person moves a page in its space's tree (0081_docs_library; src/tools/doc-tree.ts): into / before / after another
+// page of the SAME space, or to the end of its top level — `planMove`, the rule the docs pane's optimistic drop runs
+// too, with the renumber in one batch. Any signed-in member (the design gates no one); cookie only. A refusal is
+// `{ error: code, message }`: `invalid` 400, `not_found` 404, `cycle` / `too_deep` / `self` / `other_space` /
+// `archived` 409.
+tenantRoot.post("/doc/:slug/move", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  try {
+    return c.json(await moveDoc(c.var.ctx, c.req.param("slug"), body));
+  } catch (e) {
+    if (e instanceof DocTreeError) return c.json({ error: e.code, message: e.message }, e.status);
+    throw e;
+  }
+});
+
+// Archive page / Restore (0083_doc_archive; src/tools/doc-archive.ts): a PERSON's write — an org admin or an owner of the
+// page's space — cookie only (`cookieOnly` above refuses any request carrying an Authorization header) and NEVER an
+// MCP tool (the owner's rule: no agent archives or restores a page). Archive is soft: the page leaves the Library, its
+// children move up a level in the same batch, its slug stays reserved; Restore puts it back under its old parent when it
+// can, else at the top level. A refusal is `{ error: code, message }`: `not_found` 404 (no such page of the org),
+// `forbidden` 403, `archived` / `not_archived` / `space_archived` 409.
+for (const [path, write] of [["/doc/:slug/archive", archiveDoc], ["/doc/:slug/restore", restoreDoc]] as const) {
+  tenantRoot.post(path, async (c) => {
+    try {
+      return c.json(await write(c.var.ctx, c.req.param("slug")));
+    } catch (e) {
+      if (e instanceof DocArchiveError) return c.json({ error: e.code, message: e.message }, e.status);
+      throw e;
+    }
+  });
+}
 
 // Human write-back (session-gated): reject a staged doc version. Soft status flip
 // to 'rejected' so it leaves the proposals queue; the row + body remain.
@@ -601,13 +753,13 @@ tenantRoot.post("/needs-triage/:id/assign", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   const body = (await c.req.json().catch(() => ({}))) as {
-    type?: AssignType; section?: string; space?: "technical" | "product"; tags?: string[];
+    type?: AssignType; section?: string; space?: string; tags?: string[];
   } | null;
   try {
     const res = await assign_triage(c.var.ctx, id, c.get("principal").handle, {
       type: body?.type,
       section: body?.section,
-      space: body?.space,
+      space: typeof body?.space === "string" ? body.space : undefined,
       tags: body?.tags,
     });
     return c.json({ ok: true, ...res });
@@ -1270,6 +1422,11 @@ app.route("/api/o/:slug", scanApp); // Repositories › a repo › Apps: Scan ag
 app.route("/api/o/:slug", mcpTokensApp); // a member's own MCP tokens for this org (src/auth/token-routes.ts)
 app.route("/api/o/:slug", orgBillingApp); // an owner's billing for this org: the Stripe portal, a plan switch, a renewal (src/billing/routes.ts)
 app.route("/api/o/:slug", aiApp); // Org settings › AI, and the answers to a suggestion and to "Wrong?" — cookie only (src/ai/routes.ts)
+// Ask's GitHub tools read through the credentialed transport, handed in here: nothing under src/ai/ask/ imports the
+// credential path (src/repo/ask-github.ts; test/secrets.mcp.test.ts). Offered only while the org's GitHub lookups switch is on.
+provideAskGithub(askGithubTransport);
+// LOCAL DEVELOPMENT ONLY: `LOCAL_UPSTREAM` stands in for Anthropic in Ask too (loopback http only, never beside a live key).
+provideAskLocalUpstream(localUpstreamFetch);
 app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of

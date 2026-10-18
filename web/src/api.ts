@@ -32,6 +32,7 @@ import type { PersonSummary, PersonProfile } from "@shared/people";
 import type {
   HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody, HandoffClaimResult,
 } from "@shared/handoffs";
+import type { LinkBox, LinkView, LinkDetail, LinkTargetBody } from "@shared/links";
 
 export class Unauthorized extends Error {
   constructor() { super("unauthorized"); }
@@ -42,6 +43,8 @@ export class ApiError extends Error {
   retryAfter: number | null = null;
   /** A 402 `plan_limit`'s body (shared/plans.ts): which limit of the org's plan refused, and its sentence. */
   plan: PlanRefusal | null = null;
+  /** The refusal's `message`, when the route sends one beside its `error` code (the link routes do). */
+  detail: string | null = null;
   constructor(status: number, message: string) { super(message); this.status = status; }
 }
 /** The plan refusal in a refused call's JSON body, if that is what it is. */
@@ -152,8 +155,15 @@ async function refusal(res: Response): Promise<ApiError> {
   let msg = String(res.status);
   let retryAfter: number | null = null;
   let plan: PlanRefusal | null = null;
-  try { const j = (await res.json()) as { error?: string; retry_after?: unknown }; if (j.error) msg = j.error; retryAfter = retryAfterOf(j); plan = planOf(j); } catch { /* non-JSON */ }
+  let detail: string | null = null;
+  try {
+    const j = (await res.json()) as { error?: string; message?: unknown; retry_after?: unknown };
+    if (j.error) msg = j.error;
+    if (typeof j.message === "string" && j.message) detail = j.message;
+    retryAfter = retryAfterOf(j); plan = planOf(j);
+  } catch { /* non-JSON */ }
   const err = new ApiError(res.status, msg);
+  err.detail = detail;
   err.retryAfter = retryAfter;
   err.plan = plan;
   return err;
@@ -209,12 +219,28 @@ export function listDocMeta(): Promise<DocMetaRow[]> {
   return getJson<{ docs: DocMetaRow[] }>("/docs?fields=meta").then((r) => r.docs);
 }
 
-/** One doc for the reader: its live body, its tags, and its versions WITHOUT their bodies. */
-export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }> {
-  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[] }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
+/** One doc for its page: its live body, its tags, its versions WITHOUT their bodies, and `page` — its place in its
+ *  space's tree, its links both ways and the rail (shared/docs-core.ts `DocPageDTO`). */
+export function getDoc(slug: string): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocsT.DocPageDTO }> {
+  return getJson<{ doc: DocRow; versions: DocVersionMetaRow[]; tags?: string[]; page?: DocsT.DocPageDTO }>(`/doc/${encodeURIComponent(slug)}`).catch((e) => {
     if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
     throw e;
   });
+}
+/** Move a page in its space's tree (`POST /doc/:slug/move`, a person's write): into / before / after another page of
+ *  the same space, or to the end of the top level. A refusal is an ApiError whose message is its code (`cycle`,
+ *  `too_deep`, `self`, `other_space`, `archived`, `not_found`, `invalid`). */
+export function moveDoc(slug: string, target: DocsT.DocMoveBody): Promise<DocsT.DocMoveResult> {
+  return postJson<DocsT.DocMoveResult>(`/doc/${encodeURIComponent(slug)}/move`, target);
+}
+/** Archive a page (0083_doc_archive): an admin or an owner of its space; cookie only, never an agent's. Its children
+ *  move up a level. A refusal is an ApiError whose message is the code (`forbidden`, `archived`, `space_archived` …). */
+export function archiveDoc(slug: string): Promise<DocsT.DocArchiveResult> {
+  return postJson<DocsT.DocArchiveResult>(`/doc/${encodeURIComponent(slug)}/archive`, {});
+}
+/** Restore an archived page: back under its old parent when it can, else at the top level. */
+export function restoreDoc(slug: string): Promise<DocsT.DocRestoreResult> {
+  return postJson<DocsT.DocRestoreResult>(`/doc/${encodeURIComponent(slug)}/restore`, {});
 }
 /** One version of a doc with its body — read only when a version's text is shown. */
 export function getDocVersion(slug: string, version: number): Promise<DocVersionRow> {
@@ -688,6 +714,18 @@ export interface StagedProposal {
   created_at: string;
   stagedBody: string;
   promotedBody: string;
+  /** The page's parent in its space's tree (null = the top level). */
+  parent_slug: string | null;
+  /** The Markdown import this version came from (Review groups by it), the file's path in it, and the run's file
+   *  name, starter and start; all null for a version an agent or a person wrote. */
+  import_id: number | null;
+  import_path: string | null;
+  import_file_name: string | null;
+  import_by: string | null;
+  import_at: string | null;
+  /** The titles of the page's ancestors in its space's tree, top first ([] = the top level) — Review's crumb.
+   *  Optional: an older read has none. */
+  path?: string[];
   /** Trov's open `review.risk` for it (src/ai/attach.ts); absent when there is none. */
   ai?: AiSuggestion[];
   /** "Flagged in Ask" on it: each reason and how often (never the thread). Absent when nobody flagged it. */
@@ -759,7 +797,8 @@ export function rejectAdr(id: number): Promise<{ ok: true }> {
 export function discardTriage(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/discard`);
 }
-export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: "technical" | "product"; tags?: string[]; }
+/** `space`: a live space's slug (the Library's), or none (the gate's default space). */
+export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: string; tags?: string[]; }
 export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/assign`, target);
 }
@@ -1019,6 +1058,35 @@ export type { PrefsView, PolicyKindView, Cadence, NotificationOutboxRow, Notific
 export type { PersonColor };
 export type { PersonSummary, PersonProfile };
 
+// ── Agent links (Relay › Links; src/routes.ts) ─────────────────────────────
+/** One box of the caller's links: waiting (sent to me) · mine (my drafts and sent requests) · open · unbound · closed. */
+export async function listLinks(box: LinkBox): Promise<LinkView[]> {
+  return (await getJson<{ links: LinkView[] }>(`/api/links?box=${encodeURIComponent(box)}`)).links;
+}
+/** One link with its notes; a 404 (`not_found`) when it is not the caller's or does not exist. */
+export async function getLink(id: number): Promise<LinkDetail> {
+  return (await getJson<{ link: LinkDetail }>(`/api/links/${id}`)).link;
+}
+/** A person starts a link from Relay › Links (the "Start a link" card): `requested` at once, or `open` when it is
+ *  with themself. A refusal (`not_member`, `not_found`, `limit`, `bad_request`) is an ApiError with the route's
+ *  `message` as its `detail`. */
+export async function startLink(target: LinkTargetBody, reason: string): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links`, { target, reason })).link;
+}
+/** A person step: Send (requester, draft), Accept / Decline (recipient, requested), Cancel (requester). */
+export async function linkStep(id: number, step: "send" | "accept" | "decline" | "cancel"): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links/${id}/${step}`)).link;
+}
+/** Close an open link (either side). */
+export async function closeLinkWeb(id: number, reason?: string): Promise<LinkView> {
+  return (await postJson<{ link: LinkView }>(`/api/links/${id}/close`, reason ? { reason } : {})).link;
+}
+/** A person's note on their own side; answers the refreshed link. `side` only on a self-link (both sides are mine):
+ *  which one the note is FROM (default the requester's). */
+export async function addLinkNote(id: number, body: string, side?: "requester" | "recipient"): Promise<LinkDetail> {
+  return (await postJson<{ link: LinkDetail }>(`/api/links/${id}/notes`, side ? { body, side } : { body })).link;
+}
+
 // ── Handoffs + Prompt Library ────────────────────────────────────────────────
 export async function listHandoffs(box: HandoffBox = "mine"): Promise<HandoffView[]> {
   return (await getJson<{ handoffs: HandoffView[] }>(`/api/handoffs?box=${encodeURIComponent(box)}`)).handoffs;
@@ -1079,8 +1147,10 @@ export async function usePrompt(slug: string): Promise<{ use_count: number; last
   return { use_count: r.use_count, last_used_at: r.last_used_at };
 }
 /** Stage a version-1 doc proposal through the gate (lands in Review). */
-export async function proposeDoc(body: DocProposeBody): Promise<StagedProposal> {
-  return (await postJson<{ ok: true; proposal: StagedProposal }>("/api/docs/propose", body)).proposal;
+/** Stage a person's new page (the gate). `parent_ignored`: the parent asked for could not take it — staged at the top level. */
+export async function proposeDoc(body: DocProposeBody): Promise<{ proposal: StagedProposal | null; slug: string; parent_ignored?: { parent_slug: string; reason: string } }> {
+  const r = await postJson<{ ok: true; proposal: StagedProposal | null; slug: string; parent_ignored?: { parent_slug: string; reason: string } }>("/api/docs/propose", body);
+  return { proposal: r.proposal, slug: r.slug, ...(r.parent_ignored ? { parent_ignored: r.parent_ignored } : {}) };
 }
 export type { HandoffView, HandoffBox, HandoffCreate, PromptSummary, PromptDetail, PromptVersion, PromptSort, PromptSave, DocProposeBody };
 
@@ -1232,3 +1302,77 @@ export function undoTagRun(name: string): Promise<{ ok: true; removed: number }>
 export function setTagSuggestions(enabled: boolean): Promise<{ ok: true; enabled: boolean }> { return orgSend("PUT", "/api/tag-settings", { enabled }); }
 /** Replace the tags of one feed entry, doc or decision (any member). */
 export function setItemTags(type: TagT.TagItemType, id: string, tags: string[]): Promise<{ ok: true; tags: string[] }> { return orgSend("POST", "/api/item-tags", { type, id, tags }); }
+
+// ── the Docs Library's spaces (`/spaces…`, docs/architecture/docs-library.md) ──
+// Cookie-only. A refusal is `{ error, message, field? }` — an `OrgApiError` (code, sentence, field).
+import type * as DocsT from "@shared/docs-core";
+const spacePath = (slug: string, rest = ""): string => `/spaces/${encodeURIComponent(slug)}${rest}`;
+/** Library home and the sidebar's Library group: the live spaces in order, an admin's archived ones, the pages changed last. */
+export function getLibrary(): Promise<DocsT.LibraryDTO> { return getJson<DocsT.LibraryDTO>("/spaces"); }
+/** One space's home: the space and every page in it (staged-only ones too). Unknown → `NotFound`. */
+export function getSpaceHome(slug: string): Promise<DocsT.SpaceHomeDTO> {
+  return getJson<DocsT.SpaceHomeDTO>(spacePath(slug)).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(slug);
+    throw e;
+  });
+}
+/** Create a space (an admin): the slug is derived from the name on the server, and the creator is its only owner. */
+export function createSpace(body: { name: string; icon: DocsT.SpaceIcon; color: DocsT.SpaceColor; description?: string }): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("POST", "/spaces", body);
+}
+/** Change a space: its name, icon and colour (an admin), its description (an admin or an owner). */
+export function editSpace(slug: string, body: { name?: string; icon?: DocsT.SpaceIcon; color?: DocsT.SpaceColor; description?: string }): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("PUT", spacePath(slug), body);
+}
+/** Replace a space's owners (an admin or an owner): handles of the org's members. */
+export function setSpaceOwners(slug: string, owners: string[]): Promise<{ ok: true; space: DocsT.SpaceDTO }> {
+  return orgSend("PUT", spacePath(slug, "/owners"), { owners });
+}
+/** Save the signed-in person's OWN Library view (any member): their sidebar's spaces (at most five; null = the
+ *  default), the cards pinned to the top of Library home and the ones hidden there. A list left out keeps what was saved. */
+export function saveLibraryPrefs(prefs: Partial<DocsT.LibraryPrefsDTO>): Promise<{ ok: true; prefs: DocsT.LibraryPrefsDTO }> {
+  return orgSend("PUT", "/spaces/prefs/me", prefs);
+}
+/** Archive a space (an admin): soft — it leaves the sidebar and the Library, and its slug stays reserved. */
+export function archiveSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/archive")); }
+/** Restore an archived space (an admin). 409 `name_taken` when a live space has its name now. */
+export function restoreSpace(slug: string): Promise<{ ok: true; space: DocsT.SpaceDTO }> { return orgSend("POST", spacePath(slug, "/restore")); }
+
+// ── Markdown imports (`/imports…`, docs/architecture/docs-library.md › Import) ──
+// Cookie-only, any member. The browser unzips and sends the files in batches; the Worker re-validates each one
+// against the run's manifest and re-runs the planner. A refusal is `{ error, message }` — an `OrgApiError`.
+import type * as ImpT from "@shared/docs-import-core";
+const importPath = (id: number, rest = ""): string => `/imports/${id}${rest}`;
+/** Imports history, newest first, and how many are in progress. */
+export function listImports(): Promise<ImpT.ImportsDTO> { return getJson<ImpT.ImportsDTO>("/imports"); }
+/** One run. Unknown → `NotFound`. */
+export function getImport(id: number): Promise<{ run: ImpT.ImportRunView }> {
+  return getJson<{ run: ImpT.ImportRunView }>(importPath(id)).catch((e) => {
+    if (e instanceof ApiError && e.status === 404) throw new NotFound(String(id));
+    throw e;
+  });
+}
+/** Start a run (takes the org's one import lock): the manifest and the conflict choices; answers the run and the
+ *  server's plan. 409 `import_running` while another import is in progress. */
+export function startImport(body: ImpT.ImportStartBody): Promise<ImpT.ImportStartAnswer> { return orgSend("POST", "/imports", body); }
+/** Upload one of the run's images (multipart: `path`, `file`); the sha256 is computed by the server. */
+export async function uploadImportImage(id: number, path: string, file: Blob): Promise<ImpT.ImportImageAnswer> {
+  const fd = new FormData();
+  fd.set("path", path);
+  fd.set("file", file, path.slice(path.lastIndexOf("/") + 1) || "image");
+  const res = await call(importPath(id, "/images"), { method: "POST", body: fd });
+  if (!res.ok) throw await orgRefusal(res);
+  return res.json() as Promise<ImpT.ImportImageAnswer>;
+}
+/** Send up to `IMPORT_PAGES_PER_BATCH` pages (path + text). A retried batch replays: nothing is staged twice. */
+export function sendImportPages(id: number, pages: ImpT.ImportPagesBody["pages"]): Promise<ImpT.ImportPagesAnswer> {
+  return orgSend("POST", importPath(id, "/pages"), { pages });
+}
+/** End the run: done / partial / failed by what reached Review — or, with `cancel`, stop it (pages already sent stay in Review). */
+export function finishImport(id: number, body: ImpT.ImportFinishBody = {}): Promise<ImpT.ImportFinishAnswer> {
+  return orgSend("POST", importPath(id, "/finish"), body);
+}
+/** Review › an import's group: approve its waiting pages (at most `IMPORT_APPROVE_PER_CALL` a call — repeat while `remaining`). */
+export function approveImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/approve-all"), {}); }
+/** Review › an import's group: reject its waiting pages (soft; at most `IMPORT_REJECT_PER_CALL` a call — repeat while `remaining`). */
+export function rejectImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/reject-all"), {}); }

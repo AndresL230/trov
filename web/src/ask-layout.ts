@@ -4,12 +4,13 @@
 //     Hide threads / Threads › override either way (`threadsForced`; AU-OWNER-3 moved them out of the header), and
 //     opening the inspector drops the override
 //   • conversation max 720px (the column, not the section)
-//   • inspector 480px, resizable 380–720, closed by default; a full-height sheet on a phone
+//   • inspector 480px (an artifact, an attached file too, opens at 400px), resizable 380–720, closed by default; a full-height sheet on a phone
 //   • on a phone the thread list is a drawer (ask-phone.ts) instead of a column
+import { parseCvRef } from "./ask-cvref";
 
 export const ASK_THREADS_W = 260;
 export const ASK_COLUMN_MAX = 720;
-export const ASK_INSPECTOR = { width: 480, min: 380, max: 720 } as const;
+export const ASK_INSPECTOR = { width: 480, artifact: 400, min: 380, max: 720 } as const;
 export const ASK_BREAK = { threads: 1180, threadsWithInspector: 1640 } as const;
 
 export interface AskLayoutIn {
@@ -34,6 +35,14 @@ export function askLayout(i: AskLayoutIn): AskLayout {
 
 /** The inspector's width after a drag, clamped to 380–720. */
 export const clampInspector = (w: number): number => Math.round(Math.max(ASK_INSPECTOR.min, Math.min(ASK_INSPECTOR.max, w)));
+
+/** An artifact, the library's (`artifact:…`) or a file attached to a question (a private artifact, opened as the
+ *  conversation's `askcv:…:upload:…` ref). */
+const isArtifactRef = (ref: string | null): boolean => !!ref && (ref.startsWith("artifact:") || parseCvRef(ref)?.kind === "upload");
+/** The width the inspector shows `ref` at: the width the person dragged it to, once they have (it then holds for
+ *  every kind), else the kind's opening width — an artifact (an attachment too) 400px, anything else 480px. */
+export const inspectorWidth = (dragged: number | null, ref: string | null): number =>
+  dragged ?? clampInspector(isArtifactRef(ref) ? ASK_INSPECTOR.artifact : ASK_INSPECTOR.width);
 
 /** The width buckets a resize must cross to change the layout (the controller repaints only then). */
 export const layoutBucket = (vw: number): number => (vw < ASK_BREAK.threads ? 0 : vw < ASK_BREAK.threadsWithInspector ? 1 : 2);

@@ -48,7 +48,8 @@ export type AssignKind = "doc" | "adr" | "feed";
 export interface AssignOptions {
   kinds: { key: AssignKind; label: string }[];
   sections: string[];
-  spaces: string[];
+  /** The org's live spaces (the Library's), filled in by render.ts — there is no fixed set any more. */
+  spaces: { key: string; label: string }[];
   tags: string[];
 }
 
@@ -95,7 +96,7 @@ export function assignPanel(itemId: string, assign: AssignOptions, kind: AssignK
   if (kind === "doc") {
     target = `<div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:18px">
       <div><div style="${EYEBROW};margin-bottom:8px">Section</div><div style="display:flex;gap:6px;flex-wrap:wrap">${assign.sections.map((t) => pickChip(t, section === t, "maintAssignSection", t, true)).join("")}</div></div>
-      <div><div style="${EYEBROW};margin-bottom:8px">Space <span style="text-transform:none;letter-spacing:0;font-weight:500">· optional</span></div><div style="display:flex;gap:6px;flex-wrap:wrap">${assign.spaces.map((t) => pickChip(t, space === t, "maintAssignSpace", t, true)).join("")}</div></div>
+      <div><div style="${EYEBROW};margin-bottom:8px">Space <span style="text-transform:none;letter-spacing:0;font-weight:500">· optional</span></div><div style="display:flex;gap:6px;flex-wrap:wrap">${assign.spaces.map((t) => pickChip(t.label, space === t.key, "maintAssignSpace", t.key)).join("")}</div></div>
     </div>`;
   } else if (kind === "feed") {
     target = `<div style="${EYEBROW};margin:18px 0 8px">Tags <span style="text-transform:none;letter-spacing:0;font-weight:500">· optional</span></div>
@@ -175,7 +176,7 @@ export const UNPLACED_INTRO = "Things an agent produced but couldn't place. Read
 /** The Unplaced screen while its queue's first read is out: the page frame and intro are
  *  real; the two-pane card holds a skeleton (never "All clear" before it is known). */
 export function maintenanceSkeleton(): string {
-  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
     <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>
     ${skeleton("unplaced", "Loading the queue&hellip;", unplacedShapes(4))}
   </div>`;
@@ -197,7 +198,7 @@ function unplacedShapes(n: number): string {
 export const UNPLACED_EMPTY = "Nothing is unplaced, which is this queue's normal state. Anything an agent couldn't confidently place waits here to be routed or discarded.";
 
 export function maintenanceView(p: MaintenanceProps, hint = ""): string {
-  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+  return `<div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
     ${hint}<div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">${esc(UNPLACED_INTRO)}</div>
     ${unplacedTab(p)}
   </div>`;

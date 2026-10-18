@@ -53,6 +53,8 @@
 
 import { esc, attr, relTime } from "./ui";
 import type { AskCtx, AskPart, AskView, AskWhere } from "./ask-state";
+import { askedByMe, askerOf, ownTurn } from "./ask-state";
+import { shareDropdowns } from "./ask-threads";
 import { applyActionResult, newTurn, withTurnOfAction, type AskActionVm, type AskAnswer, type AskConvo, type AskMsg, type AskTurn } from "./ask-stream";
 import { AskApiError } from "./ask-api";
 import { segmented } from "./segmented";
@@ -64,7 +66,7 @@ import { askIcon } from "./ask-icons";
 import { closingAttr } from "./ask-motion";
 import {
   ASK_WRONG_LABELS, ASK_WRONG_REASONS, parseAskRef, type AskActionAnswer, type AskBlock, type AskDocHunk, type AskEventMap, type AskSaveForm,
-  type AskWrongReason,
+  type AskThreadSummary, type AskWrongReason,
 } from "@shared/ai-ask-core";
 import { TICKET_CATEGORIES, TICKET_STATUS_LABEL, type TicketPriority, type TicketStatus } from "@shared/tickets-core";
 import { sprintDatesLabel } from "@shared/sprints-core";
@@ -166,7 +168,7 @@ const docTitle = (vm: AskActionVm): string => vm.preview?.item?.title ?? line(vm
 const refWord = (ref: string): string => {
   const p = parseAskRef(ref);
   if (!p) return ref;
-  if (p.type === "ticket" || p.type === "handoff") return `${p.type} #${p.key}`;
+  if (p.type === "ticket" || p.type === "handoff" || p.type === "link") return `${p.type} #${p.key}`;
   if (p.type === "pr") return `PR #${p.key}`;
   return `${p.type} ${p.key}`;
 };
@@ -221,6 +223,15 @@ export function doneText(vms: AskActionVm[], look?: Look): string {
     case "save_prompt": return `Staged the prompt ${str(r.slug) ?? ""}`.trim();
     case "append_feed": return "Added a feed entry";
     case "save_artifact": return `Saved as artifact: ${str(r.title) ?? "Untitled"}`;
+    // Agent links: the thread is a side. A request to oneself opens at once; any other waits for the other person.
+    case "request_link": {
+      const ln = n ? `link #${n}` : "the link";
+      const to = str(r.with);
+      return r.self === true || r.state === "open" ? `Opened ${ln}` : `Sent a link request${to ? ` to @${to}` : ""} (${ln})`;
+    }
+    case "join_link": return `This thread joined ${n ? `link #${n}` : "the link"}`;
+    case "send_link_note": return `Left a note on ${n ? `link #${n}` : "the link"}`;
+    case "close_link": return `Closed ${n ? `link #${n}` : "the link"}`;
     default: return more(vm.preview?.title ?? (vm.ref ? `Changed ${refWord(vm.ref)}` : "Done"));
   }
 }
@@ -234,6 +245,7 @@ export function proposedText(vms: AskActionVm[], look?: Look): string {
     case "send_handoff": return "New handoff";
     case "propose_doc_update": return `Doc edit to ${docTitle(vm)}`;
     case "publish_doc": return `Publish ${docTitle(vm)}`;
+    case "request_link": return vm.preview?.title ?? "Link request";
   }
   const t = vm.preview?.title ?? "Change";
   // A ticket's card says "#14"; the line says "ticket #14".
@@ -242,6 +254,7 @@ export function proposedText(vms: AskActionVm[], look?: Look): string {
 
 const EYEBROW: Record<string, string> = {
   create_ticket: "New ticket", send_handoff: "New handoff", propose_doc_update: "Doc edit", publish_doc: "Publish doc", assign_ticket: "Assignment", claim_handoff: "Claim handoff",
+  request_link: "Trov link", join_link: "Join link", send_link_note: "Link note", close_link: "Close link",
 };
 const KIND_WORD: Record<string, string> = { ticket: "Ticket", handoff: "Handoff", doc_edit: "Doc edit", move: "Move", publish: "Publish doc", sprint: "Sprint", other: "Change" };
 const CREATES = new Set(["create_ticket", "send_handoff", "propose_doc_update", "create_sprint", "save_prompt", "append_feed"]);
@@ -545,11 +558,13 @@ function cardDropdowns(v: AskView, vm: AskActionVm): DropdownProps[] {
 /** Every open card's dropdowns, for the root overlays: render.ts draws the open one's menu — over the Ask screen and
  *  over any page under the ⌘J panel. The props are the triggers' own. */
 export function actionDropdowns(app: AppState): DropdownProps[] {
-  const out: DropdownProps[] = [];
+  // The Share dialog's (a person's access, Add a person) ride along: one list of Ask's open dropdowns.
+  const out: DropdownProps[] = [...shareDropdowns(app)];
   for (const where of ["page", "panel"] as AskWhere[]) {
     const v: AskView = { app, ui: app.ask, where, look: { views: app.ask.refViews, persons: app.persons.data } };
     for (const m of app.ask[where].messages) {
       if (m.role !== "assistant") continue;
+      if (!ownTurn(v, m.askedBy)) continue;
       for (const vm of Object.values(m.turn.actions)) {
         if (vm.state !== "proposed" && vm.state !== "waiting") continue;
         out.push(...cardDropdowns(v, vm));
@@ -568,8 +583,11 @@ const stepHtml = (value: string): string => {
 const SHORT_LINE = 40;
 
 /** Any other write (a comment, the plan, a link…): the server's title, its long lines as the card's text, then its
- *  short lines as label-over-value fields in columns across the card (the new ticket's row). */
+ *  short lines as label-over-value fields in columns across the card (the new ticket's row), then what Confirm
+ *  does when the server says (the agent-link cards: "Confirm sends it…", "Confirm opens it at once…"), as the
+ *  publish card ends on it. */
 function genericBody(vm: AskActionVm): string {
+  const what = line(vm, "What it does");
   const lines = (vm.preview?.lines ?? []).filter((l) => l.label !== "What it does");
   const short = lines.filter((l) => l.value.length <= SHORT_LINE && !l.value.includes("\n"));
   const long = lines.filter((l) => !short.includes(l));
@@ -579,6 +597,7 @@ function genericBody(vm: AskActionVm): string {
     <div class="ask-act-title">${esc(vm.preview?.title ?? "Change")}</div>
     ${long.map((l, i) => `<div class="ask-act-desc" data-morph-key="t${i}">${named ? `<span class="ask-fact-k">${esc(l.label)}</span>` : ""}${esc(l.value)}</div>`).join("")}
     ${short.length ? fieldsRow(short.map((l) => label(l.label, `<span class="ask-act-v ask-act-iv">${stepHtml(l.value)}</span>`))) : ""}
+    ${what ? metaRow(`<span class="ask-act-lead" data-morph-key="what">${esc(what)}</span>`, "is-ruled") : ""}
   </div>`;
 }
 
@@ -754,16 +773,31 @@ function lineView(v: AskView, vms: AskActionVm[], cat: LineCat): string {
     : `<span class="ask-line-t">${esc(text)}</span>`}${reason}</span>${tail}${undo}</div>`;
 }
 
+/** A card on a turn someone ELSE asked (0076 / 0077_ask_sharing): only that person decides it, so everyone else gets
+ *  the line it would become — what Trov proposed, and whom it waits for — with no field to edit, no Confirm. The
+ *  asker themself reads it too once the owner has turned them from Can continue to Can read (Q-1): it waits for
+ *  them, but they can no longer act in the conversation, and the line says so. */
+export const WAITING_READ_ONLY = "Waiting for you — you can read this conversation now, not act in it.";
+function readerLine(v: AskView, a: AskAnswer, vms: AskActionVm[]): string {
+  const by = askerOf(v, a.askedBy);
+  const who = by ? personName(v.look, by) : "the person who asked";
+  const reason = askedByMe(v, a.askedBy) ? WAITING_READ_ONLY : `Waiting for ${who} to confirm it.`;
+  return `<div class="ask-line is-off" data-morph-key="ln:${vms[0].id}:pending">${SHAPE.waiting()}<span class="ask-line-main"><span class="ask-line-t">${esc(`Proposed: ${lowerFirst(proposedText(vms, v.look))}`)}</span>${why(reason)}</span></div>`;
+}
+
 /** One card / line for consecutive actions of one group (`shownParts`' `actions` entry). The pending ones are one
- *  card; the decided ones a line per outcome. */
+ *  card; the decided ones a line per outcome. A reader of someone else's shared conversation gets lines only. */
 export function actionGroupView(v: AskView, a: AskAnswer, ids: number[]): string {
   const vms = ids.map((id) => a.turn.actions[id]).filter((x): x is AskActionVm => !!x);
   if (!vms.length) return "";
+  // The turn's own asker decides its cards; anyone else — the thread's owner too — reads them as lines.
+  const ro = !ownTurn(v, a.askedBy);
   const pending = vms.filter((x) => x.state === "proposed" || x.state === "waiting" || x.state === "running");
   const out: string[] = [];
-  if (pending.length) out.push(cardView(v, pending));
+  if (pending.length) out.push(ro ? readerLine(v, a, pending) : cardView(v, pending));
   for (const cat of ["done", "undone", "cancelled", "expired", "failed"] as LineCat[]) {
-    const these = vms.filter((x) => catOf(x.state) === cat);
+    // A reader's lines never offer Undo: the server sends `undo: false` for them, and this says the same.
+    const these = vms.filter((x) => catOf(x.state) === cat).map((x) => (ro ? { ...x, undo: false } : x));
     if (these.length) out.push(lineView(v, these, cat));
   }
   return `<div class="ask-acts" data-ask-tween data-morph-list>${out.join("")}</div>`;
@@ -956,12 +990,33 @@ export async function confirmCards(ctx: AskCtx, ids: number[]): Promise<void> {
     for (const id of live) { delete ctx.ui.actions.drafts[id]; delete ctx.ui.actions.inline[id]; }
     if (failed) ctx.flash(str(rec(failed.result).error) ?? "That change didn't work. Nothing else was changed.");
     else if (done.length) ctx.flash(doneText(done, ctx.look()));
+    if (done.some((x) => LINK_CARD_TOOLS.has(x.tool ?? ""))) void refreshThreadLinks(ctx, live);
   } catch (e) {
     onRefusal(ctx, live, e, "Couldn't make that change.");
   } finally {
     setBusy(ctx, live, false);
     ctx.paint();
   }
+}
+
+/** The agent-link cards (src/ai/ask/actions.ts `LINK_WRITES`). Confirming one changes what waits for THIS thread —
+ *  a join binds it (the other side's notes now wait for it), a close ends that — so its line and the list's mark are
+ *  read again (E2E A-13: until a reload the line stayed as it was before the Confirm). */
+const LINK_CARD_TOOLS: ReadonlySet<string> = new Set(["request_link", "join_link", "send_link_note", "close_link"]);
+async function refreshThreadLinks(ctx: AskCtx, ids: number[]): Promise<void> {
+  for (const where of WHERES) {
+    const c = ctx.ui[where];
+    const tid = c.threadId;
+    if (!tid || !c.thread || !ids.some((id) => c.messages.some((m) => m.role === "assistant" && m.turn.actions[id]))) continue;
+    let links: AskThreadSummary["links"];
+    try { links = (await ctx.api.getThread(tid)).thread.links; } catch { continue; } // a failed read keeps what is shown
+    const now = ctx.ui[where];
+    if (now.threadId !== tid || !now.thread || now.busy) continue;
+    const { links: _old, ...rest } = now.thread;
+    ctx.ui[where] = { ...now, thread: links?.length ? { ...rest, links } : rest };
+  }
+  ctx.reloadThreads();
+  ctx.paint();
 }
 
 export async function cancelCards(ctx: AskCtx, ids: number[]): Promise<void> {

@@ -79,8 +79,9 @@ const FREE_SEATS = PLANS.free.entitlements.seats;
 const EFFECTIVE = "2026-10-12";
 /** Terms and Privacy: summaries moved from Google Gemini to Anthropic Claude, and automatic tagging (Sift, on a
  *  TypeSafe AI model) was added — both approved by the owner on 2026-10-14; the server-side AI build's passages
- *  (Ask Trov, the typed filter, notes, briefs and suggestions, the widened provider rows) approved on 2026-10-16. */
-const PROVIDERS_UPDATED = "2026-10-16";
+ *  (Ask Trov, the typed filter, notes, briefs and suggestions, the widened provider rows) approved on 2026-10-16;
+ *  Ask Trov's GitHub lookups (Terms 10, the Anthropic row, Privacy 4) approved on 2026-10-17. */
+const PROVIDERS_UPDATED = "2026-10-17";
 
 // APPROVED by Andres on 2026-10-16 (AI_LEGAL_DRAFT is false, so `${DRAFT}` renders nothing). Was: awaiting approval (#178 Phase G). Every passage below that starts with `${DRAFT}` is new text for
 // the server-side AI build — Ask Trov, the plain-language filter, the AI pass's notes, briefs and suggestions, the
@@ -224,7 +225,10 @@ export const TERMS: LegalDoc = {
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Sift on new docs (Phase C, `tag.fit` in the pass).
         p(`${DRAFT}While both switches are on, Sift also checks each doc against the organization's tags when the doc is approved, by the same rules.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — Ask Trov (src/ai/ask/, docs/architecture/ask.md).
-        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations or other people's private items, nor source code unless the person attaches a file of it, and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels, unless they turn on Auto for the conversation (an admin can turn Auto off for the organization). In Auto, up to ${ASK_AUTO_WRITES_MAX} changes in each answer run at once, with no card to confirm first, and some of them can be undone from the conversation; changing the roadmap plan, completing a sprint and publishing a doc still wait for the person to confirm. It never publishes a doc unless the person confirms it. It cannot reject or delete anything: undoing a change only takes back what that change did, so undoing a sprint it created removes that sprint while it is still empty. Each question counts against the organization's monthly allowance for Ask Trov.`),
+        // Its GitHub clause (and the Anthropic row's, and Privacy 4's): Ask's GitHub lookups, approved by the owner on
+        // 2026-10-17, with two facts added the same day — an admin's switch (off by default) and each person's own
+        // GitHub access (docs/architecture/ask.md › GitHub).
+        p(`${DRAFT}<b>Ask Trov.</b> Ask Trov answers a person's questions about their organization, using Anthropic Claude (Claude Haiku, Sonnet or Opus, by the mode the person picks where their plan offers a choice). It reads only what that person can see in that organization. It never reads secrets, integrations, billing, other organizations or other people's private items, nor source code unless the person attaches a file of it or a question needs a repository the organization connected (it then reads, on GitHub and without changing anything there, that repository's files, pull requests and their changes, issues, commits, branches, releases and check results — only while an admin has turned on GitHub lookups for the organization, and only in a repository the person's own linked GitHub account can read), and it does not browse the web. Its answers can be wrong or incomplete: check the items it cites before relying on one. It acts as the person who asks, and what it changes is recorded under their name. A change it proposes is a card the person confirms or cancels, unless they turn on Auto for the conversation (an admin can turn Auto off for the organization). In Auto, up to ${ASK_AUTO_WRITES_MAX} changes in each answer run at once, with no card to confirm first, and some of them can be undone from the conversation; changing the roadmap plan, completing a sprint and publishing a doc still wait for the person to confirm. It never publishes a doc unless the person confirms it. It cannot reject or delete anything: undoing a change only takes back what that change did, so undoing a sprint it created removes that sprint while it is still empty. Each question counts against the organization's monthly allowance for Ask Trov.`),
         // DRAFT: awaiting Andres's approval (#178 Phase G) — the plain-language filter (src/ai/filter.ts) and the AI
         // pass's producers (Phases C–D: session notes, repo state, the brief, themes, sprint notes and plan drift,
         // the weekly recap, doc drift; Jev's cards and gates).
@@ -416,7 +420,7 @@ export const PRIVACY: LegalDoc = {
           ["Anthropic", "Summaries (Claude API)", "The title and description (up to 8,000 characters) of each captured pull request and issue"],
           // DRAFT: awaiting Andres's approval (#178 Phase G) — the widened Anthropic list: Ask Trov (src/ai/ask/prompt.ts
           // contextBlock, turn.ts, history.ts compaction, attachments.ts), the filter (src/ai/filter.ts), the AI pass.
-          ["Anthropic", `${DRAFT}Ask Trov (Claude API), when a person asks`, "The question; the conversation so far (a long one partly as a summary of its older turns); the person's handle and role, the organization's name, the date, and what the person said about how to answer them; the items Ask Trov reads from the organization to answer, only ones that person can see; and the files they attach, whole in the turn they are attached and again only when an answer reads one"],
+          ["Anthropic", `${DRAFT}Ask Trov (Claude API), when a person asks`, `The question; the conversation so far (a long one partly as a summary of its older turns); the person's handle and role, the organization's name, the date, and what the person said about how to answer them; the items Ask Trov reads from the organization to answer, only ones that person can see; and the files they attach, whole in the turn they are attached and again only when an answer reads one; and, while an admin has turned on GitHub lookups, what it reads on GitHub from a repository the organization connected and the person's own GitHub account can read, when a question needs it: files, pull requests and their changes, issues and their comments, commits, branches, releases and check results`],
           ["Anthropic", `${DRAFT}Filters typed in plain words (Claude API), when a person asks`, "What the person typed, and the organization's members' handles and names, with its sprints' titles or its tags"],
           ["Anthropic", `${DRAFT}Notes, briefs, the weekly email's highlights and suggestions (Claude API), while the organization's AI switch is on`, "The organization's name, tags, active themes and sprints, and its plan; and, for what is being written, the summaries Trov already made of pull requests and issues, commit messages and pull request titles, check and deploy results, tickets, handoffs and feed entries, the people they concern (by handle), and a doc with the entries that may disagree with it"],
           ["TypeSafe AI", "Automatic tagging (Sift), where an organization turns it on", "The tag's name and description and, for each of the organization's feed entries, docs and decisions that may fit it, its title and up to 400 characters of its text, with code and anything that looks like a password or key removed"],
@@ -433,7 +437,7 @@ export const PRIVACY: LegalDoc = {
         // DRAFT: awaiting Andres's approval (#178 Phase G) — one platform key (ANTHROPIC_API_KEY) for every Anthropic
         // call; what is never sent is AI_NEVER_SENT (shared/ai-core.ts), which says "unless you attach a file to Ask"
         // (owner ruling, Legal 3) — keep the two in step.
-        p(`${DRAFT}Everything else Trov sends Anthropic, for Ask Trov and the features in section 3, goes through the same API account, under the same terms. Neither Anthropic nor TypeSafe AI is sent a connected repository's source code or diffs, secrets, integration keys, or anything from another organization. Source code reaches Anthropic only when you attach a file of it to a question in Ask Trov, and the file is sent as it is.`),
+        p(`${DRAFT}Everything else Trov sends Anthropic, for Ask Trov and the features in section 3, goes through the same API account, under the same terms. Neither Anthropic nor TypeSafe AI is sent secrets, integration keys, or anything from another organization, and TypeSafe AI is never sent source code or diffs. Source code and diffs reach Anthropic only through Ask Trov: a file you attach to a question, sent as it is, or, when a question needs a repository your organization connected, the files, changes and checks Ask Trov reads from it on GitHub — only while an admin of your organization has turned on GitHub lookups, which are off until they do, and only in repositories your own linked GitHub account can read.`),
         p("We may also disclose data if the law requires it, or to protect the rights and safety of people and the service. If TrovLabs is part of a merger or acquisition, personal data may pass to the new owner under this policy. <b>We do not sell or rent personal data</b>, and we do not share it for advertising."),
       ],
     },
@@ -669,9 +673,10 @@ const CHEV = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke
 
 /** The tab row over each document: every legal document, the current one marked (a link to each other). */
 export function legalTabs(current: LegalKind): string {
-  const tab = (d: LegalDoc): string => d.kind === current
-    ? `<span class="site-legal-tab" aria-current="page" style="border-radius:8px">${esc(d.tab)}</span>`
-    : `<a href="/${d.kind}" class="site-legal-tab" style="border-radius:8px">${esc(d.tab)}</a>`;
+  // Every tab is the same element (a link; the current one `aria-current`), so switching in place (legal-page.ts)
+  // patches the pill across with its transition instead of swapping a span for a link.
+  const tab = (d: LegalDoc): string =>
+    `<a href="/${d.kind}" class="site-legal-tab"${d.kind === current ? ' aria-current="page"' : ""} style="border-radius:8px">${esc(d.tab)}</a>`;
   return `<nav class="site-legal-tabs" aria-label="Legal documents">${LEGAL_ORDER.map((k) => tab(LEGAL_DOCS[k])).join("")}</nav>`;
 }
 

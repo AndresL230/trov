@@ -303,11 +303,11 @@ export function askRefFixtures(now: Date): Record<string, RefView> {
     pr(171, "Guided setup: repository picker", S.merged, "maya", "maya/repo-picker", [pass("build"), pass("typecheck"), pass("test"), pass("lint")], ago(D)),
     pr(178, "Release 0.30", S.approved, "andres", "release/0.30", [pass("build"), pass("typecheck"), pass("test"), pass("lint")], ago(H)),
     { ref: "doc:hosting-connections", type: "doc", title: "Hosting connections", status: S.live, owner: "andres", updated: ago(3 * D), href: null,
-      extra: { space: "technical", version: 4, owner: "andres", excerpt: "An org connects a hosting account once, in Org settings › Integrations. Trov keeps the token encrypted and polls the provider for deploys every 10 minutes.", staged: false } },
+      extra: { space: "engineering", version: 4, owner: "andres", excerpt: "An org connects a hosting account once, in Org settings › Integrations. Trov keeps the token encrypted and polls the provider for deploys every 10 minutes.", staged: false } },
     { ref: "doc:release-0-30-notes", type: "doc", title: "Release 0.30 notes", status: S.staged, owner: "priya", updated: ago(2 * H), href: null,
       extra: { space: "product", version: 2, owner: "priya", excerpt: "Status marks replace pills on every board, table and rail.", staged: true } },
     { ref: "doc:performance-plan", type: "doc", title: "Performance plan", status: S.live, owner: "andres", updated: ago(6 * D), href: null,
-      extra: { space: "technical", version: 3, owner: "andres", excerpt: "The Repo dashboard makes 38 D1 queries per load.", staged: false } },
+      extra: { space: "engineering", version: 3, owner: "andres", excerpt: "The Repo dashboard makes 38 D1 queries per load.", staged: false } },
     { ref: "sprint:7", type: "sprint", num: 7, title: "Hosting", status: S.late3, owner: "andres", updated: ago(H), href: "#sprints/7",
       extra: { start: "2026-10-05", due: "2026-10-30", progress: { closed: 7, total: 12 } } },
     { ref: "handoff:11", type: "handoff", num: 11, title: "Carry the performance plan forward", status: S.pending, owner: "andres", updated: ago(3 * H), href: "#handoffs/11",
@@ -572,7 +572,7 @@ function notFoundTurn(): AskTranscriptStep[] {
     ev("block", { kind: "not_found", notFound: {
       query: term, tries: ["What do our docs say about pricing?", "What's in the Release 0.30 notes?"],
       searched: [
-        { area: "Docs", scope: "Technical and Product, 24 docs" },
+        { area: "Docs", scope: "Engineering and Product, 24 docs" },
         { area: "Tickets and comments", scope: "31 tickets, 212 comments" },
         { area: "Feed", scope: "41 entries since Sep 1" },
         { area: "Artifacts", scope: "12 artifacts" },

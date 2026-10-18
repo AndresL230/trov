@@ -92,6 +92,14 @@ const EXTRACT: Record<string, (r: unknown, args: Record<string, unknown>) => str
   update_plan: (r) => arr(obj(r)?.sprints).flatMap(sprintRefs),
   save_artifact: one("artifact", "slug"),
   show_items: (r) => arr(obj(r)?.shown).flatMap((x) => (typeof x === "string" ? [x] : [])),
+  // Agent links: the link (its two people only — resolveViews hides it from anyone else).
+  list_links: (r) => ["waiting", "mine", "open", "unbound"].flatMap((box) => pick("link", obj(r)?.[box], "id")),
+  request_link: one("link", "id"), join_link: one("link", "id"), close_link: one("link", "id"),
+  send_link_note: (r, a) => (num(obj(r)?.link) ? [`link:${obj(r)!.link}`] : num(a.id) ? [`link:${a.id}`] : []),
+  // The GitHub tools (./github.ts): a pull request of the PRIMARY repository is the one Trov captures (its keys carry
+  // no repository), so it links as `pr:N`; another repository's stays plain text. Nothing else they read is an item.
+  github_pull_request: (r) => (obj(r)?.primary === true ? one("pr", "number")(r) : []),
+  github_list: (r) => (obj(r)?.primary === true && obj(r)?.what === "pulls" ? pick("pr", obj(r)?.items, "number") : []),
 };
 
 /** The refs a tool's result names (deduped, each a valid `type:key`, a person's handle lower-cased). */
@@ -145,6 +153,18 @@ export function sprintStatus(status: string, due: string | null, today: string):
   }
   return SPRINT_STATUS[status] ?? null;
 }
+// A link's state, as web/src/marks.ts `LINK_MARK` draws it: an OPEN link is the normal state and has no mark.
+const LINK_STATUS: Record<string, RefStatus> = {
+  draft: { mark: "ring", tone: "muted", word: "Draft", tip: "An agent drafted it. Nothing is sent until its person presses Send. A draft expires after an hour." },
+  requested: { mark: "ring", tone: "blue", word: "Requested", tip: "Sent, and waiting for the other person to accept or decline. A request expires after 24 hours." },
+  declined: { mark: "square", tone: "faded", word: "Declined", tip: "The other person turned the request down." },
+  cancelled: { mark: "square", tone: "faded", word: "Cancelled", tip: "Its sender called it off before it opened." },
+  closed: { mark: "check", tone: "accent", word: "Closed", tip: "One side ended it. The notes stay readable on its page." },
+  expired: { mark: "square", tone: "red", word: "Expired", tip: "Nobody acted in time, or neither session checked in for 12 hours." },
+};
+const linkTopicWords = (kind: string, ref: string): string =>
+  kind === "pr" ? `PR #${ref}` : kind === "branch" ? `branch ${ref}` : kind === "ticket" ? `ticket #${ref}` : `@${ref}`;
+
 const ARTIFACT_VIS: Record<string, RefStatus> = {
   private: { mark: "ring", tone: "muted", word: "Private", tip: "Only you can see it." },
   org: { mark: "dot", tone: "blue", word: "Org", tip: "Everyone in the org can see it." },
@@ -226,13 +246,15 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
         const rows = await fanOut<{ slug: string; title: string; body: string; space: string; current_version: number; owner: string | null; updated_at: string | null; staged: number }>(ctx, keys, (ph) =>
           `SELECT d.slug, d.title, d.body, d.space, d.current_version, d.owner, d.updated_at,
                   (SELECT COUNT(*) FROM doc_versions v WHERE v.org_id = d.org_id AND v.slug = d.slug AND v.status = 'staged') AS staged
-             FROM docs d WHERE d.org_id = ? AND d.slug IN (${ph})`, [ctx.orgId]);
+             FROM docs d WHERE d.org_id = ? AND d.archived_at IS NULL AND d.slug IN (${ph})`, [ctx.orgId]);
         for (const d of rows) put({ ref: `doc:${d.slug}`, type, title: d.title || d.slug, status: d.staged ? DOC_STAGED : DOC_LIVE, owner: d.owner, updated: d.updated_at,
           href: null, extra: { space: d.space, version: d.current_version, owner: d.owner, excerpt: firstPara(d.body), staged: d.staged > 0 } });
         // A NEW doc that exists only as a staged proposal.
         const missing = keys.filter((k) => !rows.some((d) => d.slug === k));
         const staged = await fanOut<{ slug: string; body: string; created_by: string; created_at: string; version: number }>(ctx, missing, (ph) =>
-          `SELECT slug, body, created_by, created_at, version FROM doc_versions WHERE org_id = ? AND status = 'staged' AND slug IN (${ph}) ORDER BY version DESC`, [ctx.orgId]);
+          `SELECT slug, body, created_by, created_at, version FROM doc_versions WHERE org_id = ? AND status = 'staged' AND slug IN (${ph})
+              AND NOT EXISTS (SELECT 1 FROM docs a WHERE a.org_id = doc_versions.org_id AND a.slug = doc_versions.slug AND a.archived_at IS NOT NULL)
+            ORDER BY version DESC`, [ctx.orgId]);
         for (const d of staged) if (!out.has(`doc:${d.slug}`)) put({ ref: `doc:${d.slug}`, type, title: d.slug, status: DOC_STAGED, owner: d.created_by, updated: d.created_at,
           href: null, extra: { space: null, version: d.version, owner: d.created_by, excerpt: firstPara(d.body), staged: true } });
         break;
@@ -304,6 +326,21 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
         for (const p of rows) put({ ref: `prompt:${p.slug}`, type, title: p.title, owner: p.author, updated: p.updated_at, href: `#prompts/${encodeURIComponent(p.slug)}`, extra: { excerpt: excerptOf(p.description) },
           status: p.status === "published" ? { mark: "dot", tone: "green", word: "Published", tip: "Settled: published by a person." }
             : p.status === "staged" ? { mark: "ring", tone: "amber", word: "Staged", tip: "Waiting for a person to publish it." } : { mark: "ring", tone: "muted", word: "Draft", tip: "Not published yet." } });
+        break;
+      }
+      case "link": {
+        // Only the link's two people see it (the link page's rule, src/tools/links.ts `getLink`); to anyone else it is absent.
+        const rows = await fanOut<{ number: number; state: string; topic_kind: string; topic_ref: string; reason: string; requester: string; recipient: string; created_at: string; closed_at: string | null }>(ctx, ints(keys), (ph) =>
+          `SELECT number, state, topic_kind, topic_ref, reason, requester, recipient, created_at, closed_at FROM agent_links
+            WHERE org_id = ? AND (requester = ? COLLATE NOCASE OR recipient = ? COLLATE NOCASE) AND number IN (${ph})`, [ctx.orgId, viewer, viewer]);
+        for (const l of rows) {
+          const self = l.requester.toLowerCase() === l.recipient.toLowerCase();
+          const other = l.requester.toLowerCase() === viewer.toLowerCase() ? l.recipient : l.requester;
+          const topic = l.topic_kind === "person" ? null : linkTopicWords(l.topic_kind, l.topic_ref);
+          put({ ref: `link:${l.number}`, type, num: l.number, title: `${self ? "Link with your other session" : `Link with @${other}`}${topic ? ` on ${topic}` : ""}`,
+            status: LINK_STATUS[l.state] ?? null, owner: l.requester, updated: l.closed_at ?? l.created_at, href: `#links/${l.number}`,
+            extra: { with: other, self, topic, reason: l.reason, state: l.state } });
+        }
         break;
       }
       case "repo": {

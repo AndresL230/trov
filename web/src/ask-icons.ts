@@ -63,6 +63,9 @@ export const ASK_ICON_PATHS = {
   at: `<circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path>`,
   upload: `<path d="M12 15V3"></path><path d="m7 8 5-5 5 5"></path><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path>`,
   chevron: `<path d="m6 9 6 6 6-6"></path>`,
+  // The thread menu's Share with <org> / Stop sharing (ask-threads.ts; 0076_ask_sharing).
+  share: `<circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 20a5.5 5.5 0 0 1 11 0"></path><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6"></path><path d="M17.6 14.6A5.5 5.5 0 0 1 20.5 20"></path>`,
+  lock: `<rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V7.5a4 4 0 0 1 8 0V11"></path>`,
 } as const;
 export type AskIconName = keyof typeof ASK_ICON_PATHS;
 
@@ -79,7 +82,7 @@ export const ACTIVITY_ICON: Record<AskActivityIcon, AskIconName> = {
 /** A ref type's icon (a chip's lead, a card's eyebrow, a picker row, a source row). */
 export const REF_ICON: Record<AskRefType, AskIconName> = {
   ticket: "tickets", pr: "pr", doc: "docs", decision: "docs", feed: "feed", sprint: "sprint", handoff: "handoffs", artifact: "artifacts",
-  person: "person", prompt: "prompts", repo: "repo",
+  person: "person", prompt: "prompts", repo: "repo", link: "handoffs",
 };
 
 /** The Trov mark (the logo's three squares) in `var(--mark)`. */

@@ -7,6 +7,7 @@ import {
 } from "../data/platform-sql";
 import { stmt as tenantStmt } from "../data/sql";
 import { starterTagStmts } from "../tools/tags";
+import { starterSpaceStmts } from "../tools/spaces";
 import { systemTenant, isSuperadmin, requireRole, hasRole, type TenantContext } from "../data/context";
 import { REGISTRY } from "../notifications/registry";
 import { DEFAULT_SETTINGS } from "../notifications/cron";
@@ -81,7 +82,7 @@ export interface CreateOrgInput {
 /**
  * THE way an org comes to exist: the `orgs` row, its owner's membership, and every per-org singleton a
  * working org reads — what 0042_organizations seeded for SaplingLearn: the `plan` row, `notification_settings`,
- * one `notification_policy` row per registry kind, both `org_counters`, and the six starter tags (0056_org_tags) — in ONE batch, on the plan
+ * one `notification_policy` row per registry kind, the three `org_counters` (ticket, handoff, link — 0078), the six starter tags (0056_org_tags) and the three starter spaces (0081_docs_library) — in ONE batch, on the plan
  * `input.plan` names. `p.actor` is recorded as `created_by`. WHO may create one is the caller's to
  * enforce: a superadmin (src/platform `createOrgWithAdmin`), a person using a grant
  * (src/plans/grants.ts `createOrgFromGrant`, whose consuming statement rides in `extra`), or a person
@@ -111,7 +112,7 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
     stmt(p, `INSERT INTO orgs (id, slug, name, created_at, created_by, plan, plan_overrides, plan_source, plan_status, plan_changed_at, plan_changed_by)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
       id, slug, name, at, p.actor, input.plan.id, JSON.stringify(input.plan.overrides), input.plan.source, at, p.actor),
-    stmt(p, `INSERT INTO org_counters (org_id, name, value) VALUES (?, 'ticket', 0), (?, 'handoff', 0)`, id, id),
+    stmt(p, `INSERT INTO org_counters (org_id, name, value) VALUES (?, 'ticket', 0), (?, 'handoff', 0), (?, 'link', 0)`, id, id, id),
     tenantStmt(sys, `INSERT INTO plan (org_id, narrative, current_version) VALUES (?, '', 0)`, sys.orgId),
     tenantStmt(sys, `INSERT INTO notification_settings (org_id, send_hour, timezone, from_address) VALUES (?, ?, ?, ?)`,
       sys.orgId, DEFAULT_SETTINGS.send_hour, DEFAULT_SETTINGS.timezone, DEFAULT_SETTINGS.from_address),
@@ -120,6 +121,8 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
       sys.orgId, k.id, k.defaultCadence, at)),
     // The six starter tags (0056_org_tags): the org's own list from its first day.
     ...starterTagStmts(sys, at),
+    // The three starter spaces of the Library (0081_docs_library): Engineering, Product, Design.
+    ...starterSpaceStmts(sys, at),
     auditStmt(p, id, "org.create", slug, { name, owner: input.owner, plan: input.plan.id }, at),
   ];
   if (input.owner) {

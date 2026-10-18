@@ -157,6 +157,17 @@ describe("handleRepoCron", () => {
     expect(wranglerToml).toContain(`"${REPO_CRON}"`);
   });
 
+  // Without `global_fetch_strictly_public`, a Worker's fetch() to a host on its OWN zone skips Cloudflare's
+  // front door and goes to the zone's origin — trov.dev has none behind the Worker, so the ping of Trov's own
+  // deployment always failed and its Repo dashboard read production as Down while trov.dev was up. Workerd
+  // here has no zones, so only the declaration (and its reason, beside it) can be pinned.
+  it("pings through the public front door: wrangler.toml sets global_fetch_strictly_public, with its reason", () => {
+    const flags = /^compatibility_flags\s*=\s*\[([^\]]*)\]/m.exec(wranglerToml)?.[1] ?? "";
+    expect(flags.split(",").map((f) => f.trim())).toEqual(expect.arrayContaining(['"nodejs_compat"', '"global_fetch_strictly_public"']));
+    expect(wranglerToml).toMatch(/# `global_fetch_strictly_public`: .*front door/);
+    expect(wranglerToml).toContain("pingHealth");
+  });
+
   it("pings every tick; with no service token it does nothing else and never throws", async () => {
     await handleRepoCron(ghEnv({ GITHUB_SERVICE_TOKEN: undefined }), T, okFetch);
     expect((await all(env.DB, `SELECT 1 FROM repo_metrics WHERE metric = 'health_up'`)).length).toBe(4);

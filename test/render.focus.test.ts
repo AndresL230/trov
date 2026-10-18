@@ -7,15 +7,19 @@
 import { describe, it, expect } from "vitest";
 import css from "../web/src/trov.css?raw";
 import { newDocView, blankDoc } from "../web/src/newdoc";
+import { initialDropdownUi } from "../web/src/dropdown";
 import { newSprintPanel, type NewSprintState } from "../web/src/sprints";
 import { segmented, segKeyTarget, type SegOption } from "../web/src/segmented";
 import mainSrc from "../web/src/main.ts?raw";
+import { twinSelector } from "../web/src/focus-twin";
 
 const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
 /** [selector, declarations] of every top-level or nested rule. */
 const rules = [...stripped.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1].trim(), m[2]] as const);
 const focusRules = rules.filter(([sel]) => /:focus(-visible|-within)?\b/.test(sel));
 const FIELD_TYPES_SKIPPED = ["checkbox", "radio", "range", "file", "color", "hidden", "button", "submit", "reset", "image"];
+
+const SPACE_PRODUCT = { slug: "product", name: "Product", icon: "compass", color: "#2f7d57", description: "", sort_rank: 1024, created_at: "t", created_by: "system", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 } as unknown as import("@shared/docs-core").SpaceDTO;
 
 describe("focus — every focusable element shows a ring", () => {
   it("no :focus rule takes the outline away", () => {
@@ -58,7 +62,7 @@ describe("focus — every focusable element shows a ring", () => {
 
   it("the New sprint form and the New doc body are fields the ring covers (they had none)", () => {
     const NS: NewSprintState = { open: true, name: "", start: "", desc: "", urgency: "normal", due: "", lead: null, domain: null, error: null };
-    const doc = newDocView({ draft: blankDoc("product", "reference"), spaces: [{ key: "product", label: "Product" }], sections: ["reference"] });
+    const doc = newDocView({ draft: { ...blankDoc("product"), step: "details" }, spaces: [SPACE_PRODUCT], pages: [], sections: ["reference"], dd: initialDropdownUi() });
     const fields = [...newSprintPanel(NS, []).matchAll(/<(input|textarea)\b[^>]*>/g), ...doc.matchAll(/<(input|textarea)\b[^>]*>/g)].map((m) => m[0]);
     expect(fields.some((f) => f.includes('data-arg="body"'))).toBe(true);
     expect(fields.some((f) => f.includes('data-arg="name"'))).toBe(true);
@@ -121,5 +125,27 @@ describe("segmented() — one Tab stop, on the picked option (a roving tabindex)
 
   it("the keyboard is wired once, for every switch on the page", () => {
     expect(mainSrc).toContain('document.addEventListener("keydown", onSegmentedKey);');
+  });
+});
+
+// P04 (docs/testing/10-17-batch-test-log.md): Enter on a Prompt Library card's copy button copied the slug, and the toast's
+// repaint swapped <main> and dropped focus on <body> — the next Tab started over at the top of the page. A focused BUTTON
+// now finds its twin in the new <main> by `data-act` + `data-arg`, as a focused field already did by `data-field`.
+describe("a repaint keeps a focused button focused (its twin in the new page)", () => {
+  it("names the twin by its act and arg — an act alone only matches a twin without an arg", () => {
+    expect(twinSelector({ act: "promptCopySlug", arg: "test-copy-published" })).toBe('[data-act="promptCopySlug"][data-arg="test-copy-published"]');
+    expect(twinSelector({ act: "newPrompt", arg: null })).toBe('[data-act="newPrompt"]:not([data-arg])');
+  });
+  it("quotes and backslashes in an arg cannot break out of the selector", () => {
+    const sel = twinSelector({ act: "x", arg: 'a"b\\c' });
+    expect(sel).toBe('[data-act="x"][data-arg="a\\"b\\\\c"]');
+  });
+  it("nothing to pair on: no act, no twin", () => {
+    expect(twinSelector({ act: null, arg: "a" })).toBeNull();
+    expect(twinSelector({ act: "", arg: null })).toBeNull();
+  });
+  it("rerender restores it last, only when focus was lost and the screen did not change", () => {
+    expect(mainSrc).toMatch(/twinSelector\(\{ act: focusAct, arg: active\?\.getAttribute\?\.\("data-arg"\) \?\? null \}\)/);
+    expect(mainSrc).toContain("restoreTwinFocus(twin, screenBefore)");
   });
 });

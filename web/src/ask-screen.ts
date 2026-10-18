@@ -14,10 +14,11 @@
 import { esc, attr } from "./ui";
 import type { AppState } from "./render";
 import { askView, convoOf, inspectorRef, type AskView } from "./ask-state";
-import { askLayout } from "./ask-layout";
+import { askLayout, inspectorWidth } from "./ask-layout";
 import { askIcon } from "./ask-icons";
-import { hoverCard, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
-import { threadsView, threadDeleteModal } from "./ask-threads";
+import { hoverCard, personName, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
+import { threadsView, threadDeleteModal, threadShareModal, askOrgName, ownerSharedTip, sharedWith, viewerSharedTip } from "./ask-threads";
+import { sharedMark } from "./marks";
 import { conversationView, emptyView, jumpButton } from "./ask-conversation";
 import { composerView } from "./ask-composer";
 import { inspectorBody, inspectorLocalHead } from "./ask-inspector";
@@ -37,10 +38,11 @@ export function inspectorFrame(v: AskView): string {
   const trail = ins.stack.slice(0, ins.idx).map((r) => { const x = viewOf(v.look, r); return x ? refShort(x) : inspectorLocalHead(v, r)?.short ?? refFallbackText(r); });
   const typeWord = view ? refTypeWord(view) : inspectorLocalHead(v, ref)?.typeWord ?? (isCvRef(ref) ? cvRefWord(ref) : "");
   const sheet = v.app.phone;
+  const w = inspectorWidth(ins.width, ref);
   // Opening slides it in from its edge (the column under it makes room smoothly); closing is `data-closing`
   // (ask-motion.ts rule 3); `data-dragging` drops the width transition while the edge follows the pointer.
-  return `<aside class="ask-insp-frame" aria-label="Inspector" data-sheet="${sheet ? "1" : "0"}" data-where="${v.where}" data-dragging="${ins.dragging ? "1" : "0"}"${closingAttr(v.ui.closing, "inspector")} style="${sheet ? "" : `width:${ins.width}px;--ask-insp-w:${ins.width}px`}">
-    ${sheet ? `<div class="ask-insp-grab" aria-hidden="true"><span></span></div>` : `<div class="ask-insp-resize" data-ask-resize role="separator" aria-orientation="vertical" aria-label="Resize inspector" aria-valuemin="380" aria-valuemax="720" aria-valuenow="${ins.width}" tabindex="0"></div>`}
+  return `<aside class="ask-insp-frame" aria-label="Inspector" data-sheet="${sheet ? "1" : "0"}" data-where="${v.where}" data-dragging="${ins.dragging ? "1" : "0"}"${closingAttr(v.ui.closing, "inspector")} style="${sheet ? "" : `width:${w}px;--ask-insp-w:${w}px`}">
+    ${sheet ? `<div class="ask-insp-grab" aria-hidden="true"><span></span></div>` : `<div class="ask-insp-resize" data-ask-resize role="separator" aria-orientation="vertical" aria-label="Resize inspector" aria-valuemin="380" aria-valuemax="720" aria-valuenow="${w}" tabindex="0"></div>`}
     <div class="ask-insp-head">
       <button type="button" class="ask-iconbtn" data-act="askShBack" aria-label="Back"${ins.idx > 0 ? "" : " disabled"}>${askIcon("back", 15, null, 2)}</button>
       <div class="ask-insp-crumb"><span class="ask-insp-type">${esc(typeWord)}</span>${trail.length ? `<span class="ask-insp-from">from ${esc(trail.join(" › "))}</span>` : ""}</div>
@@ -86,10 +88,16 @@ export function askHeader(app: AppState): AskHeaderParts {
   const ui = app.ask;
   const c = ui.page;
   const title = c.title || c.thread?.title || (c.messages[0]?.role === "user" ? c.messages[0].text.slice(0, 48) : "");
+  // A shared thread says so beside its title (0076 / 0077_ask_sharing): to its owner — with whom — and to whoever
+  // else reads it — who shared it, and what they may do.
+  const look = { persons: app.persons.data };
+  const t = c.thread;
+  const tip = !t ? null : t.viewer ? viewerSharedTip(askOrgName(app), personName(look, t.owner ?? ""), t) : (() => { const who = sharedWith(askOrgName(app), t, look); return who ? ownerSharedTip(who) : null; })();
+  const shared = tip ? `<span class="ask-crumb-mark">${sharedMark(tip, 12)}</span>` : "";
   return {
     lead: "",
     title: `<h1 class="ask-h1"><span class="ask-h1-t${title ? " is-parent" : ""}">Ask Trov</span></h1>`,
-    crumb: title ? `<span class="ask-crumb"><span class="ask-crumb-sep">›</span><span class="ask-crumb-t">${esc(title)}</span></span>` : "",
+    crumb: title ? `<span class="ask-crumb"><span class="ask-crumb-sep">›</span><span class="ask-crumb-t">${esc(title)}</span>${shared}</span>` : "",
   };
 }
 
@@ -100,5 +108,5 @@ export function askOverlays(app: AppState): string {
   const v = askView(app, "page");
   const hv = ui.hover ? viewOf(v.look, ui.hover.ref) : null;
   const card = ui.hover && hv ? `<div data-overlay="ask-hc" class="ask-hc-layer"${closingAttr(ui.closing, "hover")}>${hoverCard(hv, v.look, ui.hover.at)}</div>` : "";
-  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui)}`;
+  return `${card}${cmdjOverlay(app)}${threadDeleteModal(ui, askOrgName(app))}${threadShareModal(app)}`;
 }

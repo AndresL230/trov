@@ -4,25 +4,28 @@
 // still render their Phase-1 mock until their task lands.
 
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
-import { REVIEW_EXIT_MS, type ReviewVerdict } from "./review";
+import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
+import { createImportController } from "./import-actions";
+import { installImportDrop, mainDropTarget } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
 import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
 import type { SidebarBadges } from "@shared/badges";
 import {
-  render, initialState, reviewProps, railCollapsed, spaceLabel, HAPPENINGS_LIMIT, firstDocForSpace, docReaderHtml, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
+  render, initialState, reviewProps, railCollapsed, spaceName, liveSpaces, paneSpaceSlug, HAPPENINGS_LIMIT, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedPage, getFeedStats, listDocs, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
-  listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr,
+  listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr, approveImport, rejectImport,
   listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
   getMe, logout, adminPoll, isRateLimited, rateLimitText,
   getOnboardPrefill, checkHandle, submitOnboard,
@@ -38,15 +41,24 @@ import {
   type TicketDetail, type TicketListItem,
   listArtifacts, getArtifact, getArtifactDiff, createArtifact, patchArtifact, ratifyArtifact, deleteArtifact, restoreArtifact, addArtifactLink, addArtifactVersion, fetchArtifactUrl,
   listHandoffs, getHandoff, listPrompts, getPrompt, getPromptVersions,
-  createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt, proposeDoc,
+  listLinks, getLink, linkStep, closeLinkWeb, addLinkNote, startLink,
+  createHandoff, claimHandoff, expireHandoff, savePrompt, setPromptTags, publishPrompt, deletePrompt, restorePrompt,
   Unauthorized, NotFound, ApiError,
 } from "./api";
 import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraft } from "./handoffs";
+import { linkJoinPhrase, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, type LinkStartKind } from "./links";
+import { LINK_NOTE_MAX, type LinkView } from "@shared/links";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
 import { selectedUnplacedId } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
-import { blankDoc, defaultSection } from "./newdoc";
+import { createLibraryController } from "./library-actions";
+import { createNewDocController } from "./newdoc-actions";
+import { createTreeController } from "./tree-actions";
+import { installTreeDrag, treeKeyTarget } from "./tree-drag";
+import { installCustomizeDrag, slideRows } from "./customize-drag";
+import { pointerDrag, dragging } from "./pointer-drag";
+import { DEFAULT_SPACE } from "@shared/docs-core";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
 import type { SprintDetail } from "@shared/sprints";
 import { parseHash, hashForRoute, sameRoute, pageKey, type Route } from "./hash";
@@ -58,7 +70,7 @@ import {
   TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, TICKET_STATUSES, canTransition, placeInColumn,
   type TicketCategory, type TicketPriority, type TicketStatus,
 } from "@shared/tickets-core";
-import { decodeReviewId } from "./triage-map";
+import { decodeReviewId, reviewItemsFromReads } from "./triage-map";
 import { QUEUE_FILTER_CATS, declinedLeavers, type QueueFilterCat } from "./tickets";
 import { AI_EXIT_MS } from "./ai-ui";
 import { initialOnboard, markAvatarFailed, AVATAR_IMG_CLASS } from "./people";
@@ -75,6 +87,7 @@ import { isGroupBy } from "@shared/repo-layout-core";
 import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
+import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick } from "./quicksearch";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
@@ -117,7 +130,7 @@ import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlu
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
 import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH, signInReturnPath } from "@shared/billing";
-import { askBillingCheckout, getBillingStatus } from "./api";
+import { askBillingCheckout, getBillingStatus, getAskState } from "./api";
 import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
 import { loadStripeEmbedder } from "./stripe-js";
 import { setPrimaryRepo } from "./github";
@@ -126,6 +139,8 @@ import { isGithubConnectOutcome } from "@shared/github-app";
 import { isHostingConnectOutcome, isHostingProvider } from "@shared/hosting";
 import { createPaintQueue } from "./paint-queue";
 import { onMarkdownLib, prefetchMarkdownLib } from "./markdown-load";
+import { pointOf, rectOf } from "./zoom";
+import { boardCardId, boardDropArg } from "./board-drop";
 
 const root = document.getElementById("app");
 if (!root) throw new Error("Trov: #app mount point missing");
@@ -195,6 +210,76 @@ const orgCtl: OrgCtl = {
 const tagsCtl = createTagsController({
   state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
   search: (q) => { openSearchScreen(q); }, planChanged: () => orgCtl.loadPlan(), goList: () => dispatch("orgGo", "tags", null),
+});
+// The Docs Library (web/src/library-actions.ts): every `lib…` act, the Library's read, a space's home.
+const libCtl = createLibraryController({
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  // Archive page / Restore (0083_doc_archive): Review's queue (when held) and the badges lose or regain its waiting
+  // versions; the open doc page — the page itself, or one whose "Pages under" or links it was in — is read again.
+  pageChanged: () => {
+    if (state.proposals.status !== "idle") loadProposals();
+    loadBadges();
+  },
+  treeChanged: () => { if (state.screen === "docs" && state.docSlug) loadDoc(state.docSlug); },
+  openDoc: (slug) => dispatch("openDocFrom", slug, null),
+  newPage: (space) => dispatch("newDoc", space || null, null),
+  slide: (paint) => slideRows(mount, paint, reducedMotion()),
+});
+// The Markdown import (web/src/import-actions.ts): every `imp…` act — the wizard, the files read in the browser, the run
+// (in module scope, so it keeps going on any screen) and Imports history.
+const impCtl = createImportController({
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e),
+  ensureSpace: (slug) => libCtl.ensureSpace(slug),
+  spaceName: (slug) => spaceName(state, slug),
+  landed: (space) => {
+    // What a run changed: Review's queue (when it is held), the Library's counts, the space's pages, the badges.
+    if (state.proposals.status !== "idle") loadProposals();
+    libCtl.load();
+    const h = state.spaceHome;
+    if (h.data?.space.slug === space) {
+      if (state.screen === "space" || state.screen === "docs" || state.screen === "newdoc") libCtl.openSpace(space);
+      else state.spaceHome = { status: "idle", data: h.data };
+    }
+    loadBadges();
+  },
+});
+// Drop to import (web/src/import-drop.ts): files over a space's page or a sidebar space row open the wizard there.
+installImportDrop({
+  enabled: () => state.view === "app" && state.screen !== "import",
+  mainSpace: () => {
+    const slug = state.screen === "space" || state.screen === "docs" || state.screen === "newdoc" ? paneSpaceSlug(state) : null;
+    return mainDropTarget(state.screen, slug && liveSpaces(state).some((x) => x.slug === slug) ? { slug, name: spaceName(state, slug) } : null);
+  },
+  spaceName: (slug) => (liveSpaces(state).some((x) => x.slug === slug) ? spaceName(state, slug) : null),
+  drop: (files, space) => impCtl.dropTo(files, space),
+  bad: (msg) => flash(msg, 4200),
+});
+// New page (web/src/newdoc-actions.ts): every `nd…` act — the template, where it goes, the fields, staging it.
+const ndCtl = createNewDocController({
+  state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
+  ensureSpace: (slug) => libCtl.ensureSpace(slug),
+  staged: (space, slug) => {
+    // The new page, "Not yet approved": the pane's tree is read again (it shows there under its parent, which the
+    // page being read opens) and Review's count with it.
+    libCtl.openSpace(space);
+    loadProposals();
+    openDocPage(slug);
+  },
+  cancel: () => {
+    const d = state.nd;
+    if (d.parent) { openDocPage(d.parent); return; }
+    if (d.space && liveSpaces(state).some((s) => s.slug === d.space)) libCtl.act("libOpenSpace", d.space, null);
+    else dispatch("goLibrary", null, null);
+  },
+});
+// The docs pane (web/src/tree-actions.ts): a page's children, its "…" menu, a page inside it, On this page, a move.
+const treeCtl = createTreeController({
+  state, mount, rerender: () => rerender(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e),
+  flashNext: (sel) => { pendingFlash = sel; },
+  newPage: (space, parent) => { state.screen = "newdoc"; ndCtl.start(space, parent); },
+  reducedMotion: () => reducedMotion(),
+  // The open doc page's children and breadcrumb come from its own read, not the pane's: read it again after a move.
+  treeChanged: () => { if (state.screen === "docs" && state.docSlug) loadDoc(state.docSlug); },
 });
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
@@ -346,7 +431,9 @@ try {
   const c = localStorage.getItem("trov.collapsed");
   if (c) state.collapsed = c === "1";
   const open = JSON.parse(localStorage.getItem("trov.navOpen") ?? "{}") as Record<string, unknown>;
-  // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored.
+  // Only live groups are read, so a retired one's key (tickets, maintenance, repo) is ignored. The Library was
+  // Docs: a stored `docs` is read as `library` until the next write replaces it.
+  if (typeof open.library !== "boolean" && typeof open.docs === "boolean") open.library = open.docs;
   for (const g of NAV_GROUPS) if (typeof open[g] === "boolean") state.navOpen[g] = open[g] as boolean;
 } catch { /* localStorage unavailable, or a hand-edited value */ }
 
@@ -435,8 +522,10 @@ function syncReviewDetail(focusAct: string | null): void {
     const pane = body?.closest<HTMLElement>(".cnpy-rv-detail");
     if (pane) pane.scrollTop = 0;
   }
-  if (body && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !body.contains(document.activeElement)) {
-    body.querySelector<HTMLElement>(`.cnpy-rv-head [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
+  // The verdict buttons are in the body's head (a decision) or in the page pane's footer beside it (a group's page).
+  const detail = body?.closest<HTMLElement>(".cnpy-rv-detail") ?? null;
+  if (body && detail && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !detail.contains(document.activeElement)) {
+    detail.querySelector<HTMLElement>(`:is(.cnpy-rv-head, .cnpy-rvp-foot) [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
   }
 }
 
@@ -504,9 +593,9 @@ function wantReleases(): void {
 
 /** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
 function paintApp(): void {
-  // A board drag holds the DOM: swapping <main> would drop the card mid-drag.
-  // The held paint runs when the drag ends (clearBoardDrag).
-  if (boardDrag) { rerenderHeld = true; return; }
+  // A drag (the board's cards, the docs pane's pages — pointer-drag.ts) holds the DOM: swapping <main> would drop the
+  // row mid-drag. The held paint runs when the drag ends.
+  if (dragging()) { rerenderHeld = true; return; }
   // Repo › Summary exists only while the live read carries Trov's state (repo.ts `repoSummaryShown`, in the lazy Repo
   // chunk — until it is in, the screen is its skeleton and the chunk's arrival paints again): a read that lands
   // without it (AI off, nothing written, a failed read), sample data, or the end of its "Wrong?" exit moves the
@@ -555,6 +644,10 @@ function paintApp(): void {
   }
   const active = document.activeElement as HTMLElement | null;
   const field = active?.getAttribute?.("data-field") ?? null;
+  // A focused button (not a field) is put back on its twin after the swap (focus-twin.ts), on the same screen only.
+  const focusAct = !field && active && mount.contains(active) ? active.getAttribute?.("data-act") ?? null : null;
+  const twin = focusAct ? twinSelector({ act: focusAct, arg: active?.getAttribute?.("data-arg") ?? null }) : null;
+  const screenBefore = mount.firstElementChild?.getAttribute("data-screen") ?? null;
   let selStart = 0;
   let selEnd = 0;
   let fieldScroll = 0;
@@ -575,7 +668,7 @@ function paintApp(): void {
   // screen is unchanged so a button low on a long screen doesn't jump to the top.
   const scroll = captureScroll(mount, state.screen);
   // Review: a verdict button that had focus hands it to the same button of the item that follows.
-  const rvFocus = active?.closest?.(".cnpy-rv-head") ? active.getAttribute("data-act") : null;
+  const rvFocus = active?.closest?.(".cnpy-rv-head, .cnpy-rvp-foot") ? active.getAttribute("data-act") : null;
   askCtl.beforePaint();   // Ask's scrollers: a paint's measuring layout must not move them (ask-motion.ts askKeepScroll)
   aiFilterCtl.sync();     // a typed filter's line goes once its filters were changed by hand (ai-filter-actions.ts)
   paint(mount, render(state));
@@ -617,20 +710,9 @@ function paintApp(): void {
       if (box) box.scrollTop = keepTop;
     }
   }
-  // Deferred scroll-to-heading: fires once the reader for the target doc has
-  // rendered (may be a later rerender if the doc was still loading). Cleared on
-  // hit. The scroll itself waits a frame so layout settles after the innerHTML
-  // swap — scrollIntoView called synchronously after it is a no-op.
-  if (state.pendingScrollId) {
-    const target = mount.querySelector<HTMLElement>(`.cnpy-md [id="${cssEscape(state.pendingScrollId)}"]`);
-    if (target) {
-      state.pendingScrollId = null;
-      // Instant, not smooth: smooth scrollIntoView is a silent no-op on this
-      // nested overflow container, and instant is the right call after navigation.
-      requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
-    }
-  }
+  restoreTwinFocus(twin, screenBefore);
   updateActiveHeading();
+  scrollActiveRow();
   updateGuideToc();
   renderPendingMermaid(mount);
   // Reflect the current route in the URL hash so a reload restores it. The ticket
@@ -667,41 +749,60 @@ window.addEventListener("hashchange", () => {
   loadForScreen(r.screen);
 });
 
+/** After a repaint: when a focused button's page was swapped away and nothing else took focus, focus its twin (the
+ *  same act + arg) on the SAME screen — never one on another screen, never over a dialog or menu that moved focus. */
+function restoreTwinFocus(twin: string | null, screenBefore: string | null): void {
+  if (!twin || mount.firstElementChild?.getAttribute("data-screen") !== screenBefore) return;
+  const now = document.activeElement;
+  if (now && now !== document.body && now.isConnected) return;
+  mount.querySelector<HTMLElement>(twin)?.focus({ preventScroll: true });
+}
+
 // Minimal CSS.escape shim for id selectors (heading ids are already slug-safe).
 function cssEscape(v: string): string {
   return typeof CSS !== "undefined" && CSS.escape ? CSS.escape(v) : v.replace(/["\\]/g, "\\$&");
 }
 
-// ── docs scrollspy: highlight the outline item for the section in view ────────
-// Nearest scrollable ancestor of the reader body (the pane that actually scrolls).
-function readerScroller(): HTMLElement | null {
-  const md = mount.querySelector(".cnpy-md");
-  for (let n = md?.parentElement; n; n = n.parentElement) {
-    if (/(auto|scroll)/.test(getComputedStyle(n).overflowY)) return n as HTMLElement;
-  }
-  return null;
-}
-
-// Mark the outline entry for the heading currently at the top of the reader as
-// current. Direct DOM (no rerender) so it stays cheap while scrolling.
+// ── the doc page's scroll-spy: the rail's On this page entry for the section in view ──
+// The current heading is the last one whose top is within 120px of the top of the page's scroller (`#cnpy-libmain`);
+// at the bottom the last one is current. Direct DOM (no repaint), so it stays cheap while scrolling.
+/** The least a doc page must scroll for On this page to mark the section in view (CSS px of scroll range). */
+const SPY_MIN_SCROLL = 160;
 function updateActiveHeading(): void {
-  if (state.screen !== "docs" || !state.docSlug) return;
-  const reader = readerScroller();
-  if (!reader) return;
-  const heads = [...reader.querySelectorAll<HTMLElement>(".cnpy-md h2[id], .cnpy-md h3[id]")];
-  if (!heads.length) return;
-  const top = reader.getBoundingClientRect().top;
-  let activeId = heads[0].id;
+  if (state.screen !== "docs") return;
+  const pane = mount.querySelector<HTMLElement>("#cnpy-libmain");
+  const items = pane ? [...pane.querySelectorAll<HTMLElement>(".cnpy-toc-i[data-toc]")] : [];
+  if (!pane || !items.length) return;
+  const ids = new Set(items.map((b) => b.dataset.toc as string));
+  const heads = [...pane.querySelectorAll<HTMLElement>(".cnpy-md h2[id], .cnpy-md h3[id], .cnpy-dpg-kh[id]")].filter((h) => ids.has(h.id));
+  // Too short to follow: with fewer than two headings, or a page that scrolls less than SPY_MIN_SCROLL px, every
+  // heading is already in view and the "current" one would only jump to the last — so nothing is marked.
+  if (heads.length < 2 || pane.scrollHeight - pane.clientHeight < SPY_MIN_SCROLL) {
+    for (const b of items) b.classList.remove("is-current");
+    return;
+  }
+  const top = rectOf(pane).top;
+  let active = heads[0].id;
   for (const h of heads) {
-    if (h.getBoundingClientRect().top - top <= 96) activeId = h.id;
+    if (rectOf(h).top - top <= 120) active = h.id;
     else break;
   }
-  // At the bottom the last section can't reach the top — force it current.
-  if (reader.scrollTop + reader.clientHeight >= reader.scrollHeight - 4) activeId = heads[heads.length - 1].id;
-  const want = `${state.docSlug}::${activeId}`;
-  for (const item of mount.querySelectorAll<HTMLElement>(".cnpy-outline-item")) {
-    item.classList.toggle("is-current", item.getAttribute("data-arg") === want);
-  }
+  if (pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 4) active = heads[heads.length - 1].id;
+  for (const b of items) b.classList.toggle("is-current", b.dataset.toc === active);
+}
+
+// The docs pane keeps the page being read in view: when its row is out of the pane's view, the pane scrolls it to
+// about 45% of its height (once per page opened, so a person scrolling the pane is never pulled back).
+let paneScrolledFor: string | null = null;
+function scrollActiveRow(): void {
+  if (state.screen !== "docs" || !state.docSlug || paneScrolledFor === state.docSlug) return;
+  const pane = mount.querySelector<HTMLElement>(".cnpy-dpane");
+  const row = pane?.querySelector<HTMLElement>(".cnpy-dp-row.is-active");
+  if (!pane || !row) return;
+  paneScrolledFor = state.docSlug;
+  const p = pane.getBoundingClientRect(), r = row.getBoundingClientRect();
+  if (r.top >= p.top && r.bottom <= p.bottom) return;
+  pane.scrollTop += r.top - p.top - p.height * 0.45;
 }
 
 // Get Started's table of contents: the same spy over the guide's headings. The
@@ -712,10 +813,10 @@ function updateGuideToc(): void {
   const pane = document.getElementById("cnpy-main");
   const heads = [...mount.querySelectorAll<HTMLElement>(".cnpy-guide-anchor[id]")];
   if (!pane || !heads.length) return;
-  const top = pane.getBoundingClientRect().top;
+  const top = rectOf(pane).top;
   let active = heads[0].id;
   for (const h of heads) {
-    if (h.getBoundingClientRect().top - top <= 96) active = h.id;
+    if (rectOf(h).top - top <= 96) active = h.id;
     else break;
   }
   if (pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 4) active = heads[heads.length - 1].id;
@@ -761,6 +862,7 @@ function currentRoute(): Route {
   if (state.screen === "releases" && state.releaseVersion) { r.releaseVersion = state.releaseVersion; r.releasePage = state.releasePage; }
   if (state.screen === "artifact") r.art = state.artRoute;
   if (state.screen === "handoff" && state.handoffId) r.handoffId = state.handoffId;
+  if (state.screen === "link" && state.linkId) r.linkId = state.linkId;
   if (state.screen === "prompt" && state.promptSlug) r.promptSlug = state.promptSlug;
   if (state.screen === "promptedit") {
     r.promptMode = state.promptMode;
@@ -776,6 +878,9 @@ function currentRoute(): Route {
     if (state.org.tab === "repos" && state.org.repoPage) r.orgRepo = state.org.repoPage;
   }
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
+  if (state.screen === "space" && state.spaceSlug) r.spaceSlug = state.spaceSlug;
+  if (state.screen === "docs" && state.docSlug) r.docSlug = state.docSlug;
+  if (state.screen === "import" && state.imp.space) r.importSpace = state.imp.space;
   if (state.screen === "ask" && state.ask.page.threadId !== null) r.askThread = state.ask.page.threadId;
   // The step ON SCREEN: a member who opens `#welcome` (the admin's first step) is on their own first.
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
@@ -805,10 +910,15 @@ function applyRoute(r: Route): void {
     state.releaseVersion = v; state.releasePage = page;
   }
   state.artRoute = r.art ?? ART_ROUTE_NONE;
+  state.repoAttentionOpen = false;   // Needs attention's dialog never outlives a route change
+  state.rmTrovOpen = false;          // nor does the Roadmap's Trov dialog
   // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
   if (!state.art.deleteBusy) state.art.deleteArm = false;
   if (r.handoffId) state.handoffId = r.handoffId;
+  // A link's confirm never carries to another link.
+  if (r.linkId !== state.linkId) { state.linkCancelArm = false; state.linkCancelBusy = false; }
+  if (r.linkId) state.linkId = r.linkId;
   if (r.promptSlug) state.promptSlug = r.promptSlug;
   if (r.promptMode) state.promptMode = r.promptMode;
   if (r.platTab) state.plat.tab = r.platTab;
@@ -819,12 +929,21 @@ function applyRoute(r: Route): void {
   // Org settings › Repositories: one repository's Apps page, or the list.
   if (r.screen === "org") state.org.repoPage = r.orgRepo ?? null;
   if (r.tagName) state.tagName = r.tagName;
+  // The Library: another space starts on its Overview; another doc is read again (loadForScreen).
+  if (r.screen === "space" && r.spaceSlug) {
+    if (r.spaceSlug !== state.spaceSlug) { state.spaceTab = "overview"; state.libUi.desc = null; }
+    state.spaceSlug = r.spaceSlug;
+  }
+  if (r.screen === "docs" && r.docSlug && r.docSlug !== state.docSlug) { state.docSlug = r.docSlug; state.showHistory = false; state.treeMenu = null; state.docDetail = { status: "idle", data: null }; }
   if (r.screen === "ask") askRoute = r.askThread ?? null;
+  if (r.screen === "import") importRoute = r.importSpace ?? null;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
 }
 
 /** The thread `#ask/<id>` named on arrival (applyRoute), handed to the Ask controller by loadForScreen. */
 let askRoute: number | null = null;
+/** The space `#import/<space>` named on arrival, handed to the import controller by loadForScreen. */
+let importRoute: string | null = null;
 
 // Kick off the data load for a screen (mirrors the go* dispatch cases). Batched: a screen that
 // starts several reads (My Work starts eight) paints once, before this returns — not once per read.
@@ -834,17 +953,27 @@ function loadForScreen(screen: Screen): void {
 function startScreenLoads(screen: Screen): void {
   switch (screen) {
     case "feed": loadFeedIfNeeded(); loadFeedStats(); loadFeedReview(); break;
-    case "docs": loadDocsIfNeeded(); break;
+    case "docs":
+      if (state.docSlug && (state.docDetail.status === "idle" || state.docDetail.data?.doc.slug !== state.docSlug)) loadDoc(state.docSlug);
+      else rerender();
+      break;
+    case "library": libCtl.load(); rerender(); break;
+    case "space": libCtl.openSpace(state.spaceSlug); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
     case "maintenance": loadNeedsTriageIfNeeded(); break;
+    case "relay": loadRelay(); break;
     case "handoffs": loadHandoffs(); break;
     case "handoff": if (state.handoffId) openHandoff(state.handoffId); else rerender(); break;
     case "newhandoff": state.nh = blankHandoff(primaryRepoName()); loadPersons(); break;
+    case "links": loadLinks(); break;
+    case "link": if (state.linkId) openLinkPage(state.linkId); else rerender(); break;
     case "prompts": loadPrompts(); break;
     case "prompt": if (state.promptSlug) openPrompt(state.promptSlug); else rerender(); break;
     case "promptedit": openEditor(state.promptMode, state.promptSlug); break;
-    case "newdoc": startNewDoc(); break;
+    case "import": impCtl.enter(importRoute ?? state.imp.space); importRoute = null; break;
+    case "imports": impCtl.loadHistory(); break;
+    case "newdoc": ndCtl.start(liveSpaces(state).some((x) => x.slug === state.nd.space) ? state.nd.space : defaultSpaceSlug(), null); break;
     case "tag": if (state.tagName) tagsCtl.open(state.tagName); else rerender(); break;
     case "search": loadSearchIfNeeded(); break;
     case "mywork": loadMyWorkIfNeeded(); break;
@@ -902,6 +1031,70 @@ function openHandoff(id: number): void {
       rerenderSoon();
     });
 }
+// ── Relay › Links ─────────────────────────────────────────────────────────
+/** The Links tab's four boxes, read together. Waiting-for-me is the sidebar's half of the Relay badge
+ *  (`listed("links")`) — never folded into `handoffsForMe`, which My Work counts. */
+function loadLinks(): void {
+  state.links = { status: "loading", data: state.links.data };
+  rerender();
+  Promise.all([listLinks("waiting"), listLinks("open"), listLinks("mine"), listLinks("closed")])
+    .then(([waiting, open, mine, closed]) => {
+      state.links = { status: "ok", data: { waiting, open, mine, closed } };
+      listed("links", waiting.length);
+      rerenderSoon();
+    })
+    .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } state.links = { status: "error", data: state.links.data, error: String(e) }; rerender(); });
+}
+function openLinkPage(id: number): void {
+  if (state.linkId !== id) { state.linkCancelArm = false; state.linkCancelBusy = false; state.linkNoteSide = "requester"; }
+  state.linkId = id;
+  state.linkBusy = false;
+  // Keep what the tab already holds on screen (no notes yet) while the fresh read lands.
+  const b = state.links.data;
+  const known = state.linkDetail.data?.id === id ? state.linkDetail.data
+    : [...b.waiting, ...b.open, ...b.mine, ...b.closed].find((l) => l.id === id) ?? null;
+  state.linkDetail = { status: "loading", data: known ? { notes: [], ...known } : null };
+  rerender();
+  getLink(id)
+    .then((l) => { if (state.linkId !== id) return; state.linkDetail = { status: "ok", data: l }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      if (state.linkId !== id) return;
+      const missing = e instanceof ApiError && e.status === 404;
+      state.linkDetail = { status: missing ? "ok" : "error", data: null, error: String(e) };
+      rerenderSoon();
+    });
+}
+/** A link refusal in words: the route's own sentence when it sent one (`{ error, message }`), else the fallback. */
+function linkErr(e: unknown, fallback: string): void {
+  if (e instanceof Unauthorized) { unauth(e); return; }
+  const detail = e instanceof ApiError ? e.detail : null;
+  flash(detail ? `${fallback}: ${detail}` : fallback, 4000);
+}
+/** A person step on the link's page: run it, show the link as it now stands, refresh the tab (and its badge). */
+function runLinkStep(id: number, step: "send" | "accept" | "decline" | "cancel" | "close", done: (l: LinkView) => string, fallback: string): void {
+  if (state.linkBusy) return;
+  state.linkBusy = true;
+  rerender();
+  (step === "close" ? closeLinkWeb(id) : linkStep(id, step))
+    .then((l) => {
+      state.linkBusy = false;
+      state.linkCancelArm = false; state.linkCancelBusy = false;
+      if (state.linkId === id) state.linkDetail = { status: "ok", data: { ...l, notes: state.linkDetail.data?.notes ?? [] } };
+      loadLinks();
+      if (state.linkId === id) openLinkPage(id);
+      flash(done(l));
+    })
+    .catch((e) => {
+      state.linkBusy = false;
+      state.linkCancelArm = false; state.linkCancelBusy = false;
+      linkErr(e, fallback);
+      // A refusal usually means the link moved elsewhere (cancelled, accepted, expired): re-read the page AND the
+      // tab, so the boxes and the sidebar badge stop counting a request that is no longer waiting (E2E B-08).
+      if (!(e instanceof Unauthorized)) loadLinks();
+      if (state.linkId === id) openLinkPage(id);
+    });
+}
 function loadPrompts(): void {
   state.promptList = { status: "loading", data: state.promptList.data };
   rerender();
@@ -941,9 +1134,15 @@ function openEditor(mode: "new" | "edit" | "version", slug: string | null): void
     .then((p) => { if (state.screen !== "promptedit" || state.promptSlug !== slug) return; state.promptEd = draftFromPrompt(p, mode); rerenderSoon(); })
     .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } flash("Couldn't load that prompt"); state.screen = "prompts"; loadPrompts(); });
 }
-function startNewDoc(): void {
-  state.nd = blankDoc(state.docSpace, ""); // the view defaults the section once the space's docs are known
-  if (state.docsList.status === "idle") loadDocs(); else rerender();
+/** Where a new page goes when nothing says: the default space while it is live, else the Library's first. */
+/** The space the docs pane shows when it is a live one (New page from a doc page goes there), else `fallback`. */
+function paneSpaceOr(fallback: string): string {
+  const slug = state.screen === "space" ? state.spaceSlug : state.screen === "docs" ? state.docDetail.data?.doc.space ?? state.docSpace : null;
+  return slug && liveSpaces(state).some((x) => x.slug === slug) ? slug : fallback;
+}
+function defaultSpaceSlug(): string {
+  const live = liveSpaces(state);
+  return live.length === 0 || live.some((s) => s.slug === DEFAULT_SPACE) ? DEFAULT_SPACE : live[0].slug;
 }
 /** The org's primary repository as `owner/repo` ("" when none is connected, or not known yet). */
 const primaryRepoName = (): string => state.orgMe.data?.repos.primary ?? "";
@@ -1116,6 +1315,8 @@ function enterOrgNow(slug: string, hash: string): void {
   loadPersons();
   // The org's tag list backs the Feed's filter, the Unplaced picker, a doc's Tags row and Org settings › Tags.
   tagsCtl.load();
+  // The Library's spaces back the sidebar's Library group on every screen (and the space pickers).
+  if (state.library.status === "idle") libCtl.load();
 }
 /** A write's failure as a toast: the server's `{ error }` (a 409's "handoff is claimed"), else a fallback. */
 function writeErr(e: unknown, fallback: string): void {
@@ -1436,6 +1637,23 @@ function loadMcpTokens(): void {
       rerenderSoon();
     });
 }
+// Relay › Overview (relay.ts): both halves' lists for the cards' counts, and Your connections — the person's OAuth
+// connections and access tokens (Settings › MCP access's reads) and Ask's on/off for the org.
+function loadRelay(): void {
+  loadHandoffs();
+  loadLinks();
+  loadGrants();
+  loadMcpTokens();
+  if (!state.orgSlug) return;
+  state.relayAsk = { status: "loading", data: state.relayAsk.data };
+  getAskState(state.orgSlug)
+    .then((a) => { state.relayAsk = { status: "ok", data: { enabled: a.enabled, eligibility: a.eligibility } }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.relayAsk = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
+      rerenderSoon();
+    });
+}
 function loadNotifPrefsIfNeeded(): void {
   if (state.notifPrefs.status === "idle") loadNotifPrefs();
   else rerender();
@@ -1485,128 +1703,41 @@ function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done
       rerender();
     });
 }
+// The doc page (`#doc/<slug>`, doc-page.ts): its read (`GET /doc/:slug`, with its tree, links and rail) and its space's
+// pages for the docs pane (`spaceHome`, read once per space — the Library controller's `ensureSpace`). The pane is
+// patched in place across docs (render.ts `libraryFrame`), so no DOM is touched by hand here.
+let docSeq = 0;
 function loadDoc(slug: string): void {
-  state.docDetail = { status: "loading", data: null };
+  const seq = ++docSeq;
+  const same = state.docDetail.data?.doc.slug === slug;
+  state.docDetail = { status: "loading", data: same ? state.docDetail.data : null };
+  // The pane shows the space the doc is expected in (the last doc's) while the doc's own read is out.
+  if (!same && state.spaceHome.data === null) libCtl.ensureSpace(state.docSpace);
   rerender();
   getDoc(slug)
     .then((result) => {
+      if (seq !== docSeq) return;
       state.docDetail = { status: "ok", data: result };
       state.docSpace = result.doc.space;
-      state.docOutlineOpen[result.doc.slug] = true;
+      libCtl.ensureSpace(result.doc.space);
       rerenderSoon();
     })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (seq !== docSeq) return;
       if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.docDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
 }
-
-// Open a doc clicked in the tree: animate its outline like the chevron does
-// (mutate the live tree, no rerender that would kill the transition) and stream
-// the doc into the reader pane in place.
-function openDocInTree(slug: string): void {
-  applyTreeActive(slug);
+/** Open a doc's page (from the pane, a card, a crumb, a backlink, or another screen). */
+function openDocPage(slug: string): void {
+  if (state.docSlug !== slug) state.showHistory = false;
+  state.screen = "docs";
   state.docSlug = slug;
-  state.showHistory = false;
-  state.docOutlineOpen[slug] = true;
-  state.docDetail = { status: "loading", data: null };
-  refreshReaderPane();
-  getDoc(slug)
-    .then((result) => {
-      state.docDetail = { status: "ok", data: result };
-      state.docSpace = result.doc.space;
-      refreshReaderPane();
-    })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; refreshReaderPane(); return; }
-      state.docDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
-      refreshReaderPane();
-    });
-}
-
-// Open/close one outline by flipping .is-open — the stylesheet grid-rows transition
-// animates it. Outlines are independent (no accordion): opening one never collapses
-// another, so only a single fr transition ever runs at a time (two overlapping wedge).
-function setOutlineOpen(el: Element | null, open: boolean): void {
-  (el as HTMLElement | null)?.classList.toggle("is-open", open);
-}
-
-// Flip a doc's outline open/closed in place (chevron + row both use this). No
-// navigation, no rerender — just the animated toggle and the open-set update.
-/** Narrow screens: picking a page (or a heading) in the page list shows the reader again.
- *  In place — the reader pane itself updates in place, without a rerender. */
-function closeDocsTree(): void {
+  state.treeMenu = null;
   state.docsTree = false;
-  const box = mount.querySelector(".cnpy-docs");
-  box?.setAttribute("data-tree", "0");
-  const btn = box?.querySelector<HTMLElement>('[data-act="docsTree"]');
-  if (btn) { btn.setAttribute("aria-expanded", "false"); btn.lastChild!.textContent = `${spaceLabel(state.docSpace)} pages`; }
-}
-
-function toggleOutlineFor(slug: string): void {
-  const esc = cssEscape(slug);
-  const open = !state.docOutlineOpen[slug];
-  if (open) state.docOutlineOpen[slug] = true; else delete state.docOutlineOpen[slug];
-  mount.querySelector(`.cnpy-treechev[data-arg="${esc}"]`)?.classList.toggle("is-open", open);
-  setOutlineOpen(mount.querySelector(`.cnpy-outline[data-outline="${esc}"]`), open);
-  if (open) updateActiveHeading();
-}
-
-// Reflect the newly-active doc in the tree without a rerender: move .is-active and
-// open this doc's outline (animated). Any other open outlines are left as they are.
-function applyTreeActive(slug: string): void {
-  const esc = cssEscape(slug);
-  mount.querySelectorAll(".cnpy-tree.is-active").forEach((b) => b.classList.remove("is-active"));
-  mount.querySelector(`.cnpy-tree[data-act="openDoc"][data-arg="${esc}"]`)?.classList.add("is-active");
-  const tgt = mount.querySelector(`.cnpy-outline[data-outline="${esc}"]`);
-  if (tgt && !tgt.classList.contains("is-open")) {
-    mount.querySelector(`.cnpy-treechev[data-arg="${esc}"]`)?.classList.add("is-open");
-    setOutlineOpen(tgt, true);
-  }
-}
-
-// Update only the reader pane, leaving the tree (and its in-flight animation)
-// untouched. Falls back to a full rerender if the pane isn't mounted.
-function refreshReaderPane(): void {
-  const pane = document.getElementById("cnpy-reader");
-  if (!pane) { rerender(); return; }
-  pane.innerHTML = docReaderHtml(state);
-  if (state.pendingScrollId) {
-    const target = pane.querySelector<HTMLElement>(`.cnpy-md [id="${cssEscape(state.pendingScrollId)}"]`);
-    if (target) { state.pendingScrollId = null; requestAnimationFrame(() => target.scrollIntoView({ block: "start" })); }
-  }
-  updateActiveHeading();
-}
-
-function loadDocs(): void {
-  state.docsList = { status: "loading", data: state.docsList.data };
-  rerender();
-  listDocs()
-    .then((docs) => {
-      state.docsList = { status: "ok", data: docs };
-      const first = firstDocForSpace(docs, state.docSpace) ?? docs[0];
-      if (state.docSlug === null && first) {
-        state.docSlug = first.slug;
-        state.docSpace = first.space;
-        state.docOutlineOpen[first.slug] = true;
-        loadDoc(first.slug);
-      } else {
-        rerenderSoon();
-      }
-    })
-    .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-      state.docsList = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
-      rerenderSoon();
-    });
-}
-
-function loadDocsIfNeeded(): void {
-  if (state.docsList.status === "idle") loadDocs();
-  else rerender();
+  loadDoc(slug);
 }
 
 let searchDebounce: ReturnType<typeof setTimeout> | null = null;
@@ -1707,7 +1838,7 @@ function loadProposals(after?: () => void): void {
   state.proposals = { status: "loading", data: state.proposals.data };
   rerender();
   listStagedProposals()
-    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
+    .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); noteGroupTotals(); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== proposalsSeq) return;
@@ -1782,11 +1913,24 @@ function reviewVerdict(id: string, accept: boolean): void {
   // Only a selection made by hand is moved: with none, the view already shows the first one waiting.
   const selBefore = state.reviewSel;
   let selAfter = selBefore;
+  const props = reviewProps(state);
+  const item = props.items.find((it) => it.id === id);
+  // A page of a group (an import's, an agent's): the next one of its group still waiting, wrapping (the group is its
+  // own list).
+  const key = item ? groupKeyOf(item) : null;
+  const group = key !== null ? reviewGroups(props.items).get(key) ?? null : null;
+  const groupLeft = group ? group.items.filter((it) => it.id !== id && !props.leaving?.[it.id]) : [];
   if (selBefore === id) {
-    const p = reviewProps(state);
-    const rows = p.items.filter((it) => (p.filter === "all" || it.kind === p.filter) && (it.id === id || !p.leaving?.[it.id]));
-    const at = rows.findIndex((it) => it.id === id);
-    selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
+    if (group) {
+      const rows = group.items.filter((it) => it.id === id || !props.leaving?.[it.id]);
+      const at = rows.findIndex((it) => it.id === id);
+      selAfter = (rows[at + 1] ?? rows[0] ?? null)?.id ?? null;
+      if (selAfter === id) selAfter = null;
+    } else {
+      const rows = props.items.filter((it) => inReviewFilter(it, props.filter) && groupKeyOf(it) === null && (it.id === id || !props.leaving?.[it.id]));
+      const at = rows.findIndex((it) => it.id === id);
+      selAfter = (rows[at + 1] ?? rows[at - 1] ?? null)?.id ?? null;
+    }
   }
   state.reviewSel = selAfter;
   // The card is seen leaving only on Review, and only when motion is allowed; otherwise it is gone at once.
@@ -1808,7 +1952,8 @@ function reviewVerdict(id: string, accept: boolean): void {
   op.then(() => {
       exit.ok = true;
       reviewRefetch[ref.kind] = true;
-      flash(accept
+      flash(group && groupLeft.length === 0 ? `Every page from ${group.file} has been reviewed`
+        : accept
         ? (ref.kind === "adr" ? "Ratified — the decision is now accepted" : "Promoted — the proposal is live; previous version kept")
         : "Rejected — parked, nothing changed");
       // Refetch the affected list — the read stays the truth (the counts are derived from it).
@@ -1824,6 +1969,92 @@ function reviewVerdict(id: string, accept: boolean): void {
       flash(e instanceof ApiError ? e.message : "Action failed");
       settleReview();
     });
+}
+/** Review › a group's Approve all / Reject all: the whole card wears the verdict and leaves by the queue's one exit,
+ *  optimistically. An import's is `POST /imports/:id/approve-all` / `reject-all` (cookie-only; each call is bounded,
+ *  so it is repeated while `remaining` > 0); an agent's is its pages' own promote / reject routes (cookie-only, the
+ *  same as deciding each by hand), one page after another — oldest first, so a page's newest change goes live last.
+ *  A failure before anything was decided puts the group back as it was; one part way through lets the refetch say
+ *  what is left. */
+const groupBusy = new Set<string>();
+function reviewGroupVerdict(key: string, accept: boolean): void {
+  const props = reviewProps(state);
+  const g = reviewGroups(props.items).get(key);
+  const items = g ? g.items.filter((it) => !state.reviewLeaving[it.id]) : [];
+  if (!g || items.length === 0 || groupBusy.has(key)) return;
+  groupBusy.add(key);
+  const verdict: ReviewVerdict = accept ? "promoted" : "rejected";
+  const selBefore = state.reviewSel;
+  if (items.some((it) => it.id === selBefore)) state.reviewSel = null;
+  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const exits: ReviewExit[] = [];
+  for (const it of items) {
+    state.reviewLeaving[it.id] = { verdict, gone: !animate };
+    const x: ReviewExit = { kind: "doc", selBefore, selAfter: null, timer: null, ok: false };
+    reviewExits.set(it.id, x);
+    exits.push(x);
+  }
+  if (animate) exits[0].timer = setTimeout(() => {
+    exits[0].timer = null;
+    for (const it of items) { const l = state.reviewLeaving[it.id]; if (l && !l.gone) l.gone = true; }
+    rerender();
+    settleReview();
+  }, REVIEW_EXIT_MS);
+  rerender();
+  let done = 0;
+  type Answer = { space: string; space_name: string | null };
+  const call = accept ? approveImport : rejectImport;
+  const importLoop = (): Promise<Answer> => call(g.id).then((a) => { done += a.done; return a.remaining > 0 && a.done > 0 ? importLoop() : a; });
+  const agentLoop = async (): Promise<Answer> => {
+    for (const it of [...items].reverse()) {
+      const ref = decodeReviewId(it.id);
+      if (ref?.kind !== "doc") continue;
+      await (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version));
+      done++;
+    }
+    return { space: g.space, space_name: null };
+  };
+  (g.kind === "agent" ? agentLoop() : importLoop())
+    .then((a) => {
+      groupBusy.delete(key);
+      for (const x of exits) x.ok = true;
+      reviewRefetch.doc = true;
+      const slug = a.space || g.space;
+      const name = slug ? a.space_name ?? spaceName(state, slug) : null;
+      const pages = `${done} ${done === 1 ? "page" : "pages"}`;
+      const verb = done === 1 ? "is" : "are";
+      flash(accept ? `${pages} ${verb} now live${name ? ` in ${name}` : ""}` : `${pages} rejected`, 6000, name ? { label: `Open ${name}`, act: "libOpenSpace", arg: slug } : null);
+      if (accept) libCtl.load();
+      loadBadges();
+      settleReview();
+    })
+    .catch((e) => {
+      groupBusy.delete(key);
+      if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
+      else {
+        if (exits[0].timer !== null) clearTimeout(exits[0].timer);
+        for (const it of items) { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
+        if (state.reviewSel === null) state.reviewSel = selBefore;
+      }
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      flash(e instanceof ApiError ? (rateLimitText(e) ?? (done > 0 ? `${done} of the pages went through, then it stopped. Try again for the rest.` : "Couldn't do that. Try again.")) : "Couldn't do that. Check your connection and try again.", 5000);
+      settleReview();
+      rerender();
+    });
+}
+/** The most pages each group has held this session (a group's "‹d› of ‹N› reviewed"), by `groupKeyOf`, and every
+ *  page it has held in its order (a page's "Page i of N" keeps its place while others are decided and leave). */
+function noteGroupTotals(): void {
+  const totals = { ...state.reviewGroupTotals };
+  const pages = { ...state.reviewGroupPages };
+  for (const [key, g] of reviewGroups(reviewItemsFromReads(state.proposals.data, []))) {
+    const had = pages[key] ?? [];
+    const seen = new Set(had);
+    pages[key] = [...had, ...g.items.map((it) => it.id).filter((id) => !seen.has(id))];
+    totals[key] = Math.max(totals[key] ?? 0, g.items.length);
+  }
+  state.reviewGroupTotals = totals;
+  state.reviewGroupPages = pages;
 }
 function loadDraftAdrsIfNeeded(): void {
   if (state.draftAdrs.status === "idle" || state.draftAdrs.status === "error") loadDraftAdrs();
@@ -2468,6 +2699,9 @@ function confirmOut(then: () => void): void {
   const layer = mount.querySelector<HTMLElement>("[data-confirm-layer]");
   if (layer?.hasAttribute("data-closing")) return; // already on its way out
   if (!layer || matchMedia("(prefers-reduced-motion: reduce)").matches) { then(); return; }
+  // `data-keep` too: a repaint while it leaves (the "Saved" toast a save puts up at once) would otherwise strip
+  // `data-closing` — the dialog popped back in, then vanished. Morph leaves a kept layer alone until `then` closes it.
+  layer.setAttribute("data-keep", "");
   layer.setAttribute("data-closing", "");
   setTimeout(then, CONFIRM_OUT_MS);
 }
@@ -2792,6 +3026,22 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.repoProductEnv = arg;
       pendingFlash = ".repo-pswap";
       break;
+    // Repo › Overview › Needs attention: its button opens the dialog; Done, ×, Escape or the backdrop close it, and
+    // focus goes back to the button.
+    // Roadmap › Narrative: the Trov button opens its suggestions and the drift in a dialog; Done, ×, Escape or the
+    // backdrop close it, and focus goes back to the button.
+    case "rmTrov":
+      state.rmTrovOpen = !state.rmTrovOpen;
+      rerender();
+      if (state.rmTrovOpen) mount.querySelector<HTMLElement>("#rm-trov [data-confirm-focus]")?.focus();
+      else mount.querySelector<HTMLElement>(".rm-trov-btn")?.focus();
+      return;
+    case "repoAttention":
+      state.repoAttentionOpen = !state.repoAttentionOpen;
+      rerender();
+      if (state.repoAttentionOpen) mount.querySelector<HTMLElement>("#repo-attention [data-confirm-focus]")?.focus();
+      else mount.querySelector<HTMLElement>('[data-act="repoAttention"].repo-att-btn')?.focus();
+      return;
     case "repoToggleDrift":
       state.repoDriftOpen = !state.repoDriftOpen;
       if (state.repoDriftOpen) pendingFlash = ".repo-drift";
@@ -2901,7 +3151,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "navSub": {
       // `<group>:<page>` — each page is an existing destination, reached in one click.
       const [g, page = ""] = (arg ?? "").split(":");
-      if (g === "docs") { state.screen = "docs"; dispatch("setDocSpace", page, null); loadDocsIfNeeded(); return; }
+      if (g === "library" && page) { libCtl.act("libOpenSpace", page, null); return; }
       return;
     }
     // Uncontrolled: the box holds its own text; each keystroke feeds the search
@@ -2924,7 +3174,11 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Org settings › Members) opens it over the page; the backdrop, × and Escape close it.
     case "openPerson": if (!arg) return; openPersonCard(arg); return;
     case "personCardClose": state.personCard = null; break;
-    case "goDocs": state.screen = "docs"; loadDocsIfNeeded(); return;
+    // The Library's home (`goDocs` is its old name: My Work's "Docs you own", quick search).
+    case "goLibrary": case "goDocs": state.screen = "library"; libCtl.load(); rerender(); return;
+    // The Markdown import: the wizard (a space preset when there is one) and Imports history (import-actions.ts).
+    case "goImport": state.libUi.headMenu = false; impCtl.open(arg || null); return;
+    case "goImports": state.screen = "imports"; impCtl.loadHistory(); return;
     case "goRoadmap": state.screen = "roadmap"; state.sprintId = null; loadRoadmapIfNeeded(); loadRoadmapFeed(); return;
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
@@ -3463,7 +3717,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       rerender();
       const pane = document.getElementById("cnpy-main");
       const target = arg ? document.getElementById(`relgroup-${arg}`) : null;
-      if (pane) pane.scrollTop = target ? Math.max(0, target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 24) : 0;
+      if (pane) pane.scrollTop = target ? Math.max(0, rectOf(target).top - rectOf(pane).top + pane.scrollTop - 24) : 0;
       return;
     }
 
@@ -3511,8 +3765,34 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "reviewSelect": if (arg) state.reviewSel = arg; break;
     case "reviewBack": state.reviewSel = null; break;   // narrow: back to the list pane
     case "reviewFilter":
-      if (arg === "all" || arg === "proposal" || arg === "decision") state.reviewFilter = arg;
+      if ((REVIEW_FILTERS as readonly string[]).includes(arg ?? "")) state.reviewFilter = arg as ReviewFilter;
       break;
+    // A group of pages (review.ts `reviewGroups`: an import's, an agent's): open it page by page, or decide it whole.
+    case "reviewGroupToggle": if (arg) state.reviewGroupsOpen = { ...state.reviewGroupsOpen, [arg]: !state.reviewGroupsOpen[arg] }; break;
+    case "reviewGroupApprove": if (arg) reviewGroupVerdict(arg, true); return;
+    // Reject all asks first: the dialog takes the focus (its red button), and closing it hands it back to Reject all.
+    case "reviewGroupReject":
+      if (!arg) return;
+      state.reviewGroupReject = { id: arg, busy: false };
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "reviewGroupRejectClose": {
+      const id = state.reviewGroupReject?.id;
+      if (!id || state.reviewGroupReject?.busy) return;
+      confirmOut(() => {
+        state.reviewGroupReject = null;
+        rerender();
+        mount.querySelector<HTMLElement>(`[data-act="reviewGroupReject"][data-arg="${CSS.escape(id)}"]`)?.focus();
+      });
+      return;
+    }
+    case "reviewGroupRejectGo": {
+      const r = state.reviewGroupReject;
+      if (!r) return;
+      confirmOut(() => { state.reviewGroupReject = null; reviewGroupVerdict(r.id, false); });
+      return;
+    }
     case "reviewDiffView":
       if (arg === "unified" || arg === "split" || arg === "rendered") state.reviewDiffView = arg;
       break;
@@ -3521,52 +3801,11 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (arg) reviewVerdict(arg, act === "reviewAccept");
       return;
 
-    // docs navigation. Clicking the whole row toggles the outline like the chevron:
-    // if it's the doc you're already reading, collapse/expand its outline; otherwise
-    // navigate to it (which opens its outline).
+    // The doc page and the docs pane: a row, a crumb, a card or a backlink opens a page (`openDoc`; from another
+    // screen `openDocFrom`); the narrow screen's Pages button swaps the pane and the page.
     case "docsTree": state.docsTree = !state.docsTree; break;
-    case "openDoc":
-      if (arg) {
-        if (state.docsTree && arg !== state.docSlug) closeDocsTree();
-        if (arg === state.docSlug) toggleOutlineFor(arg);
-        else openDocInTree(arg);
-      }
-      return;
-    case "openDocFrom":
-      if (arg) { state.screen = "docs"; state.docSlug = arg; state.showHistory = false; state.docOutlineOpen[arg] = true; loadDocsIfNeeded(); loadDoc(arg); }
-      return;
-    case "setDocSpace": {
-      if (!arg || arg === state.docSpace) return;
-      state.docSpace = arg;
-      state.showHistory = false;
-      const first = firstDocForSpace(state.docsList.data, arg);
-      if (first) { state.docSlug = first.slug; state.docOutlineOpen[first.slug] = true; loadDoc(first.slug); }
-      else { state.docSlug = null; state.docDetail = { status: "ok", data: null }; rerender(); }
-      return;
-    }
+    case "openDoc": case "openDocFrom": if (arg) openDocPage(arg); return;
     case "toggleHistory": state.showHistory = !state.showHistory; break;
-    // Expand/collapse a page's in-page outline without navigating to it (the chevron).
-    case "toggleOutline":
-      if (arg) toggleOutlineFor(arg);
-      return;
-    // Jump to a heading; arg is `${slug}::${headingId}`. Opens the doc first if
-    // it isn't the one showing, then scrolls once its reader has rendered.
-    case "scrollToHeading": {
-      if (!arg) return;
-      const sep = arg.indexOf("::");
-      const slug = sep < 0 ? arg : arg.slice(0, sep);
-      const headingId = sep < 0 ? "" : arg.slice(sep + 2);
-      if (state.docsTree) closeDocsTree();
-      if (state.docSlug !== slug) {
-        state.pendingScrollId = headingId;
-        openDocInTree(slug); // loads into the pane; refreshReaderPane scrolls once ready
-      } else {
-        // same doc — scroll in place, no rerender (keeps the tree animation intact)
-        const target = document.getElementById("cnpy-reader")?.querySelector<HTMLElement>(`.cnpy-md [id="${cssEscape(headingId)}"]`);
-        if (target) requestAnimationFrame(() => target.scrollIntoView({ block: "start" }));
-      }
-      return;
-    }
 
     // Get Started's table of contents: scroll #cnpy-main to the heading, no rerender
     // (the hash is the route, so these are buttons, not #anchors).
@@ -3574,7 +3813,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const pane = document.getElementById("cnpy-main");
       const target = arg ? document.getElementById(arg) : null;
       if (!pane || !target) return;
-      const top = target.getBoundingClientRect().top - pane.getBoundingClientRect().top + pane.scrollTop - 24;
+      const top = rectOf(target).top - rectOf(pane).top + pane.scrollTop - 24;   // CSS px, as scrollTop is
       const behavior: ScrollBehavior = matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
       pane.scrollTo({ top: Math.max(0, top), behavior });
       return;
@@ -3630,7 +3869,152 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Sync GitHub (the header button, its panel, Sync now, Dismiss): sync-actions.ts.
     case "syncToggle": case "syncClose": case "syncReload": case "syncStart": case "syncDismiss": syncCtl.act(act); return;
     // ── Handoffs ─────────────────────────────────────────────────────────────
+    case "goRelay": state.screen = "relay"; state.handoffId = null; state.linkId = null; loadRelay(); return;
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
+    // ── Relay › Links ─────────────────────────────────────────────────────
+    case "goLinks": state.screen = "links"; state.linkId = null; loadLinks(); return;
+    case "openLink": {
+      const id = Number(arg);
+      if (!Number.isInteger(id) || id <= 0) return;
+      if (state.linkStart?.phase === "sent") state.linkStart = null; // its "Open link #n" — the card has done its job
+      state.screen = "link"; openLinkPage(id); return;
+    }
+    // ── Start a link (links.ts `linkStartCard`): the header's button opens the card at the top of the Links tab ──
+    case "linkStartOpen":
+      if (state.screen !== "links") { state.screen = "links"; loadLinks(); }
+      if (!state.linkStart || state.linkStart.phase === "sent") state.linkStart = blankLinkStart();
+      rerender();
+      mount.querySelector<HTMLElement>("[data-link-start]")?.scrollIntoView({ block: "nearest" });
+      mount.querySelector<HTMLElement>('[data-link-start] [data-seg] [tabindex="0"]')?.focus();
+      return;
+    case "linkStartClose": state.linkStart = null; break;
+    case "linksPastAll": state.linksPastAll = !state.linksPastAll; break;
+    case "linkStartMode": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || !(arg === "self" || arg === "team")) return;
+      state.linkStart = { ...d, mode: arg, phase: "edit", error: null };
+      break;
+    }
+    case "linkStartKind": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || !(arg === "person" || arg === "pr" || arg === "branch" || arg === "ticket")) return;
+      state.linkStart = { ...d, kind: arg as LinkStartKind, ref: d.kind === arg ? d.ref : "", phase: "edit", error: null };
+      break;
+    }
+    case "linkStartPerson": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || !arg) return;
+      state.linkStart = { ...d, person: d.person.toLowerCase() === arg.toLowerCase() ? "" : arg, phase: "edit", error: null };
+      break;
+    }
+    case "linkStartField": {
+      const d = state.linkStart;
+      if (!d || d.phase === "sending" || (arg !== "ref" && arg !== "reason")) return;
+      state.linkStart = { ...d, [arg]: arg === "reason" ? (value ?? "").slice(0, 280) : (value ?? "").slice(0, 200), phase: "edit", error: null };
+      rerender(); // the Links tab is data-morph'ed: the field keeps its focus and caret while the line and count update
+      return;
+    }
+    case "linkStartSend": {
+      const d = state.linkStart;
+      const me = state.me?.handle ?? "";
+      const target = d ? linkStartTarget(d, me) : null;
+      if (!d || !target || !linkStartReady(d, me)) return;
+      const sending = { ...d, phase: "sending" as const, error: null };
+      state.linkStart = sending;
+      rerender();
+      // The stream needs a moment to cross before the far orb lights: the answer waits for it (not under reduced motion).
+      const t0 = performance.now();
+      const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      const after = (fn: () => void) => setTimeout(fn, still ? 0 : Math.max(0, 1150 - (performance.now() - t0)));
+      startLink(target, d.reason.trim())
+        .then((link) => after(() => {
+          if (state.linkStart !== sending) return; // closed or edited meanwhile
+          state.linkStart = { ...sending, phase: "sent", sent: link };
+          loadLinks(); // the new link joins Yours (or Open, for a link with yourself)
+        }))
+        .catch((e) => {
+          if (e instanceof Unauthorized) { unauth(e); return; }
+          if (state.linkStart !== sending) return;
+          const code = e instanceof ApiError ? e.message : null;
+          state.linkStart = { ...sending, phase: "refused", error: linkStartRefusal(code, e instanceof ApiError ? e.detail : null) };
+          rerender();
+        });
+      return;
+    }
+    case "linkSend": { const id = Number(arg); if (id > 0) runLinkStep(id, "send", (l) => (l.state === "open" ? `Link #${l.id} is open` : `Link #${l.id} sent`), "Couldn't send this link"); return; }
+    case "linkAccept": { const id = Number(arg); if (id > 0) runLinkStep(id, "accept", (l) => `Link #${l.id} is open`, "Couldn't accept this link"); return; }
+    case "linkDecline": { const id = Number(arg); if (id > 0) runLinkStep(id, "decline", (l) => `Link #${l.id} declined`, "Couldn't decline this link"); return; }
+    case "linkCancel": { const id = Number(arg); if (id > 0) runLinkStep(id, "cancel", (l) => `Link #${l.id} cancelled`, "Couldn't cancel this link"); return; }
+    case "linkClose": { const id = Number(arg); if (id > 0) runLinkStep(id, "close", (l) => `Link #${l.id} closed`, "Couldn't close this link"); return; }
+    // Cancel on a SENT request asks first (links.ts `linkCancelModal`); a draft's Cancel acts at once (above).
+    case "linkCancelArm":
+      state.linkCancelArm = true;
+      state.linkCancelId = Number(arg) || null; // a card's Cancel request names its link (the link page has linkId)
+      rerender();
+      mount.querySelector<HTMLElement>("[data-confirm-focus]")?.focus();
+      return;
+    case "linkCancelDismiss": {
+      if (!state.linkCancelArm || state.linkCancelBusy) return;
+      confirmOut(() => {
+        state.linkCancelArm = false;
+        rerender();
+        const id = state.linkCancelId;
+        (mount.querySelector<HTMLElement>(`[data-confirm-trigger][data-arg="${id}"]`) ?? mount.querySelector<HTMLElement>("[data-confirm-trigger]"))?.focus();
+      });
+      return;
+    }
+    case "linkCancelConfirm": {
+      const id = Number(arg);
+      if (!(id > 0) || !state.linkCancelArm || state.linkCancelBusy) return;
+      state.linkCancelBusy = true;
+      runLinkStep(id, "cancel", (l) => `Link request #${l.id} cancelled`, "Couldn't cancel this request");
+      return;
+    }
+    case "linkNoteField": {
+      const id = Number(arg);
+      if (!(id > 0)) return;
+      state.linkNote = { id, text: (value ?? "").slice(0, LINK_NOTE_MAX) };
+      rerender(); // the count under the box (the page is data-morph'ed: the box keeps its focus and caret)
+      return;
+    }
+    // A self-link's "Write as" switch: which of my two sessions the note is from.
+    case "linkNoteSide": if (arg === "requester" || arg === "recipient") state.linkNoteSide = arg; break;
+    case "linkNoteSend": {
+      const id = Number(arg);
+      const text = state.linkNote && state.linkNote.id === id ? state.linkNote.text.trim() : "";
+      if (!(id > 0) || !text || state.linkBusy) return;
+      state.linkBusy = true;
+      rerender();
+      const self = state.linkDetail.data?.id === id && state.linkDetail.data.self;
+      addLinkNote(id, text, self ? state.linkNoteSide : undefined)
+        .then((l) => {
+          state.linkBusy = false;
+          state.linkNote = null;
+          if (state.linkId === id) state.linkDetail = { status: "ok", data: l };
+          flash("Note sent");
+          rerender();
+        })
+        .catch((e) => { state.linkBusy = false; linkErr(e, "Couldn't send the note"); rerender(); });
+      return;
+    }
+    // "Open in Ask": a new Ask thread with "join Trov link #n" typed in its composer (the person sends it).
+    case "linkJoinAsk": {
+      const id = Number(arg);
+      if (!(id > 0)) return;
+      state.linkStart = null;
+      state.screen = "ask";
+      askCtl.enter(null);
+      askCtl.act("askShNew", null, null);
+      state.ask.composer.page = { ...state.ask.composer.page, text: linkJoinPhrase(id) };
+      rerender();
+      return;
+    }
+    case "linkJoinCopy": {
+      const id = Number(arg);
+      if (!(id > 0)) return;
+      copyToClipboard(linkJoinPhrase(id)).then((ok) => flash(ok ? "Copied. Paste it to your agent" : "Couldn't reach the clipboard"));
+      return;
+    }
     case "newHandoff": state.screen = "newhandoff"; state.nh = blankHandoff(primaryRepoName()); rerender(); return;
     case "openHandoff": { const id = Number(arg); if (!Number.isInteger(id) || id <= 0) return; state.screen = "handoff"; openHandoff(id); return; }
     case "mwHandoffClaim": {
@@ -3675,8 +4059,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (!h || h.id !== Number(arg)) return;
       const d = docDraftFromHandoff(h);
       state.screen = "newdoc";
-      state.nd = { ...blankDoc("technical", "reference"), ...d, from: h.id };
-      if (state.docsList.status === "idle") loadDocs(); else rerender();
+      ndCtl.prefill({ ...d, from: h.id, space: defaultSpaceSlug() });
       return;
     }
     case "handoffPromptCopy": {
@@ -3748,6 +4131,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       copyToClipboard(body).then((ok) => flash(ok ? "Prompt copied" : "Couldn't reach the clipboard"));
       return;
     }
+    // A library card's copy button: the plain slug, for an agent's get_prompt. Copy only; the card's
+    // hit area is a sibling, so this click never opens the prompt. Not a use (get_prompt counts that).
+    case "promptCopySlug":
+      if (!arg) return;
+      copyToClipboard(arg).then((ok) => flash(ok ? `Slug copied · ${arg}` : "Couldn't reach the clipboard"));
+      return;
     case "promptExpand": state.promptExpanded = true; break;
     case "promptBoxView":
       if (arg !== "raw" && arg !== "rendered") return;
@@ -3856,37 +4245,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     }
 
-    // ── Docs › New doc — stages a version-1 proposal through the gate ─────────
-    case "newDoc": state.screen = "newdoc"; startNewDoc(); return;
-    case "ndField": {
-      if (arg !== "title" && arg !== "body" && arg !== "summary") return;
-      state.nd[arg] = value ?? "";
-      if (arg !== "summary") rerender(); // title / body arm "Stage for review"
-      return;
-    }
-    case "ndSpace": {
-      if (!arg) return;
-      if (arg === state.nd.space) return;
-      state.nd.space = arg;
-      state.nd.section = ""; // back to the new space's default
-      break;
-    }
-    case "ndSection": if (arg) state.nd.section = arg; break;
-    case "ndSubmit": {
-      const d = state.nd;
-      if (!d.title.trim() || !d.body.trim()) return;
-      const section = d.section || defaultSection(ASSIGN_OPTIONS.sections);
-      proposeDoc({ title: d.title.trim(), section, space: d.space, body: d.body, summary: d.summary.trim() || undefined })
-        .then(() => {
-          state.nd = blankDoc(state.docSpace, "");
-          state.screen = "review";
-          loadProposals();
-          loadDraftAdrsIfNeeded();
-          flash(`Staged for review in ${section}`);
-        })
-        .catch((e) => writeErr(e, "Couldn't stage the doc"));
-      return;
-    }
+    // ── Library › New page (newdoc-actions.ts) — stages a version-1 proposal through the gate ──
+    // In the space it was opened from (a space's home or the pane's head passes it), at its top level; a pane row's
+    // "+" opens it under that page (tree-actions.ts `treeNew`).
+    case "newDoc": state.screen = "newdoc"; ndCtl.start(arg && liveSpaces(state).some((x) => x.slug === arg) ? arg : paneSpaceOr(defaultSpaceSlug()), null); return;
 
     // ── Unplaced: the list selects; the picks belong to the item on screen ──
     case "maintSelect":
@@ -3930,7 +4292,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const target: AssignTarget = { type: kind };
       if (kind === "doc") {
         target.section = state.assignSection ?? undefined;
-        target.space = state.assignSpace === "technical" || state.assignSpace === "product" ? state.assignSpace : undefined;
+        target.space = state.assignSpace ?? undefined; // a live space's slug, or none (the gate's default space)
       }
       if (kind === "feed") target.tags = state.assignTags;
       assignTriage(id, target)
@@ -4290,6 +4652,11 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("ask") && askCtl.act(act, arg, value)) return;
       // The org's tag list, a tag's page, a doc's Tags row (tags-actions.ts).
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
+      // The Docs Library: Library home, a space's home, the space dialogs (library-actions.ts).
+      if (act.startsWith("lib")) { libCtl.act(act, arg, value); return; }
+      if (act.startsWith("imp") && impCtl.act(act, arg, value)) return;
+      if (act.startsWith("tree") || act === "docToc") { treeCtl.act(act, arg, value); return; }
+      if (act.startsWith("nd") && ndCtl.act(act, arg, value)) return;
       if (act.startsWith("orgs")) { orgsCtl.act(act, arg, value); return; }
       if (act.startsWith("org")) {
         if (act === "orgGo") {
@@ -4594,19 +4961,16 @@ mount.addEventListener("change", (e) => {
 // goes. Every column takes the card — any status may move to any other.
 // Rerenders are held for the whole drag (the DOM IS the drag state).
 // Mouse and pen only: on touch a press on the board must still scroll it.
-const DRAG_SLOP = 5;
+// The press → drag → drop lifecycle (slop, the swallowed click, Escape, the held paints) is web/src/pointer-drag.ts,
+// shared with the docs pane's tree (tree-drag.ts); what follows is what the BOARD draws and commits.
 const SLIDE_MS = 160;
-let boardDrag: { id: number; from: TicketStatus } | null = null;
 let rerenderHeld = false;
 interface BoardPress {
   card: HTMLElement; id: number; from: TicketStatus; x: number; y: number;
   dx: number; dy: number; ghost: HTMLElement | null; slot: HTMLElement | null;
   /** Where the card started: its list and the visible card after it. */
   homeList: HTMLElement | null; homeNext: HTMLElement | null;
-  settling: boolean;
 }
-let boardPress: BoardPress | null = null;
-let swallowClick = false;
 const listOf = (col: Element) => col.querySelector<HTMLElement>(".cnpy-stagger");
 /** The cards that take part in a column's layout (not the lifted one). */
 const liveCards = (list: Element | null) =>
@@ -4631,117 +4995,158 @@ function moveSlot(slot: HTMLElement, list: HTMLElement, ref: HTMLElement | null)
   const lists = new Set<HTMLElement>([list]);
   if (slot.parentElement instanceof HTMLElement) lists.add(slot.parentElement);
   const cards = [...lists].flatMap((l) => liveCards(l));
-  const before = new Map(cards.map((c) => [c, c.getBoundingClientRect().top]));
+  const before = new Map(cards.map((c) => [c, rectOf(c).top]));     // CSS px (zoom.ts), as the translate is
   list.insertBefore(slot, ref);
   if (reducedMotion()) return;
   for (const c of cards) {
-    const dy = (before.get(c) ?? 0) - c.getBoundingClientRect().top;
+    const dy = (before.get(c) ?? 0) - rectOf(c).top;
     if (Math.abs(dy) < 0.5) continue;
     c.animate([{ transform: `translateY(${dy}px)` }, { transform: "none" }], { duration: SLIDE_MS, easing: "cubic-bezier(.2,.7,.2,1)" });
   }
   slot.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SLIDE_MS });
 }
-function clearBoardDrag(): void {
-  const p = boardPress;
-  p?.slot?.remove();
-  p?.card.classList.remove("is-lifted");
+function clearBoardDrag(p: BoardPress): void {
+  p.slot?.remove();
+  p.card.classList.remove("is-lifted");
   document.querySelector(".cnpy-tghost")?.remove();
-  document.documentElement.classList.remove("cnpy-grabbing");
-  boardPress = null;
-  boardDrag = null;
-  if (rerenderHeld) { rerenderHeld = false; rerender(); }
 }
-function startBoardDrag(p: BoardPress): void {
-  const r = p.card.getBoundingClientRect();
-  p.dx = p.x - r.left;
-  p.dy = p.y - r.top;
-  const ghost = p.card.cloneNode(true) as HTMLElement;
-  ghost.classList.add("cnpy-tghost");
-  ghost.removeAttribute("data-act");
-  ghost.setAttribute("aria-hidden", "true");
-  ghost.style.width = `${r.width}px`;
-  ghost.style.height = `${r.height}px`;
-  ghost.style.left = `${r.left}px`;
-  ghost.style.top = `${r.top}px`;
-  // Inside the app's theme root, so the card's colors resolve exactly as on the board.
-  (mount.firstElementChild ?? document.body).appendChild(ghost);
-  p.ghost = ghost;
-  const slot = document.createElement("div");
-  slot.className = "cnpy-tslot";
-  slot.style.height = `${r.height}px`;
-  p.homeList = p.card.parentElement;
-  p.homeNext = nextLive(p.card);
-  p.card.parentElement?.insertBefore(slot, p.card);
-  p.card.classList.add("is-lifted");
-  p.slot = slot;
-  boardDrag = { id: p.id, from: p.from };
-  document.documentElement.classList.add("cnpy-grabbing");
-}
-mount.addEventListener("pointerdown", (e) => {
-  if (e.button !== 0 || e.pointerType === "touch") return;
-  const card = (e.target as Element | null)?.closest?.<HTMLElement>("[data-tdrag]");
-  if (!card || boardPress) return;
-  boardPress = {
-    card, id: Number(card.dataset.tdrag), from: card.dataset.status as TicketStatus,
-    x: e.clientX, y: e.clientY, dx: 0, dy: 0, ghost: null, slot: null, homeList: null, homeNext: null, settling: false,
-  };
+pointerDrag<BoardPress>(mount, {
+  press(target, e) {
+    const card = target.closest<HTMLElement>("[data-tdrag]");
+    const id = boardCardId(card);
+    if (!card || id === null) return null;
+    return { card, id, from: card.dataset.status as TicketStatus, x: e.clientX, y: e.clientY, dx: 0, dy: 0, ghost: null, slot: null, homeList: null, homeNext: null };
+  },
+  // The ghost is placed in CSS px (zoom.ts): `rectOf` / `pointOf`, so under the big-screen zoom it stays under the
+  // pointer. `p.x` / `p.y` stay raw client px — `elementFromPoint` wants those.
+  begin(p) {
+    const r = rectOf(p.card);
+    const at = pointOf({ clientX: p.x, clientY: p.y });
+    p.dx = at.x - r.left;
+    p.dy = at.y - r.top;
+    const ghost = p.card.cloneNode(true) as HTMLElement;
+    ghost.classList.add("cnpy-tghost");
+    ghost.removeAttribute("data-act");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.style.width = `${r.width}px`;
+    ghost.style.height = `${r.height}px`;
+    ghost.style.left = `${r.left}px`;
+    ghost.style.top = `${r.top}px`;
+    // Inside the app's theme root, so the card's colors resolve exactly as on the board.
+    (mount.firstElementChild ?? document.body).appendChild(ghost);
+    p.ghost = ghost;
+    const slot = document.createElement("div");
+    slot.className = "cnpy-tslot";
+    slot.style.height = `${r.height}px`;
+    p.homeList = p.card.parentElement;
+    p.homeNext = nextLive(p.card);
+    p.card.parentElement?.insertBefore(slot, p.card);
+    p.card.classList.add("is-lifted");
+    p.slot = slot;
+  },
+  over(p, e) {
+    const { ghost, slot } = p;
+    if (!ghost || !slot) return;
+    const at = pointOf(e);
+    ghost.style.left = `${at.x - p.dx}px`;
+    ghost.style.top = `${at.y - p.dy}px`;
+    const col = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-tdrop]") ?? null;
+    const list = col ? listOf(col) : null;
+    if (list) {
+      // The slot goes before the first card whose middle is below the pointer.
+      const ref = liveCards(list).find((c) => { const b = c.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) ?? null;
+      moveSlot(slot, list, ref);
+    }
+  },
+  drop(p, commit, done) {
+    const slot = p.slot;
+    if (!p.ghost || !slot) { clearBoardDrag(p); done(); return; }
+    const to = (slot.closest<HTMLElement>("[data-tdrop]")?.dataset.tdrop ?? p.from) as TicketStatus;
+    const after = prevLive(slot);
+    const unmoved = to === p.from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext;
+    const finish = () => {
+      clearBoardDrag(p);
+      done();
+      if (commit && !unmoved) dispatch("queueDrop", boardDropArg(p.id, to, after), null);
+    };
+    if (!commit || reducedMotion()) { finish(); return; }
+    // Glide the lifted card into its slot, then commit.
+    const s = rectOf(slot);
+    const g = rectOf(p.ghost);
+    const anim = p.ghost.animate(
+      [{ transform: "none" }, { transform: `translate(${s.left - g.left}px, ${s.top - g.top}px)`, boxShadow: "none" }],
+      { duration: 150, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
+    );
+    anim.onfinish = finish;
+    anim.oncancel = finish;
+  },
+}, () => { if (rerenderHeld) { rerenderHeld = false; rerender(); } });
+// The docs pane's pages (tree-drag.ts): drag a row into, above or below another page of its space, or onto the
+// pane's head for the top level — the same `planMove` the Worker runs, applied at once and posted (tree-actions.ts).
+installTreeDrag(mount, {
+  pages: () => treeCtl.pages(),
+  spaceName: () => state.spaceHome.data?.space.name ?? "",
+  commit: (slug, target) => treeCtl.move(slug, target),
 });
-document.addEventListener("pointermove", (e) => {
-  const p = boardPress;
-  if (!p || p.settling) return;
-  if (!p.ghost) {
-    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) < DRAG_SLOP) return;
-    startBoardDrag(p);
-  }
-  e.preventDefault();                                   // no text selection mid-drag
-  const { ghost, slot } = p;
-  if (!ghost || !slot || !boardDrag) return;
-  ghost.style.left = `${e.clientX - p.dx}px`;
-  ghost.style.top = `${e.clientY - p.dy}px`;
-  const col = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-tdrop]") ?? null;
-  const list = col ? listOf(col) : null;
-  if (list) {
-    // The slot goes before the first card whose middle is below the pointer.
-    const ref = liveCards(list).find((c) => { const b = c.getBoundingClientRect(); return e.clientY < b.top + b.height / 2; }) ?? null;
-    moveSlot(slot, list, ref);
-  }
+// Customize sidebar's picked spaces: drag one into place (customize-drag.ts) — or Alt+↑ / Alt+↓ on a focused row.
+installCustomizeDrag(mount, {
+  commit: (order) => libCtl.act("libCustomizeOrder", order.join(","), null),
+  cancel: () => rerender(),
+  reducedMotion: () => reducedMotion(),
 });
-function endBoardDrag(commit: boolean): void {
-  const p = boardPress;
-  if (!p || p.settling) return;
-  if (!p.ghost || !p.slot || !boardDrag) { boardPress = null; return; }   // a plain click: let it open the ticket
-  swallowClick = true;                                  // the click this release fires is not an "open"
-  setTimeout(() => { swallowClick = false; }, 0);
-  const { id, from } = boardDrag;
-  const slot = p.slot;
-  const to = (slot.closest<HTMLElement>("[data-tdrop]")?.dataset.tdrop ?? from) as TicketStatus;
-  const after = prevLive(slot);
-  const unmoved = to === from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext;
-  const finish = () => {
-    clearBoardDrag();
-    if (!commit) return;
-    if (!unmoved) dispatch("queueDrop", `${id}:${to}:${after?.dataset.arg ?? ""}`, null);
-  };
-  if (!commit || reducedMotion()) { finish(); return; }
-  // Glide the lifted card into its slot, then commit.
-  p.settling = true;
-  const s = slot.getBoundingClientRect();
-  const g = p.ghost.getBoundingClientRect();
-  const anim = p.ghost.animate(
-    [{ transform: "none" }, { transform: `translate(${s.left - g.left}px, ${s.top - g.top}px)`, boxShadow: "none" }],
-    { duration: 150, easing: "cubic-bezier(.2,.7,.2,1)", fill: "forwards" }
-  );
-  anim.onfinish = finish;
-  anim.oncancel = finish;
-}
-document.addEventListener("pointerup", () => endBoardDrag(true));
-document.addEventListener("pointercancel", () => endBoardDrag(false));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && boardPress?.ghost) endBoardDrag(false); });
-mount.addEventListener("click", (e) => {
-  if (!swallowClick) return;
-  swallowClick = false;
-  e.stopPropagation();
+mount.addEventListener("keydown", (e) => {
+  if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+  const row = (e.target as Element | null)?.closest?.<HTMLElement>("#lib-customize [data-cdrag]");
+  if (!row) return;
   e.preventDefault();
+  const slug = row.dataset.cdrag as string;
+  libCtl.act(e.key === "ArrowUp" ? "libCustomizeUp" : "libCustomizeDown", slug, null);
+  requestAnimationFrame(() => mount.querySelector<HTMLElement>(`#lib-customize [data-cdrag="${cssEscape(slug)}"]`)?.focus());
+});
+// …and the same moves from the keyboard: Alt+↑ / Alt+↓ / Alt+→ / Alt+← on a focused row (tree-drag.ts `treeKeyTarget`).
+mount.addEventListener("keydown", (e) => {
+  if (!e.altKey || !["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) return;
+  const row = (e.target as Element | null)?.closest?.<HTMLElement>(".cnpy-dpane [data-dtree]");
+  const pages = treeCtl.pages();
+  if (!row || !pages) return;
+  const slug = row.dataset.dtree as string;
+  const target = treeKeyTarget(pages, slug, e.key);
+  e.preventDefault();
+  if (!target) return;
+  treeCtl.move(slug, target);
+  requestAnimationFrame(() => mount.querySelector<HTMLElement>(`.cnpy-dpane [data-dtree="${cssEscape(slug)}"] > .cnpy-hit`)?.focus());
+});
+// A row's "…" menu closes on Escape or a click anywhere else.
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.treeMenu) { state.treeMenu = null; rerender(); } });
+mount.addEventListener("click", (e) => {
+  if (!state.treeMenu) return;
+  const t = e.target as Element | null;
+  if (t?.closest?.(".cnpy-dp-menu, [data-act=\"treeMenu\"]")) return;
+  state.treeMenu = null;
+  rerender();
+}, true);
+// …and so do a Library card's "…" menu (your own view: pin, sidebar, hide) and a space header's "…" menu; Escape
+// gives focus back to the "…".
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const card = state.libUi.cardMenu;
+  if (card) {
+    state.libUi.cardMenu = null;
+    rerender();
+    mount.querySelector<HTMLElement>(`[data-act="libCardMenu"][data-arg="${cssEscape(card)}"]`)?.focus();
+  } else if (state.libUi.headMenu) {
+    state.libUi.headMenu = false;
+    rerender();
+    mount.querySelector<HTMLElement>('[data-act="libHeadMenu"]')?.focus();
+  }
+});
+mount.addEventListener("click", (e) => {
+  if (!state.libUi.cardMenu && !state.libUi.headMenu) return;
+  const t = e.target as Element | null;
+  if (t?.closest?.(".cnpy-lib-cardmenu, .cnpy-lib-headmenu, [data-act=\"libCardMenu\"], [data-act=\"libHeadMenu\"]")) return;
+  state.libUi.cardMenu = null;
+  state.libUi.headMenu = false;
+  rerender();
 }, true);
 
 // Settings › Profile's photo menu: Escape closes it and hands focus back to the avatar;
@@ -4786,11 +5191,29 @@ const artFileTarget = (el: Element, attrName: string): "create" | "nv" => (el.ge
 mount.addEventListener("change", (e) => {
   const el = e.target as HTMLElement;
   if (el instanceof HTMLInputElement && el.type === "file" && el.hasAttribute("data-art-file")) readArtFile(el.files?.[0], artFileTarget(el, "data-art-file"));
+  // The import wizard's Choose files: every file picked (the input is cleared, so the same file can be picked again).
+  if (el instanceof HTMLInputElement && el.type === "file" && el.hasAttribute("data-imp-file")) { impCtl.addFiles(Array.from(el.files ?? [])); el.value = ""; }
 });
 mount.addEventListener("dragover", (e) => {
   if ((e.target as Element | null)?.closest?.("[data-art-drop]")) e.preventDefault();
+  // The import wizard's Files step: its drop zone lights while files are over it.
+  if ((e.target as Element | null)?.closest?.("[data-imp-drop]")) {
+    e.preventDefault();
+    if (!state.imp.dragOver) { state.imp.dragOver = true; rerender(); }
+  }
+});
+mount.addEventListener("dragleave", (e) => {
+  const zone = (e.target as Element | null)?.closest?.("[data-imp-drop]");
+  if (zone && !zone.contains(e.relatedTarget as Node | null) && state.imp.dragOver) { state.imp.dragOver = false; rerender(); }
 });
 mount.addEventListener("drop", (e) => {
+  const imp = (e.target as Element | null)?.closest?.("[data-imp-drop]");
+  if (imp) {
+    e.preventDefault();
+    state.imp.dragOver = false;
+    impCtl.addFiles(Array.from(e.dataTransfer?.files ?? []));
+    return;
+  }
   const zone = (e.target as Element | null)?.closest?.("[data-art-drop]");
   if (!zone) return;
   e.preventDefault();
@@ -4857,10 +5280,10 @@ mount.addEventListener("pointerdown", (e) => {
   const box = mount.querySelector<HTMLTextAreaElement>('[data-field="ticketComment"]');
   if (!box) return;
   e.preventDefault();                       // no text selection while dragging
-  const startY = e.clientY;
-  const startHeight = box.getBoundingClientRect().height;
+  const startY = pointOf(e).y;              // CSS px (zoom.ts): the box follows the pointer 1:1 at any zoom
+  const startHeight = rectOf(box).height;
   const move = (ev: PointerEvent) => {
-    const h = Math.max(COMMENT_BOX.minHeight, Math.round(startHeight + (ev.clientY - startY)));
+    const h = Math.max(COMMENT_BOX.minHeight, Math.round(startHeight + (pointOf(ev).y - startY)));
     state.commentHeight = h;
     // Paint it straight onto the live element: a rerender per pointermove would
     // rebuild the screen (and steal the caret) dozens of times a second.
@@ -4993,6 +5416,8 @@ document.addEventListener("keydown", (e) => {
   if (state.view !== "app" && state.view !== "platform") return;
   const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
   if (!dlg) return;
+  // A dropdown open over the dialog (Edit space's Position) owns its own keys (dropdown.ts).
+  if (state.dd.open && (e.target as Element | null)?.closest?.("[data-dd-pop]")) return;
   const t = e.target instanceof HTMLButtonElement ? e.target : null;
   const what = confirmKeyAction(e.key, { onDialogButton: !!t && dlg.contains(t) && !t.disabled, busy: dlg.hasAttribute("data-busy"), repeat: e.repeat });
   if (what === null || what === "native") return;
@@ -5002,13 +5427,24 @@ document.addEventListener("keydown", (e) => {
   else if (what === "cancel") dispatch(dlg.getAttribute("data-confirm-cancel") ?? "", arg, null);
   else if (what === "trap") {
     // Its buttons, and a deletion's typed confirmation field (confirm.ts `typed`).
-    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), button:not([disabled])"));
+    const items = Array.from(dlg.querySelectorAll<HTMLElement>("input:not([disabled]), textarea:not([disabled]), button:not([disabled])"));
     if (!items.length) { dlg.focus(); return; }
     const at = items.indexOf(document.activeElement as HTMLElement);
     const next = at < 0 ? (e.shiftKey ? items.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + items.length) % items.length;
     items[next].focus();
   }
 }, true);
+
+// ── a space's description, edited in place (library.ts): Enter saves, Esc cancels, leaving the field saves ──
+mount.addEventListener("keydown", (e) => {
+  if (!(e.target as Element | null)?.closest?.("[data-lib-desc]")) return;
+  if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); dispatch("libDescSave", null, null); }
+  else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); dispatch("libDescCancel", null, null); }
+});
+mount.addEventListener("focusout", (e) => {
+  if (!(e.target as Element | null)?.closest?.("[data-lib-desc]") || state.libUi.desc === null) return;
+  dispatch("libDescSave", null, null);
+});
 
 // ── sidebar: ⌘K / Ctrl+K, the search box, and the collapsed-rail tooltip ──────
 document.addEventListener("keydown", (e) => {
@@ -5035,7 +5471,7 @@ function railTip(row: HTMLElement | null): void {
   const tip = mount.querySelector<HTMLElement>(".cnpy-tip");
   if (!tip) return;
   if (!row || !railCollapsed(state)) { tip.removeAttribute("data-on"); return; }
-  const r = row.getBoundingClientRect();
+  const r = rectOf(row);                    // CSS px (zoom.ts), as the tip's top is
   tip.textContent = row.dataset.tip ?? "";
   tip.style.top = `${Math.round(r.top + r.height / 2)}px`;
   tip.setAttribute("data-on", "1");

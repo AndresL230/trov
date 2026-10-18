@@ -22,6 +22,7 @@ import { TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@sh
 import { esc, attr } from "./ui";
 import type { Authority } from "./api";
 import type { HandoffStatus } from "@shared/handoffs";
+import type { LinkState } from "@shared/links";
 import type { ArtifactStatus } from "@shared/artifacts-core";
 import { tagLineParts, type TagColor } from "@shared/tags-core";
 import { TROV_MARK_PATH } from "@shared/mark";
@@ -130,10 +131,12 @@ export function priorityMark(p: TicketPriority, size = 12.5, tip = `${PRIORITY_L
 /** A shape per meaning, so a mark reads without its colour (Carbon's shape indicators):
  *  dot = fine, ring = waiting, triangle = a warning, diamond = failing, square = stopped,
  *  check = settled by a person. */
-export type MarkShape = "dot" | "ring" | "triangle" | "diamond" | "square" | "check";
+export type MarkShape = "dot" | "ring" | "dashed" | "triangle" | "diamond" | "square" | "check";
 const SHAPE: Record<MarkShape, string> = {
   dot: `<circle cx="5" cy="5" r="4" fill="currentColor"/>`,
   ring: `<circle cx="5" cy="5" r="3.6" stroke="currentColor" stroke-width="1.6"/>`,
+  // Not there yet at all: the ring drawn dashed (a page nobody has approved — the Docs Library's "Not yet approved").
+  dashed: `<circle cx="5" cy="5" r="3.6" stroke="currentColor" stroke-width="1.6" stroke-dasharray="1.9 1.4"/>`,
   triangle: `<path d="M5 .8 9.5 9H.5Z" fill="currentColor"/>`,
   diamond: `<path d="M5 .3 9.7 5 5 9.7.3 5Z" fill="currentColor"/>`,
   square: `<rect x=".8" y=".8" width="8.4" height="8.4" rx="1.2" fill="currentColor"/>`,
@@ -191,6 +194,27 @@ export function handoffMark(status: HandoffStatus, size = 12.5): string {
   return stateMark(m.word, m.tone, m.shape, size, m.hint);
 }
 
+// ── an agent link ────────────────────────────────────────────────────────────
+
+/** A link's state, as a mark. OPEN is the normal state of a live link and draws NOTHING; the rest say where
+ *  it stands: a draft is not sent yet and a request waits (open rings), a closed link ended as it should (a
+ *  check), a declined or cancelled one was stopped by a person and an expired one by the clock (squares).
+ *  The ONE table: the Links tab and a link's page read it. */
+export const LINK_MARK: Record<Exclude<LinkState, "open">, { word: string; tone: string; shape: MarkShape; hint: string }> = {
+  draft: { word: "Draft", tone: "var(--fg-55)", shape: "ring", hint: "An agent drafted it. Nothing is sent until its person presses Send. A draft expires after an hour." },
+  requested: { word: "Requested", tone: "var(--blue)", shape: "ring", hint: "Sent, and waiting for the other person to accept or decline. A request expires after 24 hours." },
+  declined: { word: "Declined", tone: "var(--fg-40)", shape: "square", hint: "The other person turned the request down." },
+  cancelled: { word: "Cancelled", tone: "var(--fg-40)", shape: "square", hint: "Its sender called it off before it opened." },
+  closed: { word: "Closed", tone: "var(--accent)", shape: "check", hint: "One side ended it. The notes stay readable here." },
+  expired: { word: "Expired", tone: "var(--red)", shape: "square", hint: "Nobody acted in time, or neither session checked in for 12 hours." },
+};
+/** The mark for a link's state, or "" for an open link (the normal state). */
+export function linkMark(state: LinkState, size = 12.5): string {
+  if (state === "open") return "";
+  const m = LINK_MARK[state];
+  return stateMark(m.word, m.tone, m.shape, size, m.hint);
+}
+
 // ── an artifact ──────────────────────────────────────────────────────────────
 
 /** An artifact's status, as a mark: a draft is not out yet (open ring), published is out (dot),
@@ -243,19 +267,70 @@ export function aiMark(size = 12, tip: string | null = null, label: string | nul
   return svg(size, AI_GLYPH, label === null ? null : esc(label), "var(--accent)", "0 0 100 100", tip === null ? null : esc(tip));
 }
 
+// ── a shared Ask conversation ────────────────────────────────────────────────
+
+const PEOPLE = `<circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5.2a3.2 3.2 0 0 1 0 5.6M17.6 14.6A5.5 5.5 0 0 1 20.5 20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
+
+/** An Ask conversation shared with the org or with people by name (0076 / 0077_ask_sharing): two people, muted — private is the normal state and
+ *  has no mark. `tip` (escaped here) says who can read it. `word` false: the glyph alone, named by its label (a
+ *  thread row, where the title takes the room). */
+export function sharedMark(tip: string, size = 12, word = true): string {
+  return word
+    ? `<span data-mtip="${esc(tip)}" style="display:inline-flex;align-items:center;gap:5px;font-size:${size}px;color:var(--fg-55);white-space:nowrap">${svg(Math.round(size), PEOPLE, null, "currentColor", "0 0 24 24")}Shared</span>`
+    : svg(Math.round(size), PEOPLE, "Shared", "var(--fg-40)", "0 0 24 24", esc(tip));
+}
+
 // ── search authority ─────────────────────────────────────────────────────────
 
-/** A search hit's authority. Live is the normal state, so it has no mark; the rest are not
- *  settled yet and say so in words, after an open ring (waiting) — never a LIVE / PENDING tag. */
-export const AUTHORITY_MARK: Record<Authority, { word: string; tone: string; hint: string } | null> = {
+/** A search hit's — and a Docs Library page's — authority. Live is the normal state, so it has no mark; the rest
+ *  are not settled yet and say so in words (the Library design's), after a shape that says how far from settled:
+ *  a ring (a newer change waits) or a dashed ring (never approved) — never a LIVE / PENDING tag. */
+export const AUTHORITY_MARK: Record<Authority, { word: string; tone: string; shape: MarkShape; hint: string } | null> = {
   live: null,
-  staged_pending: { word: "Awaiting review", tone: "var(--amber)", hint: "An agent proposed a change. A person has not promoted it yet." },
-  unpromoted: { word: "Not yet promoted", tone: "var(--amber)", hint: "Nothing here is live yet: no version has been promoted." },
-  draft: { word: "Draft", tone: "var(--blue)", hint: "A drafted decision. Nobody has ratified it yet." },
+  staged_pending: { word: "Change pending review", tone: "var(--amber)", shape: "ring", hint: "Everyone still reads the live version. A newer change is waiting in Review." },
+  unpromoted: { word: "Not yet approved", tone: "var(--fg-55)", shape: "dashed", hint: "Nobody has approved this page yet. It goes live once someone approves it in Review." },
+  draft: { word: "Draft", tone: "var(--blue)", shape: "ring", hint: "A drafted decision. Nobody has ratified it yet." },
 };
 export function authorityMark(a: Authority, size = 12): string {
   const m = AUTHORITY_MARK[a];
-  return m ? stateMark(m.word, m.tone, "ring", size, m.hint) : "";
+  return m ? stateMark(m.word, m.tone, m.shape, size, m.hint) : "";
+}
+
+// ── a Markdown import (the Docs Library's Import, docs-library.md › The import screens) ──
+
+/** A run's status as a mark: in progress is the half-filled ring (work moving along), done the accent's check,
+ *  done with skipped files the amber triangle, failed the red diamond, stopped (cancelled, or never finished) the
+ *  faded cross. The glyphs are the progress glyphs above, so a shape means the same thing as on a ticket. The ONE
+ *  table: Imports history and the wizard's done card read it. */
+export const IMPORT_MARK = {
+  running: { word: "In progress", glyph: "half", tone: "var(--accent)", hint: "Pages are being added to Review now." },
+  done: { word: "Done", glyph: "done", tone: "var(--accent)", hint: "Every page it planned went to Review." },
+  partial: { word: "Done with skipped files", glyph: "warn", tone: "var(--amber)", hint: "Its pages went to Review, but some files weren't imported. Open it to see which and why." },
+  failed: { word: "Failed", glyph: null, tone: "var(--red)", hint: "Nothing from it reached Review." },
+  abandoned: { word: "Stopped", glyph: "declined", tone: "var(--fg-40)", hint: "It stopped before it finished: the page that ran it was closed. Pages it had already added stay in Review." },
+  cancelled: { word: "Cancelled", glyph: "declined", tone: "var(--fg-40)", hint: "Someone cancelled it. Pages it had already added stay in Review." },
+} as const satisfies Record<string, { word: string; glyph: Glyph | null; tone: string; hint: string }>;
+export type ImportMarkKey = keyof typeof IMPORT_MARK;
+
+/** A run's mark: the glyph (a diamond for Failed — a state-mark shape, as everywhere a thing is failing) and its word. */
+export function importRunMark(key: ImportMarkKey, size = 12.5): string {
+  const m = IMPORT_MARK[key];
+  return m.glyph ? glyphMark(m.glyph, m.tone, m.word, size, m.hint) : stateMark(m.word, m.tone, "diamond", size, m.hint);
+}
+
+/** What the import will do with a page whose title is already in the space (the Preview's flag, at 11.5px): a new
+ *  version (the amber triangle: it changes a live page once approved), skipped (the faded cross), or renamed
+ *  (an open ring: a new page under another name). */
+export const IMPORT_FLAG = {
+  version: { word: "New version", hint: "Its text goes to Review as a new version of the page that already has this title." },
+  skip: { word: "Skipped", hint: "Not imported: the page with this title stays as it is." },
+  rename: { word: "Renamed", hint: "Imported as a new page under the name you gave it." },
+} as const;
+export function importFlagMark(choice: keyof typeof IMPORT_FLAG, size = 11.5): string {
+  const f = IMPORT_FLAG[choice];
+  if (choice === "version") return glyphMark("warn", "var(--amber)", f.word, size, f.hint);
+  if (choice === "skip") return glyphMark("declined", "var(--fg-40)", f.word, size, f.hint);
+  return stateMark(f.word, "var(--fg-55)", "ring", size, f.hint);
 }
 
 // ── tags ─────────────────────────────────────────────────────────────────────

@@ -93,6 +93,9 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
   out.feedAuthors = [];
   out.identityDiscarded = [];
   out.repoFetchedAt = null;
+  // The import wizard draws the files the person picked and the run this tab drives: neither is shown under the
+  // preview (Imports history's read is a slice, blanked above with the rest).
+  out.imp = { ...blank.imp, filter: s.imp.filter };
 
   // Artifacts: the library's list (its details stay — one artifact's page is "one thing").
   out.art = { ...s.art, ...blankSlices({ list: s.art.list, attachTickets: s.art.attachTickets }, { list: blank.art.list, attachTickets: blank.art.attachTickets }, mode) };
@@ -132,6 +135,11 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
     out.mywork = { status: "ok", data: { person: s.mywork.data?.person ?? null, previousActivity: [], todo: [], tickets: [], ticketsTotal: 0, degraded: false } };
     out.feedStats = { status: "ok", data: { days: [], total: 0, people: 0, topTags: [], topAuthors: [] } };
     out.art = { ...out.art, list: { status: "ok", data: [] }, attachTickets: { status: "ok", data: [] } };
+    // The Docs Library: no space yet (who may create one stays real). A space's home is "one thing" — it keeps
+    // the real space, with nothing in it.
+    out.library = { status: "ok", data: { spaces: [], archived: [], recent: [], waiting: 0, can_admin: s.library.data?.can_admin ?? false } };
+    const home = s.spaceHome.data;
+    out.spaceHome = home ? { status: "ok", data: { ...home, pages: [], space: { ...home.space, pages: 0, waiting: 0 } } } : s.spaceHome;
     out.docSlug = null;
     out.reviewSel = null;
     out.assignOpen = null;

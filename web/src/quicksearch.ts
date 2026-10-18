@@ -31,6 +31,7 @@ import { TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
 import { PERSON_COLORS, type PersonColor } from "@shared/rows";
 import { esc, attr, relTime } from "./ui";
 import { personChip } from "./people";
+import { rectOf, viewportOf } from "./zoom";
 
 // ── what a pick does ─────────────────────────────────────────────────────────
 
@@ -49,7 +50,8 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "New ticket", hint: "File a ticket", keys: "create bug report request file", steps: [["newTicket", null]] },
   { label: "Roadmap", hint: "The plan narrative and sprints", keys: "plan narrative sprints", steps: [["goRoadmap", null]] },
   { label: "Roadmap › Timeline", hint: "Sprints on a timeline", keys: "plan sprints gantt schedule", steps: [["goRoadmap", null], ["roadmapTimeline", null]] },
-  { label: "Handoffs", hint: "Work left for the next session", keys: "inbox claim", steps: [["goHandoffs", null]] },
+  { label: "Relay › Handoffs", hint: "Work left for the next session", keys: "handoffs inbox claim", steps: [["goHandoffs", null]] },
+  { label: "Relay › Links", hint: "Lines between agent sessions whose work overlaps", keys: "agent links notes overlap", steps: [["goLinks", null]] },
   { label: "New handoff", hint: "Leave work for someone", keys: "send create", steps: [["newHandoff", null]] },
   { label: "Repo › Overview", hint: "Environments, drift and health", keys: "dashboard github environments health deploys", steps: [["goRepo", "overview"]] },
   { label: "Repo › Summary", hint: "Where the repo stands, written by Trov", keys: "ai state shipped in flight attention written", steps: [["goRepo", "summary"]] },
@@ -58,8 +60,8 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Repo › Usage", hint: "Requests, users and product metrics", keys: "cloudflare railway metrics active users", steps: [["goRepo", "usage"]] },
   { label: "Repo › Planning", hint: "Sprint, labels and contributors", keys: "contributors labels todos", steps: [["goRepo", "planning"]] },
   { label: "Feed", hint: "What shipped, session by session", keys: "activity sessions log", steps: [["goFeed", null]] },
-  { label: "Docs", hint: "The team's documentation", keys: "documentation knowledge wiki", steps: [["goDocs", null]] },
-  { label: "New doc", hint: "Propose a new doc", keys: "write propose create", steps: [["newDoc", null]] },
+  { label: "Library", hint: "The team's spaces and pages", keys: "docs documentation knowledge wiki spaces", steps: [["goLibrary", null]] },
+  { label: "New page", hint: "Propose a new page", keys: "doc write propose create", steps: [["newDoc", null]] },
   { label: "Artifacts", hint: "Designs, specs, reports and files", keys: "designs pages files pdf", steps: [["goArtifacts", null]] },
   { label: "New artifact", hint: "Upload or paste a page", keys: "upload publish create", steps: [["artNew", null]] },
   { label: "Prompt Library", hint: "Reusable team prompts", keys: "prompts templates", steps: [["goPrompts", null]] },
@@ -80,7 +82,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
 ];
 
 /** What the palette offers before anything is typed. */
-const JUMP_DEFAULTS = ["My Work", "Tickets › Board", "New ticket", "Roadmap", "Handoffs", "Docs", "Settings › MCP access", "Release notes"];
+const JUMP_DEFAULTS = ["My Work", "Tickets › Board", "New ticket", "Roadmap", "Relay › Handoffs", "Docs", "Settings › MCP access", "Release notes"];
 
 /** Word tokens of a query, lowercased (the server's own tokenizer rule). */
 export const tokensOf = (q: string): string[] =>
@@ -431,14 +433,15 @@ export function createQuickSearch(deps: QuickSearchDeps): QuickSearch {
     layer.dataset.mode = mode ?? "";
     if (mode === "anchor" && anchor) {
       const box = (anchor.closest(".cnpy-search") as HTMLElement | null) ?? anchor;
-      const r = box.getBoundingClientRect();
+      const r = rectOf(box);                // CSS px (zoom.ts), as the styles below are
+      const view = viewportOf();
       const left = Math.round(r.left);
       const top = Math.round(r.bottom + 6);
       panel.style.left = `${left}px`;
       panel.style.top = `${top}px`;
       // Thin: the box's width plus a small overhang (≈ 340–380px), never past the 16px gutter.
-      panel.style.width = `${Math.min(Math.max(r.width + 140, 340), 380, window.innerWidth - left - 16)}px`;
-      panel.style.maxHeight = `${Math.max(200, window.innerHeight - top - 16)}px`;
+      panel.style.width = `${Math.min(Math.max(r.width + 140, 340), 380, view.width - left - 16)}px`;
+      panel.style.maxHeight = `${Math.max(200, view.height - top - 16)}px`;
     } else {
       panel.style.left = panel.style.top = panel.style.width = panel.style.maxHeight = "";
     }
@@ -463,7 +466,7 @@ export function createQuickSearch(deps: QuickSearchDeps): QuickSearch {
   function paint(): void {
     if (!list || !panel || !layer || !mode) return;
     const wasVisible = visible();
-    const from = wasVisible ? panel.getBoundingClientRect().height : 0;
+    const from = wasVisible ? rectOf(panel).height : 0;
     groups = quickGroups(q, shown, { palette: mode === "palette" });
     rows = flatRows(groups, q);
     if (sel >= rows.length) sel = Math.max(0, rows.length - 1);
@@ -478,7 +481,7 @@ export function createQuickSearch(deps: QuickSearchDeps): QuickSearch {
     if (!layer.hasAttribute("data-open")) { layer.setAttribute("data-open", "1"); return; }
     // Height: natural now → pin the old height → next frame, the new one (trov.css transitions it).
     panel.style.height = "";
-    const to = panel.getBoundingClientRect().height;
+    const to = rectOf(panel).height;
     if (!wasVisible || Math.abs(to - from) < 1 || reducedMotion()) return;
     panel.style.height = `${from}px`;
     void panel.offsetHeight;               // commit the start height before the change

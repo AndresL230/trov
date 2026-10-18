@@ -261,7 +261,7 @@ describe("`streaming` — mid-answer", () => {
 });
 
 describe("colour carries meaning only (the owner, 2026-10-16): Ask's \"working\" is the accent, never a hue of its own", () => {
-  it("the orb's ink, the running sweep and the busy jump arrow are --accent (olive in dark); no Ask rule uses --purple", async () => {
+  it("the orb's ink, the running sweep and the busy jump arrow are --accent (the lifted purple in dark); no Ask rule uses --purple", async () => {
     const orbSrc = (await import("../web/src/thinking-orb.ts?raw")).default as string;
     expect(orbSrc).toContain(`getPropertyValue("--accent")`);
     expect(orbSrc).not.toContain("--purple");
@@ -329,7 +329,7 @@ describe("`notfound` — what was searched", () => {
     expect(html).toContain(`<button type="button" class="ask-nf-try" data-act="askCvSend" data-arg="What do our docs say about pricing?">`);
     expect(html.match(/class="ask-nf-try"/g)?.length).toBe(2);
     expect(t).toContain("What I searched");
-    expect(t).toContain("Docs Technical and Product, 24 docs No matches");
+    expect(t).toContain("Docs Engineering and Product, 24 docs No matches");
     expect(t).toContain("Searched tickets and comments · No results");
     expect(t).not.toContain("Checked what was searched");
   });

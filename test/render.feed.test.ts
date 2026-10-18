@@ -217,7 +217,7 @@ function proposal(slug: string, createdAt: string, author = "kai"): StagedPropos
   return {
     slug, version: 2, title: `Doc ${slug}`, section: "Overview", space: "technical", summary: null, author,
     confidence: "high", status: "staged", change_kind: "edit", low_confidence: 0, base_version: 1, current_version: 1,
-    created_at: createdAt, stagedBody: "STAGED-BODY-LINE", promotedBody: "PROMOTED-BODY-LINE",
+    created_at: createdAt, stagedBody: "STAGED-BODY-LINE", promotedBody: "PROMOTED-BODY-LINE", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null,
   };
 }
 function adr(id: number, createdAt: string, by = "mira"): AdrRow {
@@ -228,7 +228,8 @@ describe("Feed — the two-column page", () => {
   it("renders the feed beside the shared sticky aside, This week first", () => {
     const html = render(feedState([feedRow()]));
     const aside = html.indexOf('<aside class="cnpy-cols-aside cnpy-stagger">');
-    expect(html).toContain('class="cnpy-scroll cnpy-cols-page"');
+    // asideColumns' page, in the Feed's own frame: 1200px up to a ~2300px window, then a little wider (web-ui.md › Big screens).
+    expect(html).toContain('class="cnpy-scroll cnpy-cols-page cnpy-feed-page" style="max-width:var(--frame-feed);');
     expect(aside).toBeGreaterThan(html.indexOf("Shipped the colored-handle change."));
     expect(html.indexOf("Feed · This week")).toBeGreaterThan(aside);
     expect(html.indexOf("Feed · Waiting on review")).toBeGreaterThan(html.indexOf("Feed · This week"));

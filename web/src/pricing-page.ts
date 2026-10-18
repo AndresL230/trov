@@ -4,6 +4,7 @@
 // the app's own stored choice (`trov.theme`, the same key and reading as web/src/main.ts and
 // legal-page.ts), and the toggle flips Light ⇄ Dark and stores it, so the app and this page agree.
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { pricingView } from "./pricing";
 import { followSkipLink, siteRoot } from "./site-chrome";
 import { paintRoot } from "./morph";

@@ -133,6 +133,9 @@ export function deleteStatements() {
     `DELETE FROM sprint_progress WHERE org_id = ${O} AND sprint_id ${BLOCK}`,
     `DELETE FROM sprints WHERE org_id = ${O} AND id ${BLOCK}`,
     `DELETE FROM handoffs WHERE org_id = ${O} AND id ${BLOCK}`,
+    // agent links (0078): the notes first — they reference their link by (org_id, number)
+    `DELETE FROM agent_link_notes WHERE org_id = ${O} AND id ${BLOCK}`,
+    `DELETE FROM agent_links WHERE org_id = ${O} AND id ${BLOCK}`,
     // knowledge
     `DELETE FROM entry_tags WHERE org_id = ${O} AND ((entry_type = 'feed' AND CAST(entry_id AS INTEGER) ${BLOCK}) OR (entry_type = 'doc' AND entry_id IN ${inList(DOC_SLUGS)}) OR (entry_type = 'adr' AND CAST(entry_id AS INTEGER) BETWEEN 7 AND 10) OR tag IN (SELECT name FROM org_tags WHERE org_id = ${O} AND id ${BLOCK}))`,
     `DELETE FROM feed WHERE org_id = ${O} AND id ${BLOCK}`,
@@ -233,6 +236,40 @@ function workStatements(c) {
     }));
   }
   s.push(`INSERT INTO org_counters (org_id, name, value) VALUES (${q(ORG)}, 'handoff', (SELECT COALESCE(MAX(number), 0) FROM handoffs WHERE org_id = ${q(ORG)})) ON CONFLICT(org_id, name) DO UPDATE SET value = MAX(org_counters.value, excluded.value)`);
+
+  // Agent links (0078_agent_links), ids 7001–7003 (numbers 1–3): Jose's coding session linked with yours about a PR
+  // (open, both sides joined, two notes), a request from Luke waiting for you, and one you closed with Mei.
+  const open = c.days(0.2), seen = c.days(0.02);
+  const link = (n, row) => insert("agent_links", {
+    id: 7000 + n, org_id: ORG, number: n, repo: null, requester_kind: null, requester_agent_session: null, requester_branch: null,
+    recipient_kind: null, recipient_agent_session: null, recipient_branch: null, sent_at: null, decided_at: null, closed_at: null,
+    closed_by: null, close_reason: null, requester_seen_at: null, recipient_seen_at: null, ...row,
+  });
+  s.push(link(1, {
+    state: "open", repo: REPO, topic_kind: "pr", topic_ref: "231", reason: "Both of us are changing the mastery query this week.",
+    requester: JOSE, requester_kind: "code", requester_agent_session: "seed-session-jose", requester_branch: "feat/mastery-api",
+    recipient: ME, recipient_kind: "code", recipient_agent_session: "seed-session-andres", recipient_branch: "feat/stream-export",
+    created_at: c.days(0.25), sent_at: c.days(0.24), decided_at: open, expires_at: new Date(Date.parse(open) + 7 * DAY).toISOString(),
+    requester_seen_at: seen, recipient_seen_at: seen,
+  }));
+  s.push(link(2, {
+    state: "requested", topic_kind: "person", topic_ref: ME, reason: "My OCR queue work touches your export job; worth a line while we both land.",
+    requester: LUKE, recipient: ME, created_at: c.days(0.1), sent_at: c.days(0.1), expires_at: new Date(Date.parse(c.days(0.1)) + DAY).toISOString(),
+  }));
+  s.push(link(3, {
+    state: "closed", topic_kind: "person", topic_ref: MEI, reason: "Rate limit and the class-code lookup.",
+    requester: ME, recipient: MEI, created_at: c.days(3), sent_at: c.days(3), decided_at: c.days(2.9), closed_at: c.days(2.5),
+    closed_by: ME, close_reason: "Both merged.", expires_at: new Date(Date.parse(c.days(2.9)) + 7 * DAY).toISOString(),
+  }));
+  const linkNotes = [
+    [1, 1, "requester", JOSE, "agent", "seed-session-jose", "Renaming mastery_score to score in the API response; merging tonight.", 0.15, 0.1],
+    [2, 1, "recipient", ME, "agent", "seed-session-andres", "Noted. The topic grid reads `score` from tomorrow.", 0.05, null],
+    [3, 3, "requester", ME, "person", null, "Rate limit is in; the lookup can use it.", 2.6, 2.6],
+  ];
+  for (const [id, n, side, author, kind, session, body, d, delivered] of linkNotes) {
+    s.push(insert("agent_link_notes", { id: 7000 + id, org_id: ORG, link_number: n, side, author, author_kind: kind, author_agent_session: session, body, created_at: c.days(d), delivered_at: delivered == null ? null : c.days(delivered) }));
+  }
+  s.push(`INSERT INTO org_counters (org_id, name, value) VALUES (${q(ORG)}, 'link', (SELECT COALESCE(MAX(number), 0) FROM agent_links WHERE org_id = ${q(ORG)})) ON CONFLICT(org_id, name) DO UPDATE SET value = MAX(org_counters.value, excluded.value)`);
   return s;
 }
 
@@ -576,12 +613,18 @@ export function plumbingDeleteStatements() {
     `DELETE FROM mcp_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
     `DELETE FROM artifact_upload_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
     `DELETE FROM doc_image_upload_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
+    `DELETE FROM handoff_upload_tokens WHERE org_id = ${O} AND token_hash LIKE '${DEV}-%'`,
     `DELETE FROM doc_images WHERE org_id = ${O} AND uploaded_by = '${PRIYA}'`,
     `DELETE FROM processed_items WHERE org_id = ${O} AND session_id LIKE '${DEV}-%'`,
     `DELETE FROM notification_outbox_bodies WHERE org_id = ${O} AND idempotency_key LIKE '${DEV}:%'`,
     `DELETE FROM notification_outbox WHERE org_id = ${O} AND idempotency_key LIKE '${DEV}:%'`,
     ...["sync_runs", "ai_dirty", "notification_prefs", "notification_policy", "org_github_installation_repos", "org_github_installations", "org_audit", "org_admin_audit"].map((t) => `DELETE FROM ${t} WHERE org_id = ${O}`),
     `DELETE FROM org_integration_config WHERE org_id = ${O} AND kind = 'cloudflare_analytics'`,
+    // The Docs Library (0081_docs_library): the spaces' owners, a link between two of the layer's docs, one import run.
+    `DELETE FROM doc_space_owners WHERE org_id = ${O}`,
+    `DELETE FROM library_prefs WHERE org_id = ${O}`,
+    `DELETE FROM doc_links WHERE org_id = ${O} AND from_slug IN ${inList(DOC_SLUGS)}`,
+    `DELETE FROM doc_imports WHERE org_id = ${O} AND file_name = '${DEV}-handbook.zip'`,
   ];
 }
 function plumbingStatements(c) {
@@ -603,12 +646,22 @@ function plumbingStatements(c) {
   const img = sha256("dashboard-grid.png");
   s.push(insert("doc_images", { org_id: O, sha256: img, content_type: "image/png", size_bytes: 61440, uploaded_by: PRIYA, created_at: c.days(12) }));
   s.push(insert("doc_image_upload_tokens", { token_hash: `${DEV}-${sha256("img-upload")}`, principal: PRIYA, sha256: img, size_bytes: 61440, content_type: "image/png", expires_at: c.days(11.9), used_at: c.days(11.95), created_at: c.days(12), org_id: O }));
+  // A handoff whose prompt was uploaded (0080): the spent token, kept until the cron's sweep.
+  s.push(insert("handoff_upload_tokens", { token_hash: `${DEV}-${sha256("handoff-upload")}`, org_id: O, principal: JOSE, recipient: "anyone", body: "Gradebook export is half done", context: { repo: REPO, branch: "", task: "Finish the gradebook export", done: [], next: [], files: [] }, prompt_title: "Finish the export", sha256: sha256("export-prompt.md"), size_bytes: 4096, session_id: null, link_base: "http://localhost:8787", expires_at: c.days(2.9), used_at: c.days(2.95), created_at: c.days(3) }));
   // The ingest ledger of two recorded sessions.
   [["feed", "7039", JOSE, 2.9], ["doc", "sapling-gradebook-export@3", JOSE, 2.8], ["feed", "7041", LUKE, 0.25], ["doc", "sapling-teacher-dashboard@4", LUKE, 0.6]].forEach(([type, ref, who, d], i) =>
     s.push(insert("processed_items", { org_id: O, session_id: `${DEV}-${who.toLowerCase()}-${Math.floor(d)}`, item_index: i, item_type: type, outcome: "staged", ref, created_at: c.days(d) })));
+  // The Library: who owns each starter space, one [[link]] between two docs, and a finished Markdown import.
+  for (const [space, who, d] of [["engineering", ME, 40], ["engineering", JOSE, 30], ["product", MEI, 35], ["design", LUKE, 25]]) {
+    s.push(insert("doc_space_owners", { org_id: O, space_slug: space, handle: who, added_at: c.days(d), added_by: ME }));
+  }
+  s.push(insert("doc_links", { org_id: O, from_slug: DOC_SLUGS[0], to_slug: DOC_SLUGS[1] }));
+  // Mei's own Library view (0084_library_prefs): Product first in her sidebar and pinned; everyone else has the default.
+  s.push(insert("library_prefs", { org_id: O, handle: MEI, sidebar: JSON.stringify(["product", "engineering"]), pinned: JSON.stringify(["product"]), hidden: "[]", updated_at: c.days(3) }));
+  s.push(insert("doc_imports", { org_id: O, space_slug: "engineering", parent_slug: null, file_name: `${DEV}-handbook.zip`, started_by: JOSE, started_at: c.days(6), updated_at: c.days(5.99), ended_at: c.days(5.99), status: "done", counts: { pages: 4, images: 1, skipped: 0 }, failures: [], total: 5 }));
   // Sync GitHub runs, and what the AI pass still has to look at.
   s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: ME, started_at: c.days(9), updated_at: c.days(8.99), ended_at: c.days(8.99), status: "ok", batch: 4, batches: 4, phase: "done", done: 412, total: 412, counts: { prs: 58, issues: 31, runs: 240, deploys: 83 }, failures: [], previous_at: c.days(30) }));
-  s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: JACK, started_at: c.days(2), updated_at: c.days(1.99), ended_at: c.days(1.99), status: "partial", batch: 3, batches: 3, phase: "done", done: 120, total: 131, counts: { prs: 14, issues: 6, runs: 100 }, failures: [{ step: "releases", detail: "GitHub answered 502 twice" }], previous_at: c.days(9) }));
+  s.push(insert("sync_runs", { org_id: O, repo: REPO, started_by: JACK, started_at: c.days(2), updated_at: c.days(1.99), ended_at: c.days(1.99), status: "partial", batch: 3, batches: 3, phase: "done", done: 120, total: 131, counts: { prs: 14, issues: 6, runs: 100 }, failures: [{ code: "reconcile:deployments", via: "token" }], previous_at: c.days(9) }));
   s.push(insert("ai_dirty", { org_id: O, scope: "brief", scope_key: OMAR, dirty_since: c.days(0.2), last_run_at: c.days(1), attempts: 0, last_error: null, marked_at: c.days(0.2), urgent: 0 }));
   s.push(insert("ai_dirty", { org_id: O, scope: "repo_state", scope_key: REPO, dirty_since: c.days(0.13), last_run_at: c.days(0.5), attempts: 1, last_error: null, marked_at: c.days(0.13), urgent: 1 }));
   // E-mail: the org's policy (every kind the registry has), a few people's choices, and last week's sent digests.

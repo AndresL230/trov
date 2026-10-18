@@ -9,11 +9,18 @@ replaces the page's DOM wholesale (`innerHTML`) unless it is one of: the `<aside
 (a dialog), or a page that names itself with **`data-morph="<key>"`** — which is patched in place while the key
 stays the same. A rebuilt page restarts every entrance animation, skeleton fade, `<img>` and iframe in it, and
 anything decorative behind a form visibly "reloads" per letter. Focus and caret are restored, so the field
-itself looks fine and the bug is easy to miss.
+itself looks fine and the bug is easy to miss. A focused field comes back by its `data-field`; a focused BUTTON by
+its twin, the element with the same `data-act` + `data-arg` (`web/src/focus-twin.ts`, put back at the end of
+`rerender()` only when nothing else took focus and the screen is the same) — so a button whose action just repaints
+the page (a copy button's toast) keeps the keyboard where it was.
 
 **Rule: a page that holds a form, a dialog's host page, or anything with a backdrop or an entrance sets
 `data-morph` on its root** (a direct child of the theme root, or `<main>`). Opted in today: the signed-out landing page (`landing`; its sign-in and tour dialogs are `data-overlay`s), Org settings,
-Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Library home
+(`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
+the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
+the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -119,9 +126,10 @@ a paint on Docs and Review. Both are memoized in an LRU (`createLru`): 100 block
 a long feed does not push the doc bodies out). The key is everything the output depends on: the org's main
 repository (`repoUrl()`, what a bare `#12` links to), the org on screen (`apiOrgSlug()`, what a doc image's
 `tenantHref` points at) and the text. A new input to either renderer (an option, another piece of page state it
-reads) must join the key. Results are strings, so a cached one cannot be mutated. The Docs tree computes no
-outline: `GET /docs` sends each doc's outline instead of its body (`shared/doc-outline.ts`; `feed-and-search.md` ›
-The Docs screen's reads), and `web/src/outline.ts` only re-exports `slugifyHeading` for the reader's heading ids.
+reads) must join the key. Results are strings, so a cached one cannot be mutated. The doc page's `[[slug]]` links are
+substituted into the body BEFORE it renders (`doc-page.ts` `linkedBody`), so a link's title or broken state is part of
+the body the cache is keyed on; its On this page is `extractOutline` over the same body, and `web/src/outline.ts` only
+re-exports `slugifyHeading` for the heading ids.
 `sanitizeSvg` is not cached. Tests: `test/markdown-memo.test.ts`.
 
 ## Help › What's new is its own chunk (`web/src/releases-lazy.ts`, `web/src/release-latest.ts`)
@@ -151,13 +159,20 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
   support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
   to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
   and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
-- **A release page is ONE two-column grid** (`releasePageView`, `.cnpy-reldoc-grid`; #188): the back link and the
-  Release notes / Patch notes switch across the top; down the left column the title block, the body card and the
-  newer / older links; down the right column the page's note (Heads-up on the notes, Upgrade notes on the patches),
-  a SIBLING of the body — never inside the header. From 900px of page the note's area spans the left column's rows
-  and the last row is `1fr`, so a note of any length runs beside the body and never pushes it down; it flows with
-  the page (no sticky box, no inner scroller). Under 900px it stacks in source order: title, note, body. Pinned by
-  `test/releases.test.ts` (the grid's children and the CSS areas).
+- **The brand banner** (`web/src/brand-banner.ts`, `.cnpy-brandband` on the site's `.site-banner`): the app's reading
+  pages — What's new (the index and each release page) and the Guide — open with the purple card the site's pages
+  (/terms, /privacy, /refunds, the docs) do: the faint Trov mark, an optional row above the title (a release's
+  Release notes / Patch notes tab bar, drawn as the site's pills — the bar's sliding indicator is the white pill),
+  the title, the lede, a quiet line under it (the owner's call, 2026-10-18).
+- **What's new, the owner's redesign (2026-10-18)** — the old card grid and two-column page were cramped. The
+  INDEX (`releasesIndex`) features the newest release as one wide card (`.cnpy-relfeat`: its title, lede, every
+  highlight two to a row, its change counts) over a timeline of the rest (`.cnpy-reltl`: version and date on a rail,
+  title, lede and counts beside it). A RELEASE PAGE (`releasePageView`, `.cnpy-reldoc`, 1040px like the index) is one
+  column: back link, title block, a `tabBar()` (Release notes / Patch notes — the page's sections), then the page.
+  Release notes: "N changes" over ONE bar split by each group's share, a legend whose entries open that group on the
+  patch notes (`releaseGroup`), the highlights numbered two to a row, the Heads-up as a callout in the flow. Patch
+  notes: the Upgrade notes callout first, each group's lines with their trailing PRs as chips at the right
+  (`splitPatchLine`), every PR; newer / older as two cards at the bottom. Pinned by `test/releases.test.ts`.
 
 ## The app's bundles (`web/src/lazy-chunk.ts`, `web/src/landing-page.ts`)
 
@@ -221,7 +236,7 @@ two providers as a narrow centred pair with an "or" rule between them, a foot. A
 (a border sits outside the banner and showed as a pale frame round it); its edge is a ring in the shadow.
 
 Everywhere else the page stays quiet. The one echo is `.site-stage`: each tour mockup stands on a field of the
-banner's dots in the page's own accent (purple on light, green on dark), mirrored on a flipped row. Do not add
+banner's dots in the page's own accent (purple in both themes), mirrored on a flipped row. Do not add
 a fourth banner or a second texture (the tour's dialog has none: its stage is the same dot field); a new section is plain unless it replaces one of the three.
 
 - **Both themes.** The banner is the brand's purple on light AND dark (it is not the app's chrome); on dark it
@@ -563,7 +578,15 @@ animates (`data-collapsed`, `.cnpy-sub[data-open]`, `.is-active`, `data-n="0"` h
 node conditionally there swaps it out from under its own animation — `test/render.sidebar.test.ts` pins the
 element tree across every state. `data-keep` marks a script-owned node (the collapsed-rail tooltip) the
 patcher leaves alone. A sub-page list the app opened on entry folds again on leaving; one opened by hand
-sticks and is what persists (`trov.navOpen`). Only **Docs** owns a sub-page list (`NAV_GROUPS`);
+sticks and is what persists (`trov.navOpen`). Only the **Library** owns a sub-page list (`NAV_GROUPS`): one row
+per live space (its 14px tile and name, from the `GET /spaces` read at boot), then "No spaces yet" with a hollow
+row, the **Imports** row (Imports history; its accent badge `.cnpy-sub-badge` counts the imports in progress and
+`data-n="0"` hides it) and the action row (`.cnpy-sub-acts`: an admin's "+ New space", and everyone's "Import" with the
+space on screen preset) — all ALWAYS emitted and shown by `hidden` / attributes, so the read landing, a run starting or
+the viewer's role never restructures the rail; the space rows follow the data, and each is a file-drop target
+(`data-drop-space`, "Drop to import" below). Its label goes to Library home, its chevron folds
+the group, and a space's home, a doc in it and New page in it light that space (the Library was Docs, with a fixed
+Technical / Product pair, until 2026-10; a stored `docs` key is read as `library`; docs-library.md › The screens);
 Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
 and Repo's tabs head their page body), and a stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
@@ -629,7 +652,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
 
-The sidebar's counts (Review, Unplaced, Tickets, Handoffs, Prompts, and the admin's unmatched logins on the
+The sidebar's counts (Review, Unplaced, Tickets, Relay, Prompts, and the admin's unmatched logins on the
 switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
 WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
 `enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
@@ -687,9 +710,9 @@ several verdicts 90ms apart. Tests: `test/render.review.test.ts` (the keyed list
 markup, the CSS and its reduced-motion rule, `REVIEW_EXIT_MS` against `--fx-fast`).
 
 **Review's page** is named once, by the app header (as every screen is: `org-ui.ts` rule 1); the
-list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Proposals / Decisions is a
+list pane starts with one line (`REVIEW_INTRO`) and the filter. All / Imports / Written by agents is a
 `segmented()` switch (one list, three views of it; not a tab bar, since nothing below changes
-section) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
+section; "Written by agents" is everything not from an import, drafted decisions included) whose options carry how many are waiting (`.cnpy-seg-n` in an option's `trail`; left out
 while the queue is still being read). Unified / Side by side / Rendered is a second one; the diff
 body under it is keyed by mode (`diff:<mode>`) and the detail body by item (`rvd:<id>`), so a
 switch replaces only that part. **Rendered** (`web/src/review-rendered.ts`) is the Docs reader's
@@ -707,6 +730,39 @@ quotes and let the rest be parsed as elements), only text tokens are wrapped, no
 kept, and markup the tokenizer cannot account for refuses the merge (the two blocks are then shown whole).
 More than 60% of the words changed is two texts, not one edited: also shown whole. A strike is set ONCE, on
 the removed box — never again on an inline child, which draws a second line.
+
+**An import's pages are ONE row of the list** (`review.ts` `importGroups` / `groupCard`, keyed `rvg:<import id>`): the
+card with its upload tile, "Import from ‹file›", "‹N› pages · into ‹Space› · by ‹Name› · ‹when›", Review one by one /
+Hide pages (its own keyed list of page rows, `rvp:<id>`, indented by the `parent_slug` chain inside the group — the
+queue lists newest first, so a group's tree order is the queue's reversed), "‹d› of ‹N› reviewed" (the most pages the
+group held this session, `state.reviewGroupTotals`), Reject all (a red `confirmModal` in the design's words) and Approve
+all ‹N› / Approve ‹k› left. A whole-group verdict is the same exit: every page gets its `reviewLeaving` entry at once,
+so the card wears the verdict and collapses; the cookie routes `approve-all` / `reject-all` are called again while
+`remaining` > 0 (`main.ts` `reviewGroupVerdict`), and a failure before anything was decided puts the card back. A page
+of a group is picked by hand (the default selection is the first item NOT from an import); the detail pane then has the
+"Page ‹i› of ‹N› · ‹file›" bar with the arrows (wrapping within the group), and its byline the kind and "from ‹path›".
+
+## The import wizard — steps on one page, a run that is not the screen's (`web/src/import.ts`, `import-actions.ts`)
+
+A flow of steps inside an org screen is ONE `data-morph`ed page whose step is a keyed part (`imp:where`, `imp:files`,
+`imp:preview`, `imp:progress`, `imp:done`): the stepper (`importStepper`, an `<ol>` with `aria-current="step"`, done
+steps a check; the progress and done cards both sit on the last step) is patched in place and only the step's body is
+replaced. The step is STATE, not route (`#import[/<space>]` carries the space only, and is left out of `pageKey`), so a
+step never replays the screen's entrance. Work that outlives the screen lives in the controller's module scope, never
+in the view: the run (`job` in `import-actions.ts`) keeps going on any screen, and `state.imp.run` is the one thing the
+screens read (the progress card, the sidebar's badge via `importsBadge`, Imports history's current file); a tab that
+is closed mid-run asks first (`beforeunload`). The files' TEXT is never state: the controller keeps it beside the run,
+and the state holds only the manifest (path, size, kind, first heading). Under the preview the wizard is blank
+(`previewState` resets `state.imp`). Tests: `test/render.import.test.ts`, `test/import-actions.test.ts`.
+
+**Drop to import** (`web/src/import-drop.ts`) is ONE overlay node on `<body>` (outside the mount, its theme copied from
+the app's root), placed over `#cnpy-main` and filled on each `dragover` — a drag never repaints the app. Over a space's
+page (its home, a doc, New page) it veils the main column with the breathing dashed edge; over a sidebar space row it
+lights the row (`.is-drop`, a class toggled on the living element) and floats a pill beside it, with a lighter veil.
+It goes when the `dragover`s stop (no `dragleave` is reliable across children). What a drag may carry is its MIME
+type (`DROP_TYPES`, all a drag shows); what a drop takes is the file NAMES (`.md`, `.markdown`, `.zip`), and a refused
+one is a toast. Never on the import screen (its Files step has its own drop zone). The motion is off under reduced
+motion.
 
 ## Personal Settings — a bento whose tiles are as tall as what they hold
 
@@ -768,6 +824,73 @@ read is out keeps its number and says "not known yet"), and at phone width only 
 label. It is not a tab bar and not a segmented switch: a step is a page of the flow, and each has its own
 route. Its rules declare no radius (every one is inline), and its one moving part — the waiting dot — is
 still under `prefers-reduced-motion`. Tests: `test/render.welcome.test.ts`.
+
+## Big screens — page frames that grow (`--frame-*` in `trov.css`)
+
+The team builds on laptops; a 32" monitor is 2560–3072 CSS px wide at the usual scaling (4K at 150% / 125%, 1440p
+at 100%), and 3840 at 4K 100%. Every screen is a centred frame with a `max-width`, so on such a window a laptop-sized
+frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120×1440 and 1080p at 67% / 80% zoom):
+
+- **Frame tokens on `:root`**, each `clamp(<laptop width>, <n>vw, <ceiling>)`, so they equal the old fixed width
+  up to a ~2100px window (a laptop and a 1080p monitor render exactly as before) and grow after it:
+  `--frame-work` (1440 → 2200: the queue's board and table, Handoffs, the Prompt Library, a tag's page — `WORK_SHELL`
+  in `ui.ts`), `--frame-dash` (1180 → 1720: My Work, the Repo dashboard, Org settings › Members — only that tab,
+  `data-org-wide` on `.cnpy-org`), `--frame-feed` (1200 → 1480: the Feed, `asideColumns`' `opts.frame`) and
+  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list).
+- **A line keeps its measure** when its column grows: a Feed entry's title, brief and body stop at 720px (the width
+  they have in a 1200px frame; `.cnpy-feed-page`).
+- **Reading surfaces keep their frame**: a doc (1080), the Roadmap (`asideColumns`, 1200), the Guide, a ticket or
+  sprint (`DETAIL_SHELL`), a handoff, Settings and Org settings' other tabs. A FORM keeps its laptop width too
+  (`FORM_SHELL`: a new ticket, handoff or doc, the prompt editor) — its fields gain nothing from width.
+- **What grows adds, not stretches**: the board's columns stop at `--board-col-max` (480px) and the board keeps to the
+  left under its toolbar (the owner, 2026-10-17); the Prompt Library's grid adds a card a row past a 2200px window
+  (`auto-fill`, 360px minimum); Repo › Usage's app cards and the Overview's week figures already `auto-fit` (the week
+  figures go to ONE row on a panel ≥1200px, so none is left alone on a second row).
+- **The title row lines up with the frame** above 1440px (the owner, 2026-10-17): the header still spans `<main>` (its
+  hairline does) but its padding is `var(--hdr-pl, 24px)` / `var(--hdr-pr, 24px)`, and `trov.css` gives each screen
+  with ONE centred frame its `--hdr-frame` (the frame's max-width) and `--hdr-pad` (the frame's side padding); the
+  frame centres in `<main>` minus the scroller's reserved scrollbar (`--sb-gutter`, 12px — with overlay scrollbars it
+  is 0 and the title sits 6px off). Screens without one centred frame (Docs, Review, the Guide, Ask, Artifacts) keep
+  24px. A NEW screen with a centred frame adds its line there, or its title row floats at 24px on a big screen.
+- A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
+  legal) keep their 1120px marketing column.
+
+### The big-screen zoom — 4K at 100% (`web/src/zoom.ts`)
+
+Past a ~3000px window the frames above run out of sensible width, so Trov enlarges ITSELF (the owner, 2026-10-17):
+CSS `zoom` on `<html>`, 1 up to a 3000px window, growing linearly to **1.3 at 3840** and capped there, and never so
+far that less than 900 CSS px of height is left (`zoomFor(width, height)`, `UI_ZOOM`). At or under 3000px nothing
+is written at all — the page is pixel-identical at 1440 and 2560 (compared screenshot for screenshot). `zoom` is the
+only mechanism that scales a UI authored in px (nearly every size is an inline px; the root font-size changes
+nothing). Everything about it lives in `zoom.ts`:
+
+- **Applying it.** `ZOOM_BOOT`, an inline script in every document's `<head>` (`site-prerender.ts`), sets the zoom
+  before the body parses, so a prerendered page never paints at 1× first. `zoom-boot.ts`, the FIRST import of every
+  page's script (`main.ts`, `landing-page.ts`, `pricing-page.ts`, `legal-page.ts`, `docs-page.ts`), installs the
+  `resize` listener before any other module adds one, so every other resize handler reads the new scale. A zoom
+  change sets `html[data-zooming]` for one frame, which turns transitions off: a resize never animates a width.
+- **Viewport units.** Chromium zooms them too (a `100vh` box is 1.3 × the window under `zoom: 1.3`). Every size
+  relative to the window reads `--vw` / `--vh` / `--dvh` (trov.css `:root`: `calc(1vw / var(--vu, 1))`), written
+  `calc(100 * var(--vh))`, `calc(100 * var(--vw) - 32px)`, `clamp(20px, 2.6 * var(--vw), 46px)` — the `--frame-*`
+  tokens included. `--vu` is MEASURED (a hidden fixed probe 100vh tall against `innerHeight`), not assumed, and is
+  unset at 1×. **A raw `vw` / `vh` / `dvh` in `web/src` is a bug** (`test/render.zoom.test.ts` scans for one; an
+  `@supports` condition and an `<img sizes>` are not CSS lengths and stay raw).
+- **Rect → style.** `getBoundingClientRect()`, a pointer's `clientX` / `clientY` and `innerWidth` / `innerHeight`
+  are in SCREEN px; a `left` / `top` / `width` / `height` / `translate` / an element's `scrollTop` written back is in
+  CSS px and gets zoomed again. Every such site reads through `rectOf(el)`, `pointOf(e)`, `viewportOf()` and
+  `clientOf()` (the root's client box: Chromium reports `documentElement.clientWidth` in screen px in standards
+  mode). The factor (`uiScale()`) is measured off the same probe, so if a browser ever reports rects unzoomed the
+  helpers become the identity, not wrong. Converted: the dropdown, the `data-mtip` bubble, quick search (anchored
+  panel and its height glide), the sync menu, the rail's collapsed tooltips, the board's drag ghost, slot FLIP and
+  settle, the ticket comment box's grip, Ask's hover card, inspector edge (tracks the pointer 1:1), layout width
+  and composer glide, the docs / guide / legal heading spies and their jumps, the FAQ accordion and the site's
+  scroll-lock gutter. `elementFromPoint` takes SCREEN px: pass it the raw `clientX` / `clientY`, never `pointOf`'s.
+  A NEW rect → style site goes through these helpers.
+- What needs nothing: anything CSS places (centred modals, `confirmModal`, the palette, `position:absolute` menus),
+  `offset*` reads (segmented / tab bar indicators), and framed artifacts (an iframe's content is zoomed with the
+  page, so the height it reports is already the box's CSS px).
+- Checked at 3840×2160 (and 3200×1800, 5120×1440) in Chromium 153: the shell is exactly the window, nothing scrolls
+  sideways on any screen or site page, and every overlay above lands on its trigger (offsets = the 1× offsets × 1.3).
 
 ## Loading skeletons — the shape of what is coming (`web/src/skeleton.ts`)
 
@@ -947,11 +1070,17 @@ Polaris Badge, the 2026 Atlassian lozenge, Linear). There is no `statusBadge` an
 3. **A small shape and a sentence-case word** (`stateMark`) for a state worth flagging: each meaning has its
    own shape (dot = fine, ring = waiting, triangle = warning, diamond = failing, square = stopped, check =
    settled by a person) so it reads without colour; the hue is on the shape and the word stays in `--fg-70`
-   for contrast. Workflow tables: `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`, `LOW_CONFIDENCE`. The
+   for contrast. Workflow tables: `HANDOFF_MARK`, `ARTIFACT_MARK`, `AUTHORITY_MARK`, `LOW_CONFIDENCE`, and the import's
+   `IMPORT_MARK` (a run: In progress = the half ring, Done = the check, Done with skipped files = the triangle, Failed =
+   the red diamond, Stopped / Cancelled = the faded cross; `importRunMark`) and `IMPORT_FLAG` (a title that exists, in
+   the Preview: New version = the triangle, Skipped = the faded cross, Renamed = a ring; `importFlagMark`). The
    screens whose states are not a workflow (settings, connections, billing, the Repo verdicts, the platform
    pages) say what a state MEANS instead — `kindMark(word, kind)` over `STATE_KIND` (good / waiting / warn /
    bad / stopped / done / off) — so "Error" or "Suspended" looks the same on every page and no page picks
-   its own colour.
+   its own colour. An Ask conversation shared — with the org or with people by name — is `sharedMark` (a two-people
+   glyph, muted, and "Shared"; alone in a thread row, `role="img"` named "Shared"; its `data-mtip` who it is
+   shared with) — private, the normal state, has none (`ask.md` › Sharing a conversation). "Can continue" on a
+   Shared with you row is a fact, so plain text.
 4. **One soft label** — a fill, no border, sentence case, 12px / 500 — only where the state is the page's
    headline (the recommended plan on pricing, `.site-plan-badge`; "Recommended" on the MCP consent page).
 
@@ -1094,8 +1223,11 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
   resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
   `upgrade` is true.
-- **The suggestion chip** (`aiSuggestionChip`, #157): "Suggested: X, because…" with Accept and Dismiss. It is
-  never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
+- **The suggestion chip** (`aiSuggestionChip`, #157): the mark, "TROV SUGGESTS" and what it proposes, a "Why?"
+  disclosure ("Because …" and its sources), then Accept — or what accepting does (`acceptLabel`: Roadmap's "Create 2
+  sprints", "Use this narrative") — and Dismiss; what it would write sits INSIDE the box under its line (`body`), never
+  loose below it. It is never styled like a value a person set: a box lightly tinted with the accent and a quiet
+  accent edge (the owner's call, 2026-10-18 — the old dashed outline read as broken, not as a suggestion). The
   reason is a real disclosure button (`aria-expanded`, works on touch; `data-field="aiReason:<key>"`, so a page rebuilt
   on the press gives it back its keyboard focus — the themes' lanes carry `aiThemesLane:<id>` for the same reason), the
   chip a container of buttons (never
@@ -1221,6 +1353,14 @@ regress silently:
   `--fg-40` .40 → .52, `--red` #cc6262 → #df7372. The banner's gradient went one step deeper in both themes and
   its text is at least 92% white. `--fg-55` is unchanged, so light `--fg-55` and `--fg-40` now sit close
   (4.67 / 4.53 on `--bg`).
+- **The dark accent is the light accent's purple** (the owner, 2026-10-17: "the same purple instead of that
+  green"). `#525cc3` itself reads only 3.0:1 on the dark `--bg`, so dark `--accent` (and `--mark`, the tab icon,
+  `TROV_MARK_COLORS.dark`) is the same hue (235°) and saturation lifted the least that passes: `#8d94d8` — 6.1:1 on
+  `--bg`, 5.8:1 on `--surface`, 4.6:1 on its own 14% `--accent-soft` (the tightest pair) — with `--accent-fg`
+  `#11132e` (6.4:1) as the ink on it. It was the olive `#9aab65` / `#131a07`; the dark banner went back to the
+  brand purple with it. The semantic `--green` and the `--p-moss` handle colour are unchanged. The landing's
+  terminal mocks (`--term`, dark in both themes) draw their "⏺ trov · load-context" line in `--term-accent`, the
+  same `#8d94d8` in BOTH themes (it was a hard-coded olive; `render.contrast` holds it at 4.5:1 on `--term`).
 - **New tokens, split where a value served two jobs:** `--border-input` (fields) beside `--border-strong`
   (cards, dividers, the empty layouts' hollow shapes — still quiet); `--red-fg` (text on a filled red button:
   white on light, the dark ink on dark, as `--accent-fg`); `--p-ink` (avatar initials); `--focus` (= `--accent`).
@@ -1260,7 +1400,7 @@ wrapper. `thinkingOrb(state, size, label)` returns a `<canvas data-orb>` whose w
 for the device's pixel ratio, so a morph never rewrites them (setting either clears a canvas). ONE
 `requestAnimationFrame` loop paints every `canvas[data-orb]` in the document on one clock and stops when none is
 left; rendering an orb starts it. Ink follows the nearest `[data-cnpy-theme]` on every frame; under reduced motion
-each paint is one static frame. The ink is the theme's `--accent` (olive in dark; the owner, 2026-10-16: colour carries meaning only, so
+each paint is one static frame. The ink is the theme's `--accent` (purple in both themes, lifted in dark; the owner, 2026-10-16: colour carries meaning only, so
 "working" has no hue of its own): `setInk` in
 `orbs/engine/core.ts` — the one local change to the vendored engine, marked — makes a dot's depth its opacity in that
 colour. Ask uses it in place of its spinner, clock and lone cursor (`ask.md`), and the running sweep's highlight is

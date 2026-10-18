@@ -73,7 +73,8 @@ describe("tabKeyTarget — the keyboard", () => {
 });
 
 describe("tabBar — the CSS contract", () => {
-  const rule = (sel: string) => css.match(new RegExp(`${sel.replace(/[.[\]()>-]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+  // A rule whose selector STARTS the line: the base rule, not a scoped override (the brand banner's pills).
+  const rule = (sel: string) => css.match(new RegExp(`(?:^|\\n)${sel.replace(/[.[\]()>-]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
 
   it("draws the hairline across the bar and scrolls a too-wide row inside it, never the page", () => {
     const r = rule(".cnpy-tabs");

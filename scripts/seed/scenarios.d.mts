@@ -9,6 +9,8 @@ export const ORG_TABLES_SQL: string[];
 export function scenarioNames(): string[];
 export function orgTablesInOrder(rows: Row[]): string[];
 export function orgWipeStatements(orgId: string, tables: string[]): string[];
+export function personStatements(p: { handle: string; name: string; color: string; email: string; role?: string | null; responsibilities?: string | null }, at: string): string[];
+export function orgStatements(o: { id: string; slug: string; name: string; owner: string; plan: [string, string, Record<string, unknown>?]; members: [handle: string, role: string, title?: string | null][]; timezone?: string }, at: string): string[];
 export function teamBaseStatements(now?: Date, opts?: { reset?: boolean }): string[];
 export function teamShowcase(db: SeedDb, opts?: { now?: Date; image?: { sha: string; size: number } | null; views?: ((refs: string[]) => Promise<Record<string, unknown>>) | null; origin?: string }): Promise<{ unresolved: string[] }>;
 export function loadScenarios(db: SeedDb, names: string[], opts?: { now?: Date; reset?: boolean; image?: { sha: string; size: number } | null; views?: ((refs: string[]) => Promise<Record<string, unknown>>) | null; origin?: string; log?: (line: string) => void }): Promise<Record<string, { unresolved: string[] }>>;

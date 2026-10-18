@@ -1,8 +1,8 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`field absent — each screen renders exactly what it did before Phase C > Review (no row carries \`ai\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="review" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="review" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -37,8 +37,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goRelay" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">
@@ -48,9 +48,9 @@ exports[`field absent — each screen renders exactly what it did before Phase C
       <button data-act="goFeed" class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
-      <div class="cnpy-navrow n-docs" data-tip="Docs">
-      <button data-act="goDocs" class="cnpy-nav-i" aria-label="Docs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Docs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Show Docs pages" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
-    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><button data-act="navSub" data-arg="docs:technical" class="cnpy-sub-i" tabindex="-1">Technical</button><button data-act="navSub" data-arg="docs:product" class="cnpy-sub-i" tabindex="-1">Product</button></div></div></div>
+      <div class="cnpy-navrow n-library" data-tip="Library">
+      <button data-act="goLibrary" class="cnpy-nav-i" aria-label="Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="library" class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><div class="cnpy-sub-none" hidden>No spaces yet<div class="cnpy-sub-ghost" aria-hidden="true"><span></span><span></span></div></div></div></div></div>
       <div class="cnpy-navrow n-artifacts" data-tip="Artifacts">
       <button data-act="goArtifacts" class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
@@ -86,7 +86,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
     <main data-morph="review" style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
-      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Review</h1>
       
@@ -100,30 +100,32 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </div>
   </header>
       <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-rv" data-pane="list" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="width:376px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
       <div style="padding:16px 20px 0">
         <div style="font-size:12.5px;color:var(--fg-55)">Agent-produced changes waiting for a verdict.</div>
-        <div style="margin:12px 0 12px"><div class="cnpy-seg cnpy-seg--sm" data-seg="review-filter" data-morph-key="seg:review-filter" role="group" aria-label="Show"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:review-filter:all" class="cnpy-seg-btn is-on" aria-pressed="true">All<span class="cnpy-seg-n">2</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:proposal" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="proposal" aria-pressed="false">Proposals<span class="cnpy-seg-n">1</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:decision" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="decision" aria-pressed="false">Decisions<span class="cnpy-seg-n">1</span></button></div></div>
+        <div style="margin:12px 0 12px"><div class="cnpy-seg cnpy-seg--sm" data-seg="review-filter" data-morph-key="seg:review-filter" role="group" aria-label="Show"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:review-filter:all" class="cnpy-seg-btn is-on" aria-pressed="true">All<span class="cnpy-seg-n">2</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:imports" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="imports" aria-pressed="false">Imports<span class="cnpy-seg-n">0</span></button><button type="button" tabindex="-1" data-field="seg:review-filter:agents" class="cnpy-seg-btn" data-act="reviewFilter" data-arg="agents" aria-pressed="false">Written by agents<span class="cnpy-seg-n">2</span></button></div></div>
       </div>
-      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px"><div class="cnpy-rv-row" data-morph-key="rv:doc:auth-flow@3"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="doc:auth-flow@3" aria-current="true">
-    <button aria-current="true" data-act="reviewSelect" data-arg="doc:auth-flow@3" class="cnpy-hit" aria-label="Auth flow"></button>
-    <span class="cnpy-selbar"></span>
-    <div class="cnpy-rv-card-in" style="position:relative">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0">Auth flow</div>
-        
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px"><div class="cnpy-rv-row" data-morph-key="rvg:agent:andres"><div class="cnpy-rv-row-in"><div class="cnpy-rvg cnpy-surface" data-rv-group="agent:andres" data-kind="agent">
+    <div class="cnpy-rvg-in">
+      <div class="cnpy-rvg-head">
+        <span class="cnpy-rvg-ic" style="border-radius:7px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg></span>
+        <div style="min-width:0;flex:1">
+          <div style="font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Written by Andres&#39;s agent</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:var(--fg-55);min-width:0"><span style="flex:none;display:inline-flex"><span class="cnpy-rvg-agav" role="img" aria-label="@andres&#39;s agent" style="border-radius:5px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg></span></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">1 page · 4 hours ago</span></div>
+        </div>
       </div>
-      <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Sessions now last 30 days</div>
-      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
-        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="@andres (Andres) — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
-        <span data-slot="kind" style="flex:none">Proposal</span><span style="color:var(--fg-40)">·</span>
-        <span data-slot="where" data-mtip="Technical / Reference" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">Technical / Reference</span><span style="color:var(--fg-40)">·</span>
-        <span data-slot="time" style="flex:none;color:var(--fg-40)">4h ago</span>
+      <div class="cnpy-rvg-acts">
+        <button type="button" data-act="reviewGroupToggle" data-arg="agent:andres" class="cnpy-rvg-tog" aria-expanded="false"><span class="cnpy-rvg-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>Review one by one</button>
+        <span class="cnpy-rvg-done" hidden>0 of 1 reviewed</span>
+        <span style="flex:1"></span>
+        <button type="button" data-act="reviewGroupReject" data-arg="agent:andres" data-confirm-trigger class="cnpy-rejectbtn" style="height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Reject all</button>
+        <button type="button" data-act="reviewGroupApprove" data-arg="agent:andres" class="cnpy-accentbtn" style="height:30px;padding:0 13px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap">Approve all 1</button>
       </div>
+      <div class="cnpy-rvg-list" data-open="0"><div class="cnpy-rvg-clip"><div data-morph-list></div></div></div>
     </div>
     <span class="cnpy-rv-verdict" aria-hidden="true"></span>
-  </div></div></div><div class="cnpy-rv-row" data-morph-key="rv:adr:5"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="adr:5">
-    <button data-act="reviewSelect" data-arg="adr:5" class="cnpy-hit" aria-label="Use D1 for the search index"></button>
+  </div></div></div><div class="cnpy-rv-row" data-morph-key="rv:adr:5"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-rv-card="adr:5" aria-current="true">
+    <button aria-current="true" data-act="reviewSelect" data-arg="adr:5" class="cnpy-hit" aria-label="Use D1 for the search index"></button>
     <span class="cnpy-selbar"></span>
     <div class="cnpy-rv-card-in" style="position:relative">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
@@ -141,31 +143,40 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <span class="cnpy-rv-verdict" aria-hidden="true"></span>
   </div></div></div></div>
     </div>
-    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1;min-width:0;overflow-y:auto">
+    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
       <button data-act="reviewBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
-      <div class="cnpy-rv-body" data-morph-key="rvd:doc:auth-flow@3" style="max-width:920px;padding:24px 32px 100px">
+      <div class="cnpy-rv-body" data-morph-key="rvd:adr:5" style="max-width:var(--frame-reader);padding:24px 32px 100px">
     <div class="cnpy-rv-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px">
       <div style="min-width:0">
-        <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Auth flow</h2>
+        <h2 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Use D1 for the search index</h2>
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)">
-          <span>Proposal</span>
-          <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">Technical / Reference</span>
+          <span>Decision</span>
+          <span style="color:var(--fg-40)">·</span><span style="font-family:var(--label);font-size:11.5px;color:var(--fg-55)">ADR-005</span>
           <span style="color:var(--fg-40)">·</span><span style="display:inline-flex;align-items:center;gap:6px"><button data-act="openPerson" data-arg="andres" class="cnpy-personchip" title="Andres" style="display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style=""><span style="font-family:var(--sans);font-size:12px;font-weight:500;color:var(--p-sky)">@andres</span></span></button></span>
-          <span style="color:var(--fg-40)">·</span><span style="color:var(--fg-40)">4h ago</span>
+          <span style="color:var(--fg-40)">·</span><span style="color:var(--fg-40)">5h ago</span>
         </div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px">
         
-        <button data-act="reviewReject" data-arg="doc:auth-flow@3" class="cnpy-rejectbtn" style="box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px;background:transparent;border:1px solid var(--border-strong);padding:0 14px;font-weight:500;color:var(--fg-70);transition:all .12s ease">Reject</button>
-        <button data-act="reviewAccept" data-arg="doc:auth-flow@3" class="cnpy-accentbtn" style="box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px;background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">Promote</button>
+        <button data-act="reviewReject" data-arg="adr:5" class="cnpy-rejectbtn" style="box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px;background:transparent;border:1px solid var(--border-strong);padding:0 14px;font-weight:500;color:var(--fg-70);transition:all .12s ease">Reject</button>
+        <button data-act="reviewAccept" data-arg="adr:5" class="cnpy-accentbtn" style="box-sizing:border-box;height:34px;display:inline-flex;align-items:center;border-radius:8px;font-size:12.5px;background:var(--accent);color:var(--accent-fg);border:1px solid var(--accent);padding:0 17px;font-weight:600">Ratify</button>
       </div>
     </div>
     
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:22px 0 10px">
-    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">WHAT CHANGED</div>
-    <div class="cnpy-seg cnpy-seg--sm" data-seg="review-diff" data-morph-key="seg:review-diff" role="group" aria-label="How to show the change"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:review-diff:unified" class="cnpy-seg-btn is-on" aria-pressed="true">Unified</button><button type="button" tabindex="-1" data-field="seg:review-diff:split" class="cnpy-seg-btn" data-act="reviewDiffView" data-arg="split" aria-pressed="false">Side by side</button><button type="button" tabindex="-1" data-field="seg:review-diff:rendered" class="cnpy-seg-btn" data-act="reviewDiffView" data-arg="rendered" aria-pressed="false">Rendered</button></div>
+    <div style="display:flex;align-items:center;gap:10px;margin:22px 0 10px">
+    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">PROPOSED RECORD</div>
+    <div style="font-size:11.5px;color:var(--fg-40)">new document — no prior version</div>
   </div>
-  <div class="cnpy-rv-diff" data-morph-key="diff:unified"><div class="cnpy-surface" style="overflow:hidden;padding:8px 0"><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent"><span style="display:inline-block;width:18px;flex:none;color:var(--fg-40)"> </span># Auth flow</div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent"><span style="display:inline-block;width:18px;flex:none;color:var(--fg-40)"> </span></div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent;border-left:2px solid var(--red);background:color-mix(in srgb,var(--red) 7%,transparent)"><span style="display:inline-block;width:18px;flex:none;color:var(--red)">−</span>A session lasts 7 days.</div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent;border-left:2px solid var(--green);background:color-mix(in srgb,var(--green) 7%,transparent);color:var(--fg-70)"><span style="display:inline-block;width:18px;flex:none;color:var(--green)">+</span>A session lasts 30 days.</div><div style="font-family:var(--code);font-size:12.5px;line-height:1.75;padding:2px 16px 2px 12px;white-space:pre-wrap;color:var(--fg-55);border-left:2px solid transparent"><span style="display:inline-block;width:18px;flex:none;color:var(--fg-40)"> </span></div></div></div>
+  <div class="cnpy-surface" style="padding:24px 28px 26px"><div style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-55);margin-bottom:6px">Context</div>
+      <div style="font-size:14.5px;line-height:1.7;color:var(--fg-70)">Search needs an index.</div>
+    </div><div style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-55);margin-bottom:6px">Decision</div>
+      <div style="font-size:14.5px;line-height:1.7;color:var(--fg-70)">Use D1&#39;s FTS5.</div>
+    </div><div style="margin-bottom:18px">
+      <div style="font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--fg-55);margin-bottom:6px">Rationale</div>
+      <div style="font-size:14.5px;line-height:1.7;color:var(--fg-70)">One store.</div>
+    </div></div>
   </div>
     </div>
   </div></div>
@@ -195,12 +206,14 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     
     
     
+    
+    
   </div>"
 `;
 
 exports[`field absent — each screen renders exactly what it did before Phase C > Unplaced (no row carries \`ai\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="maintenance" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="maintenance" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -235,8 +248,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goRelay" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">
@@ -246,9 +259,9 @@ exports[`field absent — each screen renders exactly what it did before Phase C
       <button data-act="goFeed" class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
-      <div class="cnpy-navrow n-docs" data-tip="Docs">
-      <button data-act="goDocs" class="cnpy-nav-i" aria-label="Docs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Docs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Show Docs pages" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
-    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><button data-act="navSub" data-arg="docs:technical" class="cnpy-sub-i" tabindex="-1">Technical</button><button data-act="navSub" data-arg="docs:product" class="cnpy-sub-i" tabindex="-1">Product</button></div></div></div>
+      <div class="cnpy-navrow n-library" data-tip="Library">
+      <button data-act="goLibrary" class="cnpy-nav-i" aria-label="Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="library" class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><div class="cnpy-sub-none" hidden>No spaces yet<div class="cnpy-sub-ghost" aria-hidden="true"><span></span><span></span></div></div></div></div></div>
       <div class="cnpy-navrow n-artifacts" data-tip="Artifacts">
       <button data-act="goArtifacts" class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
@@ -284,7 +297,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
     <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
-      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Unplaced</h1>
       
@@ -297,7 +310,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6vw,46px) 100px;box-sizing:border-box">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
     <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">Things an agent produced but couldn&#39;t place. Read one, then file it or throw it away.</div>
     <div class="cnpy-surface" style="display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px">
     <div class="cnpy-scroll" style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border);overflow-y:auto;overflow-x:hidden;max-height:640px"><button data-act="maintSelect" data-arg="7" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:var(--hover);transition:background .12s ease">
@@ -359,12 +372,14 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     
     
     
+    
+    
   </div>"
 `;
 
 exports[`field absent — each screen renders exactly what it did before Phase C > ticket detail (no \`ai\`) 1`] = `
-"<div data-cnpy-theme="light" data-screen="ticketdetail" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:100vh;font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
-    <div class="cnpy-shell" style="display:flex;height:100vh;overflow:hidden">
+"<div data-cnpy-theme="light" data-screen="ticketdetail" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" data-author="all" style="background:var(--bg);color:var(--fg);min-height:calc(100 * var(--vh));font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased">
+    <div class="cnpy-shell" style="display:flex;height:calc(100 * var(--vh));overflow:hidden">
     <a href="#cnpy-main" class="site-skip" data-skip="cnpy-main" style="border-radius:8px">Skip to content</a>
     <aside class="cnpy-aside" data-screen-label="Sidebar">
     <div class="cnpy-logo">
@@ -399,8 +414,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
       <div class="cnpy-navrow n-roadmap" data-tip="Roadmap">
       <button data-act="goRoadmap" class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
-      <div class="cnpy-navrow n-handoffs" data-tip="Handoffs">
-      <button data-act="goHandoffs" class="cnpy-nav-i" aria-label="Handoffs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Handoffs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
+      <div class="cnpy-navrow n-handoffs" data-tip="Relay">
+      <button data-act="goRelay" class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
       <div class="cnpy-navrow n-repo" data-tip="Repo">
@@ -410,9 +425,9 @@ exports[`field absent — each screen renders exactly what it did before Phase C
       <button data-act="goFeed" class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
       <div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
-      <div class="cnpy-navrow n-docs" data-tip="Docs">
-      <button data-act="goDocs" class="cnpy-nav-i" aria-label="Docs"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Docs</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="docs" class="cnpy-chev" aria-label="Show Docs pages" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
-    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><button data-act="navSub" data-arg="docs:technical" class="cnpy-sub-i" tabindex="-1">Technical</button><button data-act="navSub" data-arg="docs:product" class="cnpy-sub-i" tabindex="-1">Product</button></div></div></div>
+      <div class="cnpy-navrow n-library" data-tip="Library">
+      <button data-act="goLibrary" class="cnpy-nav-i" aria-label="Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button data-act="navToggle" data-arg="library" class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="false" tabindex="0"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button>
+    </div><div class="cnpy-sub" data-open="0"><div class="cnpy-sub-clip"><div class="cnpy-sub-list"><div class="cnpy-sub-none" hidden>No spaces yet<div class="cnpy-sub-ghost" aria-hidden="true"><span></span><span></span></div></div></div></div></div>
       <div class="cnpy-navrow n-artifacts" data-tip="Artifacts">
       <button data-act="goArtifacts" class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button>
     </div>
@@ -448,7 +463,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
     <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
-      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+      <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0;white-space:nowrap;flex:none"><button data-act="ticketsBack" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);cursor:pointer">Tickets</button></h1>
       <span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">Login page shows a blank screen on Safari</span></span>
@@ -461,8 +476,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6vw,46px) 100px">
-    <div class="cnpy-td-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 258px;gap:34px;min-height:calc(100vh - 210px)">
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div style="width:100%;max-width:1120px;margin:0 auto;padding:26px clamp(20px,2.6 * var(--vw),46px) 100px">
+    <div class="cnpy-td-grid" style="display:grid;grid-template-columns:minmax(0,1fr) 258px;gap:34px;min-height:calc(100 * var(--vh) - 210px)">
       <div style="min-width:0;display:flex;flex-direction:column">
         <div style="display:flex;align-items:flex-start;gap:10px;margin:0 0 22px">
           <h2 style="margin:0;flex:1;min-width:0;font-size:22px;font-weight:600;letter-spacing:-0.02em">Login page shows a blank screen on Safari</h2>
@@ -556,6 +571,8 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>
   </div>
+    
+    
     
     
     

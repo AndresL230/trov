@@ -146,10 +146,9 @@ function actionHtml(a: AttentionAction, sample: boolean): string {
   return `<button type="button" data-act="setRepoTab" data-arg="${attr(a.tab ?? "ci")}" class="${btn}" style="${style}">${esc(a.label)}</button>`;
 }
 
-/** Needs attention: only when something is wrong, and first (under the state slot). "" when nothing is. */
-export const attentionBlock: OverviewBlock = (f: RepoFacts, x: OverviewCtx): string => {
-  if (!f.attention.length) return "";
-  const rows = f.attention.map((a, i) => {
+/** The rows: each item's mark, its sentence, its one action. */
+function attentionRows(f: RepoFacts, x: OverviewCtx): string {
+  return f.attention.map((a, i) => {
     const l = attentionLine(a, f, x.now);
     const k = STATE_KIND[l.kind];
     return `<div class="repo-att-row" data-att-kind="${attr(a.kind)}" style="${i ? "border-top:1px solid var(--border);" : ""}">
@@ -160,9 +159,34 @@ export const attentionBlock: OverviewBlock = (f: RepoFacts, x: OverviewCtx): str
       ${actionHtml(l.action, x.sample)}
     </div>`;
   }).join("");
-  const label = "font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap";
-  return `<div class="repo-att">
-    <div style="display:flex;align-items:baseline;gap:8px"><span style="${label}">Needs attention</span>${f.attention.length > 1 ? `<span style="font-size:11.5px;color:var(--fg-40)">${f.attention.length}</span>` : ""}</div>
-    ${rows}
+}
+
+/** Needs attention no longer pushes the Overview down (the owner's call): a button in the bar above the panel — its
+ *  count, and a red dot at its corner — opens the list in a dialog (`attentionDialog`). "" when nothing is wrong. */
+export function attentionButton(f: RepoFacts): string {
+  const n = f.attention.length;
+  if (!n) return "";
+  return `<button type="button" data-act="repoAttention" data-confirm-trigger aria-haspopup="dialog" class="repo-att-btn" aria-label="${attr(`Needs attention: ${n === 1 ? "one thing" : `${n} things`}`)}">Needs attention<span class="repo-att-n">${n}</span><span class="repo-att-dot" aria-hidden="true">${markShape("dot", "var(--red)", 9)}</span></button>`;
+}
+
+/** The dialog the button opens: what needs attention, each with its action; Done or Escape closes it. */
+export function attentionDialog(f: RepoFacts, x: OverviewCtx): string {
+  const n = f.attention.length;
+  const close = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+  return `<div data-overlay="repo-attention" data-confirm-layer data-confirm-tone="neutral" class="cnpy-cmodal">
+    <div data-act="repoAttention" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="repo-attention" role="dialog" aria-modal="true" aria-labelledby="repo-attention-t" tabindex="-1" data-confirm-dialog data-confirm-act="repoAttention" data-confirm-cancel="repoAttention" class="cnpy-surface cnpy-cmodal-box cnpy-cmodal-box--wide repo-att-dlg">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div style="min-width:0">
+            <div id="repo-attention-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35">Needs attention</div>
+            <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:4px">${n === 1 ? "One thing" : `${n} things`} to look at, worst first.</div>
+          </div>
+          <button type="button" data-act="repoAttention" class="cnpy-iconbtn" aria-label="Close" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${close}</button>
+        </div>
+        <div class="repo-att" style="margin-top:12px">${attentionRows(f, x)}</div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px"><button type="button" data-act="repoAttention" data-confirm-focus class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Done</button></div>
+      </div>
+    </div>
   </div>`;
-};
+}

@@ -6,7 +6,7 @@ import { z } from "zod";
 import {
   ASK_ACTION_KINDS, ASK_ACTION_STATES, ASK_ACTIVITY_ICONS, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_CHART_QUERIES, ASK_COMMANDS,
   ASK_DIAGRAM_NODES_MAX, ASK_DRAFT_MAX, ASK_ERROR_CODES, ASK_FOLLOWUPS_MAX, ASK_INSTRUCTIONS_MAX, ASK_MARKS, ASK_MODE_IDS, ASK_ORIGINS,
-  ASK_PEEK_MAX, ASK_REF_TYPES, ASK_REFS_MAX, ASK_TEXT_MAX, ASK_THREAD_GROUPS, ASK_TITLE_MAX, ASK_TONES, ASK_WRONG_REASONS,
+  ASK_PEEK_MAX, ASK_REF_TYPES, ASK_REFS_MAX, ASK_SHARE_ACCESS, ASK_SHARE_PEOPLE_MAX, ASK_TEXT_MAX, ASK_THREAD_GROUPS, ASK_TITLE_MAX, ASK_TONES, ASK_WRONG_REASONS,
   type AskAction, type AskActionPreview, type AskAttachment, type AskBlock, type AskCancelBody, type AskConfirmBody, type AskEventMap, type AskEventName, type AskMessage,
   type AskRequest, type AskSaveBody, type AskSearchHit, type AskSettings, type AskSettingsPut, type AskState, type AskThreadDetail,
   type AskThreadPatch, type AskThreadSummary, type PeekResult, type RefView,
@@ -113,12 +113,16 @@ export const AskRequestSchema = z.strictObject({
 
 export const AskPeekBodySchema = z.strictObject({ refs: z.array(AskRefSchema).min(1).max(ASK_PEEK_MAX) });
 
+export const AskSharePersonSchema = z.strictObject({ handle: z.string().trim().min(1).max(64), access: z.enum(ASK_SHARE_ACCESS) });
+
 export const AskThreadPatchSchema = z.strictObject({
   title: z.string().trim().min(1).max(ASK_TITLE_MAX).optional(),
   pinned: z.boolean().optional(),
   auto: z.boolean().optional(),
   mode: AskModeSchema.optional(),
   draft: z.string().max(ASK_DRAFT_MAX).optional(),
+  shared: z.boolean().optional(),
+  people: z.array(AskSharePersonSchema).max(ASK_SHARE_PEOPLE_MAX).optional(),
 }) satisfies z.ZodType<AskThreadPatch>;
 
 export const AskSaveBodySchema = z.strictObject({
@@ -163,6 +167,9 @@ export const AskAttachmentSchema = z.object({
 export const AskThreadSummarySchema = z.object({
   id: z.number().int(), title: z.string(), pinned: z.boolean(), mode: AskModeSchema, auto: z.boolean(), origin: z.enum(ASK_ORIGINS),
   contextRef: z.string().nullable(), hasDraft: z.boolean(), group: z.enum(ASK_THREAD_GROUPS), createdAt: z.string(), updatedAt: z.string(),
+  shared: z.boolean().optional(), people: z.array(AskSharePersonSchema).optional(), owner: z.string().optional(), viewer: z.boolean().optional(),
+  access: z.enum(ASK_SHARE_ACCESS).optional(), direct: z.boolean().optional(),
+  links: z.array(z.object({ id: z.number().int().positive(), with: z.string(), self: z.boolean(), notes: z.number().int().positive() })).optional(),
 }) satisfies z.ZodType<AskThreadSummary>;
 
 export const AskSearchHitSchema = z.object({
@@ -181,7 +188,7 @@ export const AskMessageSchema = z.object({
     z.object({ kind: z.literal("text"), md: z.string() }), z.object({ kind: z.literal("block"), index: z.number().int().min(0) }), z.object({ kind: z.literal("action"), id: z.number().int() }),
   ])).optional(),
   stopped: z.boolean(), model: z.string().nullable(),
-  units: z.number().int(), createdAt: z.string(),
+  units: z.number().int(), createdAt: z.string(), askedBy: z.string().optional(),
 }) satisfies z.ZodType<AskMessage>;
 
 export const AskThreadDetailSchema = z.object({

@@ -3,6 +3,9 @@ import { tagsOfItems } from "./tags";
 import { isFeedImportance, type FeedImportance } from "@shared/ai-core";
 import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
+import { resolveSpaceAlias, type DocPageDTO } from "@shared/docs-core";
+import { readDocPage } from "./doc-tree";
+import { buildTree, ancestorsOf, type DocTreeNode } from "@shared/docs-tree-core";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
@@ -14,11 +17,13 @@ import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
 import { sprintProgress, ticketCountsBySprint } from "./sprints";
 import type { TicketDbRow } from "./tickets";
 
+/** MCP `get_doc` (and Ask's): a page IN THE LIBRARY with every version. An archived page (0083_doc_archive) reads as
+ *  no page — null, the tool's not-found — exactly as a slug that never existed. */
 export async function get_doc(
   ctx: TenantContext,
   slug: string
 ): Promise<{ doc: DocRow; versions: DocVersionRow[]; tags: string[] } | null> {
-  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, ctx.orgId, slug);
   if (!doc) return null;
   const versions = await all<DocVersionRow>(
     ctx,
@@ -31,24 +36,34 @@ export async function get_doc(
   return { doc, versions, tags };
 }
 
+/** Does ANY page of the org hold this slug — an archived one too (a slug stays reserved, 0083_doc_archive)? */
+export async function doc_slug_taken(ctx: TenantContext, slug: string): Promise<"live" | "archived" | null> {
+  const row = await first<{ archived: number }>(ctx, `SELECT archived_at IS NOT NULL AS archived FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  return row ? (row.archived ? "archived" : "live") : null;
+}
+
 /** The Docs screen's read of one doc (`GET /doc/:slug`): the doc with its live body, its tags, and
  *  every version WITHOUT its body — the reader shows the live text and the history's rows only. One
  *  version's body is `get_doc_version`. MCP `get_doc` keeps every body (its contract). */
 export async function get_doc_page(
   ctx: TenantContext,
   slug: string
-): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[] } | null> {
+): Promise<{ doc: DocRow; versions: DocVersionMetaRow[]; tags: string[]; page: DocPageDTO } | null> {
   const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
   if (!doc) return null;
-  const versions = await all<DocVersionMetaRow>(
-    ctx,
-    `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence
-       FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
-    ctx.orgId,
-    slug
-  );
-  const tags = (await tagsOfItems(ctx, "doc", [slug])).get(slug) ?? [];
-  return { doc, versions, tags };
+  const [versions, tagMap, page] = await Promise.all([
+    all<DocVersionMetaRow>(
+      ctx,
+      `SELECT id, slug, version, summary, status, confidence, created_at, created_by, content_hash, base_version, change_kind, low_confidence, parent_slug, import_id, import_path
+         FROM doc_versions WHERE org_id = ? AND slug = ? ORDER BY version ASC`,
+      ctx.orgId,
+      slug
+    ),
+    tagsOfItems(ctx, "doc", [slug]),
+    // The doc page (the tree PR of 0081_docs_library): its place in the tree, its links both ways, the rail.
+    readDocPage(ctx, doc),
+  ]);
+  return { doc, versions, tags: tagMap.get(slug) ?? [], page };
 }
 
 /** One version of a doc, body included (`GET /doc/:slug/versions/:version`) — read only when a
@@ -68,8 +83,8 @@ export async function get_doc_version(ctx: TenantContext, slug: string, version:
  *  MCP `list_docs` keeps the bodies (its contract). */
 export async function list_doc_tree(ctx: TenantContext, section?: string): Promise<DocListRow[]> {
   const docs = section
-    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section)
-    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? ORDER BY slug ASC`, ctx.orgId);
+    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? AND archived_at IS NULL ORDER BY slug ASC`, ctx.orgId, section)
+    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND archived_at IS NULL ORDER BY slug ASC`, ctx.orgId);
   return docs.map((d) => ({
     slug: d.slug, section: d.section, title: d.title, current_version: d.current_version,
     updated_at: d.updated_at, updated_by: d.updated_by, space: d.space, owner: d.owner,
@@ -77,18 +92,22 @@ export async function list_doc_tree(ctx: TenantContext, section?: string): Promi
   }));
 }
 
-export async function list_docs(ctx: TenantContext, section?: string): Promise<DocRow[]> {
-  if (section) {
-    return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? ORDER BY slug ASC`, ctx.orgId, section);
-  }
-  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? ORDER BY slug ASC`, ctx.orgId);
+/** MCP `list_docs`: every doc with its body, optionally narrowed to a section and/or a space (a space's slug or an
+ *  alias — shared/docs-core.ts SPACE_ALIASES; an unknown space matches nothing, never a guess). */
+export async function list_docs(ctx: TenantContext, section?: string, space?: string): Promise<DocRow[]> {
+  const clauses: string[] = [];
+  const params: unknown[] = [ctx.orgId];
+  if (section) { clauses.push("section = ?"); params.push(section); }
+  const sp = resolveSpaceAlias(space);
+  if (sp) { clauses.push("space = ?"); params.push(sp); }
+  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
 }
 
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
  *  own"), so it never pulls every doc's full text over the wire. */
 export async function list_doc_meta(ctx: TenantContext): Promise<DocMetaRow[]> {
   return await all<DocMetaRow>(ctx,
-    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? ORDER BY slug ASC`,
+    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? AND archived_at IS NULL ORDER BY slug ASC`,
     ctx.orgId);
 }
 
@@ -195,22 +214,45 @@ export interface ProposalRow {
   created_at: string;    // doc_versions.created_at (when the proposal was staged)
   stagedBody: string;    // doc_versions.body (the proposed body)
   promotedBody: string;  // docs.body (the current live body)
+  parent_slug: string | null;       // docs.parent_slug (where the page sits in its space's tree)
+  // The Markdown import the version came from (0081_docs_library; Review groups by it) — all null otherwise.
+  import_id: number | null;
+  import_path: string | null;
+  import_file_name: string | null;
+  import_by: string | null;
+  import_at: string | null;
+  /** The titles of the page's ancestors in its space's tree, top first ([] = the top level) — Review's crumb. */
+  path: string[];
 }
 
+/** Owner ruling RV3: an import's staged version with a newer staged change of the same page on top (an agent's) is
+ *  not offered on its own — Review shows the page with the newer change (Approve all leaves it alone too, runs.ts).
+ *  Over `doc_versions v`; the sidebar's badge counts with the same clause. */
+export const NOT_SUPERSEDED_IMPORT = `NOT (v.import_id IS NOT NULL AND EXISTS (SELECT 1 FROM doc_versions w
+  WHERE w.org_id = v.org_id AND w.slug = v.slug AND w.status = 'staged' AND w.version > v.version))`;
+
 export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]> {
-  return all<ProposalRow>(
+  const rows = await all<Omit<ProposalRow, "path">>(
     ctx,
     `SELECT v.slug AS slug, v.version AS version, d.title AS title, d.section AS section, d.space AS space,
             v.summary AS summary, v.created_by AS author, v.confidence AS confidence, v.status AS status,
             v.change_kind AS change_kind, v.low_confidence AS low_confidence, v.base_version AS base_version,
             d.current_version AS current_version, v.created_at AS created_at,
-            v.body AS stagedBody, d.body AS promotedBody
+            v.body AS stagedBody, d.body AS promotedBody, d.parent_slug AS parent_slug,
+            v.import_id AS import_id, v.import_path AS import_path, i.file_name AS import_file_name,
+            i.started_by AS import_by, i.started_at AS import_at
        FROM doc_versions v JOIN docs d ON d.slug = v.slug AND d.org_id = ?
-      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version
+       LEFT JOIN doc_imports i ON i.org_id = ? AND i.id = v.import_id
+      WHERE v.org_id = ? AND v.status = 'staged' AND v.version > d.current_version AND d.archived_at IS NULL AND ${NOT_SUPERSEDED_IMPORT}
       ORDER BY v.created_at DESC, v.id DESC`,
+    ctx.orgId,
     ctx.orgId,
     ctx.orgId
   );
+  if (!rows.length) return [];
+  // Each page's place: the org's tree read once (no bodies), resolved as forgivingly as the Library's own read.
+  const tree = buildTree(await all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND archived_at IS NULL`, ctx.orgId));
+  return rows.map((r) => ({ ...r, path: ancestorsOf(tree, r.slug).map((a) => a.title ?? a.slug) }));
 }
 
 // ── Identity triage (Maintenance group) ───────────────────────────────────────
@@ -632,7 +674,8 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
   const pointerLimit = Math.trunc(Math.min(Math.max(req.pointer_limit ?? 20, 0), 100));
   const includeStaged = req.include_staged ?? false;
   const section = req.section;
-  const space = req.space;
+  // A space's slug or an alias (`technical` → `engineering`); an unknown one matches no doc.
+  const space = resolveSpaceAlias(req.space) ?? undefined;
   // A section/space filter only makes sense for docs (feed/adrs carry neither),
   // so those types drop out when either is set — mirroring the old engine.
   const docsOnly = section !== undefined || space !== undefined;
@@ -655,7 +698,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
         `SELECT docs_fts.slug AS key, bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) AS rank,
                 snippet(docs_fts, -1, ${SNIPPET}) AS snip
          FROM docs_fts JOIN docs ON docs.slug = docs_fts.slug AND docs.org_id = ?
-         WHERE docs_fts MATCH ? AND docs_fts.org_id = ?${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
+         WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND docs.archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
         ...params
       );
       for (const r of rows) candidates.push({ type: "doc", key: String(r.key), score: -r.rank, snippet: r.snip });
@@ -666,7 +709,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
       if (space !== undefined) { clauses.push("space = ?"); params.push(space); }
       const rows = await all<{ key: string; ts: string | null }>(
         ctx,
-        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ?${clauses.map((c) => ` AND ${c}`).join("")}
+        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ? AND archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")}
          ORDER BY (updated_at IS NULL), updated_at DESC, slug DESC LIMIT ${fetchCap}`,
         ...params
       );

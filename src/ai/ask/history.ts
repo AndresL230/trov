@@ -11,6 +11,8 @@ import { listActions, setThreadSummary, type ChatActionRow, type ChatMessageRow,
 import { providerFor } from "../client";
 import { fence } from "./prompt";
 import type { AskMessagePart } from "@shared/ai-ask-core";
+import type { InboxNote } from "../../tools/links";
+import { linkNotesText } from "./links";
 
 /** Past this many characters of older turns, the oldest are compacted (about 15k tokens). */
 export const COMPACT_AT_CHARS = 60_000;
@@ -33,6 +35,10 @@ export interface StoredContent {
   attached?: { id: number; title: string }[];
   /** An answer's parts in streamed order (`AskMessage.parts`); absent on rows stored before it. */
   parts?: AskMessagePart[];
+  /** A question's agent-link notes, delivered when its turn started (./links.ts): later turns carry them fenced. */
+  linkNotes?: InboxNote[];
+  /** Notes still waiting when they were delivered (said in that turn only). */
+  linkMore?: number;
 }
 
 export const contentOf = (m: Pick<ChatMessageRow, "content_json">): StoredContent => {
@@ -61,8 +67,9 @@ function actionNote(a: ChatActionRow): string {
 }
 
 /** The model's messages for the thread's EARLIER turns (everything already stored), plus the note on write
- *  cards decided since the last answer (put in front of the new message by the caller). */
-export async function buildHistory(ctx: TenantContext, thread: ChatThreadRow, rows: readonly ChatMessageRow[], nonce: string): Promise<{ messages: Anthropic.MessageParam[]; actionsNote: string | null }> {
+ *  cards decided since the last answer (put in front of the new message by the caller). `asker` is who asks NOW: in
+ *  a thread shared to continue (0077_ask_people_sharing) a question someone else asked says whose it was. */
+export async function buildHistory(ctx: TenantContext, thread: ChatThreadRow, rows: readonly ChatMessageRow[], nonce: string, asker: string = thread.handle): Promise<{ messages: Anthropic.MessageParam[]; actionsNote: string | null }> {
   const actions = await listActions(ctx, thread.id);
   const msgs: Anthropic.MessageParam[] = [];
   if (thread.summary) {
@@ -81,7 +88,11 @@ export async function buildHistory(ctx: TenantContext, thread: ChatThreadRow, ro
       // An earlier attachment is one line; read_attachment reads it again.
       const att = c.attached?.length ? `\n\n(Attached then: ${c.attached.map((a) => `"${a.title}" (attachment id ${a.id})`).join(", ")} — call read_attachment to read one again.)` : "";
       const cmd = c.command ? `/${c.command} ` : "";
-      msgs.push({ role: "user", content: [{ type: "text", text: `${pre}${cmd}${c.text ?? ""}${att}`.trim() || "(empty)" }] });
+      // Link notes that reached the thread with this question, fenced again (the words are the other side's).
+      const links = c.linkNotes?.length ? `${linkNotesText(nonce, c.linkNotes)}\n\n` : "";
+      const by = r.asked_by ?? thread.handle;
+      const who = by.toLowerCase() === asker.toLowerCase() ? "" : `(Asked by @${by}, not the person asking now.) `;
+      msgs.push({ role: "user", content: [{ type: "text", text: `${pre}${who}${links}${cmd}${c.text ?? ""}${att}`.trim() || "(empty)" }] });
     } else {
       const text = (c.text ?? "").trim() || (r.stopped ? "(The answer was stopped before it said anything.)" : "(No answer.)");
       msgs.push({ role: "assistant", content: [{ type: "text", text }] });

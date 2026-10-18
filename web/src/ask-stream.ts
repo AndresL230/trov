@@ -250,8 +250,11 @@ export interface AskQuestion {
   context: string[];
   attachments: AskMessage["attachments"];
   command: AskMessage["command"];
+  /** Who asked it (`AskMessage.askedBy`; 0077_ask_people_sharing) — absent = the thread's owner. */
+  askedBy?: string;
 }
-export interface AskAnswer { role: "assistant"; key: string; turn: AskTurn }
+/** `askedBy`: who asked the question this answers — absent = the thread's owner. */
+export interface AskAnswer { role: "assistant"; key: string; turn: AskTurn; askedBy?: string }
 export type AskMsg = AskQuestion | AskAnswer;
 
 export interface AskConvo {
@@ -281,14 +284,17 @@ export function convoFromDetail(d: { thread: AskThreadSummary & { draft?: string
   return {
     uid: `t${d.thread.id}`, threadId: d.thread.id, thread, draft: typeof draft === "string" ? draft : "", title: d.thread.title, status: "ok", busy: false,
     messages: d.messages.map((m): AskMsg => m.role === "user"
-      ? { role: "user", key: `m${m.id}`, id: m.id, text: m.text, context: m.context, attachments: m.attachments, command: m.command }
-      : { role: "assistant", key: `m${m.id}`, turn: turnFromMessage(m) }),
+      ? { role: "user", key: `m${m.id}`, id: m.id, text: m.text, context: m.context, attachments: m.attachments, command: m.command, ...(m.askedBy ? { askedBy: m.askedBy } : {}) }
+      : { role: "assistant", key: `m${m.id}`, turn: turnFromMessage(m), ...(m.askedBy ? { askedBy: m.askedBy } : {}) }),
   };
 }
 
-/** The `thread` event, applied to the conversation: its id (a new thread), title, mode and switch. */
+/** The `thread` event, applied to the conversation: its id (a new thread), title, mode and switch. A turn has started,
+ *  and a turn takes the notes waiting on the thread's Trov links (the server delivers them into it), so the line
+ *  that announced them goes (`thread.links`; the next read of the thread says what is still waiting). */
 export function foldThreadEvent(c: AskConvo, d: AskEventMap["thread"]): AskConvo {
-  const base: AskThreadSummary = c.thread ?? { id: d.id, title: d.title, pinned: false, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef,
+  const { links: _delivered, ...known } = c.thread ?? ({} as Partial<AskThreadSummary>);
+  const base: AskThreadSummary = c.thread ? (known as AskThreadSummary) : { id: d.id, title: d.title, pinned: false, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef,
     hasDraft: false, group: "today", createdAt: "", updatedAt: "" };
   return { ...c, threadId: d.id, title: d.title || c.title, thread: { ...base, id: d.id, title: d.title || base.title, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef } };
 }

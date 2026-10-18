@@ -26,6 +26,7 @@ import { append_feed, promote_doc, propose_doc_update, ratify_adr, route_triage,
 import { create_ticket, add_ticket_comment, set_ticket_parent, set_ticket_sprint } from "../src/tools/tickets";
 import { create_sprint, add_sprint_resource } from "../src/tools/sprints";
 import { createHandoff } from "../src/tools/handoffs";
+import { acceptLink, createRequestFromWeb, sendLinkNote } from "../src/tools/links";
 import { savePrompt } from "../src/tools/prompts";
 import { createPage, sha256Hex } from "../src/tools/artifacts";
 import { putSuggestion, recordFeedback } from "../src/data/ai";
@@ -50,10 +51,10 @@ interface Fx {
   cookies: Record<Who, string>;
   alice: string; ownerA: string;
   docSlug: string; promptSlug: string; artifactSlug: string;
-  adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number;
+  adrId: number; triageId: number; ticketId: number; subTicketId: number; linkId: number; sprintId: number; handoffId: number; agentLinkId: number;
   inviteId: number; hookId: string; envKey: string; imgSha: string; login: string; tokenId: number;
   bTicketId: number; suggestionId: number;
-  askThreadId: number; askMessageId: number; askActionId: number;
+  askThreadId: number; askMessageId: number; askActionId: number; importId: number;
 }
 
 const doc = (slug: string, text: string) =>
@@ -105,6 +106,10 @@ async function seed(): Promise<Fx> {
   const linkId = (await first<{ id: number }>(env.DB, `SELECT l.id FROM ticket_links l JOIN tickets t ON t.id = l.ticket_id WHERE t.org_id = ? AND t.number = ?`, ORG_A, ticketId))!.id;
 
   const handoffId = (await createHandoff(A(), ALICE, { body: `${CANARY} handoff body`, context: { task: `${CANARY} task` } })).handoff.id;
+  // An agent link (0078): Alice → A's owner, open, a canary in its reason and in a note; `:id` is its per-org number.
+  const agentLinkId = (await createRequestFromWeb(A(), ALICE, { target: { person: OWNER_A }, reason: `${CANARY} link reason` })).id;
+  await acceptLink(A(), OWNER_A, agentLinkId);
+  await sendLinkNote(A(), platformCtx(), ALICE, { id: agentLinkId, body: `${CANARY} link note` }, "web");
   await savePrompt(A(), ALICE, { slug: "iso-prompt", title: `${CANARY} prompt`, body: `${CANARY} prompt body`, tags: ["review"], status: "published" }, "human");
   const artifactSlug = (await createPage(A(), { title: `${CANARY} artifact`, kind: "markdown", area: "auth", content: `# ${CANARY} artifact content` }, ALICE)).slug;
 
@@ -127,8 +132,19 @@ async function seed(): Promise<Fx> {
   // AI (0055_ai): an OPEN suggestion of A's, and a "Wrong?" of Alice's.
   const suggestionId = (await putSuggestion(A(), { itemType: "ticket", itemRef: String(ticketId), kind: "category", value: "bug", confidence: 0.9, reason: `${CANARY} reason`, cites: [], model: "m", promptVersion: "1" }))!;
   await recordFeedback(A(), ALICE, { itemType: "brief", itemRef: `${CANARY}-brief`, kind: "brief", model: null, promptVersion: null });
+  // A space of A's Library (0081_docs_library) with A's canary in its name and description, owned by alice.
+  await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) VALUES (?, 'canary-space', ?, 'shield', '#b4562c', ?, 4096, ?, ?)`,
+    ORG_A, `${CANARY} space`, `${CANARY} space description`, T, ALICE);
+  await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'canary-space', ?, ?, ?)`, ORG_A, ALICE, T, ALICE);
+  // A Markdown import of A's (0081/0082), still running, alice's, with the canary in its file name and its manifest.
+  const importId = Number((await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status, counts, failures, total, manifest)
+     VALUES (?, 'canary-space', ?, ?, ?, ?, 'running', '{}', '[]', 1, ?)`, ORG_A, `${CANARY}.zip`, ALICE, T, new Date().toISOString(),
+    JSON.stringify({ files: [{ path: `${CANARY}.md`, size: 9, title: CANARY }], choices: {}, writes: [{ key: `${CANARY}.md`, path: `${CANARY}.md`, mode: "new", slug: "canary-import", title: CANARY, parent_slug: null }], links: [], images: [`${CANARY}.png`] }))).meta.last_row_id);
   // Ask Trov (0066_ask): Alice's thread in A, a question and an answer that carry the canary, a proposed card.
-  const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T)).meta.last_row_id);
+  const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, shared_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T, T)).meta.last_row_id);
+  // Shared BY NAME too (0077_ask_people_sharing), to continue — with B's bob and the removed `gone`, written straight
+  // in (the route would refuse both): a share row never reaches across orgs, nor outlives a membership.
+  for (const h of ["bob", "gone"]) await run(env.DB, `INSERT INTO chat_thread_people (org_id, thread_id, handle, access, shared_at) VALUES (?, ?, ?, 'continue', ?)`, ORG_A, askThreadId, h, T);
   await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'user', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} question` }), T);
   const askMessageId = Number((await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, created_at) VALUES (?, ?, 'assistant', 'smart', ?, ?)`, ORG_A, askThreadId, JSON.stringify({ text: `${CANARY} answer` }), T)).meta.last_row_id);
   const askActionId = Number((await run(env.DB, `INSERT INTO chat_actions (org_id, thread_id, message_id, turn, tool, kind, args_json, preview_json, state, created_at) VALUES (?, ?, ?, 0, 'create_ticket', 'ticket', ?, ?, 'proposed', ?)`,
@@ -142,8 +158,8 @@ async function seed(): Promise<Fx> {
 
   return {
     cookies, alice: await cookieFor(ALICE), ownerA,
-    docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId,
-    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId, askThreadId, askMessageId, askActionId,
+    docSlug: "iso-doc", promptSlug: "iso-prompt", artifactSlug, adrId, triageId, ticketId, subTicketId, linkId, sprintId, handoffId, agentLinkId,
+    inviteId, hookId, envKey, imgSha, login, tokenId, bTicketId, suggestionId, askThreadId, askMessageId, askActionId, importId,
   };
 }
 
@@ -201,12 +217,12 @@ async function send(method: string, path: string, cookie: string, body?: unknown
 function paramValue(suffix: string, name: string, fx: Fx): string {
   const under = (p: string) => suffix.startsWith(p);
   switch (name) {
-    case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : fx.artifactSlug;
+    case "slug": return under("/doc") ? fx.docSlug : under("/prompts") ? fx.promptSlug : under("/spaces") ? "canary-space" : fx.artifactSlug;
     case "id": return String(
-      under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/adr") ? fx.adrId
+      under("/tickets") ? fx.ticketId : under("/sprints") ? fx.sprintId : under("/handoffs") ? fx.handoffId : under("/links") ? fx.agentLinkId : under("/adr") ? fx.adrId
         : under("/needs-triage") ? fx.triageId : under("/invites") ? fx.inviteId : under("/mcp-tokens") ? fx.tokenId
         : under("/ai") ? fx.suggestionId : under("/ask/threads") ? fx.askThreadId : under("/ask/messages") ? fx.askMessageId
-        : under("/ask/actions") ? fx.askActionId : fx.hookId);
+        : under("/ask/actions") ? fx.askActionId : under("/imports") ? fx.importId : fx.hookId);
     case "linkId": return String(fx.linkId);
     case "login": return fx.login;
     case "handle": return ALICE;
@@ -249,6 +265,10 @@ const TENANT: Record<string, Row> = {
   "GET /search": { query: "?q=CANARY" }, "GET /search/quick": { query: "?q=CANARY" },
   "GET /needs-triage": {}, "GET /adrs": {}, "GET /proposals": {},
   "POST /doc/:slug/promote": J({ version: 2 }), "POST /doc/:slug/reject": J({ version: 2 }),
+  // The page tree (0081_docs_library): A's doc in the path is no page of B's — 404, nothing moved.
+  "POST /doc/:slug/move": J({ target: "top" }),
+  // Archive page / Restore (0083_doc_archive): A's page is no page of B's — 404 for B's admin, 403 or 404 for its member.
+  "POST /doc/:slug/archive": J({}), "POST /doc/:slug/restore": J({}),
   "POST /adr/:id/ratify": J({}), "POST /adr/:id/reject": J({}),
   "POST /needs-triage/:id/discard": J({}), "POST /needs-triage/:id/assign": J({ type: "feed" }),
   "GET /identity-tasks": {}, "POST /identity-tasks/:login/map": J({ person: ALICE }),
@@ -285,10 +305,24 @@ const TENANT: Record<string, Row> = {
   // src/routes.ts — tenantApi
   "GET /handoffs": { query: "?box=anyone" }, "GET /handoffs/:id": {}, "POST /handoffs": J({ body: "to an A-only person", recipient: ALICE }),
   "POST /handoffs/:id/claim": J({}), "POST /handoffs/:id/expire": J({}),
+  // Agent links (0078): every statement binds the gate's org, and a link reads only for its two people.
+  "GET /links": { query: "?box=open" }, "GET /links/:id": {}, "POST /links": J({ target: { person: ALICE }, reason: "to an A-only person" }),
+  "POST /links/:id/send": J({}), "POST /links/:id/accept": J({}), "POST /links/:id/decline": J({}), "POST /links/:id/cancel": J({}),
+  "POST /links/:id/close": J({ reason: "hijacked" }), "POST /links/:id/notes": J({ body: "hijack" }),
   "GET /prompts": {}, "GET /prompts/:slug": {}, "GET /prompts/:slug/versions": {}, "POST /prompts": J({ slug: "matrix-prompt", title: "t", body: "b" }),
   "POST /prompts/:slug/tags": J({ tags: ["review"] }), "POST /prompts/:slug/used": J({}), "POST /prompts/:slug/publish": J({ version: 1 }),
   "POST /prompts/:slug/delete": J({}), "POST /prompts/:slug/restore": J({}),
   "POST /docs/propose": J({ title: "From the matrix", section: "reference", space: "technical", body: "b" }),
+  // src/spaces/routes.ts — the Library's spaces (0081_docs_library): A's `canary-space` in the path is no space of B's
+  "GET /spaces": {}, "GET /spaces/:slug": {}, "POST /spaces": J({ name: "Hijacked", icon: "shield", color: "#b4562c" }),
+  "PUT /spaces/:slug": J({ name: "Hijacked", description: "hijacked" }), "PUT /spaces/:slug/owners": J({ owners: ["boss"] }),
+  "PUT /spaces/prefs/me": J({ sidebar: [] }), "POST /spaces/:slug/archive": J({}), "POST /spaces/:slug/restore": J({}),
+  // src/imports/routes.ts — Markdown import runs (0081/0082): A's run id is no run of B's (404, nothing read or added), and a
+  // start in B names A's space (no space of B's — 404, no run started in either org).
+  "GET /imports": {}, "GET /imports/:id": {},
+  "POST /imports": J({ space: "canary-space", file_name: "x.md", files: [{ path: "x.md", size: 4, title: "X" }] }),
+  "POST /imports/:id/images": J({}), "POST /imports/:id/pages": J({ pages: [{ path: "CANARY_A.md", text: "# CANARY_A" }] }),
+  "POST /imports/:id/finish": J({ cancel: true }), "POST /imports/:id/approve-all": J({}), "POST /imports/:id/reject-all": J({}),
   // src/tags/routes.ts — the org's tag list (0056_org_tags): every statement binds the org the gate resolved
   "GET /tags": {}, "GET /tags/:name": {}, "POST /tags": J({ name: "hijacked" }), "PUT /tags/:name": J({ name: "hijacked" }),
   "POST /tags/:name/merge": J({ into: "ui" }), "POST /tags/:name/retire": J({}), "POST /tags/:name/restore": J({}),
@@ -349,10 +383,12 @@ const TENANT: Record<string, Row> = {
   "GET /ai/ask-replay": {}, "GET /ai/ask-replay/:scenario": {},
   // src/ai/ask/routes.ts — Ask Trov: a thread, message, card or attachment is its OWNER's (Alice's, in A). B's members
   // get `not_found` for every A id; what they write lands in B, for themselves. No key in the pool: a stream is `no_key`.
+  // Alice's thread is SHARED with A (0076_ask_sharing) and by name, to continue, with bob and `gone` (0077): A's
+  // members may read it; B's — and a removed member — never, named or not.
   "POST /ask": { body: (fx: Fx) => ({ text: "hijack", mode: "smart", threadId: fx.askThreadId }) },
   "GET /ask/state": {}, "POST /ask/peek": { body: (fx: Fx) => ({ refs: [`ticket:${fx.ticketId}`, `artifact:${fx.artifactSlug}`, `doc:${fx.docSlug}`] }) },
   "GET /ask/item/:ref": {},
-  "GET /ask/threads": { query: "?q=CANARY" }, "GET /ask/threads/:id": {}, "PATCH /ask/threads/:id": J({ title: "hijacked" }), "DELETE /ask/threads/:id": {},
+  "GET /ask/shared": {}, "GET /ask/threads": { query: "?q=CANARY" }, "GET /ask/threads/:id": {}, "PATCH /ask/threads/:id": J({ title: "hijacked" }), "DELETE /ask/threads/:id": {},
   "GET /ask/threads/:id/export": {}, "POST /ask/threads/:id/stop": J({}), "POST /ask/threads/:id/save": J({}),
   "POST /ask/messages/:id/save-form": J({}), "POST /ask/messages/:id/wrong": J({ reason: "source_wrong" }),
   "POST /ask/actions/:id/confirm": J({}), "POST /ask/actions/:id/cancel": J({}), "POST /ask/actions/:id/undo": J({}),
@@ -600,7 +636,7 @@ describe("controls", () => {
     }
     expect(seen).toEqual(expect.arrayContaining([
       "/img/:sha", "/docs", "/doc/:slug", "/doc/:slug/versions/:version", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
-      "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id",
+      "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id", "/links", "/links/:id",
       "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
     ]));
     // …and at the old paths, for a person whose only org is A.

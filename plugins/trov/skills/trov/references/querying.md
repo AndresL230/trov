@@ -11,7 +11,7 @@ authority-flagged. Use it to orient, to search, and to explore — there is no s
 | `q` | string | `""` | the search text. **Empty `q` → browse mode** (recency-ordered, filtered by the params below). |
 | `types` | `("doc"\|"decision"\|"feed"\|"sprint"\|"artifact")[]` | all five | restrict to one or more record types. `sprint` covers the roadmap plan narrative + sprints; `artifact` the artifact pages (see below). Tickets are not a query type — use `list_tickets` / `get_ticket`. |
 | `section` | string | — | restrict docs to a section (docs only). |
-| `space` | `"technical"\|"product"` | both | restrict docs to a space (docs only). |
+| `space` | a space's slug (`list_spaces`) | both | restrict docs to one Library space (docs only). `technical` still means `engineering`; an unknown space matches nothing. |
 | `include_staged` | boolean | **true via MCP**, **false via `/search`** | whether staged / unpromoted / draft content is returned. Agents see it (flagged); the human Search UI hides it. |
 | `limit` | number | 6 | how many **full-body** primary hits to assemble. |
 | `pointer_limit` | number | 20 | how many ranked **snippet** pointers to return beyond the primaries. |
@@ -57,8 +57,8 @@ authority-flagged. Use it to orient, to search, and to explore — there is no s
 - **Ad-hoc search**: a natural-language `q`, no type filter, let `primary` + `pointers` show
   depth-and-breadth. Raise `pointer_limit` to fan wider.
 - **Browse a space/section**: empty `q` + `space`/`section`/`types` → recency-ordered listing.
-- **Cross-space check**: query with `space:"product"` then `space:"technical"` (or omit `space` for both)
-  when the same concept may live in either.
+- **Cross-space check**: read the spaces with `list_spaces`, then query each relevant one (e.g.
+  `space:"product"` then `space:"engineering"`), or omit `space` for all, when the same concept may live in more than one.
 - **Inspect a pending change**: query with `include_staged: true` and read `staged_body` vs `body`.
 
 ## When to use which read tool

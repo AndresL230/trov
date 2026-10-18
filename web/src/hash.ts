@@ -18,9 +18,17 @@
 //                                        `<slug>@v<n>` is accepted, `/v<n>` written back)
 //   #artifacts/<slug>/diff/<a>..<b>    → two of its versions compared
 //   #handoffs         → the handoffs inbox; #handoffs/new the form; #handoffs/<id> one handoff
+//   #links            → Relay › Links (the screen's second tab); #links/<n> one agent link (its per-org
+//                       number). Not under #handoffs/, whose second segment is a handoff's number
 //   #prompts          → the Prompt Library; #prompts/new the editor; #prompts/<slug> one
 //                       prompt; #prompts/<slug>/edit and #prompts/<slug>/version its editor
-//   #docs/new         → the new-doc form
+//   #library          → the Docs Library's home; #library/<space> one space's home (its tab is state, not route)
+//   #doc/<slug>       → one doc, in the reader (the screen `docs`)
+//   #docs/new         → New page (the screen `newdoc`). The old #docs and #docs/<space> (the Technical /
+//                       Product tabs) land on #library
+//   #import           → the Markdown import wizard (the screen `import`); #import/<space> with that space picked
+//                       (its step is state, not route)
+//   #imports          → Imports history (the screen `imports`)
 //   #unplaced         → Triage › Unplaced (the screen `maintenance`). Its old addresses still
 //                       resolve: #maintenance here, and #maintenance/identity and
 //                       #maintenance/people — two tabs it had until 2026-10-06 — to
@@ -57,12 +65,13 @@ import { ORG_SLUG_RE } from "@shared/orgs";
 import { isOrgTab, type OrgTab } from "./org-core";
 import { isWelcomeStep, type WelcomeStep } from "./welcome";
 import { normalizeTagName } from "@shared/tags-core";
+import { SPACE_SLUG_RE } from "@shared/docs-core";
 
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
-  "mywork", "feed", "docs", "review",
-  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts",
+  "mywork", "feed", "library", "review",
+  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports", "relay",
 ];
 
 export interface Route {
@@ -81,6 +90,8 @@ export interface Route {
   art?: ArtRoute;
   /** Set only on `handoff` (a positive integer, rendered `#12`). */
   handoffId?: number;
+  /** Set only on `link` (an agent link's per-org number, rendered `#12`). */
+  linkId?: number;
   /** Set only on `prompt` and on `promptedit` for an existing prompt. */
   promptSlug?: string;
   /** Set only on `promptedit`. */
@@ -107,6 +118,12 @@ export interface Route {
   tagName?: string;
   /** Set only on `ask` with a stored thread open (`#ask/<id>`). */
   askThread?: number;
+  /** Set only on `space` (the space's slug, `#library/<space>`). */
+  spaceSlug?: string;
+  /** Set only on `docs` (the doc in the reader, `#doc/<slug>`). */
+  docSlug?: string;
+  /** Set only on `import`, when a space is picked (`#import/<space>`). */
+  importSpace?: string;
 }
 
 /** One repository's page under Org settings › Repositories: its Apps (`apps`), one app (`app`), or Add an app (`new`). */
@@ -118,10 +135,11 @@ const APP_KEY_SEG = /^[a-z0-9_-]{1,32}$/;
 export function sameRoute(a: Route, b: Route): boolean {
   return a.screen === b.screen && a.ticketId === b.ticketId && a.sprintId === b.sprintId && a.repoTab === b.repoTab
     && a.repoSlug === b.repoSlug && a.repoApp === b.repoApp
-    && a.handoffId === b.handoffId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
+    && a.handoffId === b.handoffId && a.linkId === b.linkId && a.promptSlug === b.promptSlug && a.promptMode === b.promptMode && a.roadmapTab === b.roadmapTab
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName && a.askThread === b.askThread
+    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug && a.importSpace === b.importSpace
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null)
     && JSON.stringify(a.orgRepo ?? null) === JSON.stringify(b.orgRepo ?? null);
 }
@@ -133,9 +151,11 @@ export function sameRoute(a: Route, b: Route): boolean {
  * screen entrance and nothing to load again (main.ts `markEnter`, the hashchange handler).
  */
 // Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
-// swaps the conversation in place and never replays the screen's entrance.
+// swaps the conversation in place and never replays the screen's entrance. Nor is the doc in the reader
+// (`docSlug`): picking another page in its tree swaps the reader pane in place. Nor is the import wizard's space
+// (`importSpace`): picking one is a choice on the same page.
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, askThread: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -232,6 +252,11 @@ export function parseHash(hash: string): Route {
     const id = intSeg(parts[1]);
     return id !== null ? { screen: "handoff", ...base, handoffId: id } : none;
   }
+  if (parts[0] === "links") {
+    if (parts.length === 1) return { screen: "links", ...base };
+    const id = parts.length === 2 ? intSeg(parts[1]) : null;
+    return id !== null ? { screen: "link", ...base, linkId: id } : none;
+  }
   if (parts[0] === "prompts" && (parts.length === 2 || parts.length === 3)) {
     if (parts.length === 2 && parts[1] === "new") return { screen: "promptedit", ...base, promptMode: "new" };
     const slug = seg(parts[1]);
@@ -240,7 +265,23 @@ export function parseHash(hash: string): Route {
     if (parts[2] === "edit" || parts[2] === "version") return { screen: "promptedit", ...base, promptSlug: slug, promptMode: parts[2] };
     return none;
   }
-  if (parts[0] === "docs" && parts.length === 2 && parts[1] === "new") return { screen: "newdoc", ...base };
+  // The Docs Library. `#docs` and `#docs/<space>` (the old Technical / Product tabs) are its home now.
+  if (parts[0] === "docs") return parts.length === 2 && parts[1] === "new" ? { screen: "newdoc", ...base } : parts.length <= 2 ? { screen: "library", ...base } : none;
+  if (parts[0] === "library") {
+    if (parts.length === 1) return { screen: "library", ...base };
+    const slug = parts.length === 2 ? seg(parts[1]) : null;
+    return slug && SPACE_SLUG_RE.test(slug) ? { screen: "space", ...base, spaceSlug: slug } : none;
+  }
+  // The Markdown import wizard, with a space picked or not (an unknown one is checked against the Library on arrival).
+  if (parts[0] === "import") {
+    if (parts.length === 1) return { screen: "import", ...base };
+    const slug = parts.length === 2 ? seg(parts[1]) : null;
+    return slug && SPACE_SLUG_RE.test(slug) ? { screen: "import", ...base, importSpace: slug } : none;
+  }
+  if (parts[0] === "doc" && parts.length === 2) {
+    const slug = seg(parts[1]);
+    return slug ? { screen: "docs", ...base, docSlug: slug } : none;
+  }
   if (parts[0] === "releases") {
     if (parts.length === 1) return { screen: "releases", ...base };
     // Legacy (the first cut had one global switch): `#releases/notes` is the index,
@@ -338,12 +379,16 @@ export function hashForRoute(r: Route): string {
   if (r.screen === "sprint") return r.sprintId !== null ? `#sprints/${r.sprintId}` : "#roadmap";
   if (r.screen === "handoff") return r.handoffId ? `#handoffs/${r.handoffId}` : "#handoffs";
   if (r.screen === "newhandoff") return "#handoffs/new";
+  if (r.screen === "link") return r.linkId ? `#links/${r.linkId}` : "#links";
   if (r.screen === "prompt") return r.promptSlug ? `#prompts/${encodeURIComponent(r.promptSlug)}` : "#prompts";
   if (r.screen === "promptedit") {
     if (r.promptMode === "edit" || r.promptMode === "version") return r.promptSlug ? `#prompts/${encodeURIComponent(r.promptSlug)}/${r.promptMode}` : "#prompts";
     return "#prompts/new";
   }
   if (r.screen === "newdoc") return "#docs/new";
+  if (r.screen === "space") return r.spaceSlug ? `#library/${encodeURIComponent(r.spaceSlug)}` : "#library";
+  if (r.screen === "docs") return r.docSlug ? `#doc/${encodeURIComponent(r.docSlug)}` : "#library";
+  if (r.screen === "import") return r.importSpace ? `#import/${encodeURIComponent(r.importSpace)}` : "#import";
   if (r.screen === "releases") {
     if (!r.releaseVersion) return "#releases";
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;

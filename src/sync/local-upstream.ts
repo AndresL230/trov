@@ -8,7 +8,8 @@
 // unset whatever it holds. With it set, a request Sync makes to `api.github.com` goes to
 // `<base>/github/…` and one to `api.anthropic.com` to `<base>/anthropic/…` (the stand-in answers
 // `POST <base>/anthropic/v1/messages` in the Messages API's response shape); every other
-// request is untouched.
+// request is untouched. Ask Trov uses it too (handed in by src/routes.ts): its model stream and its GitHub lookups
+// (src/repo/ask-github.ts; docs/architecture/ask.md › GitHub).
 import type { Env } from "../env";
 import { holdsLiveKey, type LiveKeyEnv } from "../billing/config";
 import { loopbackOrigin } from "../platform/loopback";

@@ -70,7 +70,8 @@
   the repo scan (repo setups, Phase D — `repo-apps.md` › Detection): `scan.ts` (the guarded reconcile arm),
   `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
   `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
-  again — credentialed) and `scan-routes.ts`,
+  again — credentialed) and `scan-routes.ts`, `ask-github.ts` (Ask Trov's GitHub transport — credentialed, GET-only,
+  handed to the Ask route by `src/routes.ts`; `ask.md` › GitHub),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
   normalises `repo_metrics.at`, and `putMetrics`, the same write for MANY rows in `db.batch` chunks of 50;
@@ -243,6 +244,41 @@
   Then `0075_identities_person_nocase` (the performance plan, P3) [the index `idx_identities_person_nocase` on
   `identities(person COLLATE NOCASE)`, so a person's identities are a search, not a scan; additive —
   `data-layer.md` › Round trips, held by `test/perf.indexes.test.ts`].
+  Then `0076_10_17_staging` — ONE migration for the 10-17 staging epic (#195: Ask sharing #193, handoff prompts by
+  upload #194, Ask Trov's GitHub lookups, agent links #196, the Docs Library #197), consolidated from eight files
+  before any reached production; each part keeps its old name as a `-- ══ part … ══` marker and its own header and rollback:
+  `0076_ask_sharing` (Ask Trov) [`chat_threads.shared_at` and the partial index `idx_chat_threads_shared`: a
+  conversation its owner shared with the org, read-only for its other members — `ask.md` › Sharing a conversation],
+  `0077_ask_people_sharing` (Ask Trov) [the table `chat_thread_people` — a conversation shared with named people,
+  each `read` or `continue` — and `asked_by` on `chat_messages` / `chat_actions`, who asked each turn — `ask.md` ›
+  Sharing a conversation], `0080_handoff_upload_tokens` (handoff prompts by upload) [`handoff_upload_tokens`: a
+  pending handoff whose prompt is PUT to the artifact upload route, created only when its bytes land; hash-only, 5
+  minutes — `handoffs-prompts.md`], `0076_ask_github` (Ask Trov's GitHub lookups) [`orgs.ai_chat_github`, the
+  admin's switch in Org settings › AI, off for every org — `ask.md` › GitHub], `0078_agent_links` (agent links)
+  [`org_counters` REBUILT so its CHECK takes `'link'` — every row copied, a guard fails the file unless the copy is
+  exact — and the tables `agent_links` / `agent_link_notes` — `handoffs-prompts.md` › Agent links, held by
+  `test/links.migration.test.ts`], `0081_docs_library` (the Docs
+  Library's schema) [`doc_spaces`, `doc_space_owners`, `doc_links`, `doc_imports`; `docs.parent_slug` /
+  `tree_rank`; `doc_versions.parent_slug` / `import_id` / `import_path`; three starter spaces per org; `docs.space`
+  remapped to a space slug — `docs-library.md`, held by `test/spaces.migration.test.ts`, which cuts the file at this
+  part], `0082_doc_import_manifest` (Markdown import) [`doc_imports.manifest` — the server's plan of a run — and
+  `doc_imports.images` — its uploaded images' path → sha256 — `docs-library.md` › Import] and `0083_doc_archive`
+  (Archive page) [`docs.archived_at` / `archived_by` — `docs-library.md` › Archiving a page]; all additive but
+  `0078_agent_links`. Both migration tests cut the file at their part (`test/helpers/migration-part.ts`).
+- The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
+  name and slug rules, `placeSpace`, the DTOs), `src/tools/spaces.ts` (reads, the admin / owner writers, the gate's
+  `spaceState`), `src/spaces/routes.ts` (the cookie routes at `/spaces`) — `docs-library.md`.
+- The Docs Library's page tree and links: `shared/docs-tree-core.ts` (the tree's rules, `planMove`), `shared/docs-links-core.ts`
+  (`[[slug]]`), `shared/docs-templates-core.ts` (New page's templates), `shared/placement-core.ts` (ranked placement,
+  shared with the board and the spaces), `src/tools/doc-tree.ts` (the move route's writer, a proposal's parent, the
+  promote's links, the doc page's read), `src/tools/doc-archive.ts` (Archive page / Restore — the cookie routes'
+  writer, never reachable from `src/mcp.ts`); web: `docs-pane.ts`, `doc-page.ts`, `newdoc.ts` + `newdoc-actions.ts`,
+  `tree-actions.ts`, `tree-drag.ts` on `pointer-drag.ts` (the app's one pointer drag) — `docs-library.md`.
+- The Docs Library's Markdown import: `shared/docs-import-core.ts` (zod-free: the caps, path safety, `planImport`,
+  `applyConflictChoices`, `prepareBody`, the run's wire types), `src/imports/runs.ts` (the run record and lock, image
+  upload, page batches into the gate, finish, Approve all / Reject all, history), `src/imports/routes.ts` (the cookie
+  routes at `/imports`), `src/platform/doc-links-backfill.ts` (the daily cron's one-pass `doc_links` backfill); web:
+  `zip-reader.ts` (the browser's zip reader) and the import screens — `docs-library.md` › Import.
 - `src/hosting/` — the hosting-provider interface (#97): `types.ts` (THE provider contract and its rules), `http.ts`
   (the fixed-host fetch, `HostingError`, scrub, `pollWindow`), `registry.ts`, `providers/*` (one file per provider),
   `parts.ts` (read side — MCP-reachable, so no secrets import) / `part-writes.ts`, `connections.ts`, `setup.ts`,
@@ -270,7 +306,10 @@
   `web/src/tickets.ts` + `web/src/sprints.ts` are the (purely presentational) tickets/sprint components;
   `web/src/marks.ts` is the ONE place a state is drawn (status glyphs, priority bars, a shape and a word —
   never a pill; `web-ui.md` › Status marks), read by every screen, the site and its tour mocks, and
-  `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`); and
+  `web/src/tip.ts` the one styled bubble that shows a mark's tooltip (`data-mtip`);
+  `web/src/zoom.ts` is the big-screen zoom (past ~3000px, to 1.3 at 3840) and its CSS-px helpers (`rectOf`,
+  `pointOf`, `viewportOf`, `clientOf`) every rect → style site uses, installed first by `web/src/zoom-boot.ts`
+  (`web-ui.md` › Big screens); and
   `web/src/hash.ts` is the hash-route seam (`parseHash` / `hashForRoute` — `#tickets/7`, `#sprints/3`,
   `#repo/<tab>`). `web/src/repo.ts` is the Repo dashboard (ported from the Claude Design `Trov Repo
   Dashboard.dc.html`), `web/src/repo-sample.ts` its design-placeholder set and the Repo-setups scenarios A–N as `RepoFacts` (a
@@ -309,9 +348,9 @@
   `site-questions.ts` holds the landing's product questions (its FAQPage).
   The build also writes `fonts/`; `web/src/fonts/` holds the vendored Geist and Archivo Narrow woff2 files and
   their `*-OFL.txt` licenses.
-  `web/src/releases.ts` is Help › **What's new**: `#releases` a grid of release cards; each release has TWO pages,
+  `web/src/releases.ts` is Help › **What's new**: `#releases` the newest release featured over a timeline; each release has TWO pages,
   `#releases/<v>` (release notes — for USERS: no PRs, no migrations) and `#releases/<v>/patches` (patch notes — for
-  builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), flipped by a `segmented()` switch;
+  builders: `ops` upgrade notes, Added / Changed / Fixed / Removed, PR links), its two sections in a `tabBar()`;
   `<v>` is `0.N` or `unreleased`; the old `#releases/patches` opens the newest release's patches. Static `RELEASES`
   data (`0.N` per milestone, numbered 0.1 … in order, newest first; renumbered in October 2026 — each entry's old
   numbers, which ran to 0.34, are in its `formerly`, so old links still resolve, current numbers first) plus a pure renderer, loaded as its OWN chunk through
@@ -339,6 +378,6 @@
 - `THIRD-PARTY-NOTICES.txt` — the third-party software and fonts the browser bundle and the Worker ship, with
   their licences; GENERATED by `scripts/licenses/notices.mjs` (authoring-only, like `scripts/og/render.mjs`: rerun
   after a dependency change), served at `/third-party-notices.txt`. `LICENSE` is Trov's own AGPL-3.0.
-- `.claude/skills/` — Claude Code skills: `trov`, `load-context`, `record-session`, `tickets`, and the
+- `.claude/skills/` — Claude Code skills: `trov`, `load-context`, `record-session`, `tickets`, `handoff`, `prompts`, `artifacts`, `link`, and the
   roadmap/my-work skills `read-plan`, `update-plan`, `my-work`. Described in the Working memory section
   above. (Symlinks into `plugins/trov/skills/` — one source of truth.)

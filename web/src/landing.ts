@@ -90,7 +90,7 @@ const check = (size: number, start: number, extra = "") => `<svg class="site-che
 // ── shared pieces of the canvas's repeated markup ────────────────────────────
 const MONO_EYEBROW = "font-family:var(--label);font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--accent)";
 const GROUP_LABEL = "font-family:var(--label);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40)";
-const H2 = "margin:0;font-size:clamp(28px, 3.4vw, 38px);font-weight:650;letter-spacing:-0.025em";
+const H2 = "margin:0;font-size:clamp(28px, 3.4 * var(--vw), 38px);font-weight:650;letter-spacing:-0.025em";
 const LEDE = "margin:14px 0 0;max-width:560px;font-size:15.5px;line-height:1.6;color:var(--fg-70);text-wrap:pretty";
 const section = (top = 150) => `max-width:1120px;margin:0 auto;padding:${top}px 24px 0`;
 /** Every section of the page: a phone retunes its top padding and gutter by this class (trov.css). */
@@ -265,7 +265,7 @@ function hero(signedIn: boolean): string {
             ${side(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`, "My Work")}
             ${side(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`, "Tickets")}
             ${side(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`, "Roadmap")}
-            ${side(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`, "Handoffs")}
+            ${side(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`, "Relay")}
           </div>
           ${sideHead("Monitor", "16px")}
           <div style="display:flex;flex-direction:column;gap:1px">
@@ -369,7 +369,7 @@ function loop(): string {
     </div>`;
   const orient = `<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);font-family:var(--label);font-size:11.5px;color:var(--fg-55)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>${search}</div>
-      ${hit("Rate limiting on the public API", "Doc · Technical / API", "", true, searchEnd + 200)}
+      ${hit("Rate limiting on the public API", "Doc · Engineering / API", "", true, searchEnd + 200)}
       ${hit("Retry budget for webhook callers", "Decision · ADR-0012", authorityMark("staged_pending", 11), false, searchEnd + 360)}
     </div>`;
 
@@ -385,7 +385,7 @@ function loop(): string {
       </div>
       <div style="padding:12px 14px 14px;font-family:var(--code);font-size:11px;line-height:1.75">
         <div style="color:rgba(237,233,226,0.6)">${cmd}</div>
-        ${tline("⏺ trov · load-context", "#9aab65", cmdEnd + 250)}
+        ${tline("⏺ trov · load-context", "var(--term-accent)", cmdEnd + 250)}
         ${tline("Read: Rate limiting on the public API", "rgba(237,233,226,0.85)", cmdEnd + 650)}
         <div class="site-st" style="color:rgba(237,233,226,0.85);${at(cmdEnd + 1000)}">Building on ADR-0012, token bucket per org.<span class="site-caret" style="${at(cmdEnd + 1150)}"></span></div>
       </div>
@@ -445,10 +445,10 @@ import type { TourKey } from "./site-feature-core";
  *  is new copy — when the Guide changes, change this with it. */
 export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
   docs: [
-    "The library is split into Technical and Product spaces, each grouped into sections like Architecture and Decisions.",
-    "Opening a doc expands its heading outline in the tree, and Version history keeps every earlier version.",
+    "The library is split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading.",
+    "Drag a page onto another to put it inside, or above or below one to reorder them. History keeps every earlier version.",
     "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
-    "New doc lets you propose one yourself.",
+    "New page starts one from a template and sends it to Review.",
   ],
   feed: [
     "A timeline of everything that shipped, from people and agents alike.",
@@ -499,7 +499,7 @@ function tourItems(): TourItem[] {
   const docs = `
       <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
         <span style="font-size:12px;font-weight:600">Docs</span>
-        <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Technical", true)}${segTab("Product", false, true)}</span>
+        <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Engineering", true)}${segTab("Product", false, true)}</span>
       </div>
       <div style="display:flex;min-height:250px">
         <div class="site-hide-sm" style="width:180px;flex:none;border-right:1px solid var(--border);padding:12px 8px">
@@ -512,7 +512,7 @@ function tourItems(): TourItem[] {
           ${tree(4, `${TREE_ROW};color:var(--fg-55)`, `${treeChev(false)}${treeTitle("ADR-0012 · Retry budget")}`)}
         </div>
         <div style="flex:1;min-width:0;padding:16px 20px">
-          <div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">Technical / Operations</div>
+          <div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">Engineering / Operations</div>
           <div style="margin-top:6px;display:flex;align-items:center;gap:10px">
             <span style="font-size:17px;font-weight:650">Deploy process</span>
             <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</span>
@@ -632,7 +632,7 @@ function tourItems(): TourItem[] {
         ${hsec("Done", ["429s carry Retry-After from the bucket's reset time"], S + 150)}
         ${hsec("Next", ["Add limiter tests for the reset edge", "Note the header in the API doc"], S + 330)}
         <div class="site-st" style="margin-top:14px;border-radius:8px;background:var(--term);color:var(--term-fg);padding:10px 12px;font-family:var(--code);font-size:10.5px;line-height:1.75;${at(S + 800)}">
-          <div style="color:#9aab65">⏺ trov · load-context</div>
+          <div style="color:var(--term-accent)">⏺ trov · load-context</div>
           <div style="color:rgba(237,233,226,0.85)">1 handoff waiting: #17 from @leo. Claim it?</div>
           <div class="site-st" style="color:rgba(237,233,226,0.6);${at(S + 1350)}">&gt; yes</div>
         </div>
@@ -660,7 +660,7 @@ function tourItems(): TourItem[] {
       </div>`;
 
   return [
-    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Technical and Product spaces, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
+    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Spaces for each team or topic, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
     { key: "feed", name: "Feed", title: "A timeline of what shipped", body: "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", mockStyle: `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, mock: feed },
     { key: "tickets", name: "Tickets", title: "A board the whole team files into", body: "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", mockStyle: MOCK, mock: tickets },
     { key: "roadmap", name: "Roadmap", title: "Sprints on a calendar", body: "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", mockStyle: MOCK, mock: roadmap },
@@ -772,7 +772,7 @@ function agents(): string {
   const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
     + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
-  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "prompts", "artifacts", "read-plan", "update-plan"]);
+  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"]);
 
   // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
   // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).

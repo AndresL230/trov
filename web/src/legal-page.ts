@@ -5,11 +5,14 @@
 // the app's own stored choice (`trov.theme`, the same key and reading as web/src/main.ts), and
 // the toggle flips Light ⇄ Dark and stores it, so the app and these pages always agree.
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { LEGAL_DOCS, legalView, type LegalKind } from "./legal";
 import { syncFavicon } from "./favicon";
 import { followSkipLink, siteRoot } from "./site-chrome";
 import { paintRoot } from "./morph";
 import { migrateBrowserStorage } from "./storage-migrate";
+import { rectOf } from "./zoom";
+import { SITE_PAGES } from "@shared/site-pages";
 
 migrateBrowserStorage(); // canopy.* → trov.* before the theme is read
 
@@ -25,10 +28,11 @@ function storedTheme(): Theme {
 }
 
 const mount = document.getElementById("legal");
-const kind = mount?.dataset.doc as LegalKind | undefined;
-const doc = kind ? LEGAL_DOCS[kind] : undefined;
+let kind = mount?.dataset.doc as LegalKind | undefined;
+const firstDoc = kind ? LEGAL_DOCS[kind] : undefined;
 
-if (mount && doc) {
+if (mount && firstDoc) {
+  let doc = firstDoc;   // the document on screen (a tab switches it in place, below)
   let theme = storedTheme();
   // The contents disclosure a narrow screen shows (trov.css folds it under 900px; a wide one never sees it).
   let tocOpen = false;
@@ -68,7 +72,7 @@ if (mount && doc) {
     queued = false;
     let current = "";
     for (const sec of mount.querySelectorAll<HTMLElement>(".site-legal-sec")) {
-      if (sec.getBoundingClientRect().top > 120) break;
+      if (rectOf(sec).top > 120) break;      // CSS px (zoom.ts)
       current = sec.id;
     }
     for (const a of mount.querySelectorAll<HTMLElement>("[data-legal-toc]")) {
@@ -90,6 +94,55 @@ if (mount && doc) {
     const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     sec.scrollIntoView({ behavior: still ? "auto" : "smooth", block: "start" });
     history.replaceState(null, "", `#${sec.id}`);
+  });
+  // ── switching documents in place ──
+  // Terms, Privacy and Refunds are one bundle (all three documents are in LEGAL_DOCS), so a tab — or a link to
+  // another of them in the text — swaps the document where it is, the way the public docs switch pages
+  // (docs-page.ts): the banner and the text repaint, the address, title, description and canonical follow, and
+  // the new text fades in (not under reduced motion). Back and forward do the same. A modified click (a new tab)
+  // is the browser's.
+  const isLegal = (k: string): k is LegalKind => Object.prototype.hasOwnProperty.call(LEGAL_DOCS, k);
+  const setHead = (sel: string, prop: "content" | "href", value: string | undefined): void => {
+    if (value !== undefined) document.head.querySelector(sel)?.setAttribute(prop, value);
+  };
+  const show = (k: LegalKind, push: boolean, keyboard = false): void => {
+    if (k === kind) return;
+    kind = k; doc = LEGAL_DOCS[k]; tocOpen = false;
+    mount.dataset.doc = k;
+    paint();
+    const page = SITE_PAGES.find((x) => x.key === k);
+    if (page) {
+      document.title = page.title;
+      setHead('meta[name="description"]', "content", page.description);
+      const canon = document.head.querySelector<HTMLLinkElement>('link[rel="canonical"]');
+      if (canon) canon.href = new URL(page.path, canon.href).href;
+    }
+    if (push) history.pushState({ legal: k }, "", `/${k}`);
+    window.scrollTo(0, 0);
+    spy();
+    if (!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      for (const el of mount.querySelectorAll<HTMLElement>(".site-legal-band-in > :not(.site-legal-tabs), #site-main")) {
+        el.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 220, easing: "cubic-bezier(.2,.7,.2,1)" });
+      }
+    }
+    // From the keyboard the pressed tab is replaced: focus goes to the new title, as the docs do.
+    if (keyboard) {
+      const h = mount.querySelector<HTMLElement>(".site-legal-h");
+      h?.setAttribute("tabindex", "-1");
+      h?.focus({ preventScroll: true });
+    }
+  };
+  mount.addEventListener("click", (e) => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = (e.target as Element).closest<HTMLAnchorElement>("a[href]");
+    const k = a?.getAttribute("href")?.replace(/^\//, "") ?? "";
+    if (!a || !isLegal(k)) return;
+    e.preventDefault();
+    show(k, true, e.detail === 0);
+  });
+  window.addEventListener("popstate", () => {
+    const k = location.pathname.replace(/^\//, "");
+    if (isLegal(k)) show(k, false);
   });
   // A deep link to a section (/privacy#cookies) lands on it once the page has rendered.
   if (location.hash.length > 1) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();

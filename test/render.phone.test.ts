@@ -107,12 +107,13 @@ describe("narrow layouts — the hooks exist and their rules are there", () => {
     expect(rules).toContain(".cnpy-rv-back { display:none; }");
   });
 
-  it("Docs: the page list and the reader take turns behind a Pages button", () => {
+  it("Docs: the docs pane and the page take turns behind a Pages button", () => {
     const html = render(app({ screen: "docs" }));
-    expect(html).toContain('class="cnpy-docs" data-tree="0"');
+    expect(html).toContain('class="cnpy-libframe" data-tree="0"');
     expect(html).toContain('data-act="docsTree"');
-    expect(render(app({ screen: "docs", docsTree: true }))).toContain('class="cnpy-docs" data-tree="1"');
-    expect(rules).toContain(".cnpy-docs-bar { display:none; }");
+    expect(render(app({ screen: "docs", docsTree: true }))).toContain('class="cnpy-libframe" data-tree="1"');
+    expect(rules).toContain(".cnpy-libframe > .cnpy-docs-bar { display:none; }");
+    expect(rules).toContain('.cnpy-libframe[data-tree="0"] > .cnpy-dpane, .cnpy-libframe[data-tree="1"] > .cnpy-libmain { display:none; }');
   });
 
   it("a modal is a bottom sheet on a phone, clear of the home indicator", () => {
@@ -127,7 +128,7 @@ describe("narrow layouts — the hooks exist and their rules are there", () => {
   });
 
   it("the app shell fills the visible viewport", () => {
-    expect(rules).toContain("@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }");
+    expect(rules).toContain("@supports (height:100dvh) { .cnpy-shell { height:calc(100 * var(--dvh)) !important; } }");
   });
 });
 

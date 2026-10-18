@@ -8,6 +8,7 @@
 // What only the app answers — a refused sign-in (`?denied=`), a new account's `#onboard`, a page that
 // came without the prerendered landing — is handed to the app's own boot (main.ts), loaded then.
 import "./trov.css";
+import "./zoom-boot";      // first: the big-screen zoom (zoom.ts) is set before anything measures
 import { migrateBrowserStorage } from "./storage-migrate";
 import { installMarkTips } from "./tip";
 import { initFaqAccordion } from "./site-faq";

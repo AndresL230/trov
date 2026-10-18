@@ -9,7 +9,7 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import { sidebarView, navKeyOf, NAV_CLOSED } from "../web/src/sidebar";
 import { parseHash, hashForRoute, pageKey } from "../web/src/hash";
-import { askLayout, clampInspector, layoutBucket } from "../web/src/ask-layout";
+import { askLayout, clampInspector, inspectorWidth, layoutBucket } from "../web/src/ask-layout";
 import { ESC_LAYERS, closeTop, topLayer, type EscEntry } from "../web/src/ask-escape";
 import { ASK_BOTTOM_SLACK, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askKeepScroll, askTweenHeights, closingAttr, stickAfterScroll, tweenStart } from "../web/src/ask-motion";
 import { createReplayApi, replayFromLocation, replayPlan, replayQuestionFiles, replayRoute } from "../web/src/ask-replay";
@@ -51,7 +51,7 @@ describe("route — #ask and #ask/<id>", () => {
 });
 
 describe("sidebar — the Trov row", () => {
-  const props = { collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table" as const, roadmapTab: "timeline" as const, docSpace: "technical", docSpaces: [],
+  const props = { collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table" as const, roadmapTab: "timeline" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false,
     counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
   it("sits in Workspace right after My Work, lit on the Ask screen", () => {
     const html = sidebarView({ ...props, screen: "ask" });
@@ -143,6 +143,24 @@ describe("the screen — renders end to end with the parts' stubs", () => {
     expect(open(true)).toMatch(/<aside class="ask-insp-frame"[^>]*data-closing="1"/);
     // Under 1640px the list makes room for it.
     expect(open(false)).toContain(`data-threads="hidden"`);
+  });
+
+  it("an artifact opens the inspector narrower (400px) than other items (480px); a width the person dragged to holds for every kind", () => {
+    expect(inspectorWidth(null, "artifact:hosting-oct-17")).toBe(400);
+    expect(inspectorWidth(null, "ticket:14")).toBe(480);
+    // A file attached to a question is a private artifact: it opens at the artifact's width too.
+    expect(inspectorWidth(null, "askcv:page:q12:upload:97001")).toBe(400);
+    expect(inspectorWidth(null, "askcv:page:a12:chart:0")).toBe(480);
+    expect(inspectorWidth(null, null)).toBe(480);
+    expect(inspectorWidth(560, "artifact:hosting-oct-17")).toBe(560);
+    expect(inspectorWidth(560, "ticket:14")).toBe(560);
+    const frame = (ref: string, width: number | null = null) => render(askState((s) => {
+      s.ask.inspector = { ...s.ask.inspector, stack: [ref], idx: 0, width };
+    }));
+    expect(frame("artifact:hosting-oct-17")).toMatch(/<aside class="ask-insp-frame"[^>]*style="width:400px;--ask-insp-w:400px">/);
+    expect(frame("artifact:hosting-oct-17")).toMatch(/data-ask-resize role="separator"[^>]*aria-valuemin="380" aria-valuemax="720" aria-valuenow="400"/);
+    expect(frame("ticket:14")).toMatch(/<aside class="ask-insp-frame"[^>]*style="width:480px;--ask-insp-w:480px">/);
+    expect(frame("artifact:hosting-oct-17", 560)).toMatch(/<aside class="ask-insp-frame"[^>]*style="width:560px;--ask-insp-w:560px">/);
   });
 
   it("the hover card is a root overlay keyed by its ref (another chip's card pops in again)", () => {
@@ -241,7 +259,7 @@ describe("QA-2: thread Delete asks first (confirmModal), then deletes", () => {
     } as unknown as AskCtx;
     threadsPart.act!(ctx, "askThDelete", String(t.id), null);
     expect(deleted).toEqual([]);
-    expect(s.ask.threadDelete).toEqual({ id: t.id, title: t.title });
+    expect(s.ask.threadDelete).toEqual({ id: t.id, title: t.title, shared: !!t.shared, who: null });
     const root = render(s);
     expect(root).toMatch(/data-overlay="confirm-ask-th-delete"[\s\S]*role="alertdialog"/);
     expect(root).toContain(`Delete “${t.title}”?`);

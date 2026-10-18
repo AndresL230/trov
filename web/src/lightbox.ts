@@ -61,7 +61,7 @@ export function openLightbox(o: LightboxOptions): void {
     if (!img.naturalWidth || !img.naturalHeight) return;
     const ratio = img.naturalWidth / img.naturalHeight;
     root.querySelector<HTMLElement>(".cnpy-lightbox-frame")!.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
-    panel.style.width = `min(1400px, 100%, calc((100vh - 170px) * ${ratio.toFixed(4)}))`;
+    panel.style.width = `min(1400px, 100%, calc((100 * var(--vh) - 170px) * ${ratio.toFixed(4)}))`;
   };
   if (img.complete) fit(); else img.addEventListener("load", fit, { once: true });
 

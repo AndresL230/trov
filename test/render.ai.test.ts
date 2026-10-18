@@ -5,6 +5,7 @@
  * over a real render() pass or the screen's own function. The field-ABSENT case is pinned by
  * test/render.ai-absent.test.ts.
  */
+import cssSrc from "../web/src/trov.css?raw";
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 
 const mdMock = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -120,12 +121,17 @@ describe("the suggestion chip (#157)", () => {
     { key: "s-7", id: 7, label: "Billing", reason: "it touches checkout and the plan block.", cites: [{ ref: "pr:136", label: "#136", href: "https://github.com/a/b/pull/136" }] },
     { open: false, busy: false, unavailable: false, canAct: true, ...o },
   );
-  it("is drawn unlike a value a person set: a dashed outline, the AI mark, muted words", () => {
+  it("is drawn unlike a value a person set: a lightly tinted box, the AI mark and 'Trov suggests' before what it proposes", () => {
     const h = chip();
-    expect(h).toContain("border:1px dashed var(--border-strong)");
+    expect(h).not.toContain("dashed");   // the dashed outline read as broken (the owner's call)
     expect(h).toContain(`d="${TROV_MARK_PATH}"`);
-    expect(h).toContain("color:var(--fg-55)");
-    expect(text(h)).toContain("Suggested: Billing , because…");
+    expect(text(h)).toContain("Trov suggests Billing Why?");
+    expect(cssSrc).toMatch(/\.cnpy-ai-chip \{[^}]*background:color-mix\(in srgb, var\(--accent\) 5%, var\(--surface\)\)/);
+    // Accept can say what it does, and what it would write sits inside the box
+    const withBody = chip({ acceptLabel: "Create 2 sprints", body: "<ol><li>Hosting polish</li></ol>" });
+    expect(withBody).toMatch(/class="cnpy-ghostbtn cnpy-ai-accept"[^>]*>Create 2 sprints<\/button>/);
+    expect(withBody.indexOf('class="cnpy-ai-chip-body"')).toBeGreaterThan(withBody.indexOf("cnpy-ai-chip-line"));
+    expect(withBody).toContain('class="cnpy-ai-chip has-body"');
   });
   it("its reason is one tap away: a real disclosure button, closed then open", () => {
     const closed = chip();
@@ -134,13 +140,13 @@ describe("the suggestion chip (#157)", () => {
     const open = chip({ open: true });
     expect(open).toContain('aria-expanded="true"');
     expect(open).not.toMatch(/id="ai-why-s-7" class="cnpy-ai-why" hidden/);
-    expect(text(open)).toContain("because it touches checkout and the plan block.");
+    expect(text(open)).toContain("Because it touches checkout and the plan block.");
     expect(open).toContain(">#136</a>");
   });
   // e2e § 6 K (Phase H): pressed from the keyboard, the screen's rebuild dropped focus to <body> (ticket detail,
   // Unplaced, the themes' lanes) — a keyboard user could not press it again or move on from it. The rerender puts
   // focus back on the element with the same `data-field` (main.ts), so each such control names one.
-  it("the because… disclosure and a theme lane keep keyboard focus across the rebuild (a data-field each)", () => {
+  it("the Why? disclosure and a theme lane keep keyboard focus across the rebuild (a data-field each)", () => {
     expect(chip()).toMatch(/data-act="aiReason" data-arg="s-7" aria-expanded="false" aria-controls="ai-why-s-7" data-field="aiReason:s-7"/);
     const h = themesSection(themes("ready"), rp());
     const lanes = [...h.matchAll(/data-act="aiThemesLane" data-arg="([^"]+)"[^>]*data-field="aiThemesLane:([^"]+)"/g)];
@@ -161,8 +167,8 @@ describe("the suggestion chip (#157)", () => {
   it("is never a button inside a button, and wraps in a narrow column", () => {
     const h = chip({ extra: '<button type="button" data-act="aiRenameOpen">Rename</button>' });
     expect(h.startsWith("<div")).toBe(true);
-    expect(h).toContain("flex-wrap:wrap");
-    expect(h).toContain("max-width:100%");
+    expect(cssSrc).toMatch(/\.cnpy-ai-chip-line \{[^}]*flex-wrap:wrap/);
+    expect(cssSrc).toMatch(/\.cnpy-ai-chip \{[^}]*max-width:100%/);
   });
 });
 
@@ -322,21 +328,28 @@ describe("My Work › Your brief", () => {
 // ── Repo › Summary › State ──────────────────────────────────────────────────
 
 describe("Repo › Summary › State", () => {
-  it("ready: an 18px headline, three columns with their marks and cites, 'from 6 events', Wrong?", () => {
+  it("ready: an 18px headline, a strip of counts, three lanes of item cards with source chips, 'from 6 events', Wrong?", () => {
     const h = repoStateSection(repoStateFixture("ready", NOW), rp());
     expect(h).toContain("font-size:18px");
     expect(text(h)).toContain("Release 0.30 is live; hosting screens are the open front, and main is green.");
     expect(text(h)).toContain("Written by Trov from 6 events, 2h ago");
     const cols = ["shipped", "inFlight", "attention"].map((k) => h.slice(h.indexOf(`data-ai-col="${k}"`)));
     expect(text(cols[0])).toContain("Shipped recently");
-    expect(cols[0]).toContain("color:var(--green)");
+    expect(cols[0]).toContain("--lane:var(--green)");
     expect(text(cols[1])).toContain("In flight");
-    expect(cols[1]).toContain("color:var(--blue)");
+    expect(cols[1]).toContain("--lane:var(--blue)");
     expect(text(cols[2])).toContain("Needs attention");
-    expect(cols[2]).toContain("color:var(--amber)");
-    expect(h).toContain(">#173</a>");
-    expect(h).toContain(">handoff #3</a>");
-    expect(h).toContain(">Tickets</a>");
+    expect(cols[2]).toContain("--lane:var(--amber)");
+    // Each line is a card: its sentence, then its sources as chips by kind — a PR reads "PR #173".
+    expect(h).toMatch(/<li class="repo-st-item"><p class="repo-st-text">/);
+    expect(h).toMatch(/class="repo-st-src"[^>]*>[\s\S]*?<span>PR #173<\/span><\/a>/);
+    expect(h).toMatch(/class="repo-st-src"[^>]*><span>handoff #3<\/span><\/a>/);
+    expect(h).toMatch(/class="repo-st-src"[^>]*><span>Tickets<\/span><\/a>/);
+    // The counts at a glance, one per lane, the same numbers as the lanes.
+    const st = repoStateFixture("ready", NOW);
+    for (const k of ["shipped", "inFlight", "attention"] as const) {
+      expect(h).toMatch(new RegExp(`data-ai-count="${k}">[\\s\\S]*?<span class="repo-st-cn">${st[k].length}</span>`));
+    }
     expect(h).toContain('data-act="aiWrong"');
     expect(h).toContain("repo-state-cols");
   });
@@ -577,7 +590,7 @@ describe("Org settings › AI", () => {
   const settings = (o: Partial<AiSettings> = {}): AiSettings => ({
     enabled: true, canEdit: true, eligibility: "ok",
     allowances: { ai_summaries: use(212, 3000), ai_runs: use(1212, 3000), jev_checks: use(40, 10000), ai_chat: use(830, 2500) },
-    chatAuto: true, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
+    chatAuto: true, chatGithub: false, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT, ...o,
   });
   const tab = (a: AiSettings | null, status: "ok" | "loading" | "error" = "ok", saving = false) => aiTab(org, { status, data: a }, saving);
 
@@ -587,7 +600,12 @@ describe("Org settings › AI", () => {
     expect(admin).toMatch(/<button data-act="orgAiChatAutoToggle" role="switch" aria-checked="true" aria-label="Auto mode in Ask Trov for this organization"/);
     expect(tab(settings({ chatAuto: false }))).toMatch(/data-act="orgAiChatAutoToggle" role="switch" aria-checked="false"/);
     expect(tab(settings({ chatAuto: false }))).toContain('data-ai-chat-auto="off"');
+    // Ask's GitHub lookups (0076): the same switch, off by default.
+    expect(admin).toMatch(/<button data-act="orgAiChatGithubToggle" role="switch" aria-checked="false" aria-label="GitHub lookups in Ask Trov for this organization"/);
+    expect(admin).toContain('data-ai-chat-github="off"');
+    expect(tab(settings({ chatGithub: true }))).toMatch(/data-act="orgAiChatGithubToggle" role="switch" aria-checked="true"/);
     const member = tab(settings({ canEdit: false, enabled: false, chatAuto: false }));
+    expect(text(member)).toContain("GitHub lookups in Ask Trov");
     expect(member).not.toContain('role="switch"');
     expect(text(member)).toContain("Off");
     expect(text(member)).toContain("Auto mode in Ask Trov");

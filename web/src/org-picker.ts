@@ -232,7 +232,7 @@ export function createOrgModal(d: CreateOrgDraft): string {
   return `<div data-overlay="orgs-create" class="cnpy-cmodal">
     <div data-act="orgsCreateClose" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="orgs-create" role="dialog" aria-modal="true" aria-labelledby="orgs-create-t" aria-describedby="orgs-create-d" tabindex="-1" data-orgs-create data-scroll-keep="orgs-create" class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(480px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+      <div id="orgs-create" role="dialog" aria-modal="true" aria-labelledby="orgs-create-t" aria-describedby="orgs-create-d" tabindex="-1" data-orgs-create data-scroll-keep="orgs-create" class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(480px, 100%);max-height:calc(100 * var(--vh) - 32px);overflow-y:auto">
         <button type="button" data-act="orgsCreateClose" aria-label="Close" title="Close" class="cnpy-iconbtn"${off} style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
         <div id="orgs-create-t" style="padding-right:32px;font-size:16px;font-weight:600;letter-spacing:-0.01em">Create an organization</div>
         <p id="orgs-create-d" style="margin:6px 0 0;font-size:13px;line-height:1.55;color:var(--fg-55)">${d.grant

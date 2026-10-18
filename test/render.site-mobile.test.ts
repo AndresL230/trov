@@ -173,7 +173,7 @@ describe("the hero on a phone", () => {
   });
 
   it("the rules: a stacked headline block with 50px buttons, the window as tall as its content, removed line over added lines", () => {
-    expect(phone).toContain(".site-hero-h { font-size:clamp(32px, 9.4vw, 40px); line-height:1.07; }");
+    expect(phone).toContain(".site-hero-h { font-size:clamp(32px, 9.4 * var(--vw), 40px); line-height:1.07; }");
     expect(phone).toMatch(/\.site-hero-cta > \.site-btn \{[^}]*min-height:50px;/);
     expect(media("(max-width:480px)")).toContain(".site-hero-cta { grid-template-columns:minmax(0, 1fr); }");
     expect(phone).toContain(".site-hero-win { height:auto !important; }");
@@ -225,7 +225,7 @@ describe("sheets on a phone — the tour's dialog, sign-in, Contact", () => {
   const phone = media("(max-width:640px)");
 
   it("the tour's dialog: full height in dvh, 48px Previous / Next clear of the home indicator, a 44px close", () => {
-    expect(rules).toContain(".site-fx-panel { height:100dvh; }");
+    expect(rules).toContain(".site-fx-panel { height:calc(100 * var(--dvh)); }");
     expect(phone).toMatch(/\.site-fx-foot \{[^}]*padding:10px 12px calc\(10px \+ env\(safe-area-inset-bottom\)\); \}/);
     expect(phone).toMatch(/\.site-fx-nav \{[^}]*min-height:48px;/);
     expect(phone).toContain(".site-fx-x { top:8px; right:8px; width:44px; height:44px; }");
@@ -246,7 +246,7 @@ describe("sheets on a phone — the tour's dialog, sign-in, Contact", () => {
 
   it("sign-in and Contact rise from the bottom edge and end where the keyboard begins", () => {
     expect(phone).toContain('[data-cnpy-theme] .site-signin-wrap:has(> [role="dialog"][aria-modal="true"]) { padding-bottom:var(--site-kb, 0px) !important; }');
-    expect(phone).toContain('[data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100dvh - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }');
+    expect(phone).toContain('[data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100 * var(--dvh) - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }');
     expect(phone).toMatch(/\.site-signin-card \{[^}]*animation:site-sheet-up var\(--fx-slow\) var\(--fx-ease\) both; \}/);
     expect(phone).toMatch(/\.site-signin-btn \{[^}]*min-height:50px;/);
     expect(phone).toMatch(/\.site-signin-plans \.cnpy-seg-btn, \.site-contact-card \.cnpy-seg-btn \{ min-height:44px;/);
@@ -342,5 +342,17 @@ describe("terms and privacy on a phone", () => {
     expect(legalPageSrc).toContain("legalView(doc, t === \"dark\", tocOpen)");
     expect(legalPageSrc.indexOf("if (tocOpen) setToc(false, true);")).toBeGreaterThan(0);
     expect(legalPageSrc.indexOf("if (tocOpen) setToc(false, true);")).toBeLessThan(legalPageSrc.indexOf("sec.scrollIntoView({ behavior:"));
+  });
+
+  it("Terms, Privacy and Refunds switch in place, like the docs: no page load, the head and address follow, Back works", () => {
+    const sw = legalPageSrc.slice(legalPageSrc.indexOf("const show = (k: LegalKind"));
+    expect(sw).toContain("kind = k; doc = LEGAL_DOCS[k]; tocOpen = false;");
+    expect(sw).toContain('history.pushState({ legal: k }, "", `/${k}`);');
+    expect(sw).toContain("document.title = page.title;");
+    expect(sw).toContain('setHead(\'meta[name="description"]\', "content", page.description);');
+    expect(sw).toContain('prefers-reduced-motion: reduce');
+    expect(legalPageSrc).toContain('window.addEventListener("popstate", () => {');
+    // a modified click (a new tab) stays the browser's
+    expect(legalPageSrc).toContain("e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;");
   });
 });

@@ -11,9 +11,9 @@ const SKILLS: Record<string, string> = Object.fromEntries(
 const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)?.[1] ?? "").split(", ").map((t) => t.trim());
 
 describe("the Trov plugin's skills and the organization a call acts in", () => {
-  it("ships the ten skills, at the version the release notes name", () => {
-    expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.9.0");
+  it("ships the eleven skills, at the version the release notes name", () => {
+    expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
+    expect(plugin.version).toBe("0.10.1");
   });
 
   it("every skill that calls Trov derives `repo` from the git remote, passes it on every call, and may ask where it is", () => {
@@ -27,6 +27,13 @@ describe("the Trov plugin's skills and the organization a call acts in", () => {
       for (const code of ["repo_required", "not_connected", "ambiguous_org", "org_unavailable"]) expect(text, `${name}: ${code}`).toContain(code);
       expect(text, name).toContain("never pass a different repository to get an answer");
     }
+  });
+
+  it("handoff uploads a long prompt when it has a shell, sends it inline without one, and reports #N only after the PUT", () => {
+    const h = SKILLS.handoff;
+    for (const said of ["prompt: { title, sha256, size_bytes }", "prompt: { title, body }", "about 2 KB", "no shell", "curl -sS -X PUT --data-binary @"]) expect(h, said).toContain(said);
+    expect(h).toMatch(/only once the PUT\s+has answered/);
+    for (const tool of ["Bash(shasum -a 256:*)", "Bash(wc -c:*)", "Bash(curl -sS -X PUT:*)"]) expect(allowed(h)).toContain(tool);
   });
 
   it("load-context opens by asking where it is and saying so; nothing tells a person to add the server twice", () => {
@@ -44,5 +51,68 @@ describe("the Trov plugin's skills and the organization a call acts in", () => {
       expect(text).not.toContain("trov-<org> <same url>");
       expect(text).not.toContain("A connection is for **one organization**");
     }
+  });
+});
+
+/** A skill's frontmatter: the text between its two `---` lines. */
+const frontmatter = (text: string): string => /^---\n([\s\S]*?)\n---\n/.exec(text)?.[1] ?? "";
+type McpHook = Record<string, string>;
+/** The `mcp_tool` hooks under one event of a skill's frontmatter `hooks:`, each with its matcher. The
+ *  frontmatter is the small, fixed YAML shape the Phase 0 harness proved (agent-links spec): event →
+ *  `- matcher?` / `hooks:` → `- type: mcp_tool` with `if`, `server`, `tool`, `input:` (two levels) and `timeout`. */
+function skillHooks(text: string, event: string): McpHook[] {
+  const fm = frontmatter(text);
+  const block = new RegExp(`^  ${event}:\\n((?:    .*\\n?)*)`, "m").exec(fm)?.[1] ?? "";
+  const out: McpHook[] = [];
+  let matcher = "";
+  let hook: McpHook | null = null;
+  for (const line of block.split("\n")) {
+    const m = /^(\s*)(- )?([\w-]+):\s*(.*)$/.exec(line);
+    if (!m) continue;
+    const [, indent, dash, key, raw] = m;
+    const value = raw.replace(/^"(.*)"$/, "$1");
+    if (key === "matcher") { matcher = value; continue; }
+    if (key === "type") { hook = { type: value, matcher }; out.push(hook); continue; }
+    if (!hook || key === "hooks" || key === "input") continue;
+    hook[indent.length + (dash ? 2 : 0) > 10 ? `input.${key}` : key] = value;
+  }
+  return out;
+}
+
+describe("the link skill registers its hooks from its own frontmatter (owner ruling 6)", () => {
+  const link = SKILLS.link;
+  const inbox = { type: "mcp_tool", server: "plugin:trov:trov", tool: "link_inbox", "input.session": "${session_id}", "input.event": "${hook_event_name}", timeout: "5" };
+
+  it("calls link_inbox at every prompt, with the session and the event", () => {
+    expect(skillHooks(link, "UserPromptSubmit")).toEqual([{ ...inbox, matcher: "" }]);
+  });
+
+  it("calls it after a git commit and a git push, and after no other Bash command", () => {
+    expect(skillHooks(link, "PostToolUse")).toEqual([
+      { ...inbox, matcher: "Bash", if: "Bash(git commit*)" },
+      { ...inbox, matcher: "Bash", if: "Bash(git push*)" },
+    ]);
+  });
+
+  it("hooks only that one tool, nowhere but this skill, and stays invocable so a spoken 'join link 12' registers them", () => {
+    for (const [name, text] of Object.entries(SKILLS)) if (name !== "link") expect(frontmatter(text), name).not.toMatch(/^hooks:/m);
+    expect(Object.keys(import.meta.glob("../plugins/trov/hooks/*"))).toEqual([]); // not plugin-wide: hooks.json would call link_inbox in every session
+    expect(frontmatter(link)).not.toContain("disable-model-invocation");
+    for (const t of ["request_link", "join_link", "send_link_note", "close_link", "list_links", "link_inbox"]) expect(allowed(link)).toContain(`mcp__trov__${t}`);
+    expect(link).toContain('echo "$CLAUDE_CODE_SESSION_ID"');
+    expect(link).toContain("Never request without a yes");
+  });
+
+  it("its description says to invoke it BEFORE request_link / join_link: a model that calls the tools directly gets no hooks (two-sessions e2e L-01)", () => {
+    const description = /^description: (.*)$/m.exec(frontmatter(link))?.[1] ?? "";
+    expect(description).toMatch(/ALWAYS invoke this skill before calling request_link or join_link/);
+    expect(description).toMatch(/registers the hooks/);
+  });
+
+  it("load-context lists links at session start and never joins or requests one", () => {
+    const lc = SKILLS["load-context"];
+    expect(allowed(lc)).toContain("mcp__trov__list_links");
+    for (const t of ["request_link", "join_link", "send_link_note", "close_link"]) expect(allowed(lc)).not.toContain(`mcp__trov__${t}`);
+    expect(lc).toContain("say 'join link 12'");
   });
 });

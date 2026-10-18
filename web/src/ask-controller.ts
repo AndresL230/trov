@@ -21,13 +21,14 @@ import { cmdjPart, cmdjRepaint, cmdjToggle, isCmdjKey, otherModalOpen } from "./
 import { phonePart, closeDrawer } from "./ask-phone";
 import { threadsPart } from "./ask-threads";
 import { closeTop, type EscEntry } from "./ask-escape";
-import { askLayout, clampInspector, layoutBucket } from "./ask-layout";
+import { askLayout, clampInspector, inspectorWidth, layoutBucket } from "./ask-layout";
 import { HOVER_CARD, placeHoverCard, refsInText, viewOf } from "./ask-refs";
 import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askKeepScroll, askTweenHeights, reducedMotion, type AskBottomMove } from "./ask-motion";
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
-import { inspectorRef, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
+import { inspectorRef, isViewerConvo, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
 import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type AskMessage, type RefView } from "@shared/ai-ask-core";
+import { pointOf, rectOf, viewportOf } from "./zoom";
 
 export interface AskHost {
   state: AppState;
@@ -185,8 +186,10 @@ export function createAskController(host: AskHost): AskController {
       if (i >= 0) { ask = messages[i].role === "user"; messages = messages.slice(0, i); }
     }
     const key = `k${++seq}`;
-    const q: AskMsg[] = ask ? [{ role: "user", key: `q${key}`, id: null, text: input.text, context: input.context ?? [], attachments: input.files ?? [], command: input.command ?? null }] : [];
-    c = { ...c, messages: [...messages, ...q, { role: "assistant", key: `a${key}`, turn: newTurn(mode) }], busy: true, status: c.status === "idle" ? "ok" : c.status };
+    // The turn is the person's own (0077_ask_people_sharing: in a conversation shared with them, theirs among others').
+    const by = s.me?.handle ? { askedBy: s.me.handle } : {};
+    const q: AskMsg[] = ask ? [{ role: "user", key: `q${key}`, id: null, text: input.text, context: input.context ?? [], attachments: input.files ?? [], command: input.command ?? null, ...by }] : [];
+    c = { ...c, messages: [...messages, ...q, { role: "assistant", key: `a${key}`, turn: newTurn(mode), ...by }], busy: true, status: c.status === "idle" ? "ok" : c.status };
     setConvo(where, c);
     ui().conversation.stick = true;
     want(input.context ?? []);
@@ -243,7 +246,9 @@ export function createAskController(host: AskHost): AskController {
     } finally {
       if (streams[where] === ctl) { delete streams[where]; setConvo(where, { ...ui()[where], busy: false }); }
       paint();
-      if (wasNew || where === "page") reloadThreads();
+      // Someone else's conversation the person continued stays in their shared lists (moved up), never their own.
+      if (isViewerConvo(ui()[where])) reloadShared();
+      else if (wasNew || where === "page") reloadThreads();
     }
   }
 
@@ -297,6 +302,15 @@ export function createAskController(host: AskHost): AskController {
     }).finally(paint);
   }
 
+  /** The conversations others shared in the org: read on arriving at Ask (they change when someone else shares). */
+  function reloadShared(): void {
+    if (ui().shared.status === "idle") ui().shared = { status: "loading", data: [] };
+    Promise.resolve().then(() => api.listShared()).then((data) => { ui().shared = { status: "ok", data }; }).catch((e) => {
+      if (isUnauthorized(e)) host.unauth(e);
+      else ui().shared = { ...ui().shared, status: ui().shared.data.length ? "ok" : "error" };
+    }).finally(paint);
+  }
+
   function newThread(where: AskWhere = "page"): void {
     if (streams[where]) streams[where]!.abort();
     delete streams[where];
@@ -336,6 +350,8 @@ export function createAskController(host: AskHost): AskController {
       if (ui().page.threadId !== id) return;
       setConvo("page", { ...ui().page, status: "error" });
       fail(e, "Couldn't open this thread.");
+      // A shared row (Shared with you, Organization) its owner has since stopped sharing (or deleted): read it again.
+      if (ui().shared.data.some((t) => t.id === id)) reloadShared();
     }).finally(paint);
   }
 
@@ -439,9 +455,9 @@ export function createAskController(host: AskHost): AskController {
       if (ui().hover?.ref === ref) { cancelExit("hover"); paint(); return; }     // back on the same chip: it stays
       hcTimer = setTimeout(() => {
         if (!el.isConnected || !viewOf(ctx.look(), ref)) return;
-        const r = el.getBoundingClientRect();
+        const r = rectOf(el), view = viewportOf();     // CSS px (zoom.ts), as the card's left / top are
         cancelExit("hover");
-        ui().hover = { ref, at: placeHoverCard(r, window.innerWidth, window.innerHeight) };
+        ui().hover = { ref, at: placeHoverCard(r, view.width, view.height) };
         paint();
       }, HOVER_CARD.delayMs);
     };
@@ -467,11 +483,12 @@ export function createAskController(host: AskHost): AskController {
       if (!edge || e.button !== 0) return;
       e.preventDefault();
       const frame = edge.closest<HTMLElement>(".ask-insp-frame");
-      const x0 = e.clientX, w0 = ui().inspector.width;
+      // CSS px (zoom.ts `pointOf`): under the big-screen zoom the edge still tracks the pointer 1:1.
+      const x0 = pointOf(e).x, w0 = inspectorWidth(ui().inspector.width, inspectorRef(ui()));
       ui().inspector = { ...ui().inspector, dragging: true };     // no width transition while it follows the pointer
       paint();
       const move = (ev: PointerEvent) => {
-        const w = clampInspector(w0 + (x0 - ev.clientX));
+        const w = clampInspector(w0 + (x0 - pointOf(ev).x));
         ui().inspector = { ...ui().inspector, width: w };
         if (frame) frame.style.width = `${w}px`;     // live, without a repaint per pixel
       };
@@ -482,12 +499,12 @@ export function createAskController(host: AskHost): AskController {
     host.mount.addEventListener("keydown", (e) => {
       if (!(e.target as Element | null)?.closest?.("[data-ask-resize]") || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
       e.preventDefault();
-      ui().inspector = { ...ui().inspector, width: clampInspector(ui().inspector.width + (e.key === "ArrowLeft" ? 16 : -16)) };
+      ui().inspector = { ...ui().inspector, width: clampInspector(inspectorWidth(ui().inspector.width, inspectorRef(ui())) + (e.key === "ArrowLeft" ? 16 : -16)) };
       paint();
     });
 
     window.addEventListener("resize", () => {
-      const vw = window.innerWidth;
+      const vw = viewportOf().width;           // CSS px: the width the layout really has (zoom.ts)
       const was = layoutBucket(ui().vw);
       ui().vw = vw;
       if (ui().hover) ui().hover = null;
@@ -538,6 +555,7 @@ export function createAskController(host: AskHost): AskController {
       }).finally(paint);
     }
     reloadThreads();
+    reloadShared();
   }
 
   function enter(threadId: number | null): void {

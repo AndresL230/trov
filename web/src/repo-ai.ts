@@ -2,9 +2,11 @@
 // dashboard carries its field — absent, the screen is exactly what it was (test/render.ai-absent.test.ts):
 //
 //   Summary › State (`RepoDashboard.state`): the Summary tab, the Repo screen's second, offered only while
-//     the live read carries the field (repo.ts `repoSummaryShown`). A one-line headline and three wrapping columns —
-//     Shipped recently (the done glyph, green), In flight (the half glyph, blue), Needs attention
-//     (the warning glyph, amber) — each line linked to its sources; "Written by Trov from 6 events".
+//     the live read carries the field (repo.ts `repoSummaryShown`). Drawn from its STRUCTURE, not as prose (the
+//     owner's call): the headline, a strip of three counts, then three lanes — Shipped recently (the done glyph,
+//     green), In flight (the half glyph, blue), Needs attention (the warning glyph, amber) — each item a small card:
+//     its sentence, then its sources as compact chips by kind (PR #185, #12, CI run, a commit, a branch, Feed entry —
+//     the full label in the chip's tooltip); "Written by Trov from 6 events".
 //   Planning › Where the work went (`RepoDashboard.themes`, per range): the caption, an 8 weeks /
 //     Quarter switch, and a lane per theme with a band per week sized by its merged pull requests
 //     (a zero week draws no band). A lane is a button: it is picked (`aria-pressed`), the others fade,
@@ -15,7 +17,7 @@
 // Each is its own card: State is the Summary tab's whole content; Where the work went sits above Planning's
 // one panel (the mock's layout), whose hairlines and sections are untouched. Pure markup; the acts are ai-actions.ts's.
 
-import type { AiLine, AiRepoState, AiThemeLane, AiThemeRange, AiThemes } from "@shared/ai-core";
+import type { AiCite, AiLine, AiRepoState, AiThemeLane, AiThemeRange, AiThemes } from "@shared/ai-core";
 import { AI_STALE_DAYS, AI_THEME_NAME_MAX, AI_THEME_RANGES, AI_THEME_RANGE_LABELS, aiItemRef } from "@shared/ai-core";
 import { esc, attr, surface } from "./ui";
 import { glyph } from "./marks";
@@ -44,8 +46,28 @@ const COLUMNS: { key: "shipped" | "inFlight" | "attention"; title: string; mark:
   { key: "attention", title: "Needs attention", mark: glyph("warn", "var(--amber)", 13), tone: "var(--amber)" },
 ];
 
+// A source as a chip: its kind's short word (a feed entry's title repeats the sentence, so it is "Feed entry" with
+// the title in the tooltip), linked where it has a page.
+const SRC_ICON: Record<string, string> = {
+  pr: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="6" r="2.5"></circle><circle cx="6" cy="18" r="2.5"></circle><circle cx="18" cy="18" r="2.5"></circle><path d="M6 8.5v7M18 15.5V10a3 3 0 0 0-3-3h-3"></path></svg>`,
+  run: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M10 9l5 3-5 3z"></path></svg>`,
+  feed: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h9"></path></svg>`,
+  sha: `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3.5"></circle><path d="M3 12h5.5M15.5 12H21"></path></svg>`,
+};
+function stateSource(c: AiCite): string {
+  const kind = c.ref.split(":")[0];
+  const word = kind === "pr" ? `PR ${c.label}` : kind === "feed" ? "Feed entry" : c.label;
+  const mono = kind === "sha" || kind === "branch";
+  const inner = `${SRC_ICON[kind] ?? ""}<span${mono ? ' style="font-family:var(--code)"' : ""}>${esc(word)}</span>`;
+  const tip = word === c.label ? "" : ` data-mtip="${attr(c.label)}"`;
+  const href = c.href ?? "";
+  if (/^https?:\/\//i.test(href)) return `<a href="${attr(href)}" target="_blank" rel="noopener" class="repo-st-src"${tip}>${inner}</a>`;
+  if (/^#[A-Za-z]/.test(href)) return `<a href="${attr(href)}" class="repo-st-src"${tip}>${inner}</a>`;
+  return `<span class="repo-st-src is-plain"${tip}>${inner}</span>`;
+}
+
 function stateLine(l: AiLine): string {
-  return `<li style="line-height:1.55;overflow-wrap:anywhere">${esc(l.text)}${l.cites.length ? ` <span style="display:inline-flex;flex-wrap:wrap;gap:6px">${aiCites(l.cites)}</span>` : ""}</li>`;
+  return `<li class="repo-st-item"><p class="repo-st-text">${esc(l.text)}</p>${l.cites.length ? `<div class="repo-st-srcs">${l.cites.map(stateSource).join("")}</div>` : ""}</li>`;
 }
 
 /** Whether `repoStateSection` draws anything: not once this person pressed "Wrong?" on it and its exit is over. */
@@ -74,13 +96,15 @@ export function repoStateSection(st: AiRepoState, p: RepoAiProps, now = Date.now
   } else {
     const cols = COLUMNS.map((c) => {
       const lines = st[c.key];
-      return `<div style="display:flex;flex-direction:column;gap:10px;min-width:0" data-ai-col="${c.key}">
-          <h3 style="margin:0;font-size:13px;font-weight:600;color:${c.tone};display:flex;align-items:center;gap:6px">${c.mark}${c.title}</h3>
+      return `<div class="repo-st-lane" data-ai-col="${c.key}" style="--lane:${c.tone}">
+          <h3 class="repo-st-lh">${c.mark}<span>${c.title}</span><span class="repo-st-ln">${lines.length}</span></h3>
           ${lines.length
-            ? `<ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:13.5px">${lines.map(stateLine).join("")}</ul>`
-            : `<p style="margin:0;font-size:13px;color:var(--fg-55)">Nothing here.</p>`}
+            ? `<ul class="repo-st-list">${lines.map(stateLine).join("")}</ul>`
+            : `<p class="repo-st-none">${c.key === "attention" ? "Nothing needs attention." : c.key === "inFlight" ? "Nothing in flight." : "Nothing shipped lately."}</p>`}
         </div>`;
     }).join("");
+    // The counts at a glance, before the lanes: one per lane, its mark, its number, its words.
+    const strip = `<div class="repo-st-strip">${COLUMNS.map((c) => `<div class="repo-st-count" data-ai-count="${c.key}">${c.mark}<span class="repo-st-cn">${st[c.key].length}</span><span class="repo-st-cw">${c.key === "shipped" ? "shipped" : c.key === "inFlight" ? "in flight" : st[c.key].length === 1 ? "needs attention" : "need attention"}</span></div>`).join("")}</div>`;
     // Its age, plainly (owner ruling Q25): an old state stays — a fact under the headline, in the byline's quiet
     // ink, never a warning. The server counts the days (`ageDays`).
     const age = st.ageDays !== undefined && st.ageDays >= AI_STALE_DAYS
@@ -88,6 +112,7 @@ export function repoStateSection(st: AiRepoState, p: RepoAiProps, now = Date.now
     const headline = st.headline ? `<p class="repo-state-hl" style="margin:0;font-size:18px;font-weight:500;line-height:1.4;letter-spacing:-0.005em;max-width:64ch">${esc(st.headline)}</p>` : "";
     body = `<div style="display:flex;flex-direction:column;gap:18px">
         ${age ? `<div style="display:flex;flex-direction:column;gap:4px">${headline}${age}</div>` : headline}
+        ${strip}
         <div class="repo-state-cols">${cols}</div>
       </div>`;
   }

@@ -32,7 +32,7 @@
 html, body { margin: 0; padding: 0; }
 button { font-family: inherit; cursor: pointer; border: none; background: none; color: inherit; }
 input, select { font-family: inherit; }
-::selection { background: var(--accent, #2BFF88); color: var(--accent-fg, #000); }
+::selection { background: var(--accent, #525cc3); color: var(--accent-fg, #fff); }
 /* THE scrollbar — every scroller in the app and the site (web-ui.md › Scrollbars): no track, no arrows, a slim
    thumb in the theme's ink that darkens and fills out under the pointer. Chromium and Safari draw it from the
    pseudo-elements; Firefox, which has none, from the standard properties (thin, the same ink). A scroller that
@@ -51,9 +51,218 @@ input, select { font-family: inherit; }
 }
 /* The thinking orb (thinking-orb.ts): a canvas the loop paints; it takes its box and nothing else. */
 .cnpy-orb { display:block; flex:none; }
+/* The link line (link-line.ts): two orbs and the particles between them, one canvas whose width / height are
+   fixed in the template and scaled down here on a narrow screen (the orbs shrink with it; the aspect is the
+   canvas's own, 420 × 110). In the start card a photo sits inside an orb: placed by percentage of the line,
+   sized by its container width, so it shrinks with the orb. The card rises in when opened (not under reduced
+   motion). No radius is declared here (the photo is personChip's own, already in the corners block). */
+.cnpy-ll { position:relative; container-type:inline-size; width:100%; }
+.cnpy-ll-cv { display:block; width:100%; height:auto; aspect-ratio:420 / 110; }
+.cnpy-ll-face { position:absolute; top:50%; width:calc(32 / 420 * 100cqw); aspect-ratio:1; transform:translate(-50%, -50%); pointer-events:none; }
+.cnpy-ll-face[data-ll-face="left"] { left:calc(50 / 420 * 100%); }
+.cnpy-ll-face[data-ll-face="right"] { left:calc(370 / 420 * 100%); }
+.cnpy-ll-face[hidden] { display:none; }
+.cnpy-ll-face > .cnpy-lh-ico { width:100%; color:var(--accent); }
+.cnpy-ll-face > .cnpy-av { width:100% !important; height:100% !important; font-size:calc(11 / 420 * 100cqw) !important; animation:cnpy-ll-face .32s var(--fx-ease) both; }
+@keyframes cnpy-ll-face { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:none; } }
+/* The arc diagram (links.ts `linksHero`, link-line.ts `linkHeroCanvas`): your client kinds as stations on a line,
+   arcs above for links between your own sessions, teammates below, on one 720 × 330 canvas scaled to its stage.
+   Over it, placed by percentage of the stage and sized by `--s` (canvas px) in container units, so all of it
+   shrinks with the picture: your photo where the line starts ("You" above it), and one node per station / person —
+   a real link the orb's size (`.cnpy-lh-hit`) holding the client's icon or the person's photo, its words UNDER it
+   (arcs over the line leave from a station's top and arcs down leave from its shoulders, so the words never sit on
+   a line), and a card on hover or focus. No radius is declared here (the icon disc's and the card's are inline;
+   the photos are personChip's). */
+.cnpy-lh { margin:0 auto 4px; max-width:820px; overflow-x:clip; }
+.cnpy-lh-stage { position:relative; container-type:inline-size; width:100%; }
+.cnpy-lh-cv { display:block; width:100%; height:auto; aspect-ratio:720 / 330; }
+.cnpy-lh-me, .cnpy-lh-node { position:absolute; transform:translate(-50%, -50%); }
+.cnpy-lh-me { display:grid; place-items:center; pointer-events:none; }
+.cnpy-lh-me .cnpy-av { width:calc(28 / 720 * 100cqw) !important; height:calc(28 / 720 * 100cqw) !important; font-size:calc(10 / 720 * 100cqw) !important; }
+.cnpy-lh-you { position:absolute; left:50%; bottom:calc(100% + 4px); transform:translateX(-50%); font-size:11px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
+.cnpy-lh-node { width:calc(var(--s) / 720 * 100cqw); aspect-ratio:1; z-index:1; }
+.cnpy-lh-node:hover, .cnpy-lh-node:focus-within { z-index:3; }
+.cnpy-lh-hit { display:grid; place-items:center; width:100%; height:100%; color:var(--accent); text-decoration:none; outline:none; }
+.cnpy-lh-hit:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-lh-ico { display:grid; place-items:center; width:calc(26 / 720 * 100cqw); aspect-ratio:1; background:var(--surface); border:1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); transition:transform .16s var(--fx-ease); }
+.cnpy-lh-ico svg { width:62%; height:62%; }
+.cnpy-lh-hit .cnpy-av { width:calc(22 / 720 * 100cqw) !important; height:calc(22 / 720 * 100cqw) !important; font-size:calc(8.5 / 720 * 100cqw) !important; transition:transform .16s var(--fx-ease); }
+.cnpy-lh-hit:hover .cnpy-av, .cnpy-lh-hit:focus-visible .cnpy-av, .cnpy-lh-hit:hover .cnpy-lh-ico, .cnpy-lh-hit:focus-visible .cnpy-lh-ico { transform:scale(1.12); }
+.cnpy-lh-name, .cnpy-lh-sub { position:absolute; left:50%; transform:translateX(-50%); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; pointer-events:none; }
+.cnpy-lh-name { top:calc(100% - 2px); font-size:12px; font-weight:600; color:var(--fg-70); }
+.cnpy-lh-count { font-weight:500; color:var(--fg-40); }
+.cnpy-lh-sub { top:calc(100% + 14px); font-family:var(--code); font-size:10.5px; color:var(--fg-40); }
+.is-person .cnpy-lh-name { font-size:11.5px; font-weight:500; color:var(--fg-55); }
+.cnpy-lh-node.is-asking .cnpy-lh-name { color:var(--accent); font-weight:600; }
+.cnpy-lh-card { position:absolute; left:50%; top:calc(100% + 26px); width:250px; transform:translate(-50%, 4px); padding:10px 12px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 10px 28px rgba(0,0,0,.18); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .14s ease, transform .16s var(--fx-ease), visibility 0s linear .14s; text-align:left; }
+.cnpy-lh-card.is-up { top:auto; bottom:calc(100% + 6px); }
+/* The card opens toward the middle of the picture, so it never runs off the stage's edge. */
+.cnpy-lh-card.is-r { left:auto; right:-8px; transform:translate(0, 4px); }
+.cnpy-lh-card.is-l { left:-8px; transform:translate(0, 4px); }
+.cnpy-lh-node:hover .cnpy-lh-card, .cnpy-lh-node:focus-within .cnpy-lh-card { opacity:1; visibility:visible; transform:none; transition:opacity .14s ease, transform .16s var(--fx-ease), visibility 0s; }
+.cnpy-lh-under { max-width:620px; margin:0 auto; }
+.cnpy-lh-ask { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:11px 14px; border:1px solid color-mix(in srgb, var(--accent) 40%, var(--border)); background:color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+/* A phone: the same diagram, compressed — a station says its client by its icon alone (the words stay in its
+   aria-label and card). */
+@container (max-width: 520px) { .cnpy-lh-name { font-size:10px; max-width:72px; } .cnpy-lh-sub, .is-kind .cnpy-lh-name { display:none; } .cnpy-lh-card { width:210px; } }
+/* The live links as cards (links.ts `linkCard`): ONE compact shape in every state — five rows always in the same
+   places (strip, title, reason, note, footer), each one line, the footer pinned to the bottom — so the cards of a
+   grid row line up at the same height. At most three across, two when narrower, one on a phone. A request waiting
+   for you carries an accent border all round (never a coloured left edge). No canvas: the diagram carries the
+   motion. The icon disc's radius is inline; no radius is declared here. */
+.cnpy-lcards { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, max(300px, calc((100% - 28px) / 3))), 1fr)); gap:12px; margin-top:4px; align-items:stretch; }
+.cnpy-lcard { display:flex; flex-direction:column; gap:7px; min-width:0; padding:11px 14px 10px; transition:border-color .14s ease; }
+.cnpy-lcard:hover { border-color:var(--border-strong); }
+.cnpy-lcard.is-asking { border-color:color-mix(in srgb, var(--accent) 55%, var(--border)); background:color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.cnpy-lcard-strip, .cnpy-lcard-title, .cnpy-lcard-note, .cnpy-lcard-foot { display:flex; align-items:center; gap:8px; min-width:0; }
+.cnpy-lcard-strip { height:20px; font-size:11.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-lcard-side { display:inline-flex; align-items:center; gap:6px; min-width:0; flex:0 1 auto; }
+.cnpy-lcard-txt { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-lcard-ico { display:grid; place-items:center; width:18px; height:18px; flex:none; color:var(--accent); border:1px solid color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.cnpy-lcard-ico svg { width:11px; height:11px; }
+.cnpy-lcard-strip .cnpy-av { width:18px !important; height:18px !important; font-size:8px !important; }
+.cnpy-lcard-title { height:20px; }
+.cnpy-lcard-why { height:18px; font-size:12.5px; line-height:18px; color:var(--fg-55); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-lcard-note { height:20px; font-size:12px; padding-top:6px; border-top:1px solid var(--border); box-sizing:content-box; }
+.cnpy-lcard-foot { height:28px; margin-top:auto; }
+.cnpy-hitbox .cnpy-lcard-acts { position:relative; z-index:2; pointer-events:none; }
+.cnpy-hitbox .cnpy-lcard-acts button { pointer-events:auto; }
+@media (prefers-reduced-motion: reduce) { .cnpy-lcard { transition:none; } }
+/* A suggestion Trov makes (ai-ui.ts `aiSuggestionChip`): a box lightly tinted with the accent — "Trov suggests" and
+   what, a Why? disclosure, Accept (or what accepting does) and Dismiss; what it would write inside it. */
+.cnpy-ai-chip { display:flex; flex-direction:column; gap:8px; min-width:0; max-width:100%; padding:9px 10px 9px 12px; border:1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); background:color-mix(in srgb, var(--accent) 5%, var(--surface)); font-size:12.5px; color:var(--fg-55); }
+.cnpy-ai-chip.has-body { padding:12px 14px; gap:10px; }
+.cnpy-ai-chip-line { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; min-width:0; }
+.cnpy-ai-chip-what { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+.cnpy-ai-chip-by { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); white-space:nowrap; }
+.cnpy-ai-chip-label { min-width:0; font-size:13px; font-weight:500; color:var(--fg); overflow-wrap:anywhere; }
+.cnpy-ai-whybtn { padding:0; font:inherit; font-size:12px; color:var(--fg-55); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+.cnpy-ai-whybtn:hover { color:var(--fg); }
+.cnpy-ai-chip-acts { display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
+.cnpy-ai-accept { border:1px solid color-mix(in srgb, var(--accent) 45%, var(--border-strong)) !important; background:var(--surface); color:var(--accent) !important; font-weight:600 !important; }
+.cnpy-ai-accept:hover:not(:disabled) { background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.cnpy-ai-why { color:var(--fg-70); line-height:1.5; overflow-wrap:anywhere; }
+.cnpy-ai-chip-body { padding-top:10px; border-top:1px solid color-mix(in srgb, var(--accent) 14%, var(--border)); }
+/* Roadmap's Trov button (roadmap-ai.ts `roadmapTrovButton`) in the narrative card's head, and the dialog it opens:
+   the suggestions (the kit's boxes) and the drift, lightly tinted like a suggestion, never in the page's flow. */
+.rm-trov-btn { position:relative; display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 9px; border:1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); background:color-mix(in srgb, var(--accent) 6%, var(--surface)); font-size:12px; font-weight:500; color:var(--fg-70); white-space:nowrap; cursor:pointer; transition:border-color .12s ease; }
+.rm-trov-btn:hover { border-color:color-mix(in srgb, var(--accent) 50%, var(--border)); color:var(--fg); }
+.rm-trov-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.rm-trov-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
+.rm-trov-dot { position:absolute; top:-3px; right:-3px; display:flex; }
+.rm-trov-dot > * { box-shadow:0 0 0 2px var(--surface); }
+.rm-trov-dlg { width:min(720px, 100%); }
+.rm-trov-body { display:flex; flex-direction:column; margin-top:14px; max-height:min(560px, calc(70 * var(--vh))); overflow-y:auto; }
+.rm-drift { display:flex; flex-direction:column; gap:7px; min-width:0; padding:12px 14px; border:1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); background:color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+/* Relay › Overview (relay.ts): the lead, two cards (a drawing, the counts, the tab), Your connections. */
+.cnpy-relay-shell { width:100%; max-width:var(--frame-work); margin:0 auto; padding:26px clamp(20px,2.6 * var(--vw),46px) 100px; }
+.cnpy-relay { padding-top:2px; }
+.cnpy-relay-lead { margin:4px 0 22px; max-width:640px; font-size:14px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relay-cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.cnpy-relay-card { display:flex; flex-direction:column; min-width:0; overflow:hidden; text-align:center; transition:border-color .14s ease, transform .14s ease; }
+.cnpy-relay-card:hover { border-color:var(--border-strong); transform:translateY(-1px); }
+.cnpy-relay-band { display:grid; place-items:center; height:104px; background:color-mix(in srgb, var(--accent) 7%, transparent); border-bottom:1px solid var(--border); color:var(--accent); }
+.cnpy-relay-art { display:block; width:168px; height:62px; }
+.cnpy-relay-dot { animation:cnpy-relay-flow 2.4s linear infinite; }
+.cnpy-relay-dot.is-b { animation-delay:-.8s; }
+.cnpy-relay-dot.is-c { animation-delay:-1.6s; }
+@keyframes cnpy-relay-flow { 0% { transform:translateX(-18px); opacity:0; } 20% { opacity:1; } 80% { opacity:1; } 100% { transform:translateX(26px); opacity:0; } }
+.cnpy-relay-body { flex:1 0 auto; display:flex; flex-direction:column; align-items:center; padding:18px 26px 4px; }
+.cnpy-relay-h { margin:0; font-size:17px; font-weight:600; letter-spacing:-0.01em; color:var(--fg); }
+.cnpy-relay-what { flex:1 0 auto; margin:6px 0 0; max-width:400px; font-size:13px; line-height:1.55; color:var(--fg-55); }
+.cnpy-relay-stats { display:grid; grid-template-columns:1fr 1fr; width:100%; max-width:360px; margin-top:16px; }
+.cnpy-relay-stat { display:flex; flex-direction:column; align-items:center; gap:2px; min-width:0; padding:4px 8px; }
+.cnpy-relay-stat + .cnpy-relay-stat { border-left:1px solid var(--border); }
+.cnpy-relay-n { font-size:26px; font-weight:600; letter-spacing:-0.02em; color:var(--fg); font-variant-numeric:tabular-nums; line-height:1.15; }
+.cnpy-relay-n.is-hot { color:var(--accent); }
+.cnpy-relay-w { font-size:12px; color:var(--fg-55); }
+.cnpy-relay-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:16px; padding:12px 18px; border-top:1px solid var(--border); }
+.cnpy-relay-new { position:relative; padding:6px 12px; border:1px solid var(--border-strong); background:var(--surface); font-size:12.5px; font-weight:500; color:var(--fg-70); white-space:nowrap; }
+.cnpy-relay-new:hover { color:var(--fg); border-color:var(--fg-40); }
+.cnpy-relay-go { font-size:12.5px; font-weight:500; color:var(--accent); white-space:nowrap; }
+.cnpy-relay-go span { display:inline-block; transition:transform .14s ease; }
+.cnpy-relay-card:hover .cnpy-relay-go span { transform:translateX(3px); }
+.cnpy-relay-conns { margin-top:34px; }
+.cnpy-relay-ch { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:0 2px; }
+.cnpy-relay-ch h2 { margin:0; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-relay-manage { padding:0; font-size:12.5px; font-weight:500; color:var(--fg-55); }
+.cnpy-relay-clist { list-style:none; margin:10px 0 0; padding:0; overflow:hidden; }
+.cnpy-relay-conn { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid var(--border); }
+.cnpy-relay-conn:last-child { border-bottom:0; }
+.cnpy-relay-conn.is-off { opacity:.62; }
+.cnpy-relay-ci { display:grid; place-items:center; width:30px; height:30px; flex:none; background:var(--hover); color:var(--fg-70); }
+.cnpy-relay-cn { display:flex; flex-direction:column; gap:1px; min-width:0; flex:1; }
+.cnpy-relay-cname { font-size:13.5px; font-weight:500; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-relay-chow { font-size:12px; color:var(--fg-55); }
+.cnpy-relay-cwhen { flex:none; font-size:12px; color:var(--fg-40); white-space:nowrap; }
+.cnpy-relay-connect { flex:none; padding:7px 14px; background:var(--accent); color:var(--accent-fg); font-size:12.5px; font-weight:600; white-space:nowrap; }
+.cnpy-relay-note { margin:10px 2px 0; font-size:12px; color:var(--fg-40); }
+@media (max-width:720px) { .cnpy-relay-cards { grid-template-columns:minmax(0,1fr); } .cnpy-relay-cwhen { display:none; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-relay-dot { animation:none; } .cnpy-relay-card, .cnpy-relay-go span { transition:none; } .cnpy-relay-card:hover { transform:none; } }
+/* A link row (links.ts `linkRow`): the still glyph, the topic over its reason, who, the mark, Accept / Decline on a
+   request waiting for me, when. On a phone who and when give way (the grid is inline, hence !important). */
+.cnpy-hitbox .cnpy-lrow-acts { position:relative; z-index:2; }
+.cnpy-lrow { transition:background .12s ease; }
+@media (max-width:760px) {
+  .cnpy-lrow { grid-template-columns:34px minmax(0,1fr) auto !important; }
+  .cnpy-lrow > .cnpy-lrow-who, .cnpy-lrow > .cnpy-lrow-when { display:none !important; }
+  .cnpy-lrow > .cnpy-lrow-acts { grid-column:2 / -1; }
+}
+@media (prefers-reduced-motion: reduce) { .cnpy-lh-card, .cnpy-lh-hit .cnpy-av, .cnpy-lh-ico { transition:none; } }
+[data-link-start] { animation:cnpy-pop var(--fx-slow) var(--fx-ease) both; }
+@media (prefers-reduced-motion: reduce) { .cnpy-ll-face > .cnpy-av, [data-link-start] { animation:none; } }
 /* The app's one page scroller always reserves its scrollbar's width, so a screen whose height
    crosses the viewport mid-render (a tab switch, an entrance animation) never jumps sideways. */
 #cnpy-main { scrollbar-gutter: stable; }
+/* Viewport units that hold under the big-screen zoom (web-ui.md › Big screens; zoom.ts). Past a ~3000px window
+   `zoom` on <html> scales the whole UI, and Chromium zooms viewport units too: a raw `100vh` would be 1.3 × the
+   window. zoom.ts writes `--vu` (how much the browser inflates a viewport unit, MEASURED — unset, so 1, at or
+   under 3000px), and every size relative to the window reads these instead of a raw unit: `calc(100 * var(--vh))`,
+   `calc(100 * var(--vw) - 32px)`, `clamp(20px, 2.6 * var(--vw), 46px)`. A raw vw / vh / dvh in the app is a bug. */
+:root { --vw:calc(1vw / var(--vu, 1)); --vh:calc(1vh / var(--vu, 1)); --dvh:calc(1dvh / var(--vu, 1)); }
+@supports not (height:1dvh) { :root { --dvh:var(--vh); } }
+/* The frame the zoom changes in, nothing animates (zoom.ts): a resize never plays a width or padding transition. */
+html[data-zooming] *, html[data-zooming] *::before, html[data-zooming] *::after { transition:none !important; }
+/* Page frames on a big screen (web-ui.md › Big screens). A screen's frame is its laptop width up to a ~2100px
+   window — nothing changes on a laptop or a 1080p monitor — then grows with the window to a ceiling, so a
+   32" monitor (2560–3072 CSS px) is used instead of framing the work in a third of it. Only screens whose
+   content gains from width take one: a list, a board, a dashboard, a diff. Reading pages (a doc, the Feed, the
+   Guide, a ticket, Settings) keep their measure. */
+:root {
+  --frame-work:clamp(1440px, 66 * var(--vw), 2200px);  /* the queue (board + table), Handoffs, the Prompt Library, a tag's page */
+  --frame-dash:clamp(1180px, 56 * var(--vw), 1720px);  /* My Work, the Repo dashboard, Org settings › Members */
+  --frame-reader:clamp(920px, 44 * var(--vw), 1240px); /* Review's reading pane */
+  --frame-feed:clamp(1200px, 52 * var(--vw), 1480px);  /* the Feed: modestly — its entries' text keeps a line length */
+  --board-col-max:480px;                     /* a board column never gets wider than a card wants */
+  --sb-gutter:12px;                          /* #cnpy-main's reserved scrollbar (the ::-webkit-scrollbar width) */
+}
+/* The Feed's column grows; an entry's words do not: 720px is the measure they already have in a 1200px frame. */
+.cnpy-feed-page .cnpy-cols > div:first-child :is(.cnpy-md-inline, .cnpy-feed-brief, .cnpy-feed-body) { max-width:720px; }
+/* The title row lines up with the screen's frame: the header spans <main> (its hairline does), but its title and
+   actions sit at the content's left and right edges. Each screen names its frame (`--hdr-frame`, the max-width of
+   its page) and the frame's side padding (`--hdr-pad`); the header's inline padding reads `--hdr-pl` / `--hdr-pr`,
+   24px when unset. The page scroller reserves its scrollbar on the right (`scrollbar-gutter`), so the frame centres
+   in <main> minus that gutter. Above 1440px only: a laptop's header is exactly what it was. Screens with no single
+   centred frame (Docs, Review, the Guide, Ask, Artifacts) keep 24px. */
+[data-screen="tickets"], [data-screen="relay"], [data-screen="handoffs"], [data-screen="links"], [data-screen="prompts"], [data-screen="tag"] { --hdr-frame:var(--frame-work); --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="newticket"], [data-screen="newhandoff"], [data-screen="newdoc"], [data-screen="promptedit"] { --hdr-frame:1440px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="ticketdetail"], [data-screen="sprint"], [data-screen="link"] { --hdr-frame:1120px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="handoff"], [data-screen="maintenance"], [data-screen="platform"], [data-screen="platformorg"], [data-screen="org"] { --hdr-frame:1180px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="org"]:has(.cnpy-org[data-org-wide]) { --hdr-frame:var(--frame-dash); }
+[data-screen="prompt"] { --hdr-frame:1260px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
+[data-screen="mywork"], [data-screen="repo"] { --hdr-frame:var(--frame-dash); --hdr-pad:32px; }
+[data-screen="feed"] { --hdr-frame:var(--frame-feed); --hdr-pad:32px; }
+[data-screen="roadmap"] { --hdr-frame:1200px; --hdr-pad:32px; }
+[data-screen="settings"] { --hdr-frame:1180px; --hdr-pad:32px; }
+[data-screen="releases"]:has(.cnpy-relidx) { --hdr-frame:1040px; --hdr-pad:32px; }
+[data-screen="releases"]:has(.cnpy-reldoc) { --hdr-frame:1040px; --hdr-pad:32px; }
+[data-screen="search"] { --hdr-frame:780px; --hdr-pad:24px; }
+@media (min-width:1441px) {
+  .cnpy-hdr {
+    --hdr-pl:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad));
+    --hdr-pr:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad) + var(--sb-gutter));
+  }
+}
 @keyframes cnpy-spin { to { transform: rotate(360deg); } }
 @keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -63,7 +272,7 @@ input, select { font-family: inherit; }
 /* THE on/off switch (notifications.ts `switchBtn`): its track fades and its knob slides (inline, .15s) — still under reduced motion. */
 @media (prefers-reduced-motion: reduce) { button[role="switch"], button[role="switch"] > span { transition:none !important; } }
 
-[data-cnpy-theme="dark"] { --mark:#9aab65; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#9aab65; --accent-fg:#131a07; --accent-soft:rgba(154,171,101,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+[data-cnpy-theme="dark"] { --mark:#8d94d8; --bg:#1c1a16; --surface:#221f1b; --shadow:0 1px 2px rgba(0,0,0,0.35); --fg:#ede9e2; --fg-70:rgba(237,233,226,0.72); --fg-55:rgba(237,233,226,0.55); --fg-40:rgba(237,233,226,0.52); --border:rgba(237,233,226,0.11); --border-strong:rgba(237,233,226,0.20); --border-input:rgba(237,233,226,0.38); --hover:rgba(237,233,226,0.07); --accent:#8d94d8; --accent-fg:#11132e; --accent-soft:rgba(141,148,216,0.14); --focus:var(--accent); --green:#5ab86c; --amber:#d98a52; --blue:#6aa8c4; --red:#df7372; --red-fg:#1c1a16; --purple:#a98bd6; --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 /* Light = the palette of the Claude Design `Canopy Restyled.dc.html` (2026-09-26): a cool neutral
    ground, white surfaces with a hairline shadow, an indigo accent. Trov's fonts stay. */
 /* WCAG AA (2026-10, docs/architecture/web-ui.md › Contrast): every token used for TEXT reads at 4.5:1 or more
@@ -73,7 +282,10 @@ input, select { font-family: inherit; }
    light --fg-40 #8e8e98, --accent #5e6ad2 (and --accent-soft), --green #2f9e6b, --amber #c98a1a, --blue #4c8ed9,
    --red #e5484d, --purple #8e5cc7; dark --fg-40 at .40, --red #cc6262. --red-fg is the text on a filled red
    button (white on light; on dark the dark ink, as --accent-fg is). --border-strong stays the quiet edge of
-   cards and dividers; only a field's edge is --border-input. */
+   cards and dividers; only a field's edge is --border-input.
+   Dark --accent (and --mark) is the light accent's purple, same hue (235°) and saturation, lifted the least that
+   passes on the dark grounds and its own soft chip: #8d94d8, dark ink #11132e on it (2026-10-17; it was the
+   olive #9aab65 / #131a07). */
 [data-cnpy-theme="light"] { --mark:#616ACB; --bg:#f6f6f7; --surface:#ffffff; --fg:#16161a; --fg-70:#4f4f58; --fg-55:#6e6e78; --fg-40:#70707a; --border:rgba(20,20,30,0.08); --border-strong:rgba(20,20,30,0.15); --border-input:rgba(20,20,30,0.47); --hover:rgba(20,20,30,0.04); --accent:#525cc3; --accent-fg:#ffffff; --accent-soft:rgba(82,92,195,0.12); --focus:var(--accent); --green:#007545; --amber:#945800; --blue:#2467af; --red:#c22231; --red-fg:#ffffff; --purple:#804db7; --shadow:0 1px 2px rgba(20,20,30,0.05); --sans:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --label:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; --code:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
 
 /* ── My Work (web/src/mywork.ts) ──────────────────────────────────────────────
@@ -221,7 +433,26 @@ input, select { font-family: inherit; }
   /* The why is beside the mark, ~165px wide at 360: four lines hold an 80-character why. */
   .mw-brief-why { -webkit-line-clamp:4; line-clamp:4; }
 }
-.repo-state-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); gap:20px; }
+.repo-state-cols { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr)); gap:14px; align-items:start; }
+/* Summary › State from its structure (repo-ai.ts): a strip of three counts, then three lanes of small item cards —
+   the sentence, then its sources as chips by kind. A lane is tinted by its own tone (--lane), very lightly. */
+.repo-st-strip { display:flex; flex-wrap:wrap; gap:8px 26px; padding:12px 0 2px; border-top:1px solid var(--border); }
+.repo-st-count { display:inline-flex; align-items:baseline; gap:7px; font-size:13px; color:var(--fg-55); }
+.repo-st-count > svg, .repo-st-count > span:first-child { align-self:center; }
+.repo-st-cn { font-size:20px; font-weight:600; letter-spacing:-0.01em; color:var(--fg); font-variant-numeric:tabular-nums; }
+.repo-st-lane { display:flex; flex-direction:column; gap:10px; min-width:0; padding:12px; background:color-mix(in srgb, var(--lane) 5%, transparent); border:1px solid color-mix(in srgb, var(--lane) 14%, var(--border)); }
+.repo-st-lh { margin:0 2px; display:flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--lane); }
+.repo-st-ln { margin-left:auto; font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.repo-st-list { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:8px; }
+.repo-st-item { padding:11px 12px; background:var(--surface); border:1px solid var(--border); }
+.repo-st-text { margin:0; font-size:13.5px; line-height:1.5; color:var(--fg); overflow-wrap:anywhere; text-wrap:pretty; }
+.repo-st-srcs { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+.repo-st-src { display:inline-flex; align-items:center; gap:5px; height:22px; padding:0 8px; border:1px solid var(--border); background:var(--bg); font-size:11.5px; font-weight:500; color:var(--fg-70); text-decoration:none; white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis; }
+.repo-st-src > svg { flex:none; color:var(--fg-40); }
+a.repo-st-src:hover { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 40%, var(--border)); }
+a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+.repo-st-src.is-plain { color:var(--fg-55); }
+.repo-st-none { margin:2px; font-size:12.5px; color:var(--fg-55); }
 .cnpy-ai-cite:hover { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-ai-cite:focus-visible, .repo-lane:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .repo-lane { transition:opacity .15s var(--fx-ease), background-color .15s var(--fx-ease); }
@@ -497,7 +728,7 @@ input, select { font-family: inherit; }
 /* A 44×44 touch target (the glyph stays 18px); the negative margins hand back the extra 4px,
    so the header lays out exactly as it did around a 40px button. */
 [data-phone="1"] .cnpy-menubtn { display:grid; place-items:center; flex:none; width:44px; height:44px; margin:-2px -2px -2px -10px; color:var(--fg-70); }
-[data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100vw - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
+[data-phone="1"] .cnpy-aside { position:fixed; top:0; bottom:0; left:0; z-index:90; width:min(292px, calc(100 * var(--vw) - 48px)); padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left); transform:translateX(-100%); visibility:hidden; transition:transform .26s var(--side-e), visibility 0s linear .26s; }
 [data-phone="1"][data-drawer="1"] .cnpy-aside { transform:none; visibility:visible; box-shadow:0 0 48px rgba(0,0,0,.32); transition:transform .26s var(--side-e); }
 [data-phone="1"] .cnpy-scrim { display:block; position:fixed; inset:0; z-index:85; background:rgba(0,0,0,.45); opacity:0; pointer-events:none; transition:opacity .26s ease; -webkit-tap-highlight-color:transparent; }
 [data-phone="1"][data-drawer="1"] .cnpy-scrim { opacity:1; pointer-events:auto; }
@@ -528,7 +759,7 @@ input, select { font-family: inherit; }
 [data-phone="1"] .cnpy-hdr-r > .cnpy-seg > .cnpy-seg-btn > svg { display:none; }
 [data-phone="1"] .cnpy-hdr-r > .cnpy-accentbtn { padding-left:12px !important; padding-right:12px !important; }
 /* The app shell fills the VISIBLE viewport (100vh on a phone runs under its toolbars). */
-@supports (height:100dvh) { .cnpy-shell { height:100dvh !important; } }
+@supports (height:100dvh) { .cnpy-shell { height:calc(100 * var(--dvh)) !important; } }
 /* Edge to edge (index.html `viewport-fit=cover`): the shell and the landing keep clear of a
    notch and the status bar; the toast clears the home indicator. All 0 off a notched phone. */
 .cnpy-shell { padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
@@ -560,7 +791,7 @@ input, select { font-family: inherit; }
    The base rule carries the transition with no delay, so a row whose write FAILED opens again
    at once. The app's one clock (`--fx-ease`, `--fx-fast`, on `:root`). */
 .cnpy-rv-row { display:grid; grid-template-rows:1fr; transition:grid-template-rows var(--fx-fast) var(--fx-ease), opacity var(--fx-fast) var(--fx-ease); }
-.cnpy-rv-row-in { min-height:0; }
+.cnpy-rv-row-in { min-height:0; min-width:0; }
 .cnpy-rv-row[data-verdict] { grid-template-rows:0fr; opacity:0; transition-delay:.13s; pointer-events:none; }
 .cnpy-rv-row[data-verdict] > .cnpy-rv-row-in { overflow:hidden; }
 .cnpy-rv-row[data-verdict="promoted"], .cnpy-rv-row[data-verdict="ratified"] { --rv-tone:var(--green); }
@@ -624,7 +855,7 @@ input, select { font-family: inherit; }
    `data-pane`), and the detail's header lets its buttons drop under the title. */
 .cnpy-rv-back { display:none; }
 @media (max-width:900px) {
-  .cnpy-rv-list { width:auto !important; flex:1 1 auto !important; border-right:none !important; }
+  .cnpy-rv-list { width:auto !important; min-width:0 !important; flex:1 1 auto !important; border-right:none !important; }
   .cnpy-rv[data-pane="detail"] > .cnpy-rv-list, .cnpy-rv[data-pane="list"] > .cnpy-rv-detail { display:none !important; }
   .cnpy-rv-back { display:inline-flex; align-items:center; gap:4px; min-height:40px; margin:10px 0 0 10px; padding:0 8px; font-size:13px; font-weight:500; color:var(--fg-55); }
   .cnpy-rv-body { padding:8px 20px 80px !important; }
@@ -632,19 +863,6 @@ input, select { font-family: inherit; }
   .cnpy-rv-head > :last-child { flex-wrap:wrap; }
 }
 @media (max-width:640px) { .cnpy-rv-body { padding-left:16px !important; padding-right:16px !important; } }
-/* Docs under ~760px: the page list and the reader take turns (render.ts `.cnpy-docs`
-   `data-tree`), swapped by the Pages button in the bar above them; the reader's page
-   keeps a phone's gutter instead of the desktop's 52px. */
-.cnpy-docs-bar { display:none; }
-@media (max-width:760px) {
-  .cnpy-docs { flex-direction:column; }
-  .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
-  .cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); border-radius:8px; font-size:13px; font-weight:500; color:var(--fg-70); }
-  .cnpy-docs > .cnpy-docs-tree { width:auto !important; flex:1 1 auto !important; min-height:0; border-right:none !important; padding:14px 10px !important; }
-  .cnpy-docs[data-tree="0"] > .cnpy-docs-tree, .cnpy-docs[data-tree="1"] > #cnpy-reader { display:none !important; }
-  .cnpy-docpage { padding:22px 16px 96px !important; }
-  .cnpy-docs .cnpy-tree, .cnpy-docs .cnpy-outline-item { min-height:40px; }
-}
 /* A detail page's head — title on the left, its actions on the right (a handoff, a prompt):
    at phone width the actions drop under the title instead of squeezing it to a column. */
 @media (max-width:640px) {
@@ -669,7 +887,7 @@ input, select { font-family: inherit; }
   [data-cnpy-theme] :has(> [role="dialog"][aria-modal="true"]),
   [data-cnpy-theme] :has(> [role="alertdialog"][aria-modal="true"]) { grid-template-columns:minmax(0,1fr) !important; place-items:end stretch !important; align-items:flex-end !important; padding:env(safe-area-inset-top) 0 0 !important; }
   [data-cnpy-theme] [role="alertdialog"][aria-modal="true"],
-  [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100dvh - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
+  [data-cnpy-theme] [role="dialog"][aria-modal="true"] { width:100% !important; max-width:none !important; max-height:calc(100 * var(--dvh) - 20px - env(safe-area-inset-top)) !important; border-left:none !important; border-right:none !important; border-bottom:env(safe-area-inset-bottom, 0px) solid transparent !important; border-bottom-left-radius:0 !important; border-bottom-right-radius:0 !important; }
 }
 /* The signed-out cards (not a member, not invited, onboarding) at phone width: a phone's
    gutter, and the nested onboarding wrapper adds none of its own. */
@@ -678,26 +896,7 @@ input, select { font-family: inherit; }
   .cnpy-authwrap .cnpy-authwrap { padding:0 !important; min-height:0 !important; }
   .cnpy-authcard { padding:26px 20px !important; }
 }
-/* ── docs nav tree (static section labels · pages · per-page outline) ───────── */
-.cnpy-treesec { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 10px 7px 8px; }
-.cnpy-tree { display:flex; align-items:center; gap:5px; width:100%; text-align:left; padding:6px 10px 6px 6px; border-radius:7px; font-size:13px; font-weight:400; color:var(--fg-55); background:transparent; transition:background .12s ease, color .12s ease; }
-.cnpy-tree:hover { color:var(--fg); }
-.cnpy-tree.is-active { color:var(--accent); font-weight:500; }
-.cnpy-tree.is-active:hover { color:var(--accent); }
-.cnpy-treechev { flex:none; display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; border-radius:4px; color:var(--fg-40); transition:transform .16s ease, color .12s ease, background .12s ease; }
-.cnpy-treechev.is-open { transform:rotate(90deg); }
-.cnpy-treechev:hover { color:var(--fg-70); }
-.cnpy-tree.is-active .cnpy-treechev { color:var(--accent); }
-.cnpy-treechev.is-empty, .cnpy-treechev.is-empty:hover { background:transparent; pointer-events:none; }
-/* Grid-rows trick animates to the exact content height. Only one transition runs at
-   a time — the chevron is a single toggle, and the accordion collapses the previous
-   outline instantly (main.ts) — so two fr transitions never overlap (that wedges).
-   Vertical breathing room rides on the last item → a collapsed outline is a true 0px. */
-.cnpy-outline { display:grid; grid-template-rows:0fr; transition:grid-template-rows .22s cubic-bezier(.4,0,.2,1); }
-.cnpy-outline.is-open { grid-template-rows:1fr; }
-.cnpy-outline-inner { overflow:hidden; min-height:0; display:flex; flex-direction:column; gap:1px; padding-left:23px; }
-.cnpy-outline-inner > :last-child { margin-bottom:5px; }
-@media (prefers-reduced-motion: reduce) { .cnpy-outline { transition:none; } }
+/* ── the Guide's table-of-contents sub-rows (.cnpy-outline-item) ── */
 .cnpy-outline-item { text-align:left; width:100%; padding:4px 8px 4px 11px; border-radius:6px; font-size:12px; color:var(--fg-40); background:transparent; transition:color .12s ease, background .12s ease; }
 .cnpy-outline-item:hover { color:var(--fg-70); }
 .cnpy-outline-item.is-current { color:var(--accent); font-weight:500; }
@@ -706,7 +905,7 @@ input, select { font-family: inherit; }
 .cnpy-outline-item > span { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* Get Started's table of contents: a sticky rail inside #cnpy-main (the scroller). The
    section rows read like the docs tree's pages, the sub-rows reuse .cnpy-outline-item. */
-.cnpy-guide-toc { position:sticky; top:24px; width:210px; flex:none; max-height:calc(100vh - 110px); overflow-y:auto; display:flex; flex-direction:column; gap:1px; padding-bottom:12px; }
+.cnpy-guide-toc { position:sticky; top:24px; width:210px; flex:none; max-height:calc(100 * var(--vh) - 110px); overflow-y:auto; display:flex; flex-direction:column; gap:1px; padding-bottom:12px; }
 .cnpy-guide-toc-h { font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); padding:0 8px 10px; }
 .cnpy-guide-toc-sec { text-align:left; width:100%; padding:6px 8px; border-radius:7px; font-size:13px; font-weight:500; color:var(--fg-55); background:transparent; transition:color .12s ease, background .12s ease; }
 .cnpy-guide-toc-sec:hover { color:var(--fg); background:var(--hover); }
@@ -716,169 +915,147 @@ input, select { font-family: inherit; }
 .cnpy-guide-anchor { scroll-margin-top:24px; }
 @media (max-width: 1180px) { .cnpy-guide-toc { display:none; } }
 
-/* ── What's new (web/src/releases.ts). The INDEX is a grid of release cards (.cnpy-surface).
-   A release PAGE is one wide document: its header on the page background, then ONE
-   surface card (.cnpy-reldoc-card) holding the body — split by hairlines, no box inside it —
-   with the page's note in a column beside it (.cnpy-reldoc-grid); newer / older links under it. No radius is declared here (the corners layer would need a rule for it). Long
-   `code` runs wrap anywhere, so a phone never scrolls sideways; under 600px every page keeps
-   a 16px gutter and stacks to one column. */
-.cnpy-relidx { max-width:1180px; margin:0 auto; padding:40px 32px 120px; }
-.cnpy-relidx-head { max-width:720px; margin-bottom:28px; }
-.cnpy-relidx-title { margin:0; font-size:26px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; color:var(--fg); }
-.cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
-.cnpy-relgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(280px, 100%), 1fr)); gap:16px; }
-.cnpy-relcard { display:flex; flex-direction:column; min-width:0; padding:18px 20px 16px; color:inherit; text-decoration:none; transition:border-color .15s ease; }
-.cnpy-relcard:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
-.cnpy-relcard.is-next { border-color:color-mix(in srgb, var(--accent) 45%, var(--border)); }
-.cnpy-relcard-title { margin:10px 0 0; font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); text-wrap:balance; }
-.cnpy-relcard-headline { margin:8px 0 0; flex:1; font-size:13.5px; line-height:1.6; color:var(--fg-55); text-wrap:pretty; }
-.cnpy-relcard-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:16px; padding-top:12px; border-top:1px solid var(--border); font-size:12.5px; color:var(--fg-40); }
-.cnpy-relcard-go { display:inline-flex; color:var(--fg-40); transition:transform .15s ease, color .15s ease; }
-.cnpy-relcard:hover .cnpy-relcard-go { color:var(--accent); transform:translateX(2px); }
-
-.cnpy-reldoc { max-width:1180px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; gap:28px; container:reldoc / inline-size; }
-/* The release page is ONE grid (#188): the back link + switch across the top; down the left
-   column the title block, the body card and the newer / older links; down the right column the
-   page's note (the Heads-up on the release notes, the Upgrade notes on the patch notes), from
-   the title to the end of the page. The note spans the left column's rows and the LAST row is
-   1fr, so its height goes into that row and never into the title's or the body's: a note of any
-   length runs beside the body and never pushes it down. It flows with the page (no sticky box,
-   no inner scroller): it is reference text read once, and a 2,000px Upgrade notes list in a
-   nested scroller would hide most of itself. Under 900px of page it is one column in source
-   order — title, note, body, pager. */
-.cnpy-reldoc-grid { display:grid; grid-template-columns:minmax(0, 1fr); gap:14px 48px; align-items:start; }
-@container reldoc (min-width: 900px) {
-  .cnpy-reldoc-grid.has-heads {
-    grid-template-columns:minmax(0, 1fr) minmax(280px, 330px);
-    grid-template-rows:auto auto auto 1fr;
-    grid-template-areas:"top top" "head side" "body side" "pager side";
-  }
-  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-toprow { grid-area:top; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-head { grid-area:head; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-relheads { grid-area:side; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-reldoc-card { grid-area:body; }
-  .cnpy-reldoc-grid.has-heads > .cnpy-relpager { grid-area:pager; }
-}
-/* The header row is 14px under the back link; the card and the pager keep 28px above them. */
-.cnpy-reldoc-grid > .cnpy-reldoc-card, .cnpy-reldoc-grid > .cnpy-relpager { margin-top:14px; }
-/* The header (the not-found page's, the loading skeleton's, and the real page's title block). */
-.cnpy-reldoc-head { display:flex; flex-direction:column; align-items:stretch; gap:14px; min-width:0; }
-.cnpy-reldoc-head-main { display:flex; flex-direction:column; align-items:flex-start; gap:10px; min-width:0; }
-/* The back link and, right-aligned on the same row, the Release notes / Patch notes switch —
-   the row spans the grid, so the switch's right edge is the note's. It wraps under the back
-   link when both do not fit. */
-.cnpy-reldoc-toprow { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; min-width:0; }
-.cnpy-reldoc-toprow .cnpy-rel-back { margin-bottom:0; }
-.cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; margin-bottom:10px; font-size:13px; font-weight:500; color:var(--fg-55); text-decoration:none; }
+/* The brand banner (web/src/brand-banner.ts): the site pages' purple card (`.site-banner`) at the top of the app's
+   reading pages — What's new and the Guide. A tab bar inside it is drawn as the site's pills: a translucent track,
+   the white pill being the bar's own sliding indicator (tabs.ts), the picked tab's ink the banner's indigo. */
+.cnpy-brandband { padding:clamp(28px, 3.4 * var(--vw), 44px) clamp(22px, 3.6 * var(--vw), 48px) clamp(30px, 3.6 * var(--vw), 46px); }
+.cnpy-brandband > .site-banner-art { width:clamp(200px, 24 * var(--vw), 330px); aspect-ratio:1; right:clamp(-60px, -3.5 * var(--vw), -26px); top:clamp(-80px, -5 * var(--vw), -44px); }
+.cnpy-brandband-in { max-width:760px; }
+.cnpy-brandband-above { margin-bottom:20px; }
+.cnpy-brandband-h { margin:0; font-size:clamp(28px, 3.2 * var(--vw), 40px); line-height:1.1; font-weight:650; letter-spacing:-0.03em; color:#fff; text-wrap:balance; }
+.cnpy-brandband-lede { margin:12px 0 0; max-width:660px; font-size:15.5px; line-height:1.62; color:rgba(255,255,255,.94); text-wrap:pretty; }
+.cnpy-brandband-lede strong { color:#fff; font-weight:600; }
+.cnpy-brandband-lede a { color:#fff; text-decoration:underline; text-underline-offset:3px; text-decoration-color:rgba(255,255,255,.55); }
+.cnpy-brandband-below { margin-top:18px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.9); }
+.cnpy-brandband .cnpy-tabs { display:inline-flex; gap:2px; padding:3px; max-width:100%; background:rgba(255,255,255,.14); box-shadow:none; }
+.cnpy-brandband .cnpy-tab { z-index:2; height:auto; padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); box-shadow:none !important; }
+.cnpy-brandband .cnpy-tab:not(.is-on):hover { color:#fff; }
+.cnpy-brandband .cnpy-tab.is-on { color:#333c8f; background:#fff; }
+.cnpy-brandband .cnpy-tabs.is-live > .cnpy-tab.is-on { background:transparent; }
+.cnpy-brandband .cnpy-tabs-ind { top:3px; bottom:3px; height:auto; background:#fff; }
+.cnpy-brandband .cnpy-tab:focus-visible { outline:2px solid #fff; outline-offset:1px; }
+@media (max-width:720px) { .cnpy-brandband { padding:24px 20px 26px; } }
+/* ── What's new (web/src/releases.ts), the owner's redesign (2026-10-18: the old card grid and two-column page were
+   cramped). The INDEX: the newest release as one wide featured card (.cnpy-relfeat), then the rest on a timeline
+   (.cnpy-reltl: the version and date on a rail, the title, lede and counts beside it). A release PAGE: one reading
+   column (.cnpy-reldoc) — back link, title block, a tab bar (Release notes / Patch notes), the page, newer / older as
+   two cards. Long `code` runs wrap anywhere, so a phone never scrolls sideways. */
+.cnpy-relidx { max-width:1040px; margin:0 auto; padding:28px 32px 120px; }
+.cnpy-relidx > .cnpy-brandband { margin-bottom:28px; }
+.cnpy-relidx-head { max-width:680px; margin-bottom:30px; }
+.cnpy-relidx-title { margin:0; font-size:30px; font-weight:650; letter-spacing:-0.025em; color:var(--fg); }
+.cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.65; color:var(--fg-55); }
+.cnpy-rel-pr { color:var(--accent); text-decoration:none; }
+.cnpy-rel-pr:hover { text-decoration:underline; text-underline-offset:3px; }
+.cnpy-rel-meta { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); flex-wrap:wrap; }
+.cnpy-rel-ver { font-family:var(--label); font-weight:600; color:var(--fg-70); }
+.cnpy-relcounts { display:inline-flex; align-items:center; gap:6px 16px; flex-wrap:wrap; font-size:12.5px; color:var(--fg-55); }
+.cnpy-relcount { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; }
+.cnpy-relcount b { font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+/* the featured release */
+.cnpy-relfeat { display:block; padding:30px 34px 26px; text-decoration:none; color:inherit; transition:border-color .16s ease, transform .16s ease; }
+.cnpy-relfeat:hover { border-color:var(--border-strong); transform:translateY(-1px); }
+.cnpy-relfeat-top { display:flex; align-items:center; gap:10px 14px; flex-wrap:wrap; }
+.cnpy-relfeat-tag { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+.cnpy-relfeat-title { margin:14px 0 0; font-size:26px; font-weight:650; letter-spacing:-0.02em; line-height:1.25; color:var(--fg); max-width:30ch; }
+.cnpy-relfeat-lede { margin:10px 0 0; font-size:15px; line-height:1.6; color:var(--fg-70); max-width:68ch; }
+.cnpy-relfeat-hl { margin:20px 0 0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 28px; }
+.cnpy-relfeat-hl li { position:relative; padding-left:16px; font-size:13.5px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relfeat-hl li::before { content:""; position:absolute; left:0; top:.6em; width:6px; height:6px; border-radius:50%; background:var(--accent); opacity:.7; }
+.cnpy-relfeat-foot { display:flex; align-items:center; justify-content:space-between; gap:12px 20px; flex-wrap:wrap; margin-top:24px; padding-top:16px; border-top:1px solid var(--border); }
+.cnpy-relfeat-go { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:500; color:var(--accent); white-space:nowrap; }
+.cnpy-relfeat-go svg { transition:transform .16s ease; }
+.cnpy-relfeat:hover .cnpy-relfeat-go svg { transform:translateX(3px); }
+/* the timeline */
+.cnpy-reltl { margin-top:44px; }
+.cnpy-reltl-h { margin:0 0 6px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-reltl-list { margin:0; padding:0; list-style:none; }
+.cnpy-reltl-item { display:grid; grid-template-columns:150px minmax(0,1fr); gap:0 28px; position:relative; }
+.cnpy-reltl-item::before { content:""; position:absolute; left:150px; top:0; bottom:0; width:1px; margin-left:13px; background:var(--border); }
+.cnpy-reltl-item::after { content:""; position:absolute; left:150px; top:27px; width:7px; height:7px; margin-left:10px; border-radius:50%; background:var(--bg); box-shadow:0 0 0 1.5px var(--fg-40); }
+.cnpy-reltl-rail { display:flex; flex-direction:column; gap:3px; padding:22px 0; text-align:right; }
+.cnpy-reltl-ver { font-family:var(--label); font-size:13px; font-weight:600; color:var(--fg); }
+.cnpy-reltl-rail time { font-size:12px; color:var(--fg-40); }
+.cnpy-reltl-card { display:block; margin-left:12px; padding:18px 4px 20px 14px; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; }
+.cnpy-reltl-item:last-child .cnpy-reltl-card { border-bottom:0; }
+.cnpy-reltl-title { margin:0; font-size:16.5px; font-weight:600; letter-spacing:-0.01em; color:var(--fg); }
+.cnpy-reltl-card:hover .cnpy-reltl-title { color:var(--accent); }
+.cnpy-reltl-lede { margin:6px 0 10px; font-size:13.5px; line-height:1.6; color:var(--fg-55); max-width:72ch; }
+.cnpy-reltl-go { display:inline-flex; color:var(--fg-40); transition:transform .16s ease, color .16s ease; }
+.cnpy-reltl-card:hover .cnpy-reltl-go { color:var(--accent); transform:translateX(3px); }
+/* one release */
+.cnpy-reldoc { max-width:1040px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; }
+.cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; font-size:12.5px; font-weight:500; color:var(--fg-55); text-decoration:none; }
 .cnpy-rel-back:hover { color:var(--fg); }
-.cnpy-reldoc-title { margin:0; max-width:900px; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.15; color:var(--fg); text-wrap:balance; }
-.cnpy-reldoc-lede { margin:0; max-width:780px; font-size:17px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
-.cnpy-reldoc-facts { margin-top:2px; font-size:13px; color:var(--fg-40); }
-.cnpy-reldoc-card { min-width:0; overflow:hidden; }
-.cnpy-reldoc-main { padding:30px 36px 34px; min-width:0; }
-.cnpy-reldoc-hl { font-size:15.5px; gap:14px; max-width:820px; }
-.cnpy-reldoc-hl li { break-inside:avoid; }
-/* The page's note (Heads-up / Upgrade notes) in the right column: compact and calm — a faint
-   neutral fill (its 6px radius is inline), a small icon + label, the lines in --fg-70 at 13px.
-   Its margin-top (the meta row above the title) top-aligns it with the title. */
-.cnpy-relheads { display:flex; flex-direction:column; gap:7px; padding:12px 14px 13px; background:var(--hover); min-width:0; margin-top:30px; }
-.cnpy-relheads-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--fg-55); white-space:nowrap; }
-.cnpy-relheads-one { margin:0; font-size:13px; line-height:1.55; color:var(--fg-70); overflow-wrap:anywhere; text-wrap:pretty; }
-.cnpy-relheads-list { margin:0; padding-left:16px; display:flex; flex-direction:column; gap:5px; font-size:13px; line-height:1.55; color:var(--fg-70); }
-.cnpy-relheads-list li { overflow-wrap:anywhere; text-wrap:pretty; }
-.cnpy-relheads-list li::marker { color:var(--fg-40); }
-@container reldoc (max-width: 899px) { .cnpy-relheads { margin-top:4px; } }
-/* Release notes' "At a glance": a full-width strip across the card's top — version and date as
-   facts, the change counts as large figures (each a button to that patch group), then the
-   link to every patch line. Stacks under 640px of card (container query below) — the card beside
-   a Heads-up is about 740px wide at 1440px, room for the four figures on one row. */
-.cnpy-relglance { display:grid; grid-template-columns:auto auto minmax(0, 1fr) auto; align-items:center; gap:14px 40px; padding:14px 32px 15px; border-bottom:1px solid var(--border); }
-.cnpy-relglance-fact { display:flex; flex-direction:column; gap:5px; min-width:0; }
-.cnpy-relglance-lab { font-size:12px; color:var(--fg-40); }
-.cnpy-relglance-val { font-size:16px; font-weight:500; color:var(--fg); white-space:nowrap; font-variant-numeric:tabular-nums; }
-.cnpy-relglance-stats { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:8px; min-width:0; }
-.cnpy-relstat { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; padding:6px 14px; text-align:left; background:transparent; transition:background .12s ease; }
-.cnpy-relstat:hover { background:var(--hover); }
-.cnpy-relstat:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-.cnpy-relstat-n { font-size:26px; font-weight:600; letter-spacing:-0.02em; line-height:1.1; color:var(--fg); font-variant-numeric:tabular-nums; }
-.cnpy-relstat-l { display:inline-flex; align-items:center; gap:7px; font-size:12.5px; color:var(--fg-55); white-space:nowrap; }
-.cnpy-relglance-all { display:inline-flex; align-items:center; gap:6px; font-size:14px; white-space:nowrap; }
-/* Patch notes: the groups STACKED, full width, one row per line at a readable measure; a
-   hairline between groups only; the PRs as one quiet line of chips. */
-.cnpy-relpatch-group { padding:26px 32px 28px; min-width:0; }
+.cnpy-reldoc-head { margin-top:16px; }
+.cnpy-reldoc-title { margin:10px 0 0; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.2; color:var(--fg); text-wrap:balance; }
+.cnpy-reldoc-lede { margin:12px 0 0; max-width:72ch; font-size:16px; line-height:1.6; color:var(--fg-70); }
+.cnpy-reldoc-body { display:flex; flex-direction:column; gap:28px; padding-top:26px; }
+.cnpy-rel-h2 { margin:0 0 14px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-relstrip { display:flex; flex-direction:column; gap:10px; }
+.cnpy-relstrip-head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; }
+.cnpy-relstrip-total { font-size:14px; font-weight:600; color:var(--fg); }
+.cnpy-relstrip-all { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:500; }
+.cnpy-relbar { display:flex; gap:3px; height:6px; overflow:hidden; }
+.cnpy-relbar-seg { min-width:6px; opacity:.85; }
+.cnpy-relstrip-stats { display:flex; flex-wrap:wrap; gap:4px 18px; }
+.cnpy-relstat { display:inline-flex; align-items:center; gap:7px; padding:3px 0; background:none; border:0; font-size:13px; color:var(--fg-55); cursor:pointer; }
+.cnpy-relstat:hover .cnpy-relstat-l { color:var(--fg); text-decoration:underline; text-underline-offset:3px; }
+.cnpy-relstat:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-relstat-n { font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-relhl-list { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 36px; }
+.cnpy-relhl-list li { display:grid; grid-template-columns:36px minmax(0,1fr); gap:0 4px; padding:18px 0; border-top:1px solid var(--border); }
+.cnpy-relhl-n { font-family:var(--label); font-size:13px; font-weight:600; color:var(--accent); padding-top:2px; font-variant-numeric:tabular-nums; }
+.cnpy-relhl-list p { margin:0; font-size:15px; line-height:1.65; color:var(--fg); }
+.cnpy-relcall { padding:16px 18px; border:1px solid var(--border); background:var(--surface); }
+.cnpy-relcall.is-heads { border-left:3px solid var(--accent); }
+.cnpy-relcall.is-ops { border-left:3px solid var(--fg-40); }
+.cnpy-relcall-l { display:flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:var(--fg); }
+.cnpy-relcall-one { margin:8px 0 0; font-size:14px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relcall-list { margin:8px 0 0; padding-left:18px; display:flex; flex-direction:column; gap:6px; font-size:14px; line-height:1.6; color:var(--fg-70); }
+.cnpy-relpatch { padding:6px 24px; }
+.cnpy-relpatch-group { padding:18px 0; }
 .cnpy-relpatch-group + .cnpy-relpatch-group { border-top:1px solid var(--border); }
-.cnpy-relpatch-h { display:flex; align-items:center; gap:8px; margin:0 0 14px; font-size:14px; font-weight:600; color:var(--fg); }
-.cnpy-relpatch-n { font-size:12.5px; font-weight:500; color:var(--fg-40); font-variant-numeric:tabular-nums; }
-.cnpy-relpatch-list { margin:0; padding-left:20px; max-width:900px; font-size:14.5px; line-height:1.6; color:var(--fg-70); }
-.cnpy-relpatch-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; break-inside:avoid; }
-.cnpy-relpatch-list li + li { margin-top:10px; }
-.cnpy-relpatch-list li::marker { color:var(--fg-40); }
-.cnpy-relpatch-prs { display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; padding:16px 32px 18px; border-top:1px solid var(--border); }
-.cnpy-relpatch-prs-l { font-size:12.5px; color:var(--fg-40); }
-.cnpy-relpatch-chips { display:flex; flex-wrap:wrap; gap:6px; }
-.cnpy-relpr-chip { font-size:12.5px; line-height:1; padding:4px 7px; color:var(--fg-55); background:var(--hover); text-decoration:none; font-variant-numeric:tabular-nums; transition:color .12s ease; }
-.cnpy-relpr-chip:hover { color:var(--accent); }
-.cnpy-reldoc-pad { padding:28px 32px; }
+.cnpy-relpatch-h { display:flex; align-items:center; gap:8px; margin:0 0 8px; font-size:14px; font-weight:600; color:var(--fg); }
+.cnpy-relpatch-n { font-family:var(--label); font-size:11.5px; font-weight:600; color:var(--fg-40); }
+.cnpy-relpatch-list { margin:0; padding:0; list-style:none; }
+.cnpy-relpatch-list li { display:flex; align-items:baseline; justify-content:space-between; gap:6px 18px; padding:9px 0; border-top:1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+.cnpy-relpatch-list li:first-child { border-top:0; }
+.cnpy-relpatch-t { min-width:0; font-size:14px; line-height:1.6; color:var(--fg-70); overflow-wrap:anywhere; }
+.cnpy-relpatch-prs { display:inline-flex; gap:5px; flex:none; }
+.cnpy-relpr-chip { display:inline-flex; align-items:center; height:22px; padding:0 8px; border:1px solid var(--border); background:var(--bg); font-family:var(--label); font-size:11.5px; font-weight:600; color:var(--fg-70); text-decoration:none; white-space:nowrap; }
+.cnpy-relpr-chip:hover { color:var(--accent); border-color:color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.cnpy-relpatch-all { display:flex; align-items:baseline; gap:8px 14px; flex-wrap:wrap; }
+.cnpy-relpatch-all-l { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
+.cnpy-relpatch-chips { display:flex; gap:6px; flex-wrap:wrap; }
 .cnpy-rel-empty { margin:0; font-size:14px; color:var(--fg-55); }
-
-.cnpy-rel-meta { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12.5px; color:var(--fg-40); }
-.cnpy-rel-ver { font-family:var(--label); font-size:12.5px; font-weight:600; color:var(--fg-70); font-variant-numeric:tabular-nums; }
-.cnpy-rel-h3 { display:flex; align-items:center; gap:8px; margin:0 0 16px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
-.cnpy-rel-n { margin-left:auto; font-weight:500; color:var(--fg-40); letter-spacing:0; font-variant-numeric:tabular-nums; }
-.cnpy-rel-list { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:10px; font-size:15px; line-height:1.6; color:var(--fg-70); }
-.cnpy-rel-list li { padding-left:4px; overflow-wrap:anywhere; text-wrap:pretty; }
-.cnpy-rel-list li::marker { color:var(--fg-40); }
-.cnpy-rel-log { font-size:13.5px; gap:10px; }
-/* Inline code, light: the code face at .9em on a faint fill, no border; a short token stays on
-   one line (.is-short), a long path may wrap. */
-.cnpy-reldoc code, .cnpy-relidx code { font-family:var(--code); font-size:.9em; color:var(--fg); background:var(--hover); padding:1px 3px; overflow-wrap:anywhere; }
-.cnpy-reldoc code.is-short, .cnpy-relidx code.is-short { white-space:nowrap; }
-.cnpy-rel-pr { color:var(--accent); text-decoration:none; font-variant-numeric:tabular-nums; }
-.cnpy-rel-pr:hover { text-decoration:underline; }
-.cnpy-relpager { display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-top:4px; }
-.cnpy-relpager-i { display:flex; flex-direction:column; gap:6px; min-width:0; color:inherit; text-decoration:none; }
+.cnpy-reldoc code { font-family:var(--code); font-size:.92em; padding:1px 5px; background:var(--hover); overflow-wrap:anywhere; }
+.cnpy-reldoc code.is-short { white-space:nowrap; }
+.cnpy-relpager { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:40px; }
+.cnpy-relpager-i { display:flex; flex-direction:column; gap:4px; padding:16px 18px; border:1px solid var(--border); background:var(--surface); text-decoration:none; color:inherit; transition:border-color .14s ease; }
+.cnpy-relpager-i:hover { border-color:var(--border-strong); }
 .cnpy-relpager-i.is-older { text-align:right; align-items:flex-end; }
 .cnpy-relpager-i.is-none { visibility:hidden; }
-.cnpy-relpager-dir { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-40); }
-.cnpy-relpager-name { font-size:15px; font-weight:500; line-height:1.4; color:var(--fg-70); overflow-wrap:anywhere; transition:color .12s ease; }
-.cnpy-relpager-i:hover .cnpy-relpager-name { color:var(--accent); }
-/* The body follows the CARD's width (a container query — the rail collapses, so the
-   viewport lies about the room): At a glance's figures on one row from 640px; LONG highlights
-   or a LONG patch group (.is-long) flow into two balanced columns only on a very wide card
-   (1040px+, so only on a page with no note beside the card). */
-.cnpy-reldoc-card { container-type:inline-size; }
-@container (min-width: 1040px) {
-  .cnpy-reldoc-hl.is-long { display:block; max-width:none; columns:2; column-gap:56px; }
-  .cnpy-reldoc-hl.is-long li { padding-bottom:14px; }
-  .cnpy-relpatch-list.is-long { max-width:none; columns:2; column-gap:56px; }
-  .cnpy-relpatch-list.is-long li + li { margin-top:0; }
-  .cnpy-relpatch-list.is-long li { padding-bottom:10px; }
-}
-@container (max-width: 959px) {
-  .cnpy-relglance { grid-template-columns:auto auto minmax(0, 1fr); }
-  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:2; }
-  .cnpy-relglance-all { justify-self:end; }
-}
-@container (max-width: 639px) {
-  .cnpy-relglance { grid-template-columns:1fr 1fr; gap:16px 20px; }
-  .cnpy-relglance-stats { grid-column:1 / -1; grid-row:auto; grid-template-columns:repeat(2, minmax(0, 1fr)); }
-  .cnpy-relglance-all { grid-column:1 / -1; justify-self:start; }
-}
-@media (max-width: 600px) {
-  .cnpy-relidx { padding:24px 16px 80px; }
-  .cnpy-reldoc { padding:20px 16px 80px; gap:22px; }
-  .cnpy-reldoc-grid > .cnpy-reldoc-card, .cnpy-reldoc-grid > .cnpy-relpager { margin-top:8px; }
-  .cnpy-reldoc-title { font-size:25px; }
-  .cnpy-reldoc-lede { font-size:15.5px; }
-  .cnpy-reldoc-main, .cnpy-relpatch-group { padding:20px 16px 22px; }
-  .cnpy-relglance { padding:14px 16px; }
-  .cnpy-relpatch-prs { padding:14px 16px 16px; }
-  .cnpy-relpatch-list { font-size:14px; padding-left:18px; }
-  .cnpy-rel-list { font-size:14.5px; padding-left:18px; }
-  .cnpy-relpager { grid-template-columns:1fr; gap:16px; }
+.cnpy-relpager-dir { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500; color:var(--fg-55); }
+.cnpy-relpager-ver { font-family:var(--label); font-size:12px; font-weight:600; color:var(--fg-55); }
+.cnpy-relpager-name { font-size:14px; font-weight:600; color:var(--fg); }
+@media (max-width:720px) {
+  .cnpy-relidx, .cnpy-reldoc { padding-left:16px; padding-right:16px; }
+  .cnpy-relfeat { padding:22px 18px 18px; }
+  .cnpy-relfeat-hl { grid-template-columns:minmax(0,1fr); }
+  .cnpy-reltl-item { grid-template-columns:minmax(0,1fr); }
+  .cnpy-reltl-item::before, .cnpy-reltl-item::after { display:none; }
+  .cnpy-reltl-rail { flex-direction:row; gap:10px; text-align:left; padding:18px 0 0; }
+  .cnpy-reltl-card { margin-left:0; padding:6px 0 18px; }
+  .cnpy-reldoc-title { font-size:26px; }
+  .cnpy-relhl-list { grid-template-columns:minmax(0,1fr); }
+  .cnpy-relpatch { padding:4px 16px; }
+  .cnpy-relpatch-list li { flex-direction:column; }
+  .cnpy-relpager { grid-template-columns:1fr; }
   .cnpy-relpager-i.is-older { text-align:left; align-items:flex-start; }
   .cnpy-relpager-i.is-none { display:none; }
 }
+@media (prefers-reduced-motion: reduce) { .cnpy-relfeat, .cnpy-relfeat-go svg, .cnpy-reltl-go { transition:none; } .cnpy-relfeat:hover { transform:none; } }
 /* Guide figures open in the lightbox (web/src/lightbox.ts). The thumbnail lifts on
    hover like Sapling's .cp-shot. */
 .cnpy-guide-shot { display:block; width:100%; padding:0; border:1px solid var(--border); border-radius:12px; overflow:hidden; background:var(--bg); cursor:zoom-in; transition:border-color .22s, box-shadow .22s, transform .22s; }
@@ -895,12 +1072,12 @@ input, select { font-family: inherit; }
 @keyframes cnpy-lb-panel-in { from { opacity:0; transform:scale(.965) translateY(8px); } to { opacity:1; transform:none; } }
 @keyframes cnpy-lb-out { from { opacity:1; } to { opacity:0; } }
 @keyframes cnpy-lb-panel-out { from { opacity:1; transform:none; } to { opacity:0; transform:scale(.975) translateY(6px); } }
-.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4vw, 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
+.cnpy-lightbox { position:fixed; inset:0; z-index:200; display:flex; align-items:center; justify-content:center; padding:clamp(16px, 4 * var(--vw), 48px); background:rgba(12,11,9,.66); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); font-family:'Geist','Geist Fallback',system-ui,-apple-system,sans-serif; -webkit-font-smoothing:antialiased; animation:cnpy-lb-in .2s ease both; }
 /* The panel is as wide as the SMALLER of the width and height budgets allow, so the
    frame keeps its ratio (a max-height on the frame alone clamps its height while its
    width stays 100%, stretching the box). 16:10 is the default (the guide's captures);
    lightbox.ts swaps in the image's own ratio once it loads, for doc images of any shape. */
-.cnpy-lightbox-panel { position:relative; width:min(1400px, 100%, calc((100vh - 170px) * 1.6)); max-height:100%; display:flex; flex-direction:column; gap:14px; outline:none; animation:cnpy-lb-panel-in .28s cubic-bezier(.22,1,.36,1) both; }
+.cnpy-lightbox-panel { position:relative; width:min(1400px, 100%, calc((100 * var(--vh) - 170px) * 1.6)); max-height:100%; display:flex; flex-direction:column; gap:14px; outline:none; animation:cnpy-lb-panel-in .28s cubic-bezier(.22,1,.36,1) both; }
 .cnpy-lightbox-frame { position:relative; width:100%; aspect-ratio:16 / 10; border-radius:14px; overflow:hidden; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 30px 80px -30px rgba(0,0,0,.7); }
 .cnpy-lightbox-frame img { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; }
 .cnpy-lightbox-cap { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
@@ -950,6 +1127,8 @@ input, select { font-family: inherit; }
 .cnpy-mw-grid.is-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
 @media (max-width:1180px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 @media (max-width:760px) { .cnpy-mw-grid.is-3 { grid-template-columns:1fr; } }
+/* …and on a big screen, where the frame grows (--frame-work), more cards a row instead of wider ones. */
+@media (min-width:2200px) { .cnpy-mw-grid.is-3 { grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); } }
 /* Handoffs inbox row: on a phone the who / branch columns give way, leaving the
    title, the status pill and the age (the grid is an inline style, hence !important). */
 @media (max-width:760px) {
@@ -971,7 +1150,7 @@ input, select { font-family: inherit; }
 .cnpy-pdetail-rail { flex:1 0 240px; max-width:300px; }
 @container cnpy-pdetail (max-width:759px) {
   .cnpy-pdetail { flex-direction:column; }
-  .cnpy-pdetail-main { flex:none; min-height:70vh; }
+  .cnpy-pdetail-main { flex:none; min-height:calc(70 * var(--vh)); }
   .cnpy-pdetail-rail { flex:none; max-width:none; }
 }
 .cnpy-set-wrap { container:cnpy-set / inline-size; }
@@ -1154,17 +1333,19 @@ input, select { font-family: inherit; }
    rule (in the corners block): setting its size from script re-serialises the
    style attribute as "border-radius: 10px", which the inline-radius selectors no
    longer match. */
-.cnpy-tghost { position:fixed; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--surface); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
+/* `!important`: the lifted card is a hitArea card, and `.cnpy-hitbox { position:relative }` (later, same weight) put the
+   ghost a viewport-height below the pointer. */
+.cnpy-tghost { position:fixed !important; z-index:1000; margin:0 !important; pointer-events:none; box-sizing:border-box; background:var(--surface); border-color:var(--border-strong) !important; box-shadow:0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
 .cnpy-grabbing, .cnpy-grabbing * { cursor:grabbing !important; }
 /* The board under a tablet's width: every column keeps a readable width and the board
    scrolls sideways INSIDE itself, bleeding to the screen's edges (the shell's gutter moves
    into its padding), one column per snap. The grid is an inline style, hence !important. */
 @media (max-width:900px) {
-  .cnpy-board { --bg-gut:clamp(20px,2.6vw,46px); grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:minmax(250px,1fr); overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory; scroll-padding-inline:var(--bg-gut); margin-left:calc(-1 * var(--bg-gut)); margin-right:calc(-1 * var(--bg-gut)); padding:0 var(--bg-gut) 6px; scrollbar-width:none; }
+  .cnpy-board { --bg-gut:clamp(20px,2.6 * var(--vw),46px); grid-template-columns:none !important; grid-auto-flow:column; grid-auto-columns:minmax(250px,1fr); overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x mandatory; scroll-padding-inline:var(--bg-gut); margin-left:calc(-1 * var(--bg-gut)); margin-right:calc(-1 * var(--bg-gut)); padding:0 var(--bg-gut) 6px; scrollbar-width:none; }
   .cnpy-board::-webkit-scrollbar { display:none; }
   .cnpy-board > .cnpy-tcol { scroll-snap-align:start; }
 }
-@media (max-width:640px) { .cnpy-board { grid-auto-columns:min(290px, calc(100vw - 64px)); } }
+@media (max-width:640px) { .cnpy-board { grid-auto-columns:min(290px, calc(100 * var(--vw) - 64px)); } }
 @media (max-width:860px) {
   .cnpy-nt-grid, .cnpy-td-grid, .cnpy-sprint-grid { grid-template-columns:minmax(0,1fr) !important; }
   .cnpy-nt-grid > div + div, .cnpy-td-grid > div + div, .cnpy-sprint-grid > div + div { border-left:none !important; padding-left:0 !important; }
@@ -1212,11 +1393,14 @@ input, select { font-family: inherit; }
 .cnpy-personlink:hover, .cnpy-maint-person:hover > span > span:first-child { text-decoration:underline; text-underline-offset:2px; }
 .cnpy-personlink:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 /* A card that opens something and shows people (ui.ts `hitArea`): an empty button laid over the
-   whole card is its click target, and every person button in it sits above it as its own. */
-.cnpy-hitbox { position:relative; }
+   whole card is its click target, and every person button in it sits above it as its own.
+   The card shows the pointer (the hit inherits it, so a card that sets its own, the board's grab, keeps it).
+   `cnpy-hitctl` is any other control on such a card (a prompt card's copy button), raised the same way. */
+.cnpy-hitbox { position:relative; cursor:pointer; }
 .cnpy-hit { position:absolute; inset:0; z-index:1; padding:0; border-radius:inherit; cursor:inherit; }
 .cnpy-hit:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
-.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack { position:relative; z-index:2; }
+.cnpy-hitbox .cnpy-personchip, .cnpy-hitbox .cnpy-personav, .cnpy-hitbox .cnpy-personlink, .cnpy-hitbox .cnpy-avstack, .cnpy-hitbox .cnpy-hitctl { position:relative; z-index:2; }
+.cnpy-hitctl:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
 .cnpy-accentbtn { transition:filter .12s ease, transform .12s ease; }
 .cnpy-accentbtn:hover { filter:brightness(1.06); }
 .cnpy-accentbtn:active { transform:translateY(1px); }
@@ -1278,7 +1462,7 @@ input, select { font-family: inherit; }
 /* The deletion confirmations (deletion.ts): wider, a list of what goes and what stays, and a TYPED field — the
    handle or the slug — with a focus ring that shows (the field takes the focus on open). A tall one scrolls
    inside the window rather than off it. */
-.cnpy-cmodal-box--wide { width:min(540px, 100%); max-height:calc(100dvh - 32px); overflow:auto; }
+.cnpy-cmodal-box--wide { width:min(540px, 100%); max-height:calc(100 * var(--dvh) - 32px); overflow:auto; }
 .cnpy-cm-detail { margin-top:12px; font-size:12.5px; line-height:1.55; color:var(--fg-70); }
 .cnpy-cm-detail ul { margin:0; padding:0 0 0 18px; display:flex; flex-direction:column; gap:6px; }
 .cnpy-cm-detail strong { color:var(--fg); font-weight:600; }
@@ -1392,7 +1576,7 @@ input, select { font-family: inherit; }
 [data-cnpy-theme="dark"] { --menu-shadow:0 14px 38px rgba(0,0,0,0.38); }
 .cnpy-dd-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-dd-back { position:absolute; inset:0; }
-.cnpy-dd-pop { position:fixed; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; width:max-content; max-width:min(440px, calc(100vw - 16px)); max-height:298px; padding:5px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--menu-shadow); transform-origin:top left; outline:none; }
+.cnpy-dd-pop { position:fixed; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; width:max-content; max-width:min(440px, calc(100 * var(--vw) - 16px)); max-height:298px; padding:5px; overflow-y:auto; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--menu-shadow); transform-origin:top left; outline:none; }
 .cnpy-dd-pop[data-align="right"] { transform-origin:top right; }
 .cnpy-dd-pop[data-side="up"] { transform-origin:bottom left; }
 .cnpy-dd-pop[data-side="up"][data-align="right"] { transform-origin:bottom right; }
@@ -1551,7 +1735,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* Every control here shows where the keyboard is. */
 .cnpy-org button:focus-visible, .cnpy-org select:focus-visible, .cnpy-org-secret button:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
 .cnpy-org .cnpy-input:focus-visible, .cnpy-org-secret .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
-.cnpy-org-secret { width:min(820px, 100%); max-height:calc(100vh - 32px); overflow-y:auto; }
+.cnpy-org-secret { width:min(820px, 100%); max-height:calc(100 * var(--vh) - 32px); overflow-y:auto; }
 .cnpy-org-secretgrid { display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,1fr); gap:24px; margin-top:18px; }
 /* Org settings › Hosting (web/src/hosting.ts). Environments are tiles side by side — comparing staging with
    production is the point — two to a line where the tab has room, one under the other below that. Every
@@ -1776,7 +1960,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* The state preview's banner (web/src/preview.ts): fixed at the app's lower right, over every
    screen, for as long as `?preview=` is on. Amber, the app's "this is not live data" tone
    (the Repo dashboard's sample tag). It does not move. */
-.cnpy-preview { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; align-items:center; gap:10px; max-width:min(560px, calc(100vw - 32px)); padding:9px 10px 9px 13px; border:1px solid color-mix(in srgb,var(--amber) 55%,transparent); border-radius:10px; background:var(--surface); box-shadow:0 8px 30px rgba(0,0,0,.22); font-size:12.5px; line-height:1.45; color:var(--fg-70); }
+.cnpy-preview { position:fixed; right:16px; bottom:16px; z-index:60; display:flex; align-items:center; gap:10px; max-width:min(560px, calc(100 * var(--vw) - 32px)); padding:9px 10px 9px 13px; border:1px solid color-mix(in srgb,var(--amber) 55%,transparent); border-radius:10px; background:var(--surface); box-shadow:0 8px 30px rgba(0,0,0,.22); font-size:12.5px; line-height:1.45; color:var(--fg-70); }
 .cnpy-preview-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--amber); }
 .cnpy-preview-t { min-width:0; }
 .cnpy-preview-t > strong { font-weight:600; color:var(--fg); }
@@ -1934,10 +2118,11 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* ── landing (signed-out screen, web/src/landing.ts) ──────────────────────────
    Ported from Canopy Site.dc.html. The page rides the app's three themes; these
    are the tokens the site needs that the app themes don't carry, plus the
-   dc-runtime `style-hover` pseudo-props as real rules. */
+   dc-runtime `style-hover` pseudo-props as real rules. The terminal mocks (--term) are dark in BOTH themes,
+   so their Trov line (--term-accent) is the dark accent's lifted purple in both (it was a hard-coded olive). */
 .cnpy-site { font-size:16px; line-height:normal; text-rendering:optimizeLegibility; }
-[data-cnpy-theme="light"] { --lift-shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; }
-[data-cnpy-theme="dark"] { --lift-shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; }
+[data-cnpy-theme="light"] { --lift-shadow:0 32px 64px -24px rgba(42,39,31,0.18), 0 4px 12px -4px rgba(42,39,31,0.08); --term:#1c1a16; --term-fg:#ede9e2; --term-accent:#8d94d8; }
+[data-cnpy-theme="dark"] { --lift-shadow:0 32px 64px -24px rgba(0,0,0,0.55), 0 4px 12px -4px rgba(0,0,0,0.3); --term:#131210; --term-fg:#ede9e2; --term-accent:#8d94d8; }
 /* :where keeps this at element specificity so the button-like links below win. */
 :where(.cnpy-site) a { color:var(--accent); text-decoration:none; }
 :where(.cnpy-site) a:hover { text-decoration:underline; text-underline-offset:3px; }
@@ -1956,19 +2141,22 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* The legal pages (/terms, /privacy — web/src/legal.ts). The site's own page: the brand banner carries the
    title (the landing hero's `.site-banner`), then the text with its contents riding beside it. Under 900px
    the contents sit above the text as a box. Section anchors clear the 60px sticky nav. */
-.site-legal-band { padding:clamp(34px, 4.6vw, 58px) var(--hero-pad) clamp(36px, 4.8vw, 60px); }
-.site-legal-band > .site-banner-art { width:clamp(220px, 30vw, 400px); aspect-ratio:1; right:clamp(-70px, -4vw, -30px); top:clamp(-90px, -6vw, -50px); }
+.site-legal-band { padding:clamp(34px, 4.6 * var(--vw), 58px) var(--hero-pad) clamp(36px, 4.8 * var(--vw), 60px); }
+.site-legal-band > .site-banner-art { width:clamp(220px, 30 * var(--vw), 400px); aspect-ratio:1; right:clamp(-70px, -4 * var(--vw), -30px); top:clamp(-90px, -6 * var(--vw), -50px); }
 .site-legal-band-in { max-width:1060px; margin:0 auto; }
 .site-legal-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:rgba(255,255,255,.14); }
 .site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); text-decoration:none; transition:background .12s ease, color .12s ease; }
-a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
+/* The pills never underline, in any state (the site's links do on hover; the current pill is a link too). */
+.site-legal-tab, .site-legal-tab:hover, .site-legal-tab:focus-visible { text-decoration:none; }
+a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255,255,.12); }
+.site-legal-tab { transition:background .18s ease, color .18s ease; }
+@media (prefers-reduced-motion: reduce) { .site-legal-tab { transition:none; } }
 .site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
-[data-cnpy-theme="dark"] .site-legal-tab[aria-current] { color:#3a4620; }
-.site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4vw, 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
+.site-legal-h { margin:22px 0 0; font-size:clamp(32px, 4.4 * var(--vw), 50px); line-height:1.08; font-weight:650; letter-spacing:-0.03em; }
 .site-legal-lede { margin:16px 0 0; max-width:680px; font-size:16.5px; line-height:1.62; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-legal-date { margin-top:20px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.92); }
 .site-legal { max-width:1060px; margin:0 auto; padding:52px 24px 0; display:grid; grid-template-columns:232px minmax(0, 1fr); gap:56px; align-items:start; }
-.site-legal-side { position:sticky; top:84px; max-height:calc(100vh - 108px); overflow:auto; scrollbar-width:none; }
+.site-legal-side { position:sticky; top:84px; max-height:calc(100 * var(--vh) - 108px); overflow:auto; scrollbar-width:none; }
 .site-legal-side::-webkit-scrollbar { display:none; }
 .site-legal-text { max-width:700px; }
 .site-legal-toc-h { font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--fg-40); }
@@ -2057,8 +2245,8 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-price-top { display:flex; align-items:flex-end; flex-wrap:wrap; gap:24px 40px; }
 .site-price-intro { flex:1 1 420px; min-width:0; }
 .site-price-eyebrow { margin-bottom:12px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:var(--accent); }
-.site-price-title { margin:0; font-size:clamp(28px, 3.4vw, 38px); font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
-.site-price-title.is-page { font-size:clamp(32px, 4vw, 44px); line-height:1.1; }
+.site-price-title { margin:0; font-size:clamp(28px, 3.4 * var(--vw), 38px); font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-price-title.is-page { font-size:clamp(32px, 4 * var(--vw), 44px); line-height:1.1; }
 .site-price-lede { margin:14px 0 0; max-width:560px; font-size:15.5px; line-height:1.6; color:var(--fg-70); text-wrap:pretty; }
 .site-btn-accent { background:var(--accent); color:var(--accent-fg); }
 .site-btn-accent:hover { filter:brightness(1.06); color:var(--accent-fg); }
@@ -2089,7 +2277,6 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-plan.is-top .site-plan-tba { font-size:20px; font-weight:600; letter-spacing:-0.01em; color:#fff; }
 .site-plan.is-top .site-plan-cta, .site-plan.is-top .site-plan-cta:hover { border-color:transparent; background:#fff; color:#333c8f; }
 .site-plan.is-top .site-plan-cta:hover { filter:brightness(.96); }
-[data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta, [data-cnpy-theme="dark"] .site-plan.is-top .site-plan-cta:hover { color:#3a4620; }
 .site-plan.is-top .site-plan-limits { border-color:rgba(255,255,255,.24); color:rgba(255,255,255,.92); }
 .site-plan.is-top .site-plan-limits b { color:#fff; }
 .site-plan.is-top .site-plan-limits li::before { background:#fff; }
@@ -2257,15 +2444,12 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
    its lower edge; "Agents propose, people decide" is the same card laid on its side; the sign-in dialog is
    the card itself; and each tour mockup stands on a field of the banner's dots, in the page's own accent.
    Everything here is static paint: no filter, no backdrop-filter, nothing that repaints on scroll. */
-/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. */
-/* Dark: the banner follows the theme's accent. The dark app's accent is the green mark (`--mark` #9aab65), so a
-   purple banner over it read as a second brand. Same gradient, highlight, dots and faint mark — in a deep
-   olive of that green, with the white headline at the same contrast the purple gives it (5:1 at the lightest
-   corner since 2026-10, when both gradients went one step deeper for WCAG AA; was #73844a → #5d6d37 → #485628).
-   One rule for the site's banners AND the first-run cards', so they cannot drift. */
-[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.12) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #65753c 0%, #4f5f29 48%, #3b481a 100%); }
-[data-cnpy-theme="dark"] .site-banner ::selection { color:#3a4620; }
-[data-cnpy-theme="dark"] .site-btn-onb, [data-cnpy-theme="dark"] .site-btn-onb:hover { color:#3a4620; }
+/* On the dark page the site's banners sit a step deeper, so a slab this size does not glare; same hue. The dark
+   accent is the light one's purple (2026-10-17), so the banner is the brand's purple in both themes: the same
+   gradient, highlight, dots and faint mark, one step deeper (white text 4.9:1 at the lightest corner). It was a
+   deep olive (#65753c → #4f5f29 → #3b481a) while the dark accent was green; the white button and the selection
+   on it take the light theme's indigo ink again. One rule for the site's banners AND the first-run cards'. */
+[data-cnpy-theme="dark"] .site-banner, [data-cnpy-theme="dark"] .cnpy-orgs-banner { background:radial-gradient(120% 140% at 100% 0%, rgba(255,255,255,.1) 0%, rgba(255,255,255,0) 55%), linear-gradient(135deg, #5760bf 0%, #464eae 48%, #343b94 100%); }
 .site-banner > * { position:relative; z-index:1; }
 .site-banner > .site-banner-art { position:absolute; z-index:0; display:block; color:#fff; opacity:.11; transform:rotate(-8deg); pointer-events:none; }
 .site-banner-art svg { display:block; width:100%; height:100%; }
@@ -2273,11 +2457,11 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-banner a:focus-visible, .site-banner button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 
 /* hero */
-.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; --hero-pad:clamp(22px, 5vw, 66px); }
-.site-hero-band { padding:clamp(52px, 6.4vw, 84px) var(--hero-pad) clamp(170px, 21vw, 268px); }
-.site-hero-band > .site-banner-art { width:clamp(280px, 44vw, 600px); aspect-ratio:1; right:clamp(-90px, -5vw, -40px); top:clamp(-110px, -7vw, -60px); }
+.site-hero { max-width:1240px; margin:0 auto; padding:14px 24px 0; --hero-pad:clamp(22px, 5 * var(--vw), 66px); }
+.site-hero-band { padding:clamp(52px, 6.4 * var(--vw), 84px) var(--hero-pad) clamp(170px, 21 * var(--vw), 268px); }
+.site-hero-band > .site-banner-art { width:clamp(280px, 44 * var(--vw), 600px); aspect-ratio:1; right:clamp(-90px, -5 * var(--vw), -40px); top:clamp(-110px, -7 * var(--vw), -60px); }
 .site-hero-in { max-width:1060px; margin:0 auto; }
-.site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4vw, 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
+.site-hero-h { margin:0; max-width:780px; font-size:clamp(36px, 5.4 * var(--vw), 62px); line-height:1.06; font-weight:650; letter-spacing:-0.032em; text-wrap:balance; }
 .site-hero-lede { margin:22px 0 0; max-width:600px; font-size:17.5px; line-height:1.6; color:rgba(255,255,255,.94); text-wrap:pretty; }
 .site-hero-cta { margin-top:32px; display:flex; gap:12px; flex-wrap:wrap; }
 .site-hero-note { margin:18px 0 0; font-size:13.5px; line-height:1.55; color:rgba(255,255,255,.92); }
@@ -2289,7 +2473,7 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 .site-btn-onb-line:hover { color:#fff; background:rgba(255,255,255,.12); }
 /* The mockup stands on the banner's lower edge, the banner's glow carrying on under it (the first run's
    `.cnpy-fr-bg::after`, as a plain gradient). */
-.site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16vw, 200px)) auto 0; }
+.site-hero-stage { position:relative; max-width:min(1060px, calc(100% - 2 * var(--hero-pad))); margin:calc(-1 * clamp(120px, 16 * var(--vw), 200px)) auto 0; }
 .site-hero-stage::before { content:""; position:absolute; z-index:0; inset:34% -9% -9% -9%; pointer-events:none;
   background:radial-gradient(50% 50% at 50% 50%, color-mix(in srgb, var(--mark, #616acb) 20%, transparent) 0%, transparent 72%); }
 .site-hero-mock { position:relative; z-index:1; text-align:left; border:1px solid var(--border-strong); background:var(--bg); overflow:hidden;
@@ -2303,11 +2487,11 @@ a.site-legal-tab:hover { color:#fff; background:rgba(255,255,255,.12); text-deco
 /* the card on its side: banner | body */
 .site-split { display:grid; grid-template-columns:minmax(0, 1.12fr) minmax(0, 1fr); border:0; background:var(--surface); overflow:hidden;
   box-shadow:0 0 0 1px rgba(20,22,60,.07), 0 1px 2px rgba(20,22,60,.04), 0 12px 40px -12px rgba(20,22,60,.18); }
-.site-split-banner { padding:clamp(30px, 4.6vw, 56px) clamp(24px, 4.4vw, 52px); display:flex; flex-direction:column; justify-content:center; }
-.site-split-banner > .site-banner-art { width:clamp(220px, 26vw, 330px); aspect-ratio:1; right:-56px; top:-70px; }
-.site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4vw, 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
+.site-split-banner { padding:clamp(30px, 4.6 * var(--vw), 56px) clamp(24px, 4.4 * var(--vw), 52px); display:flex; flex-direction:column; justify-content:center; }
+.site-split-banner > .site-banner-art { width:clamp(220px, 26 * var(--vw), 330px); aspect-ratio:1; right:-56px; top:-70px; }
+.site-split-banner h2 { margin:0; font-size:clamp(28px, 3.4 * var(--vw), 38px); line-height:1.12; font-weight:650; letter-spacing:-0.025em; text-wrap:balance; }
 .site-split-banner p { margin:16px 0 0; max-width:480px; font-size:15.5px; line-height:1.65; color:rgba(255,255,255,.94); text-wrap:pretty; }
-.site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4vw, 44px) clamp(22px, 4vw, 44px); }
+.site-split-body { display:flex; flex-direction:column; justify-content:center; padding:clamp(26px, 4 * var(--vw), 44px) clamp(22px, 4 * var(--vw), 44px); }
 @media (max-width:860px) { .site-split { grid-template-columns:minmax(0, 1fr); } }
 
 /* a tour mockup on its field of dots: the banner's grid in the page's accent, fading toward the copy */
@@ -2438,7 +2622,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 
 @media (max-width:860px) {
   .site-fx-wrap { padding:16px; }
-  .site-fx-panel { height:min(100%, 100dvh - 32px); }
+  .site-fx-panel { height:min(100%, 100 * var(--dvh) - 32px); }
   .site-fx-main { display:block; overflow-y:auto; }
   .site-fx-titles { padding:22px 60px 0 20px; }
   .site-fx-titles h2 { font-size:22px; }
@@ -2450,7 +2634,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 }
 @media (max-width:640px) {
   /* a full-height sheet (the app's phone rule for modals pins it to the bottom edge); controls under the thumb */
-  .site-fx-panel { height:100dvh; }
+  .site-fx-panel { height:calc(100 * var(--dvh)); }
   .site-fx-nav { min-height:44px; }
   .site-fx-nav span { max-width:92px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* a phone keeps each screen's most telling pane: the secondary ones (`.fxm-wide`) are dropped, not shrunk */
@@ -2636,7 +2820,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-qs-layer[data-closing] .cnpy-qs { pointer-events:none; animation:cnpy-qs-out .16s ease both; }
 .cnpy-qs-layer[data-closing][data-mode="palette"] { animation:cnpy-qs-fade-out .16s ease both; }
 .cnpy-qs-layer[data-mode="anchor"][data-empty] .cnpy-qs { display:none; }
-.cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:12vh; margin:0 auto; width:min(480px, calc(100vw - 32px)); max-height:min(520px, 76vh); }
+.cnpy-qs-layer[data-mode="palette"] .cnpy-qs { left:0; right:0; top:calc(12 * var(--vh)); margin:0 auto; width:min(480px, calc(100 * var(--vw) - 32px)); max-height:min(520px, 76 * var(--vh)); }
 .cnpy-qs-inbar { display:none; flex:none; align-items:center; gap:9px; height:44px; padding:0 12px; border-bottom:1px solid var(--border); color:var(--fg-40); }
 .cnpy-qs-layer[data-mode="palette"] .cnpy-qs-inbar { display:flex; }
 /* The palette's field shows focus as the tab bars do: a 2px --focus line on its lower edge. */
@@ -2666,7 +2850,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-qs-kbd { margin-right:3px; padding:0 4px; border:1px solid var(--border); border-radius:4px; font-family:var(--label); font-size:10.5px; color:var(--fg-55); }
 @media (max-width: 560px) {
   .cnpy-qs-foot { display:none; }
-  .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { top:16px; max-height:calc(100dvh - 32px); }
+  .cnpy-qs-layer[data-mode="palette"] .cnpy-qs { top:16px; max-height:calc(100 * var(--dvh) - 32px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .cnpy-qs-layer, .cnpy-qs { animation:none !important; transition:none !important; }
@@ -2698,15 +2882,15 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgtile { display:inline-grid; place-items:center; flex:none; box-sizing:border-box; background:var(--hover); border:1px solid var(--border-strong); color:var(--fg-70); font-family:'Geist','Geist Fallback',system-ui,sans-serif; font-weight:600; line-height:1; }
 .cnpy-orgmenu-layer { position:fixed; inset:0; z-index:95; }
 .cnpy-orgmenu-back { position:absolute; inset:0; }
-.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100vw - 20px); max-height:calc(100dvh - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
-[data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100dvh - 72px); }
+.cnpy-orgmenu { position:absolute; top:calc(100px + env(safe-area-inset-top)); left:calc(10px + env(safe-area-inset-left)); width:248px; max-width:calc(100 * var(--vw) - 20px); max-height:calc(100 * var(--dvh) - 116px); overflow-y:auto; box-sizing:border-box; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); transform-origin:top left; animation:cnpy-lkpop .14s cubic-bezier(.2,.9,.3,1.2) both; }
+[data-collapsed="1"] .cnpy-orgmenu { top:56px; left:70px; max-height:calc(100 * var(--dvh) - 72px); }
 .cnpy-orgmenu .cnpy-menurow:focus-visible, .cnpy-orgmenu button:focus-visible, .cnpy-orgs a:focus-visible, .cnpy-orgs button:focus-visible, [data-orgs-create] button:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 [data-orgs-create] .cnpy-input:focus-visible { border-color:var(--accent) !important; box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-orgs-inv { display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; }
 /* THE PICKER: one calm column, the app's surfaces. */
 /* The org picker / first run: one card in the middle of the window. It is as tall as its content and
    the window is its frame, so a first run never scrolls; only a long list of organizations does. */
-.cnpy-orgs { min-height:100vh; min-height:100dvh; box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
+.cnpy-orgs { min-height:calc(100 * var(--vh)); min-height:calc(100 * var(--dvh)); box-sizing:border-box; display:flex; align-items:center; justify-content:center; padding:24px; }
 .cnpy-orgs-col { width:100%; max-width:660px; min-width:0; }
 /* Behind a first-run card: the app itself, loading (render.ts `firstRunBackdrop`), softened and washed
    toward the page so the card in front of it is the one thing to read. */
@@ -2749,7 +2933,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
    set at the TOP of the window: the form's height is Stripe's and changes as it is filled in, so the card
    grows with it and the page scrolls. Nothing in the card scrolls (no height, no overflow on the stage), so
    there is never a scrollbar inside a scrollbar. Reached by a page load, so no morph crosses the two widths. */
-.cnpy-billco { align-items:flex-start; padding-top:clamp(20px, 7vh, 72px); padding-bottom:40px; }
+.cnpy-billco { align-items:flex-start; padding-top:clamp(20px, 7 * var(--vh), 72px); padding-bottom:40px; }
 .cnpy-billco > .cnpy-orgs-col { max-width:940px; }
 .cnpy-billco [hidden] { display:none !important; }
 /* The stage is Stripe's: its iframe paints its own background (the account's Branding settings), so it sits
@@ -2806,8 +2990,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .cnpy-orgs-opt { display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:14px 16px; border-bottom:1px solid var(--border); margin-bottom:-1px; }
 /* THE PLATFORM PAGE (`/platform/`, platform.ts `platformPage`): the superadmin's screens outside any
    org — a header on the app header's line and the same frame under it; the window scrolls. */
-.cnpy-platpage { min-height:100vh; display:flex; flex-direction:column; }
-.cnpy-platpage-hdr { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:57px; padding:8px clamp(20px,2.6vw,46px); border-bottom:1px solid var(--border); box-sizing:border-box; }
+.cnpy-platpage { min-height:calc(100 * var(--vh)); display:flex; flex-direction:column; }
+.cnpy-platpage-hdr { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; flex-wrap:wrap; min-height:57px; padding:8px clamp(20px,2.6 * var(--vw),46px); border-bottom:1px solid var(--border); box-sizing:border-box; }
 .cnpy-platpage-l { display:flex; align-items:center; gap:10px; min-width:0; flex:1 1 auto; }
 .cnpy-platpage-r { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .cnpy-platpage-home { display:inline-flex; align-items:center; gap:8px; flex:none; color:var(--fg); text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.02em; border-radius:6px; }
@@ -2905,7 +3089,8 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .plat-thead > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
 .plat-row { display:grid; gap:12px; align-items:center; transition:background .12s ease; }
 .plat-row:hover { background:var(--hover); }
-.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px 118px minmax(0,1.5fr) 68px 60px 96px 96px; }
+/* The Plan column takes a share (its second line — seats, and a gift's end date — wraps inside it, never over Owners). */
+.plat-orgs-grid { grid-template-columns:minmax(0,2fr) 92px minmax(130px,1.2fr) minmax(0,1.5fr) 68px 60px 96px 96px; }
 /* Platform › Access / Change plan (platform-access.ts): the five limits, as fields or as figures. */
 .plat-limits { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px 14px; }
 .plat-usage-grid { grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1.2fr) 48px 62px 44px 54px minmax(0,.95fr) 88px; }
@@ -2921,7 +3106,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 /* The signed-out Contact form (support.ts, anonymous): the same form in the sign-in dialog's plain card,
    wider, scrolling inside itself on a short window. Its entrance and its reduced-motion rule are the
    sign-in card's own (`.site-signin-back`, `.site-signin-card`). */
-.site-contact-card { width:min(480px, 100%) !important; max-height:calc(100vh - 32px); overflow-y:auto !important; padding:22px 24px 20px; box-sizing:border-box; }
+.site-contact-card { width:min(480px, 100%) !important; max-height:calc(100 * var(--vh) - 32px); overflow-y:auto !important; padding:22px 24px 20px; box-sizing:border-box; }
 /* The honeypot: off screen for everyone — never `display:none`, which a script can test for. */
 .cnpy-support-hp { position:absolute !important; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden; }
 [data-support-dialog] a { color:var(--fg-70); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
@@ -3001,6 +3186,7 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-crumb { display:inline-flex; align-items:center; gap:10px; min-width:0; }
 .ask-crumb-sep { color:var(--fg-40); font-size:15px; }
 .ask-crumb-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+.ask-crumb-mark { flex:none; display:inline-flex; }
 .ask-iconbtn { display:grid; place-items:center; flex:none; width:28px; height:28px; border-radius:7px; color:var(--fg-55); cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-iconbtn:hover { background:var(--hover); color:var(--fg); }
 .ask-iconbtn:disabled { color:var(--fg-40); opacity:.5; cursor:default; background:none; }
@@ -3113,6 +3299,12 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-th-at { flex:none; font-family:var(--label); font-size:11.5px; font-weight:400; color:var(--fg-40); transition:opacity .12s ease; }
 .ask-th-snip { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; font-size:12px; font-weight:400; line-height:1.45; color:var(--fg-55); }
 .ask-th-count { font-family:var(--label); font-size:11px; font-weight:400; color:var(--fg-40); }
+/* Sharing (0076 / 0077_ask_sharing): the owner's shared mark after a title; "Shared with you" / "Organization": the owner under the title. */
+.ask-th-mark { flex:none; display:inline-flex; }
+.ask-th-owner { display:flex; align-items:center; gap:6px; min-width:0; font-size:12px; font-weight:400; color:var(--fg-55); }
+.ask-th-owner-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* Notes waiting on the thread's Trov links (agent links): a small dot before the time, its tooltip says what it means. */
+.ask-th-link { flex:none; display:inline-flex; align-items:center; }
 .ask-hl { padding:0 1px; border-radius:3px; background:var(--accent-soft); color:var(--fg); font-weight:600; }
 .ask-th-more { position:absolute; top:5px; right:6px; display:grid; place-items:center; width:24px; height:24px; border-radius:6px; color:var(--fg-55); opacity:0; cursor:pointer; transition:opacity .12s ease, background .12s ease; }
 .ask-th-in:hover .ask-th-more, .ask-th.is-menu .ask-th-more, .ask-th-more:focus-visible { opacity:1; }
@@ -3129,6 +3321,11 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 
 /* ── Ask: conversation ── (ask-conversation.ts; inventory §1b, §2; ask-trov.dc.html L299–L650) */
 .ask-col { animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
+/* "Link #12 with @jose: 2 new notes" — one quiet line at the top of the thread (`linkNotesLine`). */
+.ask-links-line { display:flex; align-items:baseline; gap:8px; margin:0 0 14px; padding:0 0 10px; border-bottom:1px solid var(--border); font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.ask-links-line > svg { flex:none; align-self:center; }
+.ask-links-a { color:var(--fg); font-weight:500; text-decoration:underline; text-decoration-color:var(--fg-40); text-underline-offset:2px; }
+.ask-links-hint { color:var(--fg-55); }
 .ask-empty { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:safe flex-end; gap:14px; width:100%; max-width:720px; box-sizing:border-box; margin:0 auto; padding:40px 28px 18px; text-align:center; animation:ask-fade-in var(--fx-base) var(--fx-ease) both; }
 [data-phone="1"] .ask-empty { padding:24px 16px 14px; }
 /* The design's spacer under the composer while empty (L770): the empty block and the composer sit mid-column. */
@@ -3359,6 +3556,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-nf-tries { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 18px; }
 .ask-nf-try { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border:1px solid var(--border); border-radius:9px; font-size:13px; font-weight:500; color:var(--fg-70); text-align:left; cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
 .ask-nf-try:hover { border-color:var(--border-strong); color:var(--fg); background:var(--surface); }
+.ask-nf-try.is-static, .ask-nf-try.is-static:hover { cursor:default; border-color:var(--border); color:var(--fg-55); background:none; }
 .ask-nf-card { overflow:hidden; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); }
 .ask-nf-head { padding:10px 14px 6px; font-family:var(--label); font-size:11.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
 .ask-nf-row { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; padding:9px 14px; border-top:1px solid var(--border); }
@@ -3405,6 +3603,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
    stack grow by padding (min-height); inline and side-by-side controls get an invisible 44px box centred on them. */
 [data-phone="1"] .ask-fu, [data-phone="1"] .ask-res, [data-phone="1"] .ask-src-r, [data-phone="1"] button.ask-step { min-height:44px; box-sizing:border-box; }
 [data-phone="1"] .ask-col .ask-chip, [data-phone="1"] .ask-fb, [data-phone="1"] .ask-q-edit, [data-phone="1"] .ask-nf-try, [data-phone="1"] .ask-q-chip { position:relative; }
+.ask-q-chip.is-closed { cursor:default; }
 [data-phone="1"] .ask-col .ask-chip::after, [data-phone="1"] .ask-fb::after, [data-phone="1"] .ask-q-edit::after, [data-phone="1"] .ask-nf-try::after, [data-phone="1"] .ask-q-chip::after { content:""; position:absolute; left:0; right:0; top:50%; height:44px; transform:translateY(-50%); }
 /* …and a write card's Cancel / Confirm / Edit, an assignment's item and person picker, and a line's link and Undo / Open
    (actions part). */
@@ -3417,6 +3616,48 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-composer { flex:none; width:100%; box-sizing:border-box; padding:0 28px; }
 [data-phone="1"] .ask-composer, .ask-panel .ask-composer { padding:0 16px; }
 .ask-co-in { position:relative; max-width:720px; margin:0 auto; padding-bottom:14px; }
+/* A conversation someone else shared, in the composer's place: whose it is, and that only they continue it. */
+.ask-ro { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:14px 2px 0; border-top:1px solid var(--border); font-size:13px; line-height:1.5; color:var(--fg-70); }
+.ask-ro-who { display:inline-flex; min-width:0; }
+.ask-ro-t { min-width:0; }
+.ask-ro-mark { margin-left:auto; display:inline-flex; }
+[data-phone="1"] .ask-ro-mark { margin-left:0; }
+.ask-share-note { margin:0; font-size:12.5px; line-height:1.5; color:var(--fg-55); }
+/* The Share dialog (ask-threads.ts threadShareModal; 0077_ask_people_sharing): who can open it — everyone in the org,
+   and people by name, each with what they may do — then what stays private. */
+/* One width for both halves, so switching Share with org / Share with a teammate never moves the switch under the
+   pointer; the teammate half is the taller one (the people, each with what they may do, and Add a person). */
+.ask-share { width:min(460px, 100%); max-height:calc(100 * var(--vh) - 32px); overflow-y:auto; box-sizing:border-box; }
+.ask-share-x { margin-left:-4px; }
+/* Both halves sit in one fixed-height body, so the dialog is the same size on either; a long people list scrolls in it
+   (the dropdowns are root overlays, never clipped by it). */
+.ask-share-body { height:190px; margin-top:14px; }
+/* Three person rows (32px, 4px apart), then the list scrolls: adding a person never grows the dialog. The bar's room
+   is kept from the first row (as #cnpy-main does), so a fourth person never pushes the buttons in. */
+.ask-share-list { height:104px; display:flex; flex-direction:column; gap:4px; overflow-y:auto; overscroll-behavior:contain; scrollbar-gutter:stable; }
+.ask-share-list > .ask-share-row { flex:none; }
+.ask-share-body > .ask-share-sec { margin-top:0; }
+.ask-share-tabs { margin-top:14px; }
+.ask-share-facts { margin:4px 0 0; padding:0; list-style:none; display:flex; flex-direction:column; gap:9px; font-size:12.5px; line-height:1.45; color:var(--fg-55); }
+.ask-share-facts li { display:flex; align-items:flex-start; gap:9px; }
+.ask-share-facts svg { margin-top:2px; color:var(--fg-40); }
+.ask-share-empty { margin:0; font-size:13px; color:var(--fg-55); }
+.ask-share-h { font-size:16px; font-weight:600; letter-spacing:-0.01em; line-height:1.35; color:var(--fg); overflow-wrap:anywhere; }
+.ask-share-sec { margin-top:16px; display:flex; flex-direction:column; gap:8px; }
+.ask-share-label { font-size:12px; font-weight:600; color:var(--fg-55); }
+.ask-share-row { display:flex; align-items:center; gap:10px; min-height:32px; }
+.ask-share-who { flex:1; min-width:0; display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--fg); }
+.ask-share-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-share-org { flex:none; display:grid; place-items:center; width:20px; height:20px; color:var(--fg-55); }
+.ask-share-add { justify-content:flex-start; }
+.ask-share .ask-share-files { margin-top:12px; }
+.ask-share-err { margin-top:12px; font-size:12.5px; line-height:1.5; color:var(--red); }
+.cnpy-dd-v.is-placeholder { color:var(--fg-55); }
+/* Someone else's conversation the person continues: whose it is, over the box. Who asked each question, once more than
+   one person asked. A shared row the person may continue says so after the owner's name. */
+.ask-co-shared { color:var(--fg-55); flex-wrap:wrap; gap:4px 6px; }
+.ask-q-who { display:flex; justify-content:flex-end; margin-top:4px; font-size:12px; line-height:1.4; color:var(--fg-55); }
+.ask-th-can { flex:none; white-space:nowrap; color:var(--fg-40); }
 .ask-panel .ask-co-in { max-width:none; }
 .ask-co-file { display:none; }
 .ask-box { border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); box-shadow:var(--shadow); transition:border-color .15s ease, box-shadow .15s ease; }
@@ -3859,7 +4100,7 @@ a.ask-btn { text-decoration:none; }
 .ask-panel-t { font-size:14px; font-weight:600; letter-spacing:-0.01em; white-space:nowrap; }
 .ask-panel-gap { flex:1; }
 /* The panel's inspector: to its left at its own width (never wider than the room beside the panel). */
-.ask-panel-layer > .ask-insp-frame[data-sheet="0"] { position:absolute; top:0; bottom:0; right:420px; z-index:1; max-width:calc(100vw - 420px); box-shadow:var(--lift-shadow); animation:ask-cj-insp-in var(--fx-slow) cubic-bezier(.2,.7,.2,1) both; }
+.ask-panel-layer > .ask-insp-frame[data-sheet="0"] { position:absolute; top:0; bottom:0; right:420px; z-index:1; max-width:calc(100 * var(--vw) - 420px); box-shadow:var(--lift-shadow); animation:ask-cj-insp-in var(--fx-slow) cubic-bezier(.2,.7,.2,1) both; }
 .ask-panel-layer > .ask-insp-frame[data-sheet="0"][data-closing] { animation:ask-cj-insp-out var(--fx-base) var(--fx-ease) both; }
 .ask-panel-layer[data-closing] > .ask-insp-frame[data-sheet="0"] { animation:ask-cj-insp-away var(--fx-base) var(--fx-ease) both; }
 .ask-panel-layer > .ask-insp-frame[data-sheet="1"] { z-index:3; }
@@ -3914,7 +4155,7 @@ a.ask-btn { text-decoration:none; }
 .ask-ph-send { display:grid; place-items:center; flex:none; width:44px; height:44px; border-radius:10px; background:var(--hover); color:var(--fg-40); cursor:pointer; transition:background .15s ease, color .15s ease; }
 .ask-ph-send.is-on { background:var(--accent); color:var(--accent-fg); }
 .ask-ph-send.is-busy { background:var(--fg); color:var(--bg); }
-.ask-ph-plus { position:absolute; left:16px; right:16px; bottom:calc(100% - 6px); z-index:30; box-sizing:border-box; max-height:calc(100dvh - 140px); overflow-y:auto; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .2s cubic-bezier(.2,.9,.3,1.2) both; }
+.ask-ph-plus { position:absolute; left:16px; right:16px; bottom:calc(100% - 6px); z-index:30; box-sizing:border-box; max-height:calc(100 * var(--dvh) - 140px); overflow-y:auto; padding:6px; background:var(--surface); border:1px solid var(--border-strong); border-radius:14px; box-shadow:var(--lift-shadow); transform-origin:bottom left; animation:ask-pop-in .2s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-ph-plus[data-closing] { animation:ask-pop-out .14s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 /* The chips' row above the box: a chip's × gets a 44px hit area (not a bigger look) — the row keeps 6px above the
    chips so the area fits inside it when it scrolls; past two rows it is one line that scrolls sideways. */
@@ -3947,6 +4188,495 @@ a.ask-btn { text-decoration:none; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-head { height:56px; padding:0 6px; gap:2px; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-head > .ask-iconbtn { width:44px; height:44px; border-radius:8px; }
 .ask-insp-frame[data-sheet="1"] .ask-insp-body { padding:20px 16px calc(40px + env(safe-area-inset-bottom)); }
+
+/* ── the Docs Library (library.ts; docs/architecture/docs-library.md › The screens) ─────────────────────────
+   A space's tile (`spaceTile`): its corner is `--spt-r` (min(4.8px, size × .25)), scaled in the corners block.
+   The cards and rows are hitArea cards (ui.ts); the Create space dialog is a confirmModal with a form in it.
+   No radius is declared here: each one is in the corners block below. */
+.cnpy-spt { display:inline-grid; place-items:center; flex:none; color:#fff; }
+.cnpy-lib-row { position:relative; display:grid; align-items:center; gap:16px; }
+.cnpy-lib-row.cnpy-hitbox:hover { background:var(--hover); }
+.cnpy-lib-th { font-weight:500; }
+.cnpy-lib-card { cursor:pointer; }
+/* A card's "…" (your own view: pin, sidebar, hide): top right, quiet until the card is hovered or it has focus. */
+.cnpy-lib-card .cnpy-lib-more { position:absolute; top:12px; right:12px; width:28px; height:28px; display:grid; place-items:center; color:var(--fg-40); opacity:0; }
+.cnpy-lib-card:hover .cnpy-lib-more, .cnpy-lib-card .cnpy-lib-more:focus-visible, .cnpy-lib-card.has-menu .cnpy-lib-more { opacity:1; }
+@media (hover: none) { .cnpy-lib-card .cnpy-lib-more { opacity:1; } }
+.cnpy-lib-card.has-menu { z-index:5; }
+.cnpy-lib-card .cnpy-lib-cardmenu { top:44px; right:12px; z-index:6; }
+.cnpy-lib-card .cnpy-dp-mi[aria-disabled="true"] { color:var(--fg-40); cursor:default; }
+.cnpy-lib-card.is-hidden { opacity:.62; }
+.cnpy-lib-card.is-hidden:hover { opacity:1; }
+.cnpy-lib-newcard { cursor:pointer; transition:border-color .14s ease, background .14s ease; }
+.cnpy-lib-newcard:hover { border-color:var(--fg-40) !important; background:var(--hover); }
+.cnpy-lib-newcard:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-lib-wait:hover { text-decoration:underline; text-underline-offset:2px; }
+.cnpy-lib-descbtn:hover { background:var(--hover); color:var(--fg) !important; }
+@media (max-width:980px) { .cnpy-lib-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; } }
+@media (max-width:640px) {
+  .cnpy-lib { padding-left:16px !important; padding-right:16px !important; }
+  .cnpy-lib-grid { grid-template-columns:minmax(0,1fr) !important; }
+  .cnpy-lib-row { grid-template-columns:minmax(0,1fr) !important; gap:4px; }
+  .cnpy-lib-th > :not(:first-child) { display:none; }
+}
+/* The space dialogs (Create / Edit space, the owners). Create / Edit space is the design's 480 px. */
+#lib-space.cnpy-cmodal-box { width:min(480px, 100%); }
+.cnpy-libm { display:flex; flex-direction:column; gap:15px; margin-top:16px; }
+.cnpy-libm-l { display:flex; align-items:baseline; gap:6px; margin-bottom:6px; font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-libm-opt { font-weight:400; color:var(--fg-40); }
+.cnpy-libm-n { margin-left:auto; font-weight:400; font-size:11.5px; color:var(--fg-40); font-variant-numeric:tabular-nums; }
+.cnpy-libm-in { display:block; width:100%; box-sizing:border-box; height:36px; padding:0 11px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13.5px; font-family:var(--sans); outline:none; }
+.cnpy-libm-ta { height:auto; min-height:56px; padding:8px 11px; line-height:1.5; resize:none; }
+.cnpy-libm-in:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+.cnpy-libm-in[aria-invalid="true"] { border-color:var(--red) !important; box-shadow:0 0 0 3px color-mix(in srgb, var(--red) 12%, transparent); }
+.cnpy-libm-err { display:flex; align-items:center; gap:6px; margin-top:6px; font-size:12px; line-height:1.45; color:var(--red); }
+.cnpy-libm-err[hidden] { display:none; }
+.cnpy-libm-icons { display:grid; grid-template-columns:repeat(12, minmax(0,1fr)); gap:4px; }
+.cnpy-libm-ic { display:grid; place-items:center; aspect-ratio:1; min-width:0; border:1px solid var(--border); color:var(--fg-55); cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease; }
+.cnpy-libm-ic:hover { color:var(--fg); border-color:var(--border-strong); }
+.cnpy-libm-ic.is-on { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); }
+.cnpy-libm-ic:focus-visible, .cnpy-libm-sw:focus-visible, .cnpy-libm-person:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-libm-sws { display:flex; flex-wrap:wrap; gap:10px; padding:2px; }
+.cnpy-libm-sw { width:22px; height:22px; flex:none; cursor:pointer; }
+.cnpy-libm-sw.is-on { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--sw); }
+.cnpy-libm-people { display:flex; flex-direction:column; gap:2px; max-height:300px; overflow-y:auto; margin-top:14px; }
+.cnpy-libm-person { display:flex; align-items:center; gap:10px; width:100%; padding:6px 8px; text-align:left; cursor:pointer; }
+.cnpy-libm-person:hover { background:var(--hover); }
+.cnpy-libm-person.is-on { background:var(--accent-soft); }
+.cnpy-libm-pn { font-size:13px; font-weight:500; color:var(--fg); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-libm-ph { font-size:12px; color:var(--fg-55); white-space:nowrap; }
+.cnpy-libm-ck { margin-left:auto; color:var(--accent); visibility:hidden; }
+.cnpy-libm-person.is-on .cnpy-libm-ck { visibility:visible; }
+/* The sidebar's Library group (sidebar.ts): a space row is the tile and the name; "No spaces yet" and its hollow
+   row; "+ New space" (admins). The rows keep `.cnpy-sub-i`'s bar on the guide line. */
+.cnpy-sub-i.cnpy-sub-sp, .cnpy-sub-i.cnpy-sub-new { display:flex; align-items:center; gap:8px; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-sub-sp > .cnpy-sub-n { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.cnpy-sub-new { color:var(--fg-40); font-size:12px; }
+.cnpy-sub-new[hidden], .cnpy-sub-none[hidden] { display:none; }
+.cnpy-sub-none { padding:5px 8px 5px 10px; font-size:12px; color:var(--fg-40); }
+.cnpy-sub-ghost { display:flex; align-items:center; gap:8px; margin-top:7px; }
+.cnpy-sub-ghost > span:first-child { width:14px; height:14px; box-shadow:inset 0 0 0 1px var(--border-strong); }
+.cnpy-sub-ghost > span:last-child { width:70px; height:8px; box-shadow:inset 0 0 0 1px var(--border-strong); }
+@media (prefers-reduced-motion: reduce) { .cnpy-lib-newcard, .cnpy-libm-ic { transition:none; } }
+
+/* ── the docs pane, the page tree and its drag (docs-pane.ts, tree-drag.ts) ─────────────────────────────── */
+/* The Library's frame (render.ts `libraryFrame`): the pane beside the content, each scrolling on its own. Under 900px
+   the two take turns (`data-tree`), swapped by the Pages button in the bar above them. */
+.cnpy-libframe { display:flex; height:100%; min-height:0; }
+.cnpy-libmain { flex:1; min-width:0; overflow-y:auto; }
+.cnpy-libframe > .cnpy-docs-bar { display:none; }
+.cnpy-docs-bar > button { display:inline-flex; align-items:center; gap:8px; min-height:40px; padding:0 14px; border:1px solid var(--border-strong); font-size:13px; font-weight:500; color:var(--fg-70); }
+[data-enter] #cnpy-main > .cnpy-libframe { animation:none; }
+[data-enter] .cnpy-libframe > .cnpy-libmain { animation:cnpy-screen .32s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--enter-t, 0ms); }
+@media (max-width:900px) {
+  .cnpy-libframe { flex-direction:column; }
+  .cnpy-libframe > .cnpy-docs-bar { display:flex; align-items:center; flex:none; padding:10px 16px; border-bottom:1px solid var(--border); }
+  .cnpy-libframe[data-tree="0"] > .cnpy-dpane, .cnpy-libframe[data-tree="1"] > .cnpy-libmain { display:none; }
+  .cnpy-libframe[data-tree="1"] > .cnpy-dpane { width:auto; flex:1 1 auto; border-right:none; }
+  .cnpy-dpane .cnpy-dp-row:not(.is-shape) { height:40px; }
+}
+/* The pane: 252px, its own scroll; "PAGES" and the count (while dragging, the top level), the rows. */
+.cnpy-dpane { width:252px; flex:none; overflow-y:auto; border-right:1px solid var(--border); padding:14px 12px 28px; box-sizing:border-box; }
+.cnpy-dp-label { display:flex; align-items:center; justify-content:space-between; padding:2px 8px 6px; font-family:var(--label); font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.1em; color:var(--fg-40); }
+.cnpy-dp-label.is-into { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+.cnpy-dp-n { font-variant-numeric:tabular-nums; letter-spacing:0; }
+.cnpy-dp-note { margin:6px 8px; font-size:12px; line-height:1.45; color:var(--fg-55); }
+.cnpy-dp-rows { display:flex; flex-direction:column; }
+.cnpy-dp-row { position:relative; display:flex; align-items:center; gap:4px; height:28px; padding-right:6px; box-sizing:border-box; font-size:13px; color:var(--fg-55); cursor:pointer; user-select:none; }
+.cnpy-dp-row.is-shape { cursor:default; }
+.cnpy-dp-row.is-top { color:var(--fg-70); font-weight:500; }
+/* A row's tint (hover, the open page, a drop target) starts at its own indent (`--dp-in`, set per row), so the
+   indent and the guide lines stay outside it; the tint sits under the row's content. */
+.cnpy-dp-row { isolation:isolate; }
+/* …so the row whose "…" menu is open sits over the rows after it (they would paint over its menu). */
+.cnpy-dp-row.has-menu { z-index:2; }
+.cnpy-dp-row::before { content:""; position:absolute; z-index:-1; top:0; bottom:0; left:var(--dp-in, 0px); right:0; background:var(--dp-tint, transparent); pointer-events:none; }
+/* The tint is ONE value per state (`--dp-tint`): the ::before draws it, and the row's actions lay it over the page. */
+.cnpy-dp-row:not(.is-shape):hover { color:var(--fg); --dp-tint:var(--hover); }
+.cnpy-dp-row.is-active, .cnpy-dp-row.is-active:hover { color:var(--accent); font-weight:500; --dp-tint:var(--accent-soft); }
+.cnpy-dp-row.is-into, .cnpy-dp-row.is-into:hover { color:var(--accent); --dp-tint:color-mix(in srgb, var(--accent) 10%, transparent); }
+.cnpy-dp-row.is-into::before { box-shadow:inset 0 0 0 1px var(--accent); }
+.cnpy-dp-row.is-lifted { opacity:.38; }
+.cnpy-dp-guide { position:absolute; top:0; bottom:0; width:1px; background:var(--border); pointer-events:none; }
+.cnpy-dp-chev { position:relative; z-index:2; flex:none; display:grid; place-items:center; width:16px; height:16px; padding:0; color:var(--fg-40); transition:transform .16s ease, color .12s ease; }
+.cnpy-dp-chev.is-open { transform:rotate(90deg); }
+.cnpy-dp-chev:not(.is-empty):hover { color:var(--fg-70); }
+.cnpy-dp-chev.is-empty { visibility:hidden; }
+.cnpy-dp-row.is-active .cnpy-dp-chev { color:var(--accent); }
+.cnpy-dp-t { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-st { position:relative; z-index:2; flex:none; display:inline-flex; }
+/* "+" and "…" take NO room in the row (a hidden pair would squeeze a nested title): out of the flow, at the row's
+   right edge — left of the status shape when the row has one, which keeps its place — over the end of the title, on
+   the row's own tint laid over the page so no text shows through, their left edge faded in. Shown on hover, keyboard
+   focus or an open menu. */
+.cnpy-dp-acts { position:absolute; z-index:3; top:4px; bottom:4px; right:6px; display:flex; align-items:center; gap:1px; padding-left:12px; background:linear-gradient(var(--dp-tint, transparent), var(--dp-tint, transparent)), var(--bg); -webkit-mask-image:linear-gradient(to right, transparent, #000 12px); mask-image:linear-gradient(to right, transparent, #000 12px); opacity:0; transition:opacity .12s ease; }
+.cnpy-dp-row:has(> .cnpy-dp-st) .cnpy-dp-acts { right:18px; }
+.cnpy-dp-row:hover .cnpy-dp-acts, .cnpy-dp-row:focus-within .cnpy-dp-acts, .cnpy-dp-row.has-menu .cnpy-dp-acts { opacity:1; }
+.cnpy-dp-act { display:grid; place-items:center; width:20px; height:20px; padding:0; color:var(--fg-40); }
+.cnpy-dp-act:hover { color:var(--fg); background:var(--hover); }
+.cnpy-dp-act.is-head { position:relative; z-index:2; width:24px; height:24px; color:var(--fg-55); }
+.cnpy-dp-act:focus-visible, .cnpy-dp-chev:focus-visible { outline:2px solid var(--focus); outline-offset:1px; }
+/* The row's actions are masked (their faded left edge), which clips anything drawn outside their box: the ring goes inside. */
+.cnpy-dp-acts .cnpy-dp-act:focus-visible { outline-offset:-2px; }
+.cnpy-dp-menu { position:absolute; right:4px; top:calc(100% + 2px); z-index:20; min-width:180px; padding:4px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 10px 28px rgba(10,10,16,.16); cursor:default; }
+.cnpy-dp-mi { text-align:left; padding:7px 9px; font-size:12.5px; font-weight:400; color:var(--fg-70); }
+.cnpy-dp-mi:hover { background:var(--hover); color:var(--fg); }
+.cnpy-dp-mi:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+/* The drag (tree-drag.ts): the ghost chip and its pill, the drop line with its square handle. */
+.cnpy-dp-ghost { position:fixed; z-index:90; pointer-events:none; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+.cnpy-dp-chip { display:flex; align-items:center; gap:7px; height:30px; min-width:150px; max-width:230px; padding:0 11px; box-sizing:border-box; background:var(--surface); border:1px solid var(--border-strong); box-shadow:0 12px 32px rgba(10,10,16,.2); font-size:13px; font-weight:500; color:var(--fg); }
+.cnpy-dp-chip svg { flex:none; color:var(--fg-40); }
+.cnpy-dp-chip span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dp-hint { padding:3px 8px; background:var(--accent); color:var(--accent-fg); font-size:11.5px; font-weight:500; white-space:nowrap; }
+.cnpy-dp-line { position:fixed; z-index:89; height:2px; background:var(--accent); pointer-events:none; }
+.cnpy-dp-line[hidden] { display:none; }
+.cnpy-dp-line > i { position:absolute; left:-4px; top:-3px; width:8px; height:8px; box-sizing:border-box; border:2px solid var(--accent); background:var(--bg); }
+@media (prefers-reduced-motion: reduce) { .cnpy-dp-chev, .cnpy-dp-acts { transition:none; } }
+/* (end of the docs pane block) */
+
+/* ── the doc page (doc-page.ts) ─────────────────────────────────────────────────────────────────────────── */
+/* The article beside its 210px sticky rail. */
+.cnpy-dpg { max-width:1040px; margin:0 auto; padding:24px 36px 120px; box-sizing:border-box; }
+.cnpy-dpg-grid { display:grid; grid-template-columns:minmax(0,1fr) 210px; gap:40px; align-items:start; }
+.cnpy-dpg-note { margin:24px 0; font-size:13px; line-height:1.5; color:var(--fg-55); }
+.cnpy-dpg-title { font-size:29px; font-weight:650; letter-spacing:-0.022em; line-height:1.16; margin:12px 0 0; overflow-wrap:anywhere; }
+.cnpy-dpg-meta { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:14px; padding-bottom:16px; border-bottom:1px solid var(--border); }
+.cnpy-dpg-by { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12.5px; color:var(--fg-55); }
+.cnpy-dpg-btn { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 11px; border:1px solid var(--border); font-size:12.5px; font-weight:500; color:var(--fg-70); }
+.cnpy-dpg-btn:hover { background:var(--hover); color:var(--fg); }
+.cnpy-dpg-btn.is-on { background:var(--hover); color:var(--fg); border-color:var(--border-strong); }
+.cnpy-dpg-hist { margin-top:0; }
+/* The page's lead: a body's opening paragraph when its heading only repeated the title (doc-page.ts `splitLead`). */
+.cnpy-dpg-lead { margin:8px 0 0; max-width:680px; font-size:15px; line-height:1.55; color:var(--fg-70); }
+/* History: the clock turns a little on hover and a full turn when the dialog opens; the dialog pops in (cnpy-cm-in). */
+.cnpy-dpg-histbtn svg { transition:transform .45s cubic-bezier(.2,.7,.2,1); }
+.cnpy-dpg-histbtn:hover svg { transform:rotate(-40deg); }
+.cnpy-dpg-histbtn[aria-expanded="true"] svg { transform:rotate(-360deg); }
+.cnpy-dpg-histdlg { width:min(620px, 100%); }
+@media (prefers-reduced-motion: reduce) { .cnpy-dpg-histbtn svg { transition:none; } }
+/* Tags in the side panel: the row wraps in the panel's width. */
+/* Tags in the side panel: a list, one tag a row, then a quiet "+ Add tag" link (the same picker, no box), with the
+   panel's own spacing under its heading. */
+.cnpy-rail-tags .cnpy-itemtags { flex-direction:column; align-items:stretch; flex-wrap:nowrap; gap:2px; margin-top:0; }
+/* One tag a row (its square and word), the × at the row's end only on hover or keyboard focus. */
+.cnpy-rail-tags .cnpy-itemtag { display:flex; justify-content:space-between; gap:8px; min-height:26px; padding:0 2px 0 0; }
+.cnpy-rail-tags .cnpy-itemtag-x { opacity:0; transition:opacity .12s ease; }
+.cnpy-rail-tags .cnpy-itemtag:hover .cnpy-itemtag-x, .cnpy-rail-tags .cnpy-itemtag-x:focus-visible { opacity:1; }
+@media (hover: none) { .cnpy-rail-tags .cnpy-itemtag-x { opacity:1; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-rail-tags .cnpy-itemtag-x { transition:none; } }
+.cnpy-rail-tags [data-dd="item-tag-add"] { align-self:flex-start; margin-top:6px; }
+.cnpy-rail-tags [data-dd="item-tag-add"] { border:0 !important; background:none !important; box-shadow:none !important; height:auto !important; min-height:0 !important; padding:0 !important; gap:0 !important; font-size:12.5px; font-weight:500; color:var(--accent); }
+.cnpy-rail-tags [data-dd="item-tag-add"] > svg, .cnpy-rail-tags [data-dd="item-tag-add"] .cnpy-dd-chev { display:none; }
+.cnpy-rail-tags [data-dd="item-tag-add"]:hover { text-decoration:underline; }
+.cnpy-rail-tags [data-dd="item-tag-add"]:disabled { color:var(--fg-40); text-decoration:none; }
+.cnpy-dpg-hrow { display:grid; grid-template-columns:28px minmax(0,1fr) auto auto; align-items:center; gap:12px; padding:10px 14px; }
+.cnpy-dpg-hrow + .cnpy-dpg-hrow { border-top:1px solid var(--border); }
+.cnpy-dpg-hv { font-size:12px; font-weight:600; color:var(--fg); font-variant-numeric:tabular-nums; }
+.cnpy-dpg-hs { font-size:12.5px; color:var(--fg-70); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-dpg-hrow.is-rejected .cnpy-dpg-hv, .cnpy-dpg-hrow.is-rejected .cnpy-dpg-hs { color:var(--fg-40); }
+.cnpy-dpg-md { margin-top:26px; font-size:15px; line-height:1.75; }
+.cnpy-dpg-md h2 { font-size:18.5px; }
+.cnpy-dpg-md h3 { font-size:16px; }
+.cnpy-dpg-md h2, .cnpy-dpg-md h3, .cnpy-dpg-kh { scroll-margin-top:24px; }
+/* A [[slug]] link: the accent, a soft underline, a page icon before it; one to no page is flagged text. */
+.cnpy-doclink { color:var(--accent); text-decoration:underline; text-decoration-color:color-mix(in srgb, var(--accent) 34%, transparent); text-decoration-thickness:1px; text-underline-offset:2px; white-space:nowrap; }
+.cnpy-doclink::before { content:""; display:inline-block; width:12px; height:12px; margin-right:3px; vertical-align:-1px; background:currentColor; -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M6 3h7l5 5v13H6z'/%3E%3Cpath d='M13 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M6 3h7l5 5v13H6z'/%3E%3Cpath d='M13 3v5h5'/%3E%3C/svg%3E") center / contain no-repeat; }
+a.cnpy-doclink:hover { text-decoration-color:var(--accent); }
+.cnpy-doclink.is-broken { color:var(--fg-55); text-decoration-style:dashed; text-decoration-color:var(--amber); cursor:help; }
+.cnpy-doclink.is-broken::before { background:var(--amber); }
+/* A link to an ARCHIVED page (0083_doc_archive): its words as plain text, then the "Archived" mark. */
+.cnpy-doclink-arch { color:var(--fg-70); white-space:nowrap; }
+.cnpy-doclink-arch > span { vertical-align:-2px; margin-left:2px; }
+.cnpy-dpg-kids { margin-top:40px; }
+.cnpy-dpg-kh { font-size:14px; font-weight:500; margin:0 0 12px; }
+.cnpy-dpg-kgrid { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:10px; }
+/* The rail: On this page (scroll-spied), the page's facts, Linked from. */
+.cnpy-dpg-rail { position:sticky; top:24px; display:flex; flex-direction:column; gap:20px; min-width:0; }
+.cnpy-rail-g { display:flex; flex-direction:column; gap:12px; }
+.cnpy-rail-h { font-size:12px; font-weight:600; color:var(--fg); }
+.cnpy-rail-n { margin-left:4px; font-size:11px; font-weight:400; color:var(--fg-40); }
+.cnpy-toc { display:flex; flex-direction:column; margin-top:-4px; }
+.cnpy-toc-i { position:relative; text-align:left; padding:4px 0 4px 10px; font-size:12.5px; line-height:1.4; color:var(--fg-55); }
+.cnpy-toc-i.is-sub { padding-left:22px; font-size:12px; }
+.cnpy-toc-i:hover { color:var(--fg); }
+.cnpy-toc-i.is-current { color:var(--accent); font-weight:500; }
+.cnpy-toc-i.is-current::before { content:""; position:absolute; left:0; top:4px; bottom:4px; width:2px; background:var(--accent); }
+.cnpy-rail-f { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.cnpy-rail-l { font-size:11.5px; color:var(--fg-55); }
+.cnpy-rail-v { font-size:12.5px; color:var(--fg); min-width:0; }
+.cnpy-rail-note { font-size:12px; color:var(--fg-55); }
+.cnpy-rail-link { display:flex; flex-direction:column; align-items:flex-start; gap:1px; width:100%; padding:5px 6px; margin:0 -6px; text-align:left; }
+.cnpy-rail-link:hover { background:var(--hover); }
+.cnpy-rail-lt { font-size:12.5px; color:var(--fg); }
+.cnpy-rail-lp { font-size:11.5px; color:var(--fg-40); }
+.cnpy-rail-empty { margin:0; font-size:12px; line-height:1.45; color:var(--fg-40); }
+@media (max-width:1100px) {
+  .cnpy-dpg-grid { grid-template-columns:minmax(0,1fr); }
+  .cnpy-dpg-rail { position:static; }
+  .cnpy-dpg-rail .cnpy-rail-g:first-child { display:none; }
+}
+@media (max-width:640px) { .cnpy-dpg { padding:20px 16px 96px; } }
+/* (end of the doc page block) */
+
+/* ── New page (newdoc.ts) ───────────────────────────────────────────────────────────────────────────────── */
+/* "Goes in": the location button and its picker (a popover inside the morphed page, under the button). The cards
+   are radio buttons; a picked one takes the accent border and ring. Every radius is inline (6/7/8/10px). */
+.cnpy-nd-goes { display:flex; align-items:center; gap:10px; margin-top:12px; flex-wrap:wrap; }
+.cnpy-nd-anchor { position:relative; min-width:0; }
+.cnpy-nd-loc { display:inline-flex; align-items:center; gap:8px; max-width:100%; height:30px; padding:0 10px; border:1px solid var(--border-strong); background:var(--surface); color:var(--fg); font-size:13px; cursor:pointer; transition:border-color .12s ease; }
+.cnpy-nd-loc:hover { border-color:var(--fg-40); }
+.cnpy-nd-locl { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-nd-where { position:absolute; z-index:30; top:calc(100% + 6px); left:0; width:340px; max-width:calc(100 * var(--vw) - 32px); background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow); animation:cnpy-nd-pop .14s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes cnpy-nd-pop { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:none; } }
+.cnpy-nd-wlist { max-height:300px; overflow-y:auto; padding:0 6px 6px; }
+.cnpy-nd-wrow { display:flex; align-items:center; gap:4px; height:30px; padding-right:8px; font-size:12.5px; color:var(--fg-70); }
+.cnpy-nd-wrow:hover { background:var(--hover); }
+.cnpy-nd-wrow.is-on { background:var(--accent-soft); color:var(--accent); font-weight:500; }
+.cnpy-nd-wchev { width:16px; height:16px; flex:none; display:grid; place-items:center; color:var(--fg-40); cursor:pointer; transition:transform .16s ease; }
+.cnpy-nd-wchev.is-empty { cursor:default; }
+.cnpy-nd-wchev.is-open { transform:rotate(90deg); }
+.cnpy-nd-wpick { flex:1; min-width:0; display:flex; align-items:center; gap:6px; height:100%; padding:0 2px; text-align:left; color:inherit; font:inherit; cursor:pointer; }
+.cnpy-nd-wt { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-nd-wmark { flex:none; display:inline-flex; }
+.cnpy-nd-wck { width:13px; flex:none; display:inline-flex; color:var(--accent); }
+.cnpy-nd-wfoot { display:flex; justify-content:flex-end; padding:8px 10px; border-top:1px solid var(--border); }
+.cnpy-nd-wchev:focus-visible, .cnpy-nd-wpick:focus-visible, .cnpy-nd-loc:focus-visible, .cnpy-nd-tpl:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+/* The templates and the preview. */
+/* New page's two steps (newdoc.ts): 1 · the template cards, the whole column, each listing its sections; 2 · the
+   picked template, Goes in and the fields, one column, Create page at the foot. */
+/* New page's step count (newdoc.ts `stepCount`): "Step 1 of 2 · Template" and two bars, the same on both steps. */
+.cnpy-nd-count { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:18px; }
+.cnpy-nd-countl { margin:0; font-size:12px; font-weight:500; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.cnpy-nd-bars { display:flex; gap:6px; flex:none; }
+.cnpy-nd-bar { display:block; width:56px; height:4px; padding:0; border:0; background:var(--border-strong); transition:background .25s ease; }
+.cnpy-nd-bar.is-on, .cnpy-nd-bar.is-done { background:var(--accent); }
+button.cnpy-nd-bar { cursor:pointer; }
+button.cnpy-nd-bar:hover { filter:brightness(1.1); }
+button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
+/* The step's block slides in from the side the person moved toward; the frame and the count stay still. */
+.cnpy-nd-stage[data-dir="fwd"] > .cnpy-nd-step { animation:cnpy-nd-fwd .28s cubic-bezier(.2,.7,.2,1) both; }
+.cnpy-nd-stage[data-dir="back"] > .cnpy-nd-step { animation:cnpy-nd-back .28s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes cnpy-nd-fwd { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:none; } }
+@keyframes cnpy-nd-back { from { opacity:0; transform:translateX(-24px); } to { opacity:1; transform:none; } }
+@media (prefers-reduced-motion: reduce) { .cnpy-nd-stage > .cnpy-nd-step { animation:none !important; } .cnpy-nd-bar { transition:none; } }
+.cnpy-nd-tpls { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:20px; }
+.cnpy-nd-tplsec { margin-top:auto; padding-top:10px; font-size:11.5px; line-height:1.45; color:var(--fg-40); }
+.cnpy-nd-chosen { display:flex; align-items:center; gap:12px; margin-top:18px; padding:12px 14px; border:1px solid var(--border); background:var(--surface); }
+.cnpy-nd-s2 .cnpy-nd-goes { margin-top:14px; }
+.cnpy-nd-foot { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:16px; flex-wrap:wrap; }
+.cnpy-nd-tpl { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-height:150px; padding:14px; text-align:left; border:1px solid var(--border); background:var(--surface); color:var(--fg); cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease, background .12s ease; }
+.cnpy-nd-tpl:hover { border-color:var(--border-strong); }
+.cnpy-nd-tpl.is-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:color-mix(in srgb, var(--accent) 3%, var(--surface)); }
+.cnpy-nd-tpl.is-blank { border-style:dashed; border-color:var(--border-strong); background:transparent; }
+.cnpy-nd-tpl.is-blank.is-on { border-style:solid; border-color:var(--accent); }
+.cnpy-nd-tpli { width:32px; height:32px; display:grid; place-items:center; margin-bottom:6px; background:var(--bg); color:var(--fg-55); }
+.cnpy-nd-tpl.is-on .cnpy-nd-tpli { background:color-mix(in srgb, var(--accent) 12%, transparent); color:var(--accent); }
+.cnpy-nd-tpln { font-size:13.5px; font-weight:500; }
+.cnpy-nd-tpld { font-size:12px; line-height:1.45; color:var(--fg-55); }
+.cnpy-nd-err { font-size:12px; line-height:1.45; color:var(--red); margin:10px 0 0; }
+@media (max-width:1100px) { .cnpy-nd-tpls { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:640px) { .cnpy-nd { padding-left:16px !important; padding-right:16px !important; } .cnpy-nd-tpls { grid-template-columns:minmax(0,1fr); } }
+@media (prefers-reduced-motion: reduce) { .cnpy-nd-where { animation:none; } .cnpy-nd-loc, .cnpy-nd-tpl, .cnpy-nd-wchev { transition:none; } }
+/* (end of the New page block) */
+
+/* ── the Markdown import (import.ts, import-drop.ts; docs-library.md › The import screens) ──────────────────
+   The wizard: a stepper, then one keyed step (`imp:<step>`). Radii are inline (the corners block scales them by
+   value); the classes here hold layout, colour and motion. Everything that moves is still under reduced motion. */
+.cnpy-imp-steps { display:flex; align-items:center; gap:10px; max-width:640px; list-style:none; margin:0 0 28px; padding:0; }
+.cnpy-imp-step { display:flex; align-items:center; gap:8px; flex:none; font-size:13px; color:var(--fg-40); }
+.cnpy-imp-dot { width:22px; height:22px; box-sizing:border-box; display:grid; place-items:center; border:1px solid var(--border-strong); background:var(--surface); font-size:11.5px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; flex:none; }
+.cnpy-imp-step[data-s="done"] { color:var(--fg-70); }
+.cnpy-imp-step[data-s="done"] .cnpy-imp-dot { background:var(--accent); border-color:var(--accent); color:var(--accent-fg); }
+.cnpy-imp-step[data-s="now"] { color:var(--fg); font-weight:600; }
+.cnpy-imp-step[data-s="now"] .cnpy-imp-dot { border-color:var(--accent); color:var(--accent); }
+.cnpy-imp-line { flex:1 1 auto; min-width:14px; height:1px; background:var(--border-strong); }
+.cnpy-imp-line[data-s="done"] { background:var(--accent); }
+.cnpy-imp-sps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.cnpy-imp-sp { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--border); background:var(--surface); text-align:left; color:inherit; font:inherit; cursor:pointer; transition:border-color .12s ease, box-shadow .12s ease; min-width:0; }
+.cnpy-imp-sp:hover { border-color:var(--border-strong); }
+.cnpy-imp-sp.is-on { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); background:color-mix(in srgb, var(--accent) 4%, var(--surface)); }
+.cnpy-imp-sp:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.cnpy-imp-spt { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.cnpy-imp-spn { font-size:13.5px; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-imp-spc { font-size:12px; color:var(--fg-55); }
+.cnpy-imp-ck { width:12px; flex:none; display:inline-flex; color:var(--accent); }
+.cnpy-imp-tree { max-height:340px; overflow-y:auto; }
+.cnpy-imp-stepfoot { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:24px; padding-top:16px; border-top:1px solid var(--border); }
+.cnpy-imp-off { cursor:default; }
+.cnpy-imp-drop { height:200px; margin-top:20px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; border:1.5px dashed var(--border-strong); background:color-mix(in srgb, var(--surface) 60%, transparent); transition:border-color .12s ease, background-color .12s ease; }
+.cnpy-imp-drop[data-over="1"] { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 5%, transparent); }
+.cnpy-imp-dropic { width:40px; height:40px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
+.cnpy-imp-file { display:flex; align-items:center; gap:12px; padding:10px 10px 10px 16px; min-width:0; }
+.cnpy-imp-file + .cnpy-imp-file { border-top:1px solid var(--border); }
+.cnpy-imp-rs { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--fg-55); flex:0 1 auto; max-width:48%; min-width:0; }
+.cnpy-imp-rs > svg { flex:none; }
+.cnpy-imp-spin { animation:cnpy-spin .8s linear infinite; flex:none; }
+.cnpy-imp-strip { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); }
+.cnpy-imp-stat { padding:12px 16px; min-width:0; }
+.cnpy-imp-stat + .cnpy-imp-stat { border-left:1px solid var(--border); }
+.cnpy-imp-pgrid { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:14px; margin-top:14px; align-items:start; }
+.cnpy-imp-side { display:flex; flex-direction:column; gap:14px; min-width:0; }
+.cnpy-imp-h3 { font-size:13.5px; font-weight:600; margin:0; color:var(--fg); }
+.cnpy-imp-prow { display:flex; align-items:center; gap:8px; height:32px; padding-right:16px; font-size:13px; min-width:0; }
+.cnpy-imp-prow.is-conflict { background:color-mix(in srgb, var(--amber) 5%, transparent); }
+.cnpy-imp-pt { flex:0 1 auto; min-width:0; color:var(--fg); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-imp-prow.is-skip .cnpy-imp-pt { text-decoration:line-through; color:var(--fg-40); }
+.cnpy-imp-pp { flex:1 1 0; min-width:0; font-size:11px; color:var(--fg-40); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-imp-conf { padding-top:12px; margin-top:12px; border-top:1px solid var(--border); }
+.cnpy-imp-skip { display:flex; align-items:flex-start; gap:8px; padding-top:9px; }
+.cnpy-imp-skip > svg { margin-top:2px; }
+.cnpy-imp-alert { display:flex; align-items:flex-start; gap:8px; margin:16px 0 0; font-size:12.5px; line-height:1.5; color:var(--fg-70); }
+.cnpy-imp-alert > svg { flex:none; margin-top:2px; color:var(--red); }
+.cnpy-imp-foot { position:sticky; bottom:16px; z-index:5; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-top:20px; padding:12px 14px 12px 16px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--lift-shadow, 0 10px 30px rgba(0,0,0,.14)); }
+.cnpy-imp-bar { position:relative; height:6px; margin:16px 0 10px; background:var(--border); overflow:hidden; }
+.cnpy-imp-bar > span { display:block; height:100%; background:var(--accent); transition:width .3s var(--fx-ease); }
+.cnpy-imp-now { display:flex; align-items:center; gap:8px; margin-top:14px; padding:8px 10px; background:var(--bg); font-size:11.5px; color:var(--fg-70); min-width:0; }
+.cnpy-imp-break { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-top:18px; padding-top:16px; border-top:1px solid var(--border); }
+/* Imports history: the 7-column grid (its columns are inline), one row open at a time. */
+.cnpy-imph-row { display:grid; align-items:center; gap:14px; min-height:56px; padding:8px 16px; box-sizing:border-box; }
+.cnpy-imph-th { min-height:34px; padding-top:0; padding-bottom:0; font-size:12px; color:var(--fg-55); border-bottom:1px solid var(--border); }
+.cnpy-imph-item.is-open { background:color-mix(in srgb, var(--fg) 2.5%, transparent); }
+.cnpy-imph-chev { display:grid; place-items:center; color:var(--fg-40); transition:transform .16s ease; }
+.cnpy-imph-item.is-open .cnpy-imph-chev { transform:rotate(90deg); }
+.cnpy-imph-detail { max-width:760px; padding:0 16px 16px 58px; font-size:12.5px; line-height:1.55; color:var(--fg-70); }
+.cnpy-imph-detail[hidden] { display:none; }
+.cnpy-imph-detail p { margin:0 0 8px; }
+.cnpy-imph-fails { border:1px solid var(--border); background:var(--surface); }
+.cnpy-imph-fail { display:flex; justify-content:space-between; gap:12px; padding:7px 12px; }
+.cnpy-imph-fail + .cnpy-imph-fail { border-top:1px solid var(--border); }
+@media (max-width:980px) { .cnpy-imp-pgrid { grid-template-columns:minmax(0,1fr); } .cnpy-imp-sps { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:900px) {
+  .cnpy-imph-row { grid-template-columns:minmax(0,1fr) auto 20px !important; }
+  .cnpy-imph-row > :nth-child(2), .cnpy-imph-row > :nth-child(4), .cnpy-imph-row > :nth-child(5), .cnpy-imph-row > :nth-child(6) { display:none !important; }
+  .cnpy-imph-detail { padding-left:16px; }
+}
+@media (max-width:640px) {
+  .cnpy-imp, .cnpy-imph { padding-left:16px !important; padding-right:16px !important; }
+  .cnpy-imp-sps, .cnpy-imp-break { grid-template-columns:minmax(0,1fr); }
+  .cnpy-imp-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .cnpy-imp-stat + .cnpy-imp-stat { border-left:0; }
+  .cnpy-imp-steps .cnpy-imp-step:not([data-s="now"]) .cnpy-imp-sl { display:none; }
+}
+/* The sidebar's Imports row and its badge (imports in progress, an accent tint; hidden at 0), the action row
+   (+ New space, Import), and a space row with files over it. */
+.cnpy-sub-i.cnpy-sub-imp { display:flex; align-items:center; gap:8px; }
+.cnpy-sub-imp > svg { flex:none; color:var(--fg-40); }
+.cnpy-sub-badge { margin-left:auto; min-width:16px; height:16px; padding:0 5px; box-sizing:border-box; display:inline-grid; place-items:center; border-radius:5px; font-family:var(--label); font-size:10.5px; font-weight:600; color:var(--accent); background:var(--accent-soft); }
+.cnpy-sub-badge[data-n="0"] { display:none; }
+.cnpy-sub-acts { display:flex; align-items:center; flex-wrap:wrap; }
+/* Customize sidebar's picked rows: dragged into order (customize-drag.ts), a grip at the start. */
+.cnpy-libc-row.is-picked { cursor:grab; }
+.cnpy-libc-row.is-picked:hover { background:var(--hover); }
+.cnpy-libc-row.is-picked:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
+/* A drag lifts the row as the board lifts a card: the row leaves the list (its inline display needs the !important), an
+   empty gap of its height holds its place (`.cnpy-libc-slot`, nothing drawn), and a ghost of it follows the pointer
+   with the board's shadow. */
+.cnpy-libc-row.is-lifted { display:none !important; }
+.cnpy-libc-ghost { position:fixed !important; z-index:1000; margin:0 !important; list-style:none; pointer-events:none; box-sizing:border-box; background:var(--surface); box-shadow:0 0 0 1px var(--border-strong), 0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
+.cnpy-libc-grip { display:grid; place-items:center; width:12px; flex:none; color:var(--fg-40); margin-left:-2px; }
+.cnpy-sub-acts > .cnpy-sub-i { width:auto; }
+.cnpy-sub-i.cnpy-sub-sp.is-drop { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }
+/* Review › an import's pages as one group (review.ts `groupCard`): the card, its open list, its page rows. A group
+   that is decided whole wears the verdict and leaves by the queue's one exit (`.cnpy-rv-row`). */
+.cnpy-rvg { position:relative; margin-bottom:8px; padding:12px 14px; transition:border-color .12s ease; }
+.cnpy-rvg[data-sel] { border-color:var(--border-strong); }
+.cnpy-rvg-head { display:flex; align-items:center; gap:10px; min-width:0; }
+.cnpy-rvg-ic { width:30px; height:30px; flex:none; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
+.cnpy-rvg-acts { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.cnpy-rvg-tog { display:inline-flex; align-items:center; gap:5px; padding:4px 2px; font-size:12.5px; font-weight:500; color:var(--fg-70); cursor:pointer; }
+.cnpy-rvg-chev { display:inline-flex; color:var(--fg-40); transition:transform .16s ease; }
+.cnpy-rvg-tog[aria-expanded="true"] .cnpy-rvg-chev { transform:rotate(90deg); }
+.cnpy-rvg-done { font-size:12px; color:var(--fg-55); }
+.cnpy-rvg-done[hidden] { display:none; }
+.cnpy-rvg-list { display:grid; grid-template-rows:0fr; transition:grid-template-rows var(--fx-base) var(--fx-ease); }
+.cnpy-rvg-list[data-open="1"] { grid-template-rows:1fr; }
+.cnpy-rvg-clip { min-height:0; overflow:hidden; margin:0 -14px -12px; }
+.cnpy-rvg-list[data-open="1"] .cnpy-rvg-clip { margin-top:10px; border-top:1px solid var(--border); padding-bottom:6px; }
+.cnpy-rvg-pg { position:relative; display:flex; align-items:center; gap:8px; width:100%; height:32px; padding-right:12px; font-size:12.5px; color:var(--fg-70); text-align:left; cursor:pointer; }
+.cnpy-rvg-pg:hover { background:var(--hover); }
+.cnpy-rvg-pg[aria-current="true"] { background:color-mix(in srgb, var(--accent) 8%, transparent); color:var(--accent); font-weight:500; }
+.cnpy-rvg-bar { position:absolute; left:0; top:4px; bottom:4px; width:2px; background:transparent; }
+.cnpy-rvg-pg[aria-current="true"] .cnpy-rvg-bar { background:var(--accent); }
+.cnpy-rvg-pt { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cnpy-rvg-pk { flex:none; font-size:11.5px; font-weight:400; color:var(--fg-40); }
+.cnpy-rv-row[data-verdict] .cnpy-rvg-pg { color:var(--fg-55); }
+.cnpy-rv-row[data-verdict] .cnpy-rvg { border-color:color-mix(in srgb, var(--rv-tone) 55%, transparent); background:color-mix(in srgb, var(--rv-tone) 9%, var(--surface)); }
+.cnpy-rv-row[data-verdict] .cnpy-rvg-in { opacity:.14; }
+/* Space home › the header's meta (library.ts spaceHeader): each item draws its own "·" in the gap before it; the
+   row's left edge clips the dot of whichever item starts a line, so a wrapped line never starts or ends with one. */
+/* A space's header: tile | the name, description and meta | the actions. The tile (32px) sits on the name's 32px line,
+   so the description and the meta line start under the name's first letter; the actions sit level with the name.
+   Under 640px the actions take their own row. */
+.cnpy-lib-shead { display:grid; grid-template-columns:auto minmax(0,1fr) auto; column-gap:14px; row-gap:14px; align-items:start; }
+.cnpy-lib-shead-tile { display:flex; }
+.cnpy-lib-shead-text { min-width:0; }
+.cnpy-lib-shead-acts { align-self:start; }
+@media (max-width:640px) { .cnpy-lib-shead { grid-template-columns:auto minmax(0,1fr); } .cnpy-lib-shead-acts { grid-column:1 / -1; } }
+.cnpy-lib-meta { overflow:hidden; margin:6px -4px 0; padding:3px 4px; font-size:12.5px; color:var(--fg-55); }
+.cnpy-lib-meta-in { display:flex; align-items:center; flex-wrap:wrap; row-gap:6px; margin-left:-17px; }
+.cnpy-lib-mi { position:relative; display:inline-flex; align-items:center; margin-left:17px; min-width:0; }
+.cnpy-lib-mi::before { content:"·"; position:absolute; left:-11px; color:var(--border-strong); }
+/* Space home › a top-level card's line: the page's first sentence (E2E SH2), two lines at most. */
+.cnpy-lib-sum { margin:4px 0 0; font-size:12.5px; line-height:1.45; color:var(--fg-55); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+/* An agent's group (the design's): the spark on slate, and the 16px spark avatar of its meta line. */
+.cnpy-rvg[data-kind="agent"] .cnpy-rvg-ic { background:color-mix(in srgb, var(--p-slate) 12%, transparent); color:var(--p-slate); }
+.cnpy-rvg-agav { width:16px; height:16px; flex:none; display:inline-grid; place-items:center; background:var(--p-slate); color:var(--p-ink); }
+.cnpy-rvg-bar-top { display:flex; align-items:center; justify-content:space-between; gap:12px; height:46px; padding:0 32px; border-bottom:1px solid var(--border); }
+/* Review › a group's page, picked (review.ts `reviewPagePane`, the design's right pane): the bar on top, the page,
+   and the footer with the verdict — both bars stay in view while the page scrolls under them. */
+.cnpy-rvp { display:flex; flex-direction:column; min-height:100%; background:var(--surface); }
+.cnpy-rvp > .cnpy-rvg-bar-top { position:sticky; top:0; z-index:2; flex:none; background:var(--surface); padding:0 20px 0 28px; }
+.cnpy-rvp-body { flex:1 0 auto; max-width:860px; padding:24px 32px 40px; }
+.cnpy-rvp-crumb { font-size:12.5px; color:var(--fg-55); }
+.cnpy-rvp-h { margin:8px 0 0; font-size:25px; font-weight:650; letter-spacing:-0.02em; line-height:1.2; color:var(--fg); overflow-wrap:anywhere; }
+.cnpy-rvp-kind { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; margin-top:10px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+.cnpy-rvp-file { font-family:var(--code); font-size:11.5px; color:var(--fg-40); overflow-wrap:anywhere; }
+.cnpy-rvp-diff { margin-top:18px; border:1px solid var(--border); overflow:hidden; }
+.cnpy-rvp-dh { display:flex; justify-content:space-between; gap:12px; padding:8px 12px; font-size:12px; color:var(--fg-55); border-bottom:1px solid var(--border); background:color-mix(in srgb, var(--fg) 2%, var(--surface)); }
+.cnpy-rvp-dls { font-family:var(--code); font-size:12px; line-height:1.7; padding:2px 0; }
+.cnpy-rvp-dl { padding:2px 12px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--fg-55); }
+.cnpy-rvp-dl[data-t="del"] { background:color-mix(in srgb, var(--red) 7%, transparent); color:var(--fg); }
+.cnpy-rvp-dl[data-t="add"] { background:color-mix(in srgb, var(--green) 8%, transparent); color:var(--fg); }
+.cnpy-rvp-dl[data-t="gap"] { font-family:var(--sans); font-size:11px; color:var(--fg-40); text-align:center; }
+.cnpy-rvp-dp { display:inline-block; width:16px; color:var(--fg-40); }
+.cnpy-rvp-dl[data-t="del"] .cnpy-rvp-dp { color:var(--red); }
+.cnpy-rvp-dl[data-t="add"] .cnpy-rvp-dp { color:var(--green); }
+.cnpy-rvp-page { margin-top:20px; }
+.cnpy-md.cnpy-rvp-md { font-size:14.5px; }
+.cnpy-md.cnpy-rvp-md h2 { font-size:17px; }
+.cnpy-rvp-none { margin:0; font-size:13px; color:var(--fg-55); }
+.cnpy-rvp-foot { position:sticky; bottom:0; z-index:2; flex:none; display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:11px 20px 11px 28px; border-top:1px solid var(--border); background:var(--surface); }
+.cnpy-rvp-note { flex:1 1 200px; min-width:0; font-size:12px; color:var(--fg-55); }
+.cnpy-rvp-btn { display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 13px; font-size:12.5px; font-weight:500; }
+@media (max-width:900px) { .cnpy-rvp-body { padding:16px 20px 32px !important; } .cnpy-rvp > .cnpy-rvg-bar-top, .cnpy-rvp-foot { padding-left:20px; padding-right:16px; } }
+@media (max-width:640px) { .cnpy-rvp-note { flex-basis:100%; } .cnpy-rvp-foot > .cnpy-rejectbtn { margin-left:auto; } }
+/* Drop to import (import-drop.ts): ONE node on <body>, laid over the main column. */
+.cnpy-impdrop { position:fixed; z-index:60; pointer-events:none; }
+.cnpy-impdrop[hidden] { display:none; }
+.cnpy-impdrop-veil { position:absolute; inset:0; background:color-mix(in srgb, var(--bg) 86%, transparent); }
+.cnpy-impdrop[data-mode="side"] .cnpy-impdrop-veil { background:color-mix(in srgb, var(--bg) 55%, transparent); }
+.cnpy-impdrop-edge { position:absolute; inset:14px; border:1.5px dashed var(--accent); animation:cnpy-impdrop-breathe 1.6s ease-in-out infinite; }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-edge { border-color:color-mix(in srgb, var(--red) 55%, transparent); }
+.cnpy-impdrop-box { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:24px; text-align:center; }
+.cnpy-impdrop[data-mode="side"] .cnpy-impdrop-edge, .cnpy-impdrop[data-mode="side"] .cnpy-impdrop-box { display:none; }
+.cnpy-impdrop-tile { width:48px; height:48px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
+.cnpy-impdrop-tile > svg, .cnpy-impdrop-pi > svg { animation:cnpy-impdrop-bob 1.4s ease-in-out infinite; }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-tile { background:color-mix(in srgb, var(--red) 12%, transparent); color:var(--red); }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-tile > svg { animation:none; }
+.cnpy-impdrop-t { font-size:17px; font-weight:600; color:var(--fg); }
+.cnpy-impdrop-s { max-width:380px; font-size:13px; line-height:1.5; color:var(--fg-70); }
+.cnpy-impdrop-pill { position:absolute; display:none; align-items:center; gap:8px; transform:translateY(-50%); padding:7px 12px; background:var(--accent); color:var(--accent-fg); font-size:12.5px; font-weight:600; white-space:nowrap; box-shadow:var(--lift-shadow, 0 10px 30px rgba(0,0,0,.18)); }
+.cnpy-impdrop[data-mode="side"] .cnpy-impdrop-pill { display:inline-flex; }
+.cnpy-impdrop[data-bad="1"] .cnpy-impdrop-pill { background:var(--red); }
+.cnpy-impdrop-pi { display:inline-flex; }
+.cnpy-impdrop-pi > svg { width:14px; height:14px; }
+.cnpy-impdrop-pn { font-weight:500; opacity:.85; }
+@keyframes cnpy-impdrop-breathe { 50% { opacity:.55; } }
+@keyframes cnpy-impdrop-bob { 50% { transform:translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .cnpy-imp-spin, .cnpy-impdrop-edge, .cnpy-impdrop-tile > svg, .cnpy-impdrop-pi > svg { animation:none; }
+  .cnpy-imp-sp, .cnpy-imp-drop, .cnpy-imp-bar > span, .cnpy-imph-chev, .cnpy-rvg, .cnpy-rvg-chev, .cnpy-rvg-list { transition:none; }
+}
 
 /* ── the site on a phone ──────────────────────────────────────────────────────
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
@@ -4057,7 +4787,7 @@ a.ask-btn { text-decoration:none; }
   .site-hero-band { padding:38px var(--hero-pad) 156px; }
   .site-hero-band::after { -webkit-mask-image:linear-gradient(180deg, transparent 42%, #000 100%); mask-image:linear-gradient(180deg, transparent 42%, #000 100%); }
   .site-hero-band > .site-banner-art { width:330px; right:-118px; top:auto; bottom:-64px; opacity:.1; }
-  .site-hero-h { font-size:clamp(32px, 9.4vw, 40px); line-height:1.07; }
+  .site-hero-h { font-size:clamp(32px, 9.4 * var(--vw), 40px); line-height:1.07; }
   .site-hero-lede { margin-top:16px; font-size:16.5px; line-height:1.55; }
   .site-hero-cta { margin-top:26px; display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px; }
   .site-hero-cta > .site-btn { justify-content:center; box-sizing:border-box; min-height:50px; padding:0 14px; font-size:15px; }
@@ -4140,7 +4870,7 @@ a.ask-btn { text-decoration:none; }
   /* sign-in / Get started and Contact: sheets that rise from the bottom edge and stop where the keyboard begins */
   .site-signin-back { touch-action:none; }
   [data-cnpy-theme] .site-signin-wrap:has(> [role="dialog"][aria-modal="true"]) { padding-bottom:var(--site-kb, 0px) !important; }
-  [data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100dvh - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }
+  [data-cnpy-theme] .site-signin-card[role="dialog"][aria-modal="true"] { max-height:calc(100 * var(--dvh) - 20px - env(safe-area-inset-top) - var(--site-kb, 0px)) !important; }
   .site-signin-card { overscroll-behavior:contain; animation:site-sheet-up var(--fx-slow) var(--fx-ease) both; }
   .site-signin-x { top:6px; right:6px; width:44px; height:44px; }
   .site-signin-head { padding:30px 24px 0; }
@@ -4187,7 +4917,7 @@ a.ask-btn { text-decoration:none; }
   .site-docs-tabs .site-legal-tab { flex:1 1 auto; padding:10px 12px; }
   .site-docs-code-h { min-height:44px; }
   .site-docs-copy { min-height:36px; padding:0 14px; }
-  .site-legal-h { margin-top:22px; font-size:clamp(30px, 8.6vw, 36px); }
+  .site-legal-h { margin-top:22px; font-size:clamp(30px, 8.6 * var(--vw), 36px); }
   .site-legal-lede { margin-top:14px; font-size:16px; line-height:1.6; }
   .site-legal { padding:20px 20px 0; gap:20px; }
   .site-legal-toc ol { columns:auto; }
@@ -4241,15 +4971,61 @@ a.ask-btn { text-decoration:none; }
 /* trov.css classes, by the radius each declares above. */
 [data-cnpy-theme] .cnpy-kbd,
 [data-cnpy-theme] .cnpy-qs-kbd,
-[data-cnpy-theme] .cnpy-treechev,
 [data-cnpy-theme] .cnpy-sk { border-radius:calc(4px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-platpage-home { border-radius:calc(6px * var(--corner-scale)) !important; }
+/* The Docs Library (library.ts): a space's tile by its own --spt-r, the dialog's fields, icons and people rows,
+   the swatches (round), and the sidebar's hollow "No spaces yet" row. */
+[data-cnpy-theme] .cnpy-spt { border-radius:calc(var(--spt-r, 4px) * var(--corner-scale)) !important; }
+/* The docs pane and the doc page (docs-pane.ts, doc-page.ts). */
+[data-cnpy-theme] .cnpy-dp-label,
+[data-cnpy-theme] .cnpy-lib-more,
+[data-cnpy-theme] .cnpy-nd-bar,
+[data-cnpy-theme] .cnpy-libc-row,
+[data-cnpy-theme] .cnpy-relay-new,
+[data-cnpy-theme] .cnpy-relcall,
+[data-cnpy-theme] .cnpy-relpager-i,
+[data-cnpy-theme] .repo-att-btn,
+[data-cnpy-theme] .rm-trov-btn,
+[data-cnpy-theme] .rm-drift,
+[data-cnpy-theme] .repo-st-lane,
+[data-cnpy-theme] .repo-st-item,
+[data-cnpy-theme] .cnpy-relay-connect,
+[data-cnpy-theme] .cnpy-relay-ci,
+[data-cnpy-theme] .cnpy-dp-row,
+[data-cnpy-theme] .cnpy-dp-row::before,
+[data-cnpy-theme] .cnpy-dp-menu,
+[data-cnpy-theme] .cnpy-dpg-btn { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-dp-chev,
+[data-cnpy-theme] .cnpy-dp-act,
+[data-cnpy-theme] .cnpy-dp-mi,
+[data-cnpy-theme] .cnpy-rail-link,
+[data-cnpy-theme] .repo-st-src,
+[data-cnpy-theme] .cnpy-relbar,
+[data-cnpy-theme] .cnpy-relpr-chip,
+[data-cnpy-theme] .cnpy-reldoc code,
+[data-cnpy-theme] .cnpy-dp-chip { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-dp-hint { border-radius:min(calc(999px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-dp-line > i { border-radius:calc(2px * var(--corner-scale)) !important; }
+/* (end of the docs pane corners) */
+/* New page (newdoc.ts). */
+/* (end of the New page corners) */
+/* The import (import.ts): the sidebar's Imports badge. Everything else of it is an inline radius. */
+[data-cnpy-theme] .cnpy-sub-badge { border-radius:calc(5px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-in,
+[data-cnpy-theme] .cnpy-libm-ic,
+[data-cnpy-theme] .cnpy-libm-person,
+[data-cnpy-theme] .cnpy-sub-ghost > span { border-radius:calc(4px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-libm-sw { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+[data-cnpy-theme] .cnpy-lib-newcard { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* Empty layouts (skeleton.ts `emptyLayout`): the sentence's dashed card, and its one action. */
 [data-cnpy-theme] .cnpy-empty-say { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-ai-chip,
 [data-cnpy-theme] .cnpy-empty-act { border-radius:calc(8px * var(--corner-scale)) !important; }
 /* The state preview's banner (preview.ts). Its dot is a status dot: a small rounded square, like the rest. */
 [data-cnpy-theme] .cnpy-preview { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-preview-b { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-relfeat-hl li::before,
+[data-cnpy-theme] .cnpy-reltl-item::after,
 [data-cnpy-theme] .cnpy-preview-dot { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
 [data-cnpy-theme] .cnpy-qs-hl { border-radius:calc(3px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-qs-row { border-radius:calc(7px * var(--corner-scale)) !important; }
@@ -4269,12 +5045,14 @@ a.ask-btn { text-decoration:none; }
 [data-cnpy-theme] .cnpy-collapse .cnpy-nav-i,
 [data-cnpy-theme] .cnpy-tip,
 [data-cnpy-theme] .cnpy-achip,
-[data-cnpy-theme] .cnpy-tree,
 [data-cnpy-theme] .cnpy-select,
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
 /* The mark tooltip carries the theme attribute itself (it lives on <body>), so its rule keys on it. */
 [data-cnpy-theme].cnpy-mtip { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-brandband .cnpy-tabs,
 [data-cnpy-theme] .site-legal-tabs { border-radius:calc(11px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-brandband .cnpy-tab,
+[data-cnpy-theme] .cnpy-brandband .cnpy-tabs-ind { border-radius:calc(8px * var(--corner-scale)) !important; }
 @media (max-width:900px) { [data-cnpy-theme] .site-legal-side { border-radius:calc(12px * var(--corner-scale)) !important; } }
 [data-cnpy-theme] .site-fxcard::after { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-search,
@@ -4487,7 +5265,7 @@ a.ask-btn { text-decoration:none; }
 @container repohead (max-width: 820px) { .sync-repo-l { display:none; } }
 .sync-layer { position:fixed; inset:0; z-index:60; }
 .sync-back { position:absolute; inset:0; }
-.sync-panel { position:absolute; top:var(--sync-top, 63px); right:var(--sync-right, 24px); box-sizing:border-box; width:384px; max-width:calc(100vw - 32px); max-height:calc(100vh - var(--sync-top, 63px) - 16px); display:flex; flex-direction:column; overflow:hidden; border-color:var(--border-strong) !important; border-radius:11px; box-shadow:0 14px 38px rgba(0,0,0,.3); outline:none; transform-origin:top right; animation:sync-in .16s cubic-bezier(.2,.8,.2,1) both; }
+.sync-panel { position:absolute; top:var(--sync-top, 63px); right:var(--sync-right, 24px); box-sizing:border-box; width:384px; max-width:calc(100 * var(--vw) - 32px); max-height:calc(100 * var(--vh) - var(--sync-top, 63px) - 16px); display:flex; flex-direction:column; overflow:hidden; border-color:var(--border-strong) !important; border-radius:11px; box-shadow:0 14px 38px rgba(0,0,0,.3); outline:none; transform-origin:top right; animation:sync-in .16s cubic-bezier(.2,.8,.2,1) both; }
 .sync-head { display:flex; align-items:center; gap:10px; padding:11px 11px 11px 16px; border-bottom:1px solid var(--border); flex:none; }
 .sync-repo { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--code); font-size:11.5px; color:var(--fg-55); }
 .sync-body { padding:14px 16px 16px; overflow-y:auto; min-height:0; }
@@ -4623,7 +5401,7 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
    header, the tag's hero and the tabs — about 252px), so the All tab's two rows end at the bottom of the screen —
    the second row about 38% of it. Clamped: never taller than 556 + 12 + 320 (a tall window keeps those sizes),
    never shorter than 520 (a short one scrolls the page instead of crushing the tiles). */
-.cnpy-tagpage { --tp-gap:12px; --tp-fit:clamp(520px, calc(100dvh - 252px), 888px); --tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px); --tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2); --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-full:var(--tp-fit); --tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap)); }
+.cnpy-tagpage { --tp-gap:12px; --tp-fit:clamp(520px, calc(100 * var(--dvh) - 252px), 888px); --tp-row:clamp(204px, calc(var(--tp-fit) * 0.38), 320px); --tp-half:calc((var(--tp-fit) - var(--tp-row) - var(--tp-gap) * 2) / 2); --tp-tall:calc(var(--tp-half) * 2 + var(--tp-gap)); --tp-full:var(--tp-fit); --tp-rest:calc(var(--tp-full) - var(--tp-row) - var(--tp-gap)); }
 .cnpy-tagpage-grid { display:grid; grid-template-columns:repeat(12, minmax(0, 1fr)); gap:var(--tp-gap); align-items:start; }
 .cnpy-tagpage-grid > * { grid-column:span var(--span, 12); min-width:0; }
 .cnpy-tagpage-rail, .cnpy-tagpage-col { display:flex; flex-direction:column; gap:var(--tp-gap); }
@@ -4753,7 +5531,7 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .cnpy-tagshead-more[aria-expanded="true"] { color:var(--fg); }
 /* "What is sent": a small popover under the link, over the page (a click outside or Escape closes it). */
 .cnpy-tagshead-pop { position:relative; display:inline-block; }
-.cnpy-tagshead-info { position:absolute; top:calc(100% + 8px); right:0; z-index:30; width:300px; max-width:calc(100vw - 32px); box-sizing:border-box; margin:0; padding:12px 14px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); font-size:12.5px; line-height:1.55; color:var(--fg-70); text-align:left; transform-origin:top right; animation:cnpy-pop .14s ease both; }
+.cnpy-tagshead-info { position:absolute; top:calc(100% + 8px); right:0; z-index:30; width:300px; max-width:calc(100 * var(--vw) - 32px); box-sizing:border-box; margin:0; padding:12px 14px; background:var(--bg); border:1px solid var(--border-strong); box-shadow:0 14px 38px rgba(0,0,0,.3); font-size:12.5px; line-height:1.55; color:var(--fg-70); text-align:left; transform-origin:top right; animation:cnpy-pop .14s ease both; }
 @media (prefers-reduced-motion: reduce) { .cnpy-tagshead-info { animation:none; } }
 /* An agent's suggestion as a row of the list (web/src/tags.ts suggestionRow): not on the list yet, so not drawn
    like a tag — a HOLLOW square, the name muted, a "Suggested" mark. Approve is the row's action, in the accent. */
@@ -4811,14 +5589,20 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .repo-block:empty { display:none; }
 .repo-block + .repo-block:not(:empty) { border-top:1px solid var(--border); }
 .repo-block[data-repo-block="attention"] + .repo-block { border-top:0; }
-.repo-links { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
-.repo-link-cell { display:flex; flex-direction:column; align-items:flex-start; gap:3px; min-width:0; padding:14px 22px; text-align:left; border-left:1px solid var(--border); border-top:1px solid var(--border); transition:background .12s ease; cursor:pointer; }
-.repo-link-cell:hover { background:var(--hover); }
-.repo-link-cell:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
-@media (prefers-reduced-motion: reduce) { .repo-link-cell { transition:none; } }
 
 /* ── repo-attention (web/src/repo-attention.ts): Needs attention, first under the state slot ──────────────── */
-.repo-att { padding:14px 22px 6px; background:color-mix(in srgb, var(--accent) 4%, var(--surface)); border-bottom:1px solid var(--border); }
+.repo-att { padding:0; }
+/* Needs attention's button (repo-attention.ts `attentionButton`): at the left of the bar above the panel, its count,
+   and a red dot at its top-right corner; it opens the list in a dialog (`.repo-att-dlg`). */
+.repo-ovbar { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
+.repo-ovbar .repo-groupby { margin:0 0 0 auto; }
+.repo-att-btn { position:relative; display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 12px; border:1px solid var(--border-strong); background:var(--surface); font-size:12.5px; font-weight:500; color:var(--fg); white-space:nowrap; cursor:pointer; transition:border-color .12s ease; }
+.repo-att-btn:hover { border-color:var(--fg-40); }
+.repo-att-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.repo-att-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.repo-att-dot { position:absolute; top:-3px; right:-3px; display:flex; }
+.repo-att-dot > * { box-shadow:0 0 0 2px var(--bg); }
+.repo-att-dlg { width:min(640px, 100%); }
 .repo-att-row { display:flex; align-items:center; gap:8px 12px; padding:10px 0; flex-wrap:wrap; }
 .repo-att-act { cursor:pointer; }
 .repo-att-act:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
@@ -4829,6 +5613,9 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 
 /* ── repo-week (web/src/repo-week.ts): this week's figures ───────────────────────────────────────────────── */
 .repo-week { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(200px, 100%), 1fr)); margin:-1px 0 0 -1px; overflow:hidden; }
+/* On a panel wide enough for every figure (a big screen's --frame-dash), ONE row — auto-fit would leave the last
+   figure alone on a second row between ~1200 and ~1400px. */
+@container (min-width:1200px) { .repo-week { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); } }
 .repo-week-tile { padding:16px 22px; min-width:0; border-left:1px solid var(--border); border-top:1px solid var(--border); }
 
 /* ── repo-header (web/src/repo-header.ts): the repository / App menus, the pills, Group by ────────────────── */

@@ -4,6 +4,8 @@ import { describe, it, expect } from "vitest";
 import { handoffsView, handoffDetailView, handoffAsPrompt, docDraftFromHandoff, newHandoffView, blankHandoff, readingListBlock, READING_RISE_MS } from "../web/src/handoffs";
 import { promptDetailView, promptLibraryView, filterPrompts, promptEditorView, blankPromptDraft } from "../web/src/prompts";
 import { newDocView, blankDoc } from "../web/src/newdoc";
+import { initialDropdownUi } from "../web/src/dropdown";
+import type { SpaceDTO } from "@shared/docs-core";
 import type { HandoffView, HandoffReadingItem, PromptSummary, PromptDetail, PromptVersion } from "../shared/handoffs";
 import { canDeletePrompt, render, initialState } from "../web/src/render";
 import confirmSrc from "../web/src/confirm.ts?raw";
@@ -36,6 +38,8 @@ const h = (over: Partial<HandoffView> = {}): HandoffView => ({
   context: { repo: "SaplingLearn/sapling", branch: "fix/quiz", task: "Get failures under 1%", done: ["Parser"], next: ["Prompt", "Eval"], files: ["a.py"] },
   ...over,
 });
+
+const ENGINEERING = { slug: "engineering", name: "Engineering", icon: "braces", color: "#525cc3", description: "", sort_rank: 1024, created_at: "t", created_by: "system", archived: false, archived_at: null, owners: [], pages: 0, waiting: 0 } as SpaceDTO;
 
 describe("handoffs — numeric ids", () => {
   it("list rows carry the numeric id as data-arg and render #12", () => {
@@ -71,10 +75,11 @@ describe("handoffs — numeric ids", () => {
 });
 
 describe("new doc — the FROM HANDOFF banner", () => {
-  const spaces = [{ key: "technical", label: "Technical" }];
+  const spaces = [ENGINEERING];
   it("shows only when promoted from a handoff, linking back to it", () => {
-    expect(newDocView({ draft: blankDoc("technical", ""), spaces, sections: ["reference"] })).not.toContain("FROM HANDOFF");
-    const html = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces, sections: ["reference"] });
+    expect(newDocView({ draft: { ...blankDoc("engineering"), step: "details" }, spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() })).not.toContain("FROM HANDOFF");
+    // A promoted handoff opens New page on its details step (newdoc-actions.ts `prefill`).
+    const html = newDocView({ draft: { ...blankDoc("engineering"), step: "details", from: 12 }, spaces, pages: [], sections: ["reference"], dd: initialDropdownUi() });
     expect(html).toContain("FROM HANDOFF");
     expect(html).toContain('data-act="openHandoff" data-arg="12"');
   });
@@ -190,12 +195,42 @@ describe("surface cards — handoffs, prompts, new doc", () => {
     expect(lib).not.toMatch(OLD_CARD);
   });
 
-  it("the three form cards (prompt editor, new handoff, new doc) are surfaces", () => {
-    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100vh - 210px)"';
+  it("a prompt card's slug sits top right with its copy button: labelled, tipped, a sibling of the hit area, never inside a button", () => {
+    const lib = promptLibraryView({ status: "ok", prompts: [summary("smoke-test-artifact")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
+    const card = lib.slice(lib.indexOf('<div class="cnpy-surface cnpy-card cnpy-hitbox"'));
+    const copy = card.match(/<button type="button" data-act="promptCopySlug" data-arg="smoke-test-artifact" class="cnpy-iconbtn cnpy-hitctl" aria-label="Copy slug smoke-test-artifact" data-mtip="[^"]+"[^>]*>([\s\S]*?)<\/button>/);
+    expect(copy).not.toBeNull();
+    expect(copy![1]).not.toContain("<button");          // its icon only — no button inside it
+    // Top right: the title first, then the slug and its button (the owner's placement).
+    const slugBlock = card.indexOf('class="cnpy-pcard-slug"');
+    expect(slugBlock).toBeGreaterThan(card.indexOf("font-size:14px;font-weight:600")); // after the title
+    expect(card.indexOf('data-act="promptCopySlug"')).toBeGreaterThan(slugBlock);
+    // The first control in the card (first in tab order) and before the hit area, which
+    // stays the card's LAST child and empty — so the copy button is never nested in it.
+    expect(card.indexOf('data-act="promptCopySlug"')).toBeLessThan(card.indexOf('data-act="openPrompt"'));
+    expect(card.indexOf("<button")).toBe(card.indexOf('<button type="button" data-act="promptCopySlug"'));
+    expect(card).toContain('<button data-act="openPrompt" data-arg="smoke-test-artifact" class="cnpy-hit" aria-label="smoke-test-artifact"></button>\n  </div>');
+    // The copy act copies the plain slug and toasts; it never opens the prompt.
+    const act = mainSrc.slice(mainSrc.indexOf('case "promptCopySlug":'), mainSrc.indexOf('case "promptExpand":'));
+    expect(act).toContain("copyToClipboard(arg)");
+    expect(act).not.toMatch(/openPrompt|state\.screen/);
+  });
+
+  it("every hitArea card shows the pointer, and a control on one sits above the hit", async () => {
+    const css = (await import("../web/src/trov.css?raw")).default as string;
+    expect(css).toMatch(/\.cnpy-hitbox \{ position:relative; cursor:pointer; \}/);
+    expect(css).toMatch(/\.cnpy-hitbox \.cnpy-hitctl \{ position:relative; z-index:2; \}/);
+    expect(css).toMatch(/\.cnpy-hitctl:focus-visible \{ outline:2px solid var\(--focus\)/);
+  });
+
+  it("the form cards (prompt editor, new handoff) are surfaces; New page's details step names its template in a box", () => {
+    const FORM = 'class="cnpy-surface" style="padding:26px 28px;display:flex;flex-direction:column;min-height:calc(100 * var(--vh) - 210px)"';
     const editor = promptEditorView({ draft: blankPromptDraft(), takenSlugs: [] });
     const handoff = newHandoffView({ draft: blankHandoff(), me: "AndresL230", persons });
-    const doc = newDocView({ draft: { ...blankDoc("technical", ""), from: 12 }, spaces: [{ key: "technical", label: "Technical" }], sections: ["reference"] });
-    for (const html of [editor, handoff, doc]) {
+    const doc = newDocView({ draft: { ...blankDoc("engineering"), step: "details", from: 12 }, spaces: [ENGINEERING], pages: [], sections: ["reference"], dd: initialDropdownUi() });
+    expect(doc).toContain('class="cnpy-nd-chosen"');
+    expect(doc).not.toMatch(OLD_CARD);
+    for (const html of [editor, handoff]) {
       expect(html).toContain(FORM);
       expect(html).not.toMatch(OLD_CARD);
       expect(html).not.toContain(OLD_TINT);
@@ -380,5 +415,25 @@ describe("the claim's reading list (#167)", () => {
 
   it("the screen keeps the list its own claim returned, for that handoff only (main.ts)", () => {
     expect(mainSrc).toMatch(/state\.handoffReading = \{ id: nh\.id, items: reading_list, at: Date\.now\(\) \}/);
+  });
+});
+
+describe("Relay's header button keeps one width across its two tabs", () => {
+  it("New handoff and Start a link each carry the other's label, invisible, in the same cell — the icons beside them never move", () => {
+    const btn = (screen: "handoffs" | "links") => {
+      const html = render({ ...initialState(), view: "app", screen });
+      return html.match(/<button data-act="(newHandoff|linkStartOpen)" class="cnpy-accentbtn"[\s\S]*?<\/button>/)?.[0] ?? "";
+    };
+    const h = btn("handoffs"), l = btn("links");
+    expect(h).toContain('data-act="newHandoff"');
+    expect(l).toContain('data-act="linkStartOpen"');
+    expect(h).toMatch(/<span style="grid-area:1\/1">New handoff<\/span><span aria-hidden="true" style="grid-area:1\/1;visibility:hidden">Start a link<\/span>/);
+    expect(l).toMatch(/<span style="grid-area:1\/1">Start a link<\/span><span aria-hidden="true" style="grid-area:1\/1;visibility:hidden">New handoff<\/span>/);
+  });
+  it("…and above 1440px both tabs line the header up with the same frame (Links was left at 24px)", async () => {
+    const css = (await import("../web/src/trov.css?raw")).default as string;
+    const rule = css.split("\n").find((l) => l.includes('[data-screen="handoffs"]') && l.includes("--hdr-frame")) ?? "";
+    expect(rule).toContain('[data-screen="links"]');
+    expect(css).toMatch(/\[data-screen="link"\][^{]*\{ --hdr-frame:1120px;/); // a link's page: DETAIL_SHELL's 1120px
   });
 });

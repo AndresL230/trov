@@ -78,7 +78,7 @@ describe("POST /api/platform/orgs — take on an org and name its admin", () => 
     // The singletons are there (the same createOrg as POST /api/orgs).
     const id = (await one<{ id: string }>(`SELECT id FROM orgs WHERE slug = 'birch'`))!.id;
     expect(await one(`SELECT (SELECT COUNT(*) FROM plan WHERE org_id = ?1) AS plan, (SELECT COUNT(*) FROM notification_settings WHERE org_id = ?1) AS settings, (SELECT COUNT(*) FROM org_counters WHERE org_id = ?1) AS counters`, id))
-      .toEqual({ plan: 1, settings: 1, counters: 2 });
+      .toEqual({ plan: 1, settings: 1, counters: 3 });
 
     // §5.4: no backdoor. The superadmin created it and still cannot read a thing inside it.
     for (const path of ["/api/o/birch/me", "/api/o/birch/members", "/api/o/birch/settings", "/api/o/birch/invites"]) {

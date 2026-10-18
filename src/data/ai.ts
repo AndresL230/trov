@@ -27,6 +27,16 @@ export async function setAiChatAuto(ctx: TenantContext, on: boolean, at: string 
   ]);
 }
 
+/** Allow or stop Ask Trov's GitHub lookups in the org (`orgs.ai_chat_github`, 0076), audited
+ *  (`org.ai_chat_github`) in the same batch. The caller has checked the role. */
+export async function setAiChatGithub(ctx: TenantContext, on: boolean, at: string = nowIso()): Promise<void> {
+  await batch(ctx, [
+    stmt(ctx, `UPDATE orgs SET ai_chat_github = ? WHERE id = ?`, on ? 1 : 0, ctx.orgId),
+    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'org.ai_chat_github', 'ai', ?, ?)`,
+      ctx.orgId, ctx.userId, JSON.stringify({ chatGithub: on }), at),
+  ]);
+}
+
 // ── suggestions ──────────────────────────────────────────────────────────────
 
 export interface AiSuggestionRow {

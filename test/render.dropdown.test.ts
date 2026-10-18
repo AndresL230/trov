@@ -142,7 +142,7 @@ describe("dropdown — the styles (trov.css)", () => {
   });
   it("overlays the page (fixed, at the root) instead of pushing it, and a closing one lets clicks through", () => {
     expect(dd).toContain(".cnpy-dd-layer { position:fixed; inset:0; z-index:95; }");
-    expect(dd).toMatch(/\.cnpy-dd-pop \{ position:fixed;[^}]*max-width:min\(440px, calc\(100vw - 16px\)\);[^}]*overflow-y:auto;/);
+    expect(dd).toMatch(/\.cnpy-dd-pop \{ position:fixed;[^}]*max-width:min\(440px, calc\(100 \* var\(--vw\) - 16px\)\);[^}]*overflow-y:auto;/);
     expect(dd).toContain(".cnpy-dd-layer[data-closing] { pointer-events:none; }");
   });
   it("uses the app's tokens only: no raw colour outside the shadow token's own definition", () => {

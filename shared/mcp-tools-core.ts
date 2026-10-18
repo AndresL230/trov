@@ -35,7 +35,7 @@ export const MCP_TOOL_GROUPS: readonly McpToolGroup[] = [
   {
     key: "read", label: "Read",
     blurb: "Read-only. Orient with these before working an existing area; every result says whether it is settled (live) or only proposed.",
-    tools: ["query", "get_doc", "list_docs", "get_feed", "list_tags", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard", "list_people"],
+    tools: ["query", "get_doc", "list_docs", "list_spaces", "get_feed", "list_tags", "get_roadmap", "get_my_work", "get_events", "get_repo_dashboard", "list_people"],
   },
   {
     key: "contribute", label: "Contribute",
@@ -56,6 +56,11 @@ export const MCP_TOOL_GROUPS: readonly McpToolGroup[] = [
     key: "handoffs", label: "Handoffs and prompts",
     blurb: "Notes from one session to the next, and the team's reusable prompts. A saved prompt is staged until a person publishes it.",
     tools: ["send_handoff", "list_handoffs", "get_handoff", "claim_handoff", "expire_handoff", "search_prompts", "get_prompt", "save_prompt"],
+  },
+  {
+    key: "links", label: "Links",
+    blurb: "A short-lived line between two agent sessions whose work may overlap. An agent drafts, joins and writes notes; a person sends and accepts every link in the web app.",
+    tools: ["request_link", "join_link", "send_link_note", "close_link", "list_links", "link_inbox"],
   },
   {
     key: "artifacts", label: "Artifacts and doc images",

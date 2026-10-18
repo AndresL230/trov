@@ -27,12 +27,12 @@ export const MW_REPO_TABS: readonly MwRepoTab[] = ["prs", "ci", "deploys"];
 export type MwLoad = "pending" | "ok" | "error";
 
 /**
- * THE definition of "handoffs waiting on me" — the sidebar's Handoffs badge and My
+ * THE definition of "handoffs waiting on me" — the sidebar's Relay badge and My
  * Work's Your sessions tile both count this, so they can never disagree: PENDING
  * handoffs whose recipient is me (case-insensitive, like persons.handle). A
  * handoff I sent to MYSELF counts — handing off to your own fresh session is the
  * common case. One addressed to `anyone` does not: any session in the org can
- * claim it, so it is not waiting on me in particular (the Handoffs screen has it).
+ * claim it, so it is not waiting on me in particular (the Relay screen has it).
  */
 export function handoffsForMe(handoffs: readonly HandoffView[], me: string): HandoffView[] {
   const m = me.toLowerCase();
@@ -408,7 +408,7 @@ function libraryCells(lib: MwLibrary): { docs: string; arts: string; handoffs: s
       : quiet("No handoffs queued.")
 
   return {
-    docs: cell("Docs you own", { act: "goDocs", label: "Docs" }, docs),
+    docs: cell("Docs you own", { act: "goLibrary", label: "Library" }, docs),
     arts: cell("Artifacts", { act: "goArtifacts", label: "Library" }, arts),
     handoffs: cell("Queued handoffs", { act: "goHandoffs", label: "Handoffs" }, handoffs),
   };
@@ -566,7 +566,7 @@ export interface MyWorkLayout {
 export function myWorkLayout(p: MyWorkLayout): string {
   // With the brief the page is sized to fit one screen (trov.css `.mw-bento-brief`): tighter padding.
   const fit = p.bento === "brief";
-  return `<div class="cnpy-scroll" style="max-width:1180px;margin:0 auto;padding:${fit ? "20px 32px 16px" : "28px 32px 80px"}">
+  return `<div class="cnpy-scroll" style="max-width:var(--frame-dash);margin:0 auto;padding:${fit ? "20px 32px 16px" : "28px 32px 80px"}">
     <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:6px 16px;margin-bottom:${fit ? 16 : 22}px;min-width:0">
       <div style="min-width:0">
         <h2 style="font-size:22px;font-weight:500;letter-spacing:-0.02em;margin:0;line-height:1.2">${p.greeting}</h2>

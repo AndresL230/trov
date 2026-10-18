@@ -237,26 +237,32 @@ export interface AiChipOpts {
   extra?: string;
   /** What a person who cannot act is told. */
   waiting?: string;
+  /** What Accept does, in words ("Create 2 sprints"); "Accept" when absent. */
+  acceptLabel?: string;
+  /** What it would write, drawn INSIDE the box under its line (Roadmap's sprints, a narrative) — never loose below. */
+  body?: string;
 }
 
 const CHIP_BTN = "font-size:12px;font-weight:500;border-radius:6px;padding:2px 9px;min-height:26px;white-space:nowrap";
-/** A value Trov proposes: "Suggested: X," and a "because…" disclosure, Accept and Dismiss. Never
- *  styled like a value a person set: a dashed outline, the AI mark, the label muted. It is a
- *  container of buttons, never a button itself, so it sits in a row, a card, a detail pane or a
- *  phone's column (it wraps). */
+/** A value Trov proposes: the Trov mark and "Trov suggests" before what it proposes, a "Why?" disclosure (the reason
+ *  and its sources), then Accept (or what accepting does, `acceptLabel`) and Dismiss; what it would write sits inside
+ *  the box (`body`). Never styled like a value a person set: a box lightly tinted with the accent and its quiet edge
+ *  (the dashed outline read as broken, not as "a suggestion" — the owner's call). It is a container of buttons,
+ *  never a button itself, so it sits in a row, a card, a detail pane or a phone's column (it wraps). */
 export function aiSuggestionChip(c: AiChip, o: AiChipOpts): string {
   const rid = `ai-why-${c.key.replace(/[^A-Za-z0-9_-]/g, "-")}`;
-  const why = `<button type="button" data-act="aiReason" data-arg="${attr(c.key)}" aria-expanded="${o.open}" aria-controls="${attr(rid)}" data-field="aiReason:${attr(c.key)}" class="cnpy-mutelink" style="padding:0;font:inherit;color:var(--fg-55);text-decoration:underline dotted;text-underline-offset:3px">because&hellip;</button>`;
+  const why = `<button type="button" data-act="aiReason" data-arg="${attr(c.key)}" aria-expanded="${o.open}" aria-controls="${attr(rid)}" data-field="aiReason:${attr(c.key)}" class="cnpy-mutelink cnpy-ai-whybtn">Why?</button>`;
   const acts = o.unavailable
     ? `<span role="status" style="font-size:12px;color:var(--fg-55);white-space:nowrap">Not available yet</span>`
     : o.canAct
-      ? `<button type="button" data-act="aiAccept" data-arg="${c.id}"${o.busy ? ' disabled aria-busy="true"' : ""} class="cnpy-ghostbtn" style="${CHIP_BTN};border:1px solid var(--border-strong);color:var(--fg)">Accept</button>${o.extra ?? ""}<button type="button" data-act="aiDismiss" data-arg="${c.id}"${o.busy ? " disabled" : ""} class="cnpy-mutelink" style="${CHIP_BTN};color:var(--fg-55)">${esc(o.dismissLabel ?? "Dismiss")}</button>`
+      ? `<button type="button" data-act="aiAccept" data-arg="${c.id}"${o.busy ? ' disabled aria-busy="true"' : ""} class="cnpy-ghostbtn cnpy-ai-accept" style="${CHIP_BTN}">${esc(o.acceptLabel ?? "Accept")}</button>${o.extra ?? ""}<button type="button" data-act="aiDismiss" data-arg="${c.id}"${o.busy ? " disabled" : ""} class="cnpy-mutelink" style="${CHIP_BTN};color:var(--fg-55)">${esc(o.dismissLabel ?? "Dismiss")}</button>`
       : o.waiting ? `<span style="font-size:12px;color:var(--fg-55)">${esc(o.waiting)}</span>` : "";
-  return `<div class="cnpy-ai-chip" data-ai-chip="${attr(c.key)}" style="display:flex;flex-direction:column;gap:6px;border:1px dashed var(--border-strong);border-radius:8px;padding:6px 8px 6px 10px;color:var(--fg-55);font-size:12.5px;min-width:0;max-width:100%">
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;min-width:0">
-      <span data-mtip="${attr(AI_TIP.suggestion)}" style="display:inline-flex;align-items:center;gap:6px;min-width:0">${aiMark(12)}<span style="min-width:0;overflow-wrap:anywhere">Suggested: <span style="color:var(--fg-70);font-weight:500">${esc(c.label)}</span>,</span></span>${why}
-      <span style="display:inline-flex;align-items:center;gap:6px;margin-left:auto">${acts}</span>
+  return `<div class="cnpy-ai-chip${o.body ? " has-body" : ""}" data-ai-chip="${attr(c.key)}">
+    <div class="cnpy-ai-chip-line">
+      <span data-mtip="${attr(AI_TIP.suggestion)}" class="cnpy-ai-chip-what">${aiMark(12)}<span class="cnpy-ai-chip-by">Trov suggests</span><span class="cnpy-ai-chip-label">${esc(c.label)}</span></span>${why}
+      <span class="cnpy-ai-chip-acts">${acts}</span>
     </div>
-    <div id="${attr(rid)}" class="cnpy-ai-why"${o.open ? "" : " hidden"} style="color:var(--fg-70);line-height:1.5;overflow-wrap:anywhere">because ${esc(c.reason)}${c.cites?.length ? ` <span style="display:inline-flex;flex-wrap:wrap;gap:6px;margin-left:4px">${aiCites(c.cites)}</span>` : ""}</div>
+    <div id="${attr(rid)}" class="cnpy-ai-why"${o.open ? "" : " hidden"}>Because ${esc(c.reason)}${c.cites?.length ? ` <span style="display:inline-flex;flex-wrap:wrap;gap:6px;margin-left:4px">${aiCites(c.cites)}</span>` : ""}</div>${o.body ? `
+    <div class="cnpy-ai-chip-body">${o.body}</div>` : ""}
   </div>`;
 }

@@ -26,6 +26,7 @@ import { listPeopleForAgents } from "../../tools/people";
 import { getRepoDashboardForAgent, orgRepoConfig } from "../../tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { listTagRefs } from "../../tools/tags";
+import { listSpacesForAgent } from "../../tools/spaces";
 import { QueryType } from "@shared/contract";
 import { agentArtifactGet, agentArtifactList, artifactsForTicket } from "../../tools/artifacts-agent";
 import { ARTIFACT_AREAS, ARTIFACT_KINDS, ARTIFACT_STATUSES } from "@shared/artifacts";
@@ -33,6 +34,8 @@ import { get_plan } from "../../tools/plan";
 import { listHandoffs, getHandoff, HandoffError } from "../../tools/handoffs";
 import { listPrompts, getPrompt, recordPromptUse, PromptError } from "../../tools/prompts";
 import { detectVars, fillVars, firstLine, type HandoffView } from "@shared/handoffs";
+import { LINK_NOTE_MAX, LINK_REASON_MAX, linkTopicLabel, type LinkView } from "@shared/links";
+import { askThreadSession, listLiveLinks } from "../../tools/links";
 import { threadAttachment } from "../../data/ask";
 import { artifactCtxOf, type AskToolCtx, type SearchArea } from "./context";
 import { searchDocs } from "./docs";
@@ -40,6 +43,10 @@ import { resolveViews, normalRef } from "./refs";
 import { runChart, weekStarts, shortDay } from "./charts";
 import { WRITES, type WriteSpec } from "./actions";
 import { readAttachmentBlocks } from "./attachments";
+import {
+  GITHUB_DEFS, GithubCiIn, GithubCommitIn, GithubIssueIn, GithubListIn, GithubPullIn, GithubReadIn, GithubSearchIn, GithubToolError,
+  githubCi, githubCommit, githubIssue, githubList, githubPullRequest, githubRead, githubSearchCode, isGithubTool, type AskGithub,
+} from "./github";
 
 export type { AskToolCtx } from "./context";
 
@@ -66,18 +73,26 @@ const id = z.number();
 const read = <A>(input: z.ZodType<A>, icon: AskActivityIcon, run: (c: AskToolCtx, a: A) => Promise<unknown>, searches?: (a: A) => [SearchArea, string | null][]): ReadSpec<A> =>
   ({ kind: "read", input, icon, run, searches });
 
+/** A GitHub read: refused outright when this answer has no GitHub side (the tool is then not offered either). */
+const ghRead = <A>(input: z.ZodType<A>, icon: AskActivityIcon, fn: (gh: AskGithub, a: A) => Promise<unknown>, searches?: (a: A) => [SearchArea, string | null][]): ReadSpec<A> =>
+  read(input, icon, async (c, a) => {
+    if (!c.github) throw new GithubToolError("not_connected", "GitHub is not available in this conversation.");
+    return await fn(c.github, a);
+  }, searches);
+
 const QUERY_AREAS: Record<string, SearchArea> = { doc: "docs", decision: "decisions", feed: "feed", sprint: "sprints", artifact: "artifacts" };
 
 /** The READ tools of the MCP catalog — the same calls src/mcp.ts makes, with the cookie person's context. */
 const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescript-eslint/no-explicit-any
   query: read(z.object({
     q: z.string().optional(), types: z.array(QueryType).optional(), section: z.string().optional(),
-    space: z.enum(["technical", "product"]).optional(), include_staged: z.boolean().optional(),
+    space: z.string().optional(), include_staged: z.boolean().optional(),
     limit: z.number().optional(), pointer_limit: z.number().optional(),
   }), "search", (c, a) => query(c.ctx, { ...a, q: a.q ?? "", include_staged: a.include_staged ?? true }, c.handle),
   (a) => (a.types?.length ? a.types : ["doc", "decision", "feed", "sprint", "artifact"]).map((t: string) => [QUERY_AREAS[t], null] as [SearchArea, null])),
   get_doc: read(z.object({ slug: z.string() }), "docs", (c, a) => get_doc(c.ctx, a.slug)),
-  list_docs: read(z.object({ section: z.string().optional() }), "docs", (c, a) => list_docs(c.ctx, a.section), () => [["docs", null]]),
+  list_docs: read(z.object({ section: z.string().optional(), space: z.string().optional() }), "docs", (c, a) => list_docs(c.ctx, a.section, a.space), () => [["docs", null]]),
+  list_spaces: read(z.object({}), "docs", (c) => listSpacesForAgent(c.ctx)),
   get_feed: read(z.object({ author: z.string().optional(), tags: z.array(z.string()).optional(), since: z.string().optional(), limit: z.number().optional() }),
     "feed", (c, a) => get_feed(c.ctx, a), (a) => [["feed", a.since ?? null]]),
   list_tags: read(z.object({}), "read", (c) => listTagRefs(c.ctx)),
@@ -136,6 +151,20 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
     const values = a.vars ?? {};
     return { ...p, body: fillVars(p.body, values), variables, unfilled: variables.filter((v) => !values[v]?.trim()) };
   }),
+  // The person's live agent links — MCP's `list_links` boxes — each saying whether THIS thread is its side. Another
+  // side's session id never reaches the model.
+  list_links: read(z.object({}), "handoffs", async (c) => {
+    const boxes = await listLiveLinks(c.ctx, c.handle);
+    const me = c.handle.toLowerCase();
+    const session = askThreadSession(c.threadId);
+    const side = (s: LinkView["requester"]) => ({ handle: s.handle, kind: s.kind, joined: s.session !== null, ...(s.branch ? { branch: s.branch } : {}) });
+    const line = (v: LinkView) => ({
+      id: v.id, state: v.state, url: `#links/${v.id}`, topic: linkTopicLabel(v.topic.kind, v.topic.ref), reason: v.reason, self: v.self,
+      requester: side(v.requester), recipient: side(v.recipient), expires_at: v.expires_at,
+      this_thread: (v.requester.handle.toLowerCase() === me && v.requester.session === session) || (v.recipient.handle.toLowerCase() === me && v.recipient.session === session),
+    });
+    return { waiting: boxes.waiting.map(line), mine: boxes.mine.map(line), open: boxes.open.map(line), unbound: boxes.unbound.map(line) };
+  }),
   // ── Ask only ──
   trov_docs: read(z.object({ q: z.string().min(1).max(300) }), "docs", async (c, a) => {
     const full = await c.docs();
@@ -147,8 +176,21 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
   read_attachment: read(z.object({ id: z.number().int().positive() }), "read", async (c, a) => {
     const row = await threadAttachment(c.ctx, c.threadId, a.id);
     if (!row) throw new TicketError("not_found", "There is no such attachment in this thread.");
+    // A thread shared to continue (0077): a file someone else attached stays private to them — the private artifact's
+    // own rule (readRaw) would refuse it too; this says why.
+    if (row.author_id && row.author_id.toLowerCase() !== c.handle.toLowerCase()) {
+      throw new TicketError("forbidden", "That file was attached by someone else and is private to them: you can see its name, not what is in it.");
+    }
     return { __blocks: await readAttachmentBlocks(c.ctx, c.env.ARTIFACTS_BUCKET, c.handle, row.artifact_id) };
   }),
+  // ── GitHub (./github.ts): read-only, the org's connected repositories only, offered only with `c.github` ──
+  github_read: ghRead(GithubReadIn, "read", githubRead),
+  github_search_code: ghRead(GithubSearchIn, "search", githubSearchCode, () => [["github", null]]),
+  github_pull_request: ghRead(GithubPullIn, "pr", githubPullRequest),
+  github_issue: ghRead(GithubIssueIn, "read", githubIssue),
+  github_commit: ghRead(GithubCommitIn, "pr", githubCommit),
+  github_list: ghRead(GithubListIn, "pr", githubList),
+  github_ci: ghRead(GithubCiIn, "ci", githubCi),
 };
 
 // ── show tools ──────────────────────────────────────────────────────────────
@@ -198,7 +240,7 @@ export function chainOrder(nodes: { id: string }[], edges: [string, string][]): 
 
 const SEARCH_LABEL: Record<SearchArea, string> = {
   docs: "Docs", tickets: "Tickets and comments", feed: "Feed", artifacts: "Artifacts", decisions: "Decisions", sprints: "Sprints",
-  prompts: "Prompt Library", handoffs: "Handoffs", trov_docs: "Trov's docs",
+  prompts: "Prompt Library", handoffs: "Handoffs", trov_docs: "Trov's docs", github: "Code on GitHub",
 };
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -210,10 +252,13 @@ async function searchedScopes(c: AskToolCtx): Promise<{ area: string; scope: str
     let scope = "";
     switch (area) {
       case "docs": {
-        const spaces = await all<{ space: string; n: number }>(c.ctx, `SELECT space, COUNT(*) AS n FROM docs WHERE org_id = ? GROUP BY space`, c.ctx.orgId);
-        const total = spaces.reduce((a, s) => a + Number(s.n), 0);
-        const names = spaces.map((s) => (s.space === "product" ? "Product" : "Technical")).sort((a, b) => (a === "Technical" ? -1 : b === "Technical" ? 1 : 0));
-        scope = `${names.length ? `${names.join(" and ")}, ` : ""}${plural(total, "doc")}`;
+        // The Library's spaces that hold docs, by name, in the Library's order (0081_docs_library).
+        const spaces = await all<{ name: string; n: number }>(c.ctx,
+          `SELECT s.name AS name, COUNT(*) AS n FROM docs d JOIN doc_spaces s ON s.slug = d.space AND s.org_id = ?
+            WHERE d.org_id = ? AND d.archived_at IS NULL GROUP BY s.slug ORDER BY (s.sort_rank IS NULL), s.sort_rank, s.created_at, s.slug`, c.ctx.orgId, c.ctx.orgId);
+        const total = await n(`SELECT COUNT(*) AS n FROM docs WHERE org_id = ? AND archived_at IS NULL`, c.ctx.orgId);
+        const names = spaces.map((s) => s.name);
+        scope = `${names.length ? `${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}, ` : ""}${plural(total, "doc")}`;
         break;
       }
       case "tickets":
@@ -232,6 +277,7 @@ async function searchedScopes(c: AskToolCtx): Promise<{ area: string; scope: str
       case "prompts": scope = plural(await n(`SELECT COUNT(*) AS n FROM prompts WHERE org_id = ? AND deleted_at IS NULL`, c.ctx.orgId), "prompt"); break;
       case "handoffs": scope = plural(await n(`SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ?`, c.ctx.orgId), "handoff"); break;
       case "trov_docs": scope = "Trov's own help pages"; break;
+      case "github": scope = (c.github?.repos ?? []).map((r) => r.name).join(", ") || "the connected repositories"; break;
     }
     out.push({ area: SEARCH_LABEL[area], scope });
   }
@@ -316,9 +362,21 @@ export const ASK_TOOLS: Record<string, ToolSpec> = {
 
 /** Fast's tools (`index`): the search and list tools, the stored cards, and the person's own attachments. */
 export const INDEX_TOOLS = new Set([
-  "query", "list_docs", "get_feed", "list_tags", "get_roadmap", "list_tickets", "list_sprints", "get_my_work", "list_people", "get_events",
-  "artifact_list", "list_handoffs", "search_prompts", "trov_docs", "read_attachment", "show_items", "show_chart", "show_themes", "show_not_found",
+  "query", "list_docs", "list_spaces", "get_feed", "list_tags", "get_roadmap", "list_tickets", "list_sprints", "get_my_work", "list_people", "get_events",
+  "artifact_list", "list_handoffs", "list_links", "search_prompts", "trov_docs", "read_attachment", "show_items", "show_chart", "show_themes", "show_not_found",
 ]);
+
+/** What Ask says about a tool where MCP's description is about a coding session (a session id to pass, a draft its
+ *  person sends from the web): in Ask the THREAD is the side and Confirm is the Send. The input schema stays MCP's. */
+const ASK_DESCRIPTIONS: Record<string, string> = {
+  request_link: `Request a Trov link: a short-lived line between THIS Ask thread and another person's agent session (a coding session on their PR, a web chat, or their own Ask thread) while the work may overlap. Only when the person asks for it. \`target\` names exactly ONE of \`pr\` (a PR number Trov has captured: its author), \`branch\` (its latest author), \`ticket\` (its assignee) or \`person\` (a handle from list_people). \`reason\` (optional, ≤ ${LINK_REASON_MAX} characters) says what overlaps. It becomes a card: when the person presses Confirm the request is SENT (a link with themself opens at once), and the other person accepts or declines it in Trov. It never runs by itself, even in Auto. Once open, the other side's notes reach this thread at the start of the person's next question.`,
+  join_link: "Join an OPEN Trov link with THIS Ask thread, only when the person asks (\"join link #12 here\"), so the other side's notes reach this thread and it can leave notes. The person must be one of the link's two people. A card the person confirms; it never runs by itself. `side` only for a link with themself whose two sides both have a session already.",
+  send_link_note: `Leave a short note (≤ ${LINK_NOTE_MAX} characters) on an open Trov link this thread has joined, for the other side's agent: what is changing and when ("renaming authSession, merging tonight"). Information only: never ask the other side to do or change anything; that is a conversation for the people. A card the person confirms; it never runs by itself.`,
+  close_link: "Close an open Trov link the person is on, when the work has landed or they say so. Its notes stay readable in Trov. A card the person confirms.",
+  list_links: "Read-only: the person's live Trov links in this organization. `waiting`: requests sent to them (they accept or decline in Trov). `mine`: their drafts and the requests they sent. `open`: open links they are on. `unbound`: open links whose side of theirs has no session yet. Each has its id, topic, reason, both sides (whether each has joined) and `this_thread` (true when THIS thread is its side). Name one with [[link:<id>]].",
+};
+/** Arguments Ask fills itself on top of `session`: a link side's kind is always `ask`, and an Ask thread has no branch. */
+const ASK_FILLED_ARGS: Record<string, readonly string[]> = { request_link: ["kind", "branch"], join_link: ["kind", "branch"] };
 
 /** Ask-only tools' definitions (the MCP ones come from the generated catalog). */
 const ASK_ONLY_DEFS: { name: string; description: string; input_schema: Record<string, unknown> }[] = [
@@ -382,33 +440,54 @@ const ASK_ONLY_DEFS: { name: string; description: string; input_schema: Record<s
     description: "When nothing you found answers the question: show the not-found card. `query` is what you looked for (a few words); `tries` are two rephrased questions the person could ask instead, about things Trov keeps. The server adds what you searched, with counts.",
     input_schema: { type: "object", properties: { query: { type: "string" }, tries: { type: "array", items: { type: "string" }, maxItems: 2 } }, required: ["query"] },
   },
+  // Last, so an org without GitHub (or while held) keeps the same prefix up to here.
+  ...GITHUB_DEFS,
 ];
 
 /** Arguments the MCP connection adds (`repo`, `org`) and the ones Ask fills itself (`session`) — never offered. */
 const NOT_OFFERED_ARGS = new Set(["repo", "org", "session"]);
 
-/** An MCP input schema as Ask offers it: without the connection's arguments and the `$schema` key. */
-export function askInputSchema(schema: Record<string, unknown>): Record<string, unknown> {
+/** An MCP input schema as Ask offers it: without the connection's arguments, what Ask fills for `tool`
+ *  (`ASK_FILLED_ARGS`), and the `$schema` key. */
+export function askInputSchema(schema: Record<string, unknown>, tool?: string): Record<string, unknown> {
   const { $schema: _s, properties, required, ...rest } = schema as { $schema?: unknown; properties?: Record<string, unknown>; required?: string[] };
-  const props = Object.fromEntries(Object.entries(properties ?? {}).filter(([k]) => !NOT_OFFERED_ARGS.has(k)));
-  const req = (required ?? []).filter((k) => !NOT_OFFERED_ARGS.has(k));
+  const filled = new Set(tool ? ASK_FILLED_ARGS[tool] ?? [] : []);
+  const drop = (k: string) => NOT_OFFERED_ARGS.has(k) || filled.has(k);
+  const props = Object.fromEntries(Object.entries(properties ?? {}).filter(([k]) => !drop(k)));
+  const req = (required ?? []).filter((k) => !drop(k));
   return { ...rest, type: "object", properties: props, ...(req.length ? { required: req } : {}) };
 }
+
+/**
+ * Arguments Ask offers NARROWER than MCP serves them (same names, so the parity holds). `send_handoff`'s prompt is
+ * inline only: MCP's upload form needs a shell to PUT the file, which Ask does not have (its input refuses it too).
+ */
+const ASK_NARROWED_ARGS: Record<string, Record<string, unknown>> = {
+  send_handoff: {
+    prompt: { type: "object", properties: { title: { type: "string" }, body: { type: "string" } }, required: ["title", "body"], additionalProperties: false },
+  },
+};
+
+const narrowed = (name: string, schema: Record<string, unknown>): Record<string, unknown> => {
+  const over = ASK_NARROWED_ARGS[name];
+  return over ? { ...schema, properties: { ...(schema.properties as Record<string, unknown>), ...over } } : schema;
+};
 
 export interface OfferedTool { name: string; description: string; input_schema: Record<string, unknown> }
 
 /**
  * The tools offered to THIS person in THIS mode, in a stable order (the cache prefix): the MCP catalog in its
  * registration order — minus the exclusions, the admin-only ones for a non-admin, and (Fast) everything outside
- * the index — then Ask's own.
+ * the index — then Ask's own. The GitHub tools (Smart and Thinking) only with `github` — this answer has a GitHub side
+ * (./github.ts: released, and the org has a connected repository).
  */
-export function offeredTools(ctx: TenantContext, mode: AskMode): OfferedTool[] {
+export function offeredTools(ctx: TenantContext, mode: AskMode, opts: { github?: boolean } = {}): OfferedTool[] {
   const admin = hasRole(ctx, "admin");
   const index = askMode(mode).tools === "index";
-  const ok = (name: string) => !index || INDEX_TOOLS.has(name);
+  const ok = (name: string) => (!index || INDEX_TOOLS.has(name)) && (!!opts.github || !isGithubTool(name));
   const mcp = MCP_TOOLS
     .filter((t) => !(t.name in ASK_EXCLUDED_TOOLS) && (admin || !t.admin) && t.name in ASK_TOOLS && ok(t.name))
-    .map((t) => ({ name: t.name, description: t.description, input_schema: askInputSchema(t.inputSchema) }));
+    .map((t) => ({ name: t.name, description: ASK_DESCRIPTIONS[t.name] ?? t.description, input_schema: narrowed(t.name, askInputSchema(t.inputSchema, t.name)) }));
   return [...mcp, ...ASK_ONLY_DEFS.filter((d) => ok(d.name))];
 }
 
@@ -416,10 +495,20 @@ export function offeredTools(ctx: TenantContext, mode: AskMode): OfferedTool[] {
 export function activityLabel(tool: string, a: Record<string, unknown>): string {
   const q = (v: unknown) => (typeof v === "string" ? `'${v.length > 60 ? `${v.slice(0, 59)}…` : v}'` : "");
   const n = (v: unknown) => (typeof v === "number" ? `#${v}` : "");
+  // A GitHub step names the repository when the call did (else it is the primary's) — always "on GitHub".
+  const on = () => (typeof a.repo === "string" && a.repo ? ` in ${q(a.repo).slice(1, -1)} on GitHub` : " on GitHub");
   const L: Record<string, () => string> = {
+    github_read: () => (typeof a.path === "string" && a.path.replace(/\//g, "") ? `Opened ${q(a.path)}${on()}` : `Opened the repository's files${on()}`),
+    github_search_code: () => `Searched the code for ${q(a.q)}${on()}`,
+    github_pull_request: () => `Read pull request ${n(a.number)}${on()}`,
+    github_issue: () => `Read issue ${n(a.number)}${on()}`,
+    github_commit: () => `Read commit ${typeof a.sha === "string" ? `'${a.sha.slice(0, 12)}'` : ""}${on()}`,
+    github_list: () => `Listed recent ${({ pulls: "pull requests", commits: "commits", branches: "branches", releases: "releases", issues: "issues" } as Record<string, string>)[String(a.what)] ?? "items"}${on()}`,
+    github_ci: () => `Checked CI${typeof a.ref === "string" ? ` on ${q(a.ref)}` : ""}${on()}`,
     query: () => (a.q ? `Searched ${a.types && (a.types as string[]).length === 1 && (a.types as string[])[0] === "doc" ? "docs" : "Trov"} for ${q(a.q)}` : "Searched Trov"),
     get_doc: () => `Read the doc ${q(a.slug)}`,
-    list_docs: () => "Listed docs",
+    list_docs: () => (typeof a.space === "string" ? `Listed the docs in ${q(a.space)}` : "Listed docs"),
+    list_spaces: () => "Read the Library's spaces",
     get_feed: () => (a.since ? `Read the feed since ${typeof a.since === "string" ? shortDay(a.since.slice(0, 10)) : ""}` : "Read the feed"),
     list_tags: () => "Read the tag list",
     get_roadmap: () => "Read the roadmap",
@@ -437,6 +526,11 @@ export function activityLabel(tool: string, a: Record<string, unknown>): string 
     get_handoff: () => `Read handoff ${n(a.id)}`,
     search_prompts: () => (a.q ? `Searched prompts for ${q(a.q)}` : "Listed prompts"),
     get_prompt: () => `Read the prompt ${q(a.slug)}`,
+    list_links: () => "Read your Trov links",
+    request_link: () => "Prepared a link request",
+    join_link: () => `Prepared joining link ${n(a.id)}`,
+    send_link_note: () => `Prepared a note on link ${n(a.id)}`,
+    close_link: () => `Prepared closing link ${n(a.id)}`,
     trov_docs: () => `Looked up ${q(a.q)} in Trov's docs`,
     read_attachment: () => "Read the attachment again",
     show_items: () => "Showed items",

@@ -79,6 +79,8 @@ function pairs(theme: Theme): { pair: string; fg: RGBA; bg: RGB; min: number }[]
   out.push({ pair: "--accent-fg on --accent", fg: c("accent-fg"), bg: opaque(c("accent")), min: 4.5 });
   out.push({ pair: "--red-fg on --red", fg: c("red-fg"), bg: opaque(c("red")), min: 4.5 });
   for (const p of PEOPLE) out.push({ pair: `--p-ink on --p-${p} (avatar initials)`, fg: c("p-ink"), bg: opaque(c(`p-${p}`)), min: 4.5 });
+  // The landing's terminal mocks: dark in both themes, their Trov line in the lifted purple (D09).
+  out.push({ pair: "--term-accent on --term (the landing's terminal mocks)", fg: c("term-accent"), bg: opaque(c("term")), min: 4.5 });
   return out;
 }
 
@@ -97,6 +99,11 @@ describe("contrast — every text and control token meets WCAG AA (web/src/trov.
         expect(t[k], `${theme} --${k}`).toMatch(/^(#[0-9a-fA-F]{3,6}|rgba?\([^)]+\))$/);
       }
     }
+  });
+
+  it("the landing's terminal mocks draw their Trov line in the same purple in both themes (never the old olive)", () => {
+    expect(tokens("light")["term-accent"]).toBe(tokens("dark")["term-accent"]);
+    expect(tokens("dark")["term-accent"]).toBe(tokens("dark").accent);
   });
 
   it("the filled controls and avatars use the ink tokens, never a literal white", () => {

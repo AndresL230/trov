@@ -257,7 +257,7 @@ export function grantServerError(code: string, d: Pick<GrantDraft, "kind" | "val
 const shell = (id: string, closeAct: string, labelled: string, inner: string, describedBy = ""): string => `<div data-overlay="${attr(id)}" class="cnpy-cmodal">
     <div data-act="${attr(closeAct)}" class="cnpy-cmodal-back" aria-hidden="true"></div>
     <div class="cnpy-cmodal-wrap">
-      <div id="${attr(id)}" role="dialog" aria-modal="true" aria-labelledby="${attr(labelled)}"${describedBy ? ` aria-describedby="${attr(describedBy)}"` : ""} tabindex="-1" data-plat-dialog data-scroll-keep="${attr(id)}" class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(520px, 100%);max-height:calc(100vh - 32px);overflow-y:auto">
+      <div id="${attr(id)}" role="dialog" aria-modal="true" aria-labelledby="${attr(labelled)}"${describedBy ? ` aria-describedby="${attr(describedBy)}"` : ""} tabindex="-1" data-plat-dialog data-scroll-keep="${attr(id)}" class="cnpy-surface cnpy-cmodal-box cnpy-scroll" style="position:relative;width:min(520px, 100%);max-height:calc(100 * var(--vh) - 32px);overflow-y:auto">
         <button type="button" data-act="${attr(closeAct)}" aria-label="Close" title="Close" class="cnpy-iconbtn" style="position:absolute;top:12px;right:12px;width:28px;height:28px;display:grid;place-items:center;border-radius:7px;color:var(--fg-40)">${CLOSE}</button>
         ${inner}
       </div>

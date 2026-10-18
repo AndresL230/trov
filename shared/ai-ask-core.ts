@@ -77,6 +77,16 @@ export const ASK_REFS_MAX = 12;
 export const ASK_PEEK_MAX = 50;
 export const ASK_FOLLOWUPS_MAX = 3;
 export const ASK_DIAGRAM_NODES_MAX = 8;
+/** The GitHub tools (docs/architecture/ask.md › GitHub): requests to GitHub one ANSWER may make, across every
+ *  `github_*` call (a tool that reads two endpoints spends two); past it a call is refused with `limit`. */
+export const ASK_GITHUB_REQUESTS_MAX = 10;
+/** Each GitHub request's own timeout (ms); a timeout is an honest tool error, never content. */
+export const ASK_GITHUB_TIMEOUT_MS = 8_000;
+/** A file's text, a diff's patches, an issue's or PR's body — the most characters handed to the model of each;
+ *  past it, the first part and a note that it was cut. */
+export const ASK_GITHUB_TEXT_MAX = 24_000;
+/** Rows a list, a search, a PR's files or an issue's comments returns at most. */
+export const ASK_GITHUB_ROWS_MAX = 30;
 /** The composer says what is left once less than this share of the month remains. */
 export const ASK_LOW_SHARE = 0.2;
 
@@ -103,16 +113,17 @@ export function askAttachKind(filename: string, contentType: string): AskAttachK
 // ── Refs and ref views (#12 §2.5, §2.6) ──────────────────────────────────────
 // An answer is markdown with ref tokens: `[[ticket:14]]`, `[[pr:173]]`, `[[doc:auth-flow]]`, `[[decision:7]]`,
 // `[[feed:107]]`, `[[sprint:3]]`, `[[handoff:3]]`, `[[artifact:threat-model]]`, `[[person:meilin]]`,
-// `[[prompt:release-notes]]`, `[[repo:owner/name]]`. `[[ticket:14|status]]` draws that item's live status mark
+// `[[prompt:release-notes]]`, `[[repo:owner/name]]`, `[[link:12]]` (an agent link, `#links/12`, only for its two
+// people). `[[ticket:14|status]]` draws that item's live status mark
 // and word instead (a table's Status column). A token is LINKED only when a tool returned that item in this
 // thread or the person attached it; the server resolves those into RefViews (`done.cites`) — the rest render as
 // plain text.
 
-export const ASK_REF_TYPES = ["ticket", "pr", "doc", "decision", "feed", "sprint", "handoff", "artifact", "person", "prompt", "repo"] as const;
+export const ASK_REF_TYPES = ["ticket", "pr", "doc", "decision", "feed", "sprint", "handoff", "artifact", "person", "prompt", "repo", "link"] as const;
 export type AskRefType = (typeof ASK_REF_TYPES)[number];
 
 /** One ref token, anywhere in a text. Group 1 the type, group 2 the key, group 3 `status` for a status cell. */
-export const ASK_REF_TOKEN_RE = /\[\[(ticket|pr|doc|decision|feed|sprint|handoff|artifact|person|prompt|repo):([A-Za-z0-9][A-Za-z0-9_.@/-]{0,99})(?:\|(status))?\]\]/g;
+export const ASK_REF_TOKEN_RE = /\[\[(ticket|pr|doc|decision|feed|sprint|handoff|artifact|person|prompt|repo|link):([A-Za-z0-9][A-Za-z0-9_.@/-]{0,99})(?:\|(status))?\]\]/g;
 
 /** The refs (`type:key`) a text's tokens name, in order of first appearance, each once. */
 export function askRefTokens(text: string): string[] {
@@ -158,7 +169,7 @@ export interface RefStatus { mark: AskMarkName; tone: AskTone; word: string; tip
 export interface RefView {
   ref: string;
   type: AskRefType;
-  /** A ticket's, PR's or handoff's number. */
+  /** A ticket's, PR's, handoff's or link's number. */
   num?: number;
   title: string;
   /** null when the item has no status (a person, a feed entry). */
@@ -172,7 +183,7 @@ export interface RefView {
    *  head, base, repo, checks, excerpt }; doc: { space, version, owner, excerpt, staged }; decision: { excerpt };
    *  feed: { brief }; person: { handle, role?, workingOn?, openTickets }; sprint: { start, due, progress, excerpt };
    *  handoff: { from, to, task }; artifact: { kind, visibility, version, status }; prompt: { excerpt };
-   *  repo: { facts: AskRepoFacts | null }. `excerpt` is the item's own first paragraph (a ticket's body, a PR's
+   *  repo: { facts: AskRepoFacts | null }; link: { with, self, topic, reason, state }. `excerpt` is the item's own first paragraph (a ticket's body, a PR's
    *  "What", a decision's decision, a sprint's summary, a prompt's description), ≤ 280 chars, or null; a person's
    *  `openTickets` counts the tickets they are on that are not done or declined. */
   extra: Record<string, unknown>;
@@ -353,7 +364,8 @@ export const ASK_ROUTES = {
   peek: "/ask/peek",                                                  // POST { refs } → { items: PeekResult[] }
   item: (ref: string) => `/ask/item/${encodeURIComponent(ref)}`,      // GET → AskItem (the inspector, where no per-type route exists)
   threads: "/ask/threads",                                            // GET ?q= → AskThreadList | AskSearch
-  thread: (id: number) => `/ask/threads/${id}`,                       // GET → AskThreadDetail; PATCH AskThreadPatch; DELETE
+  thread: (id: number) => `/ask/threads/${id}`,                       // GET → AskThreadDetail (the owner's, or a shared one read-only); PATCH AskThreadPatch; DELETE
+  shared: "/ask/shared",                                              // GET → { threads: AskThreadSummary[] } — others' threads shared with the person (`direct`) or the org
   exportThread: (id: number) => `/ask/threads/${id}/export`,          // GET → text/markdown
   stop: (id: number) => `/ask/threads/${id}/stop`,                    // POST → { ok }
   saveForm: (messageId: number) => `/ask/messages/${messageId}/save-form`, // POST { block? } → { block: save_form }
@@ -428,7 +440,45 @@ export interface AskThreadSummary {
   group: AskThreadGroup;
   createdAt: string;
   updatedAt: string;
+  /** Shared with the whole org (0076_ask_sharing): every member can read it. Absent = not shared with the org. */
+  shared?: boolean;
+  /** The owner's own thread only: the people it is shared with BY NAME, each with what they may do
+   *  (0077_ask_people_sharing). Absent = nobody by name. */
+  people?: AskSharePerson[];
+  /** Its owner's handle — on a thread someone else shared (`viewer`), and on every `GET /ask/shared` row. */
+  owner?: string;
+  /** The person reading is NOT its owner: the thread is someone else's, shared with them or with the org. */
+  viewer?: boolean;
+  /** On a `viewer` thread: what the person may do — `read` (read-only) or `continue` (ask follow-ups in it, as
+   *  themselves). Only a share by name can give `continue`; the org's share is always `read`. */
+  access?: AskShareAccess;
+  /** On a `viewer` thread: shared with the person BY NAME ("Shared with you"); false = through the org only
+   *  ("Organization"). A thread shared both ways is the person's by name. */
+  direct?: boolean;
+  /** Open agent links whose side is THIS thread (its session `ask-thread-<id>`, bound for the reader) with notes
+   *  from the other side not delivered yet — they reach the thread at the start of the reader's next question. The
+   *  thread list's mark and the line at the top of the thread. Absent or empty: none (or the read failed — never a
+   *  guess). */
+  links?: AskThreadLink[];
 }
+
+/** One open link with notes waiting for a thread: "Link #12 with @jose: 2 new notes". */
+export interface AskThreadLink {
+  /** The link's per-org number. */
+  id: number;
+  /** The other side's person (the reader themself on a link with themself). */
+  with: string;
+  self: boolean;
+  /** Undelivered notes from the other side (≥ 1). */
+  notes: number;
+}
+
+/** What a person a thread is shared with BY NAME may do (0077_ask_people_sharing): read it, or continue it too. */
+export const ASK_SHARE_ACCESS = ["read", "continue"] as const;
+export type AskShareAccess = (typeof ASK_SHARE_ACCESS)[number];
+/** At most this many people by name on one thread. */
+export const ASK_SHARE_PEOPLE_MAX = 50;
+export interface AskSharePerson { handle: string; access: AskShareAccess }
 
 /** One search hit: the thread, a snippet with the match's offsets, and how many of its messages matched. */
 export interface AskSearchHit {
@@ -471,6 +521,9 @@ export interface AskMessage {
   model: string | null;
   units: number;
   createdAt: string;
+  /** Who asked this turn — on the question and on its answer (0077_ask_people_sharing: a person a thread is shared
+   *  with may continue it). Every message carries it; on rows stored before 0077 it is the thread's owner. */
+  askedBy?: string;
 }
 
 export type AskMessagePart = { kind: "text"; md: string } | { kind: "block"; index: number } | { kind: "action"; id: number };
@@ -480,7 +533,9 @@ export interface AskThreadDetail {
   messages: AskMessage[];
 }
 
-export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string }
+/** `shared`: share the thread with the org (true) or stop sharing it (false); `people`: the people it is shared with
+ *  by name — the WHOLE list, replacing the one before (empty = nobody). Its owner only. */
+export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string; shared?: boolean; people?: AskSharePerson[] }
 
 /** `POST /ask/threads/:id/save` — the whole thread (no `messageId`), one answer, or one block of it. */
 export interface AskSaveBody {
@@ -534,13 +589,20 @@ export const ASK_EXCLUDED_TOOLS: Record<string, string> = {
   record_session: "Ask is not a coding session",
   upload_asset: "files come through Ask's own attachment upload, stored as artifacts",
   delete_sprint: "a delete is a person's step on the web, never a tool",
+  // Agent links (0078): an Ask thread is a side — request_link / join_link / send_link_note / close_link are its
+  // Confirm-only cards and list_links a read (src/ai/ask/actions.ts, tools.ts). Its notes reach it in the turn.
+  link_inbox: "Ask reads link notes in its own turn.",
 };
 
 /** Ask's own tools, on top of the MCP catalog. */
 export const ASK_ONLY_TOOLS = [
   "trov_docs", "read_attachment", "save_artifact", "publish_doc", "show_items", "show_chart", "show_themes", "show_diagram", "show_not_found",
+  "github_read", "github_search_code", "github_pull_request", "github_issue", "github_commit", "github_list", "github_ci",
 ] as const;
 export type AskOnlyTool = (typeof ASK_ONLY_TOOLS)[number];
+/** The read-only GitHub tools (docs/architecture/ask.md › GitHub) — offered only while the org has a connected
+ *  repository and an admin has turned on GitHub lookups (`orgs.ai_chat_github`). */
+export const ASK_GITHUB_TOOLS = ["github_read", "github_search_code", "github_pull_request", "github_issue", "github_commit", "github_list", "github_ci"] as const;
 
 /** The fallback starters (the design's four), when the person's own work suggests none. */
 export const ASK_STARTERS_FALLBACK: readonly string[] = [

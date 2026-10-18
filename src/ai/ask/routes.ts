@@ -2,7 +2,10 @@
 // shared/ai-ask-core.ts), COOKIE ONLY — a request carrying an Authorization header is refused (`cookieOnly`;
 // CLAUDE.md invariant 8), and none of this is an MCP tool. `tenantGate` has already resolved `c.var.ctx`, the cookie
 // person's live membership of that org; every thread, message, card and attachment is that person's own, so anyone
-// else's is the one `not_found`.
+// else's is the one `not_found` — except a thread its owner SHARED (ask.md › Sharing a conversation): with the org
+// (0076_ask_sharing) every member reads it; with people by name (0077_ask_people_sharing) each reads it or continues
+// it. `threadFor` says what the person reaches; every turn is its ASKER's — only they edit, regenerate, save, flag or
+// decide the cards of it — and the thread's settings, sharing, export and deletion stay the owner's.
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { z } from "zod";
 import type { AppEnv } from "../../auth/principal";
@@ -13,18 +16,19 @@ import { planAndAiSettings } from "../../plans/gate";
 import { PLANS, planRefusal, resolveEntitlements } from "@shared/plans";
 import { nextMonthStart } from "@shared/ai-core";
 import {
-  ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES,
+  ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_KINDS, ASK_DEFAULT_MODE, ASK_FLAG_REASONS, ASK_LOW_SHARE, ASK_MODES, ASK_ROUTES, ASK_SHARE_PEOPLE_MAX,
   ASK_STARTERS_FALLBACK, askMode, askModesFor, AskCancelBodySchema, AskConfirmBodySchema, AskPeekBodySchema, AskRequestSchema, AskSaveBodySchema, AskSettingsPutSchema,
   AskThreadPatchSchema, AskWrongBodySchema, askExportName, parseAskRef,
   type AskAction, type AskActionAnswer, type AskAttachment, type AskAttachmentUpload, type AskBlock, type AskCommand, type AskEventMap, type AskMessage, type AskMessagePart, type AskMode,
-  type AskSaveForm, type AskSearchHit, type AskSettings, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadSummary,
+  type AskSaveForm, type AskSearchHit, type AskSettings, type AskSharePerson, type AskState, type AskThreadDetail, type AskThreadGroup, type AskThreadLink, type AskThreadSummary,
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
-  attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAction, getAskSettings, getMessage, getThread, groupActions, insertAction,
-  insertMessage, linkArtifact, listActions, listMessages, listThreads, markAttachmentsSent, markUndone, moveAction, patchThread, pendingAttachments, pendingHolder,
-  putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, searchThreads, setMessageContent, setThreadTitle, startTurn,
-  type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow,
+  actionInOrg, askerOf, attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAskSettings, getThread, groupActions, insertAction,
+  insertMessage, linkArtifact, listActions, listMessages, listSharedThreads, listThreads, markAttachmentsSent, markUndone, memberHandles, messageInOrg, moveAction,
+  patchThread, pendingAttachments, pendingHolder, putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, sameHandle, searchThreads,
+  setMessageContent, setThreadPeople, setThreadShared, setThreadTitle, startTurn, threadFor, threadPeople,
+  type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow, type ThreadFor,
 } from "../../data/ask";
 import { orgIdentityOf, appBase } from "../../tools/org-links";
 import { buildMatch, get_ticket, get_doc, get_sprint, withImportance } from "../../tools/reads";
@@ -48,9 +52,38 @@ import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachme
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
 import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
+import { LinkError, askThreadLinkNotes } from "../../tools/links";
+import { deliverLinkNotes, linkNotesText, linkRefsOf } from "./links";
+import { askGithub, connectedRepos, type AskGithub, type GithubTransportFactory } from "./github";
+import type { Env } from "../../env";
 
-/** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock. */
-export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number } = {};
+/** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock;
+ *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint, the access check and every read go
+ *  through it). */
+export const askDeps: { fetchImpl?: typeof fetch; docs?: DocsSource; now?: () => number; stopPollMs?: number; githubFetch?: typeof fetch } = {};
+
+/** The credentialed GitHub transport — handed in by the HTTP app (src/routes.ts → src/repo/ask-github.ts). Nothing under
+ *  src/ai/ask/ imports the credential path (test/secrets.mcp.test.ts); without it the GitHub tools are never offered. */
+let githubTransport: GithubTransportFactory | null = null;
+export function provideAskGithub(factory: GithubTransportFactory | null): void { githubTransport = factory; }
+
+/** LOCAL DEVELOPMENT ONLY: the loopback stand-in for Anthropic (`LOCAL_UPSTREAM`, src/sync/local-upstream.ts), handed
+ *  in by the HTTP app — that module reaches the billing config, which nothing under src/ai/ask/ may import. Undefined
+ *  in production and in tests (it answers only a loopback http URL beside no live key). */
+let localModelFetch: ((env: Env) => typeof fetch | undefined) | null = null;
+export function provideAskLocalUpstream(f: ((env: Env) => typeof fetch | undefined) | null): void { localModelFetch = f; }
+const modelFetch = (env: Env): typeof fetch | undefined => askDeps.fetchImpl ?? localModelFetch?.(env);
+
+/** This answer's GitHub side — null unless the org's GitHub lookups switch is on (`orgs.ai_chat_github`, an admin's;
+ *  the AI switch was checked before), a transport was handed in and the org has a connected repository. `offWithRepos`:
+ *  the switch is off while there are repositories to read — the model is told an admin can turn it on. */
+async function githubFor(env: Env, ctx: TenantContext, switchOn: boolean, signal: AbortSignal): Promise<{ github: AskGithub | null; offWithRepos: boolean }> {
+  if (!githubTransport) return { github: null, offWithRepos: false };
+  const repos = await connectedRepos(ctx).catch(() => []);
+  if (!repos.length) return { github: null, offWithRepos: false };
+  if (!switchOn) return { github: null, offWithRepos: true };
+  return { github: askGithub(githubTransport(env, ctx, { fetchImpl: askDeps.githubFetch, signal }), repos), offWithRepos: false };
+}
 
 type C = Context<AppEnv>;
 const nowMs = () => (askDeps.now ? askDeps.now() : Date.now());
@@ -78,6 +111,7 @@ const parseJson = <T>(s: string | null | undefined, fallback: T): T => {
 interface Standing {
   enabled: boolean;
   chatAuto: boolean;
+  chatGithub: boolean;
   plan: Awaited<ReturnType<typeof planAndAiSettings>>["plan"];
   used: number;
   modes: readonly AskMode[];
@@ -85,7 +119,7 @@ interface Standing {
 
 async function standing(ctx: TenantContext): Promise<Standing> {
   const s = await planAndAiSettings(ctx, nowDate());
-  return { enabled: s.enabled, chatAuto: s.chatAuto, plan: s.plan, used: s.used.ai_chat, modes: askModesFor(s.plan.plan) };
+  return { enabled: s.enabled, chatAuto: s.chatAuto, chatGithub: s.chatGithub, plan: s.plan, used: s.used.ai_chat, modes: askModesFor(s.plan.plan) };
 }
 
 /** The person's default mode: Settings › Trov's, when the plan offers it; else Smart. */
@@ -255,9 +289,13 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   const handle = me(c);
 
   let thread: ChatThreadRow | null = null;
+  let own = true;
   if (req.threadId) {
-    thread = await getThread(ctx, handle, req.threadId);
-    if (!thread) return c.json({ error: "not_found" }, 404);
+    // The owner's thread, or one shared with the person TO CONTINUE (0077); read access is the same 404 as none.
+    const reach = await threadFor(ctx, handle, req.threadId);
+    if (!reach || reach.access === "read") return c.json({ error: "not_found" }, 404);
+    thread = reach.thread;
+    own = reach.access === "owner";
   }
   const rows = thread ? await listMessages(ctx, thread.id) : [];
   const text = req.text.trim();
@@ -276,6 +314,10 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
       replace = { from: target, question: target, regenerate: false };
     } else {
       return c.json({ error: "invalid", message: "Only the last question or answer can be replaced." }, 400);
+    }
+    // Every turn is its asker's: nobody edits or regenerates someone else's (the owner included).
+    if (!sameHandle(askerOf(replace.question, thread), handle)) {
+      return c.json({ error: "forbidden", message: "Only the person who asked it can edit or regenerate it." }, 403);
     }
   } else if (!text) {
     return c.json({ error: "invalid", message: "Say something." }, 400);
@@ -312,7 +354,7 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   };
   const work = (async () => {
     try {
-      await converse(c, { req, thread, rows, text, replace, st, settings, emit, signal: gone.signal });
+      await converse(c, { req, thread, own, rows, text, replace, st, settings, emit, signal: gone.signal });
     } catch (e) {
       console.error("ask turn", e instanceof Error ? e.name : "error");
       await emit("error", { code: "failed", message: "Something went wrong. Nothing was changed. Try again." });
@@ -328,6 +370,8 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
 interface Conversation {
   req: ReturnType<typeof AskRequestSchema.parse>;
   thread: ChatThreadRow | null;
+  /** The person asking is the thread's owner (or it is new); false = a thread shared with them to continue. */
+  own: boolean;
   rows: ChatMessageRow[];
   text: string;
   replace: { from: ChatMessageRow; question: ChatMessageRow; regenerate: boolean } | null;
@@ -390,7 +434,8 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   const thread = v.thread ?? (await getThread(ctx, handle, await createThread(ctx, handle, {
     mode, auto, origin: v.req.origin ?? "page", contextRef: v.req.origin === "panel" ? visibleContext[0] ?? null : null,
   })))!;
-  const turn = await startTurn(ctx, thread.id, mode, auto);
+  // A shared thread's turn leaves its mode and Auto as the owner set them (0077).
+  const turn = await startTurn(ctx, thread.id, mode, auto, undefined, v.own);
   await v.emit("thread", { id: thread.id, title: thread.title, mode, auto, origin: thread.origin, contextRef: thread.context_ref, ...autoOff });
 
   // The question: kept (regenerate), replaced (edit — its attachments carried over), or new.
@@ -408,20 +453,44 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     // New attachments: this thread's, uploaded and not sent yet — each ALREADY an artifact. Files uploaded before the
     // thread existed are pending on the person's holder: the ones this question names move onto it first (Q60).
     await bindPendingAttachments(ctx, handle, thread.id, v.req.attachments);
-    const pending = await pendingAttachments(ctx, thread.id, v.req.attachments);
+    // Only files the person uploaded: in a shared thread, someone else's unsent upload is never theirs to send.
+    const pending = await pendingAttachments(ctx, thread.id, handle, v.req.attachments);
     attachments = [...attachments, ...(await attachmentsOf(ctx, pending, orgSlug))];
     const context = visibleContext;
-    const content: StoredContent = { text: v.text, command: v.req.command ?? null, context, refs: context, attached: attachments.map((a) => ({ id: a.id, title: a.title })) };
-    const id = await insertMessage(ctx, thread.id, { role: "user", mode, content, attachments });
+    // Edit-and-resend keeps the link notes the replaced question carried (they were delivered once, with it).
+    const carried = v.replace ? contentOf(v.replace.question).linkNotes ?? [] : [];
+    const content: StoredContent = {
+      text: v.text, command: v.req.command ?? null, context, refs: [...context, ...linkRefsOf(carried)], attached: attachments.map((a) => ({ id: a.id, title: a.title })),
+      ...(carried.length ? { linkNotes: carried } : {}),
+    };
+    const id = await insertMessage(ctx, thread.id, { role: "user", mode, content, attachments, askedBy: handle });
     await markAttachmentsSent(ctx, pending.map((p) => p.id), id);
-    // The words were sent: the thread keeps no draft of them (a reload or another device opens an empty box).
-    if (thread.draft) await patchThread(ctx, handle, thread.id, { draft: "" });
-    question = (await getMessage(ctx, handle, id))!;
+    // The words were sent: the thread keeps no draft of them (a reload or another device opens an empty box). The
+    // draft is the owner's: someone continuing a shared thread never had one there.
+    if (v.own && thread.draft) await patchThread(ctx, handle, thread.id, { draft: "" });
+    question = (await messageInOrg(ctx, id))!;
   }
-  const qc = contentOf(question);
-  const seen = seenRefs([...earlier, question]);
+  let qc = contentOf(question);
+  let seen = seenRefs([...earlier, question]);
 
   if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen, rec.parts);
+
+  // Agent links: the notes the other side wrote to this thread's side are delivered NOW, once, into this turn — after
+  // the gate (the AI switch off, no key or the allowance used: nothing is delivered) and never to a `/search` (no
+  // model reads it). Kept on the question so later turns carry them too (./links.ts). A new thread has no side yet.
+  if (v.thread) {
+    const got = await deliverLinkNotes(ctx, handle, thread.id, nowMs());
+    if (got.notes.length || got.more) {
+      const merged: StoredContent = {
+        ...qc, linkNotes: [...(qc.linkNotes ?? []), ...got.notes], linkMore: got.more,
+        refs: [...new Set([...(qc.refs ?? []), ...linkRefsOf(got.notes)])],
+      };
+      await setMessageContent(ctx, question.id, merged);
+      question = { ...question, content_json: JSON.stringify(merged) };
+      qc = merged;
+      seen = seenRefs([...earlier, question]);
+    }
+  }
 
   // The question counts BEFORE the model is called (an attempt, like every AI allowance) — and still counts if stopped.
   const p = platform(env, handle);
@@ -429,32 +498,39 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
 
   const nonce = newNonce();
-  const compacted = await maybeCompact(env, ctx, thread, earlier, askDeps.fetchImpl);
-  const { messages: history, actionsNote } = await buildHistory(ctx, compacted, earlier, nonce);
+  const compacted = await maybeCompact(env, ctx, thread, earlier, modelFetch(env));
+  const { messages: history, actionsNote } = await buildHistory(ctx, compacted, earlier, nonce, handle);
   const ctxViews = (qc.context ?? []).length ? await resolveViews(ctx, handle, qc.context ?? [], nowDate()) : new Map();
   // An attachment the model can't take (too large, or no room left in this request) is stored but not read: the
   // model is told, and the person sees a notice (the turn's first activity lines).
   const files = await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce);
+  const linkNotes = linkNotesText(nonce, qc.linkNotes ?? [], qc.linkMore ?? 0);
   const user = [
     ...(actionsNote ? [{ type: "text" as const, text: actionsNote }] : []),
+    ...(linkNotes ? [{ type: "text" as const, text: linkNotes }] : []),
     ...files.blocks,
     ...(ctxViews.size ? [{ type: "text" as const, text: fence(nonce, "Items the person attached as context", JSON.stringify([...ctxViews.values()])) }] : []),
     ...(qc.command && qc.command !== "search" ? [{ type: "text" as const, text: COMMAND_NOTE[qc.command as Exclude<AskCommand, "search">] }] : []),
     { type: "text" as const, text: qc.text || "(no text)" },
   ];
 
+  // The GitHub side (./github.ts), built here — past the gate, so with the AI switch off nothing reaches GitHub — only
+  // while the org's GitHub lookups switch is on, and only for a mode that is offered the full catalog.
+  const gh = def.tools === "index" ? { github: null, offWithRepos: false } : await githubFor(env, ctx, v.st.chatGithub, v.signal);
+  const github = gh.github;
   const tool: AskToolCtx = {
     env, ctx, handle, orgSlug, origin: new URL(c.req.url).origin, threadId: thread.id,
-    docs: askDeps.docs ?? assetsDocs(env), now: nowDate, searched: new Map(),
+    docs: askDeps.docs ?? assetsDocs(env), github, now: nowDate, searched: new Map(),
   };
   const out = await runTurn({
     env, ctx, tool, mode, turn,
     system: contextBlock({
       orgName: org?.name ?? "this organization", orgSlug, handle, role: ctx.role, mode,
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
+      githubRepos: github?.repos ?? null, githubOff: gh.offWithRepos,
     }),
     history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
-    fetchImpl: askDeps.fetchImpl, now: nowMs, stopPollMs: askDeps.stopPollMs,
+    fetchImpl: modelFetch(env), now: nowMs, stopPollMs: askDeps.stopPollMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);
 
@@ -466,7 +542,7 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   // stopped one still counts, as before.
   const empty = out.ended === "done" && isEmptyAnswer(out, rec.parts);
   if (empty) await unmeterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
-  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, empty ? 0 : def.countsAs, rec.parts, lastAnswerWithContent(earlier));
+  const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, empty ? 0 : def.countsAs, handle, rec.parts, lastAnswerWithContent(earlier));
   if (failed) return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : "Something went wrong. Nothing was changed. Try again." });
 
   const title = thread.title || out.title || fallbackTitle(qc.text ?? "");
@@ -510,14 +586,14 @@ function saveTarget(out: Pick<TurnResult, "text" | "blocks" | "saveWhich">, curr
   return own || previous === null ? current : previous;
 }
 
-async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number, parts?: AskMessagePart[], previous: number | null = null): Promise<number> {
+async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, mode: AskMode, out: TurnResult, seen: Set<string>, cites: RefView[], stopped: boolean, countsAs: number, askedBy: string, parts?: AskMessagePart[], previous: number | null = null): Promise<number> {
   const content: StoredContent = {
     text: out.text, refs: [...seen], blocks: out.blocks, activity: out.activity, followups: stopped ? [] : out.followups, thinking: out.thinking,
     ...(parts ? { parts } : {}),
   };
   const id = await insertMessage(ctx, threadId, {
     role: "assistant", mode, content, cites, model: out.model, tokensIn: out.tokens.in, tokensOut: out.tokens.out, tokensCached: out.tokens.cached,
-    units: out.called ? countsAs : 0, stopped,
+    units: out.called ? countsAs : 0, stopped, askedBy,
   });
   // A save form names the answer it saves.
   if (out.blocks.some((b) => b.kind === "save_form")) {
@@ -551,7 +627,7 @@ async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: 
     text, title: null, followups: [], blocks: items.length ? [block] : [], activity: [{ step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, results: items.map((i) => i.ref), resultLine: resultLine(items.length) }],
     thinking: null, model: "", tokens: { in: 0, out: 0, cached: 0 }, ended: "done", called: false, autosave: null, saveWhich: null,
   };
-  const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0, parts);
+  const messageId = await storeAnswer(ctx, thread.id, turn, v.req.mode, out, seen, items, false, 0, me(c), parts);
   if (!thread.title) {
     const title = fallbackTitle(`Search: ${q}`);
     await setThreadTitle(ctx, thread.id, title);
@@ -597,7 +673,7 @@ async function autoSave(c: C, thread: ChatThreadRow, turn: number, messageId: nu
   const ctx = c.var.ctx;
   const title = a.title ?? `${threadTitle}, ${shortDay(nowDate().toISOString().slice(0, 10))}`;
   const preview = { title: `Save "${title}" as an artifact`, lines: [{ label: "Visibility", value: "Private" }], item: null };
-  const id = await insertAction(ctx, { threadId: thread.id, turn, tool: "save_artifact", kind: "other", groupId: a.groupId, toolUseId: "", args: a, preview, state: "running" });
+  const id = await insertAction(ctx, { threadId: thread.id, turn, tool: "save_artifact", kind: "other", groupId: a.groupId, toolUseId: "", args: a, preview, state: "running", askedBy: me(c) });
   try {
     const saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : target, block: null, title, kind: a.kind, visibility: "private" });
     await finishAction(ctx, id, "auto", saved, { slug: saved.slug });
@@ -621,10 +697,44 @@ export function threadGroup(t: Pick<ChatThreadRow, "pinned" | "updated_at">, now
   return now.getTime() - new Date(t.updated_at).getTime() < 7 * 86_400_000 ? "week" : "earlier";
 }
 
-const summaryOf = (t: ChatThreadRow): AskThreadSummary => ({
+/** The owner's own thread; `people` = who it is shared with by name (0077), when anyone. */
+const summaryOf = (t: ChatThreadRow, people?: AskSharePerson[], links: readonly AskThreadLink[] = []): AskThreadSummary => ({
   id: t.id, title: t.title, pinned: t.pinned === 1, mode: t.mode, auto: t.auto_mode === 1, origin: t.origin, contextRef: t.context_ref,
   hasDraft: t.draft.trim().length > 0, group: threadGroup(t, nowDate()), createdAt: t.created_at, updatedAt: t.updated_at,
+  shared: t.shared_at !== null, ...(people?.length ? { people } : {}),
+  ...(links.length ? { links: [...links] } : {}),
 });
+
+/** Someone else's thread as a person it is shared with reads it: none of the owner's own settings — no draft, no
+ *  pin, no Auto, nor who else it is shared with — but whose it is, what the person may do, and how it reached them. */
+const viewerSummaryOf = (r: ThreadFor): AskThreadSummary => ({
+  ...summaryOf(r.thread), pinned: false, auto: false, hasDraft: false, group: threadGroup({ pinned: 0, updated_at: r.thread.updated_at }, nowDate()),
+  owner: r.thread.handle, viewer: true, access: r.access === "continue" ? "continue" : "read", direct: r.direct,
+});
+
+/** The owner's threads with who each is shared with by name, and the link notes waiting for each. */
+async function ownSummaries(ctx: TenantContext, threads: readonly ChatThreadRow[], links: ReadonlyMap<number, AskThreadLink[]> = new Map()): Promise<AskThreadSummary[]> {
+  const people = await threadPeople(ctx, threads.map((t) => t.id));
+  return threads.map((t) => summaryOf(t, people.get(t.id), links.get(t.id)));
+}
+
+/**
+ * Agent links with notes waiting for the person's threads, by thread — ONE read for the whole list (`askThreadLinkNotes`).
+ * Never fails the list: a failed read is no mark at all (logged), never a guessed count (invariant 7).
+ */
+async function linkNotesByThread(ctx: TenantContext, handle: string): Promise<Map<number, AskThreadLink[]>> {
+  const out = new Map<number, AskThreadLink[]>();
+  try {
+    for (const r of await askThreadLinkNotes(ctx, handle)) {
+      const list = out.get(r.thread) ?? [];
+      list.push({ id: r.id, with: r.with, self: r.self, notes: r.notes });
+      out.set(r.thread, list);
+    }
+  } catch (e) {
+    console.error("ask link notes", e instanceof Error ? e.name : "error");
+  }
+  return out;
+}
 
 /** FTS5's snippet with its marker characters → the text and the match's offsets. */
 export function snippetOffsets(raw: string | null): AskSearchHit["snippet"] {
@@ -640,11 +750,30 @@ export function snippetOffsets(raw: string | null): AskSearchHit["snippet"] {
   return { text, matches };
 }
 
+/** Other people's threads shared with the person — by name ("Shared with you", `direct`) or with the org
+ *  ("Organization"); their own shared ones are in their own list. */
+askApp.get(ASK_ROUTES.shared, async (c) => {
+  try {
+    // The link notes waiting for the READER's own side of each (a shared thread's side is whoever confirmed its card;
+    // the owner's side shows in the owner's own list, never here).
+    const [rows, links] = await Promise.all([listSharedThreads(c.var.ctx, me(c)), linkNotesByThread(c.var.ctx, me(c))]);
+    return c.json({ threads: rows.map((r) => {
+      const waiting = links.get(r.thread.id) ?? [];
+      return { ...viewerSummaryOf(r), ...(waiting.length ? { links: [...waiting] } : {}) };
+    }) });
+  } catch (e) {
+    console.error("ask shared", e instanceof Error ? e.name : "error");
+    return c.json({ error: "Couldn't read the shared threads" }, 503);
+  }
+});
+
 askApp.get(ASK_ROUTES.threads, async (c) => {
   const q = (c.req.query("q") ?? "").trim().slice(0, 200);
-  if (!q) return c.json({ threads: (await listThreads(c.var.ctx, me(c))).map(summaryOf) });
+  const links = await linkNotesByThread(c.var.ctx, me(c));
+  if (!q) return c.json({ threads: await ownSummaries(c.var.ctx, await listThreads(c.var.ctx, me(c)), links) });
   const found = await searchThreads(c.var.ctx, me(c), q, buildMatch(q));
-  const hits: AskSearchHit[] = found.map((f) => ({ thread: summaryOf(f.thread), snippet: snippetOffsets(f.snippet), matchCount: f.matchCount }));
+  const own = await ownSummaries(c.var.ctx, found.map((f) => f.thread), links);
+  const hits: AskSearchHit[] = found.map((f, i) => ({ thread: own[i], snippet: snippetOffsets(f.snippet), matchCount: f.matchCount }));
   return c.json({ hits });
 });
 
@@ -670,6 +799,8 @@ export function refOfAction(tool: string, state: string, args: unknown, result: 
     case "send_handoff": case "claim_handoff": return ref("handoff", num(r.id) ?? num(a.id));
     case "expire_handoff": return ref("handoff", num(a.id) ?? num(r.id));
     case "save_prompt": return ref("prompt", txt(r.slug));
+    case "request_link": case "join_link": case "close_link": return ref("link", num(r.id) ?? num(a.id));
+    case "send_link_note": return ref("link", num(r.link) ?? num(a.id));
     default: return null;
   }
 }
@@ -691,9 +822,10 @@ function cardFieldsOf(a: ChatActionRow): { fields: Record<string, unknown>; edit
   return { fields: spec?.fields ? spec.fields(args) : {}, editable: a.state === "proposed" || a.state === "waiting" ? [...(spec?.editable ?? [])] : [] };
 }
 
-function messageOf(m: ChatMessageRow, actions: ChatActionRow[]): AskMessage {
+function messageOf(m: ChatMessageRow, actions: ChatActionRow[], thread: Pick<ChatThreadRow, "handle">): AskMessage {
   const content = contentOf(m);
   return {
+    askedBy: askerOf(m, thread),
     id: m.id, role: m.role, mode: m.mode, text: content.text ?? "", command: (content.command ?? null) as AskCommand | null, context: content.context ?? [],
     blocks: (content.blocks ?? []) as AskBlock[], activity: (content.activity ?? []) as AskMessage["activity"], followups: content.followups ?? [],
     thinking: content.thinking ?? null, cites: parseJson<RefView[]>(m.cites_json, []), attachments: parseJson<AskAttachment[]>(m.attachments_json, []),
@@ -708,24 +840,140 @@ async function threadOr404(c: C): Promise<ChatThreadRow | Response> {
 }
 
 askApp.get("/ask/threads/:id", async (c) => {
-  const t = await threadOr404(c);
-  if (t instanceof Response) return t;
-  const [rows, actions] = await Promise.all([listMessages(c.var.ctx, t.id), listActions(c.var.ctx, t.id)]);
-  const body: AskThreadDetail = { thread: { ...summaryOf(t), draft: t.draft }, messages: rows.map((m) => messageOf(m, actions)) };
+  const id = positiveId(c.req.param("id"));
+  // The person's own thread, or one shared with them (by name or with the org); anything else — private, another
+  // org's, unknown, a removed member's — is the same 404 (its existence never shows).
+  const reach = id === null ? null : await threadFor(c.var.ctx, me(c), id);
+  if (!reach) return c.json({ error: "not_found" }, 404);
+  const t = reach.thread;
+  // The link notes waiting count for the READER's own side (a shared thread's side is whoever confirmed its card).
+  const [rows, actions, links] = await Promise.all([listMessages(c.var.ctx, t.id), listActions(c.var.ctx, t.id), linkNotesByThread(c.var.ctx, me(c))]);
+  const waiting = links.get(t.id) ?? [];
+  // Every turn someone ELSE asked reads as theirs — for the owner too, once a thread is shared to continue.
+  const messages = await asViewer(c.var.ctx, me(c), rows.map((m) => messageOf(m, actions, t)));
+  const body: AskThreadDetail = reach.access === "owner"
+    ? { thread: { ...summaryOf(t, (await threadPeople(c.var.ctx, [t.id])).get(t.id), waiting), draft: t.draft }, messages }
+    : { thread: { ...viewerSummaryOf(reach), ...(waiting.length ? { links: [...waiting] } : {}), draft: "" }, messages };
   return c.json(body);
 });
+
+/**
+ * The turns of a thread that someone OTHER than `viewer` asked, as the viewer reads them (ask.md › Sharing a
+ * conversation): a shared thread's reader reads the owner's turns this way, and since 0077 the owner reads the turns
+ * of someone they shared it with to continue the same way. What was asked and what Trov wrote are shared as written;
+ * what the stored answer resolved FOR ITS ASKER is resolved again for the viewer, so an item only the asker can see
+ * (their private artifact) never shows its title, status or link:
+ *  - every ref those turns name (sources, item cards, diagram nodes, context chips, steps' results, cards' items and
+ *    done lines, a saved page) is re-read as the viewer in one batch, and what they can't see is dropped (a diagram
+ *    node keeps its label and loses its link);
+ *  - attachments are the asker's PRIVATE artifacts: the viewer gets each file's name, kind and size, never its slug,
+ *    hash or preview; opening one is the private artifact's own rule (its author only), so it stays closed;
+ *  - a card is never editable or undoable (only its asker decides it).
+ * The viewer's own turns are returned untouched.
+ */
+async function asViewer(ctx: TenantContext, viewer: string, list: AskMessage[]): Promise<AskMessage[]> {
+  const foreign = (m: AskMessage): boolean => !!m.askedBy && !sameHandle(m.askedBy, viewer);
+  const messages = list.filter(foreign);
+  if (!messages.length) return list;
+  const refs = new Set<string>();
+  for (const m of messages) {
+    m.cites.forEach((x) => refs.add(x.ref));
+    m.context.forEach((r) => refs.add(r));
+    m.activity.forEach((st) => st.results.forEach((r) => refs.add(r)));
+    for (const b of m.blocks) {
+      if (b.kind === "items") b.items.forEach((x) => refs.add(x.ref));
+      else if (b.kind === "diagram") b.diagram.nodes.forEach((n) => { if (n.ref) refs.add(n.ref); });
+      else if (b.kind === "save_form" && b.form.saved) refs.add(`artifact:${b.form.saved.slug}`);
+    }
+    for (const a of m.actions) { if (a.ref) refs.add(a.ref); if (a.preview.item) refs.add(a.preview.item.ref); }
+  }
+  const named = [...refs].map(normalRef).filter((r) => parseAskRef(r) !== null);
+  const seen = named.length ? await resolveViews(ctx, viewer, named, nowDate()) : new Map<string, RefView>();
+  const view = (ref: string): RefView | null => seen.get(normalRef(ref)) ?? null;
+  const sees = (ref: string): boolean => seen.has(normalRef(ref));
+  const visible = (xs: readonly RefView[]): RefView[] => xs.flatMap((x) => { const now = view(x.ref); return now ? [now] : []; });
+  const block = (b: AskBlock): AskBlock => {
+    if (b.kind === "items") return { ...b, items: visible(b.items) };
+    if (b.kind === "diagram") {
+      return { ...b, diagram: { ...b.diagram, nodes: b.diagram.nodes.map((n) => (n.ref && sees(n.ref) ? { ...n, view: view(n.ref) } : { ...n, ref: null, view: null })) } };
+    }
+    if (b.kind === "save_form") return { ...b, form: { ...b.form, saved: b.form.saved && sees(`artifact:${b.form.saved.slug}`) ? b.form.saved : null } };
+    return b;
+  };
+  return list.map((m) => (!foreign(m) ? m : {
+    ...m,
+    cites: visible(m.cites),
+    context: m.context.filter(sees),
+    activity: m.activity.map((st) => ({ ...st, results: st.results.filter(sees) })),
+    blocks: m.blocks.map(block),
+    attachments: m.attachments.map((f) => ({ id: f.id, slug: "", title: f.title, kind: f.kind, contentType: f.contentType, size: f.size, sha256: "" })),
+    actions: m.actions.map((a) => {
+      const hidden = a.ref !== null && !sees(a.ref);
+      return {
+        ...a, editable: [], undo: false,
+        ref: hidden ? null : a.ref,
+        preview: { ...a.preview, item: a.preview.item ? view(a.preview.item.ref) : null },
+        // A saved answer the reader can't see: not its title or address either.
+        result: hidden && a.tool === "save_artifact" ? null : a.result,
+      };
+    }),
+  }));
+}
 
 askApp.patch("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
   if (t instanceof Response) return t;
   const parsed = AskThreadPatchSchema.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
+  if (!parsed.success) {
+    // The Share dialog shows `message`: the one limit a person can reach from it says so in words.
+    const tooMany = parsed.error.issues.some((i) => i.path[0] === "people" && i.code === "too_big");
+    return c.json({ error: "invalid", ...(tooMany ? { message: `Share with at most ${ASK_SHARE_PEOPLE_MAX} people by name.` } : {}), issues: parsed.error.issues }, 400);
+  }
   const st = await standing(c.var.ctx);
   if (parsed.data.auto === true && !st.chatAuto) return c.json({ error: "auto_off", message: "An admin turned off Auto for this org. Trov asks before every change." }, 409);
   if (parsed.data.mode && !st.modes.includes(parsed.data.mode)) return c.json({ error: "mode_unavailable" }, 403);
-  await patchThread(c.var.ctx, me(c), t.id, parsed.data);
-  return c.json({ thread: summaryOf((await getThread(c.var.ctx, me(c), t.id))!) });
+  const { shared, people, ...rest } = parsed.data;
+  // Who it is shared with by name (0077): members of this org, never the owner, each once — checked before anything
+  // is written, so a refused list changes nothing.
+  let named: AskSharePerson[] | null = null;
+  if (people !== undefined) {
+    named = await sharePeople(c.var.ctx, me(c), people);
+    if (!named) return c.json({ error: "invalid", message: "Share only with members of this organization, other than you, each once." }, 400);
+  }
+  await patchThread(c.var.ctx, me(c), t.id, rest);
+  // Share with the org / stop sharing (0076_ask_sharing), and the people by name (0077): the owner's own thread only
+  // — `threadOr404` answered 404 to anyone else, a person it is shared with included.
+  if (shared !== undefined) await setThreadShared(c.var.ctx, me(c), t.id, shared);
+  if (named) await setThreadPeople(c.var.ctx, me(c), t.id, named);
+  return c.json({ thread: (await ownSummaries(c.var.ctx, [(await getThread(c.var.ctx, me(c), t.id))!]))[0] });
 });
+
+/** A share list as stored: each handle a member of this org (in its stored spelling), not the owner, none twice.
+ *  Null when any is not. */
+async function sharePeople(ctx: TenantContext, owner: string, people: readonly AskSharePerson[]): Promise<AskSharePerson[] | null> {
+  const keys = people.map((x) => x.handle.toLowerCase());
+  if (new Set(keys).size !== keys.length || keys.includes(owner.toLowerCase())) return null;
+  const members = new Map((await memberHandles(ctx, people.map((x) => x.handle))).map((h) => [h.toLowerCase(), h]));
+  const out = people.map((x) => ({ handle: members.get(x.handle.toLowerCase()) ?? "", access: x.access }));
+  return out.every((x) => x.handle) ? out : null;
+}
+
+/** The thread if the person may CONTINUE it — its owner, or shared with them to continue (0077) — else the 404. */
+async function continuableOr404(c: C, rawId: string | undefined): Promise<ThreadFor | Response> {
+  const id = positiveId(rawId);
+  const reach = id === null ? null : await threadFor(c.var.ctx, me(c), id);
+  return reach && reach.access !== "read" ? reach : c.json({ error: "not_found" }, 404);
+}
+
+/** A message of a thread the person may continue AND whose turn they asked — what Save and Wrong? act on. */
+async function ownTurnMessage(c: C, rawId: string | undefined): Promise<{ m: ChatMessageRow; reach: ThreadFor } | null> {
+  const id = positiveId(rawId);
+  const m = id === null ? null : await messageInOrg(c.var.ctx, id);
+  if (!m) return null;
+  const reach = await threadFor(c.var.ctx, me(c), m.thread_id);
+  if (!reach || reach.access === "read" || !sameHandle(askerOf(m, reach.thread), me(c))) return null;
+  return { m, reach };
+}
 
 askApp.delete("/ask/threads/:id", async (c) => {
   const t = await threadOr404(c);
@@ -736,9 +984,9 @@ askApp.delete("/ask/threads/:id", async (c) => {
 });
 
 askApp.post("/ask/threads/:id/stop", async (c) => {
-  const t = await threadOr404(c);
-  if (t instanceof Response) return t;
-  await requestStop(c.var.ctx, me(c), t.id);
+  const reach = await continuableOr404(c, c.req.param("id"));
+  if (reach instanceof Response) return reach;
+  await requestStop(c.var.ctx, reach.thread.id);
   return c.json({ ok: true });
 });
 
@@ -758,14 +1006,14 @@ askApp.get("/ask/threads/:id/export", async (c) => {
 
 /** Save as artifact, from the footer or a block: a save form under that answer — no model call. */
 askApp.post("/ask/messages/:id/save-form", async (c) => {
-  const id = positiveId(c.req.param("id"));
-  const m = id === null ? null : await getMessage(c.var.ctx, me(c), id);
-  if (!m || m.role !== "assistant") return c.json({ error: "not_found" }, 404);
+  const own = await ownTurnMessage(c, c.req.param("id"));
+  if (!own || own.m.role !== "assistant") return c.json({ error: "not_found" }, 404);
+  const m = own.m;
   const body = (await c.req.json().catch(() => null)) as { block?: unknown } | null;
   const content = contentOf(m);
   const blocks = (content.blocks ?? []) as AskBlock[];
   const block = typeof body?.block === "number" && Number.isInteger(body.block) && body.block >= 0 && body.block < blocks.length ? body.block : null;
-  const t = (await getThread(c.var.ctx, me(c), m.thread_id))!;
+  const t = own.reach.thread;
   const form: AskSaveForm = { messageId: m.id, block, title: `${t.title || "Ask Trov"}, ${shortDay(nowDate().toISOString().slice(0, 10))}`, kind: "markdown", visibility: "private", saved: null };
   const added: AskBlock = { kind: "save_form", form };
   await setMessageContent(c.var.ctx, m.id, { ...content, blocks: [...blocks, added] });
@@ -773,14 +1021,17 @@ askApp.post("/ask/messages/:id/save-form", async (c) => {
 });
 
 askApp.post("/ask/threads/:id/save", async (c) => {
-  const t = await threadOr404(c);
-  if (t instanceof Response) return t;
+  const reach = await continuableOr404(c, c.req.param("id"));
+  if (reach instanceof Response) return reach;
+  const t = reach.thread;
   const parsed = AskSaveBodySchema.safeParse((await c.req.json().catch(() => null)) ?? {});
   if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
   const rows = await listMessages(c.var.ctx, t.id);
   const one = parsed.data.messageId;
-  const answer = one === undefined ? null : rows.find((m) => m.id === one && m.role === "assistant");
+  // One answer: only its asker saves it. The whole thread: only its owner.
+  const answer = one === undefined ? null : rows.find((m) => m.id === one && m.role === "assistant" && sameHandle(askerOf(m, t), me(c)));
   if (one !== undefined && !answer) return c.json({ error: "not_found" }, 404);
+  if (one === undefined && reach.access !== "owner") return c.json({ error: "not_found" }, 404);
   if (!rows.length) return c.json({ error: "invalid", message: "Nothing to save yet." }, 400);
   const title = parsed.data.title ?? `${t.title || "Ask Trov"}, ${shortDay(nowDate().toISOString().slice(0, 10))}`;
   try {
@@ -805,14 +1056,17 @@ askApp.post("/ask/threads/:id/save", async (c) => {
 function toolCtxFor(c: C, threadId: number, slug: string): AskToolCtx {
   return {
     env: c.env, ctx: c.var.ctx, handle: me(c), orgSlug: slug, origin: new URL(c.req.url).origin, threadId,
-    docs: askDeps.docs ?? assetsDocs(c.env), now: nowDate, searched: new Map(),
+    docs: askDeps.docs ?? assetsDocs(c.env), github: null, now: nowDate, searched: new Map(),
   };
 }
 
+/** A card the person may decide: on a thread they may continue, proposed in a turn THEY asked (a card runs as the
+ *  person who confirms it, so only its asker does). Anything else is the one 404. */
 async function actionOr404(c: C): Promise<ActionWithTurn | Response> {
   const id = positiveId(c.req.param("id"));
-  const a = id === null ? null : await getAction(c.var.ctx, me(c), id);
-  return a ?? c.json({ error: "not_found" }, 404);
+  const a = id === null ? null : await actionInOrg(c.var.ctx, id);
+  const reach = a ? await threadFor(c.var.ctx, me(c), a.thread_id) : null;
+  return a && reach && reach.access !== "read" && sameHandle(askerOf(a, reach.thread), me(c)) ? a : c.json({ error: "not_found" }, 404);
 }
 
 /** The cards a request acts on: the one, or its whole group (unless `only`). */
@@ -838,6 +1092,9 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
   const org = await orgIdentityOf(c.var.ctx);
   const tc = toolCtxFor(c, a.thread_id, org?.slug ?? "");
   const results: AskEventMap["action_result"][] = [];
+  // An agent-link card acts AS the thread's side: with the org's AI switch off there is no Ask, so no Ask side
+  // (invariant 15) — read once, only when such a card is confirmed.
+  let aiOn: boolean | null = null;
   for (const one of await targets(c, a, !!parsed.data.only || !!parsed.data.args)) {
     const spec = WRITES[one.tool];
     if (!spec || (one.state !== "proposed" && one.state !== "waiting")) continue;
@@ -864,6 +1121,10 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
       // The CONFIRMER's rights now, as if they called the tool themselves — never the rights the card was made
       // under (Q57); each writer's own rule (the lane, the assignment rule…) runs again inside `run`.
       assertMayRunNow(c.var.ctx, one.tool);
+      if (spec.asSide) {
+        aiOn ??= (await standing(c.var.ctx)).enabled;
+        if (!aiOn) throw new LinkError("forbidden", "Ask Trov is off for this org, so this thread can't act on a Trov link.");
+      }
       const ran = await spec.run(tc, spec.input.parse(args));
       await finishAction(c.var.ctx, one.id, "confirmed", ran.result, ran.undo);
       results.push(result(one, "confirmed", ran.result, ran.ref, ran.undo !== null));
@@ -934,10 +1195,10 @@ askApp.post(ASK_ROUTES.attachments, async (c) => {
   const raw = form.get("threadId");
   let threadId = 0;
   if (raw !== null && raw !== "") {
-    const id = positiveId(String(raw));
-    const t = id === null ? null : await getThread(ctx, me(c), id);
-    if (!t) return c.json({ error: "not_found" }, 404);
-    threadId = t.id;
+    // The owner's thread, or one shared with the person to continue: the file is THEIR private artifact either way.
+    const reach = await continuableOr404(c, String(raw));
+    if (reach instanceof Response) return reach;
+    threadId = reach.thread.id;
   }
   const files: UploadFile[] = [];
   for (const v of form.getAll("file") as unknown as (string | File)[]) {
@@ -977,9 +1238,9 @@ askApp.delete("/ask/attachments/:id", async (c) => {
 // ── "Wrong?" ─────────────────────────────────────────────────────────────────
 
 askApp.post("/ask/messages/:id/wrong", async (c) => {
-  const id = positiveId(c.req.param("id"));
-  const m = id === null ? null : await getMessage(c.var.ctx, me(c), id);
-  if (!m || m.role !== "assistant") return c.json({ error: "not_found" }, 404);
+  const own = await ownTurnMessage(c, c.req.param("id"));
+  if (!own || own.m.role !== "assistant") return c.json({ error: "not_found" }, 404);
+  const m = own.m;
   const parsed = AskWrongBodySchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid", issues: parsed.error.issues }, 400);
   const cites = parseJson<RefView[]>(m.cites_json, []).map((x) => x.ref);

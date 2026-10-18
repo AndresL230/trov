@@ -111,6 +111,20 @@ describe("billing is not an agent's", () => {
   });
 });
 
+describe("archiving a Library page is a person's, never an agent's (0083_doc_archive; the owner's rule)", () => {
+  it("nothing reachable from src/mcp.ts imports src/tools/doc-archive.ts or names its writes; the HTTP app does", () => {
+    expect(SOURCES.has("src/tools/doc-archive.ts")).toBe(true);
+    expect(reachable("src/routes.ts").has("src/tools/doc-archive.ts")).toBe(true);
+    const fromMcp = reachable("src/mcp.ts");
+    expect(fromMcp.has("src/tools/doc-tree.ts"), "the walker does reach the tree module").toBe(true);
+    expect(fromMcp.has("src/tools/doc-archive.ts")).toBe(false);
+    for (const file of fromMcp) expect(SOURCES.get(file), file).not.toMatch(/\b(archiveDoc|restoreDoc)\s*\(|UPDATE docs SET[^`]*archived_(at|by)\s*=/);
+    // The only writer of the two columns is that module.
+    const writers = [...SOURCES].filter(([f, text]) => f.startsWith("src/") && /UPDATE docs SET[^`]*archived_(at|by)\s*=/.test(text)).map(([f]) => f);
+    expect(writers).toEqual(["src/tools/doc-archive.ts"]);
+  });
+});
+
 describe("deletion is a person's, never an agent's (invariant 2)", () => {
   it("nothing reachable from src/mcp.ts imports the deletion core, the Stripe cancel, or a deletion route", () => {
     const fromMcp = reachable("src/mcp.ts");
@@ -209,6 +223,18 @@ describe("Ask Trov's import boundary (docs/architecture/ask.md › Never reachab
     }
     // …and no Ask file so much as names a decrypt path or the audit log.
     for (const f of askFiles()) expect(SOURCES.get(f), f).not.toMatch(/\b(getSecret|resolveCredential|resolveGithubCredential|installationToken)\s*\(|\borg_audit\b|\borg_admin_audit\b/);
+  });
+
+  it("Ask's GitHub tools: the credentialed transport (src/repo/ask-github.ts) is the HTTP app's to hand in — no Ask file and nothing MCP reaches imports it", () => {
+    const transport = "src/repo/ask-github.ts";
+    expect(reachable(transport).has("src/github-app/credential.ts"), "the transport resolves through resolveGithubCredential").toBe(true);
+    expect(reachableDirect("src/routes.ts").has(transport)).toBe(true);
+    for (const entry of askFiles()) expect(reachable(entry).has(transport), entry).toBe(false);
+    expect(reachable("src/mcp.ts").has(transport)).toBe(false);
+    // …and it is read-only: it names no method but GET, and no host but api.github.com.
+    const text = SOURCES.get(transport)!;
+    expect(text).not.toMatch(/method:\s*["'](?!GET)/);
+    expect([...text.matchAll(/https:\/\/([a-z0-9.-]+)/g)].map((m) => m[1])).toEqual(["api.github.com"]);
   });
 
   it("the walker finds Ask from the HTTP app, and MCP still reaches nothing under src/ai/", () => {

@@ -63,7 +63,7 @@ export const triageRow = (o: Partial<NeedsTriageRow> = {}): NeedsTriageRow => ({
 export const proposal = (o: Partial<StagedProposal> = {}): StagedProposal => ({
   slug: "auth-flow", version: 3, title: "Auth flow", section: "reference", space: "technical", summary: "Sessions now last 30 days",
   author: "andres", confidence: "high", status: "staged", change_kind: "edit", low_confidence: 0, base_version: 2, current_version: 2,
-  created_at: iso(4 * H), stagedBody: "# Auth flow\n\nA session lasts 30 days.\n", promotedBody: "# Auth flow\n\nA session lasts 7 days.\n",
+  created_at: iso(4 * H), stagedBody: "# Auth flow\n\nA session lasts 30 days.\n", promotedBody: "# Auth flow\n\nA session lasts 7 days.\n", parent_slug: null, import_id: null, import_path: null, import_file_name: null, import_by: null, import_at: null, 
   ...o,
 });
 
@@ -107,7 +107,7 @@ describe("field present — Trov's suggestions on the three screens", () => {
     expect(html.match(/data-act="aiAccept"/g)).toHaveLength(3);
     expect(html.match(/data-act="aiDismiss"/g)).toHaveLength(3);
     // The reason is one tap away, hidden until opened; the duplicate cites the ticket in-app.
-    expect(html).toContain("because it says “…the login page is blank on Safari…”");
+    expect(html).toContain("Because it says “…the login page is blank on Safari…”");
     expect(html).toContain('href="#tickets/9"');
     expect(html.indexOf("cnpy-ai-td-dup")).toBeLessThan(html.indexOf("cnpy-ai-td-fields")); // left column first
     expect(nestedButtons(html)).toBe(false);
@@ -132,7 +132,7 @@ describe("field present — Trov's suggestions on the three screens", () => {
 
   it("Review: the risk as a quiet line in the detail (the reason and Dismiss) — not on the list card (RV-OWNER-2); never an Accept, Promote or Reject of its own", () => {
     const risk = reviewRiskFixture(MODE, "doc:auth-flow@3", 0)!;
-    const html = render(app({ screen: "review", proposals: { status: "ok", data: [proposal({ ai: [risk] })] }, draftAdrs: { status: "ok", data: [adr()] } }));
+    const html = render(app({ screen: "review", reviewSel: "doc:auth-flow@3", proposals: { status: "ok", data: [proposal({ ai: [risk] })] }, draftAdrs: { status: "ok", data: [adr()] } }));
     expect(html).not.toContain('class="cnpy-ai-risk"'); // not on the list card (RV-OWNER-2)
     expect(html).toContain("cnpy-ai-risk-line");
     expect(html).toContain("Changes a decision");
@@ -161,7 +161,7 @@ describe("motion — a suggestion enters with its screen and leaves by the AI ki
   const screens = (leaving: Record<number, number> = {}) => ({
     ticket: render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail({ ai: tSugg }) }, ai: at(leaving) })),
     unplaced: render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [unplaced()] })] }, ai: at(leaving) })),
-    review: render(app({ screen: "review", proposals: { status: "ok", data: [proposal({ ai: [risk()] })] }, draftAdrs: { status: "ok", data: [] }, ai: at(leaving) })),
+    review: render(app({ screen: "review", reviewSel: "doc:auth-flow@3", proposals: { status: "ok", data: [proposal({ ai: [risk()] })] }, draftAdrs: { status: "ok", data: [] }, ai: at(leaving) })),
   });
 
   it("every chip and the risk line rise with the screen (`.cnpy-rise`; nothing replays on a rerender); nothing leaving, no exit drawn", () => {

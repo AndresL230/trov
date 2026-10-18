@@ -95,9 +95,15 @@ describe("the drift line and the suggestion cards on the Roadmap", () => {
     expect(driftLine(fx.drift, { ...initialAiUi(), hidden: [`plan_drift:${fx.drift.generatedAt}`] })).toBe("");
     expect(driftLine(undefined, initialAiUi())).toBe("");
   });
-  it("suggestion cards: the kit's chip over what it proposes — the drafted sprints and their tickets, the proposed narrative", () => {
+  it("suggestion cards: the kit's box with what it proposes inside it, and an Accept that says what it does", () => {
     const html = roadmapSuggestionCards(fx.suggestions, initialAiUi());
-    expect(html).toContain("Suggested: <span style=\"color:var(--fg-70);font-weight:500\">3 sprints from 10 backlog tickets</span>");
+    expect(html).toContain('<span class="cnpy-ai-chip-label">3 sprints from 10 backlog tickets</span>');
+    expect(html).toMatch(/cnpy-ai-accept"[^>]*>Create 3 sprints<\/button>/);
+    expect(html).toMatch(/cnpy-ai-accept"[^>]*>Use this narrative<\/button>/);
+    // the drafted sprints sit INSIDE the box, never loose under it
+    const first = html.slice(html.indexOf('class="cnpy-ai-chip has-body"'), html.indexOf('data-suggestion="', html.indexOf('data-suggestion="') + 20));
+    expect(first).toContain('class="cnpy-ai-chip-body"');
+    expect(first).toContain("Hosting polish");
     expect(html).toContain("Hosting polish");
     expect(html).toContain('href="#tickets/27"');
     expect(html).toContain("a new plan narrative");
@@ -106,15 +112,28 @@ describe("the drift line and the suggestion cards on the Roadmap", () => {
     expect(roadmapSuggestionCards(undefined, initialAiUi())).toBe("");
     expect(roadmapSuggestionCards([{ ...fx.suggestions[0], value: { nope: 1 } }], initialAiUi())).toBe("");
   });
-  it("the whole screen with every field present: cards above the narrative, the drift under it, notes on the active cards", () => {
+  it("the whole screen with every field present: a Trov button on the narrative card opens the suggestions and the drift; notes stay on their cards", () => {
     const plan: PlanView = { narrative: "Now: hosting.", version: 1, updated_at: null, updated_by: null,
       sprints: [sprint({ note: fx.notes[0] })], drift: fx.drift, suggestions: fx.suggestions };
     const html = render(app(plan));
-    const at = (s: string) => html.indexOf(s);
-    expect(at("rm-suggestions")).toBeGreaterThan(-1);
-    expect(at("rm-suggestions")).toBeLessThan(at("What's happening"));
-    expect(at("What's happening")).toBeLessThan(at("rm-drift"));
-    expect(at("rm-drift")).toBeLessThan(at("rm-note"));
+    // Not in the page's flow (the owner's call): the button sits in the narrative card's head, with its count and dot.
+    expect(html).not.toContain("rm-suggestions");
+    expect(html).not.toContain('class="rm-drift"');
+    const head = html.slice(html.indexOf("What's happening"), html.indexOf('class="cnpy-md"'));
+    expect(head).toMatch(/data-act="rmTrov"[^>]*class="rm-trov-btn"/);
+    expect(head).toContain(`<span class="rm-trov-n">${fx.suggestions.length + 1}</span>`);
+    expect(head).toContain('class="rm-trov-dot"');
+    expect(html).toContain("rm-note");
+    // Pressed: a dialog holding both suggestions and the drift, then Done.
+    const open = render({ ...app(plan), rmTrovOpen: true });
+    const dlg = open.slice(open.indexOf('id="rm-trov"'));
+    expect(dlg).toContain("rm-suggestions");
+    expect(dlg).toContain('class="rm-drift"');
+    expect(dlg.match(/data-act="aiAccept"/g)?.length).toBe(fx.suggestions.length);
+    expect(dlg).toContain('data-confirm-cancel="rmTrov"');
+    // Nothing to show: no button, no dialog.
+    const bare: PlanView = { ...plan, drift: undefined, suggestions: undefined };
+    expect(render({ ...app(bare), rmTrovOpen: true })).not.toMatch(/rm-trov-btn|id="rm-trov"/);
   });
 });
 
@@ -127,13 +146,13 @@ describe("motion — the app's entrance and the AI kit's one exit, nothing new",
     expect(render({ ...app(plan), roadmapTab: "timeline" })).not.toContain("data-morph=\"roadmap");
   });
 
-  it("the cards are a keyed list that rises with the entrance; the drift rises too; nothing leaving draws no exit", () => {
+  it("the cards are a keyed list that rises with the entrance; nothing leaving draws no exit", () => {
     const cards = roadmapSuggestionCards(fx.suggestions, initialAiUi());
     expect(cards).toMatch(/^<section class="rm-suggestions cnpy-stagger"[^>]*data-morph-list/);
     for (const s of fx.suggestions) expect(cards).toContain(`<div class="rm-suggestion-row" data-morph-key="s:${s.id}"><div style="padding-bottom:16px">`);
     expect(cards).not.toMatch(/<\/div>\s+<div class="rm-suggestion-row/); // children joined with nothing between (morphList)
     expect(cards).not.toContain("cnpy-ai-leave");
-    expect(driftLine(fx.drift, initialAiUi())).toMatch(/^<div class="rm-drift-row cnpy-rise"><div style="padding-top:14px">/);
+    expect(driftLine(fx.drift, initialAiUi())).toMatch(/^<div class="rm-drift-row"><div style="padding-top:14px">/);
     expect(sprintNoteBlock(sprint(), fx.notes[0], initialAiUi())).toMatch(/^<div class="rm-note-row"><div style="padding-top:10px">/);
   });
 

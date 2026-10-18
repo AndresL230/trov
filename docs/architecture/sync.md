@@ -81,7 +81,9 @@ large backlog is a few minutes.
 Each run is one row of `sync_runs` (a tenant table): who started it, when, the repository, where it
 stands (`batch`, `batches` expected, `phase`, `done` of `total`), its running `counts`, its `failures`, and
 how it ended. It holds counts and failure **codes** only — no title, body or summary text, no token, and no
-text an upstream wrote.
+text an upstream wrote. Reading a row (`runView`) keeps only a failure's `code`, `status` and `via`, each only when
+it is of its type; a stored failure with no string `code` (an old or hand-written row) reads as `code: null` and
+the panel says "which part was not recorded" — never an invented code, never a crash (invariant 7).
 
 | `status` | Means |
 |---|---|

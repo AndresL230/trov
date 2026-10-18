@@ -25,6 +25,7 @@
 // — exactly what a <select>'s `change` dispatched. The styles live in trov.css.
 
 import { esc, attr } from "./ui";
+import { clientOf, rectOf, viewportOf } from "./zoom";
 
 export interface DropdownOption {
   value: string;
@@ -57,6 +58,8 @@ export interface DropdownProps {
   size?: "md" | "sm";
   /** Stretch across the parent (a form field). */
   fill?: boolean;
+  /** The trigger's text while `value` names no option (an "Add a person" pick that adds and starts again). */
+  placeholder?: string;
 }
 
 /** Which dropdown is open — ONE at a time, app-wide (`state.dd`). */
@@ -81,12 +84,12 @@ const isOpen = (p: DropdownProps, ui: DropdownUi): boolean => !p.disabled && ui.
 /** The trigger. Disabled it is a really disabled button: no act, not a way into a menu. */
 export function dropdown(p: DropdownProps, ui: DropdownUi): string {
   const cur = p.options.find((o) => o.value === p.value);
-  const text = cur ? cur.shown ?? cur.label : "";
+  const text = cur ? cur.shown ?? cur.label : p.placeholder ?? "";
   // Expanded only while it is really open: on its way out the trigger is already at rest.
   const open = isOpen(p, ui) && !ui.closing;
   const name = p.labelledBy ? ` aria-labelledby="${attr(`${p.labelledBy} ${p.id}`)}"` : p.ariaLabel ? ` aria-label="${attr(`${p.ariaLabel}: ${text}`)}"` : "";
   const cls = `cnpy-dd${p.size === "sm" ? " is-sm" : ""}${p.fill ? " is-fill" : ""}${open ? " is-open" : ""}`;
-  const shown = `<span class="cnpy-dd-v">${esc(text)}</span>`;
+  const shown = `<span class="cnpy-dd-v${!cur && p.placeholder ? " is-placeholder" : ""}">${esc(text)}</span>`;
   const lead = cur?.icon ? `<span class="cnpy-dd-lead"><span class="cnpy-dd-icon" aria-hidden="true">${cur.icon}</span>${shown}</span>` : shown;
   return `<button type="button" id="${attr(p.id)}" data-field="${attr(p.id)}" data-dd="${attr(p.id)}"${p.disabled ? " disabled" : ` data-act="ddToggle" data-arg="${attr(p.id)}"`} class="${cls}" style="border-radius:8px" aria-haspopup="listbox" aria-expanded="${open}"${open ? ` aria-controls="${attr(`${p.id}-menu`)}"` : ""}${name}>${lead}${CARET}</button>`;
 }
@@ -194,14 +197,15 @@ export function createDropdowns(h: DropdownHost): Dropdowns {
 
   /** Under the trigger, left edges aligned; above it when it does not fit below and there is
    *  more room there; pulled in from the viewport's edges. `offset*` sizes, so the entrance's
-   *  scale does not skew them. */
+   *  scale does not skew them. CSS px throughout (zoom.ts: the trigger's rect and the window, read through
+   *  `rectOf` / `viewportOf`, so the big-screen zoom does not move it twice). */
   function place(): void {
     const id = ui().open;
     if (!id) return;
     const t = triggerOf(id), pop = popOf(id);
     if (!t || !pop) return;
-    const r = t.getBoundingClientRect();
-    const vw = document.documentElement.clientWidth, vh = window.innerHeight;
+    const r = rectOf(t);
+    const vw = clientOf().width, vh = viewportOf().height;
     const s = pop.style;
     const scrolled = pop.scrollTop;
     s.minWidth = `${Math.round(r.width)}px`;

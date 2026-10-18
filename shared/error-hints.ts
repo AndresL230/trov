@@ -38,6 +38,10 @@ export const MCP_ERROR_HINTS: Readonly<Record<string, string>> = {
     "The connection's current organization is no longer available to you. Pass `org` with one of `orgs` on the call, or call switch_org.",
   org_not_allowed:
     "This connection may not act there. Use one of `orgs`; a person adds an organization to the connection in Trov › Settings › MCP access.",
+  not_member:
+    "The person you named (or the author of that PR or branch, or that ticket's assignee) is not a member of this organization, so nothing was written. Check handles with list_people, or ask the person you work for who to link with.",
+  limit:
+    "Over a limit the error names (notes per side of a link, notes per hour, or live links per person). Nothing was written. When `retry_after` is given wait that many seconds; otherwise close a link first. Retrying at once will not help.",
 };
 
 /** A tool error with no code (an unexpected failure). */

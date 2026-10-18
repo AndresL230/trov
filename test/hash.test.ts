@@ -24,7 +24,7 @@ describe("parseHash", () => {
   });
 
   it("still parses every pre-existing plain screen", () => {
-    for (const s of ["mywork", "feed", "docs", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
+    for (const s of ["mywork", "feed", "library", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
     // The old in-app unsubscribe screen (which turned email off on arrival) is gone: its address opens
@@ -183,6 +183,21 @@ describe("hashForRoute", () => {
     for (const junk of ["#artifacts/auth-audit@v0", "#artifacts/auth-audit@2", "#artifacts/new@v1", "#artifacts/x@v2/diff/1..2"]) {
       expect(parseHash(junk).screen, junk).toBe("mywork");
     }
+  });
+
+  it("routes the import wizard (with a space picked or not) and Imports history, and round-trips them", () => {
+    const base = { ticketId: null, sprintId: null };
+    expect(parseHash("#import")).toEqual({ screen: "import", ...base });
+    expect(parseHash("#import/engineering")).toEqual({ screen: "import", ...base, importSpace: "engineering" });
+    expect(parseHash("#imports")).toEqual({ screen: "imports", ...base });
+    for (const h of ["#import", "#import/engineering", "#imports"]) expect(hashForRoute(parseHash(h)), h).toBe(h);
+    for (const r of [{ screen: "import", ...base }, { screen: "import", ...base, importSpace: "product" }, { screen: "imports", ...base }] as const) {
+      expect(parseHash(hashForRoute(r))).toEqual(r);
+    }
+    // Picking a space is a choice on the same page: no entrance replay.
+    expect(pageKey({ screen: "import", ...base, importSpace: "product" })).toBe(pageKey({ screen: "import", ...base }));
+    expect(sameRoute({ screen: "import", ...base, importSpace: "product" }, { screen: "import", ...base })).toBe(false);
+    for (const junk of ["#import/Not A Slug", "#import/a/b", "#imports/3"]) expect(parseHash(junk).screen, junk).toBe("mywork");
   });
 
   it("degrades to the parent screen when the id is missing", () => {

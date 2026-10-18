@@ -39,6 +39,15 @@ moves only the Worker: the static files `ASSETS` serves before the Worker runs a
 visitor's edge. Nothing in
 the code depends on where the Worker runs; removing the block is a plain deploy.
 
+### Compatibility flags
+
+`compatibility_flags` in `wrangler.toml`, beside `compatibility_date`.
+
+| Flag | Why | Without it |
+|---|---|---|
+| `nodejs_compat` | the Node.js APIs the bundled libraries expect (`src/` itself imports no `node:` module) | a library reaching for one fails |
+| `global_fetch_strictly_public` | a global `fetch()` leaves through Cloudflare's front door, as a request from the public Internet does, even to a host on the Worker's own zone. Trov fetches its own host when its org's Repo dashboard pings trov.dev (`pingHealth`, `repo-dashboard.md` › Health) and, with a token set, polls its app metrics there. Fetches to other zones (GitHub, Anthropic, Stripe, Resend, every other organization's URLs) behave the same either way. Locally (`wrangler dev`, the test pool) there are no zones, and loopback stand-ins (`LOCAL_UPSTREAM`, `STRIPE_TEST_API_BASE`) are reached as before | a fetch to trov.dev skips the front door and goes to the zone's origin, and there is none behind the Worker: Trov's own health ping always fails and its Repo dashboard reads production as Down while the site is up |
+
 ### Bundle
 
 `minify = true` with `upload_source_maps = true` (`wrangler.toml`). Wrangler's esbuild bundle of `src/` is
@@ -146,8 +155,10 @@ ignored. The Worker itself never reads it.
 
 `DEV_LOGIN` and `STRIPE_TEST_API_BASE` (above; the seeded local app, its scenarios and the dev sign-in are
 `local-dev.md`), and `LOCAL_UPSTREAM` — a loopback http stand-in for GitHub and
-Anthropic during a Sync (`src/sync/local-upstream.ts`); ignored unless it is `http://127.0.0.1` or
-`http://localhost`, and never honoured beside a live Stripe key. The two stand-ins are described in `.dev.vars.example`.
+Anthropic during a Sync and for Ask Trov's model stream and GitHub lookups (`src/sync/local-upstream.ts`, handed to
+Ask by `src/routes.ts`; `ask.md` › GitHub); ignored unless it is `http://127.0.0.1` or
+`http://localhost`, and never honoured beside a live Stripe key; blank in the test pool (`vitest.config.ts`), so a
+`.dev.vars` that sets it never reaches the suite. The two stand-ins are described in `.dev.vars.example`.
 `LOCAL_AI_PREVIEW` — `ready` | `empty` | `capped` | `proposed`: the AI screens' sample content (`src/ai/preview.ts`,
 `ai.md`) on `/me/dashboard`, `/repo/dashboard` and `/feed`, before anything writes it. The same rule as the stand-ins:
 honoured only for a request to a loopback `http://` origin (what `wrangler dev` serves on; a deployed Worker is never

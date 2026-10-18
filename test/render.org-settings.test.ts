@@ -99,7 +99,7 @@ function fullUi(over: Partial<OrgUi> = {}): OrgUi {
       { id: "s2", actor: "mira", action: "secret.rotate", target: "github_token:", detail: { hint_last4: "1a2b", key_version: 1 }, at: "2026-10-05T11:00:00.000Z" },
       { id: "s1", actor: "andres", action: "secret.set", target: "github_token:", detail: { hint_last4: "0000", key_version: 1 }, at: "2026-10-05T10:00:00.000Z" },
     ]),
-    ai: ok<AiSettings>({ enabled: true, canEdit: true, eligibility: "ok", allowances: aiSettingsFixture("ready", new Date()).allowances, chatAuto: true, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT }),
+    ai: ok<AiSettings>({ enabled: true, canEdit: true, eligibility: "ok", allowances: aiSettingsFixture("ready", new Date()).allowances, chatAuto: true, chatGithub: false, keys: { anthropic: true, typesafe: true }, planEnded: null, sends: [...AI_SENDS], neverSent: AI_NEVER_SENT }),
     ...over,
   });
 }
@@ -143,7 +143,7 @@ describe("route, hash and sidebar", () => {
     expect(hashForRoute(parseHash("#org/integrations"))).toBe("#org");
   });
   it("the rail has NO Org settings row: the org switcher in its header holds it, and reads as the current place there", () => {
-    const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, docSpace: "technical", docSpaces: [], counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
+    const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false, counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
     expect(navKeyOf("org")).toBe("org");
     const html = sidebarView({ ...base, screen: "org", orgSwitcher: "<b>switcher</b>", orgActive: true });
     expect(html).not.toContain('data-act="orgGo"');

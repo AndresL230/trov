@@ -4,7 +4,7 @@
 // level. The guards: Next is ONLY offered items, in the SERVER's order, with their own titles; cites must be in the
 // input; numbers must be the input's; a refusal or `max_tokens` writes nothing; only for people who opened My Work in
 // 14 days or receive the digest; 5 versions kept; the org switch; "Wrong?"; capped; field absent when none.
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { runAiPass } from "../src/ai/pass";
@@ -107,9 +107,20 @@ const latestJson = async () => {
   return row ? JSON.parse(row.brief_json) : null;
 };
 
+/** The clock every test here runs on (only `Date` is faked): rows, the pass's `now` and the fixtures' ages are all
+ *  read against it, so no test depends on the calendar. The 17th on purpose: the run's fact then reads "failed on
+ *  Oct 17", and "Failing 17 times." must still be dropped — a date's day is never a count. */
+const PINNED_NOW = new Date("2026-10-17T12:00:00.000Z");
+
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(PINNED_NOW);
   await seedWorld();
   await markMyWorkOpened(ctx(), ME); // active: opened My Work just now
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("the input: what the server offers, in the server's order", () => {
@@ -214,6 +225,10 @@ describe("the job: one Haiku call, only what the input says", () => {
       recently: { text: "x".repeat(BRIEF_LINE_MAX + 1), cites: ["pr:11"] },
       next: [{ ref: "ticket:3", why: "Three weeks late." }, { ref: "run:4812", why: "Failing 17 times." }],
     }) }));
+    // The input carries 17 only as a day ("failed on Oct 17"), never as a count: that must not ground "17 times".
+    const input = briefPromptInput((await buildBriefInput(ctx(), ME))!);
+    expect(input).toContain("failed on Oct 17");
+    expect(input.replace(/\b(?:Oct 17|\d{4}-\d{2}-17)\b/g, "")).not.toMatch(/\b17\b/);
     const b = await latestJson();
     expect(b.now).toBeNull();
     expect(b.recently).toBeNull();
@@ -225,6 +240,15 @@ describe("the job: one Haiku call, only what the input says", () => {
     expect(numbersGrounded("17 times", "feed:17")).toBe(false); // nor a feed row's id
     expect(numbersGrounded("due 2026-10-15", "due 2026-10-15")).toBe(true);
     expect(numbersGrounded("due 2026-10-16", "due 2026-10-15")).toBe(false);
+    // The input's day in words ("Oct 17", as shortDay writes it) is a date too: its day is not a count, and a day in
+    // words is grounded only by that same day in words.
+    expect(numbersGrounded("Failing 17 times.", "its last run failed on Oct 17")).toBe(false);
+    expect(numbersGrounded("fifteen failures", "due Oct 15")).toBe(false);
+    expect(numbersGrounded("It failed on Oct 17.", "its last run failed on Oct 17")).toBe(true);
+    expect(numbersGrounded("It failed on oct 7.", "failed on Oct 7")).toBe(true);
+    expect(numbersGrounded("It failed on Oct 16.", "its last run failed on Oct 17")).toBe(false);
+    expect(numbersGrounded("It failed on Oct 17.", "failed 17 times")).toBe(false); // a count is not a day either
+    expect(numbersGrounded("Failing 17 times since Oct 17.", "failed 17 times, last on Oct 17")).toBe(true);
   });
 
   it("the one shape (BR-OWNER-1): Now and Recently ONE sentence each, within the cap; a why past its cap is the server's", async () => {

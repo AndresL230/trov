@@ -71,6 +71,15 @@ seed writes fresh ones; after half an hour, `npm run seed -- --scenario team` ma
 **Credentials are placeholders.** Every stored hosting credential is a ciphertext that decrypts to nothing, every
 MCP / OAuth token row a hash no token produces. Poll now and Test connection fail locally; that is expected.
 
+## The 10-17 staging epic in one account
+
+`node scripts/seed/sapling-1017.mjs` loads everything the epic added into SaplingLearn, for AndresL230: the team
+scenario, the agent links (`agent-links.mjs`), then its own layer — the Docs Library filed into seven spaces (the team's
+pages in a tree five levels deep, history, tags, links and backlinks, an archived page and space, a finished and a partial
+import, changes waiting in Review) and Ask conversations teammates shared with him. Where `docs-library.mjs` and
+`ask-sharing.mjs` write `test-` orgs and people for the browser tests, this one is what a real team would see; it ends
+with a check list. `--layer` reruns only its own layer; `--check` only the checks.
+
 ## Layers on a server you already have
 
 The rich layer and the AI showcase also run ALONE, on top of whatever SaplingLearn holds — the shared preview server

@@ -53,7 +53,7 @@ const MB = 1024 * 1024;
 
 // ── the shared shape of a scenario's org ────────────────────────────────────────────────────────────────────────
 /** A made-up person: Google-only, an example.com address. Upserted (persons are global; a rerun keeps the row). */
-function personStatements(p, at) {
+export function personStatements(p, at) {
   return [
     `INSERT INTO persons (handle, name, color, email, created_at, onboarded_at, role, responsibilities) VALUES (${q(p.handle)}, ${q(p.name)}, ${q(p.color)}, ${q(p.email)}, ${q(at)}, ${q(at)}, ${q(p.role ?? null)}, ${q(p.responsibilities ?? null)}) ` +
       `ON CONFLICT(handle) DO UPDATE SET name = excluded.name, color = excluded.color, email = excluded.email, role = excluded.role, responsibilities = excluded.responsibilities`,
@@ -63,18 +63,21 @@ function personStatements(p, at) {
 const KINDS = [["my_work", "daily"], ["week_recap", "weekly"], ["review_queue", "daily"], ["roadmap_plan", "weekly"], ["ticketq", "daily"]];
 const STARTER_TAGS = [["auth", "Sign-in, sessions, tokens, permissions", "plum"], ["architecture", "How the system is put together", "slate"], ["infra", "Deploys, hosting, CI", "rust"],
   ["api", "Routes and what they return", "sky"], ["ui", "Screens and components", "rose"], ["data", "Tables, migrations, storage", "fern"]];
+/** The three starter spaces of the Library (0081_docs_library; shared/docs-core.ts STARTER_SPACES). */
+const STARTER_SPACES = [["design", "Design", "pen", "#a84a68", 1024], ["engineering", "Engineering", "braces", "#525cc3", 2048], ["product", "Product", "compass", "#2f7d57", 3072]];
 /** What `createOrg` writes for a new org (src/orgs/repo.ts), plus its members. `plan`: [id, source, overrides]. */
-function orgStatements(o, at) {
+export function orgStatements(o, at) {
   const s = [
     `INSERT INTO orgs (id, slug, name, created_at, created_by, plan, plan_overrides, plan_source, plan_status, plan_changed_at, plan_changed_by) VALUES (${q(o.id)}, ${q(o.slug)}, ${q(o.name)}, ${q(at)}, ${q(o.owner)}, ${q(o.plan[0])}, ${q(JSON.stringify(o.plan[2] ?? {}))}, ${q(o.plan[1])}, 'active', ${q(at)}, ${q(o.owner)}) ` +
       `ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, name = excluded.name, created_at = excluded.created_at, created_by = excluded.created_by, plan = excluded.plan, plan_overrides = excluded.plan_overrides, ` +
       `plan_source = excluded.plan_source, plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = excluded.plan_changed_at, plan_changed_by = excluded.plan_changed_by, ` +
-      `plan_gift_until = NULL, suspended_at = NULL, suspended_by = NULL, ai_automation = 1, ai_chat_auto = 1`,
+      `plan_gift_until = NULL, suspended_at = NULL, suspended_by = NULL, ai_automation = 1, ai_chat_auto = 1, ai_chat_github = 0`,
     insert("org_counters", { org_id: o.id, name: "ticket", value: 0 }), insert("org_counters", { org_id: o.id, name: "handoff", value: 0 }),
     insert("plan", { org_id: o.id, narrative: "", current_version: 0 }),
     insert("notification_settings", { org_id: o.id, send_hour: 8, timezone: o.timezone ?? "America/New_York", from_address: "Trov <hello@trov.dev>" }),
     ...KINDS.map(([kind, cadence]) => insert("notification_policy", { org_id: o.id, kind, default_cadence: cadence, enabled: 1, updated_at: at, updated_by: "registry" })),
     ...STARTER_TAGS.map(([name, description, color]) => insert("org_tags", { org_id: o.id, name, description, color, starter: 1, created_at: at, created_by: "migration" })),
+    ...STARTER_SPACES.map(([slug, name, icon, color, sort_rank]) => insert("doc_spaces", { org_id: o.id, slug, name, icon, color, description: "", sort_rank, created_at: at, created_by: "system" })),
     insert("org_admin_audit", { org_id: o.id, actor: o.owner, action: "org.create", target: o.slug, detail: { name: o.name, owner: o.owner, plan: o.plan[0] }, at }),
   ];
   for (const [handle, role, title] of o.members) {

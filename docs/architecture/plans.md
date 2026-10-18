@@ -53,6 +53,12 @@ unlimited on Enterprise. A run asks Jev about ONE item per request, so a
 run costs up to 60 (its candidates). Each request counts BEFORE it is made, and the allowance is checked before
 each one (one at a time, though four are in flight), so a run never passes the cap.
 
+**Markdown import has no plan limit** (`docs-library.md` › Import). An import's pages are doc proposals (pages
+have never had a per-org cap) and its images are doc images, which — like the images an agent uploads with
+`upload_asset` — do not count toward `artifact_bytes`. What bounds it is per person and per run: the `doc_import`
+rate limit (`abuse-limits.md`), 500 files and 50 MB per run, 1 MB per page and 10 MB per image, one running import
+per org. A per-org limit on it would be a new `PLANS` key enforced with `requirePlan`.
+
 **Tags (0056_org_tags).** The owner's numbers (2026-10-14): 30 on Free and Personal, 50 on Pro, unlimited on
 Enterprise. An override may not go below 6 (`LIMITS.tags.min`): every org has six starter
 tags that are never removed. The limit shows with the others in the Plan block and Settings › Limits.

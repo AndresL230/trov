@@ -13,6 +13,7 @@
 // A chip carries `data-ask-ref="<ref>"` (the hover controller in ask-controller.ts watches it) and
 // `data-act="askShOpen"` (open in the inspector).
 
+import { isTombstoneHandle, TOMBSTONE_NAME } from "@shared/deletion-core";
 import { ASK_REF_TOKEN_RE, parseAskRef, type AskRefType, type AskRepoFacts, type AskTone, type PeekResult, type RefStatus, type RefView } from "@shared/ai-ask-core";
 import type { PersonSummary } from "@shared/people";
 import { esc, attr, relTime } from "./ui";
@@ -68,7 +69,7 @@ export function refStatusMark(s: RefStatus, size = 12.5): string {
 
 const TYPE_WORD: Record<AskRefType, string> = {
   ticket: "Ticket", pr: "Pull request", doc: "Doc", decision: "Decision", feed: "Feed entry", sprint: "Sprint", handoff: "Handoff",
-  artifact: "Artifact", person: "Person", prompt: "Prompt", repo: "Repo",
+  artifact: "Artifact", person: "Person", prompt: "Prompt", repo: "Repo", link: "Link",
 };
 export const refTypeWord = (v: Pick<RefView, "type">): string => TYPE_WORD[v.type];
 /** The plural for a picker group ("Tickets", "Pull requests", "People"). */
@@ -81,6 +82,7 @@ export function refShort(v: RefView): string {
   if ((v.type === "ticket" || v.type === "pr") && v.num != null) return `#${v.num}`;
   if (v.type === "person") return `@${handleOf(v)}`;
   if (v.type === "handoff" && v.num != null) return `Handoff #${v.num}`;
+  if (v.type === "link" && v.num != null) return `Link #${v.num}`;
   return v.title;
 }
 /** The full name (a picker row, a source row): `#14 Guided repository setup`, a person's name, else the title. */
@@ -94,6 +96,7 @@ export function refCtxWord(v: RefView): string {
     case "ticket": return v.num != null ? `ticket #${v.num}` : `ticket ${v.title}`;
     case "pr": return v.num != null ? `PR #${v.num}` : `PR ${v.title}`;
     case "handoff": return v.num != null ? `handoff #${v.num}` : `handoff ${v.title}`;
+    case "link": return v.num != null ? `link #${v.num}` : v.title;
     case "person": return `@${handleOf(v)}`;
     case "repo": case "feed": case "artifact": return v.title;
     default: return `${v.type} ${v.title}`;
@@ -106,6 +109,7 @@ export function refFallbackText(ref: string): string {
   if (!p) return ref;
   if (p.type === "ticket" || p.type === "pr" || p.type === "handoff") return /^\d+$/.test(p.key) ? `#${p.key}` : p.key;
   if (p.type === "person") return `@${p.key}`;
+  if (p.type === "link") return /^\d+$/.test(p.key) ? `link #${p.key}` : p.key;
   return p.key;
 }
 
@@ -115,7 +119,10 @@ export const personOf = (look: Pick<RefLook, "persons">, handle: string | null |
 export const refAvatar = (look: Pick<RefLook, "persons">, handle: string, size: number): string =>
   personChip(personOf(look, handle), size, handle);
 /** A person's display name: the directory's, else the handle. */
-export const personName = (look: Pick<RefLook, "persons">, handle: string): string => personOf(look, handle)?.name ?? handle;
+/** A person's name, else their handle — and a deleted account's tombstone (`deleted-…`) is "Deleted user", never its
+ *  handle (a collaborator's turns outlive their account in someone else's shared thread; 0077). */
+export const personName = (look: Pick<RefLook, "persons">, handle: string): string =>
+  isTombstoneHandle(handle) ? TOMBSTONE_NAME : personOf(look, handle)?.name ?? handle;
 
 // ── the chip ─────────────────────────────────────────────────────────────────
 

@@ -17,7 +17,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM platform_outbox_bodies",
   // Support reports (0049_support_reports): a global table — no FK in or out.
   "DELETE FROM support_reports",
-  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1, ai_chat_auto = 1",
+  "UPDATE orgs SET plan = 'enterprise', plan_overrides = '{}', plan_source = 'granted', plan_status = 'active', plan_period_end = NULL, billing_customer_id = NULL, billing_subscription_id = NULL, plan_changed_at = NULL, plan_changed_by = NULL, plan_gift_until = NULL, ai_automation = 1, ai_chat_auto = 1, ai_chat_github = 0",
   "DELETE FROM abuse_counters",
   // Sync GitHub runs (0046_sync_runs) reference orgs.
   "DELETE FROM sync_runs",
@@ -41,6 +41,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM ai_batch_requests",
   "DELETE FROM ai_batches",
   // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
+  "DELETE FROM chat_thread_people", // 0077_ask_people_sharing: who a thread is shared with by name
   "DELETE FROM chat_actions",
   "DELETE FROM chat_artifacts",
   "DELETE FROM chat_messages",
@@ -80,12 +81,12 @@ export const RESET_STATEMENTS = [
   "DELETE FROM org_invites",
   "DELETE FROM memberships",
   "DELETE FROM org_counters",
-  // …and with the per-org counters (ticket / handoff NUMBERS restart at 1), the two tables' own row-id
+  // …and with the per-org counters (ticket / handoff / link NUMBERS restart at 1), the tables' own row-id
   // counters restart too — so in the seed org a fresh ticket's number equals its row id, exactly as it
   // does for SaplingLearn in production (0042_organizations backfilled number = id). The wire only ever carries the
   // NUMBER (src/tools/tickets.ts); a suite that must tell the two apart offsets the ids itself
   // (test/numbers.per-org.test.ts) or files into the second org.
-  "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs')",
+  "DELETE FROM sqlite_sequence WHERE name IN ('tickets', 'handoffs', 'agent_links')",
   "DELETE FROM platform_admins",
   "UPDATE cron_cursor SET last_key = ''",
   // Tickets (0024) first: the ticket_* children reference tickets, and tickets
@@ -102,6 +103,7 @@ export const RESET_STATEMENTS = [
   // artifacts_fts_ad trigger cascades the page DELETE into the index.
   "DELETE FROM artifact_upload_tokens",
   "DELETE FROM doc_image_upload_tokens",
+  "DELETE FROM handoff_upload_tokens",
   "DELETE FROM doc_images",
   "DELETE FROM artifact_links",
   "DELETE FROM artifact_versions",
@@ -109,6 +111,10 @@ export const RESET_STATEMENTS = [
   "DELETE FROM processed_items",
   // Handoffs + Prompt Library (0028): prompt_versions references prompts(slug).
   "DELETE FROM handoffs",
+  // Agent links (0078): the notes reference their link (org_id, number). The 'link' counter went with
+  // org_counters above, so link numbers restart at 1.
+  "DELETE FROM agent_link_notes",
+  "DELETE FROM agent_links",
   "DELETE FROM prompt_versions",
   "DELETE FROM prompts",
   "DELETE FROM pr_summaries",
@@ -130,6 +136,13 @@ export const RESET_STATEMENTS = [
   "DELETE FROM sprints",
   "DELETE FROM doc_versions",
   "DELETE FROM docs",
+  // The Docs Library (0081_docs_library): links and import runs, then a space's owners before the space; each
+  // seed org is back to the three starter spaces below.
+  "DELETE FROM doc_links",
+  "DELETE FROM doc_imports",
+  "DELETE FROM library_prefs",
+  "DELETE FROM doc_space_owners",
+  "DELETE FROM doc_spaces",
   "DELETE FROM feed",
   "DELETE FROM entry_tags",
   // The org's tag list (0056_org_tags): suggestions go, and each seed org is back to the six starters below.
@@ -191,6 +204,10 @@ export const RESET_STATEMENTS = [
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'api', 'Routes and what they return', 'sky', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'ui', 'Screens and components', 'rose', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT id, 'data', 'Tables, migrations, storage', 'fern', 1, '2026-10-06T00:00:00.000Z', 'migration' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  // …and the three starter spaces (0081_docs_library; the rows of shared/docs-core.ts STARTER_SPACES — test/spaces.migration.test.ts compares them).
+  "INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT id, 'design', 'Design', 'pen', '#a84a68', '', 1024, '2026-10-06T00:00:00.000Z', 'system' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT id, 'engineering', 'Engineering', 'braces', '#525cc3', '', 2048, '2026-10-06T00:00:00.000Z', 'system' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
+  "INSERT INTO doc_spaces (org_id, slug, name, icon, color, description, sort_rank, created_at, created_by) SELECT id, 'product', 'Product', 'compass', '#2f7d57', '', 3072, '2026-10-06T00:00:00.000Z', 'system' FROM orgs WHERE id IN ('org_saplinglearn', 'org_b') ORDER BY id",
   "INSERT INTO memberships (org_id, user_id, role, title, responsibilities, created_at, created_by) SELECT 'org_saplinglearn', handle, CASE WHEN handle = 'AndresL230' THEN 'owner' ELSE 'member' END, role, responsibilities, created_at, 'seed' FROM persons WHERE handle NOT IN ('github-webhook', 'trov')",
   "INSERT INTO org_login_map (org_id, github_login, person, mapped_at, mapped_by) SELECT 'org_saplinglearn', subject, person, linked_at, 'seed' FROM identities WHERE provider = 'github'",
   "UPDATE identities SET verified_email = lower(label) WHERE provider = 'google'",

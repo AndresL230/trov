@@ -32,7 +32,7 @@ describe("legal pages", () => {
         expect(html).toContain(`>${doc.title}</h1>`);
         expect(html).toContain(`Effective and last updated ${legalDate(doc.updated)}`);
         // Terms and Privacy were updated when summaries moved to Anthropic; Refunds is as rewritten.
-        expect(doc.updated).toBe(doc.kind === "refunds" ? "2026-10-12" : "2026-10-16");
+        expect(doc.updated).toBe(doc.kind === "refunds" ? "2026-10-12" : "2026-10-17");
         for (const s of doc.sections) {
           expect(html).toContain(`<section id="${s.id}" class="site-legal-sec">`);
           expect(html).toContain(`<a href="#${s.id}" data-legal-toc="${s.id}"><span class="site-legal-toc-n">`);
@@ -65,7 +65,7 @@ describe("legal pages", () => {
 
   it("the tab row names every document, the current one marked: links a keyboard reaches, in a labelled nav", () => {
     const row = legalTabs("refunds");
-    expect(row).toBe('<nav class="site-legal-tabs" aria-label="Legal documents"><a href="/terms" class="site-legal-tab" style="border-radius:8px">Terms</a><a href="/privacy" class="site-legal-tab" style="border-radius:8px">Privacy</a><span class="site-legal-tab" aria-current="page" style="border-radius:8px">Refunds</span></nav>');
+    expect(row).toBe('<nav class="site-legal-tabs" aria-label="Legal documents"><a href="/terms" class="site-legal-tab" style="border-radius:8px">Terms</a><a href="/privacy" class="site-legal-tab" style="border-radius:8px">Privacy</a><a href="/refunds" class="site-legal-tab" aria-current="page" style="border-radius:8px">Refunds</a></nav>');
     for (const doc of ALL) expect(legalView(doc, false)).toContain(legalTabs(doc.kind));
     expect(Object.keys(LEGAL_DOCS)).toEqual(["terms", "privacy", "refunds"]);
     expect(LEGAL_ORDER).toEqual(["terms", "privacy", "refunds"]);
@@ -198,8 +198,11 @@ describe("legal pages", () => {
     // TypeSafe AI: its own model, hosted in the United States, no training on what Trov sends, its own subprocessors linked (DRAFT).
     expect(section(PRIVACY, "sharing")).toContain(`${DRAFT}The model that sorts and checks items is TypeSafe AI's own, on services hosted in the United States, and TypeSafe AI does not train or fine-tune any model on what Trov sends it. TypeSafe AI's own subprocessors are listed at <a href="https://trust.typesafe.ai/subprocessors">trust.typesafe.ai/subprocessors</a>.`);
     // Ruling (Legal 3): the same exception as the in-app "Never sent" (AI_NEVER_SENT).
-    expect(section(PRIVACY, "sharing")).toContain("Source code reaches Anthropic only when you attach a file of it to a question in Ask Trov");
-    expect(AI_NEVER_SENT).toContain("Source code (unless you attach a file to Ask)");
+    // Widened 2026-10-17 (owner): Ask's GitHub lookups — an admin's switch, off until turned on, each person's own access.
+    expect(section(PRIVACY, "sharing")).toContain("Source code and diffs reach Anthropic only through Ask Trov: a file you attach to a question, sent as it is, or, when a question needs a repository your organization connected");
+    expect(section(PRIVACY, "sharing")).toContain("only while an admin of your organization has turned on GitHub lookups, which are off until they do, and only in repositories your own linked GitHub account can read");
+    expect(section(PRIVACY, "sharing")).toContain("TypeSafe AI is never sent source code or diffs");
+    expect(AI_NEVER_SENT).toContain("Source code and diffs only to Ask: a file you attach, or, while an admin has GitHub lookups on");
     // Ruling (Legal 5): "Only when something needs me" decides with what Trov's AI judged, so Privacy says so.
     expect(section(PRIVACY, "email")).toContain(`${DRAFT}If you choose "Only when something needs me"`);
     expect(section(PRIVACY, "email")).toContain("the ratings Sift made earlier still count, so whether that email is sent can still depend on them.");

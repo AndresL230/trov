@@ -159,23 +159,25 @@ export function createOrgController(host: OrgHost): OrgController {
   const loadAudit = () => read(() => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
   /** AI (org-ai.ts): the switches, this month's allowances, what is sent — every member reads it. */
   const loadAi = () => read(() => ui().ai, (v) => { ui().ai = v; }, getAiSettings);
-  /** A switch — the AI switch (`enabled`) or Ask Trov's Auto (`chatAuto`): an admin's write. The answer is
-   *  the settings as they now stand. */
-  function toggleAi(which: "enabled" | "chatAuto"): void {
+  /** A switch — the AI switch (`enabled`), Ask Trov's Auto (`chatAuto`) or its GitHub lookups (`chatGithub`): an
+   *  admin's write. The answer is the settings as they now stand. */
+  function toggleAi(which: "enabled" | "chatAuto" | "chatGithub"): void {
     const o = org();
     const u = ui();
     const cur = u.ai.data;
     if (!o || !cur || !cur.canEdit || u.aiSaving) return;
     u.aiSaving = true;
     rerender();
-    putAiSettings(o.slug, which === "enabled" ? { enabled: !cur.enabled } : { chatAuto: !cur.chatAuto })
+    putAiSettings(o.slug, which === "enabled" ? { enabled: !cur.enabled } : which === "chatAuto" ? { chatAuto: !cur.chatAuto } : { chatGithub: !cur.chatGithub })
       .then((next) => {
         u.aiSaving = false;
         if (ui().slug !== o.slug) return;
         u.ai = { status: "ok", data: next };
         host.flash(which === "enabled"
           ? (next.enabled ? "Trov's AI is on for this organization" : "Trov's AI is off for this organization")
-          : (next.chatAuto ? "Auto mode is allowed in Ask Trov" : "Auto mode is off in Ask Trov: every change waits to be confirmed"));
+          : which === "chatAuto"
+            ? (next.chatAuto ? "Auto mode is allowed in Ask Trov" : "Auto mode is off in Ask Trov: every change waits to be confirmed")
+            : (next.chatGithub ? "Ask Trov can look things up on GitHub" : "GitHub lookups are off in Ask Trov"));
       })
       .catch((e) => {
         u.aiSaving = false;
@@ -207,11 +209,13 @@ export function createOrgController(host: OrgHost): OrgController {
     if (d) d.github_app = status;
     if (!status.installation) ui().githubRepos = { status: "idle", data: null };
   };
-  /** What the installation can see — an admin's read, and only while one is live. */
+  /** What the installation can see — an admin's read, and only while one is live AND this Trov has the App
+   *  (`configured`): without the App nothing can list it, and the route would only answer `not_connected`. */
   function loadGithubRepos(refresh = false): void {
     const slug = ui().slug;
-    const inst = ui().github.data?.installation;
-    if (!slug || !inst || inst.suspended_at || !roleAtLeast(org()?.role, "admin")) return;
+    const app = ui().github.data;
+    const inst = app?.installation;
+    if (!slug || !app?.configured || !inst || inst.suspended_at || !roleAtLeast(org()?.role, "admin")) return;
     const held = ui().githubRepos.data;
     if (ui().githubRepos.status !== "ok" || refresh) ui().githubRepos = { status: "loading", data: held };
     listOrgGithubRepos(slug, refresh)
@@ -701,6 +705,7 @@ export function createOrgController(host: OrgHost): OrgController {
       // AI
       case "orgAiToggle": toggleAi("enabled"); return;
       case "orgAiChatAutoToggle": toggleAi("chatAuto"); return;
+      case "orgAiChatGithubToggle": toggleAi("chatGithub"); return;
 
       // General
       case "orgNameDraft": u.nameDraft = value ?? ""; u.nameError = null; break;

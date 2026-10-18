@@ -110,6 +110,9 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await setArtifactStatus(systemCtx(), art.slug, "published", handle);
   await ratifyArtifact(systemCtx(), art.slug, 1, handle);
   await mintUploadToken(systemCtx(), { kind: "file", size_bytes: 1, sha256: "e".repeat(64), title: "Rename test upload", area: "ui" }, handle);
+  // A handoff whose prompt is still being uploaded (0080), sent by and to the person: principal + recipient.
+  await run(env.DB, `INSERT INTO handoff_upload_tokens (token_hash, org_id, principal, recipient, body, context, prompt_title, sha256, size_bytes, session_id, link_base, expires_at, used_at, created_at)
+    VALUES (?, ?, ?, ?, 'b', '{}', 't', ?, 1, NULL, 'https://trov.test', ?, NULL, ?)`, `rename-${handle}`, ORG_A, handle, handle, "f".repeat(64), nowIso(), nowIso());
   // artifact_pages.deleted_by (0035 PART D): a second page, soft-deleted by the person.
   const gone = await createArtifact(systemCtx(), { title: "Rename test deleted artifact", kind: "markdown", area: "ui", content: "# bye" }, handle);
   await deleteArtifact(systemCtx(), gone.slug, handle, false);
@@ -176,6 +179,15 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO billing_subscriptions (subscription_id, customer_id, person, plan, stripe_status, created_at, updated_at) VALUES ('sub_rename', 'cus_rename', ?, 'team', 'active', ?, ?)`, handle, nowIso(), nowIso());
   // 0046_sync_runs: a Sync GitHub run the person started.
   await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, ended_at, status) VALUES (?, 'o/r', ?, ?, ?, ?, 'ok')`, org, handle, nowIso(), nowIso(), nowIso());
+  // 0083_doc_archive: a page the person archived.
+  await run(env.DB, `UPDATE docs SET archived_at = ?, archived_by = ? WHERE org_id = ? AND slug = 'rename-test-doc'`, nowIso(), handle, ORG_A);
+  // 0081_docs_library: a space the person created and archived, whose owner they are (and who added them), and an
+  // import they started.
+  await run(env.DB, `INSERT INTO doc_spaces (org_id, slug, name, icon, color, created_at, created_by, archived_at, archived_by) VALUES (?, 'rename-space', 'Rename space', 'shield', '#b4562c', ?, ?, ?, ?)`, org, nowIso(), handle, nowIso(), handle);
+  await run(env.DB, `INSERT INTO doc_space_owners (org_id, space_slug, handle, added_at, added_by) VALUES (?, 'rename-space', ?, ?, ?)`, org, handle, nowIso(), handle);
+  // 0084_library_prefs: their own sidebar and cards.
+  await run(env.DB, `INSERT INTO library_prefs (org_id, handle, sidebar, pinned, hidden, updated_at) VALUES (?, ?, '["design"]', '[]', '[]', ?)`, org, handle, nowIso());
+  await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status) VALUES (?, 'rename-space', 'a.zip', ?, ?, ?, 'done')`, org, handle, nowIso(), nowIso());
   // 0049_support_reports: a report the person sent, and one they resolved (the real writers take the
   // principal from the session: test/support.routes.test.ts renames through them).
   await run(env.DB, `INSERT INTO support_reports (kind, subject, message, reporter, status, resolved_by, resolved_at, created_at) VALUES ('bug', 's', 'm', ?, 'resolved', ?, ?, ?)`, handle, handle, nowIso(), nowIso());
@@ -185,6 +197,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // 0066_ask: an Ask Trov thread the person owns, and their Ask settings.
   await run(env.DB, `INSERT INTO chat_threads (org_id, handle, created_at, updated_at) VALUES (?, ?, ?, ?)`, org, handle, nowIso(), nowIso());
   await run(env.DB, `INSERT INTO person_ask_settings (org_id, handle, instructions, updated_at) VALUES (?, ?, 'short', ?)`, org, handle, nowIso());
+  // 0077_ask_people_sharing: a thread shared with the person by name, a turn they asked in it, and its card.
+  const shared = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, created_at, updated_at) VALUES (?, 'someone-else', ?, ?)`, org, nowIso(), nowIso())).meta.last_row_id);
+  await run(env.DB, `INSERT INTO chat_thread_people (org_id, thread_id, handle, access, shared_at) VALUES (?, ?, ?, 'continue', ?)`, org, shared, handle, nowIso());
+  await run(env.DB, `INSERT INTO chat_messages (org_id, thread_id, role, mode, created_at, asked_by) VALUES (?, ?, 'user', 'smart', ?, ?)`, org, shared, nowIso(), handle);
+  await run(env.DB, `INSERT INTO chat_actions (org_id, thread_id, turn, tool, state, created_at, asked_by) VALUES (?, ?, 1, 'create_ticket', 'proposed', ?, ?)`, org, shared, nowIso(), handle);
   // 0064_repo_themes: a theme the person proposed (by hand, in this fixture) and decided, and a PR they themed.
   await run(env.DB, `INSERT INTO repo_themes (org_id, repo, name, color_key, status, created_by, created_at, decided_by, decided_at) VALUES (?, 'o/r', 'Rename', 'slate', 'active', ?, ?, ?, ?)`, org, handle, nowIso(), handle, nowIso());
   await run(env.DB, `INSERT INTO pr_themes (org_id, repo, pr_number, theme_id, source, set_by, set_at) VALUES (?, 'o/r', 1, NULL, 'person', ?, ?)`, org, handle, nowIso());
@@ -192,6 +209,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   await run(env.DB, `INSERT INTO person_brief (org_id, handle, version, generated_at, model, prompt_version, input_hash, brief_json) VALUES (?, ?, 1, ?, NULL, 'brief.1', 'h', '{}')`, org, handle, nowIso());
   // 0067_digest_email: the person's "Only when something needs me".
   await run(env.DB, `INSERT INTO notification_person_prefs (org_id, user_id, only_when_needed, updated_at) VALUES (?, ?, 1, ?)`, org, handle, nowIso());
+  // 0078_agent_links: a self-link the person requested, received and closed, and a note they wrote on it.
+  await run(env.DB, `INSERT INTO agent_links (org_id, state, topic_kind, topic_ref, reason, requester, recipient, created_at, expires_at, closed_at, closed_by)
+    VALUES (?, 'closed', 'person', ?, 'r', ?, ?, ?, ?, ?, ?)`, org, handle, handle, handle, nowIso(), nowIso(), nowIso(), handle);
+  await run(env.DB, `INSERT INTO agent_link_notes (org_id, link_number, side, author, author_kind, body, created_at)
+    SELECT org_id, number, 'requester', ?, 'person', 'hi', ? FROM agent_links WHERE org_id = ? AND requester = ?`, handle, nowIso(), org, handle);
 }
 
 describe("renamePerson", () => {

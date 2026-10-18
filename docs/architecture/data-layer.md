@@ -77,10 +77,19 @@ organizations.
   exactly one → that org; none → `not_connected` — the SAME BYTES whether the repository is unknown, connected
   nowhere, or connected only in an org the person is not in; several → `ambiguous_org`, listing those slugs,
   settled by `org`, which must be one of them (else the same `not_connected`).
+- **By session — `link_inbox` only** (agent links, 0078; owner ruling 2026-10-17). A Claude Code hook cannot pass
+  `repo`, so `resolveLinkSession(conn, session)` picks the org holding an OPEN `agent_links` row with the person's
+  side bound to that session: `liveTenants` kind `link_session` (the same membership spine as every kind, plus an
+  `EXISTS` on `agent_links` — handles on both sides, `COLLATE NOCASE`), then narrowed to what the connection can
+  ALREADY reach (`conn.orgs`): a token's one org, a manual grant's allowed orgs, a repo grant's live memberships.
+  Exactly one → that org; none or several → nothing is read or written (the tool answers empty, never an error).
+  A session bound in an org the person has left is never found — by the spine, and again by `conn.orgs`. No other
+  tool chooses this way, and it admits nothing (`admitCall` is not run: the call reads only the person's own link).
 - `admitCall` then runs before the tool body: a `repo` grant's FIRST call into an org takes one of the
   person's agent-connection slots there (`admitGrantOrg`, `requirePlan` → `plan_limit`; `plans.md`).
 
-**The connection's own tools** act in no org: `get_connection` (handle, mode, the organization THIS call would
+**The connection's own tools** act in no org — except `link_inbox`, which acts in the org its session resolves
+to (above): `get_connection` (handle, mode, the organization THIS call would
 act in with the role there, a manual connection's current org, the orgs it can reach, and `unresolved` when it
 would act nowhere — it admits nothing and reads no org's data) and `switch_org` (moves a manual connection's
 current org to another it is ALREADY allowed — `setGrantCurrent`, one guarded UPDATE; it applies to every
@@ -113,7 +122,8 @@ in its own batch and revokes a manual grant left with no org. A revoked grant ho
   org the connection can reach, and is `forbidden` on a call that lands where they are not. There is no
   allowlist of handles anywhere.
 - Usage: a tool call is metered in the org it resolved to (`meterMcpTool`); a request with no tool call, in a
-  manual connection's current org (`meterMcp`); a call that resolved nowhere, nowhere.
+  manual connection's current org (`meterMcp`); a call that resolved nowhere, nowhere. `link_inbox` meters itself
+  ONLY when it delivers a note: its empty path (no org, nothing waiting) writes no usage row.
 - `get_repo_dashboard` reads the org's own `org_repos` / `org_environments` (`orgRepoConfig`,
   `src/tools/repo-agent.ts` — it may not import `src/integrations`, see `test/secrets.mcp.test.ts`); a bare
   `#214` resolves against the org's primary repo (`ticketLinkRepo`, `src/tools/tickets.ts`).
@@ -157,7 +167,8 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   AI tables `ai_suggestions` / `ai_feedback` (0055, read and written by `src/data/ai.ts`) and `ai_dirty` (0058 —
   the router's stale scopes; nothing writes it yet),
   and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
-  `src/tools/tags.ts`; `feed-and-search.md` › Tags).
+  `src/tools/tags.ts`; `feed-and-search.md` › Tags), and the Docs Library's `doc_spaces`, `doc_space_owners`,
+  `doc_links`, `doc_imports` (0081_docs_library — `src/tools/spaces.ts`; `docs-library.md`).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
@@ -209,14 +220,14 @@ so the isolation tests (and the §10.3 mutation check) remain the behavioural ha
 
 | Where | Why |
 |---|---|
-| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
+| `src/platform/sweeps.ts` `expireDueHandoffs`, `pruneHandoffUploadTokens`, `pruneRepoCapture` (incl. `hosting_deploys`), `pruneSyncRuns`; `src/auth/oauth.ts` `pruneOAuth` | cross-org retention sweeps: write-only, bounded by age |
 | `src/platform/jobs.ts` (`org_repos`, `org_environments`, `org_github_installations`, `org_github_installation_repos`, `org_hosting_connections`) | the cron's unit lists, the webhook's hook lookup, the GitHub App's lookups before any org is known, or past one (`installationOrgs`, `installationRepoOrgs` — 0053: which orgs an installation serves, and which of them a repository's delivery goes to), and a hosting provider's installation → org lookup (`connectionsForExternalId`: the uninstall notice, and the connect callback's one-org-per-installation check) — ids, an environment key and a repo name |
 | `src/platform/repo.ts` `listPlatformOrgs` (`org_github_installations`) | the superadmin's org list: the GitHub account an org's installation is on — a name |
 | `src/platform/jobs.ts` `listPartUnits` (`org_environment_parts`) | the `hosting` job's units (0057): env / part keys and a provider id — the part's settings are re-read by the unit as its org's tenant |
 | `src/auth/tokens.ts` `resolveToken`; `src/auth/oauth.ts` `resolveOAuthAccessToken`, `exchangeAuthorizationCode`, `refreshAccessToken`, `revokeOAuthToken`, `grantRefusal`, `GRANT_STANDING` | credential lookup by HASH before any org is known (the row names the grant), its standing over the orgs it can reach, and the revoke of the one grant just found |
 | `src/auth/oauth.ts` `listGrants`, `revokeGrant`, `ownGrant`, `setGrantMode` | Connected apps is user-level: a person's own grants across their orgs, keyed by id AND person |
 | `src/auth/oauth.ts` `issueRepoAuthorization` | a grant that follows the repository is the person's and no org's: written with `org_id` '' |
-| `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash, returning only its `org_id` |
+| `src/artifacts/upload.ts` `uploadTokenOrg` | upload-token lookup by hash (doc-image, handoff and artifact tokens), returning only its `org_id` |
 | `src/platform/usage.ts` (whole file); `src/platform/repo.ts` `listAudit` (`org_audit`) | the superadmin's cross-org counts and merged audit trail — no content, no secret |
 | `src/orgs/repo.ts` `removeMember` | ends the removed person's credentials' reach into that org, in the same batch (tokens revoked, each grant's row for the org dropped, a grant left with no org revoked) |
 | `src/deletion/person.ts` `personStmts` (also interpolated), `addressesOf` | an ACCOUNT's deletion (`organizations.md` §8): the person's own tokens, connections, digests, prefs and attribution rows in every org, by person; the handoff feed line that names them; the `HANDLE_COLUMNS` rewrite to the tombstone, like a rename |
@@ -243,6 +254,7 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
 | `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself; exactly `/hosting/<provider>/callback` is a platform path in `src/data/gate.ts` |
 | Test connection's 401 on an install / OAuth credential (`src/integrations/probe.ts` → `endRefusedConnection`) | the admin's session tenant | `jobTenant(env, ctx)` — `systemRevocationDeleteStmts` deletes the secret |
+| the `doc_links` backfill `backfillDocLinks` (`src/platform/doc-links-backfill.ts`, from the daily cron) | `listActiveOrgIds`, resumed on `cron_cursor` job `doc_links_backfill` (`<org>\t<slug>`; `\u0001done` once every org was read — then it reads nothing) | `systemTenant(p, org, "system")` per org; at most 300 pages read (and 60 queries) per invocation (`docs-library.md` › Links) |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every
