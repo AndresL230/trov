@@ -170,8 +170,10 @@ is all people see in the Feed's default "For reading" view — and a `body`, the
 six typed structures — `Shipped:` / `Decision:` / `Triage:` / `Status:` / `Finding:` / `Incident:` —
 see the `record-session` skill's "Feed entry format"; it applies to `append_feed` exactly as it does to
 `record_session`.) The gate reconciles
-every write — it de-duplicates no-op proposals, tags each doc change `new` / `edit` / `rewrite`, and
-routes out-of-vocab or low-confidence entries to Triage. A doc may embed **images**, but only ones
+every write — it de-duplicates no-op proposals, tags each doc change `new` / `edit` / `rewrite`, stages a
+low-confidence doc or decision flagged for the reviewer, and REFUSES a doc with a section that is not one, a space
+that is not a live one of the organization, or an archived page's slug — outcome `refused`, with a reason that lists
+what is valid: fix it and send again (a refusal is not recorded, so the corrected call stages). A doc may embed **images**, but only ones
 uploaded to Trov: `upload_asset { destination: "doc", sha256, size_bytes, content_type }` → PUT the
 bytes to `upload_url` (skip when it says `uploaded: true`) → reference `![alt](/img/<sha256>)`. The gate
 refuses a doc whose image is not uploaded yet, or that points anywhere else (an external URL, a

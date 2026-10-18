@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
-import { systemCtx } from "./helpers/tenant";
+import { ORG_A, systemCtx } from "./helpers/tenant";
 import { app } from "../src/routes";
 import { all, first } from "./helpers/db";
 import type { DocVersionRow, AdrRow, NeedsTriageRow } from "@shared/rows";
@@ -158,19 +158,40 @@ describe("POST /needs-triage/:id/discard", () => {
   });
 });
 
+describe("POST /needs-triage/:id/restore (Unplaced's Undo)", () => {
+  it("puts a discarded item back exactly as it was; a placed one is 409, an unknown id 404, another org's 404", async () => {
+    const cookie = await authedCookie("andres");
+    const id = await route_triage(systemCtx(), { raw: "loose", reason: "agent unsure", source_author: "agent-x" });
+    expect((await post(`/needs-triage/${id}/discard`, cookie)).status).toBe(200);
+    const res = await post(`/needs-triage/${id}/restore`, cookie);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, id, restored: true });
+    const row = await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage WHERE id = ?`, id);
+    expect(row).toMatchObject({ resolved: 0, resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null, source_author: "agent-x" });
+    expect((await getJson<{ items: { id: number }[] }>("/needs-triage", cookie)).items.map((i) => i.id)).toEqual([id]);
+    // Again: already in the queue, nothing to do.
+    expect(await (await post(`/needs-triage/${id}/restore`, cookie)).json()).toEqual({ ok: true, id, restored: false });
+
+    const placed = await route_triage(systemCtx(), { raw: { slug: "placed", section: "reference", body: "b", change_summary: "s", confidence: "high" }, reason: "r" });
+    expect((await post(`/needs-triage/${placed}/assign`, cookie, { type: "doc" })).status).toBe(200);
+    const refused = await post(`/needs-triage/${placed}/restore`, cookie);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toMatchObject({ error: "assigned" });
+
+    expect((await post(`/needs-triage/999999/restore`, cookie)).status).toBe(404);
+    const elsewhere = await route_triage(systemCtx("org_b"), { raw: "b's", reason: "r" });
+    expect((await post(`/needs-triage/${elsewhere}/restore`, cookie)).status).toBe(404);
+  });
+});
+
 // ── assign-materialize triage ─────────────────────────────────────────────────
 describe("POST /needs-triage/:id/assign", () => {
+  // The gate no longer sends anything to Unplaced (2026-10-18): these are items it held BEFORE, written as it wrote them.
+  const held = (raw: Record<string, unknown>, reason: string) => route_triage(systemCtx(), { raw, reason, source_author: "agent-x" });
+
   it("materializes a REAL doc through the gate AND resolves with assigned_ref (out-of-vocab section, human supplies one)", async () => {
     const cookie = await authedCookie("andres");
-    // Triage an out-of-vocab section so it lands in the queue.
-    const r = await ingestDocProposal(
-      systemCtx(),
-      { slug: "orphan", section: "made-up-section", title: "Orphan", body: "hello world", change_summary: "s", confidence: "high" },
-      "agent-x"
-    );
-    expect(r.outcome).toBe("triaged");
-    const triage = await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage ORDER BY id DESC LIMIT 1`);
-    const id = triage!.id;
+    const id = await held({ slug: "orphan", section: "made-up-section", title: "Orphan", body: "hello world", change_summary: "s", confidence: "high" }, "out-of-vocab section: made-up-section");
 
     const res = await post(`/needs-triage/${id}/assign`, cookie, { type: "doc", section: "reference" });
     expect(res.status).toBe(200);
@@ -192,13 +213,7 @@ describe("POST /needs-triage/:id/assign", () => {
 
   it("a low-confidence-new doc assigns successfully (the human's assignment vouches for it)", async () => {
     const cookie = await authedCookie("andres");
-    const r = await ingestDocProposal(
-      systemCtx(),
-      { slug: "shy", section: "reference", body: "tentative", change_summary: "s", confidence: "low" },
-      "agent-x"
-    );
-    expect(r.outcome).toBe("triaged"); // low confidence on a NEW slug → triage
-    const id = (await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage ORDER BY id DESC LIMIT 1`))!.id;
+    const id = await held({ slug: "shy", section: "reference", body: "tentative", change_summary: "s", confidence: "low" }, "low confidence doc proposal");
 
     const res = await post(`/needs-triage/${id}/assign`, cookie, { type: "doc" }); // no section override; uses raw's valid one
     expect(res.status).toBe(200);
@@ -208,12 +223,7 @@ describe("POST /needs-triage/:id/assign", () => {
 
   it("double-assign is idempotent-safe: no second version is materialized", async () => {
     const cookie = await authedCookie("andres");
-    await ingestDocProposal(
-      systemCtx(),
-      { slug: "twice", section: "bogus", body: "b", change_summary: "s", confidence: "high" },
-      "agent-x"
-    );
-    const id = (await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage ORDER BY id DESC LIMIT 1`))!.id;
+    const id = await held({ slug: "twice", section: "bogus", body: "b", change_summary: "s", confidence: "high" }, "out-of-vocab section: bogus");
 
     expect((await post(`/needs-triage/${id}/assign`, cookie, { type: "doc", section: "reference" })).status).toBe(200);
     expect((await post(`/needs-triage/${id}/assign`, cookie, { type: "doc", section: "reference" })).status).toBe(200);
@@ -223,13 +233,8 @@ describe("POST /needs-triage/:id/assign", () => {
 
   it("refuses (400) to place a doc with no valid section, leaving no stray triage row and no doc", async () => {
     const cookie = await authedCookie("andres");
-    await ingestDocProposal(
-      systemCtx(),
-      { slug: "nope", section: "still-bogus", body: "b", change_summary: "s", confidence: "high" },
-      "agent-x"
-    );
+    const id = await held({ slug: "nope", section: "still-bogus", body: "b", change_summary: "s", confidence: "high" }, "out-of-vocab section: still-bogus");
     const before = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    const id = before[before.length - 1].id;
 
     const res = await post(`/needs-triage/${id}/assign`, cookie, { type: "doc" }); // raw.section is out-of-vocab
     expect(res.status).toBe(400);
@@ -238,6 +243,19 @@ describe("POST /needs-triage/:id/assign", () => {
     expect((await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = 'nope'`)).length).toBe(0);
     expect((await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).length).toBe(before.length);
     expect((await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage WHERE id = ?`, id))?.resolved).toBe(0);
+  });
+
+  it("a placement the gate REFUSES (an archived space, an archived page) answers the person 400 with the reason; nothing resolved", async () => {
+    const cookie = await authedCookie("andres");
+    await env.DB.prepare(`UPDATE doc_spaces SET archived_at = 't' WHERE org_id = ? AND slug = 'design'`).bind(ORG_A).run();
+    const id = await held({ slug: "in-design", section: "reference", body: "b", change_summary: "s", confidence: "high" }, "unknown space: x");
+    const res = await post(`/needs-triage/${id}/assign`, cookie, { type: "doc", space: "design" });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toBe(`could not place doc: the space "design" is archived: use one of this organization's spaces: engineering, product`);
+    expect((await first<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage WHERE id = ?`, id))?.resolved).toBe(0);
+    expect(await all(env.DB, `SELECT 1 FROM docs WHERE slug = 'in-design'`)).toEqual([]);
+    // …and the same item placed in a live space goes through.
+    expect((await post(`/needs-triage/${id}/assign`, cookie, { type: "doc", space: "product" })).status).toBe(200);
   });
 
   it("returns 401 without a session cookie", async () => {

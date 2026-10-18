@@ -296,7 +296,7 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </div>
     <div class="cnpy-tip" role="tooltip" data-keep></div>
   </aside>
-    <main style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
+    <main data-morph="maintenance" style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--bg)">
       <header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       <button data-act="openDrawer" class="cnpy-menubtn cnpy-iconbtn" aria-label="Open navigation" aria-expanded="false"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"></path></svg></button><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Unplaced</h1>
@@ -310,41 +310,79 @@ exports[`field absent — each screen renders exactly what it did before Phase C
     </button>
     </div>
   </header>
-      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div data-screen-label="Unplaced" style="width:100%;max-width:1180px;margin:0 auto;padding:18px clamp(20px,2.6 * var(--vw),46px) 100px;box-sizing:border-box">
-    <div style="font-size:12.5px;color:var(--fg-55);margin:0 0 18px">Things an agent produced but couldn&#39;t place. Read one, then file it or throw it away.</div>
-    <div class="cnpy-surface" style="display:flex;flex-wrap:wrap;overflow:hidden;min-height:440px">
-    <div class="cnpy-scroll" style="flex:1 1 260px;min-width:0;max-width:100%;box-shadow:1px 0 0 var(--border);overflow-y:auto;overflow-x:hidden;max-height:640px"><button data-act="maintSelect" data-arg="7" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:var(--hover);transition:background .12s ease">
-      <div style="font-size:13px;line-height:1.5;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">Deploy checklist</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40);min-width:0;white-space:nowrap;overflow:hidden"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:16px;height:16px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-sky)">@andres</span><span style="flex:none">&middot; 3h ago</span></div>
-    </button><button data-act="maintSelect" data-arg="8" class="cnpy-trow" style="display:block;width:100%;text-align:left;padding:13px 16px;border-bottom:1px solid var(--border);background:transparent;transition:background .12s ease">
-      <div style="font-size:13px;line-height:1.5;color:var(--fg);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">a free-form note</div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:7px;font-size:11.5px;color:var(--fg-40);min-width:0;white-space:nowrap;overflow:hidden"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:16px;height:16px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-sky)">@andres</span><span style="flex:none">&middot; 3h ago</span></div>
-    </button></div>
-    <div style="flex:2 1 380px;min-width:0;display:flex;flex-direction:column;padding:24px 28px;box-shadow:0 -1px 0 var(--border)">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--fg-55)">
-        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--fg-70);white-space:nowrap"><svg width="9" height="9" viewBox="0 0 10 10" fill="none" style="flex:none;display:block;color:var(--amber)" aria-hidden="true"><path d="M5 .8 9.5 9H.5Z" fill="currentColor"/></svg>Flagged by an agent</span>
-        <span style="display:inline-flex;white-space:nowrap;min-width:0"><button data-act="openPerson" data-arg="andres" class="cnpy-personchip" title="Andres" style="display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="min-width:0;overflow:hidden;text-overflow:ellipsis">Andres</span></button></span>
-        <span style="color:var(--fg-40);white-space:nowrap">&middot; 3h ago</span>
-        <span style="flex:1"></span>
-        <span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);white-space:nowrap">1 of 2</span>
+      <div id="cnpy-main" tabindex="-1" class="cnpy-scroll" style="flex:1;overflow-y:auto;min-height:0"><div class="cnpy-rv cnpy-up-screen" data-screen-label="Unplaced" data-pane="list" style="display:flex;height:100%;min-width:0">
+    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+      <div style="padding:16px 20px 12px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+        <div style="font-size:12.5px;color:var(--fg-55);min-width:0">Things an agent produced but couldn&#39;t place. Place each where it belongs, or discard it.</div><span class="cnpy-up-count">2 waiting</span>
       </div>
-      <div style="font-size:18px;font-weight:500;line-height:1.5;letter-spacing:-0.01em;color:var(--fg);margin-top:16px;text-wrap:pretty">Deploy checklist</div><div style="font-size:13.5px;line-height:1.6;color:var(--fg-70);margin-top:8px">Before a deploy, run the migrations, then check the health endpoint.</div>
-      <div style="font-size:12.5px;line-height:1.55;color:var(--fg-40);margin-top:10px"><span style="color:var(--fg-55);font-weight:500">Why it wasn't placed:</span> section &#39;runbooks&#39; is not in the vocabulary</div>
-      <div data-item="7" style="margin-top:26px;padding-top:20px;border-top:1px solid var(--border)">
-    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);white-space:nowrap;margin-bottom:10px">File it as</div>
-    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><button data-act="maintAssignKind" data-arg="doc" style="padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid var(--border);color:var(--fg-55);background:transparent;font-family:inherit">Doc section</button><button data-act="maintAssignKind" data-arg="adr" style="padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid var(--border);color:var(--fg-55);background:transparent;font-family:inherit">Decision record</button><button data-act="maintAssignKind" data-arg="feed" style="padding:5px 12px;border-radius:7px;font-size:12.5px;font-weight:500;white-space:nowrap;transition:all .12s ease;border:1px solid var(--border);color:var(--fg-55);background:transparent;font-family:inherit">Feed update</button></div>
-    
-  </div>
-      <div style="flex:1;min-height:24px"></div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--border)">
-        <button data-act="maintDiscard" data-arg="7" class="cnpy-mutelink" style="font-size:12.5px;font-weight:500;white-space:nowrap;color:var(--fg-55)">Discard</button>
-        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-          <span style="font-size:12px;color:var(--fg-40)">Pick what it is first</span>
-          <button data-act="maintFile" data-arg="7" class="" style="background:transparent;color:var(--fg-40);border:1px solid var(--border);cursor:default;border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;transition:all .12s ease;padding:8px 16px">File it</button>
-        </div>
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px"><div class="cnpy-rv-row cnpy-up-row" data-morph-key="up:7"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-up-card="7" aria-current="true">
+    <button aria-current="true" data-act="maintSelect" data-arg="7" class="cnpy-hit" aria-label="Deploy checklist"></button>
+    <span class="cnpy-selbar"></span>
+    <div class="cnpy-rv-card-in" style="position:relative">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0;overflow-wrap:anywhere">Deploy checklist</div>
+        
+      </div>
+      <div style="font-size:12.5px;color:var(--fg-55);margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere">Before a deploy, run the migrations, then check the health endpoint.</div>
+      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="Andres — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
+        <span data-slot="kind" style="flex:none">Doc proposal</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="why" data-mtip="section &#39;runbooks&#39; is not in the vocabulary" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">Agent wasn&#39;t sure</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">3h ago</span>
       </div>
     </div>
+    <span class="cnpy-rv-verdict" aria-hidden="true"></span>
+  </div></div></div><div class="cnpy-rv-row cnpy-up-row" data-morph-key="up:8"><div class="cnpy-rv-row-in"><div class="cnpy-titem cnpy-surface cnpy-card cnpy-hitbox" data-up-card="8">
+    <button data-act="maintSelect" data-arg="8" class="cnpy-hit" aria-label="a free-form note"></button>
+    <span class="cnpy-selbar"></span>
+    <div class="cnpy-rv-card-in" style="position:relative">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1 1 auto;font-size:14px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);min-width:0;overflow-wrap:anywhere">a free-form note</div>
+        
+      </div>
+      
+      <div class="cnpy-rv-meta" style="display:flex;align-items:center;flex-wrap:nowrap;white-space:nowrap;overflow:hidden;gap:6px;margin-top:10px;height:20px;font-size:11.5px;line-height:20px;color:var(--fg-55);min-width:0">
+        <span data-slot="author" data-mtip="@andres" style="flex:none;display:inline-flex;align-items:center"><button data-act="openPerson" data-arg="andres" class="cnpy-personav" title="Andres" aria-label="Andres — person card" style="display:flex;flex:none;padding:0;border-radius:50%"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div></button></span>
+        <span data-slot="kind" style="flex:none">Note</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="why" data-mtip="Flagged by an agent" style="flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis">Agent wasn&#39;t sure</span><span style="color:var(--fg-40)">·</span>
+        <span data-slot="time" style="flex:none;color:var(--fg-40)">3h ago</span>
+      </div>
+    </div>
+    <span class="cnpy-rv-verdict" aria-hidden="true"></span>
+  </div></div></div></div>
+    </div>
+    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
+      <button data-act="maintBack" class="cnpy-rv-back"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>All items</button>
+      <div class="cnpy-rvp cnpy-up">
+    <div class="cnpy-rv-body cnpy-rvp-body" data-morph-key="upd:7">
+      <div class="cnpy-rvp-crumb">1 of 2 unplaced</div>
+      <h2 class="cnpy-rvp-h">Deploy checklist</h2>
+      <div class="cnpy-rvp-kind">
+        <span>Doc proposal</span><span style="color:var(--fg-40)">·</span>
+        <span style="display:inline-flex;align-items:center;min-width:0"><button data-act="openPerson" data-arg="andres" class="cnpy-personchip" title="Andres" style="display:inline-flex;align-items:center;gap:6px;min-width:0;max-width:calc(100% + 10px);text-align:left;padding:2px 8px 2px 2px;margin:-2px -8px -2px -2px;border-radius:7px"><div class="cnpy-av" title="Andres" style="--c:var(--p-sky);position:relative;width:18px;height:18px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:9px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:12.5px">Andres</span></button></span><span style="color:var(--fg-40)">·</span>
+        <span style="font-size:12.5px;color:var(--fg-40)">3h ago</span>
+        
+      </div>
+      <div class="cnpy-surface cnpy-up-why" style="padding:12px 15px;margin-top:18px">
+        <div style="font-size:12px;font-weight:600;color:var(--fg-70)">Why it wasn't placed</div>
+        <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55);margin-top:4px;overflow-wrap:anywhere">section &#39;runbooks&#39; is not in the vocabulary</div>
+      </div>
+      
+      <div class="cnpy-rvp-page"><div class="cnpy-md cnpy-rvp-md"><div class="mock-live-md">Before a deploy, run the migrations, then check the health endpoint.</div></div></div>
+      <div class="cnpy-up-place" data-item="7">
+    <div style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin-bottom:10px">Place it as</div>
+    <div class="cnpy-seg cnpy-seg--sm" data-seg="up-kind" data-morph-key="seg:up-kind" role="group" aria-label="Place it as"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:up-kind:doc" class="cnpy-seg-btn is-on" data-act="maintAssignKind" data-arg="doc" aria-pressed="true">Doc</button><button type="button" tabindex="-1" data-field="seg:up-kind:adr" class="cnpy-seg-btn" data-act="maintAssignKind" data-arg="adr" aria-pressed="false">Decision</button><button type="button" tabindex="-1" data-field="seg:up-kind:feed" class="cnpy-seg-btn" data-act="maintAssignKind" data-arg="feed" aria-pressed="false">Feed entry</button></div>
+    <div class="cnpy-up-field"><div class="cnpy-up-label" id="up-section-l">Section</div><div class="cnpy-seg cnpy-seg--sm" data-seg="up-section" data-morph-key="seg:up-section" role="group" aria-label="Section"><span class="cnpy-seg-ind" aria-hidden="true" data-keep></span><button type="button" tabindex="0" data-field="seg:up-section:reference" class="cnpy-seg-btn" data-act="maintAssignSection" data-arg="reference" aria-pressed="false">Reference</button><button type="button" tabindex="-1" data-field="seg:up-section:context" class="cnpy-seg-btn" data-act="maintAssignSection" data-arg="context" aria-pressed="false">Context</button><button type="button" tabindex="-1" data-field="seg:up-section:decisions" class="cnpy-seg-btn" data-act="maintAssignSection" data-arg="decisions" aria-pressed="false">Decisions</button></div></div>
+      <div class="cnpy-up-field"><div class="cnpy-up-label" id="up-space-l">Space</div><span style="font-size:12.5px;color:var(--fg-55)">No live space: a person creates or restores one in the Library.</span></div>
   </div>
+    </div>
+    <div class="cnpy-rvp-foot" data-morph-key="upf:7">
+      <span class="cnpy-rvp-note">Pick a section</span>
+      <button type="button" data-act="maintDiscard" data-arg="7" class="cnpy-rejectbtn cnpy-rvp-btn" style="border-radius:8px;border:1px solid var(--border-strong);color:var(--fg-70);background:transparent">Discard</button>
+      <button type="button" disabled class="cnpy-rvp-btn cnpy-up-place-btn" style="border-radius:8px;padding:0 14px;font-weight:600;background:transparent;color:var(--fg-40);border:1px solid var(--border)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>Place</button>
+    </div>
+  </div>
+    </div>
   </div></div>
     </main>
     <div class="cnpy-scrim" data-act="closeDrawer" aria-hidden="true"></div>

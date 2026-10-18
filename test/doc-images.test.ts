@@ -232,12 +232,12 @@ describe("the doc gate's image rule", () => {
       doc_proposals: [doc("batched", `![shot](/img/${sha})`), doc("plain", "no images")],
     });
     const first1 = await recordBatch(systemCtx(), payload, { handle: ME });
-    expect(first1.docs).toEqual({ staged: 1, unchanged: 0, triaged: 0 });
-    expect(first1.refused).toEqual([{ slug: "batched", reason: expect.stringContaining(`/img/${sha}`) }]);
+    expect(first1.docs).toEqual({ staged: 1, unchanged: 0 });
+    expect(first1.refused).toEqual([{ slug: "batched", code: "image", reason: expect.stringContaining(`/img/${sha}`) }]);
 
     await upload(bytes);
     const again = await recordBatch(systemCtx(), payload, { handle: ME });
-    expect(again.docs).toEqual({ staged: 1, unchanged: 1, triaged: 0 }); // "plain" replays; "batched" stages now
+    expect(again.docs).toEqual({ staged: 1, unchanged: 1 }); // "plain" replays; "batched" stages now
     expect(again.refused).toBeUndefined();
   });
 

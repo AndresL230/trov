@@ -72,7 +72,6 @@ describe("live POST /ingest route", () => {
     // Per-type outcome counts reflect what landed.
     expect(body.result.docs.staged).toBe(1);
     expect(body.result.docs.unchanged).toBe(0);
-    expect(body.result.docs.triaged).toBe(0);
     expect(body.result.feed.written).toBe(1);
     expect(body.result.feed.unchanged).toBe(0);
     expect(body.result.feed.triaged).toBe(0);
@@ -122,7 +121,7 @@ describe("live POST /ingest route", () => {
     expect(replayBody.ok).toBe(true);
 
     // All items report unchanged — the ledger dropped them.
-    expect(replayBody.result.docs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
+    expect(replayBody.result.docs).toEqual({ staged: 0, unchanged: 1 });
     expect(replayBody.result.feed).toEqual({ written: 0, unchanged: 1, triaged: 0 });
 
     // Zero new rows of any kind.

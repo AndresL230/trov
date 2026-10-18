@@ -20,7 +20,7 @@ Platform, personal Settings (its name, handle and digest-address fields), the Ar
 (`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
 the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
 the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
-wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), Unplaced (`maintenance`: the same keyed list and exit), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -700,6 +700,16 @@ under it move up as the same elements**. Four parts, each in one place:
    it had are back, with the usual error toast. The refetch is held until no row is still
    collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
 
+**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18): its cards are the same `.cnpy-rv-row` /
+`.cnpy-titem` in a `data-morph-list` (keys `up:<id>`, the empty layout `up-empty`), placing or discarding gives
+the card a `data-verdict` of `placed` (green) or `discarded` (quiet) for `UNPLACED_EXIT_MS` (= `REVIEW_EXIT_MS`),
+the state is `state.unplacedLeaving` (main.ts `unplacedVerdict` / `settleUnplaced` / `pruneUnplacedLeaving` — the
+same four parts, the person's picks restored with the card on a failure), and `syncReviewDetail` runs for both
+screens (a new item's pane starts at its top; Place / Discard hand focus to the next item's, Place falling back to
+Discard when the next cannot be placed yet). A Trov suggestion accepted on an Unplaced item placed it, so its card
+leaves by this exit too (the AI kit's `decided` hook), after the chip's own exit. Discard has no arm step: it is
+soft, and its toast carries Undo (`POST /needs-triage/:id/restore`).
+
 Also part of the pattern: the **last** row leaving already has the screen's empty layout under it
 (`emptyLayout`, a keyed child of the same list), which rises as the row collapses, so there is no
 jump; and **reduced motion** means no movement at all: `main.ts` marks the row `gone` at once and
@@ -964,7 +974,7 @@ empty, so a brand-new organization can see what the screen is for. The rules:
   adds Open Org settings › Repositories for an admin (`actionHtml`).
 - **Shapes are the skeleton's builders.** Each screen has ONE shape builder (`tableShapes`,
   `boardCardShapes`, `feedCardShape`, `sprintCardShape`, `timelineShapes`, `handoffRowsShape`,
-  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, Hosting's
+  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedCardShape` (and its page pane's `unplacedDetailShapes`), `skRowsShape`, Hosting's
   `partsListShape` / `partRowsShape` and the dashboard's `hostingShapes`, …) used by its
   loading skeleton AND its empty layout, so the two have the same columns and row heights and cannot drift.
 - **Never data (CLAUDE.md invariant 7).** A shape is a box: no name, title, number, date, avatar, control or

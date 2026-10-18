@@ -48,7 +48,7 @@ import { reviewView, reviewGroups, type ReviewFilter, type ReviewProps, type Dif
 import { importWizardView, importsHistoryView, initialImportUi, driverActive, type ImportUi } from "./import";
 import { confirmModal } from "./confirm";
 import type { ImportRunView } from "@shared/docs-import-core";
-import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
+import { maintenanceView, maintenanceSkeleton, unplacedSpaceDropdown, effectivePicks, type MaintenanceProps, type AssignKind, type UnplacedVerdict } from "./maintenance";
 import type { IdentityProps } from "./identity";
 import { linksView, linkDetailView, linkCancelModal, NO_LINK_BOXES, type LinkBoxes, type LinkStart } from "./links";
 import { relayView } from "./relay";
@@ -345,6 +345,9 @@ export interface AppState {
   assignSection: string | null;
   assignSpace: string | null;
   assignTags: string[];
+  /** Unplaced items just placed or discarded, still on screen while their card leaves (web-ui.md › A row leaving a
+   *  list). Only HIDES rows of `needsTriage`; the refetch replaces the read and the entry is dropped. */
+  unplacedLeaving: Record<string, { verdict: UnplacedVerdict; gone: boolean }>;
   mapConfirm: string | null;
   mapPicks: Record<string, string>;
   showHistory: boolean;
@@ -539,7 +542,6 @@ export interface AppState {
   promptEd: PromptDraft | null;
   // ── Docs › New doc / Unplaced ──────────────────────────────────────
   nd: NewDocDraft;
-  maintDiscardArm: boolean;
   // ── Platform (superadmin): everything its screens hold (platform.ts) ───────
   plat: PlatState;
   /** The filter menu (web/src/filter-menu.ts) the NEXT paint opens — its entrance plays once, then main.ts clears this. */
@@ -646,7 +648,7 @@ export function initialState(): AppState {
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
     reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
-    assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
+    assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [], unplacedLeaving: {},
     mapConfirm: null,
     mapPicks: {},
     showHistory: false,
@@ -712,7 +714,6 @@ export function initialState(): AppState {
     promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptDeleteArm: false, promptDeleteBusy: false, promptExpanded: false, promptView: "raw",
     promptMode: "new", promptEd: null,
     nd: blankDoc(DEFAULT_SPACE),
-    maintDiscardArm: false,
     plat: initialPlat(),
     fmOpening: null,
     dd: initialDropdownUi(),
@@ -757,11 +758,14 @@ export function reviewProps(s: AppState): ReviewProps {
 }
 
 export function maintenanceProps(s: AppState): MaintenanceProps {
+  const leaving: Record<string, UnplacedVerdict> = {};
+  for (const [id, l] of Object.entries(s.unplacedLeaving)) if (!l.gone) leaving[id] = l.verdict;
   return {
-    discardArm: s.maintDiscardArm,
-    unplaced: s.needsTriage.data.map(unplacedFromRow),
+    // A card whose exit is over is gone from the list until the refetch lands (it only hides the read).
+    unplaced: s.needsTriage.data.filter((r) => !s.unplacedLeaving[String(r.id)]?.gone).map(unplacedFromRow),
+    leaving,
     // Feed tags a person may pick: the org's live list.
-    assign: { ...ASSIGN_OPTIONS, tags: (s.tags.data?.tags ?? []).filter((t) => !t.retired).map((t) => t.name), spaces: liveSpaces(s).map((sp) => ({ key: sp.slug, label: sp.name })) },
+    assign: { ...ASSIGN_OPTIONS, tags: (s.tags.data?.tags ?? []).filter((t) => !t.retired).map((t) => ({ name: t.name, color: t.color })), spaces: liveSpaces(s).map((sp) => ({ key: sp.slug, label: sp.name })) },
     assignOpen: s.assignOpen,
     assignKind: s.assignKind,
     assignSection: s.assignSection,
@@ -769,7 +773,16 @@ export function maintenanceProps(s: AppState): MaintenanceProps {
     assignTags: s.assignTags,
     people: peopleFromPersons(s.persons.data),
     aiUi: s.ai,
+    dd: s.dd,
   };
+}
+
+/** Unplaced's one dropdown (the Space picker past four spaces), with the item on screen's effective space checked. */
+function unplacedDropdowns(s: AppState): DropdownProps[] {
+  const p = maintenanceProps(s);
+  const waiting = p.unplaced.filter((u) => !p.leaving?.[u.id]);
+  const sel = waiting.find((u) => u.id === p.assignOpen) ?? waiting[0];
+  return sel ? [unplacedSpaceDropdown(p.assign, effectivePicks(sel, p, sel.id === p.assignOpen).space)] : [];
 }
 
 /** The Library's Imports badge: imports in progress — the badges read's (or Imports history's) count, and at least
@@ -812,7 +825,8 @@ export function triageCounts(s: AppState): { review: number; maintenance: number
   const left = reviewHeadsFromReads(s.proposals.data, s.draftAdrs.data).filter((it) => s.reviewLeaving[it.id]).length;
   return {
     review: badgeCount(s, "proposals", s.proposals, length) + badgeCount(s, "decisions", s.draftAdrs, length) - left,
-    maintenance: badgeCount(s, "unplaced", s.needsTriage, length),
+    // The same for Unplaced: an item placed or discarded drops from the badge with its card.
+    maintenance: badgeCount(s, "unplaced", s.needsTriage, length) - s.needsTriage.data.filter((r) => s.unplacedLeaving[String(r.id)]).length,
   };
 }
 
@@ -2167,7 +2181,7 @@ function guideView(s: AppState): string {
     <ul style="${gList}">
       <li>${gStrong("trov")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
       <li>${gStrong("load-context")}: ${gStrong("runs on its own")} before your agent works on an area the team already knows about, and always before it proposes a doc change. It reads what Trov has, checks what's settled and what's only proposed, and at the start of a session shows your My Work and any handoffs waiting for you. It never writes.</li>
-      <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped, and anything it can't place goes to Triage › Unplaced.</li>
+      <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped; something it isn't sure of is staged flagged "Low confidence", or left out and mentioned to you.</li>
     </ul>
     <p style="${gP};margin-top:12px">The rest cover one surface each:</p>
     <ul style="${gList}">
@@ -2194,7 +2208,7 @@ function guideView(s: AppState): string {
     ${sub("Review: promote, ratify, or reject")}
     <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
     ${gFig("review", `${gEm("Review")}: the queue on the left and the selected proposal's diff on the right.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds anything an agent couldn't confidently place, and empty is its normal state: route an item where it belongs or ${gStrong("Discard")} it.</p>
+    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds the few things an agent couldn't place (Trov now refuses or flags most of them instead), and empty is its normal state. Place an item where it belongs or ${gStrong("Discard")} it (you can undo a discard).</p>
     ${gFig("maintenance", `${gEm("Unplaced")}: the queue, waiting to be routed or discarded.`)}
     <p style="${gP};margin-top:14px">Running the organization itself is in one place: ${gStrong("Org settings")}, from the switcher at the top of the sidebar. ${gStrong("Members")} is the people directory. Admins also invite people there, set roles and titles, and match an unrecognized GitHub login to a person. ${gStrong("Notifications")} is where admins set the email digests: which exist, when they send, and what went out. Your own digest preferences stay in ${gStrong("Settings")}.</p>
 
@@ -3150,7 +3164,8 @@ function appView(s: AppState): string {
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
     // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
     // a card can leave with an animation, and the two switches' indicators slide on the same element.
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
+    // Unplaced the same: its queue is Review's keyed list, so a card placed or discarded leaves by the same exit.
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" || s.screen === "maintenance" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
     : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
@@ -3242,7 +3257,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, bare: true })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}${s.view === "app" && s.screen === "repo" && s.repoAttentionOpen ? repoAttentionOverlay(repoProps(s)) : ""}${s.view === "app" && s.screen === "roadmap" && s.rmTrovOpen && s.roadmap.data && roadmapTrovCount(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai).n ? roadmapTrovDialog(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai) : ""}
-    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}
+    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}${s.view === "app" && s.screen === "maintenance" && s.dd.open ? dropdownMenu(unplacedDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

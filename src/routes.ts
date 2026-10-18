@@ -30,7 +30,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketMove, TicketAssigneeToggle, TicketLinkAdd,
   TicketSprintSet, TicketParentSet, TicketCommentAdd, TicketSeg, TicketAssigneeFilter, TicketCategory,
 } from "@shared/tickets";
-import { promote_doc, DocArchivedError, ratify_adr, reject_doc_version, reject_adr, resolve_triage, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
+import { promote_doc, DocArchivedError, ratify_adr, reject_doc_version, reject_adr, resolve_triage, restore_triage, TriageRestoreError, assign_triage, map_identity, discard_identity_task, restore_identity_task, IdentityTaskError, type AssignType } from "./tools/writes";
 import {
   create_sprint, set_sprint_active, complete_sprint, add_sprint_resource, delete_sprint, list_sprints, get_sprint,
   SprintError, SPRINT_ERROR_STATUS,
@@ -625,8 +625,8 @@ tenantApi.post("/docs/propose", async (c) => {
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   const d = parsed.data;
   if (!isSection(d.section)) return c.json({ error: `unknown section: ${d.section}` }, 400);
-  // A person's New page names a space they picked: refuse an unknown or archived one here rather than send
-  // their page to triage (an agent's proposal with such a space goes to needs_triage in the gate).
+  // A person's New page names a space they picked: refuse an unknown or archived one here, in a person's words, before
+  // the gate's agent-worded refusal (which would say the same, listing the spaces).
   const space = resolveSpaceAlias(d.space) as string;
   const state = await spaceState(c.var.ctx, space);
   if (state !== "live") return c.json({ error: state === "archived" ? `the ${space} space is archived` : `unknown space: ${space}` }, 400);
@@ -643,7 +643,7 @@ tenantApi.post("/docs/propose", async (c) => {
     c.get("principal").handle,
   );
   if (result.outcome === "refused") return c.json({ error: result.reason }, 400);
-  if (result.outcome !== "written") return c.json({ error: result.outcome === "triaged" ? result.reason : "nothing to stage" }, 409);
+  if (result.outcome !== "written") return c.json({ error: "nothing to stage" }, 409);
   const proposal = (await list_proposals(c.var.ctx)).find((p) => p.slug === slug && p.version === result.version) ?? null;
   return c.json({ ok: true, proposal, slug, ...(result.parent_ignored ? { parent_ignored: result.parent_ignored } : {}) });
 });
@@ -743,6 +743,19 @@ tenantRoot.post("/needs-triage/:id/discard", async (c) => {
     return c.json({ ok: true, ...res });
   } catch (e) {
     return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
+  }
+});
+
+// Human write-back (session-gated): undo a discard — Unplaced's Undo toast. Back to the queue, unresolved, exactly as it
+// was; only a discarded item (a placed one is 409 `assigned`), an unknown id 404.
+tenantRoot.post("/needs-triage/:id/restore", async (c) => {
+  const id = Number(c.req.param("id"));
+  if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
+  try {
+    return c.json({ ok: true, ...(await restore_triage(c.var.ctx, id)) });
+  } catch (e) {
+    if (e instanceof TriageRestoreError) return c.json({ error: e.code, message: e.message }, e.status);
+    throw e;
   }
 });
 

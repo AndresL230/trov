@@ -797,6 +797,10 @@ export function rejectAdr(id: number): Promise<{ ok: true }> {
 export function discardTriage(id: number): Promise<{ ok: true }> {
   return postJson<{ ok: true }>(`/needs-triage/${id}/discard`);
 }
+/** Undo a discard (Unplaced's Undo toast): the item is back in the queue, unresolved. */
+export function restoreTriage(id: number): Promise<{ ok: true; restored: boolean }> {
+  return postJson<{ ok: true; restored: boolean }>(`/needs-triage/${id}/restore`);
+}
 /** `space`: a live space's slug (the Library's), or none (the gate's default space). */
 export interface AssignTarget { type?: "doc" | "adr" | "feed"; section?: string; space?: string; tags?: string[]; }
 export function assignTriage(id: number, target: AssignTarget): Promise<{ ok: true }> {

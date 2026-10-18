@@ -2,7 +2,7 @@
 // `choice` over the CANDIDATES only — the vocabulary's sections (`SECTIONS`, never `needs-triage`) and the top
 // full-text docs of this org ("next to the doc …", each standing for its own section). Pure, like the other cards.
 //
-// The answer is a SUGGESTION. Accepting it files the item exactly as Unplaced's "File it" does — the triage assign
+// The answer is a SUGGESTION. Accepting it places the item exactly as Unplaced's Place does — the triage assign
 // (`assign_triage`, src/tools/writes.ts: the SAME gate, as the person who pressed Accept) as a doc in the picked
 // section. A doc candidate places the item in THAT DOC'S SECTION: the assign files by section, it has no "into this
 // doc" (it re-runs the item under its own slug). The probability of a section is its own option's plus its docs'

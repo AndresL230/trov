@@ -824,6 +824,26 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 @media (prefers-reduced-motion: reduce) {
   .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
 }
+/* ── Unplaced (web/src/maintenance.ts) ──────────────────────────────────────────────────────
+   Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`, `.cnpy-rvp`): only what is its own is here. A card
+   placed or discarded leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
+.cnpy-rv-row[data-verdict="placed"] { --rv-tone:var(--green); }
+.cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }
+.cnpy-up-count { flex:none; font-size:12px; color:var(--fg-40); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.cnpy-up-text { margin:0; font-size:14px; line-height:1.65; color:var(--fg-70); white-space:pre-wrap; overflow-wrap:anywhere; }
+.cnpy-up-place { margin-top:26px; padding-top:20px; border-top:1px solid var(--border); }
+.cnpy-up-field { margin-top:16px; }
+.cnpy-up-label { font-size:12px; font-weight:600; color:var(--fg-70); margin-bottom:8px; }
+.cnpy-up-opt { font-weight:400; color:var(--fg-40); }
+.cnpy-up-tags { display:flex; flex-wrap:wrap; gap:6px; }
+/* A tag to toggle (several may be on): the tag's own mark in a quiet box, the accent's when picked. A control, not a
+   state — the tag's square and word stay as the picker everywhere else draws them. */
+.cnpy-up-tag { display:inline-flex; align-items:center; min-height:30px; padding:0 10px; border:1px solid var(--border); background:transparent; transition:border-color .12s ease, background-color .12s ease; }
+.cnpy-up-tag:hover { border-color:var(--border-strong); }
+.cnpy-up-tag.is-on { border-color:var(--accent); background:var(--accent-soft); }
+.cnpy-up-note { margin:0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
+.cnpy-up-place-btn[disabled] { cursor:default; }
+@media (prefers-reduced-motion: reduce) { .cnpy-up-tag { transition:none; } }
 /* How many are waiting, on a switch's option (Review's All / Proposals / Decisions). */
 .cnpy-seg-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; }
 .cnpy-seg-btn.is-on > .cnpy-seg-n { color:var(--fg-55); }

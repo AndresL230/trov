@@ -13,7 +13,16 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the eleven skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.10.2");
+    expect(plugin.version).toBe("0.11.0");
+  });
+
+  it("record-session never sends needs_triage: unsure is a low-confidence proposal or left out, and a refusal is fixed and re-sent", () => {
+    const rs = SKILLS["record-session"];
+    expect(rs).not.toContain(`"needs_triage":`); // not in the payload it assembles
+    expect(rs).toContain("never send `needs_triage`");
+    expect(rs).toContain("Leave it OUT of the batch");
+    for (const code of ["`image`", "`section`", "`space`", "`archived_page`"]) expect(rs, code).toContain(code);
+    expect(rs).toContain("call `record_session` again with the SAME session id");
   });
 
   it("every skill that calls Trov derives `repo` from the git remote, passes it on every call, and may ask where it is", () => {

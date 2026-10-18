@@ -728,6 +728,9 @@ export const IMPORT_PAGE_FAILURES = {
   changed: "The file changed after it was checked",
   slug_taken: "Another page took its place while it was imported",
   refused: "An image in it couldn't be added",
+  space_gone: "Its space was archived while it was imported",
+  archived_page: "An archived page has its name",
+  /** Only a page sent before the gate stopped sending things to Unplaced (2026-10-18) says this, on a retry. */
   triaged: "It went to Unplaced instead",
   failed: "It couldn't be added",
   /** Not an error: the page already says exactly this, so nothing new went to Review. */
