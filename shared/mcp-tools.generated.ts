@@ -2198,14 +2198,26 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "update_plan",
-    "description": "ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. `label` is the sprint name, `start` its start date and `due` its target date — each a real calendar day written YYYY-MM-DD (`due` may be \"\" for unscheduled; `start` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. `dates` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is SHORT — 2–3 sentences up to two short paragraphs (Now / Next / Later), at most 800 characters after trimming; leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). Over the cap the whole call is refused and nothing is written — plan, versions and sprints alike. The narrative is always a full replacement, so an over-cap narrative already stored must be shortened, not resent. Use via the update-plan skill.",
+    "description": "ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. `label` is the sprint name, `start` its start date and `due` its target date — each a real calendar day written YYYY-MM-DD (`due` may be \"\" for unscheduled; `start` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. `dates` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is the Roadmap's \"What's happening\" box: THREE parts — `now`, `next`, `later` — each one short paragraph (a sentence or two, no label of its own); the server composes and stores them as `**Now:** … **Next:** … **Later:** …`, at most 800 characters in all. All three are required on every call (the narrative is always a full replacement — start from get_roadmap's); leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). A missing or empty part, or over the cap, refuses the whole call and nothing is written — plan, versions and sprints alike. A single `narrative` string is accepted only if it already reads Now / Next / Later. Use via the update-plan skill.",
     "admin": true,
     "inputSchema": {
       "type": "object",
       "properties": {
+        "now": {
+          "description": "The roadmap narrative's Now: what is happening now. One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a \"Now:\" label (the server adds it). Required, with the other two parts.",
+          "type": "string"
+        },
+        "next": {
+          "description": "The roadmap narrative's Next: what comes next. One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a \"Next:\" label (the server adds it). Required, with the other two parts.",
+          "type": "string"
+        },
+        "later": {
+          "description": "The roadmap narrative's Later: what is further out. One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a \"Later:\" label (the server adds it). Required, with the other two parts.",
+          "type": "string"
+        },
         "narrative": {
-          "type": "string",
-          "description": "The whole roadmap narrative (markdown), replacing the current one. SHORT: 2–3 sentences to two short paragraphs — what is happening now, next, later — at most 800 characters after trimming. No sprint-by-sprint detail; the sprints and the timeline carry it."
+          "description": "DEPRECATED — pass now, next and later instead. Accepted only when it already reads \"**Now:** … **Next:** … **Later:** …\"; anything else is refused and nothing is written.",
+          "type": "string"
         },
         "sprints": {
           "default": [],
@@ -2355,9 +2367,6 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
           "type": "string"
         }
       },
-      "required": [
-        "narrative"
-      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },

@@ -1,7 +1,7 @@
 import type { SprintRow, PlanRow } from "@shared/rows";
 import type { SprintView } from "@shared/sprints";
 import type { AiPlanDrift, AiSuggestion } from "@shared/ai-core";
-import { planNarrativeProblem, normalizeSprintDate, sprintDateProblem, sprintDatesProblem } from "@shared/sprints-core";
+import { composePlanNarrative, planNarrativeParts, normalizeSprintDate, sprintDateProblem, sprintDatesProblem, type PlanNarrativeInput } from "@shared/sprints-core";
 import { type TenantContext, first, all, run, nowIso } from "../data/sql";
 import { list_sprints, sprintLead, SprintError } from "./sprints";
 import { planDrift } from "../data/org-insights";
@@ -27,8 +27,9 @@ export interface PlanSprintInput {
   github_ref?: number | number[] | null;
 }
 
-export interface PlanWrite {
-  narrative: string;
+/** A plan write: the narrative's three parts (`now`, `next`, `later` — or an older client's `narrative` that
+ *  already reads as them; shared/sprints-core `planNarrativeParts`) and the sprint entries. */
+export interface PlanWrite extends PlanNarrativeInput {
   sprints: PlanSprintInput[];
 }
 
@@ -59,10 +60,12 @@ const githubRefJson = (ref: number | number[] | null | undefined): string | null
  * Ticket membership of a sprint is NOT set here — that is the Tickets UI's job
  * (`POST /tickets/:id/sprint`). The plan write owns the sprint's own fields only.
  *
- * Every refusal is decided BEFORE the first write, so a refused plan writes nothing:
- * a narrative over PLAN_NARRATIVE_MAX (trimmed, like the feed brief) is a
- * `bad_request`, and an unknown sprint id is `no such sprint` — no plan row, no
- * plan_versions row, no sprint touched. The stored narrative is the trimmed one.
+ * The narrative is ENFORCED HERE, for every caller (the owner's call, 2026-10-18): three parts — Now / Next /
+ * Later — each a non-empty paragraph, composed into the ONE stored form (`composePlanNarrative`); a legacy
+ * `narrative` string is taken only when it parses into them. Every refusal is decided BEFORE the first write, so a
+ * refused plan writes nothing: a missing or empty part, a free-text narrative, or one over PLAN_NARRATIVE_MAX
+ * (the composed text) is a `bad_request`, and an unknown sprint id is `no such sprint` — no plan row, no
+ * plan_versions row, no sprint touched.
  * So are bad sprint dates (`bad_request`): `due` / `start` must each be a real
  * YYYY-MM-DD day or blank, and start <= due — checked against the STORED start when
  * an update omits `start`, so a new due cannot slip in before an existing start.
@@ -72,9 +75,9 @@ export async function write_plan(
   input: PlanWrite,
   author: string
 ): Promise<{ version: number; sprints: SprintRow[] }> {
-  const narrative = input.narrative.trim();
-  const problem = planNarrativeProblem(narrative);
-  if (problem) throw new SprintError("bad_request", problem);
+  const shaped = planNarrativeParts(input);
+  if ("problem" in shaped) throw new SprintError("bad_request", shaped.problem);
+  const narrative = composePlanNarrative(shaped.parts);
   for (const sp of input.sprints) {
     const own = sprintDateProblem("start", sp.start) ?? sprintDateProblem("due", sp.due);
     if (own) throw new SprintError("bad_request", `sprint "${sp.label}": ${own}`);

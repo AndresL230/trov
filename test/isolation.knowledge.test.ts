@@ -24,6 +24,7 @@ import { feedStats } from "../src/tools/feed-stats";
 import { storeIssueSummary, storePrSummary } from "../src/tools/summarize";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { ORG_A, ORG_B, ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
+import { narr } from "./helpers/plan";
 
 const A = systemCtx(ORG_A);
 const B = systemCtx(ORG_B);
@@ -394,8 +395,8 @@ describe("two orgs with the same slugs and refs", () => {
   });
 
   it("query(): another org's plan text never surfaces this org's plan, and its feed never crowds this org's browse", async () => {
-    await write_plan(A, { narrative: "Ship the importer.", sprints: [] }, WHO);
-    await write_plan(B, { narrative: "Adopt the quokka strategy.", sprints: [] }, WHO);
+    await write_plan(A, { ...narr("Ship the importer."), sprints: [] }, WHO);
+    await write_plan(B, { ...narr("Adopt the quokka strategy."), sprints: [] }, WHO);
     expect((await query(A, { q: "quokka", types: ["sprint"] })).primary).toEqual([]);
     expect((await query(B, { q: "quokka", types: ["sprint"] })).primary.length).toBe(1);
 

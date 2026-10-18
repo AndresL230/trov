@@ -81,6 +81,13 @@ const urgencyMark = (u: SprintView["urgency"], size = 12.5): string => priorityM
 
 // ── the Roadmap Timeline card ────────────────────────────────────────────────
 
+/** How long what an Accept changed on the Roadmap rises in (`AppState.rmRise`): the narrative's box (render.ts
+ *  `planNarrativeBlock`) and the sprint cards an accepted draft created — the app's one-shot `.cnpy-flash`, .3 s. */
+export const RM_RISE_MS = 300;
+/** Whether `t` (ms since the rise began) is inside it. Drawn at a NEGATIVE delay (`-t`), so a repaint inside the rise
+ *  joins it where the last one left off; past it nothing moves (off under reduced motion: `.cnpy-flash`'s own rule). */
+export const rmRising = (t: number | null | undefined): t is number => t != null && t >= 0 && t < RM_RISE_MS;
+
 export interface SprintCardOpts {
   /** Treat the sprint as done although the server still says otherwise — the
    *  Confirm-done click is optimistic (`AppState.confirmedSprints`). */
@@ -91,6 +98,9 @@ export interface SprintCardOpts {
   now?: number;
   /** What this person pressed "Wrong?" on (a hidden note is not drawn). */
   ai?: Pick<AiUi, "hidden"> & Partial<Pick<AiUi, "leaving">>;
+  /** ms since an accepted sprint draft created this card (render.ts `AppState.rmRise`): it rises in once with the
+   *  app's one-shot `.cnpy-flash` (`rmRising`). Null or absent: nothing moves. */
+  riseT?: number | null;
 }
 
 /**
@@ -163,7 +173,9 @@ export function sprintCard(sp: SprintView, persons: PersonSummary[], opts: Sprin
       </div>`
     : "";
 
-  return `<div${surface("padding:14px 16px;margin-bottom:8px")}>
+  // An accepted draft's new card rises in, at a negative delay so a repaint inside the rise joins it (RM_RISE_MS).
+  const rise = rmRising(opts.riseT);
+  return `<div${surface(`padding:14px 16px;margin-bottom:8px${rise ? `;animation-delay:-${Math.round(opts.riseT!)}ms` : ""}`, rise ? { cls: "cnpy-flash" } : {})}>
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
       <span style="font-size:14.5px;font-weight:600;letter-spacing:-0.01em">${esc(sp.label)}</span>
       ${nextUp ? NEXT_UP : ""}

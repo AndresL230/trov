@@ -500,6 +500,25 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-md.rm-now-about :is(p,ul,ol,pre,blockquote,table,li) { margin:0; }
 .cnpy-md.rm-now-about :is(pre,blockquote) { padding:0; border:0; background:none; }
 .cnpy-md.rm-now-about :is(img,hr) { display:none; }
+/* Roadmap › "What's happening": the plan narrative's STRUCTURED box (render.ts `planNarrativeBlock`) — three rows,
+   Now / Next / Later, each its label (the card's label face) beside its text, hairlines between them. The text is
+   the part's own markdown (renderMarkdown, sanitized) with its blocks flattened to one paragraph. Tokens only, so
+   light and dark both read; at phone width the label column stays narrow. */
+.rm-nnl { margin:0; display:flex; flex-direction:column; }
+.rm-nnl-row { display:grid; grid-template-columns:52px minmax(0,1fr); column-gap:14px; align-items:baseline; padding:11px 0; border-top:1px solid var(--border); }
+.rm-nnl-row:first-child { border-top:0; padding-top:2px; }
+.rm-nnl-row:last-child { padding-bottom:0; }
+.rm-nnl-k { margin:0; font-size:12px; font-weight:500; color:var(--fg-55); }
+.cnpy-md.rm-nnl-v { margin:0; min-width:0; font-size:14.5px; line-height:1.6; overflow-wrap:anywhere; }
+.cnpy-md.rm-nnl-v :is(h1,h2,h3,h4,h5,h6) { font:inherit; font-weight:600; color:var(--fg); letter-spacing:0; text-transform:none; margin:0; padding:0; border:0; }
+.cnpy-md.rm-nnl-v :is(p,ul,ol,pre,blockquote,table,li) { margin:0; }
+.cnpy-md.rm-nnl-v :is(pre,blockquote) { padding:0; border:0; background:none; }
+.cnpy-md.rm-nnl-v :is(img,hr) { display:none; }
+/* The same box inside a narrative proposal (roadmap-ai.ts `narrativeBody`): a size down, in the suggestion's tone. */
+.rm-nnl-sugg .rm-nnl-row { padding:8px 0; }
+.rm-nnl-sugg .rm-nnl-row:first-child { padding-top:0; }
+.rm-nnl-sugg .rm-nnl-row:last-child { padding-bottom:0; }
+.rm-nnl-sugg .cnpy-md.rm-nnl-v { font-size:13px; line-height:1.55; color:var(--fg-70); }
 
 /* ── Roadmap › Timeline (web/src/timeline.ts): the sprints as a Gantt graph. Every
    position is a PERCENT of the track, so the graph fits its card rather than

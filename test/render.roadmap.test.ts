@@ -119,6 +119,37 @@ describe("planNarrativeBlock", () => {
     expect(html).not.toContain("mock-md");
   });
 
+  it("a Now / Next / Later narrative is a STRUCTURED box: three rows, each its label beside its text through markdownFn", () => {
+    const html = planNarrativeBlock("**Now:** Hosting, *mostly*.\n\n**Next:** Billing.\n\n**Later:** Docs.", mockMd);
+    expect(html).toContain('<dl class="rm-nnl">');
+    const rows = [...html.matchAll(/<div class="rm-nnl-row" data-part="(\w+)"><dt class="rm-nnl-k">(\w+)<\/dt><dd class="cnpy-md rm-nnl-v"><div class="mock-md">([^<]*)<\/div><\/dd><\/div>/g)]
+      .map((m) => [m[1], m[2], m[3]]);
+    expect(rows).toEqual([["now", "Now", "Hosting, *mostly*."], ["next", "Next", "Billing."], ["later", "Later", "Docs."]]);
+    expect(html).not.toContain("**Now:**"); // the labels are the box's, not the text's
+    // The run-together form written before the box (one paragraph) reads as the box too.
+    expect(planNarrativeBlock("**Now:** a. **Next:** b. **Later:** c.", mockMd)).toContain('data-part="later"');
+    // No motion unless an Accept just landed it (`rmRise`); then the one-shot flash at a negative delay.
+    expect(html).not.toContain("cnpy-flash");
+    expect(planNarrativeBlock("**Now:** a\n\n**Next:** b\n\n**Later:** c", mockMd, "", 120)).toContain('<dl class="rm-nnl cnpy-flash" style="animation-delay:-120ms">');
+  });
+
+  it("an OLDER free-text narrative that does not parse is drawn as plain markdown (legacy fallback)", () => {
+    for (const legacy of ["## Q3\n\nShip hosting, then billing.", "**Now:** hosting. **Next:** billing.", "Next: billing. Now: hosting. Later: docs."]) {
+      const html = planNarrativeBlock(legacy, mockMd);
+      expect(html, legacy).not.toContain("rm-nnl");
+      expect(html, legacy).toContain(`<div class="cnpy-md"><div class="mock-md">${legacy}</div></div>`);
+    }
+  });
+
+  it("the box's CSS: hairlines between rows, tokens only (light and dark), the label in the card's label face", () => {
+    expect(trovCss).toMatch(/\.rm-nnl-row \{[^}]*border-top:1px solid var\(--border\)/);
+    expect(trovCss).toMatch(/\.rm-nnl-row:first-child \{ border-top:0;/);
+    expect(trovCss).toMatch(/\.rm-nnl-k \{[^}]*font-size:12px; font-weight:500; color:var\(--fg-55\)/);
+    const box = trovCss.slice(trovCss.indexOf(".rm-nnl {"), trovCss.indexOf(".rm-nnl-sugg .cnpy-md.rm-nnl-v"));
+    expect(box).not.toMatch(/#[0-9a-f]{3,6}\b|rgba?\(/i);   // no raw colour: the theme tokens carry both themes
+    expect(box).not.toContain("radius");                    // no new corner (the corner block stays whole)
+  });
+
   it("XSS: the narrative goes ONLY through markdownFn — an escaping mock leaves no raw <script>", () => {
     const html = planNarrativeBlock('<script>alert(1)</script>', escMockMd);
     // The mock fn is what produced the output (its wrapper is present)…
@@ -126,6 +157,10 @@ describe("planNarrativeBlock", () => {
     // …and the raw payload never appears unescaped anywhere in the block.
     expect(html).not.toContain("<script>");
     expect(html).toContain("&lt;script&gt;");
+    // …and so does every part of the structured box.
+    const box = planNarrativeBlock("**Now:** <script>alert(1)</script>\n\n**Next:** <img src=x onerror=alert(1)>\n\n**Later:** ok", escMockMd);
+    expect(box).toContain("rm-nnl");
+    expect(box).not.toMatch(/<script>|<img/);
   });
 });
 

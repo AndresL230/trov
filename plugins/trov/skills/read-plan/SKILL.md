@@ -57,9 +57,10 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
    `issues` (`{closed, total}` from a stored, event-derived cache, or null) — **never** a
    live GitHub read, and never to be added to the ticket numbers. `members` is the distinct set of person handles assigned to that sprint's
    tickets (empty when the sprint holds no assigned tickets — not a staffing claim).
-   The `narrative` is meant to be short (Now / Next / Later — `update_plan` refuses one over 800
-   characters); one stored before the cap may be longer and still reads whole. If it is over, say so:
-   the next `update-plan` has to shorten it.
+   The `narrative` is three short parts, stored as `**Now:** …\n\n**Next:** …\n\n**Later:** …`
+   (`update_plan` takes `now` / `next` / `later` and refuses more than 800 characters composed); one
+   stored before that rule may be free text or longer, and still reads whole. If it is over the cap
+   or not in that form, say so: the next `update-plan` has to rewrite it as Now / Next / Later.
    `active` is derived (`status === 'in_progress'`), and `label`/`due` are the DTO's words for the
    stored `title`/`target_date` (an unscheduled sprint has `due: null` and sorts last).
 2. **`mcp__trov__get_events`** — pull recent captured activity (e.g. `limit: 30`) so you can compare

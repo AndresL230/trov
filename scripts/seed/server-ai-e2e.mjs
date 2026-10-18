@@ -482,7 +482,7 @@ function buildAsk(c, s) {
   card(210, { tool: "create_ticket", kind: "ticket", args: { title: "test-Cancelled card" }, preview: pv("New ticket"), state: "cancelled" });
   card(211, { tool: "transition_ticket", kind: "move", args: { id: 1, to: "in_progress" }, preview: pv("Move #1 to In progress"), state: "auto", result: { ok: true }, undo: { id: 1, to: "submitted", stamp: t1At } });
   card(212, { tool: "transition_ticket", kind: "move", args: { id: 4, to: "testing" }, preview: pv("Move #4 to Testing"), state: "auto", result: { ok: true }, undo: { id: 4, to: "submitted", stamp: "2000-01-01T00:00:00.000Z" } });
-  card(213, { tool: "update_plan", kind: "sprint", threadK: 8, msgK: 111, args: { narrative: "**Now:** test- e2e.", sprints: [] }, preview: pv("Update the roadmap plan"), state: "waiting" });
+  card(213, { tool: "update_plan", kind: "sprint", threadK: 8, msgK: 111, args: { now: "test- e2e.", next: "test- e2e next.", later: "test- e2e later.", sprints: [] }, preview: pv("Update the roadmap plan"), state: "waiting" });
   card(214, { tool: "transition_ticket", kind: "move", args: { id: 7, to: "in_progress" }, preview: pv("Move #7 to In progress"), state: "proposed" });
   fixture("ask", "ask-threads-member", "test-member's org-enterprise threads: today (#1), pinned 20 d (#2), this week (#3), earlier 30 d (#4, injection + unicode), untitled (#5), panel (#7)",
     [`SELECT COUNT(*) AS n FROM chat_threads WHERE org_id = '${ent.id}' AND handle = 'test-member'`, 6]);

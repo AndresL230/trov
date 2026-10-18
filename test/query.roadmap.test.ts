@@ -9,6 +9,7 @@ import { TicketCreate } from "@shared/tickets";
 import { all } from "./helpers/db";
 import { RESET_STATEMENTS } from "../scripts/seed/reset.mjs";
 import { seedPerson } from "./helpers/persons";
+import { narr } from "./helpers/plan";
 
 const AUTHOR = "tester";
 
@@ -27,7 +28,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     const { sprints } = await write_plan(
       systemCtx(),
       {
-        narrative: "The vector search rollout brings semantic retrieval online this quarter.",
+        ...narr("The vector search rollout brings semantic retrieval online this quarter."),
         sprints: [
           { label: "Vectorize GA", description: "Ship the Vectorize index to production", phase: "Now", due: "2026-08-01", status: "in_progress" },
         ],
@@ -59,7 +60,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [{ label: "Quokka Launch", description: "the quokka sprint", due: "2026-09-01", status: "upcoming" }],
       },
       AUTHOR
@@ -72,7 +73,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     const { sprints } = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [{ label: "Progress Sprint", description: "aardvark subsystem", due: "2026-10-01", status: "in_progress" }],
       },
       AUTHOR
@@ -94,7 +95,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     await seedPerson("tester");
     const { sprints } = await write_plan(
       systemCtx(),
-      { narrative: "n", sprints: [{ label: "Wombat Sprint", description: "wombat subsystem", due: "2026-10-05", status: "in_progress" }] },
+      { ...narr("n"), sprints: [{ label: "Wombat Sprint", description: "wombat subsystem", due: "2026-10-05", status: "in_progress" }] },
       AUTHOR
     );
     const sid = sprints[0].id;
@@ -115,7 +116,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     const { sprints } = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [
           { label: "Numbat Sprint", description: "numbat subsystem", due: "2026-10-06", status: "in_progress" },
           { label: "Bilby Sprint", description: "bilby subsystem", due: "2026-10-07", status: "upcoming" },
@@ -143,7 +144,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
   it("section/space filter excludes sprint (docsOnly)", async () => {
     await write_plan(
       systemCtx(),
-      { narrative: "n", sprints: [{ label: "Mango Sprint", description: "mango note", due: "2026-11-01", status: "upcoming" }] },
+      { ...narr("n"), sprints: [{ label: "Mango Sprint", description: "mango note", due: "2026-11-01", status: "upcoming" }] },
       AUTHOR
     );
     const r = await query(systemCtx(), { q: "mango", section: "reference", include_staged: true });
@@ -155,7 +156,7 @@ describe("query() learns the roadmap (plan + sprints via FTS)", () => {
     await write_plan(
       systemCtx(),
       {
-        narrative: "some narrative that indexes the plan row",
+        ...narr("some narrative that indexes the plan row"),
         sprints: [{ label: "Iso Sprint", description: "d", phase: "Now", due: "2026-12-01", status: "upcoming" }],
       },
       AUTHOR
