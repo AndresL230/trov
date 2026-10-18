@@ -195,13 +195,17 @@ describe("surface cards — handoffs, prompts, new doc", () => {
     expect(lib).not.toMatch(OLD_CARD);
   });
 
-  it("a prompt card's top-left copy button copies the slug: labelled, tipped, a sibling of the hit area, never inside a button", () => {
+  it("a prompt card's slug sits top right with its copy button: labelled, tipped, a sibling of the hit area, never inside a button", () => {
     const lib = promptLibraryView({ status: "ok", prompts: [summary("smoke-test-artifact")], q: "", tag: null, sort: "updated_desc", persons, filterCat: "tag", fmOpening: null, filterOpen: false });
     const card = lib.slice(lib.indexOf('<div class="cnpy-surface cnpy-card cnpy-hitbox"'));
     const copy = card.match(/<button type="button" data-act="promptCopySlug" data-arg="smoke-test-artifact" class="cnpy-iconbtn cnpy-hitctl" aria-label="Copy slug smoke-test-artifact" data-mtip="[^"]+"[^>]*>([\s\S]*?)<\/button>/);
     expect(copy).not.toBeNull();
     expect(copy![1]).not.toContain("<button");          // its icon only — no button inside it
-    // The first control in the card (top left, first in tab order) and before the hit area, which
+    // Top right: the title first, then the slug and its button (the owner's placement).
+    const slugBlock = card.indexOf('class="cnpy-pcard-slug"');
+    expect(slugBlock).toBeGreaterThan(card.indexOf("font-size:14px;font-weight:600")); // after the title
+    expect(card.indexOf('data-act="promptCopySlug"')).toBeGreaterThan(slugBlock);
+    // The first control in the card (first in tab order) and before the hit area, which
     // stays the card's LAST child and empty — so the copy button is never nested in it.
     expect(card.indexOf('data-act="promptCopySlug"')).toBeLessThan(card.indexOf('data-act="openPrompt"'));
     expect(card.indexOf("<button")).toBe(card.indexOf('<button type="button" data-act="promptCopySlug"'));
