@@ -102,7 +102,7 @@ link. **Never request without a yes.**
 Call `mcp__trov__request_link` with:
 
 - `target` — exactly one of `pr`, `branch`, `ticket` or `person` (a handle);
-- `reason` — one line, ≤ 280 characters: what overlaps;
+- `reason` — optional, one line, ≤ 280 characters: what overlaps;
 - `session` — your session id; `kind: "code"`; `branch` — `git branch --show-current`; `repo`.
 
 It returns `{ id, url, state: "draft" }`. Give the person the url: **they** send it from that page, and

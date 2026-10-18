@@ -2013,8 +2013,8 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
           "description": "Who the link is with, by exactly one of pr, branch, ticket or person."
         },
         "reason": {
-          "type": "string",
-          "description": "What overlaps, in one line (≤ 280 characters)."
+          "description": "Optional: what overlaps, in one line (≤ 280 characters).",
+          "type": "string"
         },
         "session": {
           "type": "string",
@@ -2044,7 +2044,6 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
       },
       "required": [
         "target",
-        "reason",
         "session"
       ],
       "$schema": "http://json-schema.org/draft-07/schema#"

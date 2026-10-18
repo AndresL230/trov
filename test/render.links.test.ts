@@ -514,8 +514,11 @@ describe("Start a link — the card", () => {
     expect(linkStartTarget({ kind: "branch", person: "", ref: " feat/x " })).toEqual({ branch: "feat/x" });
   });
 
-  it("Send waits for a target and a reason; a link with yourself says it opens at once", () => {
-    expect(sendBtn(card({ person: "jose" }))).toContain("disabled");
+  it("Send waits for a target only (the why is optional); a link with yourself says it opens at once", () => {
+    expect(sendBtn(card({ person: "" }))).toContain("disabled");
+    expect(sendBtn(card({ person: "jose" }))).not.toContain("disabled");
+    expect(text(card({ person: "jose" }))).toContain("Optional · 0 / 280");
+    expect(sendBtn(card({ person: "jose", reason: "x".repeat(281) }))).toContain("disabled");
     expect(linkStartReady({ ...blank(), person: "jose", reason: "Both in the session store." })).toBe(true);
     const ready = sendBtn(card({ person: "jose", reason: "Both in the session store." }));
     expect(ready).not.toContain("disabled");
@@ -711,6 +714,14 @@ describe("the Links tab's arc diagram — your client kinds as stations, teammat
     // The unjoined self-links are in the cards, where the join hint lives.
     expect(html).toMatch(/data-link-card="12"[\s\S]*?data-link-card-join/);
     expect(html).toMatch(/data-link-card="13"[\s\S]*?data-link-card-join/);
+  });
+
+  it("with no live link the lead sentence is said once — in the diagram's empty block, beside its button", () => {
+    const lead = LINKS_LEAD.replace(/'/g, "&#39;");
+    const html = linksView({ status: "ok", boxes: boxesOf(), me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 0 }) });
+    expect(html.split(lead).length - 1).toBe(1);
+    expect(html).toContain("data-lh-empty");
+    expect(html).not.toContain("data-links-intro");
   });
 });
 

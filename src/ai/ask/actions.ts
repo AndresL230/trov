@@ -181,7 +181,7 @@ async function stagedVersion(c: AskToolCtx, slug: string, version?: number) {
 const LinkTargetIn = z.object({
   pr: z.number().int().optional(), branch: z.string().optional(), ticket: z.number().int().optional(), person: z.string().optional(),
 });
-const LinkRequestIn = z.object({ target: LinkTargetIn, reason: z.string() });
+const LinkRequestIn = z.object({ target: LinkTargetIn, reason: z.string().optional() });
 const LinkJoinIn = z.object({ id: z.number().int(), side: z.enum(["requester", "recipient"]).optional() });
 const LinkNoteIn = z.object({ id: z.number().int(), body: z.string() });
 const LinkCloseIn = z.object({ id: z.number().int(), reason: z.string().optional() });
@@ -585,12 +585,12 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
     input: LinkRequestIn, card: "handoff", confirmOnly: "Sending a link request waits for you, even on Auto.", outsideCap: true, asSide: true,
     fields: (a: z.infer<typeof LinkRequestIn>) => ({ target: a.target, reason: a.reason }),
     async preview(c, a: z.infer<typeof LinkRequestIn>) {
-      if (a.reason.trim().length > LINK_REASON_MAX) throw new LinkError("bad_request", `reason over ${LINK_REASON_MAX} characters`);
+      if ((a.reason ?? "").trim().length > LINK_REASON_MAX) throw new LinkError("bad_request", `reason over ${LINK_REASON_MAX} characters`);
       const p = await previewLinkRequest(c.ctx, c.handle, { target: a.target, reason: a.reason });
       return card(p.self ? "Open a link with your other session" : `Link request to @${p.recipient}`, [
         ...line("With", p.self ? "You (another session of yours)" : `@${p.recipient}`),
         ...line("About", p.topic.kind === "person" ? null : linkTopicLabel(p.topic.kind, p.topic.ref)),
-        ...line("Reason", p.reason),
+        ...line("Reason", p.reason || null),
         ...line("What it does", p.self
           ? "Confirm opens it at once, with this thread as one side."
           : `Confirm sends it. @${p.recipient} accepts or declines it in Trov; once open, their agent's notes reach this thread.`),

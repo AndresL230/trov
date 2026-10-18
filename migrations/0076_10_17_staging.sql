@@ -143,7 +143,7 @@ ALTER TABLE orgs ADD COLUMN ai_chat_github INTEGER NOT NULL DEFAULT 0 CHECK (ai_
 --   org_counters      REBUILT so its CHECK accepts 'link' beside 'ticket' and 'handoff' (SQLite cannot
 --                     alter a CHECK), every row copied; a 'link' counter (0) for every existing org
 --   agent_links       a link: its per-org number (from org_counters 'link', by the insert trigger, as tickets
---                     and handoffs are numbered), state, topic, reason, and its two sides — each a person, and
+--                     and handoffs are numbered), state, topic, an optional reason, and its two sides — each a person, and
 --                     the agent session bound to that side once one joins
 --   agent_link_notes  the short notes the sides leave each other, each delivered to the OTHER side once
 --
@@ -225,7 +225,7 @@ CREATE TABLE IF NOT EXISTS agent_links (
   repo                     TEXT,                    -- null for a link with no repository (a ticket, a person, the web)
   topic_kind               TEXT NOT NULL CHECK (topic_kind IN ('pr','branch','ticket','person')),
   topic_ref                TEXT NOT NULL,           -- the PR / ticket number, the branch name, the person's handle
-  reason                   TEXT NOT NULL CHECK (length(reason) BETWEEN 1 AND 280),
+  reason                   TEXT NOT NULL DEFAULT '' CHECK (length(reason) <= 280),   -- optional: '' when none given
   requester                TEXT NOT NULL COLLATE NOCASE,
   requester_kind           TEXT CHECK (requester_kind IN ('code','chat','ask')),   -- null until a session is bound
   requester_agent_session  TEXT,

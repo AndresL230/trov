@@ -166,7 +166,7 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   it fails the list still answers without `preview`, never a 500);
   `GET /links/:id` → `{ link }` with its notes, 404 `not_found` for anyone but its two people; every answer is
   `linkForViewer`'s: the OTHER side's `session` is null (its kind, branch and seen stay), as on MCP and in Ask;
-  `POST /links` `{ target, reason, repo? }` → `{ link }` (`createRequestFromWeb`: `requested`, or `open` to oneself);
+  `POST /links` `{ target, reason?, repo? }` → `{ link }` (`createRequestFromWeb`: `requested`, or `open` to oneself);
   `POST /links/:id/send|accept|decline|cancel` and `/close` `{ reason? }` → `{ link }`;
   `POST /links/:id/notes` `{ body, side? }` → `{ link }` with its notes (a person's note, own side, no session —
   the same caps, `link_note` taken on `c.var.p`). A `LinkError` is `{ error: <code>, message }` at
@@ -250,8 +250,9 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
 - **Start a link** (`linkStartCard`): the header's "Start a link" (`linkStartOpen`) opens a card in a stable slot at
   the top of the tab (the tab is `data-morph="links"`, so typing never rebuilds it). A `segmented()` picks who it is
   between: **Between my sessions** (the default: target = yourself, opens at once; two client orbs) or **With a
-  teammate** (About: Person / Pull request / Branch / Ticket — a pick chip, a number, a branch). Why is the reason
-  (280, counted). Send → `POST /links` (`startLink`, `{ target, reason }`); the answer waits ~1.1 s for the particles
+  teammate** (About: Person / Pull request / Branch / Ticket — a pick chip, a number, a branch). Why is the reason —
+  OPTIONAL (the owner's ruling, 2026-10-18: left out or blank it is stored as "" and a card reads "No reason given",
+  a past row and a link's page show none; ≤ 280, counted, "Optional · n / 280"). Send → `POST /links` (`startLink`, `{ target, reason }`); the answer waits ~1.1 s for the particles
   to cross (not under reduced motion). A link between your sessions then says how each client joins: Claude Code or a
   chat — "join Trov link #n" with Copy; Ask — "Open in Ask" (`linkJoinAsk`: a new thread with the phrase typed in its
   composer; the person sends it; also on a link page's join hint). A teammate request says "Sent to X. They accept

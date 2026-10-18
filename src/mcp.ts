@@ -743,7 +743,7 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
         ticket: z.number().int().optional().describe("A ticket number (#12)."),
         person: z.string().optional().describe("A person's handle."),
       }).describe("Who the link is with, by exactly one of pr, branch, ticket or person."),
-      reason: z.string().describe(`What overlaps, in one line (≤ ${LINK_REASON_MAX} characters).`),
+      reason: z.string().optional().describe(`Optional: what overlaps, in one line (≤ ${LINK_REASON_MAX} characters).`),
       session: LinkSession,
       kind: LinkKind,
       branch: OwnBranch,

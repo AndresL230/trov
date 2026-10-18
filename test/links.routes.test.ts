@@ -11,7 +11,7 @@ import { LIMITS } from "../src/platform/limits";
 import { LINK_NOTES_PER_SIDE, type LinkDetail, type LinkView } from "@shared/links";
 import type { SidebarBadges } from "@shared/badges";
 import { cookieFor } from "./helpers/persons";
-import { first, run } from "./helpers/db";
+import { all, first, run } from "./helpers/db";
 import { ensureMember, tenantCtx, ORG_A, ORG_B } from "./helpers/tenant";
 
 const A = "AndresL230", J = "Jose-Gael-Cruz-Lopez", L = "lpcooper-arch", T = "Darkest-Teddy";
@@ -157,13 +157,20 @@ describe("input", () => {
   });
 
   it("a bad start is a 400 with the schema's words; a person outside the org is not_member; nothing is written", async () => {
-    expect((await refused(post(J, "/links", { target: { person: L } }), 400, "bad_request")).message).toContain("reason");
+    expect((await refused(post(J, "/links", { target: { person: L }, reason: "x".repeat(281) }), 400, "bad_request")).message).toContain("reason");
     expect((await refused(post(J, "/links", { target: { person: L, pr: 3 }, reason: "r" }), 400, "bad_request")).message).toContain("exactly one");
-    await refused(post(J, "/links", { target: { person: L }, reason: "x".repeat(281) }), 400, "bad_request");
     await refused(call(J, "POST", "/links"), 400, "bad_request");
     await refused(post(J, "/links", { target: { person: "nobody-here" }, reason: "r" }), 404, "not_member");
     await refused(post(J, "/links", { target: { pr: 4242 }, reason: "r" }), 404, "not_found");
     expect(await first(env.DB, `SELECT COUNT(*) AS n FROM agent_links`)).toEqual({ n: 0 });
+  });
+
+  it("the why is optional: left out or blank, the link starts with no reason (stored as \"\")", async () => {
+    const none = await post(J, "/links", { target: { person: L } });
+    expect(none.status).toBe(200);
+    const blank = await post(J, "/links", { target: { person: "meilin" }, reason: "   " });
+    expect(blank.status).toBe(200);
+    expect(await all(env.DB, `SELECT reason FROM agent_links ORDER BY number`)).toEqual([{ reason: "" }, { reason: "" }]);
   });
 
   it("a note is 1–1,000 characters, on an open link only", async () => {

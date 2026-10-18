@@ -51,7 +51,8 @@ export type LinkVia = "mcp" | "ask" | "web";
 // ── input ─────────────────────────────────────────────────────────────────────
 
 const Session = z.string().trim().min(1, "session required").max(128, "session over 128 characters");
-const Reason = z.string().trim().min(1, "reason required").max(LINK_REASON_MAX, `reason over ${LINK_REASON_MAX} characters`);
+// The why is optional (the owner's ruling): left out or blank, it is stored as "" and nothing shows for it.
+const Reason = z.string().trim().max(LINK_REASON_MAX, `reason over ${LINK_REASON_MAX} characters`).nullish().transform((v) => v ?? "");
 const Repo = z.string().trim().min(1).max(200);
 const Branch = z.string().trim().min(1).max(200);
 const LinkNumber = z.number().int().positive();

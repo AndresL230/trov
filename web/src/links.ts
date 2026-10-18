@@ -217,9 +217,9 @@ export function linkStartTarget(d: Pick<LinkStart, "kind" | "person" | "ref"> & 
   if (!(n > 0)) return null;
   return d.kind === "pr" ? { pr: n } : { ticket: n };
 }
-/** Whether Send may go: a target, and a reason of 1..280 characters. */
+/** Whether Send may go: a target, and a reason (optional) of at most 280 characters. */
 export const linkStartReady = (d: LinkStart, me = ""): boolean =>
-  !!linkStartTarget(d, me) && !!d.reason.trim() && d.reason.trim().length <= LINK_REASON_MAX && d.phase !== "sending";
+  !!linkStartTarget(d, me) && d.reason.trim().length <= LINK_REASON_MAX && d.phase !== "sending";
 /** Whether the card names the viewer themself (a self-link: it opens at once). */
 const startsSelf = (d: LinkStart, me: string): boolean => d.mode === "self" || (d.kind === "person" && !!d.person && same(d.person, me));
 
@@ -386,7 +386,7 @@ export function linkStartCard(p: LinkStartProps): string {
           ${label("Why", "link-start-reason", ";width:52px;flex:none;padding-top:9px")}
           <div style="flex:1 1 280px;min-width:0">
             <textarea id="link-start-reason" data-act="linkStartField" data-arg="reason" data-field="ls-reason" maxlength="${LINK_REASON_MAX}" aria-describedby="link-start-count" placeholder="${d.mode === "self" ? "What the two sessions share: one fixes the OCR queue while the other plans its copy…" : "What your work and theirs both touch: the session store, the auth routes…"}" class="cnpy-input" style="display:block;width:100%;box-sizing:border-box;min-height:64px;padding:9px 12px;${START_FIELD};font-size:13.5px;line-height:1.55;resize:vertical;font-family:inherit">${esc(d.reason)}</textarea>
-            <div id="link-start-count" data-link-start-count style="font-family:var(--label);font-size:11px;margin-top:6px;color:${over ? "var(--red)" : "var(--fg-40)"}">${n.toLocaleString("en-US")} / ${LINK_REASON_MAX}</div>
+            <div id="link-start-count" data-link-start-count style="font-family:var(--label);font-size:11px;margin-top:6px;color:${over ? "var(--red)" : "var(--fg-40)"}">Optional · ${n.toLocaleString("en-US")} / ${LINK_REASON_MAX}</div>
           </div>
         </div>
         <div data-link-start-error role="alert"${refused ? "" : " hidden"} style="font-size:12.5px;line-height:1.55;color:var(--red)">${refused ? esc(d.error ?? "") : ""}</div>
@@ -741,7 +741,7 @@ export function linkCard(l: LinkView, p: LinkCardProps): string {
   return `<article data-link-card="${l.id}" data-state="${l.state}"${surface("", { cls: `cnpy-lcard ${HITBOX}${asking ? " is-asking" : ""}` })}>
       <div class="cnpy-lcard-strip" data-row="strip" title="${attr(`${left.text} ⟷ ${right.text}`)}"><span class="cnpy-lcard-side">${left.face}<span class="cnpy-lcard-txt">${left.html}</span></span>${strip(l.state === "open")}<span class="cnpy-lcard-side">${right.face}<span class="cnpy-lcard-txt">${right.html}</span></span></div>
       <div class="cnpy-lcard-title" data-row="title"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span data-link-card-title style="min-width:0;flex:1;font-size:13.5px;font-weight:600;letter-spacing:-0.005em;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title}</span><span style="flex:none">${linkMark(l.state)}</span><span style="flex:none;font-size:11px;color:var(--fg-40);font-family:var(--label);white-space:nowrap">${esc(relTime(lastAt(l)))}</span></div>
-      <div class="cnpy-lcard-why" data-row="why">${esc(l.reason)}</div>
+      <div class="cnpy-lcard-why" data-row="why">${l.reason ? esc(l.reason) : `<span data-link-card-noreason style="color:var(--fg-40)">No reason given</span>`}</div>
       <div class="cnpy-lcard-note" data-row="note" data-link-card-note>${note}</div>
       <div class="cnpy-lcard-foot cnpy-lcard-acts" data-row="foot">${join}<span style="display:flex;gap:6px;margin-left:auto;flex:none">${steps}</span></div>
       ${hitArea("openLink", String(l.id), label)}
@@ -776,9 +776,12 @@ export const LINKS_PAST_SHOWN = 10;
 
 function pastRow(l: LinkView, p: LinkCardProps): string {
   const n = l.preview?.notes;
+  // Under the topic: who it was between (when the topic doesn't already say) and the reason, if one was given.
+  const between = l.topic.kind === "person" && !l.self ? "" : `<span style="color:var(--fg-55)">${esc(capFirst(pastBetween(l, p.me, p.persons)))}</span>`;
+  const sub = between && l.reason ? `${between}: ${esc(l.reason)}` : between || esc(l.reason);
   return `<div class="cnpy-trow cnpy-lrow ${HITBOX}" data-link-row="${l.id}" data-past style="display:grid;grid-template-columns:34px minmax(0,2fr) minmax(0,1.6fr) auto;gap:12px;align-items:center;width:100%;text-align:left;padding:11px 16px;border-bottom:1px solid var(--border)">
       <span class="cnpy-lrow-glyph" style="display:flex;color:var(--accent);opacity:.55">${linkGlyph({ ...linkLineState(l), flow: "stopped" })}</span>
-      <div style="min-width:0"><div style="display:flex;align-items:baseline;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="min-width:0;font-size:13.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.topic.kind === "person" ? capFirst(linkAboutHtml(l, p.me, p.persons)) : linkTopicHtml(l)}</span></div><div style="font-size:12px;color:var(--fg-40);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.topic.kind === "person" && !l.self ? "" : `<span style="color:var(--fg-55)">${esc(capFirst(pastBetween(l, p.me, p.persons)))}</span>: `}${esc(l.reason)}</div></div>
+      <div style="min-width:0"><div style="display:flex;align-items:baseline;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:11px;font-weight:600;color:var(--fg-40);flex:none">#${l.id}</span><span style="min-width:0;font-size:13.5px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.topic.kind === "person" ? capFirst(linkAboutHtml(l, p.me, p.persons)) : linkTopicHtml(l)}</span></div>${sub ? `<div style="font-size:12px;color:var(--fg-40);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub}</div>` : ""}</div>
       <div data-link-end class="cnpy-lrow-who" style="min-width:0;font-size:12.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(linkEndWords(l, p.me, p.persons))}</div>
       <div class="cnpy-lrow-when" style="font-size:11.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${esc(relTime(lastAt(l)))}${n !== undefined ? `<div style="margin-top:2px">${n} ${n === 1 ? "note" : "notes"}</div>` : ""}</div>
       ${hitArea("openLink", String(l.id), `Link #${l.id}, ${linkEndWords(l, p.me, p.persons)}`)}
@@ -789,8 +792,10 @@ function pastRow(l: LinkView, p: LinkCardProps): string {
 export const LINKS_LEAD = "Connect your own sessions — a coding agent, a web chat, an Ask thread — so they leave each other notes while the work overlaps; you can link with a teammate's session too.";
 
 export function linksView(p: LinksListProps): string {
-  const intro = `<div data-links-intro style="font-size:12.5px;color:var(--fg-55);margin:18px auto 30px;max-width:620px;line-height:1.55;text-align:center">${esc(LINKS_LEAD)}</div>`;
   const b = p.boxes;
+  // With no live link the diagram's own empty block says this, beside its button: said once, not twice.
+  const heroEmpty = (p.status === "ok" || p.status === "error") && liveLinks(b).length === 0;
+  const intro = heroEmpty ? "" : `<div data-links-intro style="font-size:12.5px;color:var(--fg-55);margin:18px auto 30px;max-width:620px;line-height:1.55;text-align:center">${esc(LINKS_LEAD)}</div>`;
   const total = b.waiting.length + b.open.length + b.mine.length + b.closed.length;
   let body: string;
   if ((p.status === "idle" || p.status === "loading") && total === 0) {
@@ -959,7 +964,7 @@ export function linkDetailView(p: LinkDetailProps): string {
           ${l.repo ? `<span style="font-family:var(--label);font-size:11.5px;color:var(--fg-40);white-space:nowrap">${esc(l.repo)}</span>` : ""}
           <span style="color:var(--fg-40);white-space:nowrap">· ${esc(relTime(l.created_at))}</span>
         </div>
-        <p data-link-reason style="margin:14px 0 0;max-width:680px;font-size:14px;line-height:1.65;color:var(--fg-70);overflow-wrap:anywhere">${esc(l.reason)}</p>
+        ${l.reason ? `<p data-link-reason style="margin:14px 0 0;max-width:680px;font-size:14px;line-height:1.65;color:var(--fg-70);overflow-wrap:anywhere">${esc(l.reason)}</p>` : ""}
       </div>
       <div data-link-actions style="display:flex;align-items:center;gap:8px;flex:none;padding-top:2px;flex-wrap:wrap">${actionButtons(l, p.me, p.busy)}</div>
     </div>
