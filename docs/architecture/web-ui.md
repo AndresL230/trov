@@ -230,6 +230,11 @@ is the mark, large, faint and tilted behind the text. It appears exactly twice, 
 | Hero (`.site-hero-band`) | the banner as an inset panel; the Review mockup (`.site-hero-mock`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
 | "Agents propose, people decide" (`.site-split`) | the card on its side: banner left, body right; stacked under 860px |
 
+The hero mockup's sidebar is the app's (`sidebar.ts` `sidebarView`): the same sections, entries, order, labels and
+icons, with the Library's starter spaces under it (A to Z). Its icon paths are copied into `landing.ts` `NAV_ICON`
+(sidebar.ts pulls the Library screen in), and `test/render.landing.test.ts` reads sidebar.ts to hold the two
+together: a sidebar change fails it until the hero follows. The window is 600px tall so the whole rail fits.
+
 The sign-in dialog (`.site-signin-card`) has NO banner: it opens over the hero, which is the banner, and a
 second slab in front of the first read as the same thing twice. It is a plain card — the mark, the title, the
 two providers as a narrow centred pair with an "or" rule between them, a foot. A bannered card has no border
@@ -281,7 +286,7 @@ Each tour row's mockup opens its feature in a large dialog: name and promise, th
 dialog's size (`featureMock` in `web/src/landing-mocks.ts`; the row keeps its small teaser), three or four
 statements from Help › Guide
 (`TOUR_FACTS` — change them with the Guide; a test pins a phrase of each to `guideView`), and Previous / Next
-through all seven (wrapping), with the position as text and dots.
+through all eight (wrapping), with the position as text and dots.
 
 - **State and paint.** `state.siteFeature` (`{ key, dir, mode }`) like `signInOpen`; the dialog is a root-level
   `data-overlay="feature"`, so `paint()` patches it and never rebuilds the page behind. Only `.site-fx-main`
@@ -310,7 +315,7 @@ through all seven (wrapping), with the position as text and dots.
   so renaming a label in the app fails the test until the mock follows. They are inert (`aria-hidden`, no
   button, link or `data-act`), use theme tokens only (dark shows the dark app), and are never zoomed or
   scaled: real type at the app's sizes. Layout is `.fxm*` in `trov.css`: ONE box (`.site-fx-mock`, the
-  stage's size, the same for all seven, so a step never changes the frame); stacked under 860px it is as
+  stage's size, the same for all eight, so a step never changes the frame); stacked under 860px it is as
   tall as its content; under 640px the secondary panes (`.fxm-wide`) are dropped, not shrunk. Sample data
   is one fictional team across the page (Maya Chen, Leo Park, Sam Ortiz; tickets #205–#230; PR #142;
   ADR-0012; `acme/api`). When a real screen changes, change its mock and the page's teaser with it.

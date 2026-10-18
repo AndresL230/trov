@@ -57,7 +57,7 @@ const span = (ms: number): string => ms === HOUR_MS ? "an hour" : ms % (24 * HOU
 function setup(): string {
   return [
     head("docs-setup", "Set up Trov"),
-    `Trov is shared memory for a software team and its coding agents: docs, decisions, the roadmap, a ticket queue and a feed of what shipped, read and written by people and their agents alike. Agents propose changes; a person confirms what becomes official (${to("docs-concepts", "Concepts")}).`,
+    `Trov is shared memory for a software team and its coding agents: docs in a Library of spaces, decisions, the roadmap, a ticket queue and a feed of what shipped, read and written by people and their agents alike. Agents propose changes; a person confirms what becomes official (${to("docs-concepts", "Concepts")}).`,
     "## 1. Sign in",
     `Go to [trov.dev](${SITE_ORIGIN}/) and choose **Get started**. Sign in with **GitHub** or **Google**: either one creates your account the first time, and no invitation is needed. Google sign-in takes an address Google has verified.`,
     "The first time, you pick a **handle** (prefilled with your GitHub login) and a color. The handle is how work is attributed to you everywhere, including everything your agent writes. Both can be changed later in Settings › Profile, and Settings › Account links the other provider, so either one signs you in.",
@@ -74,9 +74,11 @@ function setup(): string {
     [
       "- the repository's GitHub issues show up as tickets, each linked back to its issue; closing or reopening the issue closes or reopens its ticket, and everything else about it is edited in Trov;",
       "- pull requests, checks, deploys and pushes are captured as they happen, for My Work and the Repo dashboard (deploys, CI, drift and usage);",
-      "- an agent connection that follows the repository knows which organization to act in from the repository it is working in.",
+      "- an agent connection that follows the repository knows which organization to act in from the repository it is working in;",
+      "- Ask Trov can read the repository on GitHub (files, pull requests, issues, commits and checks) when a question needs it, once an admin turns on its GitHub lookups in Org settings › AI. They are off until then, and each person's questions reach only what their own GitHub account can read.",
     ].join("\n"),
     `How many repositories an organization can connect is a plan limit (${FREE.name}: ${FREE.entitlements.repositories}, ${PRO.name}: ${PRO.entitlements.repositories}).`,
+    "To see deploys and usage from where your app runs, an admin opens **Org settings › Hosting**, says which host runs each part of each environment (Cloudflare, Railway, Vercel, Netlify, Render or Fly.io) and connects each host once. Repo › Usage then shows every part's recent deploys, then traffic for a web part or CPU and memory for a service, wherever the host reports them.",
     "## 4. Connect your coding agent",
     "Your agent reaches Trov over the Model Context Protocol (MCP). You connect it by signing in to Trov in your browser, once; from then on it acts as you: it sees what you see, and what it writes is recorded as yours.",
     "For **Claude Code**, install the Trov plugin. It wires up the MCP server and adds the skills that run the loop below:",
@@ -93,6 +95,13 @@ function setup(): string {
     ].join("\n"),
     `In a chat there are no skills, so ask in words: “what’s on my plate in Trov?”, “what does Trov say about billing?”, “any handoffs waiting for me?”. The agent reads and stages exactly as above; it cannot read \`git\`, so to record shipped work give it the pull request or commit.`,
     `Not using Claude Code's plugin? Put the snippet from ${to("docs-connect", "Connect an MCP client")} › Tell your agent how to use Trov in your project's \`AGENTS.md\` or \`CLAUDE.md\`, so any agent follows the same loop.`,
+    "## After your first session",
+    [
+      "- **Bring your docs into the Library.** The Library holds the organization's docs in spaces (every organization starts with Engineering, Product and Design), each a tree of pages up to five levels deep. Drop Markdown files or a .zip of them on a space: Trov shows what will be added before anything is sent, then every page waits in **Triage › Review**, where you approve or reject the whole import. A page links to another with `[[its-slug]]`, and each page lists the pages that link to it.",
+      "- **Ask Trov.** Press **⌘J** (**Ctrl J** off a Mac) on any page of your organization, or open **Trov** in the sidebar, and ask about your organization in plain words. The answer is built from what Trov holds, every source linked. A ticket, handoff or doc change it drafts waits for you to confirm it (in Auto mode it is made at once, with Undo), and a doc change is still staged for Review. Share a conversation with your whole organization to read, or with chosen people who can read or continue it.",
+      `- **Relay** holds your handoffs and your links. A handoff carries where a task stands to the next session, yours or a teammate's. A link lets two sessions whose work overlaps leave each other notes, and a person starts it on both ends (${to("docs-concepts", "Concepts")} › Agent links).`,
+      "- **Trov writes the short version.** With your organization's AI on, Trov writes your brief on My Work, where each repository stands on Repo › Summary, and a Feed record of what each session shipped, each with its sources. **Org settings › AI** says whether it is on and this month's use, and an admin turns it on or off there; off, no AI feature runs, Ask Trov included.",
+    ].join("\n"),
   ].join("\n\n");
 }
 
@@ -243,14 +252,16 @@ function concepts(): string {
     "## What Trov holds",
     "Trov is one organization's working memory, shared by its people and the coding agents they connect:",
     [
-      "- **Docs**, in the Library: spaces your team defines (every organization starts with Engineering, Product and Design), grouped into sections, with every version kept.",
-      "- **Decisions**: architecture decision records, in their own section of Docs.",
+      "- **Docs**, in the Library: spaces your team defines (every organization starts with Engineering, Product and Design), each a tree of pages up to five levels deep that link to each other with `[[page]]` links, with every version kept.",
+      "- **Decisions**: architecture decision records. An agent drafts one and a person ratifies it in Review.",
       "- **The feed**: what shipped, from people and agents alike, each entry linked to its pull request, commit or issue.",
       "- **Tickets and sprints**: the team's request queue, the roadmap's sprints and a short written plan.",
-      "- **Handoffs** from one session to the next, the team's **Prompt Library**, and **artifacts**: versioned pages and files (HTML, Markdown, SVG, Mermaid, images, PDFs).",
-      "- **The Repo dashboard**: deploys, CI, drift and usage, from what Trov has captured. What was never captured reads as unknown, never as zero.",
+      "- **Relay**: handoffs from one session to the next, and links between sessions whose work overlaps (below).",
+      "- The team's **Prompt Library**, and **artifacts**: versioned pages and files (HTML, Markdown, SVG, Mermaid, images, PDFs).",
+      "- **The Repo dashboard**: each app and environment's deploys, CI, drift and usage, from what Trov has captured from GitHub and the hosts you connect. What was never captured reads as unknown, never as zero.",
     ].join("\n"),
     `An agent connects as a person (${to("docs-connect", "Connect an MCP client")}): it reads what that person can read, and everything it writes is recorded as theirs. A name an agent puts in a request as the author is ignored.`,
+    "**Ask Trov** is the same memory from inside the web app: ask in plain words and the answer is built from what Trov holds, every source linked. What it drafts (a ticket, a handoff, a doc change) waits for you to confirm it, or is made at once with Undo in Auto mode, and a doc change is still staged for Review. A conversation can be shared with the whole organization to read, or with chosen people who can read or continue it. Each question in a shared conversation stays its asker's.",
     "## Agents propose, people decide",
     "A wrong doc gets believed by every agent that reads it after. So the rule is about what an agent may make official on its own: **nothing**. Knowledge an agent proposes is **staged**, and a person confirms it. Work that is a request or a plan, not a claim, takes effect at once, bounded by who may do it:",
     [
@@ -262,7 +273,7 @@ function concepts(): string {
     ].join("\n"),
     "**Confirming is a person's act in the signed-in web app**: promote or reject a doc change, ratify or reject a decision, place or discard what Triage holds, publish a prompt, ratify an artifact. No MCP tool does any of these, and those routes refuse any request that carries a token. Rejected proposals and old versions are kept, never deleted.",
     "## The gate",
-    "Every proposal goes through one gate, whichever way it arrives (`record_session`, `propose_doc_update`, `append_feed`, or the `/ingest` API):",
+    "Every proposal goes through one gate, whichever way it arrives (`record_session`, `propose_doc_update`, `append_feed`, a Markdown import into the Library, or the `/ingest` API):",
     [
       "- **Sending the same thing twice changes nothing.** A replayed batch, or a body identical to what is there, is dropped as `unchanged`.",
       "- **Each doc change is classified** `new`, `edit` or `rewrite` by the server, against the live version. The version the writer read (`base_version`) is kept, so an edit written against an out-of-date version is flagged.",
@@ -292,7 +303,7 @@ function concepts(): string {
       "2. **Work**, building on what the team decided instead of guessing.",
       "3. **Record**, only when a person asks. The agent reads what actually shipped from `git` and GitHub, reads back each doc it touches, and sends one batch (`record_session`). It is staged, and waits for a person.",
     ].join("\n"),
-    "Between sessions, a **handoff** carries where a task stands to the next session (yours, a teammate's, or anyone's); unclaimed ones expire after 7 days.",
+    "Between sessions, a **handoff** carries where a task stands to the next session (yours, a teammate's, or anyone's); unclaimed ones expire after 7 days. It can carry a ready-to-run prompt, which an agent with a shell uploads as a file instead of typing it out; the handoff is created when the file lands. Handoffs are on **Relay** in the web app.",
     "## Agent links",
     "Connect your own sessions — a coding agent, a web chat, an Ask thread — so they leave each other notes while the work overlaps; you can link with a teammate's session too. A **link** is a short-lived line between two sessions: two of yours (**Relay › Links › Start a link**, which opens at once; then tell each session “join Trov link #12”), or yours and a teammate's. While it is open, each side leaves short notes for the other (“renaming `authSession`, merging tonight”). A note informs; it never asks the other side to change its work, which is a conversation for the people. When the work lands, either side closes the link, and its thread stays readable in Trov.",
     [

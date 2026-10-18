@@ -106,7 +106,7 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 export const RELEASES: Release[] = [
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower
-  // artifact panel in Ask, the purple dark accent and the big-monitor layout: one deploy, one version.
+  // artifact panel in Ask, the purple dark accent and the big-monitor layout: one deploy, one version. #198 (the site's copy) followed it.
   {
     version: "0.12",
     date: "2026-10-17",
@@ -144,6 +144,7 @@ export const RELEASES: Release[] = [
         "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
         "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
+        "Site: Get started and the front page describe the Library, Relay's links, Ask Trov and sharing, Trov's AI and hosts; the hero shows today's sidebar (#198)",
       ],
       fixed: [
         "Sync GitHub: the menu opens again when a past sync's failure has no recorded cause; that part reads as not recorded (#195)",
@@ -155,7 +156,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [193, 194, 195, 196, 197],
+    prs: [193, 194, 195, 196, 197, 198],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.

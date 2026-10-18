@@ -3,7 +3,9 @@
  * banner it carries through the page (the first-run card's, one definition in trov.css).
  */
 import { describe, it, expect } from "vitest";
-import { landingView } from "../web/src/landing";
+import { landingView, NAV_ICON } from "../web/src/landing";
+import sidebarSrc from "../web/src/sidebar.ts?raw";
+import { STARTER_SPACES } from "../shared/docs-core";
 import { initialState, render } from "../web/src/render";
 import css from "../web/src/trov.css?raw";
 import motionSrc from "../web/src/landing-motion.ts?raw";
@@ -148,8 +150,8 @@ describe("landing — the banner carried through the page", () => {
 
   it("every tour mockup stands on a dot field, flipped with its row", () => {
     const html = out();
-    expect(html.match(/site-stage/g)?.length).toBe(7);
-    expect(html.match(/is-flip site-stage/g)?.length).toBe(3);
+    expect(html.match(/site-stage/g)?.length).toBe(8);
+    expect(html.match(/is-flip site-stage/g)?.length).toBe(4);
   });
 
   it("paints with no blur: nothing in the site's banner rules filters the page", () => {
@@ -256,5 +258,30 @@ describe("landing — buying Pro as someone new carries through signing up", () 
     expect(mainSrc).toContain("const next = signInReturnPath(r.redirect);");
     expect(mainSrc).toContain("if (next) { window.location.href = next; return; }");
     expect(mainSrc).not.toContain('r.redirect?.startsWith("/oauth/authorize?")');
+  });
+});
+
+describe("landing — the hero's app is today's app", () => {
+  it("its sidebar has the app sidebar's sections and entries, in order, with the same icons, and the Library's spaces under it", () => {
+    const html = out();
+    const side = html.slice(html.indexOf('class="site-hide-sm" style="width:212px'), html.indexOf("agents produce · humans confirm"));
+    // The app's rail, read from sidebar.ts: every section and every entry's label, in the order it draws them.
+    const want = [...sidebarSrc.matchAll(/\$\{(?:section\("([^"]+)"|item\("\w+", "\w+", "([^"]+)")/g)].map((m) => (m[1] ?? m[2]).toLowerCase());
+    expect(want).toEqual(["workspace", "my work", "trov", "tickets", "roadmap", "relay", "monitor", "repo", "feed", "knowledge", "library", "artifacts", "prompt library", "triage", "review", "unplaced", "help", "guide", "what's new"]);
+    const text = side.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").toLowerCase();
+    let at = -1;
+    for (const w of want) { const next = text.indexOf(w, at + 1); expect(next, w).toBeGreaterThan(at); at = next; }
+    expect(text).not.toMatch(/\bhandoffs\b|\bdocs\b/);
+    // The spaces: a new organization's three, A to Z, under Library and before Artifacts.
+    const names = [...STARTER_SPACES].map((s) => s.name).sort();
+    expect(names).toEqual(["Design", "Engineering", "Product"]);
+    expect([...side.matchAll(/data-hero-space="([a-z]+)"/g)].map((m) => m[1])).toEqual(["design", "engineering", "product"]);
+    expect(text.indexOf("library")).toBeLessThan(text.indexOf("design"));
+    expect(text.indexOf("product")).toBeLessThan(text.indexOf("artifacts"));
+    // Every icon is the app's own path, copied.
+    for (const [k, paths] of Object.entries(NAV_ICON)) {
+      expect(sidebarSrc, k).toContain(paths);
+      expect(side, k).toContain(paths);
+    }
   });
 });
