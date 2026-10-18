@@ -144,7 +144,7 @@ export const RELEASES: Release[] = [
         "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
         "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
-        "Site: the front page and Get started describe the Library, Relay, Ask Trov and its sharing, Trov's AI and hosting providers (#198)",
+        "Site: Get started and the front page describe the Library, Relay's links, Ask Trov and sharing, Trov's AI and hosts; the hero shows today's sidebar (#198)",
       ],
       fixed: [
         "Sync GitHub: the menu opens again when a past sync's failure has no recorded cause; that part reads as not recorded (#195)",

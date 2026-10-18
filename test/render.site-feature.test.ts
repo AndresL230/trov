@@ -16,6 +16,8 @@ import ticketsSrc from "../web/src/tickets.ts?raw";
 import timelineSrc from "../web/src/timeline.ts?raw";
 import myworkSrc from "../web/src/mywork.ts?raw";
 import handoffsSrc from "../web/src/handoffs.ts?raw";
+import linksSrc from "../web/src/links.ts?raw";
+import marksSrc from "../web/src/marks.ts?raw";
 import artifactsSrc from "../web/src/artifacts.ts?raw";
 import landingSrc from "../web/src/landing.ts?raw";
 import renderSrc from "../web/src/render.ts?raw";
@@ -30,17 +32,17 @@ const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
 const page = (feature: FeatureState | null = null) => landingView({ dark: false, signInOpen: false, seen: new Set(), feature });
 const open = (key: string, dir: -1 | 0 | 1 = 0, mode: FeatureState["mode"] = "vt") => page({ key, dir, mode });
 const dialog = (html: string) => html.slice(html.indexOf('<div data-overlay="feature"'));
-const NAMES: Record<TourKey, string> = { docs: "Library", feed: "Feed", tickets: "Tickets", roadmap: "Roadmap", mywork: "My Work", handoffs: "Relay", artifacts: "Artifacts" };
+const NAMES: Record<TourKey, string> = { docs: "Library", feed: "Feed", tickets: "Tickets", roadmap: "Roadmap", mywork: "My Work", handoffs: "Handoffs", links: "Links", artifacts: "Artifacts" };
 
 describe("tour cards — every mockup opens its feature", () => {
   const html = page();
-  it("each of the seven has ONE labelled control, Explore; the card is the same action for a pointer only", () => {
+  it("each of the eight has ONE labelled control, Explore; the card is the same action for a pointer only", () => {
     for (const key of TOUR_KEYS) {
       expect(html).toContain(`class="site-lift site-fxcard cnpy-hitbox" data-fx="${key}"`);
       expect(html).toContain(`<button type="button" data-act="openFeature" data-arg="${key}" class="cnpy-hit" tabindex="-1" aria-hidden="true"></button>`);
       expect(html).toMatch(new RegExp(`<button type="button" data-act="openFeature" data-arg="${key}:btn" aria-haspopup="dialog" class="site-explore"[^>]*>Explore ${NAMES[key]}<svg`));
     }
-    expect(html.match(/data-act="openFeature"/g)?.length).toBe(14);
+    expect(html.match(/data-act="openFeature"/g)?.length).toBe(16);
   });
   it("no button holds another button, on the page or in the dialog", () => {
     for (const h of [html, open("tickets")]) expect(h).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<button/);
@@ -64,7 +66,7 @@ describe("the feature dialog", () => {
     const d = dialog(open("docs"));
     expect(d).toContain('role="dialog" aria-modal="true" aria-labelledby="site-fx-title" aria-describedby="site-fx-pos"');
     expect(d).toContain('<h2 id="site-fx-title">A library that stays reviewed</h2>');
-    expect(d).toContain('<span id="site-fx-pos" aria-live="polite"><span class="site-vh">Library, </span>1 of 7</span>');
+    expect(d).toContain('<span id="site-fx-pos" aria-live="polite"><span class="site-vh">Library, </span>1 of 8</span>');
     expect(d).toContain('data-act="closeFeature" title="Close" aria-label="Close"');
     expect(d).toContain('<div data-act="closeFeature" class="site-fx-back"></div>');
   });
@@ -88,9 +90,9 @@ describe("the feature dialog", () => {
     expect(dialog(open("docs"))).toContain('data-act="stepFeature" data-arg="prev" class="site-fx-nav" style="border-radius:9px" aria-label="Previous: Artifacts"');
     expect(dialog(open("docs"))).toContain('aria-label="Next: Feed"');
     expect(dialog(open("artifacts"))).toContain('aria-label="Next: Library"');
-    expect(dialog(open("artifacts"))).toContain("7 of 7");
+    expect(dialog(open("artifacts"))).toContain("8 of 8");
     expect(dialog(open("roadmap")).match(/class="site-fx-dot is-on"/g)?.length).toBe(1);
-    expect(dialog(open("roadmap")).match(/class="site-fx-dot[ "]/g)?.length).toBe(7);
+    expect(dialog(open("roadmap")).match(/class="site-fx-dot[ "]/g)?.length).toBe(8);
   });
 
   it("carries how it was opened and which way it stepped, and nothing else changes on a rerender", () => {
@@ -112,6 +114,7 @@ describe("the feature dialog", () => {
       roadmap: ["Narrative reads the plan and its sprint cards", "each bar runs from a sprint's start to its due date", "tickets closed", "always a person's call"],
       mywork: ["Trov opens here", "your open tickets, with their sprint and when it is due", "what agents staged, with Promote, Ratify and Reject right there", "It reads only what Trov has already captured, so it loads instantly"],
       handoffs: ["A handoff is a note from one session to the next: the task, what's done, what's next, the files that matter", "addressed to you, a teammate, or anyone", "claims only the one you pick", "Unclaimed handoffs expire after 7 days"],
+      links: ["let two sessions whose work overlaps leave each other short notes", "A link is one-to-one and short-lived", "one between your own sessions opens at once, and a teammate accepts or declines one you send", "A note reaches the other side when it next checks"],
       artifacts: ["An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file", "links it to the ticket or sprint it came from", "only a person can give it", "Compare versions diffs any two"],
     };
     for (const key of TOUR_KEYS) {
@@ -124,10 +127,10 @@ describe("the feature dialog", () => {
 });
 
 describe("the dialog's mockups — each screen drawn from the real one (landing-mocks.ts)", () => {
-  it("there is one for each of the seven features", () => {
+  it("there is one for each of the eight features", () => {
     expect([...MOCK_KEYS]).toEqual([...TOUR_KEYS]);
     for (const key of MOCK_KEYS) expect(featureMock(key).length, key).toBeGreaterThan(2500);
-    expect(new Set(MOCK_KEYS.map((k) => featureMock(k))).size).toBe(7);
+    expect(new Set(MOCK_KEYS.map((k) => featureMock(k))).size).toBe(8);
   });
 
   it("is inert: nothing focusable, nothing that acts, hidden from a screen reader", () => {
@@ -189,6 +192,8 @@ describe("the dialog's mockups — each screen drawn from the real one (landing-
       ["roadmap", timelineSrc, ["Sprints on the calendar", "In progress", "Upcoming", "Overdue", "Ready", "all tickets closed", "Today", "Done", "Next due", "starts in"]],
       ["roadmap", guide, ["Narrative", "Timeline", "New sprint"]],
       ["mywork", myworkSrc, ["Tickets for you", "Needs your review", "Your sessions", "Queue", "View all", "to promote", "to ratify", "Promote", "Ratify", "Reject", "Dashboard", "PRs", "Deploys", "due this week", "overdue"]],
+      ["links", linksSrc, ["Start a link", "between your sessions", "not joined", "Notes start once it's open", "PAST", "Closed", "Accept", "Decline", "Close", "Connect your own sessions — a coding agent, a web chat, an Ask thread — so they leave each other notes while the work overlaps; you can link with a teammate's session too."]],
+      ["links", marksSrc, ["Requested"]],
       ["handoffs", handoffsSrc, ["WAITING TO BE CLAIMED", "HISTORY", "PENDING", "CLAIMED", "EXPIRED", "Where it stands", "Claim", "Anyone", "Handoffs you sent or that were left for you. A pending handoff waits until a session claims it."]],
     ];
     for (const [key, src, words] of pairs) {

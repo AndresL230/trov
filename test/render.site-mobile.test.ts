@@ -169,7 +169,7 @@ describe("the hero on a phone", () => {
     expect(html).toContain('class="site-hero-new"');
     expect(html.match(/class="site-hero-lines"/g)).toHaveLength(2);
     expect(html).toMatch(/<span class="site-hero-tabs-ph" aria-hidden="true">/);
-    expect(html).toContain('class="site-hero-win" style="display:flex;height:568px;overflow:hidden"'); // the wide screen's fixed window is untouched
+    expect(html).toContain('class="site-hero-win" style="display:flex;height:600px;overflow:hidden"'); // the wide screen's fixed window is untouched
   });
 
   it("the rules: a stacked headline block with 50px buttons, the window as tall as its content, removed line over added lines", () => {
@@ -215,7 +215,7 @@ describe("mockups on a phone — the most telling pane, at a readable size", () 
   });
 
   it("a tour row is copy then mockup, and Explore is a 44px bordered button", () => {
-    expect(page().match(/class="site-tour-row"/g)).toHaveLength(7);
+    expect(page().match(/class="site-tour-row"/g)).toHaveLength(8);
     expect(phone).toContain(".site-tour-row > * { flex-basis:100% !important; }");
     expect(phone).toMatch(/\.site-explore \{[^}]*min-height:44px;[^}]*border:1px solid/);
   });

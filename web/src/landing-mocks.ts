@@ -1,6 +1,6 @@
 // ── The tour's dialog mockups: each screen, drawn at the dialog's size ───────
 // The landing page's tour rows carry a small teaser mockup (landing.ts). When a row is opened
-// (`featureDialog`), the dialog has room for the screen itself, so each of the seven gets a fuller
+// (`featureDialog`), the dialog has room for the screen itself, so each of the eight gets a fuller
 // drawing here, built from what the REAL screen shows — its header controls, its section titles,
 // its chips and their wording. Where the product exports the words, they are imported (a rename
 // then changes the mock, and the test that pins them); the rest is copied from the renderer named
@@ -16,6 +16,10 @@
 //   mywork .... mywork.ts `ticketsTile`, `reviewTile`, `sessionsTile`, `repoTile`
 //   handoffs .. handoffs.ts `handoffsView` (the two sections, the row) and `handoffDetail`
 //               ("Where it stands")
+//   links ..... links.ts `linksView`: the arc diagram (`linksHero`: you at the left of the base line, your clients
+//               as stations on it, a teammate under it, each link an arc of the line's dots, link-line.ts) over
+//               the live link cards (`linkCard`: the two sides, #n and the topic, the why, the newest note and
+//               "N new", the steps) and the PAST rows (`pastRow`, `linkEndWords`)
 //   artifacts . artifacts.ts viewer: the version picker, Draft / Published / Ratified, New version,
 //               the Org switch, Linked work; `diffView`'s "Compare versions"
 //
@@ -28,11 +32,11 @@
 // rows a phone re-lays in "the site on a phone", where every size under 11px is also raised to 11px).
 
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@shared/tickets-core";
-import { agentMark, handoffMark, markShape, ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
+import { agentMark, handoffMark, linkMark, markShape, ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
 import { stateTag as sprintStateMark, type TlState } from "./sprint-state";
 import { ARTIFACT_STATUSES } from "@shared/artifacts-core";
 
-export const MOCK_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
+export const MOCK_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "links", "artifacts"] as const;
 export type MockKey = (typeof MOCK_KEYS)[number];
 
 // ── shared pieces (the page's small mockups use these too) ───────────────────
@@ -355,7 +359,124 @@ function artifactsMock(): string {
   return win(`<span style="color:var(--fg-55);font-weight:500">Artifacts</span> <span style="color:var(--fg-40);font-weight:400">›</span> Rate limit headers: design`, "", body);
 }
 
-const MOCKS: Record<MockKey, () => string> = { docs: docsMock, feed: feedMock, tickets: ticketsMock, roadmap: roadmapMock, mywork: myworkMock, handoffs: handoffsMock, artifacts: artifactsMock };
+// ── Links: Relay › Links — the arc diagram over the live link cards ──────────
+// Two of Maya's own sessions (Claude Code on a branch, and a web chat) on an OPEN link, leaving each other notes while
+// their work overlaps, and a request from Leo waiting for her answer. Still: the dots are a fixed scatter along each
+// line (what link-line.ts paints under reduced motion), never a canvas, so nothing here moves or needs a script.
+type ClientKind = "code" | "chat" | "ask";
+/** A client's small line icon (links.ts `clientIcon`: a terminal, a speech bubble, Ask's spark; a dashed ring for a
+ *  side with no session yet). */
+export function linkClientIcon(kind: ClientKind | null, size = 16): string {
+  const p = kind === "code" ? '<path d="M3 4.5l3 3-3 3M7.5 11h5"/>'
+    : kind === "chat" ? '<path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"/>'
+    : kind === "ask" ? '<path d="M8 2.5l1.3 3.7 3.7 1.3-3.7 1.3L8 12.5l-1.3-3.7L3 7.5l3.7-1.3z"/>'
+    : '<circle cx="8" cy="8" r="4.5" stroke-dasharray="1.6 1.8"/>';
+  return `<svg viewBox="0 0 16 16" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+}
+/** The diagram's geometry, in links.ts's canvas units (HERO_W × HERO_H = 720 × 330): you (the hub) at x 56 on the
+ *  base line (y 158), two stations at x 300 and 540 (`STATION_X[2]`), a teammate on the person row (y 282). */
+const LH = { w: 720, h: 330, base: 158, hub: 56, code: 300, chat: 540, person: 282, leo: 470 } as const;
+/** A fixed scatter of dots along a cubic from a to b: what the line's particles look like held still. */
+function dotsAlong(a: [number, number], c1: [number, number], c2: [number, number], b: [number, number], n: number, bold: number): string {
+  const at = (u: number, i: 0 | 1) => { const m = 1 - u; return m * m * m * a[i] + 3 * m * m * u * c1[i] + 3 * m * u * u * c2[i] + u * u * u * b[i]; };
+  let out = "";
+  for (let k = 0; k < n; k++) {
+    const u = (k + 0.5) / n;
+    const j = Math.sin(k * 12.9898 + n * 78.233) * 43758.5453;
+    const f = j - Math.floor(j);
+    const x = at(u, 0), y = at(u, 1) + (f - 0.5) * 7;
+    const r = 1.5 + f * 1.6 * bold;
+    out += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${r.toFixed(2)}" fill="currentColor" opacity="${(0.3 + 0.6 * f * bold).toFixed(2)}"></circle>`;
+  }
+  return out;
+}
+/** The arc diagram, still. Every word is SVG text, so it scales with the drawing and a phone keeps it whole. */
+export function linksDiagram(): string {
+  const B = LH.base;
+  const arcTop = B - 2 * (34 + 0.24 * (LH.chat - LH.code)); // link-line.ts `arcHeight(span)`, as the cubic's handles
+  const station = (x: number, kind: ClientKind, word: string, sub: string) => `
+      <circle cx="${x}" cy="${B}" r="17" style="fill:var(--surface);stroke:color-mix(in srgb, var(--accent) 45%, var(--border))" stroke-width="1"></circle>
+      <svg x="${x - 9}" y="${B - 9}" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${linkClientIcon(kind).replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>
+      <text x="${x}" y="${B + 36}" text-anchor="middle" style="fill:var(--fg-70);font-size:15px;font-weight:600;font-family:var(--sans)">${word}</text>
+      ${sub ? `<text x="${x}" y="${B + 54}" text-anchor="middle" style="fill:var(--fg-40);font-size:12.5px;font-family:var(--code)">${sub}</text>` : ""}`;
+  const face = (x: number, y: number, r: number, text: string, color: string) => `
+      <circle cx="${x}" cy="${y}" r="${r}" style="fill:color-mix(in srgb, var(--${color}) 16%, var(--bg))"></circle>
+      <text x="${x}" y="${y + r * 0.36}" text-anchor="middle" style="fill:var(--${color});font-size:${(r * 0.95).toFixed(1)}px;font-weight:600;font-family:var(--sans)">${text}</text>`;
+  return `<svg class="fxm-lh" viewBox="0 0 ${LH.w} ${LH.h}" width="100%" style="display:block;color:var(--accent);max-height:100%" aria-hidden="true">
+      ${dotsAlong([LH.hub + 16, B], [LH.hub + 90, B], [LH.code - 90, B], [LH.code - 18, B], 16, 0.55)}
+      ${dotsAlong([LH.code + 18, B], [LH.code + 80, B], [LH.chat - 80, B], [LH.chat - 18, B], 14, 0.55)}
+      ${dotsAlong([LH.code + 6, B - 16], [LH.code + 30, arcTop], [LH.chat - 30, arcTop], [LH.chat - 6, B - 16], 30, 1)}
+      ${dotsAlong([LH.code + 18, B + 5], [LH.code + 95, B + 22], [LH.leo - 75, LH.person], [LH.leo - 21, LH.person], 13, 0.5)}
+      ${face(LH.hub, B, 15, "MC", "accent")}
+      <text x="${LH.hub}" y="${B - 24}" text-anchor="middle" style="fill:var(--fg-55);font-size:13px;font-weight:600;font-family:var(--sans)">You</text>
+      ${station(LH.code, "code", "Claude Code", "feat/retry-after")}
+      ${station(LH.chat, "chat", "Web chat", "")}
+      ${face(LH.leo, LH.person, 13, "LP", "blue")}
+      <circle cx="${LH.leo}" cy="${LH.person}" r="19" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="2 3" opacity=".7"></circle>
+      <text x="${LH.leo + 28}" y="${LH.person + 5}" style="fill:var(--accent);font-size:13px;font-weight:600;font-family:var(--sans)">Leo</text>
+    </svg>`;
+}
+/** One live link card (links.ts `linkCard`): the two sides on a slim strip, #n with the topic, its mark and when, the
+ *  reason, the newest note with "N new" (or the placeholder), and the steps — drawn, never buttons. */
+export interface LinkCardMock {
+  id: number; left: string; right: string; title: string; mark: string; when: string; why: string;
+  note: { who: string; text: string; when: string; fresh: number } | null; placeholder?: string;
+  steps: { label: string; accent?: boolean }[]; asking?: boolean; open: boolean;
+}
+export function linkCardMock(c: LinkCardMock): string {
+  const dots = `<svg width="26" height="6" viewBox="0 0 26 6" aria-hidden="true" style="flex:none;color:var(--accent);opacity:${c.open ? 0.9 : 0.35}">${[3, 9, 15, 21].map((x) => `<circle cx="${x + 1}" cy="3" r="1.3" fill="currentColor"></circle>`).join("")}</svg>`;
+  const note = c.note
+    ? `<span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:var(--fg-55);font-weight:500">${c.note.who}</span> <span style="color:var(--fg-70)">${c.note.text}</span></span><span style="flex:none;color:var(--fg-40);font-family:var(--label);font-size:10.5px">${c.note.when}</span>${c.note.fresh > 0 ? `<span style="flex:none;color:var(--accent);font-weight:600;font-size:11px">${c.note.fresh} new</span>` : ""}`
+    : `<span style="color:var(--fg-40)">${c.placeholder ?? "No notes yet"}</span>`;
+  const step = (s: { label: string; accent?: boolean }) => `<span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:7px;font-size:11px;font-weight:600;white-space:nowrap;${s.accent ? "background:var(--accent);color:var(--accent-fg)" : "border:1px solid var(--border-strong);color:var(--fg-70)"}">${s.label}</span>`;
+  return `<div class="cnpy-lcard" style="${SURF};font-size:12px${c.asking ? ";border-color:color-mix(in srgb, var(--accent) 55%, var(--border));background:color-mix(in srgb, var(--accent) 4%, var(--surface))" : ""}">
+      <div class="cnpy-lcard-strip"><span class="cnpy-lcard-side">${c.left}</span>${dots}<span class="cnpy-lcard-side">${c.right}</span></div>
+      <div class="cnpy-lcard-title"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${c.id}</span><span style="min-width:0;flex:1;font-size:12.5px;font-weight:600;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.title}</span>${c.mark ? `<span style="flex:none">${c.mark}</span>` : ""}<span style="flex:none;font-size:10.5px;color:var(--fg-40);font-family:var(--label);white-space:nowrap">${c.when}</span></div>
+      <div style="font-size:11.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.why}</div>
+      <div class="cnpy-lcard-note" style="font-size:11.5px">${note}</div>
+      <div class="cnpy-lcard-foot"><span style="display:flex;gap:6px;margin-left:auto;flex:none">${c.steps.map(step).join("")}</span></div>
+    </div>`;
+}
+/** A side as a card's strip draws it (links.ts `sideAsClient`): your client's icon and word, or a teammate's photo,
+ *  first name and client; a side of yours not joined yet reads "not joined". */
+const lside = (kind: ClientKind | null, word: string, branch = "") =>
+  `<span class="cnpy-lcard-ico" style="border-radius:50%">${linkClientIcon(kind)}</span><span class="cnpy-lcard-txt">${kind ? word : `<span style="color:var(--fg-40)">not joined</span>`}${branch ? ` <span style="font-family:var(--code);font-size:10.5px;color:var(--fg-55)">${branch}</span>` : ""}</span>`;
+const lperson = (who: string, first: string, client: string) =>
+  `${initials(who, 16, "7px")}<span class="cnpy-lcard-txt">${first}<span style="color:var(--fg-40)">, ${client}</span></span>`;
+/** The page's two live links: Maya's own sessions, open, with notes waiting; Leo's request, waiting for her. */
+export const LINK_CARDS: readonly LinkCardMock[] = [
+  {
+    id: 12, open: true, left: lside("code", "Claude Code", "feat/retry-after"), right: lside("chat", "Web chat"),
+    title: "Between your sessions", mark: "", when: "4m ago", why: "Both are changing the 429 response",
+    note: { who: "your agent", text: "Renamed retryAfter to retry_after in the bucket; merging tonight", when: "4m ago", fresh: 2 },
+    steps: [{ label: "Close" }],
+  },
+  {
+    id: 13, open: false, asking: true, left: lperson("LP", "Leo", "Claude Code"), right: lside(null, ""),
+    title: "Leo asks to link about PR #142", mark: linkMark("requested", 11), when: "12m ago", why: "Same limiter, different files",
+    note: null, placeholder: "Notes start once it's open",
+    steps: [{ label: "Decline" }, { label: "Accept", accent: true }],
+  },
+];
+function linksMock(): string {
+  const past = (id: number, topic: string, between: string, end: string, when: string, notes: number) => `<div class="fxm-hrow" style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.5fr) auto;gap:10px;align-items:center;padding:9px 13px;border-top:1px solid var(--border)">
+      <span style="min-width:0"><span style="display:flex;align-items:baseline;gap:7px;min-width:0"><span style="font-family:var(--label);font-size:10.5px;font-weight:600;color:var(--fg-40);flex:none">#${id}</span><span style="font-size:12px;font-weight:500;color:var(--fg-70);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topic}</span></span><span style="display:block;font-size:11px;color:var(--fg-40);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${between}</span></span>
+      <span style="font-size:11.5px;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${end}</span>
+      <span style="font-size:10.5px;color:var(--fg-40);text-align:right;font-family:var(--label);white-space:nowrap">${when}<span style="display:block;margin-top:2px">${notes} notes</span></span>
+    </div>`;
+  const body = `<div class="fxm-stack" style="padding:10px 16px 14px;gap:10px">
+      <div style="flex:1 1 auto;min-height:0;display:flex;justify-content:center">${linksDiagram()}</div>
+      <div style="flex:none;font-size:11.5px;color:var(--fg-55);text-align:center;line-height:1.5">Connect your own sessions — a coding agent, a web chat, an Ask thread — so they leave each other notes while the work overlaps; you can link with a teammate's session too.</div>
+      <div style="flex:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:10px">${LINK_CARDS.map(linkCardMock).join("")}</div>
+      <div class="fxm-wide" style="flex:none">
+        <div style="display:flex;align-items:center;padding:4px 2px 7px">${cap("Past", "9px", "fg-55")}<span style="margin-left:auto;font-size:10px;color:var(--fg-40)">1</span></div>
+        <div style="${SURF};overflow:hidden"><div style="margin-top:-1px">${past(9, "PR #138", "Your Claude Code session and web chat: Splitting the limiter config", "Closed by you: merged", "2d ago", 6)}</div></div>
+      </div>
+    </div>`;
+  return win(`<span style="color:var(--fg-40);font-weight:500">Relay ›</span> Links`, hbtn("Start a link", true), body);
+}
+
+const MOCKS: Record<MockKey, () => string> = { docs: docsMock, feed: feedMock, tickets: ticketsMock, roadmap: roadmapMock, mywork: myworkMock, handoffs: handoffsMock, links: linksMock, artifacts: artifactsMock };
 /** The dialog's drawing of a screen. Inert markup; the caller wraps it in `aria-hidden`. */
 export function featureMock(key: MockKey): string {
   return MOCKS[key]();
