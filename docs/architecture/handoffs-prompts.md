@@ -210,12 +210,27 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   `link_inbox`'s resolution in every connection mode, through the real `/mcp`), and the six tools' rows in
   `test/isolation.mcp.test.ts` (another org's link, person and session reach nothing).
 
+### Web (Relay › Overview, `web/src/relay.ts`)
+
+- **The landing page** (`#relay`, screen `relay`; the sidebar's Relay opens it, `goRelay`): one sentence on what
+  Relay is (`RELAY_LEAD`), then two cards balanced on their middle — **Handoffs** and **Links** — each a drawing in a
+  tinted band (a note waiting between two sessions; a line whose dots flow, still under reduced motion), its name
+  and what it is, two counts side by side (`relayCounts`: handoffs waiting for me — My Work's `handoffsForMe` — and
+  sent but not picked up; link requests asking me and OPEN links), then New handoff / Start a link at the left and
+  "Open … →" at the right. The whole card is a `hitArea` (`goHandoffs` / `goLinks`); the New button sits above it.
+  A count whose read is out is "—", never 0.
+- **Your connections**: the person's OAuth connections that act in this org (`grantsHere`: manual ones listing it,
+  or repo-following ones), their access tokens for it, then Ask Trov (on / off for the org / not set up on this
+  server, from `GET /ask/state`), each with when it was last used; none → "Connect an agent" (Settings). Reads:
+  `loadRelay` in main.ts — handoffs, links, grants, tokens and Ask's state, the same routes Settings › MCP access
+  and Ask use. Test: `test/render.relay.test.ts`.
+
 ### Web (Relay › Links, `web/src/links.ts`)
 
-- **Where.** A `tabBar()` heads the Relay screen: Handoffs and Links, each tab with its own count of what waits
-  for me. Routes `#links` (screen `links`) and `#links/<n>` (screen `link`), NOT under `#handoffs/` (whose second
-  segment is a handoff's number). `pageKey` maps `#links` to `#handoffs`, so the tab switch is one page (the
-  underline slides, no entrance replays); a link's page is a child screen (crumb "Link #12", back to Links).
+- **Where.** Relay has NO tab bar (the owner's call, 2026-10-18): the sidebar's Relay opens its Overview, and
+  Handoffs and Links are its pages, each a child screen ("Relay › Links", the title a back button to `#relay`).
+  Routes `#links` (screen `links`) and `#links/<n>` (screen `link`), NOT under `#handoffs/` (whose second segment is a
+  handoff's number); a link's page is a child of Links (crumb "Link #12", back to Links).
 - **The tab** reads four boxes at once (`GET /links?box=waiting|open|mine|closed`). The story (owner, 2026-10-17)
   is linking YOUR OWN sessions — a coding agent, a web chat, an Ask thread; a teammate's session is the second case.
   It opens on **the arc diagram** (`linksHero`, `heroModel`): one STATION per client kind you have on a live link —

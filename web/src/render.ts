@@ -50,7 +50,9 @@ import { confirmModal } from "./confirm";
 import type { ImportRunView } from "@shared/docs-import-core";
 import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type AssignKind } from "./maintenance";
 import type { IdentityProps } from "./identity";
-import { linksView, linkDetailView, linkCancelModal, handoffsTabBar, NO_LINK_BOXES, type LinkBoxes, type HandoffsTab, type LinkStart } from "./links";
+import { linksView, linkDetailView, linkCancelModal, NO_LINK_BOXES, type LinkBoxes, type LinkStart } from "./links";
+import { relayView } from "./relay";
+import type { AskState } from "@shared/ai-ask-core";
 import type { LinkDetail, LinkSideName } from "@shared/links";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
@@ -128,8 +130,9 @@ export type Screen =
   | "artifacts" | "artifactnew" | "artifact"
   // Platform (superadmin only): the tabbed area, and one organization's page.
   | "platform" | "platformorg"
-  // Handoffs (Workspace): the inbox, one handoff, the new-handoff form.
-  | "handoffs" | "handoff" | "newhandoff"
+  // Relay (Workspace): its Overview (`#relay`, relay.ts, the first tab the sidebar opens); Handoffs: the inbox, one
+  // handoff, the new-handoff form.
+  | "relay" | "handoffs" | "handoff" | "newhandoff"
   // Relay › Links (the screen's second tab, `#links`) and one agent link's page (`#links/<n>`, web/src/links.ts).
   | "links" | "link"
   // Prompt Library (Knowledge): the library, one prompt, the editor (new / edit / new version).
@@ -353,6 +356,8 @@ export interface AppState {
   grantsAll: boolean;
   /** Settings › MCP access: MY personal access tokens for the org on screen (older setups; revoke only). */
   mcpTokens: Loadable<McpTokenSummary[]>;
+  /** Relay › Overview: Ask's on/off for the org (`GET /ask/state`'s enabled and eligibility), for Your connections. */
+  relayAsk: Loadable<{ enabled: boolean; eligibility: AskState["eligibility"] } | null>;
   tokenRevokeArm: number | null;
   /** Settings › MCP access's "Set it up without the plugin" modal is open (`mcpSetupModal`, at the app root). */
   mcpSetup: boolean;
@@ -647,6 +652,7 @@ export function initialState(): AppState {
     mcpSetup: false,
     grantsAll: false,
     mcpTokens: { status: "idle", data: [] },
+    relayAsk: { status: "idle", data: null },
     tokenRevokeArm: null,
     handleEdit: false,
     handleDraft: "",
@@ -822,10 +828,6 @@ export function linkBadge(s: AppState): number {
   return s.links.status === "ok" ? s.links.data.waiting.length : s.badges.links ?? s.links.data.waiting.length;
 }
 
-/** The Relay screen's tab bar (Handoffs | Links), with each tab's own count of what waits for me. */
-function handoffsBar(s: AppState, tab: HandoffsTab): string {
-  return handoffsTabBar(tab, { handoffs: handoffOnlyBadge(s), links: linkBadge(s) });
-}
 
 /** The org on screen with MY role in it — `currentOrg` is the one place that picks it. */
 export const viewerOrg = (s: Pick<AppState, "orgSlug" | "myOrgs" | "me">): MyOrg | null => currentOrg(s);
@@ -1030,6 +1032,8 @@ function headerCrumb(s: AppState): string {
   if (s.screen === "releases") return releaseCrumb(s.releaseVersion, s.releasePage);
   if (s.screen === "newticket") return "New ticket";
   if (s.screen === "handoff") return s.handoffDetail.data ? firstLine(s.handoffDetail.data.body) : "";
+  if (s.screen === "handoffs") return "Handoffs";
+  if (s.screen === "links") return "Links";
   if (s.screen === "newhandoff") return "New handoff";
   if (s.screen === "link") {
     const l = s.linkDetail.data;
@@ -1064,7 +1068,8 @@ function header(s: AppState): string {
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
     repo: "Repo",
     artifacts: "Artifacts", artifactnew: "Artifacts", artifact: "Artifacts",
-    handoffs: "Relay", handoff: "Relay", newhandoff: "Relay", links: "Relay", link: "Relay",
+    // Relay is the landing page (relay.ts); Handoffs and Links are its pages, each the parent of its own items.
+    relay: "Relay", handoffs: "Relay", handoff: "Handoffs", newhandoff: "Handoffs", links: "Relay", link: "Links",
     prompts: "Prompt Library", prompt: "Prompt Library", promptedit: "Prompt Library",
     newdoc: "Library", import: "Library", imports: "Library",
     releases: "What's new",
@@ -1089,7 +1094,7 @@ function header(s: AppState): string {
     : "";
 
   // `sizeAs`: another label the same slot shows on a sibling tab, laid invisibly in the same grid cell, so the button
-  // is as wide as the longer one and the header's icons beside it stay put when the tab switches (Relay's two tabs).
+  // is as wide as the longer one and the header's icons beside it stay put between Relay's two pages.
   const accentNew = (act: string, label: string, sizeAs?: string) =>
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${sizeAs
       ? `<span style="display:grid;justify-items:center"><span style="grid-area:1/1">${label}</span><span aria-hidden="true" style="grid-area:1/1;visibility:hidden">${sizeAs}</span></span>`
@@ -1137,11 +1142,12 @@ function header(s: AppState): string {
   // `ticketsBack` resolves to Tickets, or Roadmap from a sprint (one act, like
   // the design's single `back` handler).
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
-    || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "link" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
+    || s.screen === "handoffs" || s.screen === "links" || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "link" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
     || s.screen === "space" || s.screen === "docs" || s.screen === "import" || s.screen === "imports"
     || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag";
   // The act the title's back button fires: each child screen returns to its own parent.
-  const backAct = s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
+  const backAct = s.screen === "handoffs" || s.screen === "links" ? "goRelay"
+    : s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
     : s.screen === "link" ? "goLinks"
     : s.screen === "prompt" ? "goPrompts"
     : s.screen === "promptedit" ? "edCancel"
@@ -2194,7 +2200,7 @@ function guideView(s: AppState): string {
 
     ${sub("Relay")}
     <p style="${gP}">A handoff is a note from one session to the next: the task, what's done, what's next, the files that matter, and optionally a ready-to-run prompt. Your agent leaves one with the ${gStrong("handoff")} skill, addressed to you, a teammate, or anyone. At the start of your next session, load-context lists the ones waiting and claims only the one you pick. Unclaimed handoffs expire after 7 days. The sidebar count is what's waiting for you.</p>
-    ${gFig("handoffs", `${gEm("Relay")}: two tabs. Handoffs lists pending ones first, then claimed and expired history; Links lists requests waiting for you, open links, yours and closed ones.`)}
+    ${gFig("handoffs", `${gEm("Relay")}: a landing page with a card for each half and the agents you have connected. Handoffs lists pending ones first, then claimed and expired history; Links lists requests waiting for you, open links, yours and closed ones.`)}
 
     ${sub("Repo")}
     <p style="${gP}">A dashboard over the product repo in five tabs: ${gStrong("Overview")} (each environment's deploys, checks, health, and drift), ${gStrong("Code")}, ${gStrong("CI &amp; Deploys")}, ${gStrong("Usage")}, and ${gStrong("Team &amp; Planning")}. It reads only what Trov has captured from the GitHub webhook and scheduled polls. A section with nothing yet reads ${gStrong("not connected")} and names what it's waiting on, never a made-up zero. ${gStrong("Preview with sample data")} shows the full layout with labelled placeholder numbers. Admins also get ${gStrong("Poll now")}.</p>
@@ -3017,8 +3023,9 @@ function screenBody(s: AppState): string {
     case "artifacts":
     case "artifactnew":
     case "artifact": return artifactsView(artProps(s, s.screen));
-    case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "handoffs") });
-    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, bar: handoffsBar(s, "links"), start: s.linkStart, pastAll: s.linksPastAll, busy: s.linkBusy });
+    case "relay": return relayView({ me: s.me?.handle ?? "", orgSlug: s.orgSlug ?? "", handoffs: s.handoffs, links: s.links, grants: s.grants, tokens: s.mcpTokens, ask: s.relayAsk });
+    case "handoffs": return handoffsView({ status: s.handoffs.status, handoffs: s.handoffs.data, me: s.me?.handle ?? "", persons: s.persons.data });
+    case "links": return linksView({ status: s.links.status, boxes: s.links.data, me: s.me?.handle ?? "", persons: s.persons.data, start: s.linkStart, pastAll: s.linksPastAll, busy: s.linkBusy });
     case "link": return linkDetailView({
       status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
       draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,

@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import type { LinkDetail, LinkView, LinkSideView, LinkNoteView, LinkState, LinkPreview } from "../shared/links";
 import type { HandoffView } from "../shared/handoffs";
 import {
-  linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal, handoffsTabBar,
+  linksView, linkDetailView, linkActionsFor, linkCanWrite, linkNeedsJoin, linkCancelModal,
   linkSessionHtml, noteAuthorHtml, askThreadOf, LINKS_EMPTY, NO_LINK_BOXES, type LinkAction, type LinkDetailProps,
   linkStartCard, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, linkStartSpec, type LinkStart,
   linksHero, liveLinks, linkGlyph, linkCard, liveCardOrder, linkEndWords, LINKS_PAST_SHOWN, heroModel, heroCanvasData, linkAboutHtml, LINKS_LEAD, STATION_X, PERSON_MAX, HERO_BASE_Y, HERO_HUB_X, HERO_PERSON_Y,
@@ -265,7 +265,6 @@ describe("a link's state is a mark, never a pill — and nothing for an open lin
 
 // ── the Links tab ────────────────────────────────────────────────────────────
 describe("the Links tab", () => {
-  const bar = handoffsTabBar("links", { handoffs: 0, links: 1 });
   const boxes = {
     waiting: [link({ id: 3, state: "requested", requester: side("jose"), recipient: side("andres") })],
     open: [link({ id: 4 })],
@@ -274,7 +273,7 @@ describe("the Links tab", () => {
   };
 
   it("live links are CARDS (waiting for you first, then open, then yours); ended ones a PAST history below", () => {
-    const html = linksView({ status: "ok", boxes, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes, me: "andres", persons });
     const at = (s: string) => html.indexOf(s);
     expect(at('data-link-card="3"')).toBeLessThan(at('data-link-card="4"'));
     expect(at('data-link-card="4"')).toBeLessThan(at('data-link-card="5"'));
@@ -292,32 +291,29 @@ describe("the Links tab", () => {
   });
 
   it("a branch topic reads in code on its card", () => {
-    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, mine: [link({ id: 8, state: "draft", self: true, topic: { kind: "branch", ref: "feat/x" }, recipient: side("andres") })] }, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, mine: [link({ id: 8, state: "draft", self: true, topic: { kind: "branch", ref: "feat/x" }, recipient: side("andres") })] }, me: "andres", persons });
     expect(html).toContain('font-family:var(--code)');
     expect(text(html)).toContain("branch feat/x");
   });
 
   it("no past links: says so in plain words", () => {
-    const html = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons });
     expect(html).toContain(LINKS_EMPTY.past.replace(/'/g, "&#39;"));
   });
 
   it("loading draws the skeleton; a failed read says so", () => {
-    expect(linksView({ status: "loading", boxes: NO_LINK_BOXES, me: "andres", persons, bar })).toContain("Loading links");
-    expect(linksView({ status: "error", boxes: NO_LINK_BOXES, me: "andres", persons, bar })).toContain("Couldn&#39;t load links.");
+    expect(linksView({ status: "loading", boxes: NO_LINK_BOXES, me: "andres", persons })).toContain("Loading links");
+    expect(linksView({ status: "error", boxes: NO_LINK_BOXES, me: "andres", persons })).toContain("Couldn&#39;t load links.");
   });
 
-  it("a tabBar heads the Relay screen: Handoffs and Links, each with its own count", () => {
-    const h = handoffsView({ status: "ok", handoffs: [], me: "andres", persons, bar: handoffsTabBar("handoffs", { handoffs: 2, links: 1 }) });
-    expect(h).toContain('role="tablist" aria-label="Handoffs sections"');
-    expect(h).toContain('data-act="handoffsTab" data-arg="links"');
-    expect(h).toMatch(/id="handoffs-tab-handoffs" class="cnpy-tab is-on"/);
-    expect(h).toContain('role="tabpanel" id="handoffs-tab-panel" aria-labelledby="handoffs-tab-handoffs"');
-    expect(h).toContain('class="cnpy-badge" data-n="2"');
-    expect(h).toContain('class="cnpy-badge" data-n="1"');
-    const l = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons, bar });
-    expect(l).toContain('data-act="handoffsTab" data-arg="handoffs"');
-    expect(l).toContain('aria-labelledby="handoffs-tab-links"');
+  it("no tab bar: Handoffs and Links are Relay's pages, each with a back button to Relay (the owner's call)", () => {
+    const h = handoffsView({ status: "ok", handoffs: [], me: "andres", persons });
+    const l = linksView({ status: "ok", boxes: NO_LINK_BOXES, me: "andres", persons });
+    for (const html of [h, l]) { expect(html).not.toContain('role="tablist"'); expect(html).not.toContain("handoffsTab"); }
+    for (const screen of ["handoffs", "links"] as const) {
+      const page = render({ ...initialState(), view: "app", screen, orgSlug: "acme" } as AppState);
+      expect(page).toMatch(/data-act="goRelay"[^>]*>[\s\S]*?Relay/);
+    }
   });
 });
 
@@ -334,8 +330,9 @@ describe("routes: #links and #links/<n>", () => {
     // Not under #handoffs/: its second segment is a handoff's number.
     expect(parseHash("#handoffs/12")).toEqual({ screen: "handoff", ...base, handoffId: 12 });
   });
-  it("Links is the Handoffs page's other tab (one page key); a link is its own page", () => {
-    expect(pageKey(parseHash("#links"))).toBe(pageKey(parseHash("#handoffs")));
+  it("Relay, Handoffs and Links are pages of their own now (no tabs); a link is its own page; all light Relay", () => {
+    expect(pageKey(parseHash("#links"))).not.toBe(pageKey(parseHash("#handoffs")));
+    expect(pageKey(parseHash("#relay"))).not.toBe(pageKey(parseHash("#handoffs")));
     expect(pageKey(parseHash("#links/12"))).not.toBe(pageKey(parseHash("#links/13")));
     expect(sameRoute(parseHash("#links/12"), parseHash("#links/13"))).toBe(false);
     expect(navKeyOf("links")).toBe("handoffs");
@@ -353,7 +350,7 @@ describe("the sidebar's Relay badge counts handoffs + link requests waiting for 
   const st = (over: Partial<AppState>): AppState => ({ ...initialState(), view: "app", screen: "mywork", me, orgSlug: "acme", ...over } as AppState);
   /** The number on the sidebar's Handoffs row. */
   const sidebarCount = (html: string): number => {
-    const m = html.match(/data-act="goHandoffs"[^]*?class="cnpy-badge[^"]*"[^>]*data-n="(\d+)"/) ?? html.match(/data-act="goHandoffs"[^]*?data-n="(\d+)"/);
+    const m = html.match(/data-act="goRelay"[^]*?class="cnpy-badge[^"]*"[^>]*data-n="(\d+)"/) ?? html.match(/data-act="goRelay"[^]*?data-n="(\d+)"/);
     return Number(m?.[1] ?? NaN);
   };
 
@@ -707,7 +704,7 @@ describe("the Links tab's arc diagram — your client kinds as stations, teammat
   });
 
   it("it heads the Links tab, above the lead sentence and the list", () => {
-    const html = linksView({ status: "ok", boxes: spread, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
+    const html = linksView({ status: "ok", boxes: spread, me: "andres", persons });
     expect(html.indexOf('class="cnpy-lh"')).toBeLessThan(html.indexOf("data-links-intro"));
     expect(html).toContain(LINKS_LEAD.replace(/'/g, "&#39;"));
     expect(html.indexOf("data-links-intro")).toBeLessThan(html.indexOf("data-link-cards"));
@@ -718,7 +715,7 @@ describe("the Links tab's arc diagram — your client kinds as stations, teammat
 
   it("with no live link the lead sentence is said once — in the diagram's empty block, beside its button", () => {
     const lead = LINKS_LEAD.replace(/'/g, "&#39;");
-    const html = linksView({ status: "ok", boxes: boxesOf(), me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 0 }) });
+    const html = linksView({ status: "ok", boxes: boxesOf(), me: "andres", persons });
     expect(html.split(lead).length - 1).toBe(1);
     expect(html).toContain("data-lh-empty");
     expect(html).not.toContain("data-links-intro");
@@ -731,9 +728,9 @@ describe("a link about a person reads WITH them", () => {
     expect(linkAboutHtml(l, "andres", persons)).toBe("with Jose");
     expect(linkAboutHtml({ ...l, self: true, requester: side("andres") }, "andres", persons)).toBe("between your sessions");
     expect(text(page(l, "andres"))).toContain("Link with Jose");
-    const list = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, waiting: [l] }, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
+    const list = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, waiting: [l] }, me: "andres", persons });
     expect(text(list.slice(list.indexOf('data-link-card="2"')))).toContain("Jose asks to link with you");
-    const past = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: [{ ...l, state: "declined" }] }, me: "andres", persons, bar: handoffsTabBar("links", { handoffs: 0, links: 1 }) });
+    const past = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: [{ ...l, state: "declined" }] }, me: "andres", persons });
     expect(text(past.slice(past.indexOf('data-link-row="2"')))).toContain("#2With Jose");
     expect(text(page(link(), "andres"))).toContain("Link about PR #180"); // other topics unchanged
   });
@@ -744,7 +741,6 @@ describe("a link about a person reads WITH them", () => {
 });
 
 describe("the Links tab's cards and past links", () => {
-  const bar = handoffsTabBar("links", { handoffs: 0, links: 1 });
   const cp = { me: "andres", persons, busy: false };
   const pv = (over: Partial<LinkPreview> = {}): LinkPreview => ({ last: { side: "recipient", author: "jose", author_kind: "agent", excerpt: "Renaming authSession tonight.", created_at: T0 }, notes: 3, waiting: 2, ...over });
   const card = (l: LinkView, me = "andres") => linkCard(l, { ...cp, me });
@@ -839,7 +835,7 @@ describe("the Links tab's cards and past links", () => {
     expect(linkEndWords(idle, "andres", persons)).toBe("Expired after 12 h idle");
     expect(linkEndWords(unanswered, "andres", persons)).toBe("Expired: not answered in 24 h");
     expect(linkEndWords(cancelled, "andres", persons)).toBe("Cancelled by you");
-    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: [closed, declined, idle, unanswered, cancelled] }, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: [closed, declined, idle, unanswered, cancelled] }, me: "andres", persons });
     expect(html.match(/data-link-row="\d+" data-past/g)).toHaveLength(5);
     expect(text(html)).toContain("4 notes");
     expect(html).toMatch(/data-link-row="30" data-past[\s\S]*?data-glyph="stopped"/);
@@ -849,11 +845,11 @@ describe("the Links tab's cards and past links", () => {
 
   it(`always visible: the latest ${LINKS_PAST_SHOWN}, then "Show all N"`, () => {
     const many = Array.from({ length: 14 }, (_, i) => link({ id: 40 + i, state: "closed", closed_at: new Date(Date.parse(T0) - i * 60_000).toISOString() }));
-    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: many }, me: "andres", persons, bar });
+    const html = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: many }, me: "andres", persons });
     expect(html.match(/data-past/g)).toHaveLength(LINKS_PAST_SHOWN);
     expect(html).toMatch(/data-act="linksPastAll" aria-expanded="false"[^>]*>Show all 14</);
     expect(html).not.toContain("<details");
-    const all = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: many }, me: "andres", persons, bar, pastAll: true });
+    const all = linksView({ status: "ok", boxes: { ...NO_LINK_BOXES, closed: many }, me: "andres", persons, pastAll: true });
     expect(all.match(/data-past/g)).toHaveLength(14);
     expect(mainSrc).toContain('case "linksPastAll": state.linksPastAll = !state.linksPastAll;');
   });

@@ -71,7 +71,7 @@ import { SPACE_SLUG_RE } from "@shared/docs-core";
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
   "mywork", "feed", "library", "review",
-  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports",
+  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports", "relay",
 ];
 
 export interface Route {
@@ -154,9 +154,8 @@ export function sameRoute(a: Route, b: Route): boolean {
 // swaps the conversation in place and never replays the screen's entrance. Nor is the doc in the reader
 // (`docSlug`): picking another page in its tree swaps the reader pane in place. Nor is the import wizard's space
 // (`importSpace`): picking one is a choice on the same page.
-// Relay › Links is the Relay screen's other TAB, so the two lists are one page (the tab bar's underline slides).
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, screen: r.screen === "links" ? "handoffs" : r.screen, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */

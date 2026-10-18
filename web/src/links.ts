@@ -15,32 +15,10 @@ import { esc, attr, relTime, surface, WORK_SHELL, DETAIL_SHELL, hitArea, HITBOX 
 import { personLink, handleLink, personChip } from "./people";
 import { linkLine, linkLineState, linkHeroCanvas, HERO_W, HERO_H, type LineSpec, type LineOrb, type LineFlow, type HeroOrb, type HeroSeg, type HeroShape } from "./link-line";
 import { linkMark } from "./marks";
-import { tabBar, tabPanelAttrs } from "./tabs";
 import { confirmModal } from "./confirm";
 import { COPY_ICON } from "./prompt-box";
 import { segmented } from "./segmented";
 import { skeleton, skBar, skBox, skLine, skList, skW, skDetail } from "./skeleton";
-
-// ── the Relay screen's tab bar ────────────────────────────────────────────
-export type HandoffsTab = "handoffs" | "links";
-export const HANDOFFS_TAB_BAR = "handoffs-tab";
-
-const tabBadge = (n: number, what: string): string =>
-  `<span class="cnpy-badge" data-n="${n}" title="${attr(`${n} ${what} waiting for you`)}">${n}</span>`;
-
-/** Handoffs | Links. Each tab carries its own count of what waits for me — the two numbers the sidebar's
- *  Relay badge adds up. */
-export function handoffsTabBar(value: HandoffsTab, counts: { handoffs: number; links: number }): string {
-  return tabBar({
-    id: HANDOFFS_TAB_BAR, ariaLabel: "Handoffs sections", act: "handoffsTab", value,
-    tabs: [
-      { value: "handoffs", label: "Handoffs", trail: tabBadge(counts.handoffs, counts.handoffs === 1 ? "handoff" : "handoffs") },
-      { value: "links", label: "Links", trail: tabBadge(counts.links, counts.links === 1 ? "link request" : "link requests") },
-    ],
-  });
-}
-/** The panel under the bar: the attributes that label it by its tab. */
-export const handoffsTabPanel = (value: HandoffsTab): string => tabPanelAttrs(HANDOFFS_TAB_BAR, value);
 
 // ── who may do what ──────────────────────────────────────────────────────────
 const same = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
@@ -129,8 +107,6 @@ export interface LinksListProps {
   boxes: LinkBoxes;
   me: string;
   persons: PersonSummary[];
-  /** The Handoffs | Links bar (`handoffsTabBar`). */
-  bar: string;
   /** The "Start a link" card, while it is open (the header's Start a link button opens it). */
   start?: LinkStart | null;
   /** Whether the past links show all, not just the latest LINKS_PAST_SHOWN. */
@@ -817,7 +793,7 @@ export function linksView(p: LinksListProps): string {
   // The card's slot is always there (empty while it is closed), so opening it never shifts what morph pairs below.
   const start = `<div data-link-start-slot>${p.start ? linkStartCard({ draft: p.start, me: p.me, persons: p.persons }) : ""}</div>`;
   const hero = linksHero({ boxes: b, me: p.me, persons: p.persons, busy: !!p.busy, status: p.status });
-  return `<div data-screen-label="Links" style="${WORK_SHELL}">${p.bar}<div${handoffsTabPanel("links")} style="padding-top:22px">${start}${hero}${intro}${body}</div></div>`;
+  return `<div data-screen-label="Links" style="${WORK_SHELL}">${start}${hero}${intro}${body}</div>`;
 }
 
 // ── one link ─────────────────────────────────────────────────────────────────

@@ -132,7 +132,7 @@ export const RELEASES: Release[] = [
       added: [
         "Ask: share a conversation with your organization or with chosen people, each able to read or continue it (#193)",
         "Handoffs: an agent with a shell uploads a long prompt as a file instead of typing it; the handoff is created when the file lands (#194)",
-        "Agent links: two sessions whose work overlaps leave notes for each other while a link is open; Handoffs is now Relay, with Handoffs and Links tabs (#196)",
+        "Agent links: overlapping sessions leave each other notes; Handoffs is now Relay, a page with Handoffs, Links and your connected agents (#196)",
         "Ask Trov reads your connected repositories on GitHub when a question needs it, as far as your own GitHub access goes; an admin turns it on (#195)",
         "Prompt Library: a copy button on each card copies its slug for an agent; cards that open something show the pointer on hover (#195)",
         "The Docs Library: spaces with a home each, a page tree you drag to rearrange, [[page]] links, templates, Markdown or .zip import, and archiving a page (#197)",

@@ -130,7 +130,7 @@ import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlu
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
 import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH, signInReturnPath } from "@shared/billing";
-import { askBillingCheckout, getBillingStatus } from "./api";
+import { askBillingCheckout, getBillingStatus, getAskState } from "./api";
 import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
 import { loadStripeEmbedder } from "./stripe-js";
 import { setPrimaryRepo } from "./github";
@@ -960,6 +960,7 @@ function startScreenLoads(screen: Screen): void {
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
     case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
     case "maintenance": loadNeedsTriageIfNeeded(); break;
+    case "relay": loadRelay(); break;
     case "handoffs": loadHandoffs(); break;
     case "handoff": if (state.handoffId) openHandoff(state.handoffId); else rerender(); break;
     case "newhandoff": state.nh = blankHandoff(primaryRepoName()); loadPersons(); break;
@@ -1631,6 +1632,23 @@ function loadMcpTokens(): void {
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       state.mcpTokens = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      rerenderSoon();
+    });
+}
+// Relay › Overview (relay.ts): both halves' lists for the cards' counts, and Your connections — the person's OAuth
+// connections and access tokens (Settings › MCP access's reads) and Ask's on/off for the org.
+function loadRelay(): void {
+  loadHandoffs();
+  loadLinks();
+  loadGrants();
+  loadMcpTokens();
+  if (!state.orgSlug) return;
+  state.relayAsk = { status: "loading", data: state.relayAsk.data };
+  getAskState(state.orgSlug)
+    .then((a) => { state.relayAsk = { status: "ok", data: { enabled: a.enabled, eligibility: a.eligibility } }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.relayAsk = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
 }
@@ -3833,12 +3851,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // Sync GitHub (the header button, its panel, Sync now, Dismiss): sync-actions.ts.
     case "syncToggle": case "syncClose": case "syncReload": case "syncStart": case "syncDismiss": syncCtl.act(act); return;
     // ── Handoffs ─────────────────────────────────────────────────────────────
+    case "goRelay": state.screen = "relay"; state.handoffId = null; state.linkId = null; loadRelay(); return;
     case "goHandoffs": state.screen = "handoffs"; state.handoffId = null; loadHandoffs(); return;
     // ── Relay › Links ─────────────────────────────────────────────────────
-    case "handoffsTab":
-      if (arg === "links") { state.screen = "links"; loadLinks(); }
-      else if (arg === "handoffs") { state.screen = "handoffs"; loadHandoffs(); }
-      return;
     case "goLinks": state.screen = "links"; state.linkId = null; loadLinks(); return;
     case "openLink": {
       const id = Number(arg);
