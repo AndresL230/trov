@@ -910,6 +910,7 @@ function applyRoute(r: Route): void {
     state.releaseVersion = v; state.releasePage = page;
   }
   state.artRoute = r.art ?? ART_ROUTE_NONE;
+  state.repoAttentionOpen = false;   // Needs attention's dialog never outlives a route change
   // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
   if (!state.art.deleteBusy) state.art.deleteArm = false;
@@ -3024,6 +3025,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.repoProductEnv = arg;
       pendingFlash = ".repo-pswap";
       break;
+    // Repo › Overview › Needs attention: its button opens the dialog; Done, ×, Escape or the backdrop close it, and
+    // focus goes back to the button.
+    case "repoAttention":
+      state.repoAttentionOpen = !state.repoAttentionOpen;
+      rerender();
+      if (state.repoAttentionOpen) mount.querySelector<HTMLElement>("#repo-attention [data-confirm-focus]")?.focus();
+      else mount.querySelector<HTMLElement>('[data-act="repoAttention"].repo-att-btn')?.focus();
+      return;
     case "repoToggleDrift":
       state.repoDriftOpen = !state.repoDriftOpen;
       if (state.repoDriftOpen) pendingFlash = ".repo-drift";

@@ -4953,6 +4953,7 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .cnpy-nd-bar,
 [data-cnpy-theme] .cnpy-libc-row,
 [data-cnpy-theme] .cnpy-relay-new,
+[data-cnpy-theme] .repo-att-btn,
 [data-cnpy-theme] .cnpy-relay-connect,
 [data-cnpy-theme] .cnpy-relay-ci,
 [data-cnpy-theme] .cnpy-dp-row,
@@ -5545,7 +5546,17 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
 .repo-block[data-repo-block="attention"] + .repo-block { border-top:0; }
 
 /* ── repo-attention (web/src/repo-attention.ts): Needs attention, first under the state slot ──────────────── */
-.repo-att { padding:14px 22px 6px; background:color-mix(in srgb, var(--accent) 4%, var(--surface)); border-bottom:1px solid var(--border); }
+.repo-att { padding:0; }
+/* Needs attention's button (repo-attention.ts `attentionButton`): at the left of the bar above the panel, its count,
+   and a red dot at its top-right corner; it opens the list in a dialog (`.repo-att-dlg`). */
+.repo-ovbar { display:flex; align-items:center; justify-content:space-between; gap:10px 16px; margin-bottom:12px; flex-wrap:wrap; }
+.repo-ovbar .repo-groupby { margin:0 0 0 auto; }
+.repo-att-btn { position:relative; display:inline-flex; align-items:center; gap:8px; height:32px; padding:0 12px; border:1px solid var(--border-strong); background:var(--surface); font-size:12.5px; font-weight:500; color:var(--fg); white-space:nowrap; cursor:pointer; transition:border-color .12s ease; }
+.repo-att-btn:hover { border-color:var(--fg-40); }
+.repo-att-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.repo-att-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+.repo-att-dot { position:absolute; top:-4px; right:-4px; display:flex; padding:2px; border-radius:50%; background:var(--bg); }
+.repo-att-dlg { width:min(640px, 100%); }
 .repo-att-row { display:flex; align-items:center; gap:8px 12px; padding:10px 0; flex-wrap:wrap; }
 .repo-att-act { cursor:pointer; }
 .repo-att-act:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }

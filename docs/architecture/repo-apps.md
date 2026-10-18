@@ -306,7 +306,7 @@ When the payload carries `facts` — every Worker payload now (the empty facts o
 Overview is `overviewFacts` (`web/src/repo-overview.ts`), else the older section-built Overview. Top to bottom (the
 design's `buildScreen`): `<div data-repo-state-slot>` (the design's place for #178's AI `state`, above the rule-picked
 opener — always EMPTY: the owner split State out to the Repo screen's Summary tab, `repo-dashboard.md` › Written by
-Trov), Needs attention, the connect card, the opener by `layout.opener` (found / unseen / release / production +
+Trov), the connect card, the opener by `layout.opener` (found / unseen / release / production +
 previews / chain and envCards → environment cards + drift / appsTable), not shipped where a part has commit groups
 waiting, the week tiles. There is NO links row into the tabs: the design closes with one, but it repeated the tab
 bar at the top of the screen, so the owner removed it. "Repo-wide only" draws its own note instead of an opener. Every block is an `OverviewBlock` (`(f, x) => string`, `web/src/repo-overview-ctx.ts`) in its
@@ -320,7 +320,11 @@ own module and `trov.css` section, wrapped in `data-repo-block="<name>"`, worded
   still running, is never Healthy. Marks are marks.ts kinds with the design's shape and tone (`VERDICT`). `ciLine(ci)`
   is the one wording of a head's checks ("All 14 checks passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2",
   "Checks running on f19ad20", "<check> running on <sha>").
-- **Needs attention** (`repo-attention.ts`) words each `FactsAttention` from its kind and refs — "Production deploy
+- **Needs attention** (`repo-attention.ts`) is NOT a block (the owner's call, 2026-10-18: it pushed the Overview
+  down): a button at the left of the bar above the panel (`attentionButton`: "Needs attention", its count, a red dot
+  at its corner; Group by stays at the bar's right) opens the list in a dialog (`attentionDialog`, drawn by
+  `repoAttentionOverlay` through repo-lazy.ts; `state.repoAttentionOpen`, closed by Done, ×, Escape, the backdrop or
+  any route change). It words each `FactsAttention` from its kind and refs — "Production deploy
   e07b3a2 failed 12m ago on Cloudflare Workers. c41e7d9 is still serving." — the host by its part's `host` label
   (never a switch on a provider id), the app first ("api: …") when the repository has more than one deployed app.
   An action leaves Trov only with an https address and outside the sample; else it opens the tab that holds it.

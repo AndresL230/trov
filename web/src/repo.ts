@@ -38,6 +38,7 @@ import { layoutOf, type GroupBy, type RepoLayout } from "@shared/repo-layout-cor
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import { overviewFacts } from "./repo-overview";
 import { ALL_APPS, envPillsHtml, groupByHtml, repoHeaderDropdowns, repoScopeHtml } from "./repo-header";
+import { attentionButton, attentionDialog } from "./repo-attention";
 import { REPO_SCENARIOS, SCENARIO_KEYS, variantLabel, type ScenarioKey } from "./repo-sample-keys";
 import { failureApps, groupDeployRows, isMulti, scopeStrip, touchCell } from "./repo-scope";
 // What the app's first download needs (main.ts: the poll's lifetime, the "updated" tick, the count-up)
@@ -279,13 +280,19 @@ export function repoControls(p: RepoProps): string {
 const kv = (k: string, v: string): string =>
   `<div style="display:grid;grid-template-columns:96px 1fr;gap:12px;padding:11px 0;${TOP}"><div style="${LABEL_SM};padding-top:2px">${k}</div>${v}</div>`;
 
+const overviewCtx = (p: RepoProps, layout: RepoLayout) => ({
+  now: p.now ?? Date.now(), admin: p.admin, sample: p.sample, persons: p.persons ?? [], layout, open: p.open ?? new Set<string>(),
+});
+
+/** Needs attention's dialog (repo-attention.ts), over the Overview while it is open; "" otherwise. */
+export function repoAttentionOverlay(p: RepoProps): string {
+  const fx = p.tab === "overview" ? factsView(p) : null;
+  return fx && fx.f.attention.length ? attentionDialog(fx.f, overviewCtx(p, fx.layout)) : "";
+}
+
 function overviewTab(p: RepoProps): string {
   const fx = factsView(p);
-  if (fx) {
-    return overviewFacts(fx.f, {
-      now: p.now ?? Date.now(), admin: p.admin, sample: p.sample, persons: p.persons ?? [], layout: fx.layout, open: p.open ?? new Set(),
-    });
-  }
+  if (fx) return overviewFacts(fx.f, overviewCtx(p, fx.layout));
   const now = Date.now();
   const envs = sec(p, (d) => d.environments, { nc: "Nothing captured for a configured environment yet. Cards appear once Org settings › Environments lists an environment and a health ping, a deploy or a head check lands for it — from the 10-minute check, the hourly hosting poll, the GitHub webhook, or an admin's Sync GitHub.", empty: "No environments recorded." }, (rows) =>
     `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr))">${rows.map((e, i) => {
@@ -1280,12 +1287,15 @@ export function repoView(props: RepoProps): string {
   // facts could draw either grouping. An admin who flipped it is offered "Make this the default" (never in the sample).
   const fx = p.tab === "overview" ? factsView(p) : null;
   const groupBy = fx ? groupByHtml(fx.layout, { offerDefault: !!p.groupFlipped && p.admin && !p.sample && fx.layout.group !== fx.f.groupDefault }) : "";
+  // Needs attention's button sits at the bar's left (Group by at its right); it opens the list in a dialog.
+  const attention = fx ? attentionButton(fx.f) : "";
+  const ovBar = attention || groupBy ? `<div class="repo-ovbar">${attention ? `<div class="repo-ovbar-l">${attention}</div>` : ""}${groupBy}</div>` : "";
   // Summary holds no panel: "Poll now"'s strip, when there is one, sits in a panel of its own above the card.
   const strip = canPollRepo(p) ? pollStrip(p.poll) : "";
   const content = p.tab === REPO_SUMMARY_TAB
     ? `${strip ? `<div class="repo-panel ${SURFACE}" style="${PANEL};margin-bottom:16px">${strip}</div>` : ""}${summaryTab(p)}`
     : `${repoAiSection(p)}
-      ${groupBy}
+      ${ovBar}
       <div class="repo-panel ${SURFACE}" style="${PANEL}">${strip}${body}</div>`;
   return `<div class="repo-frame" style="${FRAME}" data-screen-label="${SCREEN_LABEL[p.tab]}">
     ${repoTabBar(p.tab, summary)}

@@ -2,7 +2,7 @@
 // (docs/superpowers/specs/repo-setups-design/repo-data.js) and RepoScreen.dc.html, top to bottom:
 //
 //   the AI state slot (the design's place for #178's `state`; it stays EMPTY — State is the Summary tab, repo.ts)
-//   Needs attention                                    only when something is wrong (repo-attention.ts)
+//   (Needs attention is not a block: a button above the panel opens it in a dialog — repo-attention.ts, repo.ts)
 //   the connect card                                   only with `facts.connect` (repo-connect.ts), above the opener
 //   the opener, by `layout.opener` (shared/repo-layout-core.ts — the same rules MCP returns):
 //     found       → foundBlock                         (repo-found.ts)
@@ -21,7 +21,6 @@
 // app rows, so it draws its own short note instead of an opener (the rules would read it as `unseen`).
 import { REPO_WIDE, type RepoFacts } from "@shared/repo-facts-core";
 import type { OverviewBlock, OverviewCtx } from "./repo-overview-ctx";
-import { attentionBlock } from "./repo-attention";
 import { connectBlock } from "./repo-connect";
 import { weekBlock } from "./repo-week";
 import { envCardsBlock } from "./repo-env-cards";
@@ -35,7 +34,7 @@ import { foundBlock, unseenBlock } from "./repo-found";
 
 /** The names a block's wrapper carries (`data-repo-block`). */
 export type OverviewBlockName =
-  | "state" | "attention" | "connect" | "found" | "unseen" | "release" | "production" | "previews"
+  | "state" | "connect" | "found" | "unseen" | "release" | "production" | "previews"
   | "envCards" | "drift" | "appsTable" | "notShipped" | "repoWide" | "week";
 
 /** "Repo-wide only": files outside every app. No app rows, so no opener — what the view is, and the way back. */
@@ -48,7 +47,6 @@ const repoWideBlock: OverviewBlock = () =>
 /** Which blocks the facts and the layout draw, in screen order — the design's `buildScreen`. */
 export function overviewBlocks(f: RepoFacts, x: Pick<OverviewCtx, "layout">): OverviewBlockName[] {
   const out: OverviewBlockName[] = ["state"];
-  if (f.attention.length) out.push("attention");
   if (f.connect) out.push("connect");
   const notShipped = f.notShipped.some((n) => n.groups.length > 0);
   const o = x.layout.opener;
@@ -74,7 +72,7 @@ export function overviewBlocks(f: RepoFacts, x: Pick<OverviewCtx, "layout">): Ov
 }
 
 const BLOCKS: Record<Exclude<OverviewBlockName, "state">, OverviewBlock> = {
-  attention: attentionBlock, connect: connectBlock, found: foundBlock, unseen: unseenBlock, release: releaseBlock,
+  connect: connectBlock, found: foundBlock, unseen: unseenBlock, release: releaseBlock,
   production: productionBlock, previews: previewsBlock, envCards: envCardsBlock, drift: driftBlock,
   appsTable: appsTableBlock, notShipped: notShippedBlock, repoWide: repoWideBlock, week: weekBlock,
 };

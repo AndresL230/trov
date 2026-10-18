@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { layoutInputOf, narrowFacts, REPO_WIDE, type RepoFacts } from "@shared/repo-facts-core";
 import { layoutOf, type GroupBy } from "@shared/repo-layout-core";
 import type { RepoDashboard } from "@shared/repo";
-import { repoControls, repoCrumb, repoDropdowns, repoView, type RepoProps } from "../web/src/repo";
+import { repoControls, repoCrumb, repoDropdowns, repoView, repoAttentionOverlay, type RepoProps } from "../web/src/repo";
 import { repoSample, repoScenario, repoScenarioUsage } from "../web/src/repo-sample";
 import { SCENARIO_KEYS, SCENARIO_VARIANTS, type ScenarioKey } from "../web/src/repo-sample-keys";
 import { overviewBlocks } from "../web/src/repo-overview";
@@ -79,15 +79,19 @@ describe("the Overview draws the design's blocks for every scenario", () => {
       notShipped: !!d.notShipped, release: !!d.release, found: !!d.found, unseen: !!d.unseen,
       // Narrowed, the design keeps an item whose SENTENCE starts with "<app>:"; Trov keeps an item whose `app` is it
       // (shared/repo-facts-core.ts narrowFacts) — so under the App menu the facts are the reference.
-      attention: (k === "G" && v !== "") || app ? f.attention.length > 0 : d.attention.length > 0,
       connect: k === "G" ? v !== "after" : !!d.connect,
       week: true,
     };
     for (const [block, on] of Object.entries(want)) expect(drawn.includes(block), `${block}`).toBe(on);
-    // the order of the design's RepoScreen: attention, connect, the opener, not shipped, previews, week. The design's
-    // closing links row is never drawn: it repeated the tab bar.
+    // Needs attention is not a block (the owner's call): its button sits in the bar above the panel, opening a dialog —
+    // there exactly when the design draws the block.
+    const attention = (k === "G" && v !== "") || app ? f.attention.length > 0 : d.attention.length > 0;
+    expect(drawn).not.toContain("attention");
+    expect(html.includes('class="repo-att-btn"'), "attention button").toBe(attention);
+    // the order of the design's RepoScreen: connect, the opener, not shipped, previews, week. The design's closing
+    // links row is never drawn: it repeated the tab bar.
     expect(drawn).not.toContain("links");
-    const order = ["attention", "connect", "found", "unseen", "release", "production", "envCards", "drift", "appsTable", "notShipped", "previews", "week"];
+    const order = ["connect", "found", "unseen", "release", "production", "envCards", "drift", "appsTable", "notShipped", "previews", "week"];
     expect(drawn).toEqual([...drawn].sort((a, b) => order.indexOf(a) - order.indexOf(b)));
 
     // the header: the App menu only for a monorepo, Group by only when the layout can draw either, a pill per environment
@@ -182,20 +186,26 @@ describe("Needs attention reads as the design's sentences, from refs alone", () 
     expect(lines("J", "", "core")).toEqual([]);
   });
 
-  it("is drawn first under the state slot, escaped, with its count; in the sample nothing links out", () => {
+  it("is a button above the panel (its count, a red dot) that opens a dialog: escaped, worst first; in the sample nothing links out", () => {
     const f = repoScenario("A", "trouble", { now: NOW });
-    const html = panel(repoView(props(f)));
-    const a = html.indexOf('data-repo-block="attention"');
-    expect(a).toBeGreaterThan(html.indexOf("data-repo-state-slot"));
-    expect(a).toBeLessThan(html.indexOf('data-repo-block="envCards"'));
-    expect(html).toContain(esc("Staging: api’s health reading is 34 minutes old. Railway is building 3e9a1f2."));
-    expect(html).toContain(">2</span>");
-    expect(html).not.toMatch(/<a [^>]*href="https:\/\/tutor\.acme\.com/);
+    const view = repoView(props(f));
+    const btn = view.slice(view.indexOf('class="repo-att-btn"') - 120, view.indexOf("</button>", view.indexOf('class="repo-att-btn"')));
+    expect(btn).toContain('data-act="repoAttention"');
+    expect(btn).toContain('<span class="repo-att-n">2</span>');
+    expect(btn).toContain('class="repo-att-dot"');
+    expect(view.indexOf('class="repo-att-btn"')).toBeLessThan(view.indexOf('class="repo-panel'));   // not in the panel
+    // the dialog holds the list, with each item's action
+    const dlg = repoAttentionOverlay(props(f));
+    expect(dlg).toContain('id="repo-attention" role="dialog"');
+    expect(dlg).toContain(esc("Staging: api’s health reading is 34 minutes old. Railway is building 3e9a1f2."));
+    expect(dlg).toContain("2 things to look at, worst first.");
+    expect(dlg).not.toMatch(/<a [^>]*href="https:\/\/tutor\.acme\.com/);
     // live, an address the facts carry is a link that opens a new tab
-    const live = panel(repoView(props(f, { sample: false })));
+    const live = repoAttentionOverlay(props(f, { sample: false }));
     expect(live).toMatch(/<a href="https:\/\/tutor\.acme\.com" target="_blank" rel="noopener"[^>]*>Open tutor\.acme\.com <span aria-hidden="true">↗<\/span><\/a>/);
-    // none when nothing is wrong
-    expect(blocksIn(repoView(props(repoScenario("A", "", { now: NOW }))))).not.toContain("attention");
+    // none when nothing is wrong: no button, no dialog
+    expect(repoView(props(repoScenario("A", "", { now: NOW })))).not.toContain('class="repo-att-btn"');
+    expect(repoAttentionOverlay(props(repoScenario("A", "", { now: NOW })))).toBe("");
   });
 });
 
@@ -356,7 +366,8 @@ describe("the header and the sample switch", () => {
 
   it("“Repo-wide only” draws no app rows: its own note, the repository's attention and figures", () => {
     const html = repoView(props(repoScenario("J", "", { now: NOW }), { app: REPO_WIDE }));
-    expect(blocksIn(html)).toEqual(["attention", "repoWide", "week"]);
+    expect(blocksIn(html)).toEqual(["repoWide", "week"]);
+    expect(html).toContain('class="repo-att-btn"');
     expect(repoControls(props(repoScenario("J", "", { now: NOW }), { app: REPO_WIDE }))).not.toContain("data-env-pill");
   });
 

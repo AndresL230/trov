@@ -68,7 +68,7 @@ import { emailNotificationsSection, switchBtn, type NotifAdminProps } from "./no
 import type { PrefsView, PolicyKindView, NotificationOutboxRow, NotificationSettingsRow } from "./api";
 import { sidebarView, NAV_CLOSED, type NavOpen } from "./sidebar";
 // The Repo screen is its own chunk (repo-lazy.ts draws a skeleton until it is in).
-import { repoView, repoControls, repoCrumb, repoDropdowns } from "./repo-lazy";
+import { repoView, repoControls, repoCrumb, repoDropdowns, repoAttentionOverlay } from "./repo-lazy";
 import type { RepoProps } from "./repo";
 import type { RepoPollState } from "./repo-core";
 import type { GroupBy } from "@shared/repo-layout-core";
@@ -248,6 +248,8 @@ export interface AppState {
   repoScenario: { key: ScenarioKey; variant: string };
   /** Overview disclosures opened this session (`repoOpen`), keyed by each block. */
   repoOpen: ReadonlySet<string>;
+  /** Repo › Overview: Needs attention's dialog is open (repo-attention.ts). */
+  repoAttentionOpen: boolean;
   /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
   feedView: FeedView;
   feedAuthor: string;
@@ -600,7 +602,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
-    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(),
+    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(), repoAttentionOpen: false,
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
@@ -3215,7 +3217,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, bare: true })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
-    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}
+    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}${s.view === "app" && s.screen === "repo" && s.repoAttentionOpen ? repoAttentionOverlay(repoProps(s)) : ""}
     ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}

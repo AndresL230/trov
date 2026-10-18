@@ -42,3 +42,9 @@ export function repoDropdowns(p: RepoProps): DropdownProps[] {
   const m = repoChunk.get();
   return m ? m.repoDropdowns(p) : [];
 }
+
+/** Needs attention's dialog (repo.ts `repoAttentionOverlay`): none before the chunk is in. */
+export function repoAttentionOverlay(p: RepoProps): string {
+  const m = repoChunk.get();
+  return m ? m.repoAttentionOverlay(p) : "";
+}
