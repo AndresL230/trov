@@ -152,10 +152,11 @@ export const RELEASES: Release[] = [
         "Tickets board: a card you drag stays under the pointer instead of jumping below the window (#195)",
         "Ask: if you're turned from Can continue to Can read, a change waiting for you says you can only read now (#195)",
         "Ask on a phone: Delete in the threads list closes the list first, so its confirmation is not hidden under it (#195)",
+        "Library: a page you drop into another lands in place, and a page without sub-pages highlights from its title (#199)",
       ],
       removed: [],
     },
-    prs: [193, 194, 195, 196, 197],
+    prs: [193, 194, 195, 196, 197, 199],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.

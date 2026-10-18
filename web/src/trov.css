@@ -1909,10 +1909,12 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 /* one-shot: main.ts adds this after an in-place change (a range switch, a panel opening) */
 .cnpy-flash { animation:cnpy-rise .3s cubic-bezier(.2,.7,.2,1) both; }
 /* A page just moved in the docs pane (tree-actions.ts `move` → flashNext) lands where it is: a brief accent tint that
-   fades, never the rise above — a row that faded in from 10px below read as floating before it settled. No fill, so
-   the active row's own background comes back when it ends; reduced motion turns it off with every flash. */
-.cnpy-dp-row.cnpy-flash { animation:cnpy-dp-land .9s ease-out; }
-@keyframes cnpy-dp-land { from { background-color:color-mix(in srgb, var(--accent) 18%, transparent); } to { background-color:transparent; } }
+   fades into the row's own highlight, never the rise above — a row that faded in from 10px below read as floating
+   before it settled. The tint is on `::before`, so it spans exactly what the highlight spans (from `--dp-in`); with no
+   `to` it ends on the row's own tint (active, hover). Reduced motion turns it off with every flash. */
+.cnpy-dp-row.cnpy-flash { animation:none; }
+.cnpy-dp-row.cnpy-flash::before { animation:cnpy-dp-land .9s ease-out; }
+@keyframes cnpy-dp-land { from { background-color:color-mix(in srgb, var(--accent) 18%, transparent); } }
 
 /* chrome that is swapped with <main> still eases its hover/press */
 .cnpy-iconbtn, .cnpy-outlinebtn { transition:background .15s ease, color .15s ease, border-color .15s ease, transform .15s ease; }
@@ -2076,7 +2078,7 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 
 @media (prefers-reduced-motion: reduce) {
   .cnpy-aside, .cnpy-aside *, .cnpy-aside *::before, .cnpy-aside *::after { transition:none !important; }
-  [data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
+  [data-enter] *, .cnpy-flash, .cnpy-flash *, .cnpy-flash::before, .repo-pulse, .repo-pollbtn svg { animation:none !important; }
   .repo-tip, .repo-dot, .repo-row, .repo-chev, .repo-rank-l { transition:none !important; }
   .cnpy-statusbtn, .cnpy-statusbtn svg:last-child { transition:none !important; }
   .cnpy-avbtn-veil, .cnpy-avbtn-veil svg { transition:none !important; animation:none !important; }

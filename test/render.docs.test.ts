@@ -106,6 +106,29 @@ describe("the docs pane", () => {
     expect(html).toContain('class="cnpy-dp-chev is-open" data-act="treeToggle" data-arg="api"');
     expect(html).toContain('class="cnpy-dp-chev" data-act="treeToggle" data-arg="start" aria-expanded="false"');
   });
+  it("a row with no chevron highlights from its title, not the empty chevron slot; its text keeps the indent", () => {
+    const html = pane(render(docState()));
+    const style = (slug: string) => html.match(new RegExp(`data-dtree="${slug}" data-depth="\\d" style="([^"]+)"`))?.[1];
+    // with a chevron: the tint starts 2px before it (pad − 2)
+    expect(style("arch")).toBe("padding-left:6px;--dp-in:4px");
+    expect(style("auth")).toBe("padding-left:34px;--dp-in:32px");
+    // without one: 8px before the title (pad + 16px slot + 4px gap − 8), at depth 0 and deeper; the padding is the same
+    expect(style("long")).toBe("padding-left:6px;--dp-in:18px");
+    expect(style("rate")).toBe("padding-left:34px;--dp-in:46px");
+    expect(style("sso")).toBe("padding-left:48px;--dp-in:60px");
+    expect(html).toMatch(/data-dtree="rate"[^>]*>\s*(?:<span class="cnpy-dp-guide"[^>]*><\/span>)*<span class="cnpy-dp-chev is-empty" aria-hidden="true"><\/span>/);
+  });
+  it("a moved page lands in place: a tint that fades on the highlight, never the entrance rise that read as floating", () => {
+    const rule = (sel: string) => css.match(new RegExp(`(?:^|\\n)${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`))?.[1] ?? "";
+    expect(rule(".cnpy-flash")).toContain("cnpy-rise");                          // the generic one-shot the move's flashNext adds
+    expect(rule(".cnpy-dp-row.cnpy-flash")).toBe(" animation:none; ");             // the row itself never rises
+    expect(rule(".cnpy-dp-row.cnpy-flash::before")).toContain("animation:cnpy-dp-land");  // on ::before: as wide as the highlight
+    const land = css.match(/@keyframes cnpy-dp-land \{([^\n]*)\}\n/)?.[1] ?? "";
+    expect(land).toContain("from { background-color:");
+    expect(land).not.toMatch(/transform|translate|opacity|\bto\b/);               // no motion; no `to`, so it ends on the row's own tint
+    // reduced motion turns it off with every flash (`.cnpy-flash *` never reaches a pseudo-element)
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\n(?:  [^\n]*\n)*?  \[data-enter\] \*, [^\n{]*\.cnpy-flash::before[^\n{]*\{ animation:none !important; \}/);
+  });
   it("a page that is not live has its shape and no word; a long title its tooltip; hover offers + and …", () => {
     const html = pane(render(docState()));
     expect(html).toMatch(/data-dtree="rate"[\s\S]*?class="cnpy-dp-st" role="img" aria-label="Change pending review"/);
