@@ -3,7 +3,7 @@
 // controller (and the DOM types) into a program that has none.
 
 /** The landing's product tour, in its order (landing.ts draws a card for each; the dialog steps through them). */
-export const TOUR_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "artifacts"] as const;
+export const TOUR_KEYS = ["docs", "feed", "tickets", "roadmap", "mywork", "handoffs", "links", "artifacts"] as const;
 export type TourKey = (typeof TOUR_KEYS)[number];
 
 export type FxMode = "vt" | "css" | "none";

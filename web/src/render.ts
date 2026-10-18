@@ -55,6 +55,7 @@ import { relayView } from "./relay";
 import { brandBanner } from "./brand-banner";
 import type { AskState } from "@shared/ai-ask-core";
 import type { LinkDetail, LinkSideName } from "@shared/links";
+import { LINK_LIVE_MAX } from "@shared/links";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
 import type { PromptView } from "./prompt-box";
 import { promptLibraryView, promptDetailView, promptEditorView, promptPageModal, promptDeleteModal, type PromptFilterCat, type PromptDraft } from "./prompts";
@@ -2235,6 +2236,7 @@ function guideView(s: AppState): string {
 
     ${sub("Relay")}
     <p style="${gP}">A handoff is a note from one session to the next: the task, what's done, what's next, the files that matter, and optionally a ready-to-run prompt. Your agent leaves one with the ${gStrong("handoff")} skill, addressed to you, a teammate, or anyone. At the start of your next session, load-context lists the ones waiting and claims only the one you pick. Unclaimed handoffs expire after 7 days. The sidebar count is what's waiting for you.</p>
+    <p style="${gP};margin-top:14px">${gStrong("Links")} let two sessions whose work overlaps leave each other short notes: two of yours (a coding agent, a web chat, an Ask thread), or yours and a teammate's. A link is one-to-one and short-lived. A person starts every link: one between your own sessions opens at once, and a teammate accepts or declines one you send. A note reaches the other side when it next checks: a Claude Code agent with the plugin at each prompt and after each commit or push, a chat when you ask. When the work lands, either side closes the link, and its thread stays readable. You can have at most ${LINK_LIVE_MAX} links sent or open at a time.</p>
     ${gFig("handoffs", `${gEm("Relay")}: a landing page with a card for each half and the agents you have connected. Handoffs lists pending ones first, then claimed and expired history; Links lists requests waiting for you, open links, yours and closed ones.`)}
 
     ${sub("Repo")}
