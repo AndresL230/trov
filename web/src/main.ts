@@ -56,7 +56,7 @@ import { createLibraryController } from "./library-actions";
 import { createNewDocController } from "./newdoc-actions";
 import { createTreeController } from "./tree-actions";
 import { installTreeDrag, treeKeyTarget } from "./tree-drag";
-import { installCustomizeDrag } from "./customize-drag";
+import { installCustomizeDrag, slideRows } from "./customize-drag";
 import { pointerDrag, dragging } from "./pointer-drag";
 import { DEFAULT_SPACE } from "@shared/docs-core";
 import { SPRINT_URGENCIES, SPRINT_DOMAINS, sprintDatesProblem, sprintDatesLabel, type SprintUrgency, type SprintDomain } from "@shared/sprints-core";
@@ -223,6 +223,7 @@ const libCtl = createLibraryController({
   treeChanged: () => { if (state.screen === "docs" && state.docSlug) loadDoc(state.docSlug); },
   openDoc: (slug) => dispatch("openDocFrom", slug, null),
   newPage: (space) => dispatch("newDoc", space || null, null),
+  slide: (paint) => slideRows(mount, paint, reducedMotion()),
 });
 // The Markdown import (web/src/import-actions.ts): every `imp…` act — the wizard, the files read in the browser, the run
 // (in module scope, so it keeps going on any screen) and Imports history.
@@ -5055,6 +5056,7 @@ installTreeDrag(mount, {
 installCustomizeDrag(mount, {
   commit: (order) => libCtl.act("libCustomizeOrder", order.join(","), null),
   cancel: () => rerender(),
+  reducedMotion: () => reducedMotion(),
 });
 mount.addEventListener("keydown", (e) => {
   if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;

@@ -4494,7 +4494,11 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 .cnpy-libc-row.is-picked { cursor:grab; }
 .cnpy-libc-row.is-picked:hover { background:var(--hover); }
 .cnpy-libc-row.is-picked:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
-.cnpy-libc-row.is-lifted { background:var(--surface); box-shadow:0 0 0 1px var(--border-strong), 0 8px 20px rgba(10,10,16,.14); cursor:grabbing; position:relative; z-index:1; }
+/* A drag lifts the row as the board lifts a card: the row leaves the list (its inline display needs the !important), an
+   empty gap of its height holds its place (`.cnpy-libc-slot`, nothing drawn), and a ghost of it follows the pointer
+   with the board's shadow. */
+.cnpy-libc-row.is-lifted { display:none !important; }
+.cnpy-libc-ghost { position:fixed !important; z-index:1000; margin:0 !important; list-style:none; pointer-events:none; box-sizing:border-box; background:var(--surface); box-shadow:0 0 0 1px var(--border-strong), 0 18px 40px rgba(0,0,0,.35); cursor:grabbing; }
 .cnpy-libc-grip { display:grid; place-items:center; width:12px; flex:none; color:var(--fg-40); margin-left:-2px; }
 .cnpy-sub-acts > .cnpy-sub-i { width:auto; }
 .cnpy-sub-i.cnpy-sub-sp.is-drop { background:color-mix(in srgb, var(--accent) 10%, transparent); box-shadow:inset 0 0 0 1px var(--accent); color:var(--accent); }

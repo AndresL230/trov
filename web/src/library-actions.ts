@@ -34,6 +34,9 @@ export interface LibraryHost {
   openDoc(slug: string): void;
   /** Open New page with this space preset. */
   newPage(space: string): void;
+  /** Run a repaint of Customize sidebar's lists so each row slides from where it was to where it lands
+   *  (customize-drag.ts `slideRows`); without it, a plain repaint. */
+  slide?(paint: () => void): void;
 }
 
 export interface LibraryController {
@@ -85,6 +88,8 @@ export function createLibraryController(host: LibraryHost): LibraryController {
   const { state } = host;
   const ui = () => state.libUi;
   const rerender = () => host.rerender();
+  /** A repaint of Customize sidebar's lists, its rows sliding into their new places. */
+  const slide = () => (host.slide ? host.slide(rerender) : rerender());
   const fail = (e: unknown): boolean => { if (e instanceof Unauthorized) { host.unauth(e); return true; } return false; };
   let libSeq = 0;
   let homeSeq = 0;
@@ -411,7 +416,7 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         if (i < 0 || j < 0 || j >= c.list.length) return;
         [c.list[i], c.list[j]] = [c.list[j], c.list[i]];
         c.dflt = false;
-        rerender();
+        slide();
         return;
       }
       case "libCustomizeOrder": {
@@ -424,19 +429,19 @@ export function createLibraryController(host: LibraryHost): LibraryController {
         rerender();
         return;
       }
-      case "libCustomizeRemove": { const c = ui().customize; if (!c || c.busy || !arg) return; c.list = c.list.filter((k) => k !== arg); c.dflt = false; rerender(); return; }
+      case "libCustomizeRemove": { const c = ui().customize; if (!c || c.busy || !arg) return; c.list = c.list.filter((k) => k !== arg); c.dflt = false; slide(); return; }
       case "libCustomizeAdd": {
         const c = ui().customize;
         if (!c || c.busy || !arg || c.list.includes(arg) || c.list.length >= SIDEBAR_SPACES_MAX) return;
         c.list = [...c.list, arg]; c.dflt = false;
-        rerender();
+        slide();
         return;
       }
       case "libCustomizeReset": {
         const c = ui().customize;
         if (!c || c.busy) return;
         c.list = sidebarSlugs(liveSpaces(), null); c.dflt = true;
-        rerender();
+        slide();
         return;
       }
       case "libCustomizeSave": saveCustomize(); return;

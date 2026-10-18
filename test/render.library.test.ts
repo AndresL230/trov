@@ -29,6 +29,8 @@ import { AUTHORITY_MARK } from "../web/src/marks";
 import { spaceErrorText, createLibraryController, pageArchiveErrorText } from "../web/src/library-actions";
 import css from "../web/src/trov.css?raw";
 import pointerDragSrc from "../web/src/pointer-drag.ts?raw";
+import customizeDragSrc from "../web/src/customize-drag.ts?raw";
+import libraryActionsSrc from "../web/src/library-actions.ts?raw";
 import { OrgApiError, ApiError, setApiOrg } from "../web/src/api";
 
 const T0 = "2026-10-10T10:00:00Z";
@@ -569,7 +571,7 @@ describe("your own Library view (0084_library_prefs)", () => {
     const html = render(s);
     expect(html).toContain('id="lib-customize"');
     expect(html).toContain("2 of 5");
-    expect([...html.matchAll(/<li class="cnpy-libc-row is-picked" data-cdrag="([a-z]+)" tabindex="0" aria-label="[^"]+: drag, or press Alt\+Up or Alt\+Down, to move it"/g)].map((m) => m[1])).toEqual(["charlie", "alpha"]);
+    expect([...html.matchAll(/<li class="cnpy-libc-row is-picked" data-cdrag="([a-z]+)" data-libc="\1" data-morph-key="libc:\1" tabindex="0" aria-label="[^"]+: drag, or press Alt\+Up or Alt\+Down, to move it"/g)].map((m) => m[1])).toEqual(["charlie", "alpha"]);
     expect(html).toContain('class="cnpy-libc-grip"');
     expect(html).not.toContain('data-act="libCustomizeUp"');
     expect(html).toContain('data-act="libCustomizeRemove" data-arg="alpha"');
@@ -586,6 +588,36 @@ describe("your own Library view (0084_library_prefs)", () => {
     expect(pointerDragSrc).toMatch(/addEventListener\("selectstart", \(e\) => \{ if \(live\) e\.preventDefault\(\); \}\)/);
     expect(pointerDragSrc).toMatch(/addEventListener\("dragstart", \(e\) => \{ if \(live\) e\.preventDefault\(\); \}\)/);
     expect(pointerDragSrc).toContain("getSelection()?.removeAllRanges()");
+  });
+
+  it("a drag lifts the row as the board lifts a card, the others slide, and Escape cancels only the drag", () => {
+    // The row leaves the list, a slot of its height holds its place, a ghost follows the pointer (customize-drag.ts).
+    expect(customizeDragSrc).toContain('ghost.classList.add("cnpy-libc-ghost")');
+    expect(customizeDragSrc).toContain('slot.className = "cnpy-libc-slot"');
+    expect(customizeDragSrc).toContain("slideRows(p.list, () => p.list.insertBefore(slot, ref)");
+    expect(css).toMatch(/\.cnpy-libc-row\.is-lifted \{ display:none !important; \}/);
+    expect(css, "the gap draws nothing").not.toMatch(/\.cnpy-libc-slot\s*\{/);
+    // Rows give way once the ghost is a third into them, only on the side it heads for, and quickly.
+    expect(customizeDragSrc).toContain("const OVERLAP = 0.33;");
+    expect(customizeDragSrc).toContain("const DRAG_SLIDE_MS = 110;");
+    expect(css).toMatch(/\.cnpy-libc-ghost \{ position:fixed !important; z-index:1000;/);
+    // Escape mid-drag is the drag's alone: the dialog the list sits in stays open.
+    expect(pointerDragSrc).toMatch(/e\.key === "Escape" && live\?\.begun\) \{ e\.preventDefault\(\); e\.stopImmediatePropagation\(\); end\(false\); \} \}, true\);/);
+  });
+
+  it("Reset, Add, remove and Alt+arrows slide every row to its new place: keyed rows, the repaint run inside slideRows", () => {
+    const s = withPrefs(undefined);
+    s.libUi = { ...s.libUi, customize: { list: ["bravo", "alpha"], dflt: false, busy: false, error: null } };
+    const html = render(s);
+    expect(html).toContain('<ol data-morph-list');
+    expect(html).toContain('<ul data-morph-list');
+    expect(html).toMatch(/data-cdrag="bravo" data-libc="bravo" data-morph-key="libc:bravo"/);
+    expect(html).toMatch(/<li class="cnpy-libc-row" data-libc="charlie" data-morph-key="libc:charlie"/);
+    for (const act of ["libCustomizeUp", "libCustomizeRemove", "libCustomizeAdd", "libCustomizeReset"]) {
+      const at = libraryActionsSrc.indexOf(`case "${act}"`);
+      const body = libraryActionsSrc.slice(at, libraryActionsSrc.indexOf("return;", libraryActionsSrc.indexOf("c.dflt", at)));
+      expect(body, act).toContain("slide();");
+    }
   });
 
   it("the controller: Customize adds, moves and saves the person's own list (sidebar only)", async () => {

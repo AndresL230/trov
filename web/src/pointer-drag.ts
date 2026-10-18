@@ -6,7 +6,7 @@
 //   • a press becomes a drag only past DRAG_SLOP px, so a plain click still opens what was pressed, and the click a
 //     real drag's release fires is swallowed (it is not an "open");
 //   • a claimed press never selects text or starts the browser's own drag;
-//   • Escape and pointercancel cancel; pointerup drops;
+//   • Escape (the drag's alone) and pointercancel cancel; pointerup drops;
 //   • while a drag is on (and while its drop settles), paints are held — the DOM IS the drag state — and the paint
 //     that was held runs once it is over (`onIdle`).
 // One drag at a time across every engine.
@@ -74,7 +74,9 @@ function install(mount: HTMLElement): void {
   document.addEventListener("dragstart", (e) => { if (live) e.preventDefault(); });
   document.addEventListener("pointerup", () => end(true));
   document.addEventListener("pointercancel", () => end(false));
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && live?.begun) { e.preventDefault(); end(false); } });
+  // Escape mid-drag cancels the drag and nothing else (not the dialog or menu the list sits in): heard in the capture
+  // phase, ahead of every other key handler.
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && live?.begun) { e.preventDefault(); e.stopImmediatePropagation(); end(false); } }, true);
   mount.addEventListener("click", (e) => {
     if (!swallowClick) return;
     swallowClick = false;

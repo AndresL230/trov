@@ -67,8 +67,11 @@ and a space is never both pinned and hidden.
   hover or focus) opens Pin to top / Unpin, Show in sidebar / Remove from sidebar (when the sidebar is full it says
   so instead), and Hide from / Show on Library home. Each change applies at once and is saved; a refusal puts it back.
 - **Customize sidebar** (a neutral `confirmModal`, from the sidebar or Library home's "Customize sidebar"): the picked
-  spaces in order with up / down / remove, every other live space with Add (disabled at five), and "Reset to the
-  Library's order" (saved as NULL, so the sidebar follows the org's order again). Renders on any screen.
+  spaces in order, dragged into place (or Alt+↑ / Alt+↓ on a focused row) with remove, every other live space with Add
+  (disabled at five), and "Reset to the Library's order" (saved as NULL, so the sidebar follows the org's order again).
+  Renders on any screen. The drag is the board's (`customize-drag.ts`): the row lifts, a ghost follows the pointer, and
+  the other rows slide out of its way once it overlaps them by a third; Reset, Add, remove and Alt+arrows slide the
+  rows to their new places too (`slideRows`, keyed rows).
 - `library_prefs` is in `ORG_TABLES` and `HANDLE_COLUMNS`; deleting an account deletes the person's rows.
 
 ### Who may do what
