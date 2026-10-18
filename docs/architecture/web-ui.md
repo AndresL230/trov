@@ -1254,7 +1254,11 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   the item in state at once (every count already leaves it out) and the exit's entry clears after `AI_EXIT_MS`; a
   failed write stops it and the item is back. Accept / Dismiss is optimistic: the write goes out on the click and
   the suggestion's exit starts at once, HELD (`hold`) — drawn collapsed until its screen's re-read drops it; the
-  controller makes ONE re-read once the LAST exit in flight is over (`AiHost.decided`, the themes' `reloadRepo`). The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
+  controller makes ONE re-read once the LAST exit in flight is over (`AiHost.decided`, the themes' `reloadRepo`).
+  The ONE exception is an Accept in the Roadmap's Trov dialog: its writers take seconds, so the card stays busy in
+  place ("Creating 3 sprints…") until the server answers, then the dialog closes when nothing else waits in it (else
+  the card leaves as above), and what it changed rises in (`.cnpy-flash`, `state.rmRise`) once the re-read lands —
+  never an emptied dialog (`roadmap-my-work.md` › Motion). The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
   gone at once and the re-read goes out at once (`test/render.ai-motion.test.ts`, `test/render.roadmap-ai-exit.test.ts`, `test/render.ai-cards.test.ts` ›
   motion).
 - **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint
