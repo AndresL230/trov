@@ -33,7 +33,7 @@ export const DocProposal = z.object({
   change_summary: z.string(),
   confidence: z.enum(["high", "low"]),
   // A space of the org's Library (0081_docs_library): its slug, or an alias (`technical` → `engineering`,
-  // shared/docs-core.ts SPACE_ALIASES). The gate sends an unknown or archived space to needs_triage; with none,
+  // shared/docs-core.ts SPACE_ALIASES). The gate refuses an unknown or archived space; with none,
   // a NEW doc goes to `engineering` while that space is live. An existing doc keeps its own space.
   space: z.string().trim().min(1).max(64).optional(),
   // The page this one goes under, in its space's tree (0081_docs_library): a doc's slug. A NEW doc takes it at
@@ -137,6 +137,8 @@ export const IngestPayload = z.object({
   feed_entries: z.array(FeedEntry).default([]),
   doc_proposals: z.array(DocProposal).default([]),
   adr_drafts: z.array(AdrDraft).default([]),
+  // COMPATIBILITY only: plugins older than 0.11 send what they were unsure of here (it lands in Unplaced). The current
+  // record-session skill never does: an unsure item is a low-confidence proposal, or is left out and told to the person.
   needs_triage: z.array(TriageItem).default([]),
   // Artifacts this session produced, linked to what they belong to. NOT an ingested
   // item: applied AFTER the batch is reconciled (`recordBatch` in src/consumer.ts),

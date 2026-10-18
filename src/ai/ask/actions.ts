@@ -415,6 +415,9 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
     },
     async run(c, a) {
       const r = await ingestDocProposal(c.ctx, a, c.handle, ephemeralLedger());
+      // A refusal (an image not uploaded, a section or space that is not one, an archived page) staged nothing: the
+      // card FAILS with the gate's reason, which says what is valid — never a "done" line over nothing.
+      if (r.outcome === "refused") throw new TicketError("bad_request", r.reason);
       return { result: r, ref: `doc:${a.slug}`, undo: null };
     },
   },

@@ -87,6 +87,8 @@ export function adrReviewItem(a: AdrRow): ReviewItem {
     agentInitials: initialsOf(a.created_by),
     time: relTime(a.created_at),
     adr: sections,
+    // A decision the agent drafted with low confidence stages like any draft (since 2026-10-18), and wears the same mark.
+    flagged: a.confidence === "low",
     ...(a.ai ? { ai: a.ai } : {}),
     ...(a.askFlags?.length ? { askFlags: a.askFlags } : {}),
   };

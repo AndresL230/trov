@@ -13,7 +13,7 @@ import { ingestDocProposal } from "../src/consumer";
 import { buildTrovMcpServer } from "../src/mcp";
 import { createOrg } from "../src/orgs/repo";
 import { query } from "../src/tools/reads";
-import { assign_triage, promote_doc, propose_doc_update } from "../src/tools/writes";
+import { assign_triage, promote_doc, propose_doc_update, route_triage } from "../src/tools/writes";
 import { all, first } from "./helpers/db";
 import { call } from "./helpers/orgs";
 import { cookieFor } from "./helpers/persons";
@@ -83,20 +83,19 @@ describe("the shared core (shared/docs-core.ts)", () => {
 });
 
 describe("the gate places a doc in a live space of the org — never guessed", () => {
-  it("a sent space must be live: unknown and archived go to triage with a reason; an alias resolves", async () => {
-    expect(await ingestDocProposal(A(), doc("one", "nope"), OWNER, ledger())).toEqual({ outcome: "triaged", reason: "unknown space: nope" });
+  it("a sent space must be live: unknown and archived are REFUSED, listing the live spaces; an alias resolves", async () => {
+    expect(await ingestDocProposal(A(), doc("one", "nope"), OWNER, ledger())).toEqual({ outcome: "refused", slug: "one", code: "space", reason: `unknown space "nope": use one of this organization's spaces: design, engineering, product` });
     await env.DB.prepare(`UPDATE doc_spaces SET archived_at = 't' WHERE org_id = ? AND slug = 'design'`).bind(ORG_A).run();
-    expect(await ingestDocProposal(A(), doc("two", "design"), OWNER, ledger())).toEqual({ outcome: "triaged", reason: "archived space: design" });
+    expect(await ingestDocProposal(A(), doc("two", "design"), OWNER, ledger())).toEqual({ outcome: "refused", slug: "two", code: "space", reason: `the space "design" is archived: use one of this organization's spaces: engineering, product` });
     expect((await ingestDocProposal(A(), doc("three", "technical"), OWNER, ledger())).outcome).toBe("written");
     expect((await first<{ space: string }>(env.DB, `SELECT space FROM docs WHERE org_id = ? AND slug = 'three'`, ORG_A))?.space).toBe("engineering");
-    const triage = await all<{ reason: string }>(env.DB, `SELECT reason FROM needs_triage WHERE org_id = ? ORDER BY id`, ORG_A);
-    expect(triage.map((t) => t.reason)).toEqual(["unknown space: nope", "archived space: design"]);
+    expect(await all(env.DB, `SELECT reason FROM needs_triage WHERE org_id = ?`, ORG_A)).toEqual([]);
     expect(await first(env.DB, `SELECT 1 AS x FROM docs WHERE org_id = ? AND slug IN ('one', 'two')`, ORG_A)).toBeNull();
   });
 
   it("an org's OWN space is a place for a doc; another org's is not", async () => {
     await env.DB.prepare(`INSERT INTO doc_spaces (org_id, slug, name, icon, color, created_at, created_by) VALUES (?, 'security', 'Security', 'shield', '#b4562c', 't', 'x')`).bind(ORG_B).run();
-    expect((await ingestDocProposal(A(), doc("sec", "security"), OWNER, ledger())).outcome).toBe("triaged");
+    expect((await ingestDocProposal(A(), doc("sec", "security"), OWNER, ledger())).outcome).toBe("refused");
     expect((await ingestDocProposal(systemCtx(ORG_B), doc("sec", "security"), "boss", ledger())).outcome).toBe("written");
   });
 
@@ -106,7 +105,7 @@ describe("the gate places a doc in a live space of the org — never guessed", (
     await propose_doc_update(A(), { ...doc("prod-doc", "product") }, OWNER);
     await env.DB.prepare(`UPDATE doc_spaces SET archived_at = 't' WHERE org_id = ? AND slug = 'engineering'`).bind(ORG_A).run();
     const r = await ingestDocProposal(A(), doc("orphan"), OWNER, ledger());
-    expect(r).toEqual({ outcome: "triaged", reason: "no space given, and the default space (engineering) is archived" });
+    expect(r).toEqual({ outcome: "refused", slug: "orphan", code: "space", reason: "no space given, and the default space (engineering) is archived: use one of this organization's spaces: design, product" });
     // An edit of an existing doc names no space: it stages on the doc, in the doc's own space.
     expect((await ingestDocProposal(A(), { ...doc("prod-doc"), body: "an edit" }, OWNER, ledger())).outcome).toBe("written");
     expect((await ingestDocProposal(A(), { ...doc("fresh"), body: "an edit in an archived space" }, OWNER, ledger())).outcome).toBe("written");
@@ -116,10 +115,10 @@ describe("the gate places a doc in a live space of the org — never guessed", (
   });
 
   it("Unplaced › assign places a held doc in the space the person picks, through the same gate", async () => {
-    const held = await ingestDocProposal(A(), doc("held", "nope"), MEMBER, ledger());
-    expect(held.outcome).toBe("triaged");
-    const id = (await first<{ id: number }>(env.DB, `SELECT id FROM needs_triage WHERE org_id = ? ORDER BY id DESC LIMIT 1`, ORG_A))!.id;
-    await expect(assign_triage(A(), id, OWNER, { type: "doc", space: "also-nope" })).rejects.toThrow(/unknown space: also-nope/);
+    // An item held before the gate stopped triaging (2026-10-18): an unknown space.
+    const id = await route_triage(A(), { raw: doc("held", "nope"), reason: "unknown space: nope", source_author: MEMBER });
+    await expect(assign_triage(A(), id, OWNER, { type: "doc", space: "also-nope" })).rejects.toThrow(/could not place doc: unknown space "also-nope": use one of/);
+    expect((await first<{ resolved: number }>(env.DB, `SELECT resolved FROM needs_triage WHERE id = ?`, id))?.resolved).toBe(0);
     const r = await assign_triage(A(), id, OWNER, { type: "doc", space: "design" });
     expect(r.assigned_ref).toBe("doc:held@1");
     expect((await first<{ space: string }>(env.DB, `SELECT space FROM docs WHERE org_id = ? AND slug = 'held'`, ORG_A))?.space).toBe("design");

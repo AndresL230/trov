@@ -23,23 +23,40 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
 - **Change-typing**: `change_kind` (`new` / `edit` / `rewrite`) is server-computed via a line LCS diff
   of the proposed body against the current promoted body; `base_version` records the version the writer
   read, surfacing stale-edit warnings. Both are stored on `doc_versions`.
-- **Low-confidence nuance**: low-conf on a NEW slug → triage; low-conf on an EXISTING slug → stage and
-  flag (`low_confidence = 1`) for human scrutiny. Only low-conf new slugs go directly to triage.
-- Out-of-vocab **section** → routed to `needs_triage` (nothing is guessed). Sections are fixed
-  (`shared/vocabulary.ts` `SECTIONS`).
+- **Refuse or stage — nothing an agent sends lands in Unplaced** (owner ruling, 2026-10-18). A doc proposal the gate
+  cannot place is REFUSED (`{ outcome: "refused", slug, code, reason }`, `DocRefusal`): nothing is written, nothing is
+  ledgered (so the corrected re-send — same session id and index — stages instead of replaying), and the reason lists
+  what IS valid, so the agent fixes it in the same session. The codes: `image` (below), `section`, `space`,
+  `archived_page`. A batch (`/ingest`, `record_session`) lists them under `refused` — `{ slug, reason, code }`, present
+  only when non-empty — and its `docs` / `adrs` counts are `{ staged, unchanged }` only (their `triaged` went with
+  this ruling; `feed.triaged` stays, always 0, as it has been since 0056).
+- **Low confidence stages and is flagged.** A low-confidence doc proposal stages with `low_confidence = 1`, a NEW slug
+  as well as an existing one (a new one went to triage until 2026-10-18); Review shows the "Low confidence" mark. A
+  low-confidence ADR draft stages as a `draft` like any other, its stored `adrs.confidence = 'low'` being the flag
+  Review shows (`triage-map.ts` `adrReviewItem`; no migration — the column was there).
+- Out-of-vocab **section** → refused (`code: "section"`, the reason lists `reference, context, decisions`; nothing is
+  guessed). Sections are fixed (`shared/vocabulary.ts` `SECTIONS`; `needs-triage` is Unplaced's own and never offered,
+  though the gate does not refuse it).
+- **A batch's own `needs_triage` items** are still accepted, written straight to the queue, ledger-guarded — for
+  COMPATIBILITY: the record-session skill stopped sending them in plugin 0.11 (an unsure thing is a low-confidence
+  proposal, or left out and told to the person), but an installed older plugin still sends them, and refusing them
+  would lose what it was unsure of. They are the only way an item reaches Unplaced now.
 - **A doc's space is one of the ORGANIZATION's Library spaces** (`0081_docs_library`; `docs-library.md`). The
   proposal's `space` resolves through `shared/docs-core.ts` `SPACE_ALIASES` (`technical` → `engineering`), then
-  `src/tools/spaces.ts` `spaceState`: a space that was SENT must be live — **unknown or archived → `needs_triage`**
-  (`unknown space: <slug>` / `archived space: <slug>`), never guessed. With no space, a NEW doc goes to
-  `engineering` only while that space is live (else triage); an existing doc keeps its own space either way — a
-  proposal never moves a doc, and an edit of a page in an archived space still stages. Unplaced › assign passes
-  the space the person picked (any live one) back through this same check. A person's `POST /docs/propose`
-  refuses an unknown or archived space with a 400 instead of sending their page to triage.
+  `src/tools/spaces.ts` `spaceState`: a space that was SENT must be live — **unknown or archived → refused**
+  (`code: "space"`; `unknown space "<slug>": use one of this organization's spaces: <the live slugs>` / `the space
+  "<slug>" is archived: …`), never guessed. With no space, a NEW doc goes to `engineering` only while that space is
+  live (else refused, `no space given, and the default space (engineering) is archived|missing: …`); an existing doc
+  keeps its own space either way — a proposal never moves a doc, and an edit of a page in an archived space still
+  stages. Unplaced › assign passes the space the person picked (any live one) back through this same check — a
+  refusal there is a 400 with the gate's reason and the item stays unresolved. A person's `POST /docs/propose`
+  refuses an unknown or archived space with a 400 in its own words before the gate.
 - **An archived page takes nothing from a proposal** (`0083_doc_archive`; `docs-library.md` › Archiving a page).
-  When the slug is an ARCHIVED page of the org, the proposal goes to `needs_triage` with `archived page: <slug>` —
-  checked right after the section, before the space — so no agent path (`propose_doc_update`, `record_session`,
-  `/ingest`, Ask's mirror, an import, Unplaced › assign) adds a version to it, restores it, or takes its slug (a slug
-  stays reserved: a "new" page with that slug lands here too, and a person's `POST /docs/propose` refuses it 409).
+  When the slug is an ARCHIVED page of the org, the proposal is refused (`code: "archived_page"`; the reason says a
+  person restores it in the Library and a new page needs another slug) — checked right after the section, before the
+  space — so no agent path (`propose_doc_update`, `record_session`, `/ingest`, Ask's mirror, an import, Unplaced ›
+  assign) adds a version to it, restores it, or takes its slug (a slug stays reserved: a "new" page with that slug is
+  refused too, and a person's `POST /docs/propose` refuses it 409).
   Only a person archives and restores, over the cookie routes; there is no MCP tool for either. An archived page is
   also no PARENT: `checkParent` and the promote's parent read only the pages in the Library, so a parent that is
   archived is ignored (`not_found`).
@@ -51,7 +68,7 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   another page's row) and recorded on every version (`doc_versions.parent_slug`); an **existing** doc moves under it
   only when that version is promoted, and only if it is still a valid place then (else the tree is left as it is).
   An invalid parent (missing, another space, the page itself, under it, too deep) is **ignored** — the page stages
-  anyway and the result carries `parent_ignored: { parent_slug, reason }`. It is never a reason to triage.
+  anyway and the result carries `parent_ignored: { parent_slug, reason }`. It is never a reason to refuse.
 - **Server-only options.** `ingestDocProposal(ctx, proposal, author, ledger?, opts?)`: `opts` is
   `{ importId?, importPath? }` (`DocIngestOptions`), written to `doc_versions.import_id` / `import_path` — the
   Markdown import run a version came from and the file's path in it. It is NOT part of the contract: no agent or
@@ -63,8 +80,9 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   `ingestDocProposal` with `confidence: "high"`, section `reference`, the run's space, the planned `parent_slug`,
   the ledger `{ sessionId: "import:<run id>", itemIndex: <the page's index in the plan> }` — so a retried batch is
   dropped by the replay ledger like any re-POST — and the server-only `{ importId, importPath }`. Every check above
-  applies unchanged: an archived space triages, an identical body is `unchanged`, an image that is not one of the
-  org's is refused (the import drops an image it could not upload to its alt text first, so that is rare). Every
+  applies unchanged: an archived space or an archived page's slug is refused (the page fails `space_gone` /
+  `archived_page` in the run's results), an identical body is `unchanged`, an image that is not one of the org's is
+  refused (`refused`; the import drops an image it could not upload to its alt text first, so that is rare). Every
   page STAGES; nothing an import sends is live until a person approves it (one by one, or the import's "Approve
   all" in Review, which runs `promote_doc` per page).
 - **Feed tags are the ORGANIZATION's own list** (`0056_org_tags`; `feed-and-search.md` › Tags), read inside
@@ -82,7 +100,7 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   the STARTER tags every org begins with, not the gate's vocabulary.
 - **Doc images**: a doc body may embed only UPLOADED images (`![alt](/img/<sha256>)`). A `/img/` ref with
   no `doc_images` row, or any other image source (external URL, `data:` URI), makes the proposal
-  `refused` — checked first, nothing staged or triaged, NOT ledgered (so a resend after the upload
+  `refused` (`code: "image"`) — checked first, nothing staged, NOT ledgered (so a resend after the upload
   stages); a batch lists them under `refused`. Code blocks are not scanned. See "Doc images" below.
 - **Events** carry no vocab/confidence — an event is external fact captured verbatim, deduped by a UNIQUE
   `semantic_key` (`gh:pr:42:merged`, `gh:issue:…`) written `INSERT OR IGNORE` (a redelivery/backfill
@@ -158,9 +176,8 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
   and body remain (non-destructive). Idempotent. A version of an ARCHIVED page is refused 409 `archived` by promote
   (`DocArchivedError`): its staged versions stay `staged`, HIDDEN from Review and the badge (every Review read joins
-  `d.archived_at IS NULL`), and come back when the page is restored — hiding, not rejecting, because the gate already
-  keeps an archived page's proposals out (triage) rather than turning them down, and Restore must give back what
-  was waiting.
+  `d.archived_at IS NULL`), and come back when the page is restored — hiding, not rejecting, because they were made
+  before the archive (the gate refuses any new one), and Restore must give back what was waiting.
 - Archive page / Restore (`0083_doc_archive`): `POST /doc/:slug/archive` and `POST /doc/:slug/restore`, cookie only
   (`cookieOnly` with promote / reject), an org admin or an owner of the page's space — never an MCP tool
   (`docs-library.md` › Archiving a page).
@@ -192,9 +209,11 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   the blanket `sessionGate` with no `adminGate`, so any signed-in org member can do it from the web UI;
   the plan write is the admin path. The
   triage-assign kinds are now exactly `doc` / `adr` / `feed`.
-- Triage write-back: `POST /needs-triage/:id/discard` (soft dismiss) and `POST /needs-triage/:id/assign`
-  (re-runs the item's `raw` through the SAME gate for the target type, then records `resolution='assigned'`
-  with `assigned_ref`). Placing an item as a feed entry: tags the PERSON picks must be live on the org's
+- Triage write-back: `POST /needs-triage/:id/discard` (soft dismiss), `POST /needs-triage/:id/restore` (undoes a
+  discard — Unplaced's Undo toast: back to unresolved with the audit columns cleared; only a `discarded` item, an
+  assigned one is 409) and `POST /needs-triage/:id/assign` (re-runs the item's `raw` through the SAME gate for the
+  target type, then records `resolution='assigned'` with `assigned_ref`; a refusal is a 400 with the gate's reason and
+  resolves nothing). Placing an item as a feed entry: tags the PERSON picks must be live on the org's
   list (400 otherwise); with none picked, the item's own tags go to the gate as they came — an item held
   before 0056 for an unknown tag is placed with the tags it may have, the other becoming a suggestion. All triage exits are soft — nothing is hard-deleted; `resolved=1` + audit columns
   (`resolved_at`, `resolved_by`, `resolution`, `assigned_ref`) record how each item left the queue.

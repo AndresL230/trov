@@ -2154,7 +2154,7 @@ function guideView(s: AppState): string {
     <ul style="${gList}">
       <li>${gStrong("trov")}: the overview. It explains the whole system and every tool. Ask about it when you're unsure where something lives.</li>
       <li>${gStrong("load-context")}: ${gStrong("runs on its own")} before your agent works on an area the team already knows about, and always before it proposes a doc change. It reads what Trov has, checks what's settled and what's only proposed, and at the start of a session shows your My Work and any handoffs waiting for you. It never writes.</li>
-      <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped, and anything it can't place goes to Triage › Unplaced.</li>
+      <li>${gStrong("record-session")}: ${gStrong("only when you ask")} ("record this session"). It checks what actually shipped with ${gCode("git")} and ${gCode("gh")}, reads back the docs it touched, and stages one batch of updates: feed entries, doc changes, and decisions. Repeats are dropped; something it isn't sure of is staged flagged "Low confidence", or left out and mentioned to you.</li>
     </ul>
     <p style="${gP};margin-top:12px">The rest cover one surface each:</p>
     <ul style="${gList}">
@@ -2181,7 +2181,7 @@ function guideView(s: AppState): string {
     ${sub("Review: promote, ratify, or reject")}
     <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
     ${gFig("review", `${gEm("Review")}: the queue on the left and the selected proposal's diff on the right.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds anything an agent couldn't confidently place, and empty is its normal state: route an item where it belongs or ${gStrong("Discard")} it.</p>
+    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds the few things an agent couldn't place (Trov now refuses or flags most of them instead), and empty is its normal state. Place an item where it belongs or ${gStrong("Discard")} it (you can undo a discard).</p>
     ${gFig("maintenance", `${gEm("Unplaced")}: the queue, waiting to be routed or discarded.`)}
     <p style="${gP};margin-top:14px">Running the organization itself is in one place: ${gStrong("Org settings")}, from the switcher at the top of the sidebar. ${gStrong("Members")} is the people directory. Admins also invite people there, set roles and titles, and match an unrecognized GitHub login to a person. ${gStrong("Notifications")} is where admins set the email digests: which exist, when they send, and what went out. Your own digest preferences stay in ${gStrong("Settings")}.</p>
 

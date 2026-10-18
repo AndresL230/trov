@@ -39,8 +39,8 @@ describe("reconciler — replay safety", () => {
     // Re-run the SAME payload: the ledger drops every item.
     const secondRun = await consume(systemCtx(), payload, { handle: AUTHOR });
     expect(secondRun.feed).toEqual({ written: 0, unchanged: 1, triaged: 0 });
-    expect(secondRun.docs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
-    expect(secondRun.adrs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
+    expect(secondRun.docs).toEqual({ staged: 0, unchanged: 1 });
+    expect(secondRun.adrs).toEqual({ staged: 0, unchanged: 1 });
 
     expect(await counts()).toEqual(before); // zero new rows of any kind
   });
@@ -66,7 +66,7 @@ describe("reconciler — doc dedupe + change_kind", () => {
 
     const p2 = IngestPayload.parse({ session: meta("D-2"), doc_proposals: [{ slug: "d", section: "reference", body: "same body", change_summary: "s", confidence: "high" }] });
     const r2 = await consume(systemCtx(), p2, { handle: AUTHOR });
-    expect(r2.docs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
+    expect(r2.docs).toEqual({ staged: 0, unchanged: 1 });
     expect((await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = 'd'`)).length).toBe(1);
   });
 
@@ -106,11 +106,13 @@ describe("reconciler — doc dedupe + change_kind", () => {
 });
 
 describe("reconciler — confidence + space", () => {
-  it("low-confidence on a NEW slug triages; on an EXISTING slug stages-and-flags", async () => {
-    // new + low → triage, no doc created
+  it("low confidence stages-and-flags, on a NEW slug as on an EXISTING one — nothing goes to Unplaced", async () => {
+    // new + low → staged (an unpromoted doc), flagged
     const t = await ingestDocProposal(systemCtx(), { slug: "ghost", section: "reference", body: "x", change_summary: "s", confidence: "low" }, AUTHOR);
-    expect(t.outcome).toBe("triaged");
-    expect((await all<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'ghost'`)).length).toBe(0);
+    expect(t).toMatchObject({ outcome: "written", change_kind: "new", low_confidence: true });
+    expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'ghost'`))?.current_version).toBe(0);
+    expect((await first<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = 'ghost'`))?.low_confidence).toBe(1);
+    expect((await all(env.DB, `SELECT * FROM needs_triage`)).length).toBe(0);
 
     // existing + low → stage with low_confidence = 1
     await ingestDocProposal(systemCtx(), { slug: "exists", section: "reference", body: "v1", change_summary: "s", confidence: "high" }, AUTHOR);
@@ -135,11 +137,55 @@ describe("reconciler — ADR dedupe", () => {
     const c = IngestPayload.parse({ session: meta("A-3"), adr_drafts: [{ title: "T", context: "c", decision: "d2", rationale: "r", confidence: "high" }] });
 
     expect((await consume(systemCtx(), a, { handle: AUTHOR })).adrs.staged).toBe(1);
-    expect((await consume(systemCtx(), b, { handle: AUTHOR })).adrs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
+    expect((await consume(systemCtx(), b, { handle: AUTHOR })).adrs).toEqual({ staged: 0, unchanged: 1 });
     expect((await consume(systemCtx(), c, { handle: AUTHOR })).adrs.staged).toBe(1);
     expect((await all<AdrRow>(env.DB, `SELECT * FROM adrs`)).length).toBe(2);
   });
 
+  it("a low-confidence decision stages as a draft carrying confidence 'low' (Review flags it) — never Unplaced", async () => {
+    const p = IngestPayload.parse({ session: meta("A-low"), adr_drafts: [{ title: "Maybe KV", context: "c", decision: "d", rationale: "r", confidence: "low" }] });
+    expect((await consume(systemCtx(), p, { handle: AUTHOR })).adrs).toEqual({ staged: 1, unchanged: 0 });
+    const adr = await first<AdrRow>(env.DB, `SELECT * FROM adrs WHERE title = 'Maybe KV'`);
+    expect(adr).toMatchObject({ status: "draft", confidence: "low", created_by: AUTHOR });
+    expect((await all(env.DB, `SELECT * FROM needs_triage`)).length).toBe(0);
+  });
+});
+
+describe("reconciler — refuse, never Unplaced (owner ruling 2026-10-18)", () => {
+  const triageRows = async () => (await all(env.DB, `SELECT * FROM needs_triage`)).length;
+  const ledgerRows = async (session: string) => (await all(env.DB, `SELECT * FROM processed_items WHERE session_id = ?`, session)).length;
+
+  it("a section that is not one is refused with the valid sections listed; nothing written or ledgered", async () => {
+    const r = await ingestDocProposal(systemCtx(), { slug: "odd", section: "misc", body: "x", change_summary: "s", confidence: "high" }, AUTHOR, { sessionId: "R-sec", itemIndex: 0 });
+    expect(r).toEqual({ outcome: "refused", slug: "odd", code: "section", reason: `unknown section "misc": a doc's section is one of reference, context, decisions` });
+    expect((await all(env.DB, `SELECT * FROM docs WHERE slug = 'odd'`)).length).toBe(0);
+    expect(await triageRows()).toBe(0);
+    expect(await ledgerRows("R-sec")).toBe(0);
+  });
+
+  it("a batch lists the refusal under `refused`, and the corrected re-send (same session id) stages instead of replaying", async () => {
+    const send = (section: string) => IngestPayload.parse({
+      session: meta("R-batch"),
+      doc_proposals: [{ slug: "fixme", section, body: "body", change_summary: "s", confidence: "high" }],
+    });
+    const first1 = await consume(systemCtx(), send("misc"), { handle: AUTHOR });
+    expect(first1.docs).toEqual({ staged: 0, unchanged: 0 });
+    expect(first1.refused).toEqual([{ slug: "fixme", code: "section", reason: expect.stringContaining("reference, context, decisions") }]);
+    expect(await triageRows()).toBe(0);
+
+    const second = await consume(systemCtx(), send("reference"), { handle: AUTHOR });
+    expect(second.docs).toEqual({ staged: 1, unchanged: 0 });
+    expect(second.refused).toBeUndefined();
+    // …and now it IS ledgered: a third send replays.
+    expect((await consume(systemCtx(), send("reference"), { handle: AUTHOR })).docs).toEqual({ staged: 0, unchanged: 1 });
+  });
+
+  it("a batch's own needs_triage items are still accepted (older plugins), ledger-guarded", async () => {
+    const p = IngestPayload.parse({ session: meta("R-old"), needs_triage: [{ raw: "not sure where this goes", reason: "agent unsure" }] });
+    expect((await consume(systemCtx(), p, { handle: AUTHOR })).triage).toEqual({ recorded: 1, unchanged: 0 });
+    expect((await consume(systemCtx(), p, { handle: AUTHOR })).triage).toEqual({ recorded: 0, unchanged: 1 });
+    expect(await triageRows()).toBe(1);
+  });
 });
 
 describe("reconciler — staging stays non-destructive", () => {

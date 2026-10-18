@@ -186,9 +186,9 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
     expect((await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'alias-space-doc'`))?.space).toBe("engineering");
   });
 
-  it("a space the org does not have goes to needs_triage (0081_docs_library) — never written, never guessed", async () => {
-    // Spaces are the org's own now: a value that is no live space of it is held for a person, like an
-    // out-of-vocab section, and no docs row is created.
+  it("a space the org does not have is REFUSED, listing the org's spaces (0081_docs_library) — never written, never guessed", async () => {
+    // Spaces are the org's own now: a value that is no live space of it is refused with what IS valid, so the
+    // agent re-sends in the same session; no docs row is created and nothing waits in Unplaced.
     const result = await propose({
       slug: "bad-space-doc",
       section: "reference",
@@ -197,16 +197,17 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
       confidence: "high",
       space: "sapling",
     });
-    expect(result).toEqual({ outcome: "triaged", reason: "unknown space: sapling" });
+    expect(result).toMatchObject({ outcome: "refused", code: "space", slug: "bad-space-doc" });
+    expect(result.reason).toMatch(/^unknown space "sapling": use one of this organization's spaces: .*engineering/);
     expect(
       (await all<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'bad-space-doc'`)).length
     ).toBe(0);
     expect(
       (await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).length
-    ).toBe(1);
+    ).toBe(0);
   });
 
-  it("low-confidence new slug: routed to needs_triage, no docs or doc_versions row", async () => {
+  it("low-confidence new slug: staged and flagged (an unpromoted doc), nothing in needs_triage", async () => {
     const result = await propose({
       slug: "low-conf-new",
       section: "reference",
@@ -215,25 +216,16 @@ describe("registered MCP propose_doc_update tool — reconciler behaviors", () =
       confidence: "low",
     });
 
-    expect(result.outcome).toBe("triaged");
+    expect(result).toMatchObject({ outcome: "written", change_kind: "new", low_confidence: true });
 
-    // No docs row, no doc_versions row — the gate blocked creation entirely.
+    // A docs row with nothing live, and one staged version flagged for the reviewer.
     expect(
-      (await all<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'low-conf-new'`)).length
+      (await first<DocRow>(env.DB, `SELECT * FROM docs WHERE slug = 'low-conf-new'`))?.current_version
     ).toBe(0);
-    expect(
-      (
-        await all<DocVersionRow>(
-          env.DB,
-          `SELECT * FROM doc_versions WHERE slug = 'low-conf-new'`
-        )
-      ).length
-    ).toBe(0);
+    const v = await first<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = 'low-conf-new'`);
+    expect(v).toMatchObject({ status: "staged", low_confidence: 1, created_by: AUTHOR });
 
-    // The triage queue picked it up.
-    const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(1);
-    expect(triage[0].source_author).toBe(AUTHOR);
+    expect(await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).toEqual([]);
   });
 
   it("low-confidence existing slug: staged with low_confidence=1", async () => {

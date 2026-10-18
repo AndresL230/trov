@@ -75,20 +75,20 @@ describe("the gate reads the org's tag list", () => {
   it("a batch with no unknown tag reads exactly as before (no suggested_tags key)", async () => {
     const result = await consume(systemCtx(), IngestPayload.parse({ session, feed_entries: [entry("known", ["auth", "data"])] }), { handle: "andres" });
     expect(result).toEqual({
-      feed: { written: 1, unchanged: 0, triaged: 0 }, docs: { staged: 0, unchanged: 0, triaged: 0 },
-      adrs: { staged: 0, unchanged: 0, triaged: 0 }, triage: { recorded: 0, unchanged: 0 },
+      feed: { written: 1, unchanged: 0, triaged: 0 }, docs: { staged: 0, unchanged: 0 },
+      adrs: { staged: 0, unchanged: 0 }, triage: { recorded: 0, unchanged: 0 },
     });
   });
 
-  it("every other gate rule holds: an out-of-vocab section and a low-confidence decision still go to triage", async () => {
+  it("every other gate rule holds: an out-of-vocab section is refused and a low-confidence decision stages — neither goes to triage", async () => {
     const result = await consume(systemCtx(), IngestPayload.parse({
       session,
       doc_proposals: [{ slug: "bad-section", section: "made-up", body: "x", change_summary: "s", confidence: "high" }],
       adr_drafts: [{ title: "t", context: "c", decision: "d", rationale: "r", confidence: "low" }],
     }), { handle: "andres" });
-    expect(result.docs.triaged).toBe(1);
-    expect(result.adrs.triaged).toBe(1);
-    expect((await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).length).toBe(2);
+    expect(result.refused).toEqual([expect.objectContaining({ slug: "bad-section", code: "section" })]);
+    expect(result.adrs.staged).toBe(1);
+    expect((await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).length).toBe(0);
   });
 
   it("an agent's spelling is read as the tag's: case, spaces and underscores; what is not a tag at all is dropped", async () => {
