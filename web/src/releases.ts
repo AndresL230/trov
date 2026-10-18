@@ -128,6 +128,7 @@ export const RELEASES: Release[] = [
       "No new secret, var or GitHub App permission: Ask's GitHub lookups read through the org's existing GitHub connection.",
       "Its Docs Library part gives every organization the three starter spaces and moves every doc not in Product to Engineering; its agent links part rebuilds `org_counters` so links get their own numbers (ticket and handoff numbering carries on).",
       "Publish the Trov plugin 0.10.1 (the handoff skill uploads long prompts; the new link skill; docs are placed by space): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
+      "Publish the Trov plugin 0.11.0 (record-session stops sending items to Unplaced; update-plan writes Now / Next / Later). An older plugin's free-text plan write is refused until it updates.",
     ],
     patches: {
       added: [
@@ -141,6 +142,7 @@ export const RELEASES: Release[] = [
       ],
       changed: [
         "Ask Trov: an artifact, or a file attached to a question, opens in a narrower side panel; a width you drag to is kept (#195)",
+        "Roadmap: a Now / Next / Later box, accepted suggestions show at once; Unplaced restyled and agents stop landing there; Ask holds still (#200)",
         "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
         "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
@@ -156,7 +158,7 @@ export const RELEASES: Release[] = [
       ],
       removed: [],
     },
-    prs: [193, 194, 195, 196, 197, 198],
+    prs: [193, 194, 195, 196, 197, 198, 200],
   },
   // Trov writes for you (#178) cut together with Repo setups (#186), the performance pass (#187), What's new
   // (#188, #190), the dev seed (#189) and the keyboard fixes (#192): one deploy, one version.

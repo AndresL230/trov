@@ -81,9 +81,9 @@ async function seedAi(sprintId: number, tickets: number[]): Promise<void> {
     model: "claude-haiku-5-5", promptVersion: "draft-1",
   });
   await putSuggestion(ctx(), {
-    ...AI_ROADMAP_ITEM, kind: "plan_narrative", value: { narrative: "**Now:** hosting. **Next:** billing." },
+    ...AI_ROADMAP_ITEM, kind: "plan_narrative", value: { now: "Hosting.", next: "Billing.", later: "The public docs." },
     confidence: null, reason: "Hosting is under way and billing drifted in.", cites: [{ ref: `sprint:${sprintId}`, label: "Hosting", href: `#sprints/${sprintId}` }],
-    model: "claude-haiku-5-5", promptVersion: "narrative-1",
+    model: "claude-haiku-5-5", promptVersion: "narrative-2",
   });
 }
 

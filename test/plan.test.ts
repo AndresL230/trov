@@ -3,18 +3,19 @@ import { env } from "cloudflare:test";
 import { write_plan, get_plan } from "../src/tools/plan";
 import { all, first, run } from "./helpers/db";
 import type { SprintRow, PlanVersionRow, PlanRow } from "@shared/rows";
-import { PLAN_NARRATIVE_MAX } from "@shared/sprints";
+import { PLAN_NARRATIVE_MAX, composePlanNarrative } from "@shared/sprints";
 import { SprintError } from "../src/tools/sprints";
 import { upsertProgress } from "../src/tools/progress";
 
 import { systemCtx } from "./helpers/tenant";
+import { narr, narrText } from "./helpers/plan";
 const AUTHOR = "admin";
 
 describe("write_plan", () => {
   it("first write creates version 1 with a snapshot; second write creates version 2; both snapshots remain (non-destructive)", async () => {
     const r1 = await write_plan(
       systemCtx(),
-      { narrative: "v1 narrative", sprints: [{ label: "M1", due: "2026-08-01", status: "upcoming" }] },
+      { ...narr("v1 narrative"), sprints: [{ label: "M1", due: "2026-08-01", status: "upcoming" }] },
       AUTHOR
     );
     expect(r1.version).toBe(1);
@@ -29,7 +30,7 @@ describe("write_plan", () => {
 
     const r2 = await write_plan(
       systemCtx(),
-      { narrative: "v2 narrative", sprints: [{ label: "M2", due: "2026-09-01", status: "upcoming" }] },
+      { ...narr("v2 narrative"), sprints: [{ label: "M2", due: "2026-09-01", status: "upcoming" }] },
       AUTHOR
     );
     expect(r2.version).toBe(2);
@@ -45,7 +46,7 @@ describe("write_plan", () => {
     const r = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [{
           label: "Ticket queue",
           summary: "One queue the whole org files into.",
@@ -82,7 +83,7 @@ describe("write_plan", () => {
   });
 
   it("urgency defaults to 'normal' when the write omits it", async () => {
-    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "Plain", due: "2026-08-01", status: "upcoming" }] }, AUTHOR);
+    const r = await write_plan(systemCtx(), { ...narr("n"), sprints: [{ label: "Plain", due: "2026-08-01", status: "upcoming" }] }, AUTHOR);
     expect(r.sprints[0].urgency).toBe("normal");
   });
 
@@ -94,7 +95,7 @@ describe("write_plan", () => {
     const created = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [{
           label: "Ticket queue", summary: "goal line", description: "desc", phase: "Phase 2",
           dates: "Oct 1 – 10", due: "2026-10-01", status: "upcoming", urgency: "high",
@@ -109,7 +110,7 @@ describe("write_plan", () => {
     // few fields being discussed, say nothing about the rest.
     const after = await write_plan(
       systemCtx(),
-      { narrative: "n2", sprints: [{ id, label: "Ticket queue v2", due: "2026-10-15", status: "in_progress" }] },
+      { ...narr("n2"), sprints: [{ id, label: "Ticket queue v2", due: "2026-10-15", status: "in_progress" }] },
       AUTHOR
     );
     const row = after.sprints.find((x) => x.id === id)!;
@@ -130,7 +131,7 @@ describe("write_plan", () => {
     const created = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [{
           label: "Ticket queue", summary: "goal line", description: "desc", phase: "Phase 2",
           dates: "Oct 1 – 10", due: "2026-10-01", status: "upcoming", urgency: "high",
@@ -144,7 +145,7 @@ describe("write_plan", () => {
     const after = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [{
           id, label: "Ticket queue", due: "2026-10-01", status: "upcoming",
           summary: null, lead: null, domain: null, github_ref: null,
@@ -167,14 +168,14 @@ describe("write_plan", () => {
   it("update-by-id changes label/status; admin CAN set status:'done' through write_plan", async () => {
     const r1 = await write_plan(
       systemCtx(),
-      { narrative: "n", sprints: [{ label: "Original", due: "2026-08-01", status: "upcoming" }] },
+      { ...narr("n"), sprints: [{ label: "Original", due: "2026-08-01", status: "upcoming" }] },
       AUTHOR
     );
     const id = r1.sprints[0].id;
 
     const r2 = await write_plan(
       systemCtx(),
-      { narrative: "n", sprints: [{ id, label: "Updated", due: "2026-08-01", status: "done" }] },
+      { ...narr("n"), sprints: [{ id, label: "Updated", due: "2026-08-01", status: "done" }] },
       AUTHOR
     );
 
@@ -187,7 +188,7 @@ describe("write_plan", () => {
     await expect(
       write_plan(
         systemCtx(),
-        { narrative: "n", sprints: [{ id: 999, label: "X", due: "2026-08-01", status: "upcoming" }] },
+        { ...narr("n"), sprints: [{ id: 999, label: "X", due: "2026-08-01", status: "upcoming" }] },
         AUTHOR
       )
     ).rejects.toThrow("no such sprint: 999");
@@ -197,7 +198,7 @@ describe("write_plan", () => {
     const r1 = await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [
           { label: "Keep", due: "2026-08-01", status: "upcoming" },
           { label: "Change", due: "2026-08-02", status: "upcoming" },
@@ -210,7 +211,7 @@ describe("write_plan", () => {
 
     const r2 = await write_plan(
       systemCtx(),
-      { narrative: "n", sprints: [{ id: changeId, label: "Changed", due: "2026-08-02", status: "in_progress" }] },
+      { ...narr("n"), sprints: [{ id: changeId, label: "Changed", due: "2026-08-02", status: "in_progress" }] },
       AUTHOR
     );
 
@@ -224,7 +225,7 @@ describe("write_plan", () => {
 
   it("re-creates the plan singleton via INSERT OR IGNORE when the row is missing (prod resilience)", async () => {
     await run(env.DB, `DELETE FROM plan`);
-    const r = await write_plan(systemCtx(), { narrative: "n", sprints: [] }, AUTHOR);
+    const r = await write_plan(systemCtx(), { ...narr("n"), sprints: [] }, AUTHOR);
     expect(r.version).toBe(1);
     const plan = await first(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
     expect(plan).not.toBeNull();
@@ -236,7 +237,7 @@ describe("get_plan", () => {
     const r1 = await write_plan(
       systemCtx(),
       {
-        narrative: "the narrative",
+        ...narr("the narrative"),
         sprints: [
           { label: "Cached", due: "2026-08-01", status: "upcoming" },
           { label: "Uncached", due: "2026-08-02", status: "upcoming" },
@@ -248,7 +249,7 @@ describe("get_plan", () => {
     await upsertProgress(systemCtx(), cachedId, 3, 10, "event");
 
     const view = await get_plan(systemCtx());
-    expect(view.narrative).toBe("the narrative");
+    expect(view.narrative).toBe(narrText("the narrative"));
     expect(view.version).toBe(1);
     expect(view.updated_by).toBe(AUTHOR);
     expect(view.updated_at).not.toBeNull();
@@ -276,7 +277,7 @@ describe("get_plan", () => {
     await write_plan(
       systemCtx(),
       {
-        narrative: "n",
+        ...narr("n"),
         sprints: [
           { label: "Running", due: "2026-08-01", status: "in_progress" },
           { label: "Later", due: "2026-08-02", status: "upcoming" },
@@ -305,7 +306,7 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
   async function seed() {
     const r = await write_plan(
       systemCtx(),
-      { narrative: "seeded", sprints: [{ label: "Seeded", due: "2026-08-01", status: "upcoming" }] },
+      { ...narr("seeded"), sprints: [{ label: "Seeded", due: "2026-08-01", status: "upcoming" }] },
       AUTHOR
     );
     return r.sprints[0].id;
@@ -318,22 +319,25 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
     };
   }
 
+  // The cap counts the COMPOSED text, labels included: "**Now:** " + now + "\n\n**Next:** " + next + "\n\n**Later:** " + later.
+  const LABELS = composePlanNarrative({ now: "", next: "", later: "" }).length; // 34
+  const atCap = (extra = 0) => narr("x".repeat(PLAN_NARRATIVE_MAX - LABELS - "Next.".length - "Later.".length + extra));
+
   it("a narrative of exactly the cap writes", async () => {
     await seed();
-    const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
-    const r = await write_plan(systemCtx(), { narrative, sprints: [] }, AUTHOR);
+    const r = await write_plan(systemCtx(), { ...atCap(), sprints: [] }, AUTHOR);
     expect(r.version).toBe(2);
     const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
-    expect(plan?.narrative).toBe(narrative);
+    expect(plan?.narrative.length).toBe(PLAN_NARRATIVE_MAX);
+    expect(plan?.narrative).toBe(composePlanNarrative(atCap()));
   });
 
-  it("the length is counted after trim, and the trimmed narrative is what is stored", async () => {
-    const narrative = "x".repeat(PLAN_NARRATIVE_MAX);
-    await write_plan(systemCtx(), { narrative: `\n  ${narrative}  \n`, sprints: [] }, AUTHOR);
+  it("each part is trimmed and folded to one paragraph, and the composed form is what is stored", async () => {
+    await write_plan(systemCtx(), { now: "\n  Hosting,\n  then   billing.  ", next: " Search. ", later: "Docs.", sprints: [] }, AUTHOR);
     const plan = await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`);
-    expect(plan?.narrative).toBe(narrative);
+    expect(plan?.narrative).toBe("**Now:** Hosting, then billing.\n\n**Next:** Search.\n\n**Later:** Docs.");
     const v = await first<PlanVersionRow>(env.DB, `SELECT * FROM plan_versions WHERE version = 1`);
-    expect(v?.narrative).toBe(narrative);
+    expect(v?.narrative).toBe(plan?.narrative);
   });
 
   it("one over the cap is refused naming the cap and the length — plan, plan_versions and sprints unchanged", async () => {
@@ -343,7 +347,7 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
     const err = await write_plan(
       systemCtx(),
       {
-        narrative: "x".repeat(PLAN_NARRATIVE_MAX + 1),
+        ...atCap(1),
         // A sprint edit and a sprint create ride the refused call: neither may land.
         sprints: [
           { id, label: "Renamed", due: "2026-09-01", status: "done" },
@@ -367,7 +371,7 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
       write_plan(
         systemCtx(),
         {
-          narrative: "fits",
+          ...narr("fits"),
           sprints: [
             { id, label: "Renamed", due: "2026-09-01", status: "done" },
             { id: 999, label: "X", due: "2026-08-01", status: "upcoming" },
@@ -383,5 +387,32 @@ describe("write_plan — the narrative cap (PLAN_NARRATIVE_MAX)", () => {
     const long = "y".repeat(PLAN_NARRATIVE_MAX * 4);
     await run(env.DB, `UPDATE plan SET narrative = ? WHERE org_id = 'org_saplinglearn'`, long);
     expect((await get_plan(systemCtx())).narrative).toBe(long);
+  });
+});
+
+describe("write_plan — the narrative is Now / Next / Later, enforced at write (2026-10-18)", () => {
+  const stored = async () => (await first<PlanRow>(env.DB, `SELECT * FROM plan WHERE org_id = 'org_saplinglearn'`))?.narrative;
+
+  it("a legacy `narrative` that already reads Now / Next / Later is taken, and stored in the ONE form", async () => {
+    await write_plan(systemCtx(), { narrative: "**Now:** hosting. **Next:** billing. **Later:** docs.", sprints: [] }, AUTHOR);
+    expect(await stored()).toBe("**Now:** hosting.\n\n**Next:** billing.\n\n**Later:** docs.");
+  });
+
+  it.each([
+    ["a free-text narrative", { narrative: "We ship hosting, then billing." }, "pass `now`, `next` and `later`"],
+    ["no narrative at all", {}, "pass `now`, `next` and `later`"],
+    ["an empty part", { now: "Hosting.", next: "  ", later: "Docs." }, "next is empty"],
+    ["a missing part", { now: "Hosting.", next: "Billing." }, "later is empty"],
+    ["a part carrying a label of its own", { now: "Hosting. **Next:** billing.", next: "Billing.", later: "Docs." }, "label of its own"],
+    ["parts and a narrative together", { ...narr("x"), narrative: "**Now:** a **Next:** b **Later:** c" }, "not together"],
+  ])("%s is refused as bad_request, and nothing is written", async (_what, input, says) => {
+    const before = await stored();
+    const err = await write_plan(systemCtx(), { ...input, sprints: [{ label: "Rides along", due: "", status: "upcoming" }] }, AUTHOR).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SprintError);
+    expect((err as SprintError).code).toBe("bad_request");
+    expect((err as Error).message).toContain(says);
+    expect((err as Error).message).toContain("Nothing was written");
+    expect(await stored()).toBe(before);
+    expect(await all(env.DB, `SELECT id FROM sprints WHERE title = 'Rides along'`)).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@
 //   • `ticket.category` / `ticket.priority` → `set_ticket_classification` (src/tools/tickets.ts)
 //   • `ticket.duplicate`                    → `add_ticket_link` — a LINK to the other ticket, nothing else: no ticket is
 //                                              closed, declined or merged (a person decides that, Invariant 5)
-//   • `unplaced.destination`               → `assign_triage` (src/tools/writes.ts), exactly as Unplaced's "File it":
+//   • `unplaced.destination`               → `assign_triage` (src/tools/writes.ts), exactly as Unplaced's Place:
 //                                              the item re-runs through the SAME gate as a doc in that section
 // `review.risk` has NO handler: a risk is information on the Review card (Dismiss only) — nothing about it promotes,
 // rejects or ratifies anything. Every handler is open to any member, as the writers behind them are on the web.
@@ -102,6 +102,9 @@ function refusing(h: AcceptHandler, valid: (value: unknown) => boolean): AcceptH
         if (e instanceof AcceptRefused) throw e;
         if (e instanceof TicketError) throw new AcceptRefused(TICKET_REFUSAL[e.code]);
         if (e instanceof Error && TRIAGE_REFUSAL.test(e.message)) throw new AcceptRefused("not_available");
+        // The gate REFUSED the placement (since 2026-10-18 it never sends one back to the queue — an archived page, a
+        // space that is not live): answered with the gate's own words, never a 500 (Q36); the item stays unplaced.
+        if (e instanceof Error && /^could not place /.test(e.message)) throw new AcceptRefused("invalid", e.message);
         throw e;
       }
     },

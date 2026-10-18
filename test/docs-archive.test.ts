@@ -230,20 +230,21 @@ describe("links, Review and the gate around an archived page", () => {
     expect(await inReview()).toBe(true);
   });
 
-  it("no agent path archives, restores or places around it: propose_doc_update and record_session triage, a parent is ignored, an import keeps out", async () => {
+  it("no agent path archives, restores or places around it: propose_doc_update and record_session are refused, a parent is ignored, an import keeps out", async () => {
     await live("parked");
     await live("parked-kid", { parent: "parked" });
     const admin = await cookieFor(OWNER);
     await archive(admin, "parked");
     await ensureMember("agent-person");
 
-    // A proposal against the archived page — the gate's own path, the MCP tool, and record_session — goes to triage.
-    expect(await ingestDocProposal(A(), proposal("parked", { body: "revive" }), "agent-person", ledger())).toEqual({ outcome: "triaged", reason: "archived page: parked" });
-    expect(JSON.parse((await mcp("agent-person", "propose_doc_update", proposal("parked", { body: "revive via mcp" }))).text)).toMatchObject({ outcome: "triaged", reason: "archived page: parked" });
+    // A proposal against the archived page — the gate's own path, the MCP tool, and record_session — is REFUSED, saying
+    // a person restores it and a new page needs another slug. Nothing waits in Unplaced.
+    const refusal = { outcome: "refused", slug: "parked", code: "archived_page", reason: `"parked" is an archived page: it takes no proposal and its name stays reserved. A person restores it in the Library; for a new page, use another slug` };
+    expect(await ingestDocProposal(A(), proposal("parked", { body: "revive" }), "agent-person", ledger())).toEqual(refusal);
+    expect(JSON.parse((await mcp("agent-person", "propose_doc_update", proposal("parked", { body: "revive via mcp" }))).text)).toEqual(refusal);
     const recRaw = (await mcp("agent-person", "record_session", { session: { id: crypto.randomUUID(), author: "ignored", ended_at: "2026-10-17T00:00:00Z", skill_version: "2.0" }, doc_proposals: [proposal("parked", { body: "revive via session" })] })).text;
-    expect(JSON.parse(recRaw)).toMatchObject({ docs: { staged: 0, triaged: 1 } });
-    const triage = await all<{ reason: string }>(env.DB, `SELECT reason FROM needs_triage WHERE org_id = ? AND reason = 'archived page: parked'`, ORG_A);
-    expect(triage).toHaveLength(3);
+    expect(JSON.parse(recRaw)).toMatchObject({ docs: { staged: 0, unchanged: 0 }, refused: [{ slug: "parked", code: "archived_page" }] });
+    expect(await all(env.DB, `SELECT reason FROM needs_triage WHERE org_id = ?`, ORG_A)).toEqual([]);
     expect(await row("parked")).toMatchObject({ archived_by: OWNER });
     expect((await all(env.DB, `SELECT 1 FROM doc_versions WHERE org_id = ? AND slug = 'parked'`, ORG_A))).toHaveLength(1);
 

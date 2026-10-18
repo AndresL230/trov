@@ -500,6 +500,25 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-md.rm-now-about :is(p,ul,ol,pre,blockquote,table,li) { margin:0; }
 .cnpy-md.rm-now-about :is(pre,blockquote) { padding:0; border:0; background:none; }
 .cnpy-md.rm-now-about :is(img,hr) { display:none; }
+/* Roadmap › "What's happening": the plan narrative's STRUCTURED box (render.ts `planNarrativeBlock`) — three rows,
+   Now / Next / Later, each its label (the card's label face) beside its text, hairlines between them. The text is
+   the part's own markdown (renderMarkdown, sanitized) with its blocks flattened to one paragraph. Tokens only, so
+   light and dark both read; at phone width the label column stays narrow. */
+.rm-nnl { margin:0; display:flex; flex-direction:column; }
+.rm-nnl-row { display:grid; grid-template-columns:52px minmax(0,1fr); column-gap:14px; align-items:baseline; padding:11px 0; border-top:1px solid var(--border); }
+.rm-nnl-row:first-child { border-top:0; padding-top:2px; }
+.rm-nnl-row:last-child { padding-bottom:0; }
+.rm-nnl-k { margin:0; font-size:12px; font-weight:500; color:var(--fg-55); }
+.cnpy-md.rm-nnl-v { margin:0; min-width:0; font-size:14.5px; line-height:1.6; overflow-wrap:anywhere; }
+.cnpy-md.rm-nnl-v :is(h1,h2,h3,h4,h5,h6) { font:inherit; font-weight:600; color:var(--fg); letter-spacing:0; text-transform:none; margin:0; padding:0; border:0; }
+.cnpy-md.rm-nnl-v :is(p,ul,ol,pre,blockquote,table,li) { margin:0; }
+.cnpy-md.rm-nnl-v :is(pre,blockquote) { padding:0; border:0; background:none; }
+.cnpy-md.rm-nnl-v :is(img,hr) { display:none; }
+/* The same box inside a narrative proposal (roadmap-ai.ts `narrativeBody`): a size down, in the suggestion's tone. */
+.rm-nnl-sugg .rm-nnl-row { padding:8px 0; }
+.rm-nnl-sugg .rm-nnl-row:first-child { padding-top:0; }
+.rm-nnl-sugg .rm-nnl-row:last-child { padding-bottom:0; }
+.rm-nnl-sugg .cnpy-md.rm-nnl-v { font-size:13px; line-height:1.55; color:var(--fg-70); }
 
 /* ── Roadmap › Timeline (web/src/timeline.ts): the sprints as a Gantt graph. Every
    position is a PERCENT of the track, so the graph fits its card rather than
@@ -805,6 +824,26 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 @media (prefers-reduced-motion: reduce) {
   .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
 }
+/* ── Unplaced (web/src/maintenance.ts) ──────────────────────────────────────────────────────
+   Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`, `.cnpy-rvp`): only what is its own is here. A card
+   placed or discarded leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
+.cnpy-rv-row[data-verdict="placed"] { --rv-tone:var(--green); }
+.cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }
+.cnpy-up-count { flex:none; font-size:12px; color:var(--fg-40); white-space:nowrap; font-variant-numeric:tabular-nums; }
+.cnpy-up-text { margin:0; font-size:14px; line-height:1.65; color:var(--fg-70); white-space:pre-wrap; overflow-wrap:anywhere; }
+.cnpy-up-place { margin-top:26px; padding-top:20px; border-top:1px solid var(--border); }
+.cnpy-up-field { margin-top:16px; }
+.cnpy-up-label { font-size:12px; font-weight:600; color:var(--fg-70); margin-bottom:8px; }
+.cnpy-up-opt { font-weight:400; color:var(--fg-40); }
+.cnpy-up-tags { display:flex; flex-wrap:wrap; gap:6px; }
+/* A tag to toggle (several may be on): the tag's own mark in a quiet box, the accent's when picked. A control, not a
+   state — the tag's square and word stay as the picker everywhere else draws them. */
+.cnpy-up-tag { display:inline-flex; align-items:center; min-height:30px; padding:0 10px; border:1px solid var(--border); background:transparent; transition:border-color .12s ease, background-color .12s ease; }
+.cnpy-up-tag:hover { border-color:var(--border-strong); }
+.cnpy-up-tag.is-on { border-color:var(--accent); background:var(--accent-soft); }
+.cnpy-up-note { margin:0; font-size:12.5px; line-height:1.55; color:var(--fg-55); }
+.cnpy-up-place-btn[disabled] { cursor:default; }
+@media (prefers-reduced-motion: reduce) { .cnpy-up-tag { transition:none; } }
 /* How many are waiting, on a switch's option (Review's All / Proposals / Decisions). */
 .cnpy-seg-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--fg-40); font-variant-numeric:tabular-nums; }
 .cnpy-seg-btn.is-on > .cnpy-seg-n { color:var(--fg-55); }
@@ -3332,9 +3371,17 @@ html.site-fx-vt::view-transition-old(root), html.site-fx-vt::view-transition-new
 .ask-scroll:has(> .ask-empty) { flex:1 1 auto; }
 .ask-empty-tail { flex:1 1 0; min-height:24px; }
 .ask-empty-h { margin:0; font-size:24px; font-weight:600; letter-spacing:-0.02em; text-wrap:balance; }
-.ask-starters { display:grid; grid-template-columns:1fr 1fr; gap:8px; width:100%; max-width:560px; margin-top:6px; }
-[data-phone="1"] .ask-starters, .ask-panel .ask-starters { grid-template-columns:1fr; }
-.ask-starters > button { display:flex; align-items:center; gap:9px; padding:10px 13px; border:1px solid var(--border); border-radius:10px; text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease; }
+.ask-starters { --ask-st-cols:1fr 1fr; display:grid; grid-template-columns:var(--ask-st-cols); gap:8px; width:100%; max-width:560px; margin-top:6px; }
+[data-phone="1"] .ask-starters, .ask-panel .ask-starters { --ask-st-cols:1fr; }
+/* A starter is a FIXED box that fits two lines, whatever its words (a long sprint name never grows its row and moves
+   the heading): the text is clamped to two lines with an ellipsis, the whole question in its tooltip (ask-conversation.ts
+   STARTER_TIP_AT). The skeleton chips (`.ask-starter-sk`, while ask/state is out) are the same box, in the same grid. */
+.ask-starters > button, .ask-starter-sk { box-sizing:border-box; height:58px; min-width:0; display:flex; align-items:center; gap:9px; padding:10px 13px; border:1px solid var(--border); border-radius:10px; }
+.ask-starters > button { text-align:left; font-size:13px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, border-color .12s ease, color .12s ease; }
+.ask-starters > button > svg { flex:none; }
+.ask-starters > button > span { min-width:0; line-height:18px; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; overflow:hidden; overflow-wrap:anywhere; }
+.ask-starters > .cnpy-skel { grid-column:1 / -1; }
+.ask-starters .cnpy-skel-in { display:grid; grid-template-columns:var(--ask-st-cols); gap:8px; }
 .ask-starters > button:hover { background:var(--surface); border-color:var(--border-strong); color:var(--fg); }
 /* Blocked (no key, off, the questions used — QA-6): readable, not pressable; the tooltip says why. */
 .ask-starters > button[aria-disabled="true"] { cursor:default; color:var(--fg-40); }
@@ -3702,6 +3749,8 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-co-modewrap { position:relative; }
 .ask-co-modebtn { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 8px; border-radius:7px; font-size:12px; font-weight:500; color:var(--fg-70); cursor:pointer; transition:background .12s ease, color .12s ease; }
 .ask-co-modebtn:hover, .ask-co-modebtn[aria-expanded="true"] { background:var(--hover); color:var(--fg); }
+/* Held in its default while ask/state is out (ask-composer.ts `statePending`): its place, not a control yet. */
+.ask-co-modebtn:disabled, .ask-co-modebtn:disabled:hover { cursor:default; background:none; color:var(--fg-55); }
 .ask-co-menu { position:absolute; right:0; bottom:calc(100% + 8px); z-index:30; width:286px; box-sizing:border-box; display:flex; flex-direction:column; gap:1px; padding:5px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); transform-origin:bottom right; animation:ask-pop-in .14s cubic-bezier(.2,.9,.3,1.2) both; }
 .ask-co-menu[data-closing] { animation:ask-pop-out .12s cubic-bezier(.4,0,1,1) both; pointer-events:none; }
 .ask-co-mi { display:flex; align-items:center; justify-content:space-between; gap:14px; width:100%; padding:7px 10px; border-radius:7px; text-align:left; cursor:pointer; }
@@ -3712,6 +3761,7 @@ button.ask-dg-c:hover { border-color:color-mix(in srgb, var(--fg) 40%, var(--sur
 .ask-co-auto { flex:none; margin:0 6px 0 4px; }
 .ask-co-auto.is-off { opacity:.55; cursor:not-allowed; }
 .ask-co-auto.is-off .cnpy-seg-btn:disabled { opacity:1; cursor:not-allowed; }
+.ask-co-auto.is-pending .cnpy-seg-btn:disabled { opacity:1; cursor:default; }
 .ask-send { display:grid; place-items:center; width:32px; height:32px; border-radius:8px; background:var(--hover); color:var(--fg-55); cursor:pointer; transition:background .15s ease, color .15s ease, transform .12s ease; }
 .ask-send.is-on { background:var(--accent); color:var(--accent-fg); }
 .ask-send.is-busy { background:var(--fg); color:var(--bg); }
@@ -5169,6 +5219,7 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .ask-th-search { border-radius:calc(9px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-menu,
 [data-cnpy-theme] .ask-starters > button,
+[data-cnpy-theme] .ask-starter-sk,
 [data-cnpy-theme] .ask-err,
 [data-cnpy-theme] .ask-hc { border-radius:calc(10px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .ask-q-bubble,

@@ -15,6 +15,7 @@ import { TicketCreate } from "@shared/tickets";
 import { SprintCreate } from "@shared/sprints";
 import type { CapturedEvent } from "@shared/contract";
 import type { Window } from "@shared/notifications";
+import { narr } from "./plan";
 
 export const BUSY_LOGIN = "AndresL230";
 export const BUSY_EMAIL = "andres@example.com";
@@ -83,7 +84,7 @@ export async function seedBusyDay(): Promise<{ sprintId: number }> {
   await ingestAdrDraft(ctx, { title: "Poll hosts, never call them on render", context: "c", decision: "d", rationale: "r", confidence: "high" }, "lpcooper-arch");
 
   // A plan change in the window (the old email's full plan diff).
-  await write_plan(ctx, { narrative: "n", sprints: [{ label: "Pricing page", due: "2026-10-01", status: "upcoming" }] }, BUSY_LOGIN);
+  await write_plan(ctx, { ...narr("n"), sprints: [{ label: "Pricing page", due: "2026-10-01", status: "upcoming" }] }, BUSY_LOGIN);
   await run(env.DB, `UPDATE plan_versions SET created_at = ? WHERE version = (SELECT MAX(version) FROM plan_versions)`, IN(5));
 
   // A notable session note of the person's own (Sift rated it).

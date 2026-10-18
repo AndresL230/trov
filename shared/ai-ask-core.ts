@@ -604,10 +604,12 @@ export type AskOnlyTool = (typeof ASK_ONLY_TOOLS)[number];
  *  repository and an admin has turned on GitHub lookups (`orgs.ai_chat_github`). */
 export const ASK_GITHUB_TOOLS = ["github_read", "github_search_code", "github_pull_request", "github_issue", "github_commit", "github_list", "github_ci"] as const;
 
-/** The fallback starters (the design's four), when the person's own work suggests none. */
+/** The fallback starters, when the person's own work suggests fewer than four (the server pads with them) or
+ *  `ask/state` came back with none. Generic on purpose: they name no ticket, sprint or project, so they are true in
+ *  any org (the design's "the hosting work" and "ticket #14" were its sample data, not questions to offer). */
 export const ASK_STARTERS_FALLBACK: readonly string[] = [
   "What shipped this week?",
-  "What's blocking the hosting work?",
-  "Summarize ticket #14",
+  "What's in progress right now?",
+  "What did we decide recently?",
   "Where did our time go this month?",
 ];

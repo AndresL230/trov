@@ -433,8 +433,10 @@ a thread, and `claim_handoff` with it still works.
   attach { maxFiles, maxBytes, kinds }, starters }` — each mode carries `canSend` (the key, the switch and the
   allowance left covering what it counts as: with 1–4 left Thinking cannot; Q50), and the composer never sends a
   mode that cannot (its menu shows it disabled with "Needs 5 questions; fewer are left this month."; the question goes
-  in the default, else Smart); every mode out reads as the quota block; starters by plain rules (the person's top assigned ticket, the
-  active sprint, what is waiting on them), the design's four as the fallback. `allowance.cap` is the cap the gate
+  in the default, else Smart); every mode out reads as the quota block; starters — always four — by plain rules (the
+  person's top assigned ticket, the active sprint, what is waiting on them), padded from `ASK_STARTERS_FALLBACK`,
+  which is generic on purpose (it names no ticket, sprint or project). The sprint's name is said short
+  (`starterTopic`: a trailing "(…)" aside dropped, past 40 characters cut at a word with "…"). `allowance.cap` is the cap the gate
   enforces (`resolveEntitlements` with the org's members): on Pro 300 × the paid seats, or × the members (at least
   1) when there is no paid-seat count (a gifted Pro); an override of `ai_chat` is the whole cap, never multiplied.
 - No Ask route answers a malformed ref or id with a 500 (invariant 7; `test/ask.hardening.test.ts`): `GET
@@ -686,6 +688,20 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   the quota have their cards. While blocked there is no Enter hint (Q-F4), and the starters stay to read but send
   nothing — `aria-disabled`, the block's reason in their tooltip (`composerBlockReason`; QA-6). A starter or a
   follow-up goes in the composer's own mode and Auto (`composerMode` / `composerAuto`).
+- **Nothing on the empty screen changes size when `ask/state` lands** (the owner: chips snapped open and the heading
+  jumped). The starters are FIXED boxes that fit two lines (`.ask-starters > button`, 58px): the words are clamped
+  with an ellipsis, a question of `STARTER_TIP_AT` (56) characters or more carries the whole of it in its tooltip,
+  and the button's text (what a screen reader hears, and what is sent) is always the whole question. While the read
+  is out (`idle` / `loading`) the grid holds `STARTER_COUNT` skeleton chips of the same box (`skeleton("ask-starters")`,
+  `.ask-starter-sk`) — never placeholder questions swapped for the real ones; the fallback shows only once the read
+  came back with none, or failed. `ask/state` is read once per session, so a later visit paints the real starters at
+  once. In the composer's row the mode picker's slot is held from the first paint by its button in the default mode,
+  `disabled` (no act, no menu; the same keyed element the live picker patches); Free drops it when the read says one
+  mode, and since the switch and Send sit after the row's spacer neither moves. Without the state (out or failed)
+  the Auto switch is locked but neutral (`is-pending`) — never the admin's Auto-off look and tooltip. Opening a thread
+  from a list (yours, Shared with you, a search hit) seeds the conversation with that row's summary, so the header's
+  "› title" and the composer (or a reader's note in its place) are right while the thread read is out; the thread
+  list's `idle` paint is its skeleton, never an early "No threads yet".
 - **Composer** (`ask-composer.ts`, one per conversation): every limit and flag from `GET /ask/state` (modes, the
   allowance and its usage line under a fifth left, `autoAllowed`, `attach { maxFiles, maxBytes, kinds }`) — none in
   the UI. Files upload ON ATTACH, one request per file (`POST /ask/attachments`; in a new conversation they are

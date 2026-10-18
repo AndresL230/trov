@@ -62,8 +62,9 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 
 1. **Ingested content is gated; authored & computed writes are direct.** Agent-proposed knowledge (feed,
    doc proposals, ADR drafts, events, repo events) goes through the per-type gate functions in
-   `src/consumer.ts` (replay ledger, content-hash dedupe, server-computed `change_kind`, vocab/confidence
-   routing to triage). A new ingestion path goes INTO the gate — never a second surface. Authored writes
+   `src/consumer.ts` (replay ledger, content-hash dedupe, server-computed `change_kind`; refuse or stage, never
+   Unplaced: a bad section/space is refused naming what is valid, low confidence stages flagged). A new ingestion
+   path goes INTO the gate — never a second surface. Authored writes
    (plan, tickets, sprints, handoffs, prompts, artifacts, people) and computed writes (progress, summaries,
    repo metrics/snapshots, the GitHub issue mirror) are direct "promote-class" writers in `src/tools/`.
 2. **Agents stage; humans confirm.** Promote / reject / ratify / triage assign & discard, artifact ratify,

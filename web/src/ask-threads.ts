@@ -158,7 +158,8 @@ export function threadsView(v: AskView): string {
       : `<div class="ask-th-head">${hits.data.length} ${hits.data.length === 1 ? "thread" : "threads"}</div>${hits.data.length
         ? `<div class="ask-th-list" data-morph-list data-ask-enter="fade">${hits.data.map((h) => row(v, h.thread, h)).join("")}</div>`
         : `<div class="ask-th-none">No thread mentions “${esc(q)}”.</div>`}`;
-  } else if (ui.threads.status === "loading" && !ui.threads.data.length) {
+  } else if ((ui.threads.status === "loading" || ui.threads.status === "idle") && !ui.threads.data.length) {
+    // Not read yet (idle is a paint before the first read starts): the rows' shape, never "No threads yet" early.
     body = skeleton("ask-threads", "Loading your threads…", `<div class="ask-th-head">${skLine("32%", 11.5, 1.4)}</div>${skList(6, (i) => `<div class="ask-th-skrow">${skLine(skW(i), 13, 1.5)}</div>`)}`);
   } else if (ui.threads.status === "error" && !ui.threads.data.length) {
     body = `<div class="ask-th-none">Couldn't load your threads.</div>`;

@@ -3,7 +3,7 @@ import type { IngestPayload, FeedEntry, DocProposal, AdrDraft, CapturedEvent } f
 // (src/webhook.ts) calls ingestEvent directly. There is no `events` arm on
 // IngestPayload: subject_login is trustworthy only once the webhook has verified
 // the delivery's HMAC, so no bearer/cookie payload may route events through here.
-import { isSection } from "@shared/vocabulary";
+import { isSection, SECTIONS } from "@shared/vocabulary";
 import { TROV_SYSTEM_HANDLE } from "@shared/ai-core";
 import type { DocRow, DocVersionRow, AdrRow, ProcessedItemRow } from "@shared/rows";
 import { type TenantContext, first, run, nowIso } from "./data/sql";
@@ -20,7 +20,7 @@ import { applyArtifactLinks, type ArtifactLinkOutcome } from "./tools/artifacts-
 import { routeAi } from "./tools/ai-route";
 import { docImageProblems } from "./tools/doc-images";
 import { recordTagSuggestions, sortAgentTags } from "./tools/tags";
-import { spaceState } from "./tools/spaces";
+import { liveSpaceSlugs, spaceState } from "./tools/spaces";
 import { checkParent, type ParentRefusal } from "./tools/doc-tree";
 import { DEFAULT_SPACE, resolveSpaceAlias } from "@shared/docs-core";
 
@@ -32,12 +32,15 @@ export interface AiFeedProvenance { model: string; subject: string | null }
 // "3 docs: 1 staged, 2 unchanged".
 export interface IngestResult {
   feed: { written: number; unchanged: number; triaged: number };
-  docs: { staged: number; unchanged: number; triaged: number };
-  adrs: { staged: number; unchanged: number; triaged: number };
+  // A doc or a decision is never sent to Unplaced any more: it stages, is unchanged, or (a doc) is REFUSED below.
+  docs: { staged: number; unchanged: number };
+  adrs: { staged: number; unchanged: number };
+  /** A batch's own `needs_triage` items — kept for plugins older than 0.11, whose skill still sends them. */
   triage: { recorded: number; unchanged: number };
-  /** Doc proposals the gate REFUSED (a dangling or external image), each with why.
-   *  Present only when non-empty, so a batch with no images reads exactly as before. */
-  refused?: { slug: string; reason: string }[];
+  /** Doc proposals the gate REFUSED, each with why: a dangling or external image, a section that is not one, a space
+   *  that is not a live one of the org, or an archived page. The reason lists what IS valid, so the agent fixes it and
+   *  re-sends in the same session (a refusal is not ledgered). Present only when non-empty. */
+  refused?: { slug: string; reason: string; code: DocRefusal }[];
   /** Tags a feed entry carried that are not on the org's list: the entries were written WITHOUT them and
    *  each waits, as a suggestion, for an admin. Present only when non-empty. */
   suggested_tags?: string[];
@@ -64,15 +67,15 @@ export type DocIngestResult =
   // too deep) — the page was staged without it. Present only then.
   | { outcome: "written"; slug: string; version: number; status: "staged"; change_kind: "new" | "edit" | "rewrite"; base_version: number | null; low_confidence: boolean; parent_ignored?: { parent_slug: string; reason: ParentRefusal } }
   | { outcome: "unchanged"; slug?: string }
-  | { outcome: "triaged"; reason: string }
-  // Refused outright: nothing staged, nothing triaged (a person cannot repair a missing
-  // upload), and NOT ledgered — once the image is uploaded, the same payload re-POSTed
+  // Refused outright: nothing staged, nothing sent to Unplaced, and NOT ledgered — once the agent fixes what the
+  // reason names (uploads the image, picks a listed section or space, uses another slug), the same payload re-POSTed
   // (same session id + index) stages instead of replaying as "unchanged".
-  | { outcome: "refused"; slug: string; reason: string };
+  | { outcome: "refused"; slug: string; reason: string; code: DocRefusal };
+/** Why the gate refused a doc proposal (fixed codes; the reason says it in words and lists what is valid). */
+export type DocRefusal = "image" | "section" | "space" | "archived_page";
 export type AdrIngestResult =
   | { outcome: "written"; id: number }
-  | { outcome: "unchanged"; id?: number }
-  | { outcome: "triaged"; reason: string };
+  | { outcome: "unchanged"; id?: number };
 export type EventIngestResult = { outcome: "written"; id: number } | { outcome: "unchanged" };
 
 // ---------------------------------------------------------------------------
@@ -114,7 +117,7 @@ async function ledgerRecord(
 
 // ---------------------------------------------------------------------------
 // The gate. ONE place per entry-type decides ledger/vocab/confidence/dedupe →
-// write-or-stage-or-triage-or-drop. Every write path (the /ingest consumer below
+// write-or-stage-or-refuse-or-drop. Every write path (the /ingest consumer below
 // AND the MCP write tools) funnels through these, so the invariant holds
 // identically regardless of entry point. The author is always the authenticated
 // principal, passed in by the caller. A `ledger` makes the entry replay-safe.
@@ -162,8 +165,18 @@ export async function ingestFeedEntry(ctx: TenantContext, entry: FeedEntry, auth
  *  routes pass it; written to doc_versions.import_id / import_path). */
 export interface DocIngestOptions { importId?: number; importPath?: string }
 
-/** Docs: reconcile against the KB. Out-of-vocab section or low-confidence-new → triage;
- *  low-confidence-existing → stage-and-flag; unchanged body → drop; else stage a typed delta.
+/** The sections a doc may be filed in, for a refusal's words (`needs-triage` is Unplaced's own, never offered). */
+const DOC_SECTIONS = SECTIONS.filter((s) => s !== "needs-triage").join(", ");
+
+/** What to send instead: the org's live spaces, for a refusal's words. */
+async function liveSpacesWords(ctx: TenantContext): Promise<string> {
+  const live = await liveSpaceSlugs(ctx);
+  return live.length ? `use one of this organization's spaces: ${live.join(", ")}` : "this organization has no live space; a person creates or restores one in the Library";
+}
+
+/** Docs: reconcile against the KB. A section that is not one, a space that is not a live one of the org, or an
+ *  archived page → REFUSED with what is valid (nothing written, not ledgered: the agent fixes it and re-sends); low
+ *  confidence → stage-and-flag (a new slug too); unchanged body → drop; else stage a typed delta.
  *  A `parent_slug` places the page in its space's tree (a new page at insert; an existing page's on promote);
  *  an invalid one is ignored with `parent_ignored` in the result — never triaged. */
 export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposal, author: string, ledger?: LedgerRef, opts?: DocIngestOptions): Promise<DocIngestResult> {
@@ -172,53 +185,41 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
   // Images: every one must be an uploaded doc image (/img/<sha256>) — checked first,
   // since neither staging nor triage can fix a missing upload.
   const imageProblem = await docImageProblems(ctx, proposal.body);
-  if (imageProblem) return { outcome: "refused", slug: proposal.slug, reason: imageProblem };
+  if (imageProblem) return { outcome: "refused", slug: proposal.slug, reason: imageProblem, code: "image" };
 
+  // "Refuse or stage" (owner ruling, 2026-10-18): nothing an agent sends lands in Unplaced. Each refusal says what IS
+  // valid, so the agent fixes it in the same session; none is ledgered, so the corrected re-send stages.
   if (!isSection(proposal.section)) {
-    const reason = `out-of-vocab section: ${proposal.section}`;
-    await route_triage(ctx,{ raw: proposal, reason, source_author: author });
-    if (ledger) await ledgerRecord(ctx,ledger, "doc", "triaged", null);
-    return { outcome: "triaged", reason };
+    return { outcome: "refused", slug: proposal.slug, code: "section", reason: `unknown section "${proposal.section}": a doc's section is one of ${DOC_SECTIONS}` };
   }
 
   const existing = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
   const lowConf = proposal.confidence === "low";
 
   // An ARCHIVED page (0083_doc_archive) takes nothing from a proposal — no version, no parent, no restore: only a
-  // person archives and restores (cookie routes). It goes to triage, where a person sees it. Its slug stays reserved,
-  // so a "new" page with that slug lands here too.
+  // person archives and restores (cookie routes). Refused, saying so. Its slug stays reserved, so a "new" page with
+  // that slug is refused too.
   if (existing?.archived_at) {
-    const reason = `archived page: ${proposal.slug}`;
-    await route_triage(ctx, { raw: proposal, reason, source_author: author });
-    if (ledger) await ledgerRecord(ctx, ledger, "doc", "triaged", null);
-    return { outcome: "triaged", reason };
+    return { outcome: "refused", slug: proposal.slug, code: "archived_page", reason: `"${proposal.slug}" is an archived page: it takes no proposal and its name stays reserved. A person restores it in the Library; for a new page, use another slug` };
   }
 
   // The space (0081_docs_library): an alias resolves (`technical` → `engineering`), then a space that was SENT
-  // must be a live space of the org — an unknown or archived one goes to triage, never guessed. With none sent,
-  // a NEW doc goes to `engineering` only while that space is live (else triage); an existing doc keeps its own
+  // must be a live space of the org — an unknown or archived one is refused, never guessed. With none sent,
+  // a NEW doc goes to `engineering` only while that space is live (else refused); an existing doc keeps its own
   // space either way (a proposal never moves a doc).
   const sentSpace = resolveSpaceAlias(proposal.space);
   const space = sentSpace ?? (existing ? existing.space : DEFAULT_SPACE);
   if (sentSpace !== null || !existing) {
     const state = await spaceState(ctx, space);
     if (state !== "live") {
-      const reason = sentSpace === null ? `no space given, and the default space (${DEFAULT_SPACE}) is ${state === "archived" ? "archived" : "missing"}`
-        : state === "archived" ? `archived space: ${space}` : `unknown space: ${space}`;
-      await route_triage(ctx, { raw: proposal, reason, source_author: author });
-      if (ledger) await ledgerRecord(ctx, ledger, "doc", "triaged", null);
-      return { outcome: "triaged", reason };
+      const what = sentSpace === null ? `no space given, and the default space (${DEFAULT_SPACE}) is ${state === "archived" ? "archived" : "missing"}`
+        : state === "archived" ? `the space "${space}" is archived` : `unknown space "${space}"`;
+      return { outcome: "refused", slug: proposal.slug, code: "space", reason: `${what}: ${await liveSpacesWords(ctx)}` };
     }
   }
 
-  // Low confidence: a NEW slug is too uncertain to even create — triage. An
-  // EXISTING slug stages but is flagged for human scrutiny.
-  if (lowConf && !existing) {
-    const reason = "low confidence doc proposal";
-    await route_triage(ctx,{ raw: proposal, reason, source_author: author });
-    if (ledger) await ledgerRecord(ctx,ledger, "doc", "triaged", null);
-    return { outcome: "triaged", reason };
-  }
+  // Low confidence stages and is FLAGGED (`low_confidence = 1`) for a closer look in Review — a new slug as well as an
+  // existing one (a new one went to Unplaced until 2026-10-18).
 
   const hash = await contentHash(proposal.body);
 
@@ -275,7 +276,7 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
       content_hash: hash,
       base_version,
       change_kind,
-      low_confidence: lowConf, // true only for low-confidence on an EXISTING slug (new+low triaged above)
+      low_confidence: lowConf, // Review's "Low confidence" mark
       parent_slug: parent?.parent_slug ?? null,
       tree_rank: parent?.tree_rank ?? null,
       import_id: opts?.importId ?? null,
@@ -288,17 +289,11 @@ export async function ingestDocProposal(ctx: TenantContext, proposal: DocProposa
   return { outcome: "written", ...res, change_kind, base_version, low_confidence: lowConf, ...(parent_ignored ? { parent_ignored } : {}) };
 }
 
-/** ADRs: low confidence → triage; content-hash dedupe on title+context+decision+rationale →
- *  identical exists → drop; else stage a 'draft' carrying its content_hash. */
+/** ADRs: content-hash dedupe on title+context+decision+rationale → identical exists → drop; else stage a 'draft'
+ *  carrying its content_hash. A low-confidence draft stages too (it went to Unplaced until 2026-10-18): a draft is
+ *  unratified already, and its stored `confidence = 'low'` is what Review flags. */
 export async function ingestAdrDraft(ctx: TenantContext, draft: AdrDraft, author: string, ledger?: LedgerRef): Promise<AdrIngestResult> {
   if (ledger && (await ledgerLookup(ctx,ledger))) return { outcome: "unchanged" };
-
-  if (draft.confidence === "low") {
-    const reason = "low confidence adr draft";
-    await route_triage(ctx,{ raw: draft, reason, source_author: author });
-    if (ledger) await ledgerRecord(ctx,ledger, "adr", "triaged", null);
-    return { outcome: "triaged", reason };
-  }
 
   // NUL separator — it cannot appear in the joined fields, preventing boundary
   // collisions (["ab","c"] vs ["a","bc"]). Written as an escape sequence so the
@@ -445,8 +440,8 @@ export async function consume(ctx: TenantContext, payload: IngestPayload, princi
   const sessionId = payload.session.id;
   const result: IngestResult = {
     feed: { written: 0, unchanged: 0, triaged: 0 },
-    docs: { staged: 0, unchanged: 0, triaged: 0 },
-    adrs: { staged: 0, unchanged: 0, triaged: 0 },
+    docs: { staged: 0, unchanged: 0 },
+    adrs: { staged: 0, unchanged: 0 },
     triage: { recorded: 0, unchanged: 0 },
   };
   let idx = 0;
@@ -465,19 +460,19 @@ export async function consume(ctx: TenantContext, payload: IngestPayload, princi
     const r = await ingestDocProposal(ctx,proposal, author, { sessionId, itemIndex: idx++ });
     if (r.outcome === "written") result.docs.staged++;
     else if (r.outcome === "unchanged") result.docs.unchanged++;
-    else if (r.outcome === "refused") (result.refused ??= []).push({ slug: r.slug, reason: r.reason });
-    else result.docs.triaged++;
+    else (result.refused ??= []).push({ slug: r.slug, reason: r.reason, code: r.code });
   }
 
   for (const draft of payload.adr_drafts) {
     const r = await ingestAdrDraft(ctx,draft, author, { sessionId, itemIndex: idx++ });
     if (r.outcome === "written") result.adrs.staged++;
-    else if (r.outcome === "unchanged") result.adrs.unchanged++;
-    else result.adrs.triaged++;
+    else result.adrs.unchanged++;
   }
 
-  // Explicit triage items: already a triage request — written directly, but
-  // ledger-guarded so a re-POST does not duplicate the queue row.
+  // Explicit triage items: already a triage request — written directly, but ledger-guarded so a re-POST does not
+  // duplicate the queue row. Kept for COMPATIBILITY only: the record-session skill stopped sending them in plugin
+  // 0.11 (an unsure thing is a low-confidence proposal, or left out and told to the person), but an installed older
+  // plugin still does, and refusing its items would lose them.
   for (const item of payload.needs_triage) {
     const ledger: LedgerRef = { sessionId, itemIndex: idx++ };
     if (await ledgerLookup(ctx,ledger)) {

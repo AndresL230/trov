@@ -92,10 +92,14 @@ not a blind overwrite:
 ### 3. Confidence decides the path (placement certainty, not importance)
 
 - **HIGH** — an in-vocab placement truly fits and the change is grounded. The gate stages/appends it.
-- **LOW** — no fitting placement, or you're guessing. Set it low and let the gate route it to
-  `needs_triage` for a human to place. **Routing to triage is the correct outcome for an uncertain
-  entry, not a failure.** Do not force an unrelated section to fake a clean write. (A feed entry's
-  TAGS never send it to triage: see Vocabulary.)
+- **LOW** — the change is right to propose but you're unsure of it (its wording, its scope, whether it
+  fits that page). Set it low: a doc or a decision still STAGES, flagged "Low confidence" so the reviewer
+  reads it closely. **A flagged proposal is the correct outcome for an uncertain entry, not a failure.**
+- **Not sure it belongs anywhere?** Leave it OUT of the batch and say so in what you tell the person
+  ("I left out X — I couldn't tell where it goes"). There is no holding queue: never send `needs_triage`
+  (older versions of this skill did; Trov still accepts it from them, but it is not for new sessions).
+  Do not force an unrelated section to fake a clean write. (A feed entry's TAGS never hold it back: see
+  Vocabulary.)
 
 ### 4. One feeder block per type (emit the contract object)
 
@@ -109,8 +113,8 @@ Build at most one of each, only for what the session genuinely touched:
 - **Doc** — only when the session durably changed a convention/architecture note that belongs in a doc.
   `{ slug, section, space, parent_slug?, title?, body, change_summary, confidence, base_version }`
   (`base_version` from step 2; `space` is a slug from `list_spaces` — e.g. `engineering` for
-  engineering/tooling docs (the default), `product` for product docs; an unknown or archived space sends the
-  doc to triage, and an existing doc keeps its own space whatever you send). `parent_slug` (optional) is
+  engineering/tooling docs (the default), `product` for product docs; an unknown or archived space is
+  REFUSED, and an existing doc keeps its own space whatever you send). `parent_slug` (optional) is
   another page of the same space the doc sits under in the space's page tree; one that is no valid place is
   ignored (the result says `parent_ignored`). Link to another page in the body with `[[its-slug]]` or
   `[[its-slug|the words shown]]`.
@@ -143,7 +147,6 @@ nothing new. Assemble a single `IngestPayload` and pass it to the **`record_sess
   "feed_entries":        [ /* step 4 */ ],
   "doc_proposals":       [ /* step 4, with base_version */ ],
   "adr_drafts":          [ /* step 4 */ ],
-  "needs_triage":        [ /* step 4 */ ],
   "artifact_links":      [ /* step 4 — { slug, target_type, target_ref }, only when the session produced artifacts */ ]
 }
 ```
@@ -152,8 +155,17 @@ Call `mcp__trov__record_session` with that payload. The MCP channel carries your
 call authenticates as you and routes through the SAME gate as the human `/ingest` path;
 **`session.author` is advisory and ignored — the server stamps the author from your authenticated
 principal.** Then **report the structured counts** the tool returns, e.g.
-`{ "docs": { "staged": 1, "unchanged": 2, "triaged": 0 }, … }` → "3 docs: 1 staged, 2 unchanged."
-`unchanged` means the gate recognised a no-op or a replay and correctly dropped it. When you sent
+`{ "docs": { "staged": 1, "unchanged": 2 }, … }` → "3 docs: 1 staged, 2 unchanged."
+`unchanged` means the gate recognised a no-op or a replay and correctly dropped it.
+
+**A `refused` list means fix and re-send, now.** Each item is `{ slug, code, reason }`: an image not
+uploaded yet (`image`), a section that is not one (`section`), a space that is not a live one of the
+organization (`space`), or an archived page's slug (`archived_page`). The reason lists what IS valid —
+the sections, the organization's live spaces. Correct the payload (upload the image, pick a listed
+section or space; for an archived page, use another slug or leave it out and tell the person a person
+must restore that page) and call `record_session` again with the SAME session id: refused items are not
+ledgered, so they stage, and everything that already landed replays as `unchanged`. Never leave a refused
+item unmentioned. When you sent
 `artifact_links`, the result also carries `artifact_links` — one `{ slug, target_type, target_ref,
 outcome }` per link, `linked` / `not_found` / `error` (with the reason) — report any that did not link.
 
@@ -225,14 +237,14 @@ changelog line; it names internals and says nothing about who was hurt before.
   the list, maps it to an existing tag, or dismisses it. You cannot add a tag yourself. Suggest one
   only when the work truly has no home on the list — say so in the summary you give the person.
 - **Doc sections** (`doc_proposals` only): `reference`, `context`, `decisions` — fixed
-  (`shared/vocabulary.ts`). An unknown section still routes the proposal to `needs_triage`.
+  (`shared/vocabulary.ts`). An unknown section is REFUSED (the reason lists the three) — fix and re-send.
 - A feed entry has **no section** — tags alone place it.
 
 ## Hard rules (invariants)
 
 - Never set or spoof **author** — the authenticated principal owns it, server-side.
 - Never mark `'done'`, never **promote / ratify / complete**. You only stage/append; humans confirm.
-- Never **invent vocab**. In-vocab, or out-of-vocab → triage. Nothing in between.
+- Never **invent vocab**. In-vocab, or the gate refuses it and you fix it. Nothing in between.
 - Never write **secrets or tokens** into a doc body or artifact.
 - **Artifacts are observed** from git/gh, never recalled. Docs/ADRs are **read back before written**.
 - **Call once.** The session id makes a re-run replay-safe, but emit one payload per explicit ask.
@@ -245,7 +257,7 @@ changelog line; it names internals and says nothing about who was hurt before.
 - Composing a doc body from memory instead of reading the live doc first (step 2) — you lose the base
   and risk a stale rewrite.
 - Listing a commit/PR/issue `git`/`gh` does not show → fabricated artifact.
-- Forcing a tag or section onto work it doesn't describe → leave the tag off (or suggest one); a doc with no fitting section is low/triage.
+- Forcing a tag or section onto work it doesn't describe → leave the tag off (or suggest one); a doc with no fitting section is left out and mentioned to the person.
 - Tagging from memory instead of `list_tags` → the organization's list is its own and changes.
 - Auto-firing at a natural stopping point instead of waiting for an explicit ask.
 - Writing a `Shipped:` entry for work Trov will digest on its own — the feed then says it twice.

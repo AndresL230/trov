@@ -270,9 +270,10 @@ describe("Review, Unplaced, Search — loading", () => {
     expect(keys(clear)).toEqual([]);
     expect(clear).toContain("Nothing to review");
   });
-  it("Unplaced keeps its intro; the card is a skeleton until the queue is known", () => {
+  it("Unplaced keeps its frame and intro (Review's); the list and the item's pane are skeletons until the queue is known", () => {
     const html = body(render(app("maintenance", { needsTriage: { status: "loading", data: [] } })));
-    expect(keys(html)).toEqual(["unplaced"]);
+    expect(keys(html)).toEqual(["unplaced", "unplaced-detail"]);
+    expect(html).toContain("Things an agent produced but couldn&#39;t place.");
     expect(html).not.toContain("data-empty=");
     expect(body(render(app("maintenance", { needsTriage: { status: "ok", data: [] } })))).toContain('data-empty="unplaced"');
   });

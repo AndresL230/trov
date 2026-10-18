@@ -742,7 +742,9 @@ export function roadmapFixture(state: AiState, now: Date): AiRoadmapFixture | nu
     ],
   };
   const narrative: AiPlanNarrativeValue = {
-    narrative: "Now: hosting connections and their deploy history. Next: billing follow-ups (seat changes, receipts). Later: the public docs and onboarding.",
+    now: "Hosting connections and their deploy history.",
+    next: "Billing follow-ups: seat changes and the receipts page.",
+    later: "The public docs and onboarding.",
   };
   return {
     notes: [

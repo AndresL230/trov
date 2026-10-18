@@ -277,7 +277,7 @@ function concepts(): string {
     [
       "- **Sending the same thing twice changes nothing.** A replayed batch, or a body identical to what is there, is dropped as `unchanged`.",
       "- **Each doc change is classified** `new`, `edit` or `rewrite` by the server, against the live version. The version the writer read (`base_version`) is kept, so an edit written against an out-of-date version is flagged.",
-      "- **Nothing is guessed.** A section or tag outside the team's vocabulary, or a new doc proposed with low confidence, goes to **Triage › Unplaced** for a person to place. Low confidence on an existing doc stages it, flagged for a closer look.",
+      "- **Nothing is guessed.** A doc proposal with a section that isn't one of Trov's, a space your organization doesn't have, or an archived page's name is refused, and the reason lists what is valid, so the agent fixes it in the same session. A change or decision proposed with low confidence is staged, flagged for a closer look. A tag that isn't on your organization's list is left off the entry and suggested to an admin.",
       "- **A doc embeds only images uploaded to Trov.** A proposal pointing at any other image source is refused, and nothing is staged.",
     ].join("\n"),
     "What passes is **staged**: the live doc is untouched until a person promotes the change in **Triage › Review**, which shows it as a diff (unified, side by side, or rendered).",

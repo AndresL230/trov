@@ -20,7 +20,7 @@ Platform, personal Settings (its name, handle and digest-address fields), the Ar
 (`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
 the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
 the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
-wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), Unplaced (`maintenance`: the same keyed list and exit), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -705,6 +705,16 @@ under it move up as the same elements**. Four parts, each in one place:
    it had are back, with the usual error toast. The refetch is held until no row is still
    collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
 
+**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18): its cards are the same `.cnpy-rv-row` /
+`.cnpy-titem` in a `data-morph-list` (keys `up:<id>`, the empty layout `up-empty`), placing or discarding gives
+the card a `data-verdict` of `placed` (green) or `discarded` (quiet) for `UNPLACED_EXIT_MS` (= `REVIEW_EXIT_MS`),
+the state is `state.unplacedLeaving` (main.ts `unplacedVerdict` / `settleUnplaced` / `pruneUnplacedLeaving` — the
+same four parts, the person's picks restored with the card on a failure), and `syncReviewDetail` runs for both
+screens (a new item's pane starts at its top; Place / Discard hand focus to the next item's, Place falling back to
+Discard when the next cannot be placed yet). A Trov suggestion accepted on an Unplaced item placed it, so its card
+leaves by this exit too (the AI kit's `decided` hook), after the chip's own exit. Discard has no arm step: it is
+soft, and its toast carries Undo (`POST /needs-triage/:id/restore`).
+
 Also part of the pattern: the **last** row leaving already has the screen's empty layout under it
 (`emptyLayout`, a keyed child of the same list), which rises as the row collapses, so there is no
 jump; and **reduced motion** means no movement at all: `main.ts` marks the row `gone` at once and
@@ -918,6 +928,10 @@ will be — so nothing moves when the read lands. The rules:
   `reviewView`) rather than being replaced by a stand-in page.
 - **One region per read.** Where a screen has several reads (My Work's tiles, the Feed's and Roadmap's aside
   boxes, Repo's sections, Org settings' lists), each region has its own skeleton and fills on its own.
+- **Never placeholder content.** While a read is out, draw its skeleton — never made-up sample items that the read
+  then swaps out. And a box that holds words the read brings is a FIXED size (clamp the words, the whole text in
+  the tooltip), so the skeleton can be that size and the swap moves nothing: Ask's starters (`ask.md` › Nothing on
+  the empty screen changes size).
 - **Only for "not loaded yet".** Loaded-and-empty is an EMPTY LAYOUT (below), a failed read keeps its error, and a
   refetch keeps the content already on screen (Search keeps its results while a new query is out). A view that
   takes only a slice's `data` cannot tell the two apart — pass it the status (`outboxLoading`, `loading`).
@@ -965,7 +979,7 @@ empty, so a brand-new organization can see what the screen is for. The rules:
   adds Open Org settings › Repositories for an admin (`actionHtml`).
 - **Shapes are the skeleton's builders.** Each screen has ONE shape builder (`tableShapes`,
   `boardCardShapes`, `feedCardShape`, `sprintCardShape`, `timelineShapes`, `handoffRowsShape`,
-  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedShapes`, `skRowsShape`, Hosting's
+  `promptCardShape`, `libraryCardShape`, `reviewCardShape`, `unplacedCardShape` (and its page pane's `unplacedDetailShapes`), `skRowsShape`, Hosting's
   `partsListShape` / `partRowsShape` and the dashboard's `hostingShapes`, …) used by its
   loading skeleton AND its empty layout, so the two have the same columns and row heights and cannot drift.
 - **Never data (CLAUDE.md invariant 7).** A shape is a box: no name, title, number, date, avatar, control or
@@ -1259,7 +1273,11 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
   the item in state at once (every count already leaves it out) and the exit's entry clears after `AI_EXIT_MS`; a
   failed write stops it and the item is back. Accept / Dismiss is optimistic: the write goes out on the click and
   the suggestion's exit starts at once, HELD (`hold`) — drawn collapsed until its screen's re-read drops it; the
-  controller makes ONE re-read once the LAST exit in flight is over (`AiHost.decided`, the themes' `reloadRepo`). The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
+  controller makes ONE re-read once the LAST exit in flight is over (`AiHost.decided`, the themes' `reloadRepo`).
+  The ONE exception is an Accept in the Roadmap's Trov dialog: its writers take seconds, so the card stays busy in
+  place ("Creating 3 sprints…") until the server answers, then the dialog closes when nothing else waits in it (else
+  the card leaves as above), and what it changed rises in (`.cnpy-flash`, `state.rmRise`) once the re-read lands —
+  never an emptied dialog (`roadmap-my-work.md` › Motion). The controller starts every exit (`ai-actions.ts` `leave`). Under reduced motion nothing leaves: it is
   gone at once and the re-read goes out at once (`test/render.ai-motion.test.ts`, `test/render.roadmap-ai-exit.test.ts`, `test/render.ai-cards.test.ts` ›
   motion).
 - **Acts** are `ai…`, in `web/src/ai-actions.ts`. The themes' Rename field keeps its draft WITHOUT a repaint

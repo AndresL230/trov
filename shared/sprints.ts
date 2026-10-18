@@ -26,7 +26,7 @@ import type { TicketRow } from "./tickets";
 import type { AiSprintNote } from "./ai-core";
 import {
   SPRINT_URGENCIES, SPRINT_DOMAINS, SPRINT_STATUSES, SPRINT_RESOURCE_KINDS,
-  PLAN_NARRATIVE_MAX, planNarrativeProblem, sprintDateProblem, sprintDatesProblem,
+  PLAN_NARRATIVE_LABELS, planNarrativeParts, sprintDateProblem, sprintDatesProblem,
 } from "./sprints-core";
 
 // ── controlled vocabulary (must match the CHECK constraints in 0025_sprints.sql) ─
@@ -38,10 +38,11 @@ import {
 export {
   SPRINT_URGENCIES, SPRINT_DOMAINS, SPRINT_STATUSES, SPRINT_RESOURCE_KINDS,
   PLAN_NARRATIVE_MAX, planNarrativeProblem,
+  PLAN_NARRATIVE_PARTS, PLAN_NARRATIVE_LABELS, composePlanNarrative, parsePlanNarrative, planNarrativePartsProblem, planNarrativeParts,
   isoDayKey, localDayKey, sprintDueState,
   isIsoCalendarDate, normalizeSprintDate, sprintDateProblem, sprintDatesProblem, sprintDatesLabel,
 } from "./sprints-core";
-export type { SprintDueState } from "./sprints-core";
+export type { SprintDueState, PlanNarrativePart, PlanNarrativeParts, PlanNarrativeInput } from "./sprints-core";
 
 export const SprintUrgency = z.enum(SPRINT_URGENCIES);
 export const SprintDomain = z.enum(SPRINT_DOMAINS);
@@ -177,16 +178,6 @@ export type SprintDetail = SprintView & {
 // ── payloads (request bodies; the routes validate with these) ────────────────
 
 /**
- * The plan narrative as the `update_plan` input takes it: trimmed, at most
- * PLAN_NARRATIVE_MAX characters. Over the cap is a validation error naming the cap
- * and the actual length; `write_plan` applies the same rule for every other caller.
- */
-export const PlanNarrative = z.string().trim().superRefine((narrative, ctx) => {
-  const problem = planNarrativeProblem(narrative);
-  if (problem) ctx.addIssue({ code: "custom", message: problem });
-});
-
-/**
  * One sprint date as a request field: absent / null / "" = not set, otherwise a real
  * calendar day written YYYY-MM-DD (`sprintDateProblem`, the ONE rule in
  * ./sprints-core). Trimmed. The start <= due check spans two fields, so it lives on
@@ -239,6 +230,30 @@ export const PlanSprintEntry = z.object({
   domain: SprintDomain.nullable().optional(),
   github_ref: z.union([z.number(), z.array(z.number())]).nullable().optional(),
 }).superRefine(sprintDatesRefine);
+
+/**
+ * The plan narrative as a plan write takes it (`update_plan`, Ask Trov's card): three parts — `now`, `next`,
+ * `later` — that the server composes into the ONE stored form (./sprints-core `composePlanNarrative`). An older
+ * client's single `narrative` is accepted only when it already reads as Now / Next / Later. Each field is optional
+ * HERE so either form can arrive; which one is valid is the ONE rule, `planNarrativeParts`, applied by `write_plan`
+ * for every caller (and by `PlanWriteInput` before Ask makes a card). The descriptions are what an agent reads.
+ */
+const narrativePart = (k: "now" | "next" | "later", what: string) => z.string().optional().describe(
+  `${what} One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a "${PLAN_NARRATIVE_LABELS[k]}:" label (the server adds it). Required, with the other two parts.`);
+export const PlanNarrativeFields = {
+  now: narrativePart("now", "The roadmap narrative's Now: what is happening now."),
+  next: narrativePart("next", "The roadmap narrative's Next: what comes next."),
+  later: narrativePart("later", "The roadmap narrative's Later: what is further out."),
+  narrative: z.string().optional().describe(
+    `DEPRECATED — pass now, next and later instead. Accepted only when it already reads "**Now:** … **Next:** … **Later:** …"; anything else is refused and nothing is written.`),
+};
+
+/** A whole plan write's input as one object (Ask Trov's card): the narrative's parts and the sprint entries. The
+ *  narrative rule refuses a bad one here too, so no card is made from it. */
+export const PlanWriteInput = z.object({ ...PlanNarrativeFields, sprints: z.array(PlanSprintEntry).default([]) }).superRefine((v, ctx) => {
+  const r = planNarrativeParts(v);
+  if ("problem" in r) ctx.addIssue({ code: "custom", message: r.problem });
+});
 
 export const SprintActiveSet = z.object({ active: z.boolean() });
 export const SprintResourceAdd = z.object({ raw: z.string().min(1) });

@@ -459,7 +459,7 @@ export async function sendImportPages(ctx: TenantContext, id: number, by: string
     const done = ledger.get(pg.index);
     if (done === "staged") { out("staged", undefined, { slug: w.slug }); continue; }
     if (done === "unchanged") { out("unchanged", "unchanged", { slug: w.slug }); continue; }
-    if (done === "triaged") { out("failed", "triaged"); continue; }
+    if (done === "triaged") { out("failed", "triaged"); continue; } // a page sent before the gate stopped triaging
 
     let body = "";
     if (w.path !== null) {
@@ -490,8 +490,8 @@ export async function sendImportPages(ctx: TenantContext, id: number, by: string
         mine.add(res.slug);
         out("staged", undefined, { slug: res.slug, version: res.version });
       } else if (res.outcome === "unchanged") out("unchanged", "unchanged", { slug: w.slug });
-      else if (res.outcome === "triaged") out("failed", "triaged");
-      else out("failed", "refused");
+      // The gate refuses rather than sending anything to Unplaced: say which refusal, in the import's own words.
+      else out("failed", res.code === "image" ? "refused" : res.code === "space" ? "space_gone" : res.code === "archived_page" ? "archived_page" : "failed");
     } catch (e) {
       console.error("import page failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
       out("failed", "failed");

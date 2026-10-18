@@ -40,7 +40,7 @@ export function aiRoadmapDevStatements(fx, now = Date.now()) {
 
   for (const sg of ai.suggestions ?? []) {
     s.push(`INSERT INTO ai_suggestions (org_id, item_type, item_ref, kind, value_json, confidence, reason, cites_json, model, prompt_version, state, created_at) VALUES (` +
-      `${q(ORG)}, 'roadmap', 'org', ${q(sg.kind)}, ${q(JSON.stringify(sg.value))}, NULL, ${q(sg.reason)}, ${q(JSON.stringify(sg.cites))}, ${q(MODEL)}, ${q(sg.kind === "sprint_draft" ? "draft-1" : "narrative-1")}, 'open', ${q(ago(sg.ago_min))})`);
+      `${q(ORG)}, 'roadmap', 'org', ${q(sg.kind)}, ${q(JSON.stringify(sg.value))}, NULL, ${q(sg.reason)}, ${q(JSON.stringify(sg.cites))}, ${q(MODEL)}, ${q(sg.kind === "sprint_draft" ? "draft-1" : "narrative-2")}, 'open', ${q(ago(sg.ago_min))})`);
   }
 
   // Doc drift: the feed entries it compared, then the staged, low-confidence proposal Trov made through the gate.

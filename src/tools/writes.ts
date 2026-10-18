@@ -473,6 +473,31 @@ export async function resolve_triage(
   return { id, resolution, assigned_ref };
 }
 
+/** Thrown by `restore_triage`: the item is not this org's (404) or was placed, not discarded (409). */
+export class TriageRestoreError extends Error {
+  constructor(readonly code: "not_found" | "assigned", readonly status: 404 | 409, message: string) { super(message); }
+}
+
+/**
+ * Undo a DISCARD (Unplaced's Undo toast): the item goes back to the queue, unresolved, its audit columns cleared —
+ * exactly as it was before. Only a discarded item: one that was placed made something through the gate, which this
+ * cannot take back (409). An item that is already unresolved is an idempotent no-op. A person's write, cookie only.
+ */
+export async function restore_triage(ctx: TenantContext, id: number): Promise<{ id: number; restored: boolean }> {
+  const row = await first<NeedsTriageRow>(ctx, `SELECT * FROM needs_triage WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+  if (!row) throw new TriageRestoreError("not_found", 404, `no such triage item: ${id}`);
+  if (!row.resolved) return { id, restored: false };
+  if (row.resolution !== "discarded") throw new TriageRestoreError("assigned", 409, "this item was placed, not discarded, so it can't be put back");
+  await run(
+    ctx,
+    `UPDATE needs_triage SET resolved = 0, resolved_at = NULL, resolved_by = NULL, resolution = NULL, assigned_ref = NULL
+      WHERE id = ? AND org_id = ? AND resolution = 'discarded'`,
+    id,
+    ctx.orgId
+  );
+  return { id, restored: true };
+}
+
 export type AssignType = "doc" | "adr" | "feed";
 export interface AssignTarget {
   type?: AssignType;
@@ -488,10 +513,11 @@ export interface AssignTarget {
  * 'assigned' with assigned_ref pointing at what it became.
  *
  * The author is the authenticated principal (`by`). Confidence is forced 'high'
- * because the human's act of assigning vouches for the item. The cheap pre-checks
- * mirror the gate's only triage triggers (so a high-confidence assign cannot loop
- * back into the queue and leave a stray duplicate triage row). Idempotent-safe: a
- * second assign on an already-resolved item materializes nothing new.
+ * because the human's act of assigning vouches for the item. The gate never sends
+ * anything back to the queue: what it REFUSES (a space that is not live, an archived
+ * page) throws with the gate's reason — the route answers the person 400 and the item
+ * stays unresolved. Idempotent-safe: a second assign on an already-resolved item
+ * materializes nothing new.
  */
 export async function assign_triage(
   ctx: TenantContext,
@@ -530,12 +556,11 @@ export async function assign_triage(
       space: target.space ?? (typeof raw.space === "string" ? raw.space : undefined),
     });
     const r = await ingestDocProposal(ctx, proposal, by, ledger);
-    if (r.outcome === "triaged" || r.outcome === "refused") throw new Error(`could not place doc: ${r.reason}`);
+    if (r.outcome === "refused") throw new Error(`could not place doc: ${r.reason}`);
     assigned_ref = r.outcome === "written" ? `doc:${r.slug}@${r.version}` : `doc:${r.slug ?? proposal.slug}`;
   } else if (type === "adr") {
     const draft = AdrDraft.parse({ ...raw, confidence: "high" });
     const r = await ingestAdrDraft(ctx, draft, by, ledger);
-    if (r.outcome === "triaged") throw new Error(`could not place decision: ${r.reason}`);
     assigned_ref = `adr:${r.id}`;
   } else {
     // Tags the PERSON picked must be on the org's list (the picker offers nothing else). With none

@@ -7,7 +7,8 @@ import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
 import { createInvite, acceptInvite } from "../src/auth/invites";
-import { ingestAdrDraft, ingestEvent, ingestFeedEntry } from "../src/consumer";
+import { consume, ingestEvent, ingestFeedEntry } from "../src/consumer";
+import { IngestPayload } from "@shared/contract";
 import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
 import { write_plan } from "../src/tools/plan";
 import {
@@ -17,6 +18,7 @@ import {
 } from "../src/tools/writes";
 import { create_ticket, add_ticket_comment } from "../src/tools/tickets";
 import { addOrgRepo } from "./helpers/org-config";
+import { narr } from "./helpers/plan";
 
 // A bare issue ref (`#214`) resolves against the ORG's primary repository — there is no default one —
 // so the suite's org has SaplingLearn's connected, as 0042_organizations seeds it in production.
@@ -44,15 +46,14 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
   // is gone along with the whole proposal queue).
   await write_plan(
     systemCtx(),
-    { narrative: "n", sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
+    { ...narr("n"), sprints: [{ label: "Rename test sprint", due: "2026-01-01", status: "upcoming", lead: handle }] },
     handle
   );
   const tid = await route_triage(systemCtx(), { raw: "x", reason: "y" });
   await resolve_triage(systemCtx(), tid, handle); // needs_triage.resolved_by
-  // needs_triage.source_author: route a low-confidence decision through the REAL gate
-  // (src/consumer.ts ingestAdrDraft), not a direct insert — this is the actual writer of
-  // that column on every triage-routing path.
-  await ingestAdrDraft(systemCtx(), { title: "unsure", context: "c", decision: "d", rationale: "r", confidence: "low" }, handle); // needs_triage.source_author
+  // needs_triage.source_author: a batch's own triage item through the REAL gate (src/consumer.ts consume — the one
+  // path left that writes that column since the gate stopped triaging docs and decisions, 2026-10-18).
+  await consume(systemCtx(), IngestPayload.parse({ session: { id: "rename-triage", author: "x", ended_at: "2026-01-01T00:00:00Z", skill_version: "1" }, needs_triage: [{ raw: "unsure", reason: "agent unsure" }] }), { handle }); // needs_triage.source_author
   // The org's tag list (0056_org_tags). org_tag_suggestions.suggested_by through the REAL gate: a feed
   // entry with a tag that is not on the list. The rest are an admin's writes — direct inserts here.
   await ingestFeedEntry(
@@ -76,7 +77,7 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     { semantic_key: "gh:pr:777:merged", event_type: "pr_merged", ref_number: 777, subject_login: "someone-else", raw: "{}", provenance: "backfill" },
     handle
   ); // events.recorded_by
-  await write_plan(systemCtx(), { narrative: "n", sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
+  await write_plan(systemCtx(), { ...narr("n"), sprints: [] }, handle); // plan.updated_by + plan_versions.created_by
   // Tickets (0024): tickets.requester + ticket_assignees.login + ticket_links.created_by
   // + ticket_comments.author + ticket_events.actor — all five through the REAL
   // writers (src/tools/tickets.ts, Phase 2). create_ticket alone covers requester,

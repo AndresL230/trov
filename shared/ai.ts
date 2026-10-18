@@ -177,5 +177,10 @@ export const AiSprintDraftValueSchema = z.object({
   })).min(1).max(4),
 }) satisfies z.ZodType<AiSprintDraftValue>;
 
-/** What accepting a narrative proposal takes. The cap itself is `write_plan`'s (PLAN_NARRATIVE_MAX). */
-export const AiPlanNarrativeValueSchema = z.object({ narrative: z.string().trim().min(1) }) satisfies z.ZodType<AiPlanNarrativeValue>;
+/** What accepting a narrative proposal takes: the three parts (or a legacy `{ narrative }`, taken only when it
+ *  parses into them). The rule itself — each part non-empty, the composed text within PLAN_NARRATIVE_MAX — is
+ *  `write_plan`'s (`planNarrativeParts`). */
+export const AiPlanNarrativeValueSchema = z.union([
+  z.object({ now: z.string().trim().min(1), next: z.string().trim().min(1), later: z.string().trim().min(1) }),
+  z.object({ narrative: z.string().trim().min(1) }),
+]) satisfies z.ZodType<AiPlanNarrativeValue>;

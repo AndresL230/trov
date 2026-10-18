@@ -23,6 +23,7 @@ import {
 import { cookieFor, seedPerson } from "./helpers/persons";
 import combined from "../migrations/0035_library_and_sprint_dates.sql?raw";
 import { bearerCtx, systemCtx } from "./helpers/tenant";
+import { narr } from "./helpers/plan";
 /** PART B of the consolidated migration — the sprint-dates part: the text between the
  *  PART B and PART C marker lines (PART C, prompt soft delete, follows it). */
 const migration = (combined.split("-- ═══ PART B")[1] ?? "").split("-- ═══ PART C")[0];
@@ -179,17 +180,17 @@ describe("MCP create_sprint — the same rule", () => {
 describe("update_plan / write_plan — the same rule, before the first write", () => {
   it("creates and updates start through the DTO vocabulary; omitted start is kept, null clears", async () => {
     const res = await callTool(ADMIN, "update_plan", {
-      narrative: "n",
+      ...narr("n"),
       sprints: [{ label: "Planned", start: "2026-10-06", due: "2026-10-17", status: "upcoming" }],
     });
     expect(res.isError).toBeFalsy();
     const [sp] = await list_sprints(systemCtx());
     expect(sp.start).toBe("2026-10-06");
 
-    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id: sp.id, label: "Planned", due: "2026-10-24", status: "upcoming" }] }, ADMIN);
+    await write_plan(systemCtx(), { ...narr("n"), sprints: [{ id: sp.id, label: "Planned", due: "2026-10-24", status: "upcoming" }] }, ADMIN);
     expect((await list_sprints(systemCtx()))[0]).toMatchObject({ start: "2026-10-06", due: "2026-10-24" });
 
-    await write_plan(systemCtx(), { narrative: "n", sprints: [{ id: sp.id, label: "Planned", start: null, due: "2026-10-24", status: "upcoming" }] }, ADMIN);
+    await write_plan(systemCtx(), { ...narr("n"), sprints: [{ id: sp.id, label: "Planned", start: null, due: "2026-10-24", status: "upcoming" }] }, ADMIN);
     expect((await list_sprints(systemCtx()))[0].start).toBeNull();
   });
 
@@ -199,7 +200,7 @@ describe("update_plan / write_plan — the same rule, before the first write", (
       { label: "Bad", due: "2026-02-30", status: "upcoming" },
       { label: "Bad", start: "2026-10-20", due: "2026-10-17", status: "upcoming" },
     ]) {
-      const res = await callTool(ADMIN, "update_plan", { narrative: "n", sprints: [entry] });
+      const res = await callTool(ADMIN, "update_plan", { ...narr("n"), sprints: [entry] });
       expect(res.isError).toBe(true);
       expect(res.text).toMatch(/must be a real calendar date|is after due/);
     }
@@ -208,9 +209,9 @@ describe("update_plan / write_plan — the same rule, before the first write", (
   });
 
   it("write_plan checks a new due against the STORED start when start is omitted", async () => {
-    await write_plan(systemCtx(), { narrative: "n", sprints: [{ label: "S", start: "2026-10-06", due: "2026-10-17", status: "upcoming" }] }, ADMIN);
+    await write_plan(systemCtx(), { ...narr("n"), sprints: [{ label: "S", start: "2026-10-06", due: "2026-10-17", status: "upcoming" }] }, ADMIN);
     const [sp] = await list_sprints(systemCtx());
-    await expect(write_plan(systemCtx(), { narrative: "moved", sprints: [{ id: sp.id, label: "S", due: "2026-10-01", status: "upcoming" }] }, ADMIN))
+    await expect(write_plan(systemCtx(), { ...narr("moved"), sprints: [{ id: sp.id, label: "S", due: "2026-10-01", status: "upcoming" }] }, ADMIN))
       .rejects.toMatchObject({ code: "bad_request", message: expect.stringMatching(/start \(2026-10-06\) is after due \(2026-10-01\)/) });
     expect(await planVersions()).toBe(1);
     expect((await list_sprints(systemCtx()))[0].due).toBe("2026-10-17");

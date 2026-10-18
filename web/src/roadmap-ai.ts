@@ -24,7 +24,8 @@
 // Under reduced motion it goes at once.
 
 import type { SprintForecast, SprintView } from "@shared/sprints";
-import { aiItemRef, type AiPlanDrift, type AiSprintDraftValue, type AiPlanNarrativeValue, type AiSprintNote, type AiSuggestion } from "@shared/ai-core";
+import { aiItemRef, aiNarrativeParts, type AiPlanDrift, type AiSprintDraftValue, type AiSprintNote, type AiSuggestion } from "@shared/ai-core";
+import { PLAN_NARRATIVE_LABELS, PLAN_NARRATIVE_PARTS, type PlanNarrativeParts } from "@shared/sprints-core";
 import { AI_NOT_OFFICIAL, aiMark, markShape } from "./marks";
 import { aiByline, aiCapped, aiCites, aiDay, aiFeedback, aiHiddenKey, aiLeaving, aiLeavingT, aiSuggestionChip, aiSuggestionKey, aiWrongBtn, type AiUi } from "./ai-ui";
 import { esc, attr } from "./ui";
@@ -126,30 +127,45 @@ function draftBody(v: AiSprintDraftValue): string {
       <div style="display:flex;flex-wrap:wrap;gap:4px 8px;margin-top:3px">${s.tickets.map((n) => `<a href="#tickets/${n}" style="${TICKET_LINK}">#${n}</a>`).join("")}</div></li>`).join("")}</ol>`;
 }
 
-/** What a narrative proposal would write. Rendered through the app's sanitizing markdown, like the narrative. */
-function narrativeBody(v: AiPlanNarrativeValue): string {
-  return `<div class="cnpy-md" style="font-size:13px;color:var(--fg-70);border-left:2px solid var(--border-strong);padding-left:10px">${renderMarkdown(v.narrative)}</div>`;
+/** The plan narrative's Now / Next / Later box (trov.css `.rm-nnl`): three rows, each its label beside its text,
+ *  hairlines between them — the "What's happening" card's body (render.ts `planNarrativeBlock`) and what a narrative
+ *  proposal would write, the same box in both places. Each part goes ONLY through `markdownFn` (the sanitizing
+ *  renderMarkdown in the app). `cls` / `attrs` extend the box (its rise). */
+export function planNarrativeBox(parts: PlanNarrativeParts, markdownFn: (body: string) => string, o: { cls?: string; attrs?: string } = {}): string {
+  return `<dl class="rm-nnl${o.cls ?? ""}"${o.attrs ?? ""}>${PLAN_NARRATIVE_PARTS.map((k) =>
+    `<div class="rm-nnl-row" data-part="${k}"><dt class="rm-nnl-k">${PLAN_NARRATIVE_LABELS[k]}</dt><dd class="cnpy-md rm-nnl-v">${markdownFn(parts[k])}</dd></div>`).join("")}</dl>`;
+}
+
+/** What a narrative proposal would write: the card's own box, a size down inside the suggestion. A proposal stored
+ *  before the structure that does not parse is not drawn (it cannot be accepted either). */
+function narrativeBody(parts: PlanNarrativeParts): string {
+  return `<div class="rm-nnl-sugg">${planNarrativeBox(parts, renderMarkdown)}</div>`;
 }
 
 const isDraft = (v: unknown): v is AiSprintDraftValue =>
   !!v && typeof v === "object" && Array.isArray((v as AiSprintDraftValue).sprints)
   && (v as AiSprintDraftValue).sprints.every((s) => s && typeof s.name === "string" && Array.isArray(s.tickets));
-const isNarrative = (v: unknown): v is AiPlanNarrativeValue => !!v && typeof v === "object" && typeof (v as AiPlanNarrativeValue).narrative === "string";
 
 /** An admin's suggestion cards, at the top of the Roadmap: one per open suggestion, the kit's box with what it
  *  proposes inside it and an Accept that says what it does ("Create 2 sprints", "Use this narrative"). "" with none (everyone but an admin gets none from the server). A keyed list: a card an Accept /
  *  Dismiss took collapses out of it while the others stay the elements they were. */
 export function roadmapSuggestionCards(list: AiSuggestion[] | undefined, ui: Pick<AiUi, "busy" | "unavailable" | "reasonOpen"> & Partial<Pick<AiUi, "leaving">>): string {
   const cards = (list ?? []).filter((s) => s.state === "open" && s.reason).map((s) => {
+    const parts = s.kind === "plan_narrative" ? aiNarrativeParts(s.value) : null;
     const body = s.kind === "sprint_draft" && isDraft(s.value) ? draftBody(s.value)
-      : s.kind === "plan_narrative" && isNarrative(s.value) ? narrativeBody(s.value) : "";
+      : parts ? narrativeBody(parts) : "";
     if (!body) return "";
     const key = `roadmap-${s.id}`;
     // Accept says what it does; what it would write sits inside the box, never loose below it.
-    const acceptLabel = s.kind === "sprint_draft" && isDraft(s.value)
-      ? `Create ${s.value.sprints.length === 1 ? "this sprint" : `${s.value.sprints.length} sprints`}` : "Use this narrative";
+    // While an Accept is out (it waits for the server: ai-actions.ts › THE ROADMAP'S DIALOG) it says what it is doing.
+    const busy = ui.busy.includes(s.id);
+    const working = busy && !ui.leaving?.some((l) => l.key === aiSuggestionKey(s.id)); // not a Dismiss on its way out
+    const n = s.kind === "sprint_draft" && isDraft(s.value) ? s.value.sprints.length : 0;
+    const acceptLabel = n
+      ? working ? `Creating ${n === 1 ? "the sprint" : `${n} sprints`}…` : `Create ${n === 1 ? "this sprint" : `${n} sprints`}`
+      : working ? "Updating the narrative…" : "Use this narrative";
     const chip = aiSuggestionChip({ key, id: s.id, label: s.label, reason: s.reason, cites: s.cites }, {
-      open: ui.reasonOpen === key, busy: ui.busy.includes(s.id), unavailable: ui.unavailable.includes(s.id), canAct: true, acceptLabel, body,
+      open: ui.reasonOpen === key, busy, unavailable: ui.unavailable.includes(s.id), canAct: true, acceptLabel, body,
     });
     const card = `<div class="rm-suggestion" data-suggestion="${s.id}" style="min-width:0">${chip}</div>`;
     return exitRow({ hidden: [], leaving: ui.leaving }, aiSuggestionKey(s.id), "rm-suggestion-row", "padding-bottom:16px", card, { hold: true, key: `s:${s.id}` });

@@ -14,6 +14,7 @@ import { cookieFor } from "./helpers/persons";
 import { ORG_A, platformCtx, tenantCtx } from "./helpers/tenant";
 import { BASE, ask, call, eventsOf, fakeModel, withAsk } from "./helpers/ask";
 import { addOrgRepo } from "./helpers/org-config";
+import { STARTER_TOPIC_MAX, starterTopic } from "../src/ai/ask/routes";
 
 const ME = "ask-viewer";
 const final = (title = "Views") => `\n<trov-meta>{"title": "${title}", "followups": []}</trov-meta>`;
@@ -188,6 +189,19 @@ describe("the composer's state and Settings › Trov", () => {
     expect(state.modes.map((m) => [m.id, m.countsAs])).toEqual([["fast", 1], ["smart", 1], ["thinking", 5]]);
     expect(state.starters).toContain(`Summarize ticket #${n}`);
     expect(state.starters).toHaveLength(4);
+  });
+
+  it("the active sprint's starter says its name short: no trailing aside, cut at a word past 40 characters", async () => {
+    await run(env.DB, `INSERT INTO sprints (org_id, title, target_date, status, created_at, created_by) VALUES (?, 'RAG privacy + correctness (AI redesign #643, phases 0–1)', '2026-11-01', 'in_progress', '2026-10-01T00:00:00Z', 'AndresL230')`, ORG_A);
+    const s = await call("GET", `${BASE}/ask/state`, await cookieFor(ME));
+    expect(AskStateSchema.parse(s.json).starters).toContain("What's blocking the RAG privacy + correctness work?");
+    expect(starterTopic("Hosting")).toBe("Hosting");
+    expect(starterTopic("  Repo   setups  ")).toBe("Repo setups");
+    expect(starterTopic("(Untitled)")).toBe("(Untitled)");                     // nothing but the aside: kept whole
+    const long = starterTopic("Server-side AI pass, the summary seams and the Sift run for every org");
+    expect(long).toBe("Server-side AI pass, the summary seams…");
+    expect(long.length).toBeLessThanOrEqual(STARTER_TOPIC_MAX + 1);
+    expect(starterTopic("x".repeat(60))).toBe(`${"x".repeat(STARTER_TOPIC_MAX)}…`); // no word to cut at
   });
 
   it("instructions are at most 500 characters; the default mode is Pro's — Free can only have Smart", async () => {

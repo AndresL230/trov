@@ -112,6 +112,18 @@ describe("the drift line and the suggestion cards on the Roadmap", () => {
     expect(roadmapSuggestionCards(undefined, initialAiUi())).toBe("");
     expect(roadmapSuggestionCards([{ ...fx.suggestions[0], value: { nope: 1 } }], initialAiUi())).toBe("");
   });
+  it("a narrative proposal draws the card's own Now / Next / Later box inside it — a legacy one only when it parses", () => {
+    const narrative = fx.suggestions[1];
+    const html = roadmapSuggestionCards([narrative], initialAiUi());
+    expect(html).toContain('<div class="rm-nnl-sugg"><dl class="rm-nnl">');
+    expect([...html.matchAll(/<dt class="rm-nnl-k">(\w+)<\/dt>/g)].map((m) => m[1])).toEqual(["Now", "Next", "Later"]);
+    expect(html).toContain('<dd class="cnpy-md rm-nnl-v"><div class="mock-live-md">Hosting connections and their deploy history.</div></dd>');
+    // Stored before the box: drawn as the box when it parses, not drawn at all when it does not (it cannot be accepted).
+    expect(roadmapSuggestionCards([{ ...narrative, value: { narrative: "**Now:** a. **Next:** b. **Later:** c." } }], initialAiUi())).toContain('data-part="later"');
+    expect(roadmapSuggestionCards([{ ...narrative, value: { narrative: "Ship hosting, then billing." } }], initialAiUi())).toBe("");
+    // While its Accept is out (it waits for the server), it says what it is doing.
+    expect(roadmapSuggestionCards([narrative], { ...initialAiUi(), busy: [narrative.id] })).toMatch(/aria-busy="true"[^>]*>Updating the narrative…<\/button>/);
+  });
   it("the whole screen with every field present: a Trov button on the narrative card opens the suggestions and the drift; notes stay on their cards", () => {
     const plan: PlanView = { narrative: "Now: hosting.", version: 1, updated_at: null, updated_by: null,
       sprints: [sprint({ note: fx.notes[0] })], drift: fx.drift, suggestions: fx.suggestions };

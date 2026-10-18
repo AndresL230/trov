@@ -22,7 +22,7 @@ import {
   TicketCreate, TicketEdit, TicketTransition, TicketCommentAdd, TicketLinkAdd, TicketSprintSet, TicketParentSet, TicketAssigneeToggle,
 } from "@shared/tickets";
 import { TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_STATUS_LABEL, type TicketStatus } from "@shared/tickets-core";
-import { SprintCreate, PlanNarrative, PlanSprintEntry } from "@shared/sprints";
+import { SprintCreate, PlanWriteInput, composePlanNarrative, planNarrativeParts } from "@shared/sprints";
 import { FEED_BRIEF_MAX } from "@shared/contract";
 import { ARTIFACT_SUMMARY_MAX } from "@shared/artifacts";
 import { ASK_AUTO_WRITES_MAX, ASK_EXCLUDED_TOOLS, type AskActionKind, type AskActionPreview, type RefView } from "@shared/ai-ask-core";
@@ -415,6 +415,9 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
     },
     async run(c, a) {
       const r = await ingestDocProposal(c.ctx, a, c.handle, ephemeralLedger());
+      // A refusal (an image not uploaded, a section or space that is not one, an archived page) staged nothing: the
+      // card FAILS with the gate's reason, which says what is valid — never a "done" line over nothing.
+      if (r.outcome === "refused") throw new TicketError("bad_request", r.reason);
       return { result: r, ref: `doc:${a.slug}`, undo: null };
     },
   },
@@ -654,10 +657,13 @@ export const WRITES: Record<string, WriteSpec<any>> = { // eslint-disable-line @
 
   // ── admin: the whole plan (Confirm-only) ──
   update_plan: {
-    input: z.object({ narrative: PlanNarrative, sprints: z.array(PlanSprintEntry).default([]) }), card: "sprint",
+    // The narrative's three parts, Now / Next / Later (shared/sprints.ts `PlanWriteInput`): a bad one makes no card.
+    input: PlanWriteInput, card: "sprint",
     confirmOnly: "Changing the roadmap plan waits for you, even on Auto.",
     async preview(_c, a) {
-      return card("Update the roadmap plan", [...line("Narrative", clip(a.narrative, 400)), ...line("Sprints", a.sprints.map((s: { label: string }) => s.label).join(", "))]);
+      const shaped = planNarrativeParts(a);
+      const narrative = "parts" in shaped ? composePlanNarrative(shaped.parts) : shaped.problem;
+      return card("Update the roadmap plan", [...line("Narrative", clip(narrative, 400)), ...line("Sprints", a.sprints.map((s: { label: string }) => s.label).join(", "))]);
     },
     async run(c, a) {
       // MCP registers this tool for an admin only; a card made while the person was one is not a licence now (Q57).

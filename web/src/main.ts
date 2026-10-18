@@ -17,7 +17,7 @@ import { syncFavicon } from "./favicon";
 import { MW_REPO_TABS, handoffsForMe, type MwRepoTab } from "./mywork";
 import type { SidebarBadges } from "@shared/badges";
 import {
-  render, initialState, reviewProps, railCollapsed, spaceName, liveSpaces, paneSpaceSlug, HAPPENINGS_LIMIT, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
+  render, initialState, reviewProps, maintenanceProps, railCollapsed, spaceName, liveSpaces, paneSpaceSlug, HAPPENINGS_LIMIT, browserConnectCommand, PLUGIN_INSTALL, viewerIsAdmin, syncPropsOf, repoProps,
   FEED_FILTER_CATS, type AppState, type Screen, type FeedFilterCat, type ToastAction,
   stagedPrompts,
 } from "./render";
@@ -26,7 +26,7 @@ import {
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr, approveImport, rejectImport,
-  listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
+  listNeedsTriage, listIdentityTasks, assignTriage, discardTriage, restoreTriage, mapIdentity, discardIdentity, restoreIdentity, type AssignTarget,
   getMe, logout, adminPoll, isRateLimited, rateLimitText,
   getOnboardPrefill, checkHandle, submitOnboard,
   getNotificationPrefs, putNotificationPrefs, getNotificationPolicy, putNotificationPolicy,
@@ -49,7 +49,7 @@ import { handoffAsPrompt, blankHandoff, docDraftFromHandoff, type NewHandoffDraf
 import { linkJoinPhrase, blankLinkStart, linkStartTarget, linkStartReady, linkStartRefusal, type LinkStartKind } from "./links";
 import { LINK_NOTE_MAX, type LinkView } from "@shared/links";
 import { normalizeTags, type HandoffView } from "@shared/handoffs";
-import { selectedUnplacedId } from "./maintenance";
+import { selectedUnplacedId, effectivePicks, UNPLACED_EXIT_MS, type UnplacedVerdict } from "./maintenance";
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { createLibraryController } from "./library-actions";
@@ -289,12 +289,29 @@ const aiCtl = createAiController({
   reloadRepo: () => { if (!state.repoSample && state.repo.status !== "loading") loadRepo(); },
   // A decision went through and its exit is over (the controller waits for the last one, ai-ui.ts › Leaving): the
   // screen it was on reads what it changed — the ticket, Unplaced, Review, or the Roadmap (an accepted sprint draft or
-  // narrative changed the plan; a dismissed card goes too).
-  decided: () => {
+  // narrative changed the plan; a dismissed card goes too). The Roadmap's read is handed back: once it lands, what the
+  // Accept changed rises in (ai-actions.ts › THE ROADMAP'S DIALOG).
+  decided: (id, how) => {
     if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
-    else if (state.screen === "maintenance") loadNeedsTriage();
+    else if (state.screen === "maintenance") {
+      // An accepted destination PLACED its item (the same gate as Place): the card leaves by the queue's exit, then
+      // the read is taken again. Anything else re-reads at once.
+      const row = how === "accept" ? state.needsTriage.data.find((r) => r.ai?.some((s) => s.id === id)) : undefined;
+      if (row) unplacedVerdict(String(row.id), "placed", () => Promise.resolve(), () => loadProposals());
+      else loadNeedsTriage();
+    }
     else if (state.screen === "review") { loadProposals(); loadDraftAdrs(); }
-    else if (state.screen === "roadmap") loadRoadmap();
+    else if (state.screen === "roadmap") return loadRoadmap();
+  },
+  // The Roadmap's Trov dialog lost its last suggestion to a decision: it closes by its own exit, and focus goes back
+  // to its button (or, with nothing left to count, to the page).
+  closeRoadmapTrov: () => {
+    if (!state.rmTrovOpen) return;
+    confirmOut(() => {
+      state.rmTrovOpen = false;
+      rerender();
+      (mount.querySelector<HTMLElement>(".rm-trov-btn") ?? mount.querySelector<HTMLElement>("#cnpy-main"))?.focus({ preventScroll: true });
+    });
   },
 });
 // Ask Trov (web/src/ask-controller.ts): every `ask…` act, the screen's reads and streams, ⌘J over any page,
@@ -509,13 +526,13 @@ function markEnter(): void {
   }, ENTER_MS - elapsed + 50);
 }
 
-/** Review's detail pane after a paint: a different item starts at its top (the pane is the same
- *  element now, so it would keep the last item's scroll), and a verdict button that had focus —
- *  and went with its item — gives it to the same button of the item now on screen, so Enter,
- *  Enter, Enter works down a queue. */
+/** Review's detail pane after a paint — and Unplaced's, the same pane: a different item starts at its top (the pane is
+ *  the same element now, so it would keep the last item's scroll), and a verdict button that had focus — and went with
+ *  its item — gives it to the same button of the item now on screen, so Enter, Enter, Enter works down a queue (an
+ *  Unplaced item that cannot be placed yet takes it on its Discard). */
 let reviewShown: string | null = null;
 function syncReviewDetail(focusAct: string | null): void {
-  const body = state.view === "app" && state.screen === "review" ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
+  const body = state.view === "app" && (state.screen === "review" || state.screen === "maintenance") ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
   const key = body?.getAttribute("data-morph-key") ?? null;
   if (key !== reviewShown) {
     reviewShown = key;
@@ -524,8 +541,9 @@ function syncReviewDetail(focusAct: string | null): void {
   }
   // The verdict buttons are in the body's head (a decision) or in the page pane's footer beside it (a group's page).
   const detail = body?.closest<HTMLElement>(".cnpy-rv-detail") ?? null;
-  if (body && detail && (focusAct === "reviewAccept" || focusAct === "reviewReject") && !detail.contains(document.activeElement)) {
-    detail.querySelector<HTMLElement>(`:is(.cnpy-rv-head, .cnpy-rvp-foot) [data-act="${focusAct}"]`)?.focus({ preventScroll: true });
+  if (body && detail && (focusAct === "reviewAccept" || focusAct === "reviewReject" || focusAct === "maintFile" || focusAct === "maintDiscard") && !detail.contains(document.activeElement)) {
+    (detail.querySelector<HTMLElement>(`:is(.cnpy-rv-head, .cnpy-rvp-foot) [data-act="${focusAct}"]`)
+      ?? (focusAct === "maintFile" ? detail.querySelector<HTMLElement>(`.cnpy-rvp-foot [data-act="maintDiscard"]`) : null))?.focus({ preventScroll: true });
   }
 }
 
@@ -1777,10 +1795,11 @@ function quickPick(p: QuickPick): void {
   for (const [act, arg] of p.steps) dispatch(act, arg, null);
 }
 
-function loadRoadmap(): void {
+/** Read the Roadmap; the promise settles once the read has landed in state (it never rejects). */
+function loadRoadmap(): Promise<void> {
   state.roadmap = { status: "loading", data: state.roadmap.data };
   rerender();
-  getRoadmap()
+  return getRoadmap()
     .then((planView) => {
       state.roadmap = { status: "ok", data: planView };
       rerenderSoon();
@@ -2062,18 +2081,98 @@ function loadDraftAdrsIfNeeded(): void {
 }
 
 let needsTriageSeq = 0;
-function loadNeedsTriage(): void {
+/** `after` runs when THIS read commits, before the paint (an Unplaced exit settles there). */
+function loadNeedsTriage(after?: () => void): void {
   const seq = ++needsTriageSeq;
   state.needsTriage = { status: "loading", data: state.needsTriage.data };
   rerender();
   listNeedsTriage()
-    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); rerenderSoon(); })
+    .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); after?.(); pruneUnplacedLeaving(); rerenderSoon(); })
     .catch((e) => {
       if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       if (seq !== needsTriageSeq) return;
       state.needsTriage = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
+      after?.(); pruneUnplacedLeaving();
       rerenderSoon();
     });
+}
+
+// ── Unplaced: a card placed or discarded leaves the list (web-ui.md › A row leaving a list) ─────────────────────
+// Review's exit, the same parts: the write goes out on the click, the card is taken out optimistically — it wears
+// its verdict, then collapses (trov.css `.cnpy-rv-row[data-verdict]`) — the item on screen moves to the next one
+// and the badge drops with it. `state.unplacedLeaving` only HIDES rows of the read; the refetch (held until no card
+// is still collapsing) replaces the read and the entry is dropped. A failed write deletes the entry: the card, the
+// count, the item on screen and the person's picks are back as they were, with the error.
+interface UnplacedExit { selBefore: string | null; selAfter: string | null; picks: Pick<AppState, "assignKind" | "assignSection" | "assignSpace" | "assignTags">; timer: ReturnType<typeof setTimeout> | null; ok: boolean }
+const unplacedExits = new Map<string, UnplacedExit>();
+let unplacedRefetch = false;
+
+function settleUnplaced(): void {
+  if (Object.values(state.unplacedLeaving).some((l) => !l.gone) || !unplacedRefetch) return;
+  unplacedRefetch = false;
+  const done = [...unplacedExits].filter(([, x]) => x.ok).map(([id]) => id);
+  loadNeedsTriage(() => { for (const id of done) { delete state.unplacedLeaving[id]; unplacedExits.delete(id); } });
+}
+/** A confirmed exit whose item the read no longer holds has nothing left to hide. */
+function pruneUnplacedLeaving(): void {
+  const held = new Set(state.needsTriage.data.map((r) => String(r.id)));
+  for (const [id, x] of unplacedExits) if (x.ok && state.unplacedLeaving[id]?.gone && !held.has(id)) { delete state.unplacedLeaving[id]; unplacedExits.delete(id); }
+}
+const clearAssignPicks = (): void => { state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = []; };
+
+/** Place or discard an Unplaced item: `write` is the cookie route, `ok` what follows its success (a toast, the
+ *  list the item landed in). */
+function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Promise<unknown>, ok: () => void): void {
+  if (state.unplacedLeaving[id]) return;   // already on its way out (a second click)
+  const waiting = state.needsTriage.data.map((r) => String(r.id)).filter((x) => x === id || !state.unplacedLeaving[x]);
+  // The item on screen moves to the next one still waiting (the one before, at the end). Only a pick made by hand is
+  // moved: with none, the view already shows the first one waiting (and, on a phone, the list).
+  const selBefore = state.assignOpen;
+  let selAfter = selBefore;
+  if (selBefore === id) {
+    const at = waiting.indexOf(id);
+    selAfter = waiting[at + 1] ?? waiting[at - 1] ?? null;
+  }
+  const picks = { assignKind: state.assignKind, assignSection: state.assignSection, assignSpace: state.assignSpace, assignTags: state.assignTags };
+  const onScreen = unplacedOnScreen()?.id === id;
+  state.assignOpen = selAfter;
+  if (onScreen) clearAssignPicks();   // the picks were that item's
+  // The card is seen leaving only on Unplaced, and only when motion is allowed; otherwise it is gone at once.
+  const animate = state.screen === "maintenance" && !reducedMotion();
+  state.unplacedLeaving[id] = { verdict, gone: !animate };
+  const exit: UnplacedExit = { selBefore, selAfter, picks, timer: null, ok: false };
+  unplacedExits.set(id, exit);
+  if (animate) exit.timer = setTimeout(() => {
+    exit.timer = null;
+    const l = state.unplacedLeaving[id];
+    if (l && !l.gone) { l.gone = true; rerender(); }
+    settleUnplaced();
+  }, UNPLACED_EXIT_MS);
+  rerender();   // a Place / Discard that had focus hands it to the next item's (syncReviewDetail)
+  write()
+    .then(() => { exit.ok = true; unplacedRefetch = true; ok(); settleUnplaced(); })
+    .catch((e) => {
+      // The write did not happen: the card is back where it was, with the item on screen and the picks it had.
+      if (exit.timer !== null) clearTimeout(exit.timer);
+      unplacedExits.delete(id);
+      delete state.unplacedLeaving[id];
+      if (state.assignOpen === exit.selAfter) { state.assignOpen = exit.selBefore; Object.assign(state, exit.picks); }
+      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      // e.g. "could not place doc: the space \"design\" is archived: use one of …" — the gate's words, verbatim.
+      flash(e instanceof ApiError ? e.message : verdict === "placed" ? "Could not place this item" : "Could not discard");
+      settleUnplaced();
+    });
+}
+/** The item on screen, as the view draws it (the first waiting one when none is picked). */
+function unplacedOnScreen(): { id: string; picked: boolean } | null {
+  const waiting = state.needsTriage.data.map((r) => ({ id: String(r.id) })).filter((r) => !state.unplacedLeaving[r.id]);
+  const id = selectedUnplacedId(waiting, state.assignOpen);
+  return id ? { id, picked: id === state.assignOpen } : null;
+}
+/** A pick belongs to the item on screen: picking one names that item, so the next paint keeps it. */
+function pinUnplaced(): void {
+  const on = unplacedOnScreen();
+  if (on && !on.picked) { state.assignOpen = on.id; clearAssignPicks(); }
 }
 function loadNeedsTriageIfNeeded(): void {
   if (state.needsTriage.status === "idle" || state.needsTriage.status === "error") loadNeedsTriage();
@@ -3700,7 +3799,6 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "goMaintenance":
       if (arg === "identity" || arg === "people") { dispatch("orgGo", "members", null); return; }
       state.screen = "maintenance";
-      state.maintDiscardArm = false;
       loadNeedsTriageIfNeeded();
       return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
@@ -4253,77 +4351,81 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     // ── Unplaced: the list selects; the picks belong to the item on screen ──
     case "maintSelect":
       if (!arg) return;
-      state.assignOpen = arg; state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = [];
-      state.maintDiscardArm = false;
+      state.assignOpen = arg; clearAssignPicks();
       break;
+    // Under a tablet's width: back from the item to the list.
+    case "maintBack": state.assignOpen = null; clearAssignPicks(); break;
     case "identityCancel": state.mapConfirm = null; break;
 
-    // ── Maintenance (mock-driven until the backend reads land — no writes) ───
-    case "maintAssignToggle": {
-      if (!arg) return;
-      state.assignOpen = state.assignOpen === arg ? null : arg;
-      state.assignKind = null;
-      state.assignSection = null;
-      state.assignSpace = null;
-      state.assignTags = [];
-      break;
-    }
+    // "Place it as": a pick names the item on screen (so the next paint keeps it), and a new kind starts its
+    // targets again from what the agent sent.
     case "maintAssignKind":
       if (arg === "doc" || arg === "adr" || arg === "feed") {
-        state.assignOpen = selectedUnplacedId(state.needsTriage.data.map((r) => ({ id: String(r.id) })), state.assignOpen);
-        state.maintDiscardArm = false;
+        pinUnplaced();
         state.assignKind = arg;
         state.assignSection = null;
         state.assignSpace = null;
         state.assignTags = [];
       }
       break;
-    case "maintAssignSection": if (arg) state.assignSection = arg; break;
-    case "maintAssignSpace": if (arg) state.assignSpace = state.assignSpace === arg ? null : arg; break;
+    case "maintAssignSection": if (arg) { pinUnplaced(); state.assignSection = arg; } break;
+    // A switch's option (arg) or, past four spaces, the dropdown's pick (value).
+    case "maintAssignSpace": { const v = arg ?? value; if (v) { pinUnplaced(); state.assignSpace = v; } break; }
     case "maintAssignTag":
-      if (arg) state.assignTags = state.assignTags.includes(arg) ? state.assignTags.filter((t) => t !== arg) : [...state.assignTags, arg];
+      if (arg) { pinUnplaced(); state.assignTags = state.assignTags.includes(arg) ? state.assignTags.filter((t) => t !== arg) : [...state.assignTags, arg]; }
       break;
+    // Place: exactly what the panel shows (`effectivePicks` — the person's picks, else what the agent sent when it is
+    // valid), through the SAME gate (`POST /needs-triage/:id/assign`). The card leaves at once; a refusal brings it
+    // back with the gate's reason.
     case "maintFile": {
-      if (!arg || state.assignOpen !== arg || !state.assignKind) return;
-      if (state.assignKind === "doc" && !state.assignSection) return;
+      if (!arg || state.unplacedLeaving[arg]) return;
+      const on = unplacedOnScreen();
+      const p = maintenanceProps(state);
+      const it = p.unplaced.find((u) => u.id === arg);
+      if (!it || !on || on.id !== arg) return;
+      const e = effectivePicks(it, p, on.picked);
+      if (!e.kind || (e.kind === "doc" && (!e.section || !e.space))) return;
       const id = Number(arg);
       if (!Number.isInteger(id)) return;
-      const kind = state.assignKind;
+      const kind = e.kind;
       const target: AssignTarget = { type: kind };
-      if (kind === "doc") {
-        target.section = state.assignSection ?? undefined;
-        target.space = state.assignSpace ?? undefined; // a live space's slug, or none (the gate's default space)
-      }
-      if (kind === "feed") target.tags = state.assignTags;
-      assignTriage(id, target)
-        .then(() => {
-          state.assignOpen = null; state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = [];
-          flash("Filed — placed through the gate and resolved");
-          loadNeedsTriage();
-          if (kind === "doc") loadProposals();   // an assigned doc lands as a staged proposal
-          if (kind === "adr") loadDraftAdrs();   // an assigned decision lands as a draft
-          if (kind === "feed") loadFeed();   // a filed feed entry lands live on the Feed screen
-        })
-        .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          // e.g. "cannot assign a free-form triage item; discard it instead" — verbatim from the gate
-          flash(e instanceof ApiError ? e.message : "Could not file this item");
-        });
+      if (kind === "doc") { target.section = e.section ?? undefined; target.space = e.space ?? undefined; }
+      // With no tag picked the item keeps the tags it came with that are on the org's list (the gate sorts them).
+      if (kind === "feed" && e.tags.length) target.tags = e.tags;
+      unplacedVerdict(arg, "placed", () => assignTriage(id, target), () => {
+        flash(kind === "doc" ? "Placed — the proposal waits in Review" : kind === "adr" ? "Placed — the draft decision waits in Review" : "Placed — posted to the feed");
+        if (kind === "doc") loadProposals();   // a placed doc lands as a staged proposal
+        if (kind === "adr") loadDraftAdrs();   // a placed decision lands as a draft
+        if (kind === "feed") loadFeed();       // a placed feed entry lands live on the Feed screen
+      });
       return;
     }
+    // Discard is soft and undoable, so no confirm step: the card leaves, and the toast carries the Undo.
     case "maintDiscard": {
       if (!arg) return;
       const id = Number(arg);
       if (!Number.isInteger(id)) return;
-      if (!state.maintDiscardArm) { state.maintDiscardArm = true; break; } // step 1: arm; the second click discards
-      state.maintDiscardArm = false;
-      if (state.assignOpen === arg) { state.assignOpen = null; state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = []; }
-      discardTriage(id)
-        .then(() => { flash("Discarded — parked, nothing changed"); loadNeedsTriage(); })
+      unplacedVerdict(arg, "discarded", () => discardTriage(id), () => flash("Discarded", UNDO_TOAST_MS, { label: "Undo", act: "maintRestore", arg }));
+      return;
+    }
+    case "maintRestore": {
+      if (!arg) return;
+      const id = Number(arg);
+      if (!Number.isInteger(id)) return;
+      state.toast = null; state.toastAction = null;
+      restoreTriage(id)
+        .then(() => {
+          // Back in the queue, and on screen: nothing hides it any more.
+          delete state.unplacedLeaving[arg]; unplacedExits.delete(arg);
+          if (state.screen === "maintenance") { state.assignOpen = arg; clearAssignPicks(); }
+          flash("Back in Unplaced");
+          loadNeedsTriage();
+        })
         .catch((e) => {
           if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
-          flash(e instanceof ApiError ? e.message : "Could not discard");
+          flash(e instanceof ApiError ? e.message : "Could not undo the discard");
         });
+      rerender();
       return;
     }
     case "identityPick": {

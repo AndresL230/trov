@@ -222,7 +222,7 @@ describe("Accept routes through the existing writer, as the person — and never
     expect(await first(env.DB, `SELECT COUNT(*) AS n FROM ticket_events t JOIN tickets k ON k.id = t.ticket_id WHERE k.org_id = ? AND k.number IN (?, ?) AND t.from_status IS NOT NULL`, ORG_A, older, n)).toEqual({ n: 0 });
   });
 
-  it("an Unplaced destination files the item exactly as \"File it\": the same gate, as the person", async () => {
+  it("an Unplaced destination places the item exactly as Place: the same gate, as the person", async () => {
     const id = await route_triage(systemCtx(ORG_A), { raw: { slug: "deploy-checklist", section: "runbooks", title: "Deploy checklist", body: "Run the migrations, then check health.", change_summary: "new", confidence: "low" }, reason: "section 'runbooks' is not in the vocabulary", source_author: "AndresL230" });
     const s = (await putSuggestion(systemCtx(ORG_A), { itemType: "unplaced", itemRef: String(id), kind: "unplaced.destination", value: { type: "doc", section: "reference", near: null, label: "reference" }, confidence: 0.8, reason: "the agent filed it under “runbooks” (not a section)", cites: [], model: "jev", promptVersion: "p" }))!;
     expect((await call("POST", `${BASE}/ai/suggestions/${s}/accept`, await cookieFor("meilin"), {})).status).toBe(200);
@@ -257,6 +257,16 @@ describe("Accept routes through the existing writer, as the person — and never
     const badSection = await put("unplaced.destination", "unplaced", "999997", { type: "doc", section: "runbooks", near: null, label: "runbooks" });
     expect(await call("POST", `${BASE}/ai/suggestions/${badSection}/accept`, cookie, {})).toEqual({ status: 400, json: { error: "invalid" } });
     expect(await state(badSection)).toBe("open");
+    // A placement the gate REFUSES (the item names a space that is not live): 400 `invalid` with the gate's words —
+    // never a 500 — the suggestion open, the item still unplaced.
+    const held = await route_triage(systemCtx(ORG_A), { raw: { slug: "held-doc", section: "runbooks", body: "b", change_summary: "s", confidence: "high", space: "nope" }, reason: "unknown space: nope", source_author: "meilin" });
+    const refused = await put("unplaced.destination", "unplaced", String(held), { type: "doc", section: "reference", near: null, label: "reference" });
+    const r = await call<{ error: string; message?: string }>("POST", `${BASE}/ai/suggestions/${refused}/accept`, cookie, {});
+    expect(r.status).toBe(400);
+    expect(r.json.error).toBe("invalid");
+    expect(r.json.message).toMatch(/^could not place doc: unknown space "nope": use one of this organization's spaces:/);
+    expect(await state(refused)).toBe("open");
+    expect((await first<{ resolved: number }>(env.DB, `SELECT resolved FROM needs_triage WHERE id = ?`, held))?.resolved).toBe(0);
   });
 
   it("a ticket that CLOSES closes its open suggestions (Q35): superseded on every status writer — not shown, Accept refused", async () => {
