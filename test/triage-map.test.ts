@@ -162,7 +162,7 @@ describe("unplacedFromRow", () => {
     expect(u.id).toBe("7");
     expect(u.title).toBe("Notes on connection pool sizing");
     expect(u.snippet).toContain("Pool exhaustion");
-    expect(u.reason).toBe("Flagged by an agent");
+    expect(u.reason).toBe("Unknown section"); // the gate's reason, in words (unplacedReasonWord)
     expect(u.reasonNote).toBe("out-of-vocab section: runbooks");
   });
 

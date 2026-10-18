@@ -32,7 +32,7 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
   batch) for every new one, and the seed scripts.
 - **The old values.** Agents and older plugins may still send `technical` (→ `engineering`) or `product`. ONE
   alias map, applied by the gate and by the `space` filters of `query`, `list_docs` and `/search`. An unknown
-  value is never mapped to anything: the gate triages it, a filter matches nothing.
+  value is never mapped to anything: the gate refuses it (listing the live spaces), a filter matches nothing.
 - **Slugs are reserved forever.** A new space's slug comes from its name (`spaceSlugFromName`), with `-2`, `-3` …
   when ANY space of the org — archived ones too — ever had it (`uniqueSpaceSlug`). A slug never changes; a rename
   changes the name only.
@@ -43,7 +43,8 @@ as a value): `SPACE_ALIASES` / `resolveSpaceAlias`, `DEFAULT_SPACE`, `STARTER_SP
   space to its new place. Nobody sets an org order — there is no move route and no Position field; `sort_rank` is
   still written (`rankAfterAll`) but orders nothing. Each person shapes their own view of it (below).
 - **Archive is soft** (`archived_at` / `archived_by`): the space leaves the Library, the sidebar and `list_spaces`,
-  and takes no NEW page (the gate triages a proposal that names it; the New page route refuses it). Its pages stay —
+  and takes no NEW page (the gate refuses a proposal that names it, listing the live spaces; the New page route
+  refuses it). Its pages stay —
   readable by link, searchable, and an edit of one still stages in its own space. An admin restores it.
 - **Statuses** in every list come from the query engine's authority flags (`pageAuthority`): `live` (no mark),
   `staged_pending` ("Change pending review"), `unpromoted` ("Not yet approved"). A space's `waiting` counts its pages
@@ -99,12 +100,13 @@ the archived spaces. `GET /spaces/:slug` (`SpaceHomeDTO`) carries the space (an 
 (staged-only ones included; metadata, `parent_slug`, `tree_rank`, the ancestors' titles as `path`, never a body),
 and `can_edit` (admin or an owner) / `can_admin`.
 
-### The gate, triage and the agents
+### The gate and the agents
 
 `ingestDocProposal` (`ingestion-gate.md`): a sent space resolves through the alias map and must be a live space of
-the org — unknown or archived → `needs_triage` with `unknown space: <slug>` / `archived space: <slug>`; no space →
-`engineering` for a new doc while it is live, else triage; an existing doc keeps its own space. Triage › Unplaced's
-assign offers the org's live spaces and sends the pick back through the same check. MCP `propose_doc_update`,
+the org — unknown or archived → REFUSED (`code: "space"`, the reason listing the org's live space slugs, so the agent
+re-sends; since 2026-10-18 nothing goes to `needs_triage`); no space → `engineering` for a new doc while it is live,
+else refused; an existing doc keeps its own space. Triage › Unplaced's assign (for items held before) offers the org's
+live spaces and sends the pick back through the same check — a refusal is a 400 with the reason. MCP `propose_doc_update`,
 `list_docs` and `query` take `space` as a string (a slug or an alias), Ask Trov mirrors them, and `list_spaces` is
 a read for every principal (Ask wires it too). The plugin's skills (0.10.0) read the spaces rather than assume them.
 
@@ -140,7 +142,7 @@ edit). The answer is `{ ok, slug, parent_slug, tree_rank, places }` — every pa
 
 **A proposal's parent.** `DocProposal.parent_slug` (`ingestion-gate.md`): a NEW page takes a valid parent at insert;
 an EXISTING page stores it on `doc_versions.parent_slug` and moves under it when that version is promoted, if it is
-still valid then. An invalid one is ignored with `parent_ignored` in the result, never triaged. MCP `get_doc` shows a
+still valid then. An invalid one is ignored with `parent_ignored` in the result, never refused. MCP `get_doc` shows a
 doc's `parent_slug` (the row); the plugin's skills (0.10.1) say how to send one and how to link.
 
 ## Links between pages
@@ -188,9 +190,10 @@ PERSON's soft write; there is no hard delete of a page anywhere.
   out of the other pages' Linked from (the source is no page in the tree).
 - **Pending work.** Its staged versions stay `staged` and are HIDDEN from Review (the list, an import's Approve all /
   Reject all and counts, the sidebar badge — each joins `d.archived_at IS NULL`); promoting one is refused 409
-  `archived`. Restore brings them back to Review. (Not rejected: the gate keeps an archived page's proposals out by
-  triage rather than turning them down, and Restore must give back what was waiting.)
-- **No indirect path.** The gate triages a proposal for an archived slug (`archived page: <slug>`) — MCP
+  `archived`. Restore brings them back to Review. (Not rejected: they were made before the archive — the gate refuses
+  any new one — and Restore must give back what was waiting.)
+- **No indirect path.** The gate refuses a proposal for an archived slug (`code: "archived_page"`; the reason says a
+  person restores it and a new page needs another slug) — MCP
   `propose_doc_update`, `record_session`, `/ingest`, Ask, an import and a person's New page alike (`/docs/propose`
   refuses the slug 409 "an archived page is named ‹slug›", which New page words as such); an archived page is no parent (`checkParent` and the promote's parent read only the pages in
   the Library, so it is ignored as `not_found`); nothing moves next to or under it (`POST /doc/:slug/move` 409
@@ -259,7 +262,8 @@ The run record: `status` (`running` / `done` / `partial` / `failed` / `abandoned
 (what the plan writes: pages, new pages, versions, images, skipped files and skipped conflicts; what reached Review,
 READ BACK from `doc_versions` after each batch so a retry never counts twice; unchanged, failed, images uploaded),
 `failures` — one entry per path, CODES only (the plan's skip codes, and a page's: `too_large`, `not_utf8`, `empty`,
-`changed`, `slug_taken`, `refused`, `triaged`, `failed`, `unchanged` — not an error: the page already says that;
+`changed`, `slug_taken`, `refused` (an image), `space_gone` (its space archived mid-run), `archived_page` (an archived
+page holds the slug), `triaged` (only a retry of a page sent before 2026-10-18), `failed`, `unchanged` — not an error: the page already says that;
 `cancelled` with no path), `total` (the pages planned), and (0082) `manifest` — the SERVER's plan (the accepted
 files with their sizes and headings, the choices, the writes in order, the path → slug map, the image paths), which
 every later request is checked against — and `images`. Only the starter adds to a run (403 `forbidden`); an ended

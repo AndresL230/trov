@@ -22,12 +22,12 @@ export type SprintStatus = (typeof SPRINT_STATUSES)[number];
 export type SprintResourceKind = (typeof SPRINT_RESOURCE_KINDS)[number];
 
 // ── the plan narrative cap ────────────────────────────────────────────────────
-// The narrative is the Roadmap's "What's happening" card — a short heading line and
-// Now / Next / Later in a few sentences; the sprints and the timeline carry the
+// The narrative is the Roadmap's "What's happening" card — Now / Next / Later, a
+// sentence or two each (its shape: below); the sprints and the timeline carry the
 // detail. Over the cap is a validation error that writes NOTHING (the writer
-// resends a shorter one), enforced once at the write seam (`write_plan`) and in the
-// `update_plan` MCP input. Counted like the feed brief: characters after trim. A
-// narrative already stored over the cap still reads — nothing is truncated.
+// resends a shorter one), enforced once at the write seam (`write_plan`), over the
+// COMPOSED text (labels included). A narrative already stored over the cap still
+// reads — nothing is truncated.
 export const PLAN_NARRATIVE_MAX = 800;
 
 /** The refusal for an over-cap narrative (trimmed length), or null when it fits. */
@@ -36,6 +36,85 @@ export function planNarrativeProblem(narrative: string): string | null {
   return length > PLAN_NARRATIVE_MAX
     ? `narrative is ${length} characters; the cap is ${PLAN_NARRATIVE_MAX}. Shorten it to a few sentences (Now / Next / Later) and resend — nothing was written.`
     : null;
+}
+
+// ── the plan narrative's shape: Now / Next / Later (2026-10-18) ──────────────
+// The owner's call: the "What's happening" card is a STRUCTURED box — three rows, Now, Next and Later — and the
+// structure is enforced AT WRITE, not guessed at render. Every writer (`update_plan` over MCP, Ask Trov's card,
+// Trov's accepted narrative proposal) gives the three parts; `write_plan` composes ONE canonical form and stores it
+// in the existing `plan.narrative` column (no migration):
+//
+//   **Now:** <one paragraph>\n\n**Next:** <one paragraph>\n\n**Later:** <one paragraph>
+//
+// Each part is one paragraph (whitespace runs, newlines included, are folded to one space), trimmed and non-empty;
+// inline markdown emphasis is allowed. The cap is still `PLAN_NARRATIVE_MAX` over the COMPOSED text (labels
+// included), so the old message and the old count hold. `parsePlanNarrative` reads a stored narrative back into its
+// parts — the canonical form, and the run-together `**Now:** … **Next:** … **Later:** …` written before the rule
+// (each label bold, or plain and capitalised, in that order, Now first) — or null for an older free-text narrative,
+// which the card still draws as plain markdown (legacy fallback). Zod-free: the SPA draws the box with it.
+export const PLAN_NARRATIVE_PARTS = ["now", "next", "later"] as const;
+export type PlanNarrativePart = (typeof PLAN_NARRATIVE_PARTS)[number];
+export type PlanNarrativeParts = Record<PlanNarrativePart, string>;
+export const PLAN_NARRATIVE_LABELS: Record<PlanNarrativePart, string> = { now: "Now", next: "Next", later: "Later" };
+
+/** One paragraph: every whitespace run (a newline too) is one space; trimmed. */
+const paragraph = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+/** The ONE stored form of a narrative's three parts. */
+export function composePlanNarrative(p: PlanNarrativeParts): string {
+  return PLAN_NARRATIVE_PARTS.map((k) => `**${PLAN_NARRATIVE_LABELS[k]}:** ${paragraph(p[k])}`).join("\n\n");
+}
+
+// A label: `**Now:**`, `**Now**:` (either case of the first letter), or a plain capitalised `Now:` — at the start or
+// after whitespace. The emphasis is not part of the text that follows.
+const LABEL_RE = /(^|\s)(?:\*\*([Nn]ow|[Nn]ext|[Ll]ater)\s*:\s*\*\*|\*\*([Nn]ow|[Nn]ext|[Ll]ater)\*\*\s*:|(Now|Next|Later):)/g;
+
+/** A stored narrative's three parts, or null when it is not Now / Next / Later (exactly one of each, in that order,
+ *  Now first, none empty) — an older free-text narrative, or "". */
+export function parsePlanNarrative(narrative: string): PlanNarrativeParts | null {
+  const text = narrative.trim();
+  const marks: { part: PlanNarrativePart; start: number; end: number }[] = [];
+  for (const m of text.matchAll(LABEL_RE)) {
+    const word = (m[2] ?? m[3] ?? m[4]).toLowerCase() as PlanNarrativePart;
+    marks.push({ part: word, start: (m.index ?? 0) + m[1].length, end: (m.index ?? 0) + m[0].length });
+  }
+  if (marks.length !== 3 || marks.some((m, i) => m.part !== PLAN_NARRATIVE_PARTS[i]) || marks[0].start !== 0) return null;
+  const parts = {} as PlanNarrativeParts;
+  marks.forEach((m, i) => { parts[m.part] = paragraph(text.slice(m.end, marks[i + 1]?.start ?? text.length)); });
+  return PLAN_NARRATIVE_PARTS.every((k) => parts[k]) ? parts : null;
+}
+
+/** The refusal for three parts that cannot be stored, or null: each must be non-empty, none may carry a label of
+ *  its own (it would not read back as the same three), and the composed text fits `PLAN_NARRATIVE_MAX`. */
+export function planNarrativePartsProblem(p: Partial<Record<PlanNarrativePart, unknown>>): string | null {
+  const missing = PLAN_NARRATIVE_PARTS.filter((k) => typeof p[k] !== "string" || !paragraph(p[k] as string));
+  if (missing.length) return `the narrative needs all three parts — now, next and later — each a short paragraph; ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} empty. Nothing was written.`;
+  const parts = p as PlanNarrativeParts;
+  const composed = composePlanNarrative(parts);
+  const back = parsePlanNarrative(composed);
+  if (!back || PLAN_NARRATIVE_PARTS.some((k) => back[k] !== paragraph(parts[k]))) {
+    return "a narrative part may not contain a Now: / Next: / Later: label of its own — give each part's text alone. Nothing was written.";
+  }
+  return planNarrativeProblem(composed);
+}
+
+/** What a plan write may say about its narrative: the three parts, or — from an older client — one `narrative`
+ *  that already reads as Now / Next / Later. */
+export interface PlanNarrativeInput { now?: string; next?: string; later?: string; narrative?: string }
+
+/** The three parts a plan write gives (`write_plan`, the ONE seam), or why it cannot be written. A `narrative`
+ *  string is accepted ONLY when it parses into the three parts; parts and a narrative together are refused. */
+export function planNarrativeParts(input: PlanNarrativeInput): { parts: PlanNarrativeParts } | { problem: string } {
+  const given = PLAN_NARRATIVE_PARTS.some((k) => input[k] !== undefined);
+  if (given && input.narrative !== undefined) return { problem: "give the narrative as now, next and later — not together with `narrative`. Nothing was written." };
+  if (given) {
+    const problem = planNarrativePartsProblem(input);
+    return problem ? { problem } : { parts: { now: paragraph(input.now!), next: paragraph(input.next!), later: paragraph(input.later!) } };
+  }
+  const parsed = typeof input.narrative === "string" ? parsePlanNarrative(input.narrative) : null;
+  if (!parsed) return { problem: "the narrative is three parts now: pass `now`, `next` and `later` (one short paragraph each) instead of a free-text `narrative`. Nothing was written." };
+  const problem = planNarrativePartsProblem(parsed);
+  return problem ? { problem } : { parts: parsed };
 }
 
 // ── the ONE due-date rule ─────────────────────────────────────────────────────

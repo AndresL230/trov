@@ -14,6 +14,7 @@ import { buildTrovMcpServer } from "../src/mcp";
 import type { Env } from "../src/env";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { bearerCtx, systemCtx } from "./helpers/tenant";
+import { narr, narrText } from "./helpers/plan";
 
 /** A TicketCreate with the schema's defaults filled in (these tests bypass the route's parse). */
 const ticket = (o: Partial<TicketCreate> & { title: string }): TicketCreate => ({
@@ -89,7 +90,7 @@ describe("roadmap HTTP routes (session-gated)", () => {
   it("GET /roadmap reads the plan store — narrative + sprints + progress, no live GitHub — and 401s without a session", async () => {
     const { sprints } = await write_plan(
       systemCtx(),
-      { narrative: "Q3 push", sprints: [{ label: "GA", due: "2026-09-01", status: "upcoming", github_ref: 3 }] },
+      { ...narr("Q3 push"), sprints: [{ label: "GA", due: "2026-09-01", status: "upcoming", github_ref: 3 }] },
       "andres"
     );
     await upsertProgress(systemCtx(), sprints[0].id, 4, 6, "event");
@@ -100,7 +101,7 @@ describe("roadmap HTTP routes (session-gated)", () => {
     const res = await app.request("/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Awaited<ReturnType<typeof get_plan>>;
-    expect(body.narrative).toBe("Q3 push");
+    expect(body.narrative).toBe(narrText("Q3 push"));
     expect(body.sprints).toHaveLength(1);
     expect(body.sprints[0].label).toBe("GA");
     expect(body.sprints[0].due).toBe("2026-09-01");
@@ -184,7 +185,7 @@ describe("registered MCP get_roadmap tool", () => {
   it("returns the same PlanView shape as GET /roadmap — the plan store, no token plumbing", async () => {
     const { sprints } = await write_plan(
       systemCtx(),
-      { narrative: "MCP view", sprints: [{ label: "GA", due: "2026-09-01", status: "in_progress", github_ref: 3 }] },
+      { ...narr("MCP view"), sprints: [{ label: "GA", due: "2026-09-01", status: "in_progress", github_ref: 3 }] },
       "andres"
     );
     await upsertProgress(systemCtx(), sprints[0].id, 4, 6, "event");
@@ -201,7 +202,7 @@ describe("registered MCP get_roadmap tool", () => {
       };
       expect(res.isError).toBeFalsy();
       const body = JSON.parse(res.content[0].text) as Awaited<ReturnType<typeof get_plan>>;
-      expect(body.narrative).toBe("MCP view");
+      expect(body.narrative).toBe(narrText("MCP view"));
       expect(body.sprints).toHaveLength(1);
       expect(body.sprints[0].label).toBe("GA");
       expect(body.sprints[0].active).toBe(true);

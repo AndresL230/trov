@@ -292,7 +292,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "propose_doc_update",
-    "description": "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", reason }), nothing staged. Out-of-vocab section or low confidence on a NEW slug routes to needs_triage; an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space (a slug from list_spaces, e.g. 'engineering' or 'product'; defaults 'engineering') to place a NEW doc — an unknown or archived space routes to needs_triage, and an existing doc keeps its own space — parent_slug (another page's slug in the same space) to put the page under that page in the space's tree — a new doc goes there at once, an existing doc when this version is promoted; a parent that is no valid place (missing, another space, under the page itself, more than 5 levels deep) is ignored and the result says so in parent_ignored — and force to stage an identical body. Link to another page in the body with [[its-slug]] or [[its-slug|the words shown]].",
+    "description": "Propose a doc version through the reconciling gate. Images: embed only uploaded doc images, as `![what it shows](/img/<sha256>)` — upload each first with upload_asset (destination \"doc\"); a body with a not-yet-uploaded /img ref or any other image source (external URL, data: URI) is REFUSED ({ outcome: \"refused\", code, reason }), nothing staged. So is a section that is not reference / context / decisions, a space that is not a live one of the organization, and a slug that is an archived page (a person restores it; use another slug): the reason lists what IS valid — fix it and call again in this session (a refusal is not recorded, so the corrected call stages). Low confidence stages too, flagged \"Low confidence\" for the reviewer (use it when unsure — nothing goes to a holding queue); an unchanged body is dropped; otherwise staged non-destructively (current_version untouched) and classified new/edit/rewrite. Pass base_version (the current_version you read) so a stale edit is flagged, space (a slug from list_spaces, e.g. 'engineering' or 'product'; defaults 'engineering') to place a NEW doc — an existing doc keeps its own space — parent_slug (another page's slug in the same space) to put the page under that page in the space's tree — a new doc goes there at once, an existing doc when this version is promoted; a parent that is no valid place (missing, another space, under the page itself, more than 5 levels deep) is ignored and the result says so in parent_ignored — and force to stage an identical body. Link to another page in the body with [[its-slug]] or [[its-slug|the words shown]].",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -899,7 +899,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "record_session",
-    "description": "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts / needs_triage, and optional artifact_links). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule is listed under `refused` with its reason and is not ledgered, so re-sending the same batch after uploading stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. A feed entry's `tags` must come from the organization's list (list_tags): an entry with a tag that is not on it is still written, without that tag, and the tag is listed under `suggested_tags` for an admin to decide. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
+    "description": "Record a whole Claude Code session into Trov in ONE reconciled batch: pass a full IngestPayload (session + feed_entries / doc_proposals / adr_drafts, and optional artifact_links; needs_triage is still accepted from older plugins but is not for new sessions — when unsure, send the item with confidence \"low\", which stages it flagged for the reviewer, or leave it out and tell the person). A doc proposal may embed only uploaded doc images (`![alt](/img/<sha256>)`, uploaded with upload_asset destination \"doc\" BEFORE this call); one that breaks that rule, names a section that is not reference / context / decisions or a space that is not a live one of the organization (list_spaces), or targets an archived page is listed under `refused` with a reason that lists what IS valid, and is not ledgered, so re-sending the same batch once it is fixed stages it. Routes through the SAME gate as /ingest — drops no-ops, stages real deltas, classifies each doc change, and is replay-safe on session.id. The author is your authenticated bearer principal; session.author is advisory and ignored. Returns per-type outcome counts. A feed entry's `tags` must come from the organization's list (list_tags): an entry with a tag that is not on it is still written, without that tag, and the tag is listed under `suggested_tags` for an admin to decide. `artifact_links` ([{slug, target_type: ticket|sprint|pr|issue, target_ref}], for artifacts this session produced) are NOT staged: after the batch is reconciled each is linked directly, as you, and reported in `artifact_links` as linked / not_found / error (idempotent — a replay re-links nothing). Used by the record-session skill at session end; you only ever stage knowledge — humans confirm.",
     "admin": false,
     "inputSchema": {
       "type": "object",
@@ -2198,14 +2198,26 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "update_plan",
-    "description": "ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. `label` is the sprint name, `start` its start date and `due` its target date — each a real calendar day written YYYY-MM-DD (`due` may be \"\" for unscheduled; `start` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. `dates` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is SHORT — 2–3 sentences up to two short paragraphs (Now / Next / Later), at most 800 characters after trimming; leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). Over the cap the whole call is refused and nothing is written — plan, versions and sprints alike. The narrative is always a full replacement, so an over-cap narrative already stored must be shortened, not resent. Use via the update-plan skill.",
+    "description": "ADMIN plan write: replace the roadmap narrative and create/update sprints (including status 'done') in one direct, non-destructively versioned write — same authored-write class as promote, NOT the ingestion gate. Sprints not listed are untouched. `label` is the sprint name, `start` its start date and `due` its target date — each a real calendar day written YYYY-MM-DD (`due` may be \"\" for unscheduled; `start` omitted keeps the stored one, null clears it), start on or before due, else the whole call is refused and nothing is written. `dates` is only a free-text display label. Which tickets are IN a sprint is set from the Tickets UI, not here. The narrative is the Roadmap's \"What's happening\" box: THREE parts — `now`, `next`, `later` — each one short paragraph (a sentence or two, no label of its own); the server composes and stores them as `**Now:** … **Next:** … **Later:** …`, at most 800 characters in all. All three are required on every call (the narrative is always a full replacement — start from get_roadmap's); leave out sprint-by-sprint detail, issue lists, dated status logs and ops steps (the sprints and the timeline carry those). A missing or empty part, or over the cap, refuses the whole call and nothing is written — plan, versions and sprints alike. A single `narrative` string is accepted only if it already reads Now / Next / Later. Use via the update-plan skill.",
     "admin": true,
     "inputSchema": {
       "type": "object",
       "properties": {
+        "now": {
+          "description": "The roadmap narrative's Now: what is happening now. One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a \"Now:\" label (the server adds it). Required, with the other two parts.",
+          "type": "string"
+        },
+        "next": {
+          "description": "The roadmap narrative's Next: what comes next. One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a \"Next:\" label (the server adds it). Required, with the other two parts.",
+          "type": "string"
+        },
+        "later": {
+          "description": "The roadmap narrative's Later: what is further out. One short paragraph — a sentence or two; markdown emphasis allowed, no headings or lists — without a \"Later:\" label (the server adds it). Required, with the other two parts.",
+          "type": "string"
+        },
         "narrative": {
-          "type": "string",
-          "description": "The whole roadmap narrative (markdown), replacing the current one. SHORT: 2–3 sentences to two short paragraphs — what is happening now, next, later — at most 800 characters after trimming. No sprint-by-sprint detail; the sprints and the timeline carry it."
+          "description": "DEPRECATED — pass now, next and later instead. Accepted only when it already reads \"**Now:** … **Next:** … **Later:** …\"; anything else is refused and nothing is written.",
+          "type": "string"
         },
         "sprints": {
           "default": [],
@@ -2355,9 +2367,6 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
           "type": "string"
         }
       },
-      "required": [
-        "narrative"
-      ],
       "$schema": "http://json-schema.org/draft-07/schema#"
     }
   },

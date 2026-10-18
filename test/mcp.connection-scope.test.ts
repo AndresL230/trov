@@ -22,6 +22,7 @@ import { consentPage, defaultConsentChoice, isWebClient } from "../src/auth/oaut
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { addOrgRepo } from "./helpers/org-config";
 import { ORG_A, ORG_B, ensureMember, mintTokenFor, platformCtx, tenantCtx } from "./helpers/tenant";
+import { narr } from "./helpers/plan";
 
 const e = env as unknown as Env;
 const ORG_C = "org_c";
@@ -211,7 +212,7 @@ describe("a connection that follows the repository", () => {
       expect((await whereAmI(p.access_token, { repo })).organization, repo).toEqual({ slug: "saplinglearn", name: "SaplingLearn" });
     }
     // The admin tool follows the role of the org the call lands in.
-    const plan = { narrative: "Now: ship. Next: rest.", sprints: [] };
+    const plan = { ...narr("ship.", "rest."), sprints: [] };
     expect((await call(p.access_token, "update_plan", { ...plan, repo: "team/app" })).isError).toBe(false);
     const refused = await call(p.access_token, "update_plan", { ...plan, repo: "dana/side" });
     expect(refused.json).toMatchObject({ code: "forbidden" });

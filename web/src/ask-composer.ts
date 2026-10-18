@@ -55,7 +55,7 @@ import {
   refAvatar, refCtxWord, refFallbackText, refLabel, refShort, refStatusIcon, refTypeGroup, refTypeWord, viewOf, type RefLook,
 } from "./ask-refs";
 import {
-  ASK_COMMANDS, ASK_DEFAULT_MODE, askAttachKind, parseAskRef,
+  ASK_COMMANDS, ASK_DEFAULT_MODE, askAttachKind, askMode, parseAskRef,
   type AskAttachKind, type AskAttachment, type AskCommand, type AskMode, type AskRefType, type AskState,
 } from "@shared/ai-ask-core";
 import { QUICK_MIN_CHARS } from "@shared/quick-search";
@@ -377,7 +377,17 @@ function pickerView(v: AskView, p: ComposerPicker): string {
   </div>`;
 }
 
+/** `ask/state` is still out (not failed): the controls that depend on it hold their place in their default look. */
+const statePending = (v: Pick<AskView, "ui">): boolean => !stateOf(v) && (v.ui.state.status === "idle" || v.ui.state.status === "loading");
+
 function modeControl(v: AskView): string {
+  // While ask/state is out, the picker's place is held by its button in the default mode, disabled (no act, no
+  // menu) — so the row does not shift when the read lands. Free (one mode) then drops it; the switch and Send sit
+  // after the row's spacer, so they stay where they are either way.
+  if (statePending(v)) {
+    const word = askMode(ASK_DEFAULT_MODE).label;
+    return `<div class="ask-co-modewrap" data-morph-key="mode" data-morph-list><button type="button" class="ask-co-modebtn" data-morph-key="mb" data-co-modebtn disabled aria-label="${attr(`Mode: ${word}`)}">${esc(word)}${askIcon("chevron", 10, null, 2.6)}</button></div>`;
+  }
   const modes = composerModes(v);
   if (modes.length <= 1) return "";
   const ui = v.ui.composer[v.where];
@@ -398,6 +408,19 @@ const AUTO_OFF_TIP = "An admin turned off Auto for this org. Trov asks before ev
 const AUTO_TIP = "Trov makes changes without asking first. Publishing a doc always waits for you.";
 
 function autoSwitch(v: AskView, phone: boolean): string {
+  // Without ask/state (still out, or failed) the switch is locked but neutral: not the admin's "Auto is off" look and
+  // tooltip, which would flash on every first visit before the read says whether Auto is allowed (and be untrue).
+  if (!stateOf(v)) {
+    const seg = segmented({
+      id: `ask-auto-${v.where}${phone ? "-p" : ""}`, ariaLabel: "Changes in this thread", value: "off", act: "askCoAuto",
+      size: phone ? "md" : "xs", fill: phone, inertOn: true, className: phone ? "cnpy-seg--bar" : "ask-co-auto-seg",
+      options: [
+        { value: "off", label: v.where === "panel" && !phone ? "Ask first" : "Ask before changes", locked: true },
+        { value: "on", label: "Auto", locked: true },
+      ],
+    });
+    return `<div class="ask-co-auto is-pending" data-morph-key="auto" aria-disabled="true">${seg}</div>`;
+  }
   const allowed = autoAllowed(v);
   const on = composerAuto(v);
   const seg = segmented({

@@ -34,7 +34,7 @@ describe("vocabulary gate", () => {
     expect(await all<{ tag: string; state: string }>(env.DB, `SELECT tag, state FROM org_tag_suggestions`)).toEqual([{ tag: "not-a-real-tag", state: "open" }]);
   });
 
-  it("routes out-of-vocab doc sections and low-confidence items to triage, stages valid ones", async () => {
+  it("refuses an out-of-vocab doc section, stages low-confidence items flagged; only a batch's own triage item reaches Unplaced", async () => {
     const payload = IngestPayload.parse({
       session,
       doc_proposals: [
@@ -50,19 +50,17 @@ describe("vocabulary gate", () => {
     });
 
     const result = await consume(systemCtx(), payload, { handle: "andres" });
-    expect(result.docs.staged).toBe(1);
-    expect(result.adrs.staged).toBe(1);
-    // bad-section + low-conf doc (docs.triaged) + weak adr (adrs.triaged) + explicit
-    // triage item (triage.recorded) = 4 routed to needs_triage in total.
-    expect(result.docs.triaged).toBe(2);
-    expect(result.adrs.triaged).toBe(1);
+    // good-doc + low-conf (flagged) stage; bad-section is REFUSED with the valid sections; both decisions stage.
+    expect(result.docs).toEqual({ staged: 2, unchanged: 0 });
+    expect(result.adrs).toEqual({ staged: 2, unchanged: 0 });
+    expect(result.refused).toEqual([{ slug: "bad-section", code: "section", reason: expect.stringContaining("one of reference, context, decisions") }]);
     expect(result.triage.recorded).toBe(1);
 
-    const staged = await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions`);
-    expect(staged.length).toBe(1);
-    expect(staged[0].slug).toBe("good-doc");
+    const staged = await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions ORDER BY slug`);
+    expect(staged.map((v) => [v.slug, v.low_confidence])).toEqual([["good-doc", 0], ["low-conf", 1]]);
 
+    // Only the explicit item (a plugin older than 0.11 still sends one) lands in Unplaced.
     const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(4);
+    expect(triage.map((t) => t.reason)).toEqual(["ambiguous section"]);
   });
 });

@@ -16,10 +16,21 @@ write may set it (admin), and ANY signed-in member completes a sprint with `POST
 **ONE overdue rule**: `sprintDueState(due, now)` in `shared/sprints-core.ts` — a sprint is due all of its
 (local) due day and overdue from the day AFTER, "due this week" = today through 7 days out — read by the sprint
 cards, the Roadmap's Timeline-tab dot / Now box / single NEXT UP (`nextSprintId`), the Timeline and My Work's ticket due dates.
-The narrative is short — `PLAN_NARRATIVE_MAX` = 800 characters after trim (`shared/sprints-core.ts`),
-enforced in the `update_plan` input schema AND at the top of `write_plan`, before its first write (so over
-it, or an unknown sprint id, writes nothing: no plan row, no version, no sprint); a longer narrative
-already stored still reads whole.
+**The narrative is Now / Next / Later, enforced at write** (the owner's call, 2026-10-18; no migration): every
+writer gives THREE parts — `now`, `next`, `later`, each one paragraph (whitespace runs folded to a space), trimmed
+and non-empty, with no "Now:" / "Next:" / "Later:" label of its own — and `write_plan` composes the ONE stored form
+into the existing `plan.narrative` column: `**Now:** …\n\n**Next:** …\n\n**Later:** …` (`composePlanNarrative`,
+zod-free in `shared/sprints-core.ts`). The rule is `planNarrativeParts` (same file), applied at the top of
+`write_plan` for every caller — MCP `update_plan` (input `now` / `next` / `later`, `PlanNarrativeFields` in
+`shared/sprints.ts`), Ask Trov's `update_plan` card (`PlanWriteInput`, so a bad one makes no card) and Trov's
+accepted narrative proposal. An older client's single `narrative` string is accepted ONLY when it parses into the
+three parts (`parsePlanNarrative`: `**Now:**`, `**Now**:` or a plain capitalised `Now:`, in order, Now first, none
+empty — the run-together form written before the rule parses); free text is refused with "pass `now`, `next` and
+`later`". It stays short — `PLAN_NARRATIVE_MAX` = 800 characters over the COMPOSED text (labels included, so the
+parts get ~766). Every refusal (a missing / empty part, a part with its own label, both forms at once, over the
+cap, an unknown sprint id) is decided before the first write, so it writes nothing: no plan row, no version, no
+sprint. A narrative already stored still reads whole: the card draws the canonical (or run-together) form as the
+structured box and anything older as plain markdown (below).
 
 **Two vocabularies, one seam** (`shared/sprints.ts`): the DB keeps its column names, the DTO speaks the
 product's words — `row.title` ↔ `view.label`, `row.target_date` ↔ `view.due`, `row.start_date` ↔ `view.start`
@@ -160,6 +171,13 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   sprints over the backlog, offered when ≥8 open tickets sit outside every sprint and none is active) and the weekly
   narrative proposal. Accept runs `create_sprint` + `set_ticket_sprint` or `write_plan` AS that admin; nothing is
   written before. Nothing here sets a sprint or ticket done.
+- **"What's happening"** (`planNarrativeBlock`, `web/src/render.ts`): a narrative that parses is a STRUCTURED box
+  (`planNarrativeBox` in `web/src/roadmap-ai.ts`, trov.css `.rm-nnl`) — three rows, each its label (Now / Next /
+  Later, the card's label face) beside its text (the part's markdown through `renderMarkdown`, blocks flattened),
+  hairlines (`var(--border)`) between them, tokens only so both themes read. One that does not parse (a free-text
+  narrative from before the rule) is drawn as plain markdown, as before; an empty one keeps the empty layout. A
+  narrative proposal in the Trov dialog draws the same box a size down (`.rm-nnl-sugg`); a legacy `{ narrative }`
+  proposal that does not parse is not drawn (it cannot be accepted either).
 - **Where they show** (the owner's call, 2026-10-18): the suggestions and the drift are NOT in the page's flow (they
   pushed the narrative and the sprints around). The narrative card's head has a Trov button (`roadmapTrovButton`:
   the mark, "Suggestions", their count, a dot while a suggestion waits for a decision) that opens them in a dialog
@@ -179,5 +197,14 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   can create"; Q21/Q40), a 403 `off` (the AI read rule: the switch off or no key) "Trov's AI is off for this
   organization, so nothing was changed. An admin can turn it on in Org settings › AI." (`AI_OFF_REFUSAL`), else
   "Couldn't do that. Try again." (`refusalText`, `ai-actions.ts`); the Roadmap is read again once no card is collapsing (one read for several). Reduced motion: gone at once.
+  **An Accept in the dialog is NOT optimistic** (the owner, 2026-10-18: "not just change the modal to have nothing
+  and then forcing me to reload"): its writers take seconds (a draft creates sprints and moves tickets one by one),
+  so the card stays, its Accept disabled and saying what it does ("Creating 3 sprints…", "Updating the
+  narrative…"), until the server answers. Then the dialog closes by its own exit (`closeRoadmapTrov` → main.ts
+  `confirmOut`) when no other suggestion waits in it — else the card collapses out by the kit's exit — the Roadmap
+  is read again (`decided` hands the read back), and once it lands what the Accept changed rises in with the app's
+  one-shot `.cnpy-flash` (`state.rmRise`, `RM_RISE_MS` in `web/src/sprints.ts`, at a negative delay so a repaint
+  joins it): the narrative's box, or the sprint cards a draft created (only those). A Dismiss stays optimistic and
+  closes the dialog at once when it took the last suggestion. Reduced motion: nothing moves, same result.
   Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
   (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).

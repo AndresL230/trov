@@ -4,7 +4,7 @@
 //
 //   • the ticket detail — a chip under Properties for a suggested category and priority, and one above Linked work
 //     for a possible duplicate; Accept writes the field / adds the link as the person, Dismiss is remembered;
-//   • Unplaced — a chip above "File it as" with the suggested destination; Accept files it exactly as "File it";
+//   • Unplaced — a chip above "Place it as" with the suggested destination; Accept places it exactly as Place;
 //   • Review — a quiet line: the mark and the risk in words on the list card (it is a button: no button inside it),
 //     and in the detail pane the same with its reason and Dismiss. A risk never promotes, rejects or ratifies.
 //

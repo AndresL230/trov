@@ -133,15 +133,31 @@ function allowanceOf(st: Standing, adding = 0) {
   return { used, cap, resetsAt: nextMonthStart(nowDate()), low: cap !== null && cap - used < cap * ASK_LOW_SHARE };
 }
 
+/** A starter's longest topic (a sprint's name in "What's blocking the … work?"): a chip holds two lines. */
+export const STARTER_TOPIC_MAX = 40;
+
+/** A sprint's name as a starter says it: without a trailing "(…)" aside ("RAG privacy + correctness (AI redesign
+ *  #643, phases 0–1)" → "RAG privacy + correctness"), and past `STARTER_TOPIC_MAX` cut at a word with "…". The chip
+ *  clamps anyway (web: ask-conversation.ts); this keeps the question short enough to read, and to send. */
+export function starterTopic(title: string): string {
+  const full = title.replace(/\s+/g, " ").trim();
+  const bare = full.replace(/\s*\([^()]*\)$/, "").trim() || full;
+  if (bare.length <= STARTER_TOPIC_MAX) return bare;
+  const cut = bare.slice(0, STARTER_TOPIC_MAX + 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > STARTER_TOPIC_MAX / 2 ? cut.slice(0, at) : bare.slice(0, STARTER_TOPIC_MAX)).replace(/[\s,;:.–—-]+$/, "")}…`;
+}
+
 /** Starters, by plain rules from the person's own work (no model): their top assigned ticket, the active sprint,
- *  what shipped. The rest from the design's four. */
+ *  what shipped. The rest from the generic fallback (`ASK_STARTERS_FALLBACK`). */
 async function starters(ctx: TenantContext, handle: string): Promise<string[]> {
   const out: string[] = ["What shipped this week?"];
   try {
     const mine = await listAssignedTickets(ctx, handle, { limit: 3 });
     if (mine[0]) out.push(`Summarize ticket #${mine[0].id}`);
     const sprint = await first<{ title: string }>(ctx, `SELECT title FROM sprints WHERE org_id = ? AND status = 'in_progress' ORDER BY target_date LIMIT 1`, ctx.orgId);
-    if (sprint) out.push(`What's blocking the ${sprint.title} work?`);
+    const topic = sprint ? starterTopic(sprint.title) : "";
+    if (topic) out.push(`What's blocking the ${topic} work?`);
     const waiting = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND (recipient = ? COLLATE NOCASE OR recipient = 'anyone') AND sender <> ? COLLATE NOCASE`, ctx.orgId, handle, handle);
     if ((waiting?.n ?? 0) > 0 || mine.length > 0) out.push("What's waiting on me?");
   } catch (e) {

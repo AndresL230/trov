@@ -636,15 +636,12 @@ export const DOCS = [
 export const SECTIONS = [["Product Specs", "What we're building and why, before and while we build it"], ["Operations", "Deploys, environments, incidents"]];
 
 // ── the roadmap narrative (plan version 2) ──────────────────────────────────────────────────────────────────────────
-export const NARRATIVE = `## Sapling this quarter
+// The ONE stored form of the Now / Next / Later box (shared/sprints-core `composePlanNarrative`).
+export const NARRATIVE = `**Now:** The **teacher dashboard beta** for the 12 pilot schools — mastery per topic, quiet students, a class code to join — and finishing the **gradebook export rework**, which is late: whole-school exports become a job.
 
-Sapling helps students learn from their own material: upload notes or a textbook, then study with the tutor, quizzes and flashcards that come back when you're about to forget them. This quarter we put it in front of teachers.
+**Next:** **Offline study mode**, so a bus ride doesn't cost a streak, and the tutor's citations pointing at the right page.
 
-**Now** the **teacher dashboard beta** for the 12 pilot schools — mastery per topic, quiet students, a class code to join — and finishing the **gradebook export rework**, which is late: whole-school exports become a job.
-
-**Next** **offline study mode**, so a bus ride doesn't cost a streak, and the tutor's citations pointing at the right page.
-
-**Later** Google Classroom sync, Spanish, and a weekly progress e-mail for parents.`;
+**Later:** Google Classroom sync, Spanish, and a weekly progress e-mail for parents.`;
 
 // ── the repository (Repo screen) ──────────────────────────────────────────────────────────────────────────────────
 // Merged PRs over twelve weeks: [number, author login, days ago, title, what, why, impact, importance?]

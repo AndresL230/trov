@@ -84,8 +84,8 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
 
     // Structured per-type counts come back, exactly like /ingest reports.
     expect(result.feed).toEqual({ written: 1, unchanged: 0, triaged: 0 });
-    expect(result.docs).toEqual({ staged: 1, unchanged: 0, triaged: 0 });
-    expect(result.adrs).toEqual({ staged: 1, unchanged: 0, triaged: 0 });
+    expect(result.docs).toEqual({ staged: 1, unchanged: 0 });
+    expect(result.adrs).toEqual({ staged: 1, unchanged: 0 });
 
     // Rows landed, and the author on EVERY row is the bearer principal — never the
     // client-supplied session.author.
@@ -117,8 +117,8 @@ describe("record_session MCP tool — the real bearer-only agent write path", ()
     const replay = await callRecordSession(principal, payload);
     // The ledger (keyed on session.id) drops every item — proven at the TOOL surface.
     expect(replay.result.feed).toEqual({ written: 0, unchanged: 1, triaged: 0 });
-    expect(replay.result.docs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
-    expect(replay.result.adrs).toEqual({ staged: 0, unchanged: 1, triaged: 0 });
+    expect(replay.result.docs).toEqual({ staged: 0, unchanged: 1 });
+    expect(replay.result.adrs).toEqual({ staged: 0, unchanged: 1 });
 
     const versionsAfter = (await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions`)).length;
     expect(versionsAfter).toBe(versionsBefore); // nothing new staged on replay

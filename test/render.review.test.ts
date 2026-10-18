@@ -28,7 +28,7 @@ import { reviewView, reviewPagePane, reviewGroups, changedLinesText, pageKindWor
 import { LOW_CONFIDENCE } from "../web/src/marks";
 import css from "../web/src/trov.css?raw";
 import morphSrc from "../web/src/morph.ts?raw";
-import { maintenanceView, assignPanel, fileHint, type MaintenanceProps, type UnplacedItem } from "../web/src/maintenance";
+import { maintenanceView, type MaintenanceProps, type UnplacedItem } from "../web/src/maintenance";
 import { identitySection, personPicker, type IdentityProps, type IdentityGroup } from "../web/src/identity";
 import { render, initialState, triageCounts, identityCount } from "../web/src/render";
 import mainSrc from "../web/src/main.ts?raw";
@@ -445,10 +445,9 @@ function makeMaintProps(overrides: Partial<MaintenanceProps> = {}): MaintenanceP
       ],
       sections: ["reference", "context", "decisions"],
       spaces: [{ key: "engineering", label: "Engineering" }, { key: "product", label: "Product" }],
-      tags: ["auth", "infra"],
+      tags: [{ name: "auth", color: "plum" }, { name: "infra", color: "rust" }],
     },
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [],
-    discardArm: false,
     people: [{ id: "maya-k", name: "maya-k", initials: "MA" }],
     ...overrides,
   };
@@ -462,43 +461,6 @@ function makeIdentity(overrides: Partial<IdentityProps> = {}): IdentityProps {
     ...overrides,
   };
 }
-
-describe("maintenanceView — the Unplaced queue", () => {
-  it("lists the items and shows the first one on screen with its position", () => {
-    const html = maintenanceView(makeMaintProps({ unplaced: [makeUnplaced(), makeUnplaced({ id: "u2", title: "Second thing", snippet: "Second." })] }));
-    expect(html).toContain("Things an agent produced but couldn&#39;t place.");
-    expect(html).toContain('data-act="maintSelect" data-arg="u1"');
-    expect(html).toContain('data-act="maintSelect" data-arg="u2"');
-    expect(html).toContain("1 of 2");
-    expect(html).toContain("Why it wasn't placed:");
-    expect(html).not.toContain("mk-dev2"); // Identity is its own tab now
-  });
-
-  it("selecting another item puts it on screen", () => {
-    const html = maintenanceView(makeMaintProps({ unplaced: [makeUnplaced(), makeUnplaced({ id: "u2", title: "Second thing", snippet: "Second." })], assignOpen: "u2" }));
-    expect(html).toContain("2 of 2");
-    expect(html).toContain('data-act="maintFile" data-arg="u2"');
-  });
-
-  it("centers its wrapper (margin:0 auto) like every other screen", () => {
-    const html = maintenanceView(makeMaintProps());
-    expect(html).toMatch(/max-width:\s*\d+px;\s*margin:\s*0 auto/);
-  });
-
-  it("gates File it on a kind (and a section for a doc), and arms Discard in two steps", () => {
-    const none = maintenanceView(makeMaintProps());
-    expect(none).toContain("Pick what it is first");
-    expect(none).not.toMatch(/class="cnpy-accentbtn"[^>]*>File it/);
-    const doc = maintenanceView(makeMaintProps({ assignOpen: "u1", assignKind: "doc" }));
-    expect(doc).toContain("Pick a section");
-    expect(doc).toContain("reference");
-    const ready = maintenanceView(makeMaintProps({ assignOpen: "u1", assignKind: "doc", assignSection: "reference" }));
-    expect(ready).toContain("Stages a proposal in reference");
-    expect(ready).toContain("cnpy-accentbtn");
-    expect(maintenanceView(makeMaintProps())).toContain(">Discard<");
-    expect(maintenanceView(makeMaintProps({ discardArm: true }))).toContain("Click again to discard");
-  });
-});
 
 describe("identitySection — the unmatched logins (Org settings › Members)", () => {
   it("pairs the activity sample with the person picker", () => {
@@ -575,7 +537,7 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   it("holds only the queue: nothing of Identity, People or the e-mail digests is on it", () => {
     const body = main(app());
     expect(body).toContain("Things an agent produced");
-    expect(body).toContain('data-act="maintFile"');
+    expect(body).toContain('data-act="maintDiscard"');
     for (const gone of ["Who is this?", "identityMap", "mk-dev2", "Unmatched logins", "policyToggle", "schedHour", "outboxToggle", "openPerson\" data-arg=\"andres"]) expect(body, gone).not.toContain(gone);
   });
 
@@ -613,25 +575,6 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   });
 });
 
-describe("maintenanceView — surface cards", () => {
-  it("the queue sits in ONE surface card, rows hairline-divided inside", () => {
-    const html = maintenanceView(makeMaintProps());
-    expect(html.match(/cnpy-surface/g)?.length).toBe(1);
-    expect(html).not.toContain("border-radius:12px");
-    expect(html).not.toContain("color-mix(in srgb,var(--fg) 2.5%");
-  });
-});
-
-describe("maintenanceView — empty state", () => {
-  it("an empty queue has its own card", () => {
-    const u = maintenanceView(makeMaintProps({ unplaced: [] }));
-    expect(u).toContain('data-empty="unplaced"');
-    expect(u).toContain("Nothing is unplaced, which is this queue");
-    // It never claims an agent produced anything: a new organization's queue is empty too.
-    expect(u).not.toContain("found its place");
-  });
-});
-
 describe("XSS: maintenance fields are escaped in text and attributes", () => {
   it("escapes a hostile unplaced id and snippet", () => {
     const hostile = makeUnplaced({ id: 'u" onmouseover="alert(1)', snippet: "<img src=x onerror=alert(1)>" });
@@ -647,39 +590,6 @@ describe("XSS: maintenance fields are escaped in text and attributes", () => {
     expect(html).not.toContain("<script>");
     expect(html).not.toContain("<svg onload");
     expect(html).toContain("&lt;script&gt;");
-  });
-});
-
-describe("assignPanel — per-type targets from the real vocabulary", () => {
-  const assign = makeMaintProps().assign;
-
-  it("offers the three kinds and no target until one is picked", () => {
-    const html = assignPanel("7", assign, null, null, null, []);
-    expect(html).toContain("File it as");
-    expect(html).toContain("Doc section");
-    expect(html).not.toContain("reference");
-  });
-
-  it("doc kind offers sections plus an optional space — the org's own, by name", () => {
-    const html = assignPanel("7", assign, "doc", null, null, []);
-    expect(html).toContain("reference");
-    expect(html).toContain("decisions");
-    expect(html).toContain('data-act="maintAssignSpace" data-arg="engineering"');
-    expect(html).toContain(">Engineering</button>");
-    expect(html).toContain("optional");
-  });
-
-  it("feed kind offers multi-select tags", () => {
-    const html = assignPanel("7", assign, "feed", null, null, ["auth"]);
-    expect(html).toContain('data-act="maintAssignTag" data-arg="auth"');
-    expect(html).toContain('data-act="maintAssignTag" data-arg="infra"');
-  });
-
-  it("the adr kind needs no target", () => {
-    const html = assignPanel("7", assign, "adr", null, null, []);
-    expect(html).not.toContain("maintAssignSection");
-    expect(html).not.toContain("maintAssignTag");
-    expect(fileHint("adr", null)).toBe("Creates a draft decision in Review");
   });
 });
 
@@ -714,11 +624,13 @@ describe("Review and Unplaced — the detail's author opens their person card", 
     expect(reviewDetail(makeItem(), "unified")).not.toContain('data-act="openPerson"');
   });
 
-  it("the Unplaced detail's author is a chip when mapped, plain when not; the list rows stay select buttons", () => {
+  it("the Unplaced author opens their card when mapped (the card's avatar and the detail's byline, as on Review), plain when not; the list rows stay select buttons", () => {
     const people = [{ id: "maya-k", name: "Maya K", initials: "MK", color: "plum" as const }];
     const mapped = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "maya-k", when: "1h ago" })] }));
     expect(mapped).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personchip"/);
-    expect((mapped.match(/data-act="openPerson"/g) ?? []).length).toBe(1);
+    expect(mapped).toMatch(/<button data-act="openPerson" data-arg="maya-k" class="cnpy-personav"/);
+    expect((mapped.match(/data-act="openPerson"/g) ?? []).length).toBe(2);
+    expect(mapped).toContain('data-act="maintSelect" data-arg="u1" class="cnpy-hit"');
     const stranger = maintenanceView(makeMaintProps({ people, unplaced: [makeUnplaced({ author: "ghost", when: "1h ago" })] }));
     expect(stranger).not.toContain('data-act="openPerson"');
   });

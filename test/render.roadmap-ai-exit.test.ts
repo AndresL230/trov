@@ -4,6 +4,9 @@
  * once and the card collapses (`.cnpy-ai-leave`, held collapsed until the re-read), the re-read waits until the LAST
  * exit is over (one read for several), a failed write puts the card back exactly; "Wrong?" on a note collapses it the
  * same way. Under reduced motion it goes at once and the re-read goes at once.
+ * The Roadmap's dialog (2026-10-18): an ACCEPT there waits for the server, busy in place; then the dialog closes when
+ * no other suggestion is left (else the card collapses out), the Roadmap is read again, and what it changed rises in
+ * once the read lands (`state.rmRise`). A Dismiss that takes the last suggestion closes the dialog at once.
  * The API calls are stubbed (they are the network); everything else is the shipped code.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -29,6 +32,9 @@ import { OrgApiError } from "../web/src/api";
 import { AI_EXIT_MS, aiSuggestionKey } from "../web/src/ai-ui";
 import { initialState, type AppState } from "../web/src/render";
 import { roadmapSuggestionCards } from "../web/src/roadmap-ai";
+import { planNarrativeBlock } from "../web/src/render";
+import { RM_RISE_MS } from "../web/src/sprints";
+import type { SprintView } from "@shared/sprints";
 import { roadmapFixture, themesFixture } from "@shared/ai-fixtures";
 import { aiItemRef } from "@shared/ai-core";
 
@@ -41,12 +47,20 @@ function harness(screen: "roadmap" | "repo" = "roadmap") {
     ...initialState(), view: "app", screen, roadmapTab: "narrative",
     roadmap: { status: "ok", data: { narrative: "", version: 1, updated_at: null, updated_by: null, sprints: [], suggestions: fx.suggestions, drift: fx.drift } },
   };
-  const log = { rerenders: 0, flashes: [] as string[], afterDecide: [] as Array<[number, string]> };
+  const log = { rerenders: 0, flashes: [] as string[], afterDecide: [] as Array<[number, string]>, closed: 0 };
+  // The Roadmap's re-read, as main.ts's `decided` hands it back: `nextRead` (when set) is what the read brings.
+  const read: { next: Partial<typeof state.roadmap.data> | null; land: (() => void) | null } = { next: null, land: null };
   const ctl = createAiController({
     state, mount: {} as HTMLElement, rerender: () => { log.rerenders++; }, flash: (m) => { log.flashes.push(m); }, unauth: () => {},
-    decided: (id, how) => { log.afterDecide.push([id, how]); },
+    decided: (id, how) => {
+      log.afterDecide.push([id, how]);
+      if (!read.next) return;
+      const next = read.next;
+      return new Promise<void>((res) => { read.land = () => { state.roadmap = { status: "ok", data: { ...state.roadmap.data, ...next } }; res(); }; });
+    },
+    closeRoadmapTrov: () => { log.closed++; state.rmTrovOpen = false; },
   });
-  return { state, ctl, log, cards: () => roadmapSuggestionCards(state.roadmap.data.suggestions, state.ai) };
+  return { state, ctl, log, read, cards: () => roadmapSuggestionCards(state.roadmap.data.suggestions, state.ai) };
 }
 
 let reduced = false;
@@ -62,22 +76,93 @@ const NOW = Date.parse("2026-10-14T12:00:00Z");
 const leavingCard = (id: number) => new RegExp(`data-morph-key="s:${id}"><div class="cnpy-ai-leave" data-ai-leaving inert style="--leave-t:-\\d+ms">`);
 
 describe("a Roadmap card leaves by the AI kit's one exit", () => {
-  it("Accept: sent at once, the card collapses and stays collapsed; the re-read waits for the exit", async () => {
+  it("Accept: sent at once, the card STAYS, busy, until the server answers; then it collapses (another waits) and the re-read follows the exit", async () => {
     vi.setSystemTime(NOW);
     const h = harness();
+    h.state.rmTrovOpen = true;
     h.ctl.act("aiAccept", String(A.id), null);
     expect(calls.accept).toHaveLength(1);
-    expect(h.state.ai.leaving).toEqual([{ key: aiSuggestionKey(A.id), at: NOW }]);
-    expect(h.cards()).toMatch(leavingCard(A.id));
-    calls.accept[0](true);  // the write lands BEFORE the exit is over
+    expect(h.state.ai.leaving).toEqual([]);                 // never an empty card while the writers run
+    expect(h.cards()).not.toMatch(leavingCard(A.id));
+    expect(h.cards()).toContain("Creating 3 sprints…");     // the Accept says what it is doing
+    expect(h.cards()).toMatch(/data-act="aiAccept" data-arg="9101" disabled aria-busy="true"/);
+    h.ctl.act("aiAccept", String(A.id), null);  // a second click while the write is out does nothing
+    expect(calls.accept).toHaveLength(1);
+    vi.advanceTimersByTime(5_000);               // a draft's writers take seconds: still there, still busy
+    expect(h.state.ai.leaving).toEqual([]);
+    vi.setSystemTime(NOW + 5_000);
+    calls.accept[0](true);
     await flush();
     expect(h.log.flashes).toEqual(["Accepted"]);
-    expect(h.log.afterDecide).toEqual([]);  // held: the card is still collapsing
+    expect(h.log.closed).toBe(0);                // B still waits in the dialog: it stays open
+    expect(h.state.ai.leaving).toEqual([{ key: aiSuggestionKey(A.id), at: NOW + 5_000 }]);
+    expect(h.cards()).toMatch(leavingCard(A.id));
+    expect(h.log.afterDecide).toEqual([]);       // held: the card is still collapsing
     vi.advanceTimersByTime(AI_EXIT_MS);
     expect(h.cards()).toContain(`--leave-t:-${AI_EXIT_MS}ms`); // held collapsed until the read drops it
     expect(h.cards()).toContain(`data-morph-key="s:${B.id}"><div style=`);
     expect(h.log.afterDecide).toEqual([[A.id, "accept"]]);
-    h.ctl.act("aiAccept", String(A.id), null);  // a second click while the write is out does nothing
+  });
+
+  it("Accept on the LAST suggestion: the dialog closes once the write lands, the Roadmap is read again, and the narrative rises in", async () => {
+    vi.setSystemTime(NOW);
+    const h = harness();
+    h.state.roadmap.data.suggestions = [B];      // the narrative proposal alone
+    h.state.rmTrovOpen = true;
+    h.read.next = { narrative: "**Now:** Hosting.\n\n**Next:** Billing.\n\n**Later:** Docs.", suggestions: undefined };
+    h.ctl.act("aiAccept", String(B.id), null);
+    expect(h.cards()).toContain("Updating the narrative…");
+    expect(h.log.closed).toBe(0);                // not before the server answered
+    calls.accept[0](true);
+    await flush();
+    expect(h.log.closed).toBe(1);
+    expect(h.state.rmTrovOpen).toBe(false);
+    vi.advanceTimersByTime(AI_EXIT_MS);
+    expect(h.log.afterDecide).toEqual([[B.id, "accept"]]);
+    expect(h.state.rmRise).toBeNull();           // the read has not landed yet
+    const before = h.log.rerenders;
+    h.read.land!();
+    await flush();
+    expect(h.state.rmRise).toEqual({ at: NOW + AI_EXIT_MS, narrative: true, sprints: [] });
+    expect(h.log.rerenders).toBeGreaterThan(before);
+    // The card draws the new narrative as the box, rising in (the app's one-shot flash, at a negative delay).
+    const html = planNarrativeBlock(h.state.roadmap.data.narrative, (b) => b, "", 0);
+    expect(html).toMatch(/<dl class="rm-nnl cnpy-flash" style="animation-delay:-0ms">/);
+    vi.advanceTimersByTime(RM_RISE_MS);
+    expect(h.state.rmRise).toBeNull();           // one shot
+    expect(planNarrativeBlock(h.state.roadmap.data.narrative, (b) => b, "", RM_RISE_MS)).not.toContain("cnpy-flash");
+  });
+
+  it("an accepted sprint draft: the sprint cards it created rise in — only those", async () => {
+    vi.setSystemTime(NOW);
+    const h = harness();
+    const old = { id: 1, label: "Old" } as SprintView;
+    h.state.roadmap.data.sprints = [old];
+    h.state.roadmap.data.suggestions = [A];
+    h.read.next = { sprints: [old, { id: 40, label: "Hosting" } as SprintView, { id: 41, label: "Billing" } as SprintView], suggestions: undefined };
+    h.ctl.act("aiAccept", String(A.id), null);
+    calls.accept[0](true);
+    await flush();
+    vi.advanceTimersByTime(AI_EXIT_MS);
+    h.read.land!();
+    await flush();
+    expect(h.state.rmRise).toMatchObject({ narrative: false, sprints: [40, 41] });
+  });
+
+  it("Dismiss on the LAST suggestion closes the dialog at once (optimistic), and nothing rises", async () => {
+    const h = harness();
+    h.state.roadmap.data.suggestions = [B];
+    h.state.rmTrovOpen = true;
+    h.read.next = { suggestions: undefined };
+    h.ctl.act("aiDismiss", String(B.id), null);
+    expect(h.log.closed).toBe(1);
+    expect(h.cards()).toMatch(leavingCard(B.id));
+    calls.dismiss[0](true);
+    await flush();
+    vi.advanceTimersByTime(AI_EXIT_MS);
+    h.read.land?.();
+    await flush();
+    expect(h.state.rmRise).toBeNull();
   });
 
   it("two cards in a row: ONE re-read, after the last exit", async () => {
@@ -145,6 +230,19 @@ describe("a Roadmap card leaves by the AI kit's one exit", () => {
     await flush();
     vi.advanceTimersByTime(0);
     expect(h.log.afterDecide).toEqual([[A.id, "dismiss"]]);
+    // An Accept: the same result — the dialog closes, the read goes at once, the change is marked (CSS keeps it still).
+    const a = harness();
+    a.state.roadmap.data.suggestions = [B];
+    a.state.rmTrovOpen = true;
+    a.read.next = { narrative: "**Now:** a\n\n**Next:** b\n\n**Later:** c", suggestions: undefined };
+    a.ctl.act("aiAccept", String(B.id), null);
+    calls.accept[0](true);
+    await flush();
+    vi.advanceTimersByTime(0);
+    expect([a.log.closed, a.log.afterDecide]).toEqual([1, [[B.id, "accept"]]]);
+    a.read.land!();
+    await flush();
+    expect(a.state.rmRise).toMatchObject({ narrative: true });
   });
 
   it("off the Roadmap (a theme proposal on Repo) it is the SAME exit: one kit", async () => {

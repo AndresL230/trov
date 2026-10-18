@@ -7,12 +7,14 @@
 //                   admin starts one when they choose), then `set_ticket_sprint` for its tickets. A ticket that is
 //                   no longer open in the backlog (closed, deleted, or put in a sprint since) is left where it is —
 //                   never moved out of another sprint. Nothing is marked done or started.
-//   plan_narrative  `write_plan` with the narrative and no sprint entries (sprints not listed are untouched), so
-//                   it is versioned like any plan write; over `PLAN_NARRATIVE_MAX` it refuses and writes nothing.
+//   plan_narrative  `write_plan` with the narrative's three parts (Now / Next / Later) and no sprint entries
+//                   (sprints not listed are untouched), so it is versioned like any plan write and held to its rule:
+//                   an empty part or over `PLAN_NARRATIVE_MAX` refuses and writes nothing. A proposal stored before
+//                   the structure (`{ narrative }`) is accepted only when it parses into the three parts.
 //
 // The value is the suggested one, or the admin's edited one (`{ value }` on the accept), checked here against the
 // contract. A refusal throws: the suggestion goes back to open (src/ai/suggestions.ts).
-import { AiPlanNarrativeValueSchema, AiSprintDraftValueSchema } from "@shared/ai";
+import { AiPlanNarrativeValueSchema, AiSprintDraftValueSchema, aiNarrativeParts } from "@shared/ai";
 import { all, ph, type TenantContext } from "../data/sql";
 import { create_sprint, SprintError } from "../tools/sprints";
 import { set_ticket_sprint } from "../tools/tickets";
@@ -44,7 +46,9 @@ export const PLAN_NARRATIVE_ACCEPT: AcceptHandler = {
   role: "admin",
   async apply(ctx: TenantContext, _row, value) {
     const parsed = AiPlanNarrativeValueSchema.safeParse(value);
-    if (!parsed.success) throw new SprintError("bad_request", "that narrative is empty");
-    await write_plan(ctx, { narrative: parsed.data.narrative, sprints: [] }, ctx.userId);
+    if (!parsed.success) throw new SprintError("bad_request", "that narrative needs all three parts: Now, Next and Later");
+    const parts = aiNarrativeParts(parsed.data);
+    if (!parts) throw new SprintError("bad_request", "that narrative was written before the Now / Next / Later box. Dismiss it; Trov proposes a new one within a week.");
+    await write_plan(ctx, { ...parts, sprints: [] }, ctx.userId);
   },
 };

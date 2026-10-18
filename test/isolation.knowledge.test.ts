@@ -24,6 +24,7 @@ import { feedStats } from "../src/tools/feed-stats";
 import { storeIssueSummary, storePrSummary } from "../src/tools/summarize";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { ORG_A, ORG_B, ensureMember, platformCtx, systemCtx } from "./helpers/tenant";
+import { narr } from "./helpers/plan";
 
 const A = systemCtx(ORG_A);
 const B = systemCtx(ORG_B);
@@ -248,13 +249,12 @@ describe("the ingest gate", () => {
     const inB = await ingestDocProposal(B, p, "bee");
     expect(inB).toMatchObject({ outcome: "written", version: 1, change_kind: "new", base_version: null });
 
-    // A low-confidence proposal for a slug that exists only in A is a NEW doc in B: triaged, in B.
-    const low = await ingestDocProposal(B, { ...doc("only-in-a", "x"), confidence: "low", space: "technical", force: false }, "bee");
+    // A low-confidence proposal for a slug that exists only in A is a NEW doc in B: staged and flagged, in B.
     await propose_doc_update(A, doc("only-in-a", "x"), WHO);
-    expect(low.outcome).toBe("triaged");
-    expect((await ingestDocProposal(B, { ...doc("only-in-a", "y"), confidence: "low", space: "technical", force: false }, "bee")).outcome).toBe("triaged");
-    expect((await list_needs_triage(B)).length).toBe(2);
-    expect((await list_needs_triage(A)).every((t) => t.source_author !== "bee")).toBe(true);
+    const low = await ingestDocProposal(B, { ...doc("only-in-a", "x"), confidence: "low", space: "technical", force: false }, "bee");
+    expect(low).toMatchObject({ outcome: "written", version: 1, change_kind: "new", low_confidence: true });
+    expect((await versionsOf(ORG_A, "only-in-a")).length).toBe(1);
+    expect((await list_needs_triage(B)).length).toBe(0);
   });
 
   it("consume(): one payload, one session id, two orgs — each a full first run", async () => {
@@ -265,10 +265,10 @@ describe("the ingest gate", () => {
       adr_drafts: [{ ...adr, title: "Consume per org" }],
       needs_triage: [{ raw: "free text", reason: "unsure" }],
     });
-    const fresh = { feed: { written: 1, unchanged: 0, triaged: 0 }, docs: { staged: 1, unchanged: 0, triaged: 0 },
-      adrs: { staged: 1, unchanged: 0, triaged: 0 }, triage: { recorded: 1, unchanged: 0 } };
-    const replay = { feed: { written: 0, unchanged: 1, triaged: 0 }, docs: { staged: 0, unchanged: 1, triaged: 0 },
-      adrs: { staged: 0, unchanged: 1, triaged: 0 }, triage: { recorded: 0, unchanged: 1 } };
+    const fresh = { feed: { written: 1, unchanged: 0, triaged: 0 }, docs: { staged: 1, unchanged: 0 },
+      adrs: { staged: 1, unchanged: 0 }, triage: { recorded: 1, unchanged: 0 } };
+    const replay = { feed: { written: 0, unchanged: 1, triaged: 0 }, docs: { staged: 0, unchanged: 1 },
+      adrs: { staged: 0, unchanged: 1 }, triage: { recorded: 0, unchanged: 1 } };
 
     expect(await consume(A, payload, { handle: WHO })).toEqual(fresh);
     expect(await consume(B, payload, { handle: "bee" })).toEqual(fresh);
@@ -394,8 +394,8 @@ describe("two orgs with the same slugs and refs", () => {
   });
 
   it("query(): another org's plan text never surfaces this org's plan, and its feed never crowds this org's browse", async () => {
-    await write_plan(A, { narrative: "Ship the importer.", sprints: [] }, WHO);
-    await write_plan(B, { narrative: "Adopt the quokka strategy.", sprints: [] }, WHO);
+    await write_plan(A, { ...narr("Ship the importer."), sprints: [] }, WHO);
+    await write_plan(B, { ...narr("Adopt the quokka strategy."), sprints: [] }, WHO);
     expect((await query(A, { q: "quokka", types: ["sprint"] })).primary).toEqual([]);
     expect((await query(B, { q: "quokka", types: ["sprint"] })).primary.length).toBe(1);
 

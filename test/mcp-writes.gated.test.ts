@@ -66,39 +66,37 @@ describe("gate functions (consumer.ts) enforce the vocabulary/confidence gate", 
     expect(triage.length).toBe(0);
   });
 
-  it("ingestDocProposal: an out-of-vocab section routes to triage and writes no doc/version", async () => {
+  it("ingestDocProposal: an out-of-vocab section is REFUSED with the valid sections, writes no doc/version and nothing to triage", async () => {
     const r = await ingestDocProposal(
       systemCtx(),
       { slug: "bad-section", section: "made-up", body: "x", change_summary: "s", confidence: "high" },
       AUTHOR
     );
-    expect(r.outcome).toBe("triaged");
+    expect(r).toMatchObject({ outcome: "refused", code: "section", slug: "bad-section" });
+    expect(r.outcome === "refused" && r.reason).toContain(`"made-up"`);
+    expect(r.outcome === "refused" && r.reason).toContain("reference, context, decisions");
 
     const docs = await all<DocRow>(env.DB, `SELECT * FROM docs`);
     expect(docs.length).toBe(0);
     const versions = await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions`);
     expect(versions.length).toBe(0);
 
-    const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(1);
-    expect(triage[0].reason).toContain("made-up");
+    expect(await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).toEqual([]);
   });
 
-  it("ingestDocProposal: a low-confidence proposal routes to triage and writes no doc/version", async () => {
+  it("ingestDocProposal: a low-confidence NEW proposal stages flagged — nothing to triage", async () => {
     const r = await ingestDocProposal(
       systemCtx(),
       { slug: "low-conf", section: "reference", body: "x", change_summary: "s", confidence: "low" },
       AUTHOR
     );
-    expect(r.outcome).toBe("triaged");
+    expect(r).toMatchObject({ outcome: "written", version: 1, status: "staged", low_confidence: true });
 
     const docs = await all<DocRow>(env.DB, `SELECT * FROM docs`);
-    expect(docs.length).toBe(0);
+    expect(docs.map((d) => [d.slug, d.current_version])).toEqual([["low-conf", 0]]);
     const versions = await all<DocVersionRow>(env.DB, `SELECT * FROM doc_versions`);
-    expect(versions.length).toBe(0);
+    expect(versions.map((v) => v.low_confidence)).toEqual([1]);
 
-    const triage = await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`);
-    expect(triage.length).toBe(1);
-    expect(triage[0].reason).toContain("low confidence");
+    expect(await all<NeedsTriageRow>(env.DB, `SELECT * FROM needs_triage`)).toEqual([]);
   });
 });

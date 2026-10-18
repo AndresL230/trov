@@ -160,7 +160,7 @@ describe("Auto mode", () => {
     const cookie = await cookieFor(FIXTURE_ADMIN);
     await ingestDocProposal(await tenantCtx("AndresL230"), { slug: "auto-doc", section: "reference", title: "Auto doc", body: "# Auto\n\nv1", change_summary: "new", confidence: "high" }, "AndresL230");
     const calls: StreamBlock[] = [
-      { type: "tool_use", name: "update_plan", input: { narrative: "Now: hosting.", sprints: [] } },
+      { type: "tool_use", name: "update_plan", input: { now: "hosting.", next: "Next.", later: "Later.", sprints: [] } },
       { type: "tool_use", name: "publish_doc", input: { slug: "auto-doc" } },
       ...Array.from({ length: 5 }, (_, i) => ({ type: "tool_use" as const, name: "create_ticket", input: { title: `Plan cap ${i}` } })),
     ];
@@ -208,6 +208,14 @@ describe("Publish a staged doc", () => {
     expect((await WRITES.publish_doc.preview(tc, { slug: "no-pub" })).canPublish).toBe(false);
     await expect(WRITES.publish_doc.run(tc, { slug: "no-pub" })).rejects.toMatchObject({ code: "forbidden" });
     expect((await first<{ c: number }>(env.DB, `SELECT current_version AS c FROM docs WHERE org_id = ? AND slug = 'no-pub'`, ORG_A))?.c ?? 0).toBe(0);
+  });
+
+  it("a doc proposal the gate refuses FAILS its card with the gate's reason — never a done line over nothing", async () => {
+    const tc = { env: KEYED, ctx: await tenantCtx("AndresL230"), handle: "AndresL230", orgSlug: "saplinglearn", origin: "http://x", threadId: 0, docs: async () => null, now: () => new Date(), searched: new Map() } as AskToolCtx;
+    await expect(WRITES.propose_doc_update.run(tc, { slug: "ask-odd", section: "misc", body: "x", change_summary: "s", confidence: "high" }))
+      .rejects.toMatchObject({ code: "bad_request", message: expect.stringContaining("reference, context, decisions") });
+    expect(await first(env.DB, `SELECT 1 FROM docs WHERE org_id = ? AND slug = 'ask-odd'`, ORG_A)).toBeNull();
+    expect(await first(env.DB, `SELECT 1 FROM needs_triage WHERE org_id = ?`, ORG_A)).toBeNull();
   });
 });
 

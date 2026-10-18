@@ -270,7 +270,7 @@ const TENANT: Record<string, Row> = {
   // Archive page / Restore (0083_doc_archive): A's page is no page of B's — 404 for B's admin, 403 or 404 for its member.
   "POST /doc/:slug/archive": J({}), "POST /doc/:slug/restore": J({}),
   "POST /adr/:id/ratify": J({}), "POST /adr/:id/reject": J({}),
-  "POST /needs-triage/:id/discard": J({}), "POST /needs-triage/:id/assign": J({ type: "feed" }),
+  "POST /needs-triage/:id/discard": J({}), "POST /needs-triage/:id/restore": J({}), "POST /needs-triage/:id/assign": J({ type: "feed" }),
   "GET /identity-tasks": {}, "POST /identity-tasks/:login/map": J({ person: ALICE }),
   "POST /identity-tasks/:login/discard": J({}), "POST /identity-tasks/:login/restore": J({}),
   "GET /persons": {}, "GET /roadmap": {}, "GET /me/dashboard": {}, "GET /repo/dashboard": {},

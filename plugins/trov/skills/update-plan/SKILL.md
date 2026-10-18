@@ -55,34 +55,41 @@ you are working in. Once per session, run `git remote get-url origin` and reduce
 ### 1. Always `get_roadmap` first (read-before-write)
 
 Call `mcp__trov__get_roadmap` before composing anything. Carry forward:
-- The current `narrative` (you'll pass a full replacement, so start from what's live). Check its
-  length: if it is over the **800-character cap** (below), you cannot resend it as it is — even a
-  sprint-only change carries the narrative — so step 2 proposes a shortened one.
+- The current `narrative` (you'll pass a full replacement, so start from what's live). It is stored
+  as `**Now:** …\n\n**Next:** …\n\n**Later:** …` — split it into its three parts and carry them
+  forward. Even a sprint-only change carries the narrative, so if the live one is **not** in that
+  form (an older free-text narrative) or is over the **800-character cap**, you cannot resend it as it
+  is: step 2 proposes a Now / Next / Later version of it.
 - Every existing sprint's **`id`** — pass `id` on a sprint you're editing so the tool updates it
   in place; a sprint omitted from your call is **untouched**, not deleted. Omitting `id` on a new
   entry creates it.
 
-### 2. Keep the narrative short
+### 2. The narrative is three parts: Now / Next / Later — keep each short
 
-The narrative is the Roadmap's "What's happening" card, not a status report. Write it — or ask the
-admin for it — as **2–3 sentences up to two short paragraphs: Now / Next / Later**, optionally under one
-short heading line. The server refuses anything over **800 characters** (counted after trimming) and
-writes nothing — not the plan, not a version, not one sprint.
+The narrative is the Roadmap's "What's happening" box, not a status report: three rows, **Now**,
+**Next** and **Later**. Write it — or ask the admin for it — as three parts, each **one short
+paragraph** (a sentence or two; markdown emphasis is fine, no headings or lists) and **without** its
+own "Now:" / "Next:" / "Later:" label — the server adds the labels and stores the one canonical form.
+All three are required on every call. The server refuses a missing or empty part, a part that carries
+a label of its own, a free-text `narrative`, or more than **800 characters** in all (the composed
+text, labels included), and writes nothing — not the plan, not a version, not one sprint.
 
 - **Leave out** sprint-by-sprint detail, issue-number lists, dated status logs ("State as of …"),
   ops sequences and schedule tables. The sprints (`summary` / `description`) and the timeline carry
   those; move detail there instead of dropping it.
-- **Count before you call.** Measure the trimmed length of the narrative you are about to send; if it
-  is over 800, cut it and re-show the admin the shorter text — never send it hoping it fits.
-- **An existing narrative over the cap** is not resent: propose a shortened replacement (Now / Next /
-  Later in a few sentences) in the diff, and say where any detail you cut now lives (which sprint's
-  `description`). A long narrative already stored still reads fine — the cap applies only to the next
-  write.
+- **Count before you call.** The three parts together, plus about 34 characters of labels, must stay
+  within 800; if they do not, cut them and re-show the admin the shorter text — never send it hoping
+  it fits.
+- **An existing narrative over the cap, or not in Now / Next / Later form,** is not resent: propose a
+  replacement in three parts in the diff, and say where any detail you cut now lives (which sprint's
+  `description`). An older narrative already stored still reads fine on the Roadmap (as plain text) —
+  the rule applies only to the next write.
 
 ### 3. Show the admin a diff and get confirmation
 
-Before writing, lay out plainly what will change: narrative before/after with its character count
-(or "narrative unchanged" — only when the live one is within the cap),
+Before writing, lay out plainly what will change: the narrative's Now / Next / Later before/after with
+its character count (or "narrative unchanged" — only when the live one is already in that form and
+within the cap),
 and per sprint — created / edited (with the specific fields changing) / left untouched. Get the
 admin's explicit go-ahead on that diff before calling the write tool. If they want changes, revise the
 diff and re-confirm — don't call `update_plan` speculatively.
@@ -93,7 +100,9 @@ Once confirmed, make **exactly one** call:
 
 ```jsonc
 {
-  "narrative": "<full narrative text — ≤ 800 characters, Now / Next / Later>",
+  "now": "<what is happening now — one short paragraph, no label>",
+  "next": "<what comes next — one short paragraph, no label>",
+  "later": "<what is further out — one short paragraph, no label>",
   "sprints": [
     { "id": 3, "label": "Ticket queue", "summary": "One queue the whole org files into.",
       "description": "markdown — **bold**, `code`, links, ### headings, - bullets",
@@ -138,8 +147,11 @@ The sprint vocabulary (the DTO's words, not the column names):
   member) — only set it when the admin explicitly confirmed the sprint is done, never inferred from closed issues or from
   every ticket in the sprint being resolved.
 - Report back the new plan `version` the tool returns. If the call comes back with
-  `narrative is N characters; the cap is 800`, nothing was written: shorten the narrative, re-confirm
-  with the admin and call once more.
+  `narrative is N characters; the cap is 800`, nothing was written: shorten the parts, re-confirm
+  with the admin and call once more. A refusal saying a part is empty, carries its own label, or that
+  `now`, `next` and `later` must be passed instead of `narrative` also wrote nothing: fix the parts and
+  call once more. (An older plugin that sends a single `narrative` string is accepted only when it
+  already reads `**Now:** … **Next:** … **Later:** …`.)
 
 ## Hard rules (invariants)
 
@@ -155,8 +167,8 @@ The sprint vocabulary (the DTO's words, not the column names):
 - **`done` is a person's say-so only** — set here by an admin, or by any member with `complete_sprint` /
   the web Confirm-done button — never inferred from
   GitHub activity, issue closure percentage, or `get_events`.
-- **Narrative ≤ 800 characters** (after trimming) — server-enforced; over it, the whole call is
-  refused and nothing is written.
+- **Narrative = `now` + `next` + `later`, ≤ 800 characters composed** — server-enforced; a missing
+  part, a free-text narrative or over the cap refuses the whole call and nothing is written.
 - **One call.** Compose the full sprints array (with unchanged ones simply omitted) and call
   `update_plan` once — this is a direct write, not a reconciling batch, so there's no replay safety net
   if you call it twice with different content.
@@ -173,5 +185,7 @@ The sprint vocabulary (the DTO's words, not the column names):
 - Writing the narrative as a status report — per-sprint progress, issue lists, dated logs — or resending
   a stored narrative that is already over the cap. It is refused; shorten it and push the detail into
   the sprints.
+- Sending one free-text `narrative` (or a heading line) instead of `now` / `next` / `later`, or putting
+  "Now:" inside the `now` text → refused; pass the three parts' text alone.
 - Calling `get_roadmap` after deciding what to write instead of before — you lose the current `id`s
   and the real current narrative to diff against.
