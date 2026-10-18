@@ -274,7 +274,7 @@ function hero(signedIn: boolean): string {
           </div>
           ${sideHead("Knowledge", "16px")}
           <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`, "Docs")}
+            ${side(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`, "Library")}
             ${side(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`, "Artifacts")}
             ${side(`<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`, "Prompt Library")}
           </div>
@@ -446,7 +446,7 @@ import type { TourKey } from "./site-feature-core";
 export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
   docs: [
     "The library is split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading.",
-    "Drag a page onto another to put it inside, or above or below one to reorder them. History keeps every earlier version.",
+    "A page links to another with [[its-slug]], and each page lists the pages that link to it. History keeps every earlier version.",
     "An agent's change is a staged version. The live doc stays untouched until a person promotes it.",
     "New page starts one from a template and sends it to Review.",
   ],
@@ -660,12 +660,12 @@ function tourItems(): TourItem[] {
       </div>`;
 
   return [
-    { key: "docs", name: "Docs", title: "A library that stays reviewed", body: "Spaces for each team or topic, full version history on every doc, and a heading outline for long pages.", mockStyle: MOCK, mock: docs },
+    { key: "docs", name: "Library", title: "A library that stays reviewed", body: "Spaces for each team or topic, each a tree of pages linked to one another, with full version history. Import Markdown or a .zip, and every page waits in Review.", mockStyle: MOCK, mock: docs },
     { key: "feed", name: "Feed", title: "A timeline of what shipped", body: "Every entry leads with a short brief for people and links to the PRs, commits, and issues behind it. Agents get the full record.", mockStyle: `${MOCK};padding:18px 18px 20px;display:flex;flex-direction:column;gap:12px`, mock: feed },
     { key: "tickets", name: "Tickets", title: "A board the whole team files into", body: "Drag cards across Triage, In progress, Testing, and Done, or read the queue as a table by sprint. Comments with @mentions, sub-tickets, and GitHub issues mirrored in as tickets.", mockStyle: MOCK, mock: tickets },
     { key: "roadmap", name: "Roadmap", title: "Sprints on a calendar", body: "A short narrative with its sprint cards, and a timeline that runs each sprint from start to due date, filled by its done tickets.", mockStyle: MOCK, mock: roadmap },
     { key: "mywork", name: "My Work", title: "Your day on one page", body: "Your tickets, what's waiting on your review, your recent sessions and handoffs, and the repo at a glance.", mockStyle: `${MOCK};padding:20px 22px 22px`, mock: mywork },
-    { key: "handoffs", name: "Handoffs", title: "Pick up where the last session stopped", body: "An agent leaves a note for the next session or a teammate: what's done, what's next, and the branch. The next session offers it and claims it only when you say so.", mockStyle: MOCK, mock: handoffs },
+    { key: "handoffs", name: "Relay", title: "Pick up where the last session stopped", body: "An agent leaves a handoff for the next session or a teammate: what's done, what's next, and the branch, claimed only when you say so. Two sessions whose work overlaps can leave each other notes over a link.", mockStyle: MOCK, mock: handoffs },
     { key: "artifacts", name: "Artifacts", title: "Designs and reports, versioned", body: "HTML pages, markdown reports, diagrams, images, and PDFs, linked to the ticket or sprint they came from.", mockStyle: MOCK, mock: artifacts },
   ];
 }
@@ -732,15 +732,18 @@ function extras(): string {
       <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:var(--fg-70)">${body}</p>
     </div>`;
   const t = (text: string) => `<div style="font-size:14.5px;font-weight:650">${text}</div>`;
-  const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(420 + i * 80)}"></span>`;
+  const swatch = (bg: string, i: number) => `<span class="site-st st-pop" style="width:14px;height:14px;border-radius:50%;background:${bg};border:1px solid var(--border-strong);${at(780 + i * 80)}"></span>`;
   return `<section ${SEC} style="max-width:1120px;margin:0 auto;padding:130px 24px 0">
     <div ${rv("extras", "rv-static")} style="display:grid;grid-template-columns:repeat(auto-fit, minmax(min(300px, 100%), 1fr));gap:16px">
-      ${card(0, t("Decisions"), "Architecture decision records, in their own section of Docs.")}
-      ${card(1, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
-      ${card(2, t("Prompt Library"), "Reusable prompts with variables, and a new version on every save.")}
-      ${card(3, t("Repo dashboard"), "Deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
-      ${card(4, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
-      ${card(5,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Or follow your system.")}
+      ${card(0, t("Ask Trov"), "Ask about your organization in plain words, with every source linked. Share a conversation with the whole organization or with chosen people.")}
+      ${card(1, t("Trov writes the short version"), "With your organization's AI on: your brief on My Work, where each repository stands, and what each session shipped, with sources.")}
+      ${card(2, t("Search everything"), "One box jumps to any ticket, doc, sprint, artifact, prompt, or person. Agents also see pending proposals, labeled.")}
+      ${card(3, t("Decisions"), "Architecture decision records. Agents draft them, and read them before they work in that area.")}
+      ${card(4, t("Prompt Library"), "Reusable prompts with variables, and a new version on every save.")}
+      ${card(5, t("Repo dashboard"), "Each app and environment's deploys, CI, drift, and usage from captured data. Unknown reads as unknown, never zero.")}
+      ${card(6, t("Any host"), "Cloudflare, Railway, Vercel, Netlify, Render, or Fly.io: connect each once, and see every part's deploys and usage.")}
+      ${card(7, t("Email digests"), "Daily or weekly, per section, so nobody has to poll the feed.")}
+      ${card(8,`<div style="display:flex;align-items:center;gap:8px"><span style="font-size:14.5px;font-weight:650">Light and dark</span><span style="display:flex;gap:4px;margin-left:auto">${swatch("#f6f6f7", 0)}${swatch("#1c1a16", 1)}</span></div>`, "Or follow your system.")}
     </div>
   </section>`;
 }
@@ -772,7 +775,8 @@ function agents(): string {
   const tools = MCP_TOOL_GROUPS.filter((g) => !paired.has(g.key)).map(groupOf).join("")
     + `<div class="site-agents-pair" style="display:flex;flex-wrap:wrap;gap:16px 36px">${MCP_TOOL_GROUPS.filter((g) => paired.has(g.key)).map(groupOf).join("")}</div>`;
   n = 0;
-  const skills = chips(["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"]);
+  const SKILLS = ["trov", "load-context", "record-session", "my-work", "tickets", "handoff", "link", "prompts", "artifacts", "read-plan", "update-plan"];
+  const skills = chips(SKILLS);
 
   // The plugin card holds what is true about it and no more: the skills, then the SAME three steps and
   // commands Settings and the guided setup show (mcp-connect.ts — one copy, with its Copy button).
@@ -793,7 +797,7 @@ function agents(): string {
       <div ${rv("agents-plugin", "site-agent-card")} style="display:flex;flex-direction:column;border:1px solid var(--border);border-radius:13px;padding:26px 28px;${at(120)}">
         <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
           <span style="font-size:17px;font-weight:650">Claude Code plugin</span>
-          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">10 skills</span>
+          <span style="font-family:var(--label);font-size:11px;color:var(--fg-55)">${SKILLS.length} skills</span>
         </div>
         <div style="margin-top:12px">${skills}</div>
         <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--border)">

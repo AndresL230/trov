@@ -30,7 +30,7 @@ const rules = css.replace(/\/\*[\s\S]*?\*\//g, "");
 const page = (feature: FeatureState | null = null) => landingView({ dark: false, signInOpen: false, seen: new Set(), feature });
 const open = (key: string, dir: -1 | 0 | 1 = 0, mode: FeatureState["mode"] = "vt") => page({ key, dir, mode });
 const dialog = (html: string) => html.slice(html.indexOf('<div data-overlay="feature"'));
-const NAMES: Record<TourKey, string> = { docs: "Docs", feed: "Feed", tickets: "Tickets", roadmap: "Roadmap", mywork: "My Work", handoffs: "Handoffs", artifacts: "Artifacts" };
+const NAMES: Record<TourKey, string> = { docs: "Library", feed: "Feed", tickets: "Tickets", roadmap: "Roadmap", mywork: "My Work", handoffs: "Relay", artifacts: "Artifacts" };
 
 describe("tour cards — every mockup opens its feature", () => {
   const html = page();
@@ -64,7 +64,7 @@ describe("the feature dialog", () => {
     const d = dialog(open("docs"));
     expect(d).toContain('role="dialog" aria-modal="true" aria-labelledby="site-fx-title" aria-describedby="site-fx-pos"');
     expect(d).toContain('<h2 id="site-fx-title">A library that stays reviewed</h2>');
-    expect(d).toContain('<span id="site-fx-pos" aria-live="polite"><span class="site-vh">Docs, </span>1 of 7</span>');
+    expect(d).toContain('<span id="site-fx-pos" aria-live="polite"><span class="site-vh">Library, </span>1 of 7</span>');
     expect(d).toContain('data-act="closeFeature" title="Close" aria-label="Close"');
     expect(d).toContain('<div data-act="closeFeature" class="site-fx-back"></div>');
   });
@@ -87,7 +87,7 @@ describe("the feature dialog", () => {
   it("previous and next name where they go, and wrap at both ends", () => {
     expect(dialog(open("docs"))).toContain('data-act="stepFeature" data-arg="prev" class="site-fx-nav" style="border-radius:9px" aria-label="Previous: Artifacts"');
     expect(dialog(open("docs"))).toContain('aria-label="Next: Feed"');
-    expect(dialog(open("artifacts"))).toContain('aria-label="Next: Docs"');
+    expect(dialog(open("artifacts"))).toContain('aria-label="Next: Library"');
     expect(dialog(open("artifacts"))).toContain("7 of 7");
     expect(dialog(open("roadmap")).match(/class="site-fx-dot is-on"/g)?.length).toBe(1);
     expect(dialog(open("roadmap")).match(/class="site-fx-dot[ "]/g)?.length).toBe(7);
@@ -106,7 +106,7 @@ describe("the feature dialog", () => {
       .replace(/\$\{g(?:Strong|Code|Em)\("([^"]*)"\)\}/g, "$1").replace(/&amp;/g, "&");
     // For each fact, a phrase of it that must still stand in the Guide.
     const anchors: Record<TourKey, string[]> = {
-      docs: ["split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading", "drag a page onto another to put it inside, or above or below one to reorder them", "The live doc stays untouched until a person promotes", "New page starts one from a template and sends it to Review"],
+      docs: ["split into spaces your team defines, like Engineering, Product and Design, and a space's pages form a tree beside the page you are reading", "A page links to another with [[its-slug]], and each page lists the pages that link to it", "The live doc stays untouched until a person promotes", "New page starts one from a template and sends it to Review"],
       feed: ["A timeline of everything that shipped, from people and agents alike", "a short brief in plain words", "says whether an agent wrote it", "Filter by author, tag, or time"],
       tickets: ["Anyone can file a bug, request, question, or access ask", "Drag a card to change its status or its place in a column", "the same tickets grouped by sprint", "only a person closes a ticket: a merged PR never does"],
       roadmap: ["Narrative reads the plan and its sprint cards", "each bar runs from a sprint's start to its due date", "tickets closed", "always a person's call"],
