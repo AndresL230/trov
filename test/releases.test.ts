@@ -182,7 +182,7 @@ describe("releaseLine / releaseDate / slugs", () => {
     const notes = releasePageView("0.25", "notes");
     expect(notes).not.toContain("No release called");
     expect(notes).toContain(`>${r.title}</h1>`);
-    expect(notes).toContain(">v0.7<");
+    expect(notes).toContain("v0.7 · Released");
     // `#releases/0.34/patches`: the old number of the newest batch opens 0.11's patch notes.
     expect(parseHash("#releases/0.34/patches")).toMatchObject({ releaseVersion: "0.34", releasePage: "patches" });
     expect(findRelease("0.34")!.version).toBe("0.11");
@@ -260,13 +260,15 @@ describe("one release — its notes page and its patches page, one reading colum
     const r = findRelease("0.8")!;
     expect(html).toContain('href="#releases" class="cnpy-rel-back');
     expect(html).toContain("All releases");
-    expect(html).toContain(">v0.8<");
+    expect(html).toContain("v0.8 · Released");
     expect(html).toContain(`>${r.title}</h1>`);
     // The two pages are the page's sections: a tab bar under the title, the body its panel.
     expect(html).toContain('role="tablist" aria-label="Release page"');
     expect(picked(html, "Release notes")).toBe(true);
     expect(html).toContain('data-act="releasePage" data-arg="patches"');
-    expect(html.indexOf("</header>")).toBeLessThan(html.indexOf('role="tablist"'));
+    // In the brand banner, above the title — the site's pills (brand-banner.ts)
+    expect(html.indexOf('class="cnpy-brandband site-banner"')).toBeLessThan(html.indexOf('role="tablist"'));
+    expect(html.indexOf('role="tablist"')).toBeLessThan(html.indexOf('class="cnpy-brandband-h"'));
     expect(html).toContain('role="tabpanel" id="release-page-panel"');
     expect(releasePageView("0.99", "notes")).not.toContain('role="tablist"'); // not-found: none
     expect(html).toContain(">Highlights<");
@@ -423,7 +425,7 @@ describe("the release record loads lazily (release-latest.ts, releases-lazy.ts)"
     expect(releasesLoaded()).toBeNull();
     const index = releasesView(null, "notes");
     expect(index).toContain('class="cnpy-relidx"');
-    expect(index).toContain("What's new in Trov");
+    expect(index).toContain("What&#39;s new in Trov"); // the brand banner, escaped
     expect(index).toContain('data-skel="releases"');
     expect(index).toContain('aria-busy="true"');
     expect(index).not.toContain("cnpy-relfeat-title");

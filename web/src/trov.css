@@ -904,12 +904,33 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-guide-anchor { scroll-margin-top:24px; }
 @media (max-width: 1180px) { .cnpy-guide-toc { display:none; } }
 
+/* The brand banner (web/src/brand-banner.ts): the site pages' purple card (`.site-banner`) at the top of the app's
+   reading pages — What's new and the Guide. A tab bar inside it is drawn as the site's pills: a translucent track,
+   the white pill being the bar's own sliding indicator (tabs.ts), the picked tab's ink the banner's indigo. */
+.cnpy-brandband { padding:clamp(28px, 3.4 * var(--vw), 44px) clamp(22px, 3.6 * var(--vw), 48px) clamp(30px, 3.6 * var(--vw), 46px); }
+.cnpy-brandband > .site-banner-art { width:clamp(200px, 24 * var(--vw), 330px); aspect-ratio:1; right:clamp(-60px, -3.5 * var(--vw), -26px); top:clamp(-80px, -5 * var(--vw), -44px); }
+.cnpy-brandband-in { max-width:760px; }
+.cnpy-brandband-above { margin-bottom:20px; }
+.cnpy-brandband-h { margin:0; font-size:clamp(28px, 3.2 * var(--vw), 40px); line-height:1.1; font-weight:650; letter-spacing:-0.03em; color:#fff; text-wrap:balance; }
+.cnpy-brandband-lede { margin:12px 0 0; max-width:660px; font-size:15.5px; line-height:1.62; color:rgba(255,255,255,.94); text-wrap:pretty; }
+.cnpy-brandband-lede strong { color:#fff; font-weight:600; }
+.cnpy-brandband-lede a { color:#fff; text-decoration:underline; text-underline-offset:3px; text-decoration-color:rgba(255,255,255,.55); }
+.cnpy-brandband-below { margin-top:18px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.09em; text-transform:uppercase; color:rgba(255,255,255,.9); }
+.cnpy-brandband .cnpy-tabs { display:inline-flex; gap:2px; padding:3px; max-width:100%; background:rgba(255,255,255,.14); box-shadow:none; }
+.cnpy-brandband .cnpy-tab { z-index:2; height:auto; padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); box-shadow:none !important; }
+.cnpy-brandband .cnpy-tab:not(.is-on):hover { color:#fff; }
+.cnpy-brandband .cnpy-tab.is-on { color:#333c8f; background:#fff; }
+.cnpy-brandband .cnpy-tabs.is-live > .cnpy-tab.is-on { background:transparent; }
+.cnpy-brandband .cnpy-tabs-ind { top:3px; bottom:3px; height:auto; background:#fff; }
+.cnpy-brandband .cnpy-tab:focus-visible { outline:2px solid #fff; outline-offset:1px; }
+@media (max-width:720px) { .cnpy-brandband { padding:24px 20px 26px; } }
 /* ── What's new (web/src/releases.ts), the owner's redesign (2026-10-18: the old card grid and two-column page were
    cramped). The INDEX: the newest release as one wide featured card (.cnpy-relfeat), then the rest on a timeline
    (.cnpy-reltl: the version and date on a rail, the title, lede and counts beside it). A release PAGE: one reading
    column (.cnpy-reldoc) — back link, title block, a tab bar (Release notes / Patch notes), the page, newer / older as
    two cards. Long `code` runs wrap anywhere, so a phone never scrolls sideways. */
-.cnpy-relidx { max-width:1040px; margin:0 auto; padding:40px 32px 120px; }
+.cnpy-relidx { max-width:1040px; margin:0 auto; padding:28px 32px 120px; }
+.cnpy-relidx > .cnpy-brandband { margin-bottom:28px; }
 .cnpy-relidx-head { max-width:680px; margin-bottom:30px; }
 .cnpy-relidx-title { margin:0; font-size:30px; font-weight:650; letter-spacing:-0.025em; color:var(--fg); }
 .cnpy-relidx-intro { margin:10px 0 0; font-size:14.5px; line-height:1.65; color:var(--fg-55); }
@@ -955,10 +976,9 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-reldoc { max-width:1040px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; }
 .cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; font-size:12.5px; font-weight:500; color:var(--fg-55); text-decoration:none; }
 .cnpy-rel-back:hover { color:var(--fg); }
-.cnpy-reldoc-head { margin-top:22px; }
+.cnpy-reldoc-head { margin-top:16px; }
 .cnpy-reldoc-title { margin:10px 0 0; font-size:32px; font-weight:650; letter-spacing:-0.025em; line-height:1.2; color:var(--fg); text-wrap:balance; }
 .cnpy-reldoc-lede { margin:12px 0 0; max-width:72ch; font-size:16px; line-height:1.6; color:var(--fg-70); }
-.cnpy-reldoc > .cnpy-tabs { margin-top:26px; }
 .cnpy-reldoc-body { display:flex; flex-direction:column; gap:28px; padding-top:26px; }
 .cnpy-rel-h2 { margin:0 0 14px; font-family:var(--label); font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--fg-55); }
 .cnpy-relstrip { display:flex; flex-direction:column; gap:10px; }
@@ -5014,7 +5034,10 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .site-navlink { border-radius:calc(7px * var(--corner-scale)) !important; }
 /* The mark tooltip carries the theme attribute itself (it lives on <body>), so its rule keys on it. */
 [data-cnpy-theme].cnpy-mtip { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-brandband .cnpy-tabs,
 [data-cnpy-theme] .site-legal-tabs { border-radius:calc(11px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-brandband .cnpy-tab,
+[data-cnpy-theme] .cnpy-brandband .cnpy-tabs-ind { border-radius:calc(8px * var(--corner-scale)) !important; }
 @media (max-width:900px) { [data-cnpy-theme] .site-legal-side { border-radius:calc(12px * var(--corner-scale)) !important; } }
 [data-cnpy-theme] .site-fxcard::after { border-radius:calc(12px * var(--corner-scale)) !important; }
 [data-cnpy-theme] .cnpy-search,

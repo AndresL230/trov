@@ -52,6 +52,7 @@ import { maintenanceView, maintenanceSkeleton, type MaintenanceProps, type Assig
 import type { IdentityProps } from "./identity";
 import { linksView, linkDetailView, linkCancelModal, NO_LINK_BOXES, type LinkBoxes, type LinkStart } from "./links";
 import { relayView } from "./relay";
+import { brandBanner } from "./brand-banner";
 import type { AskState } from "@shared/ai-ask-core";
 import type { LinkDetail, LinkSideName } from "@shared/links";
 import { handoffsView, handoffDetailView, newHandoffView, handoffPromptModal, blankHandoff, type NewHandoffDraft } from "./handoffs";
@@ -2093,6 +2094,9 @@ export function guideImg(name: string, theme: string): string {
   return `<img src="${base}-${GUIDE_SHOT_W}.webp" srcset="${base}-${GUIDE_SHOT_W}.webp ${GUIDE_SHOT_W}w, ${base}.webp 2560w" sizes="(max-width: 860px) 100vw, 860px" data-full="${base}.webp" alt="${attr(guideAlt(name))}" loading="lazy" decoding="async" width="2560" height="1600" />`;
 }
 
+/** The Guide's opening, in its banner. */
+const GUIDE_LEDE = `Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: <strong>agents only ever stage changes, and a person confirms the ones that matter</strong>. That keeps what Trov says trustworthy no matter how many agents write to it.`;
+
 function guideView(s: AppState): string {
   // Screenshots are captured per theme (dark/light) by scripts/capture-guide.mjs;
   // pick the variant that matches the viewer's active theme so the figures never clash
@@ -2135,8 +2139,7 @@ function guideView(s: AppState): string {
   };
   const gPre = (body: string) => `<pre style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:12px 0 0"><code style="font-family:var(--code);font-size:12.5px;line-height:1.6;color:var(--fg-70)">${body}</code></pre>`;
   const body = `<div style="flex:1;min-width:0;max-width:860px">
-    <h1 id="guide-top" class="cnpy-guide-anchor" style="font-size:30px;font-weight:650;letter-spacing:-0.025em;margin:0 0 14px">How Trov works</h1>
-    <p style="font-size:16px;line-height:1.8;color:var(--fg-70);margin:0 0 14px">Trov is the team's shared memory: docs, decisions, the roadmap, the ticket queue, and a running record of what shipped, open to people and to their coding agents alike. It has one rule: ${gStrong("agents only ever stage changes, and a person confirms the ones that matter")}. That keeps what Trov says trustworthy no matter how many agents write to it.</p>
+
     <p style="${gP}">This page is the reference: the skills your agent uses every session, how a change goes from staged to settled, a tour of every screen, how accounts and agent connections work, and troubleshooting.</p>
     ${viewerOrg(s) ? `<div${surface("display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 16px;margin:0 0 6px")} data-guide-setup>
       <div style="flex:1 1 260px;min-width:0"><div style="font-size:13.5px;font-weight:600">Still setting up?</div><div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:1px">The guided setup takes ${esc(viewerOrg(s)!.name)} one step at a time${viewerIsAdmin(s) ? ": a repository, your coding agent, your team" : ": your coding agent, then where things live"}.</div></div>
@@ -2277,9 +2280,14 @@ function guideView(s: AppState): string {
       ${item("guide-top", "Introduction", "cnpy-guide-toc-sec")}
       ${toc.map((t) => `${item(t.id, t.label, "cnpy-guide-toc-sec")}${t.subs.length ? `<div class="cnpy-guide-toc-subs">${t.subs.map((x) => item(x.id, x.label, "cnpy-outline-item")).join("")}</div>` : ""}`).join("")}
     </nav>`;
-  return `<div class="cnpy-guide" style="display:flex;gap:56px;max-width:1180px;margin:0 auto;padding:52px 40px 120px;align-items:flex-start">
+  // The brand banner the site's pages open with (brand-banner.ts — the owner's call): the title and what Trov is.
+  const banner = brandBanner({ title: "How Trov works", titleId: "guide-top", titleCls: "cnpy-guide-anchor", lede: GUIDE_LEDE });
+  return `<div class="cnpy-guide-page" style="max-width:1180px;margin:0 auto;padding:28px 40px 120px">
+    ${banner}
+    <div class="cnpy-guide" style="display:flex;gap:56px;align-items:flex-start;margin-top:44px">
     ${rail}
     ${body}
+    </div>
   </div>`;
 }
 

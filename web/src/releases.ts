@@ -51,6 +51,7 @@
 
 import { esc, attr, surface } from "./ui";
 import { tabBar, tabPanelAttrs } from "./tabs";
+import { brandBanner } from "./brand-banner";
 import { stateMark } from "./marks";
 import { SOURCE_PATH, TROV_SOURCE_REPO } from "@shared/legal-core";
 
@@ -838,11 +839,14 @@ function timelineRow(r: Release, i: number): string {
 /** `#releases`: the newest release featured, then every earlier one on a timeline, newest first. */
 export function releasesIndex(releases: readonly Release[] = RELEASES): string {
   const [first, ...rest] = releases;
+  // The brand banner the site's pages open with (brand-banner.ts — the owner's call).
+  const shipped = releases.find((r) => !r.unreleased);
   return `<div class="cnpy-relidx">
-    <header class="cnpy-relidx-head">
-      <h1 class="cnpy-relidx-title">What's new in Trov</h1>
-      <p class="cnpy-relidx-intro">Every release, newest first. Each has its release notes, and patch notes with the full list of changes and links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer" class="cnpy-rel-pr">GitHub</a>. Trov is open source under AGPL-3.0: <a href="${SOURCE_PATH}" target="_blank" rel="noopener" class="cnpy-rel-pr" data-source-link>the source code of the version you are using</a>.</p>
-    </header>
+    ${brandBanner({
+      title: "What's new in Trov",
+      lede: `Every release, newest first. Each has its release notes, and patch notes with the full list of changes and links to the pull requests on <a href="${attr(TROV_REPO_URL)}" target="_blank" rel="noopener noreferrer">GitHub</a>. Trov is open source under AGPL-3.0: <a href="${SOURCE_PATH}" target="_blank" rel="noopener" data-source-link>the source code of the version you are using</a>.`,
+      below: shipped ? `Latest: ${esc(releaseName(shipped))} · ${esc(releaseDate(shipped.date))}` : "",
+    })}
     ${first ? featured(first) : ""}
     ${rest.length ? `<section class="cnpy-reltl" aria-labelledby="reltl-h"><h2 id="reltl-h" class="cnpy-reltl-h">Earlier releases</h2><ol class="cnpy-reltl-list">${rest.map(timelineRow).join("")}</ol></section>` : ""}
   </div>`;
@@ -865,14 +869,6 @@ export function releasePageSwitch(page: ReleasePage): string {
     id: RELEASE_TABS, ariaLabel: "Release page", act: "releasePage", value: page,
     tabs: [{ value: "notes", label: "Release notes" }, { value: "patches", label: "Patch notes" }],
   });
-}
-
-function docHead(r: Release): string {
-  return `<header class="cnpy-reldoc-head cnpy-rise">
-      ${metaRow(r)}
-      <h1 class="cnpy-reldoc-title">${esc(r.title)}</h1>
-      <p class="cnpy-reldoc-lede">${noteLine(r.headline)}</p>
-    </header>`;
 }
 
 const INFO = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 7.5v.5"></path></svg>`;
@@ -962,10 +958,12 @@ export function releasePageView(slug: string, page: ReleasePage, releases: reado
       </header>
     </div>`;
   }
+  // The brand banner (brand-banner.ts): the page's tabs above the title — the site's white pills — then its lede,
+  // and the version and date under it.
+  const when = r.unreleased ? "Unreleased · Not deployed yet" : `${releaseName(r)} · Released ${releaseDate(r.date)}`;
   return `<div class="cnpy-reldoc">
     <a href="#releases" class="cnpy-rel-back cnpy-rise">${ARROW_L}All releases</a>
-    ${docHead(r)}
-    ${releasePageSwitch(page)}
+    <div class="cnpy-reldoc-head cnpy-rise">${brandBanner({ title: r.title, lede: noteLine(r.headline), above: releasePageSwitch(page), below: esc(when) })}</div>
     <div${tabPanelAttrs(RELEASE_TABS, page)} class="cnpy-reldoc-body">
       ${page === "patches" ? patchesDoc(r) : notesDoc(r)}
     </div>

@@ -13,6 +13,7 @@ import type * as ReleasesModule from "./releases";
 import type { ReleasePage } from "./releases";
 import { skeleton, skLine, skLines, skList, skW } from "./skeleton";
 import { surface } from "./ui";
+import { brandBanner } from "./brand-banner";
 
 type Releases = typeof ReleasesModule;
 
@@ -51,10 +52,7 @@ function indexSkeleton(): string {
       <div class="cnpy-reltl-card">${skLine(skW(i, ["52%", "40%", "60%"]), 16.5, 1.35)}<div style="margin-top:8px">${skLines(["92%", skW(i, ["58%", "44%", "66%"])], 13.5, 1.6)}</div></div>
     </li>`;
   return `<div class="cnpy-relidx">
-    <div class="cnpy-relidx-head">
-      <h1 class="cnpy-relidx-title">What's new in Trov</h1>
-      <div style="margin-top:10px">${skLines(["100%", "88%", "46%"], 14.5, 1.6)}</div>
-    </div>
+    ${brandBanner({ title: "What's new in Trov" })}
     ${skeleton("releases", "Loading releases…", `<div${surface("", { cls: "cnpy-relfeat" })}>
         ${skLine(160, 12.5, 1.5)}<div style="margin-top:14px">${skLine("54%", 26, 1.25)}</div><div style="margin-top:10px">${skLines(["86%", "60%"], 15, 1.6)}</div>
         <div class="cnpy-relfeat-hl">${skList(4, (i) => `<div>${skLines(["100%", skW(i, ["70%", "52%", "80%", "60%"])], 13.5, 1.6)}</div>`)}</div>

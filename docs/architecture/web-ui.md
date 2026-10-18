@@ -159,6 +159,11 @@ gone) says so — "Reload the page to try again" — and is not retried in a loo
   support form's attached version and the legacy `#releases/patches` route read it. It is kept by hand and pinned
   to `RELEASES[0]` by `test/releases.test.ts`: the PR that opens an "Unreleased" entry sets it to "Unreleased",
   and the PR that cuts it into `0.N` sets "0.N" (the releases.ts header says so).
+- **The brand banner** (`web/src/brand-banner.ts`, `.cnpy-brandband` on the site's `.site-banner`): the app's reading
+  pages — What's new (the index and each release page) and the Guide — open with the purple card the site's pages
+  (/terms, /privacy, /refunds, the docs) do: the faint Trov mark, an optional row above the title (a release's
+  Release notes / Patch notes tab bar, drawn as the site's pills — the bar's sliding indicator is the white pill),
+  the title, the lede, a quiet line under it (the owner's call, 2026-10-18).
 - **What's new, the owner's redesign (2026-10-18)** — the old card grid and two-column page were cramped. The
   INDEX (`releasesIndex`) features the newest release as one wide card (`.cnpy-relfeat`: its title, lede, every
   highlight two to a row, its change counts) over a timeline of the rest (`.cnpy-reltl`: version and date on a rail,
