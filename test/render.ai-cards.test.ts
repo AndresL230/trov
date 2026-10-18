@@ -107,7 +107,7 @@ describe("field present — Trov's suggestions on the three screens", () => {
     expect(html.match(/data-act="aiAccept"/g)).toHaveLength(3);
     expect(html.match(/data-act="aiDismiss"/g)).toHaveLength(3);
     // The reason is one tap away, hidden until opened; the duplicate cites the ticket in-app.
-    expect(html).toContain("because it says “…the login page is blank on Safari…”");
+    expect(html).toContain("Because it says “…the login page is blank on Safari…”");
     expect(html).toContain('href="#tickets/9"');
     expect(html.indexOf("cnpy-ai-td-dup")).toBeLessThan(html.indexOf("cnpy-ai-td-fields")); // left column first
     expect(nestedButtons(html)).toBe(false);

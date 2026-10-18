@@ -1216,8 +1216,11 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
 - **Capped and empty** are the screen's own words (`aiCapped`, `AI_EMPTY`): "Monthly AI allowance used; <what>
   resumes Nov 1." with "Upgrade to Pro" (to Org settings › General, where the plan is changed) only when
   `upgrade` is true.
-- **The suggestion chip** (`aiSuggestionChip`, #157): "Suggested: X, because…" with Accept and Dismiss. It is
-  never styled like a value a person set: a dashed `--border-strong` outline, the mark, muted words. The
+- **The suggestion chip** (`aiSuggestionChip`, #157): the mark, "TROV SUGGESTS" and what it proposes, a "Why?"
+  disclosure ("Because …" and its sources), then Accept — or what accepting does (`acceptLabel`: Roadmap's "Create 2
+  sprints", "Use this narrative") — and Dismiss; what it would write sits INSIDE the box under its line (`body`), never
+  loose below it. It is never styled like a value a person set: a box lightly tinted with the accent and a quiet
+  accent edge (the owner's call, 2026-10-18 — the old dashed outline read as broken, not as a suggestion). The
   reason is a real disclosure button (`aria-expanded`, works on touch; `data-field="aiReason:<key>"`, so a page rebuilt
   on the press gives it back its keyboard focus — the themes' lanes carry `aiThemesLane:<id>` for the same reason), the
   chip a container of buttons (never

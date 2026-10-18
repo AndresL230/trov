@@ -5,6 +5,7 @@
  * over a real render() pass or the screen's own function. The field-ABSENT case is pinned by
  * test/render.ai-absent.test.ts.
  */
+import cssSrc from "../web/src/trov.css?raw";
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 
 const mdMock = (text: string) => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -120,12 +121,17 @@ describe("the suggestion chip (#157)", () => {
     { key: "s-7", id: 7, label: "Billing", reason: "it touches checkout and the plan block.", cites: [{ ref: "pr:136", label: "#136", href: "https://github.com/a/b/pull/136" }] },
     { open: false, busy: false, unavailable: false, canAct: true, ...o },
   );
-  it("is drawn unlike a value a person set: a dashed outline, the AI mark, muted words", () => {
+  it("is drawn unlike a value a person set: a lightly tinted box, the AI mark and 'Trov suggests' before what it proposes", () => {
     const h = chip();
-    expect(h).toContain("border:1px dashed var(--border-strong)");
+    expect(h).not.toContain("dashed");   // the dashed outline read as broken (the owner's call)
     expect(h).toContain(`d="${TROV_MARK_PATH}"`);
-    expect(h).toContain("color:var(--fg-55)");
-    expect(text(h)).toContain("Suggested: Billing , because…");
+    expect(text(h)).toContain("Trov suggests Billing Why?");
+    expect(cssSrc).toMatch(/\.cnpy-ai-chip \{[^}]*background:color-mix\(in srgb, var\(--accent\) 5%, var\(--surface\)\)/);
+    // Accept can say what it does, and what it would write sits inside the box
+    const withBody = chip({ acceptLabel: "Create 2 sprints", body: "<ol><li>Hosting polish</li></ol>" });
+    expect(withBody).toMatch(/class="cnpy-ghostbtn cnpy-ai-accept"[^>]*>Create 2 sprints<\/button>/);
+    expect(withBody.indexOf('class="cnpy-ai-chip-body"')).toBeGreaterThan(withBody.indexOf("cnpy-ai-chip-line"));
+    expect(withBody).toContain('class="cnpy-ai-chip has-body"');
   });
   it("its reason is one tap away: a real disclosure button, closed then open", () => {
     const closed = chip();
@@ -134,13 +140,13 @@ describe("the suggestion chip (#157)", () => {
     const open = chip({ open: true });
     expect(open).toContain('aria-expanded="true"');
     expect(open).not.toMatch(/id="ai-why-s-7" class="cnpy-ai-why" hidden/);
-    expect(text(open)).toContain("because it touches checkout and the plan block.");
+    expect(text(open)).toContain("Because it touches checkout and the plan block.");
     expect(open).toContain(">#136</a>");
   });
   // e2e § 6 K (Phase H): pressed from the keyboard, the screen's rebuild dropped focus to <body> (ticket detail,
   // Unplaced, the themes' lanes) — a keyboard user could not press it again or move on from it. The rerender puts
   // focus back on the element with the same `data-field` (main.ts), so each such control names one.
-  it("the because… disclosure and a theme lane keep keyboard focus across the rebuild (a data-field each)", () => {
+  it("the Why? disclosure and a theme lane keep keyboard focus across the rebuild (a data-field each)", () => {
     expect(chip()).toMatch(/data-act="aiReason" data-arg="s-7" aria-expanded="false" aria-controls="ai-why-s-7" data-field="aiReason:s-7"/);
     const h = themesSection(themes("ready"), rp());
     const lanes = [...h.matchAll(/data-act="aiThemesLane" data-arg="([^"]+)"[^>]*data-field="aiThemesLane:([^"]+)"/g)];
@@ -161,8 +167,8 @@ describe("the suggestion chip (#157)", () => {
   it("is never a button inside a button, and wraps in a narrow column", () => {
     const h = chip({ extra: '<button type="button" data-act="aiRenameOpen">Rename</button>' });
     expect(h.startsWith("<div")).toBe(true);
-    expect(h).toContain("flex-wrap:wrap");
-    expect(h).toContain("max-width:100%");
+    expect(cssSrc).toMatch(/\.cnpy-ai-chip-line \{[^}]*flex-wrap:wrap/);
+    expect(cssSrc).toMatch(/\.cnpy-ai-chip \{[^}]*max-width:100%/);
   });
 });
 

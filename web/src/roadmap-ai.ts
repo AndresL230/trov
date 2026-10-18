@@ -132,8 +132,8 @@ const isDraft = (v: unknown): v is AiSprintDraftValue =>
   && (v as AiSprintDraftValue).sprints.every((s) => s && typeof s.name === "string" && Array.isArray(s.tickets));
 const isNarrative = (v: unknown): v is AiPlanNarrativeValue => !!v && typeof v === "object" && typeof (v as AiPlanNarrativeValue).narrative === "string";
 
-/** An admin's suggestion cards, at the top of the Roadmap: one per open suggestion, the kit's chip over what it
- *  proposes. "" with none (everyone but an admin gets none from the server). A keyed list: a card an Accept /
+/** An admin's suggestion cards, at the top of the Roadmap: one per open suggestion, the kit's box with what it
+ *  proposes inside it and an Accept that says what it does ("Create 2 sprints", "Use this narrative"). "" with none (everyone but an admin gets none from the server). A keyed list: a card an Accept /
  *  Dismiss took collapses out of it while the others stay the elements they were. */
 export function roadmapSuggestionCards(list: AiSuggestion[] | undefined, ui: Pick<AiUi, "busy" | "unavailable" | "reasonOpen"> & Partial<Pick<AiUi, "leaving">>): string {
   const cards = (list ?? []).filter((s) => s.state === "open" && s.reason).map((s) => {
@@ -141,10 +141,13 @@ export function roadmapSuggestionCards(list: AiSuggestion[] | undefined, ui: Pic
       : s.kind === "plan_narrative" && isNarrative(s.value) ? narrativeBody(s.value) : "";
     if (!body) return "";
     const key = `roadmap-${s.id}`;
+    // Accept says what it does; what it would write sits inside the box, never loose below it.
+    const acceptLabel = s.kind === "sprint_draft" && isDraft(s.value)
+      ? `Create ${s.value.sprints.length === 1 ? "this sprint" : `${s.value.sprints.length} sprints`}` : "Use this narrative";
     const chip = aiSuggestionChip({ key, id: s.id, label: s.label, reason: s.reason, cites: s.cites }, {
-      open: ui.reasonOpen === key, busy: ui.busy.includes(s.id), unavailable: ui.unavailable.includes(s.id), canAct: true,
+      open: ui.reasonOpen === key, busy: ui.busy.includes(s.id), unavailable: ui.unavailable.includes(s.id), canAct: true, acceptLabel, body,
     });
-    const card = `<div class="rm-suggestion" data-suggestion="${s.id}" style="display:flex;flex-direction:column;gap:10px;min-width:0">${chip}<div style="padding:0 4px 0 10px">${body}</div></div>`;
+    const card = `<div class="rm-suggestion" data-suggestion="${s.id}" style="min-width:0">${chip}</div>`;
     return exitRow({ hidden: [], leaving: ui.leaving }, aiSuggestionKey(s.id), "rm-suggestion-row", "padding-bottom:16px", card, { hold: true, key: `s:${s.id}` });
   }).filter(Boolean);
   if (!cards.length) return "";

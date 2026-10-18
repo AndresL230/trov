@@ -95,9 +95,15 @@ describe("the drift line and the suggestion cards on the Roadmap", () => {
     expect(driftLine(fx.drift, { ...initialAiUi(), hidden: [`plan_drift:${fx.drift.generatedAt}`] })).toBe("");
     expect(driftLine(undefined, initialAiUi())).toBe("");
   });
-  it("suggestion cards: the kit's chip over what it proposes — the drafted sprints and their tickets, the proposed narrative", () => {
+  it("suggestion cards: the kit's box with what it proposes inside it, and an Accept that says what it does", () => {
     const html = roadmapSuggestionCards(fx.suggestions, initialAiUi());
-    expect(html).toContain("Suggested: <span style=\"color:var(--fg-70);font-weight:500\">3 sprints from 10 backlog tickets</span>");
+    expect(html).toContain('<span class="cnpy-ai-chip-label">3 sprints from 10 backlog tickets</span>');
+    expect(html).toMatch(/cnpy-ai-accept"[^>]*>Create 3 sprints<\/button>/);
+    expect(html).toMatch(/cnpy-ai-accept"[^>]*>Use this narrative<\/button>/);
+    // the drafted sprints sit INSIDE the box, never loose under it
+    const first = html.slice(html.indexOf('class="cnpy-ai-chip has-body"'), html.indexOf('data-suggestion="', html.indexOf('data-suggestion="') + 20));
+    expect(first).toContain('class="cnpy-ai-chip-body"');
+    expect(first).toContain("Hosting polish");
     expect(html).toContain("Hosting polish");
     expect(html).toContain('href="#tickets/27"');
     expect(html).toContain("a new plan narrative");

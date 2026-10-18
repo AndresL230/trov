@@ -128,6 +128,21 @@ input, select { font-family: inherit; }
 .cnpy-hitbox .cnpy-lcard-acts { position:relative; z-index:2; pointer-events:none; }
 .cnpy-hitbox .cnpy-lcard-acts button { pointer-events:auto; }
 @media (prefers-reduced-motion: reduce) { .cnpy-lcard { transition:none; } }
+/* A suggestion Trov makes (ai-ui.ts `aiSuggestionChip`): a box lightly tinted with the accent — "Trov suggests" and
+   what, a Why? disclosure, Accept (or what accepting does) and Dismiss; what it would write inside it. */
+.cnpy-ai-chip { display:flex; flex-direction:column; gap:8px; min-width:0; max-width:100%; padding:9px 10px 9px 12px; border:1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); background:color-mix(in srgb, var(--accent) 5%, var(--surface)); font-size:12.5px; color:var(--fg-55); }
+.cnpy-ai-chip.has-body { padding:12px 14px; gap:10px; }
+.cnpy-ai-chip-line { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; min-width:0; }
+.cnpy-ai-chip-what { display:inline-flex; align-items:center; gap:7px; min-width:0; }
+.cnpy-ai-chip-by { font-family:var(--label); font-size:10.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); white-space:nowrap; }
+.cnpy-ai-chip-label { min-width:0; font-size:13px; font-weight:500; color:var(--fg); overflow-wrap:anywhere; }
+.cnpy-ai-whybtn { padding:0; font:inherit; font-size:12px; color:var(--fg-55); text-decoration:underline; text-underline-offset:3px; text-decoration-color:var(--border-strong); }
+.cnpy-ai-whybtn:hover { color:var(--fg); }
+.cnpy-ai-chip-acts { display:inline-flex; align-items:center; gap:6px; margin-left:auto; }
+.cnpy-ai-accept { border:1px solid color-mix(in srgb, var(--accent) 45%, var(--border-strong)) !important; background:var(--surface); color:var(--accent) !important; font-weight:600 !important; }
+.cnpy-ai-accept:hover:not(:disabled) { background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
+.cnpy-ai-why { color:var(--fg-70); line-height:1.5; overflow-wrap:anywhere; }
+.cnpy-ai-chip-body { padding-top:10px; border-top:1px solid color-mix(in srgb, var(--accent) 14%, var(--border)); }
 /* Relay › Overview (relay.ts): the lead, two cards (a drawing, the counts, the tab), Your connections. */
 .cnpy-relay-shell { width:100%; max-width:var(--frame-work); margin:0 auto; padding:26px clamp(20px,2.6 * var(--vw),46px) 100px; }
 .cnpy-relay { padding-top:2px; }
@@ -5002,6 +5017,7 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .cnpy-lib-newcard { border-radius:calc(10px * var(--corner-scale)) !important; }
 /* Empty layouts (skeleton.ts `emptyLayout`): the sentence's dashed card, and its one action. */
 [data-cnpy-theme] .cnpy-empty-say { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .cnpy-ai-chip,
 [data-cnpy-theme] .cnpy-empty-act { border-radius:calc(8px * var(--corner-scale)) !important; }
 /* The state preview's banner (preview.ts). Its dot is a status dot: a small rounded square, like the rest. */
 [data-cnpy-theme] .cnpy-preview { border-radius:calc(10px * var(--corner-scale)) !important; }
