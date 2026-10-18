@@ -275,7 +275,6 @@ const ndCtl = createNewDocController({
 // The docs pane (web/src/tree-actions.ts): a page's children, its "…" menu, a page inside it, On this page, a move.
 const treeCtl = createTreeController({
   state, mount, rerender: () => rerender(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e),
-  flashNext: (sel) => { pendingFlash = sel; },
   newPage: (space, parent) => { state.screen = "newdoc"; ndCtl.start(space, parent); },
   reducedMotion: () => reducedMotion(),
   // The open doc page's children and breadcrumb come from its own read, not the pane's: read it again after a move.

@@ -59,6 +59,11 @@ function statusShape(pg: LibraryPageDTO): string {
   return `<span class="cnpy-dp-st" role="img" aria-label="${attr(m.word)}" data-mtip="${attr(`${m.word}. ${m.hint}`)}">${markShape(m.shape, m.tone, 8)}</span>`;
 }
 
+/** Where a chevron-less row's highlight starts, from its padding: 8px before its title (the empty 16px chevron slot +
+ *  4px gap put the title at pad + 20), about the room a chevron's glyph has in its own row's highlight — never the
+ *  empty slot, which read as a highlight too wide. A row with a chevron starts 2px before it (pad − 2). */
+const HL_NO_CHEV = 12;
+
 function row(pg: LibraryPageDTO, depth: number, hasKids: boolean, isOpen: boolean, p: DocsPaneProps): string {
   const active = pg.slug === p.activeSlug;
   const pad = 6 + indentPx(depth);
@@ -76,7 +81,7 @@ function row(pg: LibraryPageDTO, depth: number, hasKids: boolean, isOpen: boolea
         ${p.canArchive ? `<button type="button" role="menuitem" data-act="libPageArchive" data-arg="${attr(pg.slug)}" data-confirm-trigger class="cnpy-dp-mi">Archive page</button>` : ""}
       </div>`
     : "";
-  return `<div class="cnpy-dp-row ${HITBOX}${active ? " is-active" : ""}${depth === 0 ? " is-top" : ""}${menuOpen ? " has-menu" : ""}" data-morph-key="dp:${attr(pg.slug)}" data-dtree="${attr(pg.slug)}" data-depth="${depth}" style="padding-left:${pad}px;--dp-in:${pad - 2}px">
+  return `<div class="cnpy-dp-row ${HITBOX}${active ? " is-active" : ""}${depth === 0 ? " is-top" : ""}${menuOpen ? " has-menu" : ""}" data-morph-key="dp:${attr(pg.slug)}" data-dtree="${attr(pg.slug)}" data-depth="${depth}" style="padding-left:${pad}px;--dp-in:${hasKids ? pad - 2 : pad + HL_NO_CHEV}px">
     ${guides}${chev}
     <span class="cnpy-dp-t">${esc(pg.title)}</span>${statusShape(pg)}
     <span class="cnpy-dp-acts">

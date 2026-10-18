@@ -363,16 +363,27 @@ guide per ancestor level, a chevron when it has children, the status SHAPE for a
 title's `data-mtip`), and on hover, keyboard focus or an open menu "+" (a page inside) and "…" (Copy link; Move to the
 top level; New page inside; Archive page for `can_archive`) — out of the flow, laid over the end of the title (left of the status shape) on the row's
 tint over the page (`--dp-tint`, the one value its `::before` draws), so hidden they take no room. The page being read
-and every page above it start open; a chevron the person turns wins (`state.treeOpen`). The active row is scrolled
+and every page above it start open; a chevron the person turns wins (`state.treeOpen`) — the rows it shows unfold
+(height and opacity, a short stagger) and the rows it hides fold shut before the tree drops them (`foldRow`; instant
+under reduced motion). A row with a chevron highlights from 2px before it; one without, from 8px before its title
+(`--dp-in`), never from the empty chevron slot. The active row is scrolled
 into view once per page opened. Loading: nine skeleton rows; no page: "No pages yet…" over three hollow rows. Under
 900px the pane and the content take turns (the bar's Pages button, `docsTree`).
 
 **Moving pages** (`web/src/tree-drag.ts` on `web/src/pointer-drag.ts`, the app's one pointer drag — the ticket
 board's cards use it too: the slop, the swallowed click, Escape, the held paints). Over a row: its top 30% is before,
-its bottom 30% after, the middle into; the "PAGES" row is the top level; a target the rules refuse is no target ("too
-deep" says so in the hint). The ghost (the title, and a pill: "Put inside ‹Title›", "Move above / below ‹Title›",
-"Move to the top level of ‹Space›"), the 2px drop line with its square handle, the ringed row. On release
-`web/src/tree-actions.ts` applies the move at once (`applyMove`), posts it, flashes the row and toasts with **Undo**
+its bottom 30% after, the middle into; the "PAGES" row is the top level; a target the rules refuse is no target (the
+hint says why: too deep, or inside a page under it), and so is a drop where the page already is (`samePlace`: same
+parent, same order — "Already here"; on release nothing is posted, animated or toasted). The ghost (the title, and a
+pill: "Put inside ‹Title›", "Move above / below ‹Title›", "Move to the top level of ‹Space›"), the 2px drop line with
+its square handle — "after" an open page is drawn under its subtree's last shown row, where the page lands — and the
+ringed row. While a page is dragged (`html.cnpy-grabbing`) no row shows its hover tint or "+" / "…", and no mark's
+tooltip shows (`tip.ts`), so nothing is left over the tree after the drop. On release
+`web/src/tree-actions.ts` applies the move at once (`applyMove`), posts it, lands it (`landMove`: the moved page and
+what it carries fade in where they were dropped, its highlight tinted once; the rows that only shifted slide to their
+new place; rows a parent opened for the drop fade in — Web Animations on the rows, so the repaints that follow, which
+rewrite each row's class, never cut them short; a class-driven flash was stripped two frames in), scrolls it into
+view, and toasts with **Undo**
 (the reverse move: before the page that followed it, else after the one before it, else into its old parent); once
 the Worker has a move (or its Undo) the open doc page is read again (its "Pages under" and breadcrumb); a
 refusal puts the tree back and says why. The keyboard does the same on a focused row: Alt+↑ / Alt+↓ (above the page

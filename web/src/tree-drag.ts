@@ -11,7 +11,7 @@
 // The keyboard does the same without a pointer (`treeKeyTarget`): on a focused row, Alt+↑ / Alt+↓ move it above the
 // page before it / below the page after it, Alt+→ puts it inside the page before it, Alt+← takes it out to its
 // parent's level.
-import { buildTree, childrenOf, indentPx, planMove, type MoveTarget } from "@shared/docs-tree-core";
+import { applyMove, buildTree, childrenOf, indentPx, planMove, samePlace, type MoveTarget } from "@shared/docs-tree-core";
 import { MAX_DEPTH } from "@shared/docs-tree-core";
 import type { LibraryPageDTO } from "@shared/docs-core";
 import { pointerDrag } from "./pointer-drag";
@@ -63,6 +63,9 @@ export function treeKeyTarget(pages: readonly LibraryPageDTO[], slug: string, ke
 }
 
 const REFUSED_DEEP = `Pages go at most ${MAX_DEPTH} levels deep`;
+const REFUSED_CYCLE = "A page can't go inside a page under it";
+/** A drop that would leave the page where it is (it moves nothing). */
+const ALREADY_HERE = "Already here";
 
 export function installTreeDrag(mount: HTMLElement, host: TreeDragHost, onIdle?: () => void): void {
   const titleOf = (slug: string): string => host.pages()?.find((p) => p.slug === slug)?.title ?? slug;
@@ -131,7 +134,8 @@ export function installTreeDrag(mount: HTMLElement, host: TreeDragHost, onIdle?:
         }
         if (target) {
           const plan = planMove(pages, p.slug, target);
-          if (!plan.ok) { if (plan.reason === "too_deep") refused = REFUSED_DEEP; target = null; over = null; }
+          if (!plan.ok) { refused = plan.reason === "too_deep" ? REFUSED_DEEP : plan.reason === "cycle" ? REFUSED_CYCLE : undefined; target = null; over = null; }
+          else if (samePlace(pages, applyMove(pages, p.slug, plan), p.slug)) { refused = ALREADY_HERE; target = null; over = null; }
         }
         p.target = target;
         if (target && over) {
@@ -140,9 +144,15 @@ export function installTreeDrag(mount: HTMLElement, host: TreeDragHost, onIdle?:
             const r = rectOf(over);
             const depth = Number(over.dataset.depth ?? 0);
             const left = r.left + 6 + indentPx(depth) + 4;
+            // "After" an open page puts the page after its whole subtree, so the line goes under the subtree's last
+            // shown row — never right under the page, where it read as "becomes its first child".
+            let edge: HTMLElement = over;
+            if (target.kind === "after") {
+              for (let n = over.nextElementSibling as HTMLElement | null; n?.dataset.dtree !== undefined && Number(n.dataset.depth ?? 0) > depth; n = n.nextElementSibling as HTMLElement | null) edge = n;
+            }
             p.line.style.left = `${left}px`;
             p.line.style.width = `${Math.max(12, r.right - 2 - left)}px`;
-            p.line.style.top = `${(target.kind === "before" ? r.top : r.bottom) - 1}px`;
+            p.line.style.top = `${(target.kind === "before" ? r.top : rectOf(edge).bottom) - 1}px`;
             p.line.hidden = false;
           }
         }

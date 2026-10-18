@@ -13,6 +13,7 @@ import {
 import { placeTip, TIP_DELAY_MS } from "../web/src/tip";
 import css from "../web/src/trov.css?raw";
 import mainSrc from "../web/src/main.ts?raw";
+import tipSrc from "../web/src/tip.ts?raw";
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, TICKET_PRIORITIES } from "../shared/tickets-core";
 import { ARTIFACT_STATUSES } from "../shared/artifacts-core";
 import landingSrc from "../web/src/landing.ts?raw";
@@ -130,6 +131,10 @@ describe("tooltips: every workflow mark says what its state means", () => {
     expect(css).toMatch(/@media \(hover:none\) \{ \.cnpy-mtip \{ display:none; \} \}/);
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-mtip[^{]*\{ transition:none; transform:none; \} \}/);
     expect(css).toContain("[data-cnpy-theme].cnpy-mtip { border-radius:calc(7px * var(--corner-scale)) !important; }");
+  });
+  it("never shows while something is dragged: the pressed row holds the pointer, and its bubble would stay after the drop", () => {
+    expect(tipSrc).toMatch(/if \(doc\.documentElement\.classList\.contains\("cnpy-grabbing"\)\) \{ hide\(\); return; \}/);
+    expect(tipSrc.indexOf('contains("cnpy-grabbing")')).toBeLessThan(tipSrc.indexOf("const mark = markUnder(e, doc);"));
   });
 });
 

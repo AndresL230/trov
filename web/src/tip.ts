@@ -88,6 +88,9 @@ export function installMarkTips(root: HTMLElement, doc: Document = document): vo
   // it crosses the marks beneath, so only its position says which mark it is on.
   root.addEventListener("pointermove", (e) => {
     if (e.pointerType === "touch") return;
+    // Never while something is dragged (pointer-drag.ts puts .cnpy-grabbing on <html>): the pressed row holds the
+    // pointer, so its own mark would show and stay, fixed where the row was, over whatever is there after the drop.
+    if (doc.documentElement.classList.contains("cnpy-grabbing")) { hide(); return; }
     const mark = markUnder(e, doc);
     if (mark === current) return;
     hide();

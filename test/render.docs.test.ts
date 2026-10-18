@@ -19,11 +19,13 @@ import { render, initialState, spaceName } from "../web/src/render";
 import { docsPane, expandedSet } from "../web/src/docs-pane";
 import { linkedBody, brokenLinkTip, splitLead } from "../web/src/doc-page";
 import { dropHint, rowZone, treeKeyTarget } from "../web/src/tree-drag";
+import { planMove, applyMove, samePlace } from "@shared/docs-tree-core";
 import { placeOf, moveRefusalText, createTreeController } from "../web/src/tree-actions";
 import { setApiOrg } from "../web/src/api";
 import { AUTHORITY_MARK } from "../web/src/marks";
 import type { DocRow } from "@shared/rows";
 import css from "../web/src/trov.css?raw";
+import treeActionsSrc from "../web/src/tree-actions.ts?raw";
 import type { DocPageDTO, LibraryPageDTO, SpaceDTO } from "@shared/docs-core";
 
 const T0 = "2026-10-10T00:00:00Z";
@@ -105,6 +107,28 @@ describe("the docs pane", () => {
     expect(html).toContain('data-act="openDoc" data-arg="auth" class="cnpy-hit" aria-label="Authentication" aria-current="page"');
     expect(html).toContain('class="cnpy-dp-chev is-open" data-act="treeToggle" data-arg="api"');
     expect(html).toContain('class="cnpy-dp-chev" data-act="treeToggle" data-arg="start" aria-expanded="false"');
+  });
+  it("a row with no chevron highlights from its title, not the empty chevron slot; its text keeps the indent", () => {
+    const html = pane(render(docState()));
+    const style = (slug: string) => html.match(new RegExp(`data-dtree="${slug}" data-depth="\\d" style="([^"]+)"`))?.[1];
+    // with a chevron: the tint starts 2px before it (pad − 2)
+    expect(style("arch")).toBe("padding-left:6px;--dp-in:4px");
+    expect(style("auth")).toBe("padding-left:34px;--dp-in:32px");
+    // without one: 8px before the title (pad + 16px slot + 4px gap − 8), at depth 0 and deeper; the padding is the same
+    expect(style("long")).toBe("padding-left:6px;--dp-in:18px");
+    expect(style("rate")).toBe("padding-left:34px;--dp-in:46px");
+    expect(style("sso")).toBe("padding-left:48px;--dp-in:60px");
+    expect(html).toMatch(/data-dtree="rate"[^>]*>\s*(?:<span class="cnpy-dp-guide"[^>]*><\/span>)*<span class="cnpy-dp-chev is-empty" aria-hidden="true"><\/span>/);
+  });
+  it("a moved page lands in place: Web Animations on the rows, never a class flash a repaint can strip", () => {
+    // The move's repaints (the Worker's answer, the doc read again) rewrite each row's class: a class-driven flash was
+    // stripped two frames in. The landing is animate() on the row itself (tree-actions.ts landMove), so no CSS rule.
+    expect(css).not.toContain(".cnpy-dp-row.cnpy-flash");
+    expect(treeActionsSrc).not.toContain("flashNext");
+    expect(treeActionsSrc).toContain('pseudoElement: "::before"');                         // the tint spans the highlight
+    expect(treeActionsSrc).toContain("r.animate([{ offset: 0, backgroundColor:");             // one keyframe: it ends on the row's own tint
+    expect(treeActionsSrc).toContain("translateY(${dy}px)");                                // the rows that shifted slide (FLIP)
+    expect(treeActionsSrc).not.toMatch(/landMove[\s\S]*?translateY\(10px\)/);           // never the entrance rise
   });
   it("a page that is not live has its shape and no word; a long title its tooltip; hover offers + and …", () => {
     const html = pane(render(docState()));
@@ -281,7 +305,7 @@ describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, th
       const state = docState({ docSlug: "api" });
       const changed: number[] = [];
       const ctl = createTreeController({
-        state, mount: {} as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, flashNext: () => {}, newPage: () => {},
+        state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, newPage: () => {},
         reducedMotion: () => true, treeChanged: () => changed.push(1),
       });
       ctl.move("rate", { kind: "before", ref: "auth" });
@@ -298,7 +322,47 @@ describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, th
   });
 });
 
+describe("opening and closing a page's children (tree-actions.ts treeToggle)", () => {
+  const ctlFor = (state: ReturnType<typeof docState>, renders: number[]) => createTreeController({
+    state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => renders.push(1),
+    flash: () => {}, unauth: () => {}, newPage: () => {}, reducedMotion: () => true, treeChanged: () => {},
+  });
+  it("with reduced motion it opens and closes at once, with no fold", () => {
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    try {
+      const state = docState();
+      const renders: number[] = [];
+      const ctl = ctlFor(state, renders);
+      ctl.act("treeToggle", "start", null);                   // closed (not above the active page) → open
+      expect(state.treeOpen.start).toBe(true);
+      ctl.act("treeToggle", "api", null);                     // open (above the active page) → closed, no wait
+      expect(state.treeOpen.api).toBe(false);
+      expect(renders).toHaveLength(2);
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it("the fold: rows unfold from no height and fold shut before the tree drops them; a drag shows no hover", () => {
+    const src = treeActionsSrc;
+    expect(src).toContain('[{ height: "0px", opacity: 0 }, { height: h, opacity: 1 }]');
+    expect(src).toMatch(/foldRow\(r, false\)\.finished\.then/);            // the close waits for the fold
+    // while a page is dragged, the row under the pointer is not "hovered": only the line or the into ring shows
+    expect(css).toContain(".cnpy-grabbing .cnpy-dp-row:not(.is-active):not(.is-into):hover { --dp-tint:transparent; color:var(--fg-55); }");
+    expect(css).toContain(".cnpy-grabbing .cnpy-dp-row .cnpy-dp-acts { opacity:0; }");
+    expect(css.indexOf(".cnpy-grabbing .cnpy-dp-row .cnpy-dp-acts")).toBeGreaterThan(css.indexOf(".cnpy-dp-row:hover .cnpy-dp-acts"));
+  });
+});
+
 describe("the drag's rules (tree-drag.ts, tree-actions.ts)", () => {
+  it("a drop where the page already is moves nothing (same parent, same order among its siblings)", () => {
+    const at = (target: Parameters<typeof planMove>[2], slug = "long") => {
+      const plan = planMove(PAGES, slug, target);
+      return plan.ok && samePlace(PAGES, applyMove(PAGES, slug, plan), slug);
+    };
+    expect(at({ kind: "top" })).toBe(true);                         // "long" is already last at the top level
+    expect(at({ kind: "after", ref: "arch" })).toBe(true);           // just below the page above it
+    expect(at({ kind: "before", ref: "arch" })).toBe(false);         // a real reorder
+    expect(at({ kind: "into", ref: "start" })).toBe(false);          // a new parent
+    expect(at({ kind: "after", ref: "auth" }, "rate")).toBe(true);   // "rate" is already after "auth" under API
+  });
   it("hit zones: the top 30% of a row is before, the bottom 30% after, the middle into", () => {
     expect(rowZone(102, 100, 28)).toBe("before");
     expect(rowZone(114, 100, 28)).toBe("into");
