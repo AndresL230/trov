@@ -155,11 +155,17 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   pieces (`forecastLine`, `sprintNoteBlock`) — under the progress bar, rising with the page; none for a done sprint.
   "Wrong?" there leaves by the kit's exit as on the Roadmap (Q39).
 - **Drift** — `PlanView.drift?`: one sentence on where the merged work went against the plan, with the theme shares
-  the SERVER counted (`shares`, `windowDays`), drawn under the narrative.
+  the SERVER counted (`shares`, `windowDays`), in the Trov button's dialog (below).
 - **Suggestions** — `PlanView.suggestions?` (cookie `GET /roadmap`, admins only, never MCP): a sprint draft (2–4
   sprints over the backlog, offered when ≥8 open tickets sit outside every sprint and none is active) and the weekly
   narrative proposal. Accept runs `create_sprint` + `set_ticket_sprint` or `write_plan` AS that admin; nothing is
   written before. Nothing here sets a sprint or ticket done.
+- **Where they show** (the owner's call, 2026-10-18): the suggestions and the drift are NOT in the page's flow (they
+  pushed the narrative and the sprints around). The narrative card's head has a Trov button (`roadmapTrovButton`:
+  the mark, "Suggestions", their count, a dot while a suggestion waits for a decision) that opens them in a dialog
+  (`roadmapTrovDialog`, `state.rmTrovOpen`; Done, ×, Escape, the backdrop or a route change close it). Each
+  suggestion is the AI kit's box with what it proposes inside it; the drift is a tinted box like it. A sprint card's
+  note stays on its card.
 - With a field absent each piece renders nothing and the Roadmap is byte-for-byte what it was
   (`test/render.ai-absent.test.ts`, `test/render.roadmap-ai-real.test.ts`) — but for one attribute that is not AI's:
   the Narrative tab's `<main data-morph="roadmap:narrative">` (below).

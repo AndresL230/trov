@@ -6,8 +6,12 @@
 //   • The FORECAST is arithmetic the server did (`SprintView.forecast`), never a model: no AI mark, a tooltip that
 //     says how it is counted. Absent or null → nothing.
 //   • A NOTE and the DRIFT are what Trov wrote: the AI mark, "Written by Trov", their sources, "Wrong?".
-//   • A SUGGESTION is the kit's chip ("Suggested: 3 sprints from 10 backlog tickets, because…" — Accept, Dismiss)
-//     over what it proposes. Accepting runs the existing writers as the admin who pressed it.
+//   • A SUGGESTION is the kit's chip ("Trov suggests 3 sprints from 10 backlog tickets", Why?, Accept, Dismiss)
+//     with what it proposes inside it. Accepting runs the existing writers as the admin who pressed it.
+//   • WHERE (the owner's call, 2026-10-18): the suggestions and the drift are NOT in the page's flow — they pushed
+//     the narrative and the sprints around. The narrative card's head carries a Trov button (`roadmapTrovButton`:
+//     the mark, "Suggestions", their count, a dot while a suggestion waits for a decision) that opens them in a
+//     dialog (`roadmapTrovDialog`). A sprint card's note stays on its card.
 //
 // OFF IS NOT A STATE: with a field absent each piece renders nothing, and the Roadmap is exactly what it was
 // (test/render.ai-absent.test.ts).
@@ -21,7 +25,7 @@
 
 import type { SprintForecast, SprintView } from "@shared/sprints";
 import { aiItemRef, type AiPlanDrift, type AiSprintDraftValue, type AiPlanNarrativeValue, type AiSprintNote, type AiSuggestion } from "@shared/ai-core";
-import { AI_NOT_OFFICIAL, aiMark } from "./marks";
+import { AI_NOT_OFFICIAL, aiMark, markShape } from "./marks";
 import { aiByline, aiCapped, aiCites, aiDay, aiFeedback, aiHiddenKey, aiLeaving, aiLeavingT, aiSuggestionChip, aiSuggestionKey, aiWrongBtn, type AiUi } from "./ai-ui";
 import { esc, attr } from "./ui";
 import { renderMarkdown } from "./markdown";
@@ -99,7 +103,7 @@ export function driftLine(drift: AiPlanDrift | undefined, ui: LeaveUi): string {
     ? `<div style="font-size:12px;color:var(--fg-55);line-height:1.5">${drift.shares.map((s) =>
       `<span style="white-space:nowrap">${esc(s.theme)} ${s.pct}%${s.inSprint ? "" : ` <span style="color:var(--fg-40)">(in no sprint)</span>`}</span>`).join(`<span aria-hidden="true" style="color:var(--fg-40)"> · </span>`)}</div>`
     : "";
-  return exitRow(ui, key, "rm-drift-row cnpy-rise", "padding-top:14px", `<section class="rm-drift" data-screen-label="Roadmap · Drift" style="padding:12px 14px;border:1px dashed var(--border-strong);border-radius:10px;display:flex;flex-direction:column;gap:7px;min-width:0">
+  return exitRow(ui, key, "rm-drift-row", "padding-top:14px", `<section class="rm-drift" data-screen-label="Roadmap · Drift">
     <div style="display:flex;align-items:flex-start;gap:8px;min-width:0">${aiMark(13, ROADMAP_TIP.drift)}<p style="margin:0;font-size:13.5px;line-height:1.5;color:var(--fg)">${esc(drift.text)}</p></div>
     ${shares}
     ${cappedLine(drift, "notes")}
@@ -153,4 +157,44 @@ export function roadmapSuggestionCards(list: AiSuggestion[] | undefined, ui: Pic
   if (!cards.length) return "";
   // Children joined with nothing between them: the list is keyed (morph.ts `morphList`).
   return `<section class="rm-suggestions cnpy-stagger" data-screen-label="Roadmap · Suggestions" data-morph-list style="display:flex;flex-direction:column;margin-bottom:2px">${cards.join("")}</section>`;
+}
+
+// ── the Trov button and its dialog ───────────────────────────────────────────
+
+/** What the Trov button counts: the open suggestions shown, and the drift when there is one (not ones this person
+ *  sent away). `waiting` is whether a suggestion waits for a decision — the button's dot. */
+export function roadmapTrovCount(list: AiSuggestion[] | undefined, drift: AiPlanDrift | undefined, ui: LeaveUi): { n: number; waiting: boolean } {
+  const open = (list ?? []).filter((s) => s.state === "open" && s.reason && !gone(ui, aiSuggestionKey(s.id))).length;
+  const d = drift && !gone(ui, aiHiddenKey("plan_drift", aiItemRef.planDrift(drift.generatedAt))) ? 1 : 0;
+  return { n: open + d, waiting: open > 0 };
+}
+
+/** The narrative card's Trov button: "" with nothing to show. */
+export function roadmapTrovButton(c: { n: number; waiting: boolean }): string {
+  if (!c.n) return "";
+  return `<button type="button" data-act="rmTrov" data-confirm-trigger aria-haspopup="dialog" class="rm-trov-btn" aria-label="${attr(`Trov's suggestions for the roadmap: ${c.n}`)}">${aiMark(12)}<span>Suggestions</span><span class="rm-trov-n">${c.n}</span>${c.waiting ? `<span class="rm-trov-dot" aria-hidden="true">${markShape("dot", "var(--accent)", 7)}</span>` : ""}</button>`;
+}
+
+/** The dialog the button opens: the suggestions (each the kit's box, Accept / Dismiss working in place) and the
+ *  drift, then Done. Escape, ×, the backdrop and a route change close it. */
+export function roadmapTrovDialog(list: AiSuggestion[] | undefined, drift: AiPlanDrift | undefined, ui: AiUi): string {
+  const cards = roadmapSuggestionCards(list, ui);
+  const d = driftLine(drift, ui);
+  const close = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+  return `<div data-overlay="rm-trov" data-confirm-layer data-confirm-tone="neutral" class="cnpy-cmodal">
+    <div data-act="rmTrov" class="cnpy-cmodal-back" aria-hidden="true"></div>
+    <div class="cnpy-cmodal-wrap">
+      <div id="rm-trov" role="dialog" aria-modal="true" aria-labelledby="rm-trov-t" tabindex="-1" data-confirm-dialog data-confirm-act="rmTrov" data-confirm-cancel="rmTrov" class="cnpy-surface cnpy-cmodal-box cnpy-cmodal-box--wide rm-trov-dlg">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div style="min-width:0">
+            <div id="rm-trov-t" style="display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35">${aiMark(14)}Suggestions from Trov</div>
+            <div style="font-size:12.5px;line-height:1.5;color:var(--fg-55);margin-top:4px">Nothing changes until you accept one.</div>
+          </div>
+          <button type="button" data-act="rmTrov" class="cnpy-iconbtn" aria-label="Close" style="width:28px;height:28px;border-radius:7px;display:grid;place-items:center;color:var(--fg-55);flex:none">${close}</button>
+        </div>
+        <div class="rm-trov-body">${cards}${d}${cards || d ? "" : `<p style="margin:0;font-size:13px;color:var(--fg-55)">Nothing waiting.</p>`}</div>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px"><button type="button" data-act="rmTrov" data-confirm-focus class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)">Done</button></div>
+      </div>
+    </div>
+  </div>`;
 }

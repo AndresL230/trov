@@ -109,12 +109,13 @@ async function mcpRoadmap(): Promise<PlanView> {
   }
 }
 
-const screen = async (plan: PlanView, role: "admin" | "member"): Promise<string> => {
+// `open`: the narrative card's Trov button pressed — its dialog holds the suggestions and the drift.
+const screen = async (plan: PlanView, role: "admin" | "member", open = true): Promise<string> => {
   const { render, initialState } = await web();
   const s = {
     ...initialState(), view: "app", orgSlug: "saplinglearn", screen: "roadmap", roadmapTab: "narrative",
     me: { handle: "x", name: "X", avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role }], superadmin: false, pending_invites: 0 },
-    roadmap: { status: "ok", data: plan }, roadmapFeed: { status: "ok", data: [] },
+    roadmap: { status: "ok", data: plan }, roadmapFeed: { status: "ok", data: [] }, rmTrovOpen: open,
   };
   return render(s);
 };
@@ -143,6 +144,12 @@ describe("the Roadmap on real rows: the real read, the real render", { timeout: 
     expect(html).toContain("from the last 14 days"); // aiByline
     expect(html.match(/data-act="aiWrong"/g)?.length).toBeGreaterThanOrEqual(2); // note + drift
     expect(html).toContain('class="rm-suggestions cnpy-stagger" data-screen-label="Roadmap · Suggestions" data-morph-list');
+    // …in the Trov button's dialog, never in the page's flow (the owner's call)
+    expect(html).toContain('class="rm-trov-btn"');
+    expect(html.indexOf('id="rm-trov"')).toBeLessThan(html.indexOf("rm-suggestions"));
+    const closed = await screen(plan, "admin", false);
+    for (const c of ["rm-suggestions", 'class="rm-drift"']) expect(closed).not.toContain(c);
+    expect(closed).toMatch(/class="rm-trov-btn"[^>]*>[\s\S]*?<span class="rm-trov-n">3<\/span><span class="rm-trov-dot"/);
     expect(html).toContain('<main data-morph="roadmap:narrative"'); // patched in place, so a card can leave
     expect(html.match(/data-act="aiAccept"/g)).toHaveLength(2); // aiSuggestionChip
     expect(html).toContain("Billing fixes");

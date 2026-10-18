@@ -911,6 +911,7 @@ function applyRoute(r: Route): void {
   }
   state.artRoute = r.art ?? ART_ROUTE_NONE;
   state.repoAttentionOpen = false;   // Needs attention's dialog never outlives a route change
+  state.rmTrovOpen = false;          // nor does the Roadmap's Trov dialog
   // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
   state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
   if (!state.art.deleteBusy) state.art.deleteArm = false;
@@ -3027,6 +3028,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
     // Repo › Overview › Needs attention: its button opens the dialog; Done, ×, Escape or the backdrop close it, and
     // focus goes back to the button.
+    // Roadmap › Narrative: the Trov button opens its suggestions and the drift in a dialog; Done, ×, Escape or the
+    // backdrop close it, and focus goes back to the button.
+    case "rmTrov":
+      state.rmTrovOpen = !state.rmTrovOpen;
+      rerender();
+      if (state.rmTrovOpen) mount.querySelector<HTMLElement>("#rm-trov [data-confirm-focus]")?.focus();
+      else mount.querySelector<HTMLElement>(".rm-trov-btn")?.focus();
+      return;
     case "repoAttention":
       state.repoAttentionOpen = !state.repoAttentionOpen;
       rerender();

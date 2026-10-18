@@ -143,6 +143,17 @@ input, select { font-family: inherit; }
 .cnpy-ai-accept:hover:not(:disabled) { background:color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .cnpy-ai-why { color:var(--fg-70); line-height:1.5; overflow-wrap:anywhere; }
 .cnpy-ai-chip-body { padding-top:10px; border-top:1px solid color-mix(in srgb, var(--accent) 14%, var(--border)); }
+/* Roadmap's Trov button (roadmap-ai.ts `roadmapTrovButton`) in the narrative card's head, and the dialog it opens:
+   the suggestions (the kit's boxes) and the drift, lightly tinted like a suggestion, never in the page's flow. */
+.rm-trov-btn { position:relative; display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 9px; border:1px solid color-mix(in srgb, var(--accent) 28%, var(--border)); background:color-mix(in srgb, var(--accent) 6%, var(--surface)); font-size:12px; font-weight:500; color:var(--fg-70); white-space:nowrap; cursor:pointer; transition:border-color .12s ease; }
+.rm-trov-btn:hover { border-color:color-mix(in srgb, var(--accent) 50%, var(--border)); color:var(--fg); }
+.rm-trov-btn:focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
+.rm-trov-n { font-family:var(--label); font-size:11px; font-weight:600; color:var(--accent); font-variant-numeric:tabular-nums; }
+.rm-trov-dot { position:absolute; top:-3px; right:-3px; display:flex; }
+.rm-trov-dot > * { box-shadow:0 0 0 2px var(--surface); }
+.rm-trov-dlg { width:min(720px, 100%); }
+.rm-trov-body { display:flex; flex-direction:column; margin-top:14px; max-height:min(560px, calc(70 * var(--vh))); overflow-y:auto; }
+.rm-drift { display:flex; flex-direction:column; gap:7px; min-width:0; padding:12px 14px; border:1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); background:color-mix(in srgb, var(--accent) 5%, var(--surface)); }
 /* Relay › Overview (relay.ts): the lead, two cards (a drawing, the counts, the tab), Your connections. */
 .cnpy-relay-shell { width:100%; max-width:var(--frame-work); margin:0 auto; padding:26px clamp(20px,2.6 * var(--vw),46px) 100px; }
 .cnpy-relay { padding-top:2px; }
@@ -4974,6 +4985,8 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 [data-cnpy-theme] .cnpy-relcall,
 [data-cnpy-theme] .cnpy-relpager-i,
 [data-cnpy-theme] .repo-att-btn,
+[data-cnpy-theme] .rm-trov-btn,
+[data-cnpy-theme] .rm-drift,
 [data-cnpy-theme] .repo-st-lane,
 [data-cnpy-theme] .repo-st-item,
 [data-cnpy-theme] .cnpy-relay-connect,

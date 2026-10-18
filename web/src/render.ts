@@ -103,7 +103,7 @@ import { initialSyncUi, syncOverlay, syncRepoLabel, syncSlot, type SyncProps, ty
 import { previewBanner, previewState, type PreviewMode } from "./preview";
 import { aiItemRef } from "@shared/ai-core";
 import { initialAiUi, aiIsHidden, aiFeedTip, aiFromLine, aiWrongBtn, aiRatingWrongBtn, aiFeedback, aiHiddenKey, aiLeavingT, aiLeave, aiLeaving, AI_NOTE_LEAVING, AI_EXIT_MS, type AiUi } from "./ai-ui";
-import { driftLine, roadmapSuggestionCards } from "./roadmap-ai";
+import { roadmapTrovButton, roadmapTrovCount, roadmapTrovDialog } from "./roadmap-ai";
 import { aiFilterLine, aiFilterMenuTop, initialAiFilterUi, type AiFilterUi } from "./ai-filter";
 import { initialAskUi, type AskUi } from "./ask-state";
 import { askScreenView, askHeader, askOverlays } from "./ask-screen";
@@ -249,6 +249,8 @@ export interface AppState {
   repoScenario: { key: ScenarioKey; variant: string };
   /** Overview disclosures opened this session (`repoOpen`), keyed by each block. */
   repoOpen: ReadonlySet<string>;
+  /** Roadmap › Narrative: the Trov button's dialog (the suggestions and the drift, roadmap-ai.ts) is open. */
+  rmTrovOpen: boolean;
   /** Repo › Overview: Needs attention's dialog is open (repo-attention.ts). */
   repoAttentionOpen: boolean;
   /** The Feed's lens: "reading" = title + brief (for people), "agents" = the full body. Saved per browser. */
@@ -603,7 +605,7 @@ export function initialState(): AppState {
     navOpen: { ...NAV_CLOSED },
     repo: { status: "idle", data: null },
     repoTab: "overview", repoRange: "7d", repoProductEnv: null, repoDriftOpen: false, repoFetchedAt: null, repoSample: false, repoPoll: null,
-    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(), repoAttentionOpen: false,
+    repoSlug: null, repoApp: null, repoGroup: null, repoGroupFlipped: false, repoScenario: { key: "A", variant: "" }, repoOpen: new Set<string>(), repoAttentionOpen: false, rmTrovOpen: false,
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
@@ -1824,12 +1826,12 @@ function roadmapView(s: AppState): string {
  * renderMarkdown, i.e. DOMPurify); it is never additionally esc()'d (that would double-encode
  * markdownFn's own escaping/output). Empty narrative → the existing dashed-card empty-state hint.
  */
-export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string): string {
+export function planNarrativeBlock(narrative: string, markdownFn: (body: string) => string, trov = ""): string {
   const body = narrative.trim()
     ? `<div class="cnpy-md">${markdownFn(narrative)}</div>`
     : emptyLayout("roadmap-narrative", { text: ROADMAP_EMPTY.narrative, plain: true, sayStyle: "margin-bottom:10px", shapes: skLines(["100%", "94%", "62%"], 14.5, 1.7) });
   return `<section${surface(`${RM_CARD};padding:18px 20px`, { cls: "cnpy-rise" })}>
-    <div style="font-size:12px;font-weight:500;color:var(--fg-40);margin:0 0 8px">What's happening</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;min-height:22px"><div style="font-size:12px;font-weight:500;color:var(--fg-40)">What's happening</div>${trov}</div>
     ${body}
   </section>`;
 }
@@ -1863,10 +1865,11 @@ function roadmapNewSprint(s: AppState): string {
  * tab has no aside.
  */
 function roadmapDigest(s: AppState): string {
-  // Trov's pieces (./roadmap-ai.ts), each "" when its field is absent: an admin's suggestion cards above the
-  // narrative, the drift line under it.
+  // Trov's suggestions and drift (./roadmap-ai.ts) are not in the flow (the owner's call): the narrative card's Trov
+  // button opens them in a dialog (`rmTrovOpen`, drawn with the overlays). "" when there are none.
   const d = s.roadmap.data;
-  return asideColumns(`${roadmapNewSprint(s)}${roadmapSuggestionCards(d.suggestions, s.ai)}${planNarrativeBlock(d.narrative, renderMarkdown)}${driftLine(d.drift, s.ai)}${roadmapSprintGroups(s)}`, roadmapAside(s),
+  const trov = roadmapTrovButton(roadmapTrovCount(d.suggestions, d.drift, s.ai));
+  return asideColumns(`${roadmapNewSprint(s)}${planNarrativeBlock(d.narrative, renderMarkdown, trov)}${roadmapSprintGroups(s)}`, roadmapAside(s),
     { bar: roadmapTabBar(s), panel: tabPanelAttrs("roadmap-tab", s.roadmapTab) });
 }
 
@@ -3225,7 +3228,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "repo" && s.dd.open ? dropdownMenu(repoDropdowns(repoProps(s)), s.dd) : ""}
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, bare: true })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
-    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}${s.view === "app" && s.screen === "repo" && s.repoAttentionOpen ? repoAttentionOverlay(repoProps(s)) : ""}
+    ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}${s.view === "app" && s.screen === "repo" && s.repoAttentionOpen ? repoAttentionOverlay(repoProps(s)) : ""}${s.view === "app" && s.screen === "roadmap" && s.rmTrovOpen && s.roadmap.data && roadmapTrovCount(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai).n ? roadmapTrovDialog(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai) : ""}
     ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
