@@ -322,21 +322,28 @@ describe("My Work › Your brief", () => {
 // ── Repo › Summary › State ──────────────────────────────────────────────────
 
 describe("Repo › Summary › State", () => {
-  it("ready: an 18px headline, three columns with their marks and cites, 'from 6 events', Wrong?", () => {
+  it("ready: an 18px headline, a strip of counts, three lanes of item cards with source chips, 'from 6 events', Wrong?", () => {
     const h = repoStateSection(repoStateFixture("ready", NOW), rp());
     expect(h).toContain("font-size:18px");
     expect(text(h)).toContain("Release 0.30 is live; hosting screens are the open front, and main is green.");
     expect(text(h)).toContain("Written by Trov from 6 events, 2h ago");
     const cols = ["shipped", "inFlight", "attention"].map((k) => h.slice(h.indexOf(`data-ai-col="${k}"`)));
     expect(text(cols[0])).toContain("Shipped recently");
-    expect(cols[0]).toContain("color:var(--green)");
+    expect(cols[0]).toContain("--lane:var(--green)");
     expect(text(cols[1])).toContain("In flight");
-    expect(cols[1]).toContain("color:var(--blue)");
+    expect(cols[1]).toContain("--lane:var(--blue)");
     expect(text(cols[2])).toContain("Needs attention");
-    expect(cols[2]).toContain("color:var(--amber)");
-    expect(h).toContain(">#173</a>");
-    expect(h).toContain(">handoff #3</a>");
-    expect(h).toContain(">Tickets</a>");
+    expect(cols[2]).toContain("--lane:var(--amber)");
+    // Each line is a card: its sentence, then its sources as chips by kind — a PR reads "PR #173".
+    expect(h).toMatch(/<li class="repo-st-item"><p class="repo-st-text">/);
+    expect(h).toMatch(/class="repo-st-src"[^>]*>[\s\S]*?<span>PR #173<\/span><\/a>/);
+    expect(h).toMatch(/class="repo-st-src"[^>]*><span>handoff #3<\/span><\/a>/);
+    expect(h).toMatch(/class="repo-st-src"[^>]*><span>Tickets<\/span><\/a>/);
+    // The counts at a glance, one per lane, the same numbers as the lanes.
+    const st = repoStateFixture("ready", NOW);
+    for (const k of ["shipped", "inFlight", "attention"] as const) {
+      expect(h).toMatch(new RegExp(`data-ai-count="${k}">[\\s\\S]*?<span class="repo-st-cn">${st[k].length}</span>`));
+    }
     expect(h).toContain('data-act="aiWrong"');
     expect(h).toContain("repo-state-cols");
   });

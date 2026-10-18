@@ -734,8 +734,12 @@ sample / degraded banner sits above the card as on every tab, and "Poll now"'s s
 it. A switch to or from it is the bar's one rerender (`setRepoTab`), the underline sliding and the card flashing
 in (`.repo-ai` is in the switch's `pendingFlash`); the card rises with the page's entrance on a deep link.
 
-- **Summary › State**: an 18px headline; three wrapping columns — Shipped recently (the done glyph, green), In
-  flight (the half glyph, blue), Needs attention (the warning glyph, amber) — each line with its sources; "Written
+- **Summary › State**, drawn from its structure rather than as prose (the owner's call, 2026-10-18): an 18px
+  headline; a strip of three counts (each lane's mark, its number, "shipped" / "in flight" / "need attention");
+  then three lanes, each lightly tinted by its tone (`--lane`) with its count — Shipped recently (the done glyph,
+  green), In flight (the half glyph, blue), Needs attention (the warning glyph, amber) — each line a small card: the
+  sentence, then its sources as chips by kind (`stateSource`: "PR #185", "#12", a commit or branch in code, "Feed
+  entry" with the entry's title in the tooltip); an empty lane says so ("Nothing in flight."); "Written
   by Trov from N events, 2h ago" (no "from N events" when `eventCount` is null) and "Wrong?". Empty: "Trov writes
   this after your next merge: what shipped, what is in flight, and what needs attention, each linked to its
   source." Capped: the headline and "this state is from <day> and resumes <day>".
