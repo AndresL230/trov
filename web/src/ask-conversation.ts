@@ -41,7 +41,7 @@ import {
   ASK_STARTERS_FALLBACK, askMode, isAskMode,
   type AskAttachment, type AskChart, type AskDiagram, type AskMode, type AskNotFound, type AskThemesBlock, type RefView,
 } from "@shared/ai-ask-core";
-import { skeleton, skLine, skLines } from "./skeleton";
+import { skeleton, skBox, skLine, skLines, skW } from "./skeleton";
 import { markShape, tagSquare, tagTone } from "./marks";
 import { ciLine } from "./repo-verdict";
 import { aiDay } from "./ai-ui";
@@ -642,21 +642,41 @@ export function conversationView(v: AskView): string {
   return col(`${linkNotesLine(v)}<div class="ask-msgs" data-morph-key="msgs" data-morph-list data-ask-enter="rise">${c.messages.map((m, i) => (m.role === "user" ? question(v, m, i === lastQ) : answer(v, m, i === lastA))).join("")}</div>`);
 }
 
-/** A new thread: the mark, the headline, the starters (from `ask/state`, the design's four as the fallback). */
+/** How many starters a new thread shows — what `GET /ask/state` always sends (src/ai/ask/routes.ts `starters`). The
+ *  skeleton draws this many, so the grid is its final size before the read lands. */
+export const STARTER_COUNT = 4;
+/** A starter this long may not fit its two lines (`.ask-starters > button` clamps the text): its tooltip carries the
+ *  whole question. Shorter ones fit, and a tooltip repeating the words on the chip would only be noise. */
+export const STARTER_TIP_AT = 56;
+
+/** The starters while `ask/state` is out: the chips' own boxes (the same fixed size as the real ones — a chip's
+ *  height never depends on its words), a bar where each question will be. Never made-up questions swapped later. */
+function startersSkeleton(): string {
+  const chip = (i: number) => `<span class="ask-starter-sk">${skBox(13, 13)}${skLine(skW(i, ["74%", "62%", "80%", "56%"]), 13, 1.4)}</span>`;
+  return skeleton("ask-starters", "Loading suggestions…", Array.from({ length: STARTER_COUNT }, (_, i) => chip(i)).join(""));
+}
+
+/** A new thread: the mark, the headline, the starters — from `ask/state`, a skeleton while that read is out, and
+ *  the generic fallback only once it came back with none (or failed). */
 export function emptyView(v: AskView): string {
-  const starters = v.ui.state.data?.starters?.length ? v.ui.state.data.starters : ASK_STARTERS_FALLBACK;
+  const st = v.ui.state;
+  const out = !st.data && (st.status === "idle" || st.status === "loading");
+  const starters = st.data?.starters?.length ? st.data.starters : ASK_STARTERS_FALLBACK;
   // Blocked (no key, off, the questions used): the starters stay to read but send nothing, and say why (QA-6).
   const block = composerBlock(v);
   const why = block ? composerBlockReason(block) : null;
+  // A chip is a fixed two-line box (trov.css): a longer question is clamped with an ellipsis and the whole of it is
+  // the tooltip; the button's text is still the whole question, so a screen reader hears all of it.
+  const tip = (q: string) => (q.length >= STARTER_TIP_AT ? ` data-mtip="${attr(q)}"` : "");
   const starter = (q: string) => why
     ? `<button type="button" aria-disabled="true" data-mtip="${attr(why)}">${askIcon("arrow", 13, "var(--fg-40)", 2)}<span>${esc(q)}</span></button>`
-    : `<button type="button" data-act="askCvSend" data-arg="${attr(q)}">${askIcon("arrow", 13, "var(--fg-40)", 2)}<span>${esc(q)}</span></button>`;
+    : `<button type="button" data-act="askCvSend" data-arg="${attr(q)}"${tip(q)}>${askIcon("arrow", 13, "var(--fg-40)", 2)}<span>${esc(q)}</span></button>`;
   // Keyed by the conversation: New thread brings it back with its entrance. On arriving at Ask the pieces rise
   // with the screen (`.cnpy-rise` + `--i`, main.ts markEnter); afterwards `.ask-empty` fades in by itself.
   return `<div class="ask-empty" data-morph-key="empty:${attr(convoOf(v).uid)}">
     <div class="cnpy-rise" style="--i:0">${trovMark(28)}</div>
     <h2 class="ask-empty-h cnpy-rise" style="--i:1">Ask anything about your team's work</h2>
-    <div class="ask-starters cnpy-rise" style="--i:2"${why ? ` data-blocked` : ""}>${starters.map(starter).join("")}</div>
+    <div class="ask-starters cnpy-rise" style="--i:2"${why ? ` data-blocked` : ""}>${out ? startersSkeleton() : starters.map(starter).join("")}</div>
   </div>`;
 }
 

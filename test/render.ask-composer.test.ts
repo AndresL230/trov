@@ -316,6 +316,38 @@ describe("the mode menu (Pro) — from ask/state, per thread", () => {
   });
 });
 
+describe("the row holds its place while ask/state is out (the owner: the model picker arrived late and shifted it)", () => {
+  const pending = (status: "idle" | "loading") => askState("pro", (st) => { st.ask.state = { status, data: null }; });
+  it("the mode picker's slot is held by its button in the default mode, disabled: no act, no menu", () => {
+    for (const status of ["idle", "loading"] as const) {
+      const h = html(pending(status));
+      expect(h).toContain(`<div class="ask-co-modewrap" data-morph-key="mode" data-morph-list><button type="button" class="ask-co-modebtn" data-morph-key="mb" data-co-modebtn disabled aria-label="Mode: Smart">Smart`);
+      expect(h).not.toContain(`data-act="askCoModeMenu"`);
+      // The same element as the live picker (keys `mode` › `mb`), so the read landing patches it in place.
+      expect(html(askState("pro"))).toContain(`<div class="ask-co-modewrap" data-morph-key="mode" data-morph-list><button type="button" class="ask-co-modebtn" data-morph-key="mb" data-act="askCoModeMenu"`);
+    }
+  });
+  it("in the row's order: the spacer, the picker's slot, the switch, Send (so Free dropping the slot moves neither)", () => {
+    const h = html(pending("loading"));
+    const at = (s: string) => h.indexOf(s);
+    expect(at(`class="ask-co-grow"`)).toBeLessThan(at(`class="ask-co-modewrap"`));
+    expect(at(`class="ask-co-modewrap"`)).toBeLessThan(at(`class="ask-co-auto`));
+    expect(at(`class="ask-co-auto`)).toBeLessThan(at(`class="ask-send`));
+  });
+  it("the switch is locked but neutral — not the admin's Auto-off look and tooltip — until the read says", () => {
+    const h = html(pending("loading"));
+    expect(h).toContain(`class="ask-co-auto is-pending" data-morph-key="auto" aria-disabled="true">`);
+    expect(h).not.toContain("An admin turned off Auto");
+    expect(h.match(/class="cnpy-seg-btn[^"]*" disabled/g)?.length).toBe(2);
+  });
+  it("a failed read holds no picker (nothing to pick from); the switch stays locked and neutral, never the admin's tip", () => {
+    const h = html(askState("pro", (st) => { st.ask.state = { status: "error", data: null }; }));
+    expect(h).not.toContain("ask-co-modewrap");
+    expect(h).toContain(`class="ask-co-auto is-pending"`);
+    expect(h).not.toContain("An admin turned off Auto");
+  });
+});
+
 describe("composer:autoOff — the Ask before changes / Auto switch", () => {
   it("Auto on: sent as the thread's switch, kept per thread", () => {
     const s = askState();

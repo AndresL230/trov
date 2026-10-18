@@ -913,6 +913,10 @@ will be — so nothing moves when the read lands. The rules:
   `reviewView`) rather than being replaced by a stand-in page.
 - **One region per read.** Where a screen has several reads (My Work's tiles, the Feed's and Roadmap's aside
   boxes, Repo's sections, Org settings' lists), each region has its own skeleton and fills on its own.
+- **Never placeholder content.** While a read is out, draw its skeleton — never made-up sample items that the read
+  then swaps out. And a box that holds words the read brings is a FIXED size (clamp the words, the whole text in
+  the tooltip), so the skeleton can be that size and the swap moves nothing: Ask's starters (`ask.md` › Nothing on
+  the empty screen changes size).
 - **Only for "not loaded yet".** Loaded-and-empty is an EMPTY LAYOUT (below), a failed read keeps its error, and a
   refetch keeps the content already on screen (Search keeps its results while a new query is out). A view that
   takes only a slice's `data` cannot tell the two apart — pass it the status (`outboxLoading`, `loading`).

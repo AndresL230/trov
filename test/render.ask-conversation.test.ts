@@ -12,7 +12,10 @@ import { render, initialState, type AppState } from "../web/src/render";
 import { askView, type AskCtx, type AskSendInput, type AskWhere } from "../web/src/ask-state";
 import {
   conversationView, emptyView, conversationPart, parseMd, splitRow, chainOrder, cvItem, themeTip, thinkingLabel, quietStep, plainText, settleTail, jumpButton,
+  STARTER_COUNT, STARTER_TIP_AT,
 } from "../web/src/ask-conversation";
+import { ASK_STARTERS_FALLBACK } from "@shared/ai-ask-core";
+import { threadsView } from "../web/src/ask-threads";
 import { cvRef, parseCvRef, cvRefWord, isCvRef } from "../web/src/ask-cvref";
 import { refFallbackText } from "../web/src/ask-refs";
 import { newTurn, foldAskEvent, foldThreadEvent, emptyConvo, withLastTurn, type AskConvo, type AskMsg, type AskTurn } from "../web/src/ask-stream";
@@ -80,6 +83,65 @@ describe("`live` — a new thread", () => {
     for (const q of s.ask.state.data!.starters) expect(html).toContain(`data-act="askCvSend" data-arg="${q.replace(/'/g, "&#39;")}"`);
     s.ask.state = { status: "ok", data: { ...s.ask.state.data!, starters: [] } };
     expect(text(emptyView(askView(s, "page")))).toContain("Where did our time go this month?");
+  });
+});
+
+describe("the starters never change size when ask/state lands (the owner: the chips snapped open)", () => {
+  it("while the read is out: four skeleton chips in the grid, and no question at all (no made-up placeholders)", () => {
+    for (const status of ["idle", "loading"] as const) {
+      const s = base();
+      s.ask.state = { status, data: null };
+      const html = emptyView(askView(s, "page"));
+      expect(html).toContain(`data-skel="ask-starters"`);
+      expect(html.match(/class="ask-starter-sk"/g)).toHaveLength(STARTER_COUNT);
+      expect(html).not.toContain(`data-act="askCvSend"`);
+      for (const q of [...ASK_STARTERS_FALLBACK, "What's blocking the hosting work?", "Summarize ticket #14"]) expect(text(html)).not.toContain(q);
+    }
+  });
+
+  it("the fallback shows only once the read came back with none (or failed), and names nothing made up", () => {
+    const s = base();
+    s.ask.state = { status: "error", data: null };
+    const html = emptyView(askView(s, "page"));
+    expect(html).not.toContain("data-skel");
+    for (const q of ASK_STARTERS_FALLBACK) expect(text(html)).toContain(q);
+    expect(ASK_STARTERS_FALLBACK.join(" ")).not.toMatch(/#\d|hosting/i);
+  });
+
+  it("a skeleton chip is the real chip's box: the same fixed height, border, padding and radius, in the same grid", () => {
+    const rule = (sel: string) => css.split("\n").find((l) => l.startsWith(sel)) ?? "";
+    const box = rule(".ask-starters > button, .ask-starter-sk {");
+    expect(box).toMatch(/height:58px/);
+    expect(box).toMatch(/box-sizing:border-box/);
+    expect(rule(".ask-starters .cnpy-skel-in {")).toMatch(/grid-template-columns:var\(--ask-st-cols\)/);
+    expect(rule(".ask-starters > .cnpy-skel {")).toMatch(/grid-column:1 \/ -1/);
+    // Two lines of 18px fit in the box (58 = 2 × 18 + 2 × 10 padding + 2 × 1 border); more are clamped.
+    const span = rule(".ask-starters > button > span {");
+    expect(span).toMatch(/line-height:18px/);
+    expect(span).toMatch(/-webkit-line-clamp:2/);
+    expect(css).toContain("[data-cnpy-theme] .ask-starter-sk,");
+  });
+
+  it("a long question is clamped on the chip and whole in its tooltip; a short one has no tooltip; both send in full", () => {
+    const s = base();
+    const long = "What's blocking the RAG privacy + correctness (AI redesign #643, phases 0–1) work?";
+    s.ask.state = { status: "ok", data: { ...s.ask.state.data!, starters: ["What shipped this week?", long] } };
+    const html = emptyView(askView(s, "page"));
+    const esc = (q: string) => q.replace(/'/g, "&#39;");
+    expect(long.length).toBeGreaterThanOrEqual(STARTER_TIP_AT);
+    expect(html).toContain(`data-act="askCvSend" data-arg="${esc(long)}" data-mtip="${esc(long)}">`);
+    expect(html).toContain(`data-act="askCvSend" data-arg="What shipped this week?">`);
+    expect(html).toContain(`<span>${esc(long)}</span>`);
+  });
+});
+
+describe("the thread list before its first read", () => {
+  it("idle (a paint before the read starts) is the rows' skeleton, never an early 'No threads yet'", () => {
+    const s = base();
+    s.ask.threads = { status: "idle", data: [] };
+    const html = threadsView(askView(s, "page"));
+    expect(html).toContain(`data-skel="ask-threads"`);
+    expect(html).not.toContain("No threads yet");
   });
 });
 

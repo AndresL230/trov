@@ -19,6 +19,8 @@ import { initialState, type AppState } from "../web/src/render";
 import { createAskController } from "../web/src/ask-controller";
 import { conversationView } from "../web/src/ask-conversation";
 import { askView } from "../web/src/ask-state";
+import { askHeader } from "../web/src/ask-screen";
+import { composerView } from "../web/src/ask-composer";
 import { askRefFixtures, askStateFixture, askThreadsFixture } from "@shared/ai-fixtures";
 import type { AskMessage, AskThreadDetail, RefView } from "@shared/ai-ask-core";
 
@@ -194,5 +196,22 @@ describe("QA-1: a reopened thread re-reads what it shows — the stored citation
     expect(h).toContain(">1 source<");
     expect(h).not.toContain(`data-arg="pr:176"`);
     expect(h).not.toContain("In progress");
+  });
+});
+
+describe("opening a thread from a list: what the list knows holds from the first paint (nothing pops in when it lands)", () => {
+  it("its title is in the header and its sharing decides the composer while the thread read is still out", () => {
+    const s = app();
+    const own = askThreadsFixture(NOW)[0];
+    const theirs = { ...askThreadsFixture(NOW)[1], id: 77, title: "Their launch notes", owner: "jose", viewer: true, access: "read" as const, direct: true };
+    s.ask.shared = { status: "ok", data: [theirs] };
+    const ctl = controller(s);
+    transport.handler = () => new Promise<Response>(() => undefined);     // the thread read never lands
+    ctl.act("askThOpen", String(own.id), null);
+    expect(s.ask.page.status).toBe("loading");
+    expect(askHeader(s).crumb).toContain(own.title);
+    ctl.act("askThOpen", "77", null);
+    expect(s.ask.page).toMatchObject({ status: "loading", title: "Their launch notes", thread: { viewer: true, owner: "jose" } });
+    expect(composerView(askView(s, "page"))).toContain("ask-composer--shared");
   });
 });

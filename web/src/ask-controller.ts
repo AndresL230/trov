@@ -335,7 +335,11 @@ export function createAskController(host: AskHost): AskController {
     }
     if (ui().page.threadId === id && ui().page.status !== "error") { paint(); return; }
     stop("page");
-    setConvo("page", { ...emptyConvo(), threadId: id, status: "loading" });
+    // What the lists already know of it (its title, whose it is, how it is shared) holds from the first paint: the
+    // header's "› title" and the composer (or a reader's note in its place) do not pop in when the thread read lands.
+    const known = ui().threads.data.find((t) => t.id === id) ?? ui().shared.data.find((t) => t.id === id)
+      ?? ui().hits?.data.find((h) => h.thread.id === id)?.thread ?? null;
+    setConvo("page", { ...emptyConvo(), threadId: id, status: "loading", ...(known ? { thread: known, title: known.title } : {}) });
     ui().inspector = { ...ui().inspector, stack: [], idx: -1 };
     paint();
     api.getThread(id).then((d) => {
