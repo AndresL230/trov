@@ -2135,7 +2135,9 @@ button.cnpy-setup-step:hover { border-color:var(--border-strong); background:var
 .site-legal-band-in { max-width:1060px; margin:0 auto; }
 .site-legal-tabs { display:inline-flex; gap:2px; padding:3px; border-radius:11px; background:rgba(255,255,255,.14); }
 .site-legal-tab { padding:6px 13px; font-size:13px; font-weight:600; color:rgba(255,255,255,.92); text-decoration:none; transition:background .12s ease, color .12s ease; }
-a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255,255,.12); text-decoration:none; }
+/* The pills never underline, in any state (the site's links do on hover; the current pill is a link too). */
+.site-legal-tab, .site-legal-tab:hover, .site-legal-tab:focus-visible { text-decoration:none; }
+a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255,255,.12); }
 .site-legal-tab { transition:background .18s ease, color .18s ease; }
 @media (prefers-reduced-motion: reduce) { .site-legal-tab { transition:none; } }
 .site-legal-tab[aria-current] { background:#fff; color:#333c8f; }
