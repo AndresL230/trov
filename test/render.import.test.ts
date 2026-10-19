@@ -411,7 +411,7 @@ describe("Review — an import's pages are one group", () => {
 const sideProps = (over: Partial<SidebarProps> = {}): SidebarProps => ({
   screen: "mywork", collapsed: false, navOpen: { ...NAV_CLOSED, library: true }, qView: "table", roadmapTab: "timeline", librarySpace: null,
   spaces: [{ key: "engineering", label: "Engineering", icon: "braces", color: "#525cc3" }], spacesLoaded: true, canAdmin: false,
-  counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "<svg></svg>", ...over,
+  counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "<svg></svg>", ...over,
 });
 const tree = (html: string): string => (html.match(/<\/?[a-z][a-z0-9]*/gi) ?? []).join(" ");
 

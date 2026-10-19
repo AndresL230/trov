@@ -592,8 +592,11 @@ the viewer's role never restructures the rail; the space rows follow the data, a
 (`data-drop-space`, "Drop to import" below). Its label goes to Library home, its chevron folds
 the group, and a space's home, a doc in it and New page in it light that space (the Library was Docs, with a fixed
 Technical / Product pair, until 2026-10; a stored `docs` key is read as `library`; docs-library.md › The screens);
-Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
-and Repo's tabs head their page body), and a stored
+Roadmap, Tickets, Review and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
+and Repo's tabs head their page body). **Unplaced has no row** (2026-10-18): it is Review's other view — the
+header's To review / Unplaced switch (`triageSwitch` in `render.ts`, a `segmented()` with each side's count) moves
+between the two, the header names Review on both, `NAV_OF` lights Review for the `maintenance` screen, and Review's
+badge is the two queues together (`triageCounts`), so nothing waiting is hidden. A stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
@@ -623,7 +626,8 @@ the trigger where the control sits, its menu a root-level overlay (`dropdownMenu
 and closes with an animation — Org settings' role and Notifications pickers.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
-Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's filter (with counts) and its diff mode, form segments. Never
+Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's To review / Unplaced
+switch in its header and its filter (both with counts) and its diff mode, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
@@ -657,7 +661,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
 
-The sidebar's counts (Review, Unplaced, Tickets, Relay, Prompts, and the admin's unmatched logins on the
+The sidebar's counts (Review — its queue and Unplaced together —, Tickets, Relay, Prompts, and the admin's unmatched logins on the
 switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
 WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
 `enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
@@ -705,7 +709,9 @@ under it move up as the same elements**. Four parts, each in one place:
    it had are back, with the usual error toast. The refetch is held until no row is still
    collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
 
-**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18): its cards are the same `.cnpy-rv-row` /
+**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18; Review's other view, the screen key still
+`maintenance`, `#unplaced`): its frame, list head (the intro line; how many wait is the header switch's count, as
+Review's are), cards and page pane are Review's. Its cards are the same `.cnpy-rv-row` /
 `.cnpy-titem` in a `data-morph-list` (keys `up:<id>`, the empty layout `up-empty`), placing or discarding gives
 the card a `data-verdict` of `placed` (green) or `discarded` (quiet) for `UNPLACED_EXIT_MS` (= `REVIEW_EXIT_MS`),
 the state is `state.unplacedLeaving` (main.ts `unplacedVerdict` / `settleUnplaced` / `pruneUnplacedLeaving` — the

@@ -29,7 +29,8 @@
 //   #import           → the Markdown import wizard (the screen `import`); #import/<space> with that space picked
 //                       (its step is state, not route)
 //   #imports          → Imports history (the screen `imports`)
-//   #unplaced         → Triage › Unplaced (the screen `maintenance`). Its old addresses still
+//   #unplaced         → Review's Unplaced view (the screen `maintenance`; #review is the queue, the
+//                       header's To review / Unplaced switch moves between them). Its old addresses still
 //                       resolve: #maintenance here, and #maintenance/identity and
 //                       #maintenance/people — two tabs it had until 2026-10-06 — to
 //                       Org settings › Members, where both now live
@@ -153,9 +154,10 @@ export function sameRoute(a: Route, b: Route): boolean {
 // Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
 // swaps the conversation in place and never replays the screen's entrance. Nor is the doc in the reader
 // (`docSlug`): picking another page in its tree swaps the reader pane in place. Nor is the import wizard's space
-// (`importSpace`): picking one is a choice on the same page.
+// (`importSpace`): picking one is a choice on the same page. Nor is Unplaced (`maintenance`): it is Review's other view,
+// so the header's To review / Unplaced switch swaps the panes without replaying Review's entrance.
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, screen: r.screen === "maintenance" ? "review" : r.screen, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */

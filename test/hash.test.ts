@@ -32,9 +32,15 @@ describe("parseHash", () => {
     expect(parseHash("#unsubscribe")).toEqual({ screen: "settings", ticketId: null, sprintId: null });
     expect(parseHash("#unsubscribe/x")).toEqual(parseHash("#nope"));
     expect(parseHash("#roadmap")).toEqual({ screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" });
-    // Triage › Unplaced: the screen is still `maintenance`; its address is `#unplaced`.
+    // Review › Unplaced: the screen is still `maintenance`; its address is `#unplaced`, and `#review` is the queue.
     expect(parseHash("#unplaced")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null });
     expect(hashForRoute({ screen: "maintenance", ticketId: null, sprintId: null })).toBe("#unplaced");
+    expect(hashForRoute(parseHash("#unplaced"))).toBe("#unplaced");
+    expect(hashForRoute(parseHash("#review"))).toBe("#review");
+    // …one page: the header's To review / Unplaced switch swaps the panes without replaying Review's entrance.
+    expect(pageKey(parseHash("#unplaced"))).toBe(pageKey(parseHash("#review")));
+    expect(pageKey(parseHash("#maintenance"))).toBe(pageKey(parseHash("#review")));
+    expect(sameRoute(parseHash("#unplaced"), parseHash("#review"))).toBe(false);
   });
 
   it("the old Maintenance addresses still land: the queue, and its two tabs that moved into Org settings", () => {

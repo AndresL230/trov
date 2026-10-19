@@ -105,7 +105,7 @@ and `can_edit` (admin or an owner) / `can_admin`.
 `ingestDocProposal` (`ingestion-gate.md`): a sent space resolves through the alias map and must be a live space of
 the org — unknown or archived → REFUSED (`code: "space"`, the reason listing the org's live space slugs, so the agent
 re-sends; since 2026-10-18 nothing goes to `needs_triage`); no space → `engineering` for a new doc while it is live,
-else refused; an existing doc keeps its own space. Triage › Unplaced's assign (for items held before) offers the org's
+else refused; an existing doc keeps its own space. Review › Unplaced's assign (for items held before) offers the org's
 live spaces and sends the pick back through the same check — a refusal is a 400 with the reason. MCP `propose_doc_update`,
 `list_docs` and `query` take `space` as a string (a slug or an alias), Ask Trov mirrors them, and `list_spaces` is
 a read for every principal (Ask wires it too). The plugin's skills (0.10.0) read the spaces rather than assume them.

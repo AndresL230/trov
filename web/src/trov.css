@@ -806,7 +806,6 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
    placed or discarded leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
 .cnpy-rv-row[data-verdict="placed"] { --rv-tone:var(--green); }
 .cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }
-.cnpy-up-count { flex:none; font-size:12px; color:var(--fg-40); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .cnpy-up-text { margin:0; font-size:14px; line-height:1.65; color:var(--fg-70); white-space:pre-wrap; overflow-wrap:anywhere; }
 .cnpy-up-place { margin-top:26px; padding-top:20px; border-top:1px solid var(--border); }
 .cnpy-up-field { margin-top:16px; }

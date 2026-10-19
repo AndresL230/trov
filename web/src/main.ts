@@ -3793,8 +3793,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       break;
     case "roadmapTimeline": state.roadmapTab = "timeline"; break;
     case "goReview": state.screen = "review"; loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); return;
-    // Triage › Unplaced (the screen is still `maintenance`; its Identity and People tabs moved
-    // into Org settings, which a stale `goMaintenance identity|people` still reaches).
+    // Review's Unplaced view (the screen is still `maintenance`: the header's To review / Unplaced switch and quick
+    // search land here, and the sidebar lights Review for it). Its Identity and People tabs moved into Org settings,
+    // which a stale `goMaintenance identity|people` still reaches.
     case "goMaintenance":
       if (arg === "identity" || arg === "people") { dispatch("orgGo", "members", null); return; }
       state.screen = "maintenance";
