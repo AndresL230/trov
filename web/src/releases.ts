@@ -105,6 +105,7 @@ export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
   // Home (the design `Trov Overview v2`), Unplaced folded into Review, and the sidebar's new icons and grouping: one PR.
+  // ChatGPT as an MCP client (#202) followed it.
   {
     version: "0.13",
     date: "2026-10-18",
@@ -127,6 +128,7 @@ export const RELEASES: Release[] = [
       added: [
         "Home: what needs you, your repositories, sprints and tickets, the team's activity and what everyone is on, refreshed while it is open (#201)",
         "Home's bar searches as you type, or asks Trov and shows the answer under it with its sources, Wrong? and Continue in Trov (#201)",
+        "Connect Trov to ChatGPT as an app; it runs Trov's reads without asking you to confirm each one (#202)",
       ],
       changed: [
         "Unplaced is part of Review: a switch at the top of Review moves between the two, and Review's sidebar count includes Unplaced (#201)",
@@ -136,7 +138,7 @@ export const RELEASES: Release[] = [
       fixed: [],
       removed: [],
     },
-    prs: [201],
+    prs: [201, 202],
   },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower
