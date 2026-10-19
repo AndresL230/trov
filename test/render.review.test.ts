@@ -142,6 +142,14 @@ function makeAdr(overrides: Partial<ReviewItem> = {}): ReviewItem {
 }
 
 describe("reviewView — populated", () => {
+  it("a group card opens its first page still waiting in the pane", () => {
+    const items = [makeItem({ agent: "pia" }), makeItem({ id: "p2", title: "Second", agent: "pia" })];
+    const html = reviewView(makeReviewProps({ items }));
+    expect(html).toMatch(/class="cnpy-rvg cnpy-surface cnpy-hitbox"[^>]*>\s*<button data-act="reviewSelect" data-arg="p1" class="cnpy-hit"/);
+    const decided = reviewView(makeReviewProps({ items, leaving: { p1: "promoted" } }));
+    expect(decided).toMatch(/<button data-act="reviewSelect" data-arg="p2" class="cnpy-hit"/);
+  });
+
   it("an agent's doc changes are ONE group card (the design's \"Written by ‹Name›'s agent\"), nothing picked until a page is", () => {
     const items = [makeItem({ agent: "pia", agentName: "Pia Test-Agent", space: "engineering", at: "2026-10-17T10:00:00Z" }), makeItem({ id: "p2", title: "Second", agent: "pia", agentName: "Pia Test-Agent", space: "engineering", isNew: true })];
     const html = reviewView(makeReviewProps({ items }));
@@ -160,12 +168,14 @@ describe("reviewView — populated", () => {
     expect(open).toMatch(/data-arg="p2" class="cnpy-rvg-pg"[\s\S]*?<span class="cnpy-rvg-pk">New page<\/span>/);
     expect(open).toContain("Page 1 of 2 · Pia&#39;s agent");
     expect(open).toContain('data-morph-key="rvd:p1"');
-    // Each author is a group of their own; a decision stays a card.
+    // Each author is a group of their own; a decision stays a card — and so does an author's ONE page (no "1 page",
+    // no Approve all 1: the owner, 2026-10-18).
     const two = reviewView(makeReviewProps({ items: [...items, makeItem({ id: "p3", agent: "max" }), makeAdr({ id: "d1" })] }));
-    expect(two).toContain('data-morph-key="rvg:agent:max"');
-    expect(two).toContain("Written by max&#39;s agent");
+    expect(two).not.toContain('data-morph-key="rvg:agent:max"');
+    expect(two).toContain('data-morph-key="rv:p3"');
+    expect(two).not.toContain("Written by max&#39;s agent");
     expect(two).toContain('data-morph-key="rv:d1"');
-    expect(two).toContain('data-morph-key="rvd:d1"');        // the decision is the default selection
+    expect(two).toContain('data-morph-key="rvd:p3"');        // the first card (not a group) is the default selection
   });
 
   it("labels the accept action Ratify for decisions and renders the ADR record", () => {
@@ -187,7 +197,7 @@ describe("reviewView — populated", () => {
   });
 
   it("filter hides what it does not hold: Imports shows the import groups, Written by agents everything else", () => {
-    const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" })];
+    const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" }), makeItem({ id: "i2", title: "Another imported page", importId: 5, importFile: "handbook.zip", slug: "another-page", space: "engineering" })];
     const imports = reviewView(makeReviewProps({ items, filter: "imports" }));
     expect(imports).toContain("Import from handbook.zip");
     // The agent rows are filtered out of the list: nothing is picked by default (a decision the filter hides is not).
@@ -195,7 +205,7 @@ describe("reviewView — populated", () => {
     expect(imports).not.toContain("A Decision");
     const agents = reviewView(makeReviewProps({ items, filter: "agents" }));
     expect(agents).toContain("A Decision");
-    expect(agents).toContain('data-morph-key="rvg:agent:');
+    expect(agents).toContain('data-morph-key="rv:p1"'); // the agent's one page: a card of its own
     expect(agents).not.toContain("Import from handbook.zip");
   });
 });
@@ -381,8 +391,8 @@ describe("reviewView — empty states", () => {
   it("renders the list empty state when the filter hides everything, keeping the selected detail", () => {
     const html = reviewView(makeReviewProps({ filter: "imports", selectedId: "p1" }));
     expect(html).toContain("Nothing of this kind is waiting for review.");
-    // Selection survives the filter — the detail still shows the proposal (its agent's page pane)
-    expect(html).toContain("What changes");
+    // Selection survives the filter — the detail still shows the proposal (its own detail: one page is no group)
+    expect(html).toContain('data-morph-key="rvd:p1"');
   });
 });
 

@@ -483,6 +483,12 @@ export function reviewGroups(items: readonly ReviewItem[]): Map<string, ReviewGr
   return out;
 }
 
+/** The groups the queue DRAWS as groups: one that holds (or held, this session — `totals`) a single page is that page's
+ *  own card, like a decision, so a lone change never wears "1 page", Review one by one and Approve all 1. */
+export function shownGroups(items: readonly ReviewItem[], totals: Readonly<Record<string, number>> = {}): Map<string, ReviewGroup> {
+  return new Map([...reviewGroups(items)].filter(([key, g]) => Math.max(totals[key] ?? 0, g.items.length) > 1));
+}
+
 /** The import groups among `items`, keyed by import id. */
 export function importGroups(items: readonly ReviewItem[]): Map<number, ReviewGroup> {
   return new Map([...reviewGroups(items).values()].filter((g) => g.kind === "import").map((g) => [g.id, g]));
@@ -532,7 +538,12 @@ function groupCard(g: ReviewGroup, p: ReviewProps, sel: ReviewItem | null, leavi
     ? `<span class="cnpy-rvg-agav" role="img" aria-label="${attr(`@${g.by ?? ""}'s agent`)}" style="border-radius:5px">${SPARK(11, 2.2)}</span>`
     : g.by ? personChip(person ? { handle: person.handle, name: person.name, color: person.color, avatar_url: person.avatar_url } : null, 16, g.by) : "";
   const arg = attr(g.key);
-  return `<div class="cnpy-rv-row" data-morph-key="rvg:${arg}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${arg}" data-kind="${g.kind}">
+  // The card itself opens the group's first page still waiting in the reading pane (whose bar steps through the rest):
+  // an empty button over the card (ui.ts `hitArea`), its own buttons and page rows raised above it.
+  const first = waiting[0] ?? g.items[0];
+  const hit = first ? hitArea("reviewSelect", first.id, `${groupTitle(g)}: open its first page`) : "";
+  return `<div class="cnpy-rv-row" data-morph-key="rvg:${arg}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE} ${HITBOX}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${arg}" data-kind="${g.kind}">
+    ${hit}
     <div class="cnpy-rvg-in">
       <div class="cnpy-rvg-head">
         <span class="cnpy-rvg-ic" style="border-radius:7px">${g.kind === "agent" ? SPARK(16) : UPLOAD}</span>
@@ -678,10 +689,12 @@ export function reviewView(p: ReviewProps): string {
   const inFilter = (it: ReviewItem) => inReviewFilter(it, p.filter);
   const visible = p.items.filter(inFilter);            // the rows on screen, the leaving ones among them
   const visibleWaiting = waiting.filter(inFilter);
-  const groups = reviewGroups(p.items);
+  const groups = shownGroups(p.items, p.groupTotals);
+  /** The group an item is drawn in, or null (a decision, or a group of one page). */
+  const drawnKey = (it: ReviewItem): string | null => { const k = groupKeyOf(it); return k !== null && groups.has(k) ? k : null; };
   // Selection survives a filter that hides it (the detail keeps showing it); with nothing explicitly selected, the
   // first visible item still waiting that is in NO group — a drafted decision (a group's pages are opened from it).
-  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => groupKeyOf(it) === null) ?? null;
+  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => drawnKey(it) === null) ?? null;
   const counts: Record<ReviewFilter, number> | null = p.loading ? null : {
     all: waiting.length,
     imports: waiting.filter((it) => it.importId != null).length,
@@ -694,7 +707,7 @@ export function reviewView(p: ReviewProps): string {
   // import's, an agent's) are ONE row: its group card, where its newest page would be.
   const seen = new Set<string>();
   const rows = visible.map((it) => {
-    const key = groupKeyOf(it);
+    const key = drawnKey(it);
     if (key === null) return reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null);
     if (seen.has(key)) return "";
     seen.add(key);
@@ -704,7 +717,7 @@ export function reviewView(p: ReviewProps): string {
   const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
     : `${rows}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
-  const selKey = sel ? groupKeyOf(sel) : null;
+  const selKey = sel ? drawnKey(sel) : null;
   const g = selKey !== null ? groups.get(selKey) ?? null : null;
   const detail = p.loading ? reviewDetailSkeleton()
     : sel ? (g ? reviewPagePane(sel, g, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length), leaving, p.spaceNames?.[sel.space ?? ""] ?? sel.space ?? "", p.aiUi, p.groupPages?.[g.key]) : reviewDetail(sel, p.diffView, p.aiUi))

@@ -9,7 +9,7 @@ import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
-import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict, type ReviewView } from "./review";
+import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, shownGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict, type ReviewView } from "./review";
 import { createImportController } from "./import-actions";
 import { installImportDrop, mainDropTarget } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
@@ -2065,7 +2065,7 @@ function reviewVerdict(id: string, accept: boolean): void {
   // A page of a group (an import's, an agent's): the next one of its group still waiting, wrapping (the group is its
   // own list).
   const key = item ? groupKeyOf(item) : null;
-  const group = key !== null ? reviewGroups(props.items).get(key) ?? null : null;
+  const group = key !== null ? shownGroups(props.items, state.reviewGroupTotals).get(key) ?? null : null;
   const groupLeft = group ? group.items.filter((it) => it.id !== id && !props.leaving?.[it.id]) : [];
   if (selBefore === id) {
     if (group) {

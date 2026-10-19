@@ -803,7 +803,7 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 }
 /* ── Unplaced (web/src/maintenance.ts) ──────────────────────────────────────────────────────
    Review's other view (one screen, `#review/unplaced`): Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`,
-   `.cnpy-rvp` on To review's colours, `.cnpy-rvp--bg`), so only what is its own is here. A card placed or discarded
+   `.cnpy-rvp` on To review's colours, the white `.cnpy-rv-detail`), so only what is its own is here. A card placed or discarded
    leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
 .cnpy-rv-row[data-verdict="placed"] { --rv-tone:var(--green); }
 .cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }
@@ -4612,6 +4612,8 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
    that is decided whole wears the verdict and leaves by the queue's one exit (`.cnpy-rv-row`). */
 .cnpy-rvg { position:relative; margin-bottom:8px; padding:12px 14px; transition:border-color .12s ease; }
 .cnpy-rvg[data-sel] { border-color:var(--border-strong); }
+/* A group card is a hitArea card (its first page opens in the pane); its buttons and its page rows sit above the hit. */
+.cnpy-hitbox .cnpy-rvg-acts, .cnpy-hitbox .cnpy-rvg-list { position:relative; z-index:2; }
 .cnpy-rvg-head { display:flex; align-items:center; gap:10px; min-width:0; }
 .cnpy-rvg-ic { width:30px; height:30px; flex:none; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
 .cnpy-rvg-acts { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
@@ -4657,9 +4659,10 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* Review › a group's page, picked (review.ts `reviewPagePane`, the design's right pane): the bar on top, the page,
    and the footer with the verdict — both bars stay in view while the page scrolls under them. */
 .cnpy-rvp { display:flex; flex-direction:column; min-height:100%; background:var(--surface); }
-/* On To review's colours (Unplaced's item, maintenance.ts): the pane is the page's own `--bg`, as a decision's is, the
-   content sits in white surface cards, and the footer that stays in view is the pane's colour over its hairline. */
-.cnpy-rvp--bg, .cnpy-rvp--bg > .cnpy-rvp-foot { background:var(--bg); }
+/* Review's reading pane is WHITE in both views (the owner, 2026-10-18): To review's and Unplaced's, a decision's, a
+   page's; the cards in it keep their border. In the list, a picked card stays white too (its border marks it). */
+.cnpy-rv-detail { background:var(--surface); }
+.cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; }
 .cnpy-rvp > .cnpy-rvg-bar-top { position:sticky; top:0; z-index:2; flex:none; background:var(--surface); padding:0 20px 0 28px; }
 .cnpy-rvp-body { flex:1 0 auto; max-width:860px; padding:24px 32px 40px; }
 .cnpy-rvp-crumb { font-size:12.5px; color:var(--fg-55); }

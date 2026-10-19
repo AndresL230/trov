@@ -285,7 +285,7 @@ export function assignPanel(it: UnplacedItem, p: MaintenanceProps, picked: boole
   </div>`;
 }
 
-/** The item on screen (Review's page pane, `reviewPagePane`, on To review's colours — `.cnpy-rvp--bg`): where it
+/** The item on screen (Review's page pane, `reviewPagePane`, on To review's colours: the white reading pane): where it
  *  stands in the queue, its title, what it is, who sent it and when; why it is here, verbatim; Trov's suggestion; the
  *  item itself in a white card; then "Place it as" in another — and the footer that stays in view: what Place will do,
  *  Discard, Place. The body and the footer are keyed by the item, so another item REPLACES them. */
@@ -295,7 +295,7 @@ export function unplacedDetail(it: UnplacedItem, p: MaintenanceProps, idx: numbe
   const canPlace = kindOf(it) !== "note" && e.kind !== null && (e.kind !== "doc" || (e.section !== null && e.space !== null));
   const spaceLabel = e.space ? p.assign.spaces.find((s) => s.key === e.space)?.label ?? e.space : null;
   const id = attr(it.id);
-  return `<div class="cnpy-rvp cnpy-rvp--bg cnpy-up">
+  return `<div class="cnpy-rvp cnpy-up">
     <div class="cnpy-rv-body cnpy-rvp-body" data-morph-key="upd:${id}">
       <div class="cnpy-rvp-crumb">${idx + 1} of ${total} unplaced</div>
       <h2 class="cnpy-rvp-h">${esc(it.title)}</h2>
