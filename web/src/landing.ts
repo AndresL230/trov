@@ -200,21 +200,22 @@ function menuSheet(dark: boolean, signedIn: boolean): string {
 
 // The hero's sidebar is the app's (web/src/sidebar.ts `sidebarView`): the same sections, entries, order, labels and
 // icons: Workspace, Monitor, Knowledge (the Library with its spaces under it: a new organization's three starter
-// spaces, A to Z), Triage, Help. The icon paths are sidebar.ts `ICONS`'s, copied (that module pulls the Library screen
+// spaces, A to Z, then Review), Help. The icon paths are sidebar.ts `ICONS`'s, copied (that module pulls the Library screen
 // in); change them with it. test/render.landing.test.ts holds the two together.
 export const NAV_ICON = {
-  mywork: `<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`,
+  home: `<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"></path>`,
+  mywork: `<rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M3 12.5h18"></path>`,
   ask: `<circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path>`,
   tickets: `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`,
   roadmap: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
-  relay: `<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`,
+  relay: `<path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path>`,
   repo: `<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`,
   feed: `<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`,
-  library: `<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`,
-  artifacts: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`,
-  prompts: `<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`,
-  review: `<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`,
-  guide: `<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`,
+  library: `<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path>`,
+  artifacts: `<path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path>`,
+  prompts: `<path d="M16 18l6-6-6-6"></path><path d="M8 6l-6 6 6 6"></path>`,
+  review: `<rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="m9 12 2 2 4-4"></path>`,
+  guide: `<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.4-2.5 2.4"></path><circle cx="12" cy="16.6" r=".4" fill="currentColor"></circle>`,
   releases: `<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`,
 } as const;
 /** The starter spaces' icons (web/src/library.ts `SPACE_ICON_PATHS`, the three a new organization starts with). */
@@ -300,6 +301,7 @@ function hero(signedIn: boolean): string {
           </div>
           ${sideHead("Workspace", "2px")}
           <div style="display:flex;flex-direction:column;gap:1px">
+            ${side(NAV_ICON.home, "Home")}
             ${side(NAV_ICON.mywork, "My Work")}
             ${side(NAV_ICON.ask, "Trov")}
             ${side(NAV_ICON.tickets, "Tickets")}
@@ -317,9 +319,6 @@ function hero(signedIn: boolean): string {
             ${heroSpaces()}
             ${side(NAV_ICON.artifacts, "Artifacts")}
             ${side(NAV_ICON.prompts, "Prompt Library")}
-          </div>
-          ${sideHead("Triage", "8px")}
-          <div style="display:flex;flex-direction:column;gap:1px">
             <div style="display:flex;align-items:center;gap:9px;padding:2px 8px;border-radius:7px;font-size:12px;font-weight:500;background:var(--accent-soft);color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${NAV_ICON.review}</svg>Review<span class="site-swap" style="margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:600;place-items:center;${at(DONE + 150)}"><span>3</span><span>2</span></span></div>
           </div>
           ${sideHead("Help", "8px")}

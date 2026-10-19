@@ -195,7 +195,6 @@ export function sidebarView(p: SidebarProps): string {
       ${item("library", "goLibrary", "Library")}
       ${item("artifacts", "goArtifacts", "Artifacts")}
       ${item("prompts", "goPrompts", "Prompt Library", c.prompts)}
-      ${section("Triage")}
       ${item("review", "goReview", "Review", c.review)}
       ${section("Help")}
       ${item("guide", "goGuide", "Guide")}

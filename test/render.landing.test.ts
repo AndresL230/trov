@@ -267,7 +267,7 @@ describe("landing — the hero's app is today's app", () => {
     const side = html.slice(html.indexOf('class="site-hide-sm" style="width:212px'), html.indexOf("agents produce · humans confirm"));
     // The app's rail, read from sidebar.ts: every section and every entry's label, in the order it draws them.
     const want = [...sidebarSrc.matchAll(/\$\{(?:section\("([^"]+)"|item\("\w+", "\w+", "([^"]+)")/g)].map((m) => (m[1] ?? m[2]).toLowerCase());
-    expect(want).toEqual(["workspace", "my work", "trov", "tickets", "roadmap", "relay", "monitor", "repo", "feed", "knowledge", "library", "artifacts", "prompt library", "triage", "review", "help", "guide", "what's new"]);
+    expect(want).toEqual(["workspace", "home", "my work", "trov", "tickets", "roadmap", "relay", "monitor", "repo", "feed", "knowledge", "library", "artifacts", "prompt library", "review", "help", "guide", "what's new"]);
     const text = side.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").toLowerCase();
     let at = -1;
     for (const w of want) { const next = text.indexOf(w, at + 1); expect(next, w).toBeGreaterThan(at); at = next; }

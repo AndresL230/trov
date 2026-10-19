@@ -60,10 +60,10 @@ describe("sidebar — structure is stable across every state", () => {
 });
 
 describe("sidebar — groups and order (the design's five sections)", () => {
-  it("orders Workspace · Monitor · Knowledge · Triage · Help, with Repo in Monitor", () => {
+  it("orders Workspace · Monitor · Knowledge · Help, with Repo in Monitor and Review last in Knowledge", () => {
     const html = sidebarView(props());
     const at = (needle: string) => html.indexOf(needle);
-    const order = [">Workspace<", "goHome", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", ">Triage<", "goReview", ">Help<", "goGuide", "goReleases"];
+    const order = [">Workspace<", "goHome", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", "goReview", ">Help<", "goGuide", "goReleases"];
     for (let i = 1; i < order.length; i++) expect(at(order[i]), order[i]).toBeGreaterThan(at(order[i - 1]));
   });
 
