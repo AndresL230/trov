@@ -5868,6 +5868,10 @@ const billingCheckoutHost: BillingCheckoutHost = {
 };
 
 // ── boot: detect session via /auth/me ────────────────────────────────────────
+// The shell's body is an empty #app: nothing is set in Geist until /auth/me answers and the first screen paints,
+// and on a slow load Chromium then warns that the preloaded font (site-prerender.ts FONT_PRELOAD) went unused.
+// Asking for the face now takes the preload at once (the same file, one download).
+void document.fonts?.load("1em Geist").catch(() => undefined);
 const params = new URLSearchParams(location.search);
 if (params.get("denied") === "1") {
   // A GitHub sign-in that was refused (/auth/callback): the login belongs to another GitHub account.

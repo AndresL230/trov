@@ -1390,6 +1390,9 @@ field until a producer exists; `LOCAL_AI_PREVIEW` under `wrangler dev` fills the
 - **One preload.** Every built document — the four public pages, the 404 and the app shell — carries
   `FONT_PRELOAD` (`web/src/site-prerender.ts`): Geist latin, `as="font" crossorigin`. Vite rewrites its href to
   the same hashed file the stylesheet's `url()` resolves to, so it is one download. Nothing else is preloaded.
+  The app shell's body is an empty `#app`, so `main.ts` asks for the face as it boots
+  (`document.fonts.load("1em Geist")`). Otherwise, on a slow load, nothing used the preload before Chromium's
+  few-second "preloaded but not used" warning.
 - **`'Geist Fallback'`** follows `'Geist'` in every stack: the system Arial (Helvetica, Liberation Sans) with
   `size-adjust` and ascent / descent overrides measured against Geist over the prerendered pages' own text, in
   three weight bands (400, 500, bold), so text set before Geist arrives wraps where Geist will put it. A new

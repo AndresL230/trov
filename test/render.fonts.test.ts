@@ -15,6 +15,7 @@ import css from "../web/src/trov.css?raw";
 import oauthRoutesSrc from "../src/auth/oauth-routes.ts?raw";
 // Mermaid's loader and post-paint pass live in artifacts-state.ts (the Artifacts screens are their own chunk).
 import artifactsSrc from "../web/src/artifacts-state.ts?raw";
+import mainSrc from "../web/src/main.ts?raw";
 import geistLicense from "../web/src/fonts/Geist-OFL.txt?raw";
 import archivoLicense from "../web/src/fonts/ArchivoNarrow-OFL.txt?raw";
 import pkg from "../package.json";
@@ -41,6 +42,10 @@ describe("fonts — self-hosted, preloaded, with a metric-matched fallback", () 
       const preloads = html.match(/<link rel="preload"[^>]*>/g) ?? [];
       expect(preloads, name).toEqual([FONT_PRELOAD]);
     }
+  });
+
+  it("the app asks for Geist as it boots, so the shell's preload is used before the first screen paints (ticket 49)", () => {
+    expect(mainSrc).toContain(`void document.fonts?.load("1em Geist")`);
   });
 
   it("trov.css declares each vendored file: family, the variable axis, swap, Google's unicode-range", () => {
