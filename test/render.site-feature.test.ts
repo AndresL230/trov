@@ -23,6 +23,7 @@ import landingSrc from "../web/src/landing.ts?raw";
 import renderSrc from "../web/src/render.ts?raw";
 import docPageSrc from "../web/src/doc-page.ts?raw";
 import docsPaneSrc from "../web/src/docs-pane.ts?raw";
+import tagsSrc from "../web/src/tags.ts?raw";
 import { loadWebChunks } from "./helpers/web-chunks";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
@@ -185,9 +186,11 @@ describe("the dialog's mockups — each screen drawn from the real one (landing-
   it("every other mock says what its real screen says", () => {
     const guide = renderSrc;
     const pairs: [Parameters<typeof mockText>[0], string, string[]][] = [
-      ["docs", docPageSrc, ["You're reading the", "live", "version. A change to this page is waiting for review.", "Open in Review", "History", "Updated", "Live"]],
+      ["docs", docPageSrc, ["You're reading the", "live", "version. A change to this page is waiting for review.", "Open in Review", "History", "Archive page", "Updated", "Owner", "Last edited by", "Version", "is waiting for review", "Linked from", "On this page"]],
       ["docs", docsPaneSrc, ["Pages"]],
-      ["docs", guide, ["New page"]],
+      ["docs", marksSrc, ["Change pending review"]],
+      ["docs", tagsSrc, ["+ Add tag"]],
+      ["docs", guide, ["Library"]],
       ["feed", guide, ["For reading", "For agents", "This week", "Whole team, last 7 days", "Everything this week", "Top tags", "Waiting on review"]],
       ["roadmap", timelineSrc, ["Sprints on the calendar", "In progress", "Upcoming", "Overdue", "Ready", "all tickets closed", "Today", "Done", "Next due", "starts in"]],
       ["roadmap", guide, ["Narrative", "Timeline", "New sprint"]],
