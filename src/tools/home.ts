@@ -54,9 +54,10 @@ export async function homeData(ctx: TenantContext, opts: { tzOffsetMin?: number;
       ctx.orgId),
     // …else their newest Feed entry.
     all<{ author: string; summary: string }>(ctx,
-      `SELECT f.author AS author, f.summary AS summary FROM feed f
-        WHERE f.org_id = ? AND COALESCE(f.origin, 'agent') = 'agent'
-          AND f.id = (SELECT MAX(g.id) FROM feed g WHERE g.org_id = f.org_id AND g.author = f.author AND COALESCE(g.origin, 'agent') = 'agent')`,
+      `SELECT author, summary FROM (
+          SELECT author, summary, ROW_NUMBER() OVER (PARTITION BY author ORDER BY created_at DESC, id DESC) AS rn
+            FROM feed WHERE org_id = ? AND COALESCE(origin, 'agent') = 'agent'
+        ) WHERE rn = 1`,
       ctx.orgId),
     // When each last did something Trov saw.
     all<{ who: string; at: string }>(ctx,
