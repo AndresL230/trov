@@ -5679,7 +5679,18 @@ mount.addEventListener("focusout", (e) => {
 document.addEventListener("keydown", (e) => {
   if (state.view !== "app" || e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
   e.preventDefault();
-  dispatch("sideSearchFocus", null, null);
+  // On Home the page's own bar is the search (the design's ⌘K hint sits in it).
+  dispatch(state.screen === "home" ? "homeFocus" : "sideSearchFocus", null, null);
+});
+// Home's bar: focusing its field (a click, Tab) opens the dropdown and its focused look.
+mount.addEventListener("focusin", (e) => {
+  if (state.screen !== "home" || state.home.focused) return;
+  if (!(e.target as Element | null)?.closest?.('[data-field="homeQ"]')) return;
+  state.home.focused = true; state.home.attnOpen = false; state.home.active = 0; rerender();
+});
+// Home's Needs attention closes on Escape.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.screen === "home" && state.home.attnOpen) { state.home.attnOpen = false; rerender(); }
 });
 mount.addEventListener("keydown", (e) => {
   const box = (e.target as Element | null)?.closest?.<HTMLInputElement>('[data-field="sideSearch"]');

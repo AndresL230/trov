@@ -1119,7 +1119,7 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
    class-styled search inputs (.cnpy-search-in, .cnpy-qs-in, and Ask's composer .ask-input and thread search .ask-th-q) leave both to their box's own rule. Buttons,
    checkboxes and radios are not fields: they keep their own `:focus-visible` rules (or the browser's ring). */
 [data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
-[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q, .hm-bar-in):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
 [data-cnpy-theme] :is(input, textarea)[aria-invalid="true"]:not([style*="border:none"]):focus-visible { box-shadow:0 0 0 1px var(--red) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]) { border-color:var(--border-input) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]:focus-visible) { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
@@ -5727,12 +5727,12 @@ button.hm-status:disabled { cursor:default; }
 .hm-bar-ring { padding:3px; border:1px solid var(--border); border-radius:15px; background:var(--hover); transition:background-color .2s ease, border-color .2s ease; }
 .hm-bar-ring.is-focused { background:var(--accent-soft); border-color:transparent; }
 .hm-bar { display:flex; align-items:center; gap:10px; height:44px; padding:0 6px 0 13px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--shadow, 0 1px 2px rgba(20,20,30,.05)); cursor:text; transition:border-color .15s ease; }
-.hm-bar-ring.is-focused .hm-bar { border-color:var(--accent); }
+/* Home's bar draws the field's focus edge itself (its input is excluded from the field-ring rule). */
+.hm-bar-ring.is-focused .hm-bar, .hm-bar:has(.hm-bar-in:focus-visible) { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); }
 .hm-bar-ic { display:grid; place-items:center; width:16px; height:16px; flex:none; color:var(--fg-40); }
 .hm-bar-ic.is-ask { color:var(--accent); }
 .hm-bar-in { flex:1; min-width:0; height:100%; background:none; border:none; outline:none; font:inherit; font-size:14px; color:var(--fg); padding:0; }
 .hm-bar-in::placeholder { color:var(--fg-40); }
-.hm-bar-in:focus-visible { outline:none; }
 .hm-clear { width:22px; height:22px; display:grid; place-items:center; flex:none; border-radius:7px; color:var(--fg-40); }
 .hm-clear:hover { color:var(--fg); background:var(--hover); }
 .hm-kbd { display:inline-flex; gap:3px; flex:none; margin-right:5px; }
