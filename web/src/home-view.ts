@@ -41,6 +41,9 @@ export interface HomeUi {
   attnOpen: boolean;
   /** Which headline of the pool; moves on every entry to Home. */
   headIdx: number;
+  /** The head (headline and status line) has drawn once from every read it is built on (`homeHeadSettled`); a
+   *  refresh then keeps it on screen instead of falling back to its skeleton. */
+  headReady: boolean;
   /** The question asked from the bar and its answer, streaming under it (null: none). */
   answer: HomeAnswer | null;
 }
@@ -58,7 +61,7 @@ export interface HomeAnswer {
   wrong: "closed" | "open" | "sent";
 }
 export function initialHomeUi(): HomeUi {
-  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0, answer: null };
+  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0, headReady: false, answer: null };
 }
 
 const mk = (k: StateKind): HomeMark => ({ shape: STATE_KIND[k].shape, tone: STATE_KIND[k].tone });
@@ -138,6 +141,15 @@ function attentionRows(s: AppState): { rows: (HomeAttnRow & { urg: number })[]; 
   }
   rows.sort((a, b) => a.urg - b.urg);
   return { rows, failing };
+}
+
+/** Every read the head is built on has landed (ok or failed): the attention rows, the empty-org check and the
+ *  review counts. Until then the headline and the status line are skeletons — drawn from what has landed so far,
+ *  they would snap from one line to another as the rest arrived. */
+export function homeHeadSettled(s: AppState): boolean {
+  const landed = (l: { status: string }): boolean => l.status === "ok" || l.status === "error";
+  return landed(s.home.data) && (!s.orgSlug || landed(s.home.github)) && landed(s.repo) && landed(s.sprints)
+    && landed(s.handoffs) && landed(s.mywork) && landed(s.orgMe) && (s.badges.proposals !== undefined || landed(s.proposals));
 }
 
 /** The headline: a greeting or a question, picked per entry; the page on fire asks what to fix. */
@@ -326,9 +338,9 @@ export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps 
   const { rows, failing } = attentionRows(s);
   const actionable = rows.filter((r) => r.action).length;
   const empty = s.orgMe.status === "ok" && !(s.orgMe.data?.repos.all.length) && s.sprints.status === "ok" && s.sprints.data.length === 0 && s.mywork.status === "ok" && !(s.mywork.data?.tickets.length);
-  // The status line claims only what has landed: the review counts (badges at boot) and the handoffs read.
-  const known = s.badges.proposals !== undefined || s.proposals.status === "ok";
-  const status = !known ? null
+  // The head claims nothing until every read behind it has landed (then holds through a refresh).
+  const ready = s.home.headReady || homeHeadSettled(s);
+  const status = !ready ? null
     : failing ? { mark: mk("bad"), text: `${failing} · ${actionable} need${actionable === 1 ? "s" : ""} you` }
     : actionable > 0 ? { mark: rows[0].mark, text: `${plural(actionable, "thing")} need${actionable === 1 ? "s" : ""} you` }
     // A member's calm rows only (repo updates paused): the first one says what, with no count to act on.
@@ -360,7 +372,7 @@ export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps 
   const feedToday = s.home.feed.data.filter((e) => new Date(e.created_at).toDateString() === new Date().toDateString()).length;
   const team = teamRows(s);
   return {
-    head: { headline: headline(s, !!failing, rows.length === 0, empty), status, attn: { open: s.home.attnOpen, rows: shown, more: rows.length - shown.length, countText: actionable ? `${actionable} need${actionable === 1 ? "s" : ""} you` : "" } },
+    head: { headline: ready ? headline(s, !!failing, rows.length === 0, empty) : null, status, attn: { open: s.home.attnOpen, rows: shown, more: rows.length - shown.length, countText: actionable ? `${actionable} need${actionable === 1 ? "s" : ""} you` : "" } },
     search: { q: s.home.q, mode: s.home.mode, askAvail: askAvailable(s), focused: s.home.focused, groups, none, mac },
     answer: s.home.answer ? homeAnswerView(s.home.answer) : answer,
     cols: [repositoriesCol(s, admin), roadmapCol(s, admin), forYouCol(s)],

@@ -89,7 +89,7 @@ import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
 import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick, type QuickRow } from "./quicksearch";
-import { homeDropRows, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
+import { homeDropRows, homeHeadSettled, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
 import { askApi } from "./ask-api";
 import { ASK_WRONG_REASONS, type AskWrongReason } from "@shared/ai-ask-core";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
@@ -613,6 +613,9 @@ function wantReleases(): void {
 
 /** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
 function paintApp(): void {
+  // Home's head holds once it has drawn from every read behind it (home-view.ts `homeHeadSettled`): a refresh, which
+  // marks those reads loading again, must not drop it back to its skeleton.
+  if (!state.home.headReady && homeHeadSettled(state)) state.home.headReady = true;
   // A drag (the board's cards, the docs pane's pages — pointer-drag.ts) holds the DOM: swapping <main> would drop the
   // row mid-drag. The held paint runs when the drag ends.
   if (dragging()) { rerenderHeld = true; return; }
@@ -1309,6 +1312,7 @@ function enterOrgNow(slug: string, hash: string): void {
     }
   } catch { /* no storage: land where the URL says */ }
   state.orgSlug = slug;
+  state.home.headReady = false;
   setApiOrg(slug);
   try { localStorage.setItem(LAST_ORG_KEY, slug); } catch { /* ignore */ }
   const want = withPreview(orgHref(slug, hash), state.preview);

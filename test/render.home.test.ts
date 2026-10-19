@@ -15,7 +15,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import { initialState, type AppState } from "../web/src/render";
 import { homePage, homeAnswerView } from "../web/src/home";
-import { homeProps, initialHomeUi } from "../web/src/home-view";
+import { homeProps, initialHomeUi, homeHeadSettled } from "../web/src/home-view";
 import { navKeyOf } from "../web/src/sidebar";
 import { HOME_DAYS, type HomeData, type HomeDay } from "@shared/home-core";
 import type { RepoDashboard } from "@shared/repo";
@@ -38,7 +38,8 @@ function state(o: Partial<AppState> = {}, role: "owner" | "member" = "owner"): A
     me: { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null } as AppState["me"],
     myOrgs: { status: "ok", data: { orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role }] } } as unknown as AppState["myOrgs"],
     badges: { proposals: 0, decisions: 0, unplaced: 0 },
-    home: { ...initialHomeUi(), data: { status: "ok", data: home() }, feed: { status: "ok", data: [] } },
+    // The head has settled (homeHeadSettled): these tests are about what it says, the head's own test about when.
+    home: { ...initialHomeUi(), data: { status: "ok", data: home() }, feed: { status: "ok", data: [] }, headReady: true },
     ...o,
   };
 }
@@ -58,6 +59,29 @@ describe("Home — the page", () => {
     const order = ["Repositories", "Roadmap", "For you", "Activity", "Tickets done", "Handoffs claimed", "Docs promoted", "Sessions recorded", "Latest", "Team"];
     let at = -1;
     for (const w of order) { const i = t.indexOf(w, at + 1); expect(i, w).toBeGreaterThan(at); at = i; }
+  });
+
+  it("shows the head as skeletons until every read behind it lands, then holds it through a refresh", () => {
+    const s = state();
+    s.home.headReady = false;
+    const pending = page(s);
+    expect(pending).toContain("hm-h-pending");
+    expect(pending).toContain("hm-status-pending");
+    expect(pending).not.toMatch(/<h2 class="hm-h/);
+    expect(homeHeadSettled(s)).toBe(false);
+
+    const ok = <T,>(l: { data: T }) => ({ status: "ok" as const, data: l.data });
+    const landed: AppState = { ...s, repo: ok(s.repo), sprints: ok(s.sprints), handoffs: ok(s.handoffs), mywork: ok(s.mywork), orgMe: { status: "error", data: s.orgMe.data, error: "x" },
+      home: { ...s.home, github: ok(s.home.github) } };
+    expect(homeHeadSettled(landed)).toBe(true);
+    const html = page(landed);
+    expect(html).toMatch(/<h2 class="hm-h/);
+    expect(html).not.toContain("hm-status-pending");
+
+    // A refresh marks the reads loading again; once ready, the head stays drawn.
+    const refreshing: AppState = { ...landed, repo: { status: "loading", data: landed.repo.data }, home: { ...landed.home, headReady: true } };
+    expect(homeHeadSettled(refreshing)).toBe(false);
+    expect(page(refreshing)).not.toContain("hm-h-pending");
   });
 
   it("with nothing waiting, the status line is the all-clear and has nothing to open", () => {

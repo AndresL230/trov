@@ -241,6 +241,10 @@ share one left and right edge (a row's hover bleeds 10px past it; the bar's ring
   behind it. A MEMBER gets a connection as a calm row ("Repo updates are paused"), no action, no red. The status line
   repeats the first row's mark and counts the rows with an action; nothing waiting is "All clear · nothing needs
   you". The headline is picked from the same facts (on fire, all quiet, a new org, or a greeting), moving per visit.
+  Both are skeletons until EVERY read behind them has landed, ok or failed (`homeHeadSettled`: `GET /home`, the App's
+  state, the Repo dashboard, sprints, handoffs, My Work, `orgMe` and the review counts). Drawn from a partial set, they
+  snapped from one line to another as the rest arrived. Once drawn, `home.headReady` holds them through a refresh,
+  and entering an org resets it.
 - **Fresh**: every visit reads all of it again (`refreshHome`), and so does every minute while Home is on screen and
   the tab is visible — not while the bar is in use (its dropdown would move under the keyboard). Each loader keeps what
   is on screen while it reads.
