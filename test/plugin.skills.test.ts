@@ -13,7 +13,17 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the eleven skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.11.0");
+    expect(plugin.version).toBe("0.11.1");
+  });
+
+  it("the explicit-only skills load on a request in words: no disable-model-invocation, and never on their own (#183)", () => {
+    for (const [name, text] of Object.entries(SKILLS)) expect(frontmatter(text), name).not.toContain("disable-model-invocation");
+    for (const name of ["handoff", "record-session", "tickets", "update-plan"]) {
+      const description = /^description: (.*)$/m.exec(frontmatter(SKILLS[name]))?.[1] ?? "";
+      expect(description, name).toContain(`asks for this in words or types /trov:${name}`);
+      expect(description, name).toContain("never on your own");
+    }
+    expect(SKILLS.trov).toContain("**Explicit-only means asked, not typed.**");
   });
 
   it("record-session never sends needs_triage: unsure is a low-confidence proposal or left out, and a refusal is fixed and re-sent", () => {

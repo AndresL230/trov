@@ -122,6 +122,7 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0077_home` (it times doc promotions from now on; merging to main applies it). Its header has the rollback.",
+      "Publish the Trov plugin 0.11.1 (handoff, record-session, tickets and update-plan load when asked in words): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`.",
     ],
     patches: {
       added: [
@@ -133,10 +134,12 @@ export const RELEASES: Release[] = [
         "The sidebar has new icons, Home first, and Review under Knowledge; every screen's title and buttons sit at the window's edges (#201)",
         "What's new and the Guide share one page width (#201)",
       ],
-      fixed: [],
+      fixed: [
+        "Asking Claude in words to send a handoff, record the session, file a ticket or update the plan works, not only the slash command (#202)",
+      ],
       removed: [],
     },
-    prs: [201],
+    prs: [201, 202],
   },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower

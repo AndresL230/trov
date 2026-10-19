@@ -48,9 +48,17 @@ orient (load-context)  →   do the work   →   record (record-session)
    SHIPPED is not its job: Trov writes a `Shipped:` / `Status:` entry from the commits itself, about 45
    minutes after a person's last push (a session digest, authored by `trov`).
 
-> Why two skills, not one: a skill carries a single trigger setting. `load-context` **must** be
-> model-invocable (auto-orient); `record-session` **must** be explicit-only (never log on its own).
-> They can't share one `SKILL.md`. This `trov` skill is the umbrella that documents both.
+> Why two skills, not one: a skill carries a single trigger. `load-context` **must** fire on its own
+> (auto-orient); `record-session` **must** be explicit-only (never log on its own). They can't share
+> one `SKILL.md`. This `trov` skill is the umbrella that documents both.
+
+> **Explicit-only means asked, not typed.** `record-session`, `handoff`, `tickets` and `update-plan`
+> fire only when a person asks, but a request in plain words ("send a handoff", "record the session",
+> "file a ticket for that", "update the plan") is as explicit as typing `/trov:handoff`: load the skill
+> and follow it. Never refuse such a request or hand back a prompt to paste elsewhere, and never call
+> its write tools bare without the skill's rules. What none of them may do is fire on their own at a
+> natural stopping point. (The skills deliberately do not set `disable-model-invocation`: that flag
+> blocks a spoken request too, and only a typed slash command would get through.)
 
 Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and the sprints; **`handoff`** (explicit-only) leaves one handoff for the next session; **`prompts`** finds,
 fills and stages Prompt Library prompts; **`artifacts`** finds, pulls (verified download), spins up,

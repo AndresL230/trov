@@ -1,7 +1,6 @@
 ---
 name: record-session
-description: Use when a person explicitly asks to wrap up, record, log, or capture the current Claude Code session into Trov (triggers — "record this session", "session-end", "log this to Trov", "save what we did"). Explicit invocation only — must never auto-fire at a natural stopping point.
-disable-model-invocation: true
+description: Use when a person explicitly asks to wrap up, record, log, or capture the current Claude Code session into Trov (triggers — "record this session", "session-end", "log this to Trov", "save what we did"). Explicit only: load it when the person asks for this in words or types /trov:record-session, and follow it rather than calling the tools bare — never on your own at a natural stopping point.
 allowed-tools: Bash(git log:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(git merge-base:*), Bash(git diff:*), Bash(gh pr view:*), Bash(gh pr list:*), Bash(gh issue view:*), Bash(uuidgen:*), mcp__trov__query, mcp__trov__get_doc, mcp__trov__record_session, mcp__trov__list_spaces, mcp__trov__list_tags, mcp__trov__upload_asset, Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -X PUT:*), mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 

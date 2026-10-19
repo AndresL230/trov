@@ -134,6 +134,12 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   `save_prompt` (always staged). There is no per-token rate limit in Trov today.
 - Skills: `handoff`, `prompts`, and `load-context` (lists waiting handoffs and live links at session start; never
   auto-claims). Links have their own skill, `link` (below).
+- **Explicit-only skills are model-invocable** (plugin 0.11.1, #183): `handoff`, `record-session`, `tickets` and
+  `update-plan` do NOT set `disable-model-invocation`. That flag also blocks a person asking in words ("send a
+  handoff") — only a typed `/trov:handoff` got through, and Claude Code then told the model not to do the work
+  another way, so sessions refused. The "explicit only" rule lives in each description instead (load it when the
+  person asks in words or types the slash command; never on its own at a stopping point), and the `trov` map
+  skill says a spoken request is explicit. `test/plugin.skills.test.ts` holds both.
 
 ## Agent links — a short-lived line between two sessions (0076_10_17_staging › 0078_agent_links)
 

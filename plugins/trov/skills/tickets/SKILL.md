@@ -1,7 +1,6 @@
 ---
 name: tickets
-description: Use when a person explicitly asks to work the Trov ticket queue — file a ticket, assign or unassign someone, start or resolve one, comment on it, link work to it, move it into a sprint, nest it under another, or create and manage sprints (triggers — "file a ticket for…", "assign 12 to meilin", "start that ticket", "mark it done", "comment on ticket 12", "move this to sprint 13", "create a sprint"). Reading the queue needs no skill. Explicit invocation only for writes — must never auto-fire.
-disable-model-invocation: true
+description: Use when a person explicitly asks to work the Trov ticket queue — file a ticket, assign or unassign someone, start or resolve one, comment on it, link work to it, move it into a sprint, nest it under another, or create and manage sprints (triggers — "file a ticket for…", "assign 12 to meilin", "start that ticket", "mark it done", "comment on ticket 12", "move this to sprint 13", "create a sprint"). Reading the queue needs no skill. Explicit only for writes: load it when the person asks for this in words or types /trov:tickets, and follow it rather than calling the tools bare — never on your own.
 allowed-tools: mcp__trov__list_tickets, mcp__trov__get_ticket, mcp__trov__list_sprints, mcp__trov__get_sprint, mcp__trov__list_people, mcp__trov__create_ticket, mcp__trov__edit_ticket, mcp__trov__transition_ticket, mcp__trov__add_ticket_comment, mcp__trov__add_ticket_link, mcp__trov__set_ticket_sprint, mcp__trov__set_ticket_parent, mcp__trov__assign_ticket, mcp__trov__create_sprint, mcp__trov__set_sprint_active, mcp__trov__complete_sprint, mcp__trov__add_sprint_resource, mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 

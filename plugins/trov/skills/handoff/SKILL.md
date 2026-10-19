@@ -1,7 +1,6 @@
 ---
 name: handoff
-description: Use when a person explicitly asks to leave a handoff for the next session or another teammate (triggers — "leave a handoff", "hand this off", "I'm switching to someone else", "we're running out of context, write it up for the next session"). Explicit invocation only — must never auto-fire at a natural stopping point.
-disable-model-invocation: true
+description: Use when a person explicitly asks to leave a handoff for the next session or another teammate (triggers — "leave a handoff", "hand this off", "I'm switching to someone else", "we're running out of context, write it up for the next session"). Explicit only: load it when the person asks for this in words or types /trov:handoff, and follow it rather than calling the tools bare — never on your own at a natural stopping point.
 allowed-tools: Bash(git remote get-url:*), Bash(git branch:*), Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(uuidgen:*), Bash(mktemp:*), Bash(shasum -a 256:*), Bash(sha256sum:*), Bash(wc -c:*), Bash(curl -sS -X PUT:*), Write, mcp__trov__send_handoff, mcp__trov__list_handoffs, mcp__trov__get_connection
 ---
 

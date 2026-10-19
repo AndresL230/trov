@@ -1,7 +1,6 @@
 ---
 name: update-plan
-description: Use when an admin explicitly asks to update, rewrite, or change the roadmap plan — narrative or sprints, including marking a sprint done (triggers — "update the plan", "rewrite the roadmap narrative", "add a sprint", "mark this sprint done"). Explicit invocation only — must never auto-fire.
-disable-model-invocation: true
+description: Use when an admin explicitly asks to update, rewrite, or change the roadmap plan — narrative or sprints, including marking a sprint done (triggers — "update the plan", "rewrite the roadmap narrative", "add a sprint", "mark this sprint done"). Explicit only: load it when the person asks for this in words or types /trov:update-plan, and follow it rather than calling the tools bare — never on your own.
 allowed-tools: mcp__trov__get_roadmap, mcp__trov__update_plan, mcp__trov__get_connection, Bash(git remote get-url:*)
 ---
 
