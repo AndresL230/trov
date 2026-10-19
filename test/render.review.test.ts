@@ -513,7 +513,7 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
   const task = (login: string) => ({ login, first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] }) as never;
   const app = (over: Partial<ReturnType<typeof initialState>> = {}, role: "admin" | "member" = "admin") => render({
-    ...initialState(), view: "app", screen: "maintenance", orgSlug: "saplinglearn",
+    ...initialState(), view: "app", screen: "review", reviewView: "unplaced", orgSlug: "saplinglearn",
     me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role }], superadmin: false, pending_invites: 0 },
     needsTriage: { status: "ok", data: [triage(1), triage(2), triage(3)] },
     identityTasks: { status: "ok", data: [task("mk-dev2"), task("sky-42")] },
@@ -533,7 +533,8 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
     expect(header(html)).toMatch(/aria-pressed="false"[^>]*>To review<\/button>/);
     expect(header(app({ proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } }))).toMatch(/>To review<span class="cnpy-seg-n">0<\/span>/);
     expect(header(html)).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Unplaced<span class="cnpy-seg-n">3<\/span>/);
-    expect(header(html)).toContain('data-act="goReview"');
+    // The switch picks a VIEW of the one Review screen (`setReviewView`), never another screen.
+    expect(header(html)).toContain('data-act="setReviewView" data-arg="queue"');
     expect(header(html)).not.toContain('data-act="goMaintenance"');
     expect(header(html)).not.toContain("›");
     expect(main(html)).toContain('data-screen-label="Unplaced"');
@@ -558,7 +559,7 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
     expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="3">3</span>');   // 3 unplaced; the 2 logins are not in it
     expect(navRow(app({ proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] }, badges: { proposals: 0, decisions: 0 } }), "review")).toContain('data-n="3"');
     expect(html).not.toContain(">Maintenance<");
-    expect(triageCounts({ ...initialState(), needsTriage: { status: "ok", data: [triage(1)] }, identityTasks: { status: "ok", data: [task("a"), task("b")] } }).maintenance).toBe(1);
+    expect(triageCounts({ ...initialState(), needsTriage: { status: "ok", data: [triage(1)] }, identityTasks: { status: "ok", data: [task("a"), task("b")] } }).unplaced).toBe(1);
   });
 
   it("the logins to match are counted where an admin will act on them: the org switcher and its Org settings row", () => {
@@ -580,8 +581,8 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
     expect(main(app({ needsTriage: { status: "error", data: [], error: "x" } as never }))).toContain("Couldn't load the Unplaced queue.");
   });
 
-  it("a stale goMaintenance for a tab that moved opens Org settings › Members", () => {
-    expect(mainSrc).toMatch(/case "goMaintenance":\s*if \(arg === "identity" \|\| arg === "people"\) \{ dispatch\("orgGo", "members", null\); return; \}/);
+  it("a stale goMaintenance for a tab that moved opens Org settings › Members; otherwise it is Review's Unplaced view", () => {
+    expect(mainSrc).toMatch(/case "goMaintenance":\s*if \(arg === "identity" \|\| arg === "people"\) \{ dispatch\("orgGo", "members", null\); return; \}\s*showReview\("unplaced"\);/);
   });
 });
 
@@ -657,7 +658,7 @@ describe("Review — the screen is named once", () => {
     expect(reviewView(makeReviewProps())).not.toContain("<h1");
   });
   it("Unplaced (Review's other view) does the same: the header's title, Review, and one line", () => {
-    const un = render({ ...initialState(), view: "app", screen: "maintenance", needsTriage: { status: "ok", data: [] } });
+    const un = render({ ...initialState(), view: "app", screen: "review", reviewView: "unplaced", needsTriage: { status: "ok", data: [] } });
     expect(un.match(/<h1[ >]/g)?.length).toBe(1);
     expect(un).toMatch(/<h1 style="[^"]*">Review<\/h1>/);   // Unplaced is Review's other view: the header names Review
   });

@@ -220,7 +220,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     const html = render(appState({ screen: "feed", ticketBadge: 4, collapsed: true }));
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
-    // review/maintenance counts are 0 here, so theirs stay hidden
+    // review/unplaced counts are 0 here, so theirs stay hidden
     expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(14); // every other entry (the Unplaced queue and Trov included)
   });
 

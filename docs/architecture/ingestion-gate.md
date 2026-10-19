@@ -41,8 +41,9 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   COMPATIBILITY: the record-session skill stopped sending them in plugin 0.11 (an unsure thing is a low-confidence
   proposal, or left out and told to the person), but an installed older plugin still sends them, and refusing them
   would lose what it was unsure of. They are the only way an item reaches Unplaced now. (In the app Unplaced is
-  Review's other view — the To review / Unplaced switch at the top of Review, `#unplaced` — with no sidebar row of
-  its own; Review's badge counts both queues. `web-ui.md` › Sidebar & motion.)
+  Review's other view — ONE screen, `review`, its view in `state.reviewView`: the To review / Unplaced switch at the
+  top of Review, `#review/unplaced`; the old `#unplaced` / `#maintenance` still land there — with no sidebar row of
+  its own; Review's badge counts both queues. `web-ui.md` › Sidebar & motion, › A row leaving a list.)
 - **A doc's space is one of the ORGANIZATION's Library spaces** (`0081_docs_library`; `docs-library.md`). The
   proposal's `space` resolves through `shared/docs-core.ts` `SPACE_ALIASES` (`technical` → `engineering`), then
   `src/tools/spaces.ts` `spaceState`: a space that was SENT must be live — **unknown or archived → refused**

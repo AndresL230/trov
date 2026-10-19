@@ -9,7 +9,7 @@ import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
-import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
+import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict, type ReviewView } from "./review";
 import { createImportController } from "./import-actions";
 import { installImportDrop, mainDropTarget } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
@@ -295,7 +295,7 @@ const aiCtl = createAiController({
   // Accept changed rises in (ai-actions.ts › THE ROADMAP'S DIALOG).
   decided: (id, how) => {
     if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
-    else if (state.screen === "maintenance") {
+    else if (state.screen === "review" && state.reviewView === "unplaced") {
       // An accepted destination PLACED its item (the same gate as Place): the card leaves by the queue's exit, then
       // the read is taken again. Anything else re-reads at once.
       const row = how === "accept" ? state.needsTriage.data.find((r) => r.ai?.some((s) => s.id === id)) : undefined;
@@ -528,13 +528,13 @@ function markEnter(): void {
   }, ENTER_MS - elapsed + 50);
 }
 
-/** Review's detail pane after a paint — and Unplaced's, the same pane: a different item starts at its top (the pane is
+/** Review's detail pane after a paint — in either view (the queue, Unplaced: the same pane): a different item starts at its top (the pane is
  *  the same element now, so it would keep the last item's scroll), and a verdict button that had focus — and went with
  *  its item — gives it to the same button of the item now on screen, so Enter, Enter, Enter works down a queue (an
  *  Unplaced item that cannot be placed yet takes it on its Discard). */
 let reviewShown: string | null = null;
 function syncReviewDetail(focusAct: string | null): void {
-  const body = state.view === "app" && (state.screen === "review" || state.screen === "maintenance") ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
+  const body = state.view === "app" && state.screen === "review" ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
   const key = body?.getAttribute("data-morph-key") ?? null;
   if (key !== reviewShown) {
     reviewShown = key;
@@ -764,6 +764,8 @@ window.addEventListener("hashchange", () => {
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", "route"); return; }
   // Back / Forward between two steps of the guided setup: its reads are already in.
   if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
+  // Back / Forward between Review's two views: the columns swap in place (one page), and flash in as the switch does.
+  if (r.screen === "review" && cur.screen === "review") pendingFlash = REVIEW_VIEW_FLASH;
   // Back from a thread to the bare `#ask`: a new thread, as the header's "Trov" does.
   if (r.screen === "ask" && cur.screen === "ask" && !r.askThread) { askCtl.act("askShNew", null, null); return; }
   loadForScreen(r.screen);
@@ -879,6 +881,7 @@ function currentRoute(): Route {
     if (state.repoApp) r.repoApp = state.repoApp;
   }
   if (state.screen === "roadmap") r.roadmapTab = state.roadmapTab;
+  if (state.screen === "review" && state.reviewView === "unplaced") r.reviewView = "unplaced";
   if (state.screen === "releases" && state.releaseVersion) { r.releaseVersion = state.releaseVersion; r.releasePage = state.releasePage; }
   if (state.screen === "artifact") r.art = state.artRoute;
   if (state.screen === "handoff" && state.handoffId) r.handoffId = state.handoffId;
@@ -922,6 +925,7 @@ function applyRoute(r: Route): void {
     if (moved && state.repo.status !== "idle") state.repo = { status: "idle", data: state.repo.data };
   }
   if (r.roadmapTab) state.roadmapTab = r.roadmapTab;
+  if (r.screen === "review") state.reviewView = r.reviewView ?? "queue";
   if (r.screen === "releases") {
     // What's new keeps one screen for the grid and every release page, so moving between
     // them (a card, Back, the newer/older links) starts the new page at its top.
@@ -980,8 +984,8 @@ function startScreenLoads(screen: Screen): void {
     case "library": libCtl.load(); rerender(); break;
     case "space": libCtl.openSpace(state.spaceSlug); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
-    case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
-    case "maintenance": loadNeedsTriageIfNeeded(); break;
+    // Review reads both its views' queues, so the header's To review / Unplaced switch is one paint with nothing to load.
+    case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); loadNeedsTriageIfNeeded(); break;
     case "relay": loadRelay(); break;
     case "handoffs": loadHandoffs(); break;
     case "handoff": if (state.handoffId) openHandoff(state.handoffId); else rerender(); break;
@@ -2077,7 +2081,7 @@ function reviewVerdict(id: string, accept: boolean): void {
   }
   state.reviewSel = selAfter;
   // The card is seen leaving only on Review, and only when motion is allowed; otherwise it is gone at once.
-  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = state.screen === "review" && state.reviewView === "queue" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   state.reviewLeaving[id] = { verdict, gone: !animate };
   const exit: ReviewExit = { kind: ref.kind, selBefore, selAfter, timer: null, ok: false };
   reviewExits.set(id, exit);
@@ -2129,7 +2133,7 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
   const verdict: ReviewVerdict = accept ? "promoted" : "rejected";
   const selBefore = state.reviewSel;
   if (items.some((it) => it.id === selBefore)) state.reviewSel = null;
-  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = state.screen === "review" && state.reviewView === "queue" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   const exits: ReviewExit[] = [];
   for (const it of items) {
     state.reviewLeaving[it.id] = { verdict, gone: !animate };
@@ -2244,6 +2248,20 @@ function pruneUnplacedLeaving(): void {
 }
 const clearAssignPicks = (): void => { state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = []; };
 
+/** What flashes in when Review's view changes in place: the list column's head and rows, and the reading pane's
+ *  content (never the columns themselves, whose hairline must not move). The app's one-shot `.cnpy-flash`, off under
+ *  reduced motion (trov.css). */
+const REVIEW_VIEW_FLASH = ".cnpy-rv-lhead, .cnpy-rv-rows, .cnpy-rv-detail > :not(.cnpy-rv-back)";
+/** Open Review on one of its views. From the other view it is the SAME page (`data-morph="review"`, one `pageKey`):
+ *  the header — its switch's indicator sliding — is patched, only the two columns (keyed by the view) are replaced and
+ *  flash in, and the page's entrance never replays. */
+function showReview(view: ReviewView): void {
+  if (state.screen === "review" && state.reviewView !== view) pendingFlash = REVIEW_VIEW_FLASH;
+  state.screen = "review";
+  state.reviewView = view;
+  loadForScreen("review");
+}
+
 /** Place or discard an Unplaced item: `write` is the cookie route, `ok` what follows its success (a toast, the
  *  list the item landed in). */
 function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Promise<unknown>, ok: () => void): void {
@@ -2262,7 +2280,7 @@ function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Prom
   state.assignOpen = selAfter;
   if (onScreen) clearAssignPicks();   // the picks were that item's
   // The card is seen leaving only on Unplaced, and only when motion is allowed; otherwise it is gone at once.
-  const animate = state.screen === "maintenance" && !reducedMotion();
+  const animate = state.screen === "review" && state.reviewView === "unplaced" && !reducedMotion();
   state.unplacedLeaving[id] = { verdict, gone: !animate };
   const exit: UnplacedExit = { selBefore, selAfter, picks, timer: null, ok: false };
   unplacedExits.set(id, exit);
@@ -3968,15 +3986,17 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.roadmapTab = arg;
       break;
     case "roadmapTimeline": state.roadmapTab = "timeline"; break;
-    case "goReview": state.screen = "review"; loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); return;
-    // Review's Unplaced view (the screen is still `maintenance`: the header's To review / Unplaced switch and quick
-    // search land here, and the sidebar lights Review for it). Its Identity and People tabs moved into Org settings,
-    // which a stale `goMaintenance identity|people` still reaches.
+    // Review is ONE screen with two views (`state.reviewView`): its queue (`goReview`, `#review`) and Unplaced
+    // (`goUnplaced`, `#review/unplaced` — quick search and Home land there). The header's To review / Unplaced switch
+    // is `setReviewView`. Unplaced was Maintenance, whose Identity and People tabs moved into Org settings, which a
+    // stale `goMaintenance identity|people` still reaches.
+    case "goReview": showReview("queue"); return;
+    case "goUnplaced": showReview("unplaced"); return;
     case "goMaintenance":
       if (arg === "identity" || arg === "people") { dispatch("orgGo", "members", null); return; }
-      state.screen = "maintenance";
-      loadNeedsTriageIfNeeded();
+      showReview("unplaced");
       return;
+    case "setReviewView": if (arg === "queue" || arg === "unplaced") showReview(arg); return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
@@ -4593,7 +4613,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .then(() => {
           // Back in the queue, and on screen: nothing hides it any more.
           delete state.unplacedLeaving[arg]; unplacedExits.delete(arg);
-          if (state.screen === "maintenance") { state.assignOpen = arg; clearAssignPicks(); }
+          if (state.screen === "review" && state.reviewView === "unplaced") { state.assignOpen = arg; clearAssignPicks(); }
           flash("Back in Unplaced");
           loadNeedsTriage();
         })

@@ -43,7 +43,7 @@ describe("sidebar — structure is stable across every state", () => {
       { counts: { review: 5, tickets: 9, handoffs: 2, prompts: 1 } },
       { screen: "settings" },
       { screen: "handoff" },
-      { screen: "maintenance" },
+      { screen: "review" },
       { screen: "releases" },
       // The Library's Imports row and Import action: a running import, Imports history and the wizard.
       { counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0, imports: 1 } },
@@ -77,7 +77,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
     expect(html).toContain('<span class="cnpy-sub-n">Engineering</span>');
     // Roadmap, Tickets, Review and Repo have no sub-pages in the rail (their switches are on the screen
     // itself — Review's To review / Unplaced too) — and no chevron.
-    for (const g of ["roadmap", "tickets", "review", "maintenance", "repo"]) {
+    for (const g of ["roadmap", "tickets", "review", "repo"]) {
       expect(html).not.toContain(`data-arg="${g}:`);
       expect(html).not.toContain(`data-act="navToggle" data-arg="${g}"`);
     }
@@ -85,11 +85,14 @@ describe("sidebar — groups and order (the design's five sections)", () => {
 
   it("Unplaced has no row: it is Review's other view, so it lights Review, whose badge counts both queues", () => {
     // render.ts hands the rail Review's count as the two together (`triageCounts`), so nothing waiting is hidden.
-    const html = sidebarView(props({ screen: "maintenance", counts: { review: 4, tickets: 0, handoffs: 0, prompts: 0 } }));
+    // Unplaced IS the review screen (its view is `#review/unplaced`), so the rail draws the same lit Review row for both.
+    const html = sidebarView(props({ screen: "review", counts: { review: 4, tickets: 0, handoffs: 0, prompts: 0 } }));
     expect(html).not.toContain("goMaintenance");
+    expect(html).not.toContain("goUnplaced");
     expect(html).not.toContain("n-maintenance");
     expect(html).not.toContain(">Unplaced<");
-    expect(navKeyOf("maintenance")).toBe("review");
+    expect(navKeyOf("review")).toBe("review");
+    expect(navKeyOf("maintenance")).toBeNull();   // there is no such screen any more
     const row = html.slice(html.indexOf('class="cnpy-navrow n-review'), html.indexOf(">Help<"));
     expect(row).toContain('class="cnpy-navrow n-review is-active"');
     expect(row).toContain('aria-current="page"');
@@ -157,7 +160,7 @@ describe("sidebar — active state", () => {
     }
     expect(sidebarView(props({ screen: "library", librarySpace: "product" }))).not.toContain("cnpy-sub-i cnpy-sub-sp is-active");
     // Tickets, Unplaced and Repo have no rail sub-pages, so none of their screens lights one up.
-    for (const screen of ["tickets", "ticketdetail", "newticket", "maintenance", "repo"]) {
+    for (const screen of ["tickets", "ticketdetail", "newticket", "review", "repo"]) {
       expect(sidebarView(props({ screen }))).not.toContain("cnpy-sub-i is-active");
     }
 
@@ -171,7 +174,7 @@ describe("sidebar — active state", () => {
     expect(navGroupOf("newdoc")).toBe("library");
     expect(navGroupOf("space")).toBe("library");
     expect(navGroupOf("repo")).toBeNull();
-    expect(navGroupOf("maintenance")).toBeNull();
+    expect(navGroupOf("review")).toBeNull();
     expect(navGroupOf("feed")).toBeNull();
   });
 });

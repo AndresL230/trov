@@ -68,7 +68,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Prompt Library", hint: "Reusable team prompts", keys: "prompts templates", steps: [["goPrompts", null]] },
   { label: "New prompt", hint: "Save a reusable prompt", keys: "create template", steps: [["newPrompt", null]] },
   { label: "Review", hint: "Proposals and decisions to confirm", keys: "proposals decisions promote ratify approve", steps: [["goReview", null]] },
-  { label: "Review › Unplaced", hint: "Items the gate could not place", keys: "triage maintenance file place discard", steps: [["goMaintenance", null]] },
+  { label: "Review › Unplaced", hint: "Items the gate could not place", keys: "triage maintenance file place discard", steps: [["goUnplaced", null]] },
   { label: "Org settings › Hosting", hint: "Which host runs each part, and its connection", keys: "hosting provider vercel render netlify fly cloudflare railway deploys connect environment parts admin", steps: [["orgGo", "hosting"]] },
   { label: "Org settings › Members", hint: "People, roles, invites and unmatched logins", keys: "invite members people directory identity github logins map admin", steps: [["orgGo", "members"]] },
   { label: "Org settings › Notifications", hint: "Email digests: policy, schedule and outbox", keys: "email digest notifications policy schedule outbox sender admin", steps: [["orgGo", "notifications"]] },

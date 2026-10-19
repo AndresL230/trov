@@ -116,10 +116,10 @@ function attentionRows(s: AppState): { rows: (HomeAttnRow & { urg: number })[]; 
   }
   // Review's queue and Unplaced (its other view): one row, both counted.
   const tc = triageCounts(s);
-  const review = tc.review + tc.maintenance;
+  const review = tc.review + tc.unplaced;
   if (review > 0) {
-    const parts = [tc.review ? `${tc.review} to review` : "", tc.maintenance ? `${tc.maintenance} unplaced` : ""].filter(Boolean).join(" · ");
-    rows.push({ mark: REVIEW_MARK, title: `${review} waiting in Review`, meta: parts, action: { label: "Open Review", act: tc.review ? "goReview" : "goMaintenance" }, urg: 2 });
+    const parts = [tc.review ? `${tc.review} to review` : "", tc.unplaced ? `${tc.unplaced} unplaced` : ""].filter(Boolean).join(" · ");
+    rows.push({ mark: REVIEW_MARK, title: `${review} waiting in Review`, meta: parts, action: { label: "Open Review", act: tc.review ? "goReview" : "goUnplaced" }, urg: 2 });
   }
   const me = s.me?.handle ?? "";
   for (const h of handoffsForMe(s.handoffs.data, me).slice(0, 2)) {

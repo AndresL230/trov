@@ -46,7 +46,7 @@ import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, aside
 // The landing is its own chunk in the app (landing-lazy.ts); the signed-out page `/` boots it alone (landing-page.ts).
 import { landingView } from "./landing-lazy";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
-import { reviewView, reviewGroups, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
+import { reviewView, reviewGroups, type ReviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { importWizardView, importsHistoryView, initialImportUi, driverActive, type ImportUi } from "./import";
 import { confirmModal } from "./confirm";
 import type { ImportRunView } from "@shared/docs-import-core";
@@ -121,7 +121,7 @@ export type DocSpace = string;
 export type Screen =
   // Home (the design `Trov Overview v2`): the org's front page — web/src/home.ts, composed by home-view.ts.
   | "home"
-  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide"
+  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "search" | "settings" | "guide"
   // One tag's page (`#tags/<name>`): everything that carries it. A child of Org settings › Tags.
   | "tag"
   // The landing page reopened from inside the app (sidebar logo). Full-screen, no chrome.
@@ -331,6 +331,9 @@ export interface AppState {
   identityDiscarded: DiscardedIdentity[];
   /** Org settings › Members › Unmatched logins: the "N discarded" list is open. */
   identityShowDiscarded: boolean;
+  /** Review's view: its queue ("queue", `#review`) or Unplaced ("unplaced", `#review/unplaced`) — ONE screen, the
+   *  header's To review / Unplaced switch moving between them in place (web-ui.md › A row leaving a list). */
+  reviewView: ReviewView;
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
   reviewDiffView: DiffViewMode;
@@ -655,7 +658,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
+    reviewView: "queue", reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [], unplacedLeaving: {},
     mapConfirm: null,
     mapPicks: {},
@@ -824,10 +827,10 @@ function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, li
 const length = <T>(rows: T[]): number => rows.length;
 export const stagedPrompts = (rows: readonly { status: string }[]): number => rows.filter((p) => p.status === "staged").length;
 
-/** The two triage counts: Review's two reads, and the Unplaced queue (the key is still `maintenance`). They are the
+/** The two triage counts: Review's two reads, and the Unplaced queue. They are the
  *  counts on Review's To review / Unplaced switch (`triageSwitch`), and the sidebar's Review badge is their sum — the
  *  rail has no Unplaced row, so nothing waiting is hidden. Unmatched logins are NOT in it — they wait in Org settings. */
-export function triageCounts(s: AppState): { review: number; maintenance: number } {
+export function triageCounts(s: AppState): { review: number; unplaced: number } {
   // An item a verdict was just given to is not waiting any more: the badge drops with the card,
   // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
   // `reviewLeaving` and the count is back; the refetch then replaces the reads it is derived from.
@@ -835,7 +838,7 @@ export function triageCounts(s: AppState): { review: number; maintenance: number
   return {
     review: badgeCount(s, "proposals", s.proposals, length) + badgeCount(s, "decisions", s.draftAdrs, length) - left,
     // The same for Unplaced: an item placed or discarded drops from the badge with its card.
-    maintenance: badgeCount(s, "unplaced", s.needsTriage, length) - s.needsTriage.data.filter((r) => s.unplacedLeaving[String(r.id)]).length,
+    unplaced: badgeCount(s, "unplaced", s.needsTriage, length) - s.needsTriage.data.filter((r) => s.unplacedLeaving[String(r.id)]).length,
   };
 }
 
@@ -1032,7 +1035,7 @@ function sidebar(s: AppState): string {
     spacesLoaded: s.library.status === "ok" && s.library.data !== null,
     canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
-    counts: { review: counts.review + counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
+    counts: { review: counts.review + counts.unplaced, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
@@ -1090,18 +1093,19 @@ function headerCrumb(s: AppState): string {
   return "";
 }
 
-/** Review's two views: its queue and Unplaced (the `maintenance` screen) — ONE switch in the header, as Tickets'
+/** Review's two views: its queue and Unplaced (`state.reviewView`, one screen) — ONE switch in the header, as Tickets'
  *  Board / Table, each option with how many wait there (the sidebar's Review badge is the two together). An
- *  option's count is left off until it is known (its list, or the badges read), never a guessed 0. */
+ *  option's count is left off until it is known (its list, or the badges read), never a guessed 0. The header is
+ *  patched in place across a switch (Review is `data-morph="review"` in both views), so its indicator slides. */
 export function triageSwitch(s: AppState): string {
   const counts = triageCounts(s);
   const known = { review: (s.proposals.status === "ok" || s.badges.proposals !== undefined) && (s.draftAdrs.status === "ok" || s.badges.decisions !== undefined), unplaced: s.needsTriage.status === "ok" || s.badges.unplaced !== undefined };
   const n = (on: boolean, v: number) => (on ? `<span class="cnpy-seg-n">${v}</span>` : "");
   return segmented({
-    id: "triage-view", ariaLabel: "Review", act: "", value: s.screen === "maintenance" ? "unplaced" : "review", inertOn: true,
+    id: "triage-view", ariaLabel: "Review", act: "setReviewView", value: s.reviewView, inertOn: true,
     options: [
-      { value: "review", label: "To review", act: "goReview", arg: "", trail: n(known.review, counts.review) },
-      { value: "unplaced", label: "Unplaced", act: "goMaintenance", arg: "", trail: n(known.unplaced, counts.maintenance) },
+      { value: "queue", label: "To review", trail: n(known.review, counts.review) },
+      { value: "unplaced", label: "Unplaced", trail: n(known.unplaced, counts.unplaced) },
     ],
   });
 }
@@ -1109,7 +1113,7 @@ export function triageSwitch(s: AppState): string {
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     home: "Home", mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
-    maintenance: "Review", search: "Search", settings: "Settings", guide: "Guide",
+    search: "Search", settings: "Settings", guide: "Guide",
     site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
@@ -1172,7 +1176,7 @@ function header(s: AppState): string {
   })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
-  const triageControls = s.screen === "review" || s.screen === "maintenance" ? triageSwitch(s) : "";
+  const triageControls = s.screen === "review" ? triageSwitch(s) : "";
 
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
       ${dark
@@ -2966,8 +2970,8 @@ function reviewScreen(s: AppState): string {
   return `${hint}${reviewView(reviewProps(s))}`;
 }
 
-/** The Unplaced queue (the `maintenance` screen) with its slice's loading/error states around the pure view. */
-function maintenanceScreen(s: AppState): string {
+/** Review's Unplaced view (`state.reviewView`) with its slice's loading/error states around the pure view. */
+function unplacedScreen(s: AppState): string {
   if (slicePending(s.needsTriage)) return maintenanceSkeleton();
   if (s.needsTriage.status === "error" && s.needsTriage.data.length === 0) return notice("Couldn't load the Unplaced queue.");
   return maintenanceView(maintenanceProps(s), s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.") : "");
@@ -3078,8 +3082,7 @@ function screenBody(s: AppState): string {
     case "library": return libraryHomeView({ library: s.library, admin: viewerIsAdmin(s), persons: s.persons.data, restoring: s.libUi.restoring, cardMenu: s.libUi.cardMenu, showHidden: s.libUi.showHidden });
     case "space": return spaceScreen(s);
     case "roadmap": return roadmapView(s);
-    case "review": return reviewScreen(s);
-    case "maintenance": return maintenanceScreen(s);
+    case "review": return s.reviewView === "unplaced" ? unplacedScreen(s) : reviewScreen(s);
     case "search": return searchView(s);
     case "settings": return settingsView(s);
     case "guide": return guideView(s);
@@ -3193,8 +3196,9 @@ function appView(s: AppState): string {
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
     // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
     // a card can leave with an animation, and the two switches' indicators slide on the same element.
-    // Unplaced the same: its queue is Review's keyed list, so a card placed or discarded leaves by the same exit.
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" || s.screen === "maintenance" ? s.screen
+    // ONE key for both its views (the queue and Unplaced): the header and its To review / Unplaced switch are patched,
+    // and only the list column and the reading pane — keyed parts per view (review.ts `reviewFrame`) — are replaced.
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
     : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
@@ -3288,7 +3292,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, bare: true })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}${s.view === "app" && s.screen === "repo" && s.repoAttentionOpen ? repoAttentionOverlay(repoProps(s)) : ""}${s.view === "app" && s.screen === "roadmap" && s.rmTrovOpen && s.roadmap.data && roadmapTrovCount(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai).n ? roadmapTrovDialog(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai) : ""}
-    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}${s.view === "app" && s.screen === "maintenance" && s.dd.open ? dropdownMenu(unplacedDropdowns(s), s.dd) : ""}
+    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}${s.view === "app" && s.screen === "review" && s.reviewView === "unplaced" && s.dd.open ? dropdownMenu(unplacedDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

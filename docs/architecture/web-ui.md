@@ -20,7 +20,7 @@ Platform, personal Settings (its name, handle and digest-address fields), the Ar
 (`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
 the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
 the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
-wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), Unplaced (`maintenance`: the same keyed list and exit), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (`review`, ONE key for both its views — the queue and Unplaced; each list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -595,8 +595,9 @@ Technical / Product pair, until 2026-10; a stored `docs` key is read as `library
 Roadmap, Tickets, Review and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
 and Repo's tabs head their page body). **Unplaced has no row** (2026-10-18): it is Review's other view — the
 header's To review / Unplaced switch (`triageSwitch` in `render.ts`, a `segmented()` with each side's count) moves
-between the two, the header names Review on both, `NAV_OF` lights Review for the `maintenance` screen, and Review's
-badge is the two queues together (`triageCounts`), so nothing waiting is hidden. A stored
+between the two, the header names Review on both, the row is lit for both (they are ONE screen, `review` — the view is
+`state.reviewView`, `#review` / `#review/unplaced`), and Review's badge is the two queues together (`triageCounts`), so
+nothing waiting is hidden. A stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
@@ -709,14 +710,28 @@ under it move up as the same elements**. Four parts, each in one place:
    it had are back, with the usual error toast. The refetch is held until no row is still
    collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
 
-**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18; Review's other view, the screen key still
-`maintenance`, `#unplaced`): its frame, list head (the intro line; how many wait is the header switch's count, as
-Review's are), cards and page pane are Review's. Its cards are the same `.cnpy-rv-row` /
+**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18). It is Review's other view — ONE screen, `review`,
+its view in `state.reviewView` (`"queue"` | `"unplaced"`; `#review` / `#review/unplaced`, the route's `reviewView`; the
+old `#unplaced`, `#maintenance` and `#maintenance/unplaced` land on it and are written back as `#review/unplaced`).
+**A switch is in place:** the page is `data-morph="review"` in both views and both draw ONE frame (`review.ts`
+`reviewFrame`) whose two columns are `data-morph-key` parts keyed by the view (`rv-list:<view>`, `rv-detail:<view>`),
+so the header and its To review / Unplaced `segmented()` are patched (the indicator slides, `syncSegments`) and only
+the columns are replaced; `pageKey` leaves the view out, so the entrance never replays; the new columns' content takes
+the one-shot `pendingFlash` (`main.ts` `showReview` / `REVIEW_VIEW_FLASH` — the list head, the rows and the pane's
+content, never the columns, whose hairline stays put; Back / Forward between the two flashes the same), off under
+reduced motion. Review reads all three queues on entry (`startScreenLoads`), so a switch has nothing to load. Acts:
+`setReviewView` (the switch), `goReview` (the queue: every "Open Review"), `goUnplaced` (quick search, Home), and a
+stale `goMaintenance` (Unplaced, or Org settings › Members for `identity` / `people`).
+**Its colours are To review's:** the frame, list head (the intro, then 12px to the first card; how many wait is the
+header switch's count, as Review's are), cards and selected / hover states are Review's own classes; the reading pane is
+Review's page pane on the page's background (`.cnpy-rvp--bg`: `--bg`, its sticky footer too, as a decision's pane is),
+the item in a white surface card under a label row ("What the agent sent", as a decision's "Proposed record" card) and
+Place it as in another — so light and dark follow the tokens. Its cards are the same `.cnpy-rv-row` /
 `.cnpy-titem` in a `data-morph-list` (keys `up:<id>`, the empty layout `up-empty`), placing or discarding gives
 the card a `data-verdict` of `placed` (green) or `discarded` (quiet) for `UNPLACED_EXIT_MS` (= `REVIEW_EXIT_MS`),
 the state is `state.unplacedLeaving` (main.ts `unplacedVerdict` / `settleUnplaced` / `pruneUnplacedLeaving` — the
 same four parts, the person's picks restored with the card on a failure), and `syncReviewDetail` runs for both
-screens (a new item's pane starts at its top; Place / Discard hand focus to the next item's, Place falling back to
+views (a new item's pane starts at its top; Place / Discard hand focus to the next item's, Place falling back to
 Discard when the next cannot be placed yet). A Trov suggestion accepted on an Unplaced item placed it, so its card
 leaves by this exit too (the AI kit's `decided` hook), after the chip's own exit. Discard has no arm step: it is
 soft, and its toast carries Undo (`POST /needs-triage/:id/restore`).

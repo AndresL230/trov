@@ -7,10 +7,11 @@
 Ported from the Claude Design project `2c8cfa50`: **Handoffs** (Workspace; `#handoffs`, `#handoffs/new`,
 `#handoffs/<id>` — `web/src/handoffs.ts`), **Prompt Library** (Knowledge; `#prompts`, `#prompts/new`,
 `#prompts/<slug>`, `#prompts/<slug>/edit|version` — `web/src/prompts.ts`), **Docs › New doc** (`#docs/new`) and
-**Unplaced** (Triage; `#unplaced` — `web/src/maintenance.ts`, the screen id is still `maintenance`). It was the
-tabbed Maintenance until 2026-10-06: Identity and People moved into Org settings › Members and the admin
-email-notification sections into Org settings › Notifications; `#maintenance`, `#maintenance/identity` and
-`#maintenance/people` still resolve (`web/src/hash.ts`).
+**Unplaced** (Review's other view; `#review/unplaced` — `web/src/maintenance.ts`; the screen is `review`, the view
+`state.reviewView`). It was the tabbed Maintenance until 2026-10-06: Identity and People moved into Org settings ›
+Members and the admin email-notification sections into Org settings › Notifications; `#unplaced`, `#maintenance`,
+`#maintenance/unplaced` (→ `#review/unplaced`), `#maintenance/identity` and `#maintenance/people` (→ Org settings ›
+Members) still resolve (`web/src/hash.ts`).
 
 **Unplaced since 2026-10-18** ("refuse or stage", `ingestion-gate.md`): the gate no longer sends anything here — it
 refuses a doc it cannot place (naming what is valid) and stages what an agent was unsure of, flagged — so the queue
