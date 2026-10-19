@@ -108,7 +108,7 @@ export const SITE_PAGES: readonly SitePage[] = [
   {
     key: "docs-connect", path: "/docs/connect", kind: "docs", indexed: true, markdown: "/docs/connect.md", nav: "Connect a client",
     title: `Connect an MCP client · ${SITE_NAME} docs`,
-    description: "Trov is a remote MCP server at https://trov.dev/mcp. Setup to copy for Claude Code, Claude Desktop, Cursor, VS Code, Codex, Windsurf and any other client.",
+    description: "Trov is a remote MCP server at https://trov.dev/mcp. Setup to copy for Claude Code, Claude Desktop, ChatGPT, Cursor, VS Code, Codex, Windsurf and more.",
     image: { path: "/og/docs-connect.png", alt: `${SITE_NAME} docs: connect an MCP client.` },
   },
   {

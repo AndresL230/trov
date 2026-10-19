@@ -154,7 +154,7 @@ describe("the built documents", () => {
       "/refunds": ["<h1 class=\"site-legal-h\">Refund and Cancellation Policy</h1>", "How to cancel</span>", "No refunds for partial periods."],
       "/404": ["Page not found", "Go to the home page"],
       "/docs/setup": ['<h1 class="site-legal-h">Set up Trov</h1>', "<h2>1. Sign in</h2>", "/plugin install trov@trov"],
-      "/docs/connect": ["<h2>Cursor</h2>", "<h2>VS Code</h2>", "<h2>OpenAI Codex CLI</h2>", "<h2>Windsurf</h2>", "claude mcp add --transport http --scope user trov https://trov.dev/mcp"],
+      "/docs/connect": ["<h2>Cursor</h2>", "<h2>VS Code</h2>", "<h2>ChatGPT</h2>", "<h2>OpenAI Codex CLI</h2>", "<h2>Windsurf</h2>", "claude mcp add --transport http --scope user trov https://trov.dev/mcp"],
       "/docs/concepts": ["<h2>Live, staged, unpromoted, draft</h2>", "<code>staged_pending</code>"],
       "/docs/mcp-tools": ['<h3 id="query"><code>query</code></h3>', '<h3 id="update_plan"><code>update_plan</code></h3>', "<h2>Errors</h2>"],
       "/docs/changelog": ['<h1 class="site-legal-h">Changelog</h1>'],

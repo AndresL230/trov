@@ -68,6 +68,21 @@ function constantTimeEqual(a: string, b: string): boolean {
   return d === 0;
 }
 
+/** The client id from an HTTP Basic `Authorization` header (RFC 6749 §2.3.1: the form-encoded id, a colon,
+ *  the secret), or null. Every Trov client is public, so there is no secret to check — the password half is
+ *  ignored — but an OAuth library that defaults to Basic sends the id this way, and it is then checked
+ *  against the code or refresh token exactly like a form `client_id`. */
+function basicClientId(header: string | undefined): string | null {
+  const m = /^Basic\s+([A-Za-z0-9+/=]+)\s*$/i.exec(header ?? "");
+  if (!m) return null;
+  try {
+    const decoded = atob(m[1]);
+    const colon = decoded.indexOf(":");
+    const id = decodeURIComponent((colon < 0 ? decoded : decoded.slice(0, colon)).replace(/\+/g, " "));
+    return id || null;
+  } catch { return null; }
+}
+
 /** The signed-in person for authorize. DEV_LOGIN mirrors sessionGate's local-dev
  *  bypass (inert in prod), so the flow can be exercised over `wrangler dev`. */
 async function consentSession(c: Context<AppEnv>): Promise<{ id: string; handle: string } | null> {
@@ -153,15 +168,18 @@ export function buildOAuthApp(deps: OAuthDeps = {}): Hono<AppEnv> {
   o.post("/oauth/token", async (c) => {
     const p = await params(c);
     try {
+      // The form's client_id, else an HTTP Basic header's (`basicClientId`).
+      const clientId = p.get("client_id") || basicClientId(c.req.header("authorization"));
       const grant = p.get("grant_type");
       if (grant === "authorization_code") {
+        if (!clientId) throw new OAuthError("invalid_request", "client_id is required");
         return json(c, await exchangeAuthorizationCode(c.var.p, {
           code: need(p, "code"), code_verifier: need(p, "code_verifier"), redirect_uri: need(p, "redirect_uri"),
-          client_id: need(p, "client_id"), resource: p.get("resource"),
+          client_id: clientId, resource: p.get("resource"),
         }, oauthOrigin(c.req.url), now()));
       }
       if (grant === "refresh_token") {
-        return json(c, await refreshAccessToken(c.var.p, { refresh_token: need(p, "refresh_token"), client_id: p.get("client_id") }, now()));
+        return json(c, await refreshAccessToken(c.var.p, { refresh_token: need(p, "refresh_token"), client_id: clientId }, now()));
       }
       throw new OAuthError("unsupported_grant_type", "grant_type must be authorization_code or refresh_token");
     } catch (e) {

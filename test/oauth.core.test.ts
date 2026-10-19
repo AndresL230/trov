@@ -150,7 +150,7 @@ describe("checkAuthorizeRequest", () => {
     const unknown = await checkAuthorizeRequest(platformCtx(), authQuery({ ...c, client_id: "nope" }, challenge), ORIGIN);
     expect(unknown).toMatchObject({
       ok: false, kind: "page",
-      message: "Trov doesn't recognise this app's registration. In Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate again.",
+      message: "Trov doesn't recognise this app's registration. Connect the app to Trov again: in Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate; in Codex, run codex mcp login trov; in ChatGPT, delete the Trov app and add it again.",
     });
     const q = authQuery(c, challenge); q.set("redirect_uri", "https://evil.example/cb");
     expect(await checkAuthorizeRequest(platformCtx(), q, ORIGIN)).toMatchObject({ ok: false, kind: "page" });

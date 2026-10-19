@@ -852,6 +852,17 @@ const REPO_ARG = z.string().optional().describe(
 const ORG_ARG = z.string().optional().describe(
   "An organization's slug, to act there for THIS call only — one this connection is allowed to use (see get_connection). Omit it to act in the connection's organization.");
 
+/** The tools that only read. `tools/list` marks them `readOnlyHint: true` (MCP tool annotations; every other
+ *  org tool `false`), so a client that asks the person before every call that may write — ChatGPT, claude.ai —
+ *  runs these without asking. A tool that writes anything is not here, a use count (`get_prompt`) or a
+ *  delivered note (`link_inbox`) included (test/mcp.annotations.test.ts). */
+export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
+  "query", "get_doc", "list_docs", "list_spaces", "get_feed", "list_tags", "get_roadmap",
+  "list_tickets", "get_ticket", "list_sprints", "get_sprint", "get_my_work", "list_people", "get_events",
+  "get_repo_dashboard", "artifact_get", "artifact_list", "list_handoffs", "get_handoff", "search_prompts",
+  "list_links", "get_connection",
+]);
+
 const scopeError = (r: ScopeRefusal): ToolOutput => toolError({ error: r.message, code: r.code, ...(r.orgs ? { orgs: r.orgs } : {}) });
 
 /** How a result names an organization. A pinned context knows only its id until asked. */
@@ -891,7 +902,7 @@ export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts:
   for (const [name, def] of toolsFor(template)) {
     const ownRepo = "repo" in def.shape; // upload_asset: `repo` is also the page's own field
     const shape = { ...def.shape, ...(ownRepo ? {} : { repo: REPO_ARG }), org: ORG_ARG };
-    server.tool(name, def.description, shape, async (args: Record<string, unknown>, extra: unknown) => {
+    server.tool(name, def.description, shape, { readOnlyHint: READ_ONLY_TOOLS.has(name) }, async (args: Record<string, unknown>, extra: unknown) => {
       const target = await resolveCall(conn, args);
       if (!target.ok) return scopeError(target);
       try {
@@ -919,6 +930,7 @@ export function buildConnectionMcpServer(env: Env, conn: BearerConnection, opts:
     "get_connection",
     "Who and WHERE this connection is — call it first in a session and tell the person which organization you are in. Returns { handle, mode, organization, role, current, organizations, unresolved }. `mode` is \"manual\" (the connection acts in its `current` organization; `organizations` are the ones it is allowed to use — switch with switch_org, or pass `org` on one call) or \"repo\" (it follows the repository: every call passes `repo`, and acts in the organization that has that repository connected; `organizations` are the ones it could reach). `organization` ({ slug, name }) is where a call with THESE arguments would act, with your `role` there — pass the same `repo` / `org` you will pass to the other tools. `organization: null` means such a call would read and write NOTHING; `unresolved` ({ code, message }) says why and what to do. Read-only: it touches no organization's data and changes nothing.",
     { repo: REPO_ARG, org: ORG_ARG },
+    { readOnlyHint: true },
     async (args: { repo?: string; org?: string }) => runTool(async () => {
       const target = await resolveCall(conn, args);
       return {

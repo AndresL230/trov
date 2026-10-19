@@ -191,7 +191,7 @@ export async function checkAuthorizeRequest(p: PlatformContext, q: URLSearchPara
   const clientId = q.get("client_id") ?? "";
   const redirect = q.get("redirect_uri") ?? "";
   const client = clientId ? await getClient(p, clientId) : null;
-  if (!client) return { ok: false, kind: "page", message: "Trov doesn't recognise this app's registration. In Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate again." };
+  if (!client) return { ok: false, kind: "page", message: "Trov doesn't recognise this app's registration. Connect the app to Trov again: in Claude Code, run /mcp, choose trov → Clear authentication, then Authenticate; in Codex, run codex mcp login trov; in ChatGPT, delete the Trov app and add it again." };
   if (!redirectMatches(client.redirect_uris, redirect)) {
     return { ok: false, kind: "page", message: "This app asked to return to an address it never registered, so Trov won't send you there." };
   }
