@@ -20,8 +20,9 @@ import { spaceTile } from "./library";
  *  none: their switches are on the screen itself (Roadmap's Narrative / Timeline, removed
  *  from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27;
  *  Repo's Overview / Code / CI / Usage / Planning — a tab bar heading the page body —
- *  removed 2026-09-27). Unplaced (the `maintenance` key: it was Maintenance, with Identity and
- *  People tabs that moved into Org settings 2026-10-06) is one queue. The Library was Docs, with a
+ *  removed 2026-09-27). Unplaced (the `maintenance` screen: it was Maintenance, with Identity and
+ *  People tabs that moved into Org settings 2026-10-06) is a view of Review since 2026-10-18 — the switch at the
+ *  top of Review — so it has no row: it lights Review, and Review's badge counts both. The Library was Docs, with a
  *  fixed Technical / Product pair, until the spaces (2026-10): a stored `trov.navOpen` `docs` key is read
  *  as `library` (main.ts); any other retired group is simply not read back. */
 export const NAV_GROUPS = ["library"] as const;
@@ -30,10 +31,11 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { library: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "home" | "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
+export type NavKey = "home" | "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
   home: "home", mywork: "mywork", ask: "ask", feed: "feed", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
-  review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
+  // Unplaced (the `maintenance` screen) is Review's other view: it lights Review.
+  review: "review", maintenance: "review", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
   relay: "handoffs", handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs", links: "handoffs", link: "handoffs",
@@ -65,8 +67,9 @@ export interface SidebarProps {
   spacesLoaded: boolean;
   /** An admin of the org: the group ends with "+ New space". */
   canAdmin: boolean;
-  /** `imports` — Markdown imports in progress (not drawn in the sidebar any more; absent = none). */
-  counts: { review: number; maintenance: number; tickets: number; handoffs: number; prompts: number; imports?: number };
+  /** `review` — Review's queue AND Unplaced together (render.ts `triageCounts`): Unplaced has no row of its own.
+   *  `imports` — Markdown imports in progress (not drawn in the sidebar any more; absent = none). */
+  counts: { review: number; tickets: number; handoffs: number; prompts: number; imports?: number };
   me: { handle: string; name: string | null; color: PersonColor; avatar_url?: string | null } | null;
   displayName: string;
   logo: string;
@@ -95,8 +98,6 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   library: ICON(`<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path>`),
   artifacts: ICON(`<path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path>`),
   review: ICON(`<rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="m9 12 2 2 4-4"></path>`),
-  // An inbox tray: the Unplaced queue (the key is still `maintenance`).
-  maintenance: ICON(`<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`),
   guide: ICON(`<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.4-2.5 2.4"></path><circle cx="12" cy="16.6" r=".4" fill="currentColor"></circle>`),
   // A sparkle: what's new.
   releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
@@ -196,7 +197,6 @@ export function sidebarView(p: SidebarProps): string {
       ${item("prompts", "goPrompts", "Prompt Library", c.prompts)}
       ${section("Triage")}
       ${item("review", "goReview", "Review", c.review)}
-      ${item("maintenance", "goMaintenance", "Unplaced", c.maintenance)}
       ${section("Help")}
       ${item("guide", "goGuide", "Guide")}
       ${item("releases", "goReleases", "What's new")}

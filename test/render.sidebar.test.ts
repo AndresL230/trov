@@ -17,7 +17,7 @@ function props(over: Partial<SidebarProps> = {}): SidebarProps {
     qView: "table", roadmapTab: "timeline", librarySpace: null,
     spaces: [{ key: "engineering", label: "Engineering", icon: "braces", color: "#525cc3" }, { key: "product", label: "Product", icon: "compass", color: "#2f7d57" }],
     spacesLoaded: true, canAdmin: false,
-    counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 },
+    counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0 },
     me: { handle: "jose-a", name: "Jose Alvarez", color: "moss" }, displayName: "Jose Alvarez", logo: "<svg></svg>",
     ...over,
   };
@@ -40,13 +40,13 @@ describe("sidebar — structure is stable across every state", () => {
       { spacesLoaded: false },
       { canAdmin: true },
       { screen: "ticketdetail" },
-      { counts: { review: 3, maintenance: 2, tickets: 9, handoffs: 2, prompts: 1 } },
+      { counts: { review: 5, tickets: 9, handoffs: 2, prompts: 1 } },
       { screen: "settings" },
       { screen: "handoff" },
       { screen: "maintenance" },
       { screen: "releases" },
       // The Library's Imports row and Import action: a running import, Imports history and the wizard.
-      { counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0, imports: 1 } },
+      { counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0, imports: 1 } },
       { screen: "imports" },
       { screen: "import" },
     ];
@@ -63,7 +63,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
   it("orders Workspace · Monitor · Knowledge · Triage · Help, with Repo in Monitor", () => {
     const html = sidebarView(props());
     const at = (needle: string) => html.indexOf(needle);
-    const order = [">Workspace<", "goHome", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide", "goReleases"];
+    const order = [">Workspace<", "goHome", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", ">Triage<", "goReview", ">Help<", "goGuide", "goReleases"];
     for (let i = 1; i < order.length; i++) expect(at(order[i]), order[i]).toBeGreaterThan(at(order[i - 1]));
   });
 
@@ -75,23 +75,41 @@ describe("sidebar — groups and order (the design's five sections)", () => {
     expect((html.match(/data-act="navSub"/g) ?? []).length).toBe(2);
     expect((html.match(/class="cnpy-spt"/g) ?? []).length).toBe(2);
     expect(html).toContain('<span class="cnpy-sub-n">Engineering</span>');
-    // Roadmap, Tickets, Unplaced (`maintenance`) and Repo have no sub-pages in the rail (their switches
-    // are on the screen itself) — and no chevron.
-    for (const g of ["roadmap", "tickets", "maintenance", "repo"]) {
+    // Roadmap, Tickets, Review and Repo have no sub-pages in the rail (their switches are on the screen
+    // itself — Review's To review / Unplaced too) — and no chevron.
+    for (const g of ["roadmap", "tickets", "review", "maintenance", "repo"]) {
       expect(html).not.toContain(`data-arg="${g}:`);
       expect(html).not.toContain(`data-act="navToggle" data-arg="${g}"`);
     }
   });
 
-  it("Unplaced (the `maintenance` key) is a plain row with its count badge — no chevron, no sub-page list", () => {
-    const html = sidebarView(props({ screen: "maintenance", counts: { review: 0, maintenance: 4, tickets: 0, handoffs: 0, prompts: 0 } }));
-    const row = html.slice(html.indexOf('class="cnpy-navrow n-maintenance'), html.indexOf(">Help<"));
-    expect(row).toContain('class="cnpy-navrow n-maintenance is-active"');
+  it("Unplaced has no row: it is Review's other view, so it lights Review, whose badge counts both queues", () => {
+    // render.ts hands the rail Review's count as the two together (`triageCounts`), so nothing waiting is hidden.
+    const html = sidebarView(props({ screen: "maintenance", counts: { review: 4, tickets: 0, handoffs: 0, prompts: 0 } }));
+    expect(html).not.toContain("goMaintenance");
+    expect(html).not.toContain("n-maintenance");
+    expect(html).not.toContain(">Unplaced<");
+    expect(navKeyOf("maintenance")).toBe("review");
+    const row = html.slice(html.indexOf('class="cnpy-navrow n-review'), html.indexOf(">Help<"));
+    expect(row).toContain('class="cnpy-navrow n-review is-active"');
+    expect(row).toContain('aria-current="page"');
     expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="4">4</span>');
     expect(row).not.toContain("cnpy-chev");
     expect(row).not.toContain("cnpy-sub");
     // Only the Library still owns a sub-page list.
     expect((html.match(/class="cnpy-sub" /g) ?? []).length).toBe(1);
+  });
+
+  it("the app's Review badge is Review's queue plus Unplaced", () => {
+    const st = {
+      ...initialState(), view: "app" as const, screen: "feed" as const,
+      proposals: { status: "ok" as const, data: [] }, draftAdrs: { status: "ok" as const, data: [] },
+      needsTriage: { status: "ok" as const, data: [{ id: 1 }, { id: 2 }] as never },
+      badges: { proposals: 0, decisions: 0, unplaced: 2 },
+    };
+    const html = render(st);
+    const row = html.slice(html.indexOf('class="cnpy-navrow n-review'), html.indexOf(">Help<"));
+    expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="2">2</span>');
   });
 
   it("Repo is a plain row — its five tabs head the page body, not the rail", () => {
@@ -177,7 +195,7 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
     const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, library: true } }));
     expect(html).toContain('data-arg="library:product" class="cnpy-sub-i cnpy-sub-sp" tabindex="-1"');
     expect(html).toContain('aria-label="Expand sidebar" aria-expanded="false"');
-    for (const tip of ["Home", "My Work", "Tickets", "Roadmap", "Relay", "Repo", "Feed", "Library", "Artifacts", "Prompt Library", "Review", "Unplaced", "Guide", "What&#39;s new", "Search", "Settings"]) {
+    for (const tip of ["Home", "My Work", "Tickets", "Roadmap", "Relay", "Repo", "Feed", "Library", "Artifacts", "Prompt Library", "Review", "Guide", "What&#39;s new", "Search", "Settings"]) {
       expect(html).toContain(`data-tip="${tip}"`);
     }
   });

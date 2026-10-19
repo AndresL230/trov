@@ -1,5 +1,5 @@
 /**
- * Triage › Unplaced (web/src/maintenance.ts), restyled to Review's frame (2026-10-18): the two panes, the queue a KEYED
+ * Review › Unplaced (web/src/maintenance.ts; the switch at the top of Review), restyled to Review's frame (2026-10-18): the two panes, the queue a KEYED
  * list of surface cards that leave by the app's one row exit when an item is placed or discarded, the item in Review's
  * page pane with Discard and Place in its footer, the picks as `segmented()` / `dropdown()` (never a <select>), the
  * Low confidence mark from marks.ts, the empty layout and the skeleton — and main.ts's wiring (the exit, the Undo).
@@ -44,11 +44,12 @@ function props(over: Partial<MaintenanceProps> = {}): MaintenanceProps {
 }
 
 describe("Unplaced — Review's frame", () => {
-  it("two panes (they take turns on a phone), the intro and how many wait, a keyed list of surface cards", () => {
+  it("two panes (they take turns on a phone), the intro, a keyed list of surface cards", () => {
     const html = maintenanceView(props());
     expect(html).toContain('class="cnpy-rv cnpy-up-screen" data-screen-label="Unplaced" data-pane="list"');
     expect(html).toContain(UNPLACED_INTRO.replaceAll("'", "&#39;"));
-    expect(html).toContain(">2 waiting<");
+    // How many wait is on the header's To review / Unplaced switch (render.ts `triageSwitch`), as Review's are.
+    expect(html).not.toContain("waiting<");
     expect(html).toMatch(/class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list/);
     expect(html).toContain('data-morph-key="up:u1"');
     expect(html).toContain('data-morph-key="up:u2"');
@@ -162,7 +163,6 @@ describe("Unplaced — a card that leaves (placed or discarded)", () => {
     const html = maintenanceView(props({ leaving: { u1: "discarded" } }));
     expect(html).toMatch(/data-morph-key="up:u1" data-verdict="discarded" inert/);
     expect(html).toContain("Discarded</span>");
-    expect(html).toContain(">1 waiting<");
     expect(html).toMatch(/data-up-card="u2" aria-current="true"/);
     expect(html).toContain('data-morph-key="upd:u2"');
     expect(maintenanceView(props({ leaving: { u2: "placed" } }))).toContain("Placed</span>");
@@ -196,6 +196,10 @@ describe("Unplaced — a card that leaves (placed or discarded)", () => {
     const s = { ...initialState(), needsTriage: { status: "ok" as const, data: [row(1), row(2)] } };
     expect(triageCounts(s).maintenance).toBe(2);
     expect(triageCounts({ ...s, unplacedLeaving: { "1": { verdict: "discarded", gone: false } } }).maintenance).toBe(1);
+    // …and so does the count on Review's switch, which is the same number.
+    const html = render({ ...s, view: "app", screen: "maintenance", unplacedLeaving: { "1": { verdict: "discarded", gone: false } } });
+    const head = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    expect(head).toContain('>Unplaced<span class="cnpy-seg-n">1</span>');
   });
 });
 

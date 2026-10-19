@@ -214,7 +214,6 @@ export const NAV_ICON = {
   artifacts: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`,
   prompts: `<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`,
   review: `<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`,
-  unplaced: `<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`,
   guide: `<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`,
   releases: `<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`,
 } as const;
@@ -322,7 +321,6 @@ function hero(signedIn: boolean): string {
           ${sideHead("Triage", "8px")}
           <div style="display:flex;flex-direction:column;gap:1px">
             <div style="display:flex;align-items:center;gap:9px;padding:2px 8px;border-radius:7px;font-size:12px;font-weight:500;background:var(--accent-soft);color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${NAV_ICON.review}</svg>Review<span class="site-swap" style="margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:600;place-items:center;${at(DONE + 150)}"><span>3</span><span>2</span></span></div>
-            ${side(NAV_ICON.unplaced, "Unplaced")}
           </div>
           ${sideHead("Help", "8px")}
           <div style="display:flex;flex-direction:column;gap:1px">

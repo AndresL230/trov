@@ -816,8 +816,6 @@ function reviewGroupRejectModal(s: AppState, r: { id: string; busy: boolean }): 
   });
 }
 
-/** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
- *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
 /** A sidebar count: its list's own once the list has answered, else the last count known for it
  *  (`s.badges`), else the list as it stands (empty before anything is read). */
 function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, list: Loadable<T[]>, count: (rows: T[]) => number): number {
@@ -826,6 +824,9 @@ function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, li
 const length = <T>(rows: T[]): number => rows.length;
 export const stagedPrompts = (rows: readonly { status: string }[]): number => rows.filter((p) => p.status === "staged").length;
 
+/** The two triage counts: Review's two reads, and the Unplaced queue (the key is still `maintenance`). They are the
+ *  counts on Review's To review / Unplaced switch (`triageSwitch`), and the sidebar's Review badge is their sum — the
+ *  rail has no Unplaced row, so nothing waiting is hidden. Unmatched logins are NOT in it — they wait in Org settings. */
 export function triageCounts(s: AppState): { review: number; maintenance: number } {
   // An item a verdict was just given to is not waiting any more: the badge drops with the card,
   // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
@@ -1031,7 +1032,7 @@ function sidebar(s: AppState): string {
     spacesLoaded: s.library.status === "ok" && s.library.data !== null,
     canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
-    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
+    counts: { review: counts.review + counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
@@ -1089,10 +1090,26 @@ function headerCrumb(s: AppState): string {
   return "";
 }
 
+/** Review's two views: its queue and Unplaced (the `maintenance` screen) — ONE switch in the header, as Tickets'
+ *  Board / Table, each option with how many wait there (the sidebar's Review badge is the two together). An
+ *  option's count is left off until it is known (its list, or the badges read), never a guessed 0. */
+export function triageSwitch(s: AppState): string {
+  const counts = triageCounts(s);
+  const known = { review: (s.proposals.status === "ok" || s.badges.proposals !== undefined) && (s.draftAdrs.status === "ok" || s.badges.decisions !== undefined), unplaced: s.needsTriage.status === "ok" || s.badges.unplaced !== undefined };
+  const n = (on: boolean, v: number) => (on ? `<span class="cnpy-seg-n">${v}</span>` : "");
+  return segmented({
+    id: "triage-view", ariaLabel: "Review", act: "", value: s.screen === "maintenance" ? "unplaced" : "review", inertOn: true,
+    options: [
+      { value: "review", label: "To review", act: "goReview", arg: "", trail: n(known.review, counts.review) },
+      { value: "unplaced", label: "Unplaced", act: "goMaintenance", arg: "", trail: n(known.unplaced, counts.maintenance) },
+    ],
+  });
+}
+
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
     home: "Home", mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
-    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
+    maintenance: "Review", search: "Search", settings: "Settings", guide: "Guide",
     site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
@@ -1155,6 +1172,8 @@ function header(s: AppState): string {
   })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
+  const triageControls = s.screen === "review" || s.screen === "maintenance" ? triageSwitch(s) : "";
+
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
       ${dark
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
@@ -1214,7 +1233,7 @@ function header(s: AppState): string {
       ${ask ? ask.crumb : art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${askControls}${newControls}${feedControls}${roadmapControls}${importControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${askControls}${newControls}${feedControls}${roadmapControls}${importControls}${queueControls}${triageControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -2113,7 +2132,7 @@ export const GUIDE_ALT: Record<string, string> = {
   artifact: "An artifact opened in the viewer",
   prompts: "The Prompt Library",
   review: "The Review screen: staged proposals waiting for a person's verdict",
-  maintenance: "The Unplaced screen: entries waiting to be placed or discarded",
+  maintenance: "Review's Unplaced view: entries waiting to be placed or discarded",
   repo: "The Repo dashboard: environments, deploys and CI",
   "repo-usage": "The Repo dashboard's usage view",
   search: "Search results across docs, tickets and the feed",
@@ -2214,9 +2233,9 @@ function guideView(s: AppState): string {
     <p style="${gP}">When an agent proposes a doc change or drafts a decision (an ADR), it becomes a ${gStrong("staged")} version. The live doc stays untouched until a person promotes the change. Each proposal is labelled ${gStrong("new")}, ${gStrong("edit")}, or ${gStrong("rewrite")}, and an edit written against an out-of-date version is flagged. Sending the same content twice changes nothing, so re-running a session doesn't pile up noise. Docs can include images too: your agent uploads each image to Trov first and then references it, and a proposal that points at an image that isn't uploaded (or at one elsewhere on the web) is refused. Click any image to see it full size. No agent tool can promote, ratify, or reject anything. Those buttons only exist here, in the web app.</p>
 
     ${sub("Review: promote, ratify, or reject")}
-    <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
+    <p style="${gP}">${gStrong("Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and Review's count in the sidebar shows what's waiting, Unplaced included.</p>
     ${gFig("review", `${gEm("Review")}: the queue on the left and the selected proposal's diff on the right.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds the few things an agent couldn't place (Trov now refuses or flags most of them instead), and empty is its normal state. Place an item where it belongs or ${gStrong("Discard")} it (you can undo a discard).</p>
+    <p style="${gP};margin-top:14px">${gStrong("Unplaced")}, the other side of the switch at the top of Review, holds the few things an agent couldn't place (Trov now refuses or flags most of them instead), and empty is its normal state. Place an item where it belongs or ${gStrong("Discard")} it (you can undo a discard).</p>
     ${gFig("maintenance", `${gEm("Unplaced")}: the queue, waiting to be routed or discarded.`)}
     <p style="${gP};margin-top:14px">Running the organization itself is in one place: ${gStrong("Org settings")}, from the switcher at the top of the sidebar. ${gStrong("Members")} is the people directory. Admins also invite people there, set roles and titles, and match an unrecognized GitHub login to a person. ${gStrong("Notifications")} is where admins set the email digests: which exist, when they send, and what went out. Your own digest preferences stay in ${gStrong("Settings")}.</p>
 

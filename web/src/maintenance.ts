@@ -3,7 +3,9 @@
 // stopped sending things here (2026-10-18: it refuses what it cannot place, naming what is valid, and stages what an
 // agent was unsure of, flagged), the queue holds only what came before and what an older plugin still sends.
 //
-// It is laid out like Review, the screen it sits beside (web/src/review.ts): ONE two-pane frame (`.cnpy-rv`, the
+// It is a VIEW of Review (2026-10-18): the header's To review / Unplaced switch (render.ts `triageSwitch`) moves between
+// the two, the header says Review on both, and the sidebar has no Unplaced row — Review's badge counts both queues.
+// It is laid out like Review's queue (web/src/review.ts): ONE two-pane frame (`.cnpy-rv`, the
 // panes taking turns under a tablet's width), the queue a KEYED list of surface cards (`.cnpy-rv-row`, so an item
 // placed or discarded leaves by the app's one row exit — web-ui.md › A row leaving a list), and the item in Review's
 // page pane (`.cnpy-rvp`: the page, then a footer that stays in view with Discard and Place).
@@ -11,8 +13,9 @@
 // This screen was "Maintenance" until 2026-10-06, with two more tabs — Identity and People. Those are org
 // administration, and an org is administered in ONE place, Org settings: matching an unknown login to a person is on
 // its Members tab (web/src/identity.ts), the member directory IS that tab, and the e-mail digest policy / schedule /
-// outbox are its Notifications tab (web/src/notifications.ts). The screen's id stays `maintenance` (state, the nav
-// key, the `maint…` acts); its address is `#unplaced`, and the old `#maintenance…` links still resolve (hash.ts).
+// outbox are its Notifications tab (web/src/notifications.ts). The screen's id stays `maintenance` (state, the
+// `maint…` acts; the sidebar lights Review for it); its address is `#unplaced`, and the old `#maintenance…` links still
+// resolve (hash.ts).
 //
 // Purely presentational: data arrives through props and renders to HTML strings; interactions dispatch via data-act /
 // data-arg handled in main.ts.
@@ -326,7 +329,8 @@ export function maintenanceSkeleton(): string {
   });
 }
 
-/** The page: Review's two panes — the intro and the queue, the item on screen. A degraded `hint` above. */
+/** The page: Review's two panes — the intro and the queue, the item on screen. A degraded `hint` above. How many
+ *  wait is the count on the header's To review / Unplaced switch (render.ts `triageSwitch`), as Review's are on its. */
 export function maintenanceView(p: MaintenanceProps, hint = ""): string {
   const leaving = p.leaving ?? {};
   const waiting = p.unplaced.filter((u) => !leaving[u.id]);
@@ -341,7 +345,6 @@ export function maintenanceView(p: MaintenanceProps, hint = ""): string {
   const list = p.loading
     ? `<div data-morph-key="up-skel">${skeleton("unplaced", "Loading the queue&hellip;", skList(4, unplacedCardShape))}</div>`
     : `${rows}${waiting.length === 0 ? `<div data-morph-key="up-empty">${emptyLayout("unplaced", { title: UNPLACED_EMPTY_TITLE, text: UNPLACED_EMPTY, sayStyle: "margin:4px 0 10px", shapes: skList(2, unplacedCardShape) })}</div>` : ""}`;
-  const count = p.loading ? "" : `<span class="cnpy-up-count">${waiting.length === 0 ? "None waiting" : `${waiting.length} waiting`}</span>`;
   const detail = p.loading ? skeleton("unplaced-detail", "Loading the queue&hellip;", unplacedDetailShapes(3), DETAIL_FRAME)
     : sel ? unplacedDetail(sel, p, idx, waiting.length, picked)
     : emptyShapes(unplacedDetailShapes(2), { style: DETAIL_FRAME });
@@ -350,8 +353,8 @@ export function maintenanceView(p: MaintenanceProps, hint = ""): string {
   const pane = picked ? "detail" : "list";
   return `${hint}<div class="cnpy-rv cnpy-up-screen" data-screen-label="Unplaced" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
     <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
-      <div style="padding:16px 20px 12px;display:flex;align-items:baseline;justify-content:space-between;gap:12px">
-        <div style="font-size:12.5px;color:var(--fg-55);min-width:0">${esc(UNPLACED_INTRO)}</div>${count}
+      <div style="padding:16px 20px 12px">
+        <div style="font-size:12.5px;color:var(--fg-55)">${esc(UNPLACED_INTRO)}</div>
       </div>
       <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
     </div>

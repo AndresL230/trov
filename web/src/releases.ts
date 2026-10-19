@@ -143,6 +143,7 @@ export const RELEASES: Release[] = [
       changed: [
         "Ask Trov: an artifact, or a file attached to a question, opens in a narrower side panel; a width you drag to is kept (#195)",
         "Roadmap: a Now / Next / Later box, accepted suggestions show at once; Unplaced restyled and agents stop landing there; Ask holds still (#200)",
+        "Unplaced is part of Review: a switch at the top of Review moves between the two, and Review's sidebar count includes Unplaced (#N)",
         "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
         "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
@@ -151,8 +152,7 @@ export const RELEASES: Release[] = [
       fixed: [
         "Sync GitHub: the menu opens again when a past sync's failure has no recorded cause; that part reads as not recorded (#195)",
         "Prompt Library: after you copy a slug from the keyboard, focus stays on the copy button (#195)",
-        "Tickets board: a dropped card lands where the slot showed, in its own column or another, instead of at the top (#195)",
-        "Tickets board: a card you drag stays under the pointer instead of jumping below the window (#195)",
+        "Tickets board: a dragged card stays under the pointer, and lands where the slot showed instead of at the top (#195)",
         "Ask: if you're turned from Can continue to Can read, a change waiting for you says you can only read now (#195)",
         "Ask on a phone: Delete in the threads list closes the list first, so its confirmation is not hidden under it (#195)",
         "Library: a page's sub-pages fold open and shut, a dropped page lands in place, and rows highlight from their title (#199)",

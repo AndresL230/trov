@@ -523,9 +523,18 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   const main = (html: string) => html.slice(html.indexOf("</header>"), html.indexOf('class="cnpy-scrim"'));
   const navRow = (html: string, key: string) => { const at = html.indexOf(`cnpy-navrow n-${key}`); return html.slice(at, html.indexOf("</div>", at)); };
 
-  it("is titled Unplaced, with no tab bar, no back button and no crumb", () => {
+  it("is Review's other view: titled Review, the header's To review / Unplaced switch on Unplaced, no tab bar, no back button and no crumb", () => {
     const html = app();
-    expect(header(html)).toContain(">Unplaced</h1>");
+    expect(header(html)).toContain(">Review</h1>");
+    expect(header(html)).not.toContain(">Unplaced</h1>");
+    // ONE segmented() switch in the header, each side with how many wait there; the picked side carries no act.
+    expect(header(html)).toContain('data-seg="triage-view"');
+    // Review's own reads are not in and no badges read has landed: its count is left off, never a guessed 0.
+    expect(header(html)).toMatch(/aria-pressed="false"[^>]*>To review<\/button>/);
+    expect(header(app({ proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } }))).toMatch(/>To review<span class="cnpy-seg-n">0<\/span>/);
+    expect(header(html)).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Unplaced<span class="cnpy-seg-n">3<\/span>/);
+    expect(header(html)).toContain('data-act="goReview"');
+    expect(header(html)).not.toContain('data-act="goMaintenance"');
     expect(header(html)).not.toContain("›");
     expect(main(html)).toContain('data-screen-label="Unplaced"');
     expect(main(html)).not.toContain('role="tablist"');
@@ -541,13 +550,14 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
     for (const gone of ["Who is this?", "identityMap", "mk-dev2", "Unmatched logins", "policyToggle", "schedHour", "outboxToggle", "openPerson\" data-arg=\"andres"]) expect(body, gone).not.toContain(gone);
   });
 
-  it("the sidebar entry is Unplaced, and its count is the queue alone", () => {
-    const row = navRow(app(), "maintenance");
-    expect(row).toContain('data-act="goMaintenance"');
-    expect(row).toContain('aria-label="Unplaced"');
-    expect(row).toContain(">Unplaced</span>");
+  it("has no sidebar entry of its own: Review is lit, and its count is Review's queue plus the 3 unplaced", () => {
+    const html = app();
+    expect(html).not.toContain("cnpy-navrow n-maintenance");
+    const row = navRow(html, "review");
+    expect(row).toContain("cnpy-navrow n-review is-active");
     expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="3">3</span>');   // 3 unplaced; the 2 logins are not in it
-    expect(app()).not.toContain(">Maintenance<");
+    expect(navRow(app({ proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] }, badges: { proposals: 0, decisions: 0 } }), "review")).toContain('data-n="3"');
+    expect(html).not.toContain(">Maintenance<");
     expect(triageCounts({ ...initialState(), needsTriage: { status: "ok", data: [triage(1)] }, identityTasks: { status: "ok", data: [task("a"), task("b")] } }).maintenance).toBe(1);
   });
 
@@ -646,10 +656,10 @@ describe("Review — the screen is named once", () => {
     expect(html.split(REVIEW_INTRO).length - 1).toBe(1);
     expect(reviewView(makeReviewProps())).not.toContain("<h1");
   });
-  it("Unplaced does the same: the header's title and one line", () => {
+  it("Unplaced (Review's other view) does the same: the header's title, Review, and one line", () => {
     const un = render({ ...initialState(), view: "app", screen: "maintenance", needsTriage: { status: "ok", data: [] } });
     expect(un.match(/<h1[ >]/g)?.length).toBe(1);
-    expect(un).toMatch(/<h1 style="[^"]*">Unplaced<\/h1>/);
+    expect(un).toMatch(/<h1 style="[^"]*">Review<\/h1>/);   // Unplaced is Review's other view: the header names Review
   });
 });
 
