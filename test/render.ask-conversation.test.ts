@@ -694,6 +694,30 @@ describe("acts — edit-and-resend and regenerate go through replaceFrom", () =>
     expect(conversationView(askView(s, "page"))).toContain("<span>Copied</span>");
   });
 
+  it("a code block has its own Copy: the block's text exactly, and it says Copied (support report #2)", () => {
+    const s = base();
+    s.ask.page = { ...convoOf("answer"), busy: false };
+    const t = turnOf(s.ask.page);
+    const first = t.parts.findIndex((p) => p.kind === "text");
+    t.parts[first] = { kind: "text", md: "Run these:\n\n```\n/plugin marketplace update trov\n/reload-plugins\n```\n\nThen:\n\n```\n/mcp\n```" };
+    const html = conversationView(askView(s, "page"));
+    expect(html).toContain(`<div class="ask-pre-w"><pre class="ask-pre"><code>/plugin marketplace update trov\n/reload-plugins</code></pre><button type="button" class="ask-fb ask-pre-copy" data-act="askCvCopyCode" data-arg="page:ak1:${first}.0" aria-label="Copy code">`);
+    expect(html).toContain(`data-arg="page:ak1:${first}.1"`);
+    const writes: string[] = [];
+    vi.stubGlobal("navigator", { clipboard: { writeText: (x: string) => { writes.push(x); return Promise.resolve(); } } });
+    try {
+      const { ctx } = fakeCtx(s);
+      act(ctx, "askCvCopyCode", `page:ak1:${first}.1`);
+      expect(writes).toEqual(["/mcp"]);
+      expect(s.ask.conversation.copied).toBe(`page:ak1:${first}.1`);
+      const after = conversationView(askView(s, "page"));
+      expect(after).toContain(`data-arg="page:ak1:${first}.1" aria-label="Copied"`);
+      expect(after).toContain(`data-arg="page:ak1:${first}.0" aria-label="Copy code"`);
+      act(ctx, "askCvCopyCode", `page:ak1:${first}.7`); // no such block: nothing copied
+      expect(writes).toEqual(["/mcp"]);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it("Open in inspector: a conversation-held ref, primed as hidden (never peeked), opened beside its conversation", () => {
     const s = base();
     s.ask.page = { ...convoOf("answer"), busy: false };

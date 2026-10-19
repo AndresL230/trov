@@ -227,11 +227,13 @@ export function tableView(v: AskView, head: string[] | null, rows: string[][]): 
   return `<div class="ask-tbl-scroll"><table class="ask-tbl">${head ? `<thead><tr>${head.map((h) => `<th scope="col">${inline(v, h, "cell")}</th>`).join("")}</tr></thead>` : ""}<tbody>${rows.map((r) => `<tr>${r.map((c) => `<td>${inline(v, c, "cell")}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
-/** A text part as markup; `cur` puts the soft cursor at the end of its last line. `tableTools(k)` wraps table k. */
-function mdView(v: AskView, md: string, cur: boolean, tableTools: (k: number, inner: string) => string): string {
+/** A text part as markup; `cur` puts the soft cursor at the end of its last line. `tableTools(k)` wraps table k;
+ *  `copyArg(k)` is code block k's Copy (`askCvCopyCode`). */
+function mdView(v: AskView, md: string, cur: boolean, tableTools: (k: number, inner: string) => string, copyArg: (k: number) => string): string {
   // `cur`: this part is still streaming — its half-written tail is settled first (never a finished answer's).
   const nodes = parseMd(cur ? settleTail(md) : md);
   let tables = 0;
+  let codes = 0;
   return nodes.map((n, i) => {
     const c = cur && i === nodes.length - 1 ? CURSOR : "";
     switch (n.t) {
@@ -239,7 +241,11 @@ function mdView(v: AskView, md: string, cur: boolean, tableTools: (k: number, in
       case "p": return `<p class="ask-p">${n.lines.map((l) => inline(v, l)).join("<br>")}${c}</p>`;
       case "ul": return `<ul class="ask-ul">${n.items.map((it, k) => `<li>${inline(v, it)}${k === n.items.length - 1 ? c : ""}</li>`).join("")}</ul>`;
       case "ol": return `<ol class="ask-ul"${n.start !== 1 ? ` start="${n.start}"` : ""}>${n.items.map((it, k) => `<li>${inline(v, it)}${k === n.items.length - 1 ? c : ""}</li>`).join("")}</ol>`;
-      case "code": return `<pre class="ask-pre"><code>${esc(n.text)}</code></pre>${c}`;
+      case "code": {
+        const arg = copyArg(codes++);
+        const done = v.ui.conversation.copied === arg;
+        return `<div class="ask-pre-w"><pre class="ask-pre"><code>${esc(n.text)}</code></pre><button type="button" class="ask-fb ask-pre-copy" data-act="askCvCopyCode" data-arg="${attr(arg)}" aria-label="${done ? "Copied" : "Copy code"}">${askIcon(done ? "check" : "copy", 13, null, 2)}<span>${done ? "Copied" : "Copy"}</span></button></div>${c}`;
+      }
       case "table": return `${tableTools(tables++, tableView(v, n.head, n.rows))}${c}`;
     }
   }).join("");
@@ -551,7 +557,7 @@ function partView(v: AskView, a: AskAnswer, p: AskShownPart, i: number, cur: boo
   const key = `p${i}`;
   if (p.kind === "text") {
     const save = a.turn.messageId !== null && ownTurn(v, a.askedBy) ? saveFormArg(a) : null;
-    return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich(v, "table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)))}</div>`;
+    return `<div class="ask-text" data-morph-key="${key}">${mdView(v, p.md, cur, (k, inner) => rich(v, "table", inner, save, cvRef(v.where, a.key, "table", `${i}.${k}`)), (k) => `${v.where}:${a.key}:${i}.${k}`)}</div>`;
   }
   if (p.kind === "actions") return `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${actionGroupView(v, a, p.ids)}</div>`;
   if (p.block.kind === "save_form") return !ownTurn(v, a.askedBy) ? "" : `<div class="ask-part" data-morph-key="${key}" data-ask-tween>${blockView(v, a, p)}</div>`;
@@ -843,6 +849,21 @@ export const conversationPart: AskPart = {
         const look = ctx.look();
         const text = ex.a.turn.parts.filter((p): p is { kind: "text"; md: string } => p.kind === "text").map((p) => plainText({ look }, p.md)).join("").trim();
         try { void navigator.clipboard?.writeText(text).catch(() => undefined); } catch { /* no clipboard: the label still says so */ }
+        ui.copied = arg;
+        if (copyTimer) clearTimeout(copyTimer);
+        copyTimer = setTimeout(() => { if (ctx.ui.conversation.copied === arg) { ctx.ui.conversation.copied = null; ctx.paint(); } }, 1600);
+        ctx.paint();
+        return;
+      }
+      // One code block's Copy (`<where>:<key>:<part>.<block>`): its text exactly as written, from the stored answer.
+      case "askCvCopyCode": {
+        const ex = key ? exchange(ctx, whereOf(w), key) : null;
+        const [pi, ci] = (extra ?? "").split(".").map(Number);
+        const part = ex ? shownParts(ex.a.turn)[pi] : undefined;
+        if (!arg || part?.kind !== "text") return;
+        const code = parseMd(part.md).filter((n): n is Extract<MdNode, { t: "code" }> => n.t === "code")[ci];
+        if (!code) return;
+        try { void navigator.clipboard?.writeText(code.text).catch(() => undefined); } catch { /* no clipboard: the label still says so */ }
         ui.copied = arg;
         if (copyTimer) clearTimeout(copyTimer);
         copyTimer = setTimeout(() => { if (ctx.ui.conversation.copied === arg) { ctx.ui.conversation.copied = null; ctx.paint(); } }, 1600);

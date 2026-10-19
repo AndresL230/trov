@@ -137,6 +137,7 @@ export const RELEASES: Release[] = [
       fixed: [
         "Asking Claude in words to send a handoff, record the session, file a ticket or update the plan works, not only the slash command (#202)",
         "Home: the greeting and the line under it wait for everything to load, instead of changing as it arrives (#202)",
+        "Ask Trov: every code block in an answer has its own Copy button (#202)",
       ],
       removed: [],
     },
