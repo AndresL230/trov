@@ -265,6 +265,11 @@
   `doc_imports.images` — its uploaded images' path → sha256 — `docs-library.md` › Import] and `0083_doc_archive`
   (Archive page) [`docs.archived_at` / `archived_by` — `docs-library.md` › Archiving a page]; all additive but
   `0078_agent_links`. Both migration tests cut the file at their part (`test/helpers/migration-part.ts`).
+  Then `0077_home` (Home) [`doc_versions.promoted_at`, written by `promote_doc`, and `orgs.promotions_timed_at`, when
+  an org's promotions began to be timed (NULL: since the org's creation); never backfilled, so Home's Docs promoted
+  reads unknown before it — `roadmap-my-work.md` › Home].
+- Home: `shared/home-core.ts` (zod-free: `HomeData`, the ranges, `homeSum`), `src/tools/home.ts` (`GET /home`, D1
+  only), web: `home.ts` (the markup), `home-view.ts` (its props from the app's reads) — `roadmap-my-work.md` › Home.
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
   name and slug rules, `placeSpace`, the DTOs), `src/tools/spaces.ts` (reads, the admin / owner writers, the gate's
   `spaceState`), `src/spaces/routes.ts` (the cookie routes at `/spaces`) — `docs-library.md`.

@@ -857,7 +857,8 @@ frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120
   `--frame-work` (1440 → 2200: the queue's board and table, Handoffs, the Prompt Library, a tag's page — `WORK_SHELL`
   in `ui.ts`), `--frame-dash` (1180 → 1720: My Work, the Repo dashboard, Org settings › Members — only that tab,
   `data-org-wide` on `.cnpy-org`), `--frame-feed` (1200 → 1480: the Feed, `asideColumns`' `opts.frame`) and
-  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list).
+  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list) and `--frame-home` (1080 → 1600:
+  Home's one centred column, `roadmap-my-work.md` › Home).
 - **A line keeps its measure** when its column grows: a Feed entry's title, brief and body stop at 720px (the width
   they have in a 1200px frame; `.cnpy-feed-page`).
 - **Reading surfaces keep their frame**: a doc (1080), the Roadmap (`asideColumns`, 1200), the Guide, a ticket or
