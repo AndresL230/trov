@@ -330,7 +330,7 @@ function teamView(rows: HomeTeamItem[] | null, count: number | null, invite: boo
   const body = rows === null
     ? skRowsN(5)
     : rows.map((r) => `<button type="button" class="hm-row"${actAttrs(r)}>
-        <span class="hm-team-av">${r.avatar}<span class="hm-live${r.live ? " is-live" : ""}" aria-hidden="true"></span></span>
+        <span class="hm-team-av">${r.avatar}${r.live ? `<span class="hm-live" role="img" aria-label="Active now" data-mtip="Active in the last 15 minutes"></span>` : ""}</span>
         <span class="hm-row-t"><span class="hm-row-title" style="color:${r.color}">@${esc(r.handle)}${r.you ? " (you)" : ""}</span>${r.on ? `<span class="hm-row-post">${esc(r.on)}</span>` : ""}</span>
         ${r.at ? `<span class="hm-row-trail">${esc(r.at)}</span>` : ""}${CHEV}
       </button>`).join("") + (invite
