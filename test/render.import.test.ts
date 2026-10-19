@@ -350,7 +350,7 @@ describe("Review — an import's pages are one group", () => {
     expect(g.depth).toEqual({ "doc:handbook@1": 0, "doc:first-week@1": 1 });
   });
 
-  it("is one keyed card with the design's header and actions; the agent's proposal is its agent's group", () => {
+  it("is one keyed card with the design's header and actions; the agent's ONE proposal is a card of its own", () => {
     const html = reviewView(rv());
     expect(html).toContain('data-morph-key="rvg:7"');
     expect(html).toContain("Import from handbook.zip");
@@ -359,10 +359,11 @@ describe("Review — an import's pages are one group", () => {
     expect(html).toContain("Review one by one");
     expect(html).toMatch(/data-act="reviewGroupApprove" data-arg="7"[^>]*>Approve all 2</);
     expect(html).toContain('data-act="reviewGroupReject" data-arg="7"');
-    expect(html).toContain('data-morph-key="rvg:agent:andres"');
-    expect(html).toContain("Written by andres&#39;s agent");
-    // Nothing is picked by default: a group's page is opened from its group by hand.
-    expect(html).not.toContain('data-morph-key="rvd:');
+    // One page is no group (the owner, 2026-10-18): the agent's proposal is a card, and — the first card that is not a
+    // group — what the pane shows by default; the import's pages are still opened from their group.
+    expect(html).not.toContain('data-morph-key="rvg:agent:andres"');
+    expect(html).toContain('data-morph-key="rv:doc:rate-limits@3"');
+    expect(html).toContain('data-morph-key="rvd:doc:rate-limits@3"');
     expect(html).toMatch(/>Imports<span class="cnpy-seg-n">2<\/span>/);
     expect(html).toMatch(/>Written by agents<span class="cnpy-seg-n">1<\/span>/);
   });

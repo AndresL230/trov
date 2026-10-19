@@ -41,7 +41,7 @@ export const RESERVED_ORG_SLUGS: readonly string[] = [
   ...SITE_PAGE_SEGMENTS,
   // Root routes of the Hono app (src/routes.ts and the routers mounted at "/"), and screen names kept
   // free so a path can never be mistaken for one.
-  "feed", "doc", "adr", "adrs", "roadmap", "search", "tickets", "ticket", "sprints", "sprint", "repo", "repos",
+  "home", "feed", "doc", "adr", "adrs", "roadmap", "search", "tickets", "ticket", "sprints", "sprint", "repo", "repos",
   "sync", "persons", "people", "proposals", "needs-triage", "identity-tasks", "ingest", "plan", "prompts",
   "handoffs", "artifacts", "notifications", "integrations", "environments", "members", "usage", "audit",
   "admins", "grants", "github", "google", "onboard", "callback", "identities", "handle-check", "mcp-token",

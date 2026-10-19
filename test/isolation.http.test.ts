@@ -262,6 +262,8 @@ const TENANT: Record<string, Row> = {
   "GET /img/:sha": {},
   "POST /ingest": J({}),
   "GET /docs": {}, "GET /doc/:slug": {}, "GET /doc/:slug/versions/:version": {}, "GET /feed": { query: `?author=${ALICE}` }, "GET /feed/stats": {},
+  // Home (src/tools/home.ts): A's activity, team ("what each is on" carries A's titles) and repositories — never B's.
+  "GET /home": {},
   "GET /search": { query: "?q=CANARY" }, "GET /search/quick": { query: "?q=CANARY" },
   "GET /needs-triage": {}, "GET /adrs": {}, "GET /proposals": {},
   "POST /doc/:slug/promote": J({ version: 2 }), "POST /doc/:slug/reject": J({ version: 2 }),
