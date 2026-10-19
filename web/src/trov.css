@@ -5698,7 +5698,7 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
    The design `Trov Overview v2`: one centred column (`--frame-home`), a greeting over the status line, the
    search-or-ask bar, three lists, Activity's four figures, then Latest beside Team. Rows are 38px hairline rows
    (the design's), every hover a background; radii are authored here and scaled in the corners block below. */
-:root { --frame-home:clamp(940px, 44 * var(--vw), 1240px); }
+:root { --frame-home:clamp(1080px, 60 * var(--vw), 1600px); }
 .hm-page { max-width:var(--frame-home); margin:0 auto; padding:clamp(20px, 6vh, 64px) 32px 56px; font-size:13px; }
 .hm-head { display:flex; flex-direction:column; align-items:center; text-align:center; }
 .hm-h { margin:0; font-size:30px; font-weight:500; letter-spacing:-0.035em; line-height:1.15; text-wrap:balance; color:var(--fg); }

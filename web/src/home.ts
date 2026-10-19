@@ -116,7 +116,8 @@ function searchView(s: HomeSearch, answer: string): string {
   const modeSwitch = s.askAvail
     ? segmented({ id: "home-mode", ariaLabel: "Search or ask", value: s.mode, act: "homeMode", size: "xs", inertOn: true, options: [{ value: "search", label: "Search" }, { value: "ask", label: "Ask Trov" }] })
     : "";
-  const kbd = !s.focused && !s.q ? `<span class="hm-kbd" aria-hidden="true"><kbd>${s.mac ? "⌘" : "Ctrl"}</kbd><kbd>K</kbd></span>` : "";
+  // The shortcut stays while the bar is focused; only a typed query (with its clear button) takes its place.
+  const kbd = !s.q ? `<span class="hm-kbd" aria-hidden="true"><kbd>${s.mac ? "⌘" : "Ctrl"}</kbd><kbd>K</kbd></span>` : "";
   const go = ask && s.q.trim() ? `<button type="button" class="hm-go" data-act="homeSubmit" aria-label="Ask Trov">${GO}</button>` : "";
   const clear = s.q ? `<button type="button" class="hm-clear" data-act="homeClear" aria-label="Clear">${X}</button>` : "";
   const icon = ask ? aiMark(14) : SEARCH;
