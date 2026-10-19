@@ -89,7 +89,9 @@ import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
 import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick, type QuickRow } from "./quicksearch";
-import { homeDropRows, askAvailable as homeAskAvailable } from "./home-view";
+import { homeDropRows, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
+import { askApi } from "./ask-api";
+import { ASK_WRONG_REASONS, type AskWrongReason } from "@shared/ai-ask-core";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
 import type { LazyChunk } from "./lazy-chunk";
@@ -1537,9 +1539,44 @@ function homeSearch(): void {
       .catch(() => { /* aborted or failed: the dropdown keeps what it had */ });
   }, 120);
 }
+let homeAskAbort: AbortController | null = null;
+/** Ask from Home's bar: a new thread in the org's default mode; the answer folds in as it streams. */
+function homeAskRun(q: string): void {
+  homeAskAbort?.abort();
+  const ac = new AbortController(); homeAskAbort = ac;
+  const a: HomeAnswer = { q, text: "", phase: "thinking", error: null, threadId: null, messageId: null, cites: [], wrong: "closed" };
+  state.home.answer = a; state.home.focused = false; state.home.q = ""; state.home.results = null;
+  rerender();
+  const live = (): boolean => state.home.answer === a && !ac.signal.aborted;
+  const fail = (msg: string): void => { if (!live()) return; a.phase = "error"; a.error = msg; rerender(); };
+  (state.ask.state.data ? Promise.resolve(state.ask.state.data) : askApi.getState())
+    .then((st) => askApi.ask({ threadId: null, text: q, mode: st.defaultMode, auto: false, context: [], attachments: [] }, {
+      signal: ac.signal,
+      onEvent: (e) => {
+        if (!live()) return;
+        if (e.event === "thread") a.threadId = e.data.id;
+        else if (e.event === "text") { a.text += e.data.delta; a.phase = "streaming"; rerenderSoon(); }
+        else if (e.event === "done") { a.messageId = e.data.messageId; a.cites = e.data.cites; a.phase = "done"; rerender(); }
+        else if (e.event === "error") fail(e.data.message || "Couldn't get an answer.");
+      },
+    }))
+    .then(() => { if (live() && a.phase !== "done" && a.phase !== "error") { a.phase = "done"; rerender(); } })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      fail("Couldn't get an answer. Try again, or ask in Trov.");
+    });
+}
 const homeAskOn = (): boolean => homeAskAvailable(state);
+/** Put the caret back in the bar — after this click's repaint and focus restore (which would put it on the clicked
+ *  switch), so typing goes on into the field. */
 function homeFocusInput(): void {
-  requestAnimationFrame(() => (mount.querySelector('[data-field="homeQ"]') as HTMLInputElement | null)?.focus());
+  const go = (): void => {
+    const el = mount.querySelector<HTMLInputElement>('[data-field="homeQ"]');
+    if (el && document.activeElement !== el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  };
+  setTimeout(go, 0);
+  requestAnimationFrame(go);
 }
 
 /** My Work reads its own DTO plus the slices its tiles and rail are built on —
@@ -3146,14 +3183,24 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.home.focused = false; state.home.q = ""; state.home.results = null;
       quickPick(row.pick); return;
     }
-    // The bar's Ask: for now the question opens Ask Trov, sent (the inline answer replaces this).
+    // The bar's Ask: the answer streams under the bar (a new Ask thread; "Continue in Trov" opens it).
     case "homeAsk": case "homeSubmit": {
       const q = (arg ?? state.home.q).trim();
       if (!q) { homeFocusInput(); return; }
-      state.home.focused = false; state.home.q = "";
-      dispatch("goAsk", null, null);
-      setTimeout(() => dispatch("askCvSend", q, null), 0);
-      return;
+      homeAskRun(q); return;
+    }
+    case "homeAnsClose": homeAskAbort?.abort(); state.home.answer = null; break;
+    case "homeAnsGo": if (arg && arg.startsWith("#")) location.hash = arg; return;
+    case "homeAnsContinue": if (state.home.answer?.threadId) location.hash = `#ask/${state.home.answer.threadId}`; return;
+    case "homeAnsWrongOpen": if (state.home.answer) state.home.answer.wrong = "open"; break;
+    case "homeAnsWrong": {
+      const a = state.home.answer;
+      if (!a?.messageId || !(ASK_WRONG_REASONS as readonly string[]).includes(arg ?? "")) return;
+      a.wrong = "sent";
+      askApi.markWrong(a.messageId, arg as AskWrongReason).catch(() => {
+        if (state.home.answer === a) { a.wrong = "closed"; flash("Couldn't tell Trov. Try again."); }
+      });
+      break;
     }
     case "goRepoFor": if (!arg) return; state.repoSlug = arg; state.repoApp = null; state.screen = "repo"; state.repoTab = "overview"; loadRepo(); return;
     case "goRepoApp": {
@@ -5491,6 +5538,11 @@ mount.addEventListener("keydown", (e) => {
     e.preventDefault();
     dispatch("homeMode", state.home.mode === "ask" ? "search" : "ask", null);
   }
+});
+
+// Home's Search / Ask Trov switch: pressing it never takes focus from the bar, so typing goes on into the field.
+mount.addEventListener("mousedown", (e) => {
+  if (state.screen === "home" && (e.target as Element | null)?.closest?.('[data-seg="home-mode"]') && document.activeElement?.closest?.('[data-field="homeQ"]')) e.preventDefault();
 });
 
 // ── @mention picker: keyboard + the mousedown/blur race ──────────────────────

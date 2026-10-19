@@ -7,6 +7,7 @@
 import type { FeedRow, PersonColor } from "@shared/rows";
 import type { QuickSearchResult } from "@shared/quick-search";
 import type { GithubAppStatusDTO } from "@shared/github-app";
+import type { RefView } from "@shared/ai-ask-core";
 import { HOME_DAYS, homeRangeDays, homeSum, type HomeData, type HomeRange } from "@shared/home-core";
 import { sprintDueState } from "@shared/sprints-core";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
@@ -19,6 +20,7 @@ import { personChip } from "./people";
 import { relTime } from "./ui";
 import { STATE_KIND, type StateKind } from "./marks";
 import { quickGroups, type QuickRow } from "./quicksearch";
+import { homeAnswerView } from "./home";
 import type { HomeAttnRow, HomeCard, HomeCol, HomeFeedRow, HomeIcon, HomeMark, HomeProps, HomeRow, HomeSearchItem, HomeTeamItem } from "./home";
 
 /** Home's own state: its two reads and the bar. */
@@ -39,9 +41,24 @@ export interface HomeUi {
   attnOpen: boolean;
   /** Which headline of the pool; moves on every entry to Home. */
   headIdx: number;
+  /** The question asked from the bar and its answer, streaming under it (null: none). */
+  answer: HomeAnswer | null;
+}
+/** An Ask Trov answer under the bar (`POST /ask` on a new thread; Ask's own SSE contract). */
+export interface HomeAnswer {
+  q: string;
+  /** The answer's text so far (Ask's markdown, `[[type:key]]` refs in it). */
+  text: string;
+  phase: "thinking" | "streaming" | "done" | "error";
+  error: string | null;
+  threadId: number | null;
+  messageId: number | null;
+  cites: RefView[];
+  /** Wrong?: closed, its three reasons open, or sent. */
+  wrong: "closed" | "open" | "sent";
 }
 export function initialHomeUi(): HomeUi {
-  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0 };
+  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0, answer: null };
 }
 
 const mk = (k: StateKind): HomeMark => ({ shape: STATE_KIND[k].shape, tone: STATE_KIND[k].tone });
@@ -345,7 +362,7 @@ export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps 
   return {
     head: { headline: headline(s, !!failing, rows.length === 0, empty), status, attn: { open: s.home.attnOpen, rows: shown, more: rows.length - shown.length, countText: actionable ? `${actionable} need${actionable === 1 ? "s" : ""} you` : "" } },
     search: { q: s.home.q, mode: s.home.mode, askAvail: askAvailable(s), focused: s.home.focused, groups, none, mac },
-    answer,
+    answer: s.home.answer ? homeAnswerView(s.home.answer) : answer,
     cols: [repositoriesCol(s, admin), roadmapCol(s, admin), forYouCol(s)],
     activity: { range, cards, from, nBars },
     latest: { rows: latestRows(s), sub: s.home.feed.status === "ok" && feedToday ? `${feedToday} today` : "" },

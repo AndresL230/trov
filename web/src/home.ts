@@ -9,6 +9,8 @@ import type { HomeRange } from "@shared/home-core";
 import { markShape, aiMark, type MarkShape } from "./marks";
 import { segmented } from "./segmented";
 import { esc, attr } from "./ui";
+import { renderMarkdown } from "./markdown";
+import { ASK_WRONG_LABELS, ASK_WRONG_REASONS, type RefView } from "@shared/ai-ask-core";
 
 /** A mark: a shape in a tone (marks.ts), as the design's status marks. */
 export interface HomeMark { shape: MarkShape; tone: string }
@@ -41,6 +43,7 @@ const CHEV_S = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stro
 const DOWN = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>`;
 const SEARCH = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`;
 const X = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+const GO_S = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
 const GO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
 
 /** A data-act / data-arg pair. */
@@ -143,6 +146,55 @@ function searchView(s: HomeSearch, answer: string): string {
     </div>
     ${drop}${answer}
   </div>`;
+}
+
+// ── the answer under the bar ─────────────────────────────────────────────────
+
+export interface HomeAnswerView {
+  q: string;
+  text: string;
+  phase: "thinking" | "streaming" | "done" | "error";
+  error: string | null;
+  threadId: number | null;
+  cites: RefView[];
+  wrong: "closed" | "open" | "sent";
+}
+const THUMB = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V2"></path><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg>`;
+
+/** Ask's `[[type:key]]` refs as the cited item's title (a ref not among the cites keeps its key, as Ask does). */
+function refsAsText(text: string, cites: readonly RefView[]): string {
+  return text.replace(/\[\[([a-z]+:[^\]]+)\]\]/g, (_, ref: string) => cites.find((c) => c.ref === ref)?.title ?? ref.split(":").slice(1).join(":"));
+}
+
+export function homeAnswerView(a: HomeAnswerView): string {
+  const body = a.phase === "thinking"
+    ? `<div class="hm-ans-wait"><span class="hm-dots" aria-hidden="true"><span></span><span></span><span></span></span>Reading your organization…</div>`
+    : a.phase === "error" && !a.text
+      ? `<div class="hm-ans-err">${markShape("diamond", "var(--red)", 8)}<span>${esc(a.error ?? "Couldn't get an answer.")}</span></div>`
+      : `<div class="hm-ans-text">${renderMarkdown(refsAsText(a.text, a.cites))}${a.phase === "streaming" ? `<span class="hm-caret" aria-hidden="true"></span>` : ""}</div>`;
+  const src = a.cites.slice(0, 6).map((c) => c.href
+    ? (/^https?:/i.test(c.href)
+      ? `<a class="hm-src" href="${attr(c.href)}" target="_blank" rel="noopener noreferrer">${esc(c.title)}</a>`
+      : `<button type="button" class="hm-src" data-act="homeAnsGo" data-arg="${attr(c.href)}">${esc(c.title)}</button>`)
+    : `<span class="hm-src">${esc(c.title)}</span>`).join("");
+  const wrong = a.wrong === "sent"
+    ? `<span class="hm-ans-thanks">Thanks. Trov was told.</span>`
+    : a.wrong === "open"
+      ? `<span class="hm-ans-why">${ASK_WRONG_REASONS.map((r) => `<button type="button" class="hm-btn hm-btn-sm" data-act="homeAnsWrong" data-arg="${r}">${esc(ASK_WRONG_LABELS[r])}</button>`).join("")}</span>`
+      : `<button type="button" class="hm-ans-wrong" data-act="homeAnsWrongOpen" aria-label="Wrong? Tell Trov this answer is wrong" data-mtip="Wrong? Tell Trov this answer is wrong">${THUMB}</button>`;
+  const foot = a.phase === "done"
+    ? `<div class="hm-ans-foot">
+        <span class="hm-ans-by" data-mtip="Written by Trov from your organization's pushes, tickets, docs and decisions. Not official; check the sources.">${aiMark(10)}Written by Trov just now</span>
+        ${src ? `<span class="hm-ans-src">From${src}</span>` : ""}
+        <span class="hm-ans-gap"></span>${wrong}
+        ${a.threadId ? `<button type="button" class="hm-btn hm-btn-sm" data-act="homeAnsContinue">Continue in Trov${GO_S}</button>` : ""}
+      </div>`
+    : "";
+  return `<section class="hm-ans" aria-live="polite" aria-label="Trov's answer">
+    <div class="hm-ans-h"><span class="hm-ans-ic" aria-hidden="true">${aiMark(10)}</span><span class="hm-ans-q">${esc(a.q)}</span>
+      <button type="button" class="hm-clear" data-act="homeAnsClose" aria-label="Close">${X}</button></div>
+    ${body}${foot}
+  </section>`;
 }
 
 // ── the three lists ──────────────────────────────────────────────────────────
