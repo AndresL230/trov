@@ -15,7 +15,7 @@ import { addPart, deployRow } from "./helpers/dashboard-hosting";
 import wranglerToml from "../wrangler.toml?raw";
 import { all, run, nowIso } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
-import { pingHealth } from "../src/repo/poll";
+import { pingHealth, reservedHost } from "../src/repo/poll";
 import { REPO_CRON } from "../src/repo/cron";
 import { handleRepoCron } from "./helpers/org-config";
 import { getRepoDashboard } from "../src/tools/repo";
@@ -66,6 +66,17 @@ describe("pingHealth", () => {
       { env: "staging", part: "backend", value: 1, at: "2026-09-20T12:00:00.000Z" },
       { env: "staging", part: "frontend", value: 1, at: "2026-09-20T12:00:00.000Z" },
     ]);
+  });
+
+  it("never pings a host on a reserved name (the local seed's *.example.com): no request, no row", async () => {
+    const asked: string[] = [];
+    const fetchImpl = (async (u: RequestInfo | URL) => { asked.push(String(u)); return new Response("ok"); }) as typeof fetch;
+    const made = ENVS.map((e) => ({ ...e, frontendUrl: `https://app.${e.key}.sapling.example.com`, apiUrl: `https://api.${e.key}.acme.test` }));
+    expect(await pingHealth(systemCtx(), made, T, fetchImpl)).toEqual([]);
+    expect(asked).toEqual([]);
+    expect(await all(env.DB, `SELECT 1 FROM repo_metrics WHERE metric = 'health_up'`)).toEqual([]);
+    for (const u of ["https://example", "http://x.invalid/", "https://example.net", "https://a.example.org."]) expect(reservedHost(u), u).toBe(true);
+    for (const u of ["https://api.saplinglearn.com", "https://myexample.com", "https://example.com.au", "http://localhost:8787", "not a url"]) expect(reservedHost(u), u).toBe(false);
   });
 
   // M13: the four targets are pinged CONCURRENTLY — sequentially they cost up to

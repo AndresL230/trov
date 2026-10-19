@@ -64,13 +64,22 @@ const PING_TIMEOUT_MS = 8_000;
  *  45 days): a poll every 2 minutes for a day is 720 × 2 rows per target —
  *  5,760 rows for two environments, beside the cron's own 1,152. */
 export const HEALTH_ON_DEMAND_BUCKET_MS = 1_000;
+/** A host on a name reserved never to resolve (RFC 2606 / 6761: `.example`, `.test`, `.invalid`, and
+ *  `example.com` / `.net` / `.org` with their subdomains) — the local seed's made-up hosts. Pinging one only
+ *  logs a DNS failure and writes "down" over the seeded readings, so it is skipped like an unset URL. */
+export function reservedHost(url: string): boolean {
+  let host: string;
+  try { host = new URL(url).hostname.toLowerCase().replace(/\.$/, ""); } catch { return false; }
+  return /(^|\.)(example|test|invalid)$/.test(host) || /(^|\.)example\.(com|net|org)$/.test(host);
+}
 export async function pingHealth(ctx: TenantContext, envs: RepoEnvConfig[], now: number, fetchImpl: typeof fetch = fetch, bucketMs: number = TEN_MIN): Promise<PollOutcome[]> {
   const at = new Date(Math.floor(now / bucketMs) * bucketMs).toISOString();
   // A target with no URL configured (an org's environment may name only one of the two, or neither
-  // yet) is not pinged and writes no row: an unconfigured target is unknown, never "down".
+  // yet) is not pinged and writes no row: an unconfigured target is unknown, never "down". So is one on a
+  // reserved name that can never resolve (`reservedHost`).
   const targets = envs.flatMap((cfg) =>
     ([["frontend", cfg.frontendUrl, cfg.frontendUrl], ["backend", cfg.apiUrl, cfg.apiUrl + cfg.healthPath]] as const)
-      .filter(([, base]) => base !== "")
+      .filter(([, base]) => base !== "" && !reservedHost(base))
       .map(([part, , url]) => ({ env: cfg.key, part, url }))
   );
   const readings = await Promise.all(targets.map(async (t) => {
