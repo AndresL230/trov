@@ -245,7 +245,7 @@ describe("Unplaced — the screen", () => {
     const html = maintenanceView(props());
     // The reading pane: white in both views (tokens, so light and dark follow).
     expect(css).toContain(".cnpy-rv-detail { background:var(--surface); }"); // both views' reading pane is white
-    expect(css).toContain(".cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; }"); // a picked card stays white
+    expect(css).toContain(".cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }"); // a picked card stays white, with an accent edge
     // The item, as To review's proposed record: a label row, then a white surface card.
     expect(html).toMatch(/What the agent sent<\/div>\s*<\/div>\s*<div class="cnpy-surface cnpy-up-item" style="padding:24px 28px 26px">/);
     expect(html).toMatch(/Place it as<\/div>\s*<\/div><div class="cnpy-surface cnpy-up-place" style="padding:24px 28px 26px" data-item="u1">/);

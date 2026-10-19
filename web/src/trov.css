@@ -4611,7 +4611,8 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* Review › an import's pages as one group (review.ts `groupCard`): the card, its open list, its page rows. A group
    that is decided whole wears the verdict and leaves by the queue's one exit (`.cnpy-rv-row`). */
 .cnpy-rvg { position:relative; margin-bottom:8px; padding:12px 14px; transition:border-color .12s ease; }
-.cnpy-rvg[data-sel] { border-color:var(--border-strong); }
+/* A group whose page is open in the pane: the same picked edge as a card. */
+.cnpy-rvg[data-sel] { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 /* A group card is a hitArea card (its first page opens in the pane); its buttons and its page rows sit above the hit. */
 .cnpy-hitbox .cnpy-rvg-acts, .cnpy-hitbox .cnpy-rvg-list { position:relative; z-index:2; }
 .cnpy-rvg-head { display:flex; align-items:center; gap:10px; min-width:0; }
@@ -4662,7 +4663,7 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* Review's reading pane is WHITE in both views (the owner, 2026-10-18): To review's and Unplaced's, a decision's, a
    page's; the cards in it keep their border. In the list, a picked card stays white too (its border marks it). */
 .cnpy-rv-detail { background:var(--surface); }
-.cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; }
+.cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-rvp > .cnpy-rvg-bar-top { position:sticky; top:0; z-index:2; flex:none; background:var(--surface); padding:0 20px 0 28px; }
 .cnpy-rvp-body { flex:1 0 auto; max-width:860px; padding:24px 32px 40px; }
 .cnpy-rvp-crumb { font-size:12.5px; color:var(--fg-55); }
