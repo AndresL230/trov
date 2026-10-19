@@ -63,7 +63,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
   it("orders Workspace · Monitor · Knowledge · Triage · Help, with Repo in Monitor", () => {
     const html = sidebarView(props());
     const at = (needle: string) => html.indexOf(needle);
-    const order = [">Workspace<", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide", "goReleases"];
+    const order = [">Workspace<", "goHome", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", ">Triage<", "goReview", "goMaintenance", ">Help<", "goGuide", "goReleases"];
     for (let i = 1; i < order.length; i++) expect(at(order[i]), order[i]).toBeGreaterThan(at(order[i - 1]));
   });
 
@@ -177,7 +177,7 @@ describe("sidebar — open/closed and collapsed are attributes", () => {
     const html = sidebarView(props({ collapsed: true, navOpen: { ...NAV_CLOSED, library: true } }));
     expect(html).toContain('data-arg="library:product" class="cnpy-sub-i cnpy-sub-sp" tabindex="-1"');
     expect(html).toContain('aria-label="Expand sidebar" aria-expanded="false"');
-    for (const tip of ["My Work", "Tickets", "Roadmap", "Relay", "Repo", "Feed", "Library", "Artifacts", "Prompt Library", "Review", "Unplaced", "Guide", "What&#39;s new", "Search", "Settings"]) {
+    for (const tip of ["Home", "My Work", "Tickets", "Roadmap", "Relay", "Repo", "Feed", "Library", "Artifacts", "Prompt Library", "Review", "Unplaced", "Guide", "What&#39;s new", "Search", "Settings"]) {
       expect(html).toContain(`data-tip="${tip}"`);
     }
   });

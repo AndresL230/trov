@@ -430,10 +430,8 @@ describe("Relay's header button keeps one width across its two tabs", () => {
     expect(h).toMatch(/<span style="grid-area:1\/1">New handoff<\/span><span aria-hidden="true" style="grid-area:1\/1;visibility:hidden">Start a link<\/span>/);
     expect(l).toMatch(/<span style="grid-area:1\/1">Start a link<\/span><span aria-hidden="true" style="grid-area:1\/1;visibility:hidden">New handoff<\/span>/);
   });
-  it("…and above 1440px both tabs line the header up with the same frame (Links was left at 24px)", async () => {
+  it("the header sits at <main>'s own edges on every screen — no per-screen frame (owner, 2026-10-18)", async () => {
     const css = (await import("../web/src/trov.css?raw")).default as string;
-    const rule = css.split("\n").find((l) => l.includes('[data-screen="handoffs"]') && l.includes("--hdr-frame")) ?? "";
-    expect(rule).toContain('[data-screen="links"]');
-    expect(css).toMatch(/\[data-screen="link"\][^{]*\{ --hdr-frame:1120px;/); // a link's page: DETAIL_SHELL's 1120px
+    expect(css).not.toMatch(/--hdr-(frame|pad|pl|pr)/);
   });
 });

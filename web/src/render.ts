@@ -1201,7 +1201,7 @@ function header(s: AppState): string {
   const ask = s.screen === "ask" ? askHeader(s) : null;
   const askControls = s.screen === "ask" ? phoneHeaderControls(s) : cmdjHeaderButton(s);
 
-  return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
+  return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       ${menuBtn}${ask ? `${ask.lead}${ask.title}` : art ? art.title : title}
       ${ask ? ask.crumb : art ? art.crumb : crumb}

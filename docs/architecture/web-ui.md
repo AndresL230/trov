@@ -861,12 +861,9 @@ frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120
   left under its toolbar (the owner, 2026-10-17); the Prompt Library's grid adds a card a row past a 2200px window
   (`auto-fill`, 360px minimum); Repo › Usage's app cards and the Overview's week figures already `auto-fit` (the week
   figures go to ONE row on a panel ≥1200px, so none is left alone on a second row).
-- **The title row lines up with the frame** above 1440px (the owner, 2026-10-17): the header still spans `<main>` (its
-  hairline does) but its padding is `var(--hdr-pl, 24px)` / `var(--hdr-pr, 24px)`, and `trov.css` gives each screen
-  with ONE centred frame its `--hdr-frame` (the frame's max-width) and `--hdr-pad` (the frame's side padding); the
-  frame centres in `<main>` minus the scroller's reserved scrollbar (`--sb-gutter`, 12px — with overlay scrollbars it
-  is 0 and the title sits 6px off). Screens without one centred frame (Docs, Review, the Guide, Ask, Artifacts) keep
-  24px. A NEW screen with a centred frame adds its line there, or its title row floats at 24px on a big screen.
+- **The header sits at `<main>`'s own edges** (the owner, 2026-10-18, replacing the 2026-10-17 rule that lined it up
+  with each page's frame above 1440px): its title on the left and its actions on the right, 24px in, on every screen
+  and at every window width, whatever the page's content width. No screen sets a header frame.
 - A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
   legal) keep their 1120px marketing column.
 

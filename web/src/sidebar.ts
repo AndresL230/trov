@@ -30,9 +30,9 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { library: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
+export type NavKey = "home" | "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "maintenance" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
-  mywork: "mywork", ask: "ask", feed: "feed", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
+  home: "home", mywork: "mywork", ask: "ask", feed: "feed", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
   review: "review", maintenance: "maintenance", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
@@ -78,24 +78,26 @@ export interface SidebarProps {
 }
 
 const ICON = (paths: string): string =>
-  `<svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${paths}</svg>`;
+  `<svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
 const ICONS: Record<NavKey | "search" | "collapse", string> = {
-  mywork: ICON(`<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`),
+  // The house is Home (the design `Trov Overview v2`); My Work, now a view of its own, is a briefcase.
+  home: ICON(`<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"></path>`),
+  mywork: ICON(`<rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M3 12.5h18"></path>`),
   // A constellation: Ask Trov (the design's `askGraph`; ask-icons.ts holds the same path).
   ask: ICON(`<circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path>`),
   tickets: ICON(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`),
   roadmap: ICON(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`),
-  handoffs: ICON(`<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`),
-  prompts: ICON(`<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`),
+  handoffs: ICON(`<path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path>`),
+  prompts: ICON(`<path d="M16 18l6-6-6-6"></path><path d="M8 6l-6 6 6 6"></path>`),
   repo: ICON(`<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`),
   feed: ICON(`<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`),
-  library: ICON(`<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`),
-  artifacts: ICON(`<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`),
-  review: ICON(`<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`),
+  library: ICON(`<path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path>`),
+  artifacts: ICON(`<path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path>`),
+  review: ICON(`<rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="m9 12 2 2 4-4"></path>`),
   // An inbox tray: the Unplaced queue (the key is still `maintenance`).
   maintenance: ICON(`<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`),
-  guide: ICON(`<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`),
+  guide: ICON(`<circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.4-2.5 2.4"></path><circle cx="12" cy="16.6" r=".4" fill="currentColor"></circle>`),
   // A sparkle: what's new.
   releases: ICON(`<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`),
   // A globe: the whole platform, every organization.
@@ -179,6 +181,7 @@ export function sidebarView(p: SidebarProps): string {
         </div>
       </div>
       ${section("Workspace", true)}
+      ${item("home", "goHome", "Home")}
       ${item("mywork", "goMyWork", "My Work")}
       ${item("ask", "goAsk", "Trov")}
       ${item("tickets", "goTickets", "Tickets", c.tickets)}
