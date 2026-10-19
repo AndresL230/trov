@@ -104,6 +104,40 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Home (the design `Trov Overview v2`), Unplaced folded into Review, and the sidebar's new icons and grouping: one PR.
+  {
+    version: "0.13",
+    date: "2026-10-18",
+    title: "Home: where the team stands, at a glance",
+    headline: "A new Home shows what needs you, your repositories, sprints and tickets, the team's week and what everyone is on, with one bar to search or ask.",
+    highlights: [
+      "Home opens on what needs you: a failed deploy, red checks, Review, handoffs left for you, an overdue sprint, tickets nobody picked up.",
+      "One bar searches tickets, docs, decisions and people, or asks Trov and shows the answer right under it, with its sources.",
+      "See the week at a glance: tickets done, handoffs claimed, docs promoted and sessions recorded, against the week before.",
+      "Unplaced is part of Review now: one switch moves between what to review and what an agent couldn't place.",
+    ],
+    headsUp: [
+      "Unplaced moved into Review, and the sidebar has new icons with Review under Knowledge. My Work is still there, beside Home.",
+      "Docs promoted starts counting from this release, so it reads \u201c\u2014\u201d until a full week has been counted.",
+    ],
+    ops: [
+      "Apply migration `0077_home` (it times doc promotions from now on; merging to main applies it). Its header has the rollback.",
+    ],
+    patches: {
+      added: [
+        "Home: what needs you, your repositories, sprints and tickets, the team's activity and what everyone is on, refreshed while it is open (#201)",
+        "Home's bar searches as you type, or asks Trov and shows the answer under it with its sources, Wrong? and Continue in Trov (#201)",
+      ],
+      changed: [
+        "Unplaced is part of Review: a switch at the top of Review moves between the two, and Review's sidebar count includes Unplaced (#201)",
+        "The sidebar has new icons, Home first, and Review under Knowledge; every screen's title and buttons sit at the window's edges (#201)",
+        "What's new and the Guide share one page width (#201)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [201],
+  },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower
   // artifact panel in Ask, the purple dark accent and the big-monitor layout: one deploy, one version. #198 (the site's copy) followed it.
@@ -143,7 +177,6 @@ export const RELEASES: Release[] = [
       changed: [
         "Ask Trov: an artifact, or a file attached to a question, opens in a narrower side panel; a width you drag to is kept (#195)",
         "Roadmap: a Now / Next / Later box, accepted suggestions show at once; Unplaced restyled and agents stop landing there; Ask holds still (#200)",
-        "Unplaced is part of Review: a switch at the top of Review moves between the two, and Review's sidebar count includes Unplaced (#N)",
         "Dark mode uses the same purple accent as light mode, lifted to read on dark, in place of the green; the logo, tab icon and site banners follow (#195)",
         "On a big monitor, lists, the board, My Work, the Repo dashboard and Review use the wider window; laptops look the same (#195)",
         "On a 4K monitor, Trov scales itself up past a 3000px-wide window, to 1.3x at 3840; menus, tooltips, dragged cards and dialogs stay in place (#195)",
@@ -152,7 +185,8 @@ export const RELEASES: Release[] = [
       fixed: [
         "Sync GitHub: the menu opens again when a past sync's failure has no recorded cause; that part reads as not recorded (#195)",
         "Prompt Library: after you copy a slug from the keyboard, focus stays on the copy button (#195)",
-        "Tickets board: a dragged card stays under the pointer, and lands where the slot showed instead of at the top (#195)",
+        "Tickets board: a dropped card lands where the slot showed, in its own column or another, instead of at the top (#195)",
+        "Tickets board: a card you drag stays under the pointer instead of jumping below the window (#195)",
         "Ask: if you're turned from Can continue to Can read, a change waiting for you says you can only read now (#195)",
         "Ask on a phone: Delete in the threads list closes the list first, so its confirmation is not hidden under it (#195)",
         "Library: a page's sub-pages fold open and shut, a dropped page lands in place, and rows highlight from their title (#199)",

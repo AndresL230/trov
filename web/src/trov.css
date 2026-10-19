@@ -5723,7 +5723,8 @@ button.hm-status:disabled { cursor:default; }
 .hm-btn-sm { height:24px; padding:0 9px; font-size:11.5px; }
 
 .hm-bar-wrap { position:relative; z-index:30; margin-top:26px; }
-.hm-bar-ring { padding:3px; border:1px solid var(--border); border-radius:15px; background:var(--hover); transition:background-color .2s ease, border-color .2s ease; }
+/* The ring sits OUTSIDE the column (-4px), so the bar itself lines up with the lists and cards under it. */
+.hm-bar-ring { margin:0 -4px; padding:3px; border:1px solid var(--border); border-radius:15px; background:var(--hover); transition:background-color .2s ease, border-color .2s ease; }
 .hm-bar-ring.is-focused { background:var(--accent-soft); border-color:transparent; }
 .hm-bar { display:flex; align-items:center; gap:10px; height:44px; padding:0 6px 0 13px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--shadow, 0 1px 2px rgba(20,20,30,.05)); cursor:text; transition:border-color .15s ease; }
 /* Home's bar draws the field's focus edge itself (its input is excluded from the field-ring rule). */
@@ -5756,12 +5757,16 @@ button.hm-status:disabled { cursor:default; }
 
 .hm-cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap:18px 26px; margin-top:34px; }
 .hm-col, .hm-latest, .hm-team { min-width:0; }
-.hm-sec-h { display:flex; align-items:center; justify-content:space-between; gap:10px; height:26px; padding:0 10px; }
+.hm-sec-h { display:flex; align-items:center; justify-content:space-between; gap:10px; height:26px; }
+.hm-sec-t { padding:0; }
 .hm-sec-t { display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:500; color:var(--fg-55); transition:color .12s ease; }
 .hm-sec-t:hover { color:var(--fg); }
 .hm-sec-sub { font-size:11.5px; color:var(--fg-40); }
 .hm-count { display:inline-grid; place-items:center; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:var(--hover); box-shadow:inset 0 0 0 1px var(--border); font-size:10.5px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
-.hm-row { display:flex; align-items:center; gap:10px; width:100%; height:38px; padding:0 10px; border-bottom:1px solid var(--border); text-align:left; color:var(--fg); transition:background .12s ease; }
+/* A row's content sits on the column's edge (with the titles, the cards and the bar); its hover bleeds 10px past it on
+   each side, and its hairline (::after) stays on the column. */
+.hm-row { position:relative; display:flex; align-items:center; gap:10px; width:calc(100% + 20px); height:38px; margin:0 -10px; padding:0 10px; text-align:left; color:var(--fg); transition:background .12s ease; }
+.hm-row::after { content:""; position:absolute; left:10px; right:10px; bottom:0; height:1px; background:var(--border); pointer-events:none; }
 button.hm-row:hover { background:var(--hover); border-radius:6px; }
 .hm-ic { flex:none; color:var(--fg-55); }
 .hm-chev { flex:none; color:var(--fg-40); }
@@ -5771,7 +5776,7 @@ button.hm-row:hover { background:var(--hover); border-radius:6px; }
 .hm-row-post { color:var(--fg-40); margin-left:7px; font-size:12px; }
 .hm-row-trail { flex:none; font-size:11.5px; color:var(--fg-40); white-space:nowrap; }
 .hm-row-sk { gap:10px; }
-.hm-ghost { display:flex; flex-direction:column; align-items:flex-start; gap:9px; padding:10px 10px 12px; border-top:1px solid var(--border); }
+.hm-ghost { display:flex; flex-direction:column; align-items:flex-start; gap:9px; padding:10px 0 12px; border-top:1px solid var(--border); }
 .hm-ghost p { margin:0; font-size:12.5px; line-height:1.55; color:var(--fg-55); text-wrap:pretty; }
 .hm-ghost-row { flex-direction:row; align-items:center; justify-content:space-between; border-top:none; font-size:12.5px; color:var(--fg-55); }
 .hm-trov { flex:none; width:16px; height:16px; border-radius:6px; background:var(--accent-soft); display:inline-flex; align-items:center; justify-content:center; }
