@@ -70,7 +70,7 @@ import { SPACE_SLUG_RE } from "@shared/docs-core";
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
-  "mywork", "feed", "library", "review",
+  "home", "mywork", "feed", "library", "review",
   "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports", "relay",
 ];
 

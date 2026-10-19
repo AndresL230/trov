@@ -27,6 +27,8 @@ import {
   myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, libraryTiles, handoffsForMe, briefTile,
   type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
 } from "./mywork";
+import { homePage } from "./home";
+import { homeProps, initialHomeUi, type HomeUi } from "./home-view";
 import type { TagListDTO, TagPageDTO } from "@shared/tags-core";
 import { tagPageView, itemTagsRow, itemTagDropdown, initialTagsUi, type TagsUi } from "./tags";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
@@ -117,6 +119,8 @@ import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } f
 export type DocSpace = string;
 
 export type Screen =
+  // Home (the design `Trov Overview v2`): the org's front page — web/src/home.ts, composed by home-view.ts.
+  | "home"
   | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide"
   // One tag's page (`#tags/<name>`): everything that carries it. A child of Org settings › Tags.
   | "tag"
@@ -203,6 +207,8 @@ export interface AppState {
   /** The payment page (`/billing/checkout`, embedded checkout): set at boot from the URL, else null. */
   billingCheckout: BillingCheckoutUi | null;
   mywork: Loadable<DashboardData | null>;
+  /** Home's reads and its search-or-ask bar (home-view.ts). */
+  home: HomeUi;
   /** My Work › Repo tile: which view is showing. Session-only. */
   mwRepoTab: MwRepoTab;
   /** My Work list tiles the person expanded past MW_ROWS. Session-only. */
@@ -615,6 +621,7 @@ export function initialState(): AppState {
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
+    home: initialHomeUi(),
     mwRepoTab: "prs",
     mwExpanded: {},
     mwSessions: { status: "idle", data: [] },
@@ -1084,7 +1091,7 @@ function headerCrumb(s: AppState): string {
 
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
-    mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
+    home: "Home", mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
     maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
     site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
@@ -3044,6 +3051,7 @@ function personCardFor(s: AppState, handle: string): string {
 // ── root ─────────────────────────────────────────────────────────────────────
 function screenBody(s: AppState): string {
   switch (s.screen) {
+    case "home": return homePage(homeProps(s, typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform ?? ""), ""));
     case "mywork": return myWorkView(s);
     case "ask": return askScreenView(s);
     case "feed": return feedView(s);
@@ -3179,6 +3187,8 @@ function appView(s: AppState): string {
     // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
     // the conversation its scroll, and nothing that already entered replays its entrance).
     : s.screen === "ask" ? "ask"
+    // Home: its bar is a field (typing patches the dropdown, never rebuilds the page or replays its entrance).
+    : s.screen === "home" ? "home"
     // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
     // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
     // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).

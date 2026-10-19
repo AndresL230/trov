@@ -22,7 +22,7 @@ import {
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getHome, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr, approveImport, rejectImport,
@@ -88,7 +88,8 @@ import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
 import { twinSelector } from "./focus-twin";
-import { createQuickSearch, type QuickPick } from "./quicksearch";
+import { createQuickSearch, type QuickPick, type QuickRow } from "./quicksearch";
+import { homeDropRows, askAvailable as homeAskAvailable } from "./home-view";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
 import type { LazyChunk } from "./lazy-chunk";
@@ -993,6 +994,7 @@ function startScreenLoads(screen: Screen): void {
     case "newdoc": ndCtl.start(liveSpaces(state).some((x) => x.slug === state.nd.space) ? state.nd.space : defaultSpaceSlug(), null); break;
     case "tag": if (state.tagName) tagsCtl.open(state.tagName); else rerender(); break;
     case "search": loadSearchIfNeeded(); break;
+    case "home": loadHomeIfNeeded(); break;
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
@@ -1458,6 +1460,64 @@ function loadMwDocs(): void {
       rerenderSoon();
     });
 }
+
+// ── Home (home.ts / home-view.ts) ────────────────────────────────────────────
+// Home reads its own two (`GET /home`, the newest Feed entries) and the slices My Work already reads — each only when
+// idle, so a screen already visited costs nothing.
+function loadHomeData(): void {
+  state.home.data = { status: "loading", data: state.home.data.data };
+  getHome()
+    .then((d) => { state.home.data = { status: "ok", data: d }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.home.data = { status: "error", data: state.home.data.data, error: String(e) };
+      rerenderSoon();
+    });
+}
+function loadHomeFeed(): void {
+  state.home.feed = { status: "loading", data: state.home.feed.data };
+  getFeed({ limit: 5 })
+    .then((rows) => { state.home.feed = { status: "ok", data: rows }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.home.feed = { status: "error", data: state.home.feed.data, error: String(e) };
+      rerenderSoon();
+    });
+}
+function loadHomeIfNeeded(): void {
+  if (state.home.data.status === "idle") loadHomeData();
+  if (state.home.feed.status === "idle") loadHomeFeed();
+  if (state.mywork.status === "idle") loadMyWork();
+  loadProposalsIfNeeded(); loadDraftAdrsIfNeeded();
+  loadSprintsIfNeeded();
+  if (state.handoffs.status === "idle") loadHandoffs();
+  if (state.repo.status === "idle") loadRepo();
+  if (state.relayAsk.status === "idle") loadRelayAsk();
+  rerender();
+}
+/** The bar's dropdown rows, in keyboard order (homePick runs one). */
+let homeFlat: QuickRow[] = [];
+let homeSearchT: ReturnType<typeof setTimeout> | undefined;
+let homeAbort: AbortController | null = null;
+function homeRows(): QuickRow[] { homeFlat = homeDropRows(state).flatMap((g) => g.rows); return homeFlat; }
+/** Search as the person types: 120ms after a keystroke, the in-flight one aborted (quick search's own pace). */
+function homeSearch(): void {
+  clearTimeout(homeSearchT);
+  homeAbort?.abort();
+  const q = state.home.q.trim();
+  if (state.home.mode !== "search" || q.length < 2) { state.home.results = null; return; }
+  homeSearchT = setTimeout(() => {
+    const ac = new AbortController(); homeAbort = ac;
+    quickSearch(q, ac.signal, 6)
+      .then((r) => { if (state.home.q.trim() !== q) return; state.home.results = r; state.home.active = 0; rerender(); })
+      .catch(() => { /* aborted or failed: the dropdown keeps what it had */ });
+  }, 120);
+}
+const homeAskOn = (): boolean => homeAskAvailable(state);
+function homeFocusInput(): void {
+  requestAnimationFrame(() => (mount.querySelector('[data-field="homeQ"]') as HTMLInputElement | null)?.focus());
+}
+
 /** My Work reads its own DTO plus the slices its tiles and rail are built on —
  *  each loaded only when idle, so a screen already visited costs nothing. */
 function loadMyWorkIfNeeded(): void {
@@ -1661,6 +1721,10 @@ function loadRelay(): void {
   loadLinks();
   loadGrants();
   loadMcpTokens();
+  loadRelayAsk();
+}
+/** Ask's on/off for the org (`GET /ask/state`, slimmed): Relay's connections and Home's bar read it. */
+function loadRelayAsk(): void {
   if (!state.orgSlug) return;
   state.relayAsk = { status: "loading", data: state.relayAsk.data };
   getAskState(state.orgSlug)
@@ -3033,6 +3097,47 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
 
     // primary navigation
+    case "goHome":
+      state.screen = "home"; state.home.headIdx++; state.home.attnOpen = false; loadHomeIfNeeded(); return;
+    case "homeAttn": state.home.attnOpen = !state.home.attnOpen; state.home.focused = false; break;
+    case "homeAttnClose": state.home.attnOpen = false; break;
+    case "homeFocus":
+      if (!state.home.focused) { state.home.focused = true; state.home.attnOpen = false; state.home.active = 0; rerender(); }
+      homeFocusInput(); return;
+    case "homeBlur": state.home.focused = false; break;
+    case "homeQ":
+      state.home.q = value ?? ""; state.home.focused = true; state.home.active = 0;
+      homeSearch(); break;
+    case "homeClear": state.home.q = ""; state.home.results = null; state.home.active = 0; rerender(); homeFocusInput(); return;
+    case "homeMode":
+      if (arg !== "search" && arg !== "ask") return;
+      state.home.mode = arg; state.home.focused = true; state.home.active = 0; homeSearch(); rerender(); homeFocusInput(); return;
+    case "homeRange":
+      if (arg !== "7" && arg !== "30" && arg !== "90") return;
+      state.home.range = arg; pendingFlash = ".hm-cards"; break;
+    case "homeRetry": loadHomeData(); return;
+    case "homePick": {
+      const row = homeRows()[Number(arg)];
+      if (!row) return;
+      state.home.focused = false; state.home.q = ""; state.home.results = null;
+      quickPick(row.pick); return;
+    }
+    // The bar's Ask: for now the question opens Ask Trov, sent (the inline answer replaces this).
+    case "homeAsk": case "homeSubmit": {
+      const q = (arg ?? state.home.q).trim();
+      if (!q) { homeFocusInput(); return; }
+      state.home.focused = false; state.home.q = "";
+      dispatch("goAsk", null, null);
+      setTimeout(() => dispatch("askCvSend", q, null), 0);
+      return;
+    }
+    case "goRepoFor": if (!arg) return; state.repoSlug = arg; state.repoApp = null; state.screen = "repo"; state.repoTab = "overview"; loadRepo(); return;
+    case "goRepoApp": {
+      const [repo, app] = (arg ?? "").split("\n");
+      if (!repo || !app) return;
+      state.repoSlug = repo; state.repoApp = app; state.screen = "repo"; state.repoTab = "overview"; loadRepo(); return;
+    }
+    case "openReviewItem": if (!arg) return; state.reviewSel = arg; dispatch("goReview", null, null); return;
     case "goMyWork":
       // Out of the guided setup: My Work is already what stands behind the card (read while the person
       // was in the setup), so the card simply goes — a morph, and no page entrance replayed over a
@@ -5337,6 +5442,29 @@ mount.addEventListener("input", (e) => {
     // The caret rides along: "ticketComment" needs it to decide whether the
     // cursor is inside an @mention token. Every other case ignores it.
     dispatch(el.dataset.act, el.dataset.arg ?? null, el.value, el.selectionStart);
+  }
+});
+
+// Home's bar: ↑ ↓ move through the dropdown, ↵ opens, Tab flips Search / Ask Trov, Esc closes.
+mount.addEventListener("keydown", (e) => {
+  const el = e.target as HTMLElement | null;
+  if (!el?.closest?.('[data-field="homeQ"]') || state.screen !== "home") return;
+  const n = homeRows().length;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (!n) return;
+    state.home.focused = true;
+    state.home.active = (Math.min(state.home.active, n - 1) + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+    rerender();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (state.home.mode === "ask" && state.home.q.trim()) { dispatch("homeSubmit", null, null); return; }
+    if (n) dispatch("homePick", String(Math.min(state.home.active, n - 1)), null);
+  } else if (e.key === "Escape") {
+    state.home.focused = false; (el as HTMLInputElement).blur(); rerender();
+  } else if (e.key === "Tab" && !e.shiftKey && homeAskOn()) {
+    e.preventDefault();
+    dispatch("homeMode", state.home.mode === "ask" ? "search" : "ask", null);
   }
 });
 
