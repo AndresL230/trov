@@ -3,7 +3,10 @@
  * banner it carries through the page (the first-run card's, one definition in trov.css).
  */
 import { describe, it, expect } from "vitest";
-import { landingView, NAV_ICON } from "../web/src/landing";
+import { landingView, NAV_ICON, HOME_ICON_COPY, HERO_QUESTION, HERO_ANSWER } from "../web/src/landing";
+import { HOME_ICON } from "../web/src/home";
+import homeSrc from "../web/src/home.ts?raw";
+import homeViewSrc from "../web/src/home-view.ts?raw";
 import sidebarSrc from "../web/src/sidebar.ts?raw";
 import { STARTER_SPACES } from "../shared/docs-core";
 import { initialState, render } from "../web/src/render";
@@ -285,3 +288,62 @@ describe("landing — the hero's app is today's app", () => {
     }
   });
 });
+
+describe("landing — the hero is Home, the app's front page, acting out one story on a loop", () => {
+  const html = out();
+  const hero = html.slice(html.indexOf('class="site-hero-stage"'), html.indexOf("</header>"));
+  const loop = rules.slice(rules.indexOf("@property --hn"), rules.indexOf("@media (max-width:900px) {", rules.indexOf("@property --hn")));
+
+  it("draws Home at #home with Home lit in the sidebar, in home.ts's own classes and words", () => {
+    expect(hero).toContain(">trov.dev/acme/#home</span>");
+    expect(hero).not.toContain("#review");
+    expect(hero).toMatch(/background:var\(--accent-soft\);color:var\(--accent\)"><svg[^>]*>[^]*?<\/svg>Home<\/div>/);
+    for (const cls of ["hm-page", "hm-head", "hm-h", "hm-statusrow", "hm-status", "hm-attn", "hm-attn-row", "hm-bar-wrap", "hm-bar-ring", "hm-bar", "hm-ans", "hm-ans-foot", "hm-cols", "hm-col", "hm-sec-h", "hm-row", "hm-act", "hm-cards", "hm-card", "hm-card-bars", "hm-bar-b", "hm-lower", "hm-latest", "hm-team"]) {
+      expect(hero, cls).toContain(`class="${cls}`);
+      expect(homeSrc, cls).toContain(cls);
+    }
+    // the product's own words: the status line, Needs attention, the bar, the answer's byline, the lists, Activity
+    for (const w of ["Needs attention", "waiting in Review", "Open Review", "Open sprint", "overdue", "Search tickets, docs, decisions and people", "Ask Trov about your organization", "Reading your organization…", "Written by Trov just now", "Continue in Trov", "Repositories", "Roadmap", "For you", "Tickets done", "Handoffs claimed", "Docs promoted", "Sessions recorded", "vs previous", "Latest", "Team"]) {
+      expect(hero, w).toContain(w);
+      expect(homeSrc + homeViewSrc, w).toContain(w);
+    }
+    // the fictional team only; the mock is inert
+    expect(hero).toContain("@leo");
+    expect(hero).not.toMatch(/<button|data-act=|<a /);
+    expect(hero).toContain('class="site-hero-win" style="display:flex;height:600px;overflow:hidden" aria-hidden="true"');
+  });
+
+  it("its icons are home.ts's, copied (that module pulls the answer's Markdown into the landing's bundle)", () => {
+    for (const [k, d] of Object.entries(HOME_ICON_COPY)) expect(d, k).toBe(HOME_ICON[k as keyof typeof HOME_ICON]);
+  });
+
+  it("loops on one clock, its question typed a character a step and its answer streamed a word at a time", () => {
+    expect(rules).toContain(".site-hero-mock { --hl:14s; --hs:700ms; }");
+    expect(loop).toContain("animation-duration:var(--hl); animation-timing-function:linear; animation-delay:calc(var(--hs) + var(--hd, 0ms)); animation-iteration-count:infinite;");
+    expect(loop).toContain(`steps(${HERO_QUESTION.length}, end)`);
+    expect(hero).toContain(`--to:${HERO_ANSWER.split(" ").length};--hw:${HERO_ANSWER.split(" ").length}`);
+    // every step named in the markup has its keyframes and its line in the loop
+    const steps = new Set([...hero.matchAll(/\bhl-([a-z-]+)/g)].map((m) => m[1]).filter((n) => n !== "w"));
+    expect(steps.size).toBeGreaterThan(20);
+    for (const n of steps) {
+      expect(loop, n).toContain(`@keyframes hl-${n} {`);
+      expect(loop, n).toContain(`.hl-${n} { animation-name:hl-${n}; }`);
+    }
+    // a stagger never runs past the faded window at the loop's end (resets land between 13.65s and 14s)
+    for (const m of hero.matchAll(/--hd:(\d+)ms/g)) expect(Number(m[1])).toBeLessThanOrEqual(240);
+  });
+
+  it("rests, without motion, on the story's settled end, and pauses while it is out of view", () => {
+    // reduced motion stops every animation on the page (the rule above); what is left is each element's own style
+    expect(loop).toContain(".hl-cnt { --hn:2; counter-reset:hn var(--hn); }");
+    expect(loop).toContain(":is(.hl-ask-in, .hl-ph-ask, .hl-type, .hl-ask-x, .hl-go, .hl-ans, .hl-wait, .hl-attn, .hl-badge) { opacity:0; }");
+    expect(loop).toContain('.site-hero-mock[data-hold] [class*="hl-"] { animation-play-state:paused !important; }');
+    expect(motionSrc).toContain('toggleAttribute("data-hold", !e.isIntersecting)');
+    // only transform-family properties, opacity, colours, clip-path and the counts move; no layout property but the
+    // popover's own row (laid over the page)
+    for (const m of loop.matchAll(/@keyframes (hl-[a-z-]+) \{([^@]*)/g)) {
+      if (m[1] !== "hl-leave") expect(m[2], m[1]).not.toMatch(/(^|[ ;{])(width|height|max-height|margin|padding|top|left):/);
+    }
+  });
+});
+

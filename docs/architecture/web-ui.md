@@ -227,13 +227,43 @@ is the mark, large, faint and tilted behind the text. It appears exactly twice, 
 
 | Where | How |
 |---|---|
-| Hero (`.site-hero-band`) | the banner as an inset panel; the Review mockup (`.site-hero-mock`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
+| Hero (`.site-hero-band`) | the banner as an inset panel; the Home mockup (`.site-hero-mock`, the app's front page at `#home`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
 | "Agents propose, people decide" (`.site-split`) | the card on its side: banner left, body right; stacked under 860px |
 
 The hero mockup's sidebar is the app's (`sidebar.ts` `sidebarView`): the same sections, entries, order, labels and
 icons, with the Library's starter spaces under it (A to Z). Its icon paths are copied into `landing.ts` `NAV_ICON`
 (sidebar.ts pulls the Library screen in), and `test/render.landing.test.ts` reads sidebar.ts to hold the two
-together: a sidebar change fails it until the hero follows. The window is 600px tall so the whole rail fits.
+together: a sidebar change fails it until the hero follows. The window is 600px tall so the whole rail fits; Home is lit.
+
+**The hero's Home, looping** (`landing.ts` `heroHome`, trov.css "the hero's Home, looping"). The window draws Home
+(`home.ts`) with Home's own `.hm-*` classes — inert spans and divs, no button, `aria-hidden` — a little denser than the
+app so the whole page fits (`.site-hm` overrides: 24px headline, 32px rows, Activity's four cards on one row); Latest and
+Team are cut by the window's foot, as a page that scrolls on. Its row icons are `home.ts` `HOME_ICON`'s paths, copied
+(`HOME_ICON_COPY`; home.ts would pull Ask's Markdown into the landing's bundle) and held to it by the test. It acts out
+ONE story on a 14s loop (`--hl`), starting `--hs` (700ms) after the mockup is revealed:
+
+| At | What happens |
+|---|---|
+| 0s | the page rises in; the status line counts up to "3 things need you" (0.3 to 1s) |
+| 1s | Activity fills: the bars grow, the four figures count up, the deltas follow (1.9s) |
+| 2.9s | the bar is focused and switched to Ask Trov; "What shipped this week?" types in (3.5 to 4.6s) and is sent (4.8s) |
+| 4.95s | Trov's answer opens under the bar: "Reading your organization…", then its words stream in (5.6 to 7.6s), then the byline, three sources, Wrong? and Continue in Trov (7.7s); it is closed at 9.1s and the bar goes back to Search |
+| 9.8s | the status line opens Needs attention; Claim pulses and is pressed on @leo's handoff (10.7 to 11.1s), its row leaves, the count drops to 2 and Relay's badge goes (11.3s); it closes at 12.3s |
+| 13.3s | the page fades out; at 14s the story starts again |
+
+- **One clock.** Every step is a keyframe (`hl-*`) in percent of `--hl`; an element's `--hd` is a stagger of at most
+  240ms, so every reset lands while the page is faded out (13.65s to 14s). Counts are registered properties
+  (`@property --hn`, `--hv`: integers drawn by `counter()`; `--hw`, the answer's word count, which each word's `--i`
+  is compared to). Without `@property` they step instead of counting.
+- **The settled end is each element's own style**: Search, unfocused, nothing open, Activity filled, "2 things need
+  you", the handoff claimed and Relay's badge gone. Reduced motion (`.cnpy-site *` stops every animation), no script
+  and the prerendered page all show it; nothing moves.
+- **Nothing on the page moves.** The window's height is fixed, and every step either changes a box in place or is laid
+  over the page (the answer, Needs attention): no step animates a layout property but the popover's own leaving row.
+- **Out of view it holds.** `landing-motion.ts` observes the mockup and sets `data-hold` while it is off screen, which
+  pauses every `hl-*` animation at once, so the steps stay in time with each other.
+- **Phone** (the phone block): the window is as tall as what it holds; Repositories, Roadmap, Latest, Team, ⌘K and the
+  clear button are dropped; For you, then Activity two by two. Home's 10.5px parts are raised to 11px.
 
 The sign-in dialog (`.site-signin-card`) has NO banner: it opens over the hero, which is the banner, and a
 second slab in front of the first read as the same thing twice. It is a plain card — the mark, the title, the
@@ -309,8 +339,8 @@ through all eight (wrapping), with the position as text and dots.
 - **Phone:** the app's modal sheet at full height; Previous / Next are 44px, at the bottom edge.
 - **The dialog's mockups** (`landing-mocks.ts`) are drawn from the real screens, and that is their contract:
   a mock shows NOTHING the product does not have. The file's header names the renderer each one copies
-  (`docsView`, `feedView`, `boardCard` / `tableView`, `timelineView`, the My Work tiles, `handoffsView` /
-  `handoffDetail`, the artifact viewer); ticket and artifact statuses are imported from `shared/`, and
+  (the Library's doc page — `docTrail`, `docsPane`, `docPageView` and its rail —, `feedView`, `boardCard` /
+  `tableView`, `timelineView`, the My Work tiles, `handoffsView` / `handoffDetail`, the artifact viewer); ticket and artifact statuses are imported from `shared/`, and
   `test/render.site-feature.test.ts` asserts every other label still stands in the module that renders it —
   so renaming a label in the app fails the test until the mock follows. They are inert (`aria-hidden`, no
   button, link or `data-act`), use theme tokens only (dark shows the dark app), and are never zoomed or
@@ -1077,8 +1107,8 @@ goes in that block; a template gets a class hook, never a second copy of its mar
   telling pane in one column (`site-hide-sm` under 900px, `site-hide-ph` and `.fxm-wide` under 640px drop the
   rest), and **no text in it renders under 11px**: one rule in the block keys on the inline sizes
   (`[style*="font-size:9px"]`, the corners block's idiom) inside every mockup scope. A new mockup size under
-  11px needs its key there, and the test names the size that is missing. The hero's Review mockup becomes one
-  unified diff by CSS alone: `site-hero-twin` marks the left pane's lines that the right pane repeats.
+  11px needs its key there, and the test names the size that is missing. The hero's Home keeps its head, its bar,
+  For you and Activity (two by two), and raises Home's own 10.5px parts to 11px.
 - **Touch.** Hover lifts are off under `(hover:none)` and a press answers instead. A hover-only `title` is
   never the only label: in the menu the theme and GitHub rows are labelled.
 - **Checking it.** Phone widths are measured in a real phone-sized viewport (Playwright with `isMobile`, or an

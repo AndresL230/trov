@@ -156,9 +156,9 @@ describe("the signed-out site uses the app's marks — no pill anywhere", () => 
     expect(mocksSrc).not.toMatch(/export function pill\b/);
     expect(landingSrc).toMatch(/from "\.\/marks"/);
     expect(mocksSrc).toMatch(/from "\.\/marks"/);
-    // The site's hero, search, review, handoff and artifact states are the app's own marks.
+    // The site's search, Library, review, handoff and artifact states are the app's own marks.
     const html = page();
-    expect(html).toContain(LOW_CONFIDENCE(12));
+    expect(html).toContain(authorityMark("staged_pending", 11.5)); // the Library teaser's state line
     expect(html).toContain(authorityMark("staged_pending", 11));
     expect(html).toContain(handoffMark("claimed", 11));
     expect(html).toContain(artifactStatusMark("ratified", 10.5));

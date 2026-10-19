@@ -6,9 +6,11 @@
 // then changes the mock, and the test that pins them); the rest is copied from the renderer named
 // beside each mock, and must be changed with it:
 //
-//   docs ...... docs-pane.ts `docsPane` (the space's head row, PAGES, the nested rows, the active page) and
+//   docs ...... render.ts `docTrail` (the header's Library › space › page), docs-pane.ts `docsPane` (PAGES and the
+//               count, no head row; the nested rows, their guides and status shapes, the active page) and
 //               doc-page.ts `docPageView` (the pending banner — "You're reading the live version…" / Open in
-//               Review —, the breadcrumb, Live, History)
+//               Review —, the title, the state line with History and Archive page, the body, and the rail:
+//               Owner, Last edited by, Version, Tags with "+ Add tag", Linked from, On this page)
 //   feed ...... render.ts `feedView`: Filter, For reading / For agents, an entry's brief, agent
 //               mark and PR / commit / issue chips; the aside's This week and Waiting on review
 //   tickets ... tickets.ts `boardView` / `boardCard` and `tableView` / `groupHeader` / `tableRow`
@@ -32,7 +34,7 @@
 // rows a phone re-lays in "the site on a phone", where every size under 11px is also raised to 11px).
 
 import { TICKET_STATUSES, TICKET_STATUS_LABEL, type TicketStatus, type TicketPriority } from "@shared/tickets-core";
-import { agentMark, handoffMark, linkMark, markShape, ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
+import { agentMark, authorityMark, handoffMark, linkMark, markShape, tagMark, ticketStatusIcon, ticketStatusMark, priorityMark } from "./marks";
 import { stateTag as sprintStateMark, type TlState } from "./sprint-state";
 import { ARTIFACT_STATUSES } from "@shared/artifacts-core";
 
@@ -51,9 +53,9 @@ export function initials(text: string, size = 26, font = "10px"): string {
 export const AGENT_TAG = agentMark(11);
 const GH = `<svg width="11" height="11" viewBox="0 0 16 16" fill="currentColor" style="flex:none;color:var(--fg-40)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.19 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path></svg>`;
 const ARROW = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
-/** The Docs tree's disclosure chevron as `docTreeRow` (render.ts) draws it: a stroked chevron pointing right,
- *  turned 90° when the doc's outline is open, muted (`--fg-40`) unless its row is the open doc, which takes the
- *  accent. Static: a mock never moves. The page's Docs teaser (landing.ts) uses it too. */
+/** The page tree's disclosure chevron as docs-pane.ts draws it: a stroked chevron pointing right, turned 90° when the
+ *  page's children are open, muted (`--fg-40`) unless its row is the open page, which takes the accent. Static: a mock
+ *  never moves. */
 export const treeChev = (open: boolean, on = false) =>
   `<span style="flex:none;display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;color:var(--${on ? "accent" : "fg-40"})${open ? ";transform:rotate(90deg)" : ""}"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>`;
 const DOT = (c: string, size = 7) => `<span style="width:${size}px;height:${size}px;border-radius:2px;background:var(--${c});flex:none"></span>`;
@@ -74,35 +76,87 @@ function win(title: string, right: string, body: string, grow = true): string {
 }
 const SURF = "border:1px solid var(--border);background:var(--surface);border-radius:9px";
 
-// ── Docs: the space's page tree beside the doc page, with its pending banner ──
+// ── Library: a doc page — the space's page tree, the page with its pending banner, the page's rail ──
+/** The Library's doc page as the app draws it: the header's trail (render.ts `docTrail`: Library › the space › the page),
+ *  the PAGES pane (docs-pane.ts: no head row of its own, the page count, a row per page with its guide lines, chevron and
+ *  the status shape of a page that is not live), the article (doc-page.ts: the banner, the title, the state line with
+ *  History and Archive page, the body) and the rail (Owner, Last edited by, Version, Tags, Linked from, On this page).
+ *  The pane and the rail are the secondary panes a phone drops. The page's teaser on the landing (landing.ts) is drawn
+ *  from the same parts. */
+export const DOC_CRUMB = (size = 13) => `<span style="color:var(--fg-55)">Library</span><span style="color:var(--fg-40);margin:0 7px">›</span><span style="color:var(--fg-55)">Engineering</span><span style="color:var(--fg-40);margin:0 7px">›</span><span style="color:var(--fg);font-size:${size}px">Deploy process</span>`;
+/** The doc page's two buttons (`cnpy-dpg-btn`): History's clock and Archive page's box. */
+const CLOCK = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>`;
+const ARCHIVE = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5h17v4h-17z"></path><path d="M5 9v10h14V9"></path><path d="M10 13h4"></path></svg>`;
+const CHEV_R = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`;
+export const docBtn = (icon: string, label: string) =>
+  `<span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-weight:500;color:var(--fg-70);white-space:nowrap">${icon}${label}</span>`;
+export const DOC_BUTTONS = { history: docBtn(CLOCK, "History"), archive: docBtn(ARCHIVE, "Archive page") };
+/** The banner of a page with a change waiting in Review (doc-page.ts `banner`). */
+export const docBanner = (size = 12.5) => `<div class="fxm-staged" style="${SURF};display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;padding:10px 12px">
+    ${markShape("ring", "var(--amber)", 10)}
+    <span style="flex:1 1 220px;min-width:0;font-size:${size}px;line-height:1.45;color:var(--fg-70)">You're reading the <b style="font-weight:600;color:var(--fg)">live</b> version. A change to this page is waiting for review.</span>
+    <span style="margin-left:auto;display:inline-flex;align-items:center;gap:3px;font-size:${size}px;font-weight:500;color:var(--accent);white-space:nowrap">Open in Review${CHEV_R}</span>
+  </div>`;
+/** The state line: the page's mark ("Change pending review", marks.ts `authorityMark`) and who updated it. */
+export const docState = (size = 12.5) => `<span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:${size}px;color:var(--fg-55)">${authorityMark("staged_pending", size)}<span style="white-space:nowrap"><span style="color:var(--fg-40);margin-right:8px">·</span>Updated 2 days ago by Leo</span></span>`;
+/** A page row of the PAGES pane: indented 14px a level, a guide line per level above it, the chevron when it has
+ *  pages under it, the status shape of a page that is not live; the open page in the accent on its tint. */
+export const paneRow = (t: string, depth: number, o: { on?: boolean; open?: boolean; kids?: boolean; pending?: boolean } = {}, size = 12) => {
+  const pad = 6 + depth * 14;
+  const guides = Array.from({ length: depth }, (_, l) => `<span style="position:absolute;top:0;bottom:0;left:${6 + l * 14 + 8}px;width:1px;background:var(--border)"></span>`).join("");
+  return `<div style="position:relative;display:flex;align-items:center;gap:4px;height:26px;padding:0 6px 0 ${pad}px;font-size:${size}px;white-space:nowrap;${o.on ? "color:var(--accent);font-weight:500;background:var(--accent-soft);border-radius:5px" : depth === 0 ? "color:var(--fg-70);font-weight:500" : "color:var(--fg-55)"}">${guides}${o.kids ? treeChev(!!o.open, !!o.on) : `<span style="width:12px;flex:none"></span>`}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${t}</span>${o.pending ? markShape("ring", "var(--amber)", 8) : ""}</div>`;
+};
+/** The pane's head: "PAGES" and the space's page count (docs-pane.ts; the space's name is the sidebar's and the trail's). */
+export const paneHead = (n: number) => `<div style="display:flex;justify-content:space-between;padding:2px 6px 6px">${cap("Pages", "9.5px")}<span style="font-size:9.5px;color:var(--fg-40)">${n}</span></div>`;
+/** The Engineering space's tree, open at Deploy process: one row each (the teaser reveals them in turn). */
+export const paneRows = (size = 12): string[] => [
+  paneRow("Getting started", 0, { kids: true }, size),
+  paneRow("Deploy process", 0, { on: true, pending: true }, size),
+  paneRow("Architecture", 0, { kids: true, open: true }, size),
+  paneRow("Rate limiting on the public API", 1, {}, size),
+  paneRow("Webhook delivery", 1, {}, size),
+  paneRow("Runbooks", 0, { kids: true, open: true }, size),
+  paneRow("Rolling back a bad deploy", 1, {}, size),
+  paneRow("Paging and escalation", 1, {}, size),
+  paneRow("Decision records", 0, { kids: true }, size),
+];
+
 function docsMock(): string {
-  const row = (t: string, depth: number, o: { on?: boolean; open?: boolean; kids?: boolean; pending?: boolean } = {}) =>
-    `<div style="display:flex;align-items:center;gap:4px;padding:4px 6px 4px ${6 + depth * 12}px;font-size:11.5px;${o.on ? "color:var(--accent);font-weight:500;background:var(--accent-soft);border-radius:5px" : depth === 0 ? "color:var(--fg-70);font-weight:500" : "color:var(--fg-55)"}">${o.kids ? treeChev(!!o.open, !!o.on) : `<span style="width:12px;flex:none"></span>`}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>${o.pending ? markShape("ring", "var(--amber)", 7) : ""}</div>`;
-  const tree = `<div class="fxm-wide" style="width:176px;flex:none;border-right:1px solid var(--border);padding:6px 8px 12px;overflow:hidden">
-      <div style="display:flex;align-items:center;gap:7px;padding:4px 6px;font-size:12px;font-weight:600"><span style="width:14px;height:14px;border-radius:3px;background:var(--accent);flex:none"></span>Engineering</div>
-      <div style="display:flex;justify-content:space-between;padding:10px 6px 5px">${cap("Pages", "9px")}<span style="font-size:9px;color:var(--fg-40)">9</span></div>
-      ${row("Getting started", 0, { kids: true })}${row("Runbooks", 0, { kids: true, open: true })}${row("Deploy process", 1, { on: true, kids: true, open: true })}${row("Rolling back a bad deploy", 2)}${row("Paging and escalation", 1)}
-      ${row("Architecture", 0, { kids: true, open: true })}${row("Rate limiting on the public API", 1, { pending: true })}${row("Webhook delivery", 1)}${row("Decision records", 0, { kids: true })}
+  const pane = `<div class="fxm-wide" style="width:148px;flex:none;border-right:1px solid var(--border);padding:12px 8px;overflow:hidden">
+      ${paneHead(12)}${paneRows(11.5).join("")}
     </div>`;
-  const reader = `<div style="flex:1;min-width:0;padding:14px 18px 16px;overflow:hidden">
-      <div class="fxm-staged" style="${SURF};display:flex;align-items:center;gap:10px;padding:9px 12px">
-        ${markShape("ring", "var(--amber)", 10)}
-        <span style="flex:1;min-width:0;font-size:11.5px;line-height:1.45;color:var(--fg-70)">You're reading the <b style="font-weight:600;color:var(--fg)">live</b> version. A change to this page is waiting for review.</span>
-        <span style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:500;color:var(--accent);white-space:nowrap">Open in Review ${ARROW}</span>
+  const code = (t: string) => `<code style="font-family:var(--code);font-size:11.5px;padding:1px 5px;border-radius:5px;background:var(--hover);color:var(--fg)">${t}</code>`;
+  const h2 = (t: string, top = 16) => `<div style="margin-top:${top}px;font-size:15px;font-weight:600;letter-spacing:-0.01em">${t}</div>`;
+  const p = (html: string) => `<div style="margin-top:6px;font-size:13px;line-height:1.65;color:var(--fg-70)">${html}</div>`;
+  const li = (html: string) => `<li style="margin-top:3px">${html}</li>`;
+  const article = `<div style="flex:1;min-width:0;padding:16px 16px;overflow:hidden">
+      ${docBanner(12)}
+      <div style="margin-top:12px;font-size:24px;font-weight:650;letter-spacing:-0.022em;line-height:1.16">Deploy process</div>
+      <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--border)">
+        ${docState(12)}<span style="display:flex;gap:6px">${DOC_BUTTONS.history}${DOC_BUTTONS.archive}</span>
       </div>
-      <div style="margin-top:14px;font-size:11px;color:var(--fg-55)">Engineering <span style="color:var(--fg-40)">›</span> Runbooks <span style="color:var(--fg-40)">›</span> <span style="color:var(--fg)">Deploy process</span></div>
-      <div style="margin-top:6px;font-size:22px;font-weight:650;letter-spacing:-0.02em">Deploy process</div>
-      <div style="margin-top:8px;display:flex;align-items:center;gap:8px;padding-bottom:12px;border-bottom:1px solid var(--border)">
-        <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:var(--fg-70)">${markShape("dot", "var(--green)", 8)}Live</span><span style="font-size:11.5px;color:var(--fg-55)">· Updated 2 days ago by Leo</span>
-        <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px;white-space:nowrap"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 7.5V12l3 2"></path></svg>History</span>
-      </div>
-      <div style="margin-top:14px;font-size:14.5px;font-weight:600">Before you merge</div>
-      <div style="margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--fg-70)">Open a PR and get one review. CI runs typecheck and tests on every push; a red check blocks the merge. See <span style="color:var(--accent);text-decoration:underline;text-decoration-color:color-mix(in srgb,var(--accent) 34%,transparent)">Rolling back a bad deploy</span>.</div>
-      <div style="margin-top:14px;font-size:14.5px;font-weight:600">Migrations</div>
-      <div style="margin-top:6px;font-size:12.5px;line-height:1.7;color:var(--fg-70)">Merges to main deploy automatically. CI applies D1 migrations before the deploy step, so schema and code always land together.</div>
-      <div style="margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--hover);padding:9px 12px;font-family:var(--code);font-size:11px;line-height:1.7;color:var(--fg-70)">npm run db:migrate:remote<br>npm run deploy</div>
+      ${h2("Before you merge")}
+      ${p("Open a PR and get one review. CI runs typecheck and tests on every push; a red check blocks the merge.")}
+      <ul style="margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.6;color:var(--fg-70)">${li(`Run ${code("npm test")} before you push`)}${li("Link the ticket in the PR's description")}</ul>
+      ${h2("Migrations")}
+      ${p(`Merges to main deploy automatically. CI runs ${code("npm run db:migrate:remote")} before the deploy step, so schema and code land together.`)}
+      ${h2("Rolling back")}
+      ${p(`Redeploy the previous tag. Migrations only move forward; see <span style="color:var(--accent);text-decoration:underline;text-decoration-color:color-mix(in srgb, var(--accent) 34%, transparent);text-underline-offset:2px">Rolling back a bad deploy</span>.`)}
     </div>`;
-  return win("Library", hbtn("New page"), `<div style="display:flex;height:100%">${tree}${reader}</div>`);
+  const label = (t: string) => `<div style="font-size:11px;color:var(--fg-55)">${t}</div>`;
+  const head = (t: string, n = "") => `<div style="font-size:11.5px;font-weight:600;color:var(--fg)">${t}${n ? `<span style="margin-left:4px;font-size:10.5px;font-weight:400;color:var(--fg-40)">${n}</span>` : ""}</div>`;
+  const person = (who: string, name: string) => `<div style="display:flex;align-items:center;gap:7px;font-size:12px;white-space:nowrap">${initials(who, 18, "7.5px")}${name}</div>`;
+  const note = (t: string) => `<div style="font-size:11px;color:var(--fg-55)">${t}</div>`;
+  const field = (l: string, v: string, n = "") => `<div style="display:flex;flex-direction:column;gap:4px">${label(l)}${v}${n ? note(n) : ""}</div>`;
+  const group = (inner: string) => `<div style="display:flex;flex-direction:column;gap:10px">${inner}</div>`;
+  const toc = (t: string, on = false) => `<div style="position:relative;padding:3px 0 3px 10px;font-size:11.5px;line-height:1.4;${on ? "color:var(--accent);font-weight:500" : "color:var(--fg-55)"}">${on ? `<span style="position:absolute;left:0;top:3px;bottom:3px;width:2px;background:var(--accent)"></span>` : ""}${t}</div>`;
+  const rail = `<div class="fxm-wide" style="width:136px;flex:none;padding:16px 14px 16px 0;display:flex;flex-direction:column;gap:16px;overflow:hidden">
+      ${group(`${field("Owner", person("MC", "Maya Chen"))}${field("Last edited by", person("LP", "Leo Park"), "2 days ago")}${field("Version", `<div style="font-size:12px">Version 2 <span style="font-weight:500;color:var(--accent)">History</span></div>`, "Version 3 is waiting for review")}`)}
+      ${group(`${head("Tags")}<div style="display:flex;flex-direction:column;gap:6px">${tagMark({ name: "deploys", color: "fern" }, { size: 12, link: false })}${tagMark({ name: "ci", color: "sky" }, { size: 12, link: false })}</div><div style="font-size:12px;font-weight:500;color:var(--accent)">+ Add tag</div>`)}
+      ${group(`${head("Linked from", "1")}<div><div style="font-size:12px;color:var(--fg)">Rolling back a bad deploy</div><div style="font-size:11px;color:var(--fg-40)">Runbooks</div></div>`)}
+      ${group(`${head("On this page")}<div style="margin-top:-4px">${toc("Before you merge", true)}${toc("Migrations")}${toc("Rolling back")}</div>`)}
+    </div>`;
+  return win(DOC_CRUMB(), "", `<div style="display:flex;height:100%">${pane}${article}${rail}</div>`);
 }
 
 // ── Feed: entries with their brief and links, beside This week and Waiting on review ──

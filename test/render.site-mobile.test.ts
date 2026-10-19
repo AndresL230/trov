@@ -122,7 +122,7 @@ describe("the site's menu — what the bar drops under 900px", () => {
   });
 
   it("the CSS: hidden on a wide screen, a card under the button on a tablet, the app's sheet on a phone, still under reduced motion", () => {
-    expect(block).toContain(".site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb { display:none; }");
+    expect(block).toContain(".site-iconbtn.site-menubtn, .site-legal-tocb { display:none; }");
     expect(block).toContain("@media (min-width:901px) { .site-menu { display:none; } }");
     const tablet = media("(max-width:900px)");
     expect(tablet).toContain(".site-nav-x { display:none; }");
@@ -148,7 +148,7 @@ describe("the phone block — nothing in it reaches a wide screen", () => {
     const top = topLevel(block);
     expect(top.length).toBeGreaterThan(20);
     for (const [prelude, body] of top) {
-      if (prelude === ".site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb") { expect(body).toBe("display:none;"); continue; }
+      if (prelude === ".site-iconbtn.site-menubtn, .site-legal-tocb") { expect(body).toBe("display:none;"); continue; }
       expect(prelude, `unguarded rule in the phone block: ${prelude}`).toMatch(allowed);
     }
   });
@@ -163,24 +163,24 @@ describe("the hero on a phone", () => {
   const html = page();
   const phone = media("(max-width:640px)");
 
-  it("the Review mockup carries the hooks for ONE unified diff: the left pane's twin lines, both panes, a phone's own tabs", () => {
-    expect(html.match(/class="site-hero-twin"/g)).toHaveLength(5);
-    expect(html).toContain('class="site-hero-cur"');
-    expect(html).toContain('class="site-hero-new"');
-    expect(html.match(/class="site-hero-lines"/g)).toHaveLength(2);
-    expect(html).toMatch(/<span class="site-hero-tabs-ph" aria-hidden="true">/);
+  it("the Home mockup keeps its wide window and carries the hooks a phone re-lays it by", () => {
     expect(html).toContain('class="site-hero-win" style="display:flex;height:600px;overflow:hidden"'); // the wide screen's fixed window is untouched
+    expect(html).toContain('<div class="hm-page site-hm hl-page">');
+    // the three lists (For you is the last), Activity's four cards, and Latest beside Team
+    expect(html.match(/<div class="hm-col">/g)).toHaveLength(3);
+    expect(html.match(/<div class="hm-card">/g)).toHaveLength(4);
+    expect(html).toContain('<div class="hm-lower hl-rise"');
   });
 
-  it("the rules: a stacked headline block with 50px buttons, the window as tall as its content, removed line over added lines", () => {
+  it("the rules: a stacked headline block with 50px buttons; the window as tall as its content, For you and Activity two by two", () => {
     expect(phone).toContain(".site-hero-h { font-size:clamp(32px, 9.4 * var(--vw), 40px); line-height:1.07; }");
     expect(phone).toMatch(/\.site-hero-cta > \.site-btn \{[^}]*min-height:50px;/);
     expect(media("(max-width:480px)")).toContain(".site-hero-cta { grid-template-columns:minmax(0, 1fr); }");
     expect(phone).toContain(".site-hero-win { height:auto !important; }");
-    expect(phone).toContain(".site-hero-cur, .site-hero-new, .site-hero-lines { display:contents; }");
-    expect(phone).toContain(".site-hero-ph, .site-hero-twin { display:none; }");
-    expect(phone).toContain(".site-hero-cur .site-hl { order:2; }");
-    expect(phone).toContain(".site-hero-new .site-hl { order:3; }");
+    expect(phone).toContain(".site-hm .hm-col:not(:last-child), .site-hm .hm-lower, .site-hm .hm-kbd, .site-hm .hl-ask-x { display:none; }");
+    expect(phone).toContain(".site-hm .hm-cards { grid-template-columns:repeat(2, minmax(0, 1fr)); }");
+    // nothing Home says on a phone renders under 11px: its 10.5px parts are raised
+    expect(phone).toContain(".site-hm :is(.hm-card-x, .hm-count, .hm-kbd kbd) { font-size:11px; }");
     // The banner's art is placed for the narrow canvas, not left where the wide one put it.
     expect(phone).toMatch(/\.site-hero-band > \.site-banner-art \{ width:330px; right:-118px; top:auto; bottom:-64px;/);
     expect(phone).toMatch(/\.site-hero-band::after \{[^}]*mask-image:linear-gradient\(180deg, transparent 42%, #000 100%\); \}/);
