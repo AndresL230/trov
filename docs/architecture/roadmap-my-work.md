@@ -211,7 +211,9 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
 
 ## Home — the org's front page (`#home`; the design `Trov Overview v2`)
 
-Home is its own screen, first in the sidebar, beside My Work (which stays as it was; the owner, 2026-10-18). Markup in
+Home is its own screen, first in the sidebar, beside My Work (which stays as it was; the owner, 2026-10-18), and it is
+where the app opens: signing in, an empty or unknown hash (`hash.ts` falls back to it), leaving the guided setup
+("Open Trov" / "Skip setup" → `goHome`, Home standing behind the card while the setup runs) and leaving Platform. Markup in
 `web/src/home.ts` (pure), props in `web/src/home-view.ts` (`homeProps`), state `state.home` (`HomeUi`). ONE order,
 never reordered: the headline and the status line → the search-or-ask bar → Repositories · Roadmap · For you →
 Activity → Latest beside Team. One centred column, `--frame-home`; titles, row icons, the cards and the bar's own box

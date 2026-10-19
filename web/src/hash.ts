@@ -52,8 +52,8 @@
 //                       #welcome/team and #welcome/done its others (welcome.ts)
 //   #<screen>         → every other screen, named exactly as the Screen union
 //                       (`#site` is the landing page, reopened from inside the app)
-// Anything unrecognised falls back to My Work — the same rule the app has always
-// had for a junk hash.
+// Anything unrecognised falls back to Home (it was My Work until Home, 2026-10-18) — the same rule the app has
+// always had for a junk hash.
 
 import type { Screen } from "./render";
 import { isRepoScreenTab, type RepoScreenTab } from "@shared/repo";
@@ -198,7 +198,7 @@ function repoScope(query: string): Pick<Route, "repoSlug" | "repoApp"> {
 /** Parse a location hash (with or without the leading `#`) into a route. */
 export function parseHash(hash: string): Route {
   const raw = hash.replace(/^#/, "");
-  const none: Route = { screen: "mywork", ticketId: null, sprintId: null };
+  const none: Route = { screen: "home", ticketId: null, sprintId: null };
   if (!raw) return none;
 
   const parts = raw.split("/");

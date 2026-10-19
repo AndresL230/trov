@@ -39,8 +39,8 @@ describe("route — #ask and #ask/<id>", () => {
   it("parses and writes back both, and nothing else under #ask", () => {
     expect(parseHash("#ask")).toEqual({ screen: "ask", ticketId: null, sprintId: null });
     expect(parseHash("#ask/12")).toMatchObject({ screen: "ask", askThread: 12 });
-    expect(parseHash("#ask/abc").screen).toBe("mywork");
-    expect(parseHash("#ask/1/2").screen).toBe("mywork");
+    expect(parseHash("#ask/abc").screen).toBe("home");
+    expect(parseHash("#ask/1/2").screen).toBe("home");
     expect(hashForRoute(parseHash("#ask"))).toBe("#ask");
     expect(hashForRoute(parseHash("#ask/12"))).toBe("#ask/12");
   });

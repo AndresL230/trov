@@ -138,7 +138,7 @@ describe("route, hash and sidebar", () => {
   it("#org is Integrations; the other tabs are #org/<tab>; a junk tab falls back", () => {
     expect(parseHash("#org")).toMatchObject({ screen: "org", orgTab: "integrations" });
     expect(parseHash("#org/members")).toMatchObject({ screen: "org", orgTab: "members" });
-    expect(parseHash("#org/nope").screen).toBe("mywork");
+    expect(parseHash("#org/nope").screen).toBe("home");
     for (const h of ["#org", "#org/repos", "#org/environments", "#org/members", "#org/general"]) expect(hashForRoute(parseHash(h))).toBe(h);
     expect(hashForRoute(parseHash("#org/integrations"))).toBe("#org");
   });

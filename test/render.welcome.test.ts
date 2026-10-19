@@ -89,8 +89,8 @@ describe("#welcome — a route, so a reload stays on the step", () => {
     expect(parseHash("#welcome")).toEqual({ screen: "welcome", ticketId: null, sprintId: null, welcomeStep: "github" });
     for (const h of ["#welcome", "#welcome/agent", "#welcome/team", "#welcome/done"]) expect(hashForRoute(parseHash(h))).toBe(h);
     expect(hashForRoute(parseHash("#welcome/github"))).toBe("#welcome");
-    expect(parseHash("#welcome/nope").screen).toBe("mywork");
-    expect(parseHash("#welcome/agent/x").screen).toBe("mywork");
+    expect(parseHash("#welcome/nope").screen).toBe("home");
+    expect(parseHash("#welcome/agent/x").screen).toBe("home");
     expect(isWelcomeStep("team")).toBe(true);
     expect(isWelcomeStep("org")).toBe(false);
   });
@@ -216,13 +216,13 @@ describe("the page — one step at a time, Back, skippable", () => {
     const first = view("github");
     expect(first).not.toContain('data-field="welcomeBack"');
     expect(first).toMatch(/<button type="button" data-act="welcomeGo" data-arg="agent" data-field="welcomeNext"[^>]*>Skip for now<\/button>/);
-    expect(first).toMatch(/data-act="goMyWork" data-field="welcomeExit"[^>]*>Skip setup/);
+    expect(first).toMatch(/data-act="goHome" data-field="welcomeExit"[^>]*>Skip setup/);
     const second = view("agent");
     expect(second).toMatch(/data-act="welcomeGo" data-arg="github" data-field="welcomeBack"[^>]*>Back</);
     expect(second).toMatch(/data-arg="team" data-field="welcomeNext"[^>]*>Skip for now</);
     const last = view("done");
     expect(last).toMatch(/data-act="welcomeGo" data-arg="team" data-field="welcomeBack"/);
-    expect(last).toMatch(/<button type="button" data-act="goMyWork" data-field="welcomeFinish"[^>]*class="cnpy-accentbtn"[^>]*>Open Trov<\/button>/);
+    expect(last).toMatch(/<button type="button" data-act="goHome" data-field="welcomeFinish"[^>]*class="cnpy-accentbtn"[^>]*>Open Trov<\/button>/);
     expect(last).not.toContain('data-field="welcomeNext"');
     expect(last).not.toContain('data-field="welcomeExit"');
   });
@@ -454,7 +454,7 @@ describe("the closing step — you're set, and where things live", () => {
     // It does not repeat the sidebar the person sees a moment later.
     expect(html).not.toContain("Where things live");
     expect(html).not.toContain('aria-label="Open Roadmap"');
-    expect(html).toMatch(/data-act="goMyWork" data-field="welcomeFinish"/);
+    expect(html).toMatch(/data-act="goHome" data-field="welcomeFinish"/);
   });
   it("recaps each step from live data: done, skipped (with the way back), or not known yet", () => {
     const html = view("done", { ui: ui({ repos: ok([repo("acme-gh/web")]), invites: loading([]) }) });

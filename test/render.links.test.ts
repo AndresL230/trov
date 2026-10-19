@@ -323,9 +323,9 @@ describe("routes: #links and #links/<n>", () => {
   it("parse, and round-trip", () => {
     expect(parseHash("#links")).toEqual({ screen: "links", ...base });
     expect(parseHash("#links/12")).toEqual({ screen: "link", ...base, linkId: 12 });
-    expect(parseHash("#links/0").screen).toBe("mywork");
-    expect(parseHash("#links/x").screen).toBe("mywork");
-    expect(parseHash("#links/1/2").screen).toBe("mywork");
+    expect(parseHash("#links/0").screen).toBe("home");
+    expect(parseHash("#links/x").screen).toBe("home");
+    expect(parseHash("#links/1/2").screen).toBe("home");
     for (const h of ["#links", "#links/12"]) expect(hashForRoute(parseHash(h))).toBe(h);
     // Not under #handoffs/: its second segment is a handoff's number.
     expect(parseHash("#handoffs/12")).toEqual({ screen: "handoff", ...base, handoffId: 12 });

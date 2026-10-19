@@ -320,8 +320,8 @@ describe("one tag's page", () => {
     expect(parseHash("#tags/auth")).toMatchObject({ screen: "tag", tagName: "auth" });
     expect(hashForRoute(parseHash("#tags/customer-success"))).toBe("#tags/customer-success");
     expect(parseHash("#tags/Auth")).toMatchObject({ screen: "tag", tagName: "auth" });
-    expect(parseHash("#tags/a/b").screen).toBe("mywork");
-    expect(parseHash("#tags/%20").screen).toBe("mywork");
+    expect(parseHash("#tags/a/b").screen).toBe("home");
+    expect(parseHash("#tags/%20").screen).toBe("home");
   });
 
   it("shows the tag as its square and name, what it is for, and everything that carries it, grouped", () => {

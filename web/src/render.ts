@@ -611,7 +611,7 @@ export function initialState(): AppState {
     ask: initialAskUi(),
     billingDone: null,
     billingCheckout: null,
-    screen: "mywork",
+    screen: "home",
     theme: "light", systemDark: true,
     collapsed: false,
     narrow: false,
@@ -3238,16 +3238,16 @@ function appView(s: AppState): string {
 }
 
 /** Behind a first-run card (onboarding, the org picker): the app itself — its real sidebar, header and
- *  My Work — in the state it is in before anything has loaded, so every region is its own skeleton.
+ *  Home — in the state it is in before anything has loaded, so every region is its own skeleton.
  *  It is what the person is about to enter, held still: `inert`, hidden from assistive tech, and
  *  softened by `.cnpy-fr-bg`. Nothing in it is theirs yet, so nothing in it is data. */
 function firstRunBackdrop(s?: AppState): string {
-  // Inside an organization (the guided setup) it is the REAL My Work — this person's sidebar, org and
+  // Inside an organization (the guided setup) it is the REAL Home — this person's sidebar, org and
   // data, read while they are in the setup — so "Open Trov" removes the card and changes nothing else.
   // Before there is an organization (onboarding, the picker) there is nothing of theirs to show.
   const behind: AppState = s && s.view === "app" && s.orgSlug
-    ? { ...s, screen: "mywork", personCard: null, drawer: false }
-    : { ...initialState(), view: "app", screen: "mywork" };
+    ? { ...s, screen: "home", personCard: null, drawer: false }
+    : { ...initialState(), view: "app", screen: "home" };
   return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(behind)}</div>`;
 }
 

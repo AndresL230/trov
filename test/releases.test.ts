@@ -395,9 +395,9 @@ describe("#releases routes", () => {
 
   it("an unknown version still routes (the page says not found); junk falls back to My Work", () => {
     expect(parseHash("#releases/0.99").releaseVersion).toBe("0.99");
-    expect(parseHash("#releases/0.7/nope").screen).toBe("mywork");
-    expect(parseHash("#releases/a/b/c").screen).toBe("mywork");
-    expect(parseHash("#releases/%E0%A4%A").screen).toBe("mywork");
+    expect(parseHash("#releases/0.7/nope").screen).toBe("home");
+    expect(parseHash("#releases/a/b/c").screen).toBe("home");
+    expect(parseHash("#releases/%E0%A4%A").screen).toBe("home");
   });
 });
 

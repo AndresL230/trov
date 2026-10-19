@@ -400,7 +400,7 @@ const orgsCtl = createOrgsController({
 // The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
 // re-check, and the note that brings a return from GitHub back to it.
 const welcomeCtl = createWelcomeController({
-  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
+  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadHomeIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
   reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
@@ -2959,7 +2959,7 @@ const platform = {
         state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
         // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
         // On the standalone page there is no My Work to fall back to: the picker.
-        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
+        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "home"; loadForScreen("home"); },
       });
       fn(platformCtl);
     });
@@ -3177,6 +3177,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // primary navigation
     case "goHome":
+      // Out of the guided setup ("Open Trov", "Skip setup"): Home is already what stands behind the card (read while
+      // the person was in the setup), so the card simply goes — a morph, and no page entrance replayed over a screen
+      // that was in view the whole time.
+      if (state.view === "app" && state.screen === "welcome") {
+        loadHomeIfNeeded();
+        morphStep(() => { state.screen = "home"; skipEnterOnce = true; rerender(); });
+        return;
+      }
       state.screen = "home"; state.home.headIdx++; state.home.attnOpen = false; loadHomeIfNeeded(); return;
     case "homeAttn": state.home.attnOpen = !state.home.attnOpen; state.home.focused = false; break;
     case "homeAttnClose": state.home.attnOpen = false; break;
