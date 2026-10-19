@@ -115,7 +115,8 @@ function repositoriesCol(s: AppState, admin: boolean): HomeCol {
   for (const name of names) {
     const r = homeRepos?.find((x) => x.repo === name) ?? null;
     rows.push({ icon: "repo", title: name, act: "goRepoFor", arg: name,
-      trail: r?.accessLost ? "Access removed" : r ? (r.lastPush ? age(r.lastPush) + " ago" : "No pushes yet") : "",
+      // "No pushes yet" only where pushes are captured (the primary); another repository's silence is not known.
+      trail: r?.accessLost ? "Access removed" : r?.lastPush ? `${age(r.lastPush)} ago` : r?.primary ? "No pushes yet" : "",
       mark: r?.accessLost ? mk("warn") : null });
     if (facts && facts.repo === name) {
       for (const app of facts.allApps) {
