@@ -100,9 +100,9 @@ describe("narrow layouts — the hooks exist and their rules are there", () => {
   it("Review: the list and the detail take turns, with a back button", () => {
     const item: ReviewItem = { id: "doc:x:2", kind: "proposal", eyebrow: "", title: "T", summary: "", agent: "a", agentInitials: "A", time: "1d", diff: [] };
     const base: Omit<ReviewProps, "selectedId"> = { items: [item], filter: "all", diffView: "unified" };
-    expect(reviewView({ ...base, selectedId: null })).toContain('class="cnpy-rv" data-pane="list"');
+    expect(reviewView({ ...base, selectedId: null })).toContain('class="cnpy-rv" data-view="queue" data-pane="list"');
     const picked = reviewView({ ...base, selectedId: "doc:x:2" });
-    expect(picked).toContain('class="cnpy-rv" data-pane="detail"');
+    expect(picked).toContain('class="cnpy-rv" data-view="queue" data-pane="detail"');
     expect(picked).toContain('data-act="reviewBack" class="cnpy-rv-back"');
     expect(rules).toContain(".cnpy-rv-back { display:none; }");
   });

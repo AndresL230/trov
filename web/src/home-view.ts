@@ -124,7 +124,7 @@ function attentionRows(s: AppState): { rows: (HomeAttnRow & { urg: number })[]; 
   const me = s.me?.handle ?? "";
   for (const h of handoffsForMe(s.handoffs.data, me).slice(0, 2)) {
     const d = daysSince(h.created_at);
-    rows.push({ mark: PENDING_MARK, title: `Handoff from @${h.sender} waiting ${d === 0 ? "since today" : plural(d, "day")}`, meta: (h.body.split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").slice(0, 90), action: { label: "Open", act: "openHandoff", arg: String(h.id) }, urg: 2 });
+    rows.push({ mark: PENDING_MARK, title: `Handoff from @${h.sender} waiting ${d === 0 ? "since today" : plural(d, "day")}`, meta: (h.body.split("\n").find((l) => l.trim()) ?? "").replace(/^#+\s*/, "").slice(0, 90), action: { label: "Claim", act: "mwHandoffClaim", arg: String(h.id) }, urg: 2 }); // My Work's Claim & copy: copies it as a prompt, then claims it
   }
   for (const sp of s.sprints.data) {
     if (sp.status === "done" || !sp.due) continue;

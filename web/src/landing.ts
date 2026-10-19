@@ -630,7 +630,7 @@ export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
     "Completing a sprint is always a person's call.",
   ],
   mywork: [
-    "Trov opens here.",
+    "Your own page.",
     "Tickets for you: your open tickets, with their sprint and when it is due.",
     "Needs your review: what agents staged, with Promote, Ratify and Reject right there.",
     "It reads only what Trov has already captured, so it loads instantly.",
