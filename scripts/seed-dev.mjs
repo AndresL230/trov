@@ -111,6 +111,13 @@ if (names.includes("team")) {
 const reset = argv.includes("--reset");
 console.log(`seed-dev: ${reset ? "wiping every data table, then " : ""}loading ${names.join(", ")} into LOCAL D1…`);
 const out = await loadScenarios(db, names, { reset, views, image, origin: server, log: (line) => console.log(`\n${line}`) });
+// Home's Docs promoted (0077_home): the seeded versions were never promoted through promote_doc, so they carry no
+// promotion time — the dev data stands in with its staging time, and every dev org counts as timed from the start.
+// DEV DATA ONLY: production never backfills (the staging time is not the promotion time).
+await db.apply("home: promotion times", [
+  "UPDATE doc_versions SET promoted_at = created_at WHERE status = 'promoted' AND promoted_at IS NULL",
+  "UPDATE orgs SET promotions_timed_at = '2000-01-01T00:00:00.000Z'",
+]);
 if (out.team?.unresolved?.length) console.log(`\n(Ask answers name ${out.team.unresolved.length} item(s) without a chip — rerun with the dev server up for chips.)`);
 
 console.log("\nseed-dev: done. Open:");

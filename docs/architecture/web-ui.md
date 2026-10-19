@@ -20,7 +20,7 @@ Platform, personal Settings (its name, handle and digest-address fields), the Ar
 (`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
 the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
 the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
-wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (its list is keyed: see "A row leaving a list" below), Unplaced (`maintenance`: the same keyed list and exit), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
+wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (`review`, ONE key for both its views — the queue and Unplaced; each list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
 it. Inside a morphed page, a part that must be REPLACED when it becomes a different
@@ -227,13 +227,43 @@ is the mark, large, faint and tilted behind the text. It appears exactly twice, 
 
 | Where | How |
 |---|---|
-| Hero (`.site-hero-band`) | the banner as an inset panel; the Review mockup (`.site-hero-mock`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
+| Hero (`.site-hero-band`) | the banner as an inset panel; the Home mockup (`.site-hero-mock`, the app's front page at `#home`) stands on its lower edge, inset by the same `--hero-pad` as the headline so their left edges align |
 | "Agents propose, people decide" (`.site-split`) | the card on its side: banner left, body right; stacked under 860px |
 
 The hero mockup's sidebar is the app's (`sidebar.ts` `sidebarView`): the same sections, entries, order, labels and
 icons, with the Library's starter spaces under it (A to Z). Its icon paths are copied into `landing.ts` `NAV_ICON`
 (sidebar.ts pulls the Library screen in), and `test/render.landing.test.ts` reads sidebar.ts to hold the two
-together: a sidebar change fails it until the hero follows. The window is 600px tall so the whole rail fits.
+together: a sidebar change fails it until the hero follows. The window is 680px tall so the whole rail fits and Home has room above and below (Latest and Team show two rows each); Home is lit.
+
+**The hero's Home, looping** (`landing.ts` `heroHome`, trov.css "the hero's Home, looping"). The window draws Home
+(`home.ts`) with Home's own `.hm-*` classes — inert spans and divs, no button, `aria-hidden` — a little denser than the
+app so the whole page fits (`.site-hm` overrides: 24px headline, 32px rows, Activity's four cards on one row); Latest and
+Team are cut by the window's foot, as a page that scrolls on. Its row icons are `home.ts` `HOME_ICON`'s paths, copied
+(`HOME_ICON_COPY`; home.ts would pull Ask's Markdown into the landing's bundle) and held to it by the test. It acts out
+ONE story on a 14s loop (`--hl`), starting `--hs` (700ms) after the mockup is revealed:
+
+| At | What happens |
+|---|---|
+| 0s | the page rises in; the status line counts up to "3 things need you" (0.3 to 1s) |
+| 1s | Activity fills: the bars grow, the four figures count up, the deltas follow (1.9s) |
+| 2.9s | the bar is focused and switched to Ask Trov; "What shipped this week?" types in (3.5 to 4.6s) and is sent (4.8s) |
+| 4.95s | Trov's answer opens under the bar: "Reading your organization…", then its words stream in (5.6 to 7.6s), then the byline, three sources, Wrong? and Continue in Trov (7.7s); it is closed at 9.1s and the bar goes back to Search |
+| 9.8s | the status line opens Needs attention; Claim pulses and is pressed on @leo's handoff (10.7 to 11.1s), its row leaves, the count drops to 2 and Relay's badge goes (11.3s); it closes at 12.3s |
+| 13.3s | the page fades out; at 14s the story starts again |
+
+- **One clock.** Every step is a keyframe (`hl-*`) in percent of `--hl`; an element's `--hd` is a stagger of at most
+  240ms, so every reset lands while the page is faded out (13.65s to 14s). Counts are registered properties
+  (`@property --hn`, `--hv`: integers drawn by `counter()`; `--hw`, the answer's word count, which each word's `--i`
+  is compared to). Without `@property` they step instead of counting.
+- **The settled end is each element's own style**: Search, unfocused, nothing open, Activity filled, "2 things need
+  you", the handoff claimed and Relay's badge gone. Reduced motion (`.cnpy-site *` stops every animation), no script
+  and the prerendered page all show it; nothing moves.
+- **Nothing on the page moves.** The window's height is fixed, and every step either changes a box in place or is laid
+  over the page (the answer, Needs attention): no step animates a layout property but the popover's own leaving row.
+- **Out of view it holds.** `landing-motion.ts` observes the mockup and sets `data-hold` while it is off screen, which
+  pauses every `hl-*` animation at once, so the steps stay in time with each other.
+- **Phone** (the phone block): the window is as tall as what it holds; Repositories, Roadmap, Latest, Team, ⌘K and the
+  clear button are dropped; For you, then Activity two by two. Home's 10.5px parts are raised to 11px.
 
 The sign-in dialog (`.site-signin-card`) has NO banner: it opens over the hero, which is the banner, and a
 second slab in front of the first read as the same thing twice. It is a plain card — the mark, the title, the
@@ -309,8 +339,8 @@ through all eight (wrapping), with the position as text and dots.
 - **Phone:** the app's modal sheet at full height; Previous / Next are 44px, at the bottom edge.
 - **The dialog's mockups** (`landing-mocks.ts`) are drawn from the real screens, and that is their contract:
   a mock shows NOTHING the product does not have. The file's header names the renderer each one copies
-  (`docsView`, `feedView`, `boardCard` / `tableView`, `timelineView`, the My Work tiles, `handoffsView` /
-  `handoffDetail`, the artifact viewer); ticket and artifact statuses are imported from `shared/`, and
+  (the Library's doc page — `docTrail`, `docsPane`, `docPageView` and its rail —, `feedView`, `boardCard` /
+  `tableView`, `timelineView`, the My Work tiles, `handoffsView` / `handoffDetail`, the artifact viewer); ticket and artifact statuses are imported from `shared/`, and
   `test/render.site-feature.test.ts` asserts every other label still stands in the module that renders it —
   so renaming a label in the app fails the test until the mock follows. They are inert (`aria-hidden`, no
   button, link or `data-act`), use theme tokens only (dark shows the dark app), and are never zoomed or
@@ -592,8 +622,12 @@ the viewer's role never restructures the rail; the space rows follow the data, a
 (`data-drop-space`, "Drop to import" below). Its label goes to Library home, its chevron folds
 the group, and a space's home, a doc in it and New page in it light that space (the Library was Docs, with a fixed
 Technical / Product pair, until 2026-10; a stored `docs` key is read as `library`; docs-library.md › The screens);
-Roadmap, Tickets, Unplaced and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
-and Repo's tabs head their page body), and a stored
+Roadmap, Tickets, Review and Repo are plain rows (Tickets' switch sits in its screen header; Roadmap's
+and Repo's tabs head their page body). **Unplaced has no row** (2026-10-18): it is Review's other view — the
+header's To review / Unplaced switch (`triageSwitch` in `render.ts`, a `segmented()` with each side's count) moves
+between the two, the header names Review on both, the row is lit for both (they are ONE screen, `review` — the view is
+`state.reviewView`, `#review` / `#review/unplaced`), and Review's badge is the two queues together (`triageCounts`), so
+nothing waiting is hidden. A stored
 `trov.navOpen` key for a retired group is ignored on load. Below 900px the rail renders collapsed (`state.narrow`)
 without touching the saved preference. Search is the box at the top of the rail (⌘K / Ctrl+K), not a nav row.
 
@@ -623,7 +657,8 @@ the trigger where the control sits, its menu a root-level overlay (`dropdownMenu
 and closes with an animation — Org settings' role and Notifications pickers.
 
 **Every pick-one switch is `segmented()`** (`web/src/segmented.ts`) — the Feed view, the queue's
-Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's filter (with counts) and its diff mode, form segments. Never
+Board/Table and All/Open/Closed, Repo ranges and environments, an artifact's status, Review's To review / Unplaced
+switch in its header and its filter (both with counts) and its diff mode, form segments. Never
 hand-roll a segment group. It picks a VALUE or a view; moving between a page's own SECTIONS is the **underline
 tab bar** instead (`tabBar()`, `web/src/tabs.ts` — Org settings' and Platform's tabs, patched in place so a switch replaces
 only the panel (`web/src/morph.ts` `data-morph` / `data-morph-key`); the Roadmap's Narrative / Timeline, `roadmapTabBar` in `render.ts`, the Timeline
@@ -657,7 +692,7 @@ one-shot `pendingFlash`. All of it is off under `prefers-reduced-motion`.
 
 ### The badges — one read at boot (`GET /badges`, `src/tools/badges.ts`)
 
-The sidebar's counts (Review, Unplaced, Tickets, Relay, Prompts, and the admin's unmatched logins on the
+The sidebar's counts (Review — its queue and Unplaced together —, Tickets, Relay, Prompts, and the admin's unmatched logins on the
 switcher) come from ONE `GET /api/o/<slug>/badges`: seven `COUNT(*)`s in one D1 batch, each its list's own
 WHERE clause, and `test/badges.routes.test.ts` holds every count to the length of the list it stands for.
 `enterOrg` no longer reads the lists only to count them (a proposal alone carried both bodies); a screen
@@ -705,12 +740,28 @@ under it move up as the same elements**. Four parts, each in one place:
    it had are back, with the usual error toast. The refetch is held until no row is still
    collapsing, so a read landing mid-exit never pulls a row out from under its own animation.
 
-**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18): its cards are the same `.cnpy-rv-row` /
+**Unplaced reuses it whole** (`web/src/maintenance.ts`, 2026-10-18). It is Review's other view — ONE screen, `review`,
+its view in `state.reviewView` (`"queue"` | `"unplaced"`; `#review` / `#review/unplaced`, the route's `reviewView`; the
+old `#unplaced`, `#maintenance` and `#maintenance/unplaced` land on it and are written back as `#review/unplaced`).
+**A switch is in place:** the page is `data-morph="review"` in both views and both draw ONE frame (`review.ts`
+`reviewFrame`) whose two columns are `data-morph-key` parts keyed by the view (`rv-list:<view>`, `rv-detail:<view>`),
+so the header and its To review / Unplaced `segmented()` are patched (the indicator slides, `syncSegments`) and only
+the columns are replaced; `pageKey` leaves the view out, so the entrance never replays; the new columns' content takes
+the one-shot `pendingFlash` (`main.ts` `showReview` / `REVIEW_VIEW_FLASH` — the list head, the rows and the pane's
+content, never the columns, whose hairline stays put; Back / Forward between the two flashes the same), off under
+reduced motion. Review reads all three queues on entry (`startScreenLoads`), so a switch has nothing to load. Acts:
+`setReviewView` (the switch), `goReview` (the queue: every "Open Review"), `goUnplaced` (quick search, Home), and a
+stale `goMaintenance` (Unplaced, or Org settings › Members for `identity` / `people`).
+**Its colours are To review's:** the frame, list head (the intro, then 12px to the first card; how many wait is the
+header switch's count, as Review's are), cards and selected / hover states are Review's own classes; the reading pane is
+Review's page pane on the page's background (`.cnpy-rvp--bg`: `--bg`, its sticky footer too, as a decision's pane is),
+the item in a white surface card under a label row ("What the agent sent", as a decision's "Proposed record" card) and
+Place it as in another — so light and dark follow the tokens. Its cards are the same `.cnpy-rv-row` /
 `.cnpy-titem` in a `data-morph-list` (keys `up:<id>`, the empty layout `up-empty`), placing or discarding gives
 the card a `data-verdict` of `placed` (green) or `discarded` (quiet) for `UNPLACED_EXIT_MS` (= `REVIEW_EXIT_MS`),
 the state is `state.unplacedLeaving` (main.ts `unplacedVerdict` / `settleUnplaced` / `pruneUnplacedLeaving` — the
 same four parts, the person's picks restored with the card on a failure), and `syncReviewDetail` runs for both
-screens (a new item's pane starts at its top; Place / Discard hand focus to the next item's, Place falling back to
+views (a new item's pane starts at its top; Place / Discard hand focus to the next item's, Place falling back to
 Discard when the next cannot be placed yet). A Trov suggestion accepted on an Unplaced item placed it, so its card
 leaves by this exit too (the AI kit's `decided` hook), after the chip's own exit. Discard has no arm step: it is
 soft, and its toast carries Undo (`POST /needs-triage/:id/restore`).
@@ -851,7 +902,8 @@ frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120
   `--frame-work` (1440 → 2200: the queue's board and table, Handoffs, the Prompt Library, a tag's page — `WORK_SHELL`
   in `ui.ts`), `--frame-dash` (1180 → 1720: My Work, the Repo dashboard, Org settings › Members — only that tab,
   `data-org-wide` on `.cnpy-org`), `--frame-feed` (1200 → 1480: the Feed, `asideColumns`' `opts.frame`) and
-  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list).
+  `--frame-reader` (920 → 1240: Review's reading pane, which stays beside its list) and `--frame-home` (1080 → 1600:
+  Home's one centred column, `roadmap-my-work.md` › Home).
 - **A line keeps its measure** when its column grows: a Feed entry's title, brief and body stop at 720px (the width
   they have in a 1200px frame; `.cnpy-feed-page`).
 - **Reading surfaces keep their frame**: a doc (1080), the Roadmap (`asideColumns`, 1200), the Guide, a ticket or
@@ -861,12 +913,9 @@ frame sat in a third of it. The rule (2026-10-17, measured at 1440×900 → 5120
   left under its toolbar (the owner, 2026-10-17); the Prompt Library's grid adds a card a row past a 2200px window
   (`auto-fill`, 360px minimum); Repo › Usage's app cards and the Overview's week figures already `auto-fit` (the week
   figures go to ONE row on a panel ≥1200px, so none is left alone on a second row).
-- **The title row lines up with the frame** above 1440px (the owner, 2026-10-17): the header still spans `<main>` (its
-  hairline does) but its padding is `var(--hdr-pl, 24px)` / `var(--hdr-pr, 24px)`, and `trov.css` gives each screen
-  with ONE centred frame its `--hdr-frame` (the frame's max-width) and `--hdr-pad` (the frame's side padding); the
-  frame centres in `<main>` minus the scroller's reserved scrollbar (`--sb-gutter`, 12px — with overlay scrollbars it
-  is 0 and the title sits 6px off). Screens without one centred frame (Docs, Review, the Guide, Ask, Artifacts) keep
-  24px. A NEW screen with a centred frame adds its line there, or its title row floats at 24px on a big screen.
+- **The header sits at `<main>`'s own edges** (the owner, 2026-10-18, replacing the 2026-10-17 rule that lined it up
+  with each page's frame above 1440px): its title on the left and its actions on the right, 24px in, on every screen
+  and at every window width, whatever the page's content width. No screen sets a header frame.
 - A new screen picks the token for what it is, never a new fixed width; the site pages (landing, pricing, docs,
   legal) keep their 1120px marketing column.
 
@@ -1058,8 +1107,8 @@ goes in that block; a template gets a class hook, never a second copy of its mar
   telling pane in one column (`site-hide-sm` under 900px, `site-hide-ph` and `.fxm-wide` under 640px drop the
   rest), and **no text in it renders under 11px**: one rule in the block keys on the inline sizes
   (`[style*="font-size:9px"]`, the corners block's idiom) inside every mockup scope. A new mockup size under
-  11px needs its key there, and the test names the size that is missing. The hero's Review mockup becomes one
-  unified diff by CSS alone: `site-hero-twin` marks the left pane's lines that the right pane repeats.
+  11px needs its key there, and the test names the size that is missing. The hero's Home keeps its head, its bar,
+  For you and Activity (two by two), and raises Home's own 10.5px parts to 11px.
 - **Touch.** Hover lifts are off under `(hover:none)` and a press answers instead. A hover-only `title` is
   never the only label: in the menu the theme and GitHub rows are labelled.
 - **Checking it.** Phone widths are measured in a real phone-sized viewport (Playwright with `isMobile`, or an

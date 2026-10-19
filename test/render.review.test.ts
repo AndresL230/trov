@@ -142,6 +142,14 @@ function makeAdr(overrides: Partial<ReviewItem> = {}): ReviewItem {
 }
 
 describe("reviewView — populated", () => {
+  it("a group card opens its first page still waiting in the pane", () => {
+    const items = [makeItem({ agent: "pia" }), makeItem({ id: "p2", title: "Second", agent: "pia" })];
+    const html = reviewView(makeReviewProps({ items }));
+    expect(html).toMatch(/class="cnpy-rvg cnpy-surface cnpy-hitbox"[^>]*>\s*<button data-act="reviewSelect" data-arg="p1" class="cnpy-hit"/);
+    const decided = reviewView(makeReviewProps({ items, leaving: { p1: "promoted" } }));
+    expect(decided).toMatch(/<button data-act="reviewSelect" data-arg="p2" class="cnpy-hit"/);
+  });
+
   it("an agent's doc changes are ONE group card (the design's \"Written by ‹Name›'s agent\"), nothing picked until a page is", () => {
     const items = [makeItem({ agent: "pia", agentName: "Pia Test-Agent", space: "engineering", at: "2026-10-17T10:00:00Z" }), makeItem({ id: "p2", title: "Second", agent: "pia", agentName: "Pia Test-Agent", space: "engineering", isNew: true })];
     const html = reviewView(makeReviewProps({ items }));
@@ -160,12 +168,14 @@ describe("reviewView — populated", () => {
     expect(open).toMatch(/data-arg="p2" class="cnpy-rvg-pg"[\s\S]*?<span class="cnpy-rvg-pk">New page<\/span>/);
     expect(open).toContain("Page 1 of 2 · Pia&#39;s agent");
     expect(open).toContain('data-morph-key="rvd:p1"');
-    // Each author is a group of their own; a decision stays a card.
+    // Each author is a group of their own; a decision stays a card — and so does an author's ONE page (no "1 page",
+    // no Approve all 1: the owner, 2026-10-18).
     const two = reviewView(makeReviewProps({ items: [...items, makeItem({ id: "p3", agent: "max" }), makeAdr({ id: "d1" })] }));
-    expect(two).toContain('data-morph-key="rvg:agent:max"');
-    expect(two).toContain("Written by max&#39;s agent");
+    expect(two).not.toContain('data-morph-key="rvg:agent:max"');
+    expect(two).toContain('data-morph-key="rv:p3"');
+    expect(two).not.toContain("Written by max&#39;s agent");
     expect(two).toContain('data-morph-key="rv:d1"');
-    expect(two).toContain('data-morph-key="rvd:d1"');        // the decision is the default selection
+    expect(two).toContain('data-morph-key="rvd:p3"');        // the first card (not a group) is the default selection
   });
 
   it("labels the accept action Ratify for decisions and renders the ADR record", () => {
@@ -187,7 +197,7 @@ describe("reviewView — populated", () => {
   });
 
   it("filter hides what it does not hold: Imports shows the import groups, Written by agents everything else", () => {
-    const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" })];
+    const items = [makeItem(), makeItem({ id: "d1", kind: "decision", title: "A Decision", diff: undefined, adr: [] }), makeItem({ id: "i1", title: "Imported page", importId: 5, importFile: "handbook.zip", slug: "imported-page", space: "engineering" }), makeItem({ id: "i2", title: "Another imported page", importId: 5, importFile: "handbook.zip", slug: "another-page", space: "engineering" })];
     const imports = reviewView(makeReviewProps({ items, filter: "imports" }));
     expect(imports).toContain("Import from handbook.zip");
     // The agent rows are filtered out of the list: nothing is picked by default (a decision the filter hides is not).
@@ -195,7 +205,7 @@ describe("reviewView — populated", () => {
     expect(imports).not.toContain("A Decision");
     const agents = reviewView(makeReviewProps({ items, filter: "agents" }));
     expect(agents).toContain("A Decision");
-    expect(agents).toContain('data-morph-key="rvg:agent:');
+    expect(agents).toContain('data-morph-key="rv:p1"'); // the agent's one page: a card of its own
     expect(agents).not.toContain("Import from handbook.zip");
   });
 });
@@ -381,8 +391,8 @@ describe("reviewView — empty states", () => {
   it("renders the list empty state when the filter hides everything, keeping the selected detail", () => {
     const html = reviewView(makeReviewProps({ filter: "imports", selectedId: "p1" }));
     expect(html).toContain("Nothing of this kind is waiting for review.");
-    // Selection survives the filter — the detail still shows the proposal (its agent's page pane)
-    expect(html).toContain("What changes");
+    // Selection survives the filter — the detail still shows the proposal (its own detail: one page is no group)
+    expect(html).toContain('data-morph-key="rvd:p1"');
   });
 });
 
@@ -513,7 +523,7 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   const triage = (id: number) => ({ id, raw: "{}", reason: "low_confidence", source_author: null, resolved: 0, created_at: "2026-09-27T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as never;
   const task = (login: string) => ({ login, first_seen: "2026-09-27T00:00:00Z", status: "pending", resolved_at: null, resolved_by: null, sample: [] }) as never;
   const app = (over: Partial<ReturnType<typeof initialState>> = {}, role: "admin" | "member" = "admin") => render({
-    ...initialState(), view: "app", screen: "maintenance", orgSlug: "saplinglearn",
+    ...initialState(), view: "app", screen: "review", reviewView: "unplaced", orgSlug: "saplinglearn",
     me: { handle: "andres", name: null, avatar_url: null, color: "moss", identities: [], orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role }], superadmin: false, pending_invites: 0 },
     needsTriage: { status: "ok", data: [triage(1), triage(2), triage(3)] },
     identityTasks: { status: "ok", data: [task("mk-dev2"), task("sky-42")] },
@@ -523,9 +533,19 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
   const main = (html: string) => html.slice(html.indexOf("</header>"), html.indexOf('class="cnpy-scrim"'));
   const navRow = (html: string, key: string) => { const at = html.indexOf(`cnpy-navrow n-${key}`); return html.slice(at, html.indexOf("</div>", at)); };
 
-  it("is titled Unplaced, with no tab bar, no back button and no crumb", () => {
+  it("is Review's other view: titled Review, the header's To review / Unplaced switch on Unplaced, no tab bar, no back button and no crumb", () => {
     const html = app();
-    expect(header(html)).toContain(">Unplaced</h1>");
+    expect(header(html)).toContain(">Review</h1>");
+    expect(header(html)).not.toContain(">Unplaced</h1>");
+    // ONE segmented() switch in the header, each side with how many wait there; the picked side carries no act.
+    expect(header(html)).toContain('data-seg="triage-view"');
+    // Review's own reads are not in and no badges read has landed: its count is left off, never a guessed 0.
+    expect(header(html)).toMatch(/aria-pressed="false"[^>]*>To review<\/button>/);
+    expect(header(app({ proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] } }))).toMatch(/>To review<span class="cnpy-seg-n">0<\/span>/);
+    expect(header(html)).toMatch(/class="cnpy-seg-btn is-on" aria-pressed="true">Unplaced<span class="cnpy-seg-n">3<\/span>/);
+    // The switch picks a VIEW of the one Review screen (`setReviewView`), never another screen.
+    expect(header(html)).toContain('data-act="setReviewView" data-arg="queue"');
+    expect(header(html)).not.toContain('data-act="goMaintenance"');
     expect(header(html)).not.toContain("›");
     expect(main(html)).toContain('data-screen-label="Unplaced"');
     expect(main(html)).not.toContain('role="tablist"');
@@ -541,14 +561,15 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
     for (const gone of ["Who is this?", "identityMap", "mk-dev2", "Unmatched logins", "policyToggle", "schedHour", "outboxToggle", "openPerson\" data-arg=\"andres"]) expect(body, gone).not.toContain(gone);
   });
 
-  it("the sidebar entry is Unplaced, and its count is the queue alone", () => {
-    const row = navRow(app(), "maintenance");
-    expect(row).toContain('data-act="goMaintenance"');
-    expect(row).toContain('aria-label="Unplaced"');
-    expect(row).toContain(">Unplaced</span>");
+  it("has no sidebar entry of its own: Review is lit, and its count is Review's queue plus the 3 unplaced", () => {
+    const html = app();
+    expect(html).not.toContain("cnpy-navrow n-maintenance");
+    const row = navRow(html, "review");
+    expect(row).toContain("cnpy-navrow n-review is-active");
     expect(row).toContain('<span class="cnpy-lbl cnpy-badge" data-n="3">3</span>');   // 3 unplaced; the 2 logins are not in it
-    expect(app()).not.toContain(">Maintenance<");
-    expect(triageCounts({ ...initialState(), needsTriage: { status: "ok", data: [triage(1)] }, identityTasks: { status: "ok", data: [task("a"), task("b")] } }).maintenance).toBe(1);
+    expect(navRow(app({ proposals: { status: "ok", data: [] }, draftAdrs: { status: "ok", data: [] }, badges: { proposals: 0, decisions: 0 } }), "review")).toContain('data-n="3"');
+    expect(html).not.toContain(">Maintenance<");
+    expect(triageCounts({ ...initialState(), needsTriage: { status: "ok", data: [triage(1)] }, identityTasks: { status: "ok", data: [task("a"), task("b")] } }).unplaced).toBe(1);
   });
 
   it("the logins to match are counted where an admin will act on them: the org switcher and its Org settings row", () => {
@@ -570,8 +591,8 @@ describe("Unplaced — one queue, where Maintenance and its tabs were", () => {
     expect(main(app({ needsTriage: { status: "error", data: [], error: "x" } as never }))).toContain("Couldn't load the Unplaced queue.");
   });
 
-  it("a stale goMaintenance for a tab that moved opens Org settings › Members", () => {
-    expect(mainSrc).toMatch(/case "goMaintenance":\s*if \(arg === "identity" \|\| arg === "people"\) \{ dispatch\("orgGo", "members", null\); return; \}/);
+  it("a stale goMaintenance for a tab that moved opens Org settings › Members; otherwise it is Review's Unplaced view", () => {
+    expect(mainSrc).toMatch(/case "goMaintenance":\s*if \(arg === "identity" \|\| arg === "people"\) \{ dispatch\("orgGo", "members", null\); return; \}\s*showReview\("unplaced"\);/);
   });
 });
 
@@ -646,10 +667,10 @@ describe("Review — the screen is named once", () => {
     expect(html.split(REVIEW_INTRO).length - 1).toBe(1);
     expect(reviewView(makeReviewProps())).not.toContain("<h1");
   });
-  it("Unplaced does the same: the header's title and one line", () => {
-    const un = render({ ...initialState(), view: "app", screen: "maintenance", needsTriage: { status: "ok", data: [] } });
+  it("Unplaced (Review's other view) does the same: the header's title, Review, and one line", () => {
+    const un = render({ ...initialState(), view: "app", screen: "review", reviewView: "unplaced", needsTriage: { status: "ok", data: [] } });
     expect(un.match(/<h1[ >]/g)?.length).toBe(1);
-    expect(un).toMatch(/<h1 style="[^"]*">Unplaced<\/h1>/);
+    expect(un).toMatch(/<h1 style="[^"]*">Review<\/h1>/);   // Unplaced is Review's other view: the header names Review
   });
 });
 

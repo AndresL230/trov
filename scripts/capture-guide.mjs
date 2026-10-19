@@ -120,7 +120,7 @@ const SHOTS = [
   { name: "search", hash: "#search",
     step: async (p) => { await p.locator("input[data-act=setSearch]").first().fill("gate"); } },
   { name: "review", hash: "#review" },
-  { name: "maintenance", hash: "#unplaced" },   // Triage › Unplaced (the screen is still `maintenance`)
+  { name: "maintenance", hash: "#review/unplaced" },   // Review › Unplaced (Review's other view; the figure keeps its name)
   { name: "settings", hash: "#settings" },
   { name: "releases", hash: "#releases" },
 ];

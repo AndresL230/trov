@@ -39,8 +39,8 @@ describe("route — #ask and #ask/<id>", () => {
   it("parses and writes back both, and nothing else under #ask", () => {
     expect(parseHash("#ask")).toEqual({ screen: "ask", ticketId: null, sprintId: null });
     expect(parseHash("#ask/12")).toMatchObject({ screen: "ask", askThread: 12 });
-    expect(parseHash("#ask/abc").screen).toBe("mywork");
-    expect(parseHash("#ask/1/2").screen).toBe("mywork");
+    expect(parseHash("#ask/abc").screen).toBe("home");
+    expect(parseHash("#ask/1/2").screen).toBe("home");
     expect(hashForRoute(parseHash("#ask"))).toBe("#ask");
     expect(hashForRoute(parseHash("#ask/12"))).toBe("#ask/12");
   });
@@ -52,7 +52,7 @@ describe("route — #ask and #ask/<id>", () => {
 
 describe("sidebar — the Trov row", () => {
   const props = { collapsed: false, navOpen: { ...NAV_CLOSED }, qView: "table" as const, roadmapTab: "timeline" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false,
-    counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
+    counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
   it("sits in Workspace right after My Work, lit on the Ask screen", () => {
     const html = sidebarView({ ...props, screen: "ask" });
     const acts = [...html.matchAll(/data-act="(go[A-Za-z]+)"/g)].map((m) => m[1]);

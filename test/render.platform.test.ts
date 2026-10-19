@@ -573,7 +573,7 @@ describe("routes", () => {
   });
   it("a malformed Platform hash falls back to My Work", () => {
     for (const bad of ["#platform/nope", "#platform/orgs/Bad_Slug", "#platform/orgs/acme/extra", "#platform/orgs/-x"]) {
-      expect(parseHash(bad), bad).toEqual({ screen: "mywork", ...base });
+      expect(parseHash(bad), bad).toEqual({ screen: "home", ...base });
     }
   });
 });

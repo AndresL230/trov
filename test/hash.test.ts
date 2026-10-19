@@ -24,7 +24,7 @@ describe("parseHash", () => {
   });
 
   it("still parses every pre-existing plain screen", () => {
-    for (const s of ["mywork", "feed", "library", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
+    for (const s of ["home", "mywork", "feed", "library", "review", "search", "settings", "guide", "handoffs", "prompts"]) {
       expect(parseHash(`#${s}`)).toEqual({ screen: s, ticketId: null, sprintId: null });
     }
     // The old in-app unsubscribe screen (which turned email off on arrival) is gone: its address opens
@@ -32,23 +32,39 @@ describe("parseHash", () => {
     expect(parseHash("#unsubscribe")).toEqual({ screen: "settings", ticketId: null, sprintId: null });
     expect(parseHash("#unsubscribe/x")).toEqual(parseHash("#nope"));
     expect(parseHash("#roadmap")).toEqual({ screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" });
-    // Triage › Unplaced: the screen is still `maintenance`; its address is `#unplaced`.
-    expect(parseHash("#unplaced")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null });
-    expect(hashForRoute({ screen: "maintenance", ticketId: null, sprintId: null })).toBe("#unplaced");
+    // Review › Unplaced: ONE screen, `review`, its view in the route — `#review` the queue, `#review/unplaced` Unplaced.
+    const base = { ticketId: null, sprintId: null };
+    const unplaced = { screen: "review", ...base, reviewView: "unplaced" };
+    expect(parseHash("#review")).toEqual({ screen: "review", ...base });
+    expect(parseHash("#review/unplaced")).toEqual(unplaced);
+    expect(hashForRoute({ screen: "review", ...base, reviewView: "unplaced" })).toBe("#review/unplaced");
+    expect(hashForRoute({ screen: "review", ...base })).toBe("#review");
+    expect(hashForRoute(parseHash("#review/unplaced"))).toBe("#review/unplaced");
+    expect(hashForRoute(parseHash("#review"))).toBe("#review");
+    expect(parseHash("#review/nope")).toEqual({ screen: "home", ...base });
+    expect(parseHash("#review/unplaced/x")).toEqual({ screen: "home", ...base });
+    // …one page: the header's To review / Unplaced switch swaps the panes without replaying Review's entrance.
+    expect(pageKey(parseHash("#review/unplaced"))).toBe(pageKey(parseHash("#review")));
+    expect(pageKey(parseHash("#unplaced"))).toBe(pageKey(parseHash("#review")));
+    expect(sameRoute(parseHash("#review/unplaced"), parseHash("#review"))).toBe(false);
+    expect(sameRoute(parseHash("#unplaced"), parseHash("#review/unplaced"))).toBe(true);
   });
 
-  it("the old Maintenance addresses still land: the queue, and its two tabs that moved into Org settings", () => {
+  it("Unplaced's old addresses land on #review/unplaced; Maintenance's two tabs that moved, in Org settings", () => {
     const base = { ticketId: null, sprintId: null };
-    expect(parseHash("#maintenance")).toEqual({ screen: "maintenance", ...base });
-    expect(parseHash("#maintenance/unplaced")).toEqual({ screen: "maintenance", ...base });
+    const unplaced = { screen: "review", ...base, reviewView: "unplaced" };
+    // `#unplaced` (its address until it became one screen with Review), `#maintenance`, `#maintenance/unplaced`.
+    expect(parseHash("#unplaced")).toEqual(unplaced);
+    expect(parseHash("#maintenance")).toEqual(unplaced);
+    expect(parseHash("#maintenance/unplaced")).toEqual(unplaced);
     // Identity (matching a login to a person) and People (the directory) are Org settings › Members.
     expect(parseHash("#maintenance/identity")).toEqual({ screen: "org", ...base, orgTab: "members" });
     expect(parseHash("#maintenance/people")).toEqual({ screen: "org", ...base, orgTab: "members" });
     // …and the address bar is rewritten to where they are now.
-    expect(hashForRoute(parseHash("#maintenance"))).toBe("#unplaced");
+    for (const h of ["#unplaced", "#maintenance", "#maintenance/unplaced"]) expect(hashForRoute(parseHash(h)), h).toBe("#review/unplaced");
     expect(hashForRoute(parseHash("#maintenance/people"))).toBe("#org/members");
     expect(hashForRoute(parseHash("#maintenance/identity"))).toBe("#org/members");
-    expect(parseHash("#unplaced/identity")).toEqual({ screen: "mywork", ...base });
+    expect(parseHash("#unplaced/identity")).toEqual({ screen: "home", ...base });
   });
 
   it("Org settings has a Notifications tab", () => {
@@ -60,7 +76,7 @@ describe("parseHash", () => {
     const base = { screen: "roadmap" as const, ticketId: null, sprintId: null };
     expect(parseHash("#roadmap/timeline")).toEqual({ ...base, roadmapTab: "timeline" });
     expect(parseHash("#roadmap/narrative")).toEqual({ ...base, roadmapTab: "narrative" });
-    expect(parseHash("#roadmap/gantt").screen).toBe("mywork");
+    expect(parseHash("#roadmap/gantt").screen).toBe("home");
     expect(hashForRoute({ ...base, roadmapTab: "timeline" })).toBe("#roadmap/timeline");
     expect(hashForRoute({ ...base, roadmapTab: "narrative" })).toBe("#roadmap");
     expect(hashForRoute(base)).toBe("#roadmap");
@@ -82,7 +98,7 @@ describe("parseHash", () => {
       expect(parseHash(hash), hash).toEqual(route);
       expect(hashForRoute(parseHash(hash)), hash).toBe(hash);
     }
-    const none = { screen: "mywork", ticketId: null, sprintId: null };
+    const none = { screen: "home", ticketId: null, sprintId: null };
     expect(parseHash("#prompts/adr-draft/delete")).toEqual(none);
     expect(parseHash("#maintenance/nope")).toEqual(none);
     expect(parseHash("#handoffs/%E0%A4%A")).toEqual(none); // malformed escape
@@ -90,8 +106,8 @@ describe("parseHash", () => {
     expect(parseHash("#handoffs/0")).toEqual(none);
   });
 
-  it("falls back to My Work for junk, empty, and malformed ids", () => {
-    const none = { screen: "mywork", ticketId: null, sprintId: null };
+  it("falls back to Home for junk, empty, and malformed ids", () => {
+    const none = { screen: "home", ticketId: null, sprintId: null };
     expect(parseHash("")).toEqual(none);
     expect(parseHash("#")).toEqual(none);
     expect(parseHash("#nope")).toEqual(none);
@@ -105,7 +121,7 @@ describe("parseHash", () => {
   });
 
   it("does not treat a numeric-looking id with junk as an id", () => {
-    expect(parseHash("#tickets/42x")).toEqual({ screen: "mywork", ticketId: null, sprintId: null });
+    expect(parseHash("#tickets/42x")).toEqual({ screen: "home", ticketId: null, sprintId: null });
   });
 });
 
@@ -124,7 +140,7 @@ describe("hashForRoute", () => {
       { screen: "newticket", ticketId: null, sprintId: null },
       { screen: "ticketdetail", ticketId: 9, sprintId: null },
       { screen: "sprint", ticketId: null, sprintId: 3 },
-      { screen: "mywork", ticketId: null, sprintId: null },
+      { screen: "home", ticketId: null, sprintId: null },
       { screen: "settings", ticketId: null, sprintId: null },
       { screen: "site", ticketId: null, sprintId: null }, // the landing page, reopened from the sidebar logo
       { screen: "repo", ticketId: null, sprintId: null, repoTab: "overview" },
@@ -140,8 +156,8 @@ describe("hashForRoute", () => {
     expect(hashForRoute({ screen: "repo", ticketId: null, sprintId: null, repoTab: "overview" })).toBe("#repo");
     expect(hashForRoute({ screen: "repo", ticketId: null, sprintId: null, repoTab: "usage" })).toBe("#repo/usage");
     // An unknown tab is a junk hash like any other.
-    expect(parseHash("#repo/nope").screen).toBe("mywork");
-    expect(parseHash("#repo/ci/extra").screen).toBe("mywork");
+    expect(parseHash("#repo/nope").screen).toBe("home");
+    expect(parseHash("#repo/ci/extra").screen).toBe("home");
   });
 
   it("carries the Repo screen's repository and App menu in a query, round-trips it, and keeps it out of the page key", () => {
@@ -152,7 +168,7 @@ describe("hashForRoute", () => {
     expect(parseHash("#repo/code?app=api&repo=acme/platform")).toEqual({ ...base, repoTab: "code", repoSlug: "acme/platform", repoApp: "api" });
     // a malformed value is no scope (never a junk route)
     expect(parseHash("#repo?repo=..%2F..&app=Not%20A%20Key")).toEqual({ ...base, repoTab: "overview" });
-    expect(parseHash("#repo/nope?app=web").screen).toBe("mywork");
+    expect(parseHash("#repo/nope?app=web").screen).toBe("home");
     for (const r of [{ ...base, repoTab: "overview", repoSlug: "acme/storefront" }, { ...base, repoTab: "usage", repoSlug: "acme/storefront", repoApp: "web" }, { ...base, repoTab: "overview", repoApp: "__repo" }] as const) {
       expect(parseHash(hashForRoute(r))).toEqual(r);
     }
@@ -174,14 +190,14 @@ describe("hashForRoute", () => {
       expect(hashForRoute(parseHash(h)), h).toBe(h);
     }
     for (const junk of ["#artifacts/Bad_Slug", "#artifacts/x/v0", "#artifacts/x/vx", "#artifacts/x/diff/1", "#artifacts/x/diff/a..b", "#artifacts/x/y/z/w"]) {
-      expect(parseHash(junk).screen, junk).toBe("mywork");
+      expect(parseHash(junk).screen, junk).toBe("home");
     }
     expect(hashForRoute({ screen: "artifact", ...base })).toBe("#artifacts");
     // The raw route's `slug@v<n>` spelling is accepted; `/v<n>` is what gets written back.
     expect(parseHash("#artifacts/auth-audit@v2")).toEqual({ screen: "artifact", ...base, art: { slug: "auth-audit", v: 2, diff: null } });
     expect(hashForRoute(parseHash("#artifacts/auth-audit@v2"))).toBe("#artifacts/auth-audit/v2");
     for (const junk of ["#artifacts/auth-audit@v0", "#artifacts/auth-audit@2", "#artifacts/new@v1", "#artifacts/x@v2/diff/1..2"]) {
-      expect(parseHash(junk).screen, junk).toBe("mywork");
+      expect(parseHash(junk).screen, junk).toBe("home");
     }
   });
 
@@ -197,7 +213,7 @@ describe("hashForRoute", () => {
     // Picking a space is a choice on the same page: no entrance replay.
     expect(pageKey({ screen: "import", ...base, importSpace: "product" })).toBe(pageKey({ screen: "import", ...base }));
     expect(sameRoute({ screen: "import", ...base, importSpace: "product" }, { screen: "import", ...base })).toBe(false);
-    for (const junk of ["#import/Not A Slug", "#import/a/b", "#imports/3"]) expect(parseHash(junk).screen, junk).toBe("mywork");
+    for (const junk of ["#import/Not A Slug", "#import/a/b", "#imports/3"]) expect(parseHash(junk).screen, junk).toBe("home");
   });
 
   it("degrades to the parent screen when the id is missing", () => {

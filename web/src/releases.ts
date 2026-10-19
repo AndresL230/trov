@@ -104,6 +104,40 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Home (the design `Trov Overview v2`), Unplaced folded into Review, and the sidebar's new icons and grouping: one PR.
+  {
+    version: "0.13",
+    date: "2026-10-18",
+    title: "Home: where the team stands, at a glance",
+    headline: "A new Home shows what needs you, your repositories, sprints and tickets, the team's week and what everyone is on, with one bar to search or ask.",
+    highlights: [
+      "Home opens on what needs you: a failed deploy, red checks, Review, handoffs left for you, an overdue sprint, tickets nobody picked up.",
+      "One bar searches tickets, docs, decisions and people, or asks Trov and shows the answer right under it, with its sources.",
+      "See the week at a glance: tickets done, handoffs claimed, docs promoted and sessions recorded, against the week before.",
+      "Unplaced is part of Review now: one switch moves between what to review and what an agent couldn't place.",
+    ],
+    headsUp: [
+      "Unplaced moved into Review, and the sidebar has new icons with Review under Knowledge. My Work is still there, beside Home.",
+      "Docs promoted starts counting from this release, so it reads \u201c\u2014\u201d until a full week has been counted.",
+    ],
+    ops: [
+      "Apply migration `0077_home` (it times doc promotions from now on; merging to main applies it). Its header has the rollback.",
+    ],
+    patches: {
+      added: [
+        "Home: what needs you, your repositories, sprints and tickets, the team's activity and what everyone is on, refreshed while it is open (#201)",
+        "Home's bar searches as you type, or asks Trov and shows the answer under it with its sources, Wrong? and Continue in Trov (#201)",
+      ],
+      changed: [
+        "Unplaced is part of Review: a switch at the top of Review moves between the two, and Review's sidebar count includes Unplaced (#201)",
+        "The sidebar has new icons, Home first, and Review under Knowledge; every screen's title and buttons sit at the window's edges (#201)",
+        "What's new and the Guide share one page width (#201)",
+      ],
+      fixed: [],
+      removed: [],
+    },
+    prs: [201],
+  },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower
   // artifact panel in Ask, the purple dark accent and the big-monitor layout: one deploy, one version. #198 (the site's copy) followed it.

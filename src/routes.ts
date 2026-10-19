@@ -1,3 +1,4 @@
+import { homeData, isHomeTz } from "./tools/home";
 import { Hono } from "hono";
 import { inspectRoutes } from "hono/dev";
 import { TrieRouter } from "hono/router/trie-router";
@@ -327,6 +328,21 @@ tenantRoot.get("/feed/stats", async (c) => {
   } catch (e) {
     console.error("feed stats failed", e instanceof Error ? e.message : String(e));
     return c.json({ error: "Couldn't read the feed stats" }, 503);
+  }
+});
+
+// Home (shared/home-core.ts): the org's activity per local day, the team, the repositories, backlog and Triage
+// counts — D1 only. `tz` = the viewer's minutes EAST of UTC (default 0). A bad `tz` is a 400; a failed read is a 503
+// `{ error }`, never a 500.
+tenantRoot.get("/home", async (c) => {
+  const tzRaw = c.req.query("tz");
+  const tz = tzRaw === undefined ? 0 : /^-?\d{1,4}$/.test(tzRaw) ? Number(tzRaw) : NaN;
+  if (!isHomeTz(tz)) return c.json({ error: "tz must be whole minutes east of UTC, within ±840" }, 400);
+  try {
+    return c.json(await homeData(c.var.ctx, { tzOffsetMin: tz }));
+  } catch (e) {
+    console.error("home read failed", e instanceof Error ? e.message : String(e));
+    return c.json({ error: "Couldn't read Home" }, 503);
   }
 });
 

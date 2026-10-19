@@ -162,7 +162,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | tickets, the board, `tickets-agent.ts`, the GitHub issue mirror | `tickets.md` |
 | the Docs Library: spaces, the page tree, links, Markdown import (`src/spaces/`, `src/imports/`, `src/tools/spaces.ts`, `shared/docs-*core.ts`) | `docs-library.md` |
 | `reads.ts` / `query`, `/search`, quick search, the feed brief & stats, the org's tag list | `feed-and-search.md` |
-| plan, sprints, progress, My Work, summaries | `roadmap-my-work.md` |
+| plan, sprints, progress, My Work, Home (`GET /home`), summaries | `roadmap-my-work.md` |
 | `src/repo/`, `tools/repo*.ts`, the Repo screen, the repo cron, pollers | `repo-dashboard.md` |
 | apps, the Repo Overview's facts and layout, detection and Repositories › Apps, releases | `repo-apps.md` |
 | `src/auth/`, MCP OAuth, identity, persons, avatars, roles, Settings › MCP | `auth-identity-people.md` |

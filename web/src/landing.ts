@@ -18,7 +18,7 @@
 //     render the standalone /pricing page uses.
 //   • The banner (not in the canvas; 2026-10): the first-run card's purple banner
 //     (`.site-banner` in trov.css, one definition with `.cnpy-orgs-banner`) is carried
-//     through the page — the hero stands the Review mockup on it, "Agents propose,
+//     through the page — the hero stands the Home mockup on it, "Agents propose,
 //     people decide" is the same card on its side, the sign-in dialog is the card
 //     itself, and every tour mockup stands on a field of its dots.
 //   • The page is `data-morph="landing"` and the dialog a `data-overlay`, so opening
@@ -33,10 +33,14 @@
 //     `site-hide-ph`, …): never a second copy of the markup. docs/architecture/web-ui.md has the rules.
 //   • Motion (not in the canvas): the mockups act out the product. Elements carry
 //     `data-rv` and render hidden; landing-motion.ts plays them as they scroll in
-//     and the CSS in trov.css runs the choreography, each step timed by `--d`.
+//     and the CSS in trov.css runs the choreography, each step timed by `--d`. The hero's
+//     Home screen is the one that loops (its `hl-*` steps on a 14s clock, `hero` below).
 
 import { esc } from "./ui";
 import { trovMark } from "@shared/mark";
+import type { MyOrg } from "@shared/orgs";
+import { sidebarView } from "./sidebar";
+import { orgSwitcherButton } from "./org-switcher";
 import { TROV_REPO, siteFooter, siteMark as mark, skipLink } from "./site-chrome";
 import { pricingSection } from "./pricing";
 import { segmented } from "./segmented";
@@ -49,9 +53,9 @@ import { MCP_TOOL_GROUPS, mcpToolCountPhrase } from "@shared/mcp-tools-core";
 import { productQuestions } from "./site-questions";
 import type { FeatureState } from "./site-feature-core";
 import { pagePath } from "@shared/site-pages";
-import { AGENT_TAG, LINK_CARDS, featureMock, initials, linkCardMock, linksDiagram, treeChev } from "./landing-mocks";
+import { AGENT_TAG, DOC_BUTTONS, DOC_CRUMB, LINK_CARDS, docBanner, docState, featureMock, initials, linkCardMock, linksDiagram, paneHead, paneRows } from "./landing-mocks";
 import { LINK_LIVE_MAX } from "@shared/links";
-import { LOW_CONFIDENCE, artifactStatusMark, authorityMark, handoffMark } from "./marks";
+import { aiMark, artifactStatusMark, authorityMark, handoffMark, markShape } from "./marks";
 import { artifactKindLabel } from "@shared/artifacts-core";
 import { STARTER_SPACES, SIDEBAR_SPACES_MAX, spaceOrder } from "@shared/docs-core";
 
@@ -198,75 +202,202 @@ function menuSheet(dark: boolean, signedIn: boolean): string {
   </div>`;
 }
 
-// The hero's sidebar is the app's (web/src/sidebar.ts `sidebarView`): the same sections, entries, order, labels and
-// icons: Workspace, Monitor, Knowledge (the Library with its spaces under it: a new organization's three starter
-// spaces, A to Z), Triage, Help. The icon paths are sidebar.ts `ICONS`'s, copied (that module pulls the Library screen
-// in); change them with it. test/render.landing.test.ts holds the two together.
-export const NAV_ICON = {
-  mywork: `<path d="M3 12 12 3l9 9"></path><path d="M5 10v10h14V10"></path><path d="M9 20v-6h6v6"></path>`,
-  ask: `<circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path>`,
-  tickets: `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`,
-  roadmap: `<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
-  relay: `<path d="M22 2 11 13"></path><path d="M22 2 15 22l-4-9-9-4z"></path>`,
-  repo: `<path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path>`,
-  feed: `<path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path>`,
-  library: `<path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path>`,
-  artifacts: `<rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M7 13.5h6"></path><path d="M7 16.5h9"></path>`,
-  prompts: `<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5a2 2 0 0 0 2 2h1"></path><path d="M16 21h1a2 2 0 0 0 2-2v-5a2 2 0 0 1 2-2 2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"></path>`,
-  review: `<rect x="4" y="4" width="16" height="16" rx="3"></rect><path d="m9 12.5 2 2 4-5"></path>`,
-  unplaced: `<path d="M22 12h-6l-2 3h-4l-2-3H2"></path><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"></path>`,
-  guide: `<path d="M2 4h7a3 3 0 0 1 3 3v14a2.5 2.5 0 0 0-2.5-2.5H2z"></path><path d="M22 4h-7a3 3 0 0 0-3 3v14a2.5 2.5 0 0 1 2.5-2.5H22z"></path>`,
-  releases: `<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path>`,
-} as const;
-/** The starter spaces' icons (web/src/library.ts `SPACE_ICON_PATHS`, the three a new organization starts with). */
-const STARTER_ICON_PATHS: Record<string, readonly string[]> = {
-  pen: ["M4 20l4-1 11-11a2.1 2.1 0 0 0-3-3L5 16z", "M14 7l3 3"],
-  braces: ["M8 4H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h1", "M16 4h1a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-1"],
-  compass: ["M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18z", "M15.5 8.5l-2 5-5 2 2-5z"],
-};
-/** The Library's space rows under its entry, as the sidebar draws them (`subList`: the space's tile, then its name):
- *  the starter spaces in the Library's order (A to Z), at most the sidebar's five. A tile as library.ts
- *  `spaceTile` draws it at 14px: the space's colour, its white line icon at 62%, the corner min(4.8, size x .25). */
-function heroSpaces(): string {
-  return [...STARTER_SPACES].map((sp) => ({ ...sp, created_at: "" })).sort(spaceOrder).slice(0, SIDEBAR_SPACES_MAX).map((sp) => {
-    const paths = (STARTER_ICON_PATHS[sp.icon] ?? []).map((d) => `<path d="${d}"></path>`).join("");
-    const tile = `<span class="cnpy-spt" style="--spt-r:3.5px;width:14px;height:14px;background:${sp.color}" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">${paths}</svg></span>`;
-    return `<div data-hero-space="${sp.slug}" style="display:flex;align-items:center;gap:8px;padding:2.5px 8px 2.5px 31px;font-size:11.5px;font-weight:500;color:var(--fg-55)">${tile}${sp.name}</div>`;
-  }).join("");
+// The hero's sidebar IS the app's: web/src/sidebar.ts `sidebarView` and the org switcher (org-switcher.ts), drawn with
+// the site's fictional org (Acme, Maya Chen) on Home, Library folded (its starter spaces are in the markup, as the app's are)
+// so the whole rail, Help included, fits the window. So the
+// hero can never drift from the app: a change to the rail shows here as it is. The Relay count is the one the story
+// clears (`hl-badge`: the handoff Claimed in Needs attention).
+function heroSidebar(): string {
+  const spaces = [...STARTER_SPACES].map((sp) => ({ ...sp, created_at: "" })).sort(spaceOrder).slice(0, SIDEBAR_SPACES_MAX)
+    .map((sp) => ({ key: sp.slug, label: sp.name, icon: sp.icon, color: sp.color }));
+  return sidebarView({
+    screen: "home", collapsed: false, navOpen: { library: false }, qView: "board", roadmapTab: "narrative",
+    librarySpace: null, spaces, spacesLoaded: true, canAdmin: true,
+    counts: { review: 2, tickets: 0, handoffs: 1, prompts: 0 },
+    me: { handle: "maya", name: "Maya Chen", color: "plum", avatar_url: null }, displayName: "Maya Chen",
+    logo: trovMark(24),
+    orgSwitcher: orgSwitcherButton({ org: { slug: "acme", name: "Acme", role: "owner" } as MyOrg, open: false, invites: 0, collapsed: false }),
+  }).replace(/(n-handoffs[\s\S]*?class="cnpy-lbl cnpy-badge)"/, "$1 hl-badge\"")
+    // A picture, not a control: its buttons become plain boxes (the same classes, so the same look), nothing acts,
+    // and the search field shows its placeholder as text.
+    .replace(/<input [^>]*placeholder="([^"]*)"[^>]*\/?>/g, '<span class="cnpy-lbl cnpy-search-in" style="color:var(--fg-40)">$1</span>')
+    .replace(/<button\b/g, "<span").replace(/<\/button>/g, "</span>")
+    .replace(/ (?:data-act|data-arg|data-field|data-orgsw-trigger|data-drop-space|tabindex|aria-[a-z]+|type)="[^"]*"/g, "")
+    .replace(/ data-orgsw-trigger\b/g, "");
 }
 
-// ── 1 · hero (with the Review screen mockup) ─────────────────────────────────
-// The signature moment: the headline rises in word by word, the Review mockup
-// lifts into place, then acts out the product — an agent's proposed lines type
-// into the diff, the Promote button draws the eye, a PERSON promotes it, and the
-// queue badge and a toast confirm it went live. It plays once and rests there.
+// ── 1 · hero (with the Home screen mockup) ───────────────────────────────────
+// The signature moment: the headline rises in word by word and the app's front page, Home (web/src/home.ts, the `.hm-*`
+// classes in trov.css, drawn here inert and a little denser so it fits the 600px window), lifts into place under it.
+// Then it acts out the product, as ONE story that loops calmly every `--hl` (14s; trov.css "the hero's Home, looping"):
+//   0.0s   the page rises in; the status line counts up to "3 things need you"
+//   1.0s   Activity fills in: the bars grow, the figures count up, the deltas follow
+//   2.9s   the bar is focused and switched to Ask Trov; "What shipped this week?" types in and is sent
+//   5.0s   Trov's answer opens under the bar ("Reading your organization…"), streams in word by word, then its byline,
+//          sources, Wrong? and Continue in Trov; it is read, then closed, and the bar goes back to Search
+//   9.8s   the status line opens Needs attention; Claim is pressed on @leo's handoff, its row leaves, the count
+//          drops to "2 things need you" and Relay's badge goes
+//  13.3s   the page fades, and the story starts again
+// Every step is a CSS keyframe on the loop's clock (`hl-*`, each element's `--hd` a small stagger); an element's own
+// style is the story's settled end, so reduced motion, no script and a paused tab all show the same calm page. The window
+// has a fixed height and every moving part is either in place or laid over the page (the answer, the popover), so
+// nothing on the page around it ever moves. landing-motion.ts pauses the loop while the hero is out of view.
 // The COPY is never hidden: it is the page's first words, prerendered (site-prerender.ts), so it is
 // rendered settled (`is-done`, no `data-rv` — nothing waits on the script) and its rise is CSS alone,
 // transform only (trov.css `.site-hero-in .site-st`), from the first paint. The mockup is the script's.
+
+/** Home's row and section icons (home.ts `HOME_ICON`), copied: that module pulls the Ask answer's Markdown in, which
+ *  the landing's bundle must not. test/render.landing.test.ts holds the two together. */
+export const HOME_ICON_COPY = {
+  repo: `<path d="M6 3v12M15 6a3 3 0 1 0 6 0a3 3 0 1 0-6 0M3 18a3 3 0 1 0 6 0a3 3 0 1 0-6 0M18 9a9 9 0 0 1-9 9"></path>`,
+  app: `<path d="M12 3 20 7.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12 4 7.5"></path>`,
+  sprint: `<path d="M5 21V4M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`,
+  ticket: `<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2zM13 5v2M13 11v2M13 17v2"></path>`,
+  review: `<path d="M7 4h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3zM9 12.5l2 2 4-5"></path>`,
+} as const;
+/** The question the hero asks, typed one character a step (trov.css `hl-type` steps by its length). */
+export const HERO_QUESTION = "What shipped this week?";
+/** Trov's answer, streamed a word at a time (each word's `--i` against the stream's `--hw`). */
+export const HERO_ANSWER = "Rate limiting shipped on the public API: each organization has its own request budget, and a 429 says when to try again. Tickets now move freely on the board, and the order you leave them in is saved. The Monday digest stops repeating Friday's entries.";
+
+function heroHome(): string {
+  const ic = (d: string, size = 14, cls = "hm-ic") => `<svg class="${cls}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const CHEV = `<svg class="hm-chev" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>`;
+  const CHEV_S = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>`;
+  const DOWN = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>`;
+  const SEARCH = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg>`;
+  const X = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
+  const GO = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
+  const GO_S = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>`;
+  const THUMB = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 14V2"></path><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path></svg>`;
+  /** A stagger on the loop's clock (ms), on an element that plays one of the `hl-*` steps. */
+  const hd = (ms: number) => `--hd:${Math.round(ms)}ms;`;
+  /** home.ts's pick-one switch (segmented.ts), drawn still: the classes without the buttons. */
+  const seg = (opts: [string, string][]) => `<span class="cnpy-seg cnpy-seg--xs">${opts.map(([label, cls]) => `<span class="cnpy-seg-btn ${cls}">${label}</span>`).join("")}</span>`;
+  const sectionHead = (title: string, count: number | null, sub = "") =>
+    `<div class="hm-sec-h"><span class="hm-sec-t">${title}${count ? `<span class="hm-count">${count}</span>` : ""}${CHEV_S}</span>${sub ? `<span class="hm-sec-sub">${sub}</span>` : ""}</div>`;
+  const row = (icon: string, title: string, post = "", trail = "", tone = "", mark = "") =>
+    `<div class="hm-row">${icon}<span class="hm-row-t"><span class="hm-row-title">${title}</span>${post ? `<span class="hm-row-post">${post}</span>` : ""}</span>${mark}${trail ? `<span class="hm-row-trail"${tone ? ` style="color:${tone}"` : ""}>${trail}</span>` : ""}${CHEV}</div>`;
+  const RING_ACCENT = markShape("ring", "var(--accent)", 8);
+  const WARN = markShape("triangle", "var(--amber)", 8);
+
+  // The head: the headline, then the status line and its Needs attention (home-view.ts `attentionRows`).
+  const attnRow = (mark: string, title: string, meta: string, action: string, cls = "") => `<div class="hm-attn-row">
+      ${mark}<div class="hm-attn-t"><div class="hm-attn-title">${title}</div><div class="hm-attn-meta">${meta}</div></div>
+      <span class="hm-btn hm-btn-sm${cls ? ` ${cls}` : ""}">${action}</span>
+    </div>`;
+  const count = `<span class="hl-cnt site-hm-n"></span>`;
+  const head = `<div class="hm-head hl-rise">
+      <div class="hm-h">Where did we leave off?</div>
+      <div class="hm-statusrow">
+        <span class="hm-status hl-stat">${markShape("ring", "var(--accent)", 9)}<span>${count} things need you</span><span class="hm-status-chev hl-chev">${DOWN}</span></span>
+        <div class="hm-attn hl-attn">
+          <div class="hm-attn-h"><span>Needs attention</span><span class="hm-attn-n">${count} need you</span></div>
+          ${attnRow(markShape("ring", "var(--accent)", 9), "2 waiting in Review", "2 to review", "Open Review")}
+          <div class="site-hm-leave hl-leave">${attnRow(markShape("ring", "var(--blue)", 9), "Handoff from @leo waiting 2 days", "Retry-After is wired, the tests aren't", "Claim", "hl-claim")}</div>
+          ${attnRow(markShape("triangle", "var(--amber)", 9), "Sprint Billing is 2 days overdue", "4 of 7 done · was due Oct 16", "Open sprint")}
+        </div>
+      </div>
+    </div>`;
+
+  // The bar: Search, switched to Ask Trov; the question types in; Trov's answer opens under it.
+  const words = HERO_ANSWER.split(" ").map((w, i) => `<span class="hl-w" style="--i:${i}">${esc(w)}</span>`).join(" ");
+  const nWords = HERO_ANSWER.split(" ").length;
+  const bar = `<div class="hm-bar-wrap hl-rise" style="${hd(60)}">
+      <div class="hm-bar-ring hl-ring">
+        <div class="hm-bar hl-bar">
+          <span class="hm-bar-ic site-hm-stack"><span class="hl-ask-out">${SEARCH}</span><span class="hl-ask-in">${aiMark(14)}</span></span>
+          <span class="site-hm-q site-hm-stack">
+            <span class="site-hm-ph hl-ask-out">Search tickets, docs, decisions and people</span>
+            <span class="site-hm-ph hl-ph-ask">Ask Trov about your organization</span>
+            <span class="site-hm-typed hl-type">${esc(HERO_QUESTION)}</span>
+          </span>
+          <span class="hm-clear hl-ask-x">${X}</span>
+          ${seg([["Search", "is-on hl-seg-off"], ["Ask Trov", "hl-seg-on"]])}
+          <span class="site-hm-end site-hm-stack"><span class="hm-kbd hl-kbd"><kbd>⌘</kbd><kbd>K</kbd></span><span class="hm-go hl-go">${GO}</span></span>
+        </div>
+      </div>
+      <div class="hm-ans hl-ans">
+        <div class="hm-ans-h"><span class="hm-ans-ic">${aiMark(10)}</span><span class="hm-ans-q">${esc(HERO_QUESTION)}</span><span class="hm-clear hl-xpress">${X}</span></div>
+        <div class="site-hm-stack">
+          <div class="hm-ans-wait hl-wait"><span class="hm-dots"><span></span><span></span><span></span></span>Reading your organization…</div>
+          <div class="hm-ans-text hl-words" style="--to:${nWords};--hw:${nWords}"><p>${words}</p></div>
+        </div>
+        <div class="hm-ans-foot hl-foot">
+          <span class="hm-ans-by">${aiMark(10)}Written by Trov just now</span>
+          <span class="hm-ans-src">From<span class="hm-src">#142</span><span class="hm-src">Rate limiting</span><span class="hm-src">#218</span></span>
+          <span class="hm-ans-gap"></span><span class="hm-ans-wrong">${THUMB}</span>
+          <span class="hm-btn hm-btn-sm">Continue in Trov${GO_S}</span>
+        </div>
+      </div>
+    </div>`;
+
+  // The three lists (home-view.ts `repositoriesCol`, `roadmapCol`, `forYouCol`).
+  const cols = `<div class="hm-cols hl-rise" style="${hd(120)}">
+      <div class="hm-col">${sectionHead("Repositories", 2)}
+        ${row(ic(HOME_ICON_COPY.repo), "acme/api", "", "12m ago")}
+        ${row(ic(HOME_ICON_COPY.app), "API", "Cloudflare Workers")}
+        ${row(ic(HOME_ICON_COPY.app), "Dashboard", "Vercel")}
+      </div>
+      <div class="hm-col">${sectionHead("Roadmap", 3)}
+        ${row(ic(HOME_ICON_COPY.sprint), "Billing", "", "2 days overdue", "var(--amber)", WARN)}
+        ${row(ic(HOME_ICON_COPY.sprint), "Hardening the public API", "4 of 6", "Due Oct 24")}
+        ${row(ic(HOME_ICON_COPY.sprint), "Notifications and digests", "1 of 8", "Due Nov 7")}
+      </div>
+      <div class="hm-col">${sectionHead("For you", 4)}
+        ${row(ic(HOME_ICON_COPY.review), "Deploy process", "Proposal", "2h", "", RING_ACCENT)}
+        ${row(ic(HOME_ICON_COPY.ticket), "Retry-After on 429 responses", "Testing", "Due Oct 24")}
+        ${row(ic(HOME_ICON_COPY.ticket), "Digest de-dupe on Mondays", "In progress")}
+      </div>
+    </div>`;
+
+  // Activity, 7D (home-view.ts `activityCards`): the range's sum, its delta against the 7 days before, a bar a day.
+  const card = (k: number, label: string, days: number[], delta: string, tone: string) => {
+    const total = days.reduce((a, b) => a + b, 0);
+    const mx = Math.max(1, ...days);
+    const bars = days.map((v, i) => `<span class="hm-bar-b hl-grow${i === days.length - 1 ? " is-today" : ""}" style="height:${v > 0 ? Math.max(8, Math.round((v / mx) * 100)) + "%" : "2px"};${hd(k * 40 + i * 12)}"></span>`).join("");
+    return `<div class="hm-card">
+        <span class="hm-card-l">${label}</span>
+        <span class="hm-card-n hl-fig site-hm-n" style="--to:${total};--hv:${total};${hd(k * 40)}"></span>
+        <span class="hm-card-d hl-delta" style="color:${tone};${hd(k * 40)}">${delta}</span>
+        <span class="hm-card-bars" style="--gap:4px">${bars}</span>
+        <span class="hm-card-x"><span>Oct 12</span><span>Today</span></span>
+      </div>`;
+  };
+  const activity = `<div class="hm-act hl-rise" style="${hd(180)}">
+      <div class="hm-act-h"><h3>Activity</h3>${seg([["7D", "is-on"], ["30D", ""], ["90D", ""]])}</div>
+      <div class="hm-cards">
+        ${card(0, "Tickets done", [2, 1, 3, 2, 0, 4, 2], "+5 vs previous 7 days", "var(--green)")}
+        ${card(1, "Handoffs claimed", [1, 0, 2, 1, 0, 1, 1], "+2 vs previous 7 days", "var(--green)")}
+        ${card(2, "Docs promoted", [0, 1, 0, 1, 0, 0, 1], "−1 vs previous 7 days", "var(--amber)")}
+        ${card(3, "Sessions recorded", [3, 4, 2, 5, 1, 4, 4], "+8 vs previous 7 days", "var(--green)")}
+      </div>
+    </div>`;
+
+  // Latest beside Team (home.ts `latestView`, `teamView`).
+  const feedRow = (who: string, kind: string, text: string, at: string, mark = "") =>
+    `<div class="hm-row">${who}<span class="hm-row-t"><span class="hm-row-pre">${kind}</span><span class="hm-row-title">${text}</span></span>${mark}<span class="hm-row-trail">${at}</span>${CHEV}</div>`;
+  const member = (who: string, handle: string, tone: string, on: string, at: string, live: boolean) =>
+    `<div class="hm-row"><span class="hm-team-av">${who}${live ? `<span class="hm-live"></span>` : ""}</span><span class="hm-row-t"><span class="hm-row-title" style="color:var(--${tone})">${handle}</span><span class="hm-row-post">${on}</span></span><span class="hm-row-trail">${at}</span>${CHEV}</div>`;
+  const lower = `<div class="hm-lower hl-rise" style="${hd(240)}">
+      <div class="hm-latest">${sectionHead("Latest", null, "2 today")}
+        ${feedRow(initials("LP", 16, "7.5px"), "Shipped", "Rate limiting on the public API", "1h")}
+        ${feedRow(`<span class="hm-trov">${aiMark(8)}</span>`, "Status", "Hardening the public API is 4 of 6 done", "3h")}
+      </div>
+      <div class="hm-team">${sectionHead("Team", 3)}
+        ${member(initials("MC", 18, "7.5px"), "@maya (you)", "accent", "Retry-After on 429 responses", "2m", true)}
+        ${member(initials("LP", 18, "7.5px"), "@leo", "blue", "Rate limiting on the public API", "12m", true)}
+      </div>
+    </div>`;
+
+  return `<div class="hm-page site-hm hl-page">${head}${bar}${cols}${activity}${lower}</div>`;
+}
+
 function hero(signedIn: boolean): string {
   const HEADLINE = "Shared memory for your team and its coding agents.";
   const words = HEADLINE.split(" ").map((w, i) => `<span class="site-st st-word" style="${at(80 + i * 55)}">${w}</span>`).join(" ");
-
-  // The mockup's script, in ms after page load (the copy and the mockup reveal together).
+  // The mockup reveals with the copy (in ms after page load); its loop (trov.css `--hs`) starts as it lands.
   const MOCK_IN = 700;
-  const DEL = 1650;
-  const [add1, add1End] = typed("+ 3. CI applies D1 migrations.", DEL + 350, 30);
-  const [add2, add2End] = typed("+ 4. CI runs the deploy. Laptop deploys are retired.", add1End + 180, 24);
-  const RING = add2End + 350;       // two pulses on Promote…
-  const PRESS = RING + 2100;        // …then a person clicks it
-  const DONE = PRESS + 140;         // label → "Promoted", Reject dims, badge 3 → 2
-  const TOAST = DONE + 300;
-
-  const side = (svg: string, label: string, after = "") =>
-    `<div style="display:flex;align-items:center;gap:9px;padding:3px 8px;border-radius:7px;font-size:12px;font-weight:500;color:var(--fg-55)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${svg}</svg>${label}${after}</div>`;
-  const sideHead = (label: string, top: string) =>
-    `<div style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 8px 4px">${label}</div>`;
-  // `twin`: the same line stands in the other pane too. A phone shows ONE unified column (trov.css), so it drops the twin.
-  const line = (text: string, twin = false) => `<div${twin ? ` class="site-hero-twin"` : ""} style="padding:1px 12px">${text}</div>`;
-  const hl = (inner: string, kind: "add" | "del", start: number) => `<div class="site-hl hl-${kind}" style="padding:1px 12px;${at(start)}"><span>${inner}</span></div>`;
-  const paneHead = (label: string) => `<div class="site-hero-ph" style="padding:7px 12px;border-bottom:1px solid var(--border);font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40)">${label}</div>`;
-  const diffTab = (label: string, on: boolean) => `<span style="padding:3px 9px;border-radius:6px;font-size:10.5px;font-weight:500;${on ? "border:1px solid var(--accent);color:var(--accent);background:var(--accent-soft)" : "border:1px solid var(--border);color:var(--fg-55)"}">${label}</span>`;
-  const dot = `<span style="width:10px;height:10px;border-radius:50%;background:var(--border-strong);flex:none"></span>`;
 
   // Signed out, the first button opens Sign in (which is also sign-up: either provider creates the
   // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
@@ -288,94 +419,11 @@ function hero(signedIn: boolean): string {
     </div>
 
     <div class="site-hero-stage"><div ${rv("hero-mock", "rv-lift site-hero-mock")} style="border-radius:13px;${at(MOCK_IN)}">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)">
-        ${dot}${dot}${dot}
-        <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#review</span>
-        <span style="width:44px"></span>
-      </div>
-      <div class="site-hero-win" style="display:flex;height:600px;overflow:hidden">
-        <div class="site-hide-sm" style="width:212px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:14px 12px 12px">
-          <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 8px">
-            ${mark(17)}
-            <span style="font-size:14.5px;font-weight:650;letter-spacing:-0.01em">Trov</span>
-          </div>
-          ${sideHead("Workspace", "2px")}
-          <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(NAV_ICON.mywork, "My Work")}
-            ${side(NAV_ICON.ask, "Trov")}
-            ${side(NAV_ICON.tickets, "Tickets")}
-            ${side(NAV_ICON.roadmap, "Roadmap")}
-            ${side(NAV_ICON.relay, "Relay")}
-          </div>
-          ${sideHead("Monitor", "8px")}
-          <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(NAV_ICON.repo, "Repo")}
-            ${side(NAV_ICON.feed, "Feed")}
-          </div>
-          ${sideHead("Knowledge", "8px")}
-          <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(NAV_ICON.library, "Library", `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" style="margin-left:auto;flex:none;color:var(--fg-40);transform:rotate(90deg)" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>`)}
-            ${heroSpaces()}
-            ${side(NAV_ICON.artifacts, "Artifacts")}
-            ${side(NAV_ICON.prompts, "Prompt Library")}
-          </div>
-          ${sideHead("Triage", "8px")}
-          <div style="display:flex;flex-direction:column;gap:1px">
-            <div style="display:flex;align-items:center;gap:9px;padding:2px 8px;border-radius:7px;font-size:12px;font-weight:500;background:var(--accent-soft);color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="flex:none">${NAV_ICON.review}</svg>Review<span class="site-swap" style="margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:600;place-items:center;${at(DONE + 150)}"><span>3</span><span>2</span></span></div>
-            ${side(NAV_ICON.unplaced, "Unplaced")}
-          </div>
-          ${sideHead("Help", "8px")}
-          <div style="display:flex;flex-direction:column;gap:1px">
-            ${side(NAV_ICON.guide, "Guide")}
-            ${side(NAV_ICON.releases, "What's new")}
-          </div>
-          <div style="margin-top:auto">
-            <div style="font-size:10.5px;color:var(--fg-40);padding:6px 8px 8px">agents produce · humans confirm</div>
-            <div style="display:flex;align-items:center;gap:9px;padding:8px;border-top:1px solid var(--border)">
-              ${initials("MC")}
-              <span style="min-width:0"><span style="display:block;font-size:11.5px;font-weight:600">Maya Chen</span><span style="display:block;font-size:10.5px;color:var(--fg-40);font-family:var(--sans)">@maya</span></span>
-            </div>
-          </div>
-        </div>
-        <div style="flex:1;min-width:0;display:flex;flex-direction:column;position:relative">
-          <div style="display:flex;align-items:center;padding:13px 22px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Review</div>
-          <div class="site-hero-pad" style="padding:22px 26px;overflow:hidden">
-            <div class="site-hero-trow" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-              <span style="font-size:21px;font-weight:650;letter-spacing:-0.015em">Deploy process</span>
-              ${LOW_CONFIDENCE(12)}
-              <span class="site-hero-verdict" style="margin-left:auto;display:flex;gap:8px">
-                <span class="site-dim" style="border:1px solid var(--border-strong);color:var(--fg-70);font-size:12px;font-weight:600;padding:6px 14px;border-radius:8px;${at(DONE)}">Reject</span>
-                <span class="site-ring site-press site-swap" style="background:var(--accent);color:var(--accent-fg);font-size:12px;font-weight:600;padding:6px 16px;border-radius:8px;--ring:${RING}ms;--press:${PRESS}ms;${at(DONE)}"><span>Promote</span><span>Promoted ✓</span></span>
-              </span>
-            </div>
-            <div class="site-hero-meta" style="margin-top:7px;display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--fg-55)">
-              Proposal · <span style="font-family:var(--label);font-size:10.5px;letter-spacing:.03em">TECHNICAL / OPERATIONS</span> · Maya Chen ${AGENT_TAG} · 2h ago
-            </div>
-            <div style="margin-top:20px;display:flex;align-items:center;gap:10px">
-              <span style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">What changed</span>
-              <span class="site-hero-tabs" style="margin-left:auto;display:flex;gap:6px">${diffTab("Unified", false)}${diffTab("Side by side", true)}${diffTab("Rendered", false)}</span>
-              <span class="site-hero-tabs-ph" aria-hidden="true">${diffTab("Unified", true)}${diffTab("Side by side", false)}${diffTab("Rendered", false)}</span>
-            </div>
-            <div class="site-hero-diff" style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:10px;overflow:hidden;font-family:var(--label);font-size:11px;line-height:1.7">
-              <div class="site-hero-cur" style="border-right:1px solid var(--border)">
-                ${paneHead("Current · v4")}
-                <div class="site-hero-lines" style="padding:10px 0 14px;color:var(--fg-70)">
-                  ${line("## Deploy process", true)}${line("&nbsp;", true)}${line("Merges to main deploy automatically.", true)}${line("1. Open a PR and get one review.", true)}${line("2. CI runs typecheck and tests.", true)}${hl("- 3. Deploy from your laptop.", "del", DEL)}
-                </div>
-              </div>
-              <div class="site-hero-new">
-                ${paneHead("Proposed")}
-                <div class="site-hero-lines" style="padding:10px 0 14px;color:var(--fg-70)">
-                  ${line("## Deploy process")}${line("&nbsp;")}${line("Merges to main deploy automatically.")}${line("1. Open a PR and get one review.")}${line("2. CI runs typecheck and tests.")}${hl(add1, "add", DEL + 300)}${hl(add2, "add", add1End + 130)}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="site-toast" role="presentation" style="position:absolute;right:20px;bottom:20px;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 12px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:var(--lift-shadow);font-size:12px;${at(TOAST)}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="2.4" style="flex:none"><path d="M20 6 9 17l-5-5"></path></svg>
-            <span><span style="font-weight:600">Deploy process</span> <span style="color:var(--fg-55)">is live as v5</span></span>
-            <span style="font-family:var(--sans);font-size:10.5px;color:var(--fg-40)">@maya</span>
-          </div>
+      <div class="site-hero-win" style="display:flex;height:680px;overflow:hidden" aria-hidden="true" inert>
+        <div class="site-hide-sm site-hero-side">${heroSidebar()}</div>
+        <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+          <div style="display:flex;align-items:center;padding:13px 22px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600">Home</div>
+          <div class="site-hm-view">${heroHome()}</div>
         </div>
       </div>
     </div></div>
@@ -518,7 +566,7 @@ export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
     "Completing a sprint is always a person's call.",
   ],
   mywork: [
-    "Trov opens here.",
+    "Your own page.",
     "Tickets for you: your open tickets, with their sprint and when it is due.",
     "Needs your review: what agents staged, with Promote, Ratify and Reject right there.",
     "It reads only what Trov has already captured, so it loads instantly.",
@@ -545,37 +593,21 @@ export const TOUR_FACTS: Record<TourKey, readonly string[]> = {
 
 function tourItems(): TourItem[] {
   const S = 160; // mockup contents start once the mockup has arrived (its own reveal is --fx-slow)
-  const treeHead = (label: string, top: string) => `<div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 6px 6px">${label}</div>`;
-  // A page row: the disclosure chevron (`treeChev`, as the Docs tree draws it) beside the title.
-  const TREE_ROW = "display:flex;align-items:center;gap:4px;padding:4px 6px;font-size:11.5px";
-  // One line, cut with an ellipsis: a long title never wraps under its chevron.
-  const treeTitle = (t: string) => `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>`;
-  const tree = (i: number, style: string, text: string) => `<div class="site-st st-l" style="${style};${at(S + i * 70)}">${text}</div>`;
+  // The Library's doc page, small: the header's trail, the PAGES pane, the page with its pending banner (the parts
+  // landing-mocks.ts draws the dialog's screen from; the rail is the dialog's). The rows and the page rise in turn.
+  const st = (i: number, html: string, cls = "site-st st-l") => `<div class="${cls}" style="${at(S + i * 60)}">${html}</div>`;
   const docs = `
-      <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
-        <span style="font-size:12px;font-weight:600">Docs</span>
-        <span style="margin-left:auto;display:flex;border:1px solid var(--border);border-radius:7px;overflow:hidden;font-size:10.5px;font-weight:500">${segTab("Engineering", true)}${segTab("Product", false, true)}</span>
-      </div>
-      <div style="display:flex;min-height:250px">
-        <div class="site-hide-sm" style="width:180px;flex:none;border-right:1px solid var(--border);padding:12px 8px">
-          ${treeHead("Operations", "0")}
-          ${tree(0, `${TREE_ROW};font-weight:500;color:var(--accent)`, `${treeChev(true, true)}${treeTitle("Deploy process")}`)}
-          ${tree(1, "padding:2px 6px 2px 22px;font-size:10.5px;color:var(--fg-55)", "Rollbacks")}
-          ${tree(2, "padding:2px 6px 2px 22px;font-size:10.5px;color:var(--accent)", "Migrations")}
-          ${tree(3, `${TREE_ROW};color:var(--fg-55)`, `${treeChev(false)}${treeTitle("Onboarding checklist")}`)}
-          ${treeHead("Decisions", "12px")}
-          ${tree(4, `${TREE_ROW};color:var(--fg-55)`, `${treeChev(false)}${treeTitle("ADR-0012 · Retry budget")}`)}
+      <div style="display:flex;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border);font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden">${DOC_CRUMB(12)}</div>
+      <div style="display:flex;min-height:262px">
+        <div class="site-hide-sm" style="width:172px;flex:none;border-right:1px solid var(--border);padding:12px 8px">
+          ${paneHead(12)}
+          ${paneRows(11.5).map((r, i) => st(i, r)).join("")}
         </div>
-        <div style="flex:1;min-width:0;padding:16px 20px">
-          <div style="font-family:var(--label);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--fg-40)">Engineering / Operations</div>
-          <div style="margin-top:6px;display:flex;align-items:center;gap:10px">
-            <span style="font-size:17px;font-weight:650">Deploy process</span>
-            <span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:var(--fg-70);border:1px solid var(--border);border-radius:6px;padding:3px 8px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 3v6h6"></path><path d="M3.5 9a9 9 0 1 0 2.3-3.3L3 9"></path><path d="M12 8v4l3 2"></path></svg>Version history</span>
-          </div>
-          <div style="margin-top:4px;font-size:10.5px;color:var(--fg-55)">Updated by Leo Park · v5 · 2d ago</div>
-          <div class="site-st" style="margin-top:14px;font-size:12px;line-height:1.7;color:var(--fg-70);${at(S + 150)}">Merges to main deploy automatically. CI applies D1 migrations before the deploy step, so schema and code always land together.</div>
-          <div class="site-st" style="margin-top:10px;font-size:12px;font-weight:600;${at(S + 300)}">Rollbacks</div>
-          <div class="site-st" style="margin-top:4px;font-size:12px;line-height:1.7;color:var(--fg-70);${at(S + 380)}">Redeploy the previous tag; migrations are forward-only.</div>
+        <div style="flex:1;min-width:0;padding:14px 18px 16px">
+          ${st(2, docBanner(11.5), "site-st")}
+          ${st(4, `<div style="margin-top:12px;font-size:19px;font-weight:650;letter-spacing:-0.02em">Deploy process</div>`, "site-st")}
+          ${st(5, `<div style="margin-top:8px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--border)">${docState(11.5)}${DOC_BUTTONS.history}</div>`, "site-st")}
+          ${st(7, `<div style="margin-top:12px;font-size:13.5px;font-weight:600">Migrations</div><div style="margin-top:4px;font-size:12px;line-height:1.65;color:var(--fg-70)">Merges to main deploy automatically. CI applies D1 migrations before the deploy step, so schema and code land together.</div>`, "site-st")}
         </div>
       </div>`;
 

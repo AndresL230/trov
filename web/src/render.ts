@@ -27,6 +27,8 @@ import {
   myWorkLayout, mwSpans, ticketsTile, reviewTile, sessionsTile, repoTile, libraryStrip, libraryTiles, handoffsForMe, briefTile,
   type MwLoad, type MwSession, type MwHandoff, type MwLibrary, type MwRepoTab, type MwDue,
 } from "./mywork";
+import { homePage } from "./home";
+import { homeProps, initialHomeUi, type HomeUi } from "./home-view";
 import type { TagListDTO, TagPageDTO } from "@shared/tags-core";
 import { tagPageView, itemTagsRow, itemTagDropdown, initialTagsUi, type TagsUi } from "./tags";
 import { filterMenu, filterMenuBackdrop, type FilterMenuProps } from "./filter-menu";
@@ -44,7 +46,7 @@ import { esc, attr, initialsOf, relTime, surface, asideColumns, asideHead, aside
 // The landing is its own chunk in the app (landing-lazy.ts); the signed-out page `/` boots it alone (landing-page.ts).
 import { landingView } from "./landing-lazy";
 import { emptyLayout, CONNECT_AGENT, skeleton, skBar, skBox, skLine, skLines, skList, skCard, skW, skProse } from "./skeleton";
-import { reviewView, reviewGroups, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
+import { reviewView, reviewGroups, type ReviewView, type ReviewFilter, type ReviewProps, type DiffViewMode, type ReviewVerdict } from "./review";
 import { importWizardView, importsHistoryView, initialImportUi, driverActive, type ImportUi } from "./import";
 import { confirmModal } from "./confirm";
 import type { ImportRunView } from "@shared/docs-import-core";
@@ -117,7 +119,9 @@ import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } f
 export type DocSpace = string;
 
 export type Screen =
-  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "maintenance" | "search" | "settings" | "guide"
+  // Home (the design `Trov Overview v2`): the org's front page — web/src/home.ts, composed by home-view.ts.
+  | "home"
+  | "mywork" | "feed" | "docs" | "roadmap" | "review" | "search" | "settings" | "guide"
   // One tag's page (`#tags/<name>`): everything that carries it. A child of Org settings › Tags.
   | "tag"
   // The landing page reopened from inside the app (sidebar logo). Full-screen, no chrome.
@@ -203,6 +207,8 @@ export interface AppState {
   /** The payment page (`/billing/checkout`, embedded checkout): set at boot from the URL, else null. */
   billingCheckout: BillingCheckoutUi | null;
   mywork: Loadable<DashboardData | null>;
+  /** Home's reads and its search-or-ask bar (home-view.ts). */
+  home: HomeUi;
   /** My Work › Repo tile: which view is showing. Session-only. */
   mwRepoTab: MwRepoTab;
   /** My Work list tiles the person expanded past MW_ROWS. Session-only. */
@@ -325,6 +331,9 @@ export interface AppState {
   identityDiscarded: DiscardedIdentity[];
   /** Org settings › Members › Unmatched logins: the "N discarded" list is open. */
   identityShowDiscarded: boolean;
+  /** Review's view: its queue ("queue", `#review`) or Unplaced ("unplaced", `#review/unplaced`) — ONE screen, the
+   *  header's To review / Unplaced switch moving between them in place (web-ui.md › A row leaving a list). */
+  reviewView: ReviewView;
   reviewFilter: ReviewFilter;
   reviewSel: string | null;
   reviewDiffView: DiffViewMode;
@@ -602,7 +611,7 @@ export function initialState(): AppState {
     ask: initialAskUi(),
     billingDone: null,
     billingCheckout: null,
-    screen: "mywork",
+    screen: "home",
     theme: "light", systemDark: true,
     collapsed: false,
     narrow: false,
@@ -615,6 +624,7 @@ export function initialState(): AppState {
     feedView: "reading", feedFilterOpen: false, feedFilterCat: "author", feedAuthor: "all", feedTag: "all", feedRange: "all",
     feed: { status: "idle", data: [] },
     mywork: { status: "idle", data: null },
+    home: initialHomeUi(),
     mwRepoTab: "prs",
     mwExpanded: {},
     mwSessions: { status: "idle", data: [] },
@@ -648,7 +658,7 @@ export function initialState(): AppState {
     needsTriage: { status: "idle", data: [] },
     identityTasks: { status: "idle", data: [] },
     identityDiscarded: [], identityShowDiscarded: false,
-    reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
+    reviewView: "queue", reviewFilter: "all", reviewSel: null, reviewDiffView: "unified", reviewLeaving: {}, reviewGroupsOpen: {}, reviewGroupTotals: {}, reviewGroupPages: {}, reviewGroupReject: null,
     assignOpen: null, assignKind: null, assignSection: null, assignSpace: null, assignTags: [], unplacedLeaving: {},
     mapConfirm: null,
     mapPicks: {},
@@ -809,8 +819,6 @@ function reviewGroupRejectModal(s: AppState, r: { id: string; busy: boolean }): 
   });
 }
 
-/** Sidebar counts for the two triage entries: Review's two reads, and the Unplaced queue (the
- *  key is still `maintenance`). Unmatched logins are NOT in it — they wait in Org settings. */
 /** A sidebar count: its list's own once the list has answered, else the last count known for it
  *  (`s.badges`), else the list as it stands (empty before anything is read). */
 function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, list: Loadable<T[]>, count: (rows: T[]) => number): number {
@@ -819,7 +827,10 @@ function badgeCount<T>(s: Pick<AppState, "badges">, key: keyof SidebarBadges, li
 const length = <T>(rows: T[]): number => rows.length;
 export const stagedPrompts = (rows: readonly { status: string }[]): number => rows.filter((p) => p.status === "staged").length;
 
-export function triageCounts(s: AppState): { review: number; maintenance: number } {
+/** The two triage counts: Review's two reads, and the Unplaced queue. They are the
+ *  counts on Review's To review / Unplaced switch (`triageSwitch`), and the sidebar's Review badge is their sum — the
+ *  rail has no Unplaced row, so nothing waiting is hidden. Unmatched logins are NOT in it — they wait in Org settings. */
+export function triageCounts(s: AppState): { review: number; unplaced: number } {
   // An item a verdict was just given to is not waiting any more: the badge drops with the card,
   // not when the refetch lands. It is derived, never stored — a failed write deletes the entry in
   // `reviewLeaving` and the count is back; the refetch then replaces the reads it is derived from.
@@ -827,7 +838,7 @@ export function triageCounts(s: AppState): { review: number; maintenance: number
   return {
     review: badgeCount(s, "proposals", s.proposals, length) + badgeCount(s, "decisions", s.draftAdrs, length) - left,
     // The same for Unplaced: an item placed or discarded drops from the badge with its card.
-    maintenance: badgeCount(s, "unplaced", s.needsTriage, length) - s.needsTriage.data.filter((r) => s.unplacedLeaving[String(r.id)]).length,
+    unplaced: badgeCount(s, "unplaced", s.needsTriage, length) - s.needsTriage.data.filter((r) => s.unplacedLeaving[String(r.id)]).length,
   };
 }
 
@@ -1024,7 +1035,7 @@ function sidebar(s: AppState): string {
     spacesLoaded: s.library.status === "ok" && s.library.data !== null,
     canAdmin: viewerIsAdmin(s),
     // Tickets: unassigned ACTIVE tickets — a "nobody has this" signal (design call #2).
-    counts: { review: counts.review, maintenance: counts.maintenance, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
+    counts: { review: counts.review + counts.unplaced, tickets: s.ticketBadge, handoffs: handoffBadge(s), prompts: badgeCount(s, "prompts", s.promptList, stagedPrompts), imports: importsBadge(s) },
     me: s.me ? { handle: s.me.handle, name: s.me.name, color: s.me.color, avatar_url: s.me.avatar_url } : null,
     displayName: s.displayName,
     logo: logo(24),
@@ -1082,10 +1093,27 @@ function headerCrumb(s: AppState): string {
   return "";
 }
 
+/** Review's two views: its queue and Unplaced (`state.reviewView`, one screen) — ONE switch in the header, as Tickets'
+ *  Board / Table, each option with how many wait there (the sidebar's Review badge is the two together). An
+ *  option's count is left off until it is known (its list, or the badges read), never a guessed 0. The header is
+ *  patched in place across a switch (Review is `data-morph="review"` in both views), so its indicator slides. */
+export function triageSwitch(s: AppState): string {
+  const counts = triageCounts(s);
+  const known = { review: (s.proposals.status === "ok" || s.badges.proposals !== undefined) && (s.draftAdrs.status === "ok" || s.badges.decisions !== undefined), unplaced: s.needsTriage.status === "ok" || s.badges.unplaced !== undefined };
+  const n = (on: boolean, v: number) => (on ? `<span class="cnpy-seg-n">${v}</span>` : "");
+  return segmented({
+    id: "triage-view", ariaLabel: "Review", act: "setReviewView", value: s.reviewView, inertOn: true,
+    options: [
+      { value: "queue", label: "To review", trail: n(known.review, counts.review) },
+      { value: "unplaced", label: "Unplaced", trail: n(known.unplaced, counts.unplaced) },
+    ],
+  });
+}
+
 function header(s: AppState): string {
   const titles: Record<Screen, string> = {
-    mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
-    maintenance: "Unplaced", search: "Search", settings: "Settings", guide: "Guide",
+    home: "Home", mywork: "My Work", feed: "Feed", docs: "Library", library: "Library", space: "Library", roadmap: "Roadmap", review: "Review",
+    search: "Search", settings: "Settings", guide: "Guide",
     site: "Trov", welcome: "Guided setup",
     // The three ticket screens all sit under Tickets; a sprint sits under Roadmap.
     tickets: "Tickets", ticketdetail: "Tickets", newticket: "Tickets", sprint: "Roadmap",
@@ -1148,6 +1176,8 @@ function header(s: AppState): string {
   })}
     <button data-act="newTicket" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"></path></svg>Submit a ticket</button>` : "";
 
+  const triageControls = s.screen === "review" ? triageSwitch(s) : "";
+
   const themeBtn = `<button data-act="cycleTheme" title="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)">
       ${dark
         ? `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"></path></svg>`
@@ -1201,13 +1231,13 @@ function header(s: AppState): string {
   const ask = s.screen === "ask" ? askHeader(s) : null;
   const askControls = s.screen === "ask" ? phoneHeaderControls(s) : cmdjHeaderButton(s);
 
-  return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 var(--hdr-pr, 24px) 0 var(--hdr-pl, 24px);min-height:57px;border-bottom:1px solid var(--border);flex:none">
+  return `<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
     <div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
       ${menuBtn}${ask ? `${ask.lead}${ask.title}` : art ? art.title : title}
       ${ask ? ask.crumb : art ? art.crumb : crumb}
     </div>
     <div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
-      ${askControls}${newControls}${feedControls}${roadmapControls}${importControls}${queueControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
+      ${askControls}${newControls}${feedControls}${roadmapControls}${importControls}${queueControls}${triageControls}${myworkControls}${s.screen === "repo" ? repoControls(repoProps(s)) : ""}${art ? art.controls : ""}${platformHeaderControls(s.plat, s.screen)}${feedSourceSwitch}${feedViewSwitch}${bugBtn}${themeBtn}
     </div>
   </header>`;
 }
@@ -2106,7 +2136,7 @@ export const GUIDE_ALT: Record<string, string> = {
   artifact: "An artifact opened in the viewer",
   prompts: "The Prompt Library",
   review: "The Review screen: staged proposals waiting for a person's verdict",
-  maintenance: "The Unplaced screen: entries waiting to be placed or discarded",
+  maintenance: "Review's Unplaced view: entries waiting to be placed or discarded",
   repo: "The Repo dashboard: environments, deploys and CI",
   "repo-usage": "The Repo dashboard's usage view",
   search: "Search results across docs, tickets and the feed",
@@ -2207,17 +2237,20 @@ function guideView(s: AppState): string {
     <p style="${gP}">When an agent proposes a doc change or drafts a decision (an ADR), it becomes a ${gStrong("staged")} version. The live doc stays untouched until a person promotes the change. Each proposal is labelled ${gStrong("new")}, ${gStrong("edit")}, or ${gStrong("rewrite")}, and an edit written against an out-of-date version is flagged. Sending the same content twice changes nothing, so re-running a session doesn't pile up noise. Docs can include images too: your agent uploads each image to Trov first and then references it, and a proposal that points at an image that isn't uploaded (or at one elsewhere on the web) is refused. Click any image to see it full size. No agent tool can promote, ratify, or reject anything. Those buttons only exist here, in the web app.</p>
 
     ${sub("Review: promote, ratify, or reject")}
-    <p style="${gP}">${gStrong("Triage › Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and the sidebar count shows what's waiting.</p>
+    <p style="${gP}">${gStrong("Review")} is one queue for everything awaiting a decision. A doc proposal shows as a diff against the live version (unified, side by side, or rendered). ${gStrong("Promote")} makes it live; ${gStrong("Reject")} sets it aside. A drafted decision shows the proposed record: ${gStrong("Ratify")} or ${gStrong("Reject")} it. Nothing is deleted either way, and Review's count in the sidebar shows what's waiting, Unplaced included.</p>
     ${gFig("review", `${gEm("Review")}: the queue on the left and the selected proposal's diff on the right.`)}
-    <p style="${gP};margin-top:14px">${gStrong("Triage › Unplaced")} holds the few things an agent couldn't place (Trov now refuses or flags most of them instead), and empty is its normal state. Place an item where it belongs or ${gStrong("Discard")} it (you can undo a discard).</p>
+    <p style="${gP};margin-top:14px">${gStrong("Unplaced")}, the other side of the switch at the top of Review, holds the few things an agent couldn't place (Trov now refuses or flags most of them instead), and empty is its normal state. Place an item where it belongs or ${gStrong("Discard")} it (you can undo a discard).</p>
     ${gFig("maintenance", `${gEm("Unplaced")}: the queue, waiting to be routed or discarded.`)}
     <p style="${gP};margin-top:14px">Running the organization itself is in one place: ${gStrong("Org settings")}, from the switcher at the top of the sidebar. ${gStrong("Members")} is the people directory. Admins also invite people there, set roles and titles, and match an unrecognized GitHub login to a person. ${gStrong("Notifications")} is where admins set the email digests: which exist, when they send, and what went out. Your own digest preferences stay in ${gStrong("Settings")}.</p>
 
     ${sec("Tour", "Every screen, top to bottom", "Tour")}
-    <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")}, ${gStrong("Triage")}, and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
+    <p style="${gP}">The sidebar groups screens into ${gStrong("Workspace")}, ${gStrong("Monitor")}, ${gStrong("Knowledge")} (where Review sits, beside the Library it confirms changes to), and ${gStrong("Help")} (this guide and What's new). A chevron opens a screen's sub-pages, ${gStrong("Collapse")} folds the rail to icons, and every screen has its own address (${gCode("#tickets/7")}, ${gCode("#artifacts")}) you can send to a teammate. On a phone the sidebar opens as a drawer.</p>
+
+    ${sub("Home")}
+    <p style="${gP}">Trov opens here. The line under the greeting says what needs you; open it for ${gStrong("Needs attention")}: a failed deploy or red checks first, then Review, handoffs left for you and an overdue sprint, each with one button. The bar searches tickets, docs, decisions and people, or switches to ${gStrong("Ask Trov")} and answers right under it, with its sources. Below are your repositories, the sprints, what is assigned to you, the team's week (tickets done, handoffs claimed, docs promoted, sessions recorded) and what everyone is on. It keeps itself up to date while it is open.</p>
 
     ${sub("My Work")}
-    <p style="${gP}">Trov opens here. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: pull requests, CI and deploys at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Trov has already captured, so it loads instantly. Admins also get ${gStrong("Sync GitHub")} in the header: it opens a panel that says what a sync reads and writes, shows its progress pass by pass, and keeps the result until you dismiss it.</p>
+    <p style="${gP}">Your own page. ${gStrong("Tickets for you")}: your open tickets, with their sprint and when it is due. ${gStrong("Needs your review")}: what agents staged, with Promote, Ratify and Reject right there. ${gStrong("Your sessions")}: what you recorded lately and the handoffs waiting for you. ${gStrong("Repo")}: pull requests, CI and deploys at a glance. Under them, the docs you own, artifacts published this week, and handoffs queued for you, each with ${gStrong("Copy")} to paste it into a fresh session as a prompt. It reads only what Trov has already captured, so it loads instantly. Admins also get ${gStrong("Sync GitHub")} in the header: it opens a panel that says what a sync reads and writes, shows its progress pass by pass, and keeps the result until you dismiss it.</p>
     ${gFig("mywork", `${gEm("My Work")}: your tickets, the review queue, your sessions, and the repo at a glance.`)}
 
     ${sub("Tickets")}
@@ -2940,8 +2973,8 @@ function reviewScreen(s: AppState): string {
   return `${hint}${reviewView(reviewProps(s))}`;
 }
 
-/** The Unplaced queue (the `maintenance` screen) with its slice's loading/error states around the pure view. */
-function maintenanceScreen(s: AppState): string {
+/** Review's Unplaced view (`state.reviewView`) with its slice's loading/error states around the pure view. */
+function unplacedScreen(s: AppState): string {
   if (slicePending(s.needsTriage)) return maintenanceSkeleton();
   if (s.needsTriage.status === "error" && s.needsTriage.data.length === 0) return notice("Couldn't load the Unplaced queue.");
   return maintenanceView(maintenanceProps(s), s.needsTriage.status === "error" ? mwDegradedHint("Couldn't load the triage queue.") : "");
@@ -3044,6 +3077,7 @@ function personCardFor(s: AppState, handle: string): string {
 // ── root ─────────────────────────────────────────────────────────────────────
 function screenBody(s: AppState): string {
   switch (s.screen) {
+    case "home": return homePage(homeProps(s, typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform ?? ""), ""));
     case "mywork": return myWorkView(s);
     case "ask": return askScreenView(s);
     case "feed": return feedView(s);
@@ -3051,8 +3085,7 @@ function screenBody(s: AppState): string {
     case "library": return libraryHomeView({ library: s.library, admin: viewerIsAdmin(s), persons: s.persons.data, restoring: s.libUi.restoring, cardMenu: s.libUi.cardMenu, showHidden: s.libUi.showHidden });
     case "space": return spaceScreen(s);
     case "roadmap": return roadmapView(s);
-    case "review": return reviewScreen(s);
-    case "maintenance": return maintenanceScreen(s);
+    case "review": return s.reviewView === "unplaced" ? unplacedScreen(s) : reviewScreen(s);
     case "search": return searchView(s);
     case "settings": return settingsView(s);
     case "guide": return guideView(s);
@@ -3166,8 +3199,9 @@ function appView(s: AppState): string {
   const morphKey = isArtScreen(s.screen) ? `${s.screen}:${JSON.stringify(s.screen === "artifact" ? s.artRoute : null)}`
     // Review too: its list is keyed (`data-morph-list`), so a filter or a verdict never rebuilds it —
     // a card can leave with an animation, and the two switches' indicators slide on the same element.
-    // Unplaced the same: its queue is Review's keyed list, so a card placed or discarded leaves by the same exit.
-    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" || s.screen === "maintenance" ? s.screen
+    // ONE key for both its views (the queue and Unplaced): the header and its To review / Unplaced switch are patched,
+    // and only the list column and the reading pane — keyed parts per view (review.ts `reviewFrame`) — are replaced.
+    : s.screen === "org" || s.screen === "platform" || s.screen === "platformorg" || s.screen === "settings" || s.screen === "review" ? s.screen
     // A tag's page too, by tag (another tag is another page): its To review list is keyed, so a row can leave with
     // its animation, and the numbers tick in place instead of the page being rebuilt under them.
     : s.screen === "tag" ? `tag:${s.tagName ?? ""}`
@@ -3179,6 +3213,8 @@ function appView(s: AppState): string {
     // Ask: a keystroke, a streamed word or a hover card never rebuilds the page (the composer keeps its caret,
     // the conversation its scroll, and nothing that already entered replays its entrance).
     : s.screen === "ask" ? "ask"
+    // Home: its bar is a field (typing patches the dropdown, never rebuilds the page or replays its entrance).
+    : s.screen === "home" ? "home"
     // The Roadmap's Narrative tab too: Trov's suggestion cards are a keyed list, so one an Accept / Dismiss took
     // leaves with Review's exit, and a note or the drift collapses out the same way (roadmap-ai.ts › MOTION). The
     // Timeline tab is rebuilt as before (another key, so a tab switch replaces the page).
@@ -3205,16 +3241,16 @@ function appView(s: AppState): string {
 }
 
 /** Behind a first-run card (onboarding, the org picker): the app itself — its real sidebar, header and
- *  My Work — in the state it is in before anything has loaded, so every region is its own skeleton.
+ *  Home — in the state it is in before anything has loaded, so every region is its own skeleton.
  *  It is what the person is about to enter, held still: `inert`, hidden from assistive tech, and
  *  softened by `.cnpy-fr-bg`. Nothing in it is theirs yet, so nothing in it is data. */
 function firstRunBackdrop(s?: AppState): string {
-  // Inside an organization (the guided setup) it is the REAL My Work — this person's sidebar, org and
+  // Inside an organization (the guided setup) it is the REAL Home — this person's sidebar, org and
   // data, read while they are in the setup — so "Open Trov" removes the card and changes nothing else.
   // Before there is an organization (onboarding, the picker) there is nothing of theirs to show.
   const behind: AppState = s && s.view === "app" && s.orgSlug
-    ? { ...s, screen: "mywork", personCard: null, drawer: false }
-    : { ...initialState(), view: "app", screen: "mywork" };
+    ? { ...s, screen: "home", personCard: null, drawer: false }
+    : { ...initialState(), view: "app", screen: "home" };
   return `<div class="cnpy-fr-bg" aria-hidden="true" inert>${appView(behind)}</div>`;
 }
 
@@ -3259,7 +3295,7 @@ export function render(real: AppState): string {
     ${s.view === "app" && s.screen === "docs" && s.dd.open && s.docDetail.data ? dropdownMenu([itemTagDropdown({ tags: s.docDetail.data.tags ?? [], list: s.tags.data?.tags ?? null, busy: s.tagsUi.itemBusy, bare: true })], s.dd) : ""}
     ${s.view === "app" && s.screen === "welcome" ? welcomeOverlays(welcomeProps(s)) : ""}
     ${s.view === "app" && (s.screen === "library" || s.screen === "space" || s.screen === "docs" || s.screen === "newdoc") ? libraryOverlays(s) : ""}${s.view === "app" && s.libUi.customize ? customizeSidebarDialog(s.libUi.customize, liveSpaces(s)) : ""}${s.view === "app" && s.screen === "review" && s.reviewGroupReject ? reviewGroupRejectModal(s, s.reviewGroupReject) : ""}${s.view === "app" && s.screen === "repo" && s.repoAttentionOpen ? repoAttentionOverlay(repoProps(s)) : ""}${s.view === "app" && s.screen === "roadmap" && s.rmTrovOpen && s.roadmap.data && roadmapTrovCount(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai).n ? roadmapTrovDialog(s.roadmap.data.suggestions, s.roadmap.data.drift, s.ai) : ""}
-    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}${s.view === "app" && s.screen === "maintenance" && s.dd.open ? dropdownMenu(unplacedDropdowns(s), s.dd) : ""}
+    ${s.view === "app" && s.screen === "newdoc" && s.dd.open ? dropdownMenu([newDocSpaceDropdown(s.nd, liveSpaces(s))], s.dd) : ""}${s.view === "app" && s.screen === "review" && s.reviewView === "unplaced" && s.dd.open ? dropdownMenu(unplacedDropdowns(s), s.dd) : ""}
     ${s.view === "app" && s.screen === "prompt" && s.promptExpanded && s.promptDetail.data ? promptPageModal(s.promptDetail.data.prompt) : ""}
     ${s.view === "app" && s.screen === "link" && s.linkCancelArm && s.linkDetail.data ? linkCancelModal(s.linkDetail.data, s.linkCancelBusy) : ""}${s.view === "app" && s.screen === "links" && s.linkCancelArm ? ((l) => (l ? linkCancelModal(l, s.linkCancelBusy) : ""))([...s.links.data.mine, ...s.links.data.waiting].find((x) => x.id === s.linkCancelId)) : ""}${s.view === "app" && s.screen === "prompt" && s.promptDeleteArm && s.promptDetail.data && canDeletePrompt(s) ? promptDeleteModal(s.promptDetail.data.prompt, s.promptDetail.data.versions.length, s.promptDeleteBusy) : ""}
     ${s.view === "app" && s.screen === "ticketdetail" && s.tdDeleteArm && s.ticketDetail.data?.source === "canopy" ? ticketDeleteModal(s.ticketDetail.data, s.tdDeleteBusy) : ""}

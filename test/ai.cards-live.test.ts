@@ -160,12 +160,12 @@ describe("real rows → real reads → the SPA's render → the AI kit's Accept"
     const rows = await api.listNeedsTriage();
     const row = rows.find((r) => r.id === id)!;
     expect(row.ai?.map((s) => [s.kind, s.label])).toEqual([["unplaced.destination", "reference"]]);
-    const html = web.render(screen({ screen: "maintenance", needsTriage: { status: "ok", data: rows } }));
+    const html = web.render(screen({ screen: "review", reviewView: "unplaced", needsTriage: { status: "ok", data: rows } }));
     expect(html).toContain("file it as a doc in reference");
     expect(html).toContain("cnpy-ai-row-mark");
     expect(chipIds(html)).toEqual([row.ai![0].id]);
 
-    expect(await press(screen({ screen: "maintenance" }), "aiAccept", row.ai![0].id)).toBe("accept");
+    expect(await press(screen({ screen: "review", reviewView: "unplaced" }), "aiAccept", row.ai![0].id)).toBe("accept");
     expect(await first(env.DB, `SELECT resolution, resolved_by FROM needs_triage WHERE id = ?`, id)).toEqual({ resolution: "assigned", resolved_by: ME });
     expect(await first(env.DB, `SELECT status, created_by FROM doc_versions WHERE org_id = ? AND slug = 'deploy-checklist'`, ORG_A)).toEqual({ status: "staged", created_by: ME });
     expect((await api.listNeedsTriage()).find((r) => r.id === id)).toBeUndefined();

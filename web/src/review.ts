@@ -483,6 +483,12 @@ export function reviewGroups(items: readonly ReviewItem[]): Map<string, ReviewGr
   return out;
 }
 
+/** The groups the queue DRAWS as groups: one that holds (or held, this session — `totals`) a single page is that page's
+ *  own card, like a decision, so a lone change never wears "1 page", Review one by one and Approve all 1. */
+export function shownGroups(items: readonly ReviewItem[], totals: Readonly<Record<string, number>> = {}): Map<string, ReviewGroup> {
+  return new Map([...reviewGroups(items)].filter(([key, g]) => Math.max(totals[key] ?? 0, g.items.length) > 1));
+}
+
 /** The import groups among `items`, keyed by import id. */
 export function importGroups(items: readonly ReviewItem[]): Map<number, ReviewGroup> {
   return new Map([...reviewGroups(items).values()].filter((g) => g.kind === "import").map((g) => [g.id, g]));
@@ -532,7 +538,12 @@ function groupCard(g: ReviewGroup, p: ReviewProps, sel: ReviewItem | null, leavi
     ? `<span class="cnpy-rvg-agav" role="img" aria-label="${attr(`@${g.by ?? ""}'s agent`)}" style="border-radius:5px">${SPARK(11, 2.2)}</span>`
     : g.by ? personChip(person ? { handle: person.handle, name: person.name, color: person.color, avatar_url: person.avatar_url } : null, 16, g.by) : "";
   const arg = attr(g.key);
-  return `<div class="cnpy-rv-row" data-morph-key="rvg:${arg}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${arg}" data-kind="${g.kind}">
+  // The card itself opens the group's first page still waiting in the reading pane (whose bar steps through the rest):
+  // an empty button over the card (ui.ts `hitArea`), its own buttons and page rows raised above it.
+  const first = waiting[0] ?? g.items[0];
+  const hit = first ? hitArea("reviewSelect", first.id, `${groupTitle(g)}: open its first page`) : "";
+  return `<div class="cnpy-rv-row" data-morph-key="rvg:${arg}"${groupVerdict ? ` data-verdict="${groupVerdict}" inert` : ""}><div class="cnpy-rv-row-in"><div class="cnpy-rvg ${SURFACE} ${HITBOX}"${selIn ? ' data-sel="1"' : ""} data-rv-group="${arg}" data-kind="${g.kind}">
+    ${hit}
     <div class="cnpy-rvg-in">
       <div class="cnpy-rvg-head">
         <span class="cnpy-rvg-ic" style="border-radius:7px">${g.kind === "agent" ? SPARK(16) : UPLOAD}</span>
@@ -648,6 +659,27 @@ export function reviewPagePane(it: ReviewItem, g: ReviewGroup, total: number, le
   </div>`;
 }
 
+/** Review's two views — its queue (`reviewView`) and Unplaced (maintenance.ts `maintenanceView`) — are ONE screen
+ *  (`state.reviewView`, `#review` / `#review/unplaced`), and this is the frame both draw: the list column (its head,
+ *  then the KEYED list) and the reading pane. Each column is a `data-morph-key` part per view, so the header's To
+ *  review / Unplaced switch replaces only the two columns: the page (`data-morph="review"`) and the header with its
+ *  switch are patched, the indicator slides, and nothing replays the page's entrance. */
+export type ReviewView = "queue" | "unplaced";
+export function reviewFrame(o: { view: ReviewView; pane: "list" | "detail"; backAct: string; head: string; list: string; detail: string; cls?: string; label?: string }): string {
+  return `<div class="cnpy-rv${o.cls ? ` ${o.cls}` : ""}"${o.label ? ` data-screen-label="${attr(o.label)}"` : ""} data-view="${o.view}" data-pane="${o.pane}" style="display:flex;height:100%;min-width:0">
+    <div class="cnpy-rv-list" data-morph-key="rv-list:${o.view}" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+      <div class="cnpy-rv-lhead" style="padding:16px 20px 0">
+        ${o.head}
+      </div>
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${o.list}</div>
+    </div>
+    <div class="cnpy-scroll cnpy-rv-detail" data-morph-key="rv-detail:${o.view}" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
+      <button data-act="${o.backAct}" class="cnpy-rv-back">${BACK_ICON}All items</button>
+      ${o.detail}
+    </div>
+  </div>`;
+}
+
 /** The detail pane with groups waiting but no page picked. */
 export const REVIEW_PICK = "Open a group and pick a page to read it here. Or approve a whole group at once.";
 
@@ -657,10 +689,12 @@ export function reviewView(p: ReviewProps): string {
   const inFilter = (it: ReviewItem) => inReviewFilter(it, p.filter);
   const visible = p.items.filter(inFilter);            // the rows on screen, the leaving ones among them
   const visibleWaiting = waiting.filter(inFilter);
-  const groups = reviewGroups(p.items);
+  const groups = shownGroups(p.items, p.groupTotals);
+  /** The group an item is drawn in, or null (a decision, or a group of one page). */
+  const drawnKey = (it: ReviewItem): string | null => { const k = groupKeyOf(it); return k !== null && groups.has(k) ? k : null; };
   // Selection survives a filter that hides it (the detail keeps showing it); with nothing explicitly selected, the
   // first visible item still waiting that is in NO group — a drafted decision (a group's pages are opened from it).
-  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => groupKeyOf(it) === null) ?? null;
+  const sel = (p.selectedId !== null ? waiting.find((it) => it.id === p.selectedId) : undefined) ?? visibleWaiting.find((it) => drawnKey(it) === null) ?? null;
   const counts: Record<ReviewFilter, number> | null = p.loading ? null : {
     all: waiting.length,
     imports: waiting.filter((it) => it.importId != null).length,
@@ -673,7 +707,7 @@ export function reviewView(p: ReviewProps): string {
   // import's, an agent's) are ONE row: its group card, where its newest page would be.
   const seen = new Set<string>();
   const rows = visible.map((it) => {
-    const key = groupKeyOf(it);
+    const key = drawnKey(it);
     if (key === null) return reviewCard(it, sel !== null && it.id === sel.id, leaving[it.id] ?? null);
     if (seen.has(key)) return "";
     seen.add(key);
@@ -683,7 +717,7 @@ export function reviewView(p: ReviewProps): string {
   const list = p.loading ? `<div data-morph-key="rv-skel">${reviewListSkeleton()}</div>`
     : `${rows}${visibleWaiting.length === 0 ? `<div data-morph-key="rv-empty">${reviewListEmpty(p.filter === "all")}</div>` : ""}`;
 
-  const selKey = sel ? groupKeyOf(sel) : null;
+  const selKey = sel ? drawnKey(sel) : null;
   const g = selKey !== null ? groups.get(selKey) ?? null : null;
   const detail = p.loading ? reviewDetailSkeleton()
     : sel ? (g ? reviewPagePane(sel, g, Math.max(p.groupTotals?.[g.key] ?? 0, g.items.length), leaving, p.spaceNames?.[sel.space ?? ""] ?? sel.space ?? "", p.aiUi, p.groupPages?.[g.key]) : reviewDetail(sel, p.diffView, p.aiUi))
@@ -692,17 +726,10 @@ export function reviewView(p: ReviewProps): string {
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
-  return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
-      <div style="padding:16px 20px 0">
-        <div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
-        ${reviewFilterSwitch(p.filter, counts)}
-      </div>
-      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
-    </div>
-    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
-      <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${detail}
-    </div>
-  </div>`;
+  return reviewFrame({
+    view: "queue", pane, backAct: "reviewBack",
+    head: `<div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
+        ${reviewFilterSwitch(p.filter, counts)}`,
+    list, detail,
+  });
 }

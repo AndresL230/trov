@@ -329,7 +329,7 @@ export function doneStep(steps: readonly WelcomeStep[], states: Record<WelcomeSt
     <h2 style="font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-40);margin:24px 0 9px">Your first session</h2>
     ${firstSession()}
     <div class="cnpy-wel-acts" style="margin-top:14px;align-items:baseline">
-      <span style="${O_HELP};flex:1 1 260px;min-width:0">My Work is your own page: what is assigned to you and what is waiting on you. The Guide explains the rest: review, every screen, troubleshooting.</span>
+      <span style="${O_HELP};flex:1 1 260px;min-width:0">Home is where Trov opens: what needs you, your repositories, sprints and tickets, and how the team is doing. The Guide explains the rest: review, every screen, troubleshooting.</span>
       ${quietBtn("Read the Guide", "goGuide", { field: "welcomeGuide" })}
     </div>`;
 }
@@ -373,7 +373,7 @@ export function welcomeView(p: WelcomeProps): string {
   const body = step === "github" ? githubStep(p) : step === "agent" ? agentStep(p) : step === "team" ? teamStep(p) : doneStep(steps, states);
   // ONE accent per step: the step's own action while it is to do (Connect with GitHub, Invite — whose
   // form keeps its accent button), and the way forward once it is done.
-  const forward = next === null ? accentBtn("Open Trov", "goMyWork", { field: "welcomeFinish", extra: "height:36px;padding:0 18px" })
+  const forward = next === null ? accentBtn("Open Trov", "goHome", { field: "welcomeFinish", extra: "height:36px;padding:0 18px" })
     : states[step] === "done" && step !== "team" ? accentBtn("Continue", "welcomeGo", { arg: next, field: "welcomeNext", extra: "height:36px;padding:0 18px" })
     : quietBtn(states[step] === "done" ? "Continue" : "Skip for now", "welcomeGo", { arg: next, field: "welcomeNext", extra: "height:36px;padding:0 16px;color:var(--fg)" });
   const first = (p.me?.name ?? "").trim().split(/\s+/)[0];
@@ -391,7 +391,7 @@ export function welcomeView(p: WelcomeProps): string {
         <div class="cnpy-wel-top">
           ${brand}
           <span style="margin-left:auto"></span>
-          ${next === null ? "" : `<button type="button" data-act="goMyWork" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500">Skip setup &rarr;</button>`}
+          ${next === null ? "" : `<button type="button" data-act="goHome" data-field="welcomeExit" class="cnpy-mutelink" style="flex:none;padding:0;font-size:12.5px;font-weight:500">Skip setup &rarr;</button>`}
           ${p.wel.firstRun ? `<span class="cnpy-onb-step" data-flow-step="3" style="margin-left:0">${firstRunStepLabel(3)}</span>` : ""}
         </div>
         <div data-welcome-eyebrow style="position:relative;margin-top:20px;font-family:var(--label);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.92)">${esc(eyebrow)}</div>

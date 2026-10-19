@@ -138,12 +138,12 @@ describe("route, hash and sidebar", () => {
   it("#org is Integrations; the other tabs are #org/<tab>; a junk tab falls back", () => {
     expect(parseHash("#org")).toMatchObject({ screen: "org", orgTab: "integrations" });
     expect(parseHash("#org/members")).toMatchObject({ screen: "org", orgTab: "members" });
-    expect(parseHash("#org/nope").screen).toBe("mywork");
+    expect(parseHash("#org/nope").screen).toBe("home");
     for (const h of ["#org", "#org/repos", "#org/environments", "#org/members", "#org/general"]) expect(hashForRoute(parseHash(h))).toBe(h);
     expect(hashForRoute(parseHash("#org/integrations"))).toBe("#org");
   });
   it("the rail has NO Org settings row: the org switcher in its header holds it, and reads as the current place there", () => {
-    const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false, counts: { review: 0, maintenance: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
+    const base = { collapsed: false, navOpen: NAV_CLOSED, qView: "board" as const, roadmapTab: "narrative" as const, librarySpace: null, spaces: [], spacesLoaded: false, canAdmin: false, counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0 }, me: null, displayName: "", logo: "" };
     expect(navKeyOf("org")).toBe("org");
     const html = sidebarView({ ...base, screen: "org", orgSwitcher: "<b>switcher</b>", orgActive: true });
     expect(html).not.toContain('data-act="orgGo"');

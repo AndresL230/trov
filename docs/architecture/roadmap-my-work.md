@@ -1,4 +1,4 @@
-# Roadmap, sprints and My Work
+# Roadmap, sprints, My Work and Home
 
 <!-- Moved verbatim out of CLAUDE.md (2026-10-07). This is the detailed reference; CLAUDE.md keeps only what applies to every change. Keep it current when you change the area. A reference to another section ("see Core invariant", "the Repo dashboard section below") now means another file in this folder — see the table at the bottom of CLAUDE.md. -->
 
@@ -208,3 +208,48 @@ allowance line (`web-ui.md` › The AI kit). "Wrong?" hides it for the person. `
   closes the dialog at once when it took the last suggestion. Reduced motion: nothing moves, same result.
   Off the Roadmap (a theme proposal on Repo) the kit's busy path is unchanged. Tests: `test/render.roadmap-ai.test.ts`
   (markup, CSS), `test/render.roadmap-ai-exit.test.ts` (the controller).
+
+## Home — the org's front page (`#home`; the design `Trov Overview v2`)
+
+Home is its own screen, first in the sidebar, beside My Work (which stays as it was; the owner, 2026-10-18), and it is
+where the app opens: signing in, an empty or unknown hash (`hash.ts` falls back to it), leaving the guided setup
+("Open Trov" / "Skip setup" → `goHome`, Home standing behind the card while the setup runs) and leaving Platform. Markup in
+`web/src/home.ts` (pure), props in `web/src/home-view.ts` (`homeProps`), state `state.home` (`HomeUi`). ONE order,
+never reordered: the headline and the status line → the search-or-ask bar → Repositories · Roadmap · For you →
+Activity → Latest beside Team. One centred column, `--frame-home`; titles, row icons, the cards and the bar's own box
+share one left and right edge (a row's hover bleeds 10px past it; the bar's ring sits outside it).
+
+- **Its one server read** is `GET /home` (`src/tools/home.ts`, `HomeData` in `shared/home-core.ts`), D1 only, `tz` =
+  the viewer's minutes east of UTC (a bad one is a 400, a failed read a 503 `{ error }`): `HOME_DAYS` (180) local days,
+  each counting tickets set done (`ticket_events.to_status = 'done'`, a ticket once a day), handoffs claimed
+  (`handoffs.claimed_at`), doc versions promoted (`doc_versions.promoted_at`, 0077_home) and sessions recorded (Feed
+  entries agents wrote, `origin` agent — Trov's digests are not sessions); the team (every member, what each is on —
+  their newest ticket in progress or testing, else their newest entry — and when Trov last saw them: an entry, a
+  ticket move, a handoff sent or claimed, an MCP token used); the repositories with their last captured push (a push
+  with no repository named is the primary's); open tickets in no sprint (backlog); and Triage (`submitted`, no
+  assignee) with its oldest. **Never guess**: promotions were not timed before 0077_home, so a day before the org's
+  `promotions_timed_at` (NULL = since the org's creation) is `docs: null`, and a window holding one is "—"
+  (`homeSum`); "No pushes yet" is said only of the primary, whose pushes are captured.
+- **Everything else is a read the app already has**: My Work's DTO (For you), Review's two reads and Unplaced
+  (`triageCounts`), the handoffs (`handoffsForMe`), the sprints (`sprintDueState`), the Repo dashboard's facts (a failed
+  or down production app, a red environment, a host whose connection is `error` / `revoked`), `GET /github` (every
+  member may read it: suspended or uninstalled), the newest Feed entries (`GET /feed?limit=5`) and Ask's on/off
+  (`loadRelayAsk`).
+- **Needs attention** (the status line's popover): failing first (a failed / down app, a red environment, and for an
+  ADMIN a broken connection with Fix), then what waits on the viewer (Review + Unplaced as one row, handoffs left for
+  them), then an overdue sprint, then Triage with no assignee. Five rows, then "N more" — a failing row never falls
+  behind it. A MEMBER gets a connection as a calm row ("Repo updates are paused"), no action, no red. The status line
+  repeats the first row's mark and counts the rows with an action; nothing waiting is "All clear · nothing needs
+  you". The headline is picked from the same facts (on fire, all quiet, a new org, or a greeting), moving per visit.
+- **Fresh**: every visit reads all of it again (`refreshHome`), and so does every minute while Home is on screen and
+  the tab is visible — not while the bar is in use (its dropdown would move under the keyboard). Each loader keeps what
+  is on screen while it reads.
+- **The bar**: Search runs quick search as you type (120ms after a key, the one in flight aborted) into a dropdown
+  (↑ ↓, ↵, Tab flips to Ask Trov, Esc); empty, it offers Jump to. Ask Trov (only while Ask is on for the org and the
+  person) posts a NEW Ask thread in the org's default mode and streams the answer under the bar with Ask's own
+  contract — the byline, the cited items, Wrong? with Ask's three reasons (`POST /ask/messages/:id/wrong`), and
+  Continue in Trov (`#ask/<id>`). ⌘K on Home focuses the bar, not the sidebar's box.
+- **Activity**: 7D / 30D / 90D (`segmented()`), each card the range's sum, its delta against the range before (more is
+  green, fewer amber, the same muted) and one bar a day (a week on 90D). A figure not known is "—" and its card a
+  ghost; the read failing says so with Try again.
+- Tests: `test/home.test.ts` (the read), `test/render.home.test.ts` (the page).

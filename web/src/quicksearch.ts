@@ -44,7 +44,8 @@ export type QuickPick = { kind: "go"; steps: [string, string | null][] } | { kin
 export interface QuickScreen { label: string; hint: string; keys: string; steps: [string, string | null][] }
 
 export const QUICK_SCREENS: readonly QuickScreen[] = [
-  { label: "My Work", hint: "Your PRs, issues and tickets", keys: "home dashboard mine todo", steps: [["goMyWork", null]] },
+  { label: "Home", hint: "What needs you, and how the team is doing", keys: "overview front start dashboard attention", steps: [["goHome", null]] },
+  { label: "My Work", hint: "Your PRs, issues and tickets", keys: "dashboard mine todo", steps: [["goMyWork", null]] },
   { label: "Tickets › Board", hint: "The ticket board", keys: "queue kanban columns", steps: [["goTickets", null], ["queueBoard", null]] },
   { label: "Tickets › Table", hint: "The ticket queue as a table", keys: "queue list", steps: [["goTickets", null], ["queueTable", null]] },
   { label: "New ticket", hint: "File a ticket", keys: "create bug report request file", steps: [["newTicket", null]] },
@@ -67,7 +68,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
   { label: "Prompt Library", hint: "Reusable team prompts", keys: "prompts templates", steps: [["goPrompts", null]] },
   { label: "New prompt", hint: "Save a reusable prompt", keys: "create template", steps: [["newPrompt", null]] },
   { label: "Review", hint: "Proposals and decisions to confirm", keys: "proposals decisions promote ratify approve", steps: [["goReview", null]] },
-  { label: "Unplaced", hint: "Items the gate could not place", keys: "triage maintenance file discard", steps: [["goMaintenance", null]] },
+  { label: "Review › Unplaced", hint: "Items the gate could not place", keys: "triage maintenance file place discard", steps: [["goUnplaced", null]] },
   { label: "Org settings › Hosting", hint: "Which host runs each part, and its connection", keys: "hosting provider vercel render netlify fly cloudflare railway deploys connect environment parts admin", steps: [["orgGo", "hosting"]] },
   { label: "Org settings › Members", hint: "People, roles, invites and unmatched logins", keys: "invite members people directory identity github logins map admin", steps: [["orgGo", "members"]] },
   { label: "Org settings › Notifications", hint: "Email digests: policy, schedule and outbox", keys: "email digest notifications policy schedule outbox sender admin", steps: [["orgGo", "notifications"]] },
@@ -82,7 +83,7 @@ export const QUICK_SCREENS: readonly QuickScreen[] = [
 ];
 
 /** What the palette offers before anything is typed. */
-const JUMP_DEFAULTS = ["My Work", "Tickets › Board", "New ticket", "Roadmap", "Relay › Handoffs", "Docs", "Settings › MCP access", "Release notes"];
+const JUMP_DEFAULTS = ["Home", "My Work", "Tickets › Board", "New ticket", "Roadmap", "Relay › Handoffs", "Docs", "Settings › MCP access", "Release notes"];
 
 /** Word tokens of a query, lowercased (the server's own tokenizer rule). */
 export const tokensOf = (q: string): string[] =>

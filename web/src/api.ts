@@ -1,3 +1,4 @@
+import type { HomeData } from "@shared/home-core";
 // Typed fetch layer over the real (cookie-gated) Worker routes — the ONLY place
 // that knows route URLs and response shapes. Row types come from @shared/rows;
 // the route RESPONSE envelopes + SearchResult + progress live in src/tools/* (not
@@ -208,6 +209,12 @@ export function getFeedPage(q: FeedQuery = {}): Promise<{ feed: FeedRow[]; aiOff
  *  feed, bucketed into the viewer's local days (`tz` = minutes east of UTC). */
 export function getFeedStats(days = 7, tz = -new Date().getTimezoneOffset()): Promise<FeedStats> {
   return getJson<FeedStats>(`/feed/stats?days=${days}&tz=${tz}`);
+}
+
+/** Home (`GET /home`): the org's daily activity (HOME_DAYS local days, `tz` = minutes east of UTC), the team and
+ *  what each is on, the repositories with their last push, the backlog and Triage counts. */
+export function getHome(tz = -new Date().getTimezoneOffset()): Promise<HomeData> {
+  return getJson<HomeData>(`/home?tz=${tz}`);
 }
 
 /** The Docs tree: every doc's metadata and its outline, built on the server — never a body. */

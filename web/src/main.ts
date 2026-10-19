@@ -9,7 +9,7 @@ import { installMarkTips } from "./tip";
 import { migrateBrowserStorage } from "./storage-migrate";
 import { openLightbox, closeLightbox } from "./lightbox";
 import { syncSegments, onSegmentedKey } from "./segmented";
-import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict } from "./review";
+import { REVIEW_EXIT_MS, REVIEW_FILTERS, reviewGroups, shownGroups, groupKeyOf, inReviewFilter, type ReviewFilter, type ReviewVerdict, type ReviewView } from "./review";
 import { createImportController } from "./import-actions";
 import { installImportDrop, mainDropTarget } from "./import-drop";
 import { syncTabBars, onTabBarKey } from "./tabs";
@@ -22,7 +22,7 @@ import {
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getHome, getOrgGithub, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr, approveImport, rejectImport,
@@ -88,7 +88,10 @@ import { REPO_WIDE } from "@shared/repo-facts-core";
 import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
 import { twinSelector } from "./focus-twin";
-import { createQuickSearch, type QuickPick } from "./quicksearch";
+import { createQuickSearch, type QuickPick, type QuickRow } from "./quicksearch";
+import { homeDropRows, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
+import { askApi } from "./ask-api";
+import { ASK_WRONG_REASONS, type AskWrongReason } from "@shared/ai-ask-core";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
 import { platformChunk } from "./platform-lazy";
 import type { LazyChunk } from "./lazy-chunk";
@@ -292,7 +295,7 @@ const aiCtl = createAiController({
   // Accept changed rises in (ai-actions.ts › THE ROADMAP'S DIALOG).
   decided: (id, how) => {
     if (state.screen === "ticketdetail" && state.ticketId !== null) loadTicketDetail(state.ticketId);
-    else if (state.screen === "maintenance") {
+    else if (state.screen === "review" && state.reviewView === "unplaced") {
       // An accepted destination PLACED its item (the same gate as Place): the card leaves by the queue's exit, then
       // the read is taken again. Anything else re-reads at once.
       const row = how === "accept" ? state.needsTriage.data.find((r) => r.ai?.some((s) => s.id === id)) : undefined;
@@ -397,7 +400,7 @@ const orgsCtl = createOrgsController({
 // The guided first-run setup (web/src/welcome-actions.ts): every `welcome…` act, the agent step's
 // re-check, and the note that brings a return from GitHub back to it.
 const welcomeCtl = createWelcomeController({
-  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadMyWorkIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
+  state, mount, rerender: () => rerender(), loadOrg: () => orgCtl.load(), loadHome: () => loadHomeIfNeeded(), loadConnections: () => loadGrantsIfNeeded(),
   reloadConnections: () => { loadGrants(); loadMcpTokens(); }, listGrants: () => listOAuthGrants(),
   unauth: (e) => unauth(e), go: (url) => { window.location.href = url; },
 });
@@ -525,13 +528,13 @@ function markEnter(): void {
   }, ENTER_MS - elapsed + 50);
 }
 
-/** Review's detail pane after a paint — and Unplaced's, the same pane: a different item starts at its top (the pane is
+/** Review's detail pane after a paint — in either view (the queue, Unplaced: the same pane): a different item starts at its top (the pane is
  *  the same element now, so it would keep the last item's scroll), and a verdict button that had focus — and went with
  *  its item — gives it to the same button of the item now on screen, so Enter, Enter, Enter works down a queue (an
  *  Unplaced item that cannot be placed yet takes it on its Discard). */
 let reviewShown: string | null = null;
 function syncReviewDetail(focusAct: string | null): void {
-  const body = state.view === "app" && (state.screen === "review" || state.screen === "maintenance") ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
+  const body = state.view === "app" && state.screen === "review" ? mount.querySelector<HTMLElement>(".cnpy-rv-body[data-morph-key]") : null;
   const key = body?.getAttribute("data-morph-key") ?? null;
   if (key !== reviewShown) {
     reviewShown = key;
@@ -761,6 +764,8 @@ window.addEventListener("hashchange", () => {
   if (r.screen === "org" && cur.screen === "org") { orgCtl.act("orgTab", r.orgTab ?? "integrations", "route"); return; }
   // Back / Forward between two steps of the guided setup: its reads are already in.
   if (r.screen === "welcome" && cur.screen === "welcome") { welcomeCtl.moved(); return; }
+  // Back / Forward between Review's two views: the columns swap in place (one page), and flash in as the switch does.
+  if (r.screen === "review" && cur.screen === "review") pendingFlash = REVIEW_VIEW_FLASH;
   // Back from a thread to the bare `#ask`: a new thread, as the header's "Trov" does.
   if (r.screen === "ask" && cur.screen === "ask" && !r.askThread) { askCtl.act("askShNew", null, null); return; }
   loadForScreen(r.screen);
@@ -876,6 +881,7 @@ function currentRoute(): Route {
     if (state.repoApp) r.repoApp = state.repoApp;
   }
   if (state.screen === "roadmap") r.roadmapTab = state.roadmapTab;
+  if (state.screen === "review" && state.reviewView === "unplaced") r.reviewView = "unplaced";
   if (state.screen === "releases" && state.releaseVersion) { r.releaseVersion = state.releaseVersion; r.releasePage = state.releasePage; }
   if (state.screen === "artifact") r.art = state.artRoute;
   if (state.screen === "handoff" && state.handoffId) r.handoffId = state.handoffId;
@@ -919,6 +925,7 @@ function applyRoute(r: Route): void {
     if (moved && state.repo.status !== "idle") state.repo = { status: "idle", data: state.repo.data };
   }
   if (r.roadmapTab) state.roadmapTab = r.roadmapTab;
+  if (r.screen === "review") state.reviewView = r.reviewView ?? "queue";
   if (r.screen === "releases") {
     // What's new keeps one screen for the grid and every release page, so moving between
     // them (a card, Back, the newer/older links) starts the new page at its top.
@@ -977,8 +984,8 @@ function startScreenLoads(screen: Screen): void {
     case "library": libCtl.load(); rerender(); break;
     case "space": libCtl.openSpace(state.spaceSlug); break;
     case "roadmap": loadRoadmapIfNeeded(); loadRoadmapFeed(); break;
-    case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); break;
-    case "maintenance": loadNeedsTriageIfNeeded(); break;
+    // Review reads both its views' queues, so the header's To review / Unplaced switch is one paint with nothing to load.
+    case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); loadNeedsTriageIfNeeded(); break;
     case "relay": loadRelay(); break;
     case "handoffs": loadHandoffs(); break;
     case "handoff": if (state.handoffId) openHandoff(state.handoffId); else rerender(); break;
@@ -993,6 +1000,7 @@ function startScreenLoads(screen: Screen): void {
     case "newdoc": ndCtl.start(liveSpaces(state).some((x) => x.slug === state.nd.space) ? state.nd.space : defaultSpaceSlug(), null); break;
     case "tag": if (state.tagName) tagsCtl.open(state.tagName); else rerender(); break;
     case "search": loadSearchIfNeeded(); break;
+    case "home": loadHomeIfNeeded(); break;
     case "mywork": loadMyWorkIfNeeded(); break;
     case "repo": loadRepoIfNeeded(); break;
     case "artifacts": case "artifactnew": case "artifact": loadArtifactsIfNeeded(); break;
@@ -1458,6 +1466,123 @@ function loadMwDocs(): void {
       rerenderSoon();
     });
 }
+
+// ── Home (home.ts / home-view.ts) ────────────────────────────────────────────
+// Home reads its own two (`GET /home`, the newest Feed entries) and the slices My Work already reads — each only when
+// idle, so a screen already visited costs nothing.
+function loadHomeData(): void {
+  state.home.data = { status: "loading", data: state.home.data.data };
+  getHome()
+    .then((d) => { state.home.data = { status: "ok", data: d }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.home.data = { status: "error", data: state.home.data.data, error: String(e) };
+      rerenderSoon();
+    });
+}
+function loadHomeFeed(): void {
+  state.home.feed = { status: "loading", data: state.home.feed.data };
+  getFeed({ limit: 5 })
+    .then((rows) => { state.home.feed = { status: "ok", data: rows }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.home.feed = { status: "error", data: state.home.feed.data, error: String(e) };
+      rerenderSoon();
+    });
+}
+function loadHomeGithub(): void {
+  if (!state.orgSlug) return;
+  state.home.github = { status: "loading", data: state.home.github.data };
+  getOrgGithub(state.orgSlug)
+    .then((g) => { state.home.github = { status: "ok", data: g }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.home.github = { status: "error", data: state.home.github.data, error: String(e) };
+      rerenderSoon();
+    });
+}
+/** Every read Home is built on, again: on each visit, and every HOME_REFRESH_MS while it is on screen (all D1 —
+ *  nothing here reaches GitHub). Each loader keeps what it had on screen while it reads, so nothing blanks. */
+const HOME_REFRESH_MS = 60_000;
+let homeReadAt = 0;
+function refreshHome(): void {
+  homeReadAt = Date.now();
+  loadHomeData(); loadHomeFeed(); loadHomeGithub();
+  loadMyWork(); loadProposals(); loadDraftAdrs(); loadNeedsTriage();
+  loadSprints(); loadHandoffs(); loadRepo(); loadBadges();
+  if (state.relayAsk.status === "idle") loadRelayAsk();
+}
+function loadHomeIfNeeded(): void {
+  refreshHome();
+  rerender();
+}
+// While Home is on screen and the tab is visible: refresh quietly — not while the bar is in use (its dropdown would
+// move under the keyboard), and at once when the tab comes back after a while away.
+setInterval(() => {
+  if (state.view !== "app" || state.screen !== "home" || document.visibilityState !== "visible" || state.home.focused) return;
+  if (Date.now() - homeReadAt >= HOME_REFRESH_MS) refreshHome();
+}, 10_000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.view === "app" && state.screen === "home" && Date.now() - homeReadAt >= HOME_REFRESH_MS) refreshHome();
+});
+/** The bar's dropdown rows, in keyboard order (homePick runs one). */
+let homeFlat: QuickRow[] = [];
+let homeSearchT: ReturnType<typeof setTimeout> | undefined;
+let homeAbort: AbortController | null = null;
+function homeRows(): QuickRow[] { homeFlat = homeDropRows(state).flatMap((g) => g.rows); return homeFlat; }
+/** Search as the person types: 120ms after a keystroke, the in-flight one aborted (quick search's own pace). */
+function homeSearch(): void {
+  clearTimeout(homeSearchT);
+  homeAbort?.abort();
+  const q = state.home.q.trim();
+  if (state.home.mode !== "search" || q.length < 2) { state.home.results = null; return; }
+  homeSearchT = setTimeout(() => {
+    const ac = new AbortController(); homeAbort = ac;
+    quickSearch(q, ac.signal, 6)
+      .then((r) => { if (state.home.q.trim() !== q) return; state.home.results = r; state.home.active = 0; rerender(); })
+      .catch(() => { /* aborted or failed: the dropdown keeps what it had */ });
+  }, 120);
+}
+let homeAskAbort: AbortController | null = null;
+/** Ask from Home's bar: a new thread in the org's default mode; the answer folds in as it streams. */
+function homeAskRun(q: string): void {
+  homeAskAbort?.abort();
+  const ac = new AbortController(); homeAskAbort = ac;
+  const a: HomeAnswer = { q, text: "", phase: "thinking", error: null, threadId: null, messageId: null, cites: [], wrong: "closed" };
+  state.home.answer = a; state.home.focused = false; state.home.q = ""; state.home.results = null;
+  rerender();
+  const live = (): boolean => state.home.answer === a && !ac.signal.aborted;
+  const fail = (msg: string): void => { if (!live()) return; a.phase = "error"; a.error = msg; rerender(); };
+  (state.ask.state.data ? Promise.resolve(state.ask.state.data) : askApi.getState())
+    .then((st) => askApi.ask({ threadId: null, text: q, mode: st.defaultMode, auto: false, context: [], attachments: [] }, {
+      signal: ac.signal,
+      onEvent: (e) => {
+        if (!live()) return;
+        if (e.event === "thread") a.threadId = e.data.id;
+        else if (e.event === "text") { a.text += e.data.delta; a.phase = "streaming"; rerenderSoon(); }
+        else if (e.event === "done") { a.messageId = e.data.messageId; a.cites = e.data.cites; a.phase = "done"; rerender(); }
+        else if (e.event === "error") fail(e.data.message || "Couldn't get an answer.");
+      },
+    }))
+    .then(() => { if (live() && a.phase !== "done" && a.phase !== "error") { a.phase = "done"; rerender(); } })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      fail("Couldn't get an answer. Try again, or ask in Trov.");
+    });
+}
+const homeAskOn = (): boolean => homeAskAvailable(state);
+/** Put the caret back in the bar — after this click's repaint and focus restore (which would put it on the clicked
+ *  switch), so typing goes on into the field. */
+function homeFocusInput(): void {
+  const go = (): void => {
+    const el = mount.querySelector<HTMLInputElement>('[data-field="homeQ"]');
+    if (el && document.activeElement !== el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  };
+  setTimeout(go, 0);
+  requestAnimationFrame(go);
+}
+
 /** My Work reads its own DTO plus the slices its tiles and rail are built on —
  *  each loaded only when idle, so a screen already visited costs nothing. */
 function loadMyWorkIfNeeded(): void {
@@ -1661,6 +1786,10 @@ function loadRelay(): void {
   loadLinks();
   loadGrants();
   loadMcpTokens();
+  loadRelayAsk();
+}
+/** Ask's on/off for the org (`GET /ask/state`, slimmed): Relay's connections and Home's bar read it. */
+function loadRelayAsk(): void {
   if (!state.orgSlug) return;
   state.relayAsk = { status: "loading", data: state.relayAsk.data };
   getAskState(state.orgSlug)
@@ -1936,7 +2065,7 @@ function reviewVerdict(id: string, accept: boolean): void {
   // A page of a group (an import's, an agent's): the next one of its group still waiting, wrapping (the group is its
   // own list).
   const key = item ? groupKeyOf(item) : null;
-  const group = key !== null ? reviewGroups(props.items).get(key) ?? null : null;
+  const group = key !== null ? shownGroups(props.items, state.reviewGroupTotals).get(key) ?? null : null;
   const groupLeft = group ? group.items.filter((it) => it.id !== id && !props.leaving?.[it.id]) : [];
   if (selBefore === id) {
     if (group) {
@@ -1952,7 +2081,7 @@ function reviewVerdict(id: string, accept: boolean): void {
   }
   state.reviewSel = selAfter;
   // The card is seen leaving only on Review, and only when motion is allowed; otherwise it is gone at once.
-  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = state.screen === "review" && state.reviewView === "queue" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   state.reviewLeaving[id] = { verdict, gone: !animate };
   const exit: ReviewExit = { kind: ref.kind, selBefore, selAfter, timer: null, ok: false };
   reviewExits.set(id, exit);
@@ -2004,7 +2133,7 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
   const verdict: ReviewVerdict = accept ? "promoted" : "rejected";
   const selBefore = state.reviewSel;
   if (items.some((it) => it.id === selBefore)) state.reviewSel = null;
-  const animate = state.screen === "review" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = state.screen === "review" && state.reviewView === "queue" && !matchMedia("(prefers-reduced-motion: reduce)").matches;
   const exits: ReviewExit[] = [];
   for (const it of items) {
     state.reviewLeaving[it.id] = { verdict, gone: !animate };
@@ -2119,6 +2248,20 @@ function pruneUnplacedLeaving(): void {
 }
 const clearAssignPicks = (): void => { state.assignKind = null; state.assignSection = null; state.assignSpace = null; state.assignTags = []; };
 
+/** What flashes in when Review's view changes in place: the list column's head and rows, and the reading pane's
+ *  content (never the columns themselves, whose hairline must not move). The app's one-shot `.cnpy-flash`, off under
+ *  reduced motion (trov.css). */
+const REVIEW_VIEW_FLASH = ".cnpy-rv-lhead, .cnpy-rv-rows, .cnpy-rv-detail > :not(.cnpy-rv-back)";
+/** Open Review on one of its views. From the other view it is the SAME page (`data-morph="review"`, one `pageKey`):
+ *  the header — its switch's indicator sliding — is patched, only the two columns (keyed by the view) are replaced and
+ *  flash in, and the page's entrance never replays. */
+function showReview(view: ReviewView): void {
+  if (state.screen === "review" && state.reviewView !== view) pendingFlash = REVIEW_VIEW_FLASH;
+  state.screen = "review";
+  state.reviewView = view;
+  loadForScreen("review");
+}
+
 /** Place or discard an Unplaced item: `write` is the cookie route, `ok` what follows its success (a toast, the
  *  list the item landed in). */
 function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Promise<unknown>, ok: () => void): void {
@@ -2137,7 +2280,7 @@ function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Prom
   state.assignOpen = selAfter;
   if (onScreen) clearAssignPicks();   // the picks were that item's
   // The card is seen leaving only on Unplaced, and only when motion is allowed; otherwise it is gone at once.
-  const animate = state.screen === "maintenance" && !reducedMotion();
+  const animate = state.screen === "review" && state.reviewView === "unplaced" && !reducedMotion();
   state.unplacedLeaving[id] = { verdict, gone: !animate };
   const exit: UnplacedExit = { selBefore, selAfter, picks, timer: null, ok: false };
   unplacedExits.set(id, exit);
@@ -2816,7 +2959,7 @@ const platform = {
         state, mount, rerender, flash, unauth, confirmOut, reloadOrgs: () => loadMyOrgs(),
         // Not a superadmin after all (a stale #platform link): My Work, as for any unknown hash.
         // On the standalone page there is no My Work to fall back to: the picker.
-        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "mywork"; loadForScreen("mywork"); },
+        leave: () => { if (state.view === "platform") { showPicker(null); return; } state.screen = "home"; loadForScreen("home"); },
       });
       fn(platformCtl);
     });
@@ -3033,6 +3176,65 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
 
     // primary navigation
+    case "goHome":
+      // Out of the guided setup ("Open Trov", "Skip setup"): Home is already what stands behind the card (read while
+      // the person was in the setup), so the card simply goes — a morph, and no page entrance replayed over a screen
+      // that was in view the whole time.
+      if (state.view === "app" && state.screen === "welcome") {
+        loadHomeIfNeeded();
+        morphStep(() => { state.screen = "home"; skipEnterOnce = true; rerender(); });
+        return;
+      }
+      state.screen = "home"; state.home.headIdx++; state.home.attnOpen = false; loadHomeIfNeeded(); return;
+    case "homeAttn": state.home.attnOpen = !state.home.attnOpen; state.home.focused = false; break;
+    case "homeAttnClose": state.home.attnOpen = false; break;
+    case "homeFocus":
+      if (!state.home.focused) { state.home.focused = true; state.home.attnOpen = false; state.home.active = 0; rerender(); }
+      homeFocusInput(); return;
+    case "homeBlur": state.home.focused = false; break;
+    case "homeQ":
+      state.home.q = value ?? ""; state.home.focused = true; state.home.active = 0;
+      homeSearch(); break;
+    case "homeClear": state.home.q = ""; state.home.results = null; state.home.active = 0; rerender(); homeFocusInput(); return;
+    case "homeMode":
+      if (arg !== "search" && arg !== "ask") return;
+      state.home.mode = arg; state.home.focused = true; state.home.active = 0; homeSearch(); rerender(); homeFocusInput(); return;
+    case "homeRange":
+      if (arg !== "7" && arg !== "30" && arg !== "90") return;
+      state.home.range = arg; pendingFlash = ".hm-cards"; break;
+    case "homeRetry": loadHomeData(); return;
+    case "homePick": {
+      const row = homeRows()[Number(arg)];
+      if (!row) return;
+      state.home.focused = false; state.home.q = ""; state.home.results = null;
+      quickPick(row.pick); return;
+    }
+    // The bar's Ask: the answer streams under the bar (a new Ask thread; "Continue in Trov" opens it).
+    case "homeAsk": case "homeSubmit": {
+      const q = (arg ?? state.home.q).trim();
+      if (!q) { homeFocusInput(); return; }
+      homeAskRun(q); return;
+    }
+    case "homeAnsClose": homeAskAbort?.abort(); state.home.answer = null; break;
+    case "homeAnsGo": if (arg && arg.startsWith("#")) location.hash = arg; return;
+    case "homeAnsContinue": if (state.home.answer?.threadId) location.hash = `#ask/${state.home.answer.threadId}`; return;
+    case "homeAnsWrongOpen": if (state.home.answer) state.home.answer.wrong = "open"; break;
+    case "homeAnsWrong": {
+      const a = state.home.answer;
+      if (!a?.messageId || !(ASK_WRONG_REASONS as readonly string[]).includes(arg ?? "")) return;
+      a.wrong = "sent";
+      askApi.markWrong(a.messageId, arg as AskWrongReason).catch(() => {
+        if (state.home.answer === a) { a.wrong = "closed"; flash("Couldn't tell Trov. Try again."); }
+      });
+      break;
+    }
+    case "goRepoFor": if (!arg) return; state.repoSlug = arg; state.repoApp = null; state.screen = "repo"; state.repoTab = "overview"; loadRepo(); return;
+    case "goRepoApp": {
+      const [repo, app] = (arg ?? "").split("\n");
+      if (!repo || !app) return;
+      state.repoSlug = repo; state.repoApp = app; state.screen = "repo"; state.repoTab = "overview"; loadRepo(); return;
+    }
+    case "openReviewItem": if (!arg) return; state.reviewSel = arg; dispatch("goReview", null, null); return;
     case "goMyWork":
       // Out of the guided setup: My Work is already what stands behind the card (read while the person
       // was in the setup), so the card simply goes — a morph, and no page entrance replayed over a
@@ -3792,14 +3994,17 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.roadmapTab = arg;
       break;
     case "roadmapTimeline": state.roadmapTab = "timeline"; break;
-    case "goReview": state.screen = "review"; loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); return;
-    // Triage › Unplaced (the screen is still `maintenance`; its Identity and People tabs moved
-    // into Org settings, which a stale `goMaintenance identity|people` still reaches).
+    // Review is ONE screen with two views (`state.reviewView`): its queue (`goReview`, `#review`) and Unplaced
+    // (`goUnplaced`, `#review/unplaced` — quick search and Home land there). The header's To review / Unplaced switch
+    // is `setReviewView`. Unplaced was Maintenance, whose Identity and People tabs moved into Org settings, which a
+    // stale `goMaintenance identity|people` still reaches.
+    case "goReview": showReview("queue"); return;
+    case "goUnplaced": showReview("unplaced"); return;
     case "goMaintenance":
       if (arg === "identity" || arg === "people") { dispatch("orgGo", "members", null); return; }
-      state.screen = "maintenance";
-      loadNeedsTriageIfNeeded();
+      showReview("unplaced");
       return;
+    case "setReviewView": if (arg === "queue" || arg === "unplaced") showReview(arg); return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
     case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
@@ -4416,7 +4621,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .then(() => {
           // Back in the queue, and on screen: nothing hides it any more.
           delete state.unplacedLeaving[arg]; unplacedExits.delete(arg);
-          if (state.screen === "maintenance") { state.assignOpen = arg; clearAssignPicks(); }
+          if (state.screen === "review" && state.reviewView === "unplaced") { state.assignOpen = arg; clearAssignPicks(); }
           flash("Back in Unplaced");
           loadNeedsTriage();
         })
@@ -5340,6 +5545,34 @@ mount.addEventListener("input", (e) => {
   }
 });
 
+// Home's bar: ↑ ↓ move through the dropdown, ↵ opens, Tab flips Search / Ask Trov, Esc closes.
+mount.addEventListener("keydown", (e) => {
+  const el = e.target as HTMLElement | null;
+  if (!el?.closest?.('[data-field="homeQ"]') || state.screen !== "home") return;
+  const n = homeRows().length;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (!n) return;
+    state.home.focused = true;
+    state.home.active = (Math.min(state.home.active, n - 1) + (e.key === "ArrowDown" ? 1 : -1) + n) % n;
+    rerender();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (state.home.mode === "ask" && state.home.q.trim()) { dispatch("homeSubmit", null, null); return; }
+    if (n) dispatch("homePick", String(Math.min(state.home.active, n - 1)), null);
+  } else if (e.key === "Escape") {
+    state.home.focused = false; (el as HTMLInputElement).blur(); rerender();
+  } else if (e.key === "Tab" && !e.shiftKey && homeAskOn()) {
+    e.preventDefault();
+    dispatch("homeMode", state.home.mode === "ask" ? "search" : "ask", null);
+  }
+});
+
+// Home's Search / Ask Trov switch: pressing it never takes focus from the bar, so typing goes on into the field.
+mount.addEventListener("mousedown", (e) => {
+  if (state.screen === "home" && (e.target as Element | null)?.closest?.('[data-seg="home-mode"]') && document.activeElement?.closest?.('[data-field="homeQ"]')) e.preventDefault();
+});
+
 // ── @mention picker: keyboard + the mousedown/blur race ──────────────────────
 //
 // A mousedown on a picker row would blur the textarea, and the focusout below
@@ -5551,7 +5784,18 @@ mount.addEventListener("focusout", (e) => {
 document.addEventListener("keydown", (e) => {
   if (state.view !== "app" || e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) return;
   e.preventDefault();
-  dispatch("sideSearchFocus", null, null);
+  // On Home the page's own bar is the search (the design's ⌘K hint sits in it).
+  dispatch(state.screen === "home" ? "homeFocus" : "sideSearchFocus", null, null);
+});
+// Home's bar: focusing its field (a click, Tab) opens the dropdown and its focused look.
+mount.addEventListener("focusin", (e) => {
+  if (state.screen !== "home" || state.home.focused) return;
+  if (!(e.target as Element | null)?.closest?.('[data-field="homeQ"]')) return;
+  state.home.focused = true; state.home.attnOpen = false; state.home.active = 0; rerender();
+});
+// Home's Needs attention closes on Escape.
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && state.screen === "home" && state.home.attnOpen) { state.home.attnOpen = false; rerender(); }
 });
 mount.addEventListener("keydown", (e) => {
   const box = (e.target as Element | null)?.closest?.<HTMLInputElement>('[data-field="sideSearch"]');

@@ -238,31 +238,8 @@ html[data-zooming] *, html[data-zooming] *::before, html[data-zooming] *::after 
 }
 /* The Feed's column grows; an entry's words do not: 720px is the measure they already have in a 1200px frame. */
 .cnpy-feed-page .cnpy-cols > div:first-child :is(.cnpy-md-inline, .cnpy-feed-brief, .cnpy-feed-body) { max-width:720px; }
-/* The title row lines up with the screen's frame: the header spans <main> (its hairline does), but its title and
-   actions sit at the content's left and right edges. Each screen names its frame (`--hdr-frame`, the max-width of
-   its page) and the frame's side padding (`--hdr-pad`); the header's inline padding reads `--hdr-pl` / `--hdr-pr`,
-   24px when unset. The page scroller reserves its scrollbar on the right (`scrollbar-gutter`), so the frame centres
-   in <main> minus that gutter. Above 1440px only: a laptop's header is exactly what it was. Screens with no single
-   centred frame (Docs, Review, the Guide, Ask, Artifacts) keep 24px. */
-[data-screen="tickets"], [data-screen="relay"], [data-screen="handoffs"], [data-screen="links"], [data-screen="prompts"], [data-screen="tag"] { --hdr-frame:var(--frame-work); --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
-[data-screen="newticket"], [data-screen="newhandoff"], [data-screen="newdoc"], [data-screen="promptedit"] { --hdr-frame:1440px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
-[data-screen="ticketdetail"], [data-screen="sprint"], [data-screen="link"] { --hdr-frame:1120px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
-[data-screen="handoff"], [data-screen="maintenance"], [data-screen="platform"], [data-screen="platformorg"], [data-screen="org"] { --hdr-frame:1180px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
-[data-screen="org"]:has(.cnpy-org[data-org-wide]) { --hdr-frame:var(--frame-dash); }
-[data-screen="prompt"] { --hdr-frame:1260px; --hdr-pad:clamp(20px,2.6 * var(--vw),46px); }
-[data-screen="mywork"], [data-screen="repo"] { --hdr-frame:var(--frame-dash); --hdr-pad:32px; }
-[data-screen="feed"] { --hdr-frame:var(--frame-feed); --hdr-pad:32px; }
-[data-screen="roadmap"] { --hdr-frame:1200px; --hdr-pad:32px; }
-[data-screen="settings"] { --hdr-frame:1180px; --hdr-pad:32px; }
-[data-screen="releases"]:has(.cnpy-relidx) { --hdr-frame:1040px; --hdr-pad:32px; }
-[data-screen="releases"]:has(.cnpy-reldoc) { --hdr-frame:1040px; --hdr-pad:32px; }
-[data-screen="search"] { --hdr-frame:780px; --hdr-pad:24px; }
-@media (min-width:1441px) {
-  .cnpy-hdr {
-    --hdr-pl:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad));
-    --hdr-pr:calc(max(0px, (100% - var(--sb-gutter) - var(--hdr-frame)) / 2) + var(--hdr-pad) + var(--sb-gutter));
-  }
-}
+/* The header's title and actions sit at <main>'s own left and right edges (24px), on every screen and every
+   window width (the owner, 2026-10-18: they used to line up with each page's frame above 1440px). */
 @keyframes cnpy-spin { to { transform: rotate(360deg); } }
 @keyframes cnpy-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 @keyframes cnpy-pop { from { opacity: 0; transform: translateY(8px) scale(.99); } to { opacity: 1; transform: none; } }
@@ -825,13 +802,13 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
   .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
 }
 /* ── Unplaced (web/src/maintenance.ts) ──────────────────────────────────────────────────────
-   Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`, `.cnpy-rvp`): only what is its own is here. A card
-   placed or discarded leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
+   Review's other view (one screen, `#review/unplaced`): Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`,
+   `.cnpy-rvp` on To review's colours, the white `.cnpy-rv-detail`), so only what is its own is here. A card placed or discarded
+   leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
 .cnpy-rv-row[data-verdict="placed"] { --rv-tone:var(--green); }
 .cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }
-.cnpy-up-count { flex:none; font-size:12px; color:var(--fg-40); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .cnpy-up-text { margin:0; font-size:14px; line-height:1.65; color:var(--fg-70); white-space:pre-wrap; overflow-wrap:anywhere; }
-.cnpy-up-place { margin-top:26px; padding-top:20px; border-top:1px solid var(--border); }
+/* Place it as is a white surface card (`surface()`), as the item above it is — To review's proposed record's card. */
 .cnpy-up-field { margin-top:16px; }
 .cnpy-up-label { font-size:12px; font-weight:600; color:var(--fg-70); margin-bottom:8px; }
 .cnpy-up-opt { font-weight:400; color:var(--fg-40); }
@@ -979,7 +956,7 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
    (.cnpy-reltl: the version and date on a rail, the title, lede and counts beside it). A release PAGE: one reading
    column (.cnpy-reldoc) — back link, title block, a tab bar (Release notes / Patch notes), the page, newer / older as
    two cards. Long `code` runs wrap anywhere, so a phone never scrolls sideways. */
-.cnpy-relidx { max-width:1040px; margin:0 auto; padding:28px 32px 120px; }
+.cnpy-relidx { max-width:1180px; margin:0 auto; padding:28px 40px 120px; } /* the Guide's frame (render.ts guideView) */
 .cnpy-relidx > .cnpy-brandband { margin-bottom:28px; }
 .cnpy-relidx-head { max-width:680px; margin-bottom:30px; }
 .cnpy-relidx-title { margin:0; font-size:30px; font-weight:650; letter-spacing:-0.025em; color:var(--fg); }
@@ -1023,7 +1000,7 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-reltl-go { display:inline-flex; color:var(--fg-40); transition:transform .16s ease, color .16s ease; }
 .cnpy-reltl-card:hover .cnpy-reltl-go { color:var(--accent); transform:translateX(3px); }
 /* one release */
-.cnpy-reldoc { max-width:1040px; margin:0 auto; padding:28px 32px 120px; display:flex; flex-direction:column; }
+.cnpy-reldoc { max-width:1180px; margin:0 auto; padding:28px 40px 120px; display:flex; flex-direction:column; }
 .cnpy-rel-back { display:inline-flex; align-items:center; gap:6px; align-self:flex-start; font-size:12.5px; font-weight:500; color:var(--fg-55); text-decoration:none; }
 .cnpy-rel-back:hover { color:var(--fg); }
 .cnpy-reldoc-head { margin-top:16px; }
@@ -1142,7 +1119,7 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
    class-styled search inputs (.cnpy-search-in, .cnpy-qs-in, and Ask's composer .ask-input and thread search .ask-th-q) leave both to their box's own rule. Buttons,
    checkboxes and radios are not fields: they keep their own `:focus-visible` rules (or the browser's ring). */
 [data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]) { border-color:var(--border-input) !important; }
-[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
+[data-cnpy-theme] :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), textarea):not([style*="border:none"], .cnpy-search-in, .cnpy-qs-in, .ask-input, .ask-th-q, .hm-bar-in):not([aria-invalid="true"]):focus-visible { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
 [data-cnpy-theme] :is(input, textarea)[aria-invalid="true"]:not([style*="border:none"]):focus-visible { box-shadow:0 0 0 1px var(--red) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]) { border-color:var(--border-input) !important; }
 [data-cnpy-theme] :is(div, label, span):has(> :is(input, textarea)[style*="border:none"]:focus-visible) { border-color:var(--focus) !important; box-shadow:0 0 0 1px var(--focus) !important; }
@@ -2440,17 +2417,6 @@ a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255
 .site-caret::after { content:""; display:inline-block; width:.5em; height:1.05em; margin-left:3px; vertical-align:-.2em; background:currentColor; animation:site-blink 1.1s steps(1) infinite; }
 @keyframes site-blink { 50% { opacity:0; } }
 
-/* diff rows: the highlight washes in under the text */
-.site-hl { position:relative; }
-.site-hl > * { position:relative; }
-.site-hl::before { content:""; position:absolute; inset:0; opacity:0; background:var(--hl-bg); box-shadow:var(--hl-edge, none); }
-.site-hl.hl-add { --hl-bg:color-mix(in srgb, var(--green) 11%, transparent); --hl-edge:inset 2px 0 0 var(--green); }
-.site-hl.hl-del { --hl-bg:color-mix(in srgb, var(--red) 10%, transparent); }
-.is-play .site-hl, .is-done .site-hl { color:var(--fg); }
-.is-play .site-hl::before, .is-done .site-hl::before { opacity:1; }
-.is-play .site-hl { transition:color var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
-.is-play .site-hl::before { transition:opacity var(--fx-slow) var(--fx-ease) var(--d, 0ms); }
-
 /* checks draw on; progress bars fill from the left */
 .site-check path { stroke-dasharray:24; stroke-dashoffset:24; }
 .is-play .site-check path, .is-done .site-check path { stroke-dashoffset:0; }
@@ -2459,23 +2425,152 @@ a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255
 .is-play .site-bar, .is-done .site-bar { scale:none; }
 .is-play .site-bar { transition:scale .5s var(--fx-ease) var(--d, 0ms); }
 
-/* the hero's verdict: Promote draws the eye, is pressed, becomes "Promoted";
-   Reject steps back, the Review badge counts down, a toast confirms */
+/* a state that changes as its section plays (a handoff claimed, an artifact ratified): the old word leaves
+   upward as the new one arrives; and a button that draws the eye with two pulses (the authority card's Promote) */
 .site-swap { display:inline-grid; }
 .site-swap > * { grid-area:1 / 1; text-align:center; }
 .site-swap > :last-child { opacity:0; translate:0 6px; }
 .is-play .site-swap > :first-child, .is-done .site-swap > :first-child { opacity:0; translate:0 -6px; }
 .is-play .site-swap > :last-child, .is-done .site-swap > :last-child { opacity:1; translate:none; }
 .is-play .site-swap > * { transition:opacity var(--fx-base) var(--fx-ease) var(--d, 0ms), translate var(--fx-base) var(--fx-ease) var(--d, 0ms); }
-.is-play .site-dim, .is-done .site-dim { opacity:.4; }
-.is-play .site-dim { transition:opacity .4s ease var(--d, 0ms); }
 .is-play .site-ring { animation:site-ring 1.1s var(--ease-out) var(--ring, 0ms) 2; }
-.is-play .site-ring.site-press { animation:site-ring 1.1s var(--ease-out) var(--ring, 0ms) 2, site-press .32s var(--ease-out) var(--press, 0ms); }
 @keyframes site-ring { from { box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); } to { box-shadow:0 0 0 10px color-mix(in srgb, var(--accent) 0%, transparent); } }
-@keyframes site-press { 45% { scale:.92; } }
-.site-toast { opacity:0; pointer-events:none; }
-.is-play .site-toast { animation:site-toast 4.6s var(--ease-out) var(--d, 0ms) both; }
-@keyframes site-toast { 0% { opacity:0; translate:0 14px; } 8%, 86% { opacity:1; translate:none; } 100% { opacity:0; translate:0 6px; } }
+
+/* ── the hero's Home, looping (landing.ts `hero` / `heroHome`) ──────────────────
+   The app's front page drawn with its own `.hm-*` classes (home.ts), inert, a little denser so the whole story fits
+   the 600px window. ONE loop, `--hl` long, starting `--hs` after the mockup is revealed; every step below is a keyframe
+   on that clock, in percent of it (1% = 140ms), and an element's `--hd` is its stagger (at most 240ms, so every reset
+   lands while the page is faded out, 13.65s to 14s). The timeline, in seconds:
+     0       the page rises in (hl-page, hl-rise) · 0.3 to 1.0 the status line counts up to 3 (hl-cnt)
+     1.0     Activity: the bars grow (hl-grow), the figures count up (hl-fig), the deltas follow at 1.9 (hl-delta)
+     2.9     the bar is focused (hl-ring, hl-bar) · 3.0 it switches to Ask Trov (hl-seg-*, hl-ask-*, hl-ph-ask)
+     3.5     "What shipped this week?" types in (hl-type) · 4.8 it is sent (hl-go)
+     4.95    the answer opens (hl-ans): "Reading your organization…" (hl-wait), then 5.6 to 7.6 its words stream in
+             (hl-words: `--hw` counts the words, each word's `--i` its place) · 7.7 its byline, sources, Wrong? (hl-foot)
+     9.1     it is closed (hl-xpress, 9.3 to 9.5) · 9.5 to 9.7 the bar goes back to Search
+     9.8     the status line is pressed (hl-stat, hl-chev) · 9.9 Needs attention opens (hl-attn)
+     10.7    Claim pulses and is pressed (hl-claim) · 11.14 its row leaves (hl-leave), 11.3 the count drops to 2 and
+             Relay's badge goes (hl-badge) · 12.3 Needs attention closes
+     13.3    the page fades (hl-page) · 14 again
+   An element's OWN style is the story's settled end — Search, unfocused, nothing open, Activity filled, "2 things need
+   you", the handoff claimed — so reduced motion (`.cnpy-site *` above stops every animation), no script and the
+   prerendered page all show the same calm Home. Counts are registered integers drawn by `counter()`; a browser without
+   `@property` steps them instead of counting. Nothing here changes a box in the page's flow: the answer and Needs
+   attention are laid over it, the window's height is fixed, so the page around the hero never moves. landing-motion.ts
+   pauses the loop while the hero is out of view (`data-hold`). */
+@property --hn { syntax:'<integer>'; inherits:false; initial-value:0; }
+@property --hv { syntax:'<integer>'; inherits:false; initial-value:0; }
+@property --hw { syntax:'<number>'; inherits:true; initial-value:0; }
+.site-hero-mock { --hl:14s; --hs:700ms; }
+/* The hero's rail is the app's own sidebar (sidebar.ts), drawn as it is in the app; a picture, so it takes no focus
+   (the window is `inert`) and nothing on it reacts to the pointer. */
+/* Scaled down (the owner, 2026-10-18): the rail at the app's size crowded the hero; `zoom` shrinks its layout box too, so
+   Home gets the room back. */
+.site-hero-side { display:flex; flex:none; zoom:.82; }
+.site-hero-side > .cnpy-aside { height:100%; }
+.site-hero-side * { pointer-events:none; }
+.site-hm-view { position:relative; flex:1; min-height:0; overflow:hidden; }
+/* The real Home sits in a centred column with room either side; the hero keeps that proportion (about a sixth of the
+   window's width on each side), so it reads as the page, not as a page stretched to the window's edges. */
+.hm-page.site-hm { max-width:none; padding:56px 17% 28px; }
+.site-hm > .hm-head { position:relative; z-index:40; }
+.site-hm .hm-h { font-size:24px; }
+.site-hm .hm-statusrow { margin-top:6px; }
+.site-hm .hm-attn { width:min(440px, calc(100 * var(--vw) - 64px)); }
+.site-hm-leave { max-height:52px; overflow:hidden; }
+.site-hm .hm-bar-wrap { margin-top:14px; }
+.site-hm .hm-bar { height:38px; }
+.site-hm-stack { display:inline-grid; align-items:center; }
+.site-hm-stack > * { grid-area:1 / 1; min-width:0; }
+.site-hm-q { flex:1; min-width:0; overflow:hidden; white-space:nowrap; font-size:14px; }
+.site-hm-ph { color:var(--fg-40); overflow:hidden; text-overflow:ellipsis; }
+.site-hm-typed { color:var(--fg); }
+.site-hm-end { justify-items:end; }
+.site-hm .hm-ans-text { max-height:none; overflow:hidden; }
+.site-hm .hm-cols { margin-top:18px; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px 18px; }
+.site-hm .hm-row { height:32px; }
+.site-hm .hm-act { margin-top:16px; }
+.site-hm .hm-act-h { margin-bottom:8px; }
+.site-hm .hm-cards { grid-template-columns:repeat(4, minmax(0, 1fr)); }
+.site-hm .hm-card { padding:10px 12px 8px; }
+.site-hm .hm-card-n { font-size:22px; }
+.site-hm .hm-card-d { overflow:hidden; text-overflow:ellipsis; }
+.site-hm .hm-card-bars { height:30px; margin-top:8px; }
+.site-hm .hm-lower { margin-top:16px; flex-wrap:nowrap; }
+.site-hm .hm-latest { flex:2 1 0; min-width:0; }
+.site-hm .hm-team { flex:1 1 0; min-width:0; }
+/* the settled end of each step (see above): what is shown when nothing plays */
+.site-hm-n { font-variant-numeric:tabular-nums; }
+.site-hm-n::before { content:counter(hn); }
+.hl-cnt { --hn:2; counter-reset:hn var(--hn); }
+.hl-fig { counter-reset:hn var(--hv); }
+.hl-w { opacity:clamp(0, calc(var(--hw) - var(--i)), 1); }
+:is(.hl-ask-in, .hl-ph-ask, .hl-type, .hl-ask-x, .hl-go, .hl-ans, .hl-wait, .hl-attn, .hl-badge) { opacity:0; }
+.hl-ans, .hl-attn { pointer-events:none; }
+/* the loop: one clock for every step */
+.site-hero-mock:is(.is-play, .is-done) :is(.hl-page, .hl-rise, .hl-cnt, .hl-fig, .hl-delta, .hl-grow, .hl-ring, .hl-bar, .hl-seg-off, .hl-seg-on, .hl-ask-in, .hl-ask-out, .hl-ph-ask, .hl-type, .hl-kbd, .hl-ask-x, .hl-go, .hl-ans, .hl-xpress, .hl-wait, .hl-words, .hl-foot, .hl-stat, .hl-chev, .hl-attn, .hl-claim, .hl-leave, .hl-badge) {
+  animation-duration:var(--hl); animation-timing-function:linear; animation-delay:calc(var(--hs) + var(--hd, 0ms)); animation-iteration-count:infinite; animation-fill-mode:both;
+}
+.site-hero-mock[data-hold] [class*="hl-"] { animation-play-state:paused !important; }
+.site-hero-mock:is(.is-play, .is-done) .hl-page { animation-name:hl-page; }
+.site-hero-mock:is(.is-play, .is-done) .hl-rise { animation-name:hl-rise; }
+.site-hero-mock:is(.is-play, .is-done) .hl-cnt { animation-name:hl-cnt; }
+.site-hero-mock:is(.is-play, .is-done) .hl-fig { animation-name:hl-fig; }
+.site-hero-mock:is(.is-play, .is-done) .hl-delta { animation-name:hl-delta; }
+.site-hero-mock:is(.is-play, .is-done) .hl-grow { animation-name:hl-grow; }
+.site-hero-mock:is(.is-play, .is-done) .hl-ring { animation-name:hl-ring; }
+.site-hero-mock:is(.is-play, .is-done) .hl-bar { animation-name:hl-bar; }
+.site-hero-mock:is(.is-play, .is-done) .hl-seg-off { animation-name:hl-seg-off; }
+.site-hero-mock:is(.is-play, .is-done) .hl-seg-on { animation-name:hl-seg-on; }
+.site-hero-mock:is(.is-play, .is-done) .hl-ask-in { animation-name:hl-ask-in; }
+.site-hero-mock:is(.is-play, .is-done) .hl-ask-out { animation-name:hl-ask-out; }
+.site-hero-mock:is(.is-play, .is-done) .hl-ph-ask { animation-name:hl-ph-ask; }
+.site-hero-mock:is(.is-play, .is-done) .hl-type { animation-name:hl-type; }
+.site-hero-mock:is(.is-play, .is-done) .hl-kbd { animation-name:hl-kbd; }
+.site-hero-mock:is(.is-play, .is-done) .hl-ask-x { animation-name:hl-ask-x; }
+.site-hero-mock:is(.is-play, .is-done) .hl-go { animation-name:hl-go; }
+.site-hero-mock:is(.is-play, .is-done) .hl-ans { animation-name:hl-ans; }
+.site-hero-mock:is(.is-play, .is-done) .hl-xpress { animation-name:hl-xpress; }
+.site-hero-mock:is(.is-play, .is-done) .hl-wait { animation-name:hl-wait; }
+.site-hero-mock:is(.is-play, .is-done) .hl-words { animation-name:hl-words; }
+.site-hero-mock:is(.is-play, .is-done) .hl-foot { animation-name:hl-foot; }
+.site-hero-mock:is(.is-play, .is-done) .hl-stat { animation-name:hl-stat; }
+.site-hero-mock:is(.is-play, .is-done) .hl-chev { animation-name:hl-chev; }
+.site-hero-mock:is(.is-play, .is-done) .hl-attn { animation-name:hl-attn; }
+.site-hero-mock:is(.is-play, .is-done) .hl-claim { animation-name:hl-claim; }
+.site-hero-mock:is(.is-play, .is-done) .hl-leave { animation-name:hl-leave; }
+.site-hero-mock:is(.is-play, .is-done) .hl-badge { animation-name:hl-badge; }
+@keyframes hl-page { 0% { opacity:0; animation-timing-function:var(--fx-ease); } 4% { opacity:1; } 95% { opacity:1; animation-timing-function:var(--fx-ease); } 97.5%, 100% { opacity:0; } }
+@keyframes hl-rise { 0% { translate:0 10px; animation-timing-function:var(--ease-out); } 5%, 97.5% { translate:none; } 97.6%, 100% { translate:0 10px; } }
+@keyframes hl-cnt { 0%, 2.1% { --hn:0; } 7.1%, 80% { --hn:3; } 80.7%, 97.9% { --hn:2; } 98%, 100% { --hn:0; } }
+@keyframes hl-fig { 0%, 7.1% { --hv:0; animation-timing-function:var(--ease-out); } 13.6%, 97.9% { --hv:var(--to); } 98%, 100% { --hv:0; } }
+@keyframes hl-delta { 0%, 13.6% { opacity:0; } 15.7%, 97.5% { opacity:1; } 98%, 100% { opacity:0; } }
+@keyframes hl-grow { 0%, 7.1% { scale:1 0; animation-timing-function:var(--ease-out); } 11.4%, 97.5% { scale:1 1; } 98%, 100% { scale:1 0; } }
+@keyframes hl-ring { 0%, 20.7% { background-color:var(--hover); border-color:var(--border); } 22.1%, 67.9% { background-color:var(--accent-soft); border-color:transparent; } 69.3%, 100% { background-color:var(--hover); border-color:var(--border); } }
+@keyframes hl-bar { 0%, 20.7% { border-color:var(--border-strong); box-shadow:var(--shadow); } 22.1%, 67.9% { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); } 69.3%, 100% { border-color:var(--border-strong); box-shadow:var(--shadow); } }
+@keyframes hl-seg-off { 0%, 21.4% { background-color:var(--hover); color:var(--fg); } 23.2%, 67.9% { background-color:transparent; color:var(--fg-55); } 69.3%, 100% { background-color:var(--hover); color:var(--fg); } }
+@keyframes hl-seg-on { 0%, 21.4% { background-color:transparent; color:var(--fg-55); } 23.2%, 67.9% { background-color:var(--hover); color:var(--fg); } 69.3%, 100% { background-color:transparent; color:var(--fg-55); } }
+@keyframes hl-ask-in { 0%, 21.4% { opacity:0; } 23.2%, 67.9% { opacity:1; } 69.3%, 100% { opacity:0; } }
+@keyframes hl-ask-out { 0%, 21.4% { opacity:1; } 23.2%, 67.9% { opacity:0; } 69.3%, 100% { opacity:1; } }
+@keyframes hl-ph-ask { 0%, 21.4% { opacity:0; } 23.2%, 24.6% { opacity:1; } 25%, 100% { opacity:0; } }
+@keyframes hl-type { 0%, 25% { opacity:1; clip-path:inset(0 100% 0 0); animation-timing-function:steps(23, end); } 32.9%, 67.9% { opacity:1; clip-path:inset(0); } 69.3% { opacity:0; clip-path:inset(0); } 69.4%, 100% { opacity:0; clip-path:inset(0 100% 0 0); } }
+@keyframes hl-kbd { 0%, 24.6% { opacity:1; } 25%, 67.9% { opacity:0; } 69.3%, 100% { opacity:1; } }
+@keyframes hl-ask-x { 0%, 25% { opacity:0; } 26.4%, 67.9% { opacity:1; } 69.3%, 100% { opacity:0; } }
+@keyframes hl-go { 0%, 25% { opacity:0; scale:.8; } 26.4%, 34.3% { opacity:1; scale:1; } 34.7% { scale:.88; } 35.2%, 67.9% { opacity:1; scale:1; } 69.3%, 100% { opacity:0; scale:.8; } }
+@keyframes hl-ans { 0%, 35.4% { opacity:0; translate:0 -4px; animation-timing-function:var(--fx-ease); } 36.9% { opacity:1; translate:none; } 66.4% { opacity:1; translate:none; animation-timing-function:var(--fx-ease); } 67.9%, 100% { opacity:0; translate:0 -2px; } }
+@keyframes hl-xpress { 0%, 64.9% { scale:1; background-color:transparent; } 65.2% { scale:.86; background-color:var(--hover); } 65.7%, 100% { scale:1; background-color:transparent; } }
+@keyframes hl-wait { 0%, 40% { opacity:1; } 40.7%, 100% { opacity:0; } }
+@keyframes hl-words { 0%, 40% { --hw:0; } 54.3%, 97.9% { --hw:var(--to); } 98%, 100% { --hw:0; } }
+@keyframes hl-foot { 0%, 55% { opacity:0; } 56.4%, 100% { opacity:1; } }
+@keyframes hl-stat { 0%, 69.6% { background-color:transparent; } 70%, 88% { background-color:var(--hover); } 89.3%, 100% { background-color:transparent; } }
+@keyframes hl-chev { 0%, 70.7% { rotate:0deg; } 72.1%, 87.9% { rotate:180deg; } 89.3%, 100% { rotate:0deg; } }
+@keyframes hl-attn { 0%, 70.7% { opacity:0; scale:.96; animation-timing-function:var(--ease-out); } 72.1% { opacity:1; scale:1; } 87.9% { opacity:1; scale:1; animation-timing-function:var(--fx-ease); } 89.3%, 100% { opacity:0; scale:.98; } }
+@keyframes hl-claim { 0%, 76.4% { scale:1; background-color:transparent; box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent); } 76.5% { box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); animation-timing-function:var(--ease-out); } 78.5% { scale:1; box-shadow:0 0 0 8px color-mix(in srgb, var(--accent) 0%, transparent); } 79% { scale:.92; background-color:var(--hover); } 79.6%, 100% { scale:1; background-color:transparent; } }
+@keyframes hl-leave { 0%, 79.6% { max-height:52px; opacity:1; } 80.7% { max-height:52px; opacity:0; animation-timing-function:var(--fx-ease); } 82.1%, 97.9% { max-height:0; opacity:0; } 98%, 100% { max-height:52px; opacity:1; } }
+@keyframes hl-badge { 0%, 79.6% { opacity:1; scale:1; } 80.7%, 97.9% { opacity:0; scale:.6; } 99.3%, 100% { opacity:1; scale:1; } }
+@media (max-width:900px) {
+  .hm-page.site-hm { padding:44px 11% 24px; }
+}
 
 /* ── the banner, carried through the page ─────────────────────────────────────
    One idea: the brand's purple banner is Trov speaking (`.site-banner`, defined with `.cnpy-orgs-banner`),
@@ -4634,7 +4729,10 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* Review › an import's pages as one group (review.ts `groupCard`): the card, its open list, its page rows. A group
    that is decided whole wears the verdict and leaves by the queue's one exit (`.cnpy-rv-row`). */
 .cnpy-rvg { position:relative; margin-bottom:8px; padding:12px 14px; transition:border-color .12s ease; }
-.cnpy-rvg[data-sel] { border-color:var(--border-strong); }
+/* A group whose page is open in the pane: the same picked edge as a card. */
+.cnpy-rvg[data-sel] { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+/* A group card is a hitArea card (its first page opens in the pane); its buttons and its page rows sit above the hit. */
+.cnpy-hitbox .cnpy-rvg-acts, .cnpy-hitbox .cnpy-rvg-list { position:relative; z-index:2; }
 .cnpy-rvg-head { display:flex; align-items:center; gap:10px; min-width:0; }
 .cnpy-rvg-ic { width:30px; height:30px; flex:none; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); }
 .cnpy-rvg-acts { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
@@ -4680,6 +4778,10 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* Review › a group's page, picked (review.ts `reviewPagePane`, the design's right pane): the bar on top, the page,
    and the footer with the verdict — both bars stay in view while the page scrolls under them. */
 .cnpy-rvp { display:flex; flex-direction:column; min-height:100%; background:var(--surface); }
+/* Review's reading pane is WHITE in both views (the owner, 2026-10-18): To review's and Unplaced's, a decision's, a
+   page's; the cards in it keep their border. In the list, a picked card stays white too (its border marks it). */
+.cnpy-rv-detail { background:var(--surface); }
+.cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
 .cnpy-rvp > .cnpy-rvg-bar-top { position:sticky; top:0; z-index:2; flex:none; background:var(--surface); padding:0 20px 0 28px; }
 .cnpy-rvp-body { flex:1 0 auto; max-width:860px; padding:24px 32px 40px; }
 .cnpy-rvp-crumb { font-size:12.5px; color:var(--fg-55); }
@@ -4737,8 +4839,8 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
    Everything the signed-out site (landing.ts, pricing.ts, legal.ts, their dialogs) changes for a narrow
    or touch screen, in ONE place. Nothing here applies at 961px and up: every rule sits behind a width
    query (900px: the nav's menu and the legal contents; 640px: the phone layout) or `(hover:none)`, and
-   the three things declared outside one only HIDE what a wide screen never shows (the menu button, the
-   hero's phone tabs, the contents disclosure). docs/architecture/web-ui.md › "The site on a phone".
+   the two things declared outside one only HIDE what a wide screen never shows (the menu button and the
+   contents disclosure). docs/architecture/web-ui.md › "The site on a phone".
 
    Three ideas:
    • the bar is one row — mark, name, the accent button, Menu — and the menu holds the rest;
@@ -4746,7 +4848,7 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
      on-screen keyboard by `--site-kb` (site-viewport.ts), with 44px controls and the safe area under it;
    • a mockup is never a shrunken desktop window: a phone gets the screen's most telling pane, drawn in one
      column, and no type in it renders under 11px. */
-.site-iconbtn.site-menubtn, .site-hero-tabs-ph, .site-legal-tocb { display:none; }
+.site-iconbtn.site-menubtn, .site-legal-tocb { display:none; }
 
 /* the menu (landing.ts `menuSheet`, site-menu.ts): a card under its button on a tablet, a sheet on a phone */
 .site-menu-back { position:fixed; inset:0; z-index:64; touch-action:none; background:rgba(14,14,26,.5); animation:site-fade var(--fx-slow) var(--fx-ease) both; }
@@ -4849,25 +4951,16 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
   .site-hero-note { margin-top:14px; font-size:13px; }
   .site-hero-stage { max-width:calc(100% - 16px); margin-top:-124px; }
 
-  /* the hero's Review screen, as a phone holds it: one unified diff (the twin lines of the left pane are
-     dropped, the removed line sits above the added ones), the verdict as two buttons under it */
+  /* the hero's Home, as a phone holds it: the headline, the status line, the bar, For you, and Activity's four cards
+     two by two; Repositories, Roadmap, Latest and Team are dropped, not shrunk. The window is as tall as what it
+     holds (nothing in its flow changes size as the loop plays: the answer and Needs attention are laid over it). */
   .site-hero-win { height:auto !important; }
-  .site-hero-pad { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:16px 14px 16px !important; }
-  .site-hero-pad > * { flex:1 1 100%; min-width:0; }
-  .site-hero-trow { display:contents !important; }
-  .site-hero-trow > :first-child { font-size:20px !important; }
-  .site-hero-verdict { order:9; flex:1 1 100%; display:grid !important; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:10px !important; margin:14px 0 0 !important; }
-  .site-hero-verdict > * { box-sizing:border-box; padding:12px 10px !important; font-size:14px !important; text-align:center; }
-  .site-hero-meta { flex-wrap:wrap; margin-top:8px !important; gap:4px 6px !important; font-size:12px !important; }
-  .site-hero-tabs { display:none !important; }
-  .site-hero-tabs-ph { display:flex; gap:6px; margin-left:auto; }
-  .site-hero-tabs-ph > :last-child { display:none; }
-  .site-hero-diff { display:flex !important; flex-direction:column; padding:8px 0 10px; font-size:12px !important; line-height:1.65 !important; }
-  .site-hero-cur, .site-hero-new, .site-hero-lines { display:contents; }
-  .site-hero-ph, .site-hero-twin { display:none; }
-  .site-hero-cur .site-hl { order:2; }
-  .site-hero-new .site-hl { order:3; }
-  .site-hero-mock .site-toast { left:10px !important; right:10px !important; top:8px !important; bottom:auto !important; }
+  .hm-page.site-hm { padding:16px 14px 18px; }
+  .site-hm .hm-h { font-size:22px; }
+  .site-hm .hm-cols { grid-template-columns:minmax(0, 1fr); }
+  .site-hm .hm-col:not(:last-child), .site-hm .hm-lower, .site-hm .hm-kbd, .site-hm .hl-ask-x { display:none; }
+  .site-hm .hm-cards { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .site-hm :is(.hm-card-x, .hm-count, .hm-kbd kbd) { font-size:11px; }
 
   /* the type floor: nothing a mockup SAYS renders under 11px (its sizes are inline, hence the value keys —
      the corners block's own idiom), and the avatars that hold initials grow with them */
@@ -5365,6 +5458,162 @@ progress.sync-prog::-moz-progress-bar { background:var(--accent); border-radius:
   /* Still plainly "no total": a dashed track, not a moving one. */
   .sync-bar.is-open > span { animation:none !important; width:100%; border-radius:0; opacity:.5; background:repeating-linear-gradient(90deg, var(--accent) 0 6px, transparent 6px 12px); }
 }
+
+/* ── Home (web/src/home.ts) ───────────────────────────────────────────────────
+   The design `Trov Overview v2`: one centred column (`--frame-home`), a greeting over the status line, the
+   search-or-ask bar, three lists, Activity's four figures, then Latest beside Team. Rows are 38px hairline rows
+   (the design's), every hover a background; radii are authored here and scaled in the corners block below. */
+:root { --frame-home:clamp(1080px, 60 * var(--vw), 1600px); }
+.hm-page { max-width:var(--frame-home); margin:0 auto; padding:clamp(20px, 6 * var(--vh), 64px) 32px 56px; font-size:13px; }
+.hm-head { display:flex; flex-direction:column; align-items:center; text-align:center; }
+.hm-h { margin:0; font-size:30px; font-weight:500; letter-spacing:-0.035em; line-height:1.15; text-wrap:balance; color:var(--fg); }
+.hm-statusrow { position:relative; z-index:35; margin-top:10px; display:flex; align-items:center; justify-content:center; min-height:22px; }
+.hm-status { display:inline-flex; align-items:center; gap:7px; padding:3px 7px; margin:-3px -7px; border-radius:8px; font-size:13px; color:var(--fg-70); transition:background .12s ease, color .12s ease; }
+button.hm-status:not(:disabled):hover { background:var(--hover); color:var(--fg); }
+button.hm-status:disabled { cursor:default; }
+.hm-status-chev { display:inline-flex; color:var(--fg-40); transition:transform .2s ease; }
+.hm-status-chev.is-open { transform:rotate(180deg); }
+.hm-scrim { position:fixed; inset:0; z-index:-1; }
+.hm-attn { position:absolute; top:calc(100% + 10px); left:50%; transform:translateX(-50%); width:min(440px, calc(100 * var(--vw) - 32px)); text-align:left; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--menu-shadow); overflow:hidden; transform-origin:top center; animation:hm-pop .16s cubic-bezier(.2,.9,.3,1.2) both; }
+@keyframes hm-pop { from { opacity:0; transform:translateX(-50%) scale(.94); } }
+.hm-attn-h { display:flex; align-items:baseline; gap:8px; padding:9px 12px 7px; font-size:12.5px; font-weight:500; color:var(--fg); }
+.hm-attn-n { font-size:12px; font-weight:400; color:var(--fg-40); }
+.hm-attn-row { display:grid; grid-template-columns:9px minmax(0,1fr) auto; gap:11px; align-items:center; padding:8px 12px; border-top:1px solid var(--border); }
+.hm-attn-title { font-size:12.5px; font-weight:500; color:var(--fg); line-height:1.4; }
+.hm-attn-meta { font-size:11.5px; color:var(--fg-40); line-height:1.45; }
+.hm-attn-more { padding:7px 12px 9px; border-top:1px solid var(--border); font-size:12px; color:var(--fg-55); }
+.hm-btn { display:inline-flex; align-items:center; height:26px; padding:0 10px; border:1px solid var(--border-strong); border-radius:8px; font-size:12px; font-weight:500; color:var(--fg); white-space:nowrap; transition:background .12s ease; }
+.hm-btn:hover { background:var(--hover); }
+.hm-btn:active { transform:scale(.96); }
+.hm-btn-sm { height:24px; padding:0 9px; font-size:11.5px; }
+
+.hm-bar-wrap { position:relative; z-index:30; margin-top:26px; }
+/* The ring sits OUTSIDE the column (-4px), so the bar itself lines up with the lists and cards under it. */
+.hm-bar-ring { margin:0 -4px; padding:3px; border:1px solid var(--border); border-radius:15px; background:var(--hover); transition:background-color .2s ease, border-color .2s ease; }
+.hm-bar-ring.is-focused { background:var(--accent-soft); border-color:transparent; }
+.hm-bar { display:flex; align-items:center; gap:10px; height:44px; padding:0 6px 0 13px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--shadow); cursor:text; transition:border-color .15s ease; }
+/* Home's bar draws the field's focus edge itself (its input is excluded from the field-ring rule). */
+.hm-bar-ring.is-focused .hm-bar, .hm-bar:has(.hm-bar-in:focus-visible) { border-color:var(--focus); box-shadow:0 0 0 1px var(--focus); }
+.hm-bar-ic { display:grid; place-items:center; width:16px; height:16px; flex:none; color:var(--fg-40); }
+.hm-bar-ic.is-ask { color:var(--accent); }
+.hm-bar-in { flex:1; min-width:0; height:100%; background:none; border:none; outline:none; font:inherit; font-size:14px; color:var(--fg); padding:0; }
+.hm-bar-in::placeholder { color:var(--fg-40); }
+.hm-clear { width:22px; height:22px; display:grid; place-items:center; flex:none; border-radius:7px; color:var(--fg-40); }
+.hm-clear:hover { color:var(--fg); background:var(--hover); }
+.hm-kbd { display:inline-flex; gap:3px; flex:none; margin-right:5px; }
+.hm-kbd kbd { font-family:inherit; font-size:10.5px; border:1px solid var(--border-strong); border-radius:6px; padding:0 5px; color:var(--fg-55); }
+.hm-go { width:32px; height:32px; display:grid; place-items:center; flex:none; border-radius:8px; background:var(--accent); color:var(--accent-fg); transition:filter .12s ease; }
+.hm-go:hover { filter:brightness(1.08); }
+.hm-drop { position:absolute; left:0; right:0; top:calc(100% + 6px); text-align:left; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--menu-shadow); overflow:hidden; transform-origin:top center; animation:hm-drop .18s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes hm-drop { from { opacity:0; transform:translateY(-4px) scale(.99); } }
+.hm-drop-list { max-height:320px; overflow-y:auto; padding:5px; }
+.hm-drop-none { padding:8px 9px 4px; font-size:12.5px; color:var(--fg-55); }
+.hm-drop-g { padding:7px 9px 3px; font-family:var(--label); font-size:10.5px; font-weight:500; letter-spacing:.05em; text-transform:uppercase; color:var(--fg-40); }
+.hm-drop-i { display:grid; grid-template-columns:16px minmax(0,1fr) auto; gap:10px; align-items:center; width:100%; min-height:34px; padding:5px 9px; border-radius:8px; text-align:left; color:var(--fg-55); transition:background .08s ease; }
+.hm-drop-i.is-active, .hm-drop-i:hover { background:var(--hover); }
+.hm-drop-t { min-width:0; display:flex; align-items:baseline; gap:8px; }
+.hm-drop-title { font-size:12.5px; color:var(--fg-70); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+.hm-drop-title b { color:var(--fg); font-weight:600; }
+.hm-drop-meta { flex:1 1 auto; min-width:0; font-size:11.5px; color:var(--fg-40); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hm-drop-ret { font-size:11px; color:var(--fg-40); opacity:0; transition:opacity .1s ease; }
+.hm-drop-i.is-active .hm-drop-ret { opacity:1; }
+.hm-drop-foot { display:flex; align-items:center; gap:12px; padding:6px 12px; border-top:1px solid var(--border); font-size:11px; color:var(--fg-40); }
+.hm-drop-esc { margin-left:auto; }
+
+.hm-cols { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap:18px 26px; margin-top:34px; }
+.hm-col, .hm-latest, .hm-team { min-width:0; }
+.hm-sec-h { display:flex; align-items:center; justify-content:space-between; gap:10px; height:26px; padding:0 10px; }
+.hm-sec-t { padding:0; }
+.hm-sec-t { display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:500; color:var(--fg-55); transition:color .12s ease; }
+.hm-sec-t:hover { color:var(--fg); }
+.hm-sec-sub { font-size:11.5px; color:var(--fg-40); }
+.hm-count { display:inline-grid; place-items:center; min-width:16px; height:16px; padding:0 4px; border-radius:999px; background:var(--hover); box-shadow:inset 0 0 0 1px var(--border); font-size:10.5px; color:var(--fg-55); font-variant-numeric:tabular-nums; }
+/* A row's hover stays inside the column (its edge is the cards' and the bar's); its content and the section's title sit
+   10px in from that edge, on one line. */
+.hm-row { position:relative; display:flex; align-items:center; gap:10px; width:100%; height:38px; padding:0 10px; text-align:left; color:var(--fg); transition:background .12s ease; }
+.hm-row::after { content:""; position:absolute; left:0; right:0; bottom:0; height:1px; background:var(--border); pointer-events:none; }
+button.hm-row:hover { background:var(--hover); border-radius:6px; }
+.hm-ic { flex:none; color:var(--fg-55); }
+.hm-chev { flex:none; color:var(--fg-40); }
+.hm-row-t { flex:1; min-width:0; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hm-row-pre { color:var(--fg-55); margin-right:6px; }
+.hm-row-title { font-weight:500; }
+.hm-row-post { color:var(--fg-40); margin-left:7px; font-size:12px; }
+.hm-row-trail { flex:none; font-size:11.5px; color:var(--fg-40); white-space:nowrap; }
+.hm-row-sk { gap:10px; }
+.hm-ghost { display:flex; flex-direction:column; align-items:flex-start; gap:9px; padding:10px 10px 12px; border-top:1px solid var(--border); }
+.hm-ghost p { margin:0; font-size:12.5px; line-height:1.55; color:var(--fg-55); text-wrap:pretty; }
+.hm-ghost-row { flex-direction:row; align-items:center; justify-content:space-between; border-top:none; font-size:12.5px; color:var(--fg-55); }
+.hm-trov { flex:none; width:16px; height:16px; border-radius:6px; background:var(--accent-soft); display:inline-flex; align-items:center; justify-content:center; }
+.hm-team-av { position:relative; flex:none; display:inline-flex; }
+/* Active in the last 15 minutes: a green dot on the avatar, drawn only then. */
+.hm-live { position:absolute; right:-2px; bottom:-2px; width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 0 1.5px var(--bg); }
+
+.hm-act { margin-top:30px; }
+.hm-act-h { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.hm-act-h h3 { margin:0; font-size:13.5px; font-weight:500; }
+.hm-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap:10px; }
+.hm-card { display:flex; flex-direction:column; min-width:0; text-align:left; padding:12px 14px 10px; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow); transition:border-color .14s ease; }
+.hm-card:hover { border-color:var(--border-strong); }
+.hm-card.is-ghost { background:transparent; border-style:dashed; border-color:var(--border-strong); box-shadow:none; }
+.hm-card-l { font-size:12px; color:var(--fg-55); white-space:nowrap; }
+.hm-card-n { font-size:24px; font-weight:500; letter-spacing:-0.03em; line-height:1.15; margin-top:3px; font-variant-numeric:tabular-nums; color:var(--fg); }
+.hm-card.is-ghost .hm-card-n { color:var(--fg-40); }
+.hm-card-d { font-size:11.5px; color:var(--fg-40); margin-top:1px; white-space:nowrap; min-height:17px; }
+.hm-card-bars { display:flex; align-items:flex-end; gap:var(--gap, 4px); height:40px; margin-top:10px; border-bottom:1px solid var(--border); }
+.hm-bar-b { flex:1; min-width:1px; height:30%; border-radius:2px 2px 0 0; background:color-mix(in srgb, var(--accent) 32%, transparent); transform-origin:bottom; transition:height .45s cubic-bezier(.2,.7,.2,1); }
+.hm-bar-b.is-today { background:var(--accent); }
+.hm-bar-b.is-ghost { background:transparent; box-shadow:inset 0 0 0 1px var(--border-strong); }
+[data-enter] .hm-bar-b:not(.is-ghost) { animation:hm-grow .46s cubic-bezier(.2,.7,.2,1) both; animation-delay:calc(380ms + var(--enter-t, 0ms)); }
+@keyframes hm-grow { from { transform:scaleY(0); } }
+.hm-card-x { display:flex; justify-content:space-between; margin-top:4px; font-size:10.5px; color:var(--fg-40); }
+.hm-failed { display:flex; align-items:center; flex-wrap:wrap; gap:8px 11px; padding:14px 16px; background:var(--surface); border:1px solid var(--border); border-radius:10px; font-size:12.5px; color:var(--fg-70); }
+
+.hm-lower { display:flex; flex-wrap:wrap; gap:18px 26px; margin-top:30px; }
+.hm-latest { flex:2 1 440px; }
+.hm-team { flex:1 1 240px; }
+[data-phone="1"] .hm-page { padding:24px 16px 72px; }
+[data-phone="1"] .hm-h { font-size:24px; }
+[data-phone="1"] .hm-kbd { display:none; }
+@media (prefers-reduced-motion: reduce) { .hm-attn, .hm-drop, [data-enter] .hm-bar-b { animation:none !important; } .hm-bar-b, .hm-status-chev { transition:none; } }
+/* Home's corners (the corners block's rule: every radius in use has a line). */
+[data-cnpy-theme] .hm-status, [data-cnpy-theme] .hm-btn, [data-cnpy-theme] .hm-go, [data-cnpy-theme] .hm-drop-i { border-radius:calc(8px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-attn, [data-cnpy-theme] .hm-bar, [data-cnpy-theme] .hm-card, [data-cnpy-theme] .hm-failed { border-radius:calc(10px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-drop { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-bar-ring { border-radius:calc(15px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-clear, [data-cnpy-theme] .hm-kbd kbd, [data-cnpy-theme] .hm-trov, [data-cnpy-theme] button.hm-row:hover { border-radius:calc(6px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-bar-b { border-radius:calc(2px * var(--corner-scale)) calc(2px * var(--corner-scale)) 0 0 !important; }
+[data-cnpy-theme] .hm-count, [data-cnpy-theme] .hm-live { border-radius:min(calc(12px * var(--corner-scale)), 25%) !important; }
+/* Home's answer under the bar (home.ts `homeAnswerView`): Ask's own answer, short, with its byline, sources and Wrong?. */
+.hm-ans { position:absolute; left:0; right:0; top:calc(100% + 6px); text-align:left; background:var(--surface); border:1px solid var(--border-strong); border-radius:12px; box-shadow:var(--menu-shadow); overflow:hidden; animation:hm-drop .2s cubic-bezier(.2,.8,.2,1) both; }
+.hm-ans-h { display:flex; align-items:center; gap:9px; padding:10px 7px 0 13px; }
+.hm-ans-ic { width:20px; height:20px; border-radius:7px; background:var(--accent-soft); display:inline-flex; align-items:center; justify-content:center; flex:none; }
+.hm-ans-q { flex:1; min-width:0; font-size:12.5px; font-weight:500; color:var(--fg-70); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hm-ans-wait { display:flex; align-items:center; gap:9px; padding:10px 14px 14px 42px; font-size:12.5px; color:var(--fg-55); }
+.hm-dots { display:inline-flex; gap:3px; }
+.hm-dots span { width:4px; height:4px; border-radius:1px; background:var(--accent); animation:hm-dot 1s ease-in-out infinite; }
+.hm-dots span:nth-child(2) { animation-delay:.15s; } .hm-dots span:nth-child(3) { animation-delay:.3s; }
+@keyframes hm-dot { 0%, 80%, 100% { opacity:.25; transform:none; } 40% { opacity:1; transform:translateY(-2px); } }
+.hm-ans-text { max-height:min(46 * var(--vh), 420px); overflow-y:auto; padding:6px 16px 12px 42px; font-size:13.5px; line-height:1.6; color:var(--fg); }
+.hm-ans-text > :first-child { margin-top:0; } .hm-ans-text > :last-child { margin-bottom:0; }
+.hm-caret { display:inline-block; width:6px; height:13px; margin-left:2px; vertical-align:-2px; background:var(--accent); animation:hm-caret .8s steps(1) infinite; }
+@keyframes hm-caret { 50% { opacity:0; } }
+.hm-ans-err { display:flex; align-items:center; gap:8px; padding:10px 14px 14px 42px; font-size:12.5px; color:var(--fg-70); }
+.hm-ans-foot { display:flex; align-items:center; flex-wrap:wrap; gap:6px 9px; padding:7px 8px 7px 13px; border-top:1px solid var(--border); }
+.hm-ans-by { display:inline-flex; align-items:center; gap:5px; font-size:11.5px; color:var(--fg-55); }
+.hm-ans-src { display:inline-flex; align-items:center; gap:4px; flex-wrap:wrap; font-size:11.5px; color:var(--fg-55); }
+.hm-src { font-size:11px; font-weight:500; color:var(--fg-70); border:1px solid var(--border); border-radius:6px; padding:0 6px; max-width:220px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+a.hm-src:hover, button.hm-src:hover { border-color:var(--border-strong); color:var(--fg); }
+.hm-ans-gap { flex:1; }
+.hm-ans-wrong { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; color:var(--fg-55); border:1px solid var(--border-strong); border-radius:6px; }
+.hm-ans-wrong:hover { color:var(--fg); border-color:var(--fg-40); }
+.hm-ans-why { display:inline-flex; gap:5px; flex-wrap:wrap; }
+.hm-ans-thanks { font-size:11.5px; color:var(--fg-55); }
+@media (prefers-reduced-motion: reduce) { .hm-ans, .hm-dots span, .hm-caret { animation:none !important; } }
+[data-cnpy-theme] .hm-ans { border-radius:calc(12px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-ans-ic { border-radius:calc(7px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-src, [data-cnpy-theme] .hm-ans-wrong { border-radius:calc(6px * var(--corner-scale)) !important; }
+[data-cnpy-theme] .hm-dots span { border-radius:calc(1px * var(--corner-scale)) !important; }
 
 /* ── tags (web/src/tags.ts, marks.ts `tagMark` / `tagWords`) ───────────────────
    A tag is a small SQUARE and a word, or — in a list — the word alone. No rule here draws a box

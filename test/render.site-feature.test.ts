@@ -23,6 +23,7 @@ import landingSrc from "../web/src/landing.ts?raw";
 import renderSrc from "../web/src/render.ts?raw";
 import docPageSrc from "../web/src/doc-page.ts?raw";
 import docsPaneSrc from "../web/src/docs-pane.ts?raw";
+import tagsSrc from "../web/src/tags.ts?raw";
 import { loadWebChunks } from "./helpers/web-chunks";
 
 // The lazy screens (web-ui.md › The app's bundles) render themselves, not their skeletons.
@@ -112,7 +113,7 @@ describe("the feature dialog", () => {
       feed: ["A timeline of everything that shipped, from people and agents alike", "a short brief in plain words", "says whether an agent wrote it", "Filter by author, tag, or time"],
       tickets: ["Anyone can file a bug, request, question, or access ask", "Drag a card to change its status or its place in a column", "the same tickets grouped by sprint", "only a person closes a ticket: a merged PR never does"],
       roadmap: ["Narrative reads the plan and its sprint cards", "each bar runs from a sprint's start to its due date", "tickets closed", "always a person's call"],
-      mywork: ["Trov opens here", "your open tickets, with their sprint and when it is due", "what agents staged, with Promote, Ratify and Reject right there", "It reads only what Trov has already captured, so it loads instantly"],
+      mywork: ["Your own page", "your open tickets, with their sprint and when it is due", "what agents staged, with Promote, Ratify and Reject right there", "It reads only what Trov has already captured, so it loads instantly"],
       handoffs: ["A handoff is a note from one session to the next: the task, what's done, what's next, the files that matter", "addressed to you, a teammate, or anyone", "claims only the one you pick", "Unclaimed handoffs expire after 7 days"],
       links: ["let two sessions whose work overlaps leave each other short notes", "A link is one-to-one and short-lived", "one between your own sessions opens at once, and a teammate accepts or declines one you send", "A note reaches the other side when it next checks"],
       artifacts: ["An artifact is a page an agent or person made: an HTML design, a markdown report, an SVG or mermaid diagram, an image, a PDF, or a file", "links it to the ticket or sprint it came from", "only a person can give it", "Compare versions diffs any two"],
@@ -185,9 +186,11 @@ describe("the dialog's mockups — each screen drawn from the real one (landing-
   it("every other mock says what its real screen says", () => {
     const guide = renderSrc;
     const pairs: [Parameters<typeof mockText>[0], string, string[]][] = [
-      ["docs", docPageSrc, ["You're reading the", "live", "version. A change to this page is waiting for review.", "Open in Review", "History", "Updated", "Live"]],
+      ["docs", docPageSrc, ["You're reading the", "live", "version. A change to this page is waiting for review.", "Open in Review", "History", "Archive page", "Updated", "Owner", "Last edited by", "Version", "is waiting for review", "Linked from", "On this page"]],
       ["docs", docsPaneSrc, ["Pages"]],
-      ["docs", guide, ["New page"]],
+      ["docs", marksSrc, ["Change pending review"]],
+      ["docs", tagsSrc, ["+ Add tag"]],
+      ["docs", guide, ["Library"]],
       ["feed", guide, ["For reading", "For agents", "This week", "Whole team, last 7 days", "Everything this week", "Top tags", "Waiting on review"]],
       ["roadmap", timelineSrc, ["Sprints on the calendar", "In progress", "Upcoming", "Overdue", "Ready", "all tickets closed", "Today", "Done", "Next due", "starts in"]],
       ["roadmap", guide, ["Narrative", "Timeline", "New sprint"]],

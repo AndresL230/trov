@@ -362,7 +362,8 @@ export async function promote_doc(
   // under it (src/tools/doc-tree.ts; the tree PR of 0081_docs_library).
   const tree = doc ? await promoteTreeStmts(ctx, doc, ver.body, ver.parent_slug ?? null) : linkStmts(ctx, slug, ver.body);
   await batch(ctx, [
-    stmt(ctx, `UPDATE doc_versions SET status = 'promoted' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version),
+    // `promoted_at` (0077_home): when, for Home's Docs promoted figure.
+    stmt(ctx, `UPDATE doc_versions SET status = 'promoted', promoted_at = ? WHERE org_id = ? AND slug = ? AND version = ?`, updated_at, ctx.orgId, slug, version),
     supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version)),
     stmt(ctx, `UPDATE docs SET body = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND slug = ?`,
       ver.body, version, updated_at, author, ctx.orgId, slug),

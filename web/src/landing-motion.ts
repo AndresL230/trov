@@ -4,10 +4,13 @@
 // trov.css runs the rest — and records its key in the caller's `seen` set,
 // which landing.ts reads so a rerender renders it settled instead of replaying.
 // Reduced motion: everything settles immediately, nothing is observed.
+// The hero's Home loops for as long as it is on screen (trov.css "the hero's Home, looping"): this module only holds it
+// (`data-hold`, every `hl-*` animation paused) while it is out of view, so a page scrolled past it does no work.
 
 import { mountPricing } from "./pricing-dom";
 
 let observer: IntersectionObserver | null = null;
+let heroObserver: IntersectionObserver | null = null;
 
 // A nav jump (`siteJump`) smooth-scrolls the page past whole sections. Reveals that fire on the way
 // would all be animating at once and the target would still be sliding in when the scroll stops, which
@@ -32,6 +35,7 @@ export function mountLandingMotion(root: ParentNode, seen: Set<string>): void {
   unmountLandingMotion();
   syncNav(true);
   mountPricing(root); // the pricing section's Monthly / Yearly choice survives the rerender
+  holdHeroOffscreen(root);
   const pending = [...root.querySelectorAll<HTMLElement>("[data-rv]:not(.is-done)")];
   if (!pending.length) return;
   if (matchMedia("(prefers-reduced-motion: reduce)").matches || typeof IntersectionObserver === "undefined") {
@@ -55,6 +59,19 @@ export function mountLandingMotion(root: ParentNode, seen: Set<string>): void {
 export function unmountLandingMotion(): void {
   observer?.disconnect();
   observer = null;
+  heroObserver?.disconnect();
+  heroObserver = null;
+}
+
+/** Pause the hero's loop while it is out of view and play it again as it comes back. Its steps share one clock, so
+ *  pausing them all at once and resuming them together keeps the story in step. A first callback on observe sets it. */
+function holdHeroOffscreen(root: ParentNode): void {
+  const hero = root.querySelector<HTMLElement>(".site-hero-mock");
+  if (!hero || typeof IntersectionObserver === "undefined" || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  heroObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) (e.target as HTMLElement).toggleAttribute("data-hold", !e.isIntersecting);
+  }, { threshold: 0 });
+  heroObserver.observe(hero);
 }
 
 // The nav gains its hairline + shadow once the page scrolls under it. One

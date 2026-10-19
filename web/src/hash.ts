@@ -29,10 +29,11 @@
 //   #import           → the Markdown import wizard (the screen `import`); #import/<space> with that space picked
 //                       (its step is state, not route)
 //   #imports          → Imports history (the screen `imports`)
-//   #unplaced         → Triage › Unplaced (the screen `maintenance`). Its old addresses still
-//                       resolve: #maintenance here, and #maintenance/identity and
-//                       #maintenance/people — two tabs it had until 2026-10-06 — to
-//                       Org settings › Members, where both now live
+//   #review           → Review's queue; #review/unplaced its Unplaced view — ONE screen (`review`), the view in
+//                       `reviewView`; the header's To review / Unplaced switch moves between them in place.
+//                       Unplaced's old addresses still resolve to #review/unplaced: #unplaced (2026-10-18),
+//                       #maintenance and #maintenance/unplaced; #maintenance/identity and #maintenance/people —
+//                       two tabs it had until 2026-10-06 — to Org settings › Members, where both now live
 //   #releases         → Help › What's new: the grid of releases
 //   #releases/<v>     → one release's notes (<v> = "0.14" or "unreleased"); #releases/<v>/patches
 //                       its patch notes. The legacy #releases/patches opens the newest release's.
@@ -51,8 +52,8 @@
 //                       #welcome/team and #welcome/done its others (welcome.ts)
 //   #<screen>         → every other screen, named exactly as the Screen union
 //                       (`#site` is the landing page, reopened from inside the app)
-// Anything unrecognised falls back to My Work — the same rule the app has always
-// had for a junk hash.
+// Anything unrecognised falls back to Home (it was My Work until Home, 2026-10-18) — the same rule the app has
+// always had for a junk hash.
 
 import type { Screen } from "./render";
 import { isRepoScreenTab, type RepoScreenTab } from "@shared/repo";
@@ -70,7 +71,7 @@ import { SPACE_SLUG_RE } from "@shared/docs-core";
 /** Every screen addressable by its bare name (`#feed`). The compound ticket /
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
-  "mywork", "feed", "library", "review",
+  "home", "mywork", "feed", "library", "review",
   "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports", "relay",
 ];
 
@@ -124,6 +125,8 @@ export interface Route {
   docSlug?: string;
   /** Set only on `import`, when a space is picked (`#import/<space>`). */
   importSpace?: string;
+  /** Set only on `review`, in its Unplaced view (`#review/unplaced`); absent = the queue. */
+  reviewView?: "unplaced";
 }
 
 /** One repository's page under Org settings › Repositories: its Apps (`apps`), one app (`app`), or Add an app (`new`). */
@@ -139,7 +142,7 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName && a.askThread === b.askThread
-    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug && a.importSpace === b.importSpace
+    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug && a.importSpace === b.importSpace && a.reviewView === b.reviewView
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null)
     && JSON.stringify(a.orgRepo ?? null) === JSON.stringify(b.orgRepo ?? null);
 }
@@ -153,9 +156,10 @@ export function sameRoute(a: Route, b: Route): boolean {
 // Ask's thread (`askThread`) is not a page of its own either: opening one, or a new thread being named mid-answer,
 // swaps the conversation in place and never replays the screen's entrance. Nor is the doc in the reader
 // (`docSlug`): picking another page in its tree swaps the reader pane in place. Nor is the import wizard's space
-// (`importSpace`): picking one is a choice on the same page.
+// (`importSpace`): picking one is a choice on the same page. Nor is Review's view (`reviewView`, Unplaced): the header's
+// To review / Unplaced switch swaps the two columns in place without replaying Review's entrance.
 export function pageKey(r: Route): string {
-  return hashForRoute({ ...r, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
+  return hashForRoute({ ...r, reviewView: undefined, askThread: undefined, docSlug: undefined, importSpace: undefined, roadmapTab: undefined, releasePage: undefined, repoTab: undefined, repoApp: undefined, platTab: undefined, platReport: undefined, orgTab: undefined, orgRepo: undefined });
 }
 
 /** A URL path segment decoded, or null when it is malformed. */
@@ -194,7 +198,7 @@ function repoScope(query: string): Pick<Route, "repoSlug" | "repoApp"> {
 /** Parse a location hash (with or without the leading `#`) into a route. */
 export function parseHash(hash: string): Route {
   const raw = hash.replace(/^#/, "");
-  const none: Route = { screen: "mywork", ticketId: null, sprintId: null };
+  const none: Route = { screen: "home", ticketId: null, sprintId: null };
   if (!raw) return none;
 
   const parts = raw.split("/");
@@ -298,15 +302,17 @@ export function parseHash(hash: string): Route {
     if (parts[2] === "patches" || parts[2] === "notes") return { screen: "releases", ...base, releaseVersion: v, releasePage: parts[2] };
     return none;
   }
-  if (parts[0] === "unplaced") return parts.length === 1 ? { screen: "maintenance", ...base } : none;
+  if (parts[0] === "review" && parts.length === 2) return parts[1] === "unplaced" ? { screen: "review", ...base, reviewView: "unplaced" } : none;
+  // Legacy: Unplaced was its own address (2026-10-18), a view of Review now.
+  if (parts[0] === "unplaced") return parts.length === 1 ? { screen: "review", ...base, reviewView: "unplaced" } : none;
   // Legacy: `#unsubscribe` was a screen that turned the signed-in person's email off on arrival. An
   // email's Unsubscribe link is the Worker's `/u/<token>` page now, so the old address just opens
   // Settings, where the switch is — arriving changes nothing.
   if (parts[0] === "unsubscribe") return parts.length === 1 ? { screen: "settings", ...base } : none;
-  // Legacy: the page was Maintenance, with three tabs. Unplaced is the page now; Identity and
+  // Legacy: the page was Maintenance, with three tabs. Unplaced is Review's other view now; Identity and
   // People moved into Org settings › Members, so an old link (or bookmark) lands there.
   if (parts[0] === "maintenance") {
-    if (parts.length === 1 || (parts.length === 2 && parts[1] === "unplaced")) return { screen: "maintenance", ...base };
+    if (parts.length === 1 || (parts.length === 2 && parts[1] === "unplaced")) return { screen: "review", ...base, reviewView: "unplaced" };
     if (parts.length === 2 && (parts[1] === "identity" || parts[1] === "people")) return { screen: "org", ...base, orgTab: "members" };
     return none;
   }
@@ -393,7 +399,7 @@ export function hashForRoute(r: Route): string {
     if (!r.releaseVersion) return "#releases";
     return `#releases/${encodeURIComponent(r.releaseVersion)}${r.releasePage === "patches" ? "/patches" : ""}`;
   }
-  if (r.screen === "maintenance") return "#unplaced";
+  if (r.screen === "review") return r.reviewView === "unplaced" ? "#review/unplaced" : "#review";
   if (r.screen === "platform") return !r.platTab || r.platTab === "orgs" ? "#platform" : r.platTab === "support" && r.platReport ? `#platform/support/${r.platReport}` : `#platform/${r.platTab}`;
   if (r.screen === "platformorg") return r.platOrg ? `#platform/orgs/${r.platOrg}` : "#platform";
   if (r.screen === "org") {

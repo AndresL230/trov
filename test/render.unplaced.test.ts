@@ -1,5 +1,5 @@
 /**
- * Triage › Unplaced (web/src/maintenance.ts), restyled to Review's frame (2026-10-18): the two panes, the queue a KEYED
+ * Review › Unplaced (web/src/maintenance.ts; the switch at the top of Review), restyled to Review's frame (2026-10-18): the two panes, the queue a KEYED
  * list of surface cards that leave by the app's one row exit when an item is placed or discarded, the item in Review's
  * page pane with Discard and Place in its footer, the picks as `segmented()` / `dropdown()` (never a <select>), the
  * Low confidence mark from marks.ts, the empty layout and the skeleton — and main.ts's wiring (the exit, the Undo).
@@ -15,7 +15,7 @@ import {
   maintenanceView, maintenanceSkeleton, effectivePicks, fileHint, UNPLACED_EXIT_MS, UNPLACED_EMPTY, UNPLACED_INTRO,
   type MaintenanceProps, type UnplacedItem,
 } from "../web/src/maintenance";
-import { REVIEW_EXIT_MS } from "../web/src/review";
+import { REVIEW_EXIT_MS, reviewView } from "../web/src/review";
 import { unplacedFromRow, unplacedReasonWord } from "../web/src/triage-map";
 import { render, initialState, triageCounts } from "../web/src/render";
 import type { NeedsTriageRow } from "@shared/rows";
@@ -44,11 +44,12 @@ function props(over: Partial<MaintenanceProps> = {}): MaintenanceProps {
 }
 
 describe("Unplaced — Review's frame", () => {
-  it("two panes (they take turns on a phone), the intro and how many wait, a keyed list of surface cards", () => {
+  it("two panes (they take turns on a phone), the intro, a keyed list of surface cards", () => {
     const html = maintenanceView(props());
-    expect(html).toContain('class="cnpy-rv cnpy-up-screen" data-screen-label="Unplaced" data-pane="list"');
+    expect(html).toContain('class="cnpy-rv cnpy-up-screen" data-screen-label="Unplaced" data-view="unplaced" data-pane="list"');
     expect(html).toContain(UNPLACED_INTRO.replaceAll("'", "&#39;"));
-    expect(html).toContain(">2 waiting<");
+    // How many wait is on the header's To review / Unplaced switch (render.ts `triageSwitch`), as Review's are.
+    expect(html).not.toContain("waiting<");
     expect(html).toMatch(/class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list/);
     expect(html).toContain('data-morph-key="up:u1"');
     expect(html).toContain('data-morph-key="up:u2"');
@@ -162,7 +163,6 @@ describe("Unplaced — a card that leaves (placed or discarded)", () => {
     const html = maintenanceView(props({ leaving: { u1: "discarded" } }));
     expect(html).toMatch(/data-morph-key="up:u1" data-verdict="discarded" inert/);
     expect(html).toContain("Discarded</span>");
-    expect(html).toContain(">1 waiting<");
     expect(html).toMatch(/data-up-card="u2" aria-current="true"/);
     expect(html).toContain('data-morph-key="upd:u2"');
     expect(maintenanceView(props({ leaving: { u2: "placed" } }))).toContain("Placed</span>");
@@ -180,7 +180,7 @@ describe("Unplaced — a card that leaves (placed or discarded)", () => {
     expect(css).toContain('.cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }');
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.cnpy-rv-row, [^}]*transition:none !important; \}/);
     // main.ts: the card is gone at once under reduced motion, and leaves only on this screen.
-    expect(mainSrc).toContain('const animate = state.screen === "maintenance" && !reducedMotion();');
+    expect(mainSrc).toContain('const animate = state.screen === "review" && state.reviewView === "unplaced" && !reducedMotion();');
     expect(mainSrc).toContain("state.unplacedLeaving[id] = { verdict, gone: !animate };");
   });
 
@@ -194,8 +194,12 @@ describe("Unplaced — a card that leaves (placed or discarded)", () => {
   it("the badge drops with the card, not when the refetch lands", () => {
     const row = (id: number) => ({ id, raw: "{}", reason: "r", source_author: null, resolved: 0, created_at: "2026-10-18T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null }) as NeedsTriageRow;
     const s = { ...initialState(), needsTriage: { status: "ok" as const, data: [row(1), row(2)] } };
-    expect(triageCounts(s).maintenance).toBe(2);
-    expect(triageCounts({ ...s, unplacedLeaving: { "1": { verdict: "discarded", gone: false } } }).maintenance).toBe(1);
+    expect(triageCounts(s).unplaced).toBe(2);
+    expect(triageCounts({ ...s, unplacedLeaving: { "1": { verdict: "discarded", gone: false } } }).unplaced).toBe(1);
+    // …and so does the count on Review's switch, which is the same number.
+    const html = render({ ...s, view: "app", screen: "review", reviewView: "unplaced", unplacedLeaving: { "1": { verdict: "discarded", gone: false } } });
+    const head = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
+    expect(head).toContain('>Unplaced<span class="cnpy-seg-n">1</span>');
   });
 });
 
@@ -204,9 +208,52 @@ describe("Unplaced — the screen", () => {
   const row: NeedsTriageRow = { id: 4, raw: JSON.stringify({ slug: "deploy", section: "reference", title: "Deploy", body: "b", change_summary: "s", confidence: "low" }), reason: "low confidence doc proposal", source_author: "maya-k", resolved: 0, created_at: "2026-10-18T00:00:00Z", resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null };
 
   it("is patched in place (data-morph), so a card can leave with its animation", () => {
-    const html = render({ ...initialState(), view: "app", screen: "maintenance", orgSlug: "saplinglearn", me, needsTriage: { status: "ok", data: [row] } });
-    expect(html).toContain('<main data-morph="maintenance"');
+    const html = render({ ...initialState(), view: "app", screen: "review", reviewView: "unplaced", orgSlug: "saplinglearn", me, needsTriage: { status: "ok", data: [row] } });
+    expect(html).toContain('<main data-morph="review"');
     expect(html).toContain('data-morph-key="up:4"');
+  });
+
+  it("is ONE screen with To review: the same page key, the header patched, only the two columns (keyed by view) replaced", () => {
+    const base = { ...initialState(), view: "app" as const, screen: "review" as const, orgSlug: "saplinglearn", me, needsTriage: { status: "ok" as const, data: [row] }, proposals: { status: "ok" as const, data: [] }, draftAdrs: { status: "ok" as const, data: [] } };
+    const queue = render({ ...base, reviewView: "queue" });
+    const un = render({ ...base, reviewView: "unplaced" });
+    for (const h of [queue, un]) {
+      expect(h).toContain('<main data-morph="review"');
+      expect(h).toContain('data-screen="review"');
+      expect(h).toContain('data-seg="triage-view"');
+    }
+    expect(queue).toContain('class="cnpy-rv-list" data-morph-key="rv-list:queue"');
+    expect(queue).toContain('class="cnpy-scroll cnpy-rv-detail" data-morph-key="rv-detail:queue"');
+    expect(un).toContain('class="cnpy-rv-list" data-morph-key="rv-list:unplaced"');
+    expect(un).toContain('class="cnpy-scroll cnpy-rv-detail" data-morph-key="rv-detail:unplaced"');
+    // The switch picks the view in place; the picked side carries no act, the other `setReviewView`.
+    const head = (h: string) => h.slice(h.indexOf("<header"), h.indexOf("</header>"));
+    expect(head(queue)).toContain('data-act="setReviewView" data-arg="unplaced"');
+    expect(head(un)).toContain('data-act="setReviewView" data-arg="queue"');
+    // main.ts: the view is state, written to the route; a switch flashes the new columns in (never an entrance), and
+    // Review reads both queues so the switch has nothing to load.
+    expect(mainSrc).toContain('case "setReviewView": if (arg === "queue" || arg === "unplaced") showReview(arg); return;');
+    expect(mainSrc).toMatch(/function showReview\(view: ReviewView\): void \{\s*if \(state\.screen === "review" && state\.reviewView !== view\) pendingFlash = REVIEW_VIEW_FLASH;/);
+    expect(mainSrc).toContain('case "review": loadProposalsIfNeeded(); loadDraftAdrsIfNeeded(); loadNeedsTriageIfNeeded(); break;');
+    expect(mainSrc).toContain('if (state.screen === "review" && state.reviewView === "unplaced") r.reviewView = "unplaced";');
+    expect(mainSrc).not.toMatch(/screen === "maintenance"/);
+    // The one-shot flash is off under reduced motion.
+    expect(css).toContain("[data-enter] *, .cnpy-flash, .cnpy-flash *, .repo-pulse");
+  });
+
+  it("wears To review's colours: the white reading pane, the item and Place it as in surface cards, Review's list head", () => {
+    const html = maintenanceView(props());
+    // The reading pane: white in both views (tokens, so light and dark follow).
+    expect(css).toContain(".cnpy-rv-detail { background:var(--surface); }"); // both views' reading pane is white
+    expect(css).toContain(".cnpy-rv .cnpy-titem .cnpy-selbar { background:transparent; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }"); // a picked card stays white, with an accent edge
+    // The item, as To review's proposed record: a label row, then a white surface card.
+    expect(html).toMatch(/What the agent sent<\/div>\s*<\/div>\s*<div class="cnpy-surface cnpy-up-item" style="padding:24px 28px 26px">/);
+    expect(html).toMatch(/Place it as<\/div>\s*<\/div><div class="cnpy-surface cnpy-up-place" style="padding:24px 28px 26px" data-item="u1">/);
+    // Nothing of its own paints a surface: the old divider-and-white-pane look is gone.
+    expect(css).not.toMatch(/\.cnpy-up-place \{[^}]*border-top/);
+    // The list head is Review's (`reviewFrame`): the same padding, the intro, then 12px to the first card.
+    expect(html).toContain('<div class="cnpy-rv-lhead" style="padding:16px 20px 0">');
+    expect(reviewView({ items: [], filter: "all", selectedId: null, diffView: "unified" })).toContain('<div class="cnpy-rv-lhead" style="padding:16px 20px 0">');
   });
 
   it("the skeleton is the frame with both panes loading; the empty queue its words and the cards drawn empty", () => {

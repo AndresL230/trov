@@ -87,9 +87,9 @@ describe("the routes", () => {
       expect(hashForRoute(r)).toBe(hash);
     }
     // Junk stays junk: a bad owner, a bad key, an unknown sub-page.
-    expect(parseHash("#org/repos/acme/storefront/apps/Not%20A%20Key").screen).toBe("mywork");
-    expect(parseHash("#org/repos/a%2Fb/c").screen).toBe("mywork");
-    expect(parseHash("#org/repos/acme/storefront/settings").screen).toBe("mywork");
+    expect(parseHash("#org/repos/acme/storefront/apps/Not%20A%20Key").screen).toBe("home");
+    expect(parseHash("#org/repos/a%2Fb/c").screen).toBe("home");
+    expect(parseHash("#org/repos/acme/storefront/settings").screen).toBe("home");
     expect(hashForRoute(parseHash("#org/repos"))).toBe("#org/repos");
   });
 

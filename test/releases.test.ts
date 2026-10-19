@@ -324,7 +324,7 @@ describe("one release — its notes page and its patches page, one reading colum
         expect(html).not.toMatch(/cnpy-reldoc-grid|cnpy-relheads|cnpy-card\b/);
       }
     }
-    expect(css).toMatch(/\.cnpy-reldoc \{ max-width:1040px;/);
+    expect(css).toMatch(/\.cnpy-reldoc \{ max-width:1180px;/);
     expect(releasePageView("0.3", "notes")).not.toContain('aria-label="Heads-up"'); // none: nothing drawn
     expect(releasePageView("0.2", "notes", hostile)).toContain('class="cnpy-relcall-one"');
     expect(releasePageView("0.11", "notes")).toContain('class="cnpy-relcall-list"');
@@ -395,9 +395,9 @@ describe("#releases routes", () => {
 
   it("an unknown version still routes (the page says not found); junk falls back to My Work", () => {
     expect(parseHash("#releases/0.99").releaseVersion).toBe("0.99");
-    expect(parseHash("#releases/0.7/nope").screen).toBe("mywork");
-    expect(parseHash("#releases/a/b/c").screen).toBe("mywork");
-    expect(parseHash("#releases/%E0%A4%A").screen).toBe("mywork");
+    expect(parseHash("#releases/0.7/nope").screen).toBe("home");
+    expect(parseHash("#releases/a/b/c").screen).toBe("home");
+    expect(parseHash("#releases/%E0%A4%A").screen).toBe("home");
   });
 });
 

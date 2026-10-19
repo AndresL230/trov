@@ -3,7 +3,10 @@
  * banner it carries through the page (the first-run card's, one definition in trov.css).
  */
 import { describe, it, expect } from "vitest";
-import { landingView, NAV_ICON } from "../web/src/landing";
+import { landingView, HOME_ICON_COPY, HERO_QUESTION, HERO_ANSWER } from "../web/src/landing";
+import { HOME_ICON } from "../web/src/home";
+import homeSrc from "../web/src/home.ts?raw";
+import homeViewSrc from "../web/src/home-view.ts?raw";
 import sidebarSrc from "../web/src/sidebar.ts?raw";
 import { STARTER_SPACES } from "../shared/docs-core";
 import { initialState, render } from "../web/src/render";
@@ -262,26 +265,88 @@ describe("landing — buying Pro as someone new carries through signing up", () 
 });
 
 describe("landing — the hero's app is today's app", () => {
-  it("its sidebar has the app sidebar's sections and entries, in order, with the same icons, and the Library's spaces under it", () => {
+  it("its sidebar IS the app's (sidebar.ts sidebarView + the org switcher): every section and entry in order, Home lit, the starter spaces under a folded Library", () => {
     const html = out();
-    const side = html.slice(html.indexOf('class="site-hide-sm" style="width:212px'), html.indexOf("agents produce · humans confirm"));
-    // The app's rail, read from sidebar.ts: every section and every entry's label, in the order it draws them.
+    const side = html.slice(html.indexOf('class="site-hide-sm site-hero-side"'), html.indexOf("</aside>") + 8);
+    expect(side).toContain('<aside class="cnpy-aside" data-screen-label="Sidebar">');
+    // The app's own markup: the org switcher, the search box, Collapse, the account chip.
+    expect(side).toContain('class="cnpy-orgsw-b');
+    expect(side).toContain(">Acme</span>");
+    expect(side).toMatch(/class="cnpy-lbl cnpy-search-in"[^>]*>Search Trov</);
+    expect(side).toContain(">Collapse</span>");
+    expect(side).toContain("Maya Chen");
+    // Home lit; Review's count and Relay's (which the story clears) are the app's badges.
+    expect(side).toMatch(/class="cnpy-navrow n-home is-active"/);
+    expect(side).toMatch(/n-review[\s\S]*?class="cnpy-lbl cnpy-badge" data-n="2">2</);
+    expect(side).toMatch(/n-handoffs[\s\S]*?class="cnpy-lbl cnpy-badge hl-badge" data-n="1">1</);
+    // Every section and entry sidebar.ts draws, in its order.
     const want = [...sidebarSrc.matchAll(/\$\{(?:section\("([^"]+)"|item\("\w+", "\w+", "([^"]+)")/g)].map((m) => (m[1] ?? m[2]).toLowerCase());
-    expect(want).toEqual(["workspace", "my work", "trov", "tickets", "roadmap", "relay", "monitor", "repo", "feed", "knowledge", "library", "artifacts", "prompt library", "triage", "review", "unplaced", "help", "guide", "what's new"]);
     const text = side.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").toLowerCase();
     let at = -1;
     for (const w of want) { const next = text.indexOf(w, at + 1); expect(next, w).toBeGreaterThan(at); at = next; }
-    expect(text).not.toMatch(/\bhandoffs\b|\bdocs\b/);
     // The spaces: a new organization's three, A to Z, under Library and before Artifacts.
-    const names = [...STARTER_SPACES].map((s) => s.name).sort();
-    expect(names).toEqual(["Design", "Engineering", "Product"]);
-    expect([...side.matchAll(/data-hero-space="([a-z]+)"/g)].map((m) => m[1])).toEqual(["design", "engineering", "product"]);
-    expect(text.indexOf("library")).toBeLessThan(text.indexOf("design"));
-    expect(text.indexOf("product")).toBeLessThan(text.indexOf("artifacts"));
-    // Every icon is the app's own path, copied.
-    for (const [k, paths] of Object.entries(NAV_ICON)) {
-      expect(sidebarSrc, k).toContain(paths);
-      expect(side, k).toContain(paths);
+    expect([...STARTER_SPACES].map((s) => s.name).sort()).toEqual(["Design", "Engineering", "Product"]);
+    expect([...side.matchAll(/class="cnpy-sub-n">([A-Za-z]+)</g)].map((m) => m[1])).toEqual(["Design", "Engineering", "Product"]);
+    // It is a picture: nothing in it takes focus.
+    expect(html).toContain('class="site-hero-win" style="display:flex;height:680px;overflow:hidden" aria-hidden="true" inert>');
+  });
+});
+
+describe("landing — the hero is Home, the app's front page, acting out one story on a loop", () => {
+  const html = out();
+  const hero = html.slice(html.indexOf('class="site-hero-stage"'), html.indexOf("</header>"));
+  const loop = rules.slice(rules.indexOf("@property --hn"), rules.indexOf("@media (max-width:900px) {", rules.indexOf("@property --hn")));
+
+  it("draws Home at #home with Home lit in the sidebar, in home.ts's own classes and words", () => {
+    expect(hero).not.toContain("trov.dev/acme"); // no browser chrome over the app (the owner, 2026-10-18)
+    expect(hero).not.toContain("#review");
+    expect(hero).toMatch(/class="cnpy-navrow n-home is-active"/); // the app's own sidebar, Home lit
+    for (const cls of ["hm-page", "hm-head", "hm-h", "hm-statusrow", "hm-status", "hm-attn", "hm-attn-row", "hm-bar-wrap", "hm-bar-ring", "hm-bar", "hm-ans", "hm-ans-foot", "hm-cols", "hm-col", "hm-sec-h", "hm-row", "hm-act", "hm-cards", "hm-card", "hm-card-bars", "hm-bar-b", "hm-lower", "hm-latest", "hm-team"]) {
+      expect(hero, cls).toContain(`class="${cls}`);
+      expect(homeSrc, cls).toContain(cls);
+    }
+    // the product's own words: the status line, Needs attention, the bar, the answer's byline, the lists, Activity
+    for (const w of ["Needs attention", "waiting in Review", "Open Review", "Open sprint", "overdue", "Search tickets, docs, decisions and people", "Ask Trov about your organization", "Reading your organization…", "Written by Trov just now", "Continue in Trov", "Repositories", "Roadmap", "For you", "Tickets done", "Handoffs claimed", "Docs promoted", "Sessions recorded", "vs previous", "Latest", "Team"]) {
+      expect(hero, w).toContain(w);
+      expect(homeSrc + homeViewSrc, w).toContain(w);
+    }
+    // the fictional team only; the mock is inert
+    expect(hero).toContain("@leo");
+    expect(hero).not.toMatch(/<button|data-act=|<a /);
+    expect(hero).toContain('class="site-hero-win" style="display:flex;height:680px;overflow:hidden" aria-hidden="true"');
+  });
+
+  it("its icons are home.ts's, copied (that module pulls the answer's Markdown into the landing's bundle)", () => {
+    for (const [k, d] of Object.entries(HOME_ICON_COPY)) expect(d, k).toBe(HOME_ICON[k as keyof typeof HOME_ICON]);
+  });
+
+  it("loops on one clock, its question typed a character a step and its answer streamed a word at a time", () => {
+    expect(rules).toContain(".site-hero-mock { --hl:14s; --hs:700ms; }");
+    expect(loop).toContain("animation-duration:var(--hl); animation-timing-function:linear; animation-delay:calc(var(--hs) + var(--hd, 0ms)); animation-iteration-count:infinite;");
+    expect(loop).toContain(`steps(${HERO_QUESTION.length}, end)`);
+    expect(hero).toContain(`--to:${HERO_ANSWER.split(" ").length};--hw:${HERO_ANSWER.split(" ").length}`);
+    // every step named in the markup has its keyframes and its line in the loop
+    const steps = new Set([...hero.matchAll(/\bhl-([a-z-]+)/g)].map((m) => m[1]).filter((n) => n !== "w"));
+    expect(steps.size).toBeGreaterThan(20);
+    for (const n of steps) {
+      expect(loop, n).toContain(`@keyframes hl-${n} {`);
+      expect(loop, n).toContain(`.hl-${n} { animation-name:hl-${n}; }`);
+    }
+    // a stagger never runs past the faded window at the loop's end (resets land between 13.65s and 14s)
+    for (const m of hero.matchAll(/--hd:(\d+)ms/g)) expect(Number(m[1])).toBeLessThanOrEqual(240);
+  });
+
+  it("rests, without motion, on the story's settled end, and pauses while it is out of view", () => {
+    // reduced motion stops every animation on the page (the rule above); what is left is each element's own style
+    expect(loop).toContain(".hl-cnt { --hn:2; counter-reset:hn var(--hn); }");
+    expect(loop).toContain(":is(.hl-ask-in, .hl-ph-ask, .hl-type, .hl-ask-x, .hl-go, .hl-ans, .hl-wait, .hl-attn, .hl-badge) { opacity:0; }");
+    expect(loop).toContain('.site-hero-mock[data-hold] [class*="hl-"] { animation-play-state:paused !important; }');
+    expect(motionSrc).toContain('toggleAttribute("data-hold", !e.isIntersecting)');
+    // only transform-family properties, opacity, colours, clip-path and the counts move; no layout property but the
+    // popover's own row (laid over the page)
+    for (const m of loop.matchAll(/@keyframes (hl-[a-z-]+) \{([^@]*)/g)) {
+      if (m[1] !== "hl-leave") expect(m[2], m[1]).not.toMatch(/(^|[ ;{])(width|height|max-height|margin|padding|top|left):/);
     }
   });
 });
+

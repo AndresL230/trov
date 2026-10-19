@@ -287,7 +287,7 @@ const CASES: Case[] = [
     withData: (s) => ({ ...s, promptList: { status: "ok", data: [prompt] } }), data: "A real prompt" },
   { name: "Review", screen: "review", empty: ["review-list"], member: [],
     withData: (s) => ({ ...s, draftAdrs: { status: "ok", data: [{ id: 4, title: "A real decision", context: "c", decision: "d", rationale: "r", status: "draft", confidence: null, created_at: T0, created_by: "alice", content_hash: null }] } }), data: "A real decision" },
-  { name: "Unplaced", screen: "maintenance", empty: ["unplaced"], member: [],
+  { name: "Unplaced", screen: "review", over: { reviewView: "unplaced" }, empty: ["unplaced"], member: [],
     withData: (s) => ({ ...s, needsTriage: { status: "ok", data: [{ id: 9, raw: "A real unplaced item", reason: "low_confidence", source_author: "alice", resolved: 0, created_at: T0, resolved_at: null, resolved_by: null, resolution: null, assigned_ref: null } as never] } }), data: "A real unplaced item" },
 ];
 
@@ -457,7 +457,7 @@ describe("preview — every screen, whatever the organization holds", () => {
     return { ...s, art: { ...s.art, list: { status: "ok", data: [artifact] } } };
   };
   const REAL = ["A real ticket", "A real sprint", "Shipped the thing.", "A real doc", "A real artifact", "A real handoff.", "A real prompt", "The real plan.", "Bob Realname"];
-  const SCREENS: Screen[] = ["mywork", "tickets", "roadmap", "feed", "docs", "library", "space", "artifacts", "handoffs", "prompts", "review", "maintenance", "repo"];
+  const SCREENS: Screen[] = ["mywork", "tickets", "roadmap", "feed", "docs", "library", "space", "artifacts", "handoffs", "prompts", "review", "repo"];
 
   it("off: the screens show the data (so the fixtures below prove something)", () => {
     expect(render(full("tickets"))).toContain("A real ticket");
@@ -468,7 +468,7 @@ describe("preview — every screen, whatever the organization holds", () => {
   for (const mode of ["empty", "loading"] as const) {
     it(`${mode}: no screen shows a single piece of the organization's data, and each shows its ${mode === "empty" ? "empty layout" : "skeleton"}`, () => {
       for (const screen of SCREENS) {
-        for (const over of screen === "tickets" ? [{}, { qView: "table" as const }] : screen === "roadmap" ? [{}, { roadmapTab: "timeline" as const }] : [{}]) {
+        for (const over of screen === "tickets" ? [{}, { qView: "table" as const }] : screen === "roadmap" ? [{}, { roadmapTab: "timeline" as const }] : screen === "review" ? [{}, { reviewView: "unplaced" as const }] : [{}]) {
           const html = render(full(screen, { ...over, preview: mode }));
           const page = body(html);
           for (const real of REAL) expect(page, `${screen}: “${real}” under ?preview=${mode}`).not.toContain(real);
