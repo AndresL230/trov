@@ -22,7 +22,7 @@ import {
   stagedPrompts,
 } from "./render";
 import {
-  getFeed, getHome, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
+  getFeed, getHome, getOrgGithub, getFeedPage, getFeedStats, listDocMeta, getDoc, search, quickSearch, getRoadmap, getMyDashboard, getRepoDashboard, putRepoSettings,
   acceptRepoSuggestion, ignoreRepoSuggestion, undoRepoSuggestion,
   completeSprint, deleteSprint,
   listStagedProposals, listAdrs, promoteDoc, rejectDoc, ratifyAdr, rejectAdr, approveImport, rejectImport,
@@ -1484,17 +1484,41 @@ function loadHomeFeed(): void {
       rerenderSoon();
     });
 }
-function loadHomeIfNeeded(): void {
-  if (state.home.data.status === "idle") loadHomeData();
-  if (state.home.feed.status === "idle") loadHomeFeed();
-  if (state.mywork.status === "idle") loadMyWork();
-  loadProposalsIfNeeded(); loadDraftAdrsIfNeeded();
-  loadSprintsIfNeeded();
-  if (state.handoffs.status === "idle") loadHandoffs();
-  if (state.repo.status === "idle") loadRepo();
+function loadHomeGithub(): void {
+  if (!state.orgSlug) return;
+  state.home.github = { status: "loading", data: state.home.github.data };
+  getOrgGithub(state.orgSlug)
+    .then((g) => { state.home.github = { status: "ok", data: g }; rerenderSoon(); })
+    .catch((e) => {
+      if (e instanceof Unauthorized) { unauth(e); return; }
+      state.home.github = { status: "error", data: state.home.github.data, error: String(e) };
+      rerenderSoon();
+    });
+}
+/** Every read Home is built on, again: on each visit, and every HOME_REFRESH_MS while it is on screen (all D1 —
+ *  nothing here reaches GitHub). Each loader keeps what it had on screen while it reads, so nothing blanks. */
+const HOME_REFRESH_MS = 60_000;
+let homeReadAt = 0;
+function refreshHome(): void {
+  homeReadAt = Date.now();
+  loadHomeData(); loadHomeFeed(); loadHomeGithub();
+  loadMyWork(); loadProposals(); loadDraftAdrs(); loadNeedsTriage();
+  loadSprints(); loadHandoffs(); loadRepo(); loadBadges();
   if (state.relayAsk.status === "idle") loadRelayAsk();
+}
+function loadHomeIfNeeded(): void {
+  refreshHome();
   rerender();
 }
+// While Home is on screen and the tab is visible: refresh quietly — not while the bar is in use (its dropdown would
+// move under the keyboard), and at once when the tab comes back after a while away.
+setInterval(() => {
+  if (state.view !== "app" || state.screen !== "home" || document.visibilityState !== "visible" || state.home.focused) return;
+  if (Date.now() - homeReadAt >= HOME_REFRESH_MS) refreshHome();
+}, 10_000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && state.view === "app" && state.screen === "home" && Date.now() - homeReadAt >= HOME_REFRESH_MS) refreshHome();
+});
 /** The bar's dropdown rows, in keyboard order (homePick runs one). */
 let homeFlat: QuickRow[] = [];
 let homeSearchT: ReturnType<typeof setTimeout> | undefined;

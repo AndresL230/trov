@@ -6,6 +6,7 @@
 
 import type { FeedRow, PersonColor } from "@shared/rows";
 import type { QuickSearchResult } from "@shared/quick-search";
+import type { GithubAppStatusDTO } from "@shared/github-app";
 import { HOME_DAYS, homeRangeDays, homeSum, type HomeData, type HomeRange } from "@shared/home-core";
 import { sprintDueState } from "@shared/sprints-core";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
@@ -25,6 +26,8 @@ export interface HomeUi {
   data: Loadable<HomeData | null>;
   /** The org's newest Feed entries (`GET /feed?limit=5`), Home's own read. */
   feed: Loadable<FeedRow[]>;
+  /** The GitHub App's state (`GET /github`, every member may read it): suspended or uninstalled is a row. */
+  github: Loadable<GithubAppStatusDTO | null>;
   range: HomeRange;
   q: string;
   mode: "search" | "ask";
@@ -38,7 +41,7 @@ export interface HomeUi {
   headIdx: number;
 }
 export function initialHomeUi(): HomeUi {
-  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0 };
+  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0 };
 }
 
 const mk = (k: StateKind): HomeMark => ({ shape: STATE_KIND[k].shape, tone: STATE_KIND[k].tone });
@@ -71,8 +74,36 @@ function attentionRows(s: AppState): { rows: (HomeAttnRow & { urg: number })[]; 
       rows.push({ mark: mk("bad"), title, meta: `${head.failing ? plural(head.failing, "check") + " failing" : "Checks failing"}${head.sha ? ` on ${head.sha.slice(0, 7)}` : ""}`, action: { label: "Open Repo", act: "goRepo", arg: "ci" }, urg: 0 });
     }
   }
-  const review = triageCounts(s).review;
-  if (review > 0) rows.push({ mark: REVIEW_MARK, title: `${review} waiting in Review`, meta: "Doc changes and decisions agents proposed", action: { label: "Open Review", act: "goReview" }, urg: 2 });
+  // Connections: an admin can fix them (first, with Fix); a member sees a calm row with nothing to press.
+  const admin = viewerIsAdmin(s);
+  const conn = (title: string, meta: string, fixTab: string, calmTitle: string, calmMeta: string): void => {
+    if (admin) rows.push({ mark: mk("bad"), title, meta, action: { label: "Fix", act: "orgGo", arg: fixTab }, urg: 0 });
+    else rows.push({ mark: mk("waiting"), title: calmTitle, meta: calmMeta, action: null, urg: 9 });
+  };
+  const gh = s.home.github.data;
+  if (gh?.installation?.suspended_at) {
+    conn("GitHub is suspended", `The Trov App was suspended on GitHub ${relTime(gh.installation.suspended_at)}. Repo updates stopped.`, "integrations",
+      "Repo updates are paused", "An admin is fixing the GitHub connection. Nothing is lost.");
+  } else if (gh && !gh.installation && gh.lost) {
+    conn("The Trov App was uninstalled on GitHub", `Repo updates stopped ${relTime(gh.lost.at)}.`, "integrations",
+      "Repo updates are paused", "An admin is reconnecting GitHub.");
+  }
+  for (const r of s.home.data.data?.repos ?? []) {
+    if (r.accessLost) conn(`Access to ${r.repo} was removed`, "Its updates stopped.", "repos", `Updates from ${r.repo} are paused`, "An admin is restoring access.");
+  }
+  // A host whose token stopped working (the Repo dashboard's parts carry each connection's status).
+  const broken = new Map<string, string>();
+  for (const p of facts?.parts ?? []) if (p.connection === "error" || p.connection === "revoked") broken.set(p.provider, p.host);
+  for (const host of broken.values()) {
+    conn(`${host} connection stopped working`, "Deploys and health from it are unknown until it is reconnected.", "hosting", `${host} readings are paused`, `An admin is reconnecting ${host}.`);
+  }
+  // Review's queue and Unplaced (its other view): one row, both counted.
+  const tc = triageCounts(s);
+  const review = tc.review + tc.maintenance;
+  if (review > 0) {
+    const parts = [tc.review ? `${tc.review} to review` : "", tc.maintenance ? `${tc.maintenance} unplaced` : ""].filter(Boolean).join(" · ");
+    rows.push({ mark: REVIEW_MARK, title: `${review} waiting in Review`, meta: parts, action: { label: "Open Review", act: tc.review ? "goReview" : "goMaintenance" }, urg: 2 });
+  }
   const me = s.me?.handle ?? "";
   for (const h of handoffsForMe(s.handoffs.data, me).slice(0, 2)) {
     const d = daysSince(h.created_at);
@@ -283,6 +314,8 @@ export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps 
   const status = !known ? null
     : failing ? { mark: mk("bad"), text: `${failing} · ${actionable} need${actionable === 1 ? "s" : ""} you` }
     : actionable > 0 ? { mark: rows[0].mark, text: `${plural(actionable, "thing")} need${actionable === 1 ? "s" : ""} you` }
+    // A member's calm rows only (repo updates paused): the first one says what, with no count to act on.
+    : rows.length > 0 ? { mark: rows[0].mark, text: rows[0].title }
     : empty ? { mark: mk("waiting"), text: s.orgMe.data?.repos.primary ? "Waiting for the first push" : "No repository connected yet" }
     : { mark: mk("done"), text: "All clear · nothing needs you" };
   const shown = rows.slice(0, 5);
