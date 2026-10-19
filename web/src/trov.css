@@ -2463,9 +2463,9 @@ a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255
 @property --hw { syntax:'<number>'; inherits:true; initial-value:0; }
 .site-hero-mock { --hl:14s; --hs:700ms; }
 .site-hm-view { position:relative; flex:1; min-height:0; overflow:hidden; }
-/* The real Home sits in a centred column with room either side; the hero keeps that proportion (about a tenth of the
+/* The real Home sits in a centred column with room either side; the hero keeps that proportion (about a seventh of the
    window's width on each side), so it reads as the page, not as a page stretched to the window's edges. */
-.hm-page.site-hm { max-width:none; padding:34px 10% 28px; }
+.hm-page.site-hm { max-width:none; padding:34px 14% 28px; }
 .site-hm > .hm-head { position:relative; z-index:40; }
 .site-hm .hm-h { font-size:24px; }
 .site-hm .hm-statusrow { margin-top:6px; }
@@ -2562,7 +2562,7 @@ a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255
 @keyframes hl-leave { 0%, 79.6% { max-height:52px; opacity:1; } 80.7% { max-height:52px; opacity:0; animation-timing-function:var(--fx-ease); } 82.1%, 97.9% { max-height:0; opacity:0; } 98%, 100% { max-height:52px; opacity:1; } }
 @keyframes hl-badge { 0%, 79.6% { opacity:1; scale:1; } 80.7%, 97.9% { opacity:0; scale:.6; } 99.3%, 100% { opacity:1; scale:1; } }
 @media (max-width:900px) {
-  .hm-page.site-hm { padding:30px 6% 24px; }
+  .hm-page.site-hm { padding:30px 9% 24px; }
 }
 
 /* ── the banner, carried through the page ─────────────────────────────────────

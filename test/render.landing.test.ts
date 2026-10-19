@@ -295,7 +295,7 @@ describe("landing — the hero is Home, the app's front page, acting out one sto
   const loop = rules.slice(rules.indexOf("@property --hn"), rules.indexOf("@media (max-width:900px) {", rules.indexOf("@property --hn")));
 
   it("draws Home at #home with Home lit in the sidebar, in home.ts's own classes and words", () => {
-    expect(hero).toContain(">trov.dev/acme/#home</span>");
+    expect(hero).not.toContain("trov.dev/acme"); // no browser chrome over the app (the owner, 2026-10-18)
     expect(hero).not.toContain("#review");
     expect(hero).toMatch(/background:var\(--accent-soft\);color:var\(--accent\)"><svg[^>]*>[^]*?<\/svg>Home<\/div>/);
     for (const cls of ["hm-page", "hm-head", "hm-h", "hm-statusrow", "hm-status", "hm-attn", "hm-attn-row", "hm-bar-wrap", "hm-bar-ring", "hm-bar", "hm-ans", "hm-ans-foot", "hm-cols", "hm-col", "hm-sec-h", "hm-row", "hm-act", "hm-cards", "hm-card", "hm-card-bars", "hm-bar-b", "hm-lower", "hm-latest", "hm-team"]) {

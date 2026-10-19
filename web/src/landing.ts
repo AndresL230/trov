@@ -415,7 +415,6 @@ function hero(signedIn: boolean): string {
   const badge = (n: number, cls = "") => `<span${cls ? ` class="${cls}"` : ""} style="margin-left:auto;display:grid;min-width:18px;height:18px;box-sizing:border-box;padding:0 5px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:10px;font-weight:600;place-items:center">${n}</span>`;
   const sideHead = (label: string, top: string) =>
     `<div style="font-family:var(--label);font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--fg-40);padding:${top} 8px 4px">${label}</div>`;
-  const dot = `<span style="width:10px;height:10px;border-radius:50%;background:var(--border-strong);flex:none"></span>`;
 
   // Signed out, the first button opens Sign in (which is also sign-up: either provider creates the
   // account, no invitation needed). Reopened from inside the app, it goes to the Guide instead.
@@ -437,11 +436,6 @@ function hero(signedIn: boolean): string {
     </div>
 
     <div class="site-hero-stage"><div ${rv("hero-mock", "rv-lift site-hero-mock")} style="border-radius:13px;${at(MOCK_IN)}">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border)">
-        ${dot}${dot}${dot}
-        <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#home</span>
-        <span style="width:44px"></span>
-      </div>
       <div class="site-hero-win" style="display:flex;height:660px;overflow:hidden" aria-hidden="true">
         <div class="site-hide-sm" style="width:212px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:14px 12px 12px">
           <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 8px">
