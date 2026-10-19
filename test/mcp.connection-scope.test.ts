@@ -651,8 +651,9 @@ describe("the consent page — how the connection picks an organization", () => 
     const many = Array.from({ length: 6 }, (_, i) => ({ slug: `org-${i}`, name: `Org ${i}` }));
     expect(defaultConsentChoice(many)).toEqual({ mode: "repo", orgs: ["org-0"], current: "org-0" });
     expect(defaultConsentChoice(three).orgs).toEqual(["acme", "saplinglearn", "third"]);
-    // An app in a browser tab (claude.ai) is in no repository: Manual is preselected and recommended.
+    // An app in a browser tab (claude.ai, ChatGPT) is in no repository: Manual is preselected and recommended.
     expect([isWebClient("claude.ai"), isWebClient("Claude.com"), isWebClient("app.claude.ai"), isWebClient("localhost"), isWebClient("notclaude.ai")]).toEqual([true, true, true, false, false]);
+    expect([isWebClient("chatgpt.com"), isWebClient("platform.openai.com"), isWebClient("chat.openai.com"), isWebClient("notchatgpt.com"), isWebClient("127.0.0.1")]).toEqual([true, true, true, false, false]);
     expect(defaultConsentChoice(three, true)).toEqual({ mode: "manual", orgs: ["acme", "saplinglearn", "third"], current: "acme" });
     const onWeb = consentPage({ ...base, redirectHost: "claude.ai", orgs: three });
     expect(onWeb).toMatch(/name="mode" value="manual" form="consent" checked/);

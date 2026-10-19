@@ -83,16 +83,23 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   every refused token, so it tells nothing about one — `shared/error-hints.ts`, `web-ui.md` › Errors an agent can
   act on). Which clients that serves, and their config, is the public `/docs/connect` (`web/src/docs-content.ts`):
   the OAuth server takes only https and loopback-http redirects, so a client registering a custom scheme (an
-  older Cursor's `cursor://`) is refused at registration — say so there if that changes. A fresh `McpServer` is constructed per request
-  (SDK ≥1.26 guards against reuse); `createMcpHandler` is stateless (no Durable Object / McpAgent).
+  older Cursor's `cursor://`) is refused at registration — say so there if that changes. The clients it names have their
+  sign-in pinned end to end in `test/oauth.clients.test.ts` (ChatGPT's per-connector `chatgpt.com/connector/oauth/<id>`
+  callback; the Codex CLI's loopback `/callback/<id>` on a fresh port). A fresh `McpServer` is constructed per request
+  (SDK ≥1.26 guards against reuse); `createMcpHandler` is stateless (no Durable Object / McpAgent). `tools/list` marks
+  the read tools `readOnlyHint: true` and every other org tool `false` (`READ_ONLY_TOOLS` in `src/mcp.ts`), so a client
+  that confirms each write (ChatGPT, claude.ai) runs reads without asking; a tool that writes anything — a use count,
+  a delivered note — is never in that set (`test/mcp.annotations.test.ts`).
 - **MCP OAuth** (`src/auth/oauth.ts` core, `oauth-routes.ts` HTTP, `oauth-pages.ts` pages; spec
   `docs/superpowers/specs/2026-09-24-mcp-oauth-design.md`; migration `0029_oauth`): RFC 9728/8414 metadata,
   RFC 7591 registration (public clients, loopback redirects match on any port), authorization code + S256
-  PKCE, a server-rendered consent page shown on EVERY authorization (CSRF = HMAC over session + request).
+  PKCE (the token endpoint takes the client id from the form, or from an HTTP Basic header whose secret half is
+  ignored — an OAuth library defaulting to Basic sends it there; it is checked like a form one), a server-rendered consent page shown on EVERY authorization (CSRF = HMAC over session + request).
   **The consent page asks how the connection picks an organization** (0051; `consentPage`, no script — the
   org list shows and hides on which mode radio is checked): *Follow the repository* (recommended and
   preselected when the person has several orgs — except for a client in a browser tab, `isWebClient`: a
-  redirect to `claude.ai` / `claude.com`, a claude.ai custom connector, which is in no repository, so
+  redirect to `claude.ai` / `claude.com` (a claude.ai custom connector) or `chatgpt.com` / `openai.com` (a ChatGPT
+  app, and OpenAI's review tool), which is in no repository, so
   *Manual* is preselected and recommended there and the row says why: "works in whichever of your organizations has the repository
   you are in connected; anywhere else it reads and writes nothing") or *Manual* (a tick per organization — all
   ticked up to `CONSENT_TICK_ALL_MAX`, at least one required — and which one it "starts here"; with one org it
@@ -112,8 +119,9 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   codes, access tokens a day past expiry, refresh tokens past expiry, and client registrations that never
   got a grant after 90 days (`UNGRANTED_CLIENT_TTL_MS` — long enough that a person who abandons authorize
   still finds their registration on a retry days later) — grants themselves are never
-  deleted. An unknown `client_id` at authorize is an error PAGE naming the Claude Code fix (`/mcp` → trov
-  → Clear authentication → Authenticate again), never a silent redirect. Every OAuth endpoint answers an unexpected error
+  deleted. An unknown `client_id` at authorize is an error PAGE naming the fix in Claude Code (`/mcp` → trov
+  → Clear authentication → Authenticate), Codex (`codex mcp login trov`) and ChatGPT (delete the app, add it
+  again), never a silent redirect. Every OAuth endpoint answers an unexpected error
   with `503 { error: "temporarily_unavailable" }` (the authorize pages with a 503 error page), never a 500.
 - **GitHub webhook** (`POST /webhook/github/:hookId`, `src/github-hook.ts` → `src/webhook.ts`): `hookId` is
   the repo's `org_repos.id`; a delivery authenticates by an HMAC-SHA256 `X-Hub-Signature-256` over the raw

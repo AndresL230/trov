@@ -26,7 +26,7 @@ export function productQuestions(): PricingQuestion[] {
     },
     {
       q: "Does it work with Claude Code, Cursor and other MCP clients?",
-      a: `Yes. Trov is a remote MCP server at ${SITE_ORIGIN}/mcp, over Streamable HTTP. A client that supports MCP's OAuth sign-in finds everything it needs on its own and opens Trov in your browser: Claude Code, Claude Desktop and claude.ai, VS Code, Codex, and recent versions of Cursor. A client that cannot sign in can send a Trov token you already have as a header. Claude Code also has a plugin with the skills that run the loop. <a href="${pagePath("docs-connect")}">Setup for each client</a>.`,
+      a: `Yes. Trov is a remote MCP server at ${SITE_ORIGIN}/mcp, over Streamable HTTP. A client that supports MCP's OAuth sign-in finds everything it needs on its own and opens Trov in your browser: Claude Code, Claude Desktop and claude.ai, ChatGPT (as an app in developer mode), VS Code, Codex, and recent versions of Cursor. A client that cannot sign in can send a Trov token you already have as a header. Claude Code also has a plugin with the skills that run the loop. <a href="${pagePath("docs-connect")}">Setup for each client</a>.`,
     },
   ];
 }

@@ -43,7 +43,7 @@ const PAGES = [
   // The public docs (web/src/docs-content.ts): each page's title and its lede, its description in
   // shared/site-pages.ts, word for word. Re-render a card when its page's first lines change.
   { name: "docs-setup", path: "/docs/setup", eyebrow: "Docs", title: "Set up Trov", lede: "Sign in, create an organization, connect GitHub and connect your coding agent: everything from a new account to a first session." },
-  { name: "docs-connect", path: "/docs/connect", eyebrow: "Docs", title: "Connect an MCP client", lede: "Trov is a remote MCP server at https://trov.dev/mcp. Setup to copy for Claude Code, Claude Desktop, Cursor, VS Code, Codex, Windsurf and any other client." },
+  { name: "docs-connect", path: "/docs/connect", eyebrow: "Docs", title: "Connect an MCP client", lede: "Trov is a remote MCP server at https://trov.dev/mcp. Setup to copy for Claude Code, Claude Desktop, ChatGPT, Cursor, VS Code, Codex, Windsurf and more." },
   { name: "docs-concepts", path: "/docs/concepts", eyebrow: "Docs", title: "Concepts", lede: "Agents propose and people decide: how Trov keeps what agents read trustworthy, and what live, staged, unpromoted and draft mean." },
   { name: "docs-mcp-tools", path: "/docs/mcp-tools", eyebrow: "Docs", title: "MCP tools reference", lede: "Every tool Trov's MCP server gives an agent, generated from the server's own registrations: what each does, its arguments, and its errors." },
   { name: "docs-changelog", path: "/docs/changelog", eyebrow: "Docs", title: "Changelog", lede: "What changed in Trov, release by release, newest first." },

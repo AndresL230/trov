@@ -163,9 +163,11 @@ export const CONSENT_TICK_ALL_MAX = 4;
 
 export interface ConsentChoice { mode: "manual" | "repo"; orgs: string[]; current: string }
 
-/** Where a client that runs in a browser tab sends the person back: claude.ai's custom connectors. Such
- *  an app has no code checkout, so "the repository you are in" means nothing to it. */
-const WEB_CLIENT_HOSTS = ["claude.ai", "claude.com"];
+/** Where a client that runs in a browser tab sends the person back: claude.ai's custom connectors, and
+ *  ChatGPT's apps (`chatgpt.com/connector/oauth/<id>`, the older `chatgpt.com/connector_platform_oauth_redirect`,
+ *  and OpenAI's own review tool on `platform.openai.com`). Such an app has no code checkout, so "the
+ *  repository you are in" means nothing to it. */
+const WEB_CLIENT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com"];
 export const isWebClient = (redirectHost: string): boolean => {
   const host = redirectHost.toLowerCase();
   return WEB_CLIENT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
