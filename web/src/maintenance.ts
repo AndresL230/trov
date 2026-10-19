@@ -3,19 +3,22 @@
 // stopped sending things here (2026-10-18: it refuses what it cannot place, naming what is valid, and stages what an
 // agent was unsure of, flagged), the queue holds only what came before and what an older plugin still sends.
 //
-// It is a VIEW of Review (2026-10-18): the header's To review / Unplaced switch (render.ts `triageSwitch`) moves between
-// the two, the header says Review on both, and the sidebar has no Unplaced row — Review's badge counts both queues.
-// It is laid out like Review's queue (web/src/review.ts): ONE two-pane frame (`.cnpy-rv`, the
-// panes taking turns under a tablet's width), the queue a KEYED list of surface cards (`.cnpy-rv-row`, so an item
-// placed or discarded leaves by the app's one row exit — web-ui.md › A row leaving a list), and the item in Review's
-// page pane (`.cnpy-rvp`: the page, then a footer that stays in view with Discard and Place).
+// It is a VIEW of Review (2026-10-18): ONE screen, `review`, its view in `state.reviewView` ("unplaced",
+// `#review/unplaced`). The header's To review / Unplaced switch (render.ts `triageSwitch`) moves between the two IN
+// PLACE — the page is `data-morph="review"` in both, so only the two columns are replaced — the header says Review on
+// both, and the sidebar has no Unplaced row: Review's badge counts both queues.
+// It is drawn in Review's own frame (review.ts `reviewFrame`: the two columns, taking turns under a tablet's width), the
+// queue a KEYED list of Review's surface cards (`.cnpy-rv-row`, so an item placed or discarded leaves by the app's one
+// row exit — web-ui.md › A row leaving a list), and the item in Review's reading pane, on Review's colours: the pane's
+// own background (`--bg`, as To review's), the item and the Place it as panel each in a white surface card (as To
+// review's proposed record is), and Review's page-pane footer, which stays in view, with Discard and Place.
 //
 // This screen was "Maintenance" until 2026-10-06, with two more tabs — Identity and People. Those are org
 // administration, and an org is administered in ONE place, Org settings: matching an unknown login to a person is on
 // its Members tab (web/src/identity.ts), the member directory IS that tab, and the e-mail digest policy / schedule /
-// outbox are its Notifications tab (web/src/notifications.ts). The screen's id stays `maintenance` (state, the
-// `maint…` acts; the sidebar lights Review for it); its address is `#unplaced`, and the old `#maintenance…` links still
-// resolve (hash.ts).
+// outbox are its Notifications tab (web/src/notifications.ts). The module and its `maint…` acts keep the old name; the
+// screen is `review` (there is no `maintenance` screen any more). Its address is `#review/unplaced`, and the old
+// `#unplaced`, `#maintenance` and `#maintenance/unplaced` links still resolve to it (hash.ts).
 //
 // Purely presentational: data arrives through props and renders to HTML strings; interactions dispatch via data-act /
 // data-arg handled in main.ts.
@@ -29,7 +32,7 @@ import { segmented } from "./segmented";
 import { dropdown, initialDropdownUi, type DropdownProps, type DropdownUi } from "./dropdown";
 import type { AiSuggestion } from "@shared/ai-core";
 import { unplacedChip, unplacedRowMark, type AiChipUi } from "./ai-cards";
-import { REVIEW_EXIT_MS } from "./review";
+import { REVIEW_EXIT_MS, reviewFrame } from "./review";
 import { renderMarkdown } from "./markdown";
 import { replaceDocLinks } from "@shared/docs-links-core";
 import { DEFAULT_SPACE } from "@shared/docs-core";
@@ -212,7 +215,15 @@ const DETAIL_FRAME = "max-width:var(--frame-reader);padding:24px 32px 100px";
 function unplacedDetailShapes(paras: number): string {
   return `<div>${skLine(110, 12, 1.5)}<div style="margin-top:8px">${skLine("58%", 25, 1.2)}</div><div style="margin-top:10px">${skLine(220, 12, 1.5)}</div></div>
     <div${surface("padding:14px 16px;margin-top:18px")}>${skBar(120, 8)}<div style="margin-top:10px">${skLines(["86%"], 12.5, 1.5)}</div></div>
-    <div style="margin-top:20px">${skProse(paras)}</div>`;
+    <div${surface(`${CARD_PAD};margin-top:22px`)}>${skProse(paras)}</div>`;
+}
+
+/** A card's label row above it — To review's ("PROPOSED RECORD" over the decision's card, review.ts `adrRecord`). */
+const CARD_PAD = "padding:24px 28px 26px";
+function cardLabel(label: string, note = ""): string {
+  return `<div class="cnpy-up-cardlabel" style="display:flex;align-items:center;gap:10px;margin:22px 0 10px">
+      <div style="${MONO_LABEL}">${esc(label)}</div>${note ? `<div style="font-size:11.5px;color:var(--fg-40)">${esc(note)}</div>` : ""}
+    </div>`;
 }
 
 /** The item's text as it will read: a doc's body through the reader's renderer (each `[[slug]]` as its words), a
@@ -242,7 +253,7 @@ export function unplacedSpaceDropdown(assign: AssignOptions, value: string | nul
  *  be placed: it says so instead. */
 export function assignPanel(it: UnplacedItem, p: MaintenanceProps, picked: boolean): string {
   if (kindOf(it) === "note") {
-    return `<div class="cnpy-up-place"><p class="cnpy-up-note">This is a note, not a doc, a decision or a feed entry, so there is nowhere to place it. Read it, then discard it.</p></div>`;
+    return `${cardLabel("Place it as")}<div${surface(CARD_PAD, { cls: "cnpy-up-place" })}><p class="cnpy-up-note">This is a note, not a doc, a decision or a feed entry, so there is nowhere to place it. Read it, then discard it.</p></div>`;
   }
   const e = effectivePicks(it, p, picked);
   const kinds = segmented({
@@ -268,24 +279,23 @@ export function assignPanel(it: UnplacedItem, p: MaintenanceProps, picked: boole
     target = `<div class="cnpy-up-field"><div class="cnpy-up-label">Tags <span class="cnpy-up-opt">optional — with none picked it keeps the tags it came with that are on your list</span></div>
       <div class="cnpy-up-tags">${chips || `<span style="font-size:12.5px;color:var(--fg-55)">Your organization has no tags yet.</span>`}</div></div>`;
   }
-  return `<div class="cnpy-up-place" data-item="${attr(it.id)}">
-    <div style="${MONO_LABEL};margin-bottom:10px">Place it as</div>
+  return `${cardLabel("Place it as")}<div${surface(CARD_PAD, { cls: "cnpy-up-place" })} data-item="${attr(it.id)}">
     ${kinds}
     ${target}
   </div>`;
 }
 
-/** The item on screen (Review's page pane, `reviewPagePane`): where it stands in the queue, its title, what it is,
- *  who sent it and when; why it is here, verbatim; Trov's suggestion; the item itself; then "Place it as" — and the
- *  footer that stays in view: what Place will do, Discard, Place. The body and the footer are keyed by the item, so
- *  another item REPLACES them. */
+/** The item on screen (Review's page pane, `reviewPagePane`, on To review's colours — `.cnpy-rvp--bg`): where it
+ *  stands in the queue, its title, what it is, who sent it and when; why it is here, verbatim; Trov's suggestion; the
+ *  item itself in a white card; then "Place it as" in another — and the footer that stays in view: what Place will do,
+ *  Discard, Place. The body and the footer are keyed by the item, so another item REPLACES them. */
 export function unplacedDetail(it: UnplacedItem, p: MaintenanceProps, idx: number, total: number, picked: boolean): string {
   const au = person(p.people, it.author);
   const e = effectivePicks(it, p, picked);
   const canPlace = kindOf(it) !== "note" && e.kind !== null && (e.kind !== "doc" || (e.section !== null && e.space !== null));
   const spaceLabel = e.space ? p.assign.spaces.find((s) => s.key === e.space)?.label ?? e.space : null;
   const id = attr(it.id);
-  return `<div class="cnpy-rvp cnpy-up">
+  return `<div class="cnpy-rvp cnpy-rvp--bg cnpy-up">
     <div class="cnpy-rv-body cnpy-rvp-body" data-morph-key="upd:${id}">
       <div class="cnpy-rvp-crumb">${idx + 1} of ${total} unplaced</div>
       <h2 class="cnpy-rvp-h">${esc(it.title)}</h2>
@@ -300,7 +310,8 @@ export function unplacedDetail(it: UnplacedItem, p: MaintenanceProps, idx: numbe
         <div style="font-size:12.5px;line-height:1.55;color:var(--fg-55);margin-top:4px;overflow-wrap:anywhere">${esc(it.reasonNote)}</div>
       </div>
       ${it.ai ? unplacedChip(it.ai, p.aiUi ?? NO_AI_UI) : ""}
-      <div class="cnpy-rvp-page">${itemContent(it)}</div>
+      ${cardLabel("What the agent sent")}
+      <div${surface(CARD_PAD, { cls: "cnpy-up-item" })}>${itemContent(it)}</div>
       ${assignPanel(it, p, picked)}
     </div>
     <div class="cnpy-rvp-foot" data-morph-key="upf:${id}">
@@ -317,8 +328,6 @@ export const UNPLACED_INTRO = "Things an agent produced but couldn't place. Plac
  *  are told what is valid instead, the usual one. */
 export const UNPLACED_EMPTY_TITLE = "Nothing unplaced";
 export const UNPLACED_EMPTY = "This is the queue's normal state. When an agent sends something Trov can't place, Trov tells the agent what is valid, so very little ever waits here.";
-
-const BACK_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>`;
 
 /** The Unplaced screen while its queue's first read is out: the frame and intro are real, the panes skeletons (never
  *  "Nothing unplaced" before it is known). */
@@ -349,18 +358,12 @@ export function maintenanceView(p: MaintenanceProps, hint = ""): string {
     : sel ? unplacedDetail(sel, p, idx, waiting.length, picked)
     : emptyShapes(unplacedDetailShapes(2), { style: DETAIL_FRAME });
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or — once an item is picked by
-  // hand — the item, with a back button to the list.
+  // hand — the item, with a back button to the list. The frame is Review's own (`reviewFrame`), keyed by the view.
   const pane = picked ? "detail" : "list";
-  return `${hint}<div class="cnpy-rv cnpy-up-screen" data-screen-label="Unplaced" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
-      <div style="padding:16px 20px 12px">
-        <div style="font-size:12.5px;color:var(--fg-55)">${esc(UNPLACED_INTRO)}</div>
-      </div>
-      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
-    </div>
-    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
-      <button data-act="maintBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${detail}
-    </div>
-  </div>`;
+  return `${hint}${reviewFrame({
+    view: "unplaced", pane, backAct: "maintBack", cls: "cnpy-up-screen", label: "Unplaced",
+    // Review's list head: the intro, then (where Review has its filter) the same 12px before the first card.
+    head: `<div style="font-size:12.5px;color:var(--fg-55);margin-bottom:12px">${esc(UNPLACED_INTRO)}</div>`,
+    list, detail,
+  })}`;
 }

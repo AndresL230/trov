@@ -271,11 +271,11 @@ describe("Review, Unplaced, Search — loading", () => {
     expect(clear).toContain("Nothing to review");
   });
   it("Unplaced keeps its frame and intro (Review's); the list and the item's pane are skeletons until the queue is known", () => {
-    const html = body(render(app("maintenance", { needsTriage: { status: "loading", data: [] } })));
+    const html = body(render(app("review", { reviewView: "unplaced", needsTriage: { status: "loading", data: [] } })));
     expect(keys(html)).toEqual(["unplaced", "unplaced-detail"]);
     expect(html).toContain("Things an agent produced but couldn&#39;t place.");
     expect(html).not.toContain("data-empty=");
-    expect(body(render(app("maintenance", { needsTriage: { status: "ok", data: [] } })))).toContain('data-empty="unplaced"');
+    expect(body(render(app("review", { reviewView: "unplaced", needsTriage: { status: "ok", data: [] } })))).toContain('data-empty="unplaced"');
   });
   it("Search shows a skeleton only with nothing on screen — a re-query keeps the results it has", () => {
     const first = body(render(app("search", { searchResults: { ...initialState().searchResults, status: "loading" } })));
@@ -360,10 +360,11 @@ describe("Handoffs, Prompt Library, Artifacts, Repo, Settings — loading", () =
 });
 
 describe("every loading paint keeps the rules", () => {
-  const screens: Screen[] = ["mywork", "feed", "docs", "library", "space", "roadmap", "review", "maintenance", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings", "import", "imports"];
+  // Review › Unplaced is the `review` screen in its other view.
+  const screens: (Screen | "unplaced")[] = ["mywork", "feed", "docs", "library", "space", "roadmap", "review", "unplaced", "tickets", "ticketdetail", "sprint", "handoffs", "handoff", "prompts", "prompt", "artifacts", "repo", "settings", "import", "imports"];
   it("is busy-marked, hidden from a screen reader, keeps a status line, and has unique region keys", () => {
     for (const screen of screens) {
-      const html = body(render(app(screen)));
+      const html = body(render(screen === "unplaced" ? app("review", { reviewView: "unplaced" }) : app(screen)));
       const n = count(html, 'class="cnpy-skel"');
       expect(n, screen).toBeGreaterThan(0);
       expect(count(html, 'aria-busy="true"'), screen).toBe(n);

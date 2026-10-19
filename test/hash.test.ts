@@ -32,26 +32,36 @@ describe("parseHash", () => {
     expect(parseHash("#unsubscribe")).toEqual({ screen: "settings", ticketId: null, sprintId: null });
     expect(parseHash("#unsubscribe/x")).toEqual(parseHash("#nope"));
     expect(parseHash("#roadmap")).toEqual({ screen: "roadmap", ticketId: null, sprintId: null, roadmapTab: "narrative" });
-    // Review › Unplaced: the screen is still `maintenance`; its address is `#unplaced`, and `#review` is the queue.
-    expect(parseHash("#unplaced")).toEqual({ screen: "maintenance", ticketId: null, sprintId: null });
-    expect(hashForRoute({ screen: "maintenance", ticketId: null, sprintId: null })).toBe("#unplaced");
-    expect(hashForRoute(parseHash("#unplaced"))).toBe("#unplaced");
+    // Review › Unplaced: ONE screen, `review`, its view in the route — `#review` the queue, `#review/unplaced` Unplaced.
+    const base = { ticketId: null, sprintId: null };
+    const unplaced = { screen: "review", ...base, reviewView: "unplaced" };
+    expect(parseHash("#review")).toEqual({ screen: "review", ...base });
+    expect(parseHash("#review/unplaced")).toEqual(unplaced);
+    expect(hashForRoute({ screen: "review", ...base, reviewView: "unplaced" })).toBe("#review/unplaced");
+    expect(hashForRoute({ screen: "review", ...base })).toBe("#review");
+    expect(hashForRoute(parseHash("#review/unplaced"))).toBe("#review/unplaced");
     expect(hashForRoute(parseHash("#review"))).toBe("#review");
+    expect(parseHash("#review/nope")).toEqual({ screen: "mywork", ...base });
+    expect(parseHash("#review/unplaced/x")).toEqual({ screen: "mywork", ...base });
     // …one page: the header's To review / Unplaced switch swaps the panes without replaying Review's entrance.
+    expect(pageKey(parseHash("#review/unplaced"))).toBe(pageKey(parseHash("#review")));
     expect(pageKey(parseHash("#unplaced"))).toBe(pageKey(parseHash("#review")));
-    expect(pageKey(parseHash("#maintenance"))).toBe(pageKey(parseHash("#review")));
-    expect(sameRoute(parseHash("#unplaced"), parseHash("#review"))).toBe(false);
+    expect(sameRoute(parseHash("#review/unplaced"), parseHash("#review"))).toBe(false);
+    expect(sameRoute(parseHash("#unplaced"), parseHash("#review/unplaced"))).toBe(true);
   });
 
-  it("the old Maintenance addresses still land: the queue, and its two tabs that moved into Org settings", () => {
+  it("Unplaced's old addresses land on #review/unplaced; Maintenance's two tabs that moved, in Org settings", () => {
     const base = { ticketId: null, sprintId: null };
-    expect(parseHash("#maintenance")).toEqual({ screen: "maintenance", ...base });
-    expect(parseHash("#maintenance/unplaced")).toEqual({ screen: "maintenance", ...base });
+    const unplaced = { screen: "review", ...base, reviewView: "unplaced" };
+    // `#unplaced` (its address until it became one screen with Review), `#maintenance`, `#maintenance/unplaced`.
+    expect(parseHash("#unplaced")).toEqual(unplaced);
+    expect(parseHash("#maintenance")).toEqual(unplaced);
+    expect(parseHash("#maintenance/unplaced")).toEqual(unplaced);
     // Identity (matching a login to a person) and People (the directory) are Org settings › Members.
     expect(parseHash("#maintenance/identity")).toEqual({ screen: "org", ...base, orgTab: "members" });
     expect(parseHash("#maintenance/people")).toEqual({ screen: "org", ...base, orgTab: "members" });
     // …and the address bar is rewritten to where they are now.
-    expect(hashForRoute(parseHash("#maintenance"))).toBe("#unplaced");
+    for (const h of ["#unplaced", "#maintenance", "#maintenance/unplaced"]) expect(hashForRoute(parseHash(h)), h).toBe("#review/unplaced");
     expect(hashForRoute(parseHash("#maintenance/people"))).toBe("#org/members");
     expect(hashForRoute(parseHash("#maintenance/identity"))).toBe("#org/members");
     expect(parseHash("#unplaced/identity")).toEqual({ screen: "mywork", ...base });

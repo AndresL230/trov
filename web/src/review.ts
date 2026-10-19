@@ -648,6 +648,27 @@ export function reviewPagePane(it: ReviewItem, g: ReviewGroup, total: number, le
   </div>`;
 }
 
+/** Review's two views — its queue (`reviewView`) and Unplaced (maintenance.ts `maintenanceView`) — are ONE screen
+ *  (`state.reviewView`, `#review` / `#review/unplaced`), and this is the frame both draw: the list column (its head,
+ *  then the KEYED list) and the reading pane. Each column is a `data-morph-key` part per view, so the header's To
+ *  review / Unplaced switch replaces only the two columns: the page (`data-morph="review"`) and the header with its
+ *  switch are patched, the indicator slides, and nothing replays the page's entrance. */
+export type ReviewView = "queue" | "unplaced";
+export function reviewFrame(o: { view: ReviewView; pane: "list" | "detail"; backAct: string; head: string; list: string; detail: string; cls?: string; label?: string }): string {
+  return `<div class="cnpy-rv${o.cls ? ` ${o.cls}` : ""}"${o.label ? ` data-screen-label="${attr(o.label)}"` : ""} data-view="${o.view}" data-pane="${o.pane}" style="display:flex;height:100%;min-width:0">
+    <div class="cnpy-rv-list" data-morph-key="rv-list:${o.view}" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
+      <div class="cnpy-rv-lhead" style="padding:16px 20px 0">
+        ${o.head}
+      </div>
+      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${o.list}</div>
+    </div>
+    <div class="cnpy-scroll cnpy-rv-detail" data-morph-key="rv-detail:${o.view}" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
+      <button data-act="${o.backAct}" class="cnpy-rv-back">${BACK_ICON}All items</button>
+      ${o.detail}
+    </div>
+  </div>`;
+}
+
 /** The detail pane with groups waiting but no page picked. */
 export const REVIEW_PICK = "Open a group and pick a page to read it here. Or approve a whole group at once.";
 
@@ -692,17 +713,10 @@ export function reviewView(p: ReviewProps): string {
   // Under a tablet's width the two panes take turns (trov.css `.cnpy-rv`): the list, or —
   // once an item is picked by hand — its detail, with a back button to the list.
   const pane = p.selectedId !== null && sel ? "detail" : "list";
-  return `<div class="cnpy-rv" data-pane="${pane}" style="display:flex;height:100%;min-width:0">
-    <div class="cnpy-rv-list" style="flex:.95 1 0;min-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0">
-      <div style="padding:16px 20px 0">
-        <div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
-        ${reviewFilterSwitch(p.filter, counts)}
-      </div>
-      <div class="cnpy-scroll cnpy-stagger cnpy-rv-rows" data-morph-list style="flex:1;overflow-y:auto;padding:2px 14px 80px">${list}</div>
-    </div>
-    <div class="cnpy-scroll cnpy-rv-detail" style="flex:1.05 1 0;min-width:0;overflow-y:auto">
-      <button data-act="reviewBack" class="cnpy-rv-back">${BACK_ICON}All items</button>
-      ${detail}
-    </div>
-  </div>`;
+  return reviewFrame({
+    view: "queue", pane, backAct: "reviewBack",
+    head: `<div style="font-size:12.5px;color:var(--fg-55)">${esc(REVIEW_INTRO)}</div>
+        ${reviewFilterSwitch(p.filter, counts)}`,
+    list, detail,
+  });
 }

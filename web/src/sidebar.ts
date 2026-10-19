@@ -20,9 +20,9 @@ import { spaceTile } from "./library";
  *  none: their switches are on the screen itself (Roadmap's Narrative / Timeline, removed
  *  from the rail 2026-09-26; Tickets' Board / Table and Submit a ticket, removed 2026-09-27;
  *  Repo's Overview / Code / CI / Usage / Planning — a tab bar heading the page body —
- *  removed 2026-09-27). Unplaced (the `maintenance` screen: it was Maintenance, with Identity and
- *  People tabs that moved into Org settings 2026-10-06) is a view of Review since 2026-10-18 — the switch at the
- *  top of Review — so it has no row: it lights Review, and Review's badge counts both. The Library was Docs, with a
+ *  removed 2026-09-27). Unplaced (it was Maintenance, with Identity and People tabs that moved
+ *  into Org settings 2026-10-06) is a view of Review since 2026-10-18 — the same screen, `#review/unplaced`, the
+ *  switch at the top of Review — so it has no row: it lights Review, and Review's badge counts both. The Library was Docs, with a
  *  fixed Technical / Product pair, until the spaces (2026-10): a stored `trov.navOpen` `docs` key is read
  *  as `library` (main.ts); any other retired group is simply not read back. */
 export const NAV_GROUPS = ["library"] as const;
@@ -34,8 +34,8 @@ export const NAV_CLOSED: NavOpen = { library: false };
 export type NavKey = "home" | "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
   home: "home", mywork: "mywork", ask: "ask", feed: "feed", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
-  // Unplaced (the `maintenance` screen) is Review's other view: it lights Review.
-  review: "review", maintenance: "review", guide: "guide", releases: "releases",
+  // Unplaced is Review's other view (the same screen, `#review/unplaced`): Review's row is lit for both.
+  review: "review", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
   artifacts: "artifacts", artifactnew: "artifacts", artifact: "artifacts",
   relay: "handoffs", handoffs: "handoffs", handoff: "handoffs", newhandoff: "handoffs", links: "handoffs", link: "handoffs",

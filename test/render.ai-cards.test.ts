@@ -78,7 +78,7 @@ describe("field absent — each screen renders exactly what it did before Phase 
     expect(render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail() } }))).toMatchSnapshot();
   });
   it("Unplaced (no row carries `ai`)", () => {
-    expect(render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow(), triageRow({ id: 8, raw: "a free-form note", reason: "Flagged by an agent" })] } }))).toMatchSnapshot();
+    expect(render(app({ screen: "review", reviewView: "unplaced", needsTriage: { status: "ok", data: [triageRow(), triageRow({ id: 8, raw: "a free-form note", reason: "Flagged by an agent" })] } }))).toMatchSnapshot();
   });
   it("Review (no row carries `ai`)", () => {
     expect(render(app({ screen: "review", proposals: { status: "ok", data: [proposal()] }, draftAdrs: { status: "ok", data: [adr()] } }))).toMatchSnapshot();
@@ -117,7 +117,7 @@ describe("field present — Trov's suggestions on the three screens", () => {
 
   it("Unplaced: a chip above “Place it as” on the item, and a mark (no button) on its row", () => {
     const s = unplacedSuggestionFixture(MODE, 7)!;
-    const html = render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [s] }), triageRow({ id: 8, raw: "a free-form note", reason: "Flagged by an agent" })] } }));
+    const html = render(app({ screen: "review", reviewView: "unplaced", needsTriage: { status: "ok", data: [triageRow({ ai: [s] }), triageRow({ id: 8, raw: "a free-form note", reason: "Flagged by an agent" })] } }));
     expect(html).toContain("file it as a doc in reference");
     expect(html.indexOf("cnpy-ai-unplaced")).toBeLessThan(html.indexOf("Place it as"));
     expect(html.match(/cnpy-ai-row-mark/g)).toHaveLength(1);
@@ -160,7 +160,7 @@ describe("motion — a suggestion enters with its screen and leaves by the AI ki
   const at = (o: Record<number, number>) => ({ ...initialAiUi(), leaving: Object.entries(o).map(([id, t]) => ({ key: aiSuggestionKey(Number(id)), at: t })) });
   const screens = (leaving: Record<number, number> = {}) => ({
     ticket: render(app({ screen: "ticketdetail", ticketId: 14, ticketDetail: { status: "ok", data: ticketDetail({ ai: tSugg }) }, ai: at(leaving) })),
-    unplaced: render(app({ screen: "maintenance", needsTriage: { status: "ok", data: [triageRow({ ai: [unplaced()] })] }, ai: at(leaving) })),
+    unplaced: render(app({ screen: "review", reviewView: "unplaced", needsTriage: { status: "ok", data: [triageRow({ ai: [unplaced()] })] }, ai: at(leaving) })),
     review: render(app({ screen: "review", reviewSel: "doc:auth-flow@3", proposals: { status: "ok", data: [proposal({ ai: [risk()] })] }, draftAdrs: { status: "ok", data: [] }, ai: at(leaving) })),
   });
 

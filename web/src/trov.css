@@ -802,12 +802,13 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
   .cnpy-rv-row, .cnpy-rv-row .cnpy-titem, .cnpy-rv-card-in, .cnpy-rv-verdict { transition:none !important; }
 }
 /* ── Unplaced (web/src/maintenance.ts) ──────────────────────────────────────────────────────
-   Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`, `.cnpy-rvp`): only what is its own is here. A card
-   placed or discarded leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
+   Review's other view (one screen, `#review/unplaced`): Review's frame, cards and page pane (`.cnpy-rv`, `.cnpy-titem`,
+   `.cnpy-rvp` on To review's colours, `.cnpy-rvp--bg`), so only what is its own is here. A card placed or discarded
+   leaves by the exit above — placed in green, discarded quiet (an Undo brings it back). */
 .cnpy-rv-row[data-verdict="placed"] { --rv-tone:var(--green); }
 .cnpy-rv-row[data-verdict="discarded"] { --rv-tone:var(--fg-55); }
 .cnpy-up-text { margin:0; font-size:14px; line-height:1.65; color:var(--fg-70); white-space:pre-wrap; overflow-wrap:anywhere; }
-.cnpy-up-place { margin-top:26px; padding-top:20px; border-top:1px solid var(--border); }
+/* Place it as is a white surface card (`surface()`), as the item above it is — To review's proposed record's card. */
 .cnpy-up-field { margin-top:16px; }
 .cnpy-up-label { font-size:12px; font-weight:600; color:var(--fg-70); margin-bottom:8px; }
 .cnpy-up-opt { font-weight:400; color:var(--fg-40); }
@@ -4656,6 +4657,9 @@ button.cnpy-nd-bar:focus-visible { outline:2px solid var(--focus); outline-offse
 /* Review › a group's page, picked (review.ts `reviewPagePane`, the design's right pane): the bar on top, the page,
    and the footer with the verdict — both bars stay in view while the page scrolls under them. */
 .cnpy-rvp { display:flex; flex-direction:column; min-height:100%; background:var(--surface); }
+/* On To review's colours (Unplaced's item, maintenance.ts): the pane is the page's own `--bg`, as a decision's is, the
+   content sits in white surface cards, and the footer that stays in view is the pane's colour over its hairline. */
+.cnpy-rvp--bg, .cnpy-rvp--bg > .cnpy-rvp-foot { background:var(--bg); }
 .cnpy-rvp > .cnpy-rvg-bar-top { position:sticky; top:0; z-index:2; flex:none; background:var(--surface); padding:0 20px 0 28px; }
 .cnpy-rvp-body { flex:1 0 auto; max-width:860px; padding:24px 32px 40px; }
 .cnpy-rvp-crumb { font-size:12.5px; color:var(--fg-55); }
