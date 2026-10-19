@@ -164,7 +164,7 @@ describe("the hero on a phone", () => {
   const phone = media("(max-width:640px)");
 
   it("the Home mockup keeps its wide window and carries the hooks a phone re-lays it by", () => {
-    expect(html).toContain('class="site-hero-win" style="display:flex;height:600px;overflow:hidden"'); // the wide screen's fixed window is untouched
+    expect(html).toContain('class="site-hero-win" style="display:flex;height:660px;overflow:hidden"'); // the wide screen's fixed window is untouched
     expect(html).toContain('<div class="hm-page site-hm hl-page">');
     // the three lists (For you is the last), Activity's four cards, and Latest beside Team
     expect(html.match(/<div class="hm-col">/g)).toHaveLength(3);

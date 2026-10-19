@@ -310,7 +310,7 @@ describe("landing — the hero is Home, the app's front page, acting out one sto
     // the fictional team only; the mock is inert
     expect(hero).toContain("@leo");
     expect(hero).not.toMatch(/<button|data-act=|<a /);
-    expect(hero).toContain('class="site-hero-win" style="display:flex;height:600px;overflow:hidden" aria-hidden="true"');
+    expect(hero).toContain('class="site-hero-win" style="display:flex;height:660px;overflow:hidden" aria-hidden="true"');
   });
 
   it("its icons are home.ts's, copied (that module pulls the answer's Markdown into the landing's bundle)", () => {

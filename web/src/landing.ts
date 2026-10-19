@@ -390,15 +390,13 @@ function heroHome(): string {
   const member = (who: string, handle: string, tone: string, on: string, at: string, live: boolean) =>
     `<div class="hm-row"><span class="hm-team-av">${who}${live ? `<span class="hm-live"></span>` : ""}</span><span class="hm-row-t"><span class="hm-row-title" style="color:var(--${tone})">${handle}</span><span class="hm-row-post">${on}</span></span><span class="hm-row-trail">${at}</span>${CHEV}</div>`;
   const lower = `<div class="hm-lower hl-rise" style="${hd(240)}">
-      <div class="hm-latest">${sectionHead("Latest", null, "3 today")}
+      <div class="hm-latest">${sectionHead("Latest", null, "2 today")}
         ${feedRow(initials("LP", 16, "7.5px"), "Shipped", "Rate limiting on the public API", "1h")}
         ${feedRow(`<span class="hm-trov">${aiMark(8)}</span>`, "Status", "Hardening the public API is 4 of 6 done", "3h")}
-        ${feedRow(initials("MC", 16, "7.5px"), "Decision", "A retry budget for webhook callers", "5h", markShape("dot", "var(--accent)", 8))}
       </div>
       <div class="hm-team">${sectionHead("Team", 3)}
         ${member(initials("MC", 18, "7.5px"), "@maya (you)", "accent", "Retry-After on 429 responses", "2m", true)}
         ${member(initials("LP", 18, "7.5px"), "@leo", "blue", "Rate limiting on the public API", "12m", true)}
-        ${member(initials("SO", 18, "7.5px"), "@sam", "amber", "Onboarding checklist is stale", "1h", false)}
       </div>
     </div>`;
 
@@ -444,7 +442,7 @@ function hero(signedIn: boolean): string {
         <span style="margin:0 auto;font-family:var(--label);font-size:11px;color:var(--fg-40);border:1px solid var(--border);border-radius:6px;padding:3px 14px">trov.dev/acme/#home</span>
         <span style="width:44px"></span>
       </div>
-      <div class="site-hero-win" style="display:flex;height:600px;overflow:hidden" aria-hidden="true">
+      <div class="site-hero-win" style="display:flex;height:660px;overflow:hidden" aria-hidden="true">
         <div class="site-hide-sm" style="width:212px;flex:none;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:14px 12px 12px">
           <div style="display:flex;align-items:center;gap:8px;padding:2px 8px 8px">
             ${mark(17)}
