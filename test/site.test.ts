@@ -264,6 +264,13 @@ describe("one address per page", () => {
     expect(s.asked).toEqual([]);
   });
 
+  it("a plain-http PUBLIC_ORIGIN (local dev on localhost) is served as it is, never sent to https", async () => {
+    const s = site({ PUBLIC_ORIGIN: "http://localhost:8787" });
+    for (const url of ["http://localhost:8787/", "http://localhost:8787/pricing", "http://localhost:8787/acme/"]) {
+      expect((await fetchAt(url, s.env)).status, url).not.toBe(301);
+    }
+  });
+
   it("another host (a Preview's workers.dev address) is never indexed, the landing page included; loopback answers as production", async () => {
     for (const path of ["/", "/robots.txt", "/sitemap.xml", "/acme/"]) {
       const res = await fetchAt(`https://abc123-trov.someone.workers.dev${path}`, site().env);

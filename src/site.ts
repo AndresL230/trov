@@ -111,9 +111,12 @@ export function isCanonicalHost(url: URL, env: Pick<Env, "PUBLIC_ORIGIN">): bool
 /** One address per page: a GET / HEAD on `www.` + the public host, or in plain http on it, is sent for
  *  good to the same path and query on https and the public host. Everything else: null. This covers what
  *  the Worker serves (`/` included); the static files on www or plain http are the zone's to redirect
- *  (a Redirect Rule and "Always Use HTTPS": the assets binding's `_redirects` takes relative rules only). */
+ *  (a Redirect Rule and "Always Use HTTPS": the assets binding's `_redirects` takes relative rules only).
+ *  A PUBLIC_ORIGIN that is itself plain http (`http://localhost:8787` under `wrangler dev`) has no https to
+ *  send anyone to: nothing is redirected. */
 export function canonicalRedirect(request: Request, url: URL, env: Pick<Env, "PUBLIC_ORIGIN">): Response | null {
   if (request.method !== "GET" && request.method !== "HEAD") return null;
+  if (env.PUBLIC_ORIGIN?.startsWith("http:")) return null;
   const host = publicHost(env);
   if (url.host !== `www.${host}` && !(url.protocol === "http:" && url.host === host)) return null;
   return Response.redirect(`https://${host}${url.pathname}${url.search}`, 301);

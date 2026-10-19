@@ -405,7 +405,8 @@ script then takes over the SAME markup. Everything else is the app, and is never
   `/index.html`, `/<page>.html` and `/<page>/` to the page for good (301) — the binding's own html handling would
   answer 307. The Worker 301s `www.` and plain http on the public host to `https://` + the public host for what it
   serves (`canonicalRedirect`); the binding takes relative rules only, so the static files on www / http are the
-  zone's to redirect (a Redirect Rule and "Always Use HTTPS" — `HANDOFF.md`).
+  zone's to redirect (a Redirect Rule and "Always Use HTTPS" — `HANDOFF.md`). A plain-http `PUBLIC_ORIGIN`
+  (`http://localhost:<port>` in local dev) redirects nothing: it has no https to send anyone to.
 - **`noindex`** (`X-Robots-Tag`): every GET / HEAD the Worker answers except `/robots.txt`, `/sitemap.xml` and
   the landing — the API, sign-in, OAuth, MCP, the signed links, every app shell, every redirect; a POST is left
   alone (a webhook's bare 401 stays bare). On a host that is not PUBLIC_ORIGIN's (a Preview) the Worker tags
