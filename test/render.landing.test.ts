@@ -3,7 +3,7 @@
  * banner it carries through the page (the first-run card's, one definition in trov.css).
  */
 import { describe, it, expect } from "vitest";
-import { landingView, NAV_ICON, HOME_ICON_COPY, HERO_QUESTION, HERO_ANSWER } from "../web/src/landing";
+import { landingView, HOME_ICON_COPY, HERO_QUESTION, HERO_ANSWER } from "../web/src/landing";
 import { HOME_ICON } from "../web/src/home";
 import homeSrc from "../web/src/home.ts?raw";
 import homeViewSrc from "../web/src/home-view.ts?raw";
@@ -265,27 +265,30 @@ describe("landing — buying Pro as someone new carries through signing up", () 
 });
 
 describe("landing — the hero's app is today's app", () => {
-  it("its sidebar has the app sidebar's sections and entries, in order, with the same icons, and the Library's spaces under it", () => {
+  it("its sidebar IS the app's (sidebar.ts sidebarView + the org switcher): every section and entry in order, Home lit, the starter spaces under a folded Library", () => {
     const html = out();
-    const side = html.slice(html.indexOf('class="site-hide-sm" style="width:212px'), html.indexOf("agents produce · humans confirm"));
-    // The app's rail, read from sidebar.ts: every section and every entry's label, in the order it draws them.
+    const side = html.slice(html.indexOf('class="site-hide-sm site-hero-side"'), html.indexOf("</aside>") + 8);
+    expect(side).toContain('<aside class="cnpy-aside" data-screen-label="Sidebar">');
+    // The app's own markup: the org switcher, the search box, Collapse, the account chip.
+    expect(side).toContain('class="cnpy-orgsw-b');
+    expect(side).toContain(">Acme</span>");
+    expect(side).toMatch(/class="cnpy-lbl cnpy-search-in"[^>]*>Search Trov</);
+    expect(side).toContain(">Collapse</span>");
+    expect(side).toContain("Maya Chen");
+    // Home lit; Review's count and Relay's (which the story clears) are the app's badges.
+    expect(side).toMatch(/class="cnpy-navrow n-home is-active"/);
+    expect(side).toMatch(/n-review[\s\S]*?class="cnpy-lbl cnpy-badge" data-n="2">2</);
+    expect(side).toMatch(/n-handoffs[\s\S]*?class="cnpy-lbl cnpy-badge hl-badge" data-n="1">1</);
+    // Every section and entry sidebar.ts draws, in its order.
     const want = [...sidebarSrc.matchAll(/\$\{(?:section\("([^"]+)"|item\("\w+", "\w+", "([^"]+)")/g)].map((m) => (m[1] ?? m[2]).toLowerCase());
-    expect(want).toEqual(["workspace", "home", "my work", "trov", "tickets", "roadmap", "relay", "monitor", "repo", "feed", "knowledge", "library", "artifacts", "prompt library", "review", "help", "guide", "what's new"]);
     const text = side.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").toLowerCase();
     let at = -1;
     for (const w of want) { const next = text.indexOf(w, at + 1); expect(next, w).toBeGreaterThan(at); at = next; }
-    expect(text).not.toMatch(/\bhandoffs\b|\bdocs\b/);
     // The spaces: a new organization's three, A to Z, under Library and before Artifacts.
-    const names = [...STARTER_SPACES].map((s) => s.name).sort();
-    expect(names).toEqual(["Design", "Engineering", "Product"]);
-    expect([...side.matchAll(/data-hero-space="([a-z]+)"/g)].map((m) => m[1])).toEqual(["design", "engineering", "product"]);
-    expect(text.indexOf("library")).toBeLessThan(text.indexOf("design"));
-    expect(text.indexOf("product")).toBeLessThan(text.indexOf("artifacts"));
-    // Every icon is the app's own path, copied.
-    for (const [k, paths] of Object.entries(NAV_ICON)) {
-      expect(sidebarSrc, k).toContain(paths);
-      expect(side, k).toContain(paths);
-    }
+    expect([...STARTER_SPACES].map((s) => s.name).sort()).toEqual(["Design", "Engineering", "Product"]);
+    expect([...side.matchAll(/class="cnpy-sub-n">([A-Za-z]+)</g)].map((m) => m[1])).toEqual(["Design", "Engineering", "Product"]);
+    // It is a picture: nothing in it takes focus.
+    expect(html).toContain('class="site-hero-win" style="display:flex;height:680px;overflow:hidden" aria-hidden="true" inert>');
   });
 });
 
@@ -297,7 +300,7 @@ describe("landing — the hero is Home, the app's front page, acting out one sto
   it("draws Home at #home with Home lit in the sidebar, in home.ts's own classes and words", () => {
     expect(hero).not.toContain("trov.dev/acme"); // no browser chrome over the app (the owner, 2026-10-18)
     expect(hero).not.toContain("#review");
-    expect(hero).toMatch(/background:var\(--accent-soft\);color:var\(--accent\)"><svg[^>]*>[^]*?<\/svg>Home<\/div>/);
+    expect(hero).toMatch(/class="cnpy-navrow n-home is-active"/); // the app's own sidebar, Home lit
     for (const cls of ["hm-page", "hm-head", "hm-h", "hm-statusrow", "hm-status", "hm-attn", "hm-attn-row", "hm-bar-wrap", "hm-bar-ring", "hm-bar", "hm-ans", "hm-ans-foot", "hm-cols", "hm-col", "hm-sec-h", "hm-row", "hm-act", "hm-cards", "hm-card", "hm-card-bars", "hm-bar-b", "hm-lower", "hm-latest", "hm-team"]) {
       expect(hero, cls).toContain(`class="${cls}`);
       expect(homeSrc, cls).toContain(cls);
@@ -310,7 +313,7 @@ describe("landing — the hero is Home, the app's front page, acting out one sto
     // the fictional team only; the mock is inert
     expect(hero).toContain("@leo");
     expect(hero).not.toMatch(/<button|data-act=|<a /);
-    expect(hero).toContain('class="site-hero-win" style="display:flex;height:660px;overflow:hidden" aria-hidden="true"');
+    expect(hero).toContain('class="site-hero-win" style="display:flex;height:680px;overflow:hidden" aria-hidden="true"');
   });
 
   it("its icons are home.ts's, copied (that module pulls the answer's Markdown into the landing's bundle)", () => {

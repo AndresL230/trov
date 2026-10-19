@@ -12,7 +12,7 @@
 import type { PersonColor } from "@shared/rows";
 import { esc, attr } from "./ui";
 import { personChip, handleTag } from "./people";
-import { spaceTile } from "./library";
+import { spaceTile } from "./space-tile";
 
 /** The Library group's Imports row (a clock with a back arrow) and its Import action (the upload arrow). */
 

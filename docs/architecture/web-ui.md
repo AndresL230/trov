@@ -233,7 +233,7 @@ is the mark, large, faint and tilted behind the text. It appears exactly twice, 
 The hero mockup's sidebar is the app's (`sidebar.ts` `sidebarView`): the same sections, entries, order, labels and
 icons, with the Library's starter spaces under it (A to Z). Its icon paths are copied into `landing.ts` `NAV_ICON`
 (sidebar.ts pulls the Library screen in), and `test/render.landing.test.ts` reads sidebar.ts to hold the two
-together: a sidebar change fails it until the hero follows. The window is 660px tall so the whole rail fits and Home has room above and below (Latest and Team show two rows each); Home is lit.
+together: a sidebar change fails it until the hero follows. The window is 680px tall so the whole rail fits and Home has room above and below (Latest and Team show two rows each); Home is lit.
 
 **The hero's Home, looping** (`landing.ts` `heroHome`, trov.css "the hero's Home, looping"). The window draws Home
 (`home.ts`) with Home's own `.hm-*` classes — inert spans and divs, no button, `aria-hidden` — a little denser than the

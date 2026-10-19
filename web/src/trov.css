@@ -2462,10 +2462,17 @@ a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255
 @property --hv { syntax:'<integer>'; inherits:false; initial-value:0; }
 @property --hw { syntax:'<number>'; inherits:true; initial-value:0; }
 .site-hero-mock { --hl:14s; --hs:700ms; }
+/* The hero's rail is the app's own sidebar (sidebar.ts), drawn as it is in the app; a picture, so it takes no focus
+   (the window is `inert`) and nothing on it reacts to the pointer. */
+/* Scaled down (the owner, 2026-10-18): the rail at the app's size crowded the hero; `zoom` shrinks its layout box too, so
+   Home gets the room back. */
+.site-hero-side { display:flex; flex:none; zoom:.82; }
+.site-hero-side > .cnpy-aside { height:100%; }
+.site-hero-side * { pointer-events:none; }
 .site-hm-view { position:relative; flex:1; min-height:0; overflow:hidden; }
-/* The real Home sits in a centred column with room either side; the hero keeps that proportion (about a seventh of the
+/* The real Home sits in a centred column with room either side; the hero keeps that proportion (about a sixth of the
    window's width on each side), so it reads as the page, not as a page stretched to the window's edges. */
-.hm-page.site-hm { max-width:none; padding:34px 14% 28px; }
+.hm-page.site-hm { max-width:none; padding:56px 17% 28px; }
 .site-hm > .hm-head { position:relative; z-index:40; }
 .site-hm .hm-h { font-size:24px; }
 .site-hm .hm-statusrow { margin-top:6px; }
@@ -2562,7 +2569,7 @@ a.site-legal-tab:not([aria-current]):hover { color:#fff; background:rgba(255,255
 @keyframes hl-leave { 0%, 79.6% { max-height:52px; opacity:1; } 80.7% { max-height:52px; opacity:0; animation-timing-function:var(--fx-ease); } 82.1%, 97.9% { max-height:0; opacity:0; } 98%, 100% { max-height:52px; opacity:1; } }
 @keyframes hl-badge { 0%, 79.6% { opacity:1; scale:1; } 80.7%, 97.9% { opacity:0; scale:.6; } 99.3%, 100% { opacity:1; scale:1; } }
 @media (max-width:900px) {
-  .hm-page.site-hm { padding:30px 9% 24px; }
+  .hm-page.site-hm { padding:44px 11% 24px; }
 }
 
 /* ── the banner, carried through the page ─────────────────────────────────────
