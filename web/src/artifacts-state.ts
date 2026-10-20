@@ -5,7 +5,7 @@
 // all of this unchanged.
 
 import { esc, attr } from "./ui";
-import { tenantHref } from "./api";
+import { apiFetch, tenantHref } from "./api";
 import { skeleton, skLine } from "./skeleton";
 import { artifactStatusMark } from "./marks";
 import type { PersonColor } from "@shared/rows";
@@ -298,7 +298,7 @@ async function drainPdfThumbs(): Promise<void> {
   try {
     for (let raw = pdfThumbQueue.shift(); raw !== undefined; raw = pdfThumbQueue.shift()) {
       try {
-        const res = await fetch(raw, { credentials: "same-origin" });
+        const res = await apiFetch(raw);
         if (!res.ok) throw new Error(String(res.status));
         const lib = await loadPdfLib();
         const url = URL.createObjectURL(await lib.pdfFirstPage(await res.arrayBuffer(), PDF_THUMB_WIDTH));
