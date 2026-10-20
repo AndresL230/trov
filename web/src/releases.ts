@@ -132,11 +132,12 @@ export const RELEASES: Release[] = [
         "Unplaced is part of Review: a switch at the top of Review moves between the two, and Review's sidebar count includes Unplaced (#201)",
         "The sidebar has new icons, Home first, and Review under Knowledge; every screen's title and buttons sit at the window's edges (#201)",
         "What's new and the Guide share one page width (#201)",
+        "A PDF's card in Artifacts shows its first page instead of an icon (#203)",
       ],
       fixed: [],
       removed: [],
     },
-    prs: [201],
+    prs: [201, 203],
   },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower

@@ -205,6 +205,7 @@ Org settings 62, Repo 43, Platform 30, the landing 26, Artifacts 20, What's new 
   | Artifacts (`artifacts.ts`) | `artifacts-lazy.ts` | `artifacts-state.ts`: state, routes, a frame's height, the Mermaid pass, the ticket page's block |
   | the Repo screen (`repo.ts` + its blocks) | `repo-lazy.ts` | `repo-core.ts`: the poll's lifetime, the updated label, the count-up, `ALL_APPS` |
   | marked + DOMPurify (`markdown-lib.ts`) | `markdown.ts` / `markdown-load.ts` | the renderers and their LRU |
+  | pdf.js for the PDF cards (`pdf-thumb-lib.ts` + its worker, ~146 kB gzip) | `artifacts-state.ts` (`renderPendingPdfThumbs`, a plain `import()`) | the post-paint pass and its cache |
   | What's new (`releases.ts`) | `releases-lazy.ts` | `release-latest.ts` |
 
   The heavy module re-exports its eager part unchanged, so its importers and the tests that import it are

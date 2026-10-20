@@ -24,6 +24,7 @@ import {
   ticketArtifactsBlock, artAcceptFile, artAcceptNvFile, artFileName, detailKey, diffKey, initialArtUi, ART_ROUTE_NONE,
   type ArtProps, type ArtUi, type ArtRoute, type ArtScreen,
 } from "../web/src/artifacts";
+import { pdfThumbs, pdfThumbFailed } from "../web/src/artifacts-state";
 import { render, initialState } from "../web/src/render";
 import type { ArtifactSummaryDTO, ArtifactDetailDTO, ArtifactVersionDTO, ArtifactKind, ArtifactDiffDTO } from "@shared/artifacts-core";
 import { ARTIFACT_TEXT_CAP } from "@shared/artifacts-core";
@@ -125,6 +126,31 @@ describe("artifacts — library", () => {
     expect(html).toContain('<img src="/api/o/acme/raw/a/login-mock@v1"');
     expect(html).toContain("Auth audit\nFindings");
     expect(html).toContain("PDF · 2.00 MB");
+  });
+
+  it("a pdf card: its icon in a box the post-paint pass fills, then page 1 from the cache; the icon alone when it can't be drawn; a file never asks", () => {
+    const raw = "/api/o/acme/raw/a/rfc-pdf@v1";
+    const p = props("artifacts");
+    p.ui.list = { status: "ok", data: [summary("rfc-pdf", { kind: "pdf", current_version: 1 }), summary("dump", { kind: "file", current_version: 1 })] };
+    const waiting = artifactsView(p);
+    expect(waiting).toContain(`data-art-pdfthumb="${raw}"`);
+    expect(waiting).toContain("PDF · ");
+    expect(waiting.match(/data-art-pdfthumb=/g)).toHaveLength(1);
+    try {
+      pdfThumbs.set(raw, "blob:https://trov.dev/page-one");
+      const drawn = artifactsView(p);
+      expect(drawn).toContain('<img src="blob:https://trov.dev/page-one" alt=""');
+      expect(drawn).toContain("object-position:top");
+      expect(drawn).not.toContain("data-art-pdfthumb");
+      pdfThumbs.delete(raw);
+      pdfThumbFailed.add(raw);
+      const failed = artifactsView(p);
+      expect(failed).not.toContain("data-art-pdfthumb");
+      expect(failed).toContain("PDF · ");
+    } finally {
+      pdfThumbs.delete(raw);
+      pdfThumbFailed.delete(raw);
+    }
   });
 
   it("filters client-side by the popover and by search (a ticket number or title finds what's attached)", () => {

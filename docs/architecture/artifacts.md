@@ -111,6 +111,15 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   into its own chunks on Trov's origin, fetched the first time a diagram opens, never in the main bundle. No CDN
   is contacted (it was `cdn.jsdelivr.net/npm/mermaid@11`, unpinned, before 2026-10). The raw CSP's cdnjs /
   jsdelivr allowance above is for an HTML artifact's OWN scripts, inside the sandbox — not for mermaid.
+  A library card previews its page in 160px: html in an `allow-scripts` sandbox, svg in `sandbox=""`, an image as
+  an `<img>`, markdown / mermaid as the excerpt, a file as its icon — and a **pdf as its first page**, drawn
+  post-paint (`renderPendingPdfThumbs`, artifacts-state.ts, beside the Mermaid pass) by pdf.js (`pdfjs-dist` at
+  an EXACT version, `web/src/pdf-thumb-lib.ts`, its own chunk + its worker file, both on Trov's origin, fetched
+  the first time a PDF card is painted). It fetches the numbered raw URL, draws page 1 to a 640px-wide webp and
+  caches the object URL by that raw URL (org + slug + version, whose bytes never change); one file at a time.
+  The card shows the icon until then, and for good if the file can't be drawn (`pdfThumbFailed`). The PDF's
+  bytes are parsed by pdf.js in Trov's origin (the viewer itself still frames the raw route), so keep the pin
+  current with pdf.js's security releases.
 - **MCP** (every principal, `src/tools/artifacts-agent.ts`): `artifact_list`, `artifact_get` (text content inline
   up to `ARTIFACT_INLINE_MAX` = 64 KB — over it `content: null` + `content_omitted: true` unless
   `include_content: true`, and `query`'s assembled body is a one-line pointer instead; `warnings` still see
