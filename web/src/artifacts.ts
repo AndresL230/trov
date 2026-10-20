@@ -42,16 +42,17 @@ import {
 
 export { ARTIFACT_AREAS, ARTIFACT_KINDS };
 // What the app's first download needs — the state, the routes, a framed page's measured height, the
-// Mermaid post-paint pass and the ticket page's Artifacts block — is artifacts-state.ts; this module is
+// Mermaid and PDF-card post-paint passes and the ticket page's Artifacts block — is artifacts-state.ts; this module is
 // the lazy Artifacts chunk (artifacts-lazy.ts) and re-exports it unchanged.
 export {
   ART_FILTER_KEYS, initialArtCreate, initialArtUi, detailKey, diffKey, ART_ROUTE_NONE, setArtFrameHeight,
-  renderPendingMermaid, ticketArtifactsBlock, rawUrl, artifactFrame,
+  renderPendingMermaid, renderPendingPdfThumbs, ticketArtifactsBlock, rawUrl, artifactFrame,
   type ArtSlice, type ArtFilterKey, type ArtFilters, type ArtTicketRef, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
   type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtRoute, type ArtPerson, type ArtProps,
 } from "./artifacts-state";
 import {
   rawUrl, rawOf, artifactFrame, ART_FILTER_KEYS, detailKey, diffKey, NO_FILTERS, KIND_ICON, EYEBROW, frameHeight, mermaidSvgs, mermaidFailed, mermaidPending,
+  pdfThumbs, pdfThumbFailed, pdfThumbImg,
   type ArtSlice, type ArtFilterKey, type ArtSprintRef, type ArtLinkDraft, type ArtFile,
   ART_ROUTE_NONE, type ArtCreate, type ArtNewVersion, type ArtUi, type ArtScreen, type ArtProps, type ArtPerson, type ArtRoute,
 } from "./artifacts-state";
@@ -323,8 +324,15 @@ function thumb(a: ArtifactSummaryDTO): string {
       : src.split("\n").slice(0, 9).join("\n");
     return `<div style="padding:16px 20px;font-size:11.5px;line-height:1.6;color:var(--fg-55);white-space:pre-wrap;${a.kind === "mermaid" ? "font-family:var(--code)" : ""}">${esc(text)}</div>`;
   }
-  // pdf / file: the kind's icon.
-  return `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-40)"><span style="display:flex;flex-direction:column;align-items:center;gap:8px">${I.kind(a.kind, 30)}<span style="font-size:12px;color:var(--fg-55)">${a.kind.toUpperCase()} · ${esc(fmtKB(a.size_bytes))}</span></span></div>`;
+  // pdf: page 1 once renderPendingPdfThumbs has drawn it; until then (and when it can't be), the icon in a box
+  // the pass fills. file: the kind's icon.
+  const icon = `<div style="position:absolute;inset:0;display:grid;place-items:center;color:var(--fg-40)"><span style="display:flex;flex-direction:column;align-items:center;gap:8px">${I.kind(a.kind, 30)}<span style="font-size:12px;color:var(--fg-55)">${a.kind.toUpperCase()} · ${esc(fmtKB(a.size_bytes))}</span></span></div>`;
+  if (a.kind === "pdf") {
+    const drawn = pdfThumbs.get(raw);
+    if (drawn) return pdfThumbImg(drawn);
+    if (!pdfThumbFailed.has(raw)) return `<div data-art-pdfthumb="${attr(raw)}" style="position:absolute;inset:0">${icon}</div>`;
+  }
+  return icon;
 }
 
 /** The library's card grid — the real cards', the loading skeleton's and the empty layout's. */

@@ -103,7 +103,7 @@ import { repoChunk } from "./repo-lazy";
 import { isRepoScreenTab, REPO_RANGES, type RepoRange } from "@shared/repo";
 // Artifacts is its own chunk (artifacts-lazy.ts): the reducer and the file pickers run once it is in.
 import {
-  renderPendingMermaid, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
+  renderPendingMermaid, renderPendingPdfThumbs, setArtFrameHeight, detailKey, diffKey, initialArtCreate, ART_ROUTE_NONE, ART_FILTER_KEYS,
   type ArtScreen, type ArtRoute, type ArtFilterKey, type ArtFile,
 } from "./artifacts-state";
 import type { ArtEffect, ArtWrite } from "./artifacts";
@@ -735,6 +735,7 @@ function paintApp(): void {
   scrollActiveRow();
   updateGuideToc();
   renderPendingMermaid(mount);
+  renderPendingPdfThumbs(mount);
   // Reflect the current route in the URL hash so a reload restores it. The ticket
   // and sprint screens carry an id, so this is hashForRoute, not `#${screen}`.
   if (state.view === "app" || state.view === "platform") {

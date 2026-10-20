@@ -1,5 +1,5 @@
 // Artifacts' eager part (web-ui.md › The app's bundles): the screens' STATE and routes, a framed page's
-// measured height, the Mermaid post-paint pass (main.ts calls it after every paint) and the ticket
+// measured height, the Mermaid and PDF-card post-paint passes (main.ts calls them after every paint) and the ticket
 // page's Artifacts block. Everything else — the library, the viewer, the diff, the form, the dialogs
 // and the reducer — is artifacts.ts, the lazy Artifacts chunk (artifacts-lazy.ts), which re-exports
 // all of this unchanged.
@@ -256,6 +256,66 @@ export function renderPendingMermaid(root: ParentNode): void {
       mermaidFailed.add(key);
       for (const b of boxes()) { b.removeAttribute("data-art-mermaid"); b.textContent = "Couldn't render this diagram."; }
     }).finally(() => { mermaidInflight.delete(key); mermaidPending.delete(key); });
+  }
+}
+
+// PDF cards: page 1, drawn post-paint (renderPendingPdfThumbs, called by main.ts after each paint) by pdf.js
+// (`pdf-thumb-lib.ts`, its own chunk, the `pdfjs-dist` dependency at an EXACT version) into a module cache of
+// object URLs keyed by the raw URL (org + slug + version: a version's bytes never change), so a rerender inlines
+// the image at once. Until then, and for good when a file can't be drawn, the card shows the kind's icon. One
+// file at a time: a library of PDFs never holds more than one document in memory.
+export const pdfThumbs = new Map<string, string>();
+export const pdfThumbFailed = new Set<string>();
+const pdfThumbQueued = new Set<string>();
+const pdfThumbQueue: string[] = [];
+let pdfThumbBusy = false;
+/** The width page 1 is drawn at: a card is at most ~420 CSS px wide, drawn for a 1.5× screen. */
+const PDF_THUMB_WIDTH = 640;
+let pdfLib: Promise<typeof import("./pdf-thumb-lib")> | null = null;
+function loadPdfLib(): Promise<typeof import("./pdf-thumb-lib")> {
+  if (!pdfLib) {
+    pdfLib = import("./pdf-thumb-lib");
+    pdfLib.catch(() => { pdfLib = null; });
+  }
+  return pdfLib;
+}
+/** The card preview's image, once drawn. */
+export const pdfThumbImg = (src: string): string =>
+  `<img src="${attr(src)}" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top;display:block;background:#fff">`;
+/** Queue every PDF card a paint left waiting. Browser-only; never throws. */
+export function renderPendingPdfThumbs(root: ParentNode): void {
+  for (const el of Array.from(root.querySelectorAll<HTMLElement>("[data-art-pdfthumb]"))) {
+    const raw = el.dataset.artPdfthumb ?? "";
+    if (!raw || pdfThumbs.has(raw) || pdfThumbFailed.has(raw) || pdfThumbQueued.has(raw)) continue;
+    pdfThumbQueued.add(raw);
+    pdfThumbQueue.push(raw);
+  }
+  void drainPdfThumbs();
+}
+async function drainPdfThumbs(): Promise<void> {
+  if (pdfThumbBusy) return;
+  pdfThumbBusy = true;
+  try {
+    for (let raw = pdfThumbQueue.shift(); raw !== undefined; raw = pdfThumbQueue.shift()) {
+      try {
+        const res = await fetch(raw, { credentials: "same-origin" });
+        if (!res.ok) throw new Error(String(res.status));
+        const lib = await loadPdfLib();
+        const url = URL.createObjectURL(await lib.pdfFirstPage(await res.arrayBuffer(), PDF_THUMB_WIDTH));
+        pdfThumbs.set(raw, url);
+        // Every card showing this file, found now (a rerender may have replaced the one that asked).
+        for (const b of Array.from(document.querySelectorAll<HTMLElement>(`[data-art-pdfthumb="${raw.replace(/["\\]/g, "\\$&")}"]`))) {
+          b.removeAttribute("data-art-pdfthumb");
+          b.innerHTML = pdfThumbImg(url);
+        }
+      } catch {
+        pdfThumbFailed.add(raw);
+      } finally {
+        pdfThumbQueued.delete(raw);
+      }
+    }
+  } finally {
+    pdfThumbBusy = false;
   }
 }
 
