@@ -256,9 +256,7 @@ environment's TWO deployables (the frontend URL, `apiUrl + healthPath`), all CON
 sequentially, four dead targets would burn 4 × the timeout; each target still times itself, so `health_ms`
 is unaffected). `redirect: "follow"` + `res.ok` means a redirect that LANDS on a 200 counts as up — a
 reachability check, not a content check. A thrown fetch is recorded as down, never an exception out of the
-cron. A URL on a name reserved never to resolve (`reservedHost`: `.example`, `.test`, `.invalid`, `example.com` /
-`.net` / `.org`, such as the local seed's `*.sapling.example.com`) is skipped like an unset one: no request, no row,
-so local dev neither logs DNS failures nor writes "down" over the seeded readings. **The ping goes out the way a visitor comes in**: `wrangler.toml` sets `global_fetch_strictly_public`, so
+cron. **The ping goes out the way a visitor comes in**: `wrangler.toml` sets `global_fetch_strictly_public`, so
 the Worker's `fetch()` passes through Cloudflare's front door even for a host on its own zone. Without the flag
 a fetch to the Worker's own zone skips the front door and goes to the zone's origin, and trov.dev has no origin
 behind the Worker — so the ping of Trov's own deployment always failed and its Repo dashboard read production
