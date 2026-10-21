@@ -38,7 +38,10 @@ function state(o: Partial<AppState> = {}, role: "owner" | "member" = "owner"): A
     me: { handle: "meilin", name: "Meilin Zhao", color: "rose", avatar_url: null } as AppState["me"],
     myOrgs: { status: "ok", data: { orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role }] } } as unknown as AppState["myOrgs"],
     badges: { proposals: 0, decisions: 0, unplaced: 0 },
-    home: { ...initialHomeUi(), data: { status: "ok", data: home() }, feed: { status: "ok", data: [] } },
+    // Every read the head waits on has landed (homeHeadReady).
+    orgMe: { status: "ok", data: null }, mywork: { status: "ok", data: null }, sprints: { status: "ok", data: [] },
+    handoffs: { status: "ok", data: [] }, repo: { status: "ok", data: null },
+    home: { ...initialHomeUi(), data: { status: "ok", data: home() }, feed: { status: "ok", data: [] }, github: { status: "ok", data: null } },
     ...o,
   };
 }
@@ -75,6 +78,20 @@ describe("Home — the page", () => {
     const rows = [...html.matchAll(/class="hm-attn-title">([^<]+)</g)].map((m) => m[1]);
     expect(rows[0]).toBe("Deploy of api in production failed");
     expect(rows[1]).toBe("3 waiting in Review");
+  });
+
+  it("the headline and status line wait for every read they are built on, then hold through a refresh", () => {
+    const s = state({ handoffs: { status: "loading", data: [] }, orgMe: { status: "ok", data: { repos: { primary: "acme/app", all: ["acme/app"] } } as never } });
+    const before = page(s);
+    expect(before).toMatch(/class="hm-h hm-h-pending/);
+    expect(before).toContain("hm-status-pending");
+    expect(text(before)).not.toContain("need");
+    s.handoffs = { status: "ok", data: [] };
+    const after = page(s);
+    expect(after).not.toContain("hm-h-pending");
+    expect(text(after)).toContain("All clear · nothing needs you");
+    s.handoffs = { status: "loading", data: [] }; // a refresh: what it said stays
+    expect(text(page(s))).toContain("All clear · nothing needs you");
   });
 
   it("counts Unplaced in Review's row", () => {

@@ -41,6 +41,8 @@ export interface HomeUi {
   attnOpen: boolean;
   /** Which headline of the pool; moves on every entry to Home. */
   headIdx: number;
+  /** Every read the head is built on has landed once (`homeHeadReady`); it then holds, and a refresh only updates it. */
+  headReady: boolean;
   /** The question asked from the bar and its answer, streaming under it (null: none). */
   answer: HomeAnswer | null;
 }
@@ -58,7 +60,7 @@ export interface HomeAnswer {
   wrong: "closed" | "open" | "sent";
 }
 export function initialHomeUi(): HomeUi {
-  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0, answer: null };
+  return { data: { status: "idle", data: null }, feed: { status: "idle", data: [] }, github: { status: "idle", data: null }, range: "7", q: "", mode: "search", focused: false, active: 0, results: null, attnOpen: false, headIdx: 0, headReady: false, answer: null };
 }
 
 const mk = (k: StateKind): HomeMark => ({ shape: STATE_KIND[k].shape, tone: STATE_KIND[k].tone });
@@ -321,13 +323,24 @@ export function homeDropRows(s: AppState): { label: string; rows: QuickRow[] }[]
   return groups;
 }
 
+/** The headline and the status line speak only once every read they are built on has landed (read or failed): drawn
+ *  from part of them, they said one thing and then another a moment later ("Good afternoon." → "What needs a
+ *  decision?", "1 thing needs you" → "3 things"). Latched on the Home state, so a refresh only updates them. */
+function homeHeadReady(s: AppState): boolean {
+  if (s.home.headReady) return true;
+  const landed = (l: { status: string }): boolean => l.status === "ok" || l.status === "error";
+  const review = s.badges.proposals !== undefined || (landed(s.proposals) && landed(s.draftAdrs) && landed(s.needsTriage));
+  const ready = !!s.me && review && [s.orgMe, s.mywork, s.sprints, s.handoffs, s.repo, s.home.data, s.home.github].every(landed);
+  if (ready) s.home.headReady = true;
+  return ready;
+}
+
 export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps {
   const admin = viewerIsAdmin(s);
   const { rows, failing } = attentionRows(s);
   const actionable = rows.filter((r) => r.action).length;
   const empty = s.orgMe.status === "ok" && !(s.orgMe.data?.repos.all.length) && s.sprints.status === "ok" && s.sprints.data.length === 0 && s.mywork.status === "ok" && !(s.mywork.data?.tickets.length);
-  // The status line claims only what has landed: the review counts (badges at boot) and the handoffs read.
-  const known = s.badges.proposals !== undefined || s.proposals.status === "ok";
+  const known = homeHeadReady(s);
   const status = !known ? null
     : failing ? { mark: mk("bad"), text: `${failing} · ${actionable} need${actionable === 1 ? "s" : ""} you` }
     : actionable > 0 ? { mark: rows[0].mark, text: `${plural(actionable, "thing")} need${actionable === 1 ? "s" : ""} you` }
@@ -360,7 +373,7 @@ export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps 
   const feedToday = s.home.feed.data.filter((e) => new Date(e.created_at).toDateString() === new Date().toDateString()).length;
   const team = teamRows(s);
   return {
-    head: { headline: headline(s, !!failing, rows.length === 0, empty), status, attn: { open: s.home.attnOpen, rows: shown, more: rows.length - shown.length, countText: actionable ? `${actionable} need${actionable === 1 ? "s" : ""} you` : "" } },
+    head: { headline: known ? headline(s, !!failing, rows.length === 0, empty) : null, status, attn: { open: s.home.attnOpen, rows: shown, more: rows.length - shown.length, countText: actionable ? `${actionable} need${actionable === 1 ? "s" : ""} you` : "" } },
     search: { q: s.home.q, mode: s.home.mode, askAvail: askAvailable(s), focused: s.home.focused, groups, none, mac },
     answer: s.home.answer ? homeAnswerView(s.home.answer) : answer,
     cols: [repositoriesCol(s, admin), roadmapCol(s, admin), forYouCol(s)],

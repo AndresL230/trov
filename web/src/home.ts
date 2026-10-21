@@ -60,7 +60,8 @@ export interface HomeAttnRow {
   action: (HomeAct & { label: string }) | null;
 }
 export interface HomeHead {
-  headline: string;
+  /** null while the reads it is picked from are out (`homeHeadReady`): its shape draws. */
+  headline: string | null;
   /** The status line: the first row's mark and a count of what needs the viewer; null while that is not known. */
   status: { mark: HomeMark; text: string } | null;
   attn: { open: boolean; rows: HomeAttnRow[]; more: number; countText: string };
@@ -86,7 +87,9 @@ function headView(h: HomeHead): string {
       </div>`
     : "";
   return `<div class="hm-head">
-    <h2 class="hm-h cnpy-rise" style="--i:0">${esc(h.headline)}</h2>
+    ${h.headline !== null
+      ? `<h2 class="hm-h cnpy-rise" style="--i:0">${esc(h.headline)}</h2>`
+      : `<h2 class="hm-h hm-h-pending cnpy-rise" style="--i:0" aria-busy="true"><span class="cnpy-sk" style="width:340px"></span></h2>`}
     <div class="hm-statusrow cnpy-rise" style="--i:1">${status}${pop}</div>
   </div>`;
 }
