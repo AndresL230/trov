@@ -55,6 +55,18 @@ describe("send_handoff", () => {
     expect((await all(env.DB, `SELECT * FROM feed WHERE summary LIKE '%Once only%'`)).length).toBe(1);
   });
 
+  it("one session may send several DIFFERENT handoffs; only an identical retry replays", async () => {
+    const send = async (body: string) => JSON.parse((await call("AndresL230", "send_handoff", { body, session: "sess-mcp-many" })).text) as { id: number; replayed?: boolean };
+    const a = await send("First of many");
+    const b = await send("Second of many");
+    const c = await send("Third of many");
+    expect(new Set([a.id, b.id, c.id]).size).toBe(3);
+    expect([a.replayed, b.replayed, c.replayed]).toEqual([undefined, undefined, undefined]);
+    const again = await send("Second of many");
+    expect(again).toEqual({ id: b.id, url: expect.any(String), replayed: true });
+    expect((await all(env.DB, `SELECT id FROM handoffs WHERE body LIKE '% of many'`)).length).toBe(3);
+  });
+
   it("an unknown recipient is an error that writes nothing", async () => {
     const r = await call("AndresL230", "send_handoff", { body: "x", recipient: "ghost" });
     expect(r.isError).toBe(true);

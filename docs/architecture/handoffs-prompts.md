@@ -38,6 +38,10 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
 - **A handoff is an addressed message, not knowledge** — `src/tools/handoffs.ts` writes it directly (no vocab,
   no confidence, never staged). The sender is always the principal. A create carrying a session id is
   replay-safe through `processed_items` (item_type `handoff`, same session-id + item-index key as `/ingest`).
+  Over MCP (and an upload's PUT) the item index is DERIVED from the content (`contentIndex`: 48 bits of a
+  SHA-256 over the resolved recipient, body, full context, prompt title and the prompt text's SHA-256), so only
+  an identical retry replays and a session may send as many handoffs as it likes; the web route's explicit
+  `item_index` is used as given. There is no per-session cap anywhere.
   **Claim is ONE conditional UPDATE** (`… WHERE status = 'pending' AND (recipient = 'anyone' OR recipient = me OR
   sender = me)`); on 0 changes it re-reads for 404 / 403 / 409 `handoff is <status>`, so a race has one winner.
   Expire: sender or named recipient, pending only. Create writes a feed row through `append_feed` (no tags).
@@ -108,7 +112,7 @@ kept at the LATEST version by triggers on BOTH tables). DTOs + helpers: `shared/
   pending handoff — sender (the bearer principal), recipient, body, context, the prompt's title, the declared
   sha256 + size, the session ledger key and the org's link base — on a single-use token (`handoff_upload_tokens`,
   only the token's SHA-256 stored, the artifact uploads' 5-minute TTL), answering `{ upload_url, expires_at }`.
-  A session item that already made its handoff answers `{ id, url, replayed: true }` instead and mints nothing.
+  A session that already sent this same handoff answers `{ id, url, replayed: true }` instead and mints nothing.
   The PUT is the artifact route, `PUT /api/artifacts/upload/<token>` (`src/artifacts/upload.ts` tries doc-image
   tokens, then handoff tokens, then artifact ones), so there is no new unauthenticated route (CLAUDE.md
   invariant 8). `consumeHandoffUploadToken`, in order: used or expired → 410 `gone`; a body over the cap → 413;
