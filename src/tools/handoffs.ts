@@ -7,7 +7,9 @@
 //   · a claim is ONE conditional UPDATE (`… WHERE status = 'pending' AND <may
 //     claim>`), so two sessions racing on an `anyone` handoff cannot both win;
 //   · a create that carries a session id is replay-safe through processed_items,
-//     keyed exactly like /ingest and record_session (session id + item index).
+//     keyed like /ingest and record_session (session id + item index). An agent's
+//     index is derived from the handoff's content (`contentIndex`), so a session
+//     may send as many handoffs as it likes and only an identical retry replays.
 //
 // A handoff's two ids (canopy-multitenancy.md §12 Q2), as for a ticket (./tickets.ts): `number` is
 // the per-org number (0042_organizations — allocated by the insert trigger) and it is what every function here
@@ -117,6 +119,22 @@ export async function getHandoff(ctx: TenantContext, number: number): Promise<Ha
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+/**
+ * A replay key. `itemIndex` is the caller's own (the web route's `item_index`); left out, it is derived
+ * from the handoff's content, so a session's DIFFERENT handoffs each get their own ledger row.
+ */
+export type HandoffLedger = { sessionId: string; itemIndex?: number };
+
+/**
+ * The item index for a session's handoff with this content: the first 48 bits of a SHA-256 over the
+ * resolved recipient, the body, the full context and the prompt (its title and the SHA-256 of its text —
+ * the same digest the upload form declares, so an inline send and an upload of one prompt agree).
+ */
+async function contentIndex(recipient: string, body: string, context: HandoffContext, promptTitle: string | null, promptSha256: string | null): Promise<number> {
+  const hex = await sha256Hex(JSON.stringify([recipient, body, context, promptTitle, promptSha256]));
+  return parseInt(hex.slice(0, 12), 16);
+}
+
 /** The handoff a session item already created, or null; a ledger row with no handoff behind it is a conflict. */
 async function replayedHandoff(ctx: TenantContext, ledger?: { sessionId: string; itemIndex: number }): Promise<HandoffView | null> {
   if (!ledger) return null;
@@ -146,17 +164,21 @@ function fullContext(input: HandoffCreateInput["context"]): HandoffContext {
 }
 
 /**
- * Leave a handoff. `ledger` (an agent's session id + item index) makes a retried
- * call return the FIRST call's handoff instead of writing a second row — the
+ * Leave a handoff. `ledger` (an agent's session id, and an item index or none — then derived from the content) makes a
+ * retried call return the FIRST call's handoff instead of writing a second row — the
  * handoff and its ledger row are one batch, and the insert is guarded by the ledger.
  */
 export async function createHandoff(
-  ctx: TenantContext, sender: string, input: HandoffCreateInput, ledger?: { sessionId: string; itemIndex: number },
+  ctx: TenantContext, sender: string, input: HandoffCreateInput, ledger?: HandoffLedger,
 ): Promise<{ handoff: HandoffView; replayed: boolean }> {
-  const prior = await replayedHandoff(ctx, ledger);
-  if (prior) return { handoff: prior, replayed: true };
   const recipient = await resolveRecipient(ctx, input.recipient);
   const context = fullContext(input.context);
+  const key = ledger && {
+    sessionId: ledger.sessionId,
+    itemIndex: ledger.itemIndex ?? await contentIndex(recipient, input.body, context, input.prompt?.title ?? null, input.prompt ? await sha256Hex(input.prompt.body) : null),
+  };
+  const prior = await replayedHandoff(ctx, key);
+  if (prior) return { handoff: prior, replayed: true };
   const now = new Date();
   const created_at = now.toISOString();
   const expires_at = new Date(now.getTime() + HANDOFF_TTL_MS).toISOString();
@@ -164,29 +186,29 @@ export async function createHandoff(
   // ledger (written by nobody yet), so a retry — or a racing twin — that slips past the read above inserts nothing
   // and answers with the first one's handoff. The ledger row reads `changes()`, so it is written only with a handoff;
   // its `ref` is that handoff's number (the insert trigger allocated it; `last_insert_rowid()` is the handoff's row).
-  const stmts: Stmt[] = [ledger
+  const stmts: Stmt[] = [key
     ? stmt(ctx,
       `INSERT INTO handoffs (org_id, sender, recipient, status, body, context, prompt_title, prompt_body, created_at, expires_at)
        SELECT ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?
         WHERE NOT EXISTS (SELECT 1 FROM processed_items WHERE org_id = ? AND session_id = ? AND item_index = ?)`,
       ctx.orgId, sender, recipient, input.body, JSON.stringify(context),
-      input.prompt?.title ?? null, input.prompt?.body ?? null, created_at, expires_at, ctx.orgId, ledger.sessionId, ledger.itemIndex)
+      input.prompt?.title ?? null, input.prompt?.body ?? null, created_at, expires_at, ctx.orgId, key.sessionId, key.itemIndex)
     : stmt(ctx,
       `INSERT INTO handoffs (org_id, sender, recipient, status, body, context, prompt_title, prompt_body, created_at, expires_at)
        VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
       ctx.orgId, sender, recipient, input.body, JSON.stringify(context),
       input.prompt?.title ?? null, input.prompt?.body ?? null, created_at, expires_at)];
-  if (ledger) {
+  if (key) {
     stmts.push(stmt(ctx,
       `INSERT OR IGNORE INTO processed_items (org_id, session_id, item_index, item_type, outcome, ref, created_at)
        SELECT ?, ?, ?, 'handoff', 'written', (SELECT CAST(number AS TEXT) FROM handoffs WHERE id = last_insert_rowid() AND org_id = ?), ?
         WHERE changes() > 0`,
-      ctx.orgId, ledger.sessionId, ledger.itemIndex, ctx.orgId, created_at));
+      ctx.orgId, key.sessionId, key.itemIndex, ctx.orgId, created_at));
   }
   const [inserted] = await batch(ctx, stmts);
   if (!inserted.meta.changes) {
     // The ledger already held this session item: the first call's handoff is the answer.
-    const again = await replayedHandoff(ctx, ledger);
+    const again = await replayedHandoff(ctx, key);
     if (again) return { handoff: again, replayed: true };
     throw new HandoffError("conflict", "this session item was already recorded");
   }
@@ -229,16 +251,19 @@ export type HandoffUploadMint =
 
 /**
  * The upload form's first half: validate everything a create would (the recipient is checked now, and
- * again at the PUT), then mint the token. A session item that already made a handoff returns it instead
- * (`replayed`), so a retried send never mints a second one. `linkBase` is the app link of the caller's org
+ * again at the PUT), then mint the token. A session that already sent this same handoff gets it back
+ * instead (`replayed`), so a retried send never mints a second one. `linkBase` is the app link of the caller's org
  * (`<origin>/<slug>`), which the PUT's `url` is built from. Writes only the token row.
  */
 export async function mintHandoffUpload(
-  ctx: TenantContext, sender: string, input: HandoffUploadInput, linkBase: string, ledger?: { sessionId: string; itemIndex: number },
+  ctx: TenantContext, sender: string, input: HandoffUploadInput, linkBase: string, ledger?: HandoffLedger,
 ): Promise<HandoffUploadMint> {
-  const prior = await replayedHandoff(ctx, ledger);
-  if (prior) return { replayed: true, handoff: prior };
   const recipient = await resolveRecipient(ctx, input.recipient);
+  const prior = await replayedHandoff(ctx, ledger && {
+    sessionId: ledger.sessionId,
+    itemIndex: ledger.itemIndex ?? await contentIndex(recipient, input.body, fullContext(input.context), input.prompt.title, input.prompt.sha256),
+  });
+  if (prior) return { replayed: true, handoff: prior };
   const token = randomToken();
   const now = Date.now();
   const expires_at = new Date(now + ARTIFACT_UPLOAD_TTL_MS).toISOString();
@@ -326,7 +351,7 @@ export async function consumeHandoffUploadToken(
     // The ledger key is STABLE across retried PUTs: the session's, else the token's own hash. A create that wrote its
     // handoff and then failed after it (the feed line, the router) released the token below — the retried PUT then
     // finds the ledger row and answers with that handoff instead of making a second one.
-    const ledger = { sessionId: t.session_id ?? `upload:${hash}`, itemIndex: 0 };
+    const ledger: HandoffLedger = t.session_id ? { sessionId: t.session_id } : { sessionId: `upload:${hash}`, itemIndex: 0 };
     const { handoff, replayed } = await createHandoff(ctx, t.principal, input, ledger);
     return { handoff, replayed, url: `${t.link_base}/#handoffs/${handoff.id}` };
   } catch (e) {
