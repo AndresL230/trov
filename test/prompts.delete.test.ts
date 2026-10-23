@@ -1,4 +1,4 @@
-// Prompt soft delete (0035 PART C): POST /api/prompts/:slug/delete + /restore.
+// Prompt soft delete (0035 PART C): POST /api/o/saplinglearn/prompts/:slug/delete + /restore.
 // The author or an admin deletes; the prompt leaves EVERY read (library, detail,
 // versions, /search/quick, MCP search_prompts / get_prompt, prompts_fts) while its
 // versions stay in D1; its slug stays reserved (409); restore brings it all back; a
@@ -35,8 +35,8 @@ async function req(method: string, path: string, who: string, body?: unknown): P
     body: body === undefined ? undefined : JSON.stringify(body),
   }, env);
 }
-const del = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/delete`, who, {});
-const restore = (who: string, slug = SLUG) => req("POST", `/api/prompts/${slug}/restore`, who, {});
+const del = (who: string, slug = SLUG) => req("POST", `/api/o/saplinglearn/prompts/${slug}/delete`, who, {});
+const restore = (who: string, slug = SLUG) => req("POST", `/api/o/saplinglearn/prompts/${slug}/restore`, who, {});
 
 async function mcp(handle: string, name: string, args: Record<string, unknown> = {}): Promise<{ text: string; isError?: boolean }> {
   const server = buildTrovMcpServer({ ...(env as unknown as Env), PUBLIC_ORIGIN: "https://trov.example/" } as Env, await bearerCtx(handle));
@@ -55,11 +55,11 @@ async function mcp(handle: string, name: string, args: Record<string, unknown> =
 
 /** Every surface a prompt can be read on — true where it shows. */
 async function visibility(slug = SLUG): Promise<Record<string, boolean>> {
-  const list = (await (await req("GET", "/api/prompts", OTHER)).json()) as { prompts: PromptSummary[] };
-  const listQ = (await (await req("GET", "/api/prompts?q=zebra", OTHER)).json()) as { prompts: PromptSummary[] };
-  const detail = await req("GET", `/api/prompts/${slug}`, OTHER);
-  const versions = await req("GET", `/api/prompts/${slug}/versions`, OTHER);
-  const quick = (await (await req("GET", "/search/quick?q=zebra", OTHER)).json()) as { result: QuickSearchResult };
+  const list = (await (await req("GET", "/api/o/saplinglearn/prompts", OTHER)).json()) as { prompts: PromptSummary[] };
+  const listQ = (await (await req("GET", "/api/o/saplinglearn/prompts?q=zebra", OTHER)).json()) as { prompts: PromptSummary[] };
+  const detail = await req("GET", `/api/o/saplinglearn/prompts/${slug}`, OTHER);
+  const versions = await req("GET", `/api/o/saplinglearn/prompts/${slug}/versions`, OTHER);
+  const quick = (await (await req("GET", "/api/o/saplinglearn/search/quick?q=zebra", OTHER)).json()) as { result: QuickSearchResult };
   const search = JSON.parse((await mcp(OTHER, "search_prompts", { q: "zebra" })).text) as { slug: string }[];
   const searchAll = JSON.parse((await mcp(OTHER, "search_prompts", {})).text) as { slug: string }[];
   const get = await mcp(OTHER, "get_prompt", { slug });
@@ -78,7 +78,7 @@ async function visibility(slug = SLUG): Promise<Record<string, boolean>> {
 }
 const everywhere = (v: boolean) => ({ list: v, listQ: v, detail: v, versions: v, quick: v, mcpSearch: v, mcpSearchAll: v, mcpGet: v, fts: v });
 
-describe("POST /api/prompts/:slug/delete", () => {
+describe("POST /api/o/saplinglearn/prompts/:slug/delete", () => {
   it("the author deletes: gone from every read, versions kept in D1, the delete stamped", async () => {
     expect(await visibility()).toEqual(everywhere(true));
     const res = await del(AUTHOR);
@@ -86,8 +86,8 @@ describe("POST /api/prompts/:slug/delete", () => {
     expect(await res.json()).toEqual({ ok: true, slug: SLUG, title: "Zebra review" });
 
     expect(await visibility()).toEqual(everywhere(false));
-    expect((await (await req("GET", `/api/prompts/${SLUG}`, OTHER)).json())).toEqual({ error: "not found" }); // same as unknown
-    expect((await (await req("GET", `/api/prompts/no-such-prompt`, OTHER)).json())).toEqual({ error: "not found" });
+    expect((await (await req("GET", `/api/o/saplinglearn/prompts/${SLUG}`, OTHER)).json())).toEqual({ error: "not found" }); // same as unknown
+    expect((await (await req("GET", `/api/o/saplinglearn/prompts/no-such-prompt`, OTHER)).json())).toEqual({ error: "not found" });
     expect(JSON.parse((await mcp(OTHER, "get_prompt", { slug: SLUG })).text)).toMatchObject({ code: "not_found" });
 
     const row = await first<{ deleted_at: string | null; deleted_by: string | null; use_count: number }>(env.DB, `SELECT deleted_at, deleted_by, use_count FROM prompts WHERE slug = ?`, SLUG);
@@ -99,9 +99,9 @@ describe("POST /api/prompts/:slug/delete", () => {
 
   it("a deleted prompt takes no writes: tags, publish, use, a second delete — all not found", async () => {
     await del(AUTHOR);
-    expect((await req("POST", `/api/prompts/${SLUG}/tags`, AUTHOR, { tags: ["ui"] })).status).toBe(404);
-    expect((await req("POST", `/api/prompts/${SLUG}/publish`, AUTHOR, { version: 2 })).status).toBe(404);
-    expect((await req("POST", `/api/prompts/${SLUG}/used`, AUTHOR, {})).status).toBe(404);
+    expect((await req("POST", `/api/o/saplinglearn/prompts/${SLUG}/tags`, AUTHOR, { tags: ["ui"] })).status).toBe(404);
+    expect((await req("POST", `/api/o/saplinglearn/prompts/${SLUG}/publish`, AUTHOR, { version: 2 })).status).toBe(404);
+    expect((await req("POST", `/api/o/saplinglearn/prompts/${SLUG}/used`, AUTHOR, {})).status).toBe(404);
     expect(await recordPromptUse(systemCtx(), SLUG)).toBe(false);
     expect((await del(AUTHOR)).status).toBe(404);
   });
@@ -140,16 +140,16 @@ describe("POST /api/prompts/:slug/delete", () => {
   });
 });
 
-describe("POST /api/prompts/:slug/restore", () => {
+describe("POST /api/o/saplinglearn/prompts/:slug/restore", () => {
   it("brings it back everywhere, exactly as it was", async () => {
-    const before = (await (await req("GET", `/api/prompts/${SLUG}`, OTHER)).json()) as { prompt: PromptDetail };
+    const before = (await (await req("GET", `/api/o/saplinglearn/prompts/${SLUG}`, OTHER)).json()) as { prompt: PromptDetail };
     await del(AUTHOR);
     const res = await restore(AUTHOR);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: true; prompt: PromptDetail };
     expect(body.prompt.slug).toBe(SLUG);
     expect(await visibility()).toEqual(everywhere(true));
-    const after = (await (await req("GET", `/api/prompts/${SLUG}`, OTHER)).json()) as { prompt: PromptDetail };
+    const after = (await (await req("GET", `/api/o/saplinglearn/prompts/${SLUG}`, OTHER)).json()) as { prompt: PromptDetail };
     expect({ ...after.prompt, use_count: 0, last_used_at: null }).toEqual({ ...before.prompt, use_count: 0, last_used_at: null });
     expect(await first(env.DB, `SELECT deleted_at, deleted_by FROM prompts WHERE slug = ?`, SLUG)).toEqual({ deleted_at: null, deleted_by: null });
   });
@@ -170,7 +170,7 @@ describe("POST /api/prompts/:slug/restore", () => {
 });
 
 describe("a deleted prompt's slug stays reserved", () => {
-  const save = (who: string, body: Record<string, unknown>) => req("POST", "/api/prompts", who, body);
+  const save = (who: string, body: Record<string, unknown>) => req("POST", "/api/o/saplinglearn/prompts", who, body);
 
   it("a new prompt with that slug is a 409 that names the fix — nothing written", async () => {
     await del(AUTHOR);

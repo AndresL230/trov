@@ -13,9 +13,12 @@ beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 // POST /tickets/:id/delete — a HARD delete of a NATIVE ticket, any signed-in member.
 // A ticket mirrored from a GitHub issue is refused (403) and left exactly as it was.
 
+/** An org route: SaplingLearn's prefix, the org every cookie here belongs to. */
+const ORG = "/api/o/saplinglearn";
+
 const post = (path: string, cookie: string, body?: unknown) =>
   app.request(
-    path,
+    `${ORG}${path}`,
     { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) },
     env
   );
@@ -48,7 +51,7 @@ describe("POST /tickets/:id/delete", () => {
     }
     expect(await count(`SELECT COUNT(*) AS n FROM tickets_fts WHERE tickets_fts MATCH 'zebra'`)).toBe(0);
     expect((await first<{ parent_id: number | null }>(env.DB, `SELECT parent_id FROM tickets WHERE id = ?`, kid.id))?.parent_id).toBeNull();
-    expect((await app.request(`/tickets/${t.id}`, { headers: { cookie } }, env)).status).toBe(404);
+    expect((await app.request(`${ORG}/tickets/${t.id}`, { headers: { cookie } }, env)).status).toBe(404);
 
     // The number is never reissued.
     const next = await createTicket(cookie, { title: "Next" });

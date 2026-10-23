@@ -21,7 +21,8 @@ import prMerged from "./fixtures/gh-pr-merged.json";
 import workflowRun from "./fixtures/gh-workflow-run.json";
 
 const e = env as unknown as Env;
-const LEGACY_SECRET = "test-webhook-secret"; // vitest.config.ts — the Worker's GITHUB_WEBHOOK_SECRET
+const LEGACY_SECRET = "test-webhook-secret"; // vitest.config.ts — the Worker's old GITHUB_WEBHOOK_SECRET, no longer read
+const SECRET_A = "whsec_sapling_0123456789abcdef012345";
 const SECRET_B = "whsec_beta_0123456789abcdef0123456789";
 const REPO_A = "SaplingLearn/sapling";
 const REPO_B = "beta-co/app";
@@ -40,7 +41,8 @@ async function deliver(eventName: string, payload: unknown, o: { secret?: string
     method: "POST", body, headers: { "x-github-event": eventName, "content-type": "application/json", ...(sig === null ? {} : { "x-hub-signature-256": sig }) },
   }), o.env ?? e, execCtx);
 }
-/** The same event through an org's OLD per-repo (or legacy) webhook, signed with that hook's secret. */
+/** The same event through an org's OLD per-repo webhook, signed with that hook's secret (`hook` null: the
+ *  removed id-less `/webhook/github`). */
 async function deliverOld(hook: string | null, secret: string, eventName: string, payload: unknown): Promise<Response> {
   const body = JSON.stringify(payload);
   return worker.fetch(new Request(`https://trov.test/webhook/github${hook === null ? "" : `/${hook}`}`, {
@@ -72,7 +74,7 @@ const audit = (org: string) => all<{ actor: string; action: string; target: stri
 
 /** SaplingLearn and Acme, each with its primary repository connected through its OWN installation. */
 async function twoOrgs(): Promise<void> {
-  await addOrgRepo(REPO_A, ORG_A, { id: SAPLING_HOOK, legacyHook: true });
+  await addOrgRepo(REPO_A, ORG_A, { id: SAPLING_HOOK });
   await addOrgRepo(REPO_B, ORG_B, { id: HOOK_B });
   await run(env.DB, `UPDATE org_repos SET connection = 'app'`);
   await seedInstallation(ORG_A, INST_A, "SaplingLearn");
@@ -224,13 +226,18 @@ describe("one event through BOTH paths (the cut-over)", () => {
     expect(await rows()).toBe(once);
     expect(JSON.parse(once).events).toHaveLength(1);
 
-    // SaplingLearn: its LEGACY hook first, then the App.
-    const legacy = await deliverOld(null, LEGACY_SECRET, "issues", issue(REPO_A, INST_A, 9));
-    expect(legacy.status).toBe(200);
-    const afterLegacy = await all(env.DB, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ?`, ORG_A);
+    // SaplingLearn: the old id-less hook (signed with the Worker's old secret) is gone and writes nothing; its
+    // per-repo hook first, then the App.
+    const before = await everything();
+    expect((await deliverOld(null, LEGACY_SECRET, "issues", issue(REPO_A, INST_A, 9))).status).toBe(404);
+    expect(await everything()).toBe(before);
+    await setSecret(await tenantCtx("AndresL230"), "github_webhook", SAPLING_HOOK, SECRET_A);
+    const old = await deliverOld(SAPLING_HOOK, SECRET_A, "issues", issue(REPO_A, INST_A, 9));
+    expect(old.status).toBe(200);
+    const afterOld = await all(env.DB, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ?`, ORG_A);
     const viaApp = await deliver("issues", issue(REPO_A, INST_A, 9));
     expect(await viaApp.json()).toMatchObject({ ok: true, captured: 0, unchanged: 1 });
-    expect(await all(env.DB, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ?`, ORG_A)).toEqual(afterLegacy);
+    expect(await all(env.DB, `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ?`, ORG_A)).toEqual(afterOld);
     expect(await all(env.DB, `SELECT org_id, source_ref FROM tickets`)).toEqual([{ org_id: ORG_A, source_ref: `${REPO_A}#9` }]);
     expect(await all(env.DB, `SELECT COUNT(*) AS n FROM events WHERE org_id = ?`, ORG_A)).toEqual([{ n: 1 }]);
   });
@@ -262,7 +269,7 @@ describe("the follow-up reads", () => {
     expect(reads[0].url).toContain(`/repos/${REPO_B}/actions/runs/`);
     expect(reads[0].auth).toBe(`Bearer ${gh.tokenFor(INST_B)}`);
     expect(reads[1].url).toContain(`/repos/${REPO_A}/actions/runs/`);
-    expect(reads[1].auth).toBe(`Bearer ${gh.tokenFor(INST_A)}`); // SaplingLearn too: the installation outranks the Worker's legacy token
+    expect(reads[1].auth).toBe(`Bearer ${gh.tokenFor(INST_A)}`); // SaplingLearn too: the Worker's old token is never read
     expect(gh.tokenFor(INST_A)).not.toBe(gh.tokenFor(INST_B));
     expect(gh.seen.filter((s) => s.url.includes("/access_tokens")).map((s) => s.url)).toEqual([
       `https://api.github.com/app/installations/${INST_B}/access_tokens`, `https://api.github.com/app/installations/${INST_A}/access_tokens`,

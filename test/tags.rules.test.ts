@@ -308,11 +308,11 @@ describe("cookie routes", () => {
     expect((await call<TagListDTO>("GET", `${BASE}/tags`, owner)).json.suggestions.map((s) => s.name)).toEqual(["wanted"]);
     expect((await call<TagPageDTO>("GET", `${BASE}/tags/auth`, member)).json.tag.name).toBe("auth");
     expect((await call("GET", `${BASE}/tags/nope`, member)).status).toBe(404);
-    // The alias for a person with one org answers the same.
-    expect((await call<TagListDTO>("GET", `/api/tags`, member)).json.tags.length).toBe(6);
+    // Only under the org's prefix: the old one-org alias is gone.
+    expect((await call("GET", `/api/tags`, member)).status).toBe(404);
   });
 
-  it("a member's write is a 403 with nothing written; an admin's goes through, at both mounts", async () => {
+  it("a member's write is a 403 with nothing written; an admin's goes through", async () => {
     const [member, owner] = [await cookieFor(MEMBER), await cookieFor(OWNER)];
     for (const [method, path, body] of [
       ["POST", "/tags", { name: "nope" }], ["PUT", "/tags/auth", { name: "identity" }], ["POST", "/tags/auth/merge", { into: "ui" }],
@@ -324,7 +324,7 @@ describe("cookie routes", () => {
     expect(await names()).toEqual(STARTER_TAGS.map((t) => t.name));
 
     expect((await call("POST", `${BASE}/tags`, owner, { name: "billing", description: "Invoices" })).status).toBe(201);
-    expect((await call("PUT", `/api/tags/billing`, owner, { name: "money" })).json).toEqual({ ok: true, name: "money" });
+    expect((await call("PUT", `${BASE}/tags/billing`, owner, { name: "money" })).json).toEqual({ ok: true, name: "money" });
     expect((await call("POST", `${BASE}/tags/money/retire`, owner, {})).status).toBe(200);
     expect((await call("POST", `${BASE}/tags/money/restore`, owner, {})).status).toBe(200);
     expect((await call("POST", `${BASE}/tags/money/merge`, owner, { into: "data" })).json).toMatchObject({ ok: true, name: "data", moved: 0 });

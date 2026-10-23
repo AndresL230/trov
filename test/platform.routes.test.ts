@@ -218,10 +218,8 @@ describe("suspend / unsuspend", () => {
     const res = await call<{ org: PlatformOrgRow }>("POST", "/api/platform/orgs/acme/suspend", cookie);
     expect(res.json.org).toMatchObject({ slug: "acme", status: "suspended", suspended_by: SUPERADMIN });
     expect(res.json.org.suspended_at).toMatch(/^\d{4}-\d\d-\d\dT/);
-    for (const path of ["/api/o/acme/me", "/api/o/acme/members", "/api/o/acme/settings"]) expect((await call("GET", path, olive)).status, path).toBe(404);
+    for (const path of ["/api/o/acme/me", "/api/o/acme/members", "/api/o/acme/settings", "/api/o/acme/docs"]) expect((await call("GET", path, olive)).status, path).toBe(404);
     expect((await call<MyOrgsResponse>("GET", "/api/orgs", olive)).json.orgs).toEqual([]);
-    // The legacy single-org routes (soleTenantGate) answer 404 too — not org_required.
-    expect((await call("GET", "/docs", olive)).status).toBe(404);
     // The superadmin still sees it, suspended; nothing inside was touched.
     expect((await call<{ orgs: PlatformOrgRow[] }>("GET", "/api/platform/orgs", cookie)).json.orgs.find((o) => o.slug === "acme")?.status).toBe("suspended");
     expect(await one(`SELECT COUNT(*) AS n FROM feed WHERE org_id = ?`, ORG_B)).toEqual({ n: 1 });
@@ -232,7 +230,7 @@ describe("suspend / unsuspend", () => {
     const back = await call<{ org: PlatformOrgRow }>("POST", "/api/platform/orgs/acme/unsuspend", cookie);
     expect(back.json.org).toMatchObject({ status: "active", suspended_at: null, suspended_by: null });
     expect((await call("GET", "/api/o/acme/me", olive)).json).toMatchObject({ role: "owner" });
-    expect((await call("GET", "/docs", olive)).status).toBe(200);
+    expect((await call("GET", "/api/o/acme/docs", olive)).status).toBe(200);
     expect((await call("POST", "/api/platform/orgs/nope/suspend", cookie)).status).toBe(404);
     expect((await rows<{ action: string }>(`SELECT action FROM org_admin_audit WHERE org_id = ? ORDER BY id`, ORG_B)).map((a) => a.action)).toEqual(["org.suspend", "org.unsuspend"]);
   });

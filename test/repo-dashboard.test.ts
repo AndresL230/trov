@@ -258,16 +258,16 @@ describe("getRepoDashboard — a D1-only projection", () => {
   });
 });
 
-describe("GET /repo/dashboard", () => {
+describe("GET /api/o/<slug>/repo/dashboard", () => {
   it("is session-gated", async () => {
-    const res = await app.request("/repo/dashboard", {}, env);
+    const res = await app.request("/api/o/saplinglearn/repo/dashboard", {}, env);
     expect(res.status).toBe(401);
   });
 
   it("returns the projection for a signed-in member", async () => {
     const cookie = await cookieFor("jose-a");
     await ingestAll([prEvent(10, "jose-a", new Date().toISOString())]);
-    const res = await app.request("/repo/dashboard", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/repo/dashboard", { headers: { cookie } }, env); // jose-a is a SaplingLearn member
     expect(res.status).toBe(200);
     const d = (await res.json()) as RepoDashboard;
     expect(d.prs.status).toBe("ok");

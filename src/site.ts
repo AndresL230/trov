@@ -28,7 +28,7 @@ export { APP_SHELL_PATH };
  *  longer the home page's HTML (they used to be: the shell was index.html). They answer with the header
  *  instead. Each prefix is a route the Worker answers (test/site.test.ts). */
 export const ROBOTS_DISALLOW: readonly string[] = [
-  "/api/", "/auth/", "/oauth/", "/mcp", "/webhook/", "/u/", "/raw/", "/img/", "/avatar/", "/org-logo/",
+  "/api/", "/auth/", "/oauth/", "/mcp", "/webhook/", "/u/", "/avatar/", "/org-logo/",
 ];
 
 // ── robots.txt: who may read what ────────────────────────────────────────────

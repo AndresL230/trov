@@ -125,7 +125,7 @@ async function serveRaw(c: Context<AppEnv>, ref: string): Promise<Response> {
 }
 
 /**
- * Registered on `/raw/*` and `/api/o/:slug/raw/*` BEFORE `sessionGate` (src/routes.ts), so even
+ * Registered on `/api/o/:slug/raw/*` BEFORE `sessionGate` (src/routes.ts), so even
  * the session gate's 401 and the tenant gate's 404 carry the lock-down headers; a header a
  * handler already set is left alone.
  */

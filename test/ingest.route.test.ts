@@ -44,7 +44,7 @@ async function postIngest(
   cookie?: string
 ): Promise<Response> {
   return app.request(
-    "/ingest",
+    "/api/o/saplinglearn/ingest", // agent-user is a SaplingLearn member (seedPerson)
     {
       method: "POST",
       headers: {
@@ -61,7 +61,7 @@ describe("live POST /ingest route", () => {
   it("200 with IngestResult counts and rows land in D1", async () => {
     const cookie = await authedCookie("agent-user");
 
-    // This hits the live route (src/routes.ts `app.post("/ingest", ...)`),
+    // This hits the live route (src/routes.ts `tenant.post("/ingest", ...)`, at `/api/o/<slug>/ingest`),
     // exercising IngestPayload.safeParse and routing through consume().
     const res = await postIngest(makePayload("ingest-route-S1"), cookie);
 

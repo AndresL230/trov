@@ -32,8 +32,9 @@ async function seedDoc(): Promise<void> {
   await propose_doc_update(systemCtx(), p(V2), "meilin"); // v2 stays staged
 }
 
+/** `path` is an org route's suffix, under SaplingLearn's prefix (the org every cookie here belongs to). */
 async function get(cookie: string, path: string, e: Env = env): Promise<{ status: number; json: Record<string, unknown>; raw: string }> {
-  const res = await app.request(path, { headers: { cookie } }, e);
+  const res = await app.request(`/api/o/saplinglearn${path}`, { headers: { cookie } }, e);
   const raw = await res.text();
   return { status: res.status, json: JSON.parse(raw) as Record<string, unknown>, raw };
 }

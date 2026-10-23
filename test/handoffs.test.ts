@@ -25,9 +25,9 @@ const req = async (path: string, who = "AndresL230", body?: unknown) =>
     : { method: "POST", headers: { cookie: await cookieFor(who), "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 const json = async <T>(res: Response) => (await res.json()) as T;
 
-describe("GET /api/handoffs — boxes", () => {
+describe("GET /api/o/saplinglearn/handoffs — boxes", () => {
   it("mine = sent by or left for the caller, newest first, numeric ids, context parsed", async () => {
-    const { handoffs: list } = await json<{ handoffs: HandoffView[] }>(await req("/api/handoffs"));
+    const { handoffs: list } = await json<{ handoffs: HandoffView[] }>(await req("/api/o/saplinglearn/handoffs"));
     expect(list.every((h) => typeof h.id === "number")).toBe(true);
     expect(list.every((h) => h.sender === "AndresL230" || h.recipient === "AndresL230")).toBe(true);
     expect(list.map((h) => h.id)).toContain(13);     // sent by me
@@ -41,26 +41,26 @@ describe("GET /api/handoffs — boxes", () => {
   });
 
   it("me / anyone / sent each return their slice; an unknown box is a 400", async () => {
-    const ids = async (box: string, who = "AndresL230") => (await json<{ handoffs: HandoffView[] }>(await req(`/api/handoffs?box=${box}`, who))).handoffs.map((h) => h.id).sort();
+    const ids = async (box: string, who = "AndresL230") => (await json<{ handoffs: HandoffView[] }>(await req(`/api/o/saplinglearn/handoffs?box=${box}`, who))).handoffs.map((h) => h.id).sort();
     expect(await ids("me")).toEqual([11, 14, 16, 17]);
     expect(await ids("anyone")).toEqual([15]);
     expect(await ids("sent")).toEqual([12, 13]);
     expect(await ids("anyone", "Darkest-Teddy")).toEqual([12]); // Teddy's own 'anyone' handoff is not in his anyone box
-    expect((await req("/api/handoffs?box=nope")).status).toBe(400);
+    expect((await req("/api/o/saplinglearn/handoffs?box=nope")).status).toBe(400);
   });
 
   it("one by id; a non-numeric or unknown id is a 404; no session is a 401", async () => {
-    const { handoff } = await json<{ handoff: HandoffView }>(await req("/api/handoffs/14"));
+    const { handoff } = await json<{ handoff: HandoffView }>(await req("/api/o/saplinglearn/handoffs/14"));
     expect(handoff.claimed_by_session).toBe("sess_01J8ZK4QX2M7");
-    expect((await req("/api/handoffs/h_8a47")).status).toBe(404);
-    expect((await req("/api/handoffs/999")).status).toBe(404);
-    expect((await app.request("/api/handoffs", {}, env)).status).toBe(401);
+    expect((await req("/api/o/saplinglearn/handoffs/h_8a47")).status).toBe(404);
+    expect((await req("/api/o/saplinglearn/handoffs/999")).status).toBe(404);
+    expect((await app.request("/api/o/saplinglearn/handoffs", {}, env)).status).toBe(401);
   });
 });
 
-describe("POST /api/handoffs", () => {
+describe("POST /api/o/saplinglearn/handoffs", () => {
   it("creates with the principal as sender (a body `sender` is ignored), defaults, +7d expiry, and a feed entry", async () => {
-    const res = await req("/api/handoffs", "Jose-Gael-Cruz-Lopez", { body: "Parser half done.\n\nMore here.", sender: "AndresL230" });
+    const res = await req("/api/o/saplinglearn/handoffs", "Jose-Gael-Cruz-Lopez", { body: "Parser half done.\n\nMore here.", sender: "AndresL230" });
     expect(res.status).toBe(200);
     const { ok, handoff } = await json<{ ok: boolean; handoff: HandoffView }>(res);
     expect(ok).toBe(true);
@@ -76,19 +76,19 @@ describe("POST /api/handoffs", () => {
   });
 
   it("validates recipient, body size, and prompt both-or-neither", async () => {
-    expect((await req("/api/handoffs", "AndresL230", { body: "x", recipient: "nobody-here" })).status).toBe(400);
-    expect((await req("/api/handoffs", "AndresL230", { body: "" })).status).toBe(400);
-    expect((await req("/api/handoffs", "AndresL230", { body: "x".repeat(32 * 1024 + 1) })).status).toBe(400);
-    expect((await req("/api/handoffs", "AndresL230", { body: "x", prompt: { title: "only a title" } })).status).toBe(400);
-    const ok = await json<{ handoff: HandoffView }>(await req("/api/handoffs", "AndresL230", { body: "x", recipient: "lpcooper-arch", prompt: { title: "T", body: "B" } }));
+    expect((await req("/api/o/saplinglearn/handoffs", "AndresL230", { body: "x", recipient: "nobody-here" })).status).toBe(400);
+    expect((await req("/api/o/saplinglearn/handoffs", "AndresL230", { body: "" })).status).toBe(400);
+    expect((await req("/api/o/saplinglearn/handoffs", "AndresL230", { body: "x".repeat(32 * 1024 + 1) })).status).toBe(400);
+    expect((await req("/api/o/saplinglearn/handoffs", "AndresL230", { body: "x", prompt: { title: "only a title" } })).status).toBe(400);
+    const ok = await json<{ handoff: HandoffView }>(await req("/api/o/saplinglearn/handoffs", "AndresL230", { body: "x", recipient: "lpcooper-arch", prompt: { title: "T", body: "B" } }));
     expect(ok.handoff.recipient).toBe("lpcooper-arch");
     expect(ok.handoff.prompt).toEqual({ title: "T", body: "B" });
   });
 
   it("a repeated session + item_index returns the first handoff instead of writing a second", async () => {
     const payload = { body: "Retry me", session: { id: "sess-replay-1" }, item_index: 0 };
-    const a = await json<{ handoff: HandoffView }>(await req("/api/handoffs", "AndresL230", payload));
-    const b = await json<{ handoff: HandoffView }>(await req("/api/handoffs", "AndresL230", payload));
+    const a = await json<{ handoff: HandoffView }>(await req("/api/o/saplinglearn/handoffs", "AndresL230", payload));
+    const b = await json<{ handoff: HandoffView }>(await req("/api/o/saplinglearn/handoffs", "AndresL230", payload));
     expect(b.handoff.id).toBe(a.handoff.id);
     expect((await all(env.DB, `SELECT id FROM handoffs WHERE body = 'Retry me'`)).length).toBe(1);
   });
@@ -97,8 +97,8 @@ describe("POST /api/handoffs", () => {
 describe("claim / expire", () => {
   it("two concurrent claims: exactly one 200, the other 409 'handoff is claimed'", async () => {
     const [a, b] = await Promise.all([
-      req("/api/handoffs/15/claim", "AndresL230", { session: "s-a" }),
-      req("/api/handoffs/15/claim", "Jose-Gael-Cruz-Lopez", { session: "s-b" }),
+      req("/api/o/saplinglearn/handoffs/15/claim", "AndresL230", { session: "s-a" }),
+      req("/api/o/saplinglearn/handoffs/15/claim", "Jose-Gael-Cruz-Lopez", { session: "s-b" }),
     ]);
     expect([a.status, b.status].sort()).toEqual([200, 409]);
     const loser = a.status === 409 ? a : b;
@@ -109,20 +109,20 @@ describe("claim / expire", () => {
   });
 
   it("only the recipient (or anyone, or the sender) may claim; others get 403 and nothing changes", async () => {
-    expect((await req("/api/handoffs/16/claim", "lpcooper-arch", { session: "x" })).status).toBe(403); // Jose → Andres
+    expect((await req("/api/o/saplinglearn/handoffs/16/claim", "lpcooper-arch", { session: "x" })).status).toBe(403); // Jose → Andres
     expect((await first<{ status: string }>(env.DB, `SELECT status FROM handoffs WHERE id = 16`))!.status).toBe("pending");
-    const own = await req("/api/handoffs/13/claim", "AndresL230", { session: "mine" }); // sender claims their own
+    const own = await req("/api/o/saplinglearn/handoffs/13/claim", "AndresL230", { session: "mine" }); // sender claims their own
     expect(own.status).toBe(200);
     expect((await json<{ handoff: HandoffView }>(own)).handoff.claimed_by).toBe("AndresL230");
-    expect((await req("/api/handoffs/999/claim", "AndresL230", { session: "x" })).status).toBe(404);
+    expect((await req("/api/o/saplinglearn/handoffs/999/claim", "AndresL230", { session: "x" })).status).toBe(404);
   });
 
   it("expire: sender or recipient only, pending only", async () => {
-    expect((await req("/api/handoffs/17/expire", "lpcooper-arch", {})).status).toBe(403);
-    const ok = await req("/api/handoffs/17/expire", "AndresL230", {});
+    expect((await req("/api/o/saplinglearn/handoffs/17/expire", "lpcooper-arch", {})).status).toBe(403);
+    const ok = await req("/api/o/saplinglearn/handoffs/17/expire", "AndresL230", {});
     expect(ok.status).toBe(200);
     expect((await json<{ handoff: HandoffView }>(ok)).handoff.status).toBe("expired");
-    const again = await req("/api/handoffs/17/expire", "AndresL230", {});
+    const again = await req("/api/o/saplinglearn/handoffs/17/expire", "AndresL230", {});
     expect(again.status).toBe(409);
     expect(await json(again)).toEqual({ error: "handoff is expired" });
   });
@@ -144,8 +144,8 @@ describe("expiry sweep", () => {
   });
 });
 
-describe("GET /api/prompts", () => {
-  const list = async (qs = "") => (await json<{ prompts: PromptSummary[] }>(await req(`/api/prompts${qs}`))).prompts;
+describe("GET /api/o/saplinglearn/prompts", () => {
+  const list = async (qs = "") => (await json<{ prompts: PromptSummary[] }>(await req(`/api/o/saplinglearn/prompts${qs}`))).prompts;
 
   it("lists the library at each prompt's latest version, excerpted, without bodies", async () => {
     const all8 = await list();
@@ -167,54 +167,54 @@ describe("GET /api/prompts", () => {
   });
 
   it("one prompt, its versions newest first, and 404s", async () => {
-    const { prompt } = await json<{ prompt: PromptDetail }>(await req("/api/prompts/sse-endpoint-review"));
+    const { prompt } = await json<{ prompt: PromptDetail }>(await req("/api/o/saplinglearn/prompts/sse-endpoint-review"));
     expect(prompt.body).toContain("Last-Event-ID");
-    const { versions } = await json<{ versions: PromptVersion[] }>(await req("/api/prompts/sse-endpoint-review/versions"));
+    const { versions } = await json<{ versions: PromptVersion[] }>(await req("/api/o/saplinglearn/prompts/sse-endpoint-review/versions"));
     expect(versions.map((v) => v.version)).toEqual([3, 2, 1]);
-    expect((await req("/api/prompts/nope")).status).toBe(404);
-    expect((await req("/api/prompts/nope/versions")).status).toBe(404);
+    expect((await req("/api/o/saplinglearn/prompts/nope")).status).toBe(404);
+    expect((await req("/api/o/saplinglearn/prompts/nope/versions")).status).toBe(404);
   });
 });
 
-describe("POST /api/prompts (a person)", () => {
+describe("POST /api/o/saplinglearn/prompts (a person)", () => {
   it("creates v1 as a draft by default, appends versions, may publish directly and rename the slug", async () => {
-    const created = await json<{ prompt: PromptDetail }>(await req("/api/prompts", "AndresL230", { slug: "new-one", title: "New one", tags: ["API", "api", " ui "], body: "Do {{x}}." }));
+    const created = await json<{ prompt: PromptDetail }>(await req("/api/o/saplinglearn/prompts", "AndresL230", { slug: "new-one", title: "New one", tags: ["API", "api", " ui "], body: "Do {{x}}." }));
     expect(created.prompt).toMatchObject({ slug: "new-one", version: 1, status: "draft", author: "AndresL230", tags: ["api", "ui"] });
-    const v2 = await json<{ prompt: PromptDetail }>(await req("/api/prompts", "Darkest-Teddy", { slug: "renamed-one", base_slug: "new-one", title: "Renamed", tags: [], body: "Do {{y}}.", status: "published" }));
+    const v2 = await json<{ prompt: PromptDetail }>(await req("/api/o/saplinglearn/prompts", "Darkest-Teddy", { slug: "renamed-one", base_slug: "new-one", title: "Renamed", tags: [], body: "Do {{y}}.", status: "published" }));
     expect(v2.prompt).toMatchObject({ slug: "renamed-one", version: 2, status: "published", author: "AndresL230" });
-    expect((await req("/api/prompts/new-one")).status).toBe(404);
-    const versions = (await json<{ versions: PromptVersion[] }>(await req("/api/prompts/renamed-one/versions"))).versions;
+    expect((await req("/api/o/saplinglearn/prompts/new-one")).status).toBe(404);
+    const versions = (await json<{ versions: PromptVersion[] }>(await req("/api/o/saplinglearn/prompts/renamed-one/versions"))).versions;
     expect(versions.map((v) => [v.version, v.author, v.summary])).toEqual([[2, "Darkest-Teddy", "Edited in Trov"], [1, "AndresL230", "Created in Trov"]]);
-    expect((await json<{ prompts: PromptSummary[] }>(await req("/api/prompts?q=renamed"))).prompts.map((p) => p.slug)).toEqual(["renamed-one"]);
+    expect((await json<{ prompts: PromptSummary[] }>(await req("/api/o/saplinglearn/prompts?q=renamed"))).prompts.map((p) => p.slug)).toEqual(["renamed-one"]);
   });
 
   it("a rename onto a taken slug is a 409; a bad slug is a 400", async () => {
-    expect((await req("/api/prompts", "AndresL230", { slug: "adr-draft", base_slug: "pr-summary-structured", title: "x", tags: [], body: "b" })).status).toBe(409);
-    expect((await req("/api/prompts", "AndresL230", { slug: "Bad Slug", title: "x", tags: [], body: "b" })).status).toBe(400);
+    expect((await req("/api/o/saplinglearn/prompts", "AndresL230", { slug: "adr-draft", base_slug: "pr-summary-structured", title: "x", tags: [], body: "b" })).status).toBe(409);
+    expect((await req("/api/o/saplinglearn/prompts", "AndresL230", { slug: "Bad Slug", title: "x", tags: [], body: "b" })).status).toBe(400);
   });
 
   it("tags replaces (normalised); publish flips a staged version, else 409 'not staged'", async () => {
-    const t = await json<{ prompt: PromptDetail }>(await req("/api/prompts/adr-draft/tags", "AndresL230", { tags: ["Data", "data", "ui"] }));
+    const t = await json<{ prompt: PromptDetail }>(await req("/api/o/saplinglearn/prompts/adr-draft/tags", "AndresL230", { tags: ["Data", "data", "ui"] }));
     expect(t.prompt.tags).toEqual(["data", "ui"]);
-    const pub = await req("/api/prompts/lesson-mdx-lint/publish", "AndresL230", { version: 3 });
+    const pub = await req("/api/o/saplinglearn/prompts/lesson-mdx-lint/publish", "AndresL230", { version: 3 });
     expect(pub.status).toBe(200);
     expect((await json<{ prompt: PromptDetail }>(pub)).prompt.status).toBe("published");
-    const again = await req("/api/prompts/lesson-mdx-lint/publish", "AndresL230", { version: 3 });
+    const again = await req("/api/o/saplinglearn/prompts/lesson-mdx-lint/publish", "AndresL230", { version: 3 });
     expect(again.status).toBe(409);
     expect(await json(again)).toEqual({ error: "not staged" });
   });
 });
 
-describe("POST /api/docs/propose", () => {
+describe("POST /api/o/saplinglearn/docs/propose", () => {
   it("stages a version-1 'new' proposal through the gate; an existing slug is a 409", async () => {
-    const res = await req("/api/docs/propose", "AndresL230", { title: "Handoff etiquette", section: "reference", space: "technical", body: "# Handoff etiquette\n\nOne per session." });
+    const res = await req("/api/o/saplinglearn/docs/propose", "AndresL230", { title: "Handoff etiquette", section: "reference", space: "technical", body: "# Handoff etiquette\n\nOne per session." });
     expect(res.status).toBe(200);
     const { ok, proposal } = await json<{ ok: boolean; proposal: { slug: string; version: number; change_kind: string; status: string } }>(res);
     expect(ok).toBe(true);
     expect(proposal).toMatchObject({ slug: "handoff-etiquette", version: 1, change_kind: "new", status: "staged" });
     const doc = await first<{ current_version: number }>(env.DB, `SELECT current_version FROM docs WHERE slug = 'handoff-etiquette'`);
     expect(doc?.current_version ?? 0).toBe(0); // not live until promoted
-    expect((await req("/api/docs/propose", "AndresL230", { title: "Handoff etiquette", section: "reference", space: "technical", body: "again" })).status).toBe(409);
-    expect((await req("/api/docs/propose", "AndresL230", { title: "X", section: "not-a-section", space: "technical", body: "b" })).status).toBe(400);
+    expect((await req("/api/o/saplinglearn/docs/propose", "AndresL230", { title: "Handoff etiquette", section: "reference", space: "technical", body: "again" })).status).toBe(409);
+    expect((await req("/api/o/saplinglearn/docs/propose", "AndresL230", { title: "X", section: "not-a-section", space: "technical", body: "b" })).status).toBe(400);
   });
 });
