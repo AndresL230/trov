@@ -42,30 +42,20 @@ export type { RepoRefreshResult, UsagePollResult };
 
 // ── credentials, and what may be logged ──────────────────────────────────────
 // A job reads each credential through `resolveCredential` (src/data/secrets.ts): the org's stored
-// secret, else — for SaplingLearn ONLY, until its admin enters them on the Integrations screen — the
-// legacy Worker secret, else null. This module is not reachable from src/mcp.ts
+// secret, else null. This module is not reachable from src/mcp.ts
 // (test/secrets.mcp.test.ts), so it may resolve one; the revealed VALUE goes down to the pollers and
 // to src/repo/github.ts as a parameter.
 
-/** The legacy Worker secrets (§8.7.6), named ONLY so that no log line can carry one. Nothing here
- *  authenticates with them any more — `resolveCredential`'s fallback does, for SaplingLearn alone —
- *  but an error thrown before a unit resolved anything (a dead D1 binding) may still quote the
- *  environment. Deleted with the fallback in the cleanup phase. */
-function legacyEnvSecrets(env: Env): string[] {
-  return [env.GITHUB_SERVICE_TOKEN, env.CF_ANALYTICS_TOKEN, env.CF_ANALYTICS_ACCOUNT_ID, env.SAPLING_METRICS_TOKEN]
-    .filter((v): v is string => typeof v === "string" && v.length > 0);
-}
-
 /** What this module LOGS for an arm that threw: the error's MESSAGE — never the
- *  Error object, so no stack — with every credential the unit revealed (and the
- *  legacy Worker secrets) scrubbed out of it. Literal replacement, and nothing
+ *  Error object, so no stack — with every credential the unit revealed scrubbed
+ *  out of it. Literal replacement, and nothing
  *  downstream cuts the string, so no cut can leave half a token behind.
  *  "These arms never throw" was the argument for logging the raw error in
  *  src/repo/github.ts too, and it was wrong there: the progress arm fetches
  *  GitHub with the service token, and a thrown fetch can quote its own
  *  `authorization` header back. */
-function scrubbedLog(e: unknown, env: Env, revealed: Revealed = []): string {
-  return scrub(e instanceof Error ? e.message : String(e), [revealed, legacyEnvSecrets(env)]);
+function scrubbedLog(e: unknown, revealed: Revealed = []): string {
+  return scrub(e instanceof Error ? e.message : String(e), [revealed]);
 }
 
 /** Resolve one credential for a unit and remember it in `revealed`, so every later log line and
@@ -74,17 +64,17 @@ function scrubbedLog(e: unknown, env: Env, revealed: Revealed = []): string {
  *  as not configured: it must not cost the unit's other sources. */
 async function credential(ctx: TenantContext, env: Env, kind: IntegrationKind, scope: string, revealed: Revealed[]): Promise<Secret | null> {
   try {
-    const secret = await resolveCredential(ctx, env, kind, scope);
+    const secret = await resolveCredential(ctx, kind, scope);
     if (secret) revealed.push(secret);
     return secret;
   } catch (e) {
-    console.error("repo cron", "credential", kind, scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
+    console.error("repo cron", "credential", kind, scrubbedLog(e, revealed), `org=${ctx.orgId}`);
     return null;
   }
 }
 
 /** The org's GitHub credential for a unit (src/github-app/credential.ts): its App installation's token,
- *  else its stored `github_token`, else — SaplingLearn only — the legacy Worker secret. Remembered in
+ *  else its stored `github_token`. Remembered in
  *  `revealed` like any other; a failure to resolve reads as not configured, logged by kind. `fetchImpl`
  *  is what a mint is requested through — the unit's own (budgeted) fetch. */
 async function githubCredential(ctx: TenantContext, env: Env, repo: string, revealed: Revealed[], fetchImpl: typeof fetch | undefined, now: number): Promise<GithubCredential | null> {
@@ -93,14 +83,14 @@ async function githubCredential(ctx: TenantContext, env: Env, repo: string, reve
     if (found) revealed.push(found.token);
     return found;
   } catch (e) {
-    console.error("repo cron", "credential", "github", scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
+    console.error("repo cron", "credential", "github", scrubbedLog(e, revealed), `org=${ctx.orgId}`);
     return null;
   }
 }
 
 /** Tell the org's integration row what a use of its credential came to (`last_used_at` /
  *  `last_error` — the Integrations screen). A `skipped` outcome used nothing; a no-op when the org
- *  has no row (SaplingLearn on the legacy fallback). Never throws — bookkeeping must not cost a job. */
+ *  has no row. Never throws — bookkeeping must not cost a job. */
 async function recordOutcomes(ctx: TenantContext, kind: IntegrationKind, scope: string, outcomes: PollOutcome[], revealed: Revealed, now: number): Promise<void> {
   const failed = outcomes.find((o) => o.status === "failed");
   if (!failed && !outcomes.some((o) => o.status === "ok")) return;
@@ -117,8 +107,7 @@ const unexpected = (envKey: string): PollOutcome[] => [{ env: envKey, status: "f
 /**
  * The HOURLY usage poller for ONE environment of ONE org: the app's own metrics
  * endpoint (`pollSaplingMetrics`). Its credential is `metrics_endpoint`, scope =
- * the environment key — ONE token per environment (the legacy
- * `SAPLING_METRICS_TOKEN` answers for each of SaplingLearn's). Absent, the source
+ * the environment key — ONE token per environment. Absent, the source
  * is `"not_configured"` and is not called (its sections stay `not_connected`);
  * otherwise it runs in a guarded arm — a throw (the poller never throws, so:
  * unreachable) is logged scrubbed and reported as `unexpected`.
@@ -140,7 +129,7 @@ async function usageForEnv(env: Env, ctx: TenantContext, cfg: RepoEnvConfig, now
     try {
       outcomes = await fn();
     } catch (e) {
-      console.error("repo cron", label, scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
+      console.error("repo cron", label, scrubbedLog(e, revealed), `org=${ctx.orgId}`);
       outcomes = unexpected(cfg.key);
     }
     await recordOutcomes(ctx, kind, scope, outcomes, revealed, now);
@@ -173,7 +162,7 @@ export async function runEnvJob(env: Env, orgId: string, envKey: string, job: En
     if (job === "health") await pingHealth(ctx, [cfg], now, fetchImpl);
     else await usageForEnv(env, ctx, cfg, now, fetchImpl);
   } catch (e) {
-    console.error("repo cron", job, scrubbedLog(e, env), `org=${orgId}`);
+    console.error("repo cron", job, scrubbedLog(e), `org=${orgId}`);
   }
 }
 
@@ -236,7 +225,7 @@ export async function runReconcileJob(env: Env, caller: TenantContext, now: numb
     await gh.recordOutcome(res.failed.length ? { ok: false, message: `reconcile: arms failed: ${res.failed.join(", ")}`, revealed } : { ok: true }, now);
     return res;
   } catch (e) {
-    console.error(label, "reconcile", scrubbedLog(e, env, revealed), `org=${ctx.orgId}`);
+    console.error(label, "reconcile", scrubbedLog(e, revealed), `org=${ctx.orgId}`);
     return { written: 0, unchanged: 0, failed: ["unexpected error"] };
   }
 }
@@ -268,7 +257,7 @@ export async function runOrgJob(env: Env, orgId: string, job: OrgJob, now: numbe
     await recomputeAllProgress(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(fetchImpl) });
     await gh.markUsed(now);
   } catch (e) {
-    console.error("repo cron", job, scrubbedLog(e, env, revealed), `org=${orgId}`);
+    console.error("repo cron", job, scrubbedLog(e, revealed), `org=${orgId}`);
   }
 }
 
@@ -289,7 +278,7 @@ export async function runPartJob(
     if (!part) return;
     await pollPart(env, ctx, part, now, fetchImpl, providers);
   } catch (e) {
-    console.error("repo cron", "hosting", scrubbedLog(e, env), `org=${orgId}`);
+    console.error("repo cron", "hosting", scrubbedLog(e), `org=${orgId}`);
   }
 }
 
@@ -397,7 +386,7 @@ export async function runRepoRefresh(
     try {
       health = await pingHealth(ctx, envs, now, fetchImpl, HEALTH_ON_DEMAND_BUCKET_MS);
     } catch (e) {
-      console.error("repo refresh", "health", scrubbedLog(e, env), `org=${ctx.orgId}`);
+      console.error("repo refresh", "health", scrubbedLog(e), `org=${ctx.orgId}`);
       health = unexpected("*");
     }
   }
@@ -408,7 +397,7 @@ export async function runRepoRefresh(
   } catch (e) {
     // Unreachable today (the usage arms scrub their own logs; only the environment read can throw)
     // — the message is logged with every secret scrubbed all the same.
-    console.error("repo refresh", "usage", scrubbedLog(e, env), `org=${ctx.orgId}`);
+    console.error("repo refresh", "usage", scrubbedLog(e), `org=${ctx.orgId}`);
     usage = { sapling: unexpected("*") };
   }
 
@@ -423,7 +412,7 @@ export async function runRepoRefresh(
         : await pollParts(env, ctx, parts, now, fetchImpl, providers);
     }
   } catch (e) {
-    console.error("repo refresh", "hosting", scrubbedLog(e, env), `org=${ctx.orgId}`);
+    console.error("repo refresh", "hosting", scrubbedLog(e), `org=${ctx.orgId}`);
   }
 
   const github = (await runReconcileJob(env, ctx, now, { fetchImpl, reconcile, label: "repo refresh", budgetSkip: true, scan: false })) ?? "not_configured";
@@ -583,7 +572,7 @@ export async function handleRepoCron(
     try {
       await fn();
     } catch (e) {
-      console.error("repo cron", label, scrubbedLog(e, env));
+      console.error("repo cron", label, scrubbedLog(e));
     }
   };
   // The :40 job's units are listed BEFORE health is served: whether the tick has a heavy job at all —

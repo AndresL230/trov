@@ -130,14 +130,6 @@ export async function deliverRow(ctx: TenantContext, row: ClaimedRow, opts: Deli
 export const outboxKey = (ctx: TenantContext, login: string, cadence: string, windowId: string): string =>
   `${ctx.orgId}:${login}:${cadence}:${windowId}`;
 
-/**
- * The key format BEFORE the org prefix (0042_organizations gave every existing row its org, not a new key). A digest
- * sent just before the multitenancy deploy sits in the outbox under this key, in the one org that
- * existed then; the claim below treats such a row IN THE SAME ORG as the same send, so the deploy cannot
- * mail a window twice. Dead once the longest window (a week) has passed since that deploy — Phase 7
- * removes it with the other cut-over code.
- */
-export const preOrgOutboxKey = (login: string, cadence: string, windowId: string): string => `${login}:${cadence}:${windowId}`;
 
 /** A digest's recipients — the org's MEMBERS with an address on file who have not unsubscribed — in handle order. */
 function recipientRows(p: PlatformContext, orgId: string): Promise<Recipient[]> {
@@ -175,23 +167,19 @@ export async function runDigest(ctx: TenantContext, p: PlatformContext, cadence:
     const prefs = await loadPrefs(ctx, who.github_login);
     const selected = selectKinds(registry, policies, prefs, cadence);
 
-    // The claim: the key is unique, so a second run of this window inserts nothing — and neither does
-    // a window already sent under the pre-org key (see `preOrgOutboxKey`), checked in the same statement.
+    // The claim: the key is unique, so a second run of this window inserts nothing.
     const key = outboxKey(ctx, who.github_login, cadence, window.id);
     const claim = await run(
       ctx,
       `INSERT OR IGNORE INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at)
-       SELECT ?, ?, ?, ?, ?, ?, 'pending', ?
-        WHERE NOT EXISTS (SELECT 1 FROM notification_outbox WHERE org_id = ? AND idempotency_key = ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
       ctx.orgId,
       key,
       who.github_login,
       cadence,
       window.id,
       JSON.stringify(selected.map((k) => k.id)),
-      nowIso(),
-      ctx.orgId,
-      preOrgOutboxKey(who.github_login, cadence, window.id)
+      nowIso()
     );
     if ((claim.meta.changes ?? 0) === 0) {
       report.alreadyRan++;

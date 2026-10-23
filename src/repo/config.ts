@@ -14,26 +14,6 @@ export interface RepoEnvConfig {
 // What hosts an environment (a Cloudflare Worker, a Railway service, a Vercel project, …) is not here:
 // those are its PARTS (`org_environment_parts`, src/hosting/parts.ts), read by the hosting providers.
 
-const REQUIRED = ["key", "label", "branch", "frontendUrl", "apiUrl", "healthPath"] as const;
-
-/** Parse `REPO_ENVIRONMENTS`. Absent or malformed → [].
- *  LEGACY: the var is what 0042_organizations copied into `org_environments`. Nothing in src/ calls this any more —
- *  every reader uses `orgEnvironments` — only the SaplingLearn-era suites do, to seed those rows
- *  (test/helpers/org-config.ts). Phase 7 deletes it with the var. */
-export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvConfig[] {
-  if (!env.REPO_ENVIRONMENTS) return [];
-  try {
-    const parsed = JSON.parse(env.REPO_ENVIRONMENTS) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((e): e is RepoEnvConfig =>
-      !!e && typeof e === "object" && REQUIRED.every((k) => typeof (e as Record<string, unknown>)[k] === "string"))
-      .map((e) => ({
-        key: e.key, label: e.label, note: e.note ?? null, branch: e.branch,
-        frontendUrl: e.frontendUrl, apiUrl: e.apiUrl, healthPath: e.healthPath,
-      }));
-  } catch { return []; }
-}
-
 // ── the org's own configuration (canopy-multitenancy.md §9, D16) ─────────────
 // What `GITHUB_REPO` and `REPO_ENVIRONMENTS` were, read from the org's rows (0042_organizations seeded SaplingLearn's
 // from those two vars). Every background job reads its repo and environments through these; nothing in

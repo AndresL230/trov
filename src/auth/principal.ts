@@ -32,8 +32,7 @@ const PUBLIC_PATHS = new Set([
 /** A hosting provider's install / OAuth return, and its "Configuration URL" (src/hosting/routes.ts:
  *  `/hosting/<provider>/callback`, `/hosting/<provider>/configure`). A person's browser arrives here FROM the
  *  provider, so it must never meet the gate's 401 JSON: each route resolves the signed-in person from the
- *  session cookie itself and answers a redirect whatever happened. Exactly these shapes — src/data/gate.ts lets
- *  the same paths past the one-org alias. */
+ *  session cookie itself and answers a redirect whatever happened. Exactly these shapes. */
 export const HOSTING_CALLBACK_PATH = /^\/hosting\/[a-z0-9_-]+\/(?:callback|configure)$/;
 
 /** The OAuth endpoints take no session cookie (/oauth/authorize checks the session

@@ -14,7 +14,7 @@ import { hostingRevokedReasonText, type ConnectionStatus, type HostingConnection
 /** What a person reads: the state, its word, and whether the parts can read the host. */
 export interface HostingStatus {
   /**
-   *   connected      a credential is stored (or SaplingLearn's legacy Worker secret answers) and its last use was fine
+   *   connected      a credential is stored and its last use was fine
    *   error          a credential is stored, and its last use failed
    *   not_connected  nothing answers — never connected, disconnected here, or a stored row we cannot use
    *   revoked        the connection was ended on the PROVIDER's side (uninstalled there, or the grant refused) and
@@ -24,9 +24,9 @@ export interface HostingStatus {
   state: ConnectionStatus;
   /** "Connected", "Error", "Not connected", "Removed". */
   word: string;
-  /** A credential answers, so the parts read: connected, error, or the legacy fallback. */
+  /** A credential answers, so the parts read: connected or error (or a provider that reads through GitHub). */
   live: boolean;
-  /** A credential is STORED here (Manage, Rotate, Disconnect apply). The legacy fallback is live, not stored. */
+  /** A credential is STORED here (Manage, Rotate, Disconnect apply). A provider read through GitHub is live, not stored. */
   stored: boolean;
 }
 
@@ -34,7 +34,7 @@ export const HOSTING_STATUS_WORD: Record<ConnectionStatus, string> = { connected
 
 /** The facts a connection's status is derived from — a subset of `HostingConnectionDTO`, so the Repo dashboard
  *  (which never builds that DTO) can pass its own reads. `revoked_reason` is the DTO's display text. */
-export type ConnectionFacts = Pick<HostingConnectionDTO, "status" | "legacy_fallback" | "revoked_reason">;
+export type ConnectionFacts = Pick<HostingConnectionDTO, "status" | "revoked_reason">;
 
 /** The stored status of a connection, from its secret and its install / OAuth row — the rule
  *  `HostingConnectionDTO.status` documents (src/hosting/connections.ts, and the dashboard's own reads). */
@@ -60,12 +60,10 @@ export const VIA_GITHUB_WORD = "Through GitHub";
 export function hostingStatus(c: ConnectionFacts | null, label: string, viaGithub = false): HostingStatus {
   if (viaGithub) return { state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false };
   const stored = !!c && (c.status === "connected" || c.status === "error");
-  const legacy = !!c && !stored && c.status !== "revoked" && c.legacy_fallback;
   const state: ConnectionStatus = stored ? c!.status
-    : legacy ? "connected"
     : endedOnProvider(c, label) ? "revoked"
     : "not_connected";
-  return { state, word: HOSTING_STATUS_WORD[state], live: stored || legacy, stored };
+  return { state, word: HOSTING_STATUS_WORD[state], live: stored, stored };
 }
 
 /** A credential stored under a non-empty scope for a hosting provider: a leftover, never a connection. */

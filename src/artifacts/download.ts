@@ -36,7 +36,7 @@ import { ArtifactError, readRawByPageId, type ArtifactRaw } from "../tools/artif
 import { NOT_FOUND_BODY } from "./http";
 import { rawFilename } from "./raw";
 import type { Env } from "../env";
-import { resolveSoleTenant, resolveTenantById, type TenantContext } from "../data/context";
+import { resolveTenantById } from "../data/context";
 
 export const DOWNLOAD_PREFIX = "/api/artifacts/download/";
 /** Domain separation: the download key is HMAC(COOKIE_SECRET, PURPOSE), never COOKIE_SECRET itself. */
@@ -68,8 +68,7 @@ async function downloadKey(secret: string): Promise<CryptoKey> {
   return crypto.subtle.importKey("raw", derived, { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
 
-/** `org_id` is absent only on a token minted before the claim existed (and in tests of that shape). */
-export interface DownloadClaims { handle: string; page_id: number; version_no: number; org_id?: string }
+export interface DownloadClaims { handle: string; page_id: number; version_no: number; org_id: string }
 
 /** Mint a download token for `claims`, valid `ARTIFACT_DOWNLOAD_TTL_MS` from `now`. */
 export async function mintDownloadToken(
@@ -78,7 +77,7 @@ export async function mintDownloadToken(
   if (!secret) throw new Error("no download secret");
   const exp = now + ARTIFACT_DOWNLOAD_TTL_MS;
   const body = b64uEncode(JSON.stringify({
-    h: claims.handle, ...(claims.org_id ? { o: claims.org_id } : {}), p: claims.page_id, v: claims.version_no, e: exp,
+    h: claims.handle, o: claims.org_id, p: claims.page_id, v: claims.version_no, e: exp,
   }));
   const sig = await crypto.subtle.sign("HMAC", await downloadKey(secret), enc.encode(body));
   return { token: `${body}.${toB64u(sig)}`, expires_at: new Date(exp).toISOString() };
@@ -104,10 +103,9 @@ export async function verifyDownloadToken(secret: string, token: string, now = D
   } catch {
     return invalid;
   }
-  if (typeof c?.h !== "string" || !c.h || !Number.isInteger(c.p) || !Number.isInteger(c.v) || typeof c.e !== "number") return invalid;
-  if (c.o !== undefined && (typeof c.o !== "string" || !c.o)) return invalid;
+  if (typeof c?.h !== "string" || !c.h || typeof c.o !== "string" || !c.o || !Number.isInteger(c.p) || !Number.isInteger(c.v) || typeof c.e !== "number") return invalid;
   if (now >= c.e) return { ok: false, reason: "expired" };
-  return { ok: true, claims: { handle: c.h, page_id: c.p as number, version_no: c.v as number, ...(c.o ? { org_id: c.o } : {}) } };
+  return { ok: true, claims: { handle: c.h, page_id: c.p as number, version_no: c.v as number, org_id: c.o } };
 }
 
 /** The name a download is saved under: the stored filename when there is one, else `<slug>-v<n>.<ext>`. */
@@ -149,15 +147,9 @@ export async function handleArtifactDownload(request: Request, env: Env, now = D
   const { handle, page_id, version_no, org_id } = verdict.claims;
   // No session: the signed URL names the person `artifact_get` minted it for AND the org it was minted
   // in. The tenant is that org, IF the person is still a member of it (and it is not suspended) — the
-  // membership is re-read here, so a URL does not outlive a removal. A token minted before the org
-  // claim existed has none: it resolves through the holder's one org (the bearer alias). No tenant →
-  // the same 404 as a page the person cannot see; the page read below is scoped to the tenant's org.
-  let ctx: TenantContext | null;
-  if (org_id) ctx = await resolveTenantById(env, handle, org_id, "bearer");
-  else {
-    const sole = await resolveSoleTenant(env, handle, "bearer");
-    ctx = sole.ok ? sole.ctx : null;
-  }
+  // membership is re-read here, so a URL does not outlive a removal. No tenant → the same 404 as a page
+  // the person cannot see; the page read below is scoped to the tenant's org.
+  const ctx = await resolveTenantById(env, handle, org_id, "bearer");
   if (!ctx) return notFound();
   let r: ArtifactRaw;
   try {

@@ -408,8 +408,8 @@ export interface RepoRefreshGithub { written: number; unchanged: number; failed:
  *  `health` is one `PollOutcome` per TARGET (two per environment, `part` set):
  *  `ok` = up, `failed` = down with a few fixed words (`timeout` / `HTTP 503` /
  *  `unreachable`), `written` = new `repo_metrics` rows; `"not_configured"` = no
- *  environment in `REPO_ENVIRONMENTS`. `github` is `"not_configured"` without
- *  `GITHUB_SERVICE_TOKEN` + `GITHUB_REPO`. */
+ *  environment configured. `github` is `"not_configured"` without a GitHub
+ *  credential and a primary repository. */
 export interface RepoRefreshResult extends UsagePollResult {
   health: UsagePollSource;
   /** The hosting providers' polls (src/hosting/poll.ts), one outcome per STORED part, in part order —

@@ -18,32 +18,15 @@ export interface Env {
   GITHUB_APP_PRIVATE_KEY?: string;    // SECRET — the whole .pem GitHub generated (PKCS#1; a PKCS#8 PEM works too). Signs the App JWT; never logged
   GITHUB_APP_WEBHOOK_SECRET?: string; // SECRET — verifies deliveries to POST /webhook/github/app. Absent → every delivery there is the bare 401
   GITHUB_APP_SLUG?: string;           // VAR (wrangler.toml) — the App's URL name: https://github.com/apps/<slug>/installations/new
-  GITHUB_WEBHOOK_SECRET?: string; // LEGACY: SaplingLearn's fallback for the old /webhook/github hook (src/data/secrets.ts `resolveCredential`); Phase 7 deletes it
-  GITHUB_REPO?: string;   // LEGACY: read by nothing — an org's repo is its `org_repos` row (0042_organizations copied this one); Phase 7 deletes it
   DEV_LOGIN?: string;     // LOCAL DEV ONLY (set in .dev.vars): bypass OAuth, act as this seeded user. Never set in prod.
   ANTHROPIC_API_KEY?: string; // Anthropic API key for capture-time PR/issue summaries and the AI pass (src/ai/client.ts, Claude Haiku); absent → excerpt fallback, and no AI run anywhere (`no_key`).
   TYPESAFE_API_KEY?: string; // TypeSafe AI key for Jev, the tag-suggestion classifier (the Jev provider src/tools/classify.ts, sent by the Sift run src/ai/sift.ts); absent → no tag suggestions (Find items answers no_key).
   LOCAL_UPSTREAM?: string; // LOCAL DEV ONLY (.dev.vars): a loopback http stand-in for GitHub + Anthropic during a Sync (src/sync/local-upstream.ts). Ignored unless http://127.0.0.1 or http://localhost, and always beside a live Stripe key (src/platform/loopback.ts).
   LOCAL_AI_PREVIEW?: string; // LOCAL DEV ONLY (.dev.vars): `ready` | `empty` | `capped` | `proposed` — the AI screens' sample content (src/ai/preview.ts). Honoured only for a request to a loopback http origin (`wrangler dev`), never beside a live Stripe key; anything else is ignored.
-  GITHUB_SERVICE_TOKEN?: string; // LEGACY: SaplingLearn's `github_token` fallback until its admin stores one (`resolveCredential`); no other org ever reads it
   PUBLIC_ORIGIN?: string; // absolute origin for links in email (deep links, unsubscribe); absent → relative links
   NOTIFICATIONS_MODE?: "local" | "resend"; // delivery gate; absent → local (bodies to the dev table, Resend never called)
   RESEND_API_KEY?: string; // Resend API key; required only when NOTIFICATIONS_MODE = "resend"
   SUPPORT_NOTIFY_EMAIL?: string; // VAR (wrangler.toml) — where each bug report / support message is mailed (the operator's inbox). Empty or absent → the report is stored and NOT mailed (mail outcome `skipped`)
-  REPO_ENVIRONMENTS?: string; // LEGACY: read by nothing — environments are `org_environments` rows (0042_organizations copied this one); Phase 7 deletes it
-  // The three below are LEGACY too: SaplingLearn's fallback credentials (`resolveCredential` /
-  // `resolveIntegrationConfig`), each read only until its admin stores that integration on Org settings, and
-  // never for another org. What each one is:
-  // Both SECRETS, and both needed: its Cloudflare hosting provider's token and account id — absent either, its
-  // Cloudflare parts (src/hosting/providers/cloudflare.ts) read not connected. Deliberately NOT named
-  // CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — those are the names the wrangler CLI authenticates with.
-  CF_ANALYTICS_TOKEN?: string;      // Cloudflare API token with Account Analytics: Read
-  CF_ANALYTICS_ACCOUNT_ID?: string; // the Cloudflare account tag the frontend Workers live under
-  // SECRET — the bearer token Sapling's own `GET {apiUrl}/api/internal/metrics` expects (the contract:
-  // docs/superpowers/specs/2026-09-20-sapling-metrics-endpoint.md). ONE value for every environment, sent only to
-  // an https `apiUrl` and never across a redirect. Absent/empty → the hourly active-users poll (src/repo/poll.ts)
-  // is not called and the Usage tab's Active users stays "not connected".
-  SAPLING_METRICS_TOKEN?: string;
   // SECRET — the key-encryption key for per-org integration secrets (src/data/secrets.ts; canopy-multitenancy.md
   // §8.7.1): 32 random bytes, base64 (`openssl rand -base64 32`). It wraps each org's data key and never encrypts
   // a credential itself. Absent or malformed → every secret read and write fails closed (the Integrations API

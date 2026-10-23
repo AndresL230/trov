@@ -1,7 +1,6 @@
 import type { PlatformContext } from "../data/platform-sql";
 import type { IdentityProvider, IdentityRow } from "@shared/rows";
 import { hmacSeal, hmacUnseal, b64uEncode, b64uDecode } from "./crypto";
-import { liveLegacyInvite } from "../data/legacy";
 import { findIdentity, findPersonByVerifiedEmail, linkIdentity, listIdentities, recordSignIn, recordVerifiedEmail, bindProviderUid, isValidHandle } from "./persons";
 
 // `uid` is the provider's IMMUTABLE account id where `subject` is not one already: GitHub's numeric id
@@ -94,9 +93,7 @@ export async function completeSignIn(p: PlatformContext, profile: ProviderProfil
       return { kind: "session", handle: byEmail.handle };
     }
   }
-  // MT: a legacy invite still seeds the name the admin typed for the invitee.
-  const legacy = profile.email ? await liveLegacyInvite(p, profile.email) : null;
-  return { kind: "onboard", payload: { ...profile, name: profile.name ?? legacy?.name ?? null, suggested_handle: suggestHandle(profile) } };
+  return { kind: "onboard", payload: { ...profile, name: profile.name ?? null, suggested_handle: suggestHandle(profile) } };
 }
 
 /**

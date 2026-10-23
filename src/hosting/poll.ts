@@ -429,7 +429,7 @@ export async function pollPart(
 
     let secret: Secret | null;
     try {
-      secret = await resolveCredential(ctx, env, kind, scope);
+      secret = await resolveCredential(ctx, kind, scope);
     } catch {
       // A row that does not decrypt, or no platform key: the error's text is fixed and value-free, but it
       // is not repeated — the KIND says which credential.
@@ -440,7 +440,7 @@ export async function pollPart(
     if (!secret) return await settle({ ...base, status: "skipped", written: 0, detail: "not connected" });
     revealed.push(secret);
 
-    const config = await resolveIntegrationConfig(ctx, env, kind, "");
+    const config = await resolveIntegrationConfig(ctx, kind, "");
     const missing = fieldProblem(provider.orgConfigFields, config) ?? fieldProblem(provider.partSettings, part.settings);
     if (missing) return await settle({ ...base, status: "skipped", written: 0, detail: missing });
 

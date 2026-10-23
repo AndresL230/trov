@@ -131,12 +131,6 @@ export async function recordVerifiedEmail(p: PlatformContext, provider: Identity
   await run(p, `UPDATE identities SET verified_email = ? WHERE provider = ? AND subject = ?`, email.trim().toLowerCase(), provider, subject);
 }
 
-/** The title a person holds in their ONLY org (`memberships.title`, Q9) — what `/auth/me` carries as
- *  `role` through the cut-over. Null with no membership or with several: no one org to speak for. */
-export async function soleTitle(p: PlatformContext, handle: string): Promise<string | null> {
-  const rows = await all<{ title: string | null }>(p, `SELECT title FROM memberships WHERE user_id = ? COLLATE NOCASE LIMIT 2`, handle);
-  return rows.length === 1 ? rows[0].title : null;
-}
 
 export async function handleAvailable(p: PlatformContext, handle: string): Promise<{ available: boolean; reason?: HandleProblem }> {
   if (!isValidHandle(handle)) return { available: false, reason: "invalid" };
@@ -250,7 +244,6 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   ["ticket_comments", "author"], ["ticket_events", "actor"],
   ["plan", "updated_by"], ["plan_versions", "created_by"],
   ["notification_policy", "updated_by"], ["notification_prefs", "user_id"], ["notification_outbox", "user_id"],
-  ["invites", "invited_by"], ["invites", "accepted_by"],
   // Artifacts (0030): plain TEXT handles, no FK.
   ["artifact_pages", "author_id"], ["artifact_pages", "ratified_by"], ["artifact_pages", "deleted_by"], ["artifact_versions", "created_by"],
   ["artifact_links", "created_by"], ["artifact_upload_tokens", "principal"],

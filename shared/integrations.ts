@@ -35,8 +35,6 @@ export interface IntegrationDTO {
   description: string;                // one line: what Trov uses it for
   how_to: string;                     // where an admin gets the credential, and the permissions it needs
   configured: boolean;
-  /** SaplingLearn's cut-over only (§8.7.6): not configured here, but a Worker secret still answers for it. */
-  legacy_fallback: boolean;
   /** false: a stored secret whose environment / repo no longer exists — it can only be deleted. */
   expected: boolean;
   hint_last4: string;                 // "" when unset, or when the secret is too short for 4 characters to be safe
@@ -100,7 +98,6 @@ export interface OrgRepoDTO {
   id: string | null;
   repo_full_name: string;
   is_primary: boolean;
-  legacy_hook: boolean;
   webhook_url: string | null;         // null for a non-admin viewer
   webhook_secret_configured: boolean;
   /** `app`: the org's GitHub App installation can see it — it needs no token and no webhook of its own.

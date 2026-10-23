@@ -1,7 +1,7 @@
 // Org settings › Hosting — the HTTP surface (#97): the routes the screen (web/src/hosting.ts) calls.
 //
 // Mounted at `/api/o/:slug` beside the Integrations routes (src/routes.ts), behind the app's `tenantGate`
-// (404 for an unknown org and for a non-member alike), with NO old-path alias — like the rest of the org surface:
+// (404 for an unknown org and for a non-member alike), like the rest of the org surface:
 //
 //   GET    /hosting                              admin+   HostingSetupDTO — providers, environments + parts, connections, checklist
 //   GET    /hosting/providers                    member   { providers: HostingProviderDTO[] }
@@ -17,7 +17,7 @@
 // …and, at the app ROOT (a provider's redirect URI is fixed, so it cannot carry the org; the sealed intent in
 // the `trov_hx` cookie does). A PUBLIC path (src/auth/principal.ts — the session gate's 401 JSON never answers
 // a person coming back from a provider): it resolves the signed-in person from the session cookie itself, and
-// src/data/gate.ts lets exactly `/hosting/<provider>/callback` past the one-org alias gate:
+// no tenant gate stands in front of it:
 //
 //   GET    /hosting/:provider/callback           public   302 → `/<slug>/?hosting=<outcome>&provider=<p>#org/hosting`
 //                                                         | `/?hosting=<outcome>` (no intent) | `/` (nobody signed in)

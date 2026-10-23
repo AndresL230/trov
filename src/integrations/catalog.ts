@@ -5,7 +5,7 @@
 import type { IntegrationConfigField, IntegrationDTO, IntegrationKind, IntegrationScopeType, IntegrationsListDTO } from "@shared/integrations";
 import type { Env } from "../env";
 import {
-  currentKeyVersion, hasLegacyCredential, listIntegrationConfig, listSecretMeta, secretsAvailable,
+  currentKeyVersion, listIntegrationConfig, listSecretMeta, secretsAvailable,
   type IntegrationConfig, type SecretMeta,
 } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
@@ -133,7 +133,6 @@ async function describe(ctx: TenantContext, env: Env, slot: Slot, secrets: Secre
     description: info.description,
     how_to: info.how_to,
     configured: meta !== null,
-    legacy_fallback: meta === null && (await hasLegacyCredential(ctx, env, slot.kind, slot.scope)),
     expected: slot.expected,
     hint_last4: meta?.hint_last4 ?? "",
     created_by: meta?.created_by ?? null,

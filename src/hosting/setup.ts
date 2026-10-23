@@ -4,8 +4,7 @@
 //
 // Reads only: the parts (./parts.ts), the connections (./connections.ts), what the GitHub capture already shows of a
 // host (./detect.ts — a suggestion, from stored rows alone), the last-poll rows the hosting poll
-// job writes (`hosting_poll_state`), and the org's non-secret provider config (Cloudflare's account id falls
-// back to SaplingLearn's legacy Worker secret — `resolveIntegrationConfig`). Nothing here reveals a credential.
+// job writes (`hosting_poll_state`), and the org's non-secret provider config. Nothing here reveals a credential.
 import {
   HOSTING_INTEGRATION_KIND, HOSTING_PROVIDERS, isHostingMetric,
   type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectionDTO, type HostingEnvironmentDTO,
@@ -13,7 +12,7 @@ import {
 } from "@shared/hosting";
 import { hostingStatus } from "@shared/hosting-status-core";
 import { requireRole } from "../data/context";
-import { hasLegacyCredential, resolveCloudflareAccountId, secretsAvailable } from "../data/secrets";
+import { resolveCloudflareAccountId, secretsAvailable } from "../data/secrets";
 import { all, type TenantContext } from "../data/sql";
 import type { Env } from "../env";
 import { listEnvironments } from "../integrations/settings";
@@ -53,11 +52,10 @@ const pollDTO = (r: PollRow): PartPollStateDTO => ({
   unavailable: unavailableOf(r.unavailable),
 });
 
-/** The org's non-secret config per (provider, scope), as a poller should see it: Cloudflare's account id falls
- *  back to SaplingLearn's legacy Worker secret (`resolveCloudflareAccountId` — src/data/secrets.ts
- *  `resolveIntegrationConfig`, the same bridge `resolveCredential` is for its token). */
+/** The org's non-secret config per (provider, scope), as a poller should see it (Cloudflare's account id
+ *  through `resolveCloudflareAccountId`, src/data/secrets.ts). */
 async function effectiveConfigs(ctx: TenantContext, env: Env, s: ConnectionState): Promise<(provider: HostingProviderId, scope: string) => Record<string, string>> {
-  const cfAccount = await resolveCloudflareAccountId(ctx, env);
+  const cfAccount = await resolveCloudflareAccountId(ctx);
   return (provider, scope) => {
     const stored = s.configs.find((c) => c.kind === HOSTING_INTEGRATION_KIND[provider] && c.scope === scope)?.config ?? {};
     return provider === "cloudflare" && cfAccount ? { ...stored, account_id: cfAccount } : stored;
@@ -172,7 +170,6 @@ export function buildChecklist(
     items.push({
       id: `connect:${c.provider}:${c.scope}`, title: `Connect ${provider.label}${scopeWords(c)}`,
       detail: c.status === "revoked" ? `The last connection was revoked${c.revoked_reason ? ` (${c.revoked_reason})` : ""}. Used by ${users}.`
-        : !stored && c.legacy_fallback ? "Still answered by the legacy Worker secret — store a credential here to finish the cut-over."
         : `Used by ${users}.`,
       done: connected, action: connected ? { kind: "none" } : { kind: "connect", provider: c.provider, scope: c.scope },
     });
@@ -217,7 +214,6 @@ export async function getHostingSetup(ctx: TenantContext, env: Env, providers: P
       parts: s.parts.filter((p) => p.env === e.key).map((p) => partDTO(x, p)),
       app_metrics: {
         configured: meta !== null,
-        legacy_fallback: meta === null && (await hasLegacyCredential(ctx, env, "metrics_endpoint", e.key)),
         hint_last4: meta?.hint_last4 ?? "", last_used_at: meta?.last_used_at ?? null, last_error: meta?.last_error ?? null,
         api_url: e.api_url || null,
       },

@@ -58,19 +58,16 @@ import { getRepoDashboard, emptyRepoDashboard } from "./tools/repo";
 import { dashboardRepo, orgEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
-import { platformContext, soleTenantGate, tenantGate } from "./data/gate";
+import { platformContext, tenantGate } from "./data/gate";
 import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
 import { supportApp } from "./platform/support-routes";
 import { billingApp, orgBillingApp } from "./billing/routes";
 import { PlanFeatureError, PlanLimitError, PLAN_LIMIT_STATUS } from "./plans/state";
-import { listLegacyInvites, getLegacyInvite, createLegacyInvite, revokeLegacyInvite, pendingInviteId, LegacyInviteError } from "./orgs/legacy-invites";
-import { mailInvite, mailOrigin } from "./orgs/mail";
 import { listPersons, PersonError } from "./auth/persons";
-import type { InviteRow } from "@shared/rows";
 import { readDocImage } from "./tools/doc-images";
-import { getPersonProfile, writePersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
+import { getPersonProfile, setAvatar, clearAvatar, readAvatar, PeopleError, PEOPLE_ERROR_STATUS } from "./tools/people";
 import { AVATAR_MAX_BYTES } from "@shared/people";
 import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
@@ -105,56 +102,41 @@ app.onError((err, c) => {
 });
 
 // ── The tenant routes (canopy-multitenancy.md §6.3) ──────────────────────────
-// Every route that reads or writes an org's data is defined ONCE, on one of these two sub-apps, and
-// mounted TWICE at the bottom of this file: under `/api/o/:slug` (behind `tenantGate` — the org the path
-// names, 404 for a non-member) and, as the cut-over alias, at its old path (behind `soleTenantGate` — the
-// caller's only org, 409 `org_required` otherwise). A handler reads its tenant from `c.var.ctx` and never
-// from the path, so it cannot tell which mount it was reached through.
-//   • `tenantRoot` — the suffix IS the old path:   /api/o/:slug/docs       ↔ /docs
-//   • `tenantApi`  — the old path had an `/api/`:  /api/o/:slug/handoffs   ↔ /api/handoffs
-// Neither takes a `use("*")`: mounted at `/` it would wrap every later route of the app.
-const tenantRoot = new Hono<AppEnv>();
-const tenantApi = new Hono<AppEnv>();
-/** The alias-only routes: old paths whose `/api/o/:slug` form is a DIFFERENT route (src/orgs/routes.ts) —
- *  the email invite list (`/invites…` → `/api/o/:slug/invites…`) and `PUT /api/people/:handle`
- *  (→ `PUT /api/o/:slug/members/:handle`). Behind `soleTenantGate`; Phase 7 deletes them with the aliases. */
-const legacyOnly = new Hono<AppEnv>();
+// Every route that reads or writes an org's data is defined on `tenant` and mounted ONCE at the bottom of
+// this file, under `/api/o/:org` (behind `tenantGate` — the org the path names, 404 for a non-member).
+// A handler reads its tenant from `c.var.ctx` and never from the path. It takes no `use("*")`.
+const tenant = new Hono<AppEnv>();
 
 /** An org role gate (§5.2) for a route whose 403 body predates the roles: admin or owner of `c.var.ctx`'s org. */
 const adminGate = async (c: Context<AppEnv>, next: () => Promise<void>) =>
   hasRole(c.var.ctx, "admin") ? next() : c.json({ error: "admin only" }, 403);
 
-// The raw artifact route's lock-down headers wrap EVERYTHING under its two mounts — the session gate's
-// own 401 and the tenant gate's 404 included — so this one middleware runs before both gates.
+// The raw artifact route's lock-down headers wrap EVERYTHING under its mount — the session gate's own 401
+// and the tenant gate's 404 included — so this one middleware runs before both gates.
 app.use("/api/o/:slug/raw/*", rawHeaders);
-app.use("/raw/*", rawHeaders);
 
 // Gate first: everything except /auth/login and /auth/callback requires a session.
 // Fails closed with 401 (no data in the body).
 app.use("*", sessionGate);
 
 // The data-layer contexts (src/data/gate.ts): `c.var.p` for the global tables on every request, and
-// `c.var.ctx` on every tenant route — from `tenantGate` under `/api/o/:slug/*`, and from `soleTenantGate`
-// (the caller's ONE org, the cut-over alias) on EVERY other session path that is not person-level
-// (/auth/*, /avatar/*, /org-logo/*, /api/orgs, /api/invites, /api/platform). So a route added without thought is
-// tenant-gated: a signed-in person with no single org gets 409 `org_required` there.
+// `c.var.ctx` ONLY under `/api/o/:slug/*`, from `tenantGate`. Every other path is person-level (/auth/*,
+// /avatar/*, /org-logo/*, /api/orgs, /api/invites, /api/platform, …) and has no tenant: a route that needs
+// one belongs on `tenant` (or another sub-app mounted under `/api/o/:slug`).
 app.use("*", platformContext);
-app.use("*", soleTenantGate);
 app.use("/api/o/:slug/*", tenantGate);
 
 // The raw artifact bytes (issue #52), session-gated: `/api/o/:slug/raw/a/…` for the org the path names
-// (`tenantGate`), and `/raw/a/…` as the cut-over alias for a person with exactly one org. ONE sub-app, so
-// the two mounts share every header and access rule (src/artifacts/raw.ts); a slug that is another org's
-// is the same 404 as an unknown one. Still on the app origin — moving them to an artifact origin (§8.6)
-// is a later phase. The org segment is `:org` here because the sub-app has a `:slug` of its own.
+// (`tenantGate`; src/artifacts/raw.ts). A slug that is another org's is the same 404 as an unknown one.
+// Still on the app origin — moving them to an artifact origin (§8.6) is a later phase. The org segment is
+// `:org` here because the sub-app has a `:slug` of its own.
 // The token-authenticated upload PUT is dispatched in src/index.ts, before this app.
 app.route("/api/o/:org/raw/a", rawApp);
-app.route("/raw/a", rawApp);
 
 // Doc images: the bytes behind `![alt](/img/<sha256>)` in a doc body, session-gated like
 // the docs themselves. Content-addressed and immutable, so the cache can keep them
 // forever; `default-src 'none'` + nosniff so the bytes are only ever an image.
-tenantRoot.get("/img/:sha", async (c) => {
+tenant.get("/img/:sha", async (c) => {
   const sha = c.req.param("sha");
   const lockdown = { "x-content-type-options": "nosniff", "content-security-policy": "default-src 'none'; sandbox" };
   if (!/^[0-9a-f]{64}$/.test(sha)) return c.json({ error: "not_found" }, 404, lockdown);
@@ -208,7 +190,7 @@ app.route("/api/invites", myInvitesApp);
 app.route("/api/platform", platformApp);
 // A hosting provider's install / OAuth callback (src/hosting/routes.ts): at the ROOT, because a provider's
 // redirect URI is fixed — the org rides in the sealed `state`, and the callback checks the person's admin
-// membership of it itself (src/data/gate.ts lets `/hosting/*` past the one-org alias).
+// membership of it itself (it has no tenant gate).
 app.route("/hosting", hostingCallbackApp);
 // A bug report / support message (0049_support_reports): any signed-in person, with or without an org.
 app.route("/api/support", supportApp);
@@ -219,27 +201,27 @@ app.route("/", billingApp);
 // `/api/o/:slug/artifacts…` ↔ `/api/artifacts…`, `/api/o/:slug/notifications…` ↔ `/api/notifications…`.
 // Their admin routes re-check the org role inside. The signed one-click unsubscribe POST is NOT here —
 // it lives in src/index.ts, outside the gate, and can only turn email off.
-tenantApi.route("/artifacts", artifactsApp);
-tenantApi.route("/notifications", notificationsApp);
+tenant.route("/artifacts", artifactsApp);
+tenant.route("/notifications", notificationsApp);
 // The org's tag list (0056_org_tags): any member reads, an admin changes it, a member tags one item.
-tenantApi.route("/tags", tagsApp);
-tenantApi.route("/item-tags", itemTagsApp);
-tenantApi.route("/tag-settings", tagSettingsApp);
+tenant.route("/tags", tagsApp);
+tenant.route("/item-tags", itemTagsApp);
+tenant.route("/tag-settings", tagSettingsApp);
 // The Docs Library's spaces (0081_docs_library): any member reads, an admin shapes them, an owner edits one's description.
-tenantApi.route("/spaces", spacesApp);
+tenant.route("/spaces", spacesApp);
 // Markdown import runs (0081/0082): any member imports into a live space; Approve all / Reject all for one import — cookie only.
-tenantApi.route("/imports", importsApp);
+tenant.route("/imports", importsApp);
 
 // ── Confirm verbs (§6.3, D6): a signed-in person's action, never a token's ────
 // Promote / reject a doc version, archive / restore a page, ratify / reject an ADR, publish a prompt (artifact ratify does the same
 // inside its sub-app): a request that carries an Authorization header is refused outright, so no future
 // change to `sessionGate` can turn a bearer into a confirmation.
-for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/doc/:slug/archive", "/doc/:slug/restore", "/adr/:id/ratify", "/adr/:id/reject"]) tenantRoot.use(path, cookieOnly);
+for (const path of ["/doc/:slug/promote", "/doc/:slug/reject", "/doc/:slug/archive", "/doc/:slug/restore", "/adr/:id/ratify", "/adr/:id/reject"]) tenant.use(path, cookieOnly);
 // Moving a page in its space's tree is a person's direct write too (any signed-in member; never MCP).
-tenantRoot.use("/doc/:slug/move", cookieOnly);
-tenantApi.use("/prompts/:slug/publish", cookieOnly);
+tenant.use("/doc/:slug/move", cookieOnly);
+tenant.use("/prompts/:slug/publish", cookieOnly);
 
-tenantRoot.post("/ingest", async (c) => {
+tenant.post("/ingest", async (c) => {
   const json = await c.req.json().catch(() => null);
   const parsed = IngestPayload.safeParse(json);
   if (!parsed.success) {
@@ -255,7 +237,7 @@ tenantRoot.post("/ingest", async (c) => {
 // (built on the server) instead of its body, the doc read its versions without theirs, and one
 // version's body is its own read. MCP `list_docs` / `get_doc` keep their bodies (src/mcp.ts). A
 // failed read is a 503 `{ error }` — never a 500.
-tenantRoot.get("/docs", async (c) => {
+tenant.get("/docs", async (c) => {
   try {
     // `?fields=meta` drops the outlines too (and ignores `section`) — My Work's list-only read.
     if (c.req.query("fields") === "meta") return c.json({ docs: await list_doc_meta(c.var.ctx) });
@@ -266,7 +248,7 @@ tenantRoot.get("/docs", async (c) => {
   }
 });
 
-tenantRoot.get("/doc/:slug", async (c) => {
+tenant.get("/doc/:slug", async (c) => {
   try {
     const found = await get_doc_page(c.var.ctx, c.req.param("slug"));
     return found ? c.json(found) : c.json({ error: "not found" }, 404);
@@ -276,7 +258,7 @@ tenantRoot.get("/doc/:slug", async (c) => {
   }
 });
 
-tenantRoot.get("/doc/:slug/versions/:version", async (c) => {
+tenant.get("/doc/:slug/versions/:version", async (c) => {
   const raw = c.req.param("version");
   if (!/^[1-9]\d{0,8}$/.test(raw)) return c.json({ error: "version must be a positive integer" }, 400);
   try {
@@ -288,7 +270,7 @@ tenantRoot.get("/doc/:slug/versions/:version", async (c) => {
   }
 });
 
-tenantRoot.get("/feed", async (c) => {
+tenant.get("/feed", async (c) => {
   const tags = c.req.query("tags");
   const limit = c.req.query("limit");
   const filter = {
@@ -316,7 +298,7 @@ tenantRoot.get("/feed", async (c) => {
 // the WHOLE window (never the Feed's loaded page). `days` 1–30 (default 7); `tz` = the
 // viewer's minutes EAST of UTC, so the day buckets are their local days (default 0 = UTC).
 // A bad parameter is a 400; a failed read is a 503 `{ error }` — never a 500.
-tenantRoot.get("/feed/stats", async (c) => {
+tenant.get("/feed/stats", async (c) => {
   const daysRaw = c.req.query("days");
   const tzRaw = c.req.query("tz");
   const days = daysRaw === undefined ? 7 : /^\d{1,3}$/.test(daysRaw) ? Number(daysRaw) : NaN;
@@ -334,7 +316,7 @@ tenantRoot.get("/feed/stats", async (c) => {
 // Home (shared/home-core.ts): the org's activity per local day, the team, the repositories, backlog and Triage
 // counts — D1 only. `tz` = the viewer's minutes EAST of UTC (default 0). A bad `tz` is a 400; a failed read is a 503
 // `{ error }`, never a 500.
-tenantRoot.get("/home", async (c) => {
+tenant.get("/home", async (c) => {
   const tzRaw = c.req.query("tz");
   const tz = tzRaw === undefined ? 0 : /^-?\d{1,4}$/.test(tzRaw) ? Number(tzRaw) : NaN;
   if (!isHomeTz(tz)) return c.json({ error: "tz must be whole minutes east of UTC, within ±840" }, 400);
@@ -348,7 +330,7 @@ tenantRoot.get("/home", async (c) => {
 
 // Human Search backs onto the same query() engine as MCP, but include_staged is
 // false — the human screen surfaces only settled (live) context, never staged.
-tenantRoot.get("/search", async (c) => {
+tenant.get("/search", async (c) => {
   const typesCsv = c.req.query("types");
   const types = typesCsv
     ? (typesCsv.split(",").map((t) => t.trim()).filter((t): t is QueryType => QueryType.safeParse(t).success))
@@ -371,7 +353,7 @@ tenantRoot.get("/search", async (c) => {
 // LIMITed per-type lookups — titles + one-line excerpts, never bodies — for the
 // session principal, live-only like /search. `q` under 2 characters answers without
 // touching D1. Never a 500: a failure is an empty answer flagged `degraded`.
-tenantRoot.get("/search/quick", async (c) => {
+tenant.get("/search/quick", async (c) => {
   const typesCsv = c.req.query("types");
   const types = typesCsv
     ? typesCsv.split(",").map((t) => t.trim()).filter((t): t is QuickType => (QUICK_TYPES as readonly string[]).includes(t))
@@ -394,9 +376,9 @@ tenantRoot.get("/search/quick", async (c) => {
 // SEAM: POST /ask — retrieve via query(), synthesize a grounded, slug-citing answer. Out of scope.
 
 // Each item carries Trov's open `unplaced.destination` as `ai` when it has one (src/ai/attach.ts; Phase C).
-tenantRoot.get("/needs-triage", async (c) => c.json({ items: await withUnplacedSuggestions(c, await list_needs_triage(c.var.ctx)) }));
+tenant.get("/needs-triage", async (c) => c.json({ items: await withUnplacedSuggestions(c, await list_needs_triage(c.var.ctx)) }));
 
-tenantRoot.get("/adrs", async (c) => {
+tenant.get("/adrs", async (c) => {
   const adrs = (await withReviewSuggestions(c, [], await list_adrs(c.var.ctx, c.req.query("status")))).adrs;
   // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per decision — never thread text or who.
   return c.json({ adrs, askFlags: await askFlagsFor(c.var.ctx, adrs.map((a) => `decision:${a.id}`)) });
@@ -410,7 +392,7 @@ tenantRoot.get("/adrs", async (c) => {
 // not rejected, server-joined with both bodies + reconciler metadata. Kills the
 // old web N+1 (audit G9) and is the data source Phase 4's detail pane renders.
 // Each proposal (and each drafted decision on `/adrs`) carries Trov's open `review.risk` as `ai` (src/ai/attach.ts).
-tenantRoot.get("/proposals", async (c) => {
+tenant.get("/proposals", async (c) => {
   const proposals = (await withReviewSuggestions(c, await list_proposals(c.var.ctx), [])).proposals;
   // "Flagged in Ask" (docs/architecture/ask.md): the reason and a count per doc — never thread text or who.
   return c.json({ proposals, askFlags: await askFlagsFor(c.var.ctx, proposals.map((p) => `doc:${p.slug}`)) });
@@ -428,17 +410,17 @@ const handoffFail = (c: Context<AppEnv>, e: unknown) => {
 };
 const handoffId = (raw: string): number | null => (/^\d+$/.test(raw) && Number(raw) > 0 ? Number(raw) : null);
 
-tenantApi.get("/handoffs", async (c) => {
+tenant.get("/handoffs", async (c) => {
   const box = c.req.query("box") ?? "mine";
   if (!(HANDOFF_BOXES as readonly string[]).includes(box)) return c.json({ error: "unknown box" }, 400);
   return c.json({ handoffs: await listHandoffs(c.var.ctx, c.get("principal").handle, box as HandoffBox) });
 });
-tenantApi.get("/handoffs/:id", async (c) => {
+tenant.get("/handoffs/:id", async (c) => {
   const id = handoffId(c.req.param("id"));
   const handoff = id === null ? null : await getHandoff(c.var.ctx, id);
   return handoff ? c.json({ handoff }) : c.json({ error: "not found" }, 404);
 });
-tenantApi.post("/handoffs", async (c) => {
+tenant.post("/handoffs", async (c) => {
   const raw = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
   const parsed = HandoffCreateInput.safeParse(raw);
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
@@ -452,7 +434,7 @@ tenantApi.post("/handoffs", async (c) => {
     return c.json({ ok: true, handoff });
   } catch (e) { return handoffFail(c, e); }
 });
-tenantApi.post("/handoffs/:id/claim", async (c) => {
+tenant.post("/handoffs/:id/claim", async (c) => {
   const id = handoffId(c.req.param("id"));
   if (id === null) return c.json({ error: "not found" }, 404);
   const body = (await c.req.json().catch(() => ({}))) as { session?: unknown };
@@ -464,7 +446,7 @@ tenantApi.post("/handoffs/:id/claim", async (c) => {
   }
   catch (e) { return handoffFail(c, e); }
 });
-tenantApi.post("/handoffs/:id/expire", async (c) => {
+tenant.post("/handoffs/:id/expire", async (c) => {
   const id = handoffId(c.req.param("id"));
   if (id === null) return c.json({ error: "not found" }, 404);
   try { return c.json({ ok: true, handoff: await expireHandoff(c.var.ctx, id, c.get("principal").handle) }); }
@@ -495,7 +477,7 @@ const linkBody = async (c: Context<AppEnv>): Promise<Record<string, unknown>> =>
 };
 const LINK_STEPS = { send: sendLink, accept: acceptLink, decline: declineLink, cancel: cancelLink } as const;
 
-tenantApi.get("/links", async (c) => {
+tenant.get("/links", async (c) => {
   const box = c.req.query("box") ?? "open";
   if (!(LINK_BOXES as readonly string[]).includes(box)) return c.json({ error: "bad_request", message: `unknown box: ${box}` }, 400);
   const me = c.get("principal").handle;
@@ -510,7 +492,7 @@ tenantApi.get("/links", async (c) => {
   } catch (e) { console.error("link previews failed", e instanceof Error ? e.message : String(e)); }
   return c.json({ links });
 });
-tenantApi.get("/links/:id", async (c) => {
+tenant.get("/links/:id", async (c) => {
   const id = linkId(c.req.param("id"));
   try {
     const me = c.get("principal").handle;
@@ -520,7 +502,7 @@ tenantApi.get("/links/:id", async (c) => {
 });
 // A person starts a link: `requested` (24 h), or `open` at once when it is to themself. Only `target`, `reason`
 // and `repo` are read from the body.
-tenantApi.post("/links", async (c) => {
+tenant.post("/links", async (c) => {
   const b = await linkBody(c);
   const input = { target: b.target, reason: b.reason, repo: b.repo } as LinkWebRequestInput;
   const me = c.get("principal").handle;
@@ -528,7 +510,7 @@ tenantApi.post("/links", async (c) => {
   catch (e) { return linkFail(c, e); }
 });
 for (const step of ["send", "accept", "decline", "cancel"] as const) {
-  tenantApi.post(`/links/:id/${step}`, async (c) => {
+  tenant.post(`/links/:id/${step}`, async (c) => {
     const id = linkId(c.req.param("id"));
     if (id === null) return c.json({ error: "not_found" }, 404);
     const me = c.get("principal").handle;
@@ -536,7 +518,7 @@ for (const step of ["send", "accept", "decline", "cancel"] as const) {
     catch (e) { return linkFail(c, e); }
   });
 }
-tenantApi.post("/links/:id/close", async (c) => {
+tenant.post("/links/:id/close", async (c) => {
   const id = linkId(c.req.param("id"));
   if (id === null) return c.json({ error: "not_found" }, 404);
   const b = await linkBody(c);
@@ -548,7 +530,7 @@ tenantApi.post("/links/:id/close", async (c) => {
 // reaches the session that joined as recipient). No session: a person binds none. It counts against the same
 // caps as an agent's — 20 per side, and `link_note` (60 an hour) on the platform context. Returns the refreshed
 // detail, so the page re-renders from it.
-tenantApi.post("/links/:id/notes", async (c) => {
+tenant.post("/links/:id/notes", async (c) => {
   const id = linkId(c.req.param("id"));
   if (id === null) return c.json({ error: "not_found" }, 404);
   const b = await linkBody(c);
@@ -560,28 +542,28 @@ tenantApi.post("/links/:id/notes", async (c) => {
   } catch (e) { return linkFail(c, e); }
 });
 
-tenantApi.get("/prompts", async (c) => {
+tenant.get("/prompts", async (c) => {
   const tags = (c.req.query("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const want = c.req.query("sort");
   const sort = want === "updated_asc" || want === "used" ? want : "updated_desc";
   return c.json({ prompts: await listPrompts(c.var.ctx, { q: c.req.query("q") ?? "", tags, sort }) });
 });
-tenantApi.get("/prompts/:slug", async (c) => {
+tenant.get("/prompts/:slug", async (c) => {
   const prompt = await getPrompt(c.var.ctx, c.req.param("slug"));
   return prompt ? c.json({ prompt }) : c.json({ error: "not found" }, 404);
 });
-tenantApi.get("/prompts/:slug/versions", async (c) => {
+tenant.get("/prompts/:slug/versions", async (c) => {
   const slug = c.req.param("slug");
   if (!(await getPrompt(c.var.ctx, slug))) return c.json({ error: "not found" }, 404);
   return c.json({ versions: await listPromptVersions(c.var.ctx, slug) });
 });
-tenantApi.post("/prompts", async (c) => {
+tenant.post("/prompts", async (c) => {
   const parsed = PromptSaveInput.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   try { return c.json({ ok: true, prompt: await savePrompt(c.var.ctx, c.get("principal").handle, parsed.data, "human") }); }
   catch (e) { return handoffFail(c, e); }
 });
-tenantApi.post("/prompts/:slug/tags", async (c) => {
+tenant.post("/prompts/:slug/tags", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { tags?: unknown } | null;
   if (!body || !Array.isArray(body.tags) || !body.tags.every((t) => typeof t === "string")) return c.json({ error: "tags (string[]) required" }, 400);
   try { return c.json({ ok: true, prompt: await setPromptTags(c.var.ctx, c.req.param("slug"), body.tags as string[]) }); }
@@ -590,7 +572,7 @@ tenantApi.post("/prompts/:slug/tags", async (c) => {
 // One USE of a prompt (the web Copy button; MCP get_prompt counts its own): one
 // conditional UPDATE, so a request counts once. Unknown slug → 404; a D1 failure is a
 // 503, never a 500 — a lost count must not break the copy.
-tenantApi.post("/prompts/:slug/used", async (c) => {
+tenant.post("/prompts/:slug/used", async (c) => {
   try {
     if (!(await recordPromptUse(c.var.ctx, c.req.param("slug")))) return c.json({ error: "not found" }, 404);
     const prompt = await getPrompt(c.var.ctx, c.req.param("slug"));
@@ -601,7 +583,7 @@ tenantApi.post("/prompts/:slug/used", async (c) => {
 });
 // Publishing is a human confirmation, gated exactly like POST /doc/:slug/promote:
 // any signed-in person (sessionGate), never an MCP tool.
-tenantApi.post("/prompts/:slug/publish", async (c) => {
+tenant.post("/prompts/:slug/publish", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { version?: unknown } | null;
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
@@ -612,12 +594,12 @@ tenantApi.post("/prompts/:slug/publish", async (c) => {
 // is a 403 with nothing written. Session-cookie only — there is NO MCP delete, so an
 // agent can never remove a prompt. A deleted prompt's slug stays reserved (a save to
 // it is a 409), and restore is the one way back.
-tenantApi.post("/prompts/:slug/delete", async (c) => {
+tenant.post("/prompts/:slug/delete", async (c) => {
   const me = c.get("principal").handle;
   try { return c.json({ ok: true, ...(await deletePrompt(c.var.ctx, c.req.param("slug"), me, hasRole(c.var.ctx, "admin"))) }); }
   catch (e) { return handoffFail(c, e); }
 });
-tenantApi.post("/prompts/:slug/restore", async (c) => {
+tenant.post("/prompts/:slug/restore", async (c) => {
   const me = c.get("principal").handle;
   try { return c.json({ ok: true, prompt: await restorePrompt(c.var.ctx, c.req.param("slug"), me, hasRole(c.var.ctx, "admin")) }); }
   catch (e) { return handoffFail(c, e); }
@@ -636,7 +618,7 @@ const DocPropose = z.object({
   // The page it goes under (New page's "Goes in"): checked by the gate; an invalid one is ignored and said.
   parent_slug: z.string().trim().max(200).optional(),
 });
-tenantApi.post("/docs/propose", async (c) => {
+tenant.post("/docs/propose", async (c) => {
   const parsed = DocPropose.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid payload" }, 400);
   const d = parsed.data;
@@ -665,7 +647,7 @@ tenantApi.post("/docs/propose", async (c) => {
 });
 
 // Human confirmation (session-gated): promote a staged doc version into the live doc.
-tenantRoot.post("/doc/:slug/promote", async (c) => {
+tenant.post("/doc/:slug/promote", async (c) => {
   const body = await c.req.json().catch(() => null);
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
@@ -683,7 +665,7 @@ tenantRoot.post("/doc/:slug/promote", async (c) => {
 // too, with the renumber in one batch. Any signed-in member (the design gates no one); cookie only. A refusal is
 // `{ error: code, message }`: `invalid` 400, `not_found` 404, `cycle` / `too_deep` / `self` / `other_space` /
 // `archived` 409.
-tenantRoot.post("/doc/:slug/move", async (c) => {
+tenant.post("/doc/:slug/move", async (c) => {
   const body = await c.req.json().catch(() => null);
   try {
     return c.json(await moveDoc(c.var.ctx, c.req.param("slug"), body));
@@ -700,7 +682,7 @@ tenantRoot.post("/doc/:slug/move", async (c) => {
 // can, else at the top level. A refusal is `{ error: code, message }`: `not_found` 404 (no such page of the org),
 // `forbidden` 403, `archived` / `not_archived` / `space_archived` 409.
 for (const [path, write] of [["/doc/:slug/archive", archiveDoc], ["/doc/:slug/restore", restoreDoc]] as const) {
-  tenantRoot.post(path, async (c) => {
+  tenant.post(path, async (c) => {
     try {
       return c.json(await write(c.var.ctx, c.req.param("slug")));
     } catch (e) {
@@ -712,7 +694,7 @@ for (const [path, write] of [["/doc/:slug/archive", archiveDoc], ["/doc/:slug/re
 
 // Human write-back (session-gated): reject a staged doc version. Soft status flip
 // to 'rejected' so it leaves the proposals queue; the row + body remain.
-tenantRoot.post("/doc/:slug/reject", async (c) => {
+tenant.post("/doc/:slug/reject", async (c) => {
   const body = await c.req.json().catch(() => null);
   const version = Number(body?.version);
   if (!Number.isInteger(version)) return c.json({ error: "version (integer) required" }, 400);
@@ -725,7 +707,7 @@ tenantRoot.post("/doc/:slug/reject", async (c) => {
 });
 
 // Human confirmation (session-gated): ratify an ADR draft.
-tenantRoot.post("/adr/:id/ratify", async (c) => {
+tenant.post("/adr/:id/ratify", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
@@ -738,7 +720,7 @@ tenantRoot.post("/adr/:id/ratify", async (c) => {
 
 // Human write-back (session-gated): reject an ADR draft. Soft flip to 'rejected'
 // so it leaves the decisions queue; the row remains.
-tenantRoot.post("/adr/:id/reject", async (c) => {
+tenant.post("/adr/:id/reject", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
@@ -751,7 +733,7 @@ tenantRoot.post("/adr/:id/reject", async (c) => {
 
 // Human write-back (session-gated): discard a triage item. Soft — sets the audit
 // columns + resolved flag so it leaves the queue; never a hard-delete.
-tenantRoot.post("/needs-triage/:id/discard", async (c) => {
+tenant.post("/needs-triage/:id/discard", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
@@ -764,7 +746,7 @@ tenantRoot.post("/needs-triage/:id/discard", async (c) => {
 
 // Human write-back (session-gated): undo a discard — Unplaced's Undo toast. Back to the queue, unresolved, exactly as it
 // was; only a discarded item (a placed one is 409 `assigned`), an unknown id 404.
-tenantRoot.post("/needs-triage/:id/restore", async (c) => {
+tenant.post("/needs-triage/:id/restore", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
@@ -778,7 +760,7 @@ tenantRoot.post("/needs-triage/:id/restore", async (c) => {
 // Human write-back (session-gated): assign-materialize a triage item. Re-runs the
 // item's `raw` through the SAME gate for the chosen target type, then resolves it
 // as 'assigned' with assigned_ref. The author is the authenticated principal.
-tenantRoot.post("/needs-triage/:id/assign", async (c) => {
+tenant.post("/needs-triage/:id/assign", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   const body = (await c.req.json().catch(() => ({}))) as {
@@ -803,7 +785,7 @@ tenantRoot.post("/needs-triage/:id/assign", async (c) => {
 // Pending unknown-login identity tasks, each with a small LIVE activity sample
 // pulled from `events` at read time — activity is never copied onto the task —
 // plus the discarded logins Undo can still restore.
-tenantRoot.get("/identity-tasks", async (c) =>
+tenant.get("/identity-tasks", async (c) =>
   c.json({ tasks: await list_identity_tasks(c.var.ctx), discarded: await list_discarded_identities(c.var.ctx) }));
 
 // Human placement (session-gated, org ADMIN+ — §6.3): attribute a login to an
@@ -811,8 +793,8 @@ tenantRoot.get("/identity-tasks", async (c) =>
 // global `identities` table, which is sign-in (a direct authored write, not a
 // gate re-run), then a soft resolve of the task. My Work picks the mapping up at
 // read time, so every already-captured event for this login surfaces with no backfill.
-tenantRoot.use("/identity-tasks/:login/map", adminGate);
-tenantRoot.post("/identity-tasks/:login/map", async (c) => {
+tenant.use("/identity-tasks/:login/map", adminGate);
+tenant.post("/identity-tasks/:login/map", async (c) => {
   const body = (await c.req.json().catch(() => null)) as { person?: string } | null;
   const person = typeof body?.person === "string" ? body.person.trim() : "";
   if (!person) return c.json({ error: "person (non-empty string) required" }, 400);
@@ -832,7 +814,7 @@ const identityFail = (c: Context<AppEnv>, e: unknown) =>
   e instanceof IdentityTaskError
     ? c.json({ error: e.message }, e.code === "not_found" ? 404 : 409)
     : c.json({ error: "temporarily unavailable" }, 503);
-tenantRoot.post("/identity-tasks/:login/discard", async (c) => {
+tenant.post("/identity-tasks/:login/discard", async (c) => {
   try {
     const res = await discard_identity_task(c.var.ctx, c.req.param("login"), c.get("principal").handle);
     return c.json({ ok: true, ...res });
@@ -840,7 +822,7 @@ tenantRoot.post("/identity-tasks/:login/discard", async (c) => {
     return identityFail(c, e);
   }
 });
-tenantRoot.post("/identity-tasks/:login/restore", async (c) => {
+tenant.post("/identity-tasks/:login/restore", async (c) => {
   try {
     const res = await restore_identity_task(c.var.ctx, c.var.p, c.req.param("login"));
     return c.json({ ok: true, ...res });
@@ -850,11 +832,11 @@ tenantRoot.post("/identity-tasks/:login/restore", async (c) => {
 });
 
 // Person directory (session-gated): the avatar-chip source for every screen and the identity picker.
-tenantRoot.get("/persons", async (c) => c.json({ persons: await listPersons(c.var.ctx) }));
+tenant.get("/persons", async (c) => c.json({ persons: await listPersons(c.var.ctx) }));
 
 // ── People profiles (0036; the contract is shared/people.ts) — session cookie, NEVER MCP ──
-// Read: any member of the org; `responsibilities` only to its admins. Write (the alias below):
-// an org admin or owner (403 otherwise, nothing written). Avatar: the viewer's OWN only.
+// Read: any member of the org; `responsibilities` only to its admins (a title and responsibilities are written
+// through `PUT /api/o/:slug/members/:handle`, src/orgs/routes.ts). Avatar: the viewer's OWN only.
 // `me` names the viewer (it is a reserved handle, so it can never be someone else's).
 // A PeopleError is its status; anything else (a D1 failure) is a 503, never a 500.
 const peopleFail = (c: Context<AppEnv>, e: unknown) =>
@@ -863,21 +845,13 @@ const profileHandle = (c: Context<AppEnv>): string => {
   const h = c.req.param("handle") ?? "";
   return h.toLowerCase() === "me" ? c.get("principal").handle : h;
 };
-tenantApi.get("/people/:handle", async (c) => {
+tenant.get("/people/:handle", async (c) => {
   try { return c.json(await getPersonProfile(c.var.ctx, profileHandle(c), c.get("principal").handle)); }
-  catch (e) { return peopleFail(c, e); }
-});
-// ALIAS ONLY (§6.3): under `/api/o/:slug` a member's title and responsibilities are written through
-// `PUT /api/o/:slug/members/:handle` (src/orgs/routes.ts). This keeps the current SPA's request — and its
-// `{ role, responsibilities }` body, where `role` is the TITLE — working, with the same gate: admin+.
-legacyOnly.put("/api/people/:handle", async (c) => {
-  const body = await c.req.json().catch(() => undefined);
-  try { return c.json(await writePersonProfile(c.var.ctx, profileHandle(c), c.get("principal").handle, body)); }
   catch (e) { return peopleFail(c, e); }
 });
 // Multipart, field `file`. A declared length past the cap (plus multipart framing) is
 // refused before the body is read.
-tenantApi.post("/people/me/avatar", async (c) => {
+tenant.post("/people/me/avatar", async (c) => {
   const len = Number(c.req.header("content-length"));
   if (Number.isFinite(len) && len > AVATAR_MAX_BYTES + 64 * 1024) return c.json({ error: `an avatar is at most ${AVATAR_MAX_BYTES} bytes` }, 413);
   const refused = await rateLimited(c, "avatar_upload");
@@ -893,52 +867,9 @@ tenantApi.post("/people/me/avatar", async (c) => {
   try { return c.json({ ok: true, ...(await setAvatar(c.var.p, c.env.ARTIFACTS_BUCKET, c.get("principal").handle, file)) }); }
   catch (e) { return peopleFail(c, e); }
 });
-tenantApi.post("/people/me/avatar/remove", async (c) => {
+tenant.post("/people/me/avatar/remove", async (c) => {
   try { return c.json({ ok: true, ...(await clearAvatar(c.var.p, c.get("principal").handle)) }); }
   catch (e) { return peopleFail(c, e); }
-});
-
-// ── Maintenance › People: the EMAIL invite list (org admin+, session-cookie only, NEVER MCP) ──
-// ALIAS ONLY (§6.3): under `/api/o/:slug` invites are `GET|POST /api/o/:slug/invites`, addressed by id
-// (src/orgs/routes.ts). These four keep the current SPA's screen working and are ORG-SCOPED: an invite
-// made here is an `org_invites` row of the caller's org, listed and revoked by address
-// (src/orgs/legacy-invites.ts — the model, and what the legacy `invites` table still holds).
-const InviteWrite = z.object({ email: z.string().trim().max(254).regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "invalid email"), name: z.string().trim().max(120).optional() });
-/** The alias's mail is the org route's (src/orgs/mail.ts), reported in the old `{ status, id, error }` shape. */
-async function mailLegacyInvite(c: Context<AppEnv>, email: string, name: string | null): Promise<{ status: "sent" | "failed"; id: string | null; error: string | null }> {
-  const id = await pendingInviteId(c.var.p, c.var.ctx, email);
-  const sent = id === null ? null : await mailInvite(c.env, c.var.p, c.var.ctx.orgId, { id, email, name, role: "member" }, mailOrigin(c.env, c.req.url));
-  return sent ? { status: sent.status, id: sent.id, error: sent.error } : { status: "failed", id: null, error: "no such invite" };
-}
-legacyOnly.use("/invites", adminGate);
-legacyOnly.use("/invites/*", adminGate);
-legacyOnly.get("/invites", async (c) => c.json({ invites: await listLegacyInvites(c.var.p, c.var.ctx) }));
-legacyOnly.post("/invites", async (c) => {
-  const parsed = InviteWrite.safeParse(await c.req.json().catch(() => null));
-  if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
-  const refused = await rateLimited(c, "invite");
-  if (refused) return refused;
-  let invite: InviteRow;
-  try {
-    invite = await createLegacyInvite(c.var.p, c.var.ctx, { email: parsed.data.email, name: parsed.data.name ?? null });
-  } catch (e) {
-    if (e instanceof LegacyInviteError) return c.json({ error: e.code }, 409);
-    throw e;
-  }
-  const email = await mailLegacyInvite(c, invite.email, parsed.data.name ?? null);
-  return c.json({ ok: true, invite: (await getLegacyInvite(c.var.p, c.var.ctx, invite.email))!, email });
-});
-legacyOnly.post("/invites/:email/revoke", async (c) => {
-  const ok = await revokeLegacyInvite(c.var.p, c.var.ctx, decodeURIComponent(c.req.param("email")));
-  return ok ? c.json({ ok: true }) : c.json({ error: "no such invite" }, 404);
-});
-legacyOnly.post("/invites/:email/resend", async (c) => {
-  const row = await getLegacyInvite(c.var.p, c.var.ctx, decodeURIComponent(c.req.param("email")));
-  if (!row) return c.json({ error: "no such invite" }, 404);
-  if (row.revoked_at || row.accepted_by) return c.json({ error: row.revoked_at ? "revoked" : "accepted" }, 409);
-  const refused = await rateLimited(c, "invite");
-  if (refused) return refused;
-  return c.json({ ok: true, email: await mailLegacyInvite(c, row.email, row.name) });
 });
 
 // Roadmap read (session-gated): admin narrative + sprints in target-date order,
@@ -946,7 +877,7 @@ legacyOnly.post("/invites/:email/resend", async (c) => {
 // What Trov wrote (sprint notes, the drift) comes with it while the org's AI switch is on, minus what this
 // person pressed "Wrong?" on; an ADMIN also gets the open Roadmap suggestions (a sprint draft, a narrative) —
 // MCP's `get_roadmap` never does. LOCAL_AI_PREVIEW fills the samples under `wrangler dev` only.
-tenantRoot.get("/roadmap", async (c) => {
+tenant.get("/roadmap", async (c) => {
   const ctx = c.var.ctx;
   const admin = hasRole(ctx, "admin");
   const plan = await roadmapForPerson(ctx, await get_plan(ctx), { admin });
@@ -958,7 +889,7 @@ tenantRoot.get("/roadmap", async (c) => {
 // previous activity (summarized merged/closed PRs), open assigned issues, and open
 // assigned tickets (native + mirrored, with the uncapped `ticketsTotal`), all D1.
 // Stored nowhere; never 500s.
-tenantRoot.get("/me/dashboard", async (c) => {
+tenant.get("/me/dashboard", async (c) => {
   const login = c.get("principal").handle;
   try {
     // Opening My Work is what makes a person's brief worth writing (src/data/person-brief.ts `briefWanted`): one
@@ -983,7 +914,7 @@ tenantRoot.get("/me/dashboard", async (c) => {
 // projection over captured events, tickets and sprints (src/tools/repo.ts). No
 // live GitHub; whatever Trov has no capture path for is `not_connected`.
 // Stored nowhere; never 500s.
-tenantRoot.get("/repo/dashboard", async (c) => {
+tenant.get("/repo/dashboard", async (c) => {
   // The org's own primary repository and environments (`org_repos`, `org_environments`).
   // `?repo=` one of the org's repositories (any case; absent → the primary, as before; unknown → 404) and
   // `?app=` an app key of it or `__repo` (REPO_WIDE). An unknown app reads as every app — the facts are not
@@ -1018,7 +949,7 @@ tenantRoot.get("/repo/dashboard", async (c) => {
 // A computed/authored direct writer in the promote class — humans (admins)
 // trigger it — but every captured event still funnels through the ingestEvent
 // gate fn. Non-admins get 403; a missing service token/repo → 503 with the error.
-tenantRoot.post("/admin/backfill", async (c) => {
+tenant.post("/admin/backfill", async (c) => {
   const login = c.get("principal").handle;
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
   // Each batch belongs to a RUN (src/sync/runs.ts, docs/architecture/sync.md): the record of who
@@ -1047,7 +978,7 @@ tenantRoot.post("/admin/backfill", async (c) => {
 // Sync GitHub, as every MEMBER reads it (src/sync/runs.ts): the run in progress, the last one — who,
 // when, how it ended, what it changed — why a sync cannot start, the org's AI-summaries allowance, and
 // when deployments and CI were last refreshed. Counts and failure codes only; never a 500.
-tenantApi.get("/sync", async (c) => {
+tenant.get("/sync", async (c) => {
   try {
     return c.json(await syncStatus(c.env, c.var.ctx));
   } catch (e) {
@@ -1067,7 +998,7 @@ tenantApi.get("/sync", async (c) => {
 // is reconcile's ARM NAMES). Overlapping runs are correct (every write is
 // idempotent) but wasteful, so a `refresh_lock` snapshot younger than 3 minutes
 // is a 409 that runs nothing; the lock is cleared in a `finally`. Never a 500.
-tenantRoot.post("/admin/poll", async (c) => {
+tenant.post("/admin/poll", async (c) => {
   const handle = c.get("principal").handle;
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
   try {
@@ -1093,7 +1024,7 @@ tenantRoot.post("/admin/poll", async (c) => {
 // body. 200 even when every source failed — the body says so; it carries
 // per-environment outcomes and NEVER a token, a header or an account id (a
 // `detail` is the poller's own scrubbed log message). Never a 500.
-tenantRoot.post("/admin/poll-usage", async (c) => {
+tenant.post("/admin/poll-usage", async (c) => {
   if (!hasRole(c.var.ctx, "admin")) return c.json({ error: "admin only" }, 403);
   try {
     return c.json(await runUsagePolls(c.env, c.var.ctx, Date.now()));
@@ -1129,7 +1060,7 @@ const ticketDetailResponse = async (c: Context<AppEnv>, id: number): Promise<Res
   return c.json({ ok: true, ticket });
 };
 
-tenantRoot.post("/tickets", async (c) => {
+tenant.post("/tickets", async (c) => {
   const parsed = TicketCreate.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
   try {
@@ -1144,7 +1075,7 @@ tenantRoot.post("/tickets", async (c) => {
 // The queue list. seg=open|closed|all (open = submitted + in_progress),
 // assignee=anyone|me|unassigned (me = the principal), category = a vocab value
 // ('all'/absent = every category). Sorted updated_at DESC.
-tenantRoot.get("/tickets", async (c) => {
+tenant.get("/tickets", async (c) => {
   const segRaw = c.req.query("seg");
   const asgRaw = c.req.query("assignee");
   const catRaw = c.req.query("category");
@@ -1171,7 +1102,7 @@ tenantRoot.get("/tickets", async (c) => {
 
 // The sidebar's counts in one batch: the boot reads this instead of the seven lists it counts.
 // A failed read degrades (503 `{ error }`): the badges stay as they were, the screen still renders.
-tenantRoot.get("/badges", async (c) => {
+tenant.get("/badges", async (c) => {
   try { return c.json(await sidebarBadges(c.var.ctx, c.get("principal").handle)); }
   catch (e) {
     console.error("badges failed", e instanceof Error ? e.message : String(e));
@@ -1181,9 +1112,9 @@ tenantRoot.get("/badges", async (c) => {
 
 // REGISTERED BEFORE /tickets/:id ON PURPOSE: Hono matches in registration order,
 // so a later ':id' route would otherwise swallow the literal '/tickets/badge'.
-tenantRoot.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(c.var.ctx) }));
+tenant.get("/tickets/badge", async (c) => c.json({ count: await ticket_badge(c.var.ctx) }));
 
-tenantRoot.get("/tickets/:id", async (c) => {
+tenant.get("/tickets/:id", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const ticket = await get_ticket(c.var.ctx, id);
@@ -1194,7 +1125,7 @@ tenantRoot.get("/tickets/:id", async (c) => {
 
 // Edit the title and/or body — a mirrored ticket's too (seeded from the issue at
 // import, Trov's afterwards). A patch that changes neither is a 400.
-tenantRoot.post("/tickets/:id/edit", async (c) => {
+tenant.post("/tickets/:id/edit", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketEdit.safeParse(await c.req.json().catch(() => null));
@@ -1209,7 +1140,7 @@ tenantRoot.post("/tickets/:id/edit", async (c) => {
 
 // A status move. Legality is decided by the ONE shared transition table; an
 // illegal move is a 409 and writes nothing at all (not even a history row).
-tenantRoot.post("/tickets/:id/status", async (c) => {
+tenant.post("/tickets/:id/status", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketTransition.safeParse(await c.req.json().catch(() => null));
@@ -1225,7 +1156,7 @@ tenantRoot.post("/tickets/:id/status", async (c) => {
 // A board drop (the queue's Board view): status and position in one write —
 // `move_ticket`. Cookie-only, like every ticket route; agents move a ticket with
 // the MCP `transition_ticket`, which leaves it at the top of its new column.
-tenantRoot.post("/tickets/:id/move", async (c) => {
+tenant.post("/tickets/:id/move", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketMove.safeParse(await c.req.json().catch(() => null));
@@ -1239,7 +1170,7 @@ tenantRoot.post("/tickets/:id/move", async (c) => {
 });
 
 // Assignment is immediate and reversible, so it is a toggle with no confirm step.
-tenantRoot.post("/tickets/:id/assignees", async (c) => {
+tenant.post("/tickets/:id/assignees", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketAssigneeToggle.safeParse(await c.req.json().catch(() => null));
@@ -1252,7 +1183,7 @@ tenantRoot.post("/tickets/:id/assignees", async (c) => {
   }
 });
 
-tenantRoot.post("/tickets/:id/links", async (c) => {
+tenant.post("/tickets/:id/links", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketLinkAdd.safeParse(await c.req.json().catch(() => null));
@@ -1267,7 +1198,7 @@ tenantRoot.post("/tickets/:id/links", async (c) => {
 
 // Detach one link. The link must be on :id — another ticket's link id is a 404.
 // A LOCKED link (a mirrored ticket's GitHub issue, 0032) is a 403, left in place.
-tenantRoot.post("/tickets/:id/links/:linkId/remove", async (c) => {
+tenant.post("/tickets/:id/links/:linkId/remove", async (c) => {
   const id = ticketId(c);
   const linkId = Number(c.req.param("linkId"));
   if (id === null || !Number.isInteger(linkId)) return c.json({ error: "invalid id" }, 400);
@@ -1281,7 +1212,7 @@ tenantRoot.post("/tickets/:id/links/:linkId/remove", async (c) => {
 
 // Delete a ticket (session-gated, any member — no adminGate). A HARD delete; a
 // ticket mirrored from a GitHub issue is a 403, left in place. See delete_ticket.
-tenantRoot.post("/tickets/:id/delete", async (c) => {
+tenant.post("/tickets/:id/delete", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
@@ -1292,7 +1223,7 @@ tenantRoot.post("/tickets/:id/delete", async (c) => {
 });
 
 // sprint_id null = the backlog. An unknown sprint id is a 404, not a silent write.
-tenantRoot.post("/tickets/:id/sprint", async (c) => {
+tenant.post("/tickets/:id/sprint", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketSprintSet.safeParse(await c.req.json().catch(() => null));
@@ -1307,7 +1238,7 @@ tenantRoot.post("/tickets/:id/sprint", async (c) => {
 
 // Nest child_id under :id. Tickets nest ONE level — the four rejections live in
 // set_ticket_parent and come back as 409s with the database untouched.
-tenantRoot.post("/tickets/:id/parent", async (c) => {
+tenant.post("/tickets/:id/parent", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketParentSet.safeParse(await c.req.json().catch(() => null));
@@ -1320,7 +1251,7 @@ tenantRoot.post("/tickets/:id/parent", async (c) => {
   }
 });
 
-tenantRoot.post("/tickets/:id/comment", async (c) => {
+tenant.post("/tickets/:id/comment", async (c) => {
   const id = ticketId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = TicketCommentAdd.safeParse(await c.req.json().catch(() => null));
@@ -1356,7 +1287,7 @@ const sprintId = (c: Context<AppEnv>): number | null => {
 // `start` / `due` must be real YYYY-MM-DD days (or blank) with start <= due — the
 // ONE rule in shared/sprints-core.ts; a refusal's `error` IS that rule's message
 // (the New sprint panel shows it), and nothing is written.
-tenantRoot.post("/sprints", async (c) => {
+tenant.post("/sprints", async (c) => {
   const parsed = SprintCreate.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     const custom = parsed.error.issues.find((i) => i.code === "custom")?.message;
@@ -1373,9 +1304,9 @@ tenantRoot.post("/sprints", async (c) => {
 // The roadmap's sprint list: each with its tickets-only progress, the separate
 // cached GitHub issue counts, and members.
 // Registered before /sprints/:id (Hono matches in registration order).
-tenantRoot.get("/sprints", async (c) => c.json({ sprints: await list_sprints(c.var.ctx) }));
+tenant.get("/sprints", async (c) => c.json({ sprints: await list_sprints(c.var.ctx) }));
 
-tenantRoot.get("/sprints/:id", async (c) => {
+tenant.get("/sprints/:id", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const sprint = await get_sprint(c.var.ctx, id);
@@ -1385,7 +1316,7 @@ tenantRoot.get("/sprints/:id", async (c) => {
 
 // The In Progress ↔ Upcoming toggle. `active` is derived from status, so this
 // writes status; clearing active on a DONE sprint is a no-op (see set_sprint_active).
-tenantRoot.post("/sprints/:id/active", async (c) => {
+tenant.post("/sprints/:id/active", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = SprintActiveSet.safeParse(await c.req.json().catch(() => null));
@@ -1401,7 +1332,7 @@ tenantRoot.post("/sprints/:id/active", async (c) => {
 // A resource on the sprint itself, parsed by the SHARED link parser (`#214`
 // resolves the same way it does on a ticket). Answers with the full detail so
 // one round-trip repaints the Resources list.
-tenantRoot.post("/sprints/:id/resources", async (c) => {
+tenant.post("/sprints/:id/resources", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   const parsed = SprintResourceAdd.safeParse(await c.req.json().catch(() => null));
@@ -1416,7 +1347,7 @@ tenantRoot.post("/sprints/:id/resources", async (c) => {
 
 // Delete a sprint (session-gated, any member — no adminGate). Its tickets move
 // to the backlog; see delete_sprint. Never an ingestion path.
-tenantRoot.post("/sprints/:id/delete", async (c) => {
+tenant.post("/sprints/:id/delete", async (c) => {
   const id = sprintId(c);
   if (id === null) return c.json({ error: "invalid id" }, 400);
   try {
@@ -1428,7 +1359,7 @@ tenantRoot.post("/sprints/:id/delete", async (c) => {
 
 // Human confirmation (session-gated): flip a live sprint to 'done'. Admin action
 // in the promote class — 'done' is never inferred from issues or tickets closing.
-tenantRoot.post("/sprints/:id/complete", async (c) => {
+tenant.post("/sprints/:id/complete", async (c) => {
   const id = Number(c.req.param("id"));
   if (!Number.isInteger(id)) return c.json({ error: "invalid id" }, 400);
   try {
@@ -1458,16 +1389,11 @@ provideAskGithub(askGithubTransport);
 provideAskLocalUpstream(localUpstreamFetch);
 app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
-// The org segment is named `:org` on these two mounts, NOT `:slug`: many tenant routes have a `:slug` of
-// their own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name
-// twice. Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from
-// its own pattern, and a handler reads `c.var.ctx`.
-app.route("/api/o/:org", tenantRoot);
-app.route("/api/o/:org", tenantApi);
-// The cut-over aliases (§6.3): the same routes at their old paths, for the caller's only org.
-app.route("/", tenantRoot);
-app.route("/api", tenantApi);
-app.route("/", legacyOnly);
+// The org segment is named `:org` on this mount, NOT `:slug`: many tenant routes have a `:slug` of their
+// own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name twice.
+// Nothing reads `:org` — `tenantGate` (mounted on `/api/o/:slug/*` above) resolved the org from its own
+// pattern, and a handler reads `c.var.ctx`.
+app.route("/api/o/:org", tenant);
 
 // ── Does any route answer this address? (src/index.ts, before the session gate) ──
 // An address no route of this app answers is a 404 for everyone (src/site.ts `notFound`), never the

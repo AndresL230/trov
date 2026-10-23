@@ -21,7 +21,7 @@ export async function probeHostingKind(
   if (!id) return { ok: false, detail: "not a hosting provider" };
   const p = providerOf(id);
   if (p.status !== "available") return { ok: false, detail: `${p.label} is not supported yet` };
-  const config = await resolveIntegrationConfig(ctx, env, kind, "");
+  const config = await resolveIntegrationConfig(ctx, kind, "");
   const parts = (await listAllParts(ctx)).filter((x) => x.provider === id);
   const part = partKey ? parts.find((x) => x.env === partKey.env && x.key === partKey.part) ?? null : parts[0] ?? null;
   try {

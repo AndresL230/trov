@@ -829,7 +829,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://dash.cloudflare.com/profile/api-tokens",
       "used_by": [
@@ -853,7 +852,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -883,7 +881,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://vercel.com/acme/~/integrations",
       "used_by": [
@@ -911,7 +908,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T09:40:15.000Z",
       "last_error": "render deployments 401: Unauthorized — the credential is not valid",
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://dashboard.render.com/u/settings#api-keys",
       "used_by": [
@@ -941,7 +937,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -965,7 +960,6 @@ export const HOSTING_SAMPLE_MIXED: HostingSetupDTO = {
       "connected_at": null,
       "last_used_at": null,
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -1390,7 +1384,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://dash.cloudflare.com/profile/api-tokens",
       "used_by": [
@@ -1414,7 +1407,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -1444,7 +1436,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": null,
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": "Removed on Vercel",
       "manage_url": "https://vercel.com/acme/~/integrations",
       "used_by": [
@@ -1472,7 +1463,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T09:40:15.000Z",
       "last_error": "render deployments 401: Unauthorized — the credential is not valid",
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://dashboard.render.com/u/settings#api-keys",
       "used_by": [
@@ -1502,7 +1492,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -1526,7 +1515,6 @@ export const HOSTING_SAMPLE_REVOKED: HostingSetupDTO = {
       "connected_at": null,
       "last_used_at": null,
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -1873,7 +1861,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://dash.cloudflare.com/profile/api-tokens",
       "used_by": [
@@ -1897,7 +1884,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -1927,7 +1913,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://vercel.com/acme/~/integrations",
       "used_by": [
@@ -1955,7 +1940,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T09:40:15.000Z",
       "last_error": "render deployments 401: Unauthorized — the credential is not valid",
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": "https://dashboard.render.com/u/settings#api-keys",
       "used_by": [
@@ -1985,7 +1969,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "connected_at": "2026-10-06T16:05:00.000Z",
       "last_used_at": "2026-10-07T12:40:11.000Z",
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -2009,7 +1992,6 @@ export const HOSTING_SAMPLE_SECRETS_LOCKED: HostingSetupDTO = {
       "connected_at": null,
       "last_used_at": null,
       "last_error": null,
-      "legacy_fallback": false,
       "revoked_reason": null,
       "manage_url": null,
       "used_by": [
@@ -2246,7 +2228,7 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
       connected_by: live || status === "revoked" ? "andres" : null, connected_at: live || status === "revoked" ? "2026-10-06T16:05:00.000Z" : null,
       last_used_at: polled(id) || status === "error" ? AT : null,
       last_error: status === "error" ? `${id} deployments 401: Unauthorized — the credential is not valid` : null,
-      legacy_fallback: false, revoked_reason: status === "revoked" ? `Removed on ${label(id)}` : null,
+      revoked_reason: status === "revoked" ? `Removed on ${label(id)}` : null,
       manage_url: live || status === "revoked" ? c.manage_url : null, used_by: usedBy(id),
     };
   });
@@ -2270,7 +2252,7 @@ export function hostingScenario(flow: HostingSampleKey, stack: HostingStackKey):
     }) : [],
     // The app metrics token: production's is set once the org is live; staging's never is in the sample.
     app_metrics: {
-      configured: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers"), legacy_fallback: false,
+      configured: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers"), 
       hint_last4: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers") ? "7f3c" : "",
       last_used_at: e === "production" && (flow === "live" || flow === "broken" || flow === "leftovers") ? AT : null, last_error: null,
       api_url: e === "staging" ? "https://api.staging.acme.dev" : "https://api.acme.dev",

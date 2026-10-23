@@ -33,11 +33,11 @@ const auditStmt = (ctx: TenantContext, action: OrgSettingsAuditAction, target: s
 // ── repos ────────────────────────────────────────────────────────────────────
 
 export interface OrgRepoRow {
-  id: string; repo_full_name: string; is_primary: number; legacy_hook: number; created_at: string; created_by: string;
+  id: string; repo_full_name: string; is_primary: number; created_at: string; created_by: string;
   /** 0043_github_app: `app` = visible to the org's GitHub App installation (src/github-app/store.ts keeps it in step). */
   connection: "manual" | "app"; access_lost_at: string | null;
 }
-const REPO_COLS = `id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection, access_lost_at`;
+const REPO_COLS = `id, repo_full_name, is_primary, created_at, created_by, connection, access_lost_at`;
 // GitHub's own shape: an owner login (≤ 39, alphanumerics and inner hyphens) and a repository name.
 const REPO_FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 
@@ -61,7 +61,6 @@ export async function listRepos(ctx: TenantContext, origin: string, admin: boole
     id: admin ? r.id : null,
     repo_full_name: r.repo_full_name,
     is_primary: r.is_primary === 1,
-    legacy_hook: r.legacy_hook === 1,
     webhook_url: admin ? webhookUrl(origin, r.id) : null,
     webhook_secret_configured: hooked.has(r.id),
     connection: r.connection,
@@ -109,7 +108,7 @@ export async function addRepo(
   const at = nowIso();
   await batch(ctx, [
     ...(primary && rows.length > 0 ? [unsetPrimary] : []),
-    stmt(ctx, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection) VALUES (?, ?, ?, ?, 0, ?, ?, ?)`,
+    stmt(ctx, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by, connection) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       id, ctx.orgId, name, primary ? 1 : 0, at, ctx.userId, opts.connection ?? "manual"),
     auditStmt(ctx, "repo.add", name, { primary, ...(opts.connection ? { connection: opts.connection } : {}) }, at),
   ]);

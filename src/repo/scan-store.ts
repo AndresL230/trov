@@ -49,9 +49,9 @@ export async function describeSources(env: Env, ctx: TenantContext, fetchImpl?: 
     const kind = HOSTING_INTEGRATION_KIND[id];
     if (!provider?.describe || provider.status !== "available" || !kind) continue;
     try {
-      const secret = await resolveCredential(ctx, env, kind, "");
+      const secret = await resolveCredential(ctx, kind, "");
       if (!secret) continue;
-      const config = await resolveIntegrationConfig(ctx, env, kind, "");
+      const config = await resolveIntegrationConfig(ctx, kind, "");
       out.push({ provider, pc: { fetch: hostFetch(provider.apiHosts, fetchImpl), credential: { secret, config }, now } });
     } catch {
       console.error("repo scan", "describe credential", id, `org=${ctx.orgId}`); // the kind only — never a value

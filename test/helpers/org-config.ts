@@ -9,13 +9,31 @@
 // the proof that SaplingLearn's behaviour did not move.
 import { env } from "cloudflare:test";
 import type { Env } from "../../src/env";
-import { repoEnvironments, type RepoEnvConfig } from "../../src/repo/config";
+import type { RepoEnvConfig } from "../../src/repo/config";
 import * as cron from "../../src/repo/cron";
 import { runBackfill as realBackfill } from "../../src/tools/backfill";
 import { handleGithubWebhook as realWebhook } from "../../src/github-hook";
 import { ORG_A, systemCtx } from "./tenant";
 
 const AT = "2026-10-06T00:00:00.000Z";
+
+const REQUIRED = ["key", "label", "branch", "frontendUrl", "apiUrl", "healthPath"] as const;
+
+/** Parse the old `REPO_ENVIRONMENTS` var (what 0042_organizations copied into `org_environments`).
+ *  Absent or malformed → []. Only these suites still describe a setup that way. */
+export function repoEnvironments(env: { REPO_ENVIRONMENTS?: string }): RepoEnvConfig[] {
+  if (!env.REPO_ENVIRONMENTS) return [];
+  try {
+    const parsed = JSON.parse(env.REPO_ENVIRONMENTS) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((e): e is RepoEnvConfig =>
+      !!e && typeof e === "object" && REQUIRED.every((k) => typeof (e as Record<string, unknown>)[k] === "string"))
+      .map((e) => ({
+        key: e.key, label: e.label, note: e.note ?? null, branch: e.branch,
+        frontendUrl: e.frontendUrl, apiUrl: e.apiUrl, healthPath: e.healthPath,
+      }));
+  } catch { return []; }
+}
 
 /** Replace `orgId`'s environments with `envs`, in order (position = index). */
 export async function setOrgEnvironments(envs: RepoEnvConfig[], orgId: string = ORG_A): Promise<void> {

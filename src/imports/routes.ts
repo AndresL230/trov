@@ -1,5 +1,5 @@
 // Markdown import over HTTP (docs/architecture/docs-library.md › Import) — mounted on the tenant API at `/imports`:
-// `/api/o/:slug/imports…` for the org the path names, and `/api/imports…` as the alias for a person with one org.
+// `/api/o/:slug/imports…`, for the org the path names.
 //
 //   GET  /imports                   any member: Imports history (newest first) + how many are in progress
 //   GET  /imports/:id               any member: one run

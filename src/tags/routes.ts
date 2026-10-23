@@ -1,6 +1,5 @@
 // The organization's tag list over HTTP (0056_org_tags; docs/architecture/feed-and-search.md › Tags) —
-// mounted on the tenant API at `/tags` and `/item-tags`: `/api/o/:slug/tags…` for the org the path names,
-// and `/api/tags…` as the alias for a person with one org.
+// mounted on the tenant API at `/tags` and `/item-tags`: `/api/o/:slug/tags…`, for the org the path names.
 //
 //   GET  /tags                              any member: the list, counts, the plan's cap; an admin also
 //                                           gets what agents suggested

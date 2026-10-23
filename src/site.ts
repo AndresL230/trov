@@ -5,8 +5,7 @@
 //   • /robots.txt and /sitemap.xml, before any session check (the sitemap is SITE_PAGES' indexed pages);
 //   • `/`: the prerendered landing page to a visitor with no session, and the app shell to one with
 //     (`Vary: Cookie`), so a signed-in person never sees the landing before their organization;
-//   • `/docs/` and a browser's signed-out `/docs`: the first docs page (`/docs` itself stays the app's
-//     cookie route — the old alias of an organization's docs list);
+//   • `/docs` and `/docs/`: the first docs page;
 //   • the 404 page, for an address nothing answers (src/index.ts decides that);
 //   • one address per page: `www.` and plain http are redirected for good to the public origin;
 //   • `X-Robots-Tag: noindex` on everything else the Worker serves — the app shell, the API, sign-in,
@@ -148,14 +147,9 @@ export function carriesSession(request: Request, env: Pick<Env, "DEV_LOGIN">): b
   return [SESSION_COOKIE, ONBOARD_COOKIE].some((name) => new RegExp(`(?:^|;)\\s*${name}=[^;]`).test(cookie));
 }
 
-/** Where someone typing the docs' address is sent: the first docs page. `/docs/` is no route at all; `/docs`
- *  is the app's cookie route (the old alias of an organization's docs list, JSON) — so only a BROWSER'S
- *  navigation there (it accepts text/html) with no session cookie is sent on. The SPA's own fetch, an old
- *  client and anyone signed in still reach the route and its 401 / JSON exactly as before. */
-function docsEntry(request: Request, env: Pick<Env, "DEV_LOGIN">, url: URL): boolean {
-  if (url.pathname === "/docs/") return true;
-  return url.pathname === "/docs" && !carriesSession(request, env) && /\btext\/html\b/i.test(request.headers.get("accept") ?? "");
-}
+/** Where someone typing the docs' address is sent: the first docs page. Neither `/docs` nor `/docs/` is a
+ *  page or a route of its own. */
+const docsEntry = (url: URL): boolean => url.pathname === "/docs" || url.pathname === "/docs/";
 
 const text = (body: string, type: string, method: string): Response =>
   new Response(method === "HEAD" ? null : body, { headers: { "Content-Type": type, "Cache-Control": "public, max-age=3600" } });
@@ -171,8 +165,8 @@ export async function sitePublic(request: Request, env: Env, url: URL): Promise<
   const tag = (res: Response) => (canonical ? res : noindex(res));
   if (url.pathname === "/robots.txt") return tag(text(robotsTxt(), "text/plain; charset=utf-8", request.method));
   if (url.pathname === "/sitemap.xml") return tag(text(sitemapXml(), "application/xml; charset=utf-8", request.method));
-  if (docsEntry(request, env, url)) {
-    const res = new Response(null, { status: 302, headers: { Location: DOCS_HOME, "Cache-Control": "no-store", Vary: "Cookie, Accept" } });
+  if (docsEntry(url)) {
+    const res = new Response(null, { status: 302, headers: { Location: DOCS_HOME, "Cache-Control": "no-store" } });
     return canonical ? res : noindex(res);
   }
   // `/source` (AGPL-3.0 §13): the assets binding's `_redirects` sends it to the deployed commit before this

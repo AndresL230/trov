@@ -61,8 +61,7 @@ async function serve(request: Request, env: Env, ctx: ExecutionContext, url: URL
   if (request.method === "POST" && url.pathname === STRIPE_WEBHOOK_PATH) return handleStripeWebhook(request, env);
   // Third auth class: GitHub webhook deliveries, HMAC-verified over the raw
   // body against the `github_webhook` secret of the repo the URL names:
-  // `/webhook/github/<org_repos.id>` per org, and the legacy `/webhook/github`
-  // for the one `legacy_hook` repo (src/github-hook.ts). Never touches sessionGate.
+  // `/webhook/github/<org_repos.id>` per org (src/github-hook.ts). Never touches sessionGate.
   // The GitHub App's own endpoint comes first: ONE URL for every installation, verified against the
   // App's webhook secret, the org found from the delivery's installation id (src/github-app/webhook.ts).
   if (request.method === "POST" && url.pathname === APP_WEBHOOK_PATH) return handleGithubAppWebhook(request, env, { waitUntil: (p) => ctx.waitUntil(p) });

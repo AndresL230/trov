@@ -5,8 +5,7 @@
 //   1. the org's live GitHub App installation → an installation token (minted, or the isolate's cached
 //      one) for THAT repository alone, read-only (`repoScope`); with no repository named, a token for
 //      the installation itself, which carries Metadata only (`INSTALLATION_SCOPE`);
-//   2. the org's stored `github_token` (Org settings › Integrations);
-//   3. for SaplingLearn alone, the Worker's legacy GITHUB_SERVICE_TOKEN (`resolveCredential`'s fallback).
+//   2. the org's stored `github_token` (Org settings › Integrations).
 //
 // This module resolves credentials, so NOTHING REACHABLE FROM src/mcp.ts MAY IMPORT IT
 // (test/secrets.mcp.test.ts): it is called from the modules that already resolved the token —
@@ -121,7 +120,7 @@ async function answeringInstallation(ctx: TenantContext, env: Env, repo: string 
 export async function githubCredentialSource(ctx: TenantContext, env: Env, opts: Pick<ResolveOpts, "repo"> = {}): Promise<GithubCredentialSource | null> {
   if (ctx.via === "bearer" || ctx.role === "member") throw new SecretAccessError();
   if (await answeringInstallation(ctx, env, opts.repo)) return "app";
-  return (await resolveCredential(ctx, env, "github_token", "")) ? "token" : null;
+  return (await resolveCredential(ctx, "github_token", "")) ? "token" : null;
 }
 
 /**
@@ -140,6 +139,6 @@ export async function resolveGithubCredential(ctx: TenantContext, env: Env, opts
     await noteRefusal(ctx, env, row, minted, now);
   }
   if (opts.appOnly) return null;
-  const stored = await resolveCredential(ctx, env, "github_token", "");
+  const stored = await resolveCredential(ctx, "github_token", "");
   return stored ? tokenCredential(ctx, stored) : null;
 }

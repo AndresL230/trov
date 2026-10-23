@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import { all } from "./helpers/db";
 import { ingestRepoEvent } from "../src/consumer";
-import { repoEnvironments } from "../src/repo/config";
+import { repoEnvironments } from "./helpers/org-config";
 import { putSnapshot, getSnapshot, putMetric, putMetrics, metricSeries, metricsSince, metricsEver, productReadings, latestMetric } from "../src/repo/store";
 import type { RepoEvent, RepoEventRow } from "../src/repo/types";
 
