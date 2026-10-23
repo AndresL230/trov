@@ -17,6 +17,7 @@ import { ORG_A, systemCtx, tenantCtx } from "./helpers/tenant";
 import { ENVS, fakeGithub } from "./helpers/repo";
 import { backfillGithubDeploys, deployFromSignal, signalMatchesPart, writeGithubDeploys } from "../src/hosting/github-deploys";
 import { putPart } from "../src/hosting/part-writes";
+import { setSecret } from "../src/data/secrets";
 import { reconcileRepo } from "../src/repo/github";
 import { ingestRepoEvent } from "../src/consumer";
 import { checkRollback } from "../src/hosting/rollback";
@@ -101,16 +102,17 @@ describe("THE GUARD — signalMatchesPart", () => {
 
 describe("a matched signal is the part's deploy", () => {
   it("through the webhook: a deployment's states upsert ONE row — source github, sha from GitHub", async () => {
-    const e = { ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
+    const SECRET = "test-webhook-secret";
     const sign = async (body: string) => {
-      const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("test-webhook-secret"), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+      const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
       return "sha256=" + [...new Uint8Array(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body)))].map((b) => b.toString(16).padStart(2, "0")).join("");
     };
-    const post = async (name: string, payload: unknown) => {
-      const body = JSON.stringify(payload);
-      return handleGithubWebhook(new Request("https://x/webhook/github", { method: "POST", body, headers: { "x-github-event": name, "x-hub-signature-256": await sign(body) } }), e);
+    const post = async (name: string, payload: object) => {
+      const body = JSON.stringify({ ...payload, repository: { full_name: "SaplingLearn/sapling" } });
+      return handleGithubWebhook(new Request(`https://x/webhook/github/${SAPLING_HOOK}`, { method: "POST", body, headers: { "x-github-event": name, "x-hub-signature-256": await sign(body) } }), env as unknown as Env, { hookId: SAPLING_HOOK });
     };
-    await addOrgRepo("SaplingLearn/sapling", ORG_A, { id: SAPLING_HOOK, legacyHook: true });
+    await addOrgRepo("SaplingLearn/sapling", ORG_A, { id: SAPLING_HOOK });
+    await setSecret(await tenantCtx("AndresL230"), "github_webhook", SAPLING_HOOK, SECRET);
     await setOrgEnvironments(ENVS, ORG_A);
     await addGithubPart("staging", "web", { environment: "web / staging" });
     await post("deployment_status", deploymentStatus({ state: "in_progress" }));

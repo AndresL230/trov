@@ -10,7 +10,7 @@ import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import type { AppEnv } from "../src/auth/principal";
 import { sessionGate } from "../src/auth/principal";
-import { platformContext, soleTenantGate, tenantGate } from "../src/data/gate";
+import { platformContext, tenantGate } from "../src/data/gate";
 import { makeRepoAppsApp } from "../src/repo/apps-routes";
 import { APPS_SETUP_DEPS, type AppsSetupDeps } from "../src/repo/apps-setup";
 import type { AppSuggestionDTO, RepoAppsSetupDTO, SeenSignal } from "@shared/repo-scan-core";
@@ -35,7 +35,6 @@ function testApp(over: Partial<AppsSetupDeps> = {}): { app: Hono<AppEnv>; calls:
   const a = new Hono<AppEnv>();
   a.use("*", sessionGate);
   a.use("*", platformContext);
-  a.use("*", soleTenantGate);
   a.use("/api/o/:slug/*", tenantGate);
   a.route("/api/o/:slug", makeRepoAppsApp(deps));
   return { app: a, calls };

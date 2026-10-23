@@ -66,7 +66,7 @@ describe("promote/ratify HTTP routes (session-gated)", () => {
     await propose_doc_update(systemCtx(), { ...base, body: "# v1", change_summary: "first" }, "andres");
     const cookie = await cookieFor("andres");
     const res = await app.request(
-      "/doc/architecture/promote",
+      "/api/o/saplinglearn/doc/architecture/promote",
       { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify({ version: 1 }) },
       env
     );
@@ -77,7 +77,7 @@ describe("promote/ratify HTTP routes (session-gated)", () => {
 
   it("POST /adr/:id/ratify is rejected with 401 without a session", async () => {
     const id = await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
-    const res = await app.request(`/adr/${id}/ratify`, { method: "POST" }, env);
+    const res = await app.request(`/api/o/saplinglearn/adr/${id}/ratify`, { method: "POST" }, env);
     expect(res.status).toBe(401);
     const adr = await first<AdrRow>(env.DB, `SELECT * FROM adrs WHERE id = ?`, id);
     expect(adr?.status).toBe("draft"); // unchanged
@@ -86,7 +86,7 @@ describe("promote/ratify HTTP routes (session-gated)", () => {
   it("POST /adr/:id/ratify ratifies for an authenticated principal", async () => {
     const id = await stage_adr(systemCtx(), { title: "t", context: "c", decision: "d", rationale: "r", confidence: "high" }, "andres");
     const cookie = await cookieFor("andres");
-    const res = await app.request(`/adr/${id}/ratify`, { method: "POST", headers: { cookie } }, env);
+    const res = await app.request(`/api/o/saplinglearn/adr/${id}/ratify`, { method: "POST", headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const adr = await first<AdrRow>(env.DB, `SELECT * FROM adrs WHERE id = ?`, id);
     expect(adr?.status).toBe("ratified");

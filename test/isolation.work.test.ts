@@ -497,11 +497,11 @@ describe("notifications", () => {
   });
 
   it("the settings, policy, prefs and outbox routes write and read the caller's org", async () => {
-    // An admin whose ONE org is B.
+    // An admin whose ONE org is B, through B's path.
     const cookie = await cookieFor("admin-user", { member: false, email: "admin@acme.test" });
     await ensureMember("admin-user", "admin", ORG_B);
     const put = (path: string, body: unknown) =>
-      app.request(`/api/notifications/${path}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
+      app.request(`/api/o/acme/notifications/${path}`, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 
     expect((await put("settings", { send_hour: 5 })).status).toBe(200);
     expect((await put("policy", { kind: "ticketq", enabled: false })).status).toBe(200);
@@ -518,7 +518,7 @@ describe("notifications", () => {
     // A's outbox row is not in B's admin list, and B's prefs reset does not touch A's pref row.
     await run(env.DB, `INSERT INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, 'a-row', 'alice', 'daily', 'w', '[]', 'sent', 't')`, ORG_A);
     await run(env.DB, `INSERT INTO notification_outbox (org_id, idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, 'b-row', 'bob', 'daily', 'w', '[]', 'sent', 't')`, ORG_B);
-    const listed = (await (await app.request("/api/notifications/outbox", { headers: { cookie } }, env)).json()) as { rows: NotificationOutboxRow[] };
+    const listed = (await (await app.request("/api/o/acme/notifications/outbox", { headers: { cookie } }, env)).json()) as { rows: NotificationOutboxRow[] };
     expect(listed.rows.map((r) => r.idempotency_key)).toEqual(["b-row"]);
 
     await run(env.DB, `INSERT INTO notification_prefs (org_id, user_id, kind, cadence, updated_at) VALUES (?, 'admin-user', 'my_work', 'daily', 't')`, ORG_A);

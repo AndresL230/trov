@@ -20,7 +20,7 @@ import { reconcileRepo } from "../src/repo/github";
 import { repoEventsFromDelivery } from "../src/repo/capture";
 import { hasCaptured } from "../src/repo/reads";
 import { getRepoDashboard } from "../src/tools/repo";
-import { handleGithubWebhook } from "./helpers/org-config";
+import { handleGithubWebhook, type LegacyEnv } from "./helpers/org-config";
 import { ENVS, LONG_TOKEN, fakeGithub, leakedFragments } from "./helpers/repo";
 import statusFixture from "./fixtures/gh-status.json";
 import reviewFixture from "./fixtures/gh-pr-review.json";
@@ -56,8 +56,10 @@ const quietly = async <T>(fn: () => Promise<T>): Promise<{ out: T; logged: strin
 
 // GitHub's own signing recipe — a correctly-signed `status` / review delivery.
 const SECRET = "test-webhook-secret"; // matches vitest.config.ts binding
-async function deliver(eventName: string, payload: unknown, e: Env): Promise<Response> {
-  const body = JSON.stringify(payload);
+// A delivery names the hook's repository (src/github-hook.ts) — SaplingLearn's, the pool's GITHUB_REPO.
+async function deliver(eventName: string, payload: object, e: Env): Promise<Response> {
+  const named = "repository" in payload ? payload : { ...payload, repository: { full_name: "SaplingLearn/sapling" } };
+  const body = JSON.stringify(named);
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(body));
   const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -65,7 +67,7 @@ async function deliver(eventName: string, payload: unknown, e: Env): Promise<Res
     method: "POST", body, headers: { "x-github-event": eventName, "x-hub-signature-256": `sha256=${hex}`, "content-type": "application/json" },
   }), e);
 }
-const withEnvs = { ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
+const withEnvs = { ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as LegacyEnv;
 
 describe("reconcileRepo — the statuses arm (coverage / bundle / TODO)", () => {
   it("stores the three canopy/* metrics from ONE request on the head sha, and ignores every other context", async () => {

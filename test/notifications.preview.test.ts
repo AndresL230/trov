@@ -24,14 +24,14 @@ const pending = () => ingestAdrDraft(systemCtx(), { title: "Pending decision", c
 describe("GET /api/notifications/preview", () => {
   it("403s for a non-admin", async () => {
     const cookie = await cookieFor("not-admin");
-    expect((await app.request("/api/notifications/preview?cadence=daily", { headers: { cookie } }, env)).status).toBe(403);
+    expect((await app.request("/api/o/saplinglearn/notifications/preview?cadence=daily", { headers: { cookie } }, env)).status).toBe(403);
   });
 
   it("renders the daily digest for the caller as text/html with real data, ignoring prefs, writing no outbox row", async () => {
     const cookie = await cookieFor("admin-user");
     await pending();
     await run(env.DB, `INSERT INTO notification_prefs (user_id, kind, cadence, updated_at) VALUES ('admin-user', 'review_queue', 'off', 'x')`);
-    const res = await app.request("/api/notifications/preview?cadence=daily", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/notifications/preview?cadence=daily", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("text/html");
     const html = await res.text();
@@ -43,17 +43,17 @@ describe("GET /api/notifications/preview", () => {
   it("format=text returns the plain-text alternative", async () => {
     const cookie = await cookieFor("admin-user");
     await pending();
-    const res = await app.request("/api/notifications/preview?cadence=weekly&format=text", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/notifications/preview?cadence=weekly&format=text", { headers: { cookie } }, env);
     expect(res.headers.get("content-type")).toContain("text/plain");
     expect(await res.text()).toContain("TROV WEEKLY");
   });
 
   it("says so when nothing renders, and sample=1 renders the canned sample instead", async () => {
     const cookie = await cookieFor("admin-user");
-    const empty = await app.request("/api/notifications/preview?cadence=daily", { headers: { cookie } }, env);
+    const empty = await app.request("/api/o/saplinglearn/notifications/preview?cadence=daily", { headers: { cookie } }, env);
     expect(empty.status).toBe(200);
     expect(await empty.text()).toContain("Nothing to render");
-    const sample = await app.request("/api/notifications/preview?cadence=daily&sample=1", { headers: { cookie } }, env);
+    const sample = await app.request("/api/o/saplinglearn/notifications/preview?cadence=daily&sample=1", { headers: { cookie } }, env);
     const html = await sample.text();
     // sample=1 is the daily with the AI on: the brief (Now, Next, Also) and the queue lines.
     expect(html).toContain("<title>Netlify test failing, plus 3 more</title>");
@@ -67,7 +67,7 @@ describe("GET /api/notifications/preview", () => {
 
   it("sample=index lists every Phase E fixture, and each renders its own shape (AI off, empty sections, only-when-needed skipped)", async () => {
     const cookie = await cookieFor("admin-user");
-    const get = async (q: string) => (await app.request(`/api/notifications/preview?${q}`, { headers: { cookie } }, env)).text();
+    const get = async (q: string) => (await app.request(`/api/o/saplinglearn/notifications/preview?${q}`, { headers: { cookie } }, env)).text();
     const index = await get("sample=index");
     for (const s of ["daily-ai", "daily-off", "daily-empty", "weekly-ai", "weekly-off", "only-when-needed"]) expect(index).toContain(`sample=${s}`);
     const off = await get("sample=daily-off");
@@ -90,13 +90,13 @@ describe("GET /api/notifications/preview", () => {
 
   it("rejects an unknown cadence", async () => {
     const cookie = await cookieFor("admin-user");
-    expect((await app.request("/api/notifications/preview?cadence=hourly", { headers: { cookie } }, env)).status).toBe(400);
+    expect((await app.request("/api/o/saplinglearn/notifications/preview?cadence=hourly", { headers: { cookie } }, env)).status).toBe(400);
   });
 });
 
 describe("POST /api/notifications/test-send", () => {
   const send = (cookie: string, body: unknown) =>
-    app.request("/api/notifications/test-send", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
+    app.request("/api/o/saplinglearn/notifications/test-send", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 
   it("403s for a non-admin", async () => {
     expect((await send(await cookieFor("not-admin"), { cadence: "daily" })).status).toBe(403);
@@ -126,7 +126,7 @@ describe("POST /api/notifications/test-send", () => {
     await pending();
     const res = await send(cookie, { cadence: "daily" });
     expect(((await res.json()) as { status: string }).status).toBe("sent");
-    const preview = await app.request("/api/notifications/preview?cadence=daily", { headers: { cookie } }, env);
+    const preview = await app.request("/api/o/saplinglearn/notifications/preview?cadence=daily", { headers: { cookie } }, env);
     expect(preview.status).toBe(200);
     expect(await preview.text()).toContain("Review:");
   });

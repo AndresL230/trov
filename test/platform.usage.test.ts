@@ -75,7 +75,7 @@ describe("metering", () => {
     expect((await go("GET", "/api/o/acme/me", olive)).status).toBe(200);
     expect((await go("GET", "/api/o/acme/members", olive)).status).toBe(200);
     expect((await go("PUT", "/api/o/acme/members/olive", olive, { title: "Founder" })).status).toBe(200);
-    expect((await go("GET", "/docs", meilin)).status).toBe(200);                  // the cut-over alias gate meters too
+    expect((await go("GET", "/api/o/saplinglearn/docs", meilin)).status).toBe(200); // another org, another row
     expect((await go("GET", "/api/o/saplinglearn/me", olive)).status).toBe(404);  // not a member: nothing metered
     expect((await go("GET", "/api/orgs", olive)).status).toBe(200);               // no tenant: nothing metered
     await waitOnExecutionContext(ctx);

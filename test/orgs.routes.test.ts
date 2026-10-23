@@ -433,10 +433,11 @@ describe("/api/o/:slug — settings, members, invites", () => {
   });
 });
 
-describe("soleTenantGate still guards the legacy routes", () => {
-  it("a person in no org gets 409 org_required there, and reaches the picker", async () => {
+describe("a person in no org", () => {
+  it("reaches the picker; an unprefixed org path is no route at all (404), never 409 org_required", async () => {
     const cookie = await loner("nomad");
-    expect((await call("GET", "/docs", cookie)).status).toBe(409);
+    expect((await call("GET", "/feed", cookie)).status).toBe(404);
+    expect((await call("GET", "/api/handoffs", cookie)).status).toBe(404);
     expect((await call("GET", "/api/orgs", cookie)).status).toBe(200);
     expect((await call("GET", "/api/invites", cookie)).status).toBe(200);
   });

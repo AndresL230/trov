@@ -16,9 +16,9 @@ import { ORG_A, mintTokenFor } from "./helpers/tenant";
 const OWNER = "AndresL230";     // owner of SaplingLearn (an admin)
 const MEMBER = "lpcooper-arch"; // a plain member
 const sp = (slug: string, name = slug) => ({ slug, name, sort_rank: null, created_at: "t" });
-const library = async (cookie: string) => (await call<LibraryDTO>("GET", "/api/spaces", cookie)).json;
-const save = (cookie: string, body: unknown) => call<{ ok: boolean; prefs: LibraryPrefsDTO; error?: string; field?: string; message?: string }>("PUT", "/api/spaces/prefs/me", cookie, body);
-const create = (cookie: string, name: string) => call<{ space: SpaceDTO }>("POST", "/api/spaces", cookie, { name });
+const library = async (cookie: string) => (await call<LibraryDTO>("GET", "/api/o/saplinglearn/spaces", cookie)).json;
+const save = (cookie: string, body: unknown) => call<{ ok: boolean; prefs: LibraryPrefsDTO; error?: string; field?: string; message?: string }>("PUT", "/api/o/saplinglearn/spaces/prefs/me", cookie, body);
+const create = (cookie: string, name: string) => call<{ space: SpaceDTO }>("POST", "/api/o/saplinglearn/spaces", cookie, { name });
 
 describe("the shared rules (shared/docs-core.ts)", () => {
   const S = ["a", "b", "c", "d", "e", "f", "g"].map((k) => sp(k));
@@ -102,15 +102,15 @@ describe("PUT /spaces/prefs/me and what GET /spaces reads back", () => {
     const six = ["design", "engineering", "onboarding", "product", "research", "security"];
     expect((await save(owner, { sidebar: six })).json).toMatchObject({ error: "invalid", field: "sidebar" });
     expect((await save(owner, { sidebar: six.slice(0, 5), pinned: ["security"] })).status).toBe(200);
-    expect((await call("POST", "/api/spaces/research/archive", owner, {})).status).toBe(200);
-    expect((await call("POST", "/api/spaces/security/archive", owner, {})).status).toBe(200);
+    expect((await call("POST", "/api/o/saplinglearn/spaces/research/archive", owner, {})).status).toBe(200);
+    expect((await call("POST", "/api/o/saplinglearn/spaces/security/archive", owner, {})).status).toBe(200);
     expect((await library(owner)).prefs).toEqual({ sidebar: ["design", "engineering", "onboarding", "product"], pinned: [], hidden: [] });
   });
 
   it("is a person's, never a token's: a request with a bearer is refused", async () => {
     const member = await cookieFor(MEMBER);
     const { raw } = await mintTokenFor(MEMBER);
-    const r = await call("PUT", "/api/spaces/prefs/me", member, { sidebar: ["design"] }, { headers: { authorization: `Bearer ${raw}` } });
+    const r = await call("PUT", "/api/o/saplinglearn/spaces/prefs/me", member, { sidebar: ["design"] }, { headers: { authorization: `Bearer ${raw}` } });
     expect(r.status).toBe(403);
     expect(await all(env.DB, `SELECT handle FROM library_prefs`)).toEqual([]);
   });

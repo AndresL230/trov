@@ -53,11 +53,11 @@ describe("GET /<slug>/ is the SPA shell", () => {
       if (ORG_SLUG_RE.test(first) && !RESERVED_ORG_SLUGS.includes(first)) missing.add(first);
     }
     expect([...missing].sort(), "add these to RESERVED_ORG_SLUGS (shared/orgs.ts)").toEqual([]);
-    // …so a reserved first segment still reaches the app — its session gate where a route answers it
-    // (the cut-over aliases), the 404 page where none does — never the shell.
+    // …so a reserved first segment still reaches the app — the route that answers it (/docs is the
+    // public docs' redirect), the 404 page where none does (the old cut-over aliases among them) — never the shell.
     const a = withAssets(shell);
-    for (const path of ["/feed", "/docs", "/roadmap", "/search", "/tickets"]) expect((await get(path, a.env)).status, path).toBe(401);
-    for (const path of ["/me", "/sync", "/repo", "/api", "/auth", "/billing", "/help", "/guide"]) expect((await get(path, a.env)).status, path).toBe(404);
+    expect((await get("/docs", a.env)).status).toBe(302);
+    for (const path of ["/feed", "/roadmap", "/search", "/tickets", "/me", "/sync", "/repo", "/api", "/auth", "/billing", "/help", "/guide"]) expect((await get(path, a.env)).status, path).toBe(404);
     expect(a.asked).not.toContain(APP_SHELL_PATH);
   });
 

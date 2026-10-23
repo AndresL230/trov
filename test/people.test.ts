@@ -1,4 +1,5 @@
-// Person profiles (0036; the contract is shared/people.ts): GET|PUT /api/people/:handle,
+// Person profiles (0036; the contract is shared/people.ts): GET /api/o/:slug/people/:handle, the members
+// route's title / responsibilities write,
 // the avatar upload / remove, GET /avatar/<sha>, and the avatar rule (`avatarSrc`) on
 // every surface that sends a person's picture to the SPA. Real D1 + local R2, through
 // the real Hono app. "admin-user" is the one seeded org admin (test/helpers/persons.ts).
@@ -23,7 +24,7 @@ const get = async (path: string, cookie: string, e: unknown = env) => app.reques
 const put = async (path: string, cookie: string, body: unknown) =>
   app.request(path, { method: "PUT", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 const profileOf = async (handle: string, cookie: string): Promise<PersonProfile> => {
-  const res = await get(`/api/people/${handle}`, cookie);
+  const res = await get(`/api/o/saplinglearn/people/${handle}`, cookie);
   expect(res.status).toBe(200);
   return res.json() as Promise<PersonProfile>;
 };
@@ -41,7 +42,7 @@ const GIF = () => new TextEncoder().encode("GIF89a-body");
 async function upload(cookie: string, bytes: Uint8Array, type: string, headers: Record<string, string> = {}) {
   const form = new FormData();
   form.append("file", new File([bytes], "me.img", { type }));
-  return app.request("/api/people/me/avatar", { method: "POST", headers: { cookie, ...headers }, body: form }, env);
+  return app.request("/api/o/saplinglearn/people/me/avatar", { method: "POST", headers: { cookie, ...headers }, body: form }, env);
 }
 
 async function seedTicket(title: string, assignee: string, o: { status?: string; source?: "github"; updated_at?: string } = {}): Promise<number> {
@@ -84,7 +85,7 @@ describe("GET /api/people/:handle", () => {
     expect(me.self).toBe(true);
     expect(me.github).toBeNull(); // Google-only
     for (const h of ["nobody-here", "github-webhook", "GitHub-Webhook"]) {
-      expect((await get(`/api/people/${h}`, cookie)).status).toBe(404);
+      expect((await get(`/api/o/saplinglearn/people/${h}`, cookie)).status).toBe(404);
     }
   });
 
@@ -97,52 +98,41 @@ describe("GET /api/people/:handle", () => {
         return typeof v === "function" ? v.bind(t) : v;
       },
     });
-    const res = await get("/api/people/AndresL230", cookie, { ...env, DB: broken });
+    const res = await get("/api/o/saplinglearn/people/AndresL230", cookie, { ...env, DB: broken });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "temporarily unavailable" });
   });
 
   it("401 without a session", async () => {
-    expect((await app.request("/api/people/AndresL230", {}, env)).status).toBe(401);
+    expect((await app.request("/api/o/saplinglearn/people/AndresL230", {}, env)).status).toBe(401);
   });
 });
 
-describe("PUT /api/people/:handle", () => {
-  it("an admin sets role and responsibilities (trimmed) and gets the fresh profile", async () => {
-    const cookie = await cookieFor("admin-user");
-    const res = await put("/api/people/sanaok", cookie, { role: "  Support lead ", responsibilities: " Tickets from users. " });
-    expect(res.status).toBe(200);
-    const p = await res.json() as PersonProfile;
-    expect(p.role).toBe("Support lead");
-    expect(p.responsibilities).toBe("Tickets from users.");
-    expect((await memberRow("sanaok")).role).toBe("Support lead");
-  });
+// The old `PUT /api/people/:handle` is gone; a member's title and responsibilities are written through the
+// members route (its role changes, the admin gate and the audit are test/orgs.routes.test.ts's). What is
+// only here: absent / "" / null, a member's own edit, the caps written all-or-nothing, and the bad bodies.
+describe("PUT /api/o/:slug/members/:handle — title and responsibilities", () => {
+  const member = (handle: string, cookie: string, body: unknown) => put(`/api/o/saplinglearn/members/${handle}`, cookie, body);
 
   it("an absent field is untouched; \"\" and null clear", async () => {
     const cookie = await cookieFor("admin-user");
-    await put("/api/people/sanaok", cookie, { role: "" });
+    await member("sanaok", cookie, { title: "" });
     let row = await memberRow("sanaok");
     expect(row.role).toBeNull();
     expect(row.responsibilities).toMatch(/Student and teacher support/);
-    await put("/api/people/sanaok", cookie, { responsibilities: null });
+    await member("sanaok", cookie, { responsibilities: null });
     row = await memberRow("sanaok");
     expect(row.responsibilities).toBeNull();
     // Whitespace alone is empty.
-    await put("/api/people/sanaok", cookie, { role: "Lead" });
-    await put("/api/people/sanaok", cookie, { role: "   " });
+    await member("sanaok", cookie, { title: "Lead" });
+    await member("sanaok", cookie, { title: "   " });
     expect((await memberRow("sanaok")).role).toBeNull();
   });
 
-  it("an admin edits anyone's profile", async () => {
-    const res = await put("/api/people/meilin", await cookieFor("admin-user"), { role: "Head of product" });
-    expect(res.status).toBe(200);
-    expect((await memberRow("meilin")).role).toBe("Head of product");
-  });
-
   it("anyone else is 403 and nothing is written — the person themselves included", async () => {
-    for (const [target, viewer] of [["meilin", "sanaok"], ["sanaok", "sanaok"], ["sanaok", "me"]] as const) {
+    for (const [target, viewer] of [["meilin", "sanaok"], ["sanaok", "sanaok"]] as const) {
       const before = await memberRow(target);
-      const res = await put(`/api/people/${viewer === "me" ? "me" : target}`, await cookieFor("sanaok", { github: false }), { role: "Intruder", responsibilities: "x" });
+      const res = await member(target, await cookieFor(viewer, { github: false }), { title: "Intruder", responsibilities: "x" });
       expect(res.status, `${viewer} → ${target}`).toBe(403);
       const after = await memberRow(target);
       expect(after.role).toBe(before.role);
@@ -153,23 +143,29 @@ describe("PUT /api/people/:handle", () => {
   it("over a cap is 400 and writes NOTHING — not even the other, valid field", async () => {
     const cookie = await cookieFor("admin-user");
     const before = await memberRow("sanaok");
-    let res = await put("/api/people/sanaok", cookie, { role: "r".repeat(ROLE_MAX + 1), responsibilities: "fine" });
+    let res = await member("sanaok", cookie, { title: "r".repeat(ROLE_MAX + 1), responsibilities: "fine" });
     expect(res.status).toBe(400);
-    res = await put("/api/people/sanaok", cookie, { role: "Fine", responsibilities: "x".repeat(RESPONSIBILITIES_MAX + 1) });
+    res = await member("sanaok", cookie, { title: "Fine", responsibilities: "x".repeat(RESPONSIBILITIES_MAX + 1) });
     expect(res.status).toBe(400);
     const after = await memberRow("sanaok");
     expect([after.role, after.responsibilities]).toEqual([before.role, before.responsibilities]);
     // Exactly at the caps is fine.
-    res = await put("/api/people/sanaok", cookie, { role: "r".repeat(ROLE_MAX), responsibilities: "x".repeat(RESPONSIBILITIES_MAX) });
+    res = await member("sanaok", cookie, { title: "r".repeat(ROLE_MAX), responsibilities: "x".repeat(RESPONSIBILITIES_MAX) });
     expect(res.status).toBe(200);
   });
 
   it("a wrong-typed field or a non-object body is 400; an unknown or reserved handle is 404", async () => {
     const cookie = await cookieFor("admin-user");
-    expect((await put("/api/people/meilin", cookie, { role: 42 })).status).toBe(400);
-    expect((await put("/api/people/meilin", cookie, ["role"])).status).toBe(400);
-    expect((await put("/api/people/nobody-here", cookie, { role: "x" })).status).toBe(404);
-    expect((await put("/api/people/github-webhook", cookie, { role: "x" })).status).toBe(404);
+    expect((await member("meilin", cookie, { title: 42 })).status).toBe(400);
+    expect((await member("meilin", cookie, ["title"])).status).toBe(400);
+    expect((await member("nobody-here", cookie, { title: "x" })).status).toBe(404);
+    expect((await member("github-webhook", cookie, { title: "x" })).status).toBe(404);
+  });
+
+  it("the old person-level write is gone", async () => {
+    const before = await memberRow("sanaok");
+    expect((await put("/api/people/sanaok", await cookieFor("admin-user"), { role: "Support lead" })).status).toBe(404);
+    expect(await memberRow("sanaok")).toEqual(before);
   });
 });
 
@@ -212,8 +208,8 @@ describe("avatar upload / remove", () => {
     expect((await upload(cookie, new Uint8Array(), "image/png")).status).toBe(400);
     const noFile = new FormData();
     noFile.append("other", "x");
-    expect((await app.request("/api/people/me/avatar", { method: "POST", headers: { cookie }, body: noFile }, env)).status).toBe(400);
-    expect((await app.request("/api/people/me/avatar", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}" }, env)).status).toBe(400);
+    expect((await app.request("/api/o/saplinglearn/people/me/avatar", { method: "POST", headers: { cookie }, body: noFile }, env)).status).toBe(400);
+    expect((await app.request("/api/o/saplinglearn/people/me/avatar", { method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}" }, env)).status).toBe(400);
   });
 
   it("over AVATAR_MAX_BYTES is 413", async () => {
@@ -240,7 +236,7 @@ describe("avatar upload / remove", () => {
     const bytes = GIF();
     const sha = await sha256Hex(bytes);
     await upload(cookie, bytes, "image/gif");
-    const res = await app.request("/api/people/me/avatar/remove", { method: "POST", headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/people/me/avatar/remove", { method: "POST", headers: { cookie } }, env);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, avatar_url: PROVIDER });
     expect((await personRow("uploader")).avatar_sha).toBeNull();
@@ -279,8 +275,8 @@ describe("GET /avatar/<sha>", () => {
 describe("the avatar rule on every person surface", () => {
   it("/persons, /auth/me and the profile resolve an uploaded avatar over the provider picture", async () => {
     const cookie = await cookieFor("uploader", { avatar_url: PROVIDER });
-    const persons = async () => ((await (await get("/persons", cookie)).json()) as { persons: PersonSummary[] }).persons.find((p) => p.handle === "uploader")!;
-    const me = async () => (await (await get("/auth/me", cookie)).json()) as { avatar_url: string | null; role: string | null };
+    const persons = async () => ((await (await get("/api/o/saplinglearn/persons", cookie)).json()) as { persons: PersonSummary[] }).persons.find((p) => p.handle === "uploader")!;
+    const me = async () => (await (await get("/auth/me", cookie)).json()) as { avatar_url: string | null };
     expect((await persons()).avatar_url).toBe(PROVIDER);
     expect((await me()).avatar_url).toBe(PROVIDER);
 
@@ -292,15 +288,16 @@ describe("the avatar rule on every person surface", () => {
   });
 
   it("/persons carries role (never responsibilities) and still lists no reserved handle", async () => {
-    const list = ((await (await get("/persons", await cookieFor("viewer"))).json()) as { persons: PersonSummary[] }).persons;
+    const list = ((await (await get("/api/o/saplinglearn/persons", await cookieFor("viewer"))).json()) as { persons: PersonSummary[] }).persons;
     expect(list.find((p) => p.handle === "meilin")?.role).toBe("Product manager");
     expect(list.some((p) => p.handle === "github-webhook")).toBe(false);
     expect(list.every((p) => !("responsibilities" in p))).toBe(true);
   });
 
-  it("/auth/me carries the person's role", async () => {
-    const body = (await (await get("/auth/me", await cookieFor("AndresL230"))).json()) as { role: string | null };
-    expect(body.role).toBe("Founding engineer");
+  it("the person's role (their title in THIS org) is the org's /me — /auth/me no longer carries one", async () => {
+    const cookie = await cookieFor("AndresL230");
+    expect(((await (await get("/api/o/saplinglearn/me", cookie)).json()) as { title: string | null }).title).toBe("Founding engineer");
+    expect("role" in ((await (await get("/auth/me", cookie)).json()) as Record<string, unknown>)).toBe(false);
   });
 
   it("recordSignIn refreshes the provider avatar_url and never touches avatar_sha", async () => {
