@@ -267,6 +267,8 @@
   Then `0077_home` (Home) [`doc_versions.promoted_at`, written by `promote_doc`, and `orgs.promotions_timed_at`, when
   an org's promotions began to be timed (NULL: since the org's creation); never backfilled, so Home's Docs promoted
   reads unknown before it — `roadmap-my-work.md` › Home].
+  Then `0085_drop_legacy_invites_hook` (the Phase 7 cleanup's last step) [drops the pre-organization `invites` table
+  and `org_repos.legacy_hook`, which nothing read since the Phase 7 cleanup shipped — `data-layer.md`].
 - Home: `shared/home-core.ts` (zod-free: `HomeData`, the ranges, `homeSum`), `src/tools/home.ts` (`GET /home`, D1
   only), web: `home.ts` (the markup), `home-view.ts` (its props from the app's reads) — `roadmap-my-work.md` › Home.
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,

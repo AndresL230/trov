@@ -246,9 +246,8 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM memberships WHERE user_id = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM org_login_map WHERE person = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM platform_admins WHERE person = ? COLLATE NOCASE`, h),
-    // Invitations they answered, and the retired pre-organization table's (nothing reads it; dropped next).
+    // Invitations they answered.
     stmt(p, `DELETE FROM org_invites WHERE responded_by = ? COLLATE NOCASE`, h),
-    stmt(p, `DELETE FROM invites WHERE accepted_by = ? COLLATE NOCASE${inEmails("email")}`, h, ...a.emails),
     // Their messages to the operator: signed in, or sent from one of their addresses.
     stmt(p, `DELETE FROM support_reports WHERE reporter = ? COLLATE NOCASE${inEmails("contact_email")}`, h, ...a.emails),
     // Grants addressed to them: one not yet used is revoked, and none names them any more.

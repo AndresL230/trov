@@ -122,6 +122,7 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0077_home` (it times doc promotions from now on; merging to main applies it). Its header has the rollback.",
+      "Apply migration `0085_drop_legacy_invites_hook` only after #206 is live (merging this applies it); its header has the rollback.",
       "After #206 is live, delete the retired Worker secrets: `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_TOKEN`, `CF_ANALYTICS_ACCOUNT_ID`, `SAPLING_METRICS_TOKEN` (`wrangler secret delete`).",
     ],
     patches: {

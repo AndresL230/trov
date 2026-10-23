@@ -64,7 +64,7 @@ describe("0043_github_app — the rules the database keeps", () => {
     await expect(insert("org_nobody", 4)).rejects.toThrow(/FOREIGN KEY/);
   });
   it("every existing repository is `manual`, and nothing else is a connection", async () => {
-    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_x', ?, 'o/r', 1, 0, '2026-10-06T00:00:00Z', 'seed')`, ORG_A);
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_x', ?, 'o/r', 1, '2026-10-06T00:00:00Z', 'seed')`, ORG_A);
     expect(await first(env.DB, `SELECT connection, access_lost_at FROM org_repos WHERE id = 'hook_x'`)).toEqual({ connection: "manual", access_lost_at: null });
     await expect(run(env.DB, `UPDATE org_repos SET connection = 'oauth' WHERE id = 'hook_x'`)).rejects.toThrow(/CHECK/);
   });
@@ -73,7 +73,7 @@ describe("0043_github_app — the rules the database keeps", () => {
 describe("0043_github_app — the code that goes with it", () => {
   it("replacing: a different installation ends the org's binding and takes its place, in one write", async () => {
     const a = await tenantCtx("AndresL230");
-    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by, connection) VALUES ('hook_r', ?, 'acme/app', 1, 0, '2026-10-06T00:00:00Z', 'seed', 'app')`, ORG_A);
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by, connection) VALUES ('hook_r', ?, 'acme/app', 1, '2026-10-06T00:00:00Z', 'seed', 'app')`, ORG_A);
     expect(await bindInstallation(a, info(501))).toBe("connected");
     const old = (await liveInstallation(a))!;
     expect(await bindInstallation(a, info(502, "other-co"), old)).toBe("connected");

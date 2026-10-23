@@ -54,8 +54,6 @@ const memberships = (handle: string) => all<{ org_id: string; role: string }>(en
 const orgInvite = (o: { org?: string; email?: string; github_login?: string; role?: string }) =>
   run(env.DB, `INSERT INTO org_invites (org_id, github_login, email, role, invited_by, status, created_at) VALUES (?, ?, ?, ?, 'AndresL230', 'pending', '2026-10-06T00:00:00Z')`,
     o.org ?? ORG_B, o.github_login ?? null, o.email ?? null, o.role ?? "member").then((r) => r.meta.last_row_id as number);
-const legacyInvite = (email: string, name: string | null = null) =>
-  run(env.DB, `INSERT INTO invites (email, name, invited_by, invited_at) VALUES (?, ?, 'AndresL230', '2026-10-01T00:00:00Z')`, email, name);
 const VERIFIED = (email: string) => [{ email, primary: true, verified: true }];
 
 describe("an existing SaplingLearn member", () => {
@@ -132,12 +130,10 @@ describe("a new GitHub account", () => {
   });
 
   it("a pending pre-organization invite is not consumed at sign-in: it waits on the picker, and grants SaplingLearn when accepted", async () => {
-    // 0042_organizations copied every old invite into `org_invites`; the old table no longer decides anything.
-    await legacyInvite("new.hire@example.com", "New Hire");
+    // 0042_organizations copied every old invite into `org_invites`; that row is all there is.
     const id = await orgInvite({ org: ORG_A, email: "new.hire@example.com" });
     const session = await onboard(await github("newhire", VERIFIED("new.hire@example.com")), "newhire");
     expect(await memberships("newhire")).toEqual([]);
-    expect(await first(env.DB, `SELECT accepted_by FROM invites WHERE email = 'new.hire@example.com'`)).toEqual({ accepted_by: null });
     expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1 });
     expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("newhire")).toEqual([{ org_id: ORG_A, role: "member" }]);

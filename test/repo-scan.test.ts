@@ -470,7 +470,7 @@ describe("the routes", () => {
     expect(ig.json).toMatchObject({ undo: expect.any(String) });
     expect((await send(web, "POST", `${A}/suggestions/sg_00000000000000000000/accept`, me, undefined, e)).status).toBe(404);
     // A suggestion is answered only under its own repository.
-    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('r2', ?, 'acme/other', 0, 0, 'now', 't')`, ORG_A);
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('r2', ?, 'acme/other', 0, 'now', 't')`, ORG_A);
     expect((await send(web, "POST", `/api/o/saplinglearn/repos/acme/other/suggestions/${s.id}/accept`, me, undefined, e)).status).toBe(404);
     expect(leakedFragments(JSON.stringify([scanned.json, acc.json]), TOKEN)).toEqual([]);
   });

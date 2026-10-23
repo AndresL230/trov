@@ -73,7 +73,7 @@ export function fakeGithub(routes: Record<string, unknown>): { fetchImpl: typeof
 export async function seedOrgRepoConfig(db: D1Database, orgId: string, repo: string, envs: RepoEnvConfig[] = ENVS): Promise<void> {
   const at = "2026-10-06T00:00:00.000Z";
   await db.batch([
-    db.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, ?, 1, 0, ?, 'seed')`)
+    db.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES (?, ?, ?, 1, ?, 'seed')`)
       .bind(`hook_${orgId}`, orgId, repo, at),
     ...envs.map((e, i) => db.prepare(
       `INSERT INTO org_environments (org_id, key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by)

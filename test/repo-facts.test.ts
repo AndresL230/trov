@@ -347,7 +347,7 @@ describe("narrowing and other repositories", () => {
 
   it("another connected repository: its apps only, and the primary's PR / CI capture is never passed off as its own", async () => {
     await seedWorld();
-    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, 0, ?, 'seed')`)
+    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, ?, 'seed')`)
       .bind(ORG_A, ago(10)).run();
     await env.DB.prepare(`INSERT INTO repo_apps (org_id, key, repo, label, folder, kind, watch, source, position, created_at, created_by, updated_at, updated_by)
       VALUES (?, 'docs', 'SaplingLearn/docs', 'Docs', '/', 'Site', '["/"]', 'manual', 5, ?, 'seed', ?, 'seed')`).bind(ORG_A, ago(10), ago(10)).run();
