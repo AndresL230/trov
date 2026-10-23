@@ -52,7 +52,7 @@ orient (load-context)  →   do the work   →   record (record-session)
 > model-invocable (auto-orient); `record-session` **must** be explicit-only (never log on its own).
 > They can't share one `SKILL.md`. This `trov` skill is the umbrella that documents both.
 
-Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and the sprints; **`handoff`** (explicit-only) leaves one handoff for the next session; **`prompts`** finds,
+Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and the sprints; **`handoff`** (explicit-only) leaves a handoff for the next session; **`prompts`** finds,
 fills and stages Prompt Library prompts; **`artifacts`** finds, pulls (verified download), spins up,
 links and — when asked — publishes artifact pages; **`link`** drafts, joins and works a link to
 another session whose work overlaps yours (a person sends and accepts it); **`my-work`** reads your own plate; **`read-plan`** / **`update-plan`** read and write the
@@ -220,7 +220,7 @@ reopen; everything else about it is edited in Trov, and its source link is locke
 
 - **`send_handoff`** — leave one addressed note for the next session (`recipient`: a handle or `anyone`)
   with the fixed context `{ repo, branch, task, done[], next[], files[] }`. Direct, not staged — it is a
-  message, not knowledge. One per session; the explicit-only **`handoff`** skill wraps it.
+  message, not knowledge. A session may send several; the explicit-only **`handoff`** skill wraps it.
 - **`claim_handoff` / `expire_handoff`** — claiming is atomic and happens once; it returns the handoff as
   one markdown block to act on. `load-context` lists pending handoffs at session start and claims only
   the one the person picks — never on its own.

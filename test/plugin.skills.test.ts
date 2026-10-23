@@ -13,7 +13,7 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the eleven skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.11.0");
+    expect(plugin.version).toBe("0.11.1");
   });
 
   it("record-session never sends needs_triage: unsure is a low-confidence proposal or left out, and a refusal is fixed and re-sent", () => {

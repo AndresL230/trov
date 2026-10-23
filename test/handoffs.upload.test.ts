@@ -89,10 +89,13 @@ describe("send_handoff's upload form", () => {
     expect(row).toMatchObject({ sender: ME, recipient: "anyone", prompt_title: "The long prompt", prompt_body: PROMPT });
     expect(JSON.parse(row!.context)).toMatchObject({ task: "Ship the upload form", done: ["a"], next: ["b"] });
 
-    // The same session again — either form — answers with that handoff and mints nothing.
+    // The same handoff from the same session again — either form — answers with it and mints nothing.
     const again = await declare(PROMPT, { session: "sess-upload-2" });
     expect(again.body).toEqual({ id: out.id, url: out.url, replayed: true });
-    const inline = await call("send_handoff", { body: "x", session: "sess-upload-2", prompt: { title: "t", body: "b" } });
+    const inline = await call("send_handoff", {
+      body: "Uploaded prompt handoff\n\nWhere it stands.", context: { task: "Ship the upload form", done: ["a"], next: ["b"] },
+      session: "sess-upload-2", prompt: { title: "The long prompt", body: PROMPT },
+    });
     expect(inline.body).toMatchObject({ id: out.id, replayed: true });
     expect(await counts()).toEqual({ handoffs: before.handoffs + 1, feed: before.feed + 1, ledger: before.ledger + 1 });
     // A second token minted for the same session before the first PUT landed replays at ITS PUT.

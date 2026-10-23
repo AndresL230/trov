@@ -122,6 +122,7 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0077_home` (it times doc promotions from now on; merging to main applies it). Its header has the rollback.",
+      "Publish the Trov plugin 0.11.1 (skill text only: a session may leave several handoffs): `claude plugin marketplace update trov`, then `claude plugin update trov@trov`. An older plugin keeps working.",
     ],
     patches: {
       added: [
@@ -133,11 +134,12 @@ export const RELEASES: Release[] = [
         "The sidebar has new icons, Home first, and Review under Knowledge; every screen's title and buttons sit at the window's edges (#201)",
         "What's new and the Guide share one page width (#201)",
         "A PDF's card in Artifacts shows its first page instead of an icon (#203)",
+        "An agent can leave as many handoffs in one session as you ask for; only a retry of the same one is folded into it (#205)",
       ],
       fixed: [],
       removed: [],
     },
-    prs: [201, 203],
+    prs: [201, 203, 205],
   },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower

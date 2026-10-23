@@ -28,8 +28,6 @@ session start and claims one only when the person picks it.
 
 - The work is finished — record it with `record-session` instead; a handoff for done work is noise.
 - To file a request for someone else's work — that is a ticket (the `tickets` skill).
-- **Never more than one per session.** If a handoff was already sent this session, report its `#N`
-  instead of sending another.
 
 ## Which organization — pass `repo` on every call
 
@@ -82,8 +80,9 @@ not added to the Prompt Library. How the prompt travels depends on its size (ste
 Call `mcp__trov__send_handoff` with `{ body, recipient, context, prompt?, session }`:
 
 - `recipient` — a person's handle, or `anyone` (the first session to claim it gets it). Default `anyone`.
-- `session` — one id for this session (`uuidgen` once, reuse it). A retried call with the same session
-  does not create a second handoff.
+- `session` — one id for this session (`uuidgen` once, reuse it). A retry of the same handoff with the
+  same session does not create a second one; a different handoff from this session is a new one — a
+  session may leave as many as the person asks for.
 
 **The prompt — inline or uploaded.** Typing a long prompt into the tool call is slow: every character
 is output you have to write out. So:
@@ -100,8 +99,8 @@ is output you have to write out. So:
   - A `400` means the bytes did not match what you declared (an edited file, a wrong digest): fix it and
     PUT again — the link stays usable until it expires. A `410` means it was used or has expired: call
     `send_handoff` again with the same `session`.
-  - If the call answers `{ id, url, replayed: true }` instead, this session already sent its handoff:
-    there is nothing to PUT.
+  - If the call answers `{ id, url, replayed: true }` instead, this session already sent this same
+    handoff: there is nothing to PUT.
 
 ### 4. Report it
 
@@ -111,7 +110,6 @@ has answered with the `id`. Refer to it as `#N` from then on.
 ## Hard rules
 
 - **Explicit only.** Never leave a handoff on your own at a natural stopping point.
-- **One per session.** Report the existing `#N` instead of sending a second.
 - **Observed, not recalled.** `repo`, `branch` and `files` come from git output, copied verbatim.
 - **Body under 300 words; long instructions in the prompt** — uploaded when it is over about 2 KB and you
   have a shell.
