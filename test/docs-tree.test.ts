@@ -1,5 +1,5 @@
 // The Docs Library's page tree and links (0081_docs_library; docs/architecture/docs-library.md › The page tree):
-// `POST /doc/:slug/move` (planMove server-side, the renumber in one batch, the refusals), a proposal's `parent_slug`
+// `POST /api/o/<org>/doc/:slug/move` (planMove server-side, the renumber in one batch, the refusals), a proposal's `parent_slug`
 // (a new page at insert, an existing page on promote, an invalid one ignored with a note), the server-only import
 // options, `doc_links` rebuilt on promote, and the doc read's `page` (ancestors, children, links, backlinks, rail).
 import { describe, it, expect } from "vitest";
@@ -32,10 +32,10 @@ async function live(slug: string, o: Parameters<typeof doc>[1] = {}, ctx = A()):
   await promote_doc(ctx, slug, r.version, OWNER);
 }
 const place = (slug: string, org = ORG_A) => first<{ parent_slug: string | null; tree_rank: number | null; space: string }>(env.DB, `SELECT parent_slug, tree_rank, space FROM docs WHERE org_id = ? AND slug = ?`, org, slug);
-const move = async (cookie: string, slug: string, body: unknown) => call<DocMoveResult & { error?: string }>("POST", `/doc/${slug}/move`, cookie, body);
-const page = async (cookie: string, slug: string) => (await call<{ page: DocPageDTO }>("GET", `/doc/${slug}`, cookie)).json.page;
+const move = async (cookie: string, slug: string, body: unknown) => call<DocMoveResult & { error?: string }>("POST", `/api/o/saplinglearn/doc/${slug}/move`, cookie, body);
+const page = async (cookie: string, slug: string) => (await call<{ page: DocPageDTO }>("GET", `/api/o/saplinglearn/doc/${slug}`, cookie)).json.page;
 
-describe("POST /doc/:slug/move — the tree's rules, server-side", () => {
+describe("POST /api/o/:org/doc/:slug/move — the tree's rules, server-side", () => {
   it("into / before / after / top, with any signed-in member; the first drop into an unranked list renumbers it in one batch", async () => {
     const member = await cookieFor(MEMBER);
     for (const s of ["alpha", "bravo", "charlie", "delta"]) await live(s);
@@ -106,7 +106,7 @@ describe("POST /doc/:slug/move — the tree's rules, server-side", () => {
     // It reads: the doc page carries its whole breadcrumb, the space's read lists it under its parent.
     const pg = await page(member, "deep");
     expect(pg.ancestors.map((a) => a.slug)).toEqual(Array.from({ length: MAX_DEPTH }, (_, i) => `d${i}`));
-    const home = await call<{ pages: { slug: string; parent_slug: string | null }[] }>("GET", "/api/spaces/engineering", member);
+    const home = await call<{ pages: { slug: string; parent_slug: string | null }[] }>("GET", "/api/o/saplinglearn/spaces/engineering", member);
     expect(home.json.pages.find((p) => p.slug === "deep")).toMatchObject({ parent_slug: `d${MAX_DEPTH - 1}` });
     // A reorder at its own depth and a move up are allowed; deeper is refused.
     expect((await move(member, "deep", { target: "after", ref: "deep-sib" })).status).toBe(200);
@@ -128,7 +128,7 @@ describe("POST /doc/:slug/move — the tree's rules, server-side", () => {
     await live("p1");
     await live("p2");
     const { raw } = await mintTokenFor(MEMBER);
-    expect((await call("POST", "/doc/p1/move", member, { target: "into", ref: "p2" }, { headers: { authorization: `Bearer ${raw}` } })).status).toBe(403);
+    expect((await call("POST", "/api/o/saplinglearn/doc/p1/move", member, { target: "into", ref: "p2" }, { headers: { authorization: `Bearer ${raw}` } })).status).toBe(403);
     await live("b-page", {}, B());
     expect((await move(member, "b-page", { target: "top" })).status).toBe(404);
     expect((await move(member, "p1", { target: "into", ref: "b-page" })).status).toBe(404);
@@ -182,15 +182,15 @@ describe("a proposal's parent_slug", () => {
     expect((await first<{ body: string }>(env.DB, `SELECT body FROM docs WHERE org_id = ? AND slug = 'mover'`, ORG_A))?.body).toBe("v3 body");
   });
 
-  it("POST /docs/propose (New page) carries the parent, and says when it is ignored", async () => {
+  it("POST …/docs/propose (New page) carries the parent, and says when it is ignored", async () => {
     const member = await cookieFor(MEMBER);
     await live("handbook");
-    const ok = await call<{ ok: boolean; slug: string; parent_ignored?: unknown }>("POST", "/api/docs/propose", member, { title: "On call", section: "reference", space: "engineering", body: "## When to use this\n", parent_slug: "handbook" });
+    const ok = await call<{ ok: boolean; slug: string; parent_ignored?: unknown }>("POST", "/api/o/saplinglearn/docs/propose", member, { title: "On call", section: "reference", space: "engineering", body: "## When to use this\n", parent_slug: "handbook" });
     expect(ok.status).toBe(200);
     expect(ok.json.slug).toBe("on-call");
     expect(ok.json.parent_ignored).toBeUndefined();
     expect((await place("on-call"))?.parent_slug).toBe("handbook");
-    const lost = await call<{ parent_ignored?: { reason: string } }>("POST", "/api/docs/propose", member, { title: "Lost child", section: "reference", space: "engineering", body: "b", parent_slug: "nope" });
+    const lost = await call<{ parent_ignored?: { reason: string } }>("POST", "/api/o/saplinglearn/docs/propose", member, { title: "Lost child", section: "reference", space: "engineering", body: "b", parent_slug: "nope" });
     expect(lost.json.parent_ignored).toMatchObject({ reason: "not_found" });
   });
 
@@ -239,7 +239,7 @@ describe("links: doc_links rebuilt on promote, and the doc page's read", () => {
     expect(await links()).toEqual(["missing-page"]);
   });
 
-  it("GET /doc/:slug carries the page: ancestors, children, resolved and broken links, live backlinks, the rail", async () => {
+  it("GET …/doc/:slug carries the page: ancestors, children, resolved and broken links, live backlinks, the rail", async () => {
     const owner = await cookieFor(OWNER);
     await live("arch", { title: "Architecture" });
     await live("api", { title: "API", parent: "arch" });
@@ -274,6 +274,6 @@ describe("links: doc_links rebuilt on promote, and the doc page's read", () => {
     await live("shared-slug");
     await live("b-linker", { body: "[[shared-slug]]" }, B());
     expect((await page(owner, "shared-slug")).backlinks).toEqual([]);
-    expect((await call("GET", "/doc/b-linker", owner)).status).toBe(404);
+    expect((await call("GET", "/api/o/saplinglearn/doc/b-linker", owner)).status).toBe(404);
   });
 });

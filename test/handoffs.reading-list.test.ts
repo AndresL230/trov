@@ -26,7 +26,7 @@ beforeEach(async () => {
 });
 
 const claim = async (id: number, who = "AndresL230"): Promise<Response> =>
-  app.request(`/api/handoffs/${id}/claim`, {
+  app.request(`/api/o/saplinglearn/handoffs/${id}/claim`, {
     method: "POST", headers: { cookie: await cookieFor(who), "content-type": "application/json" }, body: JSON.stringify({ session: "sess-read" }),
   }, env);
 
@@ -75,7 +75,7 @@ describe("readingTerms — the handoff's own words", () => {
   });
 });
 
-describe("POST /api/handoffs/:id/claim — the reading list (dev seed sample)", () => {
+describe("POST /api/o/:slug/handoffs/:id/claim — the reading list (dev seed sample)", () => {
   it("claiming #15 (OCR retries) lists the Document Pipeline doc first — non-empty on localhost", async () => {
     const res = await claim(15);
     expect(res.status).toBe(200);

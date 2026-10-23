@@ -411,11 +411,6 @@ describe("seats — an invitation reserves one", () => {
     expect(r.json).toMatchObject({ error: "plan_limit", limit: "seats", used: 1, cap: 1, plan: "personal", message: "The Personal plan is for one person. Invitations start with the Pro plan." });
     expect(r.json).not.toHaveProperty("next");
     expect(await pending(id)).toBe(0);
-    // …by the legacy alias too (a person with exactly one org), through the same gate.
-    const legacy = await call("POST", "/invites", cookie, { email: "old-path@x.io", name: "Old Path" });
-    expect([legacy.status, legacy.json.error]).toEqual([402, "plan_limit"]);
-    expect(await pending(id)).toBe(0);
-    expect(await count(`SELECT COUNT(*) AS n FROM invites WHERE email = 'old-path@x.io'`)).toBe(0);
   });
 
   it("an existing org (Enterprise, from before plans) has no seat cap", async () => {

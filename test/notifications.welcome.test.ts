@@ -112,12 +112,19 @@ describe("sendWelcome", () => {
 });
 
 describe("POST /auth/onboard → welcome", () => {
-  it("sends it once the person exists, to the address the provider gave", async () => {
-    // Phase 4: mail goes out AS an org, so the welcome is for someone who joins one at onboarding —
-    // a legacy (SaplingLearn) invite for their verified address.
-    await env.DB.prepare(`INSERT INTO invites (email, name, invited_by, invited_at) VALUES ('priya.n@gmail.com', NULL, 'AndresL230', '2026-10-01T00:00:00Z')`).run();
-    expect((await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" })).status).toBe(200);
+  it("sends it once the person exists and joins their first org, to the address the provider gave", async () => {
+    // Mail goes out AS an org, and onboarding joins none (below): the welcome follows the first membership —
+    // here, accepting an org invitation for the verified address the provider gave.
+    const onboard = await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" });
+    expect(onboard.status).toBe(200);
     expect((await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'priya'`))!.email).toBe("priya.n@gmail.com");
+    expect((await bodies()).length).toBe(0);
+
+    const session = /(?:^|[\s,])(session=[^;]+)/.exec(onboard.headers.get("set-cookie") ?? "")?.[1];
+    expect(session).toBeTruthy();
+    await env.DB.prepare(`INSERT INTO org_invites (org_id, email, role, as_owner, invited_by, status, created_at) VALUES ('org_saplinglearn', 'priya.n@gmail.com', 'member', 0, 'AndresL230', 'pending', '2026-10-01T00:00:00Z')`).run();
+    const { id } = (await first<{ id: number }>(env.DB, `SELECT id FROM org_invites WHERE email = 'priya.n@gmail.com'`))!;
+    expect((await post(`/api/invites/${id}/accept`, session!, {})).status).toBe(200);
 
     const rows = await bodies();
     expect(rows.length).toBe(1);

@@ -1,7 +1,7 @@
 /**
  * Which credential reads GitHub for an org (src/github-app/credential.ts; docs/architecture/github-app.md
- * › Tokens): its live App installation's token, else its stored `github_token`, else — SaplingLearn only —
- * the Worker's legacy secret. Driven through every job that reads GitHub, with TWO orgs: each must carry
+ * › Tokens): its live App installation's token, else its stored `github_token` — never a Worker secret.
+ * Driven through every job that reads GitHub, with TWO orgs: each must carry
  * only ITS OWN installation's token. Then the routes Org settings uses to list, track, test and disconnect.
  */
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
@@ -174,8 +174,9 @@ describe("a token is as narrow as the read it is for", () => {
   });
 });
 
-describe("the order: installation → stored token → SaplingLearn's legacy secret", () => {
-  const withLegacy = { ...e, GITHUB_SERVICE_TOKEN: LEGACY } as Env;
+describe("the order: installation → stored token", () => {
+  // The removed Worker secret (SaplingLearn's old fallback): set on the Env, it must answer for no org.
+  const withLegacy = { ...e, GITHUB_SERVICE_TOKEN: LEGACY } as unknown as Env;
   const sourceOf = async (org: string, envOver: Env, gh: { fetchImpl: typeof fetch }, repo: string): Promise<string | null> => {
     const cred = await resolveGithubCredential(systemCtx(org, "system", envOver), envOver, { repo, fetchImpl: gh.fetchImpl, now: NOW });
     return cred ? `${cred.source}:${cred.token.reveal()}` : null;
@@ -185,17 +186,17 @@ describe("the order: installation → stored token → SaplingLearn's legacy sec
     await addOrgRepo(REPO_A, ORG_A);
     await addOrgRepo(REPO_B, ORG_B);
     const gh = github();
-    // Nothing at all: an outside org has no credential; SaplingLearn has the Worker's.
+    // Nothing stored: no org has a credential — SaplingLearn included, whatever the Worker carries.
     expect(await sourceOf(ORG_B, withLegacy, gh, REPO_B)).toBeNull();
-    expect(await sourceOf(ORG_A, withLegacy, gh, REPO_A)).toBe(`token:${LEGACY}`);
+    expect(await sourceOf(ORG_A, withLegacy, gh, REPO_A)).toBeNull();
     expect(await sourceOf(ORG_A, e, gh, REPO_A)).toBeNull();
-    // A stored token outranks the legacy secret.
+    // A stored token answers.
     await setSecret(await tenantCtx("AndresL230"), "github_token", "", "ghp_alpha_stored_token_0123456789abcd");
     await setSecret(await adminB(), "github_token", "", TOKEN_B);
     expect(await sourceOf(ORG_A, withLegacy, gh, REPO_A)).toBe("token:ghp_alpha_stored_token_0123456789abcd");
     expect(await sourceOf(ORG_B, withLegacy, gh, REPO_B)).toBe(`token:${TOKEN_B}`);
     expect(gh.app.seen).toEqual([]); // no installation: the App is never asked
-    // An installation outranks both.
+    // An installation outranks it.
     await seedInstallation(ORG_A, INST_A, "SaplingLearn");
     await seedInstallation(ORG_B, INST_B, "beta-co");
     expect(await sourceOf(ORG_A, withLegacy, gh, REPO_A)).toBe(`app:${gh.app.tokenFor(INST_A)}`);

@@ -36,13 +36,13 @@ async function seedWorld() {
   const other = await cookieFor(OTHER);
   const tid = await seedTicket();
   await createText(owner, { title: "Privtext", content: "okapi secret words", visibility: "private", summary: "okapi", links: [{ target_type: "ticket", target_ref: String(tid) }] });
-  await wf("/api/artifacts/privtext/versions", jsonInit("POST", { content: "okapi secret words v2" }, owner));
+  await wf("/api/o/saplinglearn/artifacts/privtext/versions", jsonInit("POST", { content: "okapi secret words v2" }, owner));
   await createBinary(owner, { title: "Privbin", kind: "image", area: "ui", visibility: "private", summary: "okapi" }, { bytes: uniqueBytes("privbin"), name: "p.png", type: "image/png" });
   const pend = await uploadUrl(owner, { kind: "pdf", size_bytes: 10, sha256: "a".repeat(64), title: "Pendpage", area: "api", summary: "okapi", links: [{ target_type: "ticket", target_ref: String(tid) }] });
   expect(pend.status).toBe(201);
   await createText(owner, { title: "Orgpage", content: "okapi public words", links: [{ target_type: "ticket", target_ref: String(tid) }] });
   await createText(owner, { title: "Delpage", content: "okapi deleted words", summary: "okapi", links: [{ target_type: "ticket", target_ref: String(tid) }] });
-  expect((await wf("/api/artifacts/delpage/delete", jsonInit("POST", {}, owner))).status).toBe(200);
+  expect((await wf("/api/o/saplinglearn/artifacts/delpage/delete", jsonInit("POST", {}, owner))).status).toBe(200);
   return { owner, other, tid };
 }
 
@@ -52,30 +52,30 @@ const HIDDEN = ["privtext", "privbin", "pendpage", "delpage"] as const;
 function httpProbes(slug: string, cookie: string): [string, () => Promise<Response>][] {
   const png = uniqueBytes("probe");
   return [
-    ["GET", () => get(`/api/artifacts/${slug}`, cookie)],
-    ["GET ?v=1", () => get(`/api/artifacts/${slug}?v=1`, cookie)],
-    ["GET @v1", () => get(`/api/artifacts/${slug}@v1`, cookie)],
-    ["GET /v1", () => get(`/api/artifacts/${slug}/v1`, cookie)],
-    ["GET @v2", () => get(`/api/artifacts/${slug}@v2`, cookie)],
-    ["diff", () => get(`/api/artifacts/${slug}/diff?a=1&b=1`, cookie)],
-    ["PATCH title", () => wf(`/api/artifacts/${slug}`, jsonInit("PATCH", { title: "Mine now" }, cookie))],
-    ["PATCH status", () => wf(`/api/artifacts/${slug}`, jsonInit("PATCH", { status: "published" }, cookie))],
-    ["PATCH private", () => wf(`/api/artifacts/${slug}`, jsonInit("PATCH", { visibility: "private" }, cookie))],
-    ["PATCH org", () => wf(`/api/artifacts/${slug}`, jsonInit("PATCH", { visibility: "org" }, cookie))],
-    ["versions text", () => wf(`/api/artifacts/${slug}/versions`, jsonInit("POST", { content: "x" }, cookie))],
-    ["versions edit", () => wf(`/api/artifacts/${slug}/versions`, jsonInit("POST", { old_str: "okapi", new_str: "x" }, cookie))],
-    ["versions multipart", () => wf(`/api/artifacts/${slug}/versions`, { method: "POST", headers: { cookie }, body: multipart({ summary: "s" }, { bytes: png, name: "a.png", type: "image/png" }) })],
-    ["links add", () => wf(`/api/artifacts/${slug}/links`, jsonInit("POST", { target_type: "pr", target_ref: "o/r#1" }, cookie))],
-    ["links remove", () => wf(`/api/artifacts/${slug}/links/remove`, jsonInit("POST", { target_type: "pr", target_ref: "o/r#1" }, cookie))],
-    ["ratify", () => wf(`/api/artifacts/${slug}/ratify`, jsonInit("POST", { version: 1 }, cookie))],
-    ["delete", () => wf(`/api/artifacts/${slug}/delete`, jsonInit("POST", {}, cookie))],
-    ["restore", () => wf(`/api/artifacts/${slug}/restore`, jsonInit("POST", {}, cookie))],
-    ["upload-url", () => wf("/api/artifacts/upload-url", jsonInit("POST", { slug, kind: "image", size_bytes: 3, sha256: "b".repeat(64), content_type: "image/png" }, cookie))],
-    ["upload-url pdf", () => wf("/api/artifacts/upload-url", jsonInit("POST", { slug, kind: "pdf", size_bytes: 3, sha256: "b".repeat(64) }, cookie))],
-    ["raw", () => get(`/raw/a/${slug}`, cookie)],
-    ["raw @v1", () => get(`/raw/a/${slug}@v1`, cookie)],
-    ["raw /v1", () => get(`/raw/a/${slug}/v1`, cookie)],
-    ["raw download", () => get(`/raw/a/${slug}@v1?download=1`, cookie)],
+    ["GET", () => get(`/api/o/saplinglearn/artifacts/${slug}`, cookie)],
+    ["GET ?v=1", () => get(`/api/o/saplinglearn/artifacts/${slug}?v=1`, cookie)],
+    ["GET @v1", () => get(`/api/o/saplinglearn/artifacts/${slug}@v1`, cookie)],
+    ["GET /v1", () => get(`/api/o/saplinglearn/artifacts/${slug}/v1`, cookie)],
+    ["GET @v2", () => get(`/api/o/saplinglearn/artifacts/${slug}@v2`, cookie)],
+    ["diff", () => get(`/api/o/saplinglearn/artifacts/${slug}/diff?a=1&b=1`, cookie)],
+    ["PATCH title", () => wf(`/api/o/saplinglearn/artifacts/${slug}`, jsonInit("PATCH", { title: "Mine now" }, cookie))],
+    ["PATCH status", () => wf(`/api/o/saplinglearn/artifacts/${slug}`, jsonInit("PATCH", { status: "published" }, cookie))],
+    ["PATCH private", () => wf(`/api/o/saplinglearn/artifacts/${slug}`, jsonInit("PATCH", { visibility: "private" }, cookie))],
+    ["PATCH org", () => wf(`/api/o/saplinglearn/artifacts/${slug}`, jsonInit("PATCH", { visibility: "org" }, cookie))],
+    ["versions text", () => wf(`/api/o/saplinglearn/artifacts/${slug}/versions`, jsonInit("POST", { content: "x" }, cookie))],
+    ["versions edit", () => wf(`/api/o/saplinglearn/artifacts/${slug}/versions`, jsonInit("POST", { old_str: "okapi", new_str: "x" }, cookie))],
+    ["versions multipart", () => wf(`/api/o/saplinglearn/artifacts/${slug}/versions`, { method: "POST", headers: { cookie }, body: multipart({ summary: "s" }, { bytes: png, name: "a.png", type: "image/png" }) })],
+    ["links add", () => wf(`/api/o/saplinglearn/artifacts/${slug}/links`, jsonInit("POST", { target_type: "pr", target_ref: "o/r#1" }, cookie))],
+    ["links remove", () => wf(`/api/o/saplinglearn/artifacts/${slug}/links/remove`, jsonInit("POST", { target_type: "pr", target_ref: "o/r#1" }, cookie))],
+    ["ratify", () => wf(`/api/o/saplinglearn/artifacts/${slug}/ratify`, jsonInit("POST", { version: 1 }, cookie))],
+    ["delete", () => wf(`/api/o/saplinglearn/artifacts/${slug}/delete`, jsonInit("POST", {}, cookie))],
+    ["restore", () => wf(`/api/o/saplinglearn/artifacts/${slug}/restore`, jsonInit("POST", {}, cookie))],
+    ["upload-url", () => wf("/api/o/saplinglearn/artifacts/upload-url", jsonInit("POST", { slug, kind: "image", size_bytes: 3, sha256: "b".repeat(64), content_type: "image/png" }, cookie))],
+    ["upload-url pdf", () => wf("/api/o/saplinglearn/artifacts/upload-url", jsonInit("POST", { slug, kind: "pdf", size_bytes: 3, sha256: "b".repeat(64) }, cookie))],
+    ["raw", () => get(`/api/o/saplinglearn/raw/a/${slug}`, cookie)],
+    ["raw @v1", () => get(`/api/o/saplinglearn/raw/a/${slug}@v1`, cookie)],
+    ["raw /v1", () => get(`/api/o/saplinglearn/raw/a/${slug}/v1`, cookie)],
+    ["raw download", () => get(`/api/o/saplinglearn/raw/a/${slug}@v1?download=1`, cookie)],
   ];
 }
 
@@ -126,7 +126,7 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
 
   it("the pending page is not_found to its OWN author on every read (it does not exist until the PUT)", async () => {
     const { owner } = await seedWorld();
-    for (const path of ["/api/artifacts/pendpage", "/raw/a/pendpage", "/api/artifacts/pendpage/diff?a=1&b=1"]) {
+    for (const path of ["/api/o/saplinglearn/artifacts/pendpage", "/api/o/saplinglearn/raw/a/pendpage", "/api/o/saplinglearn/artifacts/pendpage/diff?a=1&b=1"]) {
       const res = await get(path, owner);
       expect(res.status, path).toBe(404);
       expect(await res.text()).toBe(NOT_FOUND);
@@ -135,13 +135,13 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
 
   it("a non-author making an ORG page private is 403 — but on a hidden page the same request is the plain 404", async () => {
     const { other } = await seedWorld();
-    const org = await wf("/api/artifacts/orgpage", jsonInit("PATCH", { visibility: "private" }, other));
+    const org = await wf("/api/o/saplinglearn/artifacts/orgpage", jsonInit("PATCH", { visibility: "private" }, other));
     expect(org.status).toBe(403);
     const body = await org.json() as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(["error", "hint", "message"]);
     expect(body.error).toBe("forbidden");
     for (const slug of [...HIDDEN, "missing"]) {
-      const r = await wf(`/api/artifacts/${slug}`, jsonInit("PATCH", { visibility: "private" }, other));
+      const r = await wf(`/api/o/saplinglearn/artifacts/${slug}`, jsonInit("PATCH", { visibility: "private" }, other));
       expect(r.status, slug).toBe(404);
       expect(await r.text()).toBe(NOT_FOUND);
     }
@@ -151,13 +151,13 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
   it("the library list: hidden pages are absent under every filter", async () => {
     const { other, owner, tid } = await seedWorld();
     for (const qs of ["", "?q=okapi", "?q=priv", "?q=pend", `?author=${OWNER}`, `?ticket=${tid}`, "?kind=image", "?kind=pdf", "?status=published", "?area=api"]) {
-      const res = await get(`/api/artifacts${qs}`, other);
+      const res = await get(`/api/o/saplinglearn/artifacts${qs}`, other);
       expect(res.status, qs).toBe(200);
       const slugs = ((await res.json()) as { artifacts: { slug: string }[] }).artifacts.map((a) => a.slug);
       for (const h of HIDDEN) expect(slugs, qs).not.toContain(h);
     }
     // the owner sees their private pages — but never the pending one
-    const mine = ((await (await get("/api/artifacts", owner)).json()) as { artifacts: { slug: string }[] }).artifacts.map((a) => a.slug).sort();
+    const mine = ((await (await get("/api/o/saplinglearn/artifacts", owner)).json()) as { artifacts: { slug: string }[] }).artifacts.map((a) => a.slug).sort();
     expect(mine).toEqual(["orgpage", "privbin", "privtext"]);
   });
 
@@ -203,13 +203,13 @@ describe("6 · private / pending / missing — byte-identical everywhere", () =>
     const mine = await mcpCall(OWNER, "query", { q: "okapi", types: ["artifact"] });
     expect(ids(mine.body)).toEqual(["orgpage", "privbin", "privtext"]);
     for (const cookie of [other, owner]) {
-      const res = await get("/search?q=okapi", cookie);
+      const res = await get("/api/o/saplinglearn/search?q=okapi", cookie);
       expect(res.status).toBe(200);
       expect(await res.text()).not.toMatch(/pendpage/);
     }
-    const s = await get("/search?q=okapi&types=artifact", other);
+    const s = await get("/api/o/saplinglearn/search?q=okapi&types=artifact", other);
     expect(await s.text()).not.toMatch(/privtext|privbin|pendpage|delpage/);
-    for (const cookie of [other, owner]) expect(await (await get("/search?q=okapi", cookie)).text()).not.toMatch(/delpage|deleted words/);
+    for (const cookie of [other, owner]) expect(await (await get("/api/o/saplinglearn/search?q=okapi", cookie)).text()).not.toMatch(/delpage|deleted words/);
   });
 
   it("get_ticket: linked hidden pages are absent from `artifacts` (the pending one even for its owner)", async () => {
@@ -275,7 +275,7 @@ describe("11 · MCP permissions for a second principal", () => {
     expect((await first<{ visibility: string }>(env.DB, `SELECT visibility FROM artifact_pages WHERE slug = 'orgpage'`))!.visibility).toBe("org");
     // over HTTP the same person is 403 (only the author)
     const other = await cookieFor(OTHER);
-    expect((await wf("/api/artifacts/orgpage", jsonInit("PATCH", { visibility: "private" }, other))).status).toBe(403);
+    expect((await wf("/api/o/saplinglearn/artifacts/orgpage", jsonInit("PATCH", { visibility: "private" }, other))).status).toBe(403);
 
     // a binary org page: the teammate's upload lands as their version
     const owner = await cookieFor(OWNER);
@@ -303,9 +303,9 @@ describe("11 · MCP permissions for a second principal", () => {
     const c = await mcpCall(OTHER, "upload_asset", { title: "Theirs", kind: "mermaid", content: "graph TD; A-->B", area: "infra", repo: "", visibility: "org" });
     expect(c.isError).toBe(false);
     const owner = await cookieFor(OWNER);
-    expect((await wf("/api/artifacts/theirs", jsonInit("PATCH", { visibility: "private" }, owner))).status).toBe(403);
+    expect((await wf("/api/o/saplinglearn/artifacts/theirs", jsonInit("PATCH", { visibility: "private" }, owner))).status).toBe(403);
     const other = await cookieFor(OTHER);
-    const ok = await wf("/api/artifacts/theirs", jsonInit("PATCH", { visibility: "private" }, other));
+    const ok = await wf("/api/o/saplinglearn/artifacts/theirs", jsonInit("PATCH", { visibility: "private" }, other));
     expect(((await ok.json()) as ArtifactDetailDTO).visibility).toBe("private");
     expect((await mcpCall(OWNER, "artifact_get", { slug: "theirs" })).text).toBe(MCP_NOT_FOUND);
   });

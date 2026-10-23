@@ -109,15 +109,15 @@ describe("feedStats", () => {
   });
 });
 
-describe("GET /feed/stats", () => {
+describe("GET /api/o/:slug/feed/stats", () => {
   it("needs a session", async () => {
-    const res = await app.request("/feed/stats", {}, env);
+    const res = await app.request("/api/o/saplinglearn/feed/stats", {}, env);
     expect(res.status).toBe(401);
   });
 
   it("defaults to 7 days and returns the stats shape", async () => {
     await entry("kai", new Date().toISOString(), ["ui"]);
-    const res = await app.request("/feed/stats", { headers: { cookie: await cookieFor("kai") } }, env);
+    const res = await app.request("/api/o/saplinglearn/feed/stats", { headers: { cookie: await cookieFor("kai") } }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as FeedStats;
     expect(body.days).toHaveLength(7);
@@ -128,7 +128,7 @@ describe("GET /feed/stats", () => {
   it("honours days (1 and 30 are the bounds) and tz", async () => {
     const cookie = await cookieFor("kai");
     for (const days of [1, 30]) {
-      const res = await app.request(`/feed/stats?days=${days}&tz=-300`, { headers: { cookie } }, env);
+      const res = await app.request(`/api/o/saplinglearn/feed/stats?days=${days}&tz=-300`, { headers: { cookie } }, env);
       expect(res.status).toBe(200);
       expect(((await res.json()) as FeedStats).days).toHaveLength(days);
     }
@@ -137,7 +137,7 @@ describe("GET /feed/stats", () => {
   it("refuses a bad days or tz with a 400 { error }", async () => {
     const cookie = await cookieFor("kai");
     for (const q of ["days=0", "days=31", "days=7.5", "days=-1", "days=abc", "days=", "tz=900", "tz=1.5", "tz=x", "tz=-841"]) {
-      const res = await app.request(`/feed/stats?${q}`, { headers: { cookie } }, env);
+      const res = await app.request(`/api/o/saplinglearn/feed/stats?${q}`, { headers: { cookie } }, env);
       expect(res.status, q).toBe(400);
       expect(((await res.json()) as { error: string }).error).toBeTruthy();
     }
@@ -159,7 +159,7 @@ describe("GET /feed/stats", () => {
         return typeof v === "function" ? v.bind(target) : v;
       },
     });
-    const res = await app.request("/feed/stats", { headers: { cookie } }, { ...env, DB });
+    const res = await app.request("/api/o/saplinglearn/feed/stats", { headers: { cookie } }, { ...env, DB });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "Couldn't read the feed stats" });
   });

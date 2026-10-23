@@ -399,8 +399,8 @@ describe("narrowing and other repositories", () => {
   });
 });
 
-describe("GET /repo/dashboard?repo=&app=", () => {
-  const get = async (q: string, cookie: string) => http.request(`/repo/dashboard${q}`, { headers: { cookie } }, env);
+describe("GET /api/o/:slug/repo/dashboard?repo=&app=", () => {
+  const get = async (q: string, cookie: string) => http.request(`/api/o/saplinglearn/repo/dashboard${q}`, { headers: { cookie } }, env);
 
   it("checks repo against the org's repositories: absent → the primary, any case → that one, unknown → 404 { error }", async () => {
     await seedWorld();

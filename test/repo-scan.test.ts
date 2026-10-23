@@ -10,7 +10,7 @@ import { env } from "cloudflare:test";
 import { Hono } from "hono";
 import type { AppEnv } from "../src/auth/principal";
 import { sessionGate } from "../src/auth/principal";
-import { platformContext, soleTenantGate, tenantGate } from "../src/data/gate";
+import { platformContext, tenantGate } from "../src/data/gate";
 import type { Env } from "../src/env";
 import { setSecret } from "../src/data/secrets";
 import { RoleError } from "../src/data/context";
@@ -424,7 +424,6 @@ describe("the routes", () => {
     const a = new Hono<AppEnv>();
     a.use("*", sessionGate);
     a.use("*", platformContext);
-    a.use("*", soleTenantGate);
     a.use("/api/o/:slug/*", tenantGate);
     a.route("/api/o/:slug", makeScanApp({ fetchImpl, now: () => NOW }));
     return a;

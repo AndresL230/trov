@@ -14,11 +14,12 @@ import { pruneSyncRuns } from "../src/platform/sweeps";
 import { putSnapshot } from "../src/repo/store";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
-import { syncOrgConfig } from "./helpers/org-config";
+import { syncOrgConfig, type LegacyEnv } from "./helpers/org-config";
 import { ORG_A, ORG_B, ensureMember, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
 
 const TOKEN = "ghs_SECRET_service_token_0123456789";
-const e = (over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), GITHUB_SERVICE_TOKEN: TOKEN, GITHUB_REPO: "o/r", ...over });
+/** The one-org setup on an Env; `ready()` stores it as org A's repo and `github_token` (nothing in src reads these vars). */
+const e = (over: Partial<LegacyEnv> = {}): LegacyEnv => ({ ...(env as unknown as Env), GITHUB_SERVICE_TOKEN: TOKEN, GITHUB_REPO: "o/r", ...over });
 const ready = () => syncOrgConfig(e());
 const admin = (handle = "admin-user") => tenantCtx(handle, "admin");
 
@@ -255,7 +256,7 @@ describe("the lock: one run per org", () => {
   });
 });
 
-describe("GET /sync and POST /admin/backfill over HTTP", () => {
+describe("GET …/sync and POST …/admin/backfill over HTTP", () => {
   const get = async (path: string, cookie: string, envOver: Env = e()) => {
     const res = await app.request(path, { headers: { cookie, accept: "application/json" } }, envOver);
     return { status: res.status, json: (await res.json()) as SyncStatusView & { error?: string } };
@@ -277,8 +278,6 @@ describe("GET /sync and POST /admin/backfill over HTTP", () => {
       summaries: { status: "off", used: 0, cap: null, remaining: null, pending: 0, per_run: 50 },
     });
     expect((await get("/api/o/saplinglearn/sync", await cookieFor("admin-user"))).json.admin).toBe(true);
-    // The old-path alias, for a person with one org.
-    expect((await get("/api/sync", await cookieFor("plain-member"))).json.repo).toBe("o/r");
     // Not a member of that org: the one 404, and nothing about its runs.
     const outsider = await app.request("/api/o/saplinglearn/sync", { headers: { cookie: await cookieFor("stranger", { member: false }) } }, e());
     expect(outsider.status).toBe(404);
@@ -291,6 +290,7 @@ describe("GET /sync and POST /admin/backfill over HTTP", () => {
     expect((await get("/api/o/saplinglearn/sync", cookie)).json).toMatchObject({ repo: null, blocked: "no_repo", admin: true });
     await syncOrgConfig(e({ GITHUB_SERVICE_TOKEN: "" }));
     expect((await get("/api/o/saplinglearn/sync", cookie, e({ GITHUB_SERVICE_TOKEN: "" }))).json).toMatchObject({ repo: "o/r", blocked: "no_token" });
+    await ready(); // the org's token is saved
     expect((await get("/api/o/saplinglearn/sync", cookie)).json.blocked).toBeNull();
     const now = new Date().toISOString();
     await run(env.DB, `INSERT INTO sync_runs (org_id, repo, started_by, started_at, updated_at, status, batch, batches, phase, done, total) VALUES (?, 'o/r', 'second-admin', ?, ?, 'running', 2, 6, 'saving_prs', 140, 412)`, ORG_A, now, now);

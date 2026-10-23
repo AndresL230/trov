@@ -55,18 +55,18 @@ describe("docs.owner", () => {
     const r = await ingestDocProposal(systemCtx(), docProposal("gated-doc", "hello"), "sanaok");
     expect(r.outcome).toBe("written");
     await ingestDocProposal(systemCtx(), docProposal("gated-doc", "hello, edited"), "meilin");
-    const one = (await (await get("/doc/gated-doc")).json()) as { doc: DocRow };
+    const one = (await (await get("/api/o/saplinglearn/doc/gated-doc")).json()) as { doc: DocRow };
     expect(one.doc.owner).toBe("sanaok");
-    const list = (await (await get("/docs")).json()) as { docs: DocRow[] };
+    const list = (await (await get("/api/o/saplinglearn/docs")).json()) as { docs: DocRow[] };
     expect(list.docs.find((d) => d.slug === "gated-doc")?.owner).toBe("sanaok");
-    const meta = (await (await get("/docs?fields=meta")).json()) as { docs: Array<{ slug: string; owner: string | null; body?: string }> };
+    const meta = (await (await get("/api/o/saplinglearn/docs?fields=meta")).json()) as { docs: Array<{ slug: string; owner: string | null; body?: string }> };
     const m = meta.docs.find((d) => d.slug === "gated-doc");
     expect(m?.owner).toBe("sanaok");
     expect(m?.body).toBeUndefined();
   });
 
-  it("the web's POST /api/docs/propose owns the doc as the signed-in person", async () => {
-    const res = await post("/api/docs/propose", "meilin", { title: "Web doc", section: "reference", space: "technical", body: "b" });
+  it("the web's POST /api/o/:slug/docs/propose owns the doc as the signed-in person", async () => {
+    const res = await post("/api/o/saplinglearn/docs/propose", "meilin", { title: "Web doc", section: "reference", space: "technical", body: "b" });
     expect(res.status).toBe(200);
     expect((await first<{ owner: string }>(env.DB, `SELECT owner FROM docs WHERE slug = 'web-doc'`))?.owner).toBe("meilin");
   });
@@ -154,7 +154,7 @@ describe("artifact_pages.published_at", () => {
   it("the HTTP detail returns it", async () => {
     const a = await mk();
     await setStatus(systemCtx(), a.slug, "published", "AndresL230");
-    const body = (await (await get(`/api/artifacts/${a.slug}`)).json()) as { published_at?: string | null; artifact?: { published_at: string | null } };
+    const body = (await (await get(`/api/o/saplinglearn/artifacts/${a.slug}`)).json()) as { published_at?: string | null; artifact?: { published_at: string | null } };
     const dto = body.artifact ?? body;
     expect(dto.published_at).toBe(await stamp(a.slug));
   });
@@ -202,9 +202,9 @@ describe("prompt usage", () => {
     env.DB, `SELECT use_count, last_used_at, updated_at FROM prompts WHERE slug = ?`, slug);
 
   it("starts at 0 / null, exposed on the list and the detail", async () => {
-    const list = (await (await get("/api/prompts")).json()) as { prompts: PromptSummary[] };
+    const list = (await (await get("/api/o/saplinglearn/prompts")).json()) as { prompts: PromptSummary[] };
     expect(list.prompts.every((p) => p.use_count === 0 && p.last_used_at === null)).toBe(true);
-    const one = (await (await get("/api/prompts/adr-draft")).json()) as { prompt: PromptDetail };
+    const one = (await (await get("/api/o/saplinglearn/prompts/adr-draft")).json()) as { prompt: PromptDetail };
     expect(one.prompt.use_count).toBe(0);
     expect(one.prompt.last_used_at).toBeNull();
   });
@@ -225,25 +225,25 @@ describe("prompt usage", () => {
     expect((await first<{ n: number }>(env.DB, `SELECT SUM(use_count) AS n FROM prompts`))?.n).toBe(2);
   });
 
-  it("POST /api/prompts/:slug/used counts one use per request; unknown slug is a 404", async () => {
-    const r = await post("/api/prompts/adr-draft/used");
+  it("POST /api/o/:org/prompts/:slug/used counts one use per request; unknown slug is a 404", async () => {
+    const r = await post("/api/o/saplinglearn/prompts/adr-draft/used");
     expect(r.status).toBe(200);
     const body = (await r.json()) as { ok: boolean; use_count: number; last_used_at: string };
     expect(body.ok).toBe(true);
     expect(body.use_count).toBe(1);
-    await post("/api/prompts/adr-draft/used", "meilin");
+    await post("/api/o/saplinglearn/prompts/adr-draft/used", "meilin");
     expect((await usage("adr-draft"))?.use_count).toBe(2);
-    const miss = await post("/api/prompts/no-such-prompt/used");
+    const miss = await post("/api/o/saplinglearn/prompts/no-such-prompt/used");
     expect(miss.status).toBe(404);
     expect(await miss.json()).toEqual({ error: "not found" });
   });
 
-  it("GET /api/prompts?sort=used lists the most used first", async () => {
-    for (let i = 0; i < 3; i++) await post("/api/prompts/lesson-mdx-lint/used");
-    await post("/api/prompts/adr-draft/used");
-    await post("/api/prompts/ocr-failure-triage/used");
+  it("GET /api/o/:slug/prompts?sort=used lists the most used first", async () => {
+    for (let i = 0; i < 3; i++) await post("/api/o/saplinglearn/prompts/lesson-mdx-lint/used");
+    await post("/api/o/saplinglearn/prompts/adr-draft/used");
+    await post("/api/o/saplinglearn/prompts/ocr-failure-triage/used");
     await run(env.DB, `UPDATE prompts SET last_used_at = '2026-01-01T00:00:00.000Z' WHERE slug = 'ocr-failure-triage'`);
-    const list = (await (await get("/api/prompts?sort=used")).json()) as { prompts: PromptSummary[] };
+    const list = (await (await get("/api/o/saplinglearn/prompts?sort=used")).json()) as { prompts: PromptSummary[] };
     const slugs = list.prompts.map((p) => p.slug);
     expect(slugs.slice(0, 3)).toEqual(["lesson-mdx-lint", "adr-draft", "ocr-failure-triage"]); // tie on 1 → the more recent use first
     expect(slugs.length).toBe(8);
@@ -251,7 +251,7 @@ describe("prompt usage", () => {
     const rest = list.prompts.slice(3);
     expect(rest.map((p) => p.updated_at)).toEqual([...rest.map((p) => p.updated_at)].sort().reverse());
     // an unknown sort falls back to recency
-    const dflt = (await (await get("/api/prompts?sort=bogus")).json()) as { prompts: PromptSummary[] };
+    const dflt = (await (await get("/api/o/saplinglearn/prompts?sort=bogus")).json()) as { prompts: PromptSummary[] };
     expect(dflt.prompts.map((p) => p.slug)).toEqual((await listPrompts(systemCtx())).map((p) => p.slug));
   });
 });

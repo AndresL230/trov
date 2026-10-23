@@ -33,13 +33,13 @@ const lockedDown = (res: Response, csp: string, label: string, cache = "private"
   expect(res.headers.get("content-security-policy"), label).toBe(csp);
 };
 
-/** A numbered version on the per-org route is immutable; the alias, the latest version and every error are not. */
+/** A numbered version is immutable; the latest version and every error are not. */
 const cacheFor = (path: string): string => (/^\/api\/o\/[^/]+\/raw\/a\/[^?]*(?:@|\/)v\d+(?:\?|$)/.test(path) ? IMMUTABLE : "private");
 
 // ── 7. raw headers per kind ──────────────────────────────────────────────────
 
-// Both mounts of the one sub-app: the per-org route and the one-org alias must agree on EVERY guarantee.
-describe.each([["the per-org route", "/api/o/saplinglearn/raw/a"], ["the one-org alias", "/raw/a"]])("7 · raw route headers, per kind — %s", (_name, RAW) => {
+describe("7 · raw route headers, per kind", () => {
+  const RAW = "/api/o/saplinglearn/raw/a";
   it("every kind: CSP, frame / sniff / cache lock-down, content type, inline vs attachment, <slug>-v<n>.<ext>, height script only in inline html", async () => {
     const me = await cookieFor(ME);
     const bodyish = "</body>"; // a text kind containing </body> must NOT get the script
@@ -88,7 +88,7 @@ describe.each([["the per-org route", "/api/o/saplinglearn/raw/a"], ["the one-org
     // the download of html is the stored bytes, untouched
     expect(await (await get(`${RAW}/k-html?download=1`, me)).text()).toBe("<html><body><p>x</p></body></html>");
     // a later version's download name carries its number
-    await wf("/api/artifacts/k-md/versions", jsonInit("POST", { content: "# v2" }, me));
+    await wf("/api/o/saplinglearn/artifacts/k-md/versions", jsonInit("POST", { content: "# v2" }, me));
     expect((await get(`${RAW}/k-md@v2?download=1`, me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
     expect((await get(`${RAW}/k-md?download=1`, me)).headers.get("content-disposition")).toBe(`attachment; filename="k-md-v2.md"`);
   });
@@ -134,15 +134,15 @@ describe("7b · /api/o/:slug/raw/a — the org in the path, and nothing of anoth
   const TWO = "raw-two-orgs";
   const B_ONLY = "raw-b-only";
 
-  it("a person in two orgs: the alias is 409, each org's route serves that org's bytes for the same slug", async () => {
+  it("a person in two orgs: each org's route serves that org's bytes for the same slug; the old one-org alias is gone", async () => {
     const me = await cookieFor(TWO);
     await ensureMember(TWO, "member", ORG_B);
     const mk = (slug: string, content: string) => wf(`/api/o/${slug}/artifacts`, jsonInit("POST", { title: "Same slug", kind: "html", area: "ui", content }, me));
     expect((await mk("saplinglearn", "<p>from A</p>")).status).toBe(201);
     expect((await mk("acme", "<p>from B</p>")).status).toBe(201);
     const alias = await get("/raw/a/same-slug", me);
-    expect(alias.status).toBe(409);
-    lockedDown(alias, CSP_PASSIVE, "alias 409");
+    expect(alias.status).toBe(404);
+    expect(await alias.text()).not.toMatch(/from [AB]/);
     const a = await get("/api/o/saplinglearn/raw/a/same-slug", me);
     const b = await get("/api/o/acme/raw/a/same-slug@v1", me);
     expect([a.status, b.status]).toEqual([200, 200]);
@@ -203,7 +203,7 @@ describe("7b · /api/o/:slug/raw/a — the org in the path, and nothing of anoth
 describe("7c · raw caching — immutable only where the bytes can never change", () => {
   const ORG = "/api/o/saplinglearn/raw/a";
 
-  it("a numbered version on the per-org route is immutable (+ Vary: Cookie); the latest, the alias and every error stay private", async () => {
+  it("a numbered version on the per-org route is immutable (+ Vary: Cookie); the latest and every error stay private", async () => {
     const me = await cookieFor(ME);
     await createText(me, { title: "Cache html", kind: "html", area: "ui", content: "<p>one</p>" });
     const png = uniqueBytes("cache-png");
@@ -214,7 +214,7 @@ describe("7c · raw caching — immutable only where the bytes can never change"
       expect(res.status, path).toBe(200);
       lockedDown(res, path.includes("img") ? CSP_PASSIVE : CSP_ACTIVE, path, IMMUTABLE);
     }
-    for (const path of [`${ORG}/cache-html`, `${ORG}/cache-img`, `${ORG}/cache-html?download=1`, "/raw/a/cache-html@v1", "/raw/a/cache-html/v1", "/raw/a/cache-img@v1"]) {
+    for (const path of [`${ORG}/cache-html`, `${ORG}/cache-img`, `${ORG}/cache-html?download=1`]) {
       const res = await get(path, me);
       expect(res.status, path).toBe(200);
       lockedDown(res, path.includes("img") ? CSP_PASSIVE : CSP_ACTIVE, path);
@@ -224,7 +224,7 @@ describe("7c · raw caching — immutable only where the bytes can never change"
     const early = await get(`${ORG}/cache-html@v2`, me);
     expect(early.status).toBe(404);
     lockedDown(early, CSP_PASSIVE, "v2 before it exists");
-    expect((await wf("/api/artifacts/cache-html/versions", jsonInit("POST", { content: "<p>two</p>" }, me))).status).toBeLessThan(300);
+    expect((await wf("/api/o/saplinglearn/artifacts/cache-html/versions", jsonInit("POST", { content: "<p>two</p>" }, me))).status).toBeLessThan(300);
     const v2 = await get(`${ORG}/cache-html@v2`, me);
     lockedDown(v2, CSP_ACTIVE, "v2", IMMUTABLE);
     expect(await v2.text()).toContain("<p>two</p>");
@@ -259,7 +259,7 @@ describe("8 · R2 streaming round trip", () => {
     const landed = (await res.json()) as { page: { version: { sha256: string; content_type: string; size_bytes: number } } };
     expect(landed.page.version).toMatchObject({ sha256: sha, content_type: "image/webp", size_bytes: bytes.byteLength });
 
-    const raw = await get("/raw/a/streamed", me);
+    const raw = await get("/api/o/saplinglearn/raw/a/streamed", me);
     expect(raw.status).toBe(200);
     expect(raw.headers.get("content-type")).toBe("image/webp");
     expect(raw.headers.get("content-length")).toBe(String(bytes.byteLength));
@@ -274,7 +274,7 @@ describe("8 · R2 streaming round trip", () => {
     expect(row).toEqual({ r2_key: `artifacts/${sha}`, content: null });
     // a teammate reads the same bytes
     const you = await cookieFor(YOU);
-    expect(new Uint8Array(await (await get("/raw/a/streamed@v1", you)).arrayBuffer())).toEqual(bytes);
+    expect(new Uint8Array(await (await get("/api/o/saplinglearn/raw/a/streamed@v1", you)).arrayBuffer())).toEqual(bytes);
   });
 
   it("a refused (wrong-hash) PUT never creates the object at the declared key", async () => {
@@ -322,7 +322,7 @@ describe("9 · upload tokens", () => {
     expect(res.status).toBe(410);
     expect(await all(env.DB, `SELECT id FROM artifact_versions`)).toEqual([]);
     // the page never materialises
-    expect((await get("/api/artifacts/tok", me)).status).toBe(404);
+    expect((await get("/api/o/saplinglearn/artifacts/tok", me)).status).toBe(404);
   });
 
   it("wrong length (short, long) or wrong hash → 400, and the SAME token still lands the right bytes before expiry", async () => {
@@ -356,20 +356,20 @@ describe("9 · upload tokens", () => {
     // YOU mints again; ME then makes the page private → YOU's token no longer reaches it
     const b3 = uniqueBytes("tok-bound-3");
     const t3 = await ticket(you, b3, { slug: "bound" });
-    expect((await wf("/api/artifacts/bound", jsonInit("PATCH", { visibility: "private" }, me))).status).toBe(200);
+    expect((await wf("/api/o/saplinglearn/artifacts/bound", jsonInit("PATCH", { visibility: "private" }, me))).status).toBe(200);
     const denied = await put(t3.path!, b3);
     expect(denied.status).toBe(404);
     expect(await denied.text()).toBe(NOT_FOUND);
     expect(await all(env.DB, `SELECT version_no FROM artifact_versions`)).toHaveLength(2);
     // …and it stays consumed (a later un-private does not revive it)
-    await wf("/api/artifacts/bound", jsonInit("PATCH", { visibility: "org" }, me));
+    await wf("/api/o/saplinglearn/artifacts/bound", jsonInit("PATCH", { visibility: "org" }, me));
     expect((await put(t3.path!, b3)).status).toBe(410);
 
     // ME's own private page: ME's token works
     const b4 = uniqueBytes("tok-bound-4");
     const t4 = await ticket(me, b4, { title: "Mine private", visibility: "private" });
     expect((await put(t4.path!, b4)).status).toBe(200);
-    expect((await get("/api/artifacts/mine-private", you)).status).toBe(404);
+    expect((await get("/api/o/saplinglearn/artifacts/mine-private", you)).status).toBe(404);
   });
 
   it("the token is never returned bare: not in upload-url, the MCP result, the PUT result, or any error; only its hash is stored", async () => {
@@ -402,7 +402,7 @@ describe("9 · upload tokens", () => {
     bodies.push(await (await wf(t.path!, { method: "GET" })).text()); // 405
     for (const body of bodies) expect(body).not.toContain(token);
     // the page detail never carries it either
-    expect(await (await get("/api/artifacts/tok", me)).text()).not.toContain(token);
+    expect(await (await get("/api/o/saplinglearn/artifacts/tok", me)).text()).not.toContain(token);
   });
 
   it("any method but PUT on a token path is 405 Allow: PUT, and touches nothing", async () => {
@@ -428,7 +428,7 @@ describe("9 · upload tokens", () => {
 
 // ── 10. SSRF guard ───────────────────────────────────────────────────────────
 
-describe("10 · SSRF guard (POST /api/artifacts/fetch through the Worker, outbound fetch stubbed)", () => {
+describe("10 · SSRF guard (POST …/artifacts/fetch through the Worker, outbound fetch stubbed)", () => {
   afterEach(() => vi.restoreAllMocks());
 
   type Handler = (url: string) => Response;
@@ -442,7 +442,7 @@ describe("10 · SSRF guard (POST /api/artifacts/fetch through the Worker, outbou
     return calls;
   }
   const doc = () => new Response("# ok", { headers: { "content-type": "text/markdown" } });
-  const fetchUrl = async (url: string) => wf("/api/artifacts/fetch", jsonInit("POST", { url }, await cookieFor(ME)));
+  const fetchUrl = async (url: string) => wf("/api/o/saplinglearn/artifacts/fetch", jsonInit("POST", { url }, await cookieFor(ME)));
 
   it.each([
     "http://example.com/a.md",
@@ -516,7 +516,7 @@ describe("10 · SSRF guard (POST /api/artifacts/fetch through the Worker, outbou
     await cookieFor(ME); // seeds the person the token belongs to
     const calls = stubFetch(doc);
     const { raw } = await mintTokenFor(ME);
-    const res = await wf("/api/artifacts/fetch", jsonInit("POST", { url: "https://example.com/a.md" }, undefined, { authorization: `Bearer ${raw}` }));
+    const res = await wf("/api/o/saplinglearn/artifacts/fetch", jsonInit("POST", { url: "https://example.com/a.md" }, undefined, { authorization: `Bearer ${raw}` }));
     expect(res.status).toBe(401);
     expect(calls).toEqual([]);
   });
