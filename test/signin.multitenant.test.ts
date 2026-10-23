@@ -59,31 +59,32 @@ const legacyInvite = (email: string, name: string | null = null) =>
 const VERIFIED = (email: string) => [{ email, primary: true, verified: true }];
 
 describe("an existing SaplingLearn member", () => {
-  it("signs in as before; /auth/me keeps `admin` and `org`, and gains `orgs`, `superadmin`, `pending_invites`", async () => {
+  it("signs in as before; /auth/me carries `orgs`, `superadmin`, `pending_invites`", async () => {
     const res = await github("AndresL230", VERIFIED("andres@saplinglearn.org"));
     expect([res.status, res.headers.get("location")]).toEqual([302, "/"]);
     const session = cookieOf(res, "session")!;
     const me = await json("GET", "/auth/me", session);
     expect(me.json).toMatchObject({
-      handle: "AndresL230", org: "SaplingLearn", admin: true, superadmin: true, pending_invites: 0,
+      handle: "AndresL230", superadmin: true, pending_invites: 0,
       orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "owner" }],
     });
     // The provider-verified address is recorded on the identity at every sign-in (Q1).
     expect(await first(env.DB, `SELECT verified_email FROM identities WHERE provider = 'github' AND subject = 'AndresL230'`)).toEqual({ verified_email: "andres@saplinglearn.org" });
-    expect((await json("GET", "/docs", session)).status).toBe(200);
     expect((await json("GET", "/api/o/saplinglearn/docs", session)).status).toBe(200);
+    expect((await json("GET", "/docs", session)).status).toBe(404); // no org route answers without its org
   });
 
-  it("a plain member: `admin` false, the same one org", async () => {
+  it("a plain member: the same one org, as a member", async () => {
     const me = await json("GET", "/auth/me", await cookieFor("casey"));
-    expect(me.json).toMatchObject({ org: "SaplingLearn", admin: false, superadmin: false, orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" }] });
+    expect(me.json).toMatchObject({ superadmin: false, orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" }] });
   });
 
-  it("in two orgs: `orgs` lists both; `admin` and `org` speak for no single org", async () => {
+  it("in two orgs: `orgs` lists both, each with the caller's role", async () => {
     await ensureMember("dual", "member", ORG_A);
     await ensureMember("dual", "owner", ORG_B);
     const me = await json("GET", "/auth/me", await cookieFor("dual"));
-    expect(me.json).toMatchObject({ org: "", admin: false, role: null });
+    expect(me.json).not.toHaveProperty("org");
+    expect(me.json).not.toHaveProperty("admin");
     expect(me.json.orgs).toEqual([
       { slug: "acme", name: "Acme", role: "owner", logo_url: null, plan: "enterprise", paid: false },
       { slug: "saplinglearn", name: "SaplingLearn", role: "member", logo_url: null, plan: "enterprise", paid: false },
@@ -133,36 +134,16 @@ describe("a new GitHub account", () => {
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'stranger'`)).toBeNull();
   });
 
-  it("with a legacy (SaplingLearn) invite for their verified email: a SaplingLearn member on first sign-in, the invite consumed", async () => {
-    // Created the way Maintenance › People creates it today: the legacy route, as SaplingLearn's owner.
-    const owner = await cookieFor("AndresL230");
-    expect((await json("POST", "/invites", owner, { email: "New.Hire@example.com", name: "New Hire" })).status).toBe(200);
-    expect(await first(env.DB, `SELECT org_id, status, role FROM org_invites WHERE email = 'new.hire@example.com'`)).toEqual({ org_id: ORG_A, status: "pending", role: "member" });
-
+  it("a pending pre-organization invite is not consumed at sign-in: it waits on the picker, and grants SaplingLearn when accepted", async () => {
+    // 0042_organizations copied every old invite into `org_invites`; the old table no longer decides anything.
+    await legacyInvite("new.hire@example.com", "New Hire");
+    const id = await orgInvite({ org: ORG_A, email: "new.hire@example.com" });
     const session = await onboard(await github("newhire", VERIFIED("new.hire@example.com")), "newhire");
+    expect(await memberships("newhire")).toEqual([]);
+    expect(await first(env.DB, `SELECT accepted_by FROM invites WHERE email = 'new.hire@example.com'`)).toEqual({ accepted_by: null });
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1 });
+    expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("newhire")).toEqual([{ org_id: ORG_A, role: "member" }]);
-    expect(await first(env.DB, `SELECT accepted_by FROM invites WHERE email = 'new.hire@example.com'`)).toEqual({ accepted_by: "newhire" });
-    expect(await first(env.DB, `SELECT status, responded_by FROM org_invites WHERE email = 'new.hire@example.com'`)).toEqual({ status: "accepted", responded_by: "newhire" });
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "SaplingLearn", admin: false, pending_invites: 0, orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "member" }] });
-    expect((await json("GET", "/docs", session)).status).toBe(200);
-    // The welcome goes out, under SaplingLearn's settings.
-    expect((await all<{ subject: string }>(env.DB, `SELECT subject FROM notification_outbox_bodies ORDER BY created_at`)).map((b) => b.subject)).toContain("Welcome to SaplingLearn on Trov");
-    // The old screen shows it accepted.
-    const list = (await json("GET", "/invites", owner)).json as unknown as { invites: { email: string; name: string | null; accepted_by: string | null }[] };
-    expect(list.invites).toEqual([expect.objectContaining({ email: "new.hire@example.com", name: "New Hire", accepted_by: "newhire" })]);
-  });
-
-  it("a legacy invite is matched on the VERIFIED email only, and not once it is revoked", async () => {
-    await legacyInvite("ghost@example.com");
-    // GitHub says the address is not verified → `getPrimaryEmail` is null → nothing to match.
-    await onboard(await github("ghost", [{ email: "ghost@example.com", primary: true, verified: false }]), "ghost");
-    expect(await memberships("ghost")).toEqual([]);
-
-    const owner = await cookieFor("AndresL230");
-    await json("POST", "/invites", owner, { email: "revoked@example.com" });
-    expect((await json("POST", "/invites/revoked%40example.com/revoke", owner)).status).toBe(200);
-    await onboard(await github("revoked-dev", VERIFIED("revoked@example.com")), "revoked-dev");
-    expect(await memberships("revoked-dev")).toEqual([]); // a GitHub account still onboards — into no org
   });
 
   it("with an org invite (by GitHub login): onboards into NO org; the invite shows as pending and grants nothing until accepted", async () => {
@@ -217,12 +198,6 @@ describe("a new Google account", () => {
     expect((await json("GET", "/api/o/acme/me", session)).status).toBe(404);
     expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("priya")).toEqual([{ org_id: ORG_B, role: "member" }]);
-  });
-
-  it("with a legacy invite: a SaplingLearn member on first sign-in (unchanged)", async () => {
-    await legacyInvite("priya.n@gmail.com", "Priya");
-    await onboard(await google(), "priya");
-    expect(await memberships("priya")).toEqual([{ org_id: ORG_A, role: "member" }]);
   });
 
   it("an invite revoked while onboarding is open: the account is still created, in no org", async () => {

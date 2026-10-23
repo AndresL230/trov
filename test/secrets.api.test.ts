@@ -454,7 +454,7 @@ describe("/repos", () => {
     const first = await call(me, "/repos", { method: "POST", body: { repo_full_name: "acme/widgets" } });
     expect(first.status).toBe(201);
     const a = (await json<{ repo: OrgRepoDTO }>(first)).repo;
-    expect(a).toMatchObject({ repo_full_name: "acme/widgets", is_primary: true, legacy_hook: false, webhook_secret_configured: false, created_by: "AndresL230" });
+    expect(a).toMatchObject({ repo_full_name: "acme/widgets", is_primary: true, webhook_secret_configured: false, created_by: "AndresL230" });
     expect(a.id).toMatch(/^hook_[0-9a-f]{40}$/);
     expect(a.webhook_url).toBe(`https://trov.test/webhook/github/${a.id}`);
 

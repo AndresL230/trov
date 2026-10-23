@@ -27,7 +27,7 @@ const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => 
 });
 const status = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ configured: true, installation: null, lost: null, mismatch: null, ...o });
 const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
-  id: `hook_${name.replace(/\W/g, "_")}`, repo_full_name: name, is_primary: false, legacy_hook: false, webhook_url: `https://trov.dev/webhook/github/${HOOK}`,
+  id: `hook_${name.replace(/\W/g, "_")}`, repo_full_name: name, is_primary: false, webhook_url: `https://trov.dev/webhook/github/${HOOK}`,
   webhook_secret_configured: false, connection: "manual", access_lost: false, created_at: "2026-10-01T10:00:00.000Z", created_by: "andres", ...o,
 });
 function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): IntegrationDTO {
