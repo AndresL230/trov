@@ -39,8 +39,7 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   already in use keeps working: `POST /api/o/:slug/mcp-tokens` still mints (no screen calls it),
   `GET /api/o/:slug/mcp-tokens` lists the caller's live tokens for that org by `token_hint` (the first 4
   characters of the random part), and `POST …/mcp-tokens/:id/revoke` soft-revokes the caller's OWN token —
-  someone else's id is the same 404 as an unknown one (`src/auth/token-routes.ts`; `/auth/mcp-token…` is the
-  cut-over alias for a person with exactly one org). All three are session-cookie routes, never MCP tools.
+  someone else's id is the same 404 as an unknown one (`src/auth/token-routes.ts`). All three are session-cookie routes, never MCP tools.
   Settings › MCP access shows the list-and-revoke half only: "Access tokens for <org>" (`tokenListBody`), drawn
   when the person still has a live token there, with a two-click Revoke and a line saying Trov no longer
   creates tokens. Settings › MCP access (`mcpAccessSection` in `web/src/render.ts`) has, beside its heading, a quiet
@@ -126,8 +125,7 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
 - **GitHub webhook** (`POST /webhook/github/:hookId`, `src/github-hook.ts` → `src/webhook.ts`): `hookId` is
   the repo's `org_repos.id`; a delivery authenticates by an HMAC-SHA256 `X-Hub-Signature-256` over the raw
   body against THAT repo's `github_webhook` secret (NOT `COOKIE_SECRET`), must name that repo (else 202,
-  ignored), and is captured as that org's system tenant. The legacy `POST /webhook/github` delivers only to
-  the `legacy_hook` repo (SaplingLearn's, on `GITHUB_WEBHOOK_SECRET` until its admin stores a secret). HMAC is
+  ignored), and is captured as that org's system tenant. HMAC is
   verified in the branch BEFORE the gate; a bad/absent signature (or no secret) is a bare `401` that writes
   nothing — and an unknown or suspended hook id is that SAME bare `401` (hook ids cannot be probed). The
   writer principal is the fixed string `"github-webhook"`; the delivery's own `subject_login` is trusted
@@ -137,8 +135,7 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   `docs/architecture/github-app.md`; keep the detail THERE). An org connects GitHub by installing the App:
   `GET /api/o/:slug/github/install` → GitHub → `/auth/callback` (the install return, recognised by
   `installation_id` / `setup_action`). Every GitHub read resolves its credential with
-  `resolveGithubCredential` — the org's installation token, then its stored `github_token`, then
-  SaplingLearn's legacy secret — never with a bare `resolveCredential(…, "github_token", …)`. The App's ONE
+  `resolveGithubCredential` — the org's installation token, then its stored `github_token` — never with a bare `resolveCredential(…, "github_token", …)`. The App's ONE
   webhook is `POST /webhook/github/app` (`GITHUB_APP_WEBHOOK_SECRET`; the same bare 401). Nothing reachable
   from `src/mcp.ts` may import `src/github-app/` (`test/secrets.mcp.test.ts`).
 
@@ -209,10 +206,11 @@ Three nullable person fields, written directly (no gate, no staging) by `src/too
 - **`responsibilities` is never rendered.** It travels only to admins (Org settings › Members' editor
   fills from it) and to MCP `list_people` — not even to the person themselves.
 - **Role and responsibilities are ADMIN-set** (the owner's call, 2026-09-27): a person changes only their own photo
-  (and name / color / handle, as before). **Write** `PUT /api/people/:handle` (`PersonProfileWrite`): an admin
-  (the org role) only — anyone else, the person themselves included, is 403 with nothing written. Trimmed; absent = untouched, `""` / null / whitespace clears; over
-  `ROLE_MAX` (80) / `RESPONSIBILITIES_MAX` (2000) is 400 and writes NOTHING (every field is validated before the
-  one UPDATE). Returns the fresh profile. Name and color stay on `PUT /auth/me`.
+  (and name / color / handle, as before). **Write** `PUT /api/o/:slug/members/:handle` (`updateMember`,
+  `src/orgs/repo.ts` — Org settings › Members' editor, which also sets the org role): an admin (the org role) only —
+  anyone else, the person themselves included, is 403 with nothing written. `title` and `responsibilities` are
+  trimmed; absent = untouched, `""` / null / whitespace clears; over `ROLE_MAX` (80) / `RESPONSIBILITIES_MAX`
+  (2000) is 400 and writes NOTHING. Name and color stay on `PUT /auth/me`.
 - **MCP gets ONE read, `list_people`** (every principal): `{ people: [{ handle, name, role, responsibilities }] }`
   for every non-reserved person — nothing else about a person (no avatar, no load, no profile), and NO people
   write of any kind. Its description, `create_ticket`'s and the `tickets` / `trov` skills tell an agent to read

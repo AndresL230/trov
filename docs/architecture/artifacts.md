@@ -96,8 +96,7 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   immutable` + `Vary: Cookie` (`RAW_IMMUTABLE`): a version is never rewritten and the org is in the path, so the
   browser keeps it and never asks again. Everything else stays `private` (revalidated every time): the latest
   version (`/raw/a/<slug>`, whose answer moves with each new version), every error (a `v<n>` that does not exist
-  YET is a 404 that must not stick), and the one-org alias `/raw/a/…` even when numbered — it resolves the
-  caller's ONE org, which can change. `private` keeps every shared cache out. **The trade-off, accepted:** the
+  YET is a 404 that must not stick). `private` keeps every shared cache out. **The trade-off, accepted:** the
   access check runs only when the browser asks, so a person who LOSES access (the page made private or deleted,
   removed from the org) keeps whatever their own browser already cached while their session lasts, for up to a
   year — exactly the bytes they were once allowed to see, never anything new. `Vary: Cookie` keeps a copy cached

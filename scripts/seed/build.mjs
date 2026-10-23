@@ -245,7 +245,7 @@ export function buildSeedStatements(fx) {
 export function aiStatements(ai, agoIso) {
   const ORG = "'org_saplinglearn'";
   const s = [
-    `INSERT OR IGNORE INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_saplinglearn_sapling', ${ORG}, ${q(ai.repo)}, 1, 0, '2026-10-06T00:00:00.000Z', 'seed')`,
+    `INSERT OR IGNORE INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_saplinglearn_sapling', ${ORG}, ${q(ai.repo)}, 1, '2026-10-06T00:00:00.000Z', 'seed')`,
   ];
   for (const d of ai.digests ?? []) {
     const at = agoIso(d.created_ago_min);

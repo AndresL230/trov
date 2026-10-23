@@ -170,6 +170,7 @@ export const RESET_STATEMENTS = [
   "DELETE FROM sessions",
   "DELETE FROM mcp_tokens",
   "DELETE FROM identities",
+  "DELETE FROM invites",
   "DELETE FROM orgs WHERE id NOT IN ('org_saplinglearn', 'org_b')",
   "DELETE FROM persons",
   // The dev/test person seed (was the `people` map): the four engineers, each with their github identity…

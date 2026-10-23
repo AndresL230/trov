@@ -1,6 +1,6 @@
 // Backfill Trov's captured `events` table from GitHub REST by synthesizing
 // signed webhook deliveries and POSTing them through the SAME gate
-// (/webhook/github, src/webhook.ts handleGithubWebhook) that live deliveries
+// (/webhook/github/<hook id>, src/github-hook.ts handleGithubWebhook) that live deliveries
 // go through — there is no second write path here, only a client that
 // reconstructs history as if GitHub had delivered it.
 //
@@ -19,15 +19,15 @@
 // GitHub state reports everything "unchanged" the second time.
 //
 // Usage:
-//   WEBHOOK_URL=http://localhost:8787/webhook/github \
-//   GITHUB_WEBHOOK_SECRET=dev-webhook-secret \
+//   WEBHOOK_URL=http://localhost:8787/webhook/github/<org_repos.id> \
+//   WEBHOOK_SECRET=<that repo's webhook secret> \
 //   REPO=SaplingLearn/sapling \
 //   GITHUB_TOKEN=$(gh auth token) \
 //   node scripts/backfill-events.mjs [--dry]
 //
 // Env:
-//   WEBHOOK_URL            default http://localhost:8787/webhook/github
-//   GITHUB_WEBHOOK_SECRET  required unless --dry (must match the worker's secret)
+//   WEBHOOK_URL            required unless --dry: the repo's Payload URL (Org settings › Integrations)
+//   WEBHOOK_SECRET         required unless --dry: the webhook secret stored for that repo
 //   REPO                   default SaplingLearn/sapling ("owner/repo")
 //   GITHUB_TOKEN           falls back to `gh auth token` if unset
 //
@@ -37,8 +37,8 @@
 import { createHmac } from "node:crypto";
 import { execFileSync } from "node:child_process";
 
-const WEBHOOK_URL = process.env.WEBHOOK_URL ?? "http://localhost:8787/webhook/github";
-const SECRET = process.env.GITHUB_WEBHOOK_SECRET;
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
+const SECRET = process.env.WEBHOOK_SECRET;
 const REPO = process.env.REPO ?? "SaplingLearn/sapling";
 const DRY = process.argv.includes("--dry");
 const DAYS_BACK = 14;
@@ -54,8 +54,8 @@ function resolveToken() {
 
 const TOKEN = resolveToken();
 
-if (!DRY && !SECRET) {
-  console.error("GITHUB_WEBHOOK_SECRET is required to POST deliveries (or pass --dry).");
+if (!DRY && (!SECRET || !WEBHOOK_URL)) {
+  console.error("WEBHOOK_URL and WEBHOOK_SECRET are required to POST deliveries (or pass --dry).");
   process.exit(1);
 }
 if (!TOKEN) {

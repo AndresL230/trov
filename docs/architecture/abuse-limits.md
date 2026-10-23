@@ -119,7 +119,7 @@ changes. The cost is that an address can be on two people's rows; nothing reads 
 3. **An invite by GitHub login names a login, not an account.** Whoever holds the login when they sign in may
    accept it (`MINE`, `src/orgs/repo.ts`). Requiring the identity to be pinned would not help: a re-registered
    login that signs up fresh is pinned at once, to the new account. The real fix is to resolve the login to
-   GitHub's numeric id when the invite is created and match on that — a change to invites, left for Phase 7.
+   GitHub's numeric id when the invite is created and match on that — a change to invites, not made yet.
    Until then: invite by login only someone about to sign in, and revoke stale invites. The same holds for a
    person who renamed their GitHub login: their old identity row still matches invites to the OLD login, and a
    new holder of that login is refused at sign-in (`/?denied=1`) until the old row is unlinked.

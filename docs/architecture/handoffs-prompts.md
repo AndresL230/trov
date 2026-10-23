@@ -175,7 +175,7 @@ plugin's `link` skill and its hooks, and an Ask thread as a side (`ask.md` › A
   carries its session id only when it is the caller's own side). There is NO tool for send, accept, decline or
   cancel. Each refuses an `ask-thread-` session (`bad_request`); `LinkError` codes travel like `HandoffError`'s, with
   hints for `not_member` and `limit` (`retry_after` on the hourly note limit).
-- **Cookie routes** (`tenantApi`, `src/routes.ts`, beside the handoffs; `/api/links…` and `/api/o/<slug>/links…`) —
+- **Cookie routes** (`tenant`, `src/routes.ts`, beside the handoffs; `/api/o/<slug>/links…`) —
   the ONLY place a link is sent, accepted, declined or cancelled (besides Ask's Confirm). The actor is always the
   session's person; a body's author fields are never read. `:id` is the per-org number.
   `GET /links?box=waiting|mine|open|unbound|closed` (default `open`; another box is 400) → `{ links }`, each with

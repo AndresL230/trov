@@ -102,10 +102,8 @@ to one app — `repo-apps.md` › Monorepos.
   (`resolveGithubCredential`, `github-app.md`); and, optionally, an app-metrics token per environment
   (`resolveCredential`; set in a part's editor — Org settings › Repositories › a repo › Apps). What HOSTS an
   environment — Cloudflare, Railway, Vercel, … — is its parts (set per app on that Apps page, `repo-apps.md`), each
-  provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). The
-  Worker secrets of the same purpose (`GITHUB_SERVICE_TOKEN`, `CF_ANALYTICS_*`, `SAPLING_METRICS_TOKEN`)
-  answer for SaplingLearn ALONE, only until it stores each (`env.md` › Legacy); the vars `GITHUB_REPO` /
-  `REPO_ENVIRONMENTS` are read by nothing.
+  provider with ONE org-wide credential (Org settings › Hosting, `hosting-providers.md`). No Worker secret
+  answers for any of these (`env.md` › Retired in the Phase 7 cleanup).
 - **After a merge that changes `[triggers] crons`, run `wrangler triggers deploy`** — a Workers Builds deploy
   did NOT update the schedule (observed 2026-09-20).
 
@@ -440,7 +438,7 @@ account id**; `src/repo/github.ts` now LOGS a failed read as its message with th
 (`scrubbedMessage`), never the Error object, since a thrown fetch or a GraphQL `errors` body can quote the
 `authorization` header back — and `src/repo/cron.ts` does the same at EVERY log site it has (`scrubbedLog`:
 the cron's generic `safely` logger, the job runners and the usage arms), scrubbing every credential the unit
-revealed — and the legacy Worker secrets — literally and empty-guarded.
+revealed, literally and empty-guarded.
 **On screen** the button lives in the **Repo top bar, beside the refresh icon, on every tab** and in every
 state of the dashboard (loading, failed, degraded, all `not_connected`) — admins only, hidden in sample
 mode, and a non-admin's bar is byte-for-byte what it was (pinned by a test; the refresh icon's title is
@@ -519,8 +517,7 @@ says `empty` — whose copy is "No current usage reading — the hourly polls ha
 **Active users come from Sapling's own backend** — the one number Trov CANNOT compute. `pollSaplingMetrics`
 sends `GET {cfg.apiUrl}/api/internal/metrics` with `Authorization: Bearer <token>` — the org's
 `metrics_endpoint` secret stored for that environment (set from a part's editor — opened from Org settings ›
-Repositories › a repo › Apps, or Hosting's checklist — since repo-setups Phase 0; SaplingLearn's fallback:
-`SAPLING_METRICS_TOKEN`) —
+Repositories › a repo › Apps, or Hosting's checklist — since repo-setups Phase 0) —
 (user-agent `canopy-metrics`, the 8s timeout) per environment and expects `200` → `{ "active_users": {
 "24h": n, "7d": n, "30d": n } }`. **The token goes to ONE place**: a non-`https:` `apiUrl` is never fetched,
 trailing slashes are normalised, and `redirect: "manual"` + "only a 200 is an answer" means a 3xx is a

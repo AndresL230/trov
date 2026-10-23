@@ -44,8 +44,7 @@ environments; an environment's deploys come from its hosting provider, not GitHu
 
 A sync reads GitHub with **the org's GitHub credential**, resolved where every other GitHub read resolves
 it — `src/github-app/credential.ts` (`github-app.md` › Tokens): the org's live App installation (a token
-minted for the primary repository alone), else its stored `github_token`, else — SaplingLearn only — the
-Worker's legacy secret. `runBackfill` and the closing refresh call `resolveGithubCredential`; the two
+minted for the primary repository alone), else its stored `github_token`. `runBackfill` and the closing refresh call `resolveGithubCredential`; the two
 places that only ask *whether* a sync could run (`GET /sync`, and the batch route before it records a
 run) call `githubCredentialSource`, which walks the same order **without minting**: the status is read
 by every member's page, every few seconds during a run, and must not cost GitHub a token request.

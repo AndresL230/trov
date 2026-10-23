@@ -18,7 +18,7 @@ means unlimited. Plan ids are stored and never renamed: **`team` is the plan use
 
 | Limit (`LimitKey`) | Free (`free`) | Pro (`team`) | Enterprise | Personal (legacy) | Counted | Enforced at |
 |---|---|---|---|---|---|---|
-| `seats` | 3 | **the seats paid for**, up to 50 (50 when granted) | unlimited (set per org) | 1 | members + pending invitations, per org | an invitation created (`createInvite`, the legacy `/invites` alias, the superadmin's owner invitation), an invitation accepted (`respondToInvite`, `consumeLegacyInvite`), a person added directly (`assignOrgAdmin`) |
+| `seats` | 3 | **the seats paid for**, up to 50 (50 when granted) | unlimited (set per org) | 1 | members + pending invitations, per org | an invitation created (`createInvite`, the superadmin's owner invitation), an invitation accepted (`respondToInvite`), a person added directly (`assignOrgAdmin`) |
 | `repositories` | 1 | 5 | 10 | 1 | `org_repos` rows | `addRepo` (a new repository; promoting one the org has is not an addition) |
 | `environments` | 2 | 5 | 10 | 2 | `org_environments` rows | `putEnvironment` (a new key; an edit is not an addition) |
 | `artifact_bytes` | 250 MB | 5 GB | unlimited | 250 MB | `SUM(artifact_versions.size_bytes)` — every stored version, deleted pages included | `writeVersion`, `insertPage`, `mintUploadToken`, `consumeUploadToken` (`src/tools/artifacts.ts`) — so HTTP, the upload link and the MCP artifact tools alike |

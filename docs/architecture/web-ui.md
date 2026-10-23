@@ -454,12 +454,9 @@ script then takes over the SAME markup. Everything else is the app, and is never
 The public docs are five `docs` pages of `SITE_PAGES`: Setup, Connect a client (copy-paste MCP config per
 client and an AGENTS.md / CLAUDE.md snippet), Concepts (the authority model), MCP tools and Changelog.
 
-- **Where.** Under `/docs/<page>`. `/docs` ITSELF is the app's cookie route — the cut-over alias of an
-  organization's docs list, which old clients and the SPA's fetch still call — so there is no page at
-  `/docs` and no `docs.html` or `docs/index.html` (either would make the assets binding answer `/docs` before
-  the Worker). `src/site.ts` `docsEntry` sends `/docs/` (no route) and a BROWSER's signed-out `/docs` (it
-  accepts `text/html`, no session cookie) to the first page with a 302; a fetch, anyone signed in and every
-  other method still reach the route exactly as before. `docs` was already a reserved org slug.
+- **Where.** Under `/docs/<page>`. There is no page at `/docs` and no `docs.html` or `docs/index.html`;
+  `src/site.ts` `docsEntry` sends a GET or HEAD of `/docs` or `/docs/` to the first page with a 302. `docs` is a
+  reserved org slug.
 - **One text per page.** Each page is ONE Markdown string (`web/src/docs-content.ts` `docsMarkdown`):
   `# title`, the lede (= its `description`, word for word), an optional intro, `## ` sections. The build serves
   it at `markdown` (`/docs/<page>.md`, `text/markdown; charset=utf-8`, with an HTTP `Link: <page>; rel=

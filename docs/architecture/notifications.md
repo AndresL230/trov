@@ -21,9 +21,7 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   layer. A pref must be in the kind's `allowedCadences` (validated at write time).
 - **Runs** (`run.ts`): one digest per (person, org). Per eligible user (a MEMBER of the org, address on file,
   `email_unsubscribed = 0`) the outbox row is claimed FIRST by `INSERT OR IGNORE` on `outboxKey`,
-  `org:user:cadence:window_id` — a conflict skips the user, so a double fire is harmless. (A row written
-  under the pre-organizations key `user:cadence:window_id` in the same org counts as the same send:
-  `preOrgOutboxKey`, cut-over code.) Then render, drop nulls, `skipped` on zero sections, else one message → `sent` (with `resend_id`)
+  `org:user:cadence:window_id` — a conflict skips the user, so a double fire is harmless. Then render, drop nulls, `skipped` on zero sections, else one message → `sent` (with `resend_id`)
   or `failed` (with the error). `retry.ts` re-attempts `failed` rows only. Windows (`window.ts`) are computed
   in the org timezone: daily = previous 24h (72h on Monday), weekly = previous 7 days.
 - **Cron** (`cron.ts`, `wrangler.toml [triggers]`): two hourly triggers (`0 * * * *` daily candidate,
