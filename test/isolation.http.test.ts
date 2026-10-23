@@ -10,8 +10,7 @@
 //     no org all get the one 404 `{ "error": "not_found" }`;
 //   • under B's slug — bob and boss get a refusal or a B-only body: never a 5xx, never `CANARY_A` anywhere in
 //     the raw response (body or headers);
-//   • at the old alias path — bob's only org is B (same assertions); a person with no org is 409
-//     `org_required`; a member of a SUSPENDED org is 404;
+//   • at its old unprefixed path (gone in the Phase 7 cleanup) — a 404 for everyone;
 //   • and a digest of every org-A row (each org-keyed table, plus A's people, identities and the legacy
 //     `invites` table) is identical before and after.
 import { describe, it, expect } from "vitest";
@@ -39,7 +38,6 @@ const ORG_C = "org_c";
 const A = () => systemCtx(ORG_A);
 const B = () => systemCtx(ORG_B);
 const NOT_FOUND = JSON.stringify({ error: "not_found" });
-const ORG_REQUIRED = JSON.stringify({ error: "org_required" });
 const ALICE = "iso-alice"; // in A only
 const OWNER_A = "AndresL230";
 const INVITED = "canary-invitee@x.io";
@@ -118,13 +116,13 @@ async function seed(): Promise<Fx> {
   await env.ARTIFACTS_BUCKET.put(docImageKey(imgSha), png, { httpMetadata: { contentType: "image/png" } });
   await run(env.DB, `INSERT INTO doc_images (org_id, sha256, content_type, size_bytes, uploaded_by, created_at) VALUES (?, ?, 'image/png', ?, ?, ?)`, ORG_A, imgSha, png.byteLength, ALICE, T);
 
-  // Config and credentials: a repo, an environment, an email invite (the legacy route: `org_invites` + its sidecar), an MCP token.
+  // Config and credentials: a repo, an environment, an email invite (`org_invites`), an MCP token.
   const hookId = "hook_canary_a";
   await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES (?, ?, ?, 1, ?, ?)`, hookId, ORG_A, `canary-a/${CANARY}-repo`, T, ALICE);
   const envKey = "canary-env";
   await run(env.DB, `INSERT INTO org_environments (org_id, key, position, label, branch, created_at, updated_at, updated_by) VALUES (?, ?, 0, ?, 'main', ?, ?, ?)`, ORG_A, envKey, `${CANARY} env`, T, T, ALICE);
-  const invited = await app.request("/invites", { method: "POST", headers: { cookie: ownerA, "content-type": "application/json" }, body: JSON.stringify({ email: INVITED, name: `${CANARY} Invitee` }) }, env);
-  expect(invited.status).toBe(200);
+  const invited = await app.request("/api/o/saplinglearn/invites", { method: "POST", headers: { cookie: ownerA, "content-type": "application/json" }, body: JSON.stringify({ email: INVITED, name: `${CANARY} Invitee` }) }, env);
+  expect(invited.status).toBe(201);
   const inviteId = (await first<{ id: number }>(env.DB, `SELECT id FROM org_invites WHERE org_id = ? AND email = ?`, ORG_A, INVITED))!.id;
   await mintTokenFor(ALICE, ORG_A);
   const tokenId = (await first<{ id: number }>(env.DB, `SELECT id FROM mcp_tokens WHERE org_id = ? AND person = ?`, ORG_A, ALICE))!.id;
@@ -404,20 +402,7 @@ const TENANT: Record<string, Row> = {
   "POST /repos/:owner/:name/suggestions/:id/accept": J({}), "POST /repos/:owner/:name/suggestions/:id/ignore": J({}),
 };
 
-/** The org surface (src/orgs, src/integrations, src/hosting, Org settings › AI in src/ai/routes.ts) and a member's MCP tokens (src/auth/token-routes.ts) exist ONLY under
- *  `/api/o/:slug`; every other tenant route also has an alias at its old path. The tokens' old paths are not twins of
- *  these — `/auth/mcp-token…` is person-level and resolves the caller's one org itself (PLATFORM, below). */
-const NO_ALIAS = (suffix: string): boolean =>
-  suffix === "/me" || ["/settings", "/plan", "/logo", "/members", "/invites", "/integrations", "/repos", "/environments", "/hosting", "/mcp-tokens", "/billing", "/github", "/deletion", "/delete", "/ai", "/ask", "/repo/settings"].some((p) => suffix === p || suffix.startsWith(`${p}/`));
-
-/** Old paths whose `/api/o/:slug` form is a DIFFERENT route (or none): behind `soleTenantGate`, exercised in their own test below. */
-const LEGACY_ONLY: Record<string, Row> = {
-  "GET /invites": {}, "POST /invites": J({ email: INVITED, name: "B's invitee" }),
-  "POST /invites/:email/revoke": J({}), "POST /invites/:email/resend": J({}),
-  "PUT /api/people/:handle": J({ role: "hijacked", responsibilities: "hijacked" }),
-};
-
-/** Session routes that are neither `tenantGate`'s nor `soleTenantGate`'s — and why each is safe with no membership. */
+/** Session routes that are not `tenantGate`'s — and why each is safe with no membership. */
 const PLATFORM: Record<string, string> = {
   "GET /auth/login": "public: starts the GitHub OAuth redirect",
   "GET /auth/callback": "public: the OAuth callback — state + PKCE bound to a sealed cookie. Also the GitHub App's install return (`installation_id`): binds an installation only for the org and person a second sealed cookie names, after GitHub confirms the account can reach it (test/github-app.connect.test.ts)",
@@ -427,7 +412,7 @@ const PLATFORM: Record<string, string> = {
   "GET /auth/google/callback": "public: the OAuth callback",
   "GET /auth/onboard": "the sealed onboard cookie: echoes the provider profile it carries",
   "GET /auth/handle-check": "onboard cookie or session: is a handle free (persons are global)",
-  "POST /auth/onboard": "the sealed onboard cookie: creates a person, never a membership (except a legacy invite)",
+  "POST /auth/onboard": "the sealed onboard cookie: creates a person, never a membership",
   "GET /auth/me": "the caller's own person, identities, orgs and invite count",
   "PUT /auth/me": "the caller's own name / color",
   "POST /auth/me/handle": "the caller's own handle",
@@ -435,9 +420,6 @@ const PLATFORM: Record<string, string> = {
   "POST /auth/logout": "the caller's own session",
   "GET /auth/me/deletion": "the caller's OWN account: what deleting it would do (their orgs by name and slug, the guard rails) — counts and names of orgs they are in, nothing else",
   "POST /auth/me/delete": "deletes the caller's OWN account, cookie only, with their handle typed; every guard rail re-checked (test/deletion.account.test.ts)",
-  "POST /auth/mcp-token": "cut-over alias of POST /api/o/:slug/mcp-tokens: resolves the caller's ONE org itself (409 org_required with none or several, 404 suspended)",
-  "GET /auth/mcp-tokens": "cut-over alias: the caller's own tokens for their one org (same refusals)",
-  "POST /auth/mcp-tokens/:id/revoke": "cut-over alias: the caller's own token for their one org — someone else's id, or their own for another org, is 404",
   "GET /auth/oauth-grants": "the caller's own grants",
   "POST /auth/oauth-grants/:id/revoke": "the caller's own grants (someone else's id is 404)",
   "POST /auth/oauth-grants/:id/orgs": "the caller's own grant, and an org bound through a live membership check — someone else's id or an org they are not in is 404",
@@ -500,33 +482,31 @@ const tenantKey = (route: string): string | null => {
   return m ? `${m[1]} ${m[2]}` : null;
 };
 const TENANT_ROUTES = REGISTRY.map(tenantKey).filter((k): k is string => k !== null);
-/** The old path of a tenant route: its suffix (tenantRoot) or `/api` + its suffix (tenantApi). */
-const aliasOf = (key: string): string | null => {
+/** The paths a tenant route answered at before the Phase 7 cleanup, other than a person-level route's own: its bare
+ *  suffix, and `/api` + its suffix. Nothing answers there any more. */
+const oldPathsOf = (key: string): string[] => {
   const [method, suffix] = key.split(" ");
-  if (NO_ALIAS(suffix)) return null;
-  return HAS.has(`${method} ${suffix}`) ? suffix : `/api${suffix}`;
+  return [suffix, `/api${suffix}`].filter((p) => !(`${method} ${p}` in PLATFORM));
 };
 
 describe("the route registry", () => {
   it("every registered route has a matrix entry", () => {
-    const aliases = new Set(TENANT_ROUTES.map((k) => { const a = aliasOf(k); return a ? `${k.split(" ")[0]} ${a}` : null; }));
     const unclassified = REGISTRY.filter((r) => {
       const key = tenantKey(r);
       if (key) return !(key in TENANT);
-      return !(r in PLATFORM) && !(r in LEGACY_ONLY) && !aliases.has(r);
+      return !(r in PLATFORM);
     });
-    expect(unclassified, "add each to TENANT / LEGACY_ONLY / PLATFORM (with why it is safe) in test/isolation.http.test.ts").toEqual([]);
+    expect(unclassified, "add each to TENANT / PLATFORM (with why it is safe) in test/isolation.http.test.ts").toEqual([]);
   });
 
   it("the matrix names no route that is gone", () => {
     expect(Object.keys(TENANT).filter((k) => !TENANT_ROUTES.includes(k))).toEqual([]);
-    expect([...Object.keys(PLATFORM), ...Object.keys(LEGACY_ONLY)].filter((k) => !HAS.has(k))).toEqual([]);
+    expect(Object.keys(PLATFORM).filter((k) => !HAS.has(k))).toEqual([]);
   });
 
-  it("every tenant route outside the org surface and the MCP tokens is mounted twice: under the slug and at its old path", () => {
-    const missing = TENANT_ROUTES.filter((k) => !NO_ALIAS(k.split(" ")[1])).filter((k) => !HAS.has(`${k.split(" ")[0]} ${aliasOf(k)}`));
-    expect(missing).toEqual([]);
-    // …and nothing that is not person-level sits outside both gates: an alias is a tenant route's, or a legacy one.
+  it("every tenant route is mounted ONCE, under the org's slug — never at its old path", () => {
+    const stillThere = TENANT_ROUTES.flatMap((k) => oldPathsOf(k).map((p) => `${k.split(" ")[0]} ${p}`)).filter((r) => HAS.has(r));
+    expect(stillThere).toEqual([]);
     expect(TENANT_ROUTES.length).toBeGreaterThan(100);
   });
 });
@@ -565,63 +545,17 @@ describe("every tenant route, called from outside org A with A's ids", () => {
     // A suspended org answers its own members as if it were not there.
     expect((await send(method, `/api/o/cedar${path}`, fx.cookies.sue, body)).status).toBe(404);
 
-    // The old alias: the caller's only org.
-    const alias = aliasOf(key);
-    if (alias) {
-      const aliasPath = `${fill(alias, fx)}${row.query ?? ""}`;
-      expectClean(`bob ${method} ${aliasPath}`, await send(method, aliasPath, fx.cookies.bob, body), row.allow);
-      for (const who of ["root", "gone", "nobody"] as const) {
-        const r = await send(method, aliasPath, fx.cookies[who], body);
-        expect([r.status, r.text], `${who} ${method} ${aliasPath}`).toEqual([409, ORG_REQUIRED]);
+    // Its old unprefixed path answers nothing, whoever asks.
+    for (const old of oldPathsOf(key)) {
+      const oldPath = `${fill(old, fx)}${row.query ?? ""}`;
+      for (const who of ["bob", "ownerA"] as const) {
+        const r = await send(method, oldPath, who === "ownerA" ? fx.ownerA : fx.cookies.bob, body);
+        expect(r.status, `${who} ${method} ${oldPath}`).toBe(404);
+        expectClean(`${who} ${method} ${oldPath}`, r);
       }
-      const suspended = await send(method, aliasPath, fx.cookies.sue, body);
-      expect([suspended.status, suspended.text], `sue ${method} ${aliasPath}`).toEqual([404, NOT_FOUND]);
     }
 
     expect(await digestA(), `${key} changed a row of org A`).toEqual(before);
-  });
-});
-
-// ── the alias-only routes ────────────────────────────────────────────────────
-
-describe("the legacy alias-only routes are org-scoped", () => {
-  it.each(Object.keys(LEGACY_ONLY))("%s", async (key) => {
-    const fx = await seed();
-    const before = await digestA();
-    const [method, pattern] = key.split(" ");
-    const path = fill(pattern, fx);
-    const body = method === "GET" ? undefined : LEGACY_ONLY[key].body;
-    for (const who of ["bob", "boss"] as const) expectClean(`${who} ${key}`, await send(method, path, fx.cookies[who], body));
-    for (const who of ["root", "gone", "nobody"] as const) {
-      const r = await send(method, path, fx.cookies[who], body);
-      expect([r.status, r.text], `${who} ${key}`).toEqual([409, ORG_REQUIRED]);
-    }
-    expect((await send(method, path, fx.cookies.sue, body)).status).toBe(404);
-    expect(await digestA(), `${key} changed a row of org A`).toEqual(before);
-  });
-
-  it("B's admin invites the address A already invited: B gets its own invite, A's is neither shown, renamed nor revoked", async () => {
-    const fx = await seed();
-    const before = await digestA();
-    const created = await send("POST", "/invites", fx.cookies.boss, { email: INVITED, name: "B's name for them" });
-    expect(created.status).toBe(200); // not `invite_exists`: A's pending invite is not B's business
-    expectClean("POST /invites", created);
-    const listed = await send("GET", "/invites", fx.cookies.boss);
-    expectClean("GET /invites", listed);
-    // One row, B's own, with the name B gave and B's own mail outcome (columns of its `org_invites` row, 0042_organizations) —
-    // never the name A's admin typed for the same address, which lives on A's row and A's sidecar.
-    expect((JSON.parse(listed.text) as { invites: unknown[] }).invites).toEqual([
-      expect.objectContaining({ email: INVITED, name: "B's name for them", invited_by: "boss", accepted_by: null, revoked_at: null, email_sent_at: expect.any(String), email_error: null }),
-    ]);
-    expect((await send("POST", `/invites/${encodeURIComponent(INVITED)}/resend`, fx.cookies.boss)).status).toBe(200);
-    expect((await send("POST", `/invites/${encodeURIComponent(INVITED)}/revoke`, fx.cookies.boss)).status).toBe(200);
-    expect(await all(env.DB, `SELECT org_id, status FROM org_invites WHERE email = ? ORDER BY org_id`, INVITED)).toEqual([
-      { org_id: ORG_B, status: "revoked" }, { org_id: ORG_A, status: "pending" },
-    ]);
-    expect(await digestA()).toEqual(before);
-    // A's admin still sees A's invite as it was — name and all.
-    const mine = JSON.parse((await send("GET", "/invites", fx.ownerA)).text) as { invites: { email: string; name: string | null; revoked_at: string | null }[] };
-    expect(mine.invites).toEqual([expect.objectContaining({ email: INVITED, name: `${CANARY} Invitee`, revoked_at: null })]);
   });
 });
 
@@ -641,10 +575,6 @@ describe("controls", () => {
       "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id", "/links", "/links/:id",
       "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
     ]));
-    // …and at the old paths, for a person whose only org is A.
-    for (const path of ["/docs", "/feed", "/tickets?seg=all", "/api/prompts", "/api/artifacts", `/api/people/${ALICE}`]) {
-      expect((await send("GET", path, fx.alice)).raw, path).toContain(CANARY);
-    }
   });
 
   it("the digest notices a write to org A", async () => {
@@ -712,14 +642,12 @@ describe("/api/o/:slug/mcp-tokens are the caller's own tokens for that org", () 
   it("bob cannot list or revoke alice's token — from outside A, from B, or as a fellow member of A", async () => {
     const fx = await seed();
     const before = await digestA();
-    // Outside A: the gate's 404. Under B and at the alias: his own (empty) list, and alice's id is not found.
+    // Outside A: the gate's 404. Under B: his own (empty) list, and alice's id is not found.
     expect(await send("GET", "/api/o/saplinglearn/mcp-tokens", fx.cookies.bob)).toMatchObject({ status: 404, text: NOT_FOUND });
     expect(await send("POST", `/api/o/saplinglearn/mcp-tokens/${fx.tokenId}/revoke`, fx.cookies.bob, {})).toMatchObject({ status: 404, text: NOT_FOUND });
     expect(await list("acme", fx.cookies.bob)).toEqual([]);
-    for (const path of [`/api/o/acme/mcp-tokens/${fx.tokenId}/revoke`, `/auth/mcp-tokens/${fx.tokenId}/revoke`]) {
-      expect(await send("POST", path, fx.cookies.bob, {}), path).toMatchObject({ status: 404, text: NOT_FOUND });
-    }
-    expect(JSON.parse((await send("GET", "/auth/mcp-tokens", fx.cookies.bob)).text)).toEqual({ tokens: [] });
+    expect(await send("POST", `/api/o/acme/mcp-tokens/${fx.tokenId}/revoke`, fx.cookies.bob, {})).toMatchObject({ status: 404, text: NOT_FOUND });
+    expect((await send("POST", `/auth/mcp-tokens/${fx.tokenId}/revoke`, fx.cookies.bob, {})).status).toBe(404); // the old path is gone
     expect(await digestA()).toEqual(before);
 
     // Even as a member of A — an admin of it — another member's tokens are not his to see or revoke.
@@ -736,8 +664,8 @@ describe("/api/o/:slug/mcp-tokens are the caller's own tokens for that org", () 
     expect(await list("acme", fx.alice)).toEqual([]);
     expect((await send("POST", `/api/o/acme/mcp-tokens/${fx.tokenId}/revoke`, fx.alice, {})).status).toBe(404);
     expect(await live(fx.tokenId)).toBe(true);
-    // Two orgs now: the old paths cannot pick one, and revoke nothing.
-    expect(await send("POST", `/auth/mcp-tokens/${fx.tokenId}/revoke`, fx.alice, {})).toMatchObject({ status: 409, text: ORG_REQUIRED });
+    // The old person-level path is gone: it revokes nothing.
+    expect((await send("POST", `/auth/mcp-tokens/${fx.tokenId}/revoke`, fx.alice, {})).status).toBe(404);
     expect(await live(fx.tokenId)).toBe(true);
     // A token minted under B is B's: listed there, absent from A, and revocable only through B's path.
     const minted = await send("POST", "/api/o/acme/mcp-tokens", fx.alice, {});

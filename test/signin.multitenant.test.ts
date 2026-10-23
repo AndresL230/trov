@@ -97,24 +97,21 @@ describe("a new GitHub account", () => {
     const session = await onboard(await github("stranger", VERIFIED("stranger@example.com")), "stranger");
     expect(await memberships("stranger")).toEqual([]);
     expect(await first(env.DB, `SELECT verified_email FROM identities WHERE subject = 'stranger'`)).toEqual({ verified_email: "stranger@example.com" });
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ handle: "stranger", org: "", admin: false, superadmin: false, orgs: [], pending_invites: 0 });
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ handle: "stranger", superadmin: false, orgs: [], pending_invites: 0 });
 
-    for (const path of ["/docs", "/feed", "/tickets", "/persons", "/api/prompts", "/api/artifacts", "/api/notifications/prefs", "/invites", "/raw/a/anything", "/img/" + "a".repeat(64)]) {
-      const r = await json("GET", path, session);
-      expect([r.status, r.json], path).toEqual([409, { error: "org_required" }]);
-    }
+    for (const path of ["/docs", "/api/prompts", "/raw/a/anything"]) expect((await json("GET", path, session)).status, path).toBe(404); // no org route outside /api/o
     expect((await json("GET", "/api/o/saplinglearn/docs", session)).status).toBe(404);
     expect((await json("GET", "/api/o/saplinglearn/me", session)).status).toBe(404);
-    expect((await json("POST", "/auth/mcp-token", session)).status).toBe(409);
+    expect((await json("POST", "/api/o/saplinglearn/mcp-tokens", session)).status).toBe(404);
     // No welcome mail: mail goes out as an org, and they are in none.
     expect(await first(env.DB, `SELECT 1 AS x FROM notification_outbox_bodies`)).toBeNull();
 
     // They can make themselves ONE Free org (src/plans/free.ts) — and see only its content.
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(201);
     expect(await first(env.DB, `SELECT plan FROM orgs WHERE slug = 'stranger-co'`)).toEqual({ plan: "free" });
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "Stranger Co", admin: true, orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
-    expect((await json("GET", "/docs", session)).json).toEqual({ docs: [] });
-    expect((await json("GET", "/persons", session)).json).toEqual({ persons: [expect.objectContaining({ handle: "stranger" })] });
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
+    expect((await json("GET", "/api/o/stranger-co/docs", session)).json).toEqual({ docs: [] });
+    expect((await json("GET", "/api/o/stranger-co/persons", session)).json).toEqual({ persons: [expect.objectContaining({ handle: "stranger" })] });
     expect((await json("GET", "/api/o/saplinglearn/docs", session)).status).toBe(404);
     // …not a second one; a grant from the superadmin (0044_plans `org_grants`) is how they get more.
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-two", name: "Stranger Two" })).json).toMatchObject({ error: "free_org_limit" });
@@ -150,15 +147,13 @@ describe("a new GitHub account", () => {
     const id = await orgInvite({ github_login: "Invited-Dev", role: "admin" });
     const session = await onboard(await github("invited-dev"), "invited-dev");
     expect(await memberships("invited-dev")).toEqual([]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1, admin: false });
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1 });
     expect((await json("GET", "/api/o/acme/docs", session)).status).toBe(404);
-    expect((await json("GET", "/docs", session)).status).toBe(409);
 
     expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("invited-dev")).toEqual([{ org_id: ORG_B, role: "admin" }]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ org: "Acme", admin: true, pending_invites: 0, orgs: [{ slug: "acme", name: "Acme", role: "admin" }] });
+    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ pending_invites: 0, orgs: [{ slug: "acme", name: "Acme", role: "admin" }] });
     expect((await json("GET", "/api/o/acme/docs", session)).status).toBe(200);
-    expect((await json("GET", "/docs", session)).status).toBe(200);
   });
 });
 
@@ -217,7 +212,7 @@ describe("an editable address is never a way into someone else's account", () =>
     // `squatter` (any signed-in person with an org) types the victim's address into their own profile…
     await ensureMember("squatter", "owner", ORG_B);
     const squatter = await cookieFor("squatter", { member: false });
-    expect((await json("PUT", "/api/notifications/prefs", squatter, { email: "priya.n@gmail.com" })).status).toBe(200);
+    expect((await json("PUT", "/api/o/acme/notifications/prefs", squatter, { email: "priya.n@gmail.com" })).status).toBe(200);
     // …the victim is later invited and signs in with Google: a NEW person, not the squatter's.
     await orgInvite({ email: "priya.n@gmail.com" });
     const session = await onboard(await google(), "priya");
@@ -230,10 +225,8 @@ describe("an editable address is never a way into someone else's account", () =>
     await seedPerson("victim", { email: "victim@example.com", verified: true });
     await ensureMember("boss", "owner", ORG_B);
     const boss = await cookieFor("boss", { member: false });
-    // Not a member of boss's org: the same 404 as an unknown handle, at both mounts.
-    for (const path of ["/api/notifications/persons/victim", "/api/o/acme/notifications/persons/victim"]) {
-      expect(await json("PUT", path, boss, { email: "priya.n@gmail.com" }).then((r) => [r.status, r.json])).toEqual([404, { error: "no such person" }]);
-    }
+    // Not a member of boss's org: the same 404 as an unknown handle.
+    expect(await json("PUT", "/api/o/acme/notifications/persons/victim", boss, { email: "priya.n@gmail.com" }).then((r) => [r.status, r.json])).toEqual([404, { error: "no such person" }]);
     // Even once victim JOINS boss's org, their address is theirs: they are in another org too.
     await ensureMember("victim", "member", ORG_B);
     expect(await json("PUT", "/api/o/acme/notifications/persons/victim", boss, { email: "priya.n@gmail.com" }).then((r) => [r.status, r.json])).toEqual([409, { error: "email_not_yours_to_set" }]);

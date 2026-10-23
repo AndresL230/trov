@@ -2,6 +2,7 @@
 // counted in `org_usage_daily`, and the plan's monthly allowance (`ai_summaries`) turns the summarizer
 // off when it is used up. The model call is ALWAYS a stub here (Messages API bodies) — never the network.
 import { describe, it, expect } from "vitest";
+import type { LegacyEnv } from "./helpers/org-config";
 import { env } from "cloudflare:test";
 import type { Env } from "../src/env";
 import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
@@ -18,7 +19,7 @@ import issueAssigned from "./fixtures/gh-issue-assigned.json";
 import { FAKE_ANTHROPIC_KEY, errorResponse, messageResponse, sentMessage } from "./helpers/anthropic";
 
 const KEY = FAKE_ANTHROPIC_KEY;
-const keyed = (over: Partial<Env> = {}): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r", ...over });
+const keyed = (over: Partial<LegacyEnv> = {}): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r", ...over }) as LegacyEnv;
 const CANARY = "CANARY-SUMMARY-TEXT";
 
 /** A Messages API stand-in. `ok: false` answers 500; `tokens: false` leaves the `usage` block out. */

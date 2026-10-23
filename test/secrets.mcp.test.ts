@@ -254,14 +254,13 @@ function reachableDirect(file: string): Set<string> {
 }
 
 describe("a bearer context", () => {
-  it("cannot read a secret, whatever its role — neither the stored one nor the legacy fallback", async () => {
+  it("cannot read a secret, whatever its role", async () => {
     await setSecret(await tenantCtx("AndresL230"), "github_token", "", "tok_0123456789abcdef0123456789abcdef");
-    const legacy: Env = { ...e, GITHUB_SERVICE_TOKEN: "ghs_legacy_token_value_000000000000" };
     for (const ctx of [await bearerCtx("AndresL230"), await bearerCtx("meilin", "admin"), await bearerCtx("sanaok", "member")]) {
       expect(ctx.via).toBe("bearer");
       await expect(getSecret(ctx, "github_token", "")).rejects.toBeInstanceOf(SecretAccessError);
-      await expect(resolveCredential(ctx, legacy, "github_token", "")).rejects.toBeInstanceOf(SecretAccessError);
-      await expect(resolveCredential(ctx, legacy, "railway", "staging")).rejects.toBeInstanceOf(SecretAccessError);
+      await expect(resolveCredential(ctx, "github_token", "")).rejects.toBeInstanceOf(SecretAccessError);
+      await expect(resolveCredential(ctx, "railway", "staging")).rejects.toBeInstanceOf(SecretAccessError);
     }
   });
 });

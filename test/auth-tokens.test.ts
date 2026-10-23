@@ -101,42 +101,42 @@ describe("mcp tokens", () => {
   });
 });
 
-describe("GET /auth/mcp-tokens · POST /auth/mcp-tokens/:id/revoke", () => {
-  const get = (cookie: string) => app.request("/auth/mcp-tokens", { headers: { cookie } }, env);
+describe("GET|POST /api/o/:slug/mcp-tokens · POST …/:id/revoke", () => {
+  const base = (slug = "saplinglearn") => `/api/o/${slug}`;
+  const get = (cookie: string) => app.request(`${base()}/mcp-tokens`, { headers: { cookie } }, env);
   const post = (path: string, cookie: string) => app.request(path, { method: "POST", headers: { cookie } }, env);
 
   it("lists the caller's tokens, revokes one, 404s on another person's id and a junk id, 401s signed out", async () => {
     const me = await cookieFor("AndresL230");
     const other = await cookieFor("priya");
-    const { token } = await (await post("/auth/mcp-token", me)).json() as { token: string };
-    await post("/auth/mcp-token", other);
+    const { token } = await (await post(`${base()}/mcp-tokens`, me)).json() as { token: string };
+    await post(`${base()}/mcp-tokens`, other);
 
     const { tokens } = await (await get(me)).json() as { tokens: { id: number; hint: string | null }[] };
     expect(tokens).toHaveLength(1);
     expect(tokens[0].hint).toBe(token.slice(9, 13)); // after `trov_mcp_`
     expect(JSON.stringify(tokens)).not.toContain(token);
 
-    expect((await post(`/auth/mcp-tokens/${tokens[0].id}/revoke`, other)).status).toBe(404);
-    expect((await post("/auth/mcp-tokens/nope/revoke", me)).status).toBe(404);
+    expect((await post(`${base()}/mcp-tokens/${tokens[0].id}/revoke`, other)).status).toBe(404);
+    expect((await post(`${base()}/mcp-tokens/nope/revoke`, me)).status).toBe(404);
     expect(await resolveToken(platformCtx(), token)).toEqual({ handle: "AndresL230", orgId: ORG_A });
 
-    expect((await post(`/auth/mcp-tokens/${tokens[0].id}/revoke`, me)).status).toBe(200);
+    expect((await post(`${base()}/mcp-tokens/${tokens[0].id}/revoke`, me)).status).toBe(200);
     expect(await resolveToken(platformCtx(), token)).toBeNull();
     expect(((await (await get(me)).json()) as { tokens: unknown[] }).tokens).toEqual([]);
     expect((await get("")).status).toBe(401);
   });
 
-  it("a token is minted for the caller's org and records it; a person in no org is 409 org_required and nothing is minted", async () => {
+  it("a token is minted for the org the path names; a non-member gets 404 and nothing is minted; the old /auth/mcp-token is gone", async () => {
     await seedPerson("acme-user", { member: false });
     await ensureMember("acme-user", "member", ORG_B);
-    expect((await post("/auth/mcp-token", await cookieFor("acme-user", { member: false }))).status).toBe(200);
-    expect((await post("/auth/mcp-token", await cookieFor("priya"))).status).toBe(200);
+    expect((await post(`${base("acme")}/mcp-tokens`, await cookieFor("acme-user", { member: false }))).status).toBe(200);
+    expect((await post(`${base()}/mcp-tokens`, await cookieFor("priya"))).status).toBe(200);
     const rows = async () => (await env.DB.prepare(`SELECT person, org_id FROM mcp_tokens ORDER BY person`).all<{ person: string; org_id: string }>()).results;
     expect(await rows()).toEqual([{ person: "acme-user", org_id: ORG_B }, { person: "priya", org_id: ORG_A }]);
 
-    const res = await post("/auth/mcp-token", await cookieFor("drifter", { member: false }));
-    expect(res.status).toBe(409);
-    expect(await res.json()).toEqual({ error: "org_required" });
+    expect((await post(`${base()}/mcp-tokens`, await cookieFor("drifter", { member: false }))).status).toBe(404);
+    expect((await post("/auth/mcp-token", await cookieFor("priya"))).status).toBe(404);
     expect(await rows()).toHaveLength(2);
   });
 });

@@ -8,6 +8,7 @@
  * Driven over the REAL registered tool (in-memory transport, real Miniflare D1).
  */
 import { describe, it, expect } from "vitest";
+import type { LegacyEnv } from "./helpers/org-config";
 import { env } from "cloudflare:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
@@ -95,7 +96,7 @@ function trendPaths(v: unknown, path = "$", out: string[] = []): string[] {
  *  Deploys, branches, health, environments… are deliberately left uncaptured. */
 async function seedDashboard(): Promise<void> {
   // The dashboard reads the ORG's configuration (org_repos / org_environments), as 0042_organizations seeded it from these vars.
-  await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[]);
+  await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", JSON.parse((env as unknown as LegacyEnv).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[]);
   await addPart(ORG_A, "staging", "frontend", "cloudflare", "web", { worker: "frontend-staging" }, 0, "Frontend");
   const hourFloor = Math.floor(Date.now() / HOUR) * HOUR;
   const midnight = Math.floor(Date.now() / DAY) * DAY;
@@ -338,7 +339,7 @@ describe("MCP get_repo_dashboard — never an MCP error, never a secret", () => 
     await seedDashboard();
     const NEVER_IN_DTO = ["railwayEnvironmentId", "railwayServiceId", "worker", "workerCheck", "railwayEnv"] as const;
     const DTO_WORDS = new Set(["frontend", "backend"]);
-    const configured = JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as Record<string, unknown>[];
+    const configured = JSON.parse((env as unknown as LegacyEnv).REPO_ENVIRONMENTS ?? "[]") as Record<string, unknown>[];
     expect(configured.length).toBeGreaterThanOrEqual(2); // wrangler.toml's staging + production
     for (const args of [{}, { include_trends: true }, { tab: "usage", range: "30d" }]) {
       const { text } = await call(args);
@@ -503,7 +504,7 @@ describe("get_repo_dashboard — size discipline", () => {
 
 describe("MCP get_repo_dashboard — the Overview's facts and layout (repo setups)", () => {
   async function seedFacts(): Promise<RepoEnvConfig[]> {
-    const envs = JSON.parse((env as unknown as Env).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[];
+    const envs = JSON.parse((env as unknown as LegacyEnv).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[];
     await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", envs);
     await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, 0, '2026-10-06T00:00:00.000Z', 'seed')`).bind(ORG_A).run();
     for (const e of ["staging", "production"]) {

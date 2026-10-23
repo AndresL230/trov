@@ -6,7 +6,7 @@ import { Hono } from "hono";
 import type { HostingProviderId } from "@shared/hosting";
 import type { AppEnv } from "../../src/auth/principal";
 import { sessionGate } from "../../src/auth/principal";
-import { platformContext, soleTenantGate, tenantGate } from "../../src/data/gate";
+import { platformContext, tenantGate } from "../../src/data/gate";
 import type { Env } from "../../src/env";
 import { refuse } from "../../src/hosting/http";
 import type { ProviderMap } from "../../src/hosting/part-writes";
@@ -145,7 +145,6 @@ export function hostingTestApp(providers: ProviderMap, fetchImpl?: typeof fetch)
   const a = new Hono<AppEnv>();
   a.use("*", sessionGate);
   a.use("*", platformContext);
-  a.use("*", soleTenantGate);
   a.use("/api/o/:slug/*", tenantGate);
   a.route("/hosting", makeHostingCallbackApp({ providers, fetchImpl }));
   a.route("/api/o/:slug", makeHostingApp({ providers, fetchImpl }));

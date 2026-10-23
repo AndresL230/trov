@@ -143,13 +143,12 @@ describe("the query surface", () => {
 });
 
 describe("the gates", () => {
-  it("the cut-over alias: a member's routes work; a person with no org, or two, gets 409 org_required", async () => {
-    expect((await app.request("/docs", { headers: { cookie: await cookieFor("meilin") } }, env)).status).toBe(200);
-    const none = await app.request("/docs", { headers: { cookie: await cookieFor("drifter", { member: false }) } }, env);
-    expect([none.status, await none.json()]).toEqual([409, { error: "org_required" }]);
+  it("no org route answers without its org: the old unprefixed paths are gone for everyone", async () => {
+    expect((await app.request("/api/o/saplinglearn/docs", { headers: { cookie: await cookieFor("meilin") } }, env)).status).toBe(200);
     await ensureMember("sanaok", "member", ORG_B);
-    const two = await app.request("/docs", { headers: { cookie: await cookieFor("sanaok") } }, env);
-    expect([two.status, await two.json()]).toEqual([409, { error: "org_required" }]);
+    for (const cookie of [await cookieFor("meilin"), await cookieFor("drifter", { member: false }), await cookieFor("sanaok")]) {
+      for (const path of ["/docs", "/api/handoffs", "/raw/a/x@v1"]) expect((await app.request(path, { headers: { cookie } }, env)).status, path).toBe(404);
+    }
   });
 
   it("person-level routes need no org, and an unauthenticated request is still a 401", async () => {
@@ -157,7 +156,7 @@ describe("the gates", () => {
     const me = await app.request("/auth/me", { headers: { cookie } }, env);
     expect(me.status).toBe(200);
     expect(((await me.json()) as { handle: string }).handle).toBe("drifter");
-    expect((await app.request("/docs", {}, env)).status).toBe(401);
+    expect((await app.request("/api/o/saplinglearn/docs", {}, env)).status).toBe(401);
   });
 
   it("tenantGate: 404 not_found for an unknown slug and for a non-member alike; a member gets c.var.ctx", async () => {
