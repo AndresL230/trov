@@ -43,7 +43,7 @@ describe("1 · per-kind caps", () => {
     }
     for (const content of [overCap2, overCap4]) {
       expect(content.length).toBeLessThan(ARTIFACT_TEXT_CAP); // under the cap in chars, over it in bytes
-      const res = await wf("/api/artifacts", jsonInit("POST", { title: "Over", kind: "html", area: "ui", content }, me));
+      const res = await wf("/api/o/saplinglearn/artifacts", jsonInit("POST", { title: "Over", kind: "html", area: "ui", content }, me));
       expect(res.status).toBe(413);
       expect(await res.json()).toMatchObject({ error: "too_large" });
     }
@@ -53,15 +53,15 @@ describe("1 · per-kind caps", () => {
   it("text: add-version at the cap is 201; +1 byte is 413 — by full content and by an old_str edit", async () => {
     const me = await cookieFor(ME);
     await createText(me, { title: "Grow", content: "seed" });
-    const ok = await wf("/api/artifacts/grow/versions", jsonInit("POST", { content: atCap2, summary: "full" }, me));
+    const ok = await wf("/api/o/saplinglearn/artifacts/grow/versions", jsonInit("POST", { content: atCap2, summary: "full" }, me));
     expect(ok.status).toBe(201);
-    const over = await wf("/api/artifacts/grow/versions", jsonInit("POST", { content: overCap4 }, me));
+    const over = await wf("/api/o/saplinglearn/artifacts/grow/versions", jsonInit("POST", { content: overCap4 }, me));
     expect(over.status).toBe(413);
     // an old_str edit whose RESULT lands exactly on the cap, then one byte over it
-    await wf("/api/artifacts/grow/versions", jsonInit("POST", { content: "é".repeat(ARTIFACT_TEXT_CAP / 2 - 1) + "X" }, me)); // 767999 bytes
-    const edit1 = await wf("/api/artifacts/grow/versions", jsonInit("POST", { old_str: "X", new_str: "XY" }, me)); // 768000
+    await wf("/api/o/saplinglearn/artifacts/grow/versions", jsonInit("POST", { content: "é".repeat(ARTIFACT_TEXT_CAP / 2 - 1) + "X" }, me)); // 767999 bytes
+    const edit1 = await wf("/api/o/saplinglearn/artifacts/grow/versions", jsonInit("POST", { old_str: "X", new_str: "XY" }, me)); // 768000
     expect(edit1.status).toBe(201);
-    const edit2 = await wf("/api/artifacts/grow/versions", jsonInit("POST", { old_str: "Y", new_str: "YZ" }, me)); // 768001
+    const edit2 = await wf("/api/o/saplinglearn/artifacts/grow/versions", jsonInit("POST", { old_str: "Y", new_str: "YZ" }, me)); // 768001
     expect(edit2.status).toBe(413);
     expect(await versionCount("grow")).toBe(4);
   });
@@ -84,12 +84,12 @@ describe("1 · per-kind caps", () => {
     const p = await createBinary(me, { title: "Big file", kind: "file", area: "data" }, { bytes: at, name: "big.bin", type: "application/octet-stream" });
     expect(p.version.size_bytes).toBe(ARTIFACT_BINARY_CAP);
     const over = uniqueBytes("cap-over", ARTIFACT_BINARY_CAP + 1);
-    const r1 = await wf("/api/artifacts", { method: "POST", headers: { cookie: me }, body: multipart({ title: "Too big", kind: "file", area: "data" }, { bytes: over, name: "x.bin", type: "application/octet-stream" }) });
+    const r1 = await wf("/api/o/saplinglearn/artifacts", { method: "POST", headers: { cookie: me }, body: multipart({ title: "Too big", kind: "file", area: "data" }, { bytes: over, name: "x.bin", type: "application/octet-stream" }) });
     expect(r1.status).toBe(413);
     const at2 = uniqueBytes("cap-version", ARTIFACT_BINARY_CAP);
-    const v2 = await wf("/api/artifacts/big-file/versions", { method: "POST", headers: { cookie: me }, body: multipart({ summary: "v2" }, { bytes: at2, name: "big.bin", type: "application/octet-stream" }) });
+    const v2 = await wf("/api/o/saplinglearn/artifacts/big-file/versions", { method: "POST", headers: { cookie: me }, body: multipart({ summary: "v2" }, { bytes: at2, name: "big.bin", type: "application/octet-stream" }) });
     expect(v2.status).toBe(201);
-    const v3 = await wf("/api/artifacts/big-file/versions", { method: "POST", headers: { cookie: me }, body: multipart({ summary: "v3" }, { bytes: over, name: "big.bin", type: "application/octet-stream" }) });
+    const v3 = await wf("/api/o/saplinglearn/artifacts/big-file/versions", { method: "POST", headers: { cookie: me }, body: multipart({ summary: "v3" }, { bytes: over, name: "big.bin", type: "application/octet-stream" }) });
     expect(v3.status).toBe(413);
     expect(await versionCount("big-file")).toBe(2);
     expect(await all(env.DB, `SELECT slug FROM artifact_pages WHERE title = 'Too big'`)).toEqual([]);
@@ -130,15 +130,15 @@ describe("2 · sha256 no-op", () => {
     const me = await cookieFor(ME);
     const you = await cookieFor(YOU);
     await createText(me, { title: "Noop", content: "same body", summary: "first" });
-    const before = { fts: await ftsRows("noop"), page: await get("/api/artifacts/noop", me).then((r) => r.json()) as ArtifactDetailDTO };
+    const before = { fts: await ftsRows("noop"), page: await get("/api/o/saplinglearn/artifacts/noop", me).then((r) => r.json()) as ArtifactDetailDTO };
     for (const [cookie, body] of [[me, { content: "same body", summary: "different summary" }], [you, { content: "same body" }], [me, { old_str: "same", new_str: "same" }]] as const) {
-      const r = await wf("/api/artifacts/noop/versions", jsonInit("POST", body, cookie));
+      const r = await wf("/api/o/saplinglearn/artifacts/noop/versions", jsonInit("POST", body, cookie));
       expect(r.status).toBe(200);
       expect(await r.json()).toMatchObject({ unchanged: true, version_no: 1, page: { status: "draft", current_version: 1 } });
     }
     expect(await versionCount("noop")).toBe(1);
     expect(await ftsRows("noop")).toEqual(before.fts);
-    const after = (await (await get("/api/artifacts/noop", me)).json()) as ArtifactDetailDTO;
+    const after = (await (await get("/api/o/saplinglearn/artifacts/noop", me)).json()) as ArtifactDetailDTO;
     expect(after.updated_at).toBe(before.page.updated_at);
     expect(after.version.summary).toBe("first");
     // over MCP too
@@ -150,8 +150,8 @@ describe("2 · sha256 no-op", () => {
   it("the no-op compares against the CURRENT version only: reverting to v1's body is a real v3", async () => {
     const me = await cookieFor(ME);
     await createText(me, { title: "Revert", content: "one" });
-    expect((await wf("/api/artifacts/revert/versions", jsonInit("POST", { content: "two" }, me))).status).toBe(201);
-    const back = await wf("/api/artifacts/revert/versions", jsonInit("POST", { content: "one" }, me));
+    expect((await wf("/api/o/saplinglearn/artifacts/revert/versions", jsonInit("POST", { content: "two" }, me))).status).toBe(201);
+    const back = await wf("/api/o/saplinglearn/artifacts/revert/versions", jsonInit("POST", { content: "one" }, me));
     expect(back.status).toBe(201);
     expect(await back.json()).toMatchObject({ unchanged: false, version_no: 3 });
   });
@@ -159,9 +159,9 @@ describe("2 · sha256 no-op", () => {
   it("a no-op on a RATIFIED page writes nothing — it stays ratified", async () => {
     const me = await cookieFor(ME);
     await createText(me, { title: "Kept", content: "x" });
-    await wf("/api/artifacts/kept/versions", jsonInit("POST", { content: "y" }, me));
-    expect((await wf("/api/artifacts/kept/ratify", jsonInit("POST", { version: 2 }, me))).status).toBe(200);
-    const r = await wf("/api/artifacts/kept/versions", jsonInit("POST", { content: "y" }, me));
+    await wf("/api/o/saplinglearn/artifacts/kept/versions", jsonInit("POST", { content: "y" }, me));
+    expect((await wf("/api/o/saplinglearn/artifacts/kept/ratify", jsonInit("POST", { version: 2 }, me))).status).toBe(200);
+    const r = await wf("/api/o/saplinglearn/artifacts/kept/versions", jsonInit("POST", { content: "y" }, me));
     expect(r.status).toBe(200);
     expect(await r.json()).toMatchObject({ unchanged: true, page: { status: "ratified", ratified_version: 2 } });
   });
@@ -171,7 +171,7 @@ describe("2 · sha256 no-op", () => {
     const bytes = uniqueBytes("noop-bin");
     await createBinary(me, { title: "Same pic", kind: "image", area: "ui" }, { bytes, name: "a.png", type: "image/png" });
     const fts = await ftsRows("same-pic");
-    const mp = await wf("/api/artifacts/same-pic/versions", { method: "POST", headers: { cookie: me }, body: multipart({ summary: "again" }, { bytes, name: "b.png", type: "image/png" }) });
+    const mp = await wf("/api/o/saplinglearn/artifacts/same-pic/versions", { method: "POST", headers: { cookie: me }, body: multipart({ summary: "again" }, { bytes, name: "b.png", type: "image/png" }) });
     expect(mp.status).toBe(200);
     expect(await mp.json()).toMatchObject({ unchanged: true, version_no: 1 });
     const t = await uploadUrl(me, { slug: "same-pic", kind: "image", size_bytes: bytes.byteLength, sha256: await sha256Hex(bytes), content_type: "image/png", summary: "put again" });
@@ -229,7 +229,7 @@ describe("3 · slug collisions", () => {
 
 describe("4 · status transitions (artifacts-core's table, over HTTP)", () => {
   const patch = async (cookie: string, slug: string, body: unknown) => {
-    const r = await wf(`/api/artifacts/${slug}`, jsonInit("PATCH", body, cookie));
+    const r = await wf(`/api/o/saplinglearn/artifacts/${slug}`, jsonInit("PATCH", body, cookie));
     return { status: r.status, page: (await r.json()) as ArtifactDetailDTO };
   };
   const ratified = (p: ArtifactDetailDTO) => [p.ratified_version, p.ratified_by, p.ratified_at];
@@ -244,30 +244,30 @@ describe("4 · status transitions (artifacts-core's table, over HTTP)", () => {
     expect((await patch(you, "machine", { status: "draft" })).page.status).toBe("draft");
 
     // a new version publishes a draft
-    const v2 = await wf("/api/artifacts/machine/versions", jsonInit("POST", { content: "v2" }, you));
+    const v2 = await wf("/api/o/saplinglearn/artifacts/machine/versions", jsonInit("POST", { content: "v2" }, you));
     expect(await v2.json()).toMatchObject({ page: { status: "published", current_version: 2 } });
 
     // ratify → a new version → published, ratified_* cleared
-    expect((await wf("/api/artifacts/machine/ratify", jsonInit("POST", { version: 2 }, you))).status).toBe(200);
-    const v3 = (await (await wf("/api/artifacts/machine/versions", jsonInit("POST", { content: "v3" }, me))).json()) as { page: ArtifactDetailDTO };
+    expect((await wf("/api/o/saplinglearn/artifacts/machine/ratify", jsonInit("POST", { version: 2 }, you))).status).toBe(200);
+    const v3 = (await (await wf("/api/o/saplinglearn/artifacts/machine/versions", jsonInit("POST", { content: "v3" }, me))).json()) as { page: ArtifactDetailDTO };
     expect(v3.page.status).toBe("published");
     expect(ratified(v3.page)).toEqual([null, null, null]);
 
     // ratify → PATCH draft clears ratified_*
-    await wf("/api/artifacts/machine/ratify", jsonInit("POST", { version: 3 }, me));
+    await wf("/api/o/saplinglearn/artifacts/machine/ratify", jsonInit("POST", { version: 3 }, me));
     const d = await patch(you, "machine", { status: "draft" });
     expect(d.page.status).toBe("draft");
     expect(ratified(d.page)).toEqual([null, null, null]);
 
     // ratify → PATCH published also leaves ratified (clears)
     await patch(me, "machine", { status: "published" });
-    await wf("/api/artifacts/machine/ratify", jsonInit("POST", { version: 3 }, me));
+    await wf("/api/o/saplinglearn/artifacts/machine/ratify", jsonInit("POST", { version: 3 }, me));
     const pub = await patch(me, "machine", { status: "published" });
     expect(pub.page.status).toBe("published");
     expect(ratified(pub.page)).toEqual([null, null, null]);
 
     // a title / area change does not move status
-    await wf("/api/artifacts/machine/ratify", jsonInit("POST", { version: 3 }, me));
+    await wf("/api/o/saplinglearn/artifacts/machine/ratify", jsonInit("POST", { version: 3 }, me));
     const t = await patch(you, "machine", { title: "Machine 2", area: "api" });
     expect(t.page).toMatchObject({ status: "ratified", ratified_version: 3, slug: "machine" });
 
@@ -291,8 +291,8 @@ describe("4 · status transitions (artifacts-core's table, over HTTP)", () => {
     expect((await patch(me, "priv-b", { visibility: "org", status: "draft" })).page).toMatchObject({ visibility: "org", status: "draft" });
 
     await createText(me, { title: "Priv c", visibility: "private", content: "1" });
-    await wf("/api/artifacts/priv-c/versions", jsonInit("POST", { content: "2" }, me));
-    await wf("/api/artifacts/priv-c/ratify", jsonInit("POST", { version: 2 }, me));
+    await wf("/api/o/saplinglearn/artifacts/priv-c/versions", jsonInit("POST", { content: "2" }, me));
+    await wf("/api/o/saplinglearn/artifacts/priv-c/ratify", jsonInit("POST", { version: 2 }, me));
     expect((await patch(me, "priv-c", { visibility: "org" })).page).toMatchObject({ visibility: "org", status: "ratified", ratified_version: 2 });
 
     // org → private does not move status
@@ -317,7 +317,7 @@ describe("5 · ratify gating — session only, latest published only, never MCP"
   async function published(): Promise<string> {
     const me = await cookieFor(ME);
     await createText(me, { title: "Gate", content: "1" });
-    await wf("/api/artifacts/gate/versions", jsonInit("POST", { content: "2" }, me));
+    await wf("/api/o/saplinglearn/artifacts/gate/versions", jsonInit("POST", { content: "2" }, me));
     return me;
   }
   const status = async (): Promise<string> => (await first<{ status: string }>(env.DB, `SELECT status FROM artifact_pages WHERE slug = 'gate'`))!.status;
@@ -325,11 +325,11 @@ describe("5 · ratify gating — session only, latest published only, never MCP"
   it("a bearer token — even the author's — is refused: alone 401, beside a cookie 403", async () => {
     const me = await published();
     const { raw } = await mintTokenFor(ME);
-    const alone = await wf("/api/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, undefined, { authorization: `Bearer ${raw}` }));
+    const alone = await wf("/api/o/saplinglearn/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, undefined, { authorization: `Bearer ${raw}` }));
     expect(alone.status).toBe(401);
-    const both = await wf("/api/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, me, { authorization: `Bearer ${raw}` }));
+    const both = await wf("/api/o/saplinglearn/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, me, { authorization: `Bearer ${raw}` }));
     expect(both.status).toBe(403);
-    const anyAuth = await wf("/api/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, me, { authorization: "Basic eDp5" }));
+    const anyAuth = await wf("/api/o/saplinglearn/artifacts/gate/ratify", jsonInit("POST", { version: 2 }, me, { authorization: "Basic eDp5" }));
     expect(anyAuth.status).toBe(403);
     expect(await status()).toBe("published");
   });
@@ -338,9 +338,9 @@ describe("5 · ratify gating — session only, latest published only, never MCP"
     const me = await cookieFor(ME);
     const you = await cookieFor(YOU);
     await createText(me, { title: "Gate", content: "1" });
-    const r = (v: number, c = you) => wf("/api/artifacts/gate/ratify", jsonInit("POST", { version: v }, c));
+    const r = (v: number, c = you) => wf("/api/o/saplinglearn/artifacts/gate/ratify", jsonInit("POST", { version: v }, c));
     expect((await r(1)).status).toBe(409); // draft
-    await wf("/api/artifacts/gate/versions", jsonInit("POST", { content: "2" }, me));
+    await wf("/api/o/saplinglearn/artifacts/gate/versions", jsonInit("POST", { content: "2" }, me));
     expect((await r(1)).status).toBe(409); // not latest
     expect((await r(3)).status).toBe(409); // no such version
     const ok = await r(2);
@@ -350,7 +350,7 @@ describe("5 · ratify gating — session only, latest published only, never MCP"
     expect(again.status).toBe(409);
     expect(await again.json()).toMatchObject({ error: "conflict" });
     // a draft reached by PATCH is 409 again
-    await wf("/api/artifacts/gate", jsonInit("PATCH", { status: "draft" }, me));
+    await wf("/api/o/saplinglearn/artifacts/gate", jsonInit("PATCH", { status: "draft" }, me));
     expect((await r(2)).status).toBe(409);
   });
 

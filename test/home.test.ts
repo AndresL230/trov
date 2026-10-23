@@ -145,13 +145,13 @@ describe("promote_doc times the promotion (0077_home)", () => {
   });
 });
 
-describe("GET /home", () => {
+describe("GET /api/o/:slug/home", () => {
   it("needs a session", async () => {
-    expect((await app.request("/home", {}, env)).status).toBe(401);
+    expect((await app.request("/api/o/saplinglearn/home", {}, env)).status).toBe(401);
   });
 
   it("returns Home's shape for the signed-in member's org", async () => {
-    const res = await app.request("/home?tz=-240", { headers: { cookie: await cookieFor("meilin") } }, env);
+    const res = await app.request("/api/o/saplinglearn/home?tz=-240", { headers: { cookie: await cookieFor("meilin") } }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as HomeData;
     expect(body.days).toHaveLength(HOME_DAYS);
@@ -162,7 +162,7 @@ describe("GET /home", () => {
   it("refuses a bad tz with a 400 { error }", async () => {
     const cookie = await cookieFor("meilin");
     for (const tz of ["900", "1.5", "x", "-841"]) {
-      const res = await app.request(`/home?tz=${tz}`, { headers: { cookie } }, env);
+      const res = await app.request(`/api/o/saplinglearn/home?tz=${tz}`, { headers: { cookie } }, env);
       expect(res.status, tz).toBe(400);
       expect(((await res.json()) as { error: string }).error).toBeTruthy();
     }
@@ -178,7 +178,7 @@ describe("GET /home", () => {
         return typeof v === "function" ? v.bind(target) : v;
       },
     });
-    const res = await app.request("/home", { headers: { cookie } }, { ...env, DB });
+    const res = await app.request("/api/o/saplinglearn/home", { headers: { cookie } }, { ...env, DB });
     expect(res.status).toBe(503);
     expect(await res.json()).toEqual({ error: "Couldn't read Home" });
   });

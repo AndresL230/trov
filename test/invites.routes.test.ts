@@ -4,7 +4,7 @@ import { app } from "../src/routes";
 import { all, first } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { renderInviteEmail, inviteSignInUrl } from "../src/notifications/invite";
-import type { InviteRow } from "@shared/rows";
+import type { OrgInvite } from "@shared/orgs";
 
 const post = (path: string, cookie: string, body?: unknown) =>
   app.request(path, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, env);
@@ -72,58 +72,72 @@ describe("renderInviteEmail", () => {
   });
 });
 
-describe("/invites (admin, session-cookie)", () => {
+// The legacy `/invites` alias (addressed by e-mail) is gone; an org's invitations live at `/api/o/:slug/invites`,
+// addressed by the invite's numeric id.
+const INVITES = "/api/o/saplinglearn/invites";
+
+describe("/api/o/:slug/invites (admin, session-cookie)", () => {
   it("non-admin → 403; unauthenticated → 401", async () => {
-    expect((await app.request("/invites", { headers: { cookie: await cookieFor("casey") } }, env)).status).toBe(403); // a plain member (AndresL230 is the org's OWNER — §5.2)
-    expect((await app.request("/invites", {}, env)).status).toBe(401);
+    expect((await app.request(INVITES, { headers: { cookie: await cookieFor("casey") } }, env)).status).toBe(403); // a plain member (AndresL230 is the org's OWNER — §5.2)
+    expect((await app.request(INVITES, {}, env)).status).toBe(401);
+  });
+  it("the old /invites alias is gone", async () => {
+    const admin = await cookieFor("admin-user");
+    expect((await app.request("/invites", { headers: { cookie: admin } }, env)).status).toBe(404);
+    expect((await post("/invites", admin, { email: "m@x.io" })).status).toBe(404);
+    expect(await all(env.DB, `SELECT id FROM org_invites WHERE email = 'm@x.io'`)).toHaveLength(0);
   });
   it("POST creates the invite and sends the email through local delivery; GET lists it", async () => {
     const admin = await cookieFor("admin-user", { name: "Admin" });
-    const res = await post("/invites", admin, { email: "Priya.N@gmail.com", name: "Priya" });
-    expect(res.status).toBe(200);
-    const body = await res.json() as { ok: true; invite: InviteRow; email: { status: string; id: string | null; error: string | null } };
+    const res = await post(INVITES, admin, { email: "Priya.N@gmail.com", name: "Priya" });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { ok: true; invite: OrgInvite };
     expect(body.invite.email).toBe("priya.n@gmail.com");
-    expect(body.email.status).toBe("sent");
+    expect(body.invite.mail_status).toBe("sent");
     const rows = await bodies();
     expect(rows).toHaveLength(1);
     expect(rows[0].to_address).toBe("priya.n@gmail.com");
     expect(rows[0].subject).toBe("Admin invited you to SaplingLearn on Trov");
     expect(rows[0].idempotency_key).toMatch(/^invite:\d+:/);
-    // The outcome is on the `org_invites` row (0042_organizations) — the alias reports it in the old shape.
     expect(await first(env.DB, `SELECT name, mail_status, mail_error FROM org_invites WHERE email = 'priya.n@gmail.com'`)).toEqual({ name: "Priya", mail_status: "sent", mail_error: null });
-    const list = await (await app.request("/invites", { headers: { cookie: admin } }, env)).json() as { invites: InviteRow[] };
+    const list = await (await app.request(INVITES, { headers: { cookie: admin } }, env)).json() as { invites: OrgInvite[] };
     expect(list.invites.map((i) => i.email)).toEqual(["priya.n@gmail.com"]);
-    expect(list.invites[0].email_sent_at).toBeTruthy(); expect(list.invites[0].email_error).toBeNull(); expect(list.invites[0].name).toBe("Priya");
+    expect(list.invites[0].mail_at).toBeTruthy(); expect(list.invites[0].mail_error).toBeNull(); expect(list.invites[0].name).toBe("Priya");
   });
-  it("POST 400 on a bad email, 409 on a duplicate live invite or an existing person's address", async () => {
+  it("POST 400 on a bad email, 409 on a duplicate live invite or an existing member's address", async () => {
     const admin = await cookieFor("admin-user");
-    expect((await post("/invites", admin, { email: "nope" })).status).toBe(400);
-    await post("/invites", admin, { email: "m@x.io" });
-    expect((await post("/invites", admin, { email: "m@x.io" })).status).toBe(409);
+    expect((await post(INVITES, admin, { email: "nope" })).status).toBe(400);
+    expect((await post(INVITES, admin, { email: "m@x.io" })).status).toBe(201);
+    expect((await post(INVITES, admin, { email: "m@x.io" })).status).toBe(409);
+    // A member who holds the address (a provider-verified one — the editable persons.email is not who someone is).
     await cookieFor("priya", { email: "priya@x.io" });
-    expect((await post("/invites", admin, { email: "priya@x.io" })).status).toBe(409);
+    await env.DB.prepare(`INSERT INTO identities (provider, subject, label, person, linked_at, linked_by, verified_email) VALUES ('google', 'sub-priya', 'priya@x.io', 'priya', '2026-01-01T00:00:00Z', 'seed', 'priya@x.io')`).run();
+    const taken = await post(INVITES, admin, { email: "priya@x.io" });
+    expect(taken.status).toBe(409);
+    expect(((await taken.json()) as { error: string }).error).toBe("already_member");
   });
-  it("resend writes a second body and updates email_sent_at; revoke is soft", async () => {
+  it("resend writes a second body and updates mail_at; revoke is soft", async () => {
     const admin = await cookieFor("admin-user");
-    await post("/invites", admin, { email: "m@x.io" });
+    const { invite } = await (await post(INVITES, admin, { email: "m@x.io" })).json() as { invite: OrgInvite };
     const sentAt = async () => (await first<{ mail_at: string }>(env.DB, `SELECT mail_at FROM org_invites WHERE email = 'm@x.io'`))!.mail_at;
     const before = await sentAt();
     await new Promise((r) => setTimeout(r, 5));
-    expect((await post("/invites/m%40x.io/resend", admin)).status).toBe(200);
+    expect((await post(`${INVITES}/${invite.id}/resend`, admin)).status).toBe(200);
     expect((await bodies())).toHaveLength(2);
     expect((await sentAt()) > before).toBe(true);
-    expect((await post("/invites/m%40x.io/revoke", admin)).status).toBe(200);
-    expect((await first<InviteRow>(env.DB, `SELECT * FROM invites WHERE email = 'm@x.io'`))!.revoked_at).toBeTruthy();
-    expect((await post("/invites/none%40x.io/revoke", admin)).status).toBe(404);
-    expect((await post("/invites/m%40x.io/resend", admin)).status).toBe(409); // revoked → cannot resend
+    expect((await post(`${INVITES}/${invite.id}/revoke`, admin)).status).toBe(200);
+    expect((await first<{ status: string; responded_at: string | null }>(env.DB, `SELECT status, responded_at FROM org_invites WHERE email = 'm@x.io'`))).toEqual({ status: "revoked", responded_at: expect.any(String) });
+    expect((await post(`${INVITES}/${invite.id + 1000}/revoke`, admin)).status).toBe(404);
+    expect((await post(`${INVITES}/${invite.id}/resend`, admin)).status).toBe(404); // revoked → cannot resend
+    expect((await bodies())).toHaveLength(2);
   });
   it("a delivery config error still creates the invite and records the error", async () => {
     const admin = await cookieFor("admin-user");
-    const res = await app.request("/invites", { method: "POST", headers: { cookie: admin, "content-type": "application/json" }, body: JSON.stringify({ email: "m@x.io" }) }, { ...env, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "" });
-    expect(res.status).toBe(200);
-    const body = await res.json() as { email: { status: string; error: string | null } };
-    expect(body.email.status).toBe("failed");
-    expect(body.email.error).toContain("RESEND_API_KEY");
+    const res = await app.request(INVITES, { method: "POST", headers: { cookie: admin, "content-type": "application/json" }, body: JSON.stringify({ email: "m@x.io" }) }, { ...env, NOTIFICATIONS_MODE: "resend", RESEND_API_KEY: "" });
+    expect(res.status).toBe(201);
+    const body = await res.json() as { invite: OrgInvite };
+    expect(body.invite.mail_status).toBe("failed");
+    expect(body.invite.mail_error).toContain("RESEND_API_KEY");
     expect((await first<{ mail_status: string; mail_error: string }>(env.DB, `SELECT mail_status, mail_error FROM org_invites WHERE email = 'm@x.io'`))).toEqual({ mail_status: "failed", mail_error: expect.stringContaining("RESEND_API_KEY") });
   });
 });

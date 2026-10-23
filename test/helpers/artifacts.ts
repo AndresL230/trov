@@ -42,7 +42,7 @@ export function multipart(fields: Record<string, string>, file?: { bytes: Uint8A
 
 /** Create a text page over HTTP (201 asserted). */
 export async function createText(cookie: string, o: Record<string, unknown> = {}): Promise<ArtifactDetailDTO> {
-  const res = await wf("/api/artifacts", jsonInit("POST", { title: "Auth flow", kind: "markdown", area: "auth", content: "# Auth", ...o }, cookie));
+  const res = await wf("/api/o/saplinglearn/artifacts", jsonInit("POST", { title: "Auth flow", kind: "markdown", area: "auth", content: "# Auth", ...o }, cookie));
   expect(res.status, await res.clone().text()).toBe(201);
   return res.json();
 }
@@ -51,14 +51,14 @@ export async function createText(cookie: string, o: Record<string, unknown> = {}
 export async function createBinary(
   cookie: string, fields: Record<string, string>, file: { bytes: Uint8Array; name: string; type: string }
 ): Promise<ArtifactDetailDTO> {
-  const res = await wf("/api/artifacts", { method: "POST", headers: { cookie }, body: multipart(fields, file) });
+  const res = await wf("/api/o/saplinglearn/artifacts", { method: "POST", headers: { cookie }, body: multipart(fields, file) });
   expect(res.status, await res.clone().text()).toBe(201);
   return res.json();
 }
 
 /** Mint an upload URL over HTTP; returns the parsed DTO and the PUT path. */
 export async function uploadUrl(cookie: string, body: Record<string, unknown>): Promise<{ status: number; text: string; path: string | null; dto: any }> {
-  const res = await wf("/api/artifacts/upload-url", jsonInit("POST", body, cookie));
+  const res = await wf("/api/o/saplinglearn/artifacts/upload-url", jsonInit("POST", body, cookie));
   const text = await res.text();
   const dto = res.status === 201 ? JSON.parse(text) : null;
   return { status: res.status, text, dto, path: dto ? new URL(dto.upload_url).pathname : null };

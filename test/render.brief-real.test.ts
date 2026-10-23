@@ -2,7 +2,7 @@
  * My Work › Your brief over REAL data, end to end — no `LOCAL_AI_PREVIEW`, no `aiPreviewFixtures`, no fixture DTO:
  * real D1 rows (an assigned ticket in an overdue sprint, a handoff left for the person, their Status note) → the
  * real `brief.person` job in a real AI pass (Anthropic stubbed at the `Response` level) writes a `person_brief` row →
- * the real read (`GET /me/dashboard`, and MCP `get_my_work`'s `getMyWork`) → the real screen (`render`, wired at
+ * the real read (`GET /api/o/:slug/me/dashboard`, and MCP `get_my_work`'s `getMyWork`) → the real screen (`render`, wired at
  * web/src/render.ts to `briefTile`). Then the tile's own "Wrong?" button: its `data-arg` is POSTed, as the web
  * client sends it, to the real `/ai/feedback` route, and the next read leaves the field out, so the screen falls
  * back to the plain layout (the field-absent markup itself is pinned by test/render.ai-absent.test.ts).
@@ -70,7 +70,7 @@ function screen(data: DashboardData): string {
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
 
 async function dashboard(cookie: string): Promise<DashboardData> {
-  const res = await worker.request("/me/dashboard", { headers: { cookie } }, env);
+  const res = await worker.request("/api/o/saplinglearn/me/dashboard", { headers: { cookie } }, env);
   expect(res.status).toBe(200);
   return (await res.json()) as DashboardData;
 }

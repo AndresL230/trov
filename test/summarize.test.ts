@@ -69,7 +69,8 @@ async function postWebhook(
   opts?: { summarizer?: Summarizer<PrSummary> | null },
   e: Env = env
 ): Promise<Response> {
-  const body = JSON.stringify(payload);
+  // A repo hook takes only its own repository's deliveries: the pool's hook is SaplingLearn/sapling's.
+  const body = JSON.stringify({ ...(payload as object), repository: { full_name: "SaplingLearn/sapling" } });
   const sig = await sign(SECRET, body);
   return handleGithubWebhook(
     req(body, { "x-github-event": eventName, "x-hub-signature-256": sig, "content-type": "application/json" }),

@@ -1,4 +1,4 @@
-// GET /search/quick — the "search everything" dropdown's read (src/tools/quick-search.ts).
+// GET /api/o/:slug/search/quick — the "search everything" dropdown's read (src/tools/quick-search.ts).
 // Every type found, prefix matching, FTS-syntax input safe, the visibility rules
 // (another person's private artifact, a handoff not addressed to me, live-only for
 // humans), the per-group limit, and a short query answering without touching D1.
@@ -21,7 +21,7 @@ const ME = "quickme";
 const OTHER = "quickother";
 
 async function quick(q: string, who = ME, extra = ""): Promise<QuickSearchResult> {
-  const res = await app.request(`/search/quick?q=${encodeURIComponent(q)}${extra}`, { headers: { cookie: await cookieFor(who) } }, env);
+  const res = await app.request(`/api/o/saplinglearn/search/quick?q=${encodeURIComponent(q)}${extra}`, { headers: { cookie: await cookieFor(who) } }, env);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { result: QuickSearchResult; degraded?: boolean };
   expect(body.degraded, `degraded answer for ${JSON.stringify(q)}`).toBeUndefined();   // a swallowed error is a failure
@@ -34,7 +34,7 @@ beforeEach(async () => { await seedPerson(ME, { name: "Quincy Me" }); await seed
 /** A text artifact, published (create makes v1 a draft). */
 async function publishedText(cookie: string, o: Record<string, unknown>): Promise<void> {
   const page = await createText(cookie, o);
-  const res = await wf(`/api/artifacts/${page.slug}`, jsonInit("PATCH", { status: "published" }, cookie));
+  const res = await wf(`/api/o/saplinglearn/artifacts/${page.slug}`, jsonInit("PATCH", { status: "published" }, cookie));
   expect(res.status).toBe(200);
 }
 
@@ -170,6 +170,6 @@ describe("GET /search/quick — limits and short queries", () => {
   });
 
   it("needs a session (401 without one)", async () => {
-    expect((await app.request("/search/quick?q=zebra", {}, env)).status).toBe(401);
+    expect((await app.request("/api/o/saplinglearn/search/quick?q=zebra", {}, env)).status).toBe(401);
   });
 });

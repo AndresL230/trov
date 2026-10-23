@@ -3,15 +3,15 @@ import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
 
-describe("POST /admin/backfill (session- + admin-gated)", () => {
+describe("POST /api/o/:slug/admin/backfill (session- + admin-gated)", () => {
   it("401s without a session", async () => {
-    const res = await app.request("/admin/backfill", { method: "POST" }, env);
+    const res = await app.request("/api/o/saplinglearn/admin/backfill", { method: "POST" }, env);
     expect(res.status).toBe(401);
   });
 
   it("403s for a non-admin principal", async () => {
     const res = await app.request(
-      "/admin/backfill",
+      "/api/o/saplinglearn/admin/backfill",
       { method: "POST", headers: { cookie: await cookieFor("not-admin") } },
       env
     );
@@ -24,7 +24,7 @@ describe("POST /admin/backfill (session- + admin-gated)", () => {
     // the role gate. The org has no repo and no GitHub token in tests, so runBackfill
     // returns ok:false BEFORE any GitHub fetch → 503 with the config error.
     const res = await app.request(
-      "/admin/backfill",
+      "/api/o/saplinglearn/admin/backfill",
       { method: "POST", headers: { cookie: await cookieFor("admin-user") } },
       env
     );

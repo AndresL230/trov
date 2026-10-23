@@ -38,14 +38,14 @@ describe("list_needs_triage", () => {
   });
 });
 
-describe("GET /needs-triage", () => {
+describe("GET /api/o/:slug/needs-triage", () => {
   it("returns { items: [...] } with only unresolved items for an authenticated user", async () => {
     const id1 = await route_triage(systemCtx(), { raw: "alpha", reason: "out of vocab" });
     await route_triage(systemCtx(), { raw: "beta", reason: "low confidence" });
     await env.DB.prepare(`UPDATE needs_triage SET resolved = 1 WHERE id = ?`).bind(id1).run();
 
     const cookie = await authedCookie("andres");
-    const res = await app.request("/needs-triage", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/needs-triage", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as { items: Array<{ raw: string; resolved: number }> };
     expect(body.items.length).toBe(1);
@@ -54,7 +54,7 @@ describe("GET /needs-triage", () => {
   });
 
   it("returns 401 without a session cookie", async () => {
-    const res = await app.request("/needs-triage", {}, env);
+    const res = await app.request("/api/o/saplinglearn/needs-triage", {}, env);
     expect(res.status).toBe(401);
   });
 });
@@ -97,14 +97,14 @@ describe("list_adrs", () => {
   });
 });
 
-describe("GET /adrs", () => {
+describe("GET /api/o/:slug/adrs", () => {
   it("returns { adrs: [...] } for all adrs when no filter", async () => {
     const id1 = await stage_adr(systemCtx(), adrBase, "andres");
     await stage_adr(systemCtx(), { ...adrBase, title: "Use Hono" }, "andres");
     await ratify_adr(systemCtx(), id1);
 
     const cookie = await authedCookie("andres");
-    const res = await app.request("/adrs", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/adrs", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as { adrs: Array<{ status: string }> };
     expect(body.adrs.length).toBe(2);
@@ -116,7 +116,7 @@ describe("GET /adrs", () => {
     await ratify_adr(systemCtx(), id1);
 
     const cookie = await authedCookie("andres");
-    const res = await app.request("/adrs?status=draft", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/adrs?status=draft", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const body = await res.json() as { adrs: Array<{ status: string }> };
     expect(body.adrs.length).toBe(1);
@@ -124,7 +124,7 @@ describe("GET /adrs", () => {
   });
 
   it("returns 401 without a session cookie", async () => {
-    const res = await app.request("/adrs", {}, env);
+    const res = await app.request("/api/o/saplinglearn/adrs", {}, env);
     expect(res.status).toBe(401);
   });
 });

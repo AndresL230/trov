@@ -53,16 +53,16 @@ describe("GET /hosting", () => {
     });
   });
 
-  it("a legacy Worker secret counts as connected for its parts (the connection still says it is the fallback)", async () => {
+  it("a Worker secret on the Env counts for nothing: the part, the connection and the checklist read only what the org stored", async () => {
     await seedOrgSettings();
     const r = await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, { ...env, CF_ANALYTICS_TOKEN: "cf_legacy_0000000000000000", CF_ANALYTICS_ACCOUNT_ID: "fedcba9876543210fedcba9876543210" } as never);
     const dto = r.json as unknown as HostingSetupDTO;
-    expect(dto.environments[0].parts[0]).toMatchObject({ connection: "connected", console_url: expect.stringContaining("fedcba9876543210fedcba9876543210") });
-    expect(dto.connections[0]).toMatchObject({ provider: "cloudflare", status: "not_connected", legacy_fallback: true });
-    expect(dto.checklist.filter((i) => i.id.includes("cloudflare"))).toEqual([
-      expect.objectContaining({ id: "connect:cloudflare:", done: true, detail: expect.stringContaining("legacy Worker secret") }),
-      expect.objectContaining({ id: "configure:cloudflare:", done: true }), // the account id falls back too
-    ]);
+    expect(dto.environments[0].parts[0]).toMatchObject({ connection: "not_connected" });
+    expect(JSON.stringify(dto)).not.toContain("fedcba9876543210fedcba9876543210");
+    expect(dto.connections[0]).toMatchObject({ provider: "cloudflare", status: "not_connected" });
+    expect(dto.connections[0]).not.toHaveProperty("legacy_fallback");
+    expect(dto.checklist.filter((i) => i.id.includes("cloudflare")).map((i) => [i.id, i.done])).toEqual([["connect:cloudflare:", false]]);
+    expect(JSON.stringify(dto.checklist)).not.toMatch(/legacy/i);
   });
 
   it("a stored part's last poll is the hosting job's row; an outcome from ANOTHER provider (before a switch) is not shown", async () => {
@@ -234,12 +234,12 @@ describe("an environment's app metrics token, for its parts' editor", () => {
     const r = await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, env as never);
     const dto = r.json as unknown as HostingSetupDTO;
     expect(dto.environments.map((e) => [e.key, e.app_metrics])).toEqual([
-      ["staging", { configured: false, legacy_fallback: false, hint_last4: "", last_used_at: null, last_error: null, api_url: "https://api.staging.example.com" }],
-      ["production", { configured: true, legacy_fallback: false, hint_last4: "beef", last_used_at: null, last_error: null, api_url: "https://api.example.com" }],
+      ["staging", { configured: false, hint_last4: "", last_used_at: null, last_error: null, api_url: "https://api.staging.example.com" }],
+      ["production", { configured: true, hint_last4: "beef", last_used_at: null, last_error: null, api_url: "https://api.example.com" }],
     ]);
     expect(JSON.stringify(r.json)).not.toContain(value.slice(0, 12));
-    // SaplingLearn's shared Worker secret answers for an environment with none stored.
+    // The old shared Worker secret answers for nothing: an environment with none stored is not configured.
     const legacy = (await send(app, "GET", `${A}/hosting`, await ownerCookie(), undefined, { ...env, SAPLING_METRICS_TOKEN: "legacy_" + "x".repeat(30) } as never)).json as unknown as HostingSetupDTO;
-    expect(legacy.environments[0].app_metrics).toMatchObject({ configured: false, legacy_fallback: true });
+    expect(legacy.environments[0].app_metrics).toEqual({ configured: false, hint_last4: "", last_used_at: null, last_error: null, api_url: "https://api.staging.example.com" });
   });
 });

@@ -18,7 +18,7 @@ import {
   BUDGET_SKIP, REFRESH_LOCK, REFRESH_LOCK_MS, SUBREQUEST_CAP,
   refreshSubrequests,
 } from "../src/repo/cron";
-import { handleRepoCron, runLockedRepoRefresh, runRepoRefresh, syncOrgConfig } from "./helpers/org-config";
+import { handleRepoCron, runLockedRepoRefresh, runRepoRefresh, syncOrgConfig, type LegacyEnv } from "./helpers/org-config";
 import { latestHealth } from "../src/repo/store";
 import { getRepoDashboard } from "../src/tools/repo";
 import { cookieFor } from "./helpers/persons";
@@ -26,7 +26,7 @@ import { ENVS, LONG_TOKEN, fakeGithub, leakedFragments } from "./helpers/repo";
 import type { Env } from "../src/env";
 import type { RepoRefreshResult } from "@shared/repo";
 
-import { platformCtx, systemCtx } from "./helpers/tenant";
+import { ORG_A, platformCtx, systemCtx } from "./helpers/tenant";
 import { pruneRepoCapture } from "../src/platform/sweeps";
 const NOW = Date.parse("2026-09-20T12:37:12Z");
 const GH = "https://api.github.com/";
@@ -40,9 +40,12 @@ const SECRETS = {
   SAPLING_METRICS_TOKEN: "sp-s3cret-token", GITHUB_SERVICE_TOKEN: GH_TOKEN,
 } as const;
 const NONE = Object.fromEntries(Object.keys(SECRETS).map((k) => [k, undefined]));
-/** Every secret pinned — set or absent — so a local `.dev.vars` never decides a test. */
-const refreshEnv = (over: Partial<Env> = {}): Env =>
-  ({ ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS), GITHUB_REPO: "o/r", ...SECRETS, ...over }) as unknown as Env;
+/** Every secret pinned — set or absent — so a local `.dev.vars` never decides a test. The org-config
+ *  wrappers store the ones that are set as the org's secrets (test/helpers/org-config.ts). */
+const refreshEnv = (over: Partial<LegacyEnv> = {}): LegacyEnv =>
+  ({ ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS), GITHUB_REPO: "o/r", ...SECRETS, ...over }) as unknown as LegacyEnv;
+/** Forget every credential stored so far, so the next Env describes the org's whole setup. */
+const forgetSecrets = () => run(env.DB, `DELETE FROM org_secrets WHERE org_id = ?`, ORG_A);
 
 /** Every source answers: GitHub through `fakeGithub` (empty-but-valid), the
  *  app's metrics with one reading, a health target with a 200. */
@@ -200,7 +203,8 @@ describe("runRepoRefresh", () => {
     });
 
     it("github — without GITHUB_SERVICE_TOKEN, and without GITHUB_REPO", async () => {
-      for (const over of [{ GITHUB_SERVICE_TOKEN: undefined }, { GITHUB_REPO: undefined }, { GITHUB_SERVICE_TOKEN: "" }] as Partial<Env>[]) {
+      for (const over of [{ GITHUB_SERVICE_TOKEN: undefined }, { GITHUB_REPO: undefined }, { GITHUB_SERVICE_TOKEN: "" }] as Partial<LegacyEnv>[]) {
+        await forgetSecrets(); // each case is its own setup: a token stored by the one before is not this one's
         const w = world();
         const res = await runRepoRefresh(refreshEnv(over), NOW, w.fetchImpl);
         expect(res.github).toBe("not_configured");
@@ -308,11 +312,12 @@ describe("runRepoRefresh", () => {
 // once in src/repo/github.ts: the progress arm fetches GitHub with the service
 // token, so whatever it throws may quote it.
 describe("the repo cron's own log sites never print a secret", () => {
-  /** env.DB, except that a statement matching `pattern` throws an error quoting every secret. */
+  /** env.DB, except that a statement matching `pattern` throws an error quoting the GitHub token the arm
+   *  revealed (a log line is scrubbed of the credentials its unit resolved — the org's stored ones). */
   const poisonedDb = (pattern: RegExp): Env["DB"] => new Proxy(env.DB, {
     get(target, key) {
       if (key === "prepare") return (sql: string) => {
-        if (pattern.test(sql)) throw new Error(`D1 exploded near authorization: Bearer ${GH_TOKEN} / ${Object.values(SECRETS).join(" / ")}`);
+        if (pattern.test(sql)) throw new Error(`D1 exploded near authorization: Bearer ${GH_TOKEN}`);
         return target.prepare(sql);
       };
       const value = Reflect.get(target, key) as unknown;
@@ -333,14 +338,15 @@ describe("the repo cron's own log sites never print a secret", () => {
   // A context reads `env.DB` at each use, so a dead binding fails inside the first guarded read that
   // needs it. On a quiet tick that is the cron's own `safely` — health (its write is outside the ping's
   // own guard) and the handoff sweep. The usage poller never throws: the same failure lands in its own
-  // logger, with its own scrub, never in runUsagePolls' arm.
-  it("the every-tick arms throwing — health and the handoff sweep — log scrubbed messages only", async () => {
+  // logger, with its own scrub, never in runUsagePolls' arm. Nothing was resolved before the binding
+  // died, and the Env carries no credential any more, so the message has none to quote.
+  it("the every-tick arms throwing — health and the handoff sweep — log messages only", async () => {
     const tick = Date.parse("2026-09-20T12:40:00Z");
     const noDb = Object.defineProperty({ ...refreshEnv() }, "DB", {
-      get() { throw new Error(`no database for ${Object.values(SECRETS).join(" / ")}`); },
+      get() { throw new Error("no database"); },
     }) as Env;
     const { logged } = await captured(() => handleRepoCron(noDb, tick, world().fetchImpl));
-    for (const label of ["health", "handoff expiry"]) expect(logged, label).toContain(`"repo cron","${label}","no database for [redacted]`);
+    for (const label of ["health", "handoff expiry"]) expect(logged, label).toContain(`"repo cron","${label}","no database"`);
     for (const secret of Object.values(SECRETS)) expect(logged).not.toContain(secret);
     expect(leakedFragments(logged, GH_TOKEN)).toEqual([]);
     expect(logged).not.toContain("    at ");
@@ -413,16 +419,17 @@ describe("runLockedRepoRefresh — the refresh_lock snapshot", () => {
   });
 });
 
-describe("POST /admin/poll (session- + admin-gated, never MCP)", () => {
+describe("POST /api/o/:slug/admin/poll (session- + admin-gated, never MCP)", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
-  /** The route has no fetch seam (like /admin/backfill), so these swap the GLOBAL fetch. */
+  /** The route has no fetch seam (like /admin/backfill), so these swap the GLOBAL fetch. The Env each call
+   *  is given is the org's whole setup: what an earlier call stored is forgotten first. */
   const stubFetch = (impl: typeof fetch): string[] => {
     const seen: string[] = [];
     vi.stubGlobal("fetch", ((u: RequestInfo | URL, init?: RequestInit) => { seen.push(String(u)); return impl(u, init); }) as typeof fetch);
     return seen;
   };
   const post = async (who: string | null, e: Env) =>
-    app.request("/admin/poll", { method: "POST", headers: who ? { cookie: await cookieFor(who) } : {} }, await syncOrgConfig(e));
+    app.request("/api/o/saplinglearn/admin/poll", { method: "POST", headers: who ? { cookie: await cookieFor(who) } : {} }, await forgetSecrets().then(() => syncOrgConfig(e)));
 
   it("401s without a session, and nothing runs", async () => {
     const seen = stubFetch(world().fetchImpl);
