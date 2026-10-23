@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { all, first, run } from "./helpers/db";
 import type { Env } from "../src/env";
 import { ticketFromIssue, mirrorIssue } from "../src/tools/ticket-mirror";
-import { handleGithubWebhook, runBackfill } from "./helpers/org-config";
+import { handleGithubWebhook, runBackfill, SAPLING_HOOK, type LegacyEnv } from "./helpers/org-config";
 import { listOpenAssignedIssues } from "../src/tools/mywork";
 import { transition_ticket } from "../src/tools/tickets";
 
@@ -22,7 +22,7 @@ async function sign(body: string): Promise<string> {
 
 async function deliver(payload: unknown, e: Env = env as unknown as Env, opts?: Parameters<typeof handleGithubWebhook>[2]): Promise<Response> {
   const body = JSON.stringify(payload);
-  const req = new Request("https://x/webhook/github", {
+  const req = new Request(`https://x/webhook/github/${SAPLING_HOOK}`, {
     method: "POST",
     headers: { "x-github-event": "issues", "x-hub-signature-256": await sign(body), "content-type": "application/json" },
     body,
@@ -161,13 +161,15 @@ describe("the mirror, through the webhook", () => {
     expect((await tickets())[0].status).toBe("submitted");
   });
 
-  it("a delivery from another repo, or with GITHUB_REPO unset, creates no ticket", async () => {
-    await deliver(issuePayload("opened", { repo: "someone/else" }));
-    await deliver(issuePayload("opened"), { ...(env as unknown as Env), GITHUB_REPO: undefined });
-    await deliver(issuePayload("opened", { repo: null }));
+  it("a delivery from another repo, naming no repo, or with no repo connected, creates no ticket", async () => {
+    // The hook takes only its own repository's deliveries: another repo, or none, is acknowledged and ignored.
+    expect((await deliver(issuePayload("opened", { repo: "someone/else" }))).status).toBe(202);
+    expect((await deliver(issuePayload("opened", { repo: null }))).status).toBe(202);
+    // With no repo connected there is no hook to deliver to.
+    const noRepo: LegacyEnv = { ...(env as unknown as LegacyEnv), GITHUB_REPO: undefined };
+    expect((await deliver(issuePayload("opened"), noRepo)).status).toBe(401);
     expect(await tickets()).toHaveLength(0);
-    // …and the events capture still ran for all three.
-    expect((await all(env.DB, `SELECT id FROM events`)).length).toBeGreaterThan(0);
+    expect(await all(env.DB, `SELECT id FROM events`)).toHaveLength(0);
   });
 
   it("an unmapped author files as github-webhook, and source_author keeps the raw login", async () => {
@@ -288,7 +290,7 @@ describe("backfill hook", () => {
   });
 
   it("mirrors open issues and skips closed ones", async () => {
-    const e: Env = { ...(env as unknown as Env), GITHUB_SERVICE_TOKEN: "svc", GITHUB_REPO: "o/r" };
+    const e: LegacyEnv = { ...(env as unknown as LegacyEnv), GITHUB_SERVICE_TOKEN: "svc", GITHUB_REPO: "o/r" };
     const res = await runBackfill(e, "admin-user", {
       fetchImpl: stubFetch([listItem(1, "open"), listItem(2, "closed")]),
       summarizer: null, issueSummarizer: null, summaryCallDelayMs: 0,

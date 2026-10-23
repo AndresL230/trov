@@ -122,7 +122,7 @@ describe("transactional mail goes whatever the flag says, and carries no unsubsc
   it("a test send is the admin's own request: it goes to an unsubscribed admin too, with the digest's link", async () => {
     const admin = await cookieFor(FIXTURE_ADMIN, { email: "admin@x.io" });
     await run(env.DB, `UPDATE persons SET email = 'admin@x.io', email_unsubscribed = 1 WHERE handle = ?`, FIXTURE_ADMIN);
-    const res = await call<{ ok: boolean }>("POST", "/api/notifications/test-send", admin, { cadence: "daily", sample: true });
+    const res = await call<{ ok: boolean }>("POST", "/api/o/saplinglearn/notifications/test-send", admin, { cadence: "daily", sample: true });
     expect(res.status).toBe(200);
     expect(res.json.ok).toBe(true);
     const [sent] = to(await tenantBodies(), "admin@x.io");

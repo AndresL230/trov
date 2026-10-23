@@ -1,7 +1,7 @@
 /**
  * Org settings (web/src/org-settings.ts + integrations.ts) — pure render tests: props in,
- * markup out. The states an org can be in (empty, fully configured, legacy fallback, an
- * error, secrets unavailable), what a non-admin member sees, the secret form — and that no
+ * markup out. The states an org can be in (empty, fully configured, an error, secrets
+ * unavailable), what a non-admin member sees, the secret form — and that no
  * render of it, before or after a save, carries a secret's value.
  */
 import { describe, it, expect } from "vitest";
@@ -40,7 +40,7 @@ function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): Integrat
     kind, scope: scope_type === "org" ? "" : scope_type === "repo" ? HOOK : "staging", scope_type,
     scope_label: scope_type === "org" ? null : scope_type === "repo" ? "acme/web" : "Staging",
     label, description: `What ${label} is used for.`, how_to: "Open Settings › Tokens and run `openssl rand -hex 32`.",
-    configured: false, legacy_fallback: false, expected: true, hint_last4: "", created_by: null, created_at: null, rotated_at: null,
+    configured: false, expected: true, hint_last4: "", created_by: null, created_at: null, rotated_at: null,
     last_used_at: null, last_error: null, config: {},
     config_fields: kind === "cloudflare_analytics" ? [{ key: "account_id", label: "Account ID", description: "The 32-character id. Not a secret.", required: true }] : [],
     webhook_url: kind === "github_webhook" ? `https://trov.dev/webhook/github/${HOOK}` : null, ...o,
@@ -248,10 +248,6 @@ describe("the setup checklist", () => {
     expect(team(emptyUi({ invites: ok([invite({ status: "pending" })]) }))).toBe(true);
     expect(team(emptyUi({ members: ok([member("ines", "owner"), member("sam", "member")]) }))).toBe(true);
   });
-  it("counts the platform's legacy credential as a set GitHub token", () => {
-    const ui = emptyUi({ repos: ok([repo()]), integrations: ok({ integrations: [integ("github_token", { legacy_fallback: true })], secrets_available: true, key_version: null }) });
-    expect(setupSteps(ui)!.find((s) => s.key === "repo")!.done).toBe(true);
-  });
   it("disappears once complete, is never shown to a member, and waits for the data", () => {
     expect(setupChecklist(org(), fullUi())).toBe("");
     expect(view(fullUi())).not.toContain("data-org-setup");
@@ -266,7 +262,6 @@ describe("Integrations — status in words", () => {
     expect(integrationStatus(integ("github_token"))).toMatchObject({ state: "unset", word: "Not set" });
     expect(integrationStatus(set("github_token", "1a2b"))).toMatchObject({ state: "set", word: "Set" });
     expect(integrationStatus(set("github_token", ""))).toMatchObject({ state: "set", word: "Set" });
-    expect(integrationStatus(integ("github_token", { legacy_fallback: true }))).toMatchObject({ state: "legacy", word: "Using legacy credential" });
     expect(integrationStatus(set("github_token", "1a2b", { last_error: "github 401" }))).toMatchObject({ state: "error", word: "Error" });
     expect(integrationStatus(set("railway", "beef", { expected: false }))).toMatchObject({ state: "orphan" });
   });
@@ -327,18 +322,6 @@ describe("Integrations — the states of the page", () => {
     expect(html).toContain("set the GitHub token (ends in 0000)");
   });
 
-  it("legacy fallback: says so, offers Set your own and a test — never 'not configured'", () => {
-    const ui = fullUi({ integrations: ok({ integrations: [integ("github_token", { legacy_fallback: true })], secrets_available: true, key_version: null }) });
-    const html = tabView(ui, "integrations");
-    expect(html).toContain('data-state="legacy"');
-    expect(html).toContain("Using legacy credential");
-    expect(html).toContain("Using the platform's legacy credential &mdash; set your own to replace it.");
-    expect(html).toContain(">Set your own<");
-    expect(html).toContain('aria-label="Test the GitHub token"');
-    expect(html).not.toContain(">Not set<");
-    expect(html).not.toContain('aria-label="Delete the GitHub token"');
-  });
-
   it("error state: the chip says Error and the last error is shown", () => {
     const ui = fullUi({ integrations: ok({ integrations: [set("github_token", "1a2b", { last_error: "github 401 for acme/web — the token is not valid" })], secrets_available: true, key_version: 1 }) });
     const html = tabView(ui, "integrations");
@@ -393,8 +376,8 @@ describe("Integrations — the states of the page", () => {
     const unset = integrationRow(integ("github_webhook"), { secretsAvailable: true });
     expect(unset).toContain(url);
     expect(unset).toContain("Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret.");
-    // SaplingLearn's cut-over: the platform's credential still answers; moving is spelled out.
-    expect(integrationRow(integ("github_webhook", { legacy_fallback: true }), { secretsAvailable: true })).toContain("keeps working with the platform's credential");
+    // There is no platform credential to fall back on any more: nothing speaks of one.
+    expect(unset).not.toContain("platform's credential");
     for (const html of [stored, unset, secretFormModal(integ("github_webhook"), form({ kind: "github_webhook", scope: HOOK })), tabView(fullUi(), "repos"), tabView(emptyUi({ repos: ok([repo()]) }), "repos")]) {
       expect(html).not.toContain("available soon");
       expect(html).not.toContain("not live yet");

@@ -20,7 +20,7 @@ import {
 import { ARTIFACT_DOWNLOAD_TTL_MS } from "@shared/artifacts";
 import { seedPerson } from "./helpers/persons";
 import { apiErrorHint, mcpErrorHint } from "@shared/error-hints";
-import { bearerCtx, systemCtx } from "./helpers/tenant";
+import { ORG_A, bearerCtx, systemCtx } from "./helpers/tenant";
 
 const ME = "dl-author";
 const YOU = "dl-teammate";
@@ -195,7 +195,7 @@ describe("the download token", () => {
     const reencode = (o: unknown) => btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
     const flippedSig = sig.slice(0, -2) + (sig.at(-2) === "A" ? "B" : "A") + sig.at(-1);
-    const otherKey = (await mintDownloadToken("some-other-secret", { handle: ME, page_id: id, version_no: 1 })).token;
+    const otherKey = (await mintDownloadToken("some-other-secret", { handle: ME, page_id: id, version_no: 1, org_id: ORG_A })).token;
     // A value sealed with COOKIE_SECRET itself (how session cookies are signed) must not pass:
     // the download key is DERIVED from it with a purpose label.
     const cookieSealed = await hmacSeal(body, SECRET);
@@ -237,7 +237,7 @@ describe("the download token", () => {
     await patchPage(systemCtx(), slug, { visibility: "private" }, ME);
     const res = await fetchUrl(g.body.download_url);
     expect(res.status).toBe(404);
-    const bogus = await fetchUrl(`${ORIGIN}/api/artifacts/download/${(await mintDownloadToken("nope", { handle: YOU, page_id: id, version_no: 1 })).token}`);
+    const bogus = await fetchUrl(`${ORIGIN}/api/artifacts/download/${(await mintDownloadToken("nope", { handle: YOU, page_id: id, version_no: 1, org_id: ORG_A })).token}`);
     expect(await res.text()).toBe(await bogus.text());
     // the author's own URL still works
     const mine = await call(ME, "artifact_get", { slug });
@@ -245,12 +245,15 @@ describe("the download token", () => {
   });
 
   it("dispatch: only a token-shaped path is the download route; a page slugged `download` still reads through the app", async () => {
-    const t = (await mintDownloadToken(SECRET, { handle: ME, page_id: 1, version_no: 1 })).token;
+    const t = (await mintDownloadToken(SECRET, { handle: ME, page_id: 1, version_no: 1, org_id: ORG_A })).token;
     expect(isDownloadRequest(`/api/artifacts/download/${t}`)).toBe(true);
     expect(isDownloadRequest(`/api/artifacts/download/v1`)).toBe(false);
     expect(isDownloadRequest(`/api/artifacts/download`)).toBe(false);
-    // not token-shaped → falls through to the session-gated app (401 without a cookie)
-    expect((await fetchUrl(`${ORIGIN}/api/artifacts/download/v1`)).status).toBe(401);
+    // not token-shaped → falls through to the app, where the old unprefixed path is no route at all (404)…
+    expect((await fetchUrl(`${ORIGIN}/api/artifacts/download/v1`)).status).toBe(404);
+    // …and the org's page slugged `download` is read through the session-gated app (401 without a cookie)
+    expect(isDownloadRequest(`/api/o/saplinglearn/artifacts/download`)).toBe(false);
+    expect((await fetchUrl(`${ORIGIN}/api/o/saplinglearn/artifacts/download`)).status).toBe(401);
   });
 
   it("Content-Disposition: a non-ASCII filename gets an ASCII fallback plus filename*", () => {

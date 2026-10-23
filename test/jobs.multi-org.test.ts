@@ -204,7 +204,7 @@ describe("an org with nothing configured", () => {
     expect(await all(env.DB, `SELECT 1 FROM repo_metrics`)).toEqual([]); // an unconfigured target is unknown, never "down"
   });
 
-  it("the legacy Worker secrets answer for SaplingLearn ONLY — another org with the same environment key gets none of them", async () => {
+  it("the old Worker secrets answer for NO org — SaplingLearn included: each gets its health pings and nothing else", async () => {
     const legacy = {
       ...e, GITHUB_SERVICE_TOKEN: "legacy-github-token-000000", CF_ANALYTICS_TOKEN: "legacy-cf-token-0000000", CF_ANALYTICS_ACCOUNT_ID: "legacy-account",
       SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
@@ -213,13 +213,15 @@ describe("an org with nothing configured", () => {
     const w = world();
     await handleRepoCron(legacy, HOURLY, w.fetchImpl);
     await handleRepoCron(legacy, RECONCILE, w.fetchImpl);
-    const beta = w.seen.filter((s) => JSON.stringify(s).includes("beta"));
-    expect(beta.map((s) => s.url).sort()).toEqual([B.cfg.apiUrl + "/health", B.cfg.apiUrl + "/health", B.cfg.frontendUrl, B.cfg.frontendUrl]); // its health pings, twice
-    for (const s of beta) expect(s.auth).toBeNull();
-    // SaplingLearn polled and reconciled on the fallback, as it does in production today.
-    expect(w.seen.find((s) => s.url === A.cfg.apiUrl + "/api/internal/metrics")!.auth).toBe("Bearer legacy-metrics-token-000");
-    expect(w.seen.some((s) => s.url.startsWith(`${GH}repos/${A.repo}`) && s.auth === "Bearer legacy-github-token-000000")).toBe(true);
-    expect(w.seen.some((s) => s.url.startsWith(`${GH}repos/${B.repo}`))).toBe(false);
+    for (const f of [A, B]) {
+      const mine = w.seen.filter((s) => JSON.stringify(s).includes(f.tag));
+      expect(mine.map((s) => s.url).sort(), f.tag).toEqual([f.cfg.apiUrl + "/health", f.cfg.apiUrl + "/health", f.cfg.frontendUrl, f.cfg.frontendUrl].sort()); // its health pings, twice
+      for (const s of mine) expect(s.auth).toBeNull();
+    }
+    // No metrics poll and no GitHub read for either: a credential exists only when stored for the org.
+    expect(w.seen.some((s) => s.url.endsWith("/api/internal/metrics"))).toBe(false);
+    expect(w.seen.some((s) => s.url.startsWith(GH))).toBe(false);
+    for (const s of w.seen) expect(JSON.stringify(s)).not.toContain("legacy-");
   });
 });
 
@@ -431,7 +433,7 @@ describe("on demand, for the caller's org", () => {
 describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org only", () => {
   const ROUTES = ["/admin/backfill", "/admin/poll", "/admin/poll-usage"] as const;
   const NOT = "not_configured";
-  /** SaplingLearn's legacy Worker secrets, all set: what `resolveCredential` may fall back to for org #1 ALONE. */
+  /** SaplingLearn's old Worker secrets, all set on the Env: `resolveCredential` falls back to none of them. */
   const LEGACY = {
     GITHUB_SERVICE_TOKEN: "legacy-github-token-000000", CF_ANALYTICS_TOKEN: "legacy-cf-token-0000000", CF_ANALYTICS_ACCOUNT_ID: "legacy-account-0000",
     SAPLING_METRICS_TOKEN: "legacy-metrics-token-000",
@@ -469,14 +471,12 @@ describe("POST …/admin/{backfill,poll,poll-usage}: an admin acts on THEIR org 
     const cookie = await boss();
     const { out, seen } = await stubbed(async () => {
       const got: Record<string, unknown> = {};
-      for (const base of ["", "/api/o/acme"]) for (const r of ROUTES) got[base + r] = await post(base + r, cookie);
+      for (const r of ROUTES) got[r] = await post("/api/o/acme" + r, cookie);
       return got;
     });
-    for (const base of ["", "/api/o/acme"]) {
-      expect(out[`${base}/admin/backfill`]).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
-      expect(out[`${base}/admin/poll`]).toEqual({ status: 200, json: { health: NOT, sapling: NOT, github: NOT } });
-      expect(out[`${base}/admin/poll-usage`]).toEqual({ status: 200, json: { sapling: NOT } });
-    }
+    expect(out["/admin/backfill"]).toEqual({ status: 503, json: { error: "service token or repo not configured" } });
+    expect(out["/admin/poll"]).toEqual({ status: 200, json: { health: NOT, sapling: NOT, github: NOT } });
+    expect(out["/admin/poll-usage"]).toEqual({ status: 200, json: { sapling: NOT } });
     expect(seen).toEqual([]);
     expect(await rowsOf(ORG_A)).toEqual(before);
     expect(await all(env.DB, `SELECT 1 FROM repo_metrics WHERE org_id = ?`, ORG_B)).toEqual([]);

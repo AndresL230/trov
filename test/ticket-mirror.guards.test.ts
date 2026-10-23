@@ -38,9 +38,11 @@ async function mirrored(number = 214, o: { assignees?: string[] } = {}): Promise
   return t!.id;
 }
 
+// Every org route answers only under its slug; the suite's people are in SaplingLearn.
+const BASE = "/api/o/saplinglearn";
 const post = (path: string, cookie: string, body?: unknown) =>
-  app.request(path, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, env);
-const get = (path: string, cookie: string) => app.request(path, { headers: { cookie } }, env);
+  app.request(BASE + path, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }, env);
+const get = (path: string, cookie: string) => app.request(BASE + path, { headers: { cookie } }, env);
 const linksOf = (id: number) => all<{ id: number; url: string; locked: number }>(env.DB, `SELECT id, url, locked FROM ticket_links WHERE ticket_id = ? ORDER BY id`, id);
 
 async function callTool(handle: string, name: string, args: Record<string, unknown> = {}) {

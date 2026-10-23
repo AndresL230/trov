@@ -15,7 +15,7 @@ import {
   searchArtifacts, sha256Hex, uniqueSlug, versionFilename, writablePageKind,
 } from "../src/tools/artifacts";
 import { agentArtifactGet, agentArtifactList, artifactsForTicket } from "../src/tools/artifacts-agent";
-import { mintDownloadToken, verifyDownloadToken } from "../src/artifacts/download";
+import { mintDownloadToken, verifyDownloadToken, type DownloadClaims } from "../src/artifacts/download";
 import { consumeDocImageToken, docImageProblems, mintDocImageUpload, readDocImage } from "../src/tools/doc-images";
 import {
   PromptError, deletePrompt, getPrompt, listPromptVersions, listPrompts, publishPrompt, recordPromptUse, restorePrompt,
@@ -44,8 +44,11 @@ const BOB = "iso-bob"; // acts in org B
 const exec = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
 const wf = (path: string, init: RequestInit = {}) =>
   worker.fetch(new Request(`${ORIGIN}${path}`, init), env as unknown as Env, exec);
+/** Every org route answers only under its slug (test/helpers/tenant.ts): A is `saplinglearn`, B is `acme`. */
+const IN_A = "/api/o/saplinglearn";
+const IN_B = "/api/o/acme";
 
-/** Session cookies for a member of A only and a member of B only (the routes resolve the caller's one org). */
+/** Session cookies for a member of A only and a member of B only; each asks under its own org's slug. */
 async function cookies(): Promise<{ ann: string; bob: string }> {
   const ann = await cookieFor(ANN);
   const bob = await cookieFor(BOB, { member: false });
@@ -333,13 +336,13 @@ describe("artifacts — binary pages, upload and download tokens, raw serving", 
   it("a signed download URL serves only a page of its holder's org", async () => {
     await cookies();
     const a = await createPage(A(), text({ content: "download me" }), ANN);
-    const url = async (handle: string) =>
-      `/api/artifacts/download/${(await mintDownloadToken(SECRET, { handle, page_id: a.id, version_no: 1 })).token}`;
-    const ok = await wf(await url(ANN));
+    const url = async (handle: string, org_id: string) =>
+      `/api/artifacts/download/${(await mintDownloadToken(SECRET, { handle, org_id, page_id: a.id, version_no: 1 })).token}`;
+    const ok = await wf(await url(ANN, ORG_A));
     expect(ok.status).toBe(200);
     expect(await ok.text()).toBe("download me");
     // a validly signed token for a member of B, naming A's page id
-    const other = await wf(await url(BOB));
+    const other = await wf(await url(BOB, ORG_B));
     expect(other.status).toBe(404);
     expect(await other.text()).toBe(NOT_FOUND);
   });
@@ -348,7 +351,8 @@ describe("artifacts — binary pages, upload and download tokens, raw serving", 
     await cookies();
     const a = await createPage(A(), text({ content: "A's bytes" }), ANN);
     const get = async (claims: { handle: string; org_id?: string }) =>
-      wf(`/api/artifacts/download/${(await mintDownloadToken(SECRET, { ...claims, page_id: a.id, version_no: 1 })).token}`);
+      // A claim with no org is minted as a pre-claim token (no `o`) — the shape that is no longer honoured.
+      wf(`/api/artifacts/download/${(await mintDownloadToken(SECRET, { ...claims, page_id: a.id, version_no: 1 } as DownloadClaims)).token}`);
     const gone = async (claims: { handle: string; org_id?: string }) => {
       const res = await get(claims);
       expect([res.status, await res.text()]).toEqual([404, NOT_FOUND]);
@@ -360,13 +364,13 @@ describe("artifacts — binary pages, upload and download tokens, raw serving", 
     await gone({ handle: BOB, org_id: ORG_B });  // B's member in B: A's page id is not B's
     await gone({ handle: ANN, org_id: "org_nope" });
 
-    // A person in TWO orgs: the claim picks the org; a pre-claim token (no org) cannot, and is refused.
+    // A person in TWO orgs: the claim picks the org. A pre-claim token (no org) is invalid — in two orgs or one.
     await ensureMember(ANN, "member", ORG_B);
     expect((await get({ handle: ANN, org_id: ORG_A })).status).toBe(200);
     await gone({ handle: ANN, org_id: ORG_B });
     await gone({ handle: ANN });
     await run(env.DB, `DELETE FROM memberships WHERE org_id = ? AND user_id = ?`, ORG_B, ANN);
-    expect(await (await get({ handle: ANN })).text()).toBe("A's bytes"); // pre-claim shape, one org: still served
+    await gone({ handle: ANN }); // pre-claim shape, one org: refused too
 
     // The membership is re-read at download time, and a suspended org serves nothing.
     await run(env.DB, `UPDATE orgs SET suspended_at = '2026-01-01T00:00:00Z' WHERE id = ?`, ORG_A);
@@ -381,35 +385,40 @@ describe("artifacts — binary pages, upload and download tokens, raw serving", 
     const { ann, bob } = await cookies();
     const a = await createPage(A(), text({ kind: "html", content: "<p>only A</p>" }), ANN);
 
-    expect((await wf(`/raw/a/${a.slug}`, { headers: { cookie: ann } })).status).toBe(200);
-    for (const path of [`/raw/a/${a.slug}`, `/raw/a/${a.slug}@v1`, `/raw/a/${a.slug}/v1`, `/api/artifacts/${a.slug}`, `/api/artifacts/${a.slug}/diff?a=1&b=1`]) {
-      const res = await wf(path, { headers: { cookie: bob } });
-      expect(res.status, path).toBe(404);
-      expect(await res.text(), path).toBe(NOT_FOUND);
+    expect((await wf(`${IN_A}/raw/a/${a.slug}`, { headers: { cookie: ann } })).status).toBe(200);
+    // B's member asks in B (its own org) and in A (not its org): the same 404 either way.
+    for (const base of [IN_B, IN_A]) {
+      for (const path of [`/raw/a/${a.slug}`, `/raw/a/${a.slug}@v1`, `/raw/a/${a.slug}/v1`, `/artifacts/${a.slug}`, `/artifacts/${a.slug}/diff?a=1&b=1`]) {
+        const res = await wf(base + path, { headers: { cookie: bob } });
+        expect(res.status, base + path).toBe(404);
+        expect(await res.text(), base + path).toBe(NOT_FOUND);
+      }
     }
-    const list = await wf(`/api/artifacts`, { headers: { cookie: bob } });
+    const list = await wf(`${IN_B}/artifacts`, { headers: { cookie: bob } });
     expect(await list.json()).toEqual({ artifacts: [] });
 
     const json = (method: string, body: unknown) => ({ method, headers: { cookie: bob, "content-type": "application/json" }, body: JSON.stringify(body) });
-    for (const [path, init] of [
-      [`/api/artifacts/${a.slug}`, json("PATCH", { title: "Taken over" })],
-      [`/api/artifacts/${a.slug}/versions`, json("POST", { content: "<p>B</p>" })],
-      [`/api/artifacts/${a.slug}/ratify`, json("POST", { version: 1 })],
-      [`/api/artifacts/${a.slug}/delete`, json("POST", {})],
-      [`/api/artifacts/${a.slug}/restore`, json("POST", {})],
-    ] as const) {
-      const res = await wf(path, init);
-      expect(res.status, path).toBe(404);
-      expect(await res.text(), path).toBe(NOT_FOUND);
+    for (const base of [IN_B, IN_A]) {
+      for (const [path, init] of [
+        [`/artifacts/${a.slug}`, json("PATCH", { title: "Taken over" })],
+        [`/artifacts/${a.slug}/versions`, json("POST", { content: "<p>B</p>" })],
+        [`/artifacts/${a.slug}/ratify`, json("POST", { version: 1 })],
+        [`/artifacts/${a.slug}/delete`, json("POST", {})],
+        [`/artifacts/${a.slug}/restore`, json("POST", {})],
+      ] as const) {
+        const res = await wf(base + path, init);
+        expect(res.status, base + path).toBe(404);
+        expect(await res.text(), base + path).toBe(NOT_FOUND);
+      }
     }
     expect((await getPage(A(), a.slug, null, ANN)).title).toBe("Auth flow");
 
     // and B's own page under the same slug is B's alone
-    const made = await wf(`/api/artifacts`, json("POST", text({ content: "only B" })));
+    const made = await wf(`${IN_B}/artifacts`, json("POST", text({ content: "only B" })));
     expect(made.status).toBe(201);
     expect((await pageRow(((await made.json()) as { id: number }).id))!.org_id).toBe(ORG_B);
-    expect(await (await wf(`/raw/a/${a.slug}`, { headers: { cookie: bob } })).text()).toBe("only B");
-    expect(await (await wf(`/raw/a/${a.slug}?download=1`, { headers: { cookie: ann } })).text()).toBe("<p>only A</p>");
+    expect(await (await wf(`${IN_B}/raw/a/${a.slug}`, { headers: { cookie: bob } })).text()).toBe("only B");
+    expect(await (await wf(`${IN_A}/raw/a/${a.slug}?download=1`, { headers: { cookie: ann } })).text()).toBe("<p>only A</p>");
   });
 });
 
@@ -457,18 +466,22 @@ describe("doc images", () => {
     expect(await all(env.DB, `SELECT org_id FROM doc_image_upload_tokens`)).toEqual([{ org_id: ORG_A }]);
   });
 
-  it("GET /img/<sha>: 200 for a member of the image's org, the plain 404 for a member of the other", async () => {
+  it("GET /api/o/:slug/img/<sha>: 200 for a member of the image's org, the plain 404 for a member of the other", async () => {
     const { ann, bob } = await cookies();
     const png = bytes("doc-route");
     const sha = await sha256Hex(png);
     await uploadIn(A(), ANN, png);
-    const mine = await wf(`/img/${sha}`, { headers: { cookie: ann } });
+    const mine = await wf(`${IN_A}/img/${sha}`, { headers: { cookie: ann } });
     expect(mine.status).toBe(200);
     expect(new Uint8Array(await mine.arrayBuffer())).toEqual(png);
-    const theirs = await wf(`/img/${sha}`, { headers: { cookie: bob } });
-    const unknown = await wf(`/img/${"0".repeat(64)}`, { headers: { cookie: bob } });
+    const theirs = await wf(`${IN_B}/img/${sha}`, { headers: { cookie: bob } });
+    const unknown = await wf(`${IN_B}/img/${"0".repeat(64)}`, { headers: { cookie: bob } });
+    const plain404 = await unknown.text();
     expect(theirs.status).toBe(404);
-    expect(await theirs.text()).toBe(await unknown.text());
+    expect(await theirs.text()).toBe(plain404);
+    // …and under A's slug B's member is nobody: the same 404.
+    const across = await wf(`${IN_A}/img/${sha}`, { headers: { cookie: bob } });
+    expect([across.status, await across.text()]).toEqual([404, plain404]);
   });
 });
 
@@ -572,12 +585,14 @@ describe("prompts", () => {
   it("the routes answer a member of B with the plain 404 for A's slug", async () => {
     const { ann, bob } = await cookies();
     await savePrompt(A(), ANN, input(), "human");
-    expect((await wf(`/api/prompts/sse-review`, { headers: { cookie: ann } })).status).toBe(200);
-    for (const path of [`/api/prompts/sse-review`, `/api/prompts/sse-review/versions`]) {
-      expect((await wf(path, { headers: { cookie: bob } })).status, path).toBe(404);
+    expect((await wf(`${IN_A}/prompts/sse-review`, { headers: { cookie: ann } })).status).toBe(200);
+    for (const base of [IN_B, IN_A]) {
+      for (const path of [`/prompts/sse-review`, `/prompts/sse-review/versions`]) {
+        expect((await wf(base + path, { headers: { cookie: bob } })).status, base + path).toBe(404);
+      }
+      expect((await wf(`${base}/prompts/sse-review/used`, { method: "POST", headers: { cookie: bob } })).status, base).toBe(404);
     }
-    expect(await (await wf(`/api/prompts`, { headers: { cookie: bob } })).json()).toEqual({ prompts: [] });
-    expect((await wf(`/api/prompts/sse-review/used`, { method: "POST", headers: { cookie: bob } })).status).toBe(404);
+    expect(await (await wf(`${IN_B}/prompts`, { headers: { cookie: bob } })).json()).toEqual({ prompts: [] });
     expect((await getPrompt(A(), "sse-review"))!.use_count).toBe(0);
   });
 });
@@ -679,13 +694,15 @@ describe("handoffs", () => {
   it("the routes answer a member of B with 404 for A's handoff", async () => {
     const { ann, bob } = await cookies();
     const h = await leave(A(), ANN);
-    expect((await wf(`/api/handoffs/${h.id}`, { headers: { cookie: ann } })).status).toBe(200);
-    expect((await wf(`/api/handoffs/${h.id}`, { headers: { cookie: bob } })).status).toBe(404);
-    for (const action of ["claim", "expire"]) {
-      const res = await wf(`/api/handoffs/${h.id}/${action}`, { method: "POST", headers: { cookie: bob, "content-type": "application/json" }, body: "{}" });
-      expect(res.status, action).toBe(404);
+    expect((await wf(`${IN_A}/handoffs/${h.id}`, { headers: { cookie: ann } })).status).toBe(200);
+    for (const base of [IN_B, IN_A]) {
+      expect((await wf(`${base}/handoffs/${h.id}`, { headers: { cookie: bob } })).status, base).toBe(404);
+      for (const action of ["claim", "expire"]) {
+        const res = await wf(`${base}/handoffs/${h.id}/${action}`, { method: "POST", headers: { cookie: bob, "content-type": "application/json" }, body: "{}" });
+        expect(res.status, `${base} ${action}`).toBe(404);
+      }
     }
-    expect(await (await wf(`/api/handoffs?box=anyone`, { headers: { cookie: bob } })).json()).toEqual({ handoffs: [] });
+    expect(await (await wf(`${IN_B}/handoffs?box=anyone`, { headers: { cookie: bob } })).json()).toEqual({ handoffs: [] });
     expect(await statusOf(ORG_A, h.id)).toBe("pending");
   });
 });

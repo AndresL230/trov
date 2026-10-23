@@ -10,7 +10,7 @@ import type { PrSummaryRow, IssueSummaryRow } from "@shared/rows";
 import { syncLeftoverText, syncSummariesText } from "@shared/sync";
 import { all, first, run } from "./helpers/db";
 import { ORG_A, systemCtx } from "./helpers/tenant";
-import { addOrgRepo, handleGithubWebhook, runBackfill } from "./helpers/org-config";
+import { addOrgRepo, handleGithubWebhook, runBackfill, SAPLING_HOOK, type LegacyEnv } from "./helpers/org-config";
 import { APP_WEBHOOK_SECRET, seedInstallation, signAppWebhook } from "./helpers/github-app";
 import { handleGithubAppWebhook } from "../src/github-app/webhook";
 import { orgSummarizers, summaryAllowance } from "../src/plans/summaries";
@@ -19,9 +19,11 @@ import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
 import { FAKE_ANTHROPIC_KEY, messageResponse } from "./helpers/anthropic";
 
-/** vitest.config.ts — the Worker's GITHUB_WEBHOOK_SECRET (the legacy hook's). */
-const LEGACY_WEBHOOK_SECRET = "test-webhook-secret";
-const keyed = (): Env => ({ ...(env as unknown as Env), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r" });
+/** vitest.config.ts — the pool's GITHUB_WEBHOOK_SECRET, stored as SaplingLearn's hook secret by the org-config wrapper. */
+const HOOK_WEBHOOK_SECRET = "test-webhook-secret";
+/** The repo `keyed()` connects for SaplingLearn — the per-repo hook takes only deliveries naming it. */
+const HOOK_REPO = "o/r";
+const keyed = (): LegacyEnv => ({ ...(env as unknown as LegacyEnv), ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: HOOK_REPO });
 const setSwitch = (on: boolean) => run(env.DB, `UPDATE orgs SET ai_automation = ? WHERE id = ?`, on ? 1 : 0, ORG_A);
 
 /** A Messages API stand-in that counts every call made through the org's summarizer. */
@@ -152,7 +154,7 @@ describe("the Sync path (runBackfill)", () => {
   });
 });
 
-// Every way a delivery reaches capture — the GitHub App's ONE webhook and an org's per-repo (or legacy) webhook —
+// Every way a delivery reaches capture — the GitHub App's ONE webhook and an org's per-repo webhook —
 // funnels into `captureDelivery`, so the switch holds on each. Driven end to end through the real handlers, signed
 // as GitHub signs, so a future entry point that skipped `orgSummarizers` would show up here (Terms §10's switch line).
 describe("every capture entry point (Terms §10: off = nothing sent, PR and issue summaries included)", () => {
@@ -166,7 +168,7 @@ describe("every capture entry point (Terms §10: off = nothing sent, PR and issu
   const viaApp = async (name: string, payload: unknown, g: { fetchImpl: typeof fetch }) =>
     handleGithubAppWebhook(await signed("https://trov.test/webhook/github/app", name, appPayload(payload as Record<string, unknown>), APP_WEBHOOK_SECRET), keyed(), { ai: { fetchImpl: g.fetchImpl } });
   const viaHook = async (name: string, payload: unknown, g: { fetchImpl: typeof fetch }) =>
-    handleGithubWebhook(await signed("https://trov.test/webhook/github", name, payload, LEGACY_WEBHOOK_SECRET), keyed(), { ai: { fetchImpl: g.fetchImpl } });
+    handleGithubWebhook(await signed(`https://trov.test/webhook/github/${SAPLING_HOOK}`, name, { ...(payload as Record<string, unknown>), repository: { full_name: HOOK_REPO } }, HOOK_WEBHOOK_SECRET), keyed(), { ai: { fetchImpl: g.fetchImpl } });
   const appOrg = async () => {
     await addOrgRepo(REPO, ORG_A, { id: "hook_switch_app" });
     await run(env.DB, `UPDATE org_repos SET connection = 'app' WHERE org_id = ?`, ORG_A);
@@ -193,7 +195,7 @@ describe("every capture entry point (Terms §10: off = nothing sent, PR and issu
     expect([(await prRows()).length, (await issueRows()).length]).toEqual([1, 1]);
   });
 
-  it("the per-repo (legacy) webhook, switch off then on: zero calls off, one each on", async () => {
+  it("the per-repo webhook, switch off then on: zero calls off, one each on", async () => {
     await setSwitch(false);
     const off = claude();
     expect((await viaHook("pull_request", prMerged, off)).status).toBe(200);
