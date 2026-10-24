@@ -100,12 +100,11 @@ export function integrationLabel(i: Pick<IntegrationDTO, "label" | "scope_label"
   return i.scope_label ? `${i.label} for ${i.scope_label}` : i.label;
 }
 
-export type IntegrationState = "unset" | "set" | "legacy" | "error" | "orphan";
+export type IntegrationState = "unset" | "set" | "error" | "orphan";
 /** What a state means, where the word alone does not say it — the tooltip on the row's mark. */
 const INTEGRATION_HINT: Record<IntegrationState, string | null> = {
   unset: null,
   set: null,
-  legacy: "Trov's shared credential answers until you set your own.",
   error: "The last use failed. Open the row to see the error.",
   orphan: "Its environment or repository is gone, so nothing reads it.",
 };
@@ -118,16 +117,15 @@ export function integrationStatus(i: IntegrationDTO): { state: IntegrationState;
   if (i.configured && !i.expected) return { state: "orphan", word: "No longer used", kind: "off" };
   if (i.configured && i.last_error) return { state: "error", word: "Error", kind: "bad" };
   if (i.configured) return { state: "set", word: "Set", kind: "good" };
-  if (i.legacy_fallback) return { state: "legacy", word: "Using legacy credential", kind: "warn" };
   return { state: "unset", word: "Not set", kind: "waiting" };
 }
-/** The tab's figures: how many expected credentials are set (a legacy fallback counts as
- *  answered), how many of those report an error, and how many are stored for nothing. */
+/** The tab's figures: how many expected credentials are set, how many of those report an error,
+ *  and how many are stored for nothing. */
 export function integrationCounts(list: IntegrationDTO[]): { expected: number; set: number; errors: number; orphans: number } {
   const expected = list.filter((i) => i.expected);
   return {
     expected: expected.length,
-    set: expected.filter((i) => i.configured || i.legacy_fallback).length,
+    set: expected.filter((i) => i.configured).length,
     errors: expected.filter((i) => i.configured && i.last_error).length,
     orphans: list.filter((i) => !i.expected).length,
   };
@@ -182,10 +180,8 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
   }
   const settings = i.config_fields.map((f) => {
     const v = i.config[f.key];
-    return `<div style="margin-top:6px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">${st.state === "legacy" ? "the platform's, until you set your own" : `not set${f.required ? " (required)" : ""}`}</span>`}</div>`;
+    return `<div style="margin-top:6px">${esc(f.label)}: ${v ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(v)}</code>` : `<span style="color:var(--fg-40)">not set${f.required ? " (required)" : ""}</span>`}</div>`;
   }).join("");
-  const legacy = st.state === "legacy"
-    ? `<div data-org-legacy style="color:var(--fg-70);margin-top:6px">Using the platform's legacy credential &mdash; set your own to replace it.</div>` : "";
   const error = i.last_error
     ? `<div data-org-lasterror style="${box("var(--red)")};margin-top:0">${FAIL_ICON}<div style="min-width:0;overflow-wrap:anywhere"><strong style="font-weight:600;color:var(--fg)">Last error.</strong> ${esc(i.last_error)}</div></div>` : "";
   const orphan = st.state === "orphan"
@@ -195,7 +191,7 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
     ? `<div data-org-hookurl style="margin-top:10px">
         <span style="${O_LABEL};font-size:10px">Webhook URL</span>
         <code class="cnpy-org-code">${esc(i.webhook_url)}</code>
-        <span style="display:block;font-size:12px;color:var(--fg-40)">${i.configured ? "The Payload URL of this repository's webhook on GitHub. Every delivery must be signed with this secret; anything else is rejected." : st.state === "legacy" ? "This repository's own Payload URL. Its current GitHub webhook keeps working with the platform's credential; to move it here, set a secret, then point the webhook at this URL with the same secret." : "Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret. Until then deliveries to it are rejected."}</span>
+        <span style="display:block;font-size:12px;color:var(--fg-40)">${i.configured ? "The Payload URL of this repository's webhook on GitHub. Every delivery must be signed with this secret; anything else is rejected." : "Set the secret first, then add a webhook on GitHub with this Payload URL and the same secret. Until then deliveries to it are rejected."}</span>
       </div>`
     : `<div style="margin-top:10px">
         <span style="${O_LABEL};font-size:10px">Webhook URL &middot; available soon</span>
@@ -205,14 +201,14 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
 
   const off = !o.secretsAvailable;
   const why = off ? "Secrets can't be saved until the platform's encryption key is configured" : undefined;
-  const testable = (i.configured || i.legacy_fallback) && i.expected && (i.kind !== "github_webhook" || WEBHOOKS_LIVE);
+  const testable = i.configured && i.expected && (i.kind !== "github_webhook" || WEBHOOKS_LIVE);
   const running = o.test?.status === "running";
   // A webhook secret is checked by what GitHub has delivered, not by a call Trov makes.
   const hookTest = i.kind === "github_webhook";
   const testBtn = testable ? quietBtn(running ? (hookTest ? "Checking…" : "Testing…") : hookTest ? "Check deliveries" : "Test connection", "orgSecretTest", { arg: key, disabled: off || running, busy: running, label: hookTest ? `Check deliveries for the ${full}` : `Test the ${full}`, field: `orgSecretTest:${key}`, title: why }) : "";
   // The row's ONE visible action: give it a value while it has none (the page's accent
   // button is the lead's; this one is quiet), check it once it has one.
-  const setBtn = !i.configured ? quietBtn(st.state === "legacy" ? "Set your own" : "Set", "orgSecretOpen", { arg: `set:${key}`, disabled: off, label: `Set the ${full}`, field: `orgSecretOpen:set:${key}`, title: why, extra: "color:var(--fg);border-color:var(--border-strong)" }) : "";
+  const setBtn = !i.configured ? quietBtn("Set", "orgSecretOpen", { arg: `set:${key}`, disabled: off, label: `Set the ${full}`, field: `orgSecretOpen:set:${key}`, title: why, extra: "color:var(--fg);border-color:var(--border-strong)" }) : "";
   const lead = setBtn || testBtn;
   // Behind the row: the less-used actions, the destructive one last and as text.
   const more: string[] = [];
@@ -231,7 +227,7 @@ export function integrationRow(i: IntegrationDTO, o: RowOpts): string {
     always: error || answer ? `${error}${answer}` : "",
     body: `<div style="max-width:680px">${esc(i.description)}</div>
       ${meta.length ? `<div style="font-size:12px;color:var(--fg-40);margin-top:6px">${meta.join(" &middot; ")}</div>` : ""}
-      ${settings}${orphan}${hook}${legacy}
+      ${settings}${orphan}${hook}
       ${more.length ? `<div class="cnpy-xrow-acts">${more.join("")}</div>` : ""}`,
     attrs: ` data-org-integration="${attr(key)}" data-state="${st.state}"`,
   });
@@ -343,7 +339,7 @@ function githubGroup(org: MyOrg, ui: OrgUi, rows: IntegrationDTO[], app: GithubA
   const d = ui.integrations.data!;
   const row = (i: IntegrationDTO) => integrationRow(i, { secretsAvailable: d.secrets_available, test: ui.tests[integrationKey(i)], open: ui.openRows.includes(integrationKey(i)) });
   const inst = app?.installation ?? null;
-  const done = rows.filter((i) => i.configured || i.legacy_fallback).length;
+  const done = rows.filter((i) => i.configured).length;
   if (inst) {
     const tracked = ui.repos.data.filter((r) => r.connection === "app").length;
     const stored = rows.filter((i) => i.configured).length;
@@ -398,7 +394,7 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
   // The lead: the state of the whole tab in one sentence. Its action is the one thing nothing works
   // without — GitHub — while it is not connected: through the App where this Trov offers it, else the token.
   const token = d.integrations.find((i) => i.kind === "github_token" && i.expected);
-  const needToken = !inst && !!token && !token.configured && !token.legacy_fallback;
+  const needToken = !inst && !!token && !token.configured;
   const lead = tabLead(
     // Nothing else owed (the App connected, and every other credential is Hosting's): no "0 of 0".
     `${inst ? `${inst.suspended_at ? appLeadPhrase(inst) : `GitHub is connected ${appLeadPhrase(inst)}`}${n.expected || n.orphans ? " &middot; " : ""}` : ""}${inst && n.expected === 0 ? "" : `<strong>${n.set} of ${n.expected}</strong> ${inst ? "other " : ""}${n.expected === 1 ? "credential" : "credentials"} set`}${n.errors ? ` &middot; ${leadFlag(`${n.errors} with an error`)}` : ""}${n.orphans ? `${inst && n.expected === 0 ? "" : " &middot; "}${n.orphans} no longer used` : ""}. A saved value is never shown again, only its last four characters.`,
@@ -407,7 +403,7 @@ export function integrationsTab(org: MyOrg, ui: OrgUi): string {
       : accentBtn("Set the GitHub token", "orgSecretOpen", { arg: `set:${integrationKey(token)}`, disabled: !d.secrets_available, field: "orgLeadToken", label: "Set the GitHub token" }),
   );
   const sections = groups.map((g) => {
-    const done = g.rows.filter((i) => i.configured || i.legacy_fallback).length;
+    const done = g.rows.filter((i) => i.configured).length;
     const extra = g.key === "github" && noRepo
       ? `<li class="cnpy-org-row" style="align-items:center"><div style="flex:1 1 260px;min-width:0;font-size:12.5px;color:var(--fg-55)">Each repository gets its own webhook secret. None is connected yet.</div><div class="cnpy-org-actions">${goLink("Connect a repository", "orgTab", "repos")}</div></li>` : "";
     if (g.key === "github") return githubGroup(org, ui, g.rows, app, extra);

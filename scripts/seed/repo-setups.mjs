@@ -72,9 +72,9 @@ s.push(row("memberships", { org_id: ACME, user_id: "AndresL230", role: "admin", 
 for (const org of [SAP, ACME, UNSEEN]) s.push(`INSERT OR IGNORE INTO org_keys (org_id, key_version, wrapped_key, wrap_iv, kek_fingerprint, created_at) VALUES (${q(org)}, 1, 'test-not-a-key', 'test-iv', 'test-e2e', ${q(ago(DAY))})`);
 
 // ── repositories ────────────────────────────────────────────────────────────────────────────────────────────────
-s.push(row("org_repos", { id: "hook_test_sapling", org_id: SAP, repo_full_name: S_REPO, is_primary: 1, legacy_hook: 0, created_at: ago(30 * DAY), created_by: "AndresL230" }));
-s.push(row("org_repos", { id: "hook_test_acme", org_id: ACME, repo_full_name: A_REPO, is_primary: 1, legacy_hook: 0, created_at: ago(DAY), created_by: "sanaok" }));
-s.push(row("org_repos", { id: "hook_test_unseen", org_id: UNSEEN, repo_full_name: U_REPO, is_primary: 1, legacy_hook: 0, created_at: ago(DAY), created_by: "AndresL230" }));
+s.push(row("org_repos", { id: "hook_test_sapling", org_id: SAP, repo_full_name: S_REPO, is_primary: 1, created_at: ago(30 * DAY), created_by: "AndresL230" }));
+s.push(row("org_repos", { id: "hook_test_acme", org_id: ACME, repo_full_name: A_REPO, is_primary: 1, created_at: ago(DAY), created_by: "sanaok" }));
+s.push(row("org_repos", { id: "hook_test_unseen", org_id: UNSEEN, repo_full_name: U_REPO, is_primary: 1, created_at: ago(DAY), created_by: "AndresL230" }));
 
 // ── sapling-live: environments, apps, parts ─────────────────────────────────────────────────────────────────────
 const env = (key, position, label, branch, fe, api) => row("org_environments", { org_id: SAP, key, position, label, note: null, branch, frontend_url: fe, api_url: api, health_path: "/health", created_at: ago(30 * DAY), updated_at: ago(30 * DAY), updated_by: "AndresL230" });

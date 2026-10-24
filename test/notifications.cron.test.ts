@@ -4,6 +4,7 @@
  * and the signed one-click unsubscribe token. Row assertions only.
  */
 import { describe, it, expect } from "vitest";
+import type { LegacyEnv } from "./helpers/org-config";
 import { env } from "cloudflare:test";
 import { systemCtx, platformCtx } from "./helpers/tenant";
 import wranglerToml from "../wrangler.toml?raw";
@@ -108,7 +109,7 @@ describe("scheduled() dispatch (local mode)", () => {
     // real staging/production URLs — handleRepoCron itself is covered
     // end-to-end, with an injected fetchImpl, in test/repo-cron.test.ts.
     const reconcileTick = new Date("2026-09-11T12:20:00.000Z").getTime();
-    await worker.scheduled({ cron: REPO_CRON, scheduledTime: reconcileTick, noRetry() {} }, { ...localEnv(), REPO_ENVIRONMENTS: undefined }, ctx);
+    await worker.scheduled({ cron: REPO_CRON, scheduledTime: reconcileTick, noRetry() {} }, { ...localEnv(), REPO_ENVIRONMENTS: undefined } as LegacyEnv, ctx);
     expect(await outbox()).toHaveLength(0);
   });
 });

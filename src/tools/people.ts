@@ -17,15 +17,15 @@
 // `persons.avatar_sha`, so the provider picture shows again. There is no avatars table:
 // the R2 object's own `httpMetadata.contentType` (the SNIFFED type) is what is served.
 
-import { type TenantContext, all, stmt, batch, nowIso } from "../data/sql";
+import { type TenantContext, all, stmt, batch } from "../data/sql";
 import { hasRole } from "../data/context";
 import { type PlatformContext, first as platformFirst, run as platformRun } from "../data/platform-sql";
-import { RESERVED_HANDLES, memberHandle } from "../auth/persons";
+import { RESERVED_HANDLES } from "../auth/persons";
 import { sha256Hex } from "./artifacts";
 import type { PersonColor } from "@shared/rows";
 import {
-  AVATAR_MAX_BYTES, AVATAR_TYPES, RESPONSIBILITIES_MAX, ROLE_MAX, avatarSrc,
-  type AvatarType, type PersonForAgents, type PersonProfile, type PersonProfileWrite,
+  AVATAR_MAX_BYTES, AVATAR_TYPES, avatarSrc,
+  type AvatarType, type PersonForAgents, type PersonProfile,
 } from "@shared/people";
 
 export type PeopleErrorCode = "not_found" | "forbidden" | "bad_request" | "too_large";
@@ -81,50 +81,6 @@ export async function getPersonProfile(ctx: TenantContext, handle: string, viewe
     self,
     ...(editor ? { responsibilities: person.responsibilities } : {}),
   };
-}
-
-/** One field of a `PersonProfileWrite`: absent = untouched, "" / null = clear, over the cap = refused. */
-function field(v: unknown, name: string, max: number): { set: false } | { set: true; value: string | null } {
-  if (v === undefined) return { set: false };
-  if (v === null) return { set: true, value: null };
-  if (typeof v !== "string") throw new PeopleError("bad_request", `${name} must be a string or null`);
-  const t = v.trim();
-  if (t.length > max) throw new PeopleError("bad_request", `${name} is at most ${max} characters`);
-  return { set: true, value: t === "" ? null : t };
-}
-
-/**
- * `PUT /api/people/:handle` — the cut-over alias of `PUT /api/o/:slug/members/:handle` for a member's
- * TITLE (it travels as `role` here) and responsibilities: the org's admins and owners only (§5.2);
- * anyone else, the person themselves included, is `forbidden` and nothing is written. It never changes a
- * member's org role — that is the members route's alone. Every field is validated BEFORE the one UPDATE,
- * so an over-cap value writes nothing (not even the other, valid field). The write lands on the
- * person's MEMBERSHIP of this org, so it says nothing about them anywhere else, and is audited as the
- * members route audits it (`member.update`: the title, and the FACT that responsibilities changed).
- */
-export async function writePersonProfile(ctx: TenantContext, handle: string, viewer: string, body: unknown): Promise<PersonProfile> {
-  if (isReserved(handle)) throw new PeopleError("not_found", "not found");
-  const member = await memberHandle(ctx, handle);
-  if (!member) throw new PeopleError("not_found", "not found");
-  const person = { handle: member };
-  if (!hasRole(ctx, "admin")) throw new PeopleError("forbidden", "only an admin may set a person's role and responsibilities");
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw new PeopleError("bad_request", "the body must be a JSON object");
-  const b = body as PersonProfileWrite;
-  const role = field(b.role, "role", ROLE_MAX);
-  const resp = field(b.responsibilities, "responsibilities", RESPONSIBILITIES_MAX);
-  const sets: string[] = [];
-  const binds: unknown[] = [];
-  if (role.set) { sets.push("title = ?"); binds.push(role.value); }
-  if (resp.set) { sets.push("responsibilities = ?"); binds.push(resp.value); }
-  if (sets.length) {
-    const detail = { ...(role.set ? { title: role.value } : {}), ...(resp.set ? { responsibilities: true } : {}) };
-    await batch(ctx, [
-      stmt(ctx, `UPDATE memberships SET ${sets.join(", ")} WHERE org_id = ? AND user_id = ?`, ...binds, ctx.orgId, person.handle),
-      stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'member.update', ?, ?, ?)`,
-        ctx.orgId, ctx.userId, person.handle, JSON.stringify(detail), nowIso()),
-    ]);
-  }
-  return getPersonProfile(ctx, person.handle, viewer);
 }
 
 /**

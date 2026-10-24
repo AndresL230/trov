@@ -643,23 +643,18 @@ describe("/api/o/:slug/mcp-tokens — a member's own tokens for this org", () =>
     expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM mcp_tokens`).first<{ n: number }>()).toEqual(before);
   });
 
-  it("the old /auth paths: the alias for a person with exactly one org; 409 org_required for dana, who has two", async () => {
-    const dana = await cookieFor("dana", { member: false });
-    const before = await env.DB.prepare(`SELECT COUNT(*) AS n FROM mcp_tokens`).first<{ n: number }>();
-    for (const [method, path] of [["POST", "/auth/mcp-token"], ["GET", "/auth/mcp-tokens"], ["POST", "/auth/mcp-tokens/1/revoke"]] as const) {
-      const res = await req(method, path, dana);
-      expect([res.status, await res.json()], path).toEqual([409, { error: "org_required" }]);
-    }
-    expect(await env.DB.prepare(`SELECT COUNT(*) AS n FROM mcp_tokens`).first<{ n: number }>()).toEqual(before);
-
+  it("the old /auth paths are gone: 404 for one org or two, and nothing is minted or revoked", async () => {
     const bob = await cookieFor("bob", { member: false });
-    const { token } = (await (await req("POST", "/auth/mcp-token", bob)).json()) as { token: string };
-    expect(await resolveBearerTenant(e, bearerReq(token))).toMatchObject({ ok: true, ctx: { orgId: ORG_B, userId: "bob" } });
-    const listed = ((await (await req("GET", "/auth/mcp-tokens", bob)).json()) as { tokens: { id: number }[] }).tokens;
-    expect(listed).toHaveLength(1);
-    expect(await tokensOf("acme", bob)).toEqual(listed); // the same rows as the org route
-    expect((await req("POST", `/auth/mcp-tokens/${listed[0].id}/revoke`, bob)).status).toBe(200);
-    expect((await resolveBearerTenant(e, bearerReq(token))).ok).toBe(false);
+    const dana = await cookieFor("dana", { member: false });
+    expect((await req("POST", "/api/o/acme/mcp-tokens", bob)).status).toBe(200);
+    const [{ id }] = await tokensOf("acme", bob);
+    const before = await env.DB.prepare(`SELECT * FROM mcp_tokens ORDER BY id`).all();
+    for (const who of [bob, dana]) {
+      for (const [method, path] of [["POST", "/auth/mcp-token"], ["GET", "/auth/mcp-tokens"], ["POST", `/auth/mcp-tokens/${id}/revoke`]] as const) {
+        expect((await req(method, path, who)).status, path).toBe(404);
+      }
+    }
+    expect((await env.DB.prepare(`SELECT * FROM mcp_tokens ORDER BY id`).all()).results).toEqual(before.results);
   });
 });
 

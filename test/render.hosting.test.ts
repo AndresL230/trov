@@ -415,16 +415,16 @@ describe("providers and their connections", () => {
     expect(html).not.toMatch(/data-act="orgHxManage"[^>]*disabled/);          // Manage (and Test) still open
   });
 
-  it("a legacy fallback says the platform's old secret answers, and offers saving your own", () => {
+  it("nothing saved is Not connected — no platform secret answers for the org, and nothing says one does", () => {
     const d = clone(HOSTING_SAMPLE_MIXED);
     const cf = d.connections.find((c) => c.provider === "cloudflare")!;
-    Object.assign(cf, { status: "not_connected", method: null, hint_last4: "", connected_by: null, connected_at: null, legacy_fallback: true });
+    Object.assign(cf, { status: "not_connected", method: null, hint_last4: "", connected_by: null, connected_at: null });
+    expect(connectionStatus(cf, "Cloudflare")).toMatchObject({ word: "Not connected", state: "not_connected" });
     const row = rowOf(tab(d), 'data-org-hosting-conn="cloudflare:"');
-    expect(row).toContain("data-org-legacy");
-    expect(row).toContain("Using the platform's old secret. Save your own to take over.");
-    expect(row).toContain(">Connected<");
-    expect(row).toMatch(/data-act="orgHxManage" data-arg="cloudflare:"/);
-    expect(manage(d, "cloudflare:")).toContain('data-arg="set:cloudflare:"');
+    expect(row).not.toContain("data-org-legacy");
+    expect(row).not.toContain("old secret");
+    expect(row).not.toContain(">Connected<");
+    expect(row).toContain("data-act=\"orgHxConnect\"");
   });
 
   it("the Manage dialog is drawn by the page's overlay, above the tab", () => {

@@ -9,6 +9,7 @@
  * reconcile at :20 and the capture prune at :30, each in its own invocation.
  */
 import { describe, it, expect } from "vitest";
+import type { LegacyEnv } from "./helpers/org-config";
 import { env } from "cloudflare:test";
 import { ORG_A, systemCtx } from "./helpers/tenant";
 import { addPart, deployRow } from "./helpers/dashboard-hosting";
@@ -33,7 +34,7 @@ const PRUNE_TICK = Date.parse("2026-09-20T12:30:00Z");    // pruneRepoCapture (D
 const NOT_SIX = Date.parse("2026-09-20T13:20:00Z");       // the same minute, a non-6-hourly hour
 
 /** `SAPLING_METRICS_TOKEN` is pinned absent unless a test sets it: a local `.dev.vars` must not decide a request count. */
-const ghEnv = (over: Partial<Env> = {}): Env =>
+const ghEnv = (over: Partial<LegacyEnv> = {}): Env =>
   ({ ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r", SAPLING_METRICS_TOKEN: undefined, ...over }) as unknown as Env;
 const okFetch = (async () => new Response("ok", { status: 200 })) as typeof fetch;
 const snapshots = () => all(env.DB, `SELECT 1 FROM repo_snapshots`);
@@ -190,7 +191,7 @@ describe("handleRepoCron", () => {
   // when `SAPLING_METRICS_TOKEN` is set (and not empty).
   describe("the hourly Sapling active-users poll", () => {
     const METRICS_PATH = "/api/internal/metrics";
-    const spEnv = (over: Partial<Env> = {}): Env =>
+    const spEnv = (over: Partial<LegacyEnv> = {}): Env =>
       ghEnv({ REPO_ENVIRONMENTS: JSON.stringify(ENVS), SAPLING_METRICS_TOKEN: "s3cret", ...over });
     /** Health pings answer 200; Sapling answers its three windows; `broken` URLs throw. */
     const recorder = (broken: string[] = []) => {

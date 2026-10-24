@@ -1,6 +1,5 @@
 // The Docs Library's spaces over HTTP (0081_docs_library; docs/architecture/docs-library.md › Spaces) — mounted
-// on the tenant API at `/spaces`: `/api/o/:slug/spaces…` for the org the path names, and `/api/spaces…` as the
-// alias for a person with one org.
+// on the tenant API at `/spaces`: `/api/o/:slug/spaces…`, for the org the path names.
 //
 //   GET  /spaces                    any member: the Library — live spaces with page counts and owners, the
 //                                   recently updated pages; an admin also gets the archived spaces

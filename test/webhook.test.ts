@@ -9,7 +9,7 @@ import {
   eventsFromDelivery,
   progressFromIssueEvent,
 } from "../src/webhook";
-import { handleGithubWebhook, syncOrgConfig } from "./helpers/org-config";
+import { SAPLING_HOOK, handleGithubWebhook, syncOrgConfig, type LegacyEnv } from "./helpers/org-config";
 import prMerged from "./fixtures/gh-pr-merged.json";
 import issueAssigned from "./fixtures/gh-issue-assigned.json";
 import issueClosed from "./fixtures/gh-issue-closed.json";
@@ -40,18 +40,26 @@ async function sign(secret: string, body: string): Promise<string> {
   return "sha256=" + [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function req(body: string, headers: Record<string, string>): Request {
-  return new Request("https://x/webhook/github", { method: "POST", headers, body });
+function req(body: string, headers: Record<string, string>, path = `/webhook/github/${SAPLING_HOOK}`): Request {
+  return new Request(`https://x${path}`, { method: "POST", headers, body });
+}
+
+// A delivery must name the hook's own repository (src/github-hook.ts): the one the org-config wrapper
+// gives SaplingLearn's hook from `GITHUB_REPO`. A fixture that names none gets it, as GitHub always sends one.
+const POOL_REPO = "SaplingLearn/sapling"; // vitest.config.ts binding
+function named(payload: unknown, repo: string = POOL_REPO): unknown {
+  const p = payload as { repository?: { full_name?: string } };
+  return p.repository?.full_name ? payload : { ...p, repository: { ...p.repository, full_name: repo } };
 }
 
 // A correctly-signed delivery to the handler (the common happy path).
 async function postWebhook(
   eventName: string,
   payload: unknown,
-  e: Env = env,
+  e: LegacyEnv = env as LegacyEnv,
   opts?: { summarizer?: Summarizer<PrSummary> | null; issueSummarizer?: Summarizer<IssueSummary> | null; fetchImpl?: typeof fetch }
 ): Promise<Response> {
-  const body = JSON.stringify(payload);
+  const body = JSON.stringify(named(payload, e.GITHUB_REPO));
   const sig = await sign(SECRET, body);
   return handleGithubWebhook(
     req(body, { "x-github-event": eventName, "x-hub-signature-256": sig, "content-type": "application/json" }),
@@ -84,7 +92,7 @@ describe("handleGithubWebhook — the third auth class", () => {
   });
 
   it("bad signature → 401 and zero rows written", async () => {
-    const body = JSON.stringify(prMerged);
+    const body = JSON.stringify(named(prMerged));
     const res = await handleGithubWebhook(
       req(body, { "x-github-event": "pull_request", "x-hub-signature-256": "sha256=deadbeef" }),
       env
@@ -95,15 +103,15 @@ describe("handleGithubWebhook — the third auth class", () => {
   });
 
   it("missing signature header → 401", async () => {
-    const body = JSON.stringify(prMerged);
+    const body = JSON.stringify(named(prMerged));
     const res = await handleGithubWebhook(req(body, { "x-github-event": "pull_request" }), env);
     expect(res.status).toBe(401);
   });
 
   it("secret unset → 401 (never trusts an unsigned surface)", async () => {
-    const body = JSON.stringify(prMerged);
+    const body = JSON.stringify(named(prMerged));
     const sig = await sign(SECRET, body);
-    const noSecret = { ...env, GITHUB_WEBHOOK_SECRET: undefined } as Env;
+    const noSecret = { ...env, GITHUB_WEBHOOK_SECRET: undefined } as LegacyEnv;
     const res = await handleGithubWebhook(
       req(body, { "x-github-event": "pull_request", "x-hub-signature-256": sig }),
       noSecret
@@ -112,7 +120,7 @@ describe("handleGithubWebhook — the third auth class", () => {
   });
 
   it("unhandled event name → 200 {ok:true, ignored:true} AFTER signature verification", async () => {
-    const body = JSON.stringify({ zen: "Keep it simple." });
+    const body = JSON.stringify(named({ zen: "Keep it simple." }));
     const sig = await sign(SECRET, body);
     const res = await handleGithubWebhook(
       req(body, { "x-github-event": "ping", "x-hub-signature-256": sig }),
@@ -123,11 +131,18 @@ describe("handleGithubWebhook — the third auth class", () => {
     expect((await all<EventRow>(env.DB, `SELECT * FROM events`)).length).toBe(0);
   });
 
-  it("default export routes POST /webhook/github to the handler", async () => {
-    const body = JSON.stringify(prMerged);
+  it("default export routes POST /webhook/github/<hook id> to the handler — the bare legacy path is gone", async () => {
+    const body = JSON.stringify(named(prMerged));
     const sig = await sign(SECRET, body);
     const ctx = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
-    await syncOrgConfig(); // SaplingLearn's repo row — the one the legacy URL delivers to
+    await syncOrgConfig(); // SaplingLearn's repo row and its stored webhook secret
+    const legacy = await worker.fetch(
+      req(body, { "x-github-event": "pull_request", "x-hub-signature-256": sig }, "/webhook/github"),
+      env,
+      ctx
+    );
+    expect(legacy.status).toBe(404);
+    expect((await all<EventRow>(env.DB, `SELECT * FROM events`)).length).toBe(0);
     const res = await worker.fetch(
       req(body, { "x-github-event": "pull_request", "x-hub-signature-256": sig }),
       env,
@@ -339,7 +354,7 @@ describe("handleGithubWebhook — repo capture runs beside the My Work capture",
       expect(String(u)).toBe("https://api.github.com/repos/o/r/actions/runs/35501310333/jobs?filter=latest&per_page=100");
       return new Response(JSON.stringify(jobs), { status: 200 });
     }) as typeof fetch;
-    await postWebhook("workflow_run", workflowRun, { ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r" }, { fetchImpl });
+    await postWebhook("workflow_run", workflowRun, { ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r" } as LegacyEnv, { fetchImpl });
     const row = await all<{ title: string | null }>(env.DB, `SELECT title FROM repo_events WHERE kind = 'run'`);
     expect(row).toEqual([{ title: "e2e (browser lane) · Run e2e suite" }]);
   });
@@ -350,7 +365,7 @@ describe("handleGithubWebhook — repo capture runs beside the My Work capture",
     ] };
     const fetchImpl = (async () => new Response(JSON.stringify(jobs), { status: 200 })) as typeof fetch;
     const timedOut = { ...workflowRun, workflow_run: { ...workflowRun.workflow_run, conclusion: "timed_out" } };
-    await postWebhook("workflow_run", timedOut, { ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r" }, { fetchImpl });
+    await postWebhook("workflow_run", timedOut, { ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r" } as LegacyEnv, { fetchImpl });
     const row = await all<{ title: string | null }>(env.DB, `SELECT title FROM repo_events WHERE kind = 'run'`);
     expect(row).toEqual([{ title: "e2e (browser lane) · Run e2e suite" }]);
   });
@@ -371,7 +386,7 @@ describe("handleGithubWebhook — status capture (coverage/bundle/TODO metrics)"
   // M13: exercise these against a CONFIGURED REPO_ENVIRONMENTS (as the drift
   // tests below do), not the bare test env's implicit fallback — the branch
   // match must be pinned to the actual config, not to "main" by coincidence.
-  const withEnvs = { ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
+  const withEnvs = { ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as LegacyEnv;
 
   it("a canopy/coverage status writes one repo_metrics row, counted in repo.captured; redelivery → unchanged", async () => {
     const res = await postWebhook("status", statusFixture, withEnvs);
@@ -422,7 +437,7 @@ describe("handleGithubWebhook — status capture (coverage/bundle/TODO metrics)"
   // branch. When the first environment ships from a different branch, a
   // status naming "main" is just another off-branch status — dropped.
   it("a status on main is dropped when the first configured environment's branch is not main", async () => {
-    const otherFirst = { ...env, REPO_ENVIRONMENTS: JSON.stringify([{ ...ENVS[0], branch: "release" }, ENVS[1]]) } as Env;
+    const otherFirst = { ...env, REPO_ENVIRONMENTS: JSON.stringify([{ ...ENVS[0], branch: "release" }, ENVS[1]]) } as LegacyEnv;
     const res = await postWebhook("status", statusFixture, otherFirst);
     expect(await res.json()).toEqual({ ok: true, captured: 0, unchanged: 0, repo: { captured: 0, unchanged: 0 } });
     expect(await all(env.DB, `SELECT * FROM repo_metrics`)).toHaveLength(0);
@@ -430,7 +445,7 @@ describe("handleGithubWebhook — status capture (coverage/bundle/TODO metrics)"
 });
 
 describe("handleGithubWebhook — drift snapshot on a push to an environment branch", () => {
-  const withRepoConfig = { ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r", REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
+  const withRepoConfig = { ...env, GITHUB_SERVICE_TOKEN: "t", GITHUB_REPO: "o/r", REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as LegacyEnv;
 
   it("a push to main (an environment branch) refreshes the drift snapshot", async () => {
     const fetchImpl = (async (u: RequestInfo | URL) => {
@@ -461,7 +476,7 @@ describe("handleGithubWebhook — drift snapshot on a push to an environment bra
   it("with no GITHUB_SERVICE_TOKEN, no fetch is attempted and no snapshot is written", async () => {
     let calls = 0;
     const fetchImpl = (async () => { calls++; return new Response("[]", { status: 200 }); }) as typeof fetch;
-    const noToken = { ...env, GITHUB_REPO: "o/r", REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as Env;
+    const noToken = { ...env, GITHUB_REPO: "o/r", REPO_ENVIRONMENTS: JSON.stringify(ENVS) } as LegacyEnv;
     await postWebhook("push", pushFixture, noToken, { fetchImpl });
     expect(calls).toBe(0);
     expect(await getSnapshot(systemCtx(), "drift")).toBeNull();

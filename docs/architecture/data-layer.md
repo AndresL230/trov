@@ -2,14 +2,14 @@
 
 Spec: `canopy-multitenancy.md` §4–§8. Code: `src/data/`, `src/routes.ts`. Phases 3–5 are complete: every statement in `src/` runs
 through a context, every tenant statement names its org, and `test/data-layer.static.test.ts` enforces both.
-What is left for the Phase 7 cleanup: "What is still org #1's alone" below. The deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
+The Phase 7 cleanup is done: no code names an org, and nothing answers an org route outside `/api/o/:slug` ("Routes and gates" below). The deploy runbook: `HANDOFF.md`. Rate limits and mail: `abuse-limits.md`.
 The flow a human operator follows — add an org, name its admin, set it up, invite the team: `organizations.md`.
 
 ## The two contexts
 
 | | Type | Built by | Query surface |
 |---|---|---|---|
-| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (cut-over alias: the caller's one org), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)`, `catalogTenant(role)` (NO org and NO database — any read through it throws; only `src/mcp-catalog.ts`, which registers the MCP tools to describe them) | `src/data/sql.ts` |
+| Tenant data | `TenantContext { orgId, userId, role, via }` | `resolveTenant` (slug + membership), `resolveTenantById` (a credential that names its org), `resolveSoleTenant` (the caller's one org — MCP OAuth's consent only, when no org was named), `liveTenants` (a bearer connection's reach — `src/data/bearer.ts` picks one per call), `systemTenant(p, orgId, actor)`, `catalogTenant(role)` (NO org and NO database — any read through it throws; only `src/mcp-catalog.ts`, which registers the MCP tools to describe them) | `src/data/sql.ts` |
 | Platform data | `PlatformContext { actor }` | `platform(env, actor)` | `src/data/platform-sql.ts` |
 
 Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`, `fanOut`, plus `nowIso`, `ph`,
@@ -114,7 +114,7 @@ in its own batch and revokes a manual grant left with no org. A revoked grant ho
 
 - Tokens: `mintToken(ctx)` / `listTokens(ctx)` / `revokeToken(ctx, id)` are TENANT statements (the caller's own
   tokens for `ctx.orgId`), served at `GET|POST /api/o/:slug/mcp-tokens`, `POST …/:id/revoke`
-  (`src/auth/token-routes.ts`). `/auth/mcp-token…` is the cut-over alias for a person with exactly one org.
+  (`src/auth/token-routes.ts`).
 - `GET /auth/oauth-grants` is user-level; each row carries `mode`, `org` (a manual one's current, or null) and
   `orgs` (allowed / used in) — only organizations the person is a member of now.
 - "Admin" over MCP is `hasRole(ctx, "admin")` in the org the call RESOLVED to — `update_plan` and the lane's two
@@ -212,7 +212,6 @@ the surface of whatever uses the constant it is bound to. A failure names `file:
 3. A platform statement names no tenant table, except `PLATFORM_ALLOW` (below). A stale entry fails.
 4. The table lists come from `sqlite_master` / `pragma_table_info`, so a new table is covered automatically.
 
-Also checked: the cut-over entry points (below) are the only callers of `src/data/legacy.ts`, each marked `// MT:`.
 It is a text heuristic, not a proof — it counts `org_id` mentions, it does not check which parameter is bound —
 so the isolation tests (and the §10.3 mutation check) remain the behavioural half.
 
@@ -248,11 +247,11 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | digest crons `handleNotificationCron` (`src/notifications/cron.ts`) | `listActiveOrgIds` | the same, per org |
 | the AI pass `runAiPass` (`src/ai/pass.ts`, from the repo cron on every tick with no heavy job — `ai.md`) | `listActiveOrgIds`, rotated on `cron_cursor` job `ai_pass` — and NOTHING is read while its job registry is empty (today); its batch half reads `ai_batches` (platform) | `systemTenant(p, org, "system")` per org (and per batch result's org, only if it still exists with AI on); meter rows as actor `ai-pass` |
 | the digest pre-warm `prewarmDigests` (`src/notifications/cron.ts`, from the repo cron at `:50`) | `listActiveOrgIds` | the same, per org: the AI router marks each recipient's `person` scope |
-| `POST /webhook/github/:hookId`, legacy `/webhook/github` (`src/github-hook.ts`) | `hookRepo(p, id)` / `legacyHookRepo(p)` | `systemTenant(p, row.org_id, "github-webhook")` |
+| `POST /webhook/github/:hookId` (`src/github-hook.ts`) | `hookRepo(p, id)` | `systemTenant(p, row.org_id, "github-webhook")` |
 | `POST /webhook/github/app` — the GitHub App's one endpoint (`src/github-app/webhook.ts`, `github-app.md`) | `installationOrgs(p, <the delivery's installation id>)` for the installation's own events, `installationRepoOrgs(p, <installation id>, <repository>)` for a repository's | the same |
 | repo cron `hosting` job at `:40` (`src/repo/cron.ts`, `src/hosting/poll.ts`) | `listPartUnits` — one per (org, environment, stored part) | `systemTenant(p, org, "system")` per unit |
 | `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
-| `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself; exactly `/hosting/<provider>/callback` is a platform path in `src/data/gate.ts` |
+| `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself, with no tenant gate in front of it |
 | Test connection's 401 on an install / OAuth credential (`src/integrations/probe.ts` → `endRefusedConnection`) | the admin's session tenant | `jobTenant(env, ctx)` — `systemRevocationDeleteStmts` deletes the secret |
 | the `doc_links` backfill `backfillDocLinks` (`src/platform/doc-links-backfill.ts`, from the daily cron) | `listActiveOrgIds`, resumed on `cron_cursor` job `doc_links_backfill` (`<org>\t<slug>`; `\u0001done` once every org was read — then it reads nothing) | `systemTenant(p, org, "system")` per org; at most 300 pages read (and 60 queries) per invocation (`docs-library.md` › Links) |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
@@ -281,9 +280,8 @@ suspended org is absent from every list, and its hook reads as unknown.
 environments are `org_environments` in `position` order (`orgEnvironments`) — `GITHUB_REPO` and
 `REPO_ENVIRONMENTS` are read by NOTHING any more (the dashboard reads use the same rows). The GitHub
 credential comes from `resolveGithubCredential(ctx, env, { repo })` (`src/github-app/credential.ts`,
-`github-app.md`): the org's live App installation → an installation token, else its stored `github_token`,
-else SaplingLearn's legacy secret. Every other credential comes from
-`resolveCredential(ctx, env, kind, scope)`: `github_webhook` (the hook id),
+`github-app.md`): the org's live App installation → an installation token, else its stored `github_token`.
+Every other credential comes from `resolveCredential(ctx, kind, scope)` (the org's stored secret, or null): `github_webhook` (the hook id),
 `cloudflare_analytics` (`""`, + `resolveCloudflareAccountId`), `railway` and the other hosting kinds (`""`, ONE
 org-wide each — a scoped one is a leftover, `hosting-providers.md`) and `metrics_endpoint` (the environment key).
 Both are resolved ONLY in modules that
@@ -301,8 +299,6 @@ require the payload to name that repo (else 202 ignored), then `captureDelivery`
 unknown hook id, suspended org, no (readable) secret, bad signature — is the SAME bare 401
 `{ "error": "unauthorized" }` with NOTHING written, so a hook id cannot be probed (§8.5). Only the org's PRIMARY repo is captured today —
 the capture's keys (`gh:pr:<n>:…`) carry no repo — so a non-primary repo's verified delivery is ignored.
-The legacy `POST /webhook/github` delivers to the one `legacy_hook = 1` row with no repository check,
-exactly as before.
 
 **Email.** One digest per (person, org): each org is due on its own `notification_settings`, the outbox key
 is `org:user:cadence:window`, the unsubscribe is global. The From ADDRESS is the platform's on EVERY mail
@@ -310,38 +306,26 @@ path (digest, test send, invite, welcome): `deliveryFor` builds the header, and 
 contributes a sanitised display name only (`platformFrom`, `abuse-limits.md`). `notification_policy` is seeded by
 `createOrg` and topped up per org by the cron; the per-isolate seed in `src/index.ts` is gone.
 
-**SaplingLearn's fallback (owner steps).** These Worker secrets are now read ONLY by `resolveCredential`'s
-`org_saplinglearn` fallback (and by the cron's log scrubber): `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`,
-`CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID` (its Cloudflare hosting provider's token, and the account id
-through `resolveIntegrationConfig`), `SAPLING_METRICS_TOKEN`. Each stops being read the moment SaplingLearn's
-admin stores that integration (a stored secret wins). Railway has no fallback: the old per-environment
-`RAILWAY_TOKEN_<ENV>` project tokens cannot answer for its ONE org-wide workspace connection. The cleanup phase deletes the fallback, those secrets, the legacy hook route and the
-`legacy_hook` flag.
-
 ## Routes and gates (Phase 4 — spec §5, §6)
 
-Every session request passes `sessionGate`, then exactly one of three things (`src/routes.ts`, `src/data/gate.ts`):
+Every session request passes `sessionGate`, then one of two things (`src/routes.ts`, `src/data/gate.ts`):
 
 | Path | Gate | Tenant |
 |---|---|---|
 | `/api/o/:slug/*` — the tenant routes, the org surface (`src/orgs`, `src/integrations`) and a member's own MCP tokens (`src/auth/token-routes.ts`) | `tenantGate` | the org the path names, if the caller is a member — else 404 `{ error: "not_found" }` (unknown slug, non-member, suspended: all alike) |
-| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/support` (and the PUBLIC `/api/support/public`, `support.md`), `/api/platform/*` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
-| every OTHER path | `soleTenantGate` (the cut-over alias) | the caller's ONE org — 409 `{ error: "org_required" }` with none or several, 404 if it is suspended |
+| `/auth/*`, `/avatar/*`, `/org-logo/*`, `/api/orgs`, `/api/invites`, `/api/support` (and the PUBLIC `/api/support/public`, `support.md`), `/api/platform/*`, `/api/billing/*`, `/billing/*`, `/hosting/<provider>/…` | none (person-level) | none: these read and write the caller's own person, or are `requireSuperadmin`. `/auth/callback` is also where GitHub returns after the App is installed: it binds an installation only for the org and person a sealed cookie names (`github-app.md`) |
 
-`soleTenantGate` is the DEFAULT, so a route added without thought is tenant-gated, never open.
+There is no default tenant: a route that needs `c.var.ctx` is defined on the `tenant` sub-app (or another sub-app
+mounted under `/api/o/:slug`), and any other address no route answers is a 404.
 
-- **Defined once, mounted twice.** A tenant route is registered on `tenantRoot` (its suffix is its old path:
-  `/docs`) or `tenantApi` (its old path had an `/api/`: `/handoffs` ↔ `/api/handoffs`), and both sub-apps are
-  mounted under `/api/o/:org` and at the old prefix. A handler reads `c.var.ctx`, never the path. The org
-  segment is `:org` on those mounts because many routes have a `:slug` of their own; `tenantGate` reads its
-  own `:slug`. A sub-app mounted at `/` takes no `use("*")`.
-- **Alias-only** (`legacyOnly`): `/invites…` (→ `/api/o/:slug/invites…`) and `PUT /api/people/:handle`
-  (→ `PUT /api/o/:slug/members/:handle`). Phase 7 deletes the aliases and `soleTenantGate`.
-- **Raw artifact bytes** (`src/artifacts/raw.ts`) are ONE sub-app mounted at `/api/o/:slug/raw/a/…` and, as
-  its alias, at `/raw/a/…`: the same lock-down headers, sandbox / CSP and access rules on both, wrapped by
-  `rawHeaders` BEFORE the gates so the session gate's 401 and the tenant gate's 404 carry them too. Another
-  org's slug is the same 404 as an unknown one. One difference: a numbered version is browser-cacheable for a
-  year only on the per-org mount — the alias's org can change under the same URL (`artifacts.md` › caching). Still the app's own origin — moving them off it is §8.6.
+- **Defined once, mounted once.** A tenant route is registered on `tenant` and mounted at `/api/o/:org`. A
+  handler reads `c.var.ctx`, never the path. The org segment is `:org` on that mount because many routes have a
+  `:slug` of their own; `tenantGate` reads its own `:slug`. The SPA names a route by its suffix (`/docs`,
+  `/api/handoffs`) and `apiUrl` (`web/src/api.ts`) prefixes it with the org on screen (dropping a leading `/api`).
+- **Raw artifact bytes** (`src/artifacts/raw.ts`) are a sub-app mounted at `/api/o/:slug/raw/a/…`, wrapped by
+  `rawHeaders` BEFORE the gates so the session gate's 401 and the tenant gate's 404 carry the lock-down headers
+  too. Another org's slug is the same 404 as an unknown one. A numbered version is browser-cacheable for a year
+  (`artifacts.md` › caching). Still the app's own origin — moving them off it is §8.6.
 - **The SPA shell** is answered by `src/index.ts` for `GET /<slug>/` (a valid org slug that is not in `RESERVED_ORG_SLUGS`; the old `/o/<slug>/…` is a 301 to it) and `GET /platform*` (the superadmin's area
   outside any org); neither path reaches the session gate, and both hold no data.
 - **Roles** (§5.2): admin means `hasRole(ctx, "admin")` (admin or owner of the request's org) — in the repository
@@ -370,8 +354,7 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   sign-in; `identities.provider_uid` (0042_organizations) pins a GitHub identity to the account's numeric id, and a sign-in
   with the same login but another id is refused.
 - **Onboarding creates a person, never a membership** — a new person accepts an invite (`/api/invites`) or creates
-  an org (`/api/orgs`). The ONE exception: a live legacy invite for their verified email is consumed as a
-  SaplingLearn membership (`consumeLegacyInvite`), and only then is the welcome mail sent.
+  an org (`/api/orgs`), and the welcome mail goes out then.
 - **Invitation and welcome mail** (`src/orgs/mail.ts`, 0042_organizations). An e-mail invite created through
   `POST /api/o/:slug/invites` — or by the superadmin naming an owner — is MAILED as the inviting org, and the
   outcome is on its row: `name`, `mail_status` (`sent` / `failed` / null = none), `mail_at`, `mail_error`.
@@ -379,9 +362,6 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   never mailed). The mail's only link is the site root. The welcome is sent on a person's FIRST membership of
   any org (`neverJoined`, asked before the join is written) to a provider-verified address. Neither can fail
   the request that caused it.
-- **The legacy `/invites…` routes** (`src/orgs/legacy-invites.ts`) are a view of the caller's org's EMAIL
-  `org_invites` rows in the old `InviteRow` shape, and send through the same code. The global `invites` table
-  is still read for org #1 only: a pre-0042_organizations row's name and outcome, and the row a first sign-in consumes.
 - **Attribution** (C-1): Org settings › Members' login map (Unmatched logins) writes `org_login_map` (admin+), never `identities`.
   `resolvePersonForLogin(ctx, login)` / `memberGithubLogins` read the map first, then a MEMBER's own GitHub identity.
 - **`persons.email`**: the person sets their own (`PUT …/notifications/prefs`); an org admin may set it only for a
@@ -390,21 +370,6 @@ Every session request passes `sessionGate`, then exactly one of three things (`s
   someone else's row (`abuse-limits.md`).
 - **Residue of login-based identity** (invites by GitHub login, `org_login_map`, identities not yet pinned):
   `abuse-limits.md` › Residual risks.
-
-## What is still org #1's alone (Phase 7 removes it)
-
-No entry point acts on "the" org any more. `src/data/legacy.ts` is the only file that names org #1, for two
-things that predate orgs:
-
-- **The legacy `invites` table** — `liveLegacyInvite` / `consumeLegacyInvite` (a new person with a live legacy
-  invite joins SaplingLearn at onboarding and gets its welcome mail) and `isLegacyOrg` (the sidecar is read and
-  written for org #1 only). Callers, each marked `// MT:` and listed with its reason in the static test:
-  `src/auth/onboard.ts`, `src/auth/routes.ts`, `src/orgs/legacy-invites.ts`.
-- **The env-secret fallback** — `SAPLINGLEARN_ORG_ID`, imported only by `src/data/secrets.ts`
-  (`resolveCredential`, `hasLegacyCredential`, `resolveCloudflareAccountId`).
-
-Also cut-over, with no org named: the legacy `POST /webhook/github` (`legacyHookRepo`, the `legacy_hook` flag),
-and `resolveSoleTenant` / `soleTenantGate` behind the old-path aliases.
 
 ## Round trips
 
@@ -463,8 +428,8 @@ pins the table. A change that puts a read back in series fails there.
 (consent → token → `POST /mcp` → Settings routes) for both modes. `test/isolation.mcp.test.ts` is the MCP matrix: its entries are
 checked against the server's own registry, so a new tool needs an entry (what to call it with from the other org). `test/helpers/org-config.ts`: an org's repo / environment rows
 (`addOrgRepo`, `setOrgEnvironments`), and the one-org call shapes of the background entry points for the
-SaplingLearn-only suites (`syncOrgConfig` copies the Env's `GITHUB_REPO` / `REPO_ENVIRONMENTS` into its rows,
-as 0042_organizations did). Fixture SQL may use `env.DB` directly; the raw `first` / `all` /
+SaplingLearn-only suites (`syncOrgConfig` copies the test Env's `GITHUB_REPO` / `REPO_ENVIRONMENTS` into its rows,
+as 0042_organizations did, and stores its old credential vars as the org's own secrets). Fixture SQL may use `env.DB` directly; the raw `first` / `all` /
 `run` helpers for it live in `test/helpers/db.ts` (production has none). Each module has an isolation
 assertion in `test/isolation.*.test.ts`: write through `systemCtx(ORG_B)`, read through `systemCtx()`, expect nothing.
 

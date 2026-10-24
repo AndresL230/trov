@@ -95,9 +95,8 @@ export const SITE_PAGES: readonly SitePage[] = [
     image: { path: "/og/refunds.png", alt: `${SITE_NAME} Refund and Cancellation Policy` },
   },
   // The public docs (web/src/docs-content.ts): each page is ONE Markdown text — served as-is at `markdown`
-  // and rendered to the HTML page — so the two cannot say different things. Under /docs/<page>: `/docs`
-  // itself is the app's cookie route (the old alias of an organization's docs list), so there is no page
-  // AT /docs; src/site.ts sends a browser that types it, signed out, to the first one (DOCS_HOME).
+  // and rendered to the HTML page — so the two cannot say different things. Under /docs/<page>: there is
+  // no page AT /docs; src/site.ts sends anyone who types it to the first one (DOCS_HOME).
   // The description is each page's own lede.
   {
     key: "docs-setup", path: "/docs/setup", kind: "docs", indexed: true, markdown: "/docs/setup.md", nav: "Setup",

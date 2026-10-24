@@ -146,7 +146,7 @@ export async function testConnection(
 ): Promise<ProbeResult> {
   if (kind === "github_webhook") {
     // Access is checked exactly as for a decrypt, though nothing is sent anywhere.
-    if (!(await resolveCredential(ctx, env, kind, scope))) throw new SecretNotFoundError();
+    if (!(await resolveCredential(ctx, kind, scope))) throw new SecretNotFoundError();
     const meta = await getSecretMeta(ctx, kind, scope);
     const url = webhookUrl(origin, scope);
     return meta?.last_used_at
@@ -155,10 +155,10 @@ export async function testConnection(
   }
   // Read BEFORE the probe: a refusal ends only the install / OAuth connection that was tested, never one made since.
   const installed = providerOfKind(kind) ? await liveInstallConnection(ctx, kind, scope) : null;
-  const secret = await resolveCredential(ctx, env, kind, scope);
+  const secret = await resolveCredential(ctx, kind, scope);
   if (!secret) throw new SecretNotFoundError();
   const doFetch: typeof fetch = fetchImpl ?? ((input, init) => fetch(input, init));
-  const revealed: Revealed = [secret, kind === "cloudflare_analytics" ? await resolveCloudflareAccountId(ctx, env) : null];
+  const revealed: Revealed = [secret, kind === "cloudflare_analytics" ? await resolveCloudflareAccountId(ctx) : null];
   let result: ProbeResult;
   switch (kind) {
     case "metrics_endpoint": result = await probeMetricsEndpoint(ctx, scope, secret, doFetch); break;

@@ -49,7 +49,7 @@ async function callTool(handle: string, name: string, args: Record<string, unkno
 }
 
 const postSprint = async (body: unknown) =>
-  app.request("/sprints", {
+  app.request("/api/o/saplinglearn/sprints", {
     method: "POST",
     headers: { cookie: await cookieFor("andres"), "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -110,7 +110,7 @@ describe("the ONE sprint-date validator (shared/sprints-core)", () => {
 
 // ── POST /sprints ─────────────────────────────────────────────────────────────
 
-describe("POST /sprints — start/due validated, nothing written on a refusal", () => {
+describe("POST /api/o/:slug/sprints — start/due validated, nothing written on a refusal", () => {
   it("stores a valid start and due and reads them back as start / due", async () => {
     await seedPerson("andres");
     const res = await postSprint({ label: "Dated", start: "2026-10-06", due: "2026-10-17" });
@@ -226,7 +226,7 @@ describe("a legacy non-ISO due stored before the rule", () => {
     await run(env.DB, `INSERT INTO sprints (title, target_date, status, created_at, created_by) VALUES ('Legacy', 'Oct 17', 'upcoming', '2026-09-01T00:00:00Z', 'andres')`);
     const [sp] = await list_sprints(systemCtx());
     expect(sp).toMatchObject({ label: "Legacy", due: "Oct 17", start: null });
-    const res = await app.request("/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
+    const res = await app.request("/api/o/saplinglearn/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { sprints: SprintView[] }).sprints[0].due).toBe("Oct 17");
   });

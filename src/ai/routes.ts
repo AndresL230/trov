@@ -1,7 +1,7 @@
 // Org settings › AI and the answers to what Trov wrote (docs/architecture/ai.md, organizations.md): tenant
 // routes under `/api/o/:slug` (`AI_ROUTES`, shared/ai-core.ts), COOKIE ONLY — a request carrying an
 // Authorization header is refused (`cookieOnly`), and none of this is an MCP tool. `tenantGate` (mounted on
-// /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`; there is no old-path alias.
+// /api/o/:slug/* in src/routes.ts) has already resolved `c.var.ctx`.
 //
 //   GET  /ai/settings                  any member — `AiSettings`; a failed read is 503 `{ error }`, never a 500
 //   PUT  /ai/settings { enabled?, chatAuto?, chatGithub? }  admin+ — the AI switch (`orgs.ai_automation`, audited

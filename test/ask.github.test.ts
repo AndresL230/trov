@@ -24,9 +24,9 @@ const final = "\n<trov-meta>{\"title\": \"Code check\", \"followups\": []}</trov
 
 async function connect(o: { switchOn?: boolean } = {}): Promise<void> {
   const at = "2026-01-01T00:00:00Z";
-  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_gh1', ?, ?, 1, 0, ?, 'test')`, ORG_A, PRIMARY, at);
-  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_gh2', ?, ?, 0, 0, ?, 'test')`, ORG_A, SECOND, at);
-  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_gh3', ?, 'OtherCo/secret', 1, 0, ?, 'test')`, ORG_B, at);
+  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_gh1', ?, ?, 1, ?, 'test')`, ORG_A, PRIMARY, at);
+  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_gh2', ?, ?, 0, ?, 'test')`, ORG_A, SECOND, at);
+  await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_gh3', ?, 'OtherCo/secret', 1, ?, 'test')`, ORG_B, at);
   await setSecret(await tenantCtx("AndresL230"), "github_token", "", TOKEN);
   // The admin's switch (0076, off by default): on, unless a test is about it being off.
   await run(env.DB, `UPDATE orgs SET ai_chat_github = ? WHERE id = ?`, o.switchOn === false ? 0 : 1, ORG_A);

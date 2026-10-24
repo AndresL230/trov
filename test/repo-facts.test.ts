@@ -347,7 +347,7 @@ describe("narrowing and other repositories", () => {
 
   it("another connected repository: its apps only, and the primary's PR / CI capture is never passed off as its own", async () => {
     await seedWorld();
-    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, 0, ?, 'seed')`)
+    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, ?, 'seed')`)
       .bind(ORG_A, ago(10)).run();
     await env.DB.prepare(`INSERT INTO repo_apps (org_id, key, repo, label, folder, kind, watch, source, position, created_at, created_by, updated_at, updated_by)
       VALUES (?, 'docs', 'SaplingLearn/docs', 'Docs', '/', 'Site', '["/"]', 'manual', 5, ?, 'seed', ?, 'seed')`).bind(ORG_A, ago(10), ago(10)).run();
@@ -399,8 +399,8 @@ describe("narrowing and other repositories", () => {
   });
 });
 
-describe("GET /repo/dashboard?repo=&app=", () => {
-  const get = async (q: string, cookie: string) => http.request(`/repo/dashboard${q}`, { headers: { cookie } }, env);
+describe("GET /api/o/:slug/repo/dashboard?repo=&app=", () => {
+  const get = async (q: string, cookie: string) => http.request(`/api/o/saplinglearn/repo/dashboard${q}`, { headers: { cookie } }, env);
 
   it("checks repo against the org's repositories: absent → the primary, any case → that one, unknown → 404 { error }", async () => {
     await seedWorld();

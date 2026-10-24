@@ -85,7 +85,7 @@ only active members of the `SaplingLearn` GitHub org. Set these Wrangler secrets
 Production: `wrangler secret put GITHUB_CLIENT_ID` (and the others).
 Local dev: copy `.dev.vars.example` to `.dev.vars` (git-ignored) and fill it in.
 
-Mint an MCP token from a logged-in session: `POST /auth/mcp-token` → `{ "token": "trov_mcp_..." }` (tokens minted before the rename start `canopy_mcp_` and keep working)
+Mint an MCP token from a logged-in session: `POST /api/o/<org slug>/mcp-tokens` → `{ "token": "trov_mcp_..." }` (tokens minted before the rename start `canopy_mcp_` and keep working)
 (shown once). The web app no longer mints tokens — Settings › MCP access connects agents by browser sign-in (OAuth) —
 but the route and any token already minted keep working.
 

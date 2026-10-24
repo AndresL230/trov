@@ -22,18 +22,18 @@ import { bearerCtx } from "./helpers/tenant";
 const fetchAt = (path: string, init: RequestInit = {}) => worker.fetch(new Request(`https://trov.test${path}`, init), env, createExecutionContext());
 
 describe("HTTP: the API's JSON errors gain a hint, and keep their code and status", () => {
-  it("401 signed out, 403 not an admin, 409 no single organization", async () => {
+  it("401 signed out, 403 not an admin", async () => {
     const r401 = await fetchAt("/api/orgs");
     expect(r401.status).toBe(401);
     expect(await r401.json()).toEqual({ error: "unauthorized", hint: API_ERROR_HINTS.unauthorized });
 
-    const r403 = await fetchAt("/admin/backfill", { method: "POST", headers: { cookie: await cookieFor("not-admin") } });
+    const r403 = await fetchAt("/api/o/saplinglearn/admin/backfill", { method: "POST", headers: { cookie: await cookieFor("not-admin") } });
     expect(r403.status).toBe(403);
     expect(await r403.json()).toEqual({ error: "admin only", hint: API_ERROR_HINTS["admin only"] });
 
-    const r409 = await fetchAt("/feed", { headers: { cookie: await cookieFor("no-org-person", { member: false }) } });
-    expect(r409.status).toBe(409);
-    expect(await r409.json()).toEqual({ error: "org_required", hint: API_ERROR_HINTS.org_required });
+    // The old unprefixed alias is gone: a person in no organization gets the plain 404, never 409 org_required.
+    const gone = await fetchAt("/feed", { headers: { cookie: await cookieFor("no-org-person", { member: false }) } });
+    expect(gone.status).toBe(404);
   });
 
   it("404: an organization you are not in and one that does not exist are still the same bytes — and the hint names neither", async () => {

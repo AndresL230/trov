@@ -62,14 +62,6 @@ export function hookRepo(p: PlatformContext, hookId: string): Promise<HookRepo |
     `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id WHERE r.id = ? AND o.suspended_at IS NULL`, hookId);
 }
 
-/** The ONE repo the old `/webhook/github` still delivers to (`legacy_hook = 1` — SaplingLearn's, 0042_organizations),
- *  or null. The cleanup phase deletes the route, the flag and this. */
-export function legacyHookRepo(p: PlatformContext): Promise<HookRepo | null> {
-  return first<HookRepo>(p,
-    `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id
-      WHERE r.legacy_hook = 1 AND o.suspended_at IS NULL ORDER BY r.created_at, r.id LIMIT 1`);
-}
-
 // ── the GitHub App: which orgs an installation is connected to (0043_github_app, 0053_installation_repos) ──
 
 export interface InstallationOrg { org_id: string; org_slug: string; org_suspended: number }

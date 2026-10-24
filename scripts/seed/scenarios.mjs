@@ -212,7 +212,7 @@ function freeAtCapStatements(now) {
   // Seats 3 of 3: two members and a pending invitation.
   s.push(insert("org_invites", { org_id: O, email: "third-tutor@example.com", role: "member", invited_by: KAI.handle, status: "pending", created_at: c.days(3), name: "Third tutor" }));
   // Repositories 1 of 1, environments 2 of 2.
-  s.push(insert("org_repos", { id: "hook_dev_pinecone_web", org_id: O, repo_full_name: REPO_P, is_primary: 1, legacy_hook: 0, created_at: c.days(60), created_by: KAI.handle }));
+  s.push(insert("org_repos", { id: "hook_dev_pinecone_web", org_id: O, repo_full_name: REPO_P, is_primary: 1, created_at: c.days(60), created_by: KAI.handle }));
   for (const [key, position, label, branch] of [["staging", 0, "Staging", "main"], ["production", 1, "Production", "production"]]) {
     s.push(insert("org_environments", { org_id: O, key, position, label, note: null, branch, frontend_url: `https://${key === "production" ? "" : "staging."}pinecone.example.com`, api_url: "", health_path: "/", created_at: c.days(58), updated_at: c.days(58), updated_by: KAI.handle }));
   }
@@ -258,7 +258,7 @@ function proStatements(now) {
   const O = "org_dev_northwind", at = c.days(120), REPO_N = "northwind-academy/portal";
   const s = [teamPerson("sanaok"), ...personStatements(AMARA, at), ...personStatements(THEO, at), ...personStatements(JUN, at),
     ...orgStatements({ id: O, slug: "northwind", name: "Northwind Academy", owner: AMARA.handle, plan: ["team", "granted"], members: [[AMARA.handle, "owner", "Head of digital learning"], ["sanaok", "admin", "Community partner"], [THEO.handle, "member", "Developer"], [JUN.handle, "member", "Developer"]] }, at)];
-  s.push(insert("org_repos", { id: "hook_dev_northwind_portal", org_id: O, repo_full_name: REPO_N, is_primary: 1, legacy_hook: 0, created_at: c.days(110), created_by: AMARA.handle }));
+  s.push(insert("org_repos", { id: "hook_dev_northwind_portal", org_id: O, repo_full_name: REPO_N, is_primary: 1, created_at: c.days(110), created_by: AMARA.handle }));
   s.push(insert("org_environments", { org_id: O, key: "production", position: 0, label: "Production", note: null, branch: "main", frontend_url: "https://portal.northwind.example.com", api_url: "", health_path: "/", created_at: c.days(110), updated_at: c.days(110), updated_by: THEO.handle }));
   s.push(insert("org_tags", { org_id: O, name: "portal", description: "The parent and student portal", color: "sky", starter: 0, created_at: c.days(100), created_by: AMARA.handle }));
   const sprintAt = c.date(-6), due = c.date(8);
@@ -296,7 +296,7 @@ function hostingStatements(now) {
   const O = "org_dev_fernhill", at = c.days(90), REPO_F = "fernhill-labs/garden";
   const s = [teamPerson("AndresL230"), ...personStatements(INES, at),
     ...orgStatements({ id: O, slug: "fernhill", name: "Fernhill Labs", owner: INES.handle, plan: ["enterprise", "granted"], members: [[INES.handle, "owner", "Platform lead"], ["AndresL230", "admin", "Consultant"]] }, at)];
-  s.push(insert("org_repos", { id: "hook_dev_fernhill_garden", org_id: O, repo_full_name: REPO_F, is_primary: 1, legacy_hook: 0, created_at: c.days(88), created_by: INES.handle }));
+  s.push(insert("org_repos", { id: "hook_dev_fernhill_garden", org_id: O, repo_full_name: REPO_F, is_primary: 1, created_at: c.days(88), created_by: INES.handle }));
   s.push(`INSERT OR IGNORE INTO org_keys (org_id, key_version, wrapped_key, wrap_iv, kek_fingerprint, created_at) VALUES ('${O}', 1, 'dev-seed-not-a-key', 'dev-seed-iv', 'dev-seed', ${q(c.days(88))})`);
   const env = (key, position, label, branch, url) => insert("org_environments", { org_id: O, key, position, label, note: null, branch, frontend_url: url, api_url: "", health_path: "/", created_at: c.days(80), updated_at: c.days(20), updated_by: INES.handle });
   s.push(env("production", 0, "Production", "main", "https://garden.fernhill.example.com"), env("staging", 1, "Staging", "staging", "https://staging.garden.fernhill.example.com"), env("preview", 2, "Preview", "preview", "https://preview.garden.fernhill.example.com"));

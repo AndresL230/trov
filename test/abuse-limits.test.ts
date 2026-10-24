@@ -95,8 +95,8 @@ describe("takeLimit", () => {
   });
 });
 
-describe("invites: 50 per person per day, across every org and both routes", () => {
-  it("the legacy route, its resend and the org route share one allowance; the 51st is 429 and writes nothing", async () => {
+describe("invites: 50 per person per day, across every org, create and resend alike", () => {
+  it("every org's route shares one allowance; the 51st is 429 and writes nothing", async () => {
     const admin = await cookieFor(FIXTURE_ADMIN);
     await ensureMember(FIXTURE_ADMIN, "owner", ORG_B); // a second org does not double it
     expect((await app.request("/api/o/saplinglearn/invites", json("POST", { email: "one@x.io" }, admin), env)).status).toBe(201);
@@ -114,14 +114,17 @@ describe("invites: 50 per person per day, across every org and both routes", () 
     expect(await countOf(FIXTURE_ADMIN, "invite")).toBe(LIMITS.invite.max);
   });
 
-  it("the old /invites route and its resend are limited too — and a plain member's refusal costs nothing", async () => {
+  it("a resend is limited too — and a plain member's refusal costs nothing", async () => {
     const admin = await cookieFor(FIXTURE_ADMIN);
-    expect((await app.request("/invites", json("POST", { email: "one@x.io" }, admin), env)).status).toBe(200);
-    expect((await app.request("/invites/one%40x.io/resend", json("POST", {}, admin), env)).status).toBe(200);
+    const created = await app.request("/api/o/saplinglearn/invites", json("POST", { email: "one@x.io" }, admin), env);
+    expect(created.status).toBe(201);
+    const { invite } = (await created.json()) as { invite: { id: number } };
+    const resend = () => app.request(`/api/o/saplinglearn/invites/${invite.id}/resend`, json("POST", {}, admin), env);
+    expect((await resend()).status).toBe(200);
     expect(await countOf(FIXTURE_ADMIN, "invite")).toBe(2);
     await fill(FIXTURE_ADMIN, "invite");
-    await expectLimited(await app.request("/invites", json("POST", { email: "two@x.io" }, admin), env));
-    await expectLimited(await app.request("/invites/one%40x.io/resend", json("POST", {}, admin), env));
+    await expectLimited(await app.request("/api/o/saplinglearn/invites", json("POST", { email: "two@x.io" }, admin), env));
+    await expectLimited(await resend());
     expect(await all(env.DB, `SELECT 1 FROM notification_outbox_bodies`)).toHaveLength(2);
 
     const member = await cookieFor("casey");
@@ -143,12 +146,11 @@ describe("invites: 50 per person per day, across every org and both routes", () 
 describe("test sends, avatar uploads and handle checks", () => {
   it("test-send: 20 per person per day", async () => {
     const admin = await cookieFor(FIXTURE_ADMIN, { email: "admin@example.com" });
-    const send = () => app.request("/api/notifications/test-send", json("POST", { cadence: "daily", sample: true }, admin), env);
+    const send = () => app.request("/api/o/saplinglearn/notifications/test-send", json("POST", { cadence: "daily", sample: true }, admin), env);
     expect((await send()).status).toBe(200);
     expect(await countOf(FIXTURE_ADMIN, "test_send")).toBe(1);
     await fill(FIXTURE_ADMIN, "test_send");
     await expectLimited(await send());
-    await expectLimited(await app.request("/api/o/saplinglearn/notifications/test-send", json("POST", { cadence: "daily", sample: true }, admin), env));
     expect(await all(env.DB, `SELECT 1 FROM notification_outbox`)).toHaveLength(1);
   });
 
@@ -157,7 +159,7 @@ describe("test sends, avatar uploads and handle checks", () => {
     const upload = () => {
       const form = new FormData();
       form.set("file", new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])], "a.png", { type: "image/png" }));
-      return app.request("/api/people/me/avatar", { method: "POST", headers: { cookie }, body: form }, env);
+      return app.request("/api/o/saplinglearn/people/me/avatar", { method: "POST", headers: { cookie }, body: form }, env);
     };
     expect((await upload()).status).toBe(200);
     expect(await countOf("casey", "avatar_upload")).toBe(1);
@@ -190,7 +192,7 @@ describe("test sends, avatar uploads and handle checks", () => {
 describe("the notification address", () => {
   it("a change is limited to 5 a day; re-saving the same address, clearing it and other prefs are free", async () => {
     const cookie = await cookieFor("casey", { email: "casey@example.com" });
-    const put = (body: unknown) => app.request("/api/notifications/prefs", json("PUT", body, cookie), env);
+    const put = (body: unknown) => app.request("/api/o/saplinglearn/notifications/prefs", json("PUT", body, cookie), env);
     expect((await put({ email: "CASEY@example.com" })).status).toBe(200);
     expect((await put({ unsubscribed: true })).status).toBe(200);
     expect(await countOf("casey", "email_change")).toBe(0);
@@ -205,7 +207,7 @@ describe("the notification address", () => {
     const admin = await cookieFor(FIXTURE_ADMIN);
     await seedPerson("casey");
     await fill(FIXTURE_ADMIN, "email_change");
-    await expectLimited(await app.request("/api/notifications/persons/casey", json("PUT", { email: "casey@example.com" }, admin), env));
+    await expectLimited(await app.request("/api/o/saplinglearn/notifications/persons/casey", json("PUT", { email: "casey@example.com" }, admin), env));
     expect(await first(env.DB, `SELECT email FROM persons WHERE handle = 'casey'`)).toEqual({ email: null });
   });
 });
@@ -277,8 +279,8 @@ describe("the From header: an org's display name, the platform's address — nev
         await run(env.DB, `UPDATE notification_settings SET from_address = ?, send_hour = 8, timezone = 'America/New_York' WHERE org_id = ?`, stored, ORG_A);
         await run(env.DB, `DELETE FROM notification_outbox`);
         await handleNotificationCron(resendEnv, DAILY_CRON, new Date("2026-09-11T12:00:00.000Z"));                                    // digest
-        expect((await app.request("/api/notifications/test-send", json("POST", { cadence: "daily", sample: true }, admin), resendEnv)).status).toBe(200); // test send
-        expect((await app.request("/invites", json("POST", { email: `inv-${i}@x.io` }, admin), resendEnv)).status).toBe(200);                 // invite
+        expect((await app.request("/api/o/saplinglearn/notifications/test-send", json("POST", { cadence: "daily", sample: true }, admin), resendEnv)).status).toBe(200); // test send
+        expect((await app.request("/api/o/saplinglearn/invites", json("POST", { email: `inv-${i}@x.io` }, admin), resendEnv)).status).toBe(201); // invite
         expect((await sendWelcome(resendEnv, systemCtx(), { email: "new@x.io", name: "New", handle: "newbie", orgName: "Acme", orgSlug: "acme", origin: "https://trov.test" })).status).toBe("sent"); // welcome
         expect(sent, JSON.stringify(stored)).toHaveLength(4);
         for (const m of sent) {

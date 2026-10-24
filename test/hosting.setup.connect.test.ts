@@ -108,17 +108,18 @@ describe("the connection list", () => {
     const me = await ownerCookie();
     await vercelPart(web, me);
     const ctx = await tenantCtx("AndresL230");
+    // A Worker secret of the old name answers for nothing: a credential exists only when stored for the org.
     const e = installEnv({ CF_ANALYTICS_TOKEN: "cf_legacy_token_value_0000000000" });
     const list = async () => listConnections(ctx, e, providers);
     const byKey = (l: HostingConnectionDTO[]) => Object.fromEntries(l.map((c) => [`${c.provider}:${c.scope}`, c]));
 
     let l = byKey(await list());
     expect(Object.keys(l)).toEqual(["cloudflare:", "railway:", "vercel:"]);
-    expect(l["vercel:"]).toMatchObject({ status: "not_connected", method: null, account: null, legacy_fallback: false, used_by: [{ env: "staging", part: "web" }], scope_label: null, manage_url: null });
-    // SaplingLearn's cut-over: a legacy Worker secret answers for Cloudflare (the list says so; it is not "connected").
-    expect(l["cloudflare:"]).toMatchObject({ status: "not_connected", legacy_fallback: true, used_by: [{ env: "staging", part: "frontend" }, { env: "production", part: "frontend" }] });
+    expect(l["vercel:"]).toMatchObject({ status: "not_connected", method: null, account: null, used_by: [{ env: "staging", part: "web" }], scope_label: null, manage_url: null });
+    expect(l["cloudflare:"]).toMatchObject({ status: "not_connected", used_by: [{ env: "staging", part: "frontend" }, { env: "production", part: "frontend" }] });
+    for (const c of Object.values(l)) expect(c).not.toHaveProperty("legacy_fallback");
     // Railway's credential is ONE org-wide connection, used by every environment's backend.
-    expect(l["railway:"]).toMatchObject({ scope_label: null, legacy_fallback: false, used_by: [{ env: "staging", part: "backend" }, { env: "production", part: "backend" }] });
+    expect(l["railway:"]).toMatchObject({ scope_label: null, used_by: [{ env: "staging", part: "backend" }, { env: "production", part: "backend" }] });
 
     await setSecret(ctx, "vercel", "", PASTED);
     l = byKey(await list());
@@ -388,7 +389,7 @@ describe("connect: the callback", () => {
     expect(await rows()).toEqual([]);
   });
 
-  it("the callback is at the app root and reachable by a person in SEVERAL orgs; nothing else under /hosting/ escapes the one-org alias", async () => {
+  it("the callback is at the app root and reachable by a person in SEVERAL orgs; nothing else under /hosting/ answers", async () => {
     await ensureMember("AndresL230", "admin", ORG_B);
     const fakes = fakeProviders();
     const web = hostingTestApp(fakes.providers, tokenEndpoint().fetch);
@@ -396,13 +397,15 @@ describe("connect: the callback", () => {
     const s = await start(web, me);
     expect(await loc(callback(web, me, s.intent, { code: "c", state: s.state }))).toBe(back("connected"));
     expect(await rows(ORG_B)).toEqual([]);
-    // The real app mounts it too (an unreadable intent is a redirect, never the 409 org_required of the alias gate).
+    // The real app mounts it too (an unreadable intent is a redirect).
     const real = await app.request(`/hosting/vercel/callback?state=x&code=y`, { headers: { cookie: me } }, env);
     expect([real.status, real.headers.get("location")]).toEqual([302, "/?hosting=expired"]);
-    // Exactly the callback's shape is let past the alias: any other /hosting/ path meets it.
-    for (const path of ["/hosting/vercel/other", "/hosting/vercel/callback/x", "/hosting/Vercel/callback"]) {
-      expect((await app.request(path, { headers: { cookie: me } }, env)).status, path).toBe(409);
+    // Exactly the callback's shape is a route at the root: any other /hosting/ path is no route at all.
+    for (const path of ["/hosting/vercel/other", "/hosting/vercel/callback/x"]) {
+      expect((await app.request(path, { headers: { cookie: me } }, env)).status, path).toBe(404);
     }
+    // A provider's name in another case is still the callback's shape: a redirect, as every return of it is.
+    expect((await app.request("/hosting/Vercel/callback", { headers: { cookie: me } }, env)).status).toBe(302);
   });
 });
 

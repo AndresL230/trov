@@ -255,8 +255,7 @@ shows one sentence (`connectNoticeCopy`) and rewrites the address bar.
   Never in D1, never logged. A 401 on a read made with it forgets THAT token; the next use mints again.
   The binding ending, a suspension or `new_permissions_accepted` forgets every token of the installation.
 - **The credential order** (`credential.ts` `resolveGithubCredential`): (a) the org's live, unsuspended
-  installation — for a repository its account owns and no other org holds through the App; (b) the org's stored `github_token`; (c) for
-  SaplingLearn alone, the Worker's `GITHUB_SERVICE_TOKEN`. It throws for an MCP (bearer) context and for
+  installation — for a repository its account owns and no other org holds through the App; (b) the org's stored `github_token`. It throws for an MCP (bearer) context and for
   a member, like `getSecret`. `githubCredentialSource` answers WHERE that order would get it from
   (`app` / `token` / null) without minting — what Sync GitHub's status asks (`sync.md` › The
   credential). Both are called only from modules `src/mcp.ts` cannot reach
@@ -410,9 +409,8 @@ Nothing 500s.
    (202 for events about repositories Trov does not capture).
 6. **Then retire the old path, in this order:** delete SaplingLearn's repository webhook on GitHub (it and
    the App were both delivering; each event was captured once); in Org settings › Integrations › Manual
-   connection delete the stored GitHub token and webhook secret, if any were entered; and delete the
-   Worker secrets `GITHUB_SERVICE_TOKEN` and `GITHUB_WEBHOOK_SECRET` (they are only SaplingLearn's
-   fallback). Nothing breaks if you leave them: the App is asked first.
+   connection delete the stored GitHub token and webhook secret, if any were entered. Nothing breaks if you
+   leave them: the App is asked first.
 
 ## Verify after deploy
 

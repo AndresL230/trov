@@ -108,7 +108,8 @@ describe("D1 round trips", () => {
     const res = await app.request("/auth/me", { headers: { cookie } }, c.env);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ handle: "AndresL230", orgs: [{ slug: "saplinglearn" }] });
-    expect({ serial: c.serial, total: c.total }).toEqual({ serial: 2, total: 8 });
+    // 8 before the sole-org `org` / `admin` / `role` fields left the answer (no soleTitle, no resolveSoleTenant).
+    expect({ serial: c.serial, total: c.total }).toEqual({ serial: 2, total: 6 });
   });
 
   it("GET /api/o/:slug/repo/dashboard: the session gate, the org's repo + environments, the dashboard", async () => {

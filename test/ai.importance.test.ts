@@ -73,7 +73,7 @@ async function mergedPr(n: number, o: { title?: string; body?: string; summary?:
   else if (s) await run(env.DB, `INSERT INTO pr_summaries (org_id, semantic_key, pr_number, model, created_at, title, what, why, impact) VALUES (?, ?, ?, 'claude-haiku-5-5', ?, ?, ?, ?, ?)`, ORG_A, key, n, BEFORE, s.title, s.what, s.why, s.impact);
   await markRow(ORG_A, "card", `pr:${n}`, BEFORE);
 }
-const primaryRepo = () => run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_imp', ?, 'acme/app', 1, 0, ?, 'test')`, ORG_A, BEFORE);
+const primaryRepo = () => run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_imp', ?, 'acme/app', 1, ?, 'test')`, ORG_A, BEFORE);
 
 describe("feed.importance: one choice question per item, a computed fact", () => {
   it("a new feed entry (marked by the gate) is rated in ONE request with ONE choice question, metered ai_suggest, and stored", async () => {

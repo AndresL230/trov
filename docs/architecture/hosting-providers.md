@@ -71,7 +71,7 @@ on the cards, `degraded: true`). MCP `get_repo_dashboard` collapses `traffic` to
 `include_trends`, drops trends and keeps the newest 2 deploys per part (+ `deployCount`).
 
 **Setup API** (`src/hosting/routes.ts`, cookie only — an `Authorization` header is a 403; admin unless noted), under
-`/api/o/:slug` with NO old-path alias: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
+`/api/o/:slug`: `GET /hosting` (`HostingSetupDTO`: providers, environments with their parts,
 connections — each with `manage_url`, where the grant is managed on the provider (`HostingProvider.manageUrl`) —, a
 checklist generated from what the parts use, `detected`, below, `leftovers`, and each environment's `app_metrics` — its
 app metrics token's metadata, never the value), `GET /hosting/providers` (any member), `PUT|DELETE
@@ -89,7 +89,7 @@ installed connection has the GitHub App binding's guarantees** (`src/hosting/con
 only a RANDOM `state`; what it answers for — `{ o, s, p, h, state, exp }`, HMAC-sealed with `hosting-connect:<COOKIE_SECRET>`
 — is the HttpOnly `trov_hx` cookie (Secure, SameSite=Lax, Path `/hosting/`, 10 minutes, spent by the first callback
 whatever the outcome). At the ROOT, `GET /hosting/:provider/callback` is a PUBLIC path (`HOSTING_CALLBACK_PATH` in
-`src/auth/principal.ts`; `src/data/gate.ts` lets exactly that shape past the one-org alias) that reads the session
+`src/auth/principal.ts`; no tenant gate stands in front of it) that reads the session
 cookie itself and ALWAYS redirects — never JSON, never a 500: nobody signed in → `/`; otherwise
 `/<slug>/?hosting=<outcome>&provider=<id>#org/hosting` (`/?hosting=<outcome>` when the intent cannot be read), the outcome one of `HOSTING_CONNECT_OUTCOMES` (`shared/hosting.ts`) — never provider text.
 It binds only for that browser's intent, that provider, the same person, still an admin (re-checked live), after the
@@ -119,13 +119,12 @@ Hosting's (`onIntegrationsTab`, `web/src/integrations.ts`), with one line linkin
 
 **One status function** (`shared/hosting-status-core.ts`, zod-free — the SPA, `src/hosting/` and the MCP-reachable
 `src/tools/repo.ts` all import it). `hostingStatus(connection, label)` answers for a provider's ORG-WIDE connection:
-`connected` (stored, or SaplingLearn's legacy Worker secret), `error` (stored, last use failed), `not_connected`
+`connected` (stored, last use fine), `error` (stored, last use failed), `not_connected`
 (nothing answers — an admin's own Disconnect included) or `revoked` (ended on the provider's side), with its word and
 whether it is `live` (the parts read) / `stored`. The provider's card, every part row (`EnvironmentPartDTO.connection`,
 `setup.ts` `partConnection`), the checklist's connect / test steps, the lead's counts, the tab's badge, Test this part
 (server and SPA) and the Repo dashboard's not-connected copy (`RepoProviderPart.connection`, from `hostingReads`'
-`org_secrets` METADATA and `org_hosting_connections` arms — never a value; SaplingLearn's legacy secret, which that
-projection may not resolve, is evidenced by a poll that found a credential) all read it, so none can disagree.
+`org_secrets` METADATA and `org_hosting_connections` arms — never a value) all read it, so none can disagree.
 
 **Deployment and project events, and the Configuration URL** (Vercel). The same `POST /webhook/hosting/vercel`
 that takes the uninstall notice takes `deployment.created` / `ready` / `succeeded` / `error` / `canceled` / `promoted` /
@@ -325,7 +324,7 @@ a time, Escape closes, Tab stays inside, focus returns to the control that opene
   against its pattern (`partDraftProblems`, the server's own rules; the server's refusal lands beside its field).
   Not connected yet → "Save and connect". Save is `PUT …/environments/:env/parts/:part`. Under the form, the
   environment's **app metrics token** (`appMetricsBlock` — it moved here from Integrations): its status (Set · ends in
-  … / Not set / the legacy credential / an error), where it is read from (`<API URL>/api/internal/metrics`), an optional
+  … / Not set / an error), where it is read from (`<API URL>/api/internal/metrics`), an optional
   password field with NO `value` in any state (the draft is `metricsDraft`, private to hosting-actions.ts), Test token
   and Delete token (the page's confirmation, `OrgConfirm` `secret`). A typed token is saved WITH the part, after it,
   through the same write-only Integrations API (`PUT /integrations/metrics_endpoint/<env>`, or `…/rotate` when one is

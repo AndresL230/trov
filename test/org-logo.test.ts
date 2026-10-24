@@ -304,7 +304,7 @@ describe("GET /org-logo/<sha>", () => {
     const form = new FormData();
     const mine = PNG("a-person");
     form.append("file", new File([mine], "me.png", { type: "image/png" }));
-    expect((await app.request("/api/people/me/avatar", { method: "POST", headers: { cookie }, body: form }, env)).status).toBe(200);
+    expect((await app.request("/api/o/saplinglearn/people/me/avatar", { method: "POST", headers: { cookie }, body: form }, env)).status).toBe(200);
     const personSha = await sha256Hex(mine);
     expect((await get(`/avatar/${personSha}`, cookie)).status).toBe(200);
     expect((await get(`/org-logo/${personSha}`, cookie)).status).toBe(404);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
+import type { LegacyEnv } from "./helpers/org-config";
 import { all, first, run } from "./helpers/db";
 import { isFinalBackfillBatch } from "../src/tools/backfill";
 import { runBackfill } from "./helpers/org-config";
@@ -37,8 +38,8 @@ function countingSummarizer<T>(result: T): Summarizer<T> & { calls: number } {
 const PR_STUB: PrSummary = { title: "Humanized PR", what: "AI summary", why: null, impact: null };
 const ISSUE_STUB: IssueSummary = { title: "Humanized issue", summary: "Issue AI summary", next_step: null };
 
-function envWith(overrides: Partial<Env> = {}): Env {
-  return { ...(env as unknown as Env), GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r", ...overrides };
+function envWith(overrides: Partial<LegacyEnv> = {}): Env {
+  return { ...(env as unknown as Env), GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r", ...overrides } as LegacyEnv;
 }
 
 const mergedPr = {

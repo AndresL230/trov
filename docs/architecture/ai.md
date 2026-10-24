@@ -763,7 +763,7 @@ API (`batch: true`, half the price), the pass's last stage.
   `model` and `promptVersion` are nullable, and an omitted one is null; a failed write is 503 `{ error }`, never a 500.
 - Both tables are in `ORG_TABLES` and the reset seed; `ai_suggestions.decided_by` and `ai_feedback.handle` are in
   `HANDLE_COLUMNS`. Every route refuses a request carrying an `Authorization` header (`cookieOnly`); none is an MCP
-  tool and none has an old-path alias.
+  tool.
 
 ## The plain-language filter (#162; `src/ai/filter.ts`)
 

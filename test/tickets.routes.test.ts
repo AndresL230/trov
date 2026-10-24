@@ -13,13 +13,16 @@ beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 
 // ── harness ──────────────────────────────────────────────────────────────────
 
+/** Every ticket route is an org route: SaplingLearn's prefix, the org every cookie here belongs to. */
+const ORG = "/api/o/saplinglearn";
+
 const post = (path: string, cookie: string, body?: unknown) =>
   app.request(
-    path,
+    `${ORG}${path}`,
     { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) },
     env
   );
-const get = (path: string, cookie: string) => app.request(path, { headers: { cookie } }, env);
+const get = (path: string, cookie: string) => app.request(`${ORG}${path}`, { headers: { cookie } }, env);
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
 interface WriteEnvelope { ok: true; ticket: TicketDetail }
@@ -798,7 +801,7 @@ describe("tickets: 401 without a session cookie", () => {
     expect(unauthed.length).toBe(11);
 
     for (const [path, init] of unauthed) {
-      const res = await app.request(path, init, env);
+      const res = await app.request(`${ORG}${path}`, init, env);
       expect(res.status, `${init.method ?? "GET"} ${path} must be gated`).toBe(401);
     }
 

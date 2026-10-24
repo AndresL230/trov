@@ -111,7 +111,7 @@ async function report(ctx: TenantContext, id: number, set: Partial<Pick<RunRow, 
 // ── what a new run would do (GET /sync) ──────────────────────────────────────
 
 /** The org's primary repository, and where the credential to read it with would come from — the org's
- *  GitHub App installation, its stored token (SaplingLearn's legacy one), or nowhere. Asked as the
+ *  GitHub App installation, its stored token, or nowhere. Asked as the
  *  org's system tenant, of the ONE source every GitHub read resolves from; nothing is minted or revealed. */
 async function readiness(env: Env, ctx: TenantContext): Promise<{ repo: string | null; via: SyncCredential | null; wrongAccount: string | null }> {
   const job = jobTenant(env, ctx);

@@ -320,34 +320,14 @@ describe("data layer — static enforcement (§4.4)", () => {
     expect(stale, `allowlist entries that excuse nothing: ${stale.join("; ")}`).toEqual([]);
   });
 
-  // What is still org #1's alone, through src/data/legacy.ts — no entry point acts on "the" org any more
-  // (every job, hook and route resolves its own). Each call is marked `// MT:` and lives in one of the
-  // files below, with its reason — so the list of what Phase 7 still has to remove is this test, not a grep.
-  it("only the marked cut-over entry points reach for the legacy org", () => {
-    const ENTRY_POINTS: Record<string, string> = {
-      "src/auth/onboard.ts": "liveLegacyInvite — a legacy invite lets a Google account reach onboarding and seeds the invitee's name",
-      "src/auth/routes.ts": "consumeLegacyInvite — a new person with a live legacy invite joins org #1 at onboarding (and gets its welcome mail)",
-      "src/orgs/legacy-invites.ts": "isLegacyOrg — the legacy `invites` sidecar (a pre-0042_organizations row's invitee name and mail outcome; the row a first sign-in consumes) is read and written for org #1 only",
-      "src/tools/repo.ts": "isLegacyOrg — the Repo dashboard's hosting status (the one status function) cannot resolve SaplingLearn's legacy Worker secret (no decrypt path from MCP), so for org #1 only a poll that found a credential is its evidence",
-    };
-    // …and the ONE importer of the org's id: the env-secret fallback (`resolveCredential`, §8.7.6).
-    const ID_IMPORTERS = ["src/data/secrets.ts"];
-    const found = new Set<string>();
-    const unmarked: string[] = [];
+  // Phase 7 removed the cut-over: no entry point acts on "the" org, and no file names one. This keeps it that way.
+  it("no source file names an org or brings back the one-org cut-over", () => {
+    const named: string[] = [];
     for (const [file, src] of Object.entries(SOURCES)) {
-      if (file === "src/data/legacy.ts") continue;
-      const lines = src.split("\n");
-      lines.forEach((line, i) => {
-        if (!/\b(isLegacyOrg|liveLegacyInvite|consumeLegacyInvite)\(/.test(line)) return;
-        found.add(file);
-        if (!lines.slice(Math.max(0, i - 3), i + 1).some((l) => l.includes("// MT:"))) unmarked.push(`${file}:${i + 1}  ${line.trim()}`);
-      });
-      if (/org_saplinglearn/.test(scanSource(file, src).code)) unmarked.push(`${file}: names org_saplinglearn outside src/data/legacy.ts`);
+      const code = scanSource(file, src).code;
+      if (/org_saplinglearn|\bSAPLINGLEARN_ORG_ID\b|\b(isLegacyOrg|liveLegacyInvite|consumeLegacyInvite|soleTenantGate)\b/.test(code)) named.push(file);
     }
-    expect(unmarked, `\n${unmarked.join("\n")}\n`).toEqual([]);
-    expect([...found].sort()).toEqual(Object.keys(ENTRY_POINTS).sort());
-    const importers = Object.entries(SOURCES).filter(([file, src]) => file !== "src/data/legacy.ts" && /\bSAPLINGLEARN_ORG_ID\b/.test(scanSource(file, src).code)).map(([file]) => file);
-    expect(importers).toEqual(ID_IMPORTERS);
+    expect(named).toEqual([]);
   });
 
   it("the sprint_progress upsert is still there to be excused", () => {

@@ -8,14 +8,16 @@ import { ingestDocProposal } from "../src/consumer";
 import { propose_doc_update, promote_doc, stage_adr, ratify_adr, route_triage } from "../src/tools/writes";
 import { cookieFor as authedCookie } from "./helpers/persons";
 
+// Every org route answers only under its slug; the suite's people are in SaplingLearn.
+const BASE = "/api/o/saplinglearn";
 const post = (path: string, cookie: string, body?: unknown) =>
   app.request(
-    path,
+    BASE + path,
     { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) },
     env
   );
 const getJson = async <T>(path: string, cookie: string): Promise<T> =>
-  (await (await app.request(path, { headers: { cookie } }, env)).json()) as T;
+  (await (await app.request(BASE + path, { headers: { cookie } }, env)).json()) as T;
 
 const docBase = { section: "reference", change_summary: "s", confidence: "high" as const };
 
@@ -45,7 +47,7 @@ describe("GET /proposals", () => {
   });
 
   it("returns 401 without a session cookie", async () => {
-    const res = await app.request("/proposals", {}, env);
+    const res = await app.request(BASE + "/proposals", {}, env);
     expect(res.status).toBe(401);
   });
 });
@@ -86,7 +88,7 @@ describe("POST /doc/:slug/reject", () => {
 
   it("returns 401 without a session cookie (and does not mutate)", async () => {
     await propose_doc_update(systemCtx(), { ...docBase, slug: "guarded", title: "G", body: "x" }, "andres");
-    const res = await app.request("/doc/guarded/reject", { method: "POST" }, env);
+    const res = await app.request(BASE + "/doc/guarded/reject", { method: "POST" }, env);
     expect(res.status).toBe(401);
     const v = await first<DocVersionRow>(env.DB, `SELECT * FROM doc_versions WHERE slug = 'guarded' AND version = 1`);
     expect(v?.status).toBe("staged");
@@ -260,7 +262,7 @@ describe("POST /needs-triage/:id/assign", () => {
 
   it("returns 401 without a session cookie", async () => {
     const id = await route_triage(systemCtx(), { raw: "{}", reason: "r" });
-    const res = await app.request(`/needs-triage/${id}/assign`, { method: "POST" }, env);
+    const res = await app.request(`${BASE}/needs-triage/${id}/assign`, { method: "POST" }, env);
     expect(res.status).toBe(401);
   });
 

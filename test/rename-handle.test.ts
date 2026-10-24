@@ -6,7 +6,6 @@ import { all, first, run, nowIso } from "./helpers/db";
 import { renamePerson, HANDLE_COLUMNS, getPerson } from "../src/auth/persons";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { createSession } from "../src/auth/session";
-import { createInvite, acceptInvite } from "../src/auth/invites";
 import { consume, ingestEvent, ingestFeedEntry } from "../src/consumer";
 import { IngestPayload } from "@shared/contract";
 import { createPage as createArtifact, setStatus as setArtifactStatus, ratify as ratifyArtifact, mintUploadToken, deletePage as deleteArtifact } from "../src/tools/artifacts";
@@ -98,8 +97,6 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     handle, "rename_test_kind", "off", nowIso()); // notification_prefs.user_id
   await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     `${handle}:daily:w1`, handle, "daily", "w1", "[]", "pending", nowIso()); // notification_outbox.user_id
-  await createInvite(platformCtx(), { email: "old-me-invite@test.io", name: null, invitedBy: handle }); // invites.invited_by
-  await acceptInvite(platformCtx(), "old-me-invite@test.io", handle); // invites.accepted_by
   // Artifacts (0030), through the REAL writers (src/tools/artifacts.ts): the create
   // covers artifact_pages.author_id + artifact_versions.created_by + (with a link)
   // artifact_links.created_by; publish + ratify covers ratified_by; a minted upload
@@ -355,7 +352,7 @@ describe("POST /auth/me/handle — an admin's rename", () => {
     expect(await res.json()).toEqual({ ok: true, handle: "someone" });
     expect(await getPerson(platformCtx(), "admin-user")).toBeNull();
     expect(await first(env.DB, `SELECT user_id, role FROM memberships WHERE org_id = ? AND user_id = 'someone'`, ORG_A)).toEqual({ user_id: "someone", role: "admin" });
-    expect((await app.request("/invites", { headers: { cookie } }, env)).status).toBe(200); // an admin-only route, same session
+    expect((await app.request("/api/o/saplinglearn/invites", { headers: { cookie } }, env)).status).toBe(200); // an admin-only route, same session
   });
 
   it("an admin re-submitting their own handle gets 400 handle_same", async () => {

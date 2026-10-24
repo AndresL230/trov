@@ -167,27 +167,19 @@ read rule (`ai.md` › The read rule): with the org's switch off or no `ANTHROPI
 off state (no field) — set any value as the key to see the samples; the preview never sends it. Blank in the
 test pool (`vitest.config.ts`); a deployed Worker must not set it.
 
-### Legacy — SaplingLearn's fallback, and two vars nothing reads
+### Retired in the Phase 7 cleanup
 
-These predate organizations. Each of the SECRETS below is read in exactly one way: as the fallback inside
-`resolveCredential` / `resolveGithubCredential` / `resolveIntegrationConfig`, for `org_saplinglearn` ALONE,
-and only until that organization's admin stores the same integration on Org settings › Integrations (a stored
-secret wins; no other organization ever reads one). The repo cron also names them so no log line can carry
-one (`legacyEnvSecrets`). The cleanup phase deletes the fallback and these secrets (`data-layer.md` ›
-SaplingLearn's fallback).
-
-| Name | Kind | Answers for (SaplingLearn only) | Missing → |
-|---|---|---|---|
-| `GITHUB_SERVICE_TOKEN` | secret | its `github_token`, when it has no App installation and no stored token | it has no GitHub credential from this source: Sync GitHub says not configured, its `:10` / `:20` cron units and the webhook's two follow-up reads (`fillFailedJob`, `refreshDrift`) are skipped |
-| `GITHUB_WEBHOOK_SECRET` | secret | the HMAC of the LEGACY `POST /webhook/github`, which delivers only to the one `legacy_hook = 1` repo | that URL answers the bare 401 |
-| `CF_ANALYTICS_TOKEN` + `CF_ANALYTICS_ACCOUNT_ID` | secrets (both) | its Cloudflare hosting provider's org-wide token (`cloudflare_analytics`) and account id (that provider's `account_id` setting, through `resolveIntegrationConfig`). The account id is a secret on purpose — it was created as one, and a var and a secret sharing a name fail the deploy. Neither is named `CLOUDFLARE_API_TOKEN` / `CLOUDFLARE_ACCOUNT_ID`, the names the wrangler CLI itself authenticates with | absent either: its Cloudflare parts read not connected until a credential is stored on Org settings › Hosting |
-| `SAPLING_METRICS_TOKEN` | secret | the bearer its app's `GET {apiUrl}/api/internal/metrics` expects — ONE value for every environment | `pollSaplingMetrics` is not called; Active users and the Product blocks stay "not connected" |
+`GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_TOKEN`, `CF_ANALYTICS_ACCOUNT_ID` and
+`SAPLING_METRICS_TOKEN` were SaplingLearn's fallback credentials from before organizations, read only until it
+stored each integration on Org settings. Nothing reads them now — every credential is an org's own stored secret
+(`resolveCredential` / `resolveGithubCredential`) — and the legacy `POST /webhook/github` they verified is gone.
+Delete them from the Worker (`wrangler secret delete <NAME>`).
 
 `GITHUB_REPO` and `REPO_ENVIRONMENTS` are **read by nothing in `src/`**. `0042_organizations` copied them
 into SaplingLearn's `org_repos` / `org_environments` rows; an organization's repository and environments are
-rows it edits in Org settings, and neither var is in `wrangler.toml` any more. They remain in `Env` only as
-types: the parser `repoEnvironments()` (`src/repo/config.ts`) is called by the SaplingLearn-era test suites
-to seed those rows. The shape it parsed is the shape of an `org_environments` row (`RepoEnvConfig`): `key`,
+rows it edits in Org settings, and neither var is in `wrangler.toml` or `Env` any more. Only the SaplingLearn-era
+test suites still describe a setup with them: `repoEnvironments()` (`test/helpers/org-config.ts`) parses the old
+var to seed those rows. The shape it parsed is the shape of an `org_environments` row (`RepoEnvConfig`): `key`,
 `label`, `note`, `branch`, `frontendUrl`, `apiUrl`, `healthPath` (the Cloudflare / Railway names it once held
 are hosting parts since 0057 — `hosting-providers.md`; a stale `REPO_ENVIRONMENTS` carrying them is parsed and
 the extra keys dropped). What the order of an organization's environments means, and which capture reads which

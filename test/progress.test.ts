@@ -5,7 +5,7 @@ import { run, all, first, nowIso } from "./helpers/db";
 import type { SprintProgressRow } from "@shared/rows";
 import type { Env } from "../src/env";
 import { eventsFromDelivery } from "../src/webhook";
-import { handleGithubWebhook } from "./helpers/org-config";
+import { handleGithubWebhook, SAPLING_HOOK, syncOrgConfig } from "./helpers/org-config";
 import { ingestEvent } from "../src/consumer";
 import worker from "../src/index";
 import {
@@ -161,10 +161,11 @@ describe("webhook end-to-end — the progress seam", () => {
 
   it("issue-closed fixture through handleGithubWebhook writes the sprint_progress cache row", async () => {
     const id = await seedSprint("3");
-    const body = JSON.stringify(issueClosed);
+    // A per-repo hook takes only a delivery that names its own repository (the pool's GITHUB_REPO).
+    const body = JSON.stringify({ ...issueClosed, repository: { full_name: "SaplingLearn/sapling" } });
     const sig = await sign(SECRET, body);
     const res = await handleGithubWebhook(
-      new Request("https://x/webhook/github", {
+      new Request(`https://x/webhook/github/${SAPLING_HOOK}`, {
         method: "POST",
         headers: { "x-github-event": "issues", "x-hub-signature-256": sig, "content-type": "application/json" },
         body,
@@ -184,19 +185,14 @@ describe("default export scheduled() — the recompute backstop wiring", () => {
   const ctx = { waitUntil() {}, passThroughException() {} } as unknown as ExecutionContext;
   const controller = {} as ScheduledController;
 
-  it("no-ops without GITHUB_SERVICE_TOKEN or GITHUB_REPO (never throws)", async () => {
+  it("no-ops for an org with no GitHub token or repo stored (never throws)", async () => {
     await seedSprint("5"); // would be a recompute candidate if the guard didn't short-circuit
-    const noToken = { ...env, GITHUB_SERVICE_TOKEN: undefined, GITHUB_REPO: "o/r" } as unknown as Env;
-    await worker.scheduled(controller, noToken, ctx);
-    expect(await all(env.DB, `SELECT * FROM sprint_progress`)).toHaveLength(0);
-
-    const noRepo = { ...env, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: undefined } as unknown as Env;
-    await worker.scheduled(controller, noRepo, ctx);
+    await worker.scheduled(controller, env as unknown as Env, ctx);
     expect(await all(env.DB, `SELECT * FROM sprint_progress`)).toHaveLength(0);
   });
 
-  it("with a token and repo set, delegates to recomputeAllProgress (no candidates → no network, no rows)", async () => {
-    const withToken = { ...env, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r" } as unknown as Env;
+  it("with a token and repo stored for the org, delegates to recomputeAllProgress (no candidates → no network, no rows)", async () => {
+    const withToken = await syncOrgConfig({ ...env, GITHUB_SERVICE_TOKEN: "svc-token", GITHUB_REPO: "o/r" } as unknown as Env);
     await worker.scheduled(controller, withToken, ctx); // no github_ref sprints seeded → resolves without a real fetch
     expect(await all(env.DB, `SELECT * FROM sprint_progress`)).toHaveLength(0);
   });

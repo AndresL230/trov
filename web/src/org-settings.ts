@@ -78,8 +78,7 @@ export interface SetupStep { key: "repo" | "env" | "token" | "team"; title: stri
 /**
  * A new org's four first steps, each read off live data — or null while any of that data
  * has not arrived (a checklist that flickers to "all done" and back helps nobody). GitHub
- * counts as connected through the App's installation, a stored token, or the platform's
- * legacy credential answering for it.
+ * counts as connected through the App's installation or a stored token.
  */
 export function setupSteps(ui: OrgUi): SetupStep[] | null {
   if (ui.repos.status !== "ok" || ui.envs.status !== "ok" || ui.members.status !== "ok" || ui.invites.status !== "ok" || ui.integrations.status !== "ok" || !ui.integrations.data) return null;
@@ -90,7 +89,7 @@ export function setupSteps(ui: OrgUi): SetupStep[] | null {
   // GitHub is connected by the App's installation or, by hand, by a token (the fallback).
   const app = githubOf(ui);
   const offered = app?.configured === true;
-  const connected = !!app?.installation || (!!token && (token.configured || token.legacy_fallback));
+  const connected = !!app?.installation || (!!token && token.configured);
   const repos = ui.repos.data.length > 0;
   // There is NO separate GitHub or token step: connecting a repository is the GitHub step, done once a
   // repository is connected AND GitHub can be read. Where the App is offered that is installing it (no token);
@@ -206,7 +205,7 @@ export function reposTab(org: MyOrg, ui: OrgUi): string {
   // A missing webhook secret is worth flagging only on the by-hand path: where the App is offered and
   // no token is set, the next step is Connect with GitHub, not a webhook.
   const token = ui.integrations.data?.integrations.find((i) => i.kind === "github_token");
-  const byHand = !offered || (!!token && (token.configured || token.legacy_fallback));
+  const byHand = !offered || (!!token && token.configured);
   const unsigned = admin && byHand ? repos.filter((r) => !viaApp(r) && !r.webhook_secret_configured).length : 0;
   const lost = inst ? repos.filter((r) => viaApp(r) && r.access_lost).length : 0;
 

@@ -261,8 +261,7 @@ export async function runBackfill(
   });
 
   // The org's PRIMARY repo and its GitHub credential (src/github-app/credential.ts: its App
-  // installation's token, else its stored `github_token`; for SaplingLearn, until its admin connects
-  // either, the legacy GITHUB_SERVICE_TOKEN — src/data/secrets.ts). This module is not
+  // installation's token, else its stored `github_token`). This module is not
   // reachable from src/mcp.ts, so it may resolve one. A secret that cannot be read is "not configured".
   const repo = (await orgPrimaryRepo(ctx))?.repo;
   const gh = repo ? await resolveGithubCredential(ctx, env, { repo, fetchImpl: opts?.fetchImpl }).catch(() => null) : null;

@@ -28,7 +28,8 @@ import {
   putMetric, putMetrics, putSnapshot,
 } from "../src/repo/store";
 import type { RepoEvent } from "../src/repo/types";
-import { PeopleError, getPersonProfile, listPeopleForAgents, writePersonProfile } from "../src/tools/people";
+import { getPersonProfile, listPeopleForAgents } from "../src/tools/people";
+import { OrgError, updateMember } from "../src/orgs/repo";
 import { getRepoDashboard } from "../src/tools/repo";
 import { getRepoDashboardForAgent, type RepoAgentView } from "../src/tools/repo-agent";
 import { seedPerson } from "./helpers/persons";
@@ -271,11 +272,15 @@ describe("people are an org's members", () => {
     await seedPeople();
     await expect(getPersonProfile(A(), "acme-only", "AndresL230")).rejects.toMatchObject({ code: "not_found" });
     await expect(getPersonProfile(A(), "no-such-person", "AndresL230")).rejects.toMatchObject({ code: "not_found" });
-    await expect(writePersonProfile(A(), "acme-only", "AndresL230", { role: "Intruder" })).rejects.toBeInstanceOf(PeopleError);
+    // A profile write is a member edit (PUT /api/o/<slug>/members/:handle): even SaplingLearn's owner cannot reach
+    // a person who is not a member of SaplingLearn.
+    const ownerA = await tenantCtx("AndresL230");
+    await expect(updateMember(platformCtx(), ownerA, "acme-only", { title: "Intruder" })).rejects.toMatchObject({ code: "not_found" });
+    await expect(updateMember(platformCtx(), ownerA, "acme-only", { title: "Intruder" })).rejects.toBeInstanceOf(OrgError);
     expect((await getPersonProfile(B(), "acme-only", "AndresL230")).role).toBe("Widget engineer");
 
     // The write takes an ADMIN of that org (the gate reads the context's role — §5.2), so a real membership.
-    await writePersonProfile(await tenantCtx("AndresL230", "admin", { orgId: ORG_B }), "meilin", "AndresL230", { role: "Board member" });
+    await updateMember(platformCtx(), await tenantCtx("AndresL230", "admin", { orgId: ORG_B }), "meilin", { title: "Board member" });
     expect((await getPersonProfile(B(), "meilin", "AndresL230")).role).toBe("Board member");
     expect((await getPersonProfile(A(), "meilin", "AndresL230")).role).toBe("Product manager");
   });

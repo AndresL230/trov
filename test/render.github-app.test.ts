@@ -27,7 +27,7 @@ const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => 
 });
 const status = (o: Partial<GithubAppStatusDTO> = {}): GithubAppStatusDTO => ({ configured: true, installation: null, lost: null, mismatch: null, ...o });
 const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
-  id: `hook_${name.replace(/\W/g, "_")}`, repo_full_name: name, is_primary: false, legacy_hook: false, webhook_url: `https://trov.dev/webhook/github/${HOOK}`,
+  id: `hook_${name.replace(/\W/g, "_")}`, repo_full_name: name, is_primary: false, webhook_url: `https://trov.dev/webhook/github/${HOOK}`,
   webhook_secret_configured: false, connection: "manual", access_lost: false, created_at: "2026-10-01T10:00:00.000Z", created_by: "andres", ...o,
 });
 function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): IntegrationDTO {
@@ -36,7 +36,7 @@ function integ(kind: IntegrationKind, o: Partial<IntegrationDTO> = {}): Integrat
     vercel: "Vercel connection", render: "Render API key", netlify: "Netlify connection", fly: "Fly.io token", aws: "AWS role" }[kind];
   return {
     kind, scope: scope_type === "repo" ? HOOK : "", scope_type, scope_label: scope_type === "repo" ? "acme-gh/web" : null, label, description: `What ${label} is used for.`, how_to: "How.",
-    configured: false, legacy_fallback: false, expected: true, hint_last4: "", created_by: null, created_at: null, rotated_at: null, last_used_at: null, last_error: null, config: {}, config_fields: [],
+    configured: false, expected: true, hint_last4: "", created_by: null, created_at: null, rotated_at: null, last_used_at: null, last_error: null, config: {}, config_fields: [],
     webhook_url: kind === "github_webhook" ? `https://trov.dev/webhook/github/${HOOK}` : null, ...o,
   };
 }

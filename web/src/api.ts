@@ -1285,7 +1285,7 @@ export function setPlatformSupportStatus(id: number, status: "open" | "resolved"
 }
 
 // ── the organization's tag list (0056_org_tags; src/tags/routes.ts) ──────────
-// Paths are the tenant alias (`/api/tags…`): `call` prefixes them with the org on screen.
+// Paths are tenant suffixes (`/api/tags…`): `call` prefixes them with the org on screen.
 const tagPath = (name: string, rest = ""): string => `/api/tags/${encodeURIComponent(name)}${rest}`;
 /** The list, its counts and the plan's cap; an admin also gets what agents suggested. */
 export function listOrgTags(): Promise<TagT.TagListDTO> { return orgSend("GET", "/api/tags"); }

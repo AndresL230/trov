@@ -178,7 +178,7 @@ function contentFor(o, c, s, { rich }) {
   const member = o.people.member[0] ?? owner;
   const member2 = o.people.member[1] ?? member;
   const repo = repoOf(o);
-  s.push(insert("org_repos", { id: `hook_${o.id}`, org_id: o.id, repo_full_name: repo, is_primary: 1, legacy_hook: 0, created_at: c.days(90), created_by: owner }));
+  s.push(insert("org_repos", { id: `hook_${o.id}`, org_id: o.id, repo_full_name: repo, is_primary: 1, created_at: c.days(90), created_by: owner }));
   // The six starter tags (0056) — copied from the seed org's rows, which the reset just wrote.
   s.push(`INSERT INTO org_tags (org_id, name, description, color, starter, created_at, created_by) SELECT ${q(o.id)}, name, description, color, starter, created_at, created_by FROM org_tags WHERE org_id = 'org_saplinglearn' AND starter = 1`);
   // The three starter spaces (0081_docs_library) — copied from the seed org's rows, like the tags.

@@ -16,13 +16,15 @@ import { addOrgRepo } from "./helpers/org-config";
 beforeEach(async () => { await addOrgRepo("SaplingLearn/sapling"); });
 // ── harness (the Phase 2 route-test idiom: real routes, real cookies, real D1) ─
 
+// Every org route answers only under its slug; the suite's person is in SaplingLearn.
+const BASE = "/api/o/saplinglearn";
 const post = (path: string, cookie: string, body?: unknown) =>
   app.request(
-    path,
+    BASE + path,
     { method: "POST", headers: { cookie, "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) },
     env
   );
-const get = (path: string, cookie: string) => app.request(path, { headers: { cookie } }, env);
+const get = (path: string, cookie: string) => app.request(BASE + path, { headers: { cookie } }, env);
 const json = async <T>(res: Response): Promise<T> => (await res.json()) as T;
 
 interface SprintEnvelope { ok: true; sprint: SprintView }
@@ -542,7 +544,7 @@ describe("sprint routes 401 without a session", () => {
       [`/sprints/${sp.id}/complete`, { method: "POST" }],
     ];
     for (const [path, init] of calls) {
-      const res = await app.request(path, init, env);
+      const res = await app.request(BASE + path, init, env);
       expect(res.status, path).toBe(401);
     }
 

@@ -11,7 +11,7 @@ per-type **gate** functions in `src/consumer.ts` (`ingestFeedEntry` / `ingestDoc
 adapters over these: `/ingest` and the MCP `record_session` batch tool (both via `consume`), the
 per-entry MCP write tools (`append_feed`, `propose_doc_update`), a person's Markdown import (`POST /imports/:id/pages`,
 `src/imports/runs.ts` — every page into `ingestDocProposal`; see below), and the GitHub webhooks (`/webhook/github/:hookId`,
-the App's `/webhook/github/app` and the legacy `/webhook/github` — all through `captureDelivery`), which
+and the App's `/webhook/github/app` — both through `captureDelivery`), which
 call `ingestEvent` (into `events`, for My Work) AND, independently, `ingestRepoEvent` (into `repo_events`,
 for the Repo dashboard — see below) off the SAME verified delivery. The gate **reconciles**, not just routes:
 

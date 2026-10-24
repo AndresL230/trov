@@ -16,6 +16,9 @@ import { cookieFor, seedPerson } from "./helpers/persons";
 import { bearerCtx, systemCtx } from "./helpers/tenant";
 import { narr, narrText } from "./helpers/plan";
 
+/** Every org route answers only under its slug; the suite's people are in SaplingLearn. */
+const BASE = "/api/o/saplinglearn";
+
 /** A TicketCreate with the schema's defaults filled in (these tests bypass the route's parse). */
 const ticket = (o: Partial<TicketCreate> & { title: string }): TicketCreate => ({
   body: "", category: "other", priority: "normal", assignees: [], ...o,
@@ -95,10 +98,10 @@ describe("roadmap HTTP routes (session-gated)", () => {
     );
     await upsertProgress(systemCtx(), sprints[0].id, 4, 6, "event");
 
-    const unauth = await app.request("/roadmap", {}, env);
+    const unauth = await app.request(BASE + "/roadmap", {}, env);
     expect(unauth.status).toBe(401);
 
-    const res = await app.request("/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
+    const res = await app.request(BASE + "/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Awaited<ReturnType<typeof get_plan>>;
     expect(body.narrative).toBe(narrText("Q3 push"));
@@ -120,7 +123,7 @@ describe("roadmap HTTP routes (session-gated)", () => {
     await seedSprint("Later", "upcoming", "2026-12-01");
     await seedSprint("Sooner", "upcoming", "2026-10-01");
 
-    const res = await app.request("/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
+    const res = await app.request(BASE + "/roadmap", { headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Awaited<ReturnType<typeof get_plan>>;
     expect(body.sprints.map((s) => s.label)).toEqual(["Sooner", "Later", "Unscheduled"]);
@@ -129,7 +132,7 @@ describe("roadmap HTTP routes (session-gated)", () => {
 
   it("POST /sprints/:id/complete flips status for an authenticated principal", async () => {
     const id = await seedSprint("GA", "in_progress");
-    const res = await app.request(`/sprints/${id}/complete`, { method: "POST", headers: { cookie: await cookieFor("andres") } }, env);
+    const res = await app.request(`${BASE}/sprints/${id}/complete`, { method: "POST", headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { ok: true; sprint: SprintRow };
     expect(body.sprint.status).toBe("done");
@@ -139,14 +142,14 @@ describe("roadmap HTTP routes (session-gated)", () => {
 
   it("POST /sprints/:id/complete 401s without a session and leaves the sprint alone", async () => {
     const id = await seedSprint("GA", "in_progress");
-    const res = await app.request(`/sprints/${id}/complete`, { method: "POST" }, env);
+    const res = await app.request(`${BASE}/sprints/${id}/complete`, { method: "POST" }, env);
     expect(res.status).toBe(401);
     const row = await first<SprintRow>(env.DB, `SELECT * FROM sprints WHERE id = ?`, id);
     expect(row?.status).toBe("in_progress");
   });
 
   it("POST /sprints/:id/complete 400s on an unknown sprint", async () => {
-    const res = await app.request(`/sprints/9999/complete`, { method: "POST", headers: { cookie: await cookieFor("andres") } }, env);
+    const res = await app.request(`${BASE}/sprints/9999/complete`, { method: "POST", headers: { cookie: await cookieFor("andres") } }, env);
     expect(res.status).toBe(400);
     expect((await res.json() as { error: string }).error).toContain("no such sprint");
   });
@@ -163,7 +166,7 @@ describe("roadmap HTTP routes (session-gated)", () => {
     await transition_ticket(systemCtx(), a, "in_progress", "andres");
     await transition_ticket(systemCtx(), a, "done", "andres");
 
-    const res = await app.request("/roadmap", { headers: { cookie } }, env);
+    const res = await app.request(BASE + "/roadmap", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as Awaited<ReturnType<typeof get_plan>>;
     const sp = body.sprints.find((s) => s.id === id)!;

@@ -49,7 +49,7 @@ const invite = (o: Partial<OrgInvite> = {}): OrgInvite => ({
   responded_at: null, responded_by: null, name: null, mail_status: "sent", mail_at: "2026-10-05T10:00:00.000Z", mail_error: null, ...o,
 });
 const repo = (name: string, o: Partial<OrgRepoDTO> = {}): OrgRepoDTO => ({
-  id: `hook_${name}`, repo_full_name: name, is_primary: true, legacy_hook: false, webhook_url: null, webhook_secret_configured: false, connection: "app", access_lost: false,
+  id: `hook_${name}`, repo_full_name: name, is_primary: true, webhook_url: null, webhook_secret_configured: false, connection: "app", access_lost: false,
   created_at: "2026-10-01T10:00:00.000Z", created_by: "ines", ...o,
 });
 const inst = (o: Partial<GithubInstallationDTO> = {}): GithubInstallationDTO => ({

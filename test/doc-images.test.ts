@@ -45,6 +45,8 @@ async function call(name: string, args: Record<string, unknown>, handle = ME): P
 
 const fetchWorker = (path: string, init: RequestInit = {}) =>
   worker.fetch(new Request(`${ORIGIN}${path}`, init), env as unknown as Env, ctx);
+/** Every org route answers only under its slug: a doc's `/img/<sha>` ref is served at `/api/o/<slug>/img/<sha>`. */
+const BASE = "/api/o/saplinglearn";
 
 /** A distinct fake PNG per seed; the server stores bytes, it does not sniff them. */
 function png(seed: string): Uint8Array {
@@ -255,9 +257,9 @@ describe("the doc gate's image rule", () => {
     await expect(assign_triage(systemCtx(), id, ME, { type: "doc", section: "reference" })).rejects.toThrow(/could not place doc: .*not uploaded yet/);
   });
 
-  it("a person's New doc (POST /api/docs/propose) gets the refusal as a 400", async () => {
+  it("a person's New doc (POST /api/o/:slug/docs/propose) gets the refusal as a 400", async () => {
     const cookie = await cookieFor(ME);
-    const r = await fetchWorker("/api/docs/propose", {
+    const r = await fetchWorker(`${BASE}/docs/propose`, {
       method: "POST", headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ title: "Pictured", section: "reference", space: "technical", body: "![x](https://x.io/a.png)" }),
     });
@@ -272,7 +274,7 @@ describe("GET /img/<sha>", () => {
   it("serves the exact bytes to a signed-in member, locked down and cached as immutable", async () => {
     const bytes = png("serve");
     const ref = await upload(bytes);
-    const r = await fetchWorker(ref, { headers: { cookie: await cookieFor("img-reader") } });
+    const r = await fetchWorker(BASE + ref, { headers: { cookie: await cookieFor("img-reader") } });
     expect(r.status).toBe(200);
     expect(r.headers.get("content-type")).toBe("image/png");
     expect(r.headers.get("x-content-type-options")).toBe("nosniff");
@@ -283,9 +285,9 @@ describe("GET /img/<sha>", () => {
 
   it("is 401 without a session, and 404 for an unknown or malformed sha", async () => {
     const ref = await upload(png("auth"));
-    expect((await fetchWorker(ref)).status).toBe(401);
+    expect((await fetchWorker(BASE + ref)).status).toBe(401);
     const cookie = await cookieFor("img-reader");
-    expect((await fetchWorker(`/img/${"e".repeat(64)}`, { headers: { cookie } })).status).toBe(404);
-    expect((await fetchWorker(`/img/not-a-sha`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetchWorker(`${BASE}/img/${"e".repeat(64)}`, { headers: { cookie } })).status).toBe(404);
+    expect((await fetchWorker(`${BASE}/img/not-a-sha`, { headers: { cookie } })).status).toBe(404);
   });
 });

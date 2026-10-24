@@ -10,10 +10,12 @@ const ingestBody = JSON.stringify({
 
 describe("auth gate (fails closed)", () => {
   it("rejects an unauthenticated write with 401 and writes nothing", async () => {
-    const res = await SELF.fetch("https://example.com/ingest", {
+    const res = await SELF.fetch("https://example.com/api/o/saplinglearn/ingest", {
       method: "POST", headers: { "content-type": "application/json" }, body: ingestBody,
     });
     expect(res.status).toBe(401);
+    // The old unprefixed path is no route at all: the site's 404, never the gate's 401.
+    expect((await SELF.fetch("https://example.com/ingest", { method: "POST", headers: { "content-type": "application/json" }, body: ingestBody })).status).toBe(404);
     const feed = await all<FeedRow>(env.DB, `SELECT * FROM feed`);
     expect(feed.length).toBe(0); // nothing written
   });

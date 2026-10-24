@@ -10,7 +10,6 @@ import {
 } from "../src/data/context";
 import { resolveBearerTenant } from "../src/data/bearer";
 import { tenantGate } from "../src/data/gate";
-import { consumeLegacyInvite, isLegacyOrg } from "../src/data/legacy";
 import * as sql from "../src/data/sql";
 import * as psql from "../src/data/platform-sql";
 import { cookieFor, seedPerson } from "./helpers/persons";
@@ -144,13 +143,12 @@ describe("the query surface", () => {
 });
 
 describe("the gates", () => {
-  it("the cut-over alias: a member's routes work; a person with no org, or two, gets 409 org_required", async () => {
-    expect((await app.request("/docs", { headers: { cookie: await cookieFor("meilin") } }, env)).status).toBe(200);
-    const none = await app.request("/docs", { headers: { cookie: await cookieFor("drifter", { member: false }) } }, env);
-    expect([none.status, await none.json()]).toEqual([409, { error: "org_required" }]);
+  it("no org route answers without its org: the old unprefixed paths are gone for everyone", async () => {
+    expect((await app.request("/api/o/saplinglearn/docs", { headers: { cookie: await cookieFor("meilin") } }, env)).status).toBe(200);
     await ensureMember("sanaok", "member", ORG_B);
-    const two = await app.request("/docs", { headers: { cookie: await cookieFor("sanaok") } }, env);
-    expect([two.status, await two.json()]).toEqual([409, { error: "org_required" }]);
+    for (const cookie of [await cookieFor("meilin"), await cookieFor("drifter", { member: false }), await cookieFor("sanaok")]) {
+      for (const path of ["/docs", "/api/handoffs", "/raw/a/x@v1"]) expect((await app.request(path, { headers: { cookie } }, env)).status, path).toBe(404);
+    }
   });
 
   it("person-level routes need no org, and an unauthenticated request is still a 401", async () => {
@@ -158,7 +156,7 @@ describe("the gates", () => {
     const me = await app.request("/auth/me", { headers: { cookie } }, env);
     expect(me.status).toBe(200);
     expect(((await me.json()) as { handle: string }).handle).toBe("drifter");
-    expect((await app.request("/docs", {}, env)).status).toBe(401);
+    expect((await app.request("/api/o/saplinglearn/docs", {}, env)).status).toBe(401);
   });
 
   it("tenantGate: 404 not_found for an unknown slug and for a non-member alike; a member gets c.var.ctx", async () => {
@@ -243,25 +241,7 @@ describe("the gates", () => {
   });
 });
 
-describe("test + cut-over helpers", () => {
-  it("consumeLegacyInvite: only a live legacy invite for the verified email makes a new person a SaplingLearn member, once", async () => {
-    await seedPerson("newbie", { member: false });
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", null)).toBeNull();
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBeNull(); // nobody invited that address
-    expect(await resolveSoleTenant(e, "newbie", "session")).toEqual({ ok: false, reason: "no_membership" });
-
-    await env.DB.prepare(`INSERT INTO invites (email, name, invited_by, invited_at) VALUES ('newbie@x.io', 'Newbie', 'AndresL230', '2026-10-01T00:00:00Z')`).run();
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", "Newbie@X.io")).toMatchObject({ orgId: ORG_A, role: "system", via: "system" });
-    expect(await consumeLegacyInvite(platformCtx(), "newbie", "newbie@x.io")).toBeNull(); // spent
-    expect(await resolveSoleTenant(e, "newbie", "session")).toMatchObject({ ok: true, ctx: { orgId: ORG_A, role: "member" } });
-    expect(await env.DB.prepare(`SELECT accepted_by FROM invites WHERE email = 'newbie@x.io'`).first()).toEqual({ accepted_by: "newbie" });
-  });
-
-  it("isLegacyOrg names org #1 and nothing else", async () => {
-    expect(isLegacyOrg(systemCtx(ORG_A))).toBe(true);
-    expect(isLegacyOrg(systemCtx(ORG_B))).toBe(false);
-  });
-
+describe("test helpers", () => {
   it("tenantCtx / bearerCtx create the person and membership they need", async () => {
     expect(await tenantCtx("fresh-face", "admin")).toMatchObject({ orgId: ORG_A, userId: "fresh-face", role: "admin", via: "session" });
     expect(await bearerCtx("fresh-face")).toMatchObject({ role: "admin", via: "bearer" });

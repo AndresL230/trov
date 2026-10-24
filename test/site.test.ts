@@ -174,25 +174,28 @@ describe("robots.txt: AI search and assistants by name, training crawlers behind
   });
 });
 
-describe("the docs' address: /docs is the app's cookie route, so a browser that types it is sent to the first page", () => {
-  it("/docs/ for anyone, and /docs for a signed-out browser, go to the first docs page (302: it depends on who asks)", async () => {
-    for (const [path, init] of [["/docs/", {}], ["/docs/", { headers: { cookie: "session=x" } }], ["/docs", { headers: { accept: "text/html,application/xhtml+xml,*/*;q=0.8" } }]] as const) {
-      const s = site();
-      const res = await get(path, s.env, init as RequestInit);
-      expect(res.status, path).toBe(302);
-      expect(res.headers.get("location"), path).toBe(DOCS_HOME);
-      expect(res.headers.get("vary"), path).toBe("Cookie, Accept");
-      expect(s.asked, path).toEqual([]);
+describe("the docs' address: /docs and /docs/ are no route, so whoever types either is sent to the first page", () => {
+  it("/docs and /docs/ go to the first docs page for anyone — signed in or out, a browser or a fetch, GET or HEAD", async () => {
+    const cookie = await cookieFor("AndresL230");
+    for (const path of ["/docs", "/docs/"]) {
+      for (const init of [{}, { headers: { cookie: "session=x" } }, { headers: { cookie } }, { headers: { accept: "text/html,application/xhtml+xml,*/*;q=0.8" } }, { headers: { accept: "*/*" } }, { method: "HEAD" }]) {
+        const s = site();
+        const res = await get(path, s.env, init as RequestInit);
+        expect(res.status, path).toBe(302);
+        expect(res.headers.get("location"), path).toBe(DOCS_HOME);
+        expect(res.headers.get("vary"), path).toBeNull(); // the same answer whoever asks
+        expect(s.asked, path).toEqual([]);
+      }
     }
     expect(DOCS_HOME).toBe(DOCS_PAGES[0].path);
   });
 
-  it("the route itself is untouched: a fetch (no text/html) gets its 401, with a hint; signed in, its JSON", async () => {
-    const res = await get("/docs", site().env, { headers: { accept: "*/*" } });
+  it("an org's docs list is only the org-prefixed route: a fetch there without a session gets its 401, with a hint; signed in, its JSON", async () => {
+    const res = await get("/api/o/saplinglearn/docs", site().env, { headers: { accept: "*/*" } });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized", hint: apiErrorHint(401, "unauthorized") });
     const cookie = await cookieFor("AndresL230");
-    const signedIn = await get("/docs", site().env, { headers: { cookie, accept: "text/html" } });
+    const signedIn = await get("/api/o/saplinglearn/docs", site().env, { headers: { cookie } });
     expect(signedIn.status).toBe(200);
     expect(signedIn.headers.get("content-type")).toContain("application/json");
   });
@@ -282,7 +285,7 @@ describe("one address per page", () => {
 describe("noindex on everything else the Worker serves", () => {
   it("the API, sign-in, OAuth, MCP and the signed links carry X-Robots-Tag: noindex — JSON and redirects too", async () => {
     for (const [path, status] of [
-      ["/api/orgs", 401], ["/api/o/acme/docs", 401], ["/docs", 401], ["/auth/me", 401], ["/auth/login", 302],
+      ["/api/orgs", 401], ["/api/o/acme/docs", 401], ["/auth/me", 401], ["/auth/login", 302],
       ["/oauth/authorize", 400], ["/mcp", 401], ["/u/not-a-token", 404], ["/o/acme/", 301], ["/billing/start?plan=team", 503 /* billing is off in the pool */],
       ["/.well-known/oauth-authorization-server", 200],
     ] as const) {
@@ -326,7 +329,7 @@ describe("an address no route answers is a 404 — a real cookie route is still 
   });
 
   it("a real cookie route, unauthenticated, is still the session gate's 401 — by its own method", async () => {
-    for (const [path, method] of [["/api/orgs", "GET"], ["/auth/me", "GET"], ["/docs", "GET"], ["/docs", "HEAD"], ["/ingest", "POST"], ["/api/o/acme/tickets", "GET"], ["/feed", "GET"]] as const) {
+    for (const [path, method] of [["/api/orgs", "GET"], ["/auth/me", "GET"], ["/api/o/acme/docs", "GET"], ["/api/o/acme/docs", "HEAD"], ["/api/o/acme/ingest", "POST"], ["/api/o/acme/tickets", "GET"], ["/api/o/acme/feed", "GET"]] as const) {
       const res = await get(path, site().env, { method, ...(method === "POST" ? { body: "{}" } : {}) });
       expect(res.status, `${method} ${path}`).toBe(401);
     }
@@ -339,9 +342,13 @@ describe("an address no route answers is a 404 — a real cookie route is still 
     expect(isAppRoute("GET", "/does/not/exist")).toBe(false);
     expect(isAppRoute("GET", "/api/o/acme/nope")).toBe(false); // `/api/o/:slug/*` is the tenant GATE, not a route
     expect(isAppRoute("GET", "/auth/nope")).toBe(false); // `/auth/*` is middleware too
-    expect(isAppRoute("GET", "/ingest")).toBe(false);
-    expect(isAppRoute("POST", "/ingest")).toBe(true);
-    expect(isAppRoute("HEAD", "/docs")).toBe(true);
+    expect(isAppRoute("GET", "/api/o/acme/ingest")).toBe(false);
+    expect(isAppRoute("POST", "/api/o/acme/ingest")).toBe(true);
+    expect(isAppRoute("HEAD", "/api/o/acme/docs")).toBe(true);
+    // an org route answers only under its org's prefix — the old bare paths are no route
+    expect(isAppRoute("POST", "/ingest")).toBe(false);
+    expect(isAppRoute("GET", "/docs")).toBe(false);
+    expect(isAppRoute("GET", "/feed")).toBe(false);
     expect(isAppRoute("OPTIONS", "/oauth/token")).toBe(true); // the CORS preflight
     let checked = 0;
     for (const r of app.routes) {

@@ -67,7 +67,7 @@ function openIssueEvent(number: number, login: string, updatedAt: string): Captu
 
 describe("GET /me/dashboard (session-gated)", () => {
   it("401s without a session", async () => {
-    const res = await app.request("/me/dashboard", {}, env);
+    const res = await app.request("/api/o/saplinglearn/me/dashboard", {}, env);
     expect(res.status).toBe(401);
   });
 
@@ -83,7 +83,7 @@ describe("GET /me/dashboard (session-gated)", () => {
     });
     await ingestEvent(systemCtx(), platformCtx(), openIssueEvent(7, "AndresL230", now), "github-webhook");
 
-    const res = await app.request("/me/dashboard", { headers: { cookie: await cookieFor("AndresL230") } }, env);
+    const res = await app.request("/api/o/saplinglearn/me/dashboard", { headers: { cookie: await cookieFor("AndresL230") } }, env);
     expect(res.status).toBe(200);
     const body = (await res.json()) as DashboardData;
 
@@ -121,20 +121,20 @@ describe("GET /me/dashboard (session-gated)", () => {
   it("carries the third list — open tickets assigned to the principal, never in todo", async () => {
     const cookie = await cookieFor("AndresL230");
     await seedPerson("meilin", { name: "Meilin Zhao", github: false });
-    const created = await app.request("/tickets", {
+    const created = await app.request("/api/o/saplinglearn/tickets", {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ title: "SSO login loops", body: "It bounces me back.", priority: "high", assignees: ["AndresL230"] }),
     }, env);
     expect(created.status).toBe(200);
     // Someone else's ticket must not leak into my dashboard.
-    await app.request("/tickets", {
+    await app.request("/api/o/saplinglearn/tickets", {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
       body: JSON.stringify({ title: "Not mine", assignees: ["meilin"] }),
     }, env);
 
-    const res = await app.request("/me/dashboard", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/me/dashboard", { headers: { cookie } }, env);
     const body = (await res.json()) as DashboardData;
     expect(body.tickets.map((t) => t.title)).toEqual(["SSO login loops"]);
     expect(body.tickets[0]).toMatchObject({ status: "submitted", priority: "high", requester: "AndresL230", sprint: null });
@@ -151,13 +151,13 @@ describe("GET /docs?fields=meta — the body-less doc list (My Work's Docs you o
       `INSERT INTO docs (slug, section, title, body, current_version, updated_at, updated_by, space) VALUES (?, 'reference', 'Gate', 'SECRET BODY', 2, ?, 'AndresL230', 'technical')`
     ).bind("gate", now).run();
 
-    const meta = (await (await app.request("/docs?fields=meta", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
+    const meta = (await (await app.request("/api/o/saplinglearn/docs?fields=meta", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
     expect(meta.docs).toHaveLength(1);
     expect(meta.docs[0]).toMatchObject({ slug: "gate", title: "Gate", current_version: 2, updated_by: "AndresL230", space: "technical" });
     expect(meta.docs[0]).not.toHaveProperty("body");
     expect(JSON.stringify(meta)).not.toContain("SECRET BODY");
 
-    const full = (await (await app.request("/docs", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
+    const full = (await (await app.request("/api/o/saplinglearn/docs", { headers: { cookie } }, env)).json()) as { docs: Record<string, unknown>[] };
     expect(full.docs[0]).toHaveProperty("outline", []);
     expect(full.docs[0]).not.toHaveProperty("body");
     expect(meta.docs[0]).not.toHaveProperty("outline");

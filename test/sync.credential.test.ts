@@ -2,7 +2,7 @@
  * Sync GitHub and THE org's GitHub credential (src/github-app/credential.ts; docs/architecture/sync.md ›
  * The credential): the panel's "can a sync start" (`GET /sync`), the batch route's own check, and the
  * run itself all ask the ONE source every GitHub read resolves from — the org's App installation, then
- * its stored token, then (SaplingLearn alone) the Worker's legacy secret. A status read never asks
+ * its stored token (no Worker secret, for any org). A status read never asks
  * GitHub for a token. GitHub is a stub — never the network.
  */
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
@@ -71,7 +71,7 @@ const statusB = (envOver: Env = e) => adminB(envOver).then((ctx) => syncStatus(e
 const runsB = () => all<{ status: string; failures: string }>(env.DB, `SELECT status, failures FROM sync_runs WHERE org_id = ? ORDER BY id`, ORG_B);
 
 describe("where the credential would come from — githubCredentialSource, the order resolveGithubCredential resolves in", () => {
-  it("installation → stored token → SaplingLearn's legacy secret → none, and it agrees with the real resolve at every step", async () => {
+  it("installation → stored token → none, and it agrees with the real resolve at every step", async () => {
     await addOrgRepo("SaplingLearn/sapling", ORG_A);
     await addOrgRepo(REPO_B, ORG_B);
     const gh = github();
@@ -80,9 +80,10 @@ describe("where the credential would come from — githubCredentialSource, the o
       const ctx = systemCtx(org, "system", envOver);
       return [await githubCredentialSource(ctx, envOver, { repo }), (await resolveGithubCredential(ctx, envOver, { repo, fetchImpl: gh.fetchImpl, now: NOW }))?.source ?? null];
     };
-    // Nothing: an outside org has none; SaplingLearn has the Worker's legacy token, and only it.
+    // Nothing: no org has a credential it did not store — the Worker's old GITHUB_SERVICE_TOKEN is read for none,
+    // SaplingLearn included.
     expect(await both(ORG_B, withLegacy, REPO_B)).toEqual([null, null]);
-    expect(await both(ORG_A, withLegacy, "SaplingLearn/sapling")).toEqual(["token", "token"]);
+    expect(await both(ORG_A, withLegacy, "SaplingLearn/sapling")).toEqual([null, null]);
     expect(await both(ORG_A, e, "SaplingLearn/sapling")).toEqual([null, null]);
     // A stored token.
     await setSecret(await adminB(), "github_token", "", TOKEN_B);
@@ -214,22 +215,25 @@ describe("POST /admin/backfill — the batch reads with the credential the statu
     expect(kept).not.toContain(TOKEN_B);
   });
 
-  it("over HTTP, on both mounts: the org-prefixed route and the old-path alias run the same batch through the App", async () => {
+  it("over HTTP: the org-prefixed route runs the batch through the App; the old unprefixed path is no route", async () => {
     await ensureMember("bob", "admin", ORG_B);
     await addOrgRepo(REPO_B, ORG_B);
     await seedInstallation(ORG_B, INST_B, "beta-co", { by: "bob" });
     const gh = github({ [`/repos/${REPO_B}/pulls`]: [pr(7)] });
     vi.stubGlobal("fetch", gh.fetchImpl); // the route passes no fetch of its own
-    const cookie = await cookieFor("bob", { member: false }); // in ONE org, so the old path resolves to it
+    const cookie = await cookieFor("bob", { member: false }); // bob is in ORG_B (acme) alone
     const post = (path: string, body: unknown) => quiet(() => Promise.resolve(app.request(path, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, e)));
     const first1 = await post("/api/o/acme/admin/backfill", { batch: 1, of: 10, start: true });
     expect(first1.status).toBe(200);
     const one = (await first1.json()) as SyncBatchResult;
     expect(one).toMatchObject({ ok: true, prs: 1, capturedPrs: 1, run: { status: expect.stringMatching(/^(ok|partial)$/), repo: REPO_B, by: "bob" }, summaries: { status: "off" } });
-    // bob has one org, so the old path (`/admin/backfill`, no slug) resolves to it and starts the next run.
-    const alias = await post("/admin/backfill", { batch: 1, of: 10, start: true });
-    expect(alias.status).toBe(200);
-    const two = (await alias.json()) as SyncBatchResult;
+    // The old path (`/admin/backfill`, no slug) is gone: a 404, and no run is started.
+    expect((await post("/admin/backfill", { batch: 1, of: 10, start: true })).status).toBe(404);
+    expect(await runsB()).toHaveLength(1);
+    // A second run through the route starts a new one, and captures nothing twice.
+    const again = await post("/api/o/acme/admin/backfill", { batch: 1, of: 10, start: true });
+    expect(again.status).toBe(200);
+    const two = (await again.json()) as SyncBatchResult;
     expect(two.run.id).not.toBe(one.run.id);
     expect(two).toMatchObject({ prs: 1, capturedPrs: 0, run: { repo: REPO_B, by: "bob" } });
     expect(gh.reads.every((r) => r.auth === `Bearer ${gh.app.minted[0]}`)).toBe(true);

@@ -219,8 +219,6 @@ export interface HostingConnectionDTO {
   last_used_at: string | null;
   /** Scrubbed, ≤ 300 characters; null after a success. */
   last_error: string | null;
-  /** SaplingLearn's cut-over only: a legacy Worker secret answers for it. */
-  legacy_fallback: boolean;
   /** Why it was revoked, when `status` is `revoked` — display text derived from the stored code
    *  (`hostingRevokedReasonText`: "Removed on Vercel", "Disconnected in Trov"). */
   revoked_reason: string | null;
@@ -377,8 +375,6 @@ export interface HostingLeftoversRemovedDTO { removed: number; connection: Hosti
 /** An environment's app metrics token, as its parts' editor shows it — metadata only, never the value. */
 export interface HostingAppMetricsDTO {
   configured: boolean;
-  /** SaplingLearn's cut-over only: a legacy Worker secret answers for it. */
-  legacy_fallback: boolean;
   hint_last4: string;
   last_used_at: string | null;
   last_error: string | null;

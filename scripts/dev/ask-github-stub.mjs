@@ -2,7 +2,8 @@
 // LOCAL DEVELOPMENT ONLY: a loopback stand-in for GitHub and Anthropic, for driving Ask Trov's GitHub lookups end to end
 // in a browser against `wrangler dev` (docs/testing/ask-github-tools-test-log.md; docs/architecture/ask.md › GitHub).
 // Point `.dev.vars` at it — `LOCAL_UPSTREAM=http://127.0.0.1:<port>` (src/sync/local-upstream.ts) — with a FAKE
-// `ANTHROPIC_API_KEY` and a FAKE `GITHUB_SERVICE_TOKEN`. It never forwards anything anywhere.
+// `ANTHROPIC_API_KEY`, and a FAKE GitHub token saved for the org in Org settings › Integrations. It never forwards
+// anything anywhere.
 //
 //   POST /anthropic/v1/messages  a scripted model, streamed in the Messages API's SSE shape:
 //       • the person's question carries a directive line `e2e: <tool> <json> | <tool> <json> …` → those tool calls;

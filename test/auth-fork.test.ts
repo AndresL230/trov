@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { first } from "./helpers/db";
 import { completeSignIn, linkSignIn, suggestHandle, sealOnboard, openOnboard, type ProviderProfile } from "../src/auth/onboard";
-import { createInvite } from "../src/auth/invites";
 import { seedPerson } from "./helpers/persons";
 import { hmacSeal, b64uEncode } from "../src/auth/crypto";
 import type { IdentityRow, PersonRow } from "@shared/rows";
@@ -38,27 +37,17 @@ describe("completeSignIn — the fork", () => {
     expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard"); // a NEW account, never priya's
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
-  it("3a. unknown Google identity with a live legacy invite → onboard payload seeded with its name (nothing written)", async () => {
-    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: "Priya", invitedBy: "AndresL230" });
-    const r = await completeSignIn(platformCtx(), google({ name: null }));
-    expect(r.kind).toBe("onboard");
-    if (r.kind !== "onboard") throw new Error();
-    expect(r.payload.suggested_handle).toBe("priya-n");
-    expect(r.payload.name).toBe("Priya"); // the provider gave none: the name the admin typed
-    expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
-    expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya-n'`)).toBeNull();
-  });
   it("3b. unknown GitHub identity (ANY GitHub account — §5.1) → onboard with the login as suggested handle", async () => {
     const r = await completeSignIn(platformCtx(), github());
     expect(r.kind).toBe("onboard");
     if (r.kind !== "onboard") throw new Error();
     expect(r.payload.suggested_handle).toBe("newdev");
   });
-  it("4. unknown Google identity, no match, no invite (or a revoked one) → onboard: sign-up is open (nothing written)", async () => {
-    expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard");
-    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
-    await env.DB.prepare(`UPDATE invites SET revoked_at = 't' WHERE email = 'priya.n@gmail.com'`).run();
-    expect((await completeSignIn(platformCtx(), google())).kind).toBe("onboard");
+  it("4. unknown Google identity, no match, no invite → onboard: sign-up is open (nothing written)", async () => {
+    const r = await completeSignIn(platformCtx(), google({ name: null }));
+    expect(r.kind).toBe("onboard");
+    if (r.kind !== "onboard") throw new Error();
+    expect(r.payload.name).toBeNull(); // the provider gave none, and nothing else seeds one
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull();
   });
   it("a null email never auto-links", async () => {

@@ -515,7 +515,7 @@ describe("routes", () => {
     expect((await call("PUT", `${BASE}/tag-settings`, member, { enabled: true })).status).toBe(403);
     expect((await call("PUT", `${BASE}/tag-settings`, owner, { enabled: true }, { headers: { authorization: "Bearer x" } })).status).toBe(403);
     expect((await call("PUT", `${BASE}/tag-settings`, owner, { enabled: true })).json).toEqual({ ok: true, enabled: true });
-    expect((await call("PUT", `/api/tag-settings`, owner, { enabled: "yes" })).status).toBe(400);
+    expect((await call("PUT", `${BASE}/tag-settings`, owner, { enabled: "yes" })).status).toBe(400);
     // The test Worker has no TYPESAFE_API_KEY: nothing can be sent, and the answer says so.
     expect((await call("POST", `${BASE}/tags/auth/find-items`, owner, {})).json).toEqual({ ok: true, status: "no_key" });
     expect((await call("POST", `${BASE}/tags/auth/find-items`, member, {})).status).toBe(403);

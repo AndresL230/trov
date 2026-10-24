@@ -13,14 +13,16 @@ import type { IdentityTaskWithSample, DiscardedIdentity } from "../src/tools/rea
 import type { IdentityTaskRow, EventRow } from "@shared/rows";
 import type { CapturedEvent } from "@shared/contract";
 
+// Every org route answers only under its slug; the suite's people are in SaplingLearn.
+const BASE = "/api/o/saplinglearn";
 const post = (path: string, cookie?: string, body?: unknown) =>
   app.request(
-    path,
+    BASE + path,
     { method: "POST", headers: { ...(cookie ? { cookie } : {}), "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) },
     env
   );
 const list = async (cookie: string) =>
-  (await (await app.request("/identity-tasks", { headers: { cookie } }, env)).json()) as { tasks: IdentityTaskWithSample[]; discarded: DiscardedIdentity[] };
+  (await (await app.request(BASE + "/identity-tasks", { headers: { cookie } }, env)).json()) as { tasks: IdentityTaskWithSample[]; discarded: DiscardedIdentity[] };
 const task = (login: string) => first<IdentityTaskRow>(env.DB, `SELECT * FROM identity_tasks WHERE login = ?`, login);
 
 const prEvent = (n: number, login: string): CapturedEvent => ({

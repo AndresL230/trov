@@ -16,8 +16,8 @@
 //   test-gh-slow     member, GitHub-linked (test-gh-slow)                               — the check never answers in time
 //   test-gh-unlinked member, Google only (no GitHub identity)
 //
-// The GitHub credential is the dev Worker's `GITHUB_SERVICE_TOKEN` (SaplingLearn's legacy fallback in
-// `resolveGithubCredential`) — set it in .dev.vars to a FAKE value; GitHub and Anthropic are the loopback stand-in
+// The GitHub credential is SaplingLearn's stored `github_token` (`resolveGithubCredential`) — after seeding, save a FAKE
+// value in Org settings › Integrations › GitHub token (it needs `TROV_KEK` in .dev.vars); GitHub and Anthropic are the loopback stand-in
 // scripts/dev/ask-github-stub.mjs (`LOCAL_UPSTREAM`). Nothing here reaches a network.
 //
 // usage: npm run seed && node scripts/seed/ask-github.mjs [--github on|off] [--ai on|off] [--persist-to <dir>]
@@ -78,9 +78,9 @@ for (const [handle, name, color, role, login] of PEOPLE) {
   s.push(row("memberships", { org_id: SAP, user_id: handle, role, title: null, responsibilities: null, created_at: NOW, created_by: "test-gh-admin" }));
 }
 // The primary: the team scenario's when it has one, else this one.
-s.push(`INSERT OR IGNORE INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) SELECT 'hook_test_gh_primary', ${q(SAP)}, 'SaplingLearn/sapling', ` +
-  `CASE WHEN EXISTS (SELECT 1 FROM org_repos WHERE org_id = ${q(SAP)} AND is_primary = 1) THEN 0 ELSE 1 END, 0, ${q(NOW)}, 'test-gh-admin'`);
-s.push(row("org_repos", { id: "hook_test_gh_docs", org_id: SAP, repo_full_name: "test-e2e/docs-site", is_primary: 0, legacy_hook: 0, created_at: NOW, created_by: "test-gh-admin" }, "INSERT OR IGNORE"));
+s.push(`INSERT OR IGNORE INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) SELECT 'hook_test_gh_primary', ${q(SAP)}, 'SaplingLearn/sapling', ` +
+  `CASE WHEN EXISTS (SELECT 1 FROM org_repos WHERE org_id = ${q(SAP)} AND is_primary = 1) THEN 0 ELSE 1 END, ${q(NOW)}, 'test-gh-admin'`);
+s.push(row("org_repos", { id: "hook_test_gh_docs", org_id: SAP, repo_full_name: "test-e2e/docs-site", is_primary: 0, created_at: NOW, created_by: "test-gh-admin" }, "INSERT OR IGNORE"));
 s.push(`UPDATE orgs SET ai_chat_github = ${GITHUB_ON ? 1 : 0}, ai_automation = ${AI_ON ? 1 : 0}, ai_chat_auto = 1 WHERE id = ${q(SAP)}`);
 
 const dir = mkdtempSync(join(tmpdir(), "ask-github-seed-"));

@@ -152,8 +152,8 @@ export type SoleTenant =
   | { ok: false; reason: "no_membership" | "org_required" | "suspended" };
 
 /**
- * CUT-OVER ALIAS (§6.3, Phases 3–5): the tenant is "the caller's only org". Every pre-multitenancy
- * path resolves through this until the `/api/o/:slug` routes replace it; Phase 7 deletes it. A person
+ * The caller's only org, for the one place that may pick it without being told: MCP OAuth's consent
+ * (src/auth/oauth-routes.ts), when no org was named and the person has exactly one. A person
  * with no membership and a person with more than one are told apart, so a caller can answer each —
  * and so is a person whose one org is SUSPENDED (0042_organizations): the same statement reads `suspended_at`, and
  * no context is built for it (each caller answers it as it answers an org that is not there).

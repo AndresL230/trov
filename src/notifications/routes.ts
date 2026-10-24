@@ -1,5 +1,5 @@
 // Cookie-gated notification routes (canopy-email.md §8). A tenant sub-app: mounted at
-// `/api/o/:slug/notifications` and, as the cut-over alias, `/api/notifications` (src/routes.ts), so
+// `/api/o/:slug/notifications` (src/routes.ts), so
 // every route here already passed sessionGate and a tenant gate; admin routes additionally
 // check the ORG role (admin or owner of `c.var.ctx`'s org — §5.2). NEVER MCP tools.
 import { orgAppBase } from "../tools/org-links";

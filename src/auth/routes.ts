@@ -12,17 +12,14 @@ import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail } from "./git
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode, verifyGoogleIdToken } from "./google";
 import { devSignIn, devSignOut } from "./dev-signin";
 import { createSession, setSessionCookie, readSessionCookie, deleteSession, clearSessionCookie } from "./session";
-import { mintToken, listTokens, revokeToken } from "./tokens";
-import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson, soleTitle } from "./persons";
+import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson } from "./persons";
 import { run } from "../data/platform-sql";
 import { completeSignIn, linkSignIn, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
-import { mailOrigin, welcomeFirstJoin } from "../orgs/mail";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant, setGrantOrg, setGrantCurrent, setGrantMode, requireOwnGrant, GrantScopeError, type GrantScopeCode } from "./oauth";
 import { PlanLimitError, PLAN_LIMIT_STATUS } from "../plans/state";
 import { platformContext } from "../data/gate";
-import { hasRole, isSuperadmin, resolveSoleTenant, resolveTenant } from "../data/context";
-import { consumeLegacyInvite } from "../data/legacy";
+import { isSuperadmin, resolveTenant } from "../data/context";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
 import { rateLimited } from "../platform/limits";
 import { cookieOnly } from "../orgs/routes";
@@ -188,20 +185,11 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
       if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return c.json({ error: "already_onboarded" }, 409);
       throw e;
     }
-    // A new person is in NO org (§5.1): they accept an invite (`/api/invites`) or create one (`/api/orgs`).
-    // MT: the one exception — a live LEGACY invite for their verified email is consumed as a membership of
-    // org #1, as it always was (src/data/legacy.ts). After the identity is linked, so the compensating
-    // DELETE above never meets a membership row.
-    const joinedLegacy = await consumeLegacyInvite(c.var.p, parsed.data.handle, p.email);
+    // A new person is in NO org (§5.1): they accept an invite (`/api/invites`) or create one (`/api/orgs`);
+    // the welcome mail goes out then (src/orgs/mail.ts `welcomeFirstJoin`).
     deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
     const { id } = await createSession(c.var.p, parsed.data.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
-    // The welcome email, once the person exists and their session is in hand: sent when a person FIRST
-    // joins an org (src/orgs/mail.ts), which for a new person is here only on the legacy path — everyone
-    // else gets it when they accept an invitation or create an org. A courtesy, never part of the write.
-    if (joinedLegacy) {
-      await welcomeFirstJoin(c.env, c.var.p, joinedLegacy.orgId, parsed.data.handle, true, mailOrigin(c.env, c.req.url), deps.fetchImpl);
-    }
     // Signed up from an MCP client's authorize link: the SPA follows `redirect` back
     // to the consent screen instead of Get Started.
     const redirect = await takeOAuthPending(c);
@@ -218,20 +206,15 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const handle = c.get("principal").handle;
     // Every read below is independent of the others: ONE wait (`data-layer.md` › Round trips). The title is
     // read whether or not the person row is there, and used only when it is.
-    // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's. `role` is the
-    // title held in the person's only org (Q9: it lives on the membership) — null with none or several.
-    // §5.1: `orgs` (each with the caller's role), `superadmin` and `pending_invites` are what the SPA routes
-    // on — an org picker when there is not exactly one. `org` and `admin` are kept for the current SPA and
-    // speak for the SOLE org the old paths resolve (`resolveSoleTenant`): its name, and whether the caller
-    // is its admin or owner — "" / false with no org, several, or a suspended one.
-    const [row, idRows, title, orgs, invites, superadmin, sole] = await Promise.all([
-      getPerson(c.var.p, handle), listIdentities(c.var.p, handle), soleTitle(c.var.p, handle),
-      listMyOrgs(c.var.p, handle), listMyInvites(c.var.p, handle), isSuperadmin(c.var.p, handle), resolveSoleTenant(c.env, handle, "session"),
+    // `avatar_url` goes out RESOLVED: an uploaded avatar (0036) outranks the provider's. §5.1: `orgs` (each with the caller's role), `superadmin` and `pending_invites` are what the SPA routes
+    // on — an org picker when there is not exactly one.
+    const [row, idRows, orgs, invites, superadmin] = await Promise.all([
+      getPerson(c.var.p, handle), listIdentities(c.var.p, handle),
+      listMyOrgs(c.var.p, handle), listMyInvites(c.var.p, handle), isSuperadmin(c.var.p, handle),
     ]);
     const identities = idRows.map((i) => ({ provider: i.provider, label: i.label, linked_at: i.linked_at }));
     return c.json({
-      handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, role: row ? title : null, color: row?.color ?? "stone", identities,
-      org: sole.ok ? orgs[0]?.name ?? "" : "", admin: sole.ok && hasRole(sole.ctx, "admin"),
+      handle, name: row?.name ?? null, avatar_url: row ? avatarSrc(row) : null, color: row?.color ?? "stone", identities,
       orgs, superadmin, pending_invites: invites.length,
     });
   });
@@ -298,31 +281,6 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     }
     // Every session of theirs is gone with the account; this browser's cookie goes too.
     clearSessionCookie(c);
-    return c.json({ ok: true });
-  });
-  // CUT-OVER ALIAS (§6.3): a token is minted, listed and revoked PER ORG at `/api/o/:slug/mcp-tokens…`
-  // (./token-routes.ts). These three old paths answer for a person with exactly ONE org — the same alias
-  // every tenant route resolves through, and the same refusals as `soleTenantGate`. Phase 7 deletes them.
-  const soleOrg = async (c: Context<AppEnv>) => {
-    const sole = await resolveSoleTenant(c.env, c.get("principal").handle, "session");
-    if (sole.ok) return { ctx: sole.ctx };
-    return { refused: sole.reason === "suspended" ? c.json({ error: "not_found" }, 404) : c.json({ error: "org_required" }, 409) };
-  };
-  authApp.post("/mcp-token", async (c) => {
-    const sole = await soleOrg(c);
-    if (!sole.ctx) return sole.refused;
-    return c.json({ token: (await mintToken(sole.ctx)).raw });
-  });
-  authApp.get("/mcp-tokens", async (c) => {
-    const sole = await soleOrg(c);
-    if (!sole.ctx) return sole.refused;
-    return c.json({ tokens: await listTokens(sole.ctx) });
-  });
-  authApp.post("/mcp-tokens/:id/revoke", async (c) => {
-    const sole = await soleOrg(c);
-    if (!sole.ctx) return sole.refused;
-    const id = Number(c.req.param("id"));
-    if (!Number.isInteger(id) || !(await revokeToken(sole.ctx, id))) return c.json({ error: "not_found" }, 404);
     return c.json({ ok: true });
   });
   // Settings › Connected apps: the caller's OAuth connections — USER-level (every org the person

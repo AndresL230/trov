@@ -6,17 +6,16 @@ import {
   endedOnProvider, hostingStatus, isLeftover, leftoverLine, orgConnection, providerStatus, storedConnectionStatus,
 } from "@shared/hosting-status-core";
 
-const facts = (status: ConnectionStatus, o: { legacy?: boolean; reason?: string | null } = {}) => ({ status, legacy_fallback: o.legacy ?? false, revoked_reason: o.reason ?? null });
+const facts = (status: ConnectionStatus, o: { reason?: string | null } = {}) => ({ status, revoked_reason: o.reason ?? null });
 
 describe("hostingStatus", () => {
   it("a stored credential: connected, or error after a failed use — live and stored either way", () => {
     expect(hostingStatus(facts("connected"), "Railway")).toEqual({ state: "connected", word: "Connected", live: true, stored: true });
     expect(hostingStatus(facts("error"), "Railway")).toEqual({ state: "error", word: "Error", live: true, stored: true });
   });
-  it("nothing stored: not connected — unless SaplingLearn's legacy Worker secret answers (live, not stored)", () => {
+  it("nothing stored: not connected, and nothing answers (no fallback credential)", () => {
     expect(hostingStatus(null, "Railway")).toEqual({ state: "not_connected", word: "Not connected", live: false, stored: false });
-    expect(hostingStatus(facts("not_connected"), "Cloudflare")).toMatchObject({ state: "not_connected", live: false });
-    expect(hostingStatus(facts("not_connected", { legacy: true }), "Cloudflare")).toEqual({ state: "connected", word: "Connected", live: true, stored: false });
+    expect(hostingStatus(facts("not_connected"), "Cloudflare")).toEqual({ state: "not_connected", word: "Not connected", live: false, stored: false });
   });
   it("ended on the provider's side reads Removed; an admin's own Disconnect reads Not connected", () => {
     for (const r of ["uninstalled", "refused"] as const) {

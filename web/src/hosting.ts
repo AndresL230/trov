@@ -172,7 +172,7 @@ export function lostOnProvider(c: HostingConnectionDTO, label: string): boolean 
   return endedOnProvider(c, label);
 }
 /** A connection's status as the card says it — `hostingStatus` (an admin's own Disconnect reads "Not connected",
- *  never "Removed"; the legacy Worker secret reads "Connected"). */
+ *  never "Removed"). */
 export function connectionStatus(c: HostingConnectionDTO, label: string): { word: string; tone: string; state: ConnectionStatus } {
   const s = hostingStatus(c, label);
   return { word: s.word, tone: STATUS_TONE[s.state], state: s.state };
@@ -563,7 +563,7 @@ function howConnected(c: HostingConnectionDTO, p: HostingProviderDTO): string {
 /** A (provider, scope) no part uses and nothing is stored for: what its card is drawn from. */
 const blankConnection = (provider: HostingProviderId, scope = "", scope_label: string | null = null): HostingConnectionDTO => ({
   provider, scope, scope_label, status: "not_connected", method: null, account: null, external_id: null, config: {}, hint_last4: "",
-  connected_by: null, connected_at: null, last_used_at: null, last_error: null, legacy_fallback: false, revoked_reason: null, manage_url: null, used_by: [],
+  connected_by: null, connected_at: null, last_used_at: null, last_error: null, revoked_reason: null, manage_url: null, used_by: [],
 });
 
 /** The ONE connection a provider's card is drawn from: its org-wide connection, or a not-connected one. A credential
@@ -596,7 +596,6 @@ function connectionMeta(d: HostingSetupDTO, p: HostingProviderDTO, c: HostingCon
     const how = howConnected(c, p);
     if (how) meta.push(how);
   } else if (c.status === "revoked" && c.revoked_reason) meta.push(esc(c.revoked_reason));
-  else if (c.legacy_fallback && st.live) meta.push("Using the platform's old secret");
   else if (!bestMethod(p)) meta.push("Not available on this Trov");
   if (uses) meta.push(esc(uses));
   else if (st.stored) meta.push("not used by a part");
@@ -631,10 +630,9 @@ function connectionRow(x: TabCtx, p: HostingProviderDTO, c: HostingConnectionDTO
       arg: ck, disabled: locked, title: locked ? WHY_LOCKED : undefined, field: `orgHxConnect:${ck}`, label: `${st.state === "revoked" ? "Connect again" : "Connect"}: ${p.label}`,
       extra: accentTaken ? "" : "color:var(--fg);border-color:var(--border-strong)",
     }) : "";
-  const fallback = c.legacy_fallback && st.live && !st.stored ? `<div data-org-legacy style="font-size:12.5px;color:var(--fg-70)">Using the platform's old secret. Save your own to take over.</div>` : "";
   return providerCard({
     key: ck, state: st.state, p, title, status: statusDot(st.state, st.word), meta: connectionMeta(d, p, c), extra: leftoverNote(d, p, st),
-    always: `${fallback}${lastErrorBox(c)}${testAnswer(h.tests[ck])}`, action,
+    always: `${lastErrorBox(c)}${testAnswer(h.tests[ck])}`, action,
   });
 }
 
@@ -693,7 +691,6 @@ export function manageModal(d: HostingSetupDTO, h: HostingUi): string {
   if (live && best && isRedirect(best)) more.push(quietBtn("Connect a different account", "orgHxConnect", { arg: ck, disabled: locked, title: why, field: `orgHxReconnect:${ck}` }));
   if (stored && c.method === "token" && token) more.push(quietBtn("Rotate", "orgHxToken", { arg: `rotate:${ck}`, disabled: locked, title: why, field: `orgHxToken:rotate:${ck}`, label: `Rotate the ${p.label} ${tokenWord(p)}` }));
   if (stored && p.org_config_fields.length) more.push(quietBtn("Edit settings", "orgHxToken", { arg: `config:${ck}`, field: `orgHxToken:config:${ck}`, label: `Edit the ${p.label} settings` }));
-  if (c.legacy_fallback && live && !stored && token) more.push(quietBtn(cap(token.label), "orgHxToken", { arg: `set:${ck}`, disabled: locked, title: why, field: `orgHxToken:set:${ck}` }));
 
   // Connected by install / OAuth: the paste-a-token form is NOT offered beside it — it folds in as a quiet
   // "Manual connection" block, as GitHub's token and webhook rows fold under the App.
@@ -991,14 +988,13 @@ export function appMetricsBlock(env: HostingEnvironmentDTO, dr: PartDraft, h: Ho
   const endpoint = m.api_url ? `<code style="font-family:var(--code);font-size:12px;color:var(--fg-70);overflow-wrap:anywhere">${esc(m.api_url.replace(/\/+$/, ""))}/api/internal/metrics</code>` : null;
   const state = m.configured
     ? `${kindMark(m.last_error ? "Error" : "Set", m.last_error ? "bad" : "good", 12)}<span>${m.hint_last4 ? `ends in ${esc(m.hint_last4)} &middot; ` : ""}${m.last_used_at ? `last used ${esc(relTime(m.last_used_at))}` : "not used yet"}</span>`
-    : m.legacy_fallback ? `${kindMark("Using legacy credential", "warn", 12, "Trov's shared credential answers until you set your own.")}`
     : `${kindMark("Not set", "waiting", 12)}`;
   const off = !secretsAvailable || dr.saving;
   const acts = m.configured ? `<div class="cnpy-xrow-acts" style="margin-top:8px">
       ${quietBtn(running ? "Testing…" : "Test token", "orgHxMetricsTest", { arg: env.key, disabled: running || dr.saving, busy: running, field: `orgHxMetricsTest:${env.key}`, label: `Test the app metrics token of ${env.label}` })}
       ${dangerLink("Delete token", "orgHxMetricsDelete", { arg: env.key, disabled: dr.saving, label: `Delete the app metrics token of ${env.label}`, field: `orgHxMetricsDelete:${env.key}` })}
     </div>` : "";
-  return `<div class="cnpy-org-field" data-hx-metrics="${attr(env.key)}" data-state="${m.configured ? (m.last_error ? "error" : "set") : m.legacy_fallback ? "legacy" : "unset"}" style="margin-top:4px">
+  return `<div class="cnpy-org-field" data-hx-metrics="${attr(env.key)}" data-state="${m.configured ? (m.last_error ? "error" : "set") : "unset"}" style="margin-top:4px">
       <label for="org-hx-metrics" style="${O_LABEL}">App metrics token</label>
       <div style="display:flex;align-items:center;gap:6px 9px;flex-wrap:wrap;margin-top:7px;font-size:12.5px;color:var(--fg-55)">${state}</div>
       ${anchoredField(`<input id="org-hx-metrics" data-hx-metrics-input data-act="orgHxPartMetrics" data-field="orgHxPartMetrics" data-enter="orgHxPartSave" type="password" autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true"${off ? " disabled" : ""}${err ? ' aria-invalid="true"' : ""} aria-describedby="org-hx-metrics-h${err ? " org-hx-metrics-e" : ""}" placeholder="${m.configured ? "Paste a new token to replace it" : "Optional: paste the token"}" class="cnpy-input" style="${O_FIELD};margin-top:7px;font-family:var(--code);font-size:12.5px;${err ? "border-color:var(--red);" : ""}" />`, err ? fieldError("org-hx-metrics-e", err) : "")}

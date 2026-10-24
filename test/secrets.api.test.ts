@@ -34,8 +34,8 @@ describe("GET /integrations", () => {
       expect(i.how_to.length).toBeGreaterThan(40);
       for (const forbidden of ["ciphertext", "iv", "key_version", "secret", "wrapped_key"]) expect(i).not.toHaveProperty(forbidden);
     }
-    // The suite's GITHUB_WEBHOOK_SECRET still answers for the repo the legacy /webhook/github routes to.
-    expect(body.integrations.map((i) => i.legacy_fallback)).toEqual([false, true, false, false, false, false]);
+    // No Worker secret answers for anything (the suite's GITHUB_WEBHOOK_SECRET included): there is no fallback to report.
+    for (const i of body.integrations) expect(i).not.toHaveProperty("legacy_fallback");
     const [gh, hook, cf, rw, metrics] = body.integrations;
     expect(gh).toMatchObject({ scope_type: "org", scope_label: null, webhook_url: null });
     expect(hook).toMatchObject({ scope_type: "repo", scope_label: "SaplingLearn/sapling", webhook_url: `https://trov.test/webhook/github/${HOOK_A}` });
@@ -421,7 +421,7 @@ describe("Test connection", () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     const seen = upstream(() => new Response("no", { status: 500 }));
-    expect((await call(me, `/integrations/github_webhook/${HOOK_A}/test`, { method: "POST", env: { ...env, GITHUB_WEBHOOK_SECRET: "" } })).status).toBe(404);
+    expect((await call(me, `/integrations/github_webhook/${HOOK_A}/test`, { method: "POST" })).status).toBe(404);
     await call(me, `/integrations/github_webhook/${HOOK_A}`, { method: "PUT", body: { secret: TOKEN } });
     const never = await test(me, "github_webhook", HOOK_A);
     expect(never.ok).toBe(false);
@@ -432,16 +432,17 @@ describe("Test connection", () => {
     expect(seen.length).toBe(0);
   });
 
-  it("SaplingLearn's legacy Worker secret is listed as a fallback and can be tested until a value is stored", async () => {
+  it("SaplingLearn's old Worker secret is no fallback: the token is listed as not set and there is nothing to test", async () => {
     await seedOrgSettings();
     const me = await ownerCookie();
     const legacy = { ...env, GITHUB_SERVICE_TOKEN: OTHER };
     const list = await json<IntegrationsListDTO>(await call(me, "/integrations", { env: legacy }));
-    expect(list.integrations.map((i) => i.legacy_fallback)).toEqual([true, true, false, false, false, false]); // the token, and the legacy hook's test secret
+    expect(list.integrations.map((i) => i.configured)).toEqual([false, false, false, false, false, false]);
+    for (const i of list.integrations) expect(i).not.toHaveProperty("legacy_fallback");
     const seen = upstream(() => Response.json({}));
     const res = await call(me, "/integrations/github_token/test", { method: "POST", env: legacy });
-    expect(await res.json()).toMatchObject({ ok: true, integration: { configured: false, legacy_fallback: true } });
-    expect(seen[0].headers.authorization).toBe(`Bearer ${OTHER}`);
+    expect(res.status).toBe(404);
+    expect(seen).toHaveLength(0);
   });
 });
 
@@ -454,7 +455,7 @@ describe("/repos", () => {
     const first = await call(me, "/repos", { method: "POST", body: { repo_full_name: "acme/widgets" } });
     expect(first.status).toBe(201);
     const a = (await json<{ repo: OrgRepoDTO }>(first)).repo;
-    expect(a).toMatchObject({ repo_full_name: "acme/widgets", is_primary: true, legacy_hook: false, webhook_secret_configured: false, created_by: "AndresL230" });
+    expect(a).toMatchObject({ repo_full_name: "acme/widgets", is_primary: true, webhook_secret_configured: false, created_by: "AndresL230" });
     expect(a.id).toMatch(/^hook_[0-9a-f]{40}$/);
     expect(a.webhook_url).toBe(`https://trov.test/webhook/github/${a.id}`);
 

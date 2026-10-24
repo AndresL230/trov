@@ -394,12 +394,12 @@ describe("query — the artifact type", () => {
     expect(browseTheirs.body.primary).toEqual([]);
   });
 
-  it("GET /search threads the session principal, and drops drafts (include_staged false)", async () => {
+  it("GET …/search threads the session principal, and drops drafts (include_staged false)", async () => {
     await call(ME, "upload_asset", textArgs({ title: "Heron plan", content: "heron", visibility: "private" }));
     await call(ME, "artifact_update", { slug: "heron-plan", content: "heron 2", summary: "v2" }); // published, still private
     await call(ME, "upload_asset", textArgs({ title: "Heron draft", content: "heron draft" })); // org, draft
     const search = async (who: string) => {
-      const res = await app.request("/search?q=heron&types=artifact", { headers: { cookie: await cookieFor(who) } }, env);
+      const res = await app.request("/api/o/saplinglearn/search?q=heron&types=artifact", { headers: { cookie: await cookieFor(who) } }, env);
       expect(res.status).toBe(200);
       return ((await res.json()) as { result: { primary: { id: string }[]; pointers: { id: string }[] } }).result;
     };
@@ -480,11 +480,11 @@ describe("artifact_links on the session batch", () => {
     expect(none.body.artifact_links).toBeUndefined();
   });
 
-  it("/ingest applies artifact_links identically, under the session principal", async () => {
+  it("…/ingest applies artifact_links identically, under the session principal", async () => {
     const tid = await seedTicket();
     await call(ME, "upload_asset", textArgs({ title: "Ingest link" }));
     await call(ME, "upload_asset", textArgs({ title: "Mine only", visibility: "private" }));
-    const res = await app.request("/ingest", {
+    const res = await app.request("/api/o/saplinglearn/ingest", {
       method: "POST",
       headers: { "content-type": "application/json", cookie: await cookieFor(YOU) },
       body: JSON.stringify(payload(crypto.randomUUID(), [

@@ -56,12 +56,6 @@ export interface PersonProfile extends PersonSummary {
   responsibilities?: string | null;
 }
 
-/** `PUT /api/people/:handle` body — admins only; every field optional, "" / null clears. */
-export interface PersonProfileWrite {
-  role?: string | null;
-  responsibilities?: string | null;
-}
-
 /**
  * MCP `list_people` — the ONE thing an agent may read about people: who does what, so it
  * can choose `assignees` on `create_ticket`. Deliberately nothing else (no avatar, no

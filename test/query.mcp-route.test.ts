@@ -33,7 +33,7 @@ async function callQuery(args: Record<string, unknown>): Promise<QueryResult> {
 
 async function searchRoute(qs: string): Promise<QueryResult> {
   const cookie = await authedCookie("human");
-  const res = await app.request(`/search?${qs}`, { headers: { cookie } }, env);
+  const res = await app.request(`/api/o/saplinglearn/search?${qs}`, { headers: { cookie } }, env);
   expect(res.status).toBe(200);
   const body = (await res.json()) as { result: QueryResult };
   return body.result;
@@ -126,7 +126,7 @@ describe("registered MCP query tool + live GET /search route", () => {
   });
 
   it("/search requires a session (401 without a cookie)", async () => {
-    const res = await app.request("/search?q=anything", {}, env);
+    const res = await app.request("/api/o/saplinglearn/search?q=anything", {}, env);
     expect(res.status).toBe(401);
   });
 });

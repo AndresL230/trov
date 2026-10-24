@@ -334,9 +334,10 @@ describe("over HTTP: a member of B only", () => {
     await seedPerson("bee", { member: false });
     await ensureMember("bee", "member", ORG_B);
     const cookie = await cookieFor("bee", { member: false });
-    const get = async (path: string) => app.request(path, { headers: { cookie } }, env);
+    // Every org route is under the org's slug: bee's own is `acme` (org_b).
+    const get = async (path: string) => app.request(`/api/o/acme${path}`, { headers: { cookie } }, env);
     const post = async (path: string, body: unknown = {}) =>
-      app.request(path, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
+      app.request(`/api/o/acme${path}`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) }, env);
 
     expect(await (await get("/docs")).json()).toEqual({ docs: [] });
     expect((await get("/doc/http-doc")).status).toBe(404);
@@ -346,6 +347,8 @@ describe("over HTTP: a member of B only", () => {
     expect(await (await get("/needs-triage")).json()).toEqual({ items: [] });
     expect(await (await get("/search?q=wombat")).json()).toMatchObject({ result: { primary: [], pointers: [] } });
     expect(await (await get("/search/quick?q=wombat")).json()).toMatchObject({ result: { groups: [] } });
+    // …and A's own slug is the plain 404 for someone who is not its member.
+    expect((await app.request("/api/o/saplinglearn/docs", { headers: { cookie } }, env)).status).toBe(404);
 
     expect((await post("/doc/http-doc/promote", { version: 1 })).status).toBeGreaterThanOrEqual(400);
     expect((await post(`/adr/${adrId}/ratify`)).status).toBeGreaterThanOrEqual(400);

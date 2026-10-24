@@ -16,8 +16,8 @@ const themeId = (name) => `(SELECT id FROM repo_themes WHERE org_id = '${ORG}' A
 export function themesDevStatements(fx, now = new Date()) {
   const s = [];
   const iso = (daysAgo) => new Date(now.getTime() - daysAgo * DAY_MS).toISOString();
-  s.push(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by)
-    SELECT 'hook_saplinglearn_sapling', '${ORG}', 'SaplingLearn/sapling', 1, 0, ${q(iso(90))}, 'seed'
+  s.push(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by)
+    SELECT 'hook_saplinglearn_sapling', '${ORG}', 'SaplingLearn/sapling', 1, ${q(iso(90))}, 'seed'
     WHERE NOT EXISTS (SELECT 1 FROM org_repos WHERE org_id = '${ORG}' AND is_primary = 1)`);
 
   for (const p of fx.prs ?? []) {

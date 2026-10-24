@@ -2,7 +2,7 @@
  * "Poll usage now" — the hourly usage poller, on demand.
  *
  * `runUsagePolls` (src/repo/cron.ts) is the ONE function behind both the repo
- * cron's minute-0 tick and the admin-only `POST /admin/poll-usage`: it runs
+ * cron's minute-0 tick and the admin-only `POST /api/o/<slug>/admin/poll-usage`: it runs
  * `pollSaplingMetrics` (the app's own metrics endpoint) in a guarded arm and
  * reports a `PollOutcome[]` — or `"not_configured"` when its secret is absent.
  * A host's usage (Cloudflare, Railway, …) is not here: every host is a hosting
@@ -14,7 +14,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { env } from "cloudflare:test";
 import { all } from "./helpers/db";
 import { app } from "../src/routes";
-import { handleRepoCron, runUsagePolls, syncOrgConfig } from "./helpers/org-config";
+import { handleRepoCron, runUsagePolls, syncOrgConfig, type LegacyEnv } from "./helpers/org-config";
 import { cookieFor } from "./helpers/persons";
 import { ENVS } from "./helpers/repo";
 import type { Env } from "../src/env";
@@ -30,7 +30,7 @@ const SECRETS = {
 } as const;
 const NONE = Object.fromEntries(Object.keys(SECRETS).map((k) => [k, undefined]));
 /** Every secret pinned — set or absent — so a local `.dev.vars` never decides a test. */
-const pollEnv = (over: Partial<Env> = {}): Env =>
+const pollEnv = (over: Partial<LegacyEnv> = {}): Env =>
   ({ ...env, REPO_ENVIRONMENTS: JSON.stringify(ENVS), ...SECRETS, ...over }) as unknown as Env;
 
 /** The app's metrics answer one reading; anything else (a health ping) a 200. */
@@ -116,22 +116,22 @@ describe("runUsagePolls", () => {
   });
 });
 
-describe("POST /admin/poll-usage (session- + admin-gated, never MCP)", () => {
+describe("POST /api/o/<slug>/admin/poll-usage (session- + admin-gated, never MCP)", () => {
   afterEach(() => { vi.unstubAllGlobals(); });
 
   it("401s without a session", async () => {
-    const res = await app.request("/admin/poll-usage", { method: "POST" }, env);
+    const res = await app.request("/api/o/saplinglearn/admin/poll-usage", { method: "POST" }, env);
     expect(res.status).toBe(401);
   });
 
   it("403s for a non-admin principal", async () => {
-    const res = await app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("not-admin") } }, env);
+    const res = await app.request("/api/o/saplinglearn/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("not-admin") } }, env);
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "admin only" });
   });
 
   it("for an admin with every secret unset (the pool default): 200, not_configured, no network", async () => {
-    const res = await app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, await syncOrgConfig(pollEnv(NONE)));
+    const res = await app.request("/api/o/saplinglearn/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, await syncOrgConfig(pollEnv(NONE)));
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ sapling: "not_configured" });
   });
@@ -150,7 +150,7 @@ describe("POST /admin/poll-usage (session- + admin-gated, never MCP)", () => {
     expect(seen).toEqual(["https://stub-check.invalid/"]);
 
     const res = await quietly(async () =>
-      app.request("/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, await syncOrgConfig(pollEnv())));
+      app.request("/api/o/saplinglearn/admin/poll-usage", { method: "POST", headers: { cookie: await cookieFor("admin-user") } }, await syncOrgConfig(pollEnv())));
     expect(res.status).toBe(200); // every source failed — the BODY says so
     const text = await res.text();
     const body = JSON.parse(text) as Record<string, { status: string }[]>;

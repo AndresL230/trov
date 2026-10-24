@@ -37,10 +37,10 @@ async function live(slug: string, o: Parameters<typeof proposal>[1] = {}, ctx = 
 }
 const row = (slug: string, org = ORG_A) => first<{ parent_slug: string | null; tree_rank: number | null; archived_at: string | null; archived_by: string | null }>(env.DB,
   `SELECT parent_slug, tree_rank, archived_at, archived_by FROM docs WHERE org_id = ? AND slug = ?`, org, slug);
-const archive = (cookie: string, slug: string, headers: Record<string, string> = {}) => call<DocArchiveResult & { error?: string; message?: string }>("POST", `/doc/${slug}/archive`, cookie, {}, { headers });
-const restore = (cookie: string, slug: string, headers: Record<string, string> = {}) => call<DocRestoreResult & { error?: string; message?: string }>("POST", `/doc/${slug}/restore`, cookie, {}, { headers });
-const home = async (cookie: string, space = "engineering") => (await call<SpaceHomeDTO>("GET", `/api/spaces/${space}`, cookie)).json;
-const docPage = async (cookie: string, slug: string) => (await call<{ page: DocPageDTO }>("GET", `/doc/${slug}`, cookie)).json.page;
+const archive = (cookie: string, slug: string, headers: Record<string, string> = {}) => call<DocArchiveResult & { error?: string; message?: string }>("POST", `/api/o/saplinglearn/doc/${slug}/archive`, cookie, {}, { headers });
+const restore = (cookie: string, slug: string, headers: Record<string, string> = {}) => call<DocRestoreResult & { error?: string; message?: string }>("POST", `/api/o/saplinglearn/doc/${slug}/restore`, cookie, {}, { headers });
+const home = async (cookie: string, space = "engineering") => (await call<SpaceHomeDTO>("GET", `/api/o/saplinglearn/spaces/${space}`, cookie)).json;
+const docPage = async (cookie: string, slug: string) => (await call<{ page: DocPageDTO }>("GET", `/api/o/saplinglearn/doc/${slug}`, cookie)).json.page;
 
 /** Call one MCP tool as `handle`'s bearer, through the real registered server. */
 async function mcp(handle: string, name: string, args: Record<string, unknown>): Promise<{ text: string; isError?: boolean }> {
@@ -113,14 +113,14 @@ describe("POST /doc/:slug/archive — a person's write", () => {
     expect(h.space.pages).toBe(6);
     expect(h.archived_pages).toEqual([expect.objectContaining({ slug: "guide", title: "guide title", archived_by: OWNER })]);
     expect(h.can_archive).toBe(true);
-    const lib = (await call<LibraryDTO>("GET", "/api/spaces", admin)).json;
+    const lib = (await call<LibraryDTO>("GET", "/api/o/saplinglearn/spaces", admin)).json;
     expect(lib.spaces.find((s) => s.slug === "engineering")?.pages).toBe(6);
     expect(lib.recent.map((p) => p.slug)).not.toContain("guide");
 
     // Every other read: the docs list, quick search, search.
-    expect(((await call<{ docs: { slug: string }[] }>("GET", "/docs", admin)).json.docs).map((d) => d.slug)).not.toContain("guide");
-    expect(((await call<{ docs: { slug: string }[] }>("GET", "/docs?fields=meta", admin)).json.docs).map((d) => d.slug)).not.toContain("guide");
-    const qs = await call<{ result: { groups: { hits: { id: string }[] }[] } }>("GET", "/search/quick?q=guide", admin);
+    expect(((await call<{ docs: { slug: string }[] }>("GET", "/api/o/saplinglearn/docs", admin)).json.docs).map((d) => d.slug)).not.toContain("guide");
+    expect(((await call<{ docs: { slug: string }[] }>("GET", "/api/o/saplinglearn/docs?fields=meta", admin)).json.docs).map((d) => d.slug)).not.toContain("guide");
+    const qs = await call<{ result: { groups: { hits: { id: string }[] }[] } }>("GET", "/api/o/saplinglearn/search/quick?q=guide", admin);
     const hits = qs.json.result.groups.flatMap((g) => g.hits.map((h) => h.id));
     expect(hits).toEqual(expect.arrayContaining(["before-guide", "guide-after"]));
     expect(hits).not.toContain("guide");
@@ -132,12 +132,12 @@ describe("POST /doc/:slug/archive — a person's write", () => {
     expect(page.can_archive).toBe(true);
 
     // The slug stays reserved: New page with it is refused, and nothing moves next to or under it.
-    const taken = await call<{ error: string }>("POST", "/api/docs/propose", admin, { title: "Guide", section: "reference", space: "engineering", body: "new", slug: "guide" });
+    const taken = await call<{ error: string }>("POST", "/api/o/saplinglearn/docs/propose", admin, { title: "Guide", section: "reference", space: "engineering", body: "new", slug: "guide" });
     expect(taken.status).toBe(409);
     // …and says it is an ARCHIVED page that holds the name — none shows in the Library (e2e AR15)
     expect(taken.json.error).toBe("an archived page is named guide");
-    expect((await call("POST", "/doc/guide/move", admin, { target: "top" })).json).toMatchObject({ error: "archived" });
-    expect((await call("POST", "/doc/alpha/move", admin, { target: "into", ref: "guide" })).status).toBe(404);
+    expect((await call("POST", "/api/o/saplinglearn/doc/guide/move", admin, { target: "top" })).json).toMatchObject({ error: "archived" });
+    expect((await call("POST", "/api/o/saplinglearn/doc/alpha/move", admin, { target: "into", ref: "guide" })).status).toBe(404);
   });
 
   it("MCP and Ask's reads see no archived page: get_doc, list_docs, query", async () => {
@@ -180,7 +180,7 @@ describe("POST /doc/:slug/archive — a person's write", () => {
     expect((await row("owned-page"))?.archived_at).toBeNull();
 
     // An owner of the space may (an admin makes the member one).
-    expect((await call("PUT", "/api/spaces/engineering/owners", admin, { owners: [MEMBER] })).status).toBe(200);
+    expect((await call("PUT", "/api/o/saplinglearn/spaces/engineering/owners", admin, { owners: [MEMBER] })).status).toBe(200);
     expect((await home(member)).can_archive).toBe(true);
     expect((await archive(member, "owned-page")).status).toBe(200);
     expect((await row("owned-page"))?.archived_by).toBe(MEMBER);
@@ -190,7 +190,7 @@ describe("POST /doc/:slug/archive — a person's write", () => {
     expect((await archive(member, "prod-page")).status).toBe(403);
 
     // A page of an archived space does not move: archive and restore wait for the space.
-    expect((await call("POST", "/api/spaces/product/archive", admin, {})).status).toBe(200);
+    expect((await call("POST", "/api/o/saplinglearn/spaces/product/archive", admin, {})).status).toBe(200);
     expect((await archive(admin, "prod-page")).json).toMatchObject({ error: "space_archived" });
   });
 });
@@ -216,14 +216,14 @@ describe("links, Review and the gate around an archived page", () => {
     const r = await ingestDocProposal(A(), proposal("pending", { body: "a change" }), "agent-person", ledger());
     expect(r).toMatchObject({ outcome: "written", version: 2 });
     const admin = await cookieFor(OWNER);
-    const inReview = async () => (await call<{ proposals: { slug: string }[] }>("GET", "/proposals", admin)).json.proposals.some((p) => p.slug === "pending");
-    const badge = async () => (await call<{ proposals: number }>("GET", "/badges", admin)).json.proposals;
+    const inReview = async () => (await call<{ proposals: { slug: string }[] }>("GET", "/api/o/saplinglearn/proposals", admin)).json.proposals.some((p) => p.slug === "pending");
+    const badge = async () => (await call<{ proposals: number }>("GET", "/api/o/saplinglearn/badges", admin)).json.proposals;
     expect(await inReview()).toBe(true);
     const before = await badge();
     await archive(admin, "pending");
     expect(await inReview()).toBe(false);
     expect(await badge()).toBe(before - 1);
-    expect(await call("POST", "/doc/pending/promote", admin, { version: 2 })).toMatchObject({ status: 409, json: { error: "archived" } });
+    expect(await call("POST", "/api/o/saplinglearn/doc/pending/promote", admin, { version: 2 })).toMatchObject({ status: 409, json: { error: "archived" } });
     // Kept, not rejected: the version is still staged.
     expect((await first<{ status: string }>(env.DB, `SELECT status FROM doc_versions WHERE org_id = ? AND slug = 'pending' AND version = 2`, ORG_A))?.status).toBe("staged");
     await restore(admin, "pending");

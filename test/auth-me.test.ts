@@ -4,15 +4,16 @@ import { app } from "../src/routes";
 import { cookieFor } from "./helpers/persons";
 
 describe("GET /auth/me", () => {
-  it("returns handle, name, org, and null avatar_url when not set", async () => {
+  it("returns handle, name, orgs, and null avatar_url when not set", async () => {
     const cookie = await cookieFor("andres");
     const res = await app.request("/auth/me", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
-    const body = await res.json() as { handle: string; name: string | null; avatar_url: string | null; color: string; org: string; identities: { provider: string; label: string; linked_at: string }[] };
+    const body = await res.json() as { handle: string; name: string | null; avatar_url: string | null; color: string; orgs: { slug: string }[]; identities: { provider: string; label: string; linked_at: string }[] };
     expect(body.handle).toBe("andres");
     expect(body.name).toBe("andres");
     expect(body.avatar_url).toBeNull();
-    expect(body.org).toBe("SaplingLearn");
+    expect(body.orgs.map((o) => o.slug)).toEqual(["saplinglearn"]);
+    expect(body).not.toHaveProperty("org"); // the one-org fields went with the cut-over
     expect(body.color).toBe("stone");
     expect(body.identities).toEqual([{ provider: "github", label: "andres", linked_at: "2026-01-01T00:00:00Z" }]);
   });

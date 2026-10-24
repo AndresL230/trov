@@ -5,7 +5,6 @@ import { buildAuthApp } from "../src/auth/routes";
 import { sessionGate, type AppEnv } from "../src/auth/principal";
 import { hmacSeal } from "../src/auth/crypto";
 import { first, all } from "./helpers/db";
-import { createInvite } from "../src/auth/invites";
 import { seedPerson, cookieFor } from "./helpers/persons";
 import { makeGoogleKeys, signIdToken, googleFetch, CLAIMS } from "./helpers/google";
 import type { IdentityRow } from "@shared/rows";
@@ -42,15 +41,6 @@ describe("GET /auth/google/login", () => {
 });
 
 describe("GET /auth/google/callback", () => {
-  it("invited + unknown → onboard cookie + redirect /#onboard", async () => {
-    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
-    const keys = await makeGoogleKeys();
-    const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, CLAIMS) }).fetchImpl);
-    const res = await app.request("/auth/google/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("/#onboard");
-    expect(res.headers.get("set-cookie")).toContain("onboard=");
-  });
   it("not invited → onboarding all the same: Google sign-up is open", async () => {
     const keys = await makeGoogleKeys();
     const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, CLAIMS) }).fetchImpl);
@@ -58,8 +48,7 @@ describe("GET /auth/google/callback", () => {
     expect(res.headers.get("location")).toBe("/#onboard");
     expect(res.headers.get("set-cookie")).toContain("onboard=");
   });
-  it("unverified email → denied even when invited", async () => {
-    await createInvite(platformCtx(), { email: "priya.n@gmail.com", name: null, invitedBy: "AndresL230" });
+  it("unverified email → denied", async () => {
     const keys = await makeGoogleKeys();
     const app = appWith(googleFetch(keys, { idToken: await signIdToken(keys, { ...CLAIMS, email_verified: false }) }).fetchImpl);
     const res = await app.request("/auth/google/callback?code=c&state=st", { headers: { cookie: await tx() } }, env);

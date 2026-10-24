@@ -12,6 +12,8 @@ import type { LinkView } from "@shared/links";
 // fetch only to count. Every count must equal the length of the list it stands for — on rows that
 // count, rows that must not, and another org's rows.
 
+/** Every list here is an org route: SaplingLearn's prefix, the org every cookie here belongs to. */
+const ORG = "/api/o/saplinglearn";
 const get = (path: string, cookie: string) => app.request(path, { headers: { cookie } }, env);
 const json = async <T>(path: string, cookie: string): Promise<T> => {
   const res = await get(path, cookie);
@@ -84,16 +86,16 @@ describe("GET /badges", () => {
     const cookie = await cookieFor("andres");
     await seedEverything();
 
-    const badges = await json<SidebarBadges>("/badges", cookie);
-    const proposals = (await json<{ proposals: unknown[] }>("/proposals", cookie)).proposals;
-    const drafts = (await json<{ adrs: unknown[] }>("/adrs?status=draft", cookie)).adrs;
-    const unplaced = (await json<{ items: unknown[] }>("/needs-triage", cookie)).items;
-    const logins = (await json<{ tasks: unknown[] }>("/identity-tasks", cookie)).tasks;
-    const tickets = (await json<{ count: number }>("/tickets/badge", cookie)).count;
-    const handoffs = (await json<{ handoffs: HandoffView[] }>("/api/handoffs?box=mine", cookie)).handoffs;
-    const prompts = (await json<{ prompts: { status: string }[] }>("/api/prompts", cookie)).prompts;
-    const imports = (await json<{ running: number }>("/api/imports", cookie)).running;
-    const links = (await json<{ links: LinkView[] }>("/api/links?box=waiting", cookie)).links;
+    const badges = await json<SidebarBadges>(`${ORG}/badges`, cookie);
+    const proposals = (await json<{ proposals: unknown[] }>(`${ORG}/proposals`, cookie)).proposals;
+    const drafts = (await json<{ adrs: unknown[] }>(`${ORG}/adrs?status=draft`, cookie)).adrs;
+    const unplaced = (await json<{ items: unknown[] }>(`${ORG}/needs-triage`, cookie)).items;
+    const logins = (await json<{ tasks: unknown[] }>(`${ORG}/identity-tasks`, cookie)).tasks;
+    const tickets = (await json<{ count: number }>(`${ORG}/tickets/badge`, cookie)).count;
+    const handoffs = (await json<{ handoffs: HandoffView[] }>(`${ORG}/handoffs?box=mine`, cookie)).handoffs;
+    const prompts = (await json<{ prompts: { status: string }[] }>(`${ORG}/prompts`, cookie)).prompts;
+    const imports = (await json<{ running: number }>(`${ORG}/imports`, cookie)).running;
+    const links = (await json<{ links: LinkView[] }>(`${ORG}/links?box=waiting`, cookie)).links;
 
     expect(badges).toEqual({
       proposals: proposals.length,
@@ -129,10 +131,10 @@ describe("GET /badges", () => {
         return typeof v === "function" ? v.bind(target) : v;
       },
     });
-    const badges = await app.request("/badges", { headers: { cookie } }, { ...env, DB });
+    const badges = await app.request(`${ORG}/badges`, { headers: { cookie } }, { ...env, DB });
     expect(badges.status).toBe(503);
     expect(await badges.json()).toEqual({ error: "badges unavailable" });
-    const waiting = await app.request("/api/links?box=waiting", { headers: { cookie } }, { ...env, DB });
+    const waiting = await app.request(`${ORG}/links?box=waiting`, { headers: { cookie } }, { ...env, DB });
     expect(waiting.status).toBe(503);
     expect(await waiting.json()).toEqual({ error: "links unavailable", degraded: true });
   });

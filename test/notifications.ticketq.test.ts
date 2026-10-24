@@ -220,7 +220,7 @@ describe("runDigest with ticketq", () => {
 describe("policy + prefs surfaces", () => {
   it("GET /api/notifications/policy lists ticketq with its registry defaults", async () => {
     const cookie = await cookieFor("admin-user");
-    const res = await app.request("/api/notifications/policy", { headers: { cookie } }, env);
+    const res = await app.request("/api/o/saplinglearn/notifications/policy", { headers: { cookie } }, env);
     expect(res.status).toBe(200);
     const view = (await res.json()) as { kinds: { id: string; label: string; description: string; registryDefault: string; enabled: boolean; default_cadence: string; allowedCadences: string[] }[] };
     expect(view.kinds.map((k) => k.id)).toContain("ticketq");
@@ -241,18 +241,18 @@ describe("policy + prefs surfaces", () => {
     await file("Laptop swap for the new hire", { at: "2026-09-10T12:00:00Z" });
 
     // Enabled: the row is in Settings.
-    let prefs = (await (await app.request("/api/notifications/prefs", { headers: { cookie: mine } }, env)).json()) as { kinds: { id: string }[] };
+    let prefs = (await (await app.request("/api/o/saplinglearn/notifications/prefs", { headers: { cookie: mine } }, env)).json()) as { kinds: { id: string }[] };
     expect(prefs.kinds.map((k) => k.id)).toContain("ticketq");
 
     const res = await app.request(
-      "/api/notifications/policy",
+      "/api/o/saplinglearn/notifications/policy",
       { method: "PUT", headers: { cookie: admin, "content-type": "application/json" }, body: JSON.stringify({ kind: "ticketq", enabled: false }) },
       env
     );
     expect(res.status).toBe(200);
     expect(await first<NotificationPolicyRow>(env.DB, `SELECT * FROM notification_policy WHERE kind = 'ticketq'`)).toMatchObject({ enabled: 0 });
 
-    prefs = (await (await app.request("/api/notifications/prefs", { headers: { cookie: mine } }, env)).json()) as { kinds: { id: string }[] };
+    prefs = (await (await app.request("/api/o/saplinglearn/notifications/prefs", { headers: { cookie: mine } }, env)).json()) as { kinds: { id: string }[] };
     expect(prefs.kinds.map((k) => k.id)).not.toContain("ticketq");
 
     await runDigest(systemCtx(), platformCtx(), "daily", FRI, { delivery: localDelivery(systemCtx()) });

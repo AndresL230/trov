@@ -40,7 +40,7 @@ import type { IntegrationKind, OrgSettingsAuditAction } from "@shared/integratio
 import { b64uDecode, b64uEncode, hmacSeal, hmacUnseal, randomToken } from "../auth/crypto";
 import { hasRole, platform, requireRole, resolveTenantById } from "../data/context";
 import {
-  SecretsUnavailableError, getIntegrationConfig, getSecret, getSecretMeta, hasLegacyCredential,
+  SecretsUnavailableError, getIntegrationConfig, getSecret, getSecretMeta,
   listIntegrationConfig, listSecretMeta, secretDeleteStmts, secretPutStmts, secretValueProblem,
   systemRevocationDeleteStmts, type SecretMeta,
 } from "../data/secrets";
@@ -145,7 +145,6 @@ export async function describeConnection(
     connected_at: live ? row!.connected_at : meta?.created_at ?? null,
     last_used_at: meta?.last_used_at ?? null,
     last_error: meta?.last_error ?? null,
-    legacy_fallback: meta === null && (await hasLegacyCredential(ctx, env, kind, scope)),
     revoked_reason: status === "revoked" && isHostingRevokedReason(row?.revoked_reason) ? hostingRevokedReasonText(row!.revoked_reason!, provider.label) : null,
     manage_url: method ? manageUrlOf(provider, config, method) : null,
     used_by: s.parts.filter((p) => p.provider === provider.id && credentialScopeOf(provider, p) === scope).map((p) => ({ env: p.env, part: p.key })),
