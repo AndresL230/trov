@@ -469,7 +469,6 @@ at once; "kept" says why.
 | `billing_events` (Stripe event id, type, outcome — no payload, no org or person) | webhook idempotency; pruned after 90 days |
 | R2 objects another organization (or person) also references | content-addressed: the same bytes are one object, still in use |
 | The GitHub App on the GitHub account | Trov cannot uninstall it; uninstall it on GitHub if no other organization uses it |
-| SaplingLearn's legacy `invites` table | pre-organization invitations; nothing reads it since the Phase 7 cleanup, and the migration after it drops the table |
 | A Message Batch request still open for it (`ai_batch_requests`, a platform row: its `custom_id` names the org, a scope and a key — no content) | Anthropic ends a batch within 24 h and the next AI pass collects it: a result for an organization that no longer exists writes NOTHING, and the request row is deleted then (`ai.md` › Batches) |
 
 **An account**

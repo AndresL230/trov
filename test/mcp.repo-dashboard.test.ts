@@ -506,7 +506,7 @@ describe("MCP get_repo_dashboard — the Overview's facts and layout (repo setup
   async function seedFacts(): Promise<RepoEnvConfig[]> {
     const envs = JSON.parse((env as unknown as LegacyEnv).REPO_ENVIRONMENTS ?? "[]") as RepoEnvConfig[];
     await seedOrgRepoConfig(env.DB, ORG_A, "SaplingLearn/sapling", envs);
-    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, 0, '2026-10-06T00:00:00.000Z', 'seed')`).bind(ORG_A).run();
+    await env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_docs', ?, 'SaplingLearn/docs', 0, '2026-10-06T00:00:00.000Z', 'seed')`).bind(ORG_A).run();
     for (const e of ["staging", "production"]) {
       await addPart(ORG_A, e, "frontend", "cloudflare", "web");
       await addPart(ORG_A, e, "backend", "railway", "service", {}, 1);

@@ -184,7 +184,6 @@ async function digestA(): Promise<Record<string, string>> {
   const extra: [string, string][] = [
     ["persons (A's members)", `SELECT * FROM persons WHERE handle IN ${members} OR handle = 'gone'`],
     ["identities (A's members)", `SELECT * FROM identities WHERE person IN ${members}`],
-    ["invites (the legacy sidecar)", `SELECT * FROM invites`],
     ["orgs (A)", `SELECT * FROM orgs WHERE id = '${ORG_A}'`],
   ];
   const res = await env.DB.batch([

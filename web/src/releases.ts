@@ -122,6 +122,7 @@ export const RELEASES: Release[] = [
     ],
     ops: [
       "Apply migration `0077_home` (it times doc promotions from now on; merging to main applies it). Its header has the rollback.",
+      "Apply migration `0085_drop_legacy_invites_hook` only after #206 is live (merging this applies it); its header has the rollback.",
       "After #206 is live, delete the retired Worker secrets: `GITHUB_SERVICE_TOKEN`, `GITHUB_WEBHOOK_SECRET`, `CF_ANALYTICS_TOKEN`, `CF_ANALYTICS_ACCOUNT_ID`, `SAPLING_METRICS_TOKEN` (`wrangler secret delete`).",
     ],
     patches: {
@@ -137,10 +138,10 @@ export const RELEASES: Release[] = [
       ],
       fixed: [],
       removed: [
-        "The pre-organization leftovers: every address names its organization, and the old shared credentials and GitHub webhook address are retired (#206)",
+        "The pre-organization leftovers: every address names its organization, and the old shared credentials and GitHub webhook address are retired (#206, #207)",
       ],
     },
-    prs: [201, 203, 206],
+    prs: [201, 203, 206, 207],
   },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower

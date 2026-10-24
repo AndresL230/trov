@@ -184,19 +184,6 @@ export interface IdentityRow {
   provider_uid?: string | null;
 }
 
-// The Google gate (0023): only an invited, verified address may create a person.
-export interface InviteRow {
-  email: string;
-  name: string | null;
-  invited_by: string;
-  invited_at: string;
-  accepted_by: string | null;
-  revoked_at: string | null;
-  email_sent_at: string | null;
-  email_id: string | null;
-  email_error: string | null;
-}
-
 export interface SessionRow {
   id: string;
   person: string;

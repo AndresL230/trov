@@ -80,7 +80,7 @@ describe("nothing written yet, with a key and the switch on: the screens say whe
   const KEYED_ENV = withVars({ ANTHROPIC_API_KEY: FAKE_ANTHROPIC_KEY });
   it("/me/dashboard carries an `empty` brief and /repo/dashboard an `empty` state; MCP, no key or the switch off: absent", async () => {
     const empty = { state: "empty", generatedAt: null, model: null, resumesOn: null, upgrade: false };
-    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES ('hook_q23', ?, 'acme/app', 1, 0, '2026-10-06T00:00:00Z', 'test')`, ORG_A);
+    await run(env.DB, `INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES ('hook_q23', ?, 'acme/app', 1, '2026-10-06T00:00:00Z', 'test')`, ORG_A);
     expect((await get<Dash>(DEPLOYED, "/me/dashboard", KEYED_ENV)).brief).toEqual({ ...empty, now: null, recently: null, next: { items: [] } });
     expect((await get<Dash>(DEPLOYED, "/repo/dashboard", KEYED_ENV)).state).toEqual({ ...empty, headline: null, shipped: [], inFlight: [], attention: [], eventCount: null });
     // MCP still leaves them out (nothing written is no field there), and so does a deployment with no key.

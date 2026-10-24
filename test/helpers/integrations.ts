@@ -12,7 +12,7 @@ export async function seedOrgSettings(orgId: string = ORG_A, hookId: string = HO
     env.DB.prepare(`INSERT INTO org_environment_parts (org_id, env_key, part_key, position, label, role, provider, settings, created_at, updated_at, updated_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'migration')`).bind(orgId, key, part, position, label, role, provider, JSON.stringify(settings), at, at);
   await env.DB.batch([
-    env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, legacy_hook, created_at, created_by) VALUES (?, ?, 'SaplingLearn/sapling', 1, 1, ?, 'migration')`).bind(hookId, orgId, at),
+    env.DB.prepare(`INSERT INTO org_repos (id, org_id, repo_full_name, is_primary, created_at, created_by) VALUES (?, ?, 'SaplingLearn/sapling', 1, ?, 'migration')`).bind(hookId, orgId, at),
     env.DB.prepare(`INSERT INTO org_environments (org_id, key, position, label, note, branch, frontend_url, api_url, health_path, created_at, updated_at, updated_by) VALUES
       (?, 'staging', 0, 'staging', 'main', 'main', 'https://staging.example.com', 'https://api.staging.example.com', '/api/health', ?, ?, 'migration'),
       (?, 'production', 1, 'production', 'production', 'production', 'https://example.com', 'https://api.example.com', '/api/health', ?, ?, 'migration')`)
