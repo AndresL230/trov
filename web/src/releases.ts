@@ -138,10 +138,10 @@ export const RELEASES: Release[] = [
       ],
       fixed: [],
       removed: [
-        "The pre-organization leftovers: every address names its organization, and the old shared credentials and GitHub webhook address are retired (#206)",
+        "The pre-organization leftovers: every address names its organization, and the old shared credentials and GitHub webhook address are retired (#206, #207)",
       ],
     },
-    prs: [201, 203, 206],
+    prs: [201, 203, 206, 207],
   },
   // Ask sharing (#193), handoff prompts by upload (#194), agent links (#196) and the Docs Library (#197), merged together
   // through epic/10-17-staging (#195) with Ask's GitHub lookups, the Prompt Library's copy-slug button, the narrower
