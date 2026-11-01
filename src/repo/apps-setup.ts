@@ -12,10 +12,13 @@
 //   write   `putAppInRepo` / `removeAppInRepo` — through Phase A's audited writers (`putRepoApp`, `deleteRepoApp`;
 //           `deletePart` for an app's parts when the person asks for them to go too). An app key that belongs to
 //           ANOTHER repository is refused (409), never moved by a write addressed to this one.
+//   offer   `oneService` (#144): "one service that does everything", recognised from the same D1 rows
+//           (`recogniseOneService`, ./one-service.ts, over Hosting's "Detected" signs) — a pre-fill, null when the
+//           signals do not say one host and one deployable; a failed read is no offer (never `degraded`).
 import { requireRole } from "../data/context";
 import { first, type TenantContext } from "../data/sql";
 import type { Env } from "../env";
-import { HOSTING_PROVIDERS, type EnvironmentPartDTO } from "@shared/hosting";
+import { HOSTING_PROVIDERS, type EnvironmentPartDTO, type HostingProviderId } from "@shared/hosting";
 import type { AppSuggestionDTO, RepoAppsSetupDTO, RepoScanDTO, SeenSignal } from "@shared/repo-scan-core";
 import { SIGNAL_WINDOW_DAYS, unassignedSignals } from "@shared/repo-apps-setup-core";
 import type { RepoApp } from "@shared/repo-apps-core";
@@ -28,6 +31,8 @@ import { deleteRepoApp, listRepoApps, putRepoApp } from "./apps";
 import { seenSignals } from "./signals";
 import { listSuggestions, readScan } from "./scan-store";
 import { readTags } from "./releases";
+import { detectProviders, listDetectRows, type DetectRow } from "../hosting/detect";
+import { recogniseOneService } from "./one-service";
 
 /** What the read stands on — injectable so a test can stand the scan's (D1's) reads in. */
 export interface AppsSetupDeps {
@@ -37,8 +42,10 @@ export interface AppsSetupDeps {
   /** The tags Trov holds for the repository (releases, Phase F). */
   readTags: (ctx: TenantContext, repo: string) => Promise<{ count: number; latest: { tag: string; at: string } | null } | null>;
   providers: ProviderMap;
+  /** The captured check runs / deployments / statuses Hosting's "Detected" reads (one-service recognition). */
+  detectRows?: (ctx: TenantContext) => Promise<DetectRow[]>;
 }
-export const APPS_SETUP_DEPS: AppsSetupDeps = { seenSignals, listSuggestions, readScan, readTags, providers: PROVIDERS };
+export const APPS_SETUP_DEPS: AppsSetupDeps = { seenSignals, listSuggestions, readScan, readTags, providers: PROVIDERS, detectRows: (ctx) => listDetectRows(ctx) };
 
 const NO_SCAN: RepoScanDTO = { treeSha: null, scannedAt: null, looked: [], error: null };
 
@@ -69,7 +76,8 @@ export async function getRepoAppsSetup(ctx: TenantContext, env: Env, repo: strin
   const allParts = await listAllParts(ctx);
   const keys = new Set(apps.map((a) => a.key));
   const described = await describeParts(ctx, env, allParts.filter((p) => keys.has(p.key)), deps.providers);
-  const environments = (await listEnvironments(ctx)).map((e) => ({ key: e.key, label: e.label, branch: e.branch }));
+  const envRows = await listEnvironments(ctx);
+  const environments = envRows.map((e) => ({ key: e.key, label: e.label, branch: e.branch }));
   const suggestions = await soft(() => deps.listSuggestions(ctx, repo), [] as AppSuggestionDTO[], mark);
   const signals = await soft(() => deps.seenSignals(ctx, repo, SIGNAL_WINDOW_DAYS), [] as SeenSignal[], mark);
   const scan = await soft(() => deps.readScan(ctx, repo), NO_SCAN, mark);
@@ -79,6 +87,7 @@ export async function getRepoAppsSetup(ctx: TenantContext, env: Env, repo: strin
   const githubSettings = allParts.filter((p) => deps.providers[p.provider]?.credential === "github_app").map((p) => p.settings);
   const byKey = new Map<string, EnvironmentPartDTO[]>();
   for (const p of described) byKey.set(p.key, [...(byKey.get(p.key) ?? []), p]);
+  const oneService = await oneServiceOffer(ctx, repo, apps, suggestions, envRows, allParts, deps);
   return {
     repo,
     apps: apps.map((a: RepoApp) => ({ ...a, parts: byKey.get(a.key) ?? [] })),
@@ -92,7 +101,29 @@ export async function getRepoAppsSetup(ctx: TenantContext, env: Env, repo: strin
     providers: HOSTING_PROVIDERS.map((id) => deps.providers[id]).filter((p) => p && p.status === "available")
       .map((p) => ({ id: p.id, label: p.label, via_github: p.credential === "github_app" })),
     ...(mark.degraded ? { degraded: true } : {}),
+    oneService,
   };
+}
+
+/** The one-service offer (see the header): D1 rows only; any failure is simply no offer. */
+async function oneServiceOffer(
+  ctx: TenantContext, repo: string, apps: readonly RepoApp[], suggestions: readonly AppSuggestionDTO[],
+  envRows: Awaited<ReturnType<typeof listEnvironments>>, allParts: Awaited<ReturnType<typeof listAllParts>>, deps: AppsSetupDeps,
+) {
+  if (apps.length > 0 || !deps.detectRows) return null;
+  try {
+    const primary = (await first<{ repo_full_name: string }>(ctx,
+      `SELECT repo_full_name FROM org_repos WHERE org_id = ? ORDER BY is_primary DESC, created_at, id LIMIT 1`, ctx.orgId))?.repo_full_name ?? null;
+    if (!primary || primary.toLowerCase() !== repo.toLowerCase()) return null;
+    const labels = Object.fromEntries(HOSTING_PROVIDERS.map((id) => [id, deps.providers[id]?.label ?? id])) as Record<HostingProviderId, string>;
+    const detected = detectProviders(await deps.detectRows(ctx), labels, new Set(allParts.map((p) => p.provider)));
+    const keys = (await first<{ keys: string | null }>(ctx, `SELECT group_concat(key, ' ') AS keys FROM repo_apps WHERE org_id = ?`, ctx.orgId))?.keys ?? "";
+    const taken = new Set([...keys.split(" ").filter(Boolean), ...allParts.map((p) => p.key)]);
+    return recogniseOneService({ repo, primary: true, apps, suggestions, detected, environments: envRows, taken, providers: deps.providers });
+  } catch (e) {
+    console.error("apps setup one-service read failed", e instanceof Error ? e.name : "error"); // the name only
+    return null;
+  }
 }
 
 const APP_FIELDS = ["kind", "label", "folder", "watch", "release_signal", "position"];
