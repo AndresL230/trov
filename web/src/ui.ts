@@ -33,6 +33,12 @@ export function surface(style = "", opts: { hover?: boolean; cls?: string } = {}
   return ` class="${cls}"${style ? ` style="${style}"` : ""}`;
 }
 
+/** The copy button in a block's corner: a 26px square holding the copy glyph, class `cnpy-copybtn` (its hover and
+ *  press, trov.css). ONE look for a command box (mcp-connect.ts `copyBox`) and an Ask answer's code block
+ *  (ask-conversation.ts `codeBlock`); the caller adds its own position. */
+export const COPY_GLYPH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>`;
+export const COPY_BTN_LOOK = "display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)";
+
 /** A card or row that opens something AND shows people, whose names and photos open their
  *  person card. A button may not hold a button, so the card is a plain container
  *  (`HITBOX`, position:relative) and this empty button, laid over the whole of it as its
