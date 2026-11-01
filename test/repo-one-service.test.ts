@@ -58,11 +58,12 @@ const input = (over: Partial<OneServiceInput> = {}): OneServiceInput => ({
 });
 
 describe("the repo scan on Trov's own wrangler.toml", () => {
-  it("finds ONE Worker, with its D1 database and its crons — and keeps them even before an environment exists", () => {
+  it("finds ONE Worker, with its D1 database, its R2 bucket and its crons — and keeps them even before an environment exists", () => {
     const c = trovCandidates();
     expect(c.map((x) => [x.folder, x.kind, x.provider])).toEqual([["/", "Worker", "cloudflare"]]);
     expect(c[0].settings).toEqual({
       worker: "trov", d1_database_ids: "6c71838c-18f7-4f68-8513-b58e86c237b9", crons: "*/10 * * * *;0 * * * *;0 * * * SUN,MON",
+      r2_bucket_names: "trov-artifacts", // [[previews.r2_buckets]] belongs to the previews, not this Worker (#143)
     });
     // No environment yet: the host's own part is proposed for production, so the Worker's settings are not lost.
     expect(buildParts(c[0], [], [], PROVIDERS)).toEqual([{ env: "production", provider: "cloudflare", settings: c[0].settings }]);
@@ -77,7 +78,7 @@ describe("recogniseOneService — a pre-fill, from captured rows only", () => {
     const o = recogniseOneService(input())!;
     expect(o).toEqual<OneServiceOfferDTO>({
       provider: "cloudflare", evidence: CF.evidence, suggestion: "sg_0123456789abcdef0123", key: "trov", folder: "/", kind: "Worker",
-      settings: { worker: "trov", d1_database_ids: "6c71838c-18f7-4f68-8513-b58e86c237b9", crons: "*/10 * * * *;0 * * * *;0 * * * SUN,MON" },
+      settings: { worker: "trov", d1_database_ids: "6c71838c-18f7-4f68-8513-b58e86c237b9", crons: "*/10 * * * *;0 * * * *;0 * * * SUN,MON", r2_bucket_names: "trov-artifacts" },
       env: { key: "production", label: "Production", branch: "main", exists: false, url: "", health_path: "" },
     });
   });

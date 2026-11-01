@@ -2,7 +2,7 @@
 // says ONE host deploys the repository and the scan found at most one deployable (`RepoAppsSetupDTO.oneService`,
 // src/repo/one-service.ts), the page opens with that answer PRE-FILLED — "One service that does everything" — and
 // the person confirms it in one step: the host, a name, the production URL, an optional health path, the host's own
-// settings (prefilled from the scan: a Worker name, its D1 databases and crons), then the host's credential in its
+// settings (prefilled from the scan: a Worker name, its D1 databases, R2 buckets and crons), then the host's credential in its
 // own dialog. "Something else" folds it away for the page's suggestions and Add an app. No frontend / backend words
 // here: a single-stack repository has neither.
 //
