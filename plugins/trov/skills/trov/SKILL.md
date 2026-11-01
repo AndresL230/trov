@@ -42,14 +42,14 @@ orient (load-context)  →   do the work   →   record (record-session)
    in flight, needs attention — kept by Trov), then pulls the relevant context (assembled bodies + ranked
    pointers, each authority-flagged) so you build on what exists instead of guessing. Read-only.
 2. **Work** as normal.
-3. **Record — the `record-session` skill.** Explicit only ("record this session"). At the end it
+3. **Record — the `record-session` skill.** Explicit only: a person asks ("record this session", in words or as `/trov:record-session`). At the end it
    batches the session's decisions, findings and incidents (each citing its commits) and any doc or ADR
    change, and stages them through the gate in one `record_session` call. It must never auto-fire. What
    SHIPPED is not its job: Trov writes a `Shipped:` / `Status:` entry from the commits itself, about 45
    minutes after a person's last push (a session digest, authored by `trov`).
 
-> Why two skills, not one: a skill carries a single trigger setting. `load-context` **must** be
-> model-invocable (auto-orient); `record-session` **must** be explicit-only (never log on its own).
+> Why two skills, not one: a skill carries a single trigger. `load-context` **must** fire on its own
+> (auto-orient); `record-session` **must** fire only when a person asks (never log on its own).
 > They can't share one `SKILL.md`. This `trov` skill is the umbrella that documents both.
 
 Alongside the loop: **`tickets`** (explicit-only) works the ticket queue and the sprints; **`handoff`** (explicit-only) leaves one handoff for the next session; **`prompts`** finds,
@@ -58,6 +58,18 @@ links and — when asked — publishes artifact pages; **`link`** drafts, joins 
 another session whose work overlaps yours (a person sends and accepts it); **`my-work`** reads your own plate; **`read-plan`** / **`update-plan`** read and write the
 roadmap plan. Reading tickets, sprints and the roadmap needs no skill — those tools are registered for
 every principal.
+
+### Explicit-only skills: asked for in words, never on their own
+
+`record-session`, `handoff`, `tickets` and `update-plan` write things the team sees, so each runs
+**only when a person asks for it** — and asking **in plain words is asking**: "record the session",
+"send a handoff", "file a ticket for that", "update the plan" load the skill exactly as typing
+`/trov:record-session` does. When a person asks in words, load the skill and follow it; never answer
+that it can only be run as a slash command, and never call its MCP tool without the skill's rules.
+What is **not** a request: a natural stopping point, a finished task, tests passing, a merged branch,
+noticing a stale ticket or plan drift. None of these skills fires then, and you do not offer or do the
+write unasked. (This rule lives in each skill's `description`; the skills deliberately do not set
+`disable-model-invocation`, which would also block a request made in words.)
 
 ## Authority is load-bearing
 

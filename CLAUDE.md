@@ -19,8 +19,9 @@ Trov is the team's working memory; the skills under `.claude/skills/` (symlinks 
 - **`load-context`** (auto-fires, read-only) — orient before touching an existing area; ALWAYS before
   proposing a doc change (note the doc's `current_version` as the writer's base). Calls `get_my_work` and
   lists waiting handoffs at session start.
-- **`record-session`** (explicit only) — at session end, stage ONE reconciled batch via `record_session`.
-- **`tickets`** (explicit only) — work the queue over the scoped MCP writes; per-team taste in `tickets.config.md`.
+- **`record-session`** (explicit only: a person's ask, in words or as `/trov:record-session`; never at a
+  stopping point) — at session end, stage ONE reconciled batch via `record_session`.
+- **`tickets`** (explicit only, the same way) — work the queue over the scoped MCP writes; per-team taste in `tickets.config.md`.
 - `read-plan` / `update-plan` (admin) and `my-work` for the roadmap and My Work; `artifacts`, `handoff` and
   `prompts` for those libraries.
 

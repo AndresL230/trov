@@ -18,7 +18,7 @@ import { ASK_STARTERS_FALLBACK } from "@shared/ai-ask-core";
 import { threadsView } from "../web/src/ask-threads";
 import { cvRef, parseCvRef, cvRefWord, isCvRef } from "../web/src/ask-cvref";
 import { refFallbackText } from "../web/src/ask-refs";
-import { newTurn, foldAskEvent, foldThreadEvent, emptyConvo, withLastTurn, type AskConvo, type AskMsg, type AskTurn } from "../web/src/ask-stream";
+import { newTurn, foldAskEvent, foldThreadEvent, emptyConvo, withLastTurn, turnFromMessage, type AskConvo, type AskMsg, type AskTurn } from "../web/src/ask-stream";
 import type { AskApi } from "../web/src/ask-api";
 import { dropdownMenu } from "../web/src/dropdown";
 import mainSrc from "../web/src/main.ts?raw";
@@ -692,6 +692,63 @@ describe("acts — edit-and-resend and regenerate go through replaceFrom", () =>
     act(ctx, "askCvCopy", "page:ak1");
     expect(s.ask.conversation.copied).toBe("page:ak1");
     expect(conversationView(askView(s, "page"))).toContain("<span>Copied</span>");
+  });
+
+  // Ticket #60 (a support report): a code block in an answer — `/plugin marketplace update trov` — had no Copy, so
+  // people selected it by hand. Each block has the command box's corner button, while it streams and after a reload.
+  it("a code block has its own Copy: the command box's button, the block's exact text, Copied for a moment", () => {
+    const md = "Update the plugin:\n\n```bash\n/plugin marketplace update trov\n```\n\nThen run:\n\n```\nclaude mcp list\n/mcp\n```\n";
+    const s = base();
+    s.ask.page = { ...convoOf("answer", { events: [{ event: "text", data: { delta: md } }, { event: "done", data: { messageId: 7, cites: [], tokens: { in: 1, out: 1, cached: 0 } } }] }), busy: false };
+    const html = conversationView(askView(s, "page"));
+    expect(html.match(/data-act="askCvCopyCode"/g)?.length).toBe(2);
+    expect(html).toContain(`<div class="ask-pre-w"><pre class="ask-pre"><code>/plugin marketplace update trov</code></pre><button type="button" class="cnpy-copybtn ask-pre-copy" data-act="askCvCopyCode" data-arg="page:ak1:0.0" aria-label="Copy the code" data-mtip="Copy the code" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;`);
+    expect(html).toContain(`data-arg="page:ak1:0.1"`);
+    // Never a button inside a button: the code block's frame is a plain div.
+    expect(html).not.toMatch(/<button[^>]*>(?:(?!<\/button>)[\s\S])*<button[^>]*data-act="askCvCopyCode"/);
+    const writes: string[] = [];
+    vi.stubGlobal("navigator", { clipboard: { writeText: async (t: string) => { writes.push(t); } } });
+    try {
+      const { ctx } = fakeCtx(s);
+      act(ctx, "askCvCopyCode", "page:ak1:0.1");
+      expect(writes).toEqual(["claude mcp list\n/mcp"]);
+      expect(s.ask.conversation.copied).toBe("page:ak1:0.1");
+      const after = conversationView(askView(s, "page"));
+      expect(after).toMatch(/data-arg="page:ak1:0\.1" aria-label="Copied" data-mtip="Copied"[^>]*><svg/);
+      expect(after).toContain(`data-arg="page:ak1:0.0" aria-label="Copy the code"`);
+      // The answer's own Copy is untouched by it.
+      expect(after).toContain("<span>Copy</span>");
+      // A block that is not there copies nothing.
+      act(ctx, "askCvCopyCode", "page:ak1:0.9");
+      act(ctx, "askCvCopyCode", "page:nope:0.0");
+      expect(writes).toHaveLength(1);
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it("a code block's Copy shows while the answer streams (copying what is out so far) and on a reloaded thread", () => {
+    const s = base();
+    s.ask.page = convoOf("answer", { events: [{ event: "text", data: { delta: "Run:\n\n```\nnpm test\nnpx vit" } }], busy: true });
+    const live = conversationView(askView(s, "page"));
+    expect(live).toContain(`<code>npm test\nnpx vit</code></pre><button type="button" class="cnpy-copybtn ask-pre-copy" data-act="askCvCopyCode" data-arg="page:ak1:0.0"`);
+    const writes: string[] = [];
+    vi.stubGlobal("navigator", { clipboard: { writeText: async (t: string) => { writes.push(t); } } });
+    try {
+      act(fakeCtx(s).ctx, "askCvCopyCode", "page:ak1:0.0");
+      expect(writes).toEqual(["npm test\nnpx vit"]);
+    } finally { vi.unstubAllGlobals(); }
+    // Reloaded: a stored answer (`GET /ask/threads/:id`) draws the same block and button.
+    const stored = turnFromMessage({
+      id: 9, role: "assistant", mode: "smart", text: "Run:\n\n```\n/plugin marketplace update trov\n```", command: null, context: [], blocks: [],
+      activity: [], followups: [], thinking: null, cites: [], attachments: [], actions: [], stopped: false, model: null, units: 1, createdAt: NOW.toISOString(),
+    });
+    s.ask.page = { ...emptyConvo(), uid: "t9", status: "ok", busy: false, messages: [{ role: "assistant", key: "m9", turn: stored }] };
+    expect(conversationView(askView(s, "page"))).toContain(`<code>/plugin marketplace update trov</code></pre><button type="button" class="cnpy-copybtn ask-pre-copy" data-act="askCvCopyCode" data-arg="page:m9:0.0"`);
+  });
+
+  it("the code block's frame holds the button in its corner; the shared button's motion is off under reduced motion", () => {
+    expect(css).toContain(".ask-pre-w { position:relative; margin:0 0 14px; }");
+    expect(css).toContain(".ask-pre-w > .ask-pre { margin:0; padding-right:40px; }");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .cnpy-copybtn { transition:none; } .cnpy-copybtn:active { transform:none; } }");
   });
 
   it("Open in inspector: a conversation-held ref, primed as hidden (never peeked), opened beside its conversation", () => {

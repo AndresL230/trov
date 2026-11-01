@@ -6,7 +6,7 @@
 // Pure markup; the Copy buttons' acts (`copyPluginInstall`, `copyBrowserConnect`) are main.ts's.
 
 import { pagePath } from "@shared/site-pages";
-import { esc } from "./ui";
+import { COPY_BTN_LOOK, COPY_GLYPH, esc } from "./ui";
 
 /** This Trov's own MCP endpoint — the origin the SPA is served from, so a local
  *  `wrangler dev` hands out a local URL and prod hands out prod's. */
@@ -31,7 +31,7 @@ export const mcpStrong = (t: string) => `<strong style="font-weight:600;color:va
 export function copyBox(text: string, act: string, label: string): string {
   return `<div style="position:relative;margin-top:7px;background:var(--hover);border:1px solid var(--border);border-radius:8px;padding:7px 36px 7px 11px">
         <pre style="margin:0;font-family:var(--code);font-size:11.5px;line-height:1.6;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere">${esc(text)}</pre>
-        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;display:grid;place-items:center;width:26px;height:26px;border-radius:6px;border:1px solid var(--border-strong);background:var(--bg);color:var(--fg-55)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg></button>
+        <button data-act="${act}" class="cnpy-copybtn" title="Copy" aria-label="${label}" style="position:absolute;top:5px;right:5px;${COPY_BTN_LOOK}">${COPY_GLYPH}</button>
       </div>`;
 }
 
