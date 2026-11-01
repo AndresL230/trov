@@ -16,6 +16,7 @@
  * the layout with a brief styles.
  * The Roadmap case (Phase D: no sprint `forecast` or `note`, no plan `drift`, no `suggestions`) was pinned at
  * 15b639ef (`ai/screens`, before the Roadmap's AI pieces existed), and re-pinned after #186 (one empty whitespace line).
+ * Repo re-pinned for #45: the tab bar line alone (CI & Deploys and Team & Planning carry their phone-width short labels).
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 

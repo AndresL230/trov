@@ -1566,6 +1566,11 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-tab.is-on { color:var(--fg); box-shadow:inset 0 -2px 0 var(--accent); }
 .cnpy-tab:focus-visible { outline:2px solid var(--focus); outline-offset:-2px; }
 .cnpy-tabs.is-live > .cnpy-tab.is-on { box-shadow:none; }
+/* A tab's phone-width label (tabs.ts `short`): the full one above 600px, the short one at or under it. */
+.cnpy-tab-short { display:none; }
+@media (max-width:600px) { .cnpy-tab > .cnpy-tab-full { display:none; } .cnpy-tab > .cnpy-tab-short { display:inline; } }
+/* The Repo screen's bar on a phone (#45): its short labels and a tighter gap fit the five tabs in a 320px screen's row. */
+@media (max-width:600px) { .repo-frame .cnpy-tabs[data-tabs="repo-tab"] { gap:12px; } }
 .cnpy-tabs-ind { position:absolute; z-index:1; left:0; bottom:0; width:0; height:2px; background:var(--accent); opacity:0; pointer-events:none; }
 .cnpy-tabs.is-live > .cnpy-tabs-ind { opacity:1; }
 .cnpy-tabs-ind.is-sliding { transition:transform .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }

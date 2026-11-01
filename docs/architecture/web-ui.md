@@ -667,7 +667,10 @@ AI mark after its label, only while the live read carries what Trov wrote (`repo
 and goes with its DATA, unlike the sidebar, whose nodes never do — `repo-dashboard.md` › Written by Trov), its switch `setRepoTab`
 flashing the new tab's content in place of the entrance): text tabs at the top of the page BODY on a full-width hairline that is the line
 between the tabs and the content, the picked tab marked by a 2px accent underline on that line, 40px tabs (a
-badge never makes one taller), a row that does not fit scrolling inside the bar, `role="tablist"` / `"tab"` +
+badge never makes one taller), a row that does not fit scrolling inside the bar — before that, a long tab may carry a
+`short` label (`TabItem.short`: both are drawn, `.cnpy-tab-short` shows in place of the full one at ≤600px, and the
+tab's `aria-label` stays the full label), so a phone-width row fits instead of hiding its last tabs (the Repo bar's
+CI / Planning with a 12px gap there, #45: five tabs in a 320px screen; with Summary it still scrolls), `role="tablist"` / `"tab"` +
 `aria-selected` with a roving tabindex and `tabPanelAttrs` on the panel, ←/→ and Home/End (`onTabBarKey`, which
 activates the tab it lands on). Its underline slides by the same FLIP, `syncTabBars` beside `syncSegments`
 (keyed by the bar's `id`, no slide for a bar new to the screen, none under reduced motion), and a screen whose

@@ -29,6 +29,9 @@ export interface TabItem {
   value: string;
   /** Plain text (escaped here). */
   label: string;
+  /** A shorter label for a phone-width bar (≤600px, trov.css `.cnpy-tab-short`), so a row that would scroll inside
+   *  the bar fits instead; the tab's accessible name stays `label`. */
+  short?: string;
   /** Pre-rendered markup after the label (a count badge, a dot). */
   trail?: string;
 }
@@ -51,7 +54,10 @@ const panelId = (bar: string) => `${bar}-panel`;
 export function tabBar(p: TabBarProps): string {
   const tabs = p.tabs.map((t) => {
     const on = t.value === p.value;
-    return `<button type="button" role="tab" id="${attr(tabId(p.id, t.value))}" class="cnpy-tab${on ? " is-on" : ""}"${on ? "" : ` data-act="${attr(p.act)}" data-arg="${attr(t.value)}"`} aria-selected="${on}" aria-controls="${attr(panelId(p.id))}" tabindex="${on ? 0 : -1}" data-field="tab:${attr(p.id)}:${attr(t.value)}">${esc(t.label)}${t.trail ?? ""}</button>`;
+    const label = t.short
+      ? `<span class="cnpy-tab-full">${esc(t.label)}</span><span class="cnpy-tab-short" aria-hidden="true">${esc(t.short)}</span>`
+      : esc(t.label);
+    return `<button type="button" role="tab" id="${attr(tabId(p.id, t.value))}" class="cnpy-tab${on ? " is-on" : ""}"${on ? "" : ` data-act="${attr(p.act)}" data-arg="${attr(t.value)}"`} aria-selected="${on}" aria-controls="${attr(panelId(p.id))}" tabindex="${on ? 0 : -1}" data-field="tab:${attr(p.id)}:${attr(t.value)}"${t.short ? ` aria-label="${attr(t.label)}"` : ""}>${label}${t.trail ?? ""}</button>`;
   }).join("");
   return `<div class="cnpy-tabs" data-tabs="${attr(p.id)}" data-morph-key="tabs:${attr(p.id)}" role="tablist" aria-label="${attr(p.ariaLabel)}"><span class="cnpy-tabs-ind" aria-hidden="true" data-keep></span>${tabs}</div>`;
 }

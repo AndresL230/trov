@@ -1158,9 +1158,12 @@ export function repoTabBar(tab: RepoScreenTab, summary = false): string {
   return tabBar({
     id: "repo-tab", ariaLabel: "Repo sections", act: "setRepoTab", value: tab,
     tabs: REPO_SCREEN_TABS.filter(([value]) => summary || value !== REPO_SUMMARY_TAB)
-      .map(([value, label]) => ({ value, label, trail: value === REPO_SUMMARY_TAB ? aiMark(12) : undefined })),
+      .map(([value, label]) => ({ value, label, short: REPO_TAB_SHORT[value], trail: value === REPO_SUMMARY_TAB ? aiMark(12) : undefined })),
   });
 }
+/** The two long tabs' phone-width labels (#45): with them (and trov.css's tighter gap under 600px) the five tabs fit a
+ *  360px screen instead of scrolling inside the bar with Team & Planning out of sight. */
+export const REPO_TAB_SHORT: Partial<Record<RepoScreenTab, string>> = { ci: "CI", planning: "Planning" };
 
 /** One tab of the dashboard, under the tab bar. The bar renders in EVERY state (loading,
  *  failed, degraded, sample, nothing connected) — only the panel's content changes — so its
