@@ -2,8 +2,11 @@
 // Cloudflare's REST and GraphQL APIs (`https://api.cloudflare.com/client/v4`, `Authorization: Bearer <token>`).
 //
 //   credential   an API TOKEN (My Profile › API Tokens › Create Custom Token) with exactly two permissions on
-//                ONE account: Account › Account Analytics › Read (the metrics) and Account › Workers Scripts ›
-//                Read (the deployments, and the account read in `probe`). Both are read-only. The account's
+//                ONE account: Account › Account Analytics › Read (every figure: requests, outcomes, CPU time, cron
+//                runs, D1 and R2 — all GraphQL Analytics datasets) and Account › Workers Scripts › Read (the
+//                deployments, and the account read in `probe`). Both are read-only. NO D1 or R2 permission: Trov
+//                reads their analytics datasets, never a database or a bucket (step 0 confirmed D1's with Account
+//                Analytics Read; R2's are UNCONFIRMED live, documented under the same permission). The account's
 //                32-hex id is the org config `account_id`. Sent only to api.cloudflare.com.
 //   part         ONE Worker script (`worker`, its name as Workers & Pages lists it). Role `web` only.
 //   deploys      the Workers Deployments API (documented):
@@ -63,15 +66,26 @@
 //                (`max { databaseSizeBytes }`) for the first 3 of them — step 0 CONFIRMED both with Account Analytics
 //                Read. UNCONFIRMED: the `datetime_lt` filter, the `Date` variable type of the D1 filters. A part with
 //                no D1 id says so (`storage`: "no D1 database is named for this part"), never zero.
+//   r2           (#143) on the same daily poll, when the part names R2 buckets (its `r2_bucket_names` setting, up to
+//                3 — the wrangler detector fills it from `r2_buckets[].bucket_name`), ONE more query for the day:
+//                per bucket `r2StorageAdaptiveGroups` (`max { objectCount payloadSize metadataSize }`, the day's
+//                newest row: `orderBy: [datetime_DESC]`, `limit: 1`) and `r2OperationsAdaptiveGroups`
+//                (`sum { requests }` by `actionType`), both filtered by `bucketName` and `datetime_geq` /
+//                `datetime_leq` over the day. Stored: `hx_r2_object_count` / `hx_r2_size_bytes` (payload +
+//                metadata) / `hx_r2_operations` per bucket. Operations are 0 only when the bucket's storage row
+//                proves it exists that day; an answer that fills the operations limit stores no operations. Its OWN
+//                request, not D1's: a GraphQL document fails whole on one unknown field, and these datasets are
+//                UNCONFIRMED live (the documented shape — Cloudflare's R2 metrics guide), so they must never take
+//                the confirmed D1 read down with them. A part with no bucket says so (`objects`), never zero.
 //   one poll     deployments (1) + the newest deployment's build (1) + analytics (1) + scheduled runs (1) + on the
-//                day's first poll the quantiles (1) and D1 (1) = 6 (`pollCost`).
+//                day's first poll the quantiles (1), D1 (1) and R2 (1) = 7 (`pollCost`).
 //
 // Every message is scrubbed of the token — and of the account id, as the old poller did: Cloudflare's own
 // errors can name the account they refused — BEFORE it is cut (../http.ts). Nothing is logged here.
 import type { HostingMetric } from "@shared/hosting";
 import {
-  CRON_EXPR_RE, D1_ID_RE, DAILY_READ_METRIC, OUTCOME_STATUS_RE, RUNTIME_DAILY, SUBREQUESTS_METRIC, cronMetric, d1Metric, outcomeMetric,
-  type ExtraFamily,
+  CRON_EXPR_RE, D1_ID_RE, DAILY_READ_METRIC, OUTCOME_STATUS_RE, R2_BUCKET_RE, RUNTIME_DAILY, SUBREQUESTS_METRIC, cronMetric, d1Metric,
+  outcomeMetric, r2Metric, type ExtraFamily,
 } from "@shared/usage-families-core";
 import type { HostingDeploy, HostingPoint, HostingProvider, PartRef, PollResult, ProbeResult, ProviderContext } from "../types";
 import {
@@ -92,6 +106,10 @@ const PLAIN_LINE = /^[^\u0000-\u001f\u007f]{1,200}$/;
 const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
 /** Up to five D1 ids, comma-separated (a space allowed after a comma) — 5 × 36 + separators stays under the 200-character field limit. */
 const D1_IDS = new RegExp(`^${UUID}(?:, ?${UUID}){0,4}$`);
+/** Up to three R2 bucket names, comma-separated (a space allowed after a comma) — 3 × 63 + separators stays under
+ *  the 200-character field limit. R2's own naming rule (shared `R2_BUCKET_RE`). */
+const R2_BUCKET = "[a-z0-9][a-z0-9-]{1,61}[a-z0-9]";
+const R2_NAMES = new RegExp(`^${R2_BUCKET}(?:, ?${R2_BUCKET}){0,2}$`);
 /** Up to ten cron expressions of cron characters, `;`-separated. */
 const CRONS = /^[0-9A-Za-z*/,?#\- ]{1,80}(?:;[0-9A-Za-z*/,?#\- ]{1,80}){0,9}$/;
 
@@ -145,6 +163,28 @@ function d1Query(n: number): string {
       max { databaseSizeBytes }
     }`).join("");
   return `query($a: string!, $day: Date!, ${vars}) {
+  viewer { accounts(filter: { accountTag: $a }) {${fields}
+  } }
+}`;
+}
+
+/** R2 for up to `R2_PER_POLL` buckets over one completed day, one alias pair each (#143 — the documented shape,
+ *  UNCONFIRMED live): the day's newest storage row, and the day's operations by action type. */
+const R2_PER_POLL = 3;
+/** Far more than R2's action types; an answer that FILLS it may be cut short, so its operations are not stored. */
+const R2_OPS_LIMIT = 100;
+function r2Query(n: number): string {
+  const vars = Array.from({ length: n }, (_, i) => `$b${i}: string!`).join(", ");
+  const fields = Array.from({ length: n }, (_, i) => `
+    r${i}: r2StorageAdaptiveGroups(limit: 1, filter: { bucketName: $b${i}, datetime_geq: $from, datetime_leq: $to }, orderBy: [datetime_DESC]) {
+      dimensions { datetime }
+      max { objectCount payloadSize metadataSize }
+    }
+    o${i}: r2OperationsAdaptiveGroups(limit: ${R2_OPS_LIMIT}, filter: { bucketName: $b${i}, datetime_geq: $from, datetime_leq: $to }) {
+      dimensions { actionType }
+      sum { requests }
+    }`).join("");
+  return `query($a: string!, $from: Time!, $to: Time!, ${vars}) {
   viewer { accounts(filter: { accountTag: $a }) {${fields}
   } }
 }`;
@@ -398,6 +438,51 @@ function d1Points(body: Record<string, unknown>, ids: string[], day: string, day
   return out;
 }
 
+/**
+ * The R2 answer → daily points per bucket: the day's newest object count and stored bytes (payload + metadata — both
+ * must be numbers, never one alone), and the day's operations summed over every action type. A bucket whose storage
+ * row is not that day's (or is malformed) stores no size; its operations are 0 only when that storage row proves the
+ * bucket was there that day (an unknown bucket answers with no row at all — never "quiet").
+ */
+function r2Points(body: Record<string, unknown>, buckets: string[], dayStart: number): ExtraPoint[] {
+  const accounts = record(record(body.data).viewer).accounts;
+  const account = Array.isArray(accounts) && accounts.length ? record(accounts[0]) : null;
+  if (!account) throw new HostingError("cloudflare r2: Cloudflare answered for no account");
+  const at = iso(dayStart);
+  const out: ExtraPoint[] = [];
+  buckets.forEach((bucket, i) => {
+    const rows = account[`r${i}`];
+    const stored = Array.isArray(rows) ? rows.map(record).find((r) => {
+      const t = Date.parse(String(record(r.dimensions).datetime ?? ""));
+      return Number.isFinite(t) && t >= dayStart && t < dayStart + DAY;
+    }) : undefined;
+    let seen = false;
+    if (stored) {
+      const max = record(stored.max);
+      const count = typeof max.objectCount === "number" ? sane(max.objectCount, MAX_COUNT) : null;
+      const payload = typeof max.payloadSize === "number" ? sane(max.payloadSize, 1e13) : null;
+      const meta = typeof max.metadataSize === "number" ? sane(max.metadataSize, 1e13) : null;
+      if (count !== null) { out.push({ metric: r2Metric("object_count", bucket), at, value: Math.round(count) }); seen = true; }
+      if (payload !== null && meta !== null && payload + meta < 1e13) { out.push({ metric: r2Metric("size_bytes", bucket), at, value: Math.round(payload + meta) }); seen = true; }
+    }
+    const ops = account[`o${i}`];
+    if (!Array.isArray(ops) || ops.length >= R2_OPS_LIMIT) return;
+    let total = 0;
+    for (const row of ops) {
+      const requests = record(record(row).sum).requests;
+      const n = typeof requests === "number" ? sane(requests, MAX_COUNT) : null;
+      if (n !== null) total += Math.round(n);
+    }
+    if (total > 0 || seen) out.push({ metric: r2Metric("operations", bucket), at, value: total });
+  });
+  return out;
+}
+
+/** The part's R2 bucket names (its `r2_bucket_names` setting, comma-separated) — at most `R2_PER_POLL` read. */
+function r2Buckets(part: PartRef): string[] {
+  return [...new Set((part.settings.r2_bucket_names ?? "").split(",").map((x) => x.trim()).filter((x) => R2_BUCKET_RE.test(x)))].slice(0, R2_PER_POLL);
+}
+
 /** The part's D1 database ids (its `d1_database_ids` setting, comma-separated), each a UUID — at most `D1_PER_POLL` read. */
 function d1Ids(part: PartRef): string[] {
   return [...new Set((part.settings.d1_database_ids ?? "").split(",").map((x) => x.trim().toLowerCase()).filter((x) => D1_ID_RE.test(x)))];
@@ -409,6 +494,8 @@ const familyReason = (prefix: string, e: unknown): string =>
 
 /** What `storage` says for a part that names no D1 database — every poll, with no request. */
 export const NO_D1_DATABASE = "no D1 database is named for this part — set its D1 database ids (the repo scan fills them from wrangler)";
+/** What `objects` says for a part that names no R2 bucket — every poll, with no request. */
+export const NO_R2_BUCKET = "no R2 bucket is named for this part — set its R2 bucket names (the repo scan fills them from wrangler)";
 
 // ── deploys ──────────────────────────────────────────────────────────────────
 
@@ -503,7 +590,7 @@ export const cloudflare: HostingProvider = {
   id: "cloudflare",
   label: "Cloudflare Workers",
   status: "available",
-  summary: "A Cloudflare Worker. Trov reads its deploys, requests and errors.",
+  summary: "A Cloudflare Worker. Trov reads its deploys, requests, CPU time, cron runs, and D1 and R2 usage.",
   roles: ["web"],
   apiHosts: ["api.cloudflare.com"],
   docsUrl: "https://developers.cloudflare.com/analytics/graphql-api/",
@@ -511,8 +598,12 @@ export const cloudflare: HostingProvider = {
     {
       method: "token",
       label: "Paste an API token",
-      howTo: "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
-      grants: ["Account Analytics: Read on one account", "Workers Scripts: Read on that account (its Workers' deployments)", "Optional — Workers CI: Read (the commit each deploy was built from)"],
+      howTo: "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read (requests, outcomes, CPU time, cron runs, and D1 and R2 usage — all from Cloudflare's analytics), and Account › Workers Scripts › Read (deploys). No D1 or R2 permission is needed: Trov reads their analytics, never a database or a bucket.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
+      grants: [
+        "Account Analytics: Read on one account (requests, outcomes, CPU time, cron runs, D1 and R2 usage)",
+        "Workers Scripts: Read on that account (its Workers' deployments)",
+        "Optional — Workers CI: Read (the commit each deploy was built from)",
+      ],
     },
   ],
   orgConfigFields: [
@@ -523,13 +614,15 @@ export const cloudflare: HostingProvider = {
     // Repo setups, Phase G: the D1 databases and cron triggers the Usage tab reads for this Worker. The repo scan's
     // wrangler detector proposes both (its `d1_databases[].database_id` and `triggers.crons`); an admin may edit them.
     { key: "d1_database_ids", label: "D1 database ids", description: "Optional. The ids of the D1 databases this Worker binds (wrangler's d1_databases), comma-separated — up to 5; the first 3 are read.", required: false, placeholder: "6c71838c-18f7-4f68-8513-b58e86c237b9", pattern: D1_IDS },
+    // #143: the R2 buckets it binds — wrangler's `r2_buckets[].bucket_name`, proposed by the same detector.
+    { key: "r2_bucket_names", label: "R2 bucket names", description: "Optional. The R2 buckets this Worker binds (wrangler's r2_buckets), comma-separated — up to 3.", required: false, placeholder: "trov-artifacts", pattern: R2_NAMES },
     { key: "crons", label: "Cron triggers", description: "Optional. The Worker's cron expressions (wrangler's triggers.crons), separated by ;. Runs are read either way; a listed cron that never ran in a range reads as none.", required: false, placeholder: "*/10 * * * *;0 13 * * *", pattern: CRONS },
   ],
-  capabilities: { deploys: true, metrics: ["requests", "errors"], families: ["outcomes", "runtime", "storage", "schedules"] },
+  capabilities: { deploys: true, metrics: ["requests", "errors"], families: ["outcomes", "runtime", "storage", "schedules", "objects"] },
   planNote: null,
   // Deployments (1) + the newest deployment's build (1) + analytics (1) + scheduled runs (1) + once a day the
-  // quantiles (1) and D1 (1).
-  pollCost: 6,
+  // quantiles (1), D1 (1) and R2 (1) — R2 on its own request (see the header).
+  pollCost: 7,
   // A pasted API token is managed (and rolled or deleted) under My Profile › API Tokens.
   manageUrl(_config, method) {
     return method === "token" ? `${DASHBOARD}/profile/api-tokens` : null;
@@ -609,8 +702,10 @@ export const cloudflare: HostingProvider = {
       families.push({ family: "schedules", reason: familyReason("Cloudflare did not answer for cron runs", e) });
     }
 
-    // Once a day (the framework says which completed day): the quantiles, then D1 when the part names a database.
+    // Once a day (the framework says which completed day): the quantiles, then D1 when the part names a database, then
+    // R2 when it names a bucket.
     const ids = d1Ids(part);
+    const buckets = r2Buckets(part);
     const day = pc.daily && /^\d{4}-\d{2}-\d{2}$/.test(pc.daily) ? pc.daily : null;
     const dayStart = day ? Date.parse(`${day}T00:00:00.000Z`) : Number.NaN;
     if (day && Number.isFinite(dayStart) && dayStart + DAY <= pc.now) {
@@ -635,8 +730,21 @@ export const cloudflare: HostingProvider = {
           families.push({ family: "storage", reason: familyReason("Cloudflare did not answer for D1", e) });
         }
       }
+      if (buckets.length) {
+        try {
+          // `datetime_leq` is inclusive: the day's last second, never the next day's first instant.
+          const vars: Record<string, string> = { a: auth.account, from: iso(dayStart), to: iso(dayStart + DAY - 1000) };
+          buckets.forEach((b, i) => { vars[`b${i}`] = b; });
+          const body = await cfRequest(pc, auth, GRAPHQL, "cloudflare r2", ANALYTICS_HINTS, { query: r2Query(buckets.length), variables: vars });
+          extra.push(...r2Points(body, buckets, dayStart));
+          families.push({ family: "objects", reason: null });
+        } catch (e) {
+          families.push({ family: "objects", reason: familyReason("Cloudflare did not answer for R2", e) });
+        }
+      }
     }
     if (!ids.length) families.push({ family: "storage", reason: NO_D1_DATABASE });
+    if (!buckets.length) families.push({ family: "objects", reason: NO_R2_BUCKET });
     return {
       deploys,
       points: hourly.points,

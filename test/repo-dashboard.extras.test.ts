@@ -1,10 +1,10 @@
 /**
  * The Usage tab's EXTRA families per part (repo setups, Phase G — src/tools/repo-extras.ts, through the providers
- * section of `getRepoDashboard`): outcomes, runtime, storage and schedules, read back from the `hx_*` points the
- * Cloudflare poll stores. D1 only; the real registry (Cloudflare declares the four families).
+ * section of `getRepoDashboard`): outcomes, runtime, storage, schedules and objects (R2, #143), read back from the
+ * `hx_*` points the Cloudflare poll stores. D1 only; the real registry (Cloudflare declares the five families).
  *
  * Never guess: an hourly figure with no point is 0 only inside the covered interval of a family that was read; a
- * daily figure with no point is null; the day's quantiles and a database's size only while their day is current; a
+ * daily figure with no point is null; the day's quantiles, a database's size and a bucket's figures only while their day is current; a
  * family the provider could not read carries its reason; one never read is `none`.
  */
 import { describe, it, expect } from "vitest";
@@ -49,7 +49,7 @@ describe("the providers section carries the part's families and extras", () => {
     await put("hx_outcome_scriptThrewException", "2026-10-02T10:00:00Z", 4);   // older than 24h, inside 7d
     await put("hx_outcome_success", "2026-10-07T12:00:00Z", 999);              // the running hour: never counted
     const p = await cfPart();
-    expect(p.families).toEqual(["traffic", "outcomes", "runtime", "storage", "schedules"]);
+    expect(p.families).toEqual(["traffic", "outcomes", "runtime", "storage", "schedules", "objects"]);
     expect(p.extras?.outcomes?.state).toBe("ok");
     expect(p.extras?.outcomes?.ranges["24h"]).toEqual([
       { status: "success", label: "Success", tone: "good", count: 3110 },
@@ -147,6 +147,33 @@ describe("the providers section carries the part's families and extras", () => {
     expect(p.unavailable).toEqual([{ metric: "latency_p50_ms", reason: "not read" }]);
   });
 
+  it("objects (R2, #143): per bucket, operations summed over the range's completed days, objects and size while current — null where no day was read", async () => {
+    await setup({ settings: { worker: "trov", r2_bucket_names: "trov-artifacts" } });
+    await put("hx_r2_operations:trov-artifacts", "2026-10-06T00:00:00Z", 9613);
+    await put("hx_r2_operations:trov-artifacts", "2026-10-01T00:00:00Z", 7000);
+    await put("hx_r2_object_count:trov-artifacts", "2026-10-06T00:00:00Z", 18412);
+    await put("hx_r2_size_bytes:trov-artifacts", "2026-10-06T00:00:00Z", 2312664704);
+    await put("hx_r2_object_count:old-bucket", "2026-10-02T00:00:00Z", 5); // not current: listed, with no figure
+    const o = (await cfPart()).extras?.objects;
+    expect(o?.state).toBe("ok");
+    expect([...(o?.buckets ?? [])].sort((a, b) => (a.name < b.name ? -1 : 1))).toEqual([
+      {
+        name: "old-bucket", object_count: null, size_bytes: null, size_day: null,
+        operations: { "24h": null, "7d": null, "30d": null }, trend: [],
+      },
+      {
+        name: "trov-artifacts", object_count: 18412, size_bytes: 2312664704, size_day: "2026-10-06",
+        operations: { "24h": 9613, "7d": 16613, "30d": 16613 },
+        trend: [{ at: "2026-10-01T00:00:00.000Z", operations: 7000 }, { at: "2026-10-06T00:00:00.000Z", operations: 9613 }],
+      },
+    ]);
+  });
+
+  it("a part with no R2 bucket: objects is unavailable with the poll's own reason — never a zero", async () => {
+    await setup({ settings: { worker: "trov" }, unavailable: [{ family: "objects", reason: "no R2 bucket is named for this part" }] });
+    expect((await cfPart()).extras?.objects).toEqual({ state: "unavailable", reason: "no R2 bucket is named for this part", buckets: [] });
+  });
+
   it("a provider that declares no extra family carries no extras (and the extra read is not made for it alone)", async () => {
     await setOrgEnvironments(BARE, ORG_A);
     await addPart(ORG_A, "production", "api", "render", "service", { service_id: "srv-abc" });
@@ -163,12 +190,16 @@ describe("the providers section carries the part's families and extras", () => {
     await put("hx_outcome_success", "2026-10-07T09:00:00Z", 10);
     await put("hx_cron_runs:*/10_*_*_*_*", "2026-10-07T09:00:00Z", 6);
     await put("hx_cron_failed:*/10_*_*_*_*", "2026-10-07T09:00:00Z", 0);
+    await put("hx_r2_operations:trov-artifacts", "2026-10-06T00:00:00Z", 42);
     const dash = await getRepoDashboard(systemCtx(ORG_A), "o/r", NOW, BARE);
     const view = shapeRepoDashboard(dash, { tab: "usage", range: "24h", includeTrends: false }) as unknown as { sections: { providers: { data: { extras: Record<string, Record<string, unknown>> }[] } } };
     const x = view.sections.providers.data[0].extras;
     expect(x.outcomes.buckets).toEqual([{ status: "success", label: "Success", tone: "good", count: 10 }]);
     expect(x.outcomes.ranges).toBeUndefined();
     expect((x.schedules.crons as { runs: unknown }[])[0].runs).toBe(6);
+    const bucket = (x.objects.buckets as Record<string, unknown>[])[0];
+    expect(bucket.operations).toBe(42);
+    expect("trend" in bucket).toBe(false);
     expect(x.runtime && "trend" in x.runtime).toBe(false);
   });
 });

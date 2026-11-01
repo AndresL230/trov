@@ -49,7 +49,7 @@ plus the transient `refresh_lock`, which is "Poll now"'s lock and feeds no secti
 | `activity` | PR closes + issue moves from `events`; webhook `push` rows, `review` rows, landed deploys | the captures above |
 | `usage` (Usage) | each environment's WEB parts' `hx_requests` / `hx_errors` summed (requests, error rate; covered intervals from `hosting_poll_state`) and `active_users_*` — on screen only the active users (on the environment's first web target) | cron `:40` — `pollPart`; cron `:00` — `pollSaplingMetrics` |
 | `product` (Usage) | metrics `sap_c_<key>_<24h\|7d\|30d>` / `sap_t_<key>` — whatever keys the app reports; contract v3's self-description is the `app_metrics:<env>` snapshot | cron `:00` — `pollSaplingMetrics` (the same response as active users) |
-| `providers` (Usage — the targets, the extra families and the Hosting section: `web/src/repo-usage.ts`, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics (the extra families' `hx_outcome_*` / `hx_subrequests` / `hx_cpu_time_*` / `hx_wall_time_*` / `hx_d1_*` / `hx_cron_*` in one more read), `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
+| `providers` (Usage — the targets, the extra families and the Hosting section: `web/src/repo-usage.ts`, `web/src/repo-hosting.ts`) | every part of every environment, provider-neutral (Cloudflare and Railway like the rest): `hx_*` metrics (the extra families' `hx_outcome_*` / `hx_subrequests` / `hx_cpu_time_*` / `hx_wall_time_*` / `hx_d1_*` / `hx_cron_*` / `hx_r2_*` in one more read), `hosting_deploys`, `hosting_poll_state` | cron `:40` — `pollPart` per part |
 | `release` (Overview R3), `unseen.tags`, week `releases` | `releases` (0074): `readRelease` / `readTags` / `releaseWeekFigure`, `src/repo/releases.ts`; `since` / `waiting` from `repo_events` `push` / `pr` | webhook `release` / `create` (gate: `ingestRepoRelease`); reconcile `releases` arm |
 | `sprint`, `labels`, `contributors` (Planning) | live D1: the sprint a person marked `active` (the Roadmap's `sprintProgress`); open-issue snapshots; webhook pushes · merged PRs · `review` rows this week | none / webhook `issues` / `push`, `pull_request`, `pull_request_review`; reconcile `reviews` arm |
 
@@ -132,7 +132,7 @@ on. An org with no environment and no primary repository has no unit and costs n
   (D1 only, cross-org). `:10` and `:20` skip, without a word, an org with no primary repository or no GitHub
   credential; `:30` and the pings run regardless.
 - **`:40`, every hour** — the `hosting` job (0057; `hosting-providers.md`): one unit per (org, environment, part)
-  from `listPartUnits` — Cloudflare and Railway parts included — each costing its provider's `pollCost` (≤ 6),
+  from `listPartUnits` — Cloudflare and Railway parts included — each costing its provider's `pollCost` (≤ 7),
   served by rotation like the others; health keeps half the budget on this tick only when some org has a part.
   With no part anywhere `:40` has no heavy job and is a plain health tick (below).
 - `:50`, `:40` when no org has a part, and `:10`–`:30` of any other hour, ping health and nothing else — and then the AI pass
@@ -604,9 +604,11 @@ not have (`test/render.repo-usage.test.ts`, every scenario × variant). Then, pe
 the blocks of its EXTRA families (`usageExtras`): requests by OUTCOME (a bar and a legend in Cloudflare's own outcome
 names, shape marks, "not an HTTP status" — no 4xx / 5xx, ever), the Worker's runtime (CPU time p50 / p99, wall time p50
 of the last completed UTC day, subrequests in range, the CPU p99 daily line), each D1 database (read / write queries,
-rows read / written over the range's completed days, the size, the reads-per-day line), and the cron triggers (runs,
-failed — red when any —, last run). A family never read is not drawn; one the provider could not read says "Not
-available from <host>: <reason>" (a Worker with no D1 id: "no D1 database is named for this part"). Product shows ONE environment,
+rows read / written over the range's completed days, the size, the reads-per-day line), beside them each R2 bucket
+(#143: objects and stored bytes of the newest completed day, operations over the range's completed days, the
+operations-per-day line), and the cron triggers (runs, failed — red when any —, last run). A family never read is not
+drawn; one the provider could not read says "Not available from <host>: <reason>" (a Worker with no D1 id: "no D1
+database is named for this part"; no R2 bucket: "no R2 bucket is named for this part"). Product shows ONE environment,
 picked by a segmented control (`state.repoProductEnv`, session-only; default = the LAST configured environment
 that has reported anything, else the first; the pressed button carries no `data-act`, so re-pressing it never
 replays the cross-fade; `repoProductEnv` flashes only `.repo-pswap`, a range switch flashes every `.repo-swap`).

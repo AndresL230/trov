@@ -419,8 +419,9 @@ parts `[{ env, provider, settings }]`, `used_by`, `state` pending / accepted / i
   resolved by the caller (`describeSources`, `src/repo/scan-store.ts`), lazily, only past the guard; the scan itself
   is secret-free. ONE batch writes the suggestions and the scan row.
 - **The detector registry** (`src/repo/detect/<id>.ts`, `index.ts`; `patterns`, `seen`, a pure `detect`): wrangler
-  (`name` → Worker, `pages_build_output_dir` → Site; `d1_databases` and `triggers.crons` as the Cloudflare part's
-  `d1_database_ids` (≤ 5) / `crons` (≤ 10) settings; `[env.<name>]` Workers), vercel.json, netlify.toml (`[build]
+  (`name` → Worker, `pages_build_output_dir` → Site; `d1_databases`, `r2_buckets` and `triggers.crons` as the
+  Cloudflare part's `d1_database_ids` (≤ 5) / `r2_bucket_names` (≤ 3, names R2 allows) / `crons` (≤ 10) settings;
+  `[env.<name>]` Workers), vercel.json, netlify.toml (`[build]
   base`), fly.toml (`app`), render.yaml (services, `rootDir`, type; a database is not an app), railway.json / .toml,
   amplify.yml (AWS, `later`), `.do/app.yaml`, Procfile, Dockerfile + a workflow that references its folder AND uses a
   deploy action, and workspaces (pnpm, package.json, lerna, go.work, Cargo — a member with no deploy config of its

@@ -22,7 +22,7 @@ export interface Candidate {
   provider: HostingProviderId | null;
   evidence: SuggestionEvidence[];
   /** Proposed part settings for `provider` (its own part-setting keys, plus extras a later phase reads — a Worker's
-   *  `d1_database_ids`, `crons`; extras are kept on the suggestion and left out of the part an Accept writes). */
+   *  `d1_database_ids`, `r2_bucket_names`, `crons`; extras are kept on the suggestion and left out of the part an Accept writes). */
   settings?: Record<string, string>;
   /** Per environment NAME (wrangler's `[env.<name>]`): the settings that environment's part takes instead. */
   envSettings?: Record<string, Record<string, string>>;

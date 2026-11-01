@@ -20,7 +20,7 @@ import type { ExtraFamily } from "@shared/usage-families-core";
 const e = env as unknown as Env;
 const HOUR = 3_600_000;
 const NOW = Date.parse("2026-10-07T12:40:00Z");
-const ALL: ExtraFamily[] = ["outcomes", "runtime", "storage", "schedules"];
+const ALL: ExtraFamily[] = ["outcomes", "runtime", "storage", "schedules", "objects"];
 
 function fake(poll: (pc: ProviderContext) => Promise<Partial<PollResult>>, families: ExtraFamily[] = ALL): HostingProvider {
   return {
@@ -83,6 +83,28 @@ describe("validatePoll — extra family points", () => {
     expect(r.extra.every((p) => p.env === "production" && p.part === "web")).toBe(true);
     expect(r.dropped.points).toBe(13);
     expect(r.families).toEqual([{ family: "outcomes", reason: null }, { family: "storage", reason: "no D1 database" }]);
+  });
+
+  it("R2 (#143): a bucket's figures are DAILY points under a name R2 allows; anything else is dropped", () => {
+    const r = validatePoll({
+      extraPoints: [
+        { metric: "hx_r2_operations:trov-artifacts", at: "2026-10-06T00:00:00.000Z", value: 9613 },
+        { metric: "hx_r2_size_bytes:trov-artifacts", at: "2026-10-06T00:00:00.000Z", value: 2312664704 },
+        { metric: "hx_r2_object_count:trov-artifacts", at: "2026-10-06T10:00:00.000Z", value: 1 },  // a daily point off midnight
+        { metric: "hx_r2_operations:trov-artifacts", at: "2026-10-07T00:00:00.000Z", value: 1 },     // today is not over
+        { metric: "hx_r2_operations:Bad_Bucket", at: "2026-10-06T00:00:00.000Z", value: 1 },         // not an R2 name
+        { metric: "hx_r2_requests:trov-artifacts", at: "2026-10-06T00:00:00.000Z", value: 1 },       // not a field
+      ],
+      families: [{ family: "objects", reason: null }],
+    }, web, NOW, null, ALL);
+    expect(r.extra.map((p) => [p.metric, p.at, p.value])).toEqual([
+      ["hx_r2_operations:trov-artifacts", "2026-10-06T00:00:00.000Z", 9613],
+      ["hx_r2_size_bytes:trov-artifacts", "2026-10-06T00:00:00.000Z", 2312664704],
+    ]);
+    expect(r.dropped.points).toBe(4);
+    expect(r.families).toEqual([{ family: "objects", reason: null }]);
+    // Undeclared, the family stores nothing.
+    expect(validatePoll({ extraPoints: [{ metric: "hx_r2_operations:trov-artifacts", at: "2026-10-06T00:00:00.000Z", value: 1 }] }, web, NOW, null, ["storage"]).extra).toEqual([]);
   });
 
   it("a provider that declares no family stores none of them; a service part stores no web family", () => {

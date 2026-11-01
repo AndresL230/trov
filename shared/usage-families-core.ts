@@ -6,13 +6,16 @@
 //   traffic    requests, server errors, bandwidth                (role web)
 //   latency    response latency p50 / p95                        (role web)
 //   compute    CPU, memory                                       (role service)
-// and four EXTRA families only a provider that really reads them declares (`capabilities.families` — today only
-// Cloudflare Workers; step 0 of the build confirmed each dataset against a live account):
+// and five EXTRA families only a provider that really reads them declares (`capabilities.families` — today only
+// Cloudflare Workers; step 0 of the build confirmed the first four datasets against a live account, the R2 ones
+// (#143) are read in their documented shape and still UNCONFIRMED live):
 //   outcomes   requests by invocation OUTCOME (`workersInvocationsAdaptive.status`: success, clientDisconnected,
 //              scriptThrewException, exceededResources, … — NOT an HTTP status: there is no 4xx / 5xx split)
 //   runtime    CPU time p50 / p99 and wall time p50 per completed UTC day (quantiles), subrequests per hour
 //   storage    D1: read / write queries, rows read / written per completed UTC day, database size
 //   schedules  cron triggers: runs, failures and the last run, per cron expression, per hour
+//   objects    R2: object count and stored bytes per bucket (the completed day's newest reading), operations per
+//              completed UTC day (#143)
 // The SPA never branches on a provider id: it reads a part's families, their states and its capabilities.
 //
 // Every extra point is a `repo_metrics` row under the hosting prefix `hx_` (pruned at 100 days with the rest):
@@ -23,6 +26,7 @@
 //   hx_daily_read                  daily marker (1): the day's quantiles were read — the once-a-day rule
 //   hx_d1_<field>:<database id>    daily (read_queries / write_queries / rows_read / rows_written sums; size_bytes gauge)
 //   hx_cron_<field>:<expression>   hourly (runs / failed sums; last = the epoch ms of the hour's last run)
+//   hx_r2_<field>:<bucket name>    daily (object_count / size_bytes gauges, the day's newest; operations sum)
 // A cron expression is stored with its spaces as `_` (`*/10_*_*_*_*`): a cron field never holds `_`.
 
 import type { HostingMetric, PartRole } from "./hosting";
@@ -31,7 +35,7 @@ import type { RepoRange } from "./repo";
 // ── the families ─────────────────────────────────────────────────────────────
 
 export const CORE_FAMILIES = ["traffic", "latency", "compute"] as const;
-export const EXTRA_FAMILIES = ["outcomes", "runtime", "storage", "schedules"] as const;
+export const EXTRA_FAMILIES = ["outcomes", "runtime", "storage", "schedules", "objects"] as const;
 export const USAGE_FAMILIES = [...CORE_FAMILIES, ...EXTRA_FAMILIES] as const;
 export type CoreFamily = (typeof CORE_FAMILIES)[number];
 export type ExtraFamily = (typeof EXTRA_FAMILIES)[number];
@@ -47,12 +51,12 @@ export const FAMILY_METRICS: Record<CoreFamily, readonly HostingMetric[]> = {
 };
 /** The role each family's figures belong to. */
 export const FAMILY_ROLE: Record<UsageFamily, PartRole> = {
-  traffic: "web", latency: "web", compute: "service", outcomes: "web", runtime: "web", storage: "web", schedules: "web",
+  traffic: "web", latency: "web", compute: "service", outcomes: "web", runtime: "web", storage: "web", schedules: "web", objects: "web",
 };
 /** How the screen names a family. */
 export const FAMILY_LABEL: Record<UsageFamily, string> = {
   traffic: "Traffic", latency: "Latency", compute: "CPU and memory", outcomes: "Requests by outcome", runtime: "Runtime",
-  storage: "D1 database", schedules: "Scheduled runs",
+  storage: "D1 database", schedules: "Scheduled runs", objects: "R2 bucket",
 };
 
 /** The family a normalised metric belongs to. */
@@ -86,6 +90,12 @@ export const D1_FIELDS = ["read_queries", "write_queries", "rows_read", "rows_wr
 export type D1Field = (typeof D1_FIELDS)[number];
 export const d1Metric = (field: D1Field, databaseId: string): string => `hx_d1_${field}:${databaseId}`;
 
+/** An R2 bucket name, as R2 allows it: 3–63 lowercase letters, digits and hyphens, a letter or digit at each end. */
+export const R2_BUCKET_RE = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+export const R2_FIELDS = ["object_count", "size_bytes", "operations"] as const;
+export type R2Field = (typeof R2_FIELDS)[number];
+export const r2Metric = (field: R2Field, bucket: string): string => `hx_r2_${field}:${bucket}`;
+
 /** A cron expression as Cloudflare reports it: five (or six) space-separated fields of cron characters, ≤ 80. */
 export const CRON_EXPR_RE = /^[0-9A-Za-z*/,?#-]+(?: [0-9A-Za-z*/,?#-]+){4,5}$/;
 export const CRON_FIELDS = ["runs", "failed", "last"] as const;
@@ -102,7 +112,8 @@ export type ExtraMetricName =
   | { family: "runtime"; field: keyof typeof RUNTIME_DAILY; grain: "day" }
   | { family: "runtime"; field: "daily_read"; grain: "day" }
   | { family: "storage"; field: D1Field; database: string; grain: "day" }
-  | { family: "schedules"; field: CronField; cron: string; grain: "hour" };
+  | { family: "schedules"; field: CronField; cron: string; grain: "hour" }
+  | { family: "objects"; field: R2Field; bucket: string; grain: "day" };
 
 /** The inverse of the builders above: what an extra metric name says, or null for any other name. A name that
  *  merely starts like one (a bad status, a malformed id, an expression that is not a cron) is null — never a guess. */
@@ -121,6 +132,11 @@ export function parseExtraMetric(name: string): ExtraMetricName | null {
     const field = d1[1] as D1Field;
     return (D1_FIELDS as readonly string[]).includes(field) && D1_ID_RE.test(d1[2]) ? { family: "storage", field, database: d1[2], grain: "day" } : null;
   }
+  const r2 = /^hx_r2_([a-z_]+):(.+)$/.exec(name);
+  if (r2) {
+    const field = r2[1] as R2Field;
+    return (R2_FIELDS as readonly string[]).includes(field) && R2_BUCKET_RE.test(r2[2]) ? { family: "objects", field, bucket: r2[2], grain: "day" } : null;
+  }
   const cron = /^hx_cron_([a-z]+):(.+)$/.exec(name);
   if (cron) {
     const field = cron[1] as CronField;
@@ -132,7 +148,7 @@ export function parseExtraMetric(name: string): ExtraMetricName | null {
 }
 
 /** The SQL GLOBs that find every extra point (GLOB: `_` is literal, `*` any run) — the projection's one read. */
-export const EXTRA_METRIC_GLOBS = ["hx_outcome_*", "hx_subrequests*", "hx_cpu_time_*", "hx_wall_time_*", "hx_d1_*", "hx_cron_*"] as const;
+export const EXTRA_METRIC_GLOBS = ["hx_outcome_*", "hx_subrequests*", "hx_cpu_time_*", "hx_wall_time_*", "hx_d1_*", "hx_cron_*", "hx_r2_*"] as const;
 
 // ── outcomes, in words ───────────────────────────────────────────────────────
 
@@ -217,10 +233,27 @@ export interface UsageSchedules extends FamilyStatus {
   since: string | null;
 }
 
+/** One R2 bucket (#143). */
+export interface UsageBucket {
+  name: string;
+  /** The newest object count and stored bytes (payload + metadata) and the completed day they are from, while it is at
+   *  most 2 days old; else null. */
+  object_count: number | null;
+  size_bytes: number | null;
+  size_day: string | null;
+  /** Operations (Class A and B together, as R2 counts requests) summed over the range's last N completed UTC days
+   *  (24h → 1, 7d → 7, 30d → 30); null = none in it. */
+  operations: Record<RepoRange, number | null>;
+  /** Operations per completed day, oldest first, a missed day ABSENT. */
+  trend: { at: string; operations: number }[];
+}
+export interface UsageObjects extends FamilyStatus { buckets: UsageBucket[] }
+
 /** `RepoProviderPart.extras`: one entry per EXTRA family the part's provider reads (absent = it reads none of it). */
 export interface PartExtras {
   outcomes?: UsageOutcomes;
   runtime?: UsageRuntime;
   storage?: UsageStorage;
   schedules?: UsageSchedules;
+  objects?: UsageObjects;
 }

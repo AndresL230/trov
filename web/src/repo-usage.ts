@@ -1,6 +1,6 @@
 // Repo dashboard › Usage — the design's UsageTarget (repo setups, Phase G): ONE card per TARGET (a part: an app in
 // an environment), then what its provider's EXTRA families say — requests by outcome, the Worker's runtime, its D1
-// databases, its cron triggers — for the parts whose provider reads them.
+// databases, its R2 buckets (#143), its cron triggers — for the parts whose provider reads them.
 //
 // THE SPA NEVER BRANCHES ON A PROVIDER ID: a card reads the part's role, its `families` (what its provider reads), its
 // `connection` (THE status function) and its figures; an extra block appears because the part CARRIES that family.
@@ -275,6 +275,31 @@ function storageBlocks(p: RepoProviderPart, x: NonNullable<PartExtras["storage"]
   });
 }
 
+/** R2 (#143): one block per bucket, beside the D1 databases — objects and stored bytes as of the newest completed day,
+ *  operations over the range's completed days. No bucket named is the family's reason, in a sentence — never 0. */
+function bucketBlocks(p: RepoProviderPart, x: NonNullable<PartExtras["objects"]>, t: RepoHostingTools): string[] {
+  const calmText = familyCalm(x.state, x.reason, p.provider_label);
+  if (!x.buckets.length) {
+    return calmText ? [`<div data-uextra="objects" style="padding:16px 20px 18px;min-width:0">${blockHead("R2 bucket", `from ${p.provider_label}`)}${calm("objects", calmText)}</div>`] : [];
+  }
+  const days = t.range === "24h" ? "the last completed day" : t.range === "7d" ? "the last 7 completed days" : "the last 30 completed days";
+  return x.buckets.map((b) => {
+    const ops = b.operations[t.range];
+    const figs = [
+      b.object_count !== null ? stat(compactNumber(b.object_count), "", "Objects", "object_count") : "",
+      b.size_bytes !== null ? stat(formatBytes(b.size_bytes), "", "Stored", "size_bytes") : "",
+      ops !== null ? stat(compactNumber(ops), "", "Operations", "operations") : "",
+    ].filter(Boolean);
+    const line = b.trend.length > 1 ? t.sparkPoints(b.trend.map((d) => d.operations)) : "";
+    const body = figs.length
+      ? `<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px 16px">${figs.join("")}</div>
+         ${line ? `<svg class="repo-spark" data-uspark="r2_operations" viewBox="0 0 100 26" preserveAspectRatio="none" aria-hidden="true" style="width:100%;height:40px;display:block;margin-top:14px"><polyline points="${line}" fill="none" stroke="var(--blue)" stroke-width="1.6" vector-effect="non-scaling-stroke"></polyline></svg>` : ""}
+         <div style="font-size:11px;color:var(--fg-40);margin-top:6px">${esc(`Operations per day · counts over ${days}${b.size_day ? ` · objects and size on ${shortDay(`${b.size_day}T00:00:00Z`)}` : ""}`)}</div>`
+      : calm("objects", "No reading for this range.");
+    return `<div data-uextra="objects" data-ubucket="${attr(b.name)}" style="padding:16px 20px 18px;min-width:0">${blockHead(`R2 bucket · ${b.name}`, `from ${p.provider_label}`)}${body}</div>`;
+  });
+}
+
 function cronBlock(p: RepoProviderPart, x: NonNullable<PartExtras["schedules"]>, t: RepoHostingTools, name: string): string {
   const aside = `cron triggers · from ${p.provider_label} · last ${t.range}${sinceNote(x.since, t.range, t.now)}`;
   const calmText = familyCalm(x.state, x.reason, p.provider_label);
@@ -313,6 +338,7 @@ export function usageExtras(parts: RepoProviderPart[], t: RepoHostingTools, o: U
     const pair = [
       drawn(x.runtime) ? runtimeBlock(p, x.runtime!, t, name) : "",
       ...(drawn(x.storage) ? storageBlocks(p, x.storage!, t) : []),
+      ...(drawn(x.objects) ? bucketBlocks(p, x.objects!, t) : []),
     ].filter(Boolean);
     const blocks = [
       drawn(x.outcomes) ? outcomeBlock(p, x.outcomes!, t, name) : "",
