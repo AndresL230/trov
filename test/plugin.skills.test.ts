@@ -13,7 +13,35 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the eleven skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.11.0");
+    expect(plugin.version).toBe("0.12.0");
+  });
+
+  // GitHub #183: `disable-model-invocation: true` kept these four from firing at a stopping point, but it also blocked a
+  // person asking in WORDS ("send a handoff"): Claude Code refused to load the skill and told the model not to do the
+  // work another way. The flag is gone; each description fires only on a request and says it never fires on its own.
+  it("the explicit-only skills load on a request in words, and their descriptions forbid firing on their own", () => {
+    const asks: Record<string, string[]> = {
+      handoff: ['"send a handoff"', '"leave a handoff"', "/trov:handoff"],
+      "record-session": ['"record this session"', '"record the session"', "/trov:record-session"],
+      tickets: ['"file a ticket for…"', '"assign 12 to meilin"', "/trov:tickets"],
+      "update-plan": ['"update the plan"', '"mark this sprint done"', "/trov:update-plan"],
+    };
+    for (const [name, triggers] of Object.entries(asks)) {
+      const description = /^description: (.*)$/m.exec(frontmatter(SKILLS[name]))?.[1] ?? "";
+      expect(description, name).toMatch(/^Use ONLY when (a person|an admin) asks/);
+      expect(description, name).toContain("in plain words or as /trov:");
+      for (const t of triggers) expect(description, `${name}: ${t}`).toContain(t);
+      expect(description, name).toContain("When they ask in words, load this skill and follow it");
+      expect(description, name).toContain("It NEVER fires on its own");
+      expect(description, name).toContain("natural stopping point");
+      expect(description, name).toMatch(/is not a request/);
+    }
+    for (const [name, text] of Object.entries(SKILLS)) expect(frontmatter(text), name).not.toContain("disable-model-invocation");
+    // The map says it once for all four: words are a request, a stopping point is not.
+    const map = SKILLS.trov;
+    expect(map).toContain("### Explicit-only skills: asked for in words, never on their own");
+    expect(map).toContain("asking **in plain words is asking**");
+    expect(map).toContain("never answer\nthat it can only be run as a slash command");
   });
 
   it("record-session never sends needs_triage: unsure is a low-confidence proposal or left out, and a refusal is fixed and re-sent", () => {

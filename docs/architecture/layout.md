@@ -386,4 +386,11 @@
   after a dependency change), served at `/third-party-notices.txt`. `LICENSE` is Trov's own AGPL-3.0.
 - `.claude/skills/` — Claude Code skills: `trov`, `load-context`, `record-session`, `tickets`, `handoff`, `prompts`, `artifacts`, `link`, and the
   roadmap/my-work skills `read-plan`, `update-plan`, `my-work`. Described in the Working memory section
-  above. (Symlinks into `plugins/trov/skills/` — one source of truth.)
+  above. (Symlinks into `plugins/trov/skills/` — one source of truth.) **Explicit-only skills** (`record-session`,
+  `handoff`, `tickets`, `update-plan`; GitHub #183, plugin 0.12.0): the rule lives in each `description` — "Use ONLY
+  when a person asks, in plain words or as /trov:…", its trigger phrases, "It NEVER fires on its own" (a stopping
+  point is not a request) — and in the `trov` map's "Explicit-only skills" section. None sets
+  `disable-model-invocation`: the flag also blocked a request made in words (Claude Code refused to load the skill
+  and told the model not to do the work another way), so a typed slash command was the only way in. Pinned by
+  `test/plugin.skills.test.ts`. A plugin change ships with a version bump in `plugins/trov/.claude-plugin/plugin.json`
+  (the test pins it) so installed copies update.
