@@ -681,7 +681,7 @@ export function orgSettingsView(p: OrgSettingsProps): string {
   }
   const tab = effectiveOrgTab(p.ui.tab, p.org.role);
   const body = tab === "integrations" ? integrationsTab(p.org, p.ui)
-    : tab === "repos" ? (p.ui.repoPage && roleAtLeast(p.org.role, "admin") ? repoAppsPage(p.ui.repoPage, p.ui.apps, p.dd, (env, key) => hostingPartRow(p.org as MyOrg, p.ui, env, key)) : reposTab(p.org, p.ui))
+    : tab === "repos" ? (p.ui.repoPage && roleAtLeast(p.org.role, "admin") ? repoAppsPage(p.ui.repoPage, p.ui.apps, p.dd, (env, key) => hostingPartRow(p.org as MyOrg, p.ui, env, key), p.ui.hosting.setup.data) : reposTab(p.org, p.ui))
     : tab === "environments" ? environmentsTab(p.org, p.ui)
     : tab === "hosting" ? hostingTab(p.org, p.ui, p.dd)
     : tab === "members" ? membersTab(p.org, p.ui, p.me, p.identity ?? null, p.dd)
