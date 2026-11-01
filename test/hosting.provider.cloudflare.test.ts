@@ -18,7 +18,8 @@ import buildsJson from "../fixtures/hosting/cloudflare/builds.json";
 import scheduledJson from "../fixtures/hosting/cloudflare/scheduled.json";
 import runtimeJson from "../fixtures/hosting/cloudflare/runtime.json";
 import d1Json from "../fixtures/hosting/cloudflare/d1.json";
-import { COMMIT_NEEDS_CI_READ, COMMIT_UNREAD, NO_D1_DATABASE } from "../src/hosting/providers/cloudflare";
+import r2Json from "../fixtures/hosting/cloudflare/r2.json";
+import { COMMIT_NEEDS_CI_READ, COMMIT_UNREAD, NO_D1_DATABASE, NO_R2_BUCKET } from "../src/hosting/providers/cloudflare";
 
 // 2026-10-07 12:20 UTC → the poll window is 09:00–12:00.
 const NOW = Date.parse("2026-10-07T12:20:00Z");
@@ -61,17 +62,18 @@ const part = (settings: Record<string, string> = { worker: "frontend-staging" })
 
 const DEPLOYMENTS_PATH = `/client/v4/accounts/${ACCOUNT}/workers/scripts/frontend-staging/deployments`;
 
-/** Which GraphQL query a body is: the hourly analytics, the cron runs, the day's quantiles, or D1. */
-const queryKind = (body: Record<string, unknown> | null): "analytics" | "scheduled" | "runtime" | "d1" => {
+/** Which GraphQL query a body is: the hourly analytics, the cron runs, the day's quantiles, D1, or R2. */
+const queryKind = (body: Record<string, unknown> | null): "analytics" | "scheduled" | "runtime" | "d1" | "r2" => {
   const q = String(body?.query ?? "");
-  return q.includes("workersInvocationsScheduled") ? "scheduled" : q.includes("quantiles") ? "runtime" : q.includes("d1AnalyticsAdaptiveGroups") ? "d1" : "analytics";
+  return q.includes("workersInvocationsScheduled") ? "scheduled" : q.includes("quantiles") ? "runtime" : q.includes("d1AnalyticsAdaptiveGroups") ? "d1"
+    : q.includes("r2StorageAdaptiveGroups") ? "r2" : "analytics";
 };
 
 /** The happy path, every route from the fixtures. `over` replaces one (`graphql` replaces the hourly analytics
  *  query and the probe's; `scheduled` / `runtime` / `d1` the Phase G queries). */
 function cfApi(over: {
   deployments?: () => Response; graphql?: (body: Record<string, unknown> | null) => Response; account?: () => Response; builds?: (u: URL) => Response;
-  scheduled?: () => Response; runtime?: () => Response; d1?: (body: Record<string, unknown> | null) => Response;
+  scheduled?: () => Response; runtime?: () => Response; d1?: (body: Record<string, unknown> | null) => Response; r2?: (body: Record<string, unknown> | null) => Response;
 } = {}) {
   return stubbed((u, body) => {
     if (u.pathname === DEPLOYMENTS_PATH) return over.deployments?.() ?? json(deploymentsJson);
@@ -81,6 +83,7 @@ function cfApi(over: {
       if (kind === "scheduled") return over.scheduled?.() ?? json(scheduledJson);
       if (kind === "runtime") return over.runtime?.() ?? json(runtimeJson);
       if (kind === "d1") return over.d1?.(body) ?? json(d1Json);
+      if (kind === "r2") return over.r2?.(body) ?? json(r2Json);
       return over.graphql?.(body) ?? json(analyticsJson);
     }
     if (u.pathname === `/client/v4/accounts/${ACCOUNT}`) return over.account?.() ?? json(accountJson);
@@ -112,17 +115,26 @@ describe("cloudflare descriptor", () => {
     expect(how).toContain("Account › Workers Scripts › Read");
     expect(how).toContain("only ever sent to api.cloudflare.com");
     expect(how).toContain("Account › Workers CI › Read");
+    // #143: what each permission is for, and that D1 and R2 need none of their own — said where the token is entered.
+    expect(how).toContain("D1 and R2 usage");
+    expect(how).toContain("No D1 or R2 permission is needed");
     expect(cloudflare.connectionMethods[0].grants).toEqual([
-      "Account Analytics: Read on one account", "Workers Scripts: Read on that account (its Workers' deployments)",
+      "Account Analytics: Read on one account (requests, outcomes, CPU time, cron runs, D1 and R2 usage)",
+      "Workers Scripts: Read on that account (its Workers' deployments)",
       "Optional — Workers CI: Read (the commit each deploy was built from)",
     ]);
     expect(cloudflare.install).toBeUndefined();
-    expect(cloudflare.capabilities).toEqual({ deploys: true, metrics: ["requests", "errors"], families: ["outcomes", "runtime", "storage", "schedules"] });
+    expect(cloudflare.capabilities).toEqual({ deploys: true, metrics: ["requests", "errors"], families: ["outcomes", "runtime", "storage", "schedules", "objects"] });
     for (const m of cloudflare.capabilities.metrics) expect(metricsForRole("web")).toContain(m);
   });
 
-  it("has the Worker name as its one required part setting, the optional D1 ids and crons, and one org field, the account id", () => {
-    expect(cloudflare.partSettings.map((f) => f.key)).toEqual(["worker", "d1_database_ids", "crons"]);
+  it("has the Worker name as its one required part setting, the optional D1 ids, R2 buckets and crons, and one org field, the account id", () => {
+    expect(cloudflare.partSettings.map((f) => f.key)).toEqual(["worker", "d1_database_ids", "r2_bucket_names", "crons"]);
+    expect(checkFields(cloudflare.partSettings, { worker: "trov", r2_bucket_names: "trov-artifacts, trov-preview-artifacts" }, "settings"))
+      .toEqual({ values: { worker: "trov", r2_bucket_names: "trov-artifacts, trov-preview-artifacts" } });
+    for (const bad of ["Trov-Artifacts", "ab", "-bucket", "a,b,c,d".replace(/[a-d]/g, "bkt"), "trov_artifacts", "trov;other"]) {
+      expect(checkFields(cloudflare.partSettings, { worker: "trov", r2_bucket_names: bad }, "settings")).toHaveProperty("message");
+    }
     expect(cloudflare.partSettings.filter((f) => f.required).map((f) => f.key)).toEqual(["worker"]);
     const D1 = "6c71838c-18f7-4f68-8513-b58e86c237b9";
     const two = `${D1}, ${D1.replace("6c", "7d")}`;
@@ -149,8 +161,8 @@ describe("cloudflare descriptor", () => {
     expect(cloudflare.manageUrl?.({}, "oauth")).toBeNull();
   });
 
-  it("budgets six fetches a poll: deployments, the newest deployment's build, analytics, cron runs, and once a day the quantiles and D1", () => {
-    expect(cloudflare.pollCost).toBe(6);
+  it("budgets seven fetches a poll: deployments, the newest deployment's build, analytics, cron runs, and once a day the quantiles, D1 and R2", () => {
+    expect(cloudflare.pollCost).toBe(7);
   });
 });
 
@@ -534,14 +546,15 @@ describe("cloudflare poll — the daily read (repo setups, Phase G)", () => {
     const { calls, fetch } = cfApi();
     const r = await cloudflare.poll(ctx(fetch), part({ worker: "frontend-staging", d1_database_ids: D1_ID }));
     expect(calls.map((c) => queryKind(c.body)).filter((k) => k === "runtime" || k === "d1")).toEqual([]);
-    expect(r.families?.map((f) => f.family)).toEqual(["outcomes", "schedules"]);
+    expect(r.families?.map((f) => f.family)).toEqual(["outcomes", "schedules", "objects"]);
     const none = await cloudflare.poll(ctx(cfApi().fetch), part());
     expect(none.families).toContainEqual({ family: "storage", reason: NO_D1_DATABASE });
+    expect(none.families).toContainEqual({ family: "objects", reason: NO_R2_BUCKET });
   });
 
   it("the day's quantiles (µs) and its D1 figures as daily points at 00:00 UTC, with the day's marker", async () => {
     const { calls, fetch } = cfApi();
-    const r = await cloudflare.poll(ctx(fetch, { daily: "2026-10-06" }), part({ worker: "frontend-staging", d1_database_ids: D1_ID }));
+    const r = await cloudflare.poll(ctx(fetch, { daily: "2026-10-06" }), part({ worker: "frontend-staging", d1_database_ids: D1_ID, r2_bucket_names: "trov-artifacts" }));
     expect(calls.length).toBe(cloudflare.pollCost); // the worst case: every fetch the budget names
     const rt = calls.find((c) => queryKind(c.body) === "runtime");
     expect(rt?.body?.variables).toEqual({ a: ACCOUNT, s: "frontend-staging", from: "2026-10-06T00:00:00.000Z", to: "2026-10-07T00:00:00.000Z" });
@@ -557,8 +570,13 @@ describe("cloudflare poll — the daily read (repo setups, Phase G)", () => {
       [`hx_d1_rows_read:${D1_ID}`, "2026-10-06T00:00", 2354377], [`hx_d1_rows_written:${D1_ID}`, "2026-10-06T00:00", 13712],
       [`hx_d1_size_bytes:${D1_ID}`, "2026-10-06T00:00", 27545600],
     ]);
+    expect(extraOf(r, "hx_r2_")).toEqual([
+      ["hx_r2_object_count:trov-artifacts", "2026-10-06T00:00", 18412], ["hx_r2_size_bytes:trov-artifacts", "2026-10-06T00:00", 2310455296 + 2209408],
+      ["hx_r2_operations:trov-artifacts", "2026-10-06T00:00", 7120 + 1480 + 912 + 64 + 37],
+    ]);
     expect(r.families).toEqual([
       { family: "outcomes", reason: null }, { family: "schedules", reason: null }, { family: "runtime", reason: null }, { family: "storage", reason: null },
+      { family: "objects", reason: null },
     ]);
   });
 
@@ -598,5 +616,73 @@ describe("cloudflare poll — the daily read (repo setups, Phase G)", () => {
     expect(extraOf(r, "hx_d1_")).toEqual([
       [`hx_d1_read_queries:${ids[1]}`, "2026-10-06T00:00", 5], [`hx_d1_rows_written:${ids[1]}`, "2026-10-06T00:00", 3], [`hx_d1_size_bytes:${ids[1]}`, "2026-10-06T00:00", 1024],
     ]);
+  });
+});
+
+describe("cloudflare poll — R2 (#143)", () => {
+  const R2_PART = { worker: "frontend-staging", r2_bucket_names: "trov-artifacts" };
+  const r2Answer = (account: Record<string, unknown>) => () => json({ data: { viewer: { accounts: [account] } } });
+
+  it("asks once a day, on its own request: the day's newest storage row and its operations, per bucket, by bucketName over the day", async () => {
+    const { calls, fetch } = cfApi();
+    await cloudflare.poll(ctx(fetch, { daily: "2026-10-06" }), part(R2_PART));
+    const q = calls.filter((c) => queryKind(c.body) === "r2");
+    expect(q).toHaveLength(1);
+    expect(q[0].body?.variables).toEqual({ a: ACCOUNT, from: "2026-10-06T00:00:00.000Z", to: "2026-10-06T23:59:59.000Z", b0: "trov-artifacts" });
+    const text = String(q[0].body?.query);
+    expect(text).toContain("r0: r2StorageAdaptiveGroups(limit: 1, filter: { bucketName: $b0, datetime_geq: $from, datetime_leq: $to }, orderBy: [datetime_DESC])");
+    expect(text).toContain("max { objectCount payloadSize metadataSize }");
+    expect(text).toContain("o0: r2OperationsAdaptiveGroups(limit: 100, filter: { bucketName: $b0, datetime_geq: $from, datetime_leq: $to })");
+    expect(text).toContain("dimensions { actionType }");
+    expect(text).not.toContain("d1AnalyticsAdaptiveGroups"); // never shares D1's request
+    // No day to read: no R2 request at all.
+    const quiet = cfApi();
+    await cloudflare.poll(ctx(quiet.fetch), part(R2_PART));
+    expect(quiet.calls.map((c) => queryKind(c.body))).not.toContain("r2");
+  });
+
+  it("reads at most three buckets — the setting's own bound — and skips a name R2 would not allow", async () => {
+    const { calls, fetch } = cfApi({ r2: r2Answer({}) });
+    await cloudflare.poll(ctx(fetch, { daily: "2026-10-06" }), part({ worker: "frontend-staging", r2_bucket_names: "one-bkt, Bad_Name, two-bkt,three-bkt,four-bkt" }));
+    const q = calls.find((c) => queryKind(c.body) === "r2");
+    expect(Object.keys(q?.body?.variables as object)).toEqual(["a", "from", "to", "b0", "b1", "b2"]);
+    expect(Object.values(q?.body?.variables as object).slice(3)).toEqual(["one-bkt", "two-bkt", "three-bkt"]);
+  });
+
+  it("never guesses: no storage row → no size and no zero operations; another day's row → nothing; a half-known size → no size; a full operations answer → none", async () => {
+    const day = (h: string) => `2026-10-06T${h}:00:00Z`;
+    const { fetch } = cfApi({ r2: r2Answer({
+      // a bucket the account does not have: no row anywhere
+      r0: [], o0: [],
+      // another day's storage row; operations with one malformed row
+      r1: [{ dimensions: { datetime: "2026-10-05T23:00:00Z" }, max: { objectCount: 9, payloadSize: 9, metadataSize: 9 } }],
+      o1: [{ dimensions: { actionType: "GetObject" }, sum: { requests: 5 } }, { dimensions: { actionType: "PutObject" }, sum: { requests: "7" } }],
+      // a known count, a size missing its metadata, and an answer that fills the operations limit
+      r2: [{ dimensions: { datetime: day("12") }, max: { objectCount: 3, payloadSize: 4096 } }],
+      o2: Array.from({ length: 100 }, () => ({ dimensions: { actionType: "GetObject" }, sum: { requests: 1 } })),
+    }) });
+    const r = await cloudflare.poll(ctx(fetch, { daily: "2026-10-06" }), part({ worker: "frontend-staging", r2_bucket_names: "ghost-bkt,old-bkt,busy-bkt" }));
+    expect(extraOf(r, "hx_r2_")).toEqual([
+      ["hx_r2_operations:old-bkt", "2026-10-06T00:00", 5],
+      ["hx_r2_object_count:busy-bkt", "2026-10-06T00:00", 3],
+    ]);
+    // A bucket that IS there and had no operation that day: a true zero.
+    const still = cfApi({ r2: r2Answer({ r0: [{ dimensions: { datetime: day("23") }, max: { objectCount: 1, payloadSize: 10, metadataSize: 2 } }], o0: [] }) });
+    const r2 = await cloudflare.poll(ctx(still.fetch, { daily: "2026-10-06" }), part(R2_PART));
+    expect(extraOf(r2, "hx_r2_operations")).toEqual([["hx_r2_operations:trov-artifacts", "2026-10-06T00:00", 0]]);
+    expect(extraOf(r2, "hx_r2_size_bytes")).toEqual([["hx_r2_size_bytes:trov-artifacts", "2026-10-06T00:00", 12]]);
+  });
+
+  it("a refused or failed R2 read is the family's reason only — D1 and the rest of the poll stand, and the token never shows", async () => {
+    for (const r2 of [() => echo(403), () => json({ data: null, errors: [{ message: `unknown field r2StorageAdaptiveGroups for ${TOKEN}` }] }), () => json({ data: { viewer: { accounts: [] } } })]) {
+      const { fetch } = cfApi({ r2 });
+      const r = await cloudflare.poll(ctx(fetch, { daily: "2026-10-06" }), part({ ...R2_PART, d1_database_ids: D1_ID }));
+      expect(extraOf(r, "hx_r2_")).toEqual([]);
+      expect(r.families?.find((f) => f.family === "objects")?.reason).toMatch(/^Cloudflare did not answer for R2: /);
+      expect(r.families?.find((f) => f.family === "storage")).toEqual({ family: "storage", reason: null });
+      expect(extraOf(r, "hx_d1_").length).toBeGreaterThan(0);
+      expect(extraOf(r, "hx_daily_read")).toEqual([["hx_daily_read", "2026-10-06T00:00", 1]]);
+      noLeak(JSON.stringify(r));
+    }
   });
 });

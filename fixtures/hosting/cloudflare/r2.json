@@ -1,0 +1,21 @@
+{
+  "data": {
+    "viewer": {
+      "accounts": [
+        {
+          "r0": [
+            { "dimensions": { "datetime": "2026-10-06T23:00:00Z" }, "max": { "objectCount": 18412, "payloadSize": 2310455296, "metadataSize": 2209408 } }
+          ],
+          "o0": [
+            { "dimensions": { "actionType": "GetObject" }, "sum": { "requests": 7120 } },
+            { "dimensions": { "actionType": "PutObject" }, "sum": { "requests": 1480 } },
+            { "dimensions": { "actionType": "HeadObject" }, "sum": { "requests": 912 } },
+            { "dimensions": { "actionType": "ListObjects" }, "sum": { "requests": 64 } },
+            { "dimensions": { "actionType": "DeleteObject" }, "sum": { "requests": 37 } }
+          ]
+        }
+      ]
+    }
+  },
+  "errors": null
+}

@@ -159,7 +159,7 @@ const SIGNAL_RANK: Record<SeenSignal["kind"], number> = { deployment: 0, check: 
  *     environment, check run or workflow);
  *   - nothing named and no own host: the deploying workflow (a Dockerfile's), else the one matched signal, on the
  *     first environment.
- * Settings keep the detector's extras (a Worker's `d1_database_ids`, `crons`) for Phase G; Accept writes only the
+ * Settings keep the detector's extras (a Worker's `d1_database_ids`, `r2_bucket_names`, `crons`) for Phase G and #143; Accept writes only the
  * provider's own keys. A Package has no parts.
  */
 export function buildParts(c: Candidate, signals: readonly SeenSignal[], envs: readonly RepoEnvConfig[], providers: ProviderMap): StoredPart[] {

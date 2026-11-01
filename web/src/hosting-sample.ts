@@ -21,7 +21,7 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
     "id": "cloudflare",
     "label": "Cloudflare Workers",
     "status": "available",
-    "summary": "A Cloudflare Worker. Trov reads its deploys, requests and errors.",
+    "summary": "A Cloudflare Worker. Trov reads its deploys, requests, CPU time, cron runs, and D1 and R2 usage.",
     "roles": [
       "web"
     ],
@@ -40,9 +40,9 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
       {
         "method": "token",
         "label": "Paste an API token",
-        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read, and Account › Workers Scripts › Read.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
+        "how_to": "1. In the Cloudflare dashboard, open My Profile › API Tokens › Create Token › Create Custom Token.\n2. Add two permissions, both read-only: Account › Account Analytics › Read (requests, outcomes, CPU time, cron runs, and D1 and R2 usage — all from Cloudflare's analytics), and Account › Workers Scripts › Read (deploys). No D1 or R2 permission is needed: Trov reads their analytics, never a database or a bucket.\n3. Optional, for the commit behind each deploy: also add Account › Workers CI › Read (Workers Builds). Without it Trov finds the commit from GitHub when it can.\n4. Under Account Resources, pick only the account your Workers live under.\n5. Paste the token here, and set Account ID to that account's 32-character id (Workers & Pages › Overview).\nThe token is only ever sent to api.cloudflare.com.",
         "grants": [
-          "Account Analytics: Read on one account",
+          "Account Analytics: Read on one account (requests, outcomes, CPU time, cron runs, D1 and R2 usage)",
           "Workers Scripts: Read on that account (its Workers' deployments)",
           "Optional — Workers CI: Read (the commit each deploy was built from)"
         ],
@@ -76,6 +76,14 @@ export const HOSTING_SAMPLE_PROVIDERS: HostingProviderDTO[] = [
         "required": false,
         "placeholder": "6c71838c-18f7-4f68-8513-b58e86c237b9",
         "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?:, ?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}){0,4}$"
+      },
+      {
+        "key": "r2_bucket_names",
+        "label": "R2 bucket names",
+        "description": "Optional. The R2 buckets this Worker binds (wrangler's r2_buckets), comma-separated — up to 3.",
+        "required": false,
+        "placeholder": "trov-artifacts",
+        "pattern": "^[a-z0-9][a-z0-9-]{1,61}[a-z0-9](?:, ?[a-z0-9][a-z0-9-]{1,61}[a-z0-9]){0,2}$"
       },
       {
         "key": "crons",
