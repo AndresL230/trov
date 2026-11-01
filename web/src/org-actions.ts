@@ -112,7 +112,7 @@ export function createOrgController(host: OrgHost): OrgController {
   const hosting = createHostingActions({ ...host, reloadSettings: () => reloadForHosting() });
   /** Repositories › a repo › Apps: its read, its drafts and writes (repo-apps-actions.ts). The part editor it opens
    *  is Hosting's, so it reads Hosting's setup too. */
-  const apps = createAppsActions({ ...host, loadHosting: () => hosting.load() });
+  const apps = createAppsActions({ ...host, loadHosting: () => hosting.load(), connect: (provider) => { hosting.act("orgHxConnect", `${provider}:`, null); } });
 
   // ── the secret draft (see the header) ──────────────────────────────────────
   let secretDraft = "";

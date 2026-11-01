@@ -177,6 +177,9 @@ default branch's root tree sha is unchanged), the detector registry (`src/repo/d
 `describe()` (Vercel, Render, Netlify: which folder a project builds — one list call each, in the scan only), seen
 signals, the suggestion lifecycle (accept / ignore / undo, `repo_scans` and `repo_app_suggestions`, 0072) and the
 read side the facts use — is `repo-apps.md` › Detection. A suggestion changes nothing until an admin accepts it.
+The SAME signs (`detectProviders` over `listDetectRows`) also recognise a single-stack repository: exactly one host
+seen, and at most one deployable the scan found on it, is offered on the repository's Apps page as "One service that
+does everything", pre-filled and confirmed in one step (#144 — `repo-apps.md` › One service that does everything).
 
 **Where detection stands** (`HostingSetupDTO.detection`, `readDetectionStatus`): so a new org sees what Trov is doing
 instead of nothing. `no_repo` (no repository connected) → `no_environment` (a repository, but no environment names a

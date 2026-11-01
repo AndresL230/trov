@@ -201,8 +201,10 @@ Every field (null rules in brackets):
   the provider's label; `url` = the health target's base, else the serving deploy's URL; `consoleUrl` https only.
   **`health`** — the environment's two pinged targets (`frontend` = its frontend URL, `backend` = API URL + health
   path) are a part's only when the part carries that key, or is the ONE part of the target's role in the
-  environment and no other part carries the key (two web parts: null, never a guess); `stale: true` past 30
-  minutes (`FACTS_HEALTH_STALE_MS`) — shown as neither up nor down.
+  environment and no other part carries the key (two web parts: null, never a guess); and the environment's ONLY
+  part, when its frontend URL is empty or on the API URL's origin, is ONE service (#144): its health is the `backend`
+  target (API URL + health path, the URL the person asked Trov to check) — a site whose API lives on another origin
+  keeps its frontend target; `stale: true` past 30 minutes (`FACTS_HEALTH_STALE_MS`) — shown as neither up nor down.
 - `previews` — per app, a production part's preview rows of 30 days, newest per branch, matched to OPEN PRs by head
   branch from the captured `pr` rows; a branch whose PR merged or closed (and none is open) is left out;
   `failStreak` = consecutive `error`s from the newest, `failingSince`; ≤ 20 per app.
@@ -440,7 +442,9 @@ parts `[{ env, provider, settings }]`, `used_by`, `state` pending / accepted / i
   Render's branch) names an org environment (`envForHint`).
 - **Proposed parts**: the candidate's own host when its settings are complete (`checkFields`), on the environment a
   production signal names, else one called production, else the first; every other environment a signal names gets
-  a `github` part naming that signal; else the deploying workflow on the first environment; a Package none.
+  a `github` part naming that signal; else the deploying workflow on the first environment; a Package none. With NO
+  environment yet (a new org) the host's own part is still proposed, for `production` — so a Worker's name, D1 ids
+  and crons are kept — and Accept puts it in the first environment there is by then (none: the app alone).
 - **Lifecycle** (`src/repo/scan-store.ts`, routes `src/repo/scan-routes.ts`: admin, cookie only, `/api/o/:slug`,
   repository checked against `org_repos`): a scan upserts pending rows, never touches an accepted one, keeps an
   ignored one ignored, deletes what it no longer finds. **Scan again** `POST /repos/:o/:n/scan` (`runScanNow`:
@@ -463,6 +467,48 @@ parts `[{ env, provider, settings }]`, `used_by`, `state` pending / accepted / i
 Tests: `test/repo-detect.test.ts` (parsers, every detector on its fixture, the registry, the token rules, proposed
 parts), `test/repo-scan.test.ts` (› THE GUARD: the same root tree sha → zero further requests; › THE GUARD: a scan
 with suggestions changes nothing; seen signals; describe; the lifecycle; the routes; fixtures in `fixtures/repo-scan/`).
+
+## One service that does everything (#144)
+
+A repository whose whole product is ONE deployable on ONE host (Trov itself: one Worker serving the API, MCP, the
+webhooks and the SPA) is set up in one step, on the same model — an app, its one part, its environment's URL — with
+no frontend / backend vocabulary. #153 narrowed it: recognition is a PRE-FILLED answer to "What is it?", confirmed by
+the person; the full guided, multi-stack setup is #153's.
+
+- **Recognition** (`recogniseOneService`, `src/repo/one-service.ts`, PURE; `RepoAppsSetupDTO.oneService`, read by
+  `getRepoAppsSetup` from D1 rows only — invariant 7): the repository is the org's PRIMARY one (only its signals are
+  captured) and has no app; EXACTLY ONE host shows signs in the captured check runs, deployments and commit statuses —
+  `detectProviders` over `listDetectRows`, the very signs Hosting's "Detected" reads, so Cloudflare Workers Builds is
+  seen from its check runs — and it is an `available` host with a credential of its own (not `github`); the scan
+  proposes at most ONE deployable (Packages aside), on that host or on none, of a kind the host serves. Anything else
+  (no sign, a second host, two deployables, the files naming another host) is no offer. Prefilled: the suggestion's key
+  (else the repository's name, made free), folder and kind (else the host's first role's), the host's part settings the
+  suggestion proposed (its own keys only), and the environment — the one called production (`envForHint`), else the
+  only one, else a new `production` / `Production` from `main` — with its stored URL (`api_url`, else `frontend_url`)
+  and health path ("" for `/`). A failed read is no offer, never `degraded`.
+- **The step** (`POST /api/o/:slug/repos/:owner/:name/one-service`, `OneServiceWrite` → `OneServiceResult`; cookie only,
+  admin, the repository checked against `org_repos`; `setUpOneService`): everything checkable is checked before any
+  write (host available and not `github`, key `PART_KEY_RE` and free — 409 `key_taken` on `key` —, the URL required,
+  the health path `/…`, the settings through `checkFields` + `checkSettings`, a named suggestion pending and this
+  repository's). Then, each through its own audited writer: the environment (`putEnvironment`: the URL as BOTH
+  `frontend_url` and `api_url` — the URL Trov pings and the one app metrics are read from —, `health_path` `/` when
+  none; a NEW one counts against the plan: 402 `plan_limit`; a URL the environment refuses is said on `url`), the app
+  (`putRepoApp`, source `suggested` with a suggestion, else `manual`), its ONE part on the host (`putPart`, the role
+  the kind serves), and the suggestion marked accepted (`decided_by` the admin). A refused app or part undoes what
+  the call wrote — the part, the app, and the environment removed (created) or restored (updated). The credential is
+  NOT part of it: on screen the host's own connect / token dialog (Hosting's, `orgHxConnect`) opens next when the host
+  is not connected, so the key goes through its one resolver.
+- **On screen** (`web/src/repo-one-service.ts`, acts `orgAppsOne…` in `repo-apps-actions.ts`): at the top of the Apps
+  page, "Set up" — what was seen ("Trov sees one host deploying …: <evidence>, and the scan found one app to deploy"),
+  **What is it?** as a `segmented()` (One service that does everything · Something else), then the host (`dropdown()`,
+  every host Trov reads, the seen one hinted), Production URL, Health path (optional), Name, Deploys from (only when
+  the environment is new), the host's own settings (prefilled), what a one-service setup reads, the host's connection
+  (THE status function) and ONE accent action, "Set it up" / "Set it up and connect <host>". While it is answered "One
+  service" the lead says so, and Accept all and the suggestions list are not drawn (the step carries its suggestion);
+  "Something else" brings them back (session state only). Help › Guide › Repo says what it monitors and what it cannot.
+- Tests: `test/repo-one-service.test.ts` (Trov's own `wrangler.toml` as the case; recognition and every refusal; the
+  step's writes, audits and undo; admin / cookie only; the one part's health), `test/render.repo-apps.test.ts` › Setup 0
+  (› GUARD: no frontend / backend vocabulary on the path).
 
 ## Org settings › Repositories › a repo › Apps
 
@@ -583,6 +629,7 @@ Every number is a worst case, counted from the code; the callers start a unit on
 | No "not connected" for absent things, per scenario | the Overview's blocks, the Usage targets, found / unseen | `test/render.repo-overview.test.ts`, `test/render.repo-usage.test.ts`, `test/render.repo-found.test.ts` |
 | A feature claim only from a `feat` prefix or a feature label | `isFeaturePr` | `test/repo-releases.test.ts` |
 | The deploy-signal picker offers only signals seen in 30 days | `pickableSignals` | `test/render.repo-apps.test.ts` |
+| One service is offered only for one host's signs and at most one deployable on it; no frontend / backend words on its path | `recogniseOneService`, `web/src/repo-one-service.ts` | `test/repo-one-service.test.ts`, `test/render.repo-apps.test.ts` › Setup 0 |
 
 ## Migrations 0070–0074
 

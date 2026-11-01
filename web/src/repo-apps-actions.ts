@@ -6,13 +6,20 @@
 // remove): the toast's button is a `data-act` like any other (`orgAppsUndo`), whose arg names a closure kept here —
 // never a token in the markup. Parts are #185's: the part editor is hosting-actions.ts's (`orgHxPartNew` /
 // `orgHxPartEdit`), opened prefilled with the app key; a part write reloads this page through org-actions.ts.
+// "What is it?" (#144, `orgAppsOne…`): the one-service step (web/src/repo-one-service.ts) is ONE write
+// (`POST …/one-service`); a host that is not connected yet then gets its own connect / token dialog — Hosting's,
+// opened through `host.connect`, so the credential goes the one way every credential goes.
 
 import type { AppState, ToastAction } from "./render";
 import {
   ApiError, OrgApiError, Unauthorized, rateLimitText,
   acceptRepoSuggestion, deleteRepoAppSetup, getRepoAppsSetup, ignoreRepoSuggestion, putEnvironmentPart, putRepoAppSetup, scanRepoNow, undoRepoSuggestion,
+  planLimitText, setUpOneService,
   type RepoAppBody,
 } from "./api";
+import { oneDraftFor, oneProblems, type OneServiceDraft } from "./repo-one-service";
+import { providerOf, providerStatusOf } from "./hosting";
+import { isHostingProvider, type HostingProviderId } from "@shared/hosting";
 import { currentOrg } from "./org-core";
 import { roleAtLeast } from "./org-ui";
 import { hashForRoute, type OrgRepoRoute } from "./hash";
@@ -30,6 +37,8 @@ export interface AppsHost {
   unauth(e: unknown): void;
   /** Read Hosting's setup again (the part editor draws from it, and an accept writes parts). */
   loadHosting(): void;
+  /** Open a host's own connect / token dialog (Hosting's — org-actions.ts wires it). */
+  connect?(provider: HostingProviderId): void;
   /** Move the address bar to a page without a reload (a history entry, so Back returns). Injected for tests. */
   push?(hash: string): void;
 }
@@ -63,7 +72,9 @@ export function appsErrorText(e: unknown, fallback: string): string {
     case "forbidden": return "Only an admin or an owner of this organization can set up its apps.";
     case "not_found": return "That no longer exists. Reload the page.";
     case "app_conflict": return detail ? sentence(detail) : "That key belongs to an app of another repository.";
-    case "key_taken": return "An app or a part already has this suggestion's key. Rename or remove that one first, or add this app by hand under another name.";
+    case "key_taken": return e instanceof OrgApiError && e.field === "key"
+      ? "An app or a part already has this name. Pick another."
+      : "An app or a part already has this suggestion's key. Rename or remove that one first, or add this app by hand under another name.";
     case "too_many_parts": return "This environment already has 6 parts, the most one can have.";
     case "internal": return `${fallback} Something went wrong on the server. Try again in a minute.`;
     default: return detail ? sentence(detail) : `${fallback} Try again.`;
@@ -321,6 +332,52 @@ export function createAppsActions(host: AppsHost): AppsActions {
       });
   }
 
+  // ── "What is it?": one service, in one step ────────────────────────────────
+  /** The step's draft, made from the offer on its first edit. */
+  function one(): OneServiceDraft | null {
+    const d = data();
+    if (!d) return null;
+    const dr = oneDraftFor(d, u().one ?? null);
+    if (dr && u().one !== dr) u().one = dr;
+    return dr;
+  }
+  function oneSave(): void {
+    const o = org(), p = page(), d = data(), dr = one();
+    const hosting = state.org.hosting.setup.data;
+    if (!o || !p || !d || !dr || dr.saving || dr.what !== "one" || Object.keys(oneProblems(dr, hosting)).length) return;
+    const hp = hosting ? providerOf(hosting, dr.provider) : null;
+    if (!hosting || !hp) return;
+    const settings: Record<string, string> = {};
+    for (const f of hp.part_settings) { const v = (dr.settings[f.key] ?? "").trim(); if (v) settings[f.key] = v; }
+    const offer = d.oneService;
+    const key = dr.key.trim();
+    const live = providerStatusOf(hosting, hp.id).live;
+    dr.saving = true; dr.error = null; dr.errorField = null;
+    rerender();
+    setUpOneService(o.slug, p.repo, {
+      provider: hp.id, key, url: dr.url.trim(), health_path: dr.health.trim(), settings,
+      ...(offer && !offer.env.exists ? { branch: dr.branch.trim() } : {}),
+      ...(offer?.suggestion && offer.provider === hp.id ? { suggestion: offer.suggestion } : {}),
+    })
+      .then((r) => {
+        u().one = null;
+        const where = d.environments?.find((e) => e.key === r.env.key)?.label ?? (r.env.created ? "Production" : r.env.key);
+        host.flash(`Set up ${key} in ${where}.${live ? " The Repo screen now shows it." : ` Next: connect ${hp.label}.`}`, 5000);
+        afterWrite();
+        if (!live) host.connect?.(hp.id);
+      })
+      .catch((e) => {
+        const cur = u().one;
+        if (cur) cur.saving = false;
+        if (fail(e)) return;
+        if (cur) {
+          cur.errorField = e instanceof OrgApiError ? e.field : null;
+          cur.error = planLimitText(e, org()?.role ?? null) ?? appsErrorText(e, "Couldn't set it up.");
+        }
+        rerender();
+      });
+  }
+
   // ── Remove (the page's confirmation said yes) ──────────────────────────────
   function runConfirm(key: string, done: (msg: string, ms?: number, action?: ToastAction | null) => void, failed: (e: unknown, fallback: string) => void): void {
     const o = org(), p = page(), d = data();
@@ -391,6 +448,31 @@ export function createAppsActions(host: AppsHost): AppsActions {
       case "orgAppsAddKind": if (ui.add && isAppKind(arg) && !ui.add.saving) { ui.add.kind = arg; clear(ui.add, "kind"); } break;
       case "orgAppsAddRelease": if (ui.add && !ui.add.saving) { ui.add.release = value ?? ""; clear(ui.add, "release_signal"); } break;
       case "orgAppsAddSave": add(); return true;
+      // "What is it?" — one service, in one step
+      case "orgAppsOneWhat": { const dr = one(); if (dr && !dr.saving && (arg === "one" || arg === "other")) dr.what = arg; break; }
+      case "orgAppsOneHost": {
+        const dr = one();
+        const offer = data()?.oneService ?? null;
+        if (!dr || dr.saving || !isHostingProvider(value) || value === dr.provider) return true;
+        dr.provider = value;
+        // The scan's settings belong to the host it read them for; another host starts empty.
+        dr.settings = offer && value === offer.provider ? { ...offer.settings } : {};
+        dr.error = null; dr.errorField = null;
+        break;
+      }
+      case "orgAppsOneKey": { const dr = one(); if (dr) { dr.key = value ?? ""; clear(dr, "key"); } break; }
+      case "orgAppsOneUrl": { const dr = one(); if (dr) { dr.url = value ?? ""; clear(dr, "url"); } break; }
+      case "orgAppsOneHealth": { const dr = one(); if (dr) { dr.health = value ?? ""; clear(dr, "health_path"); } break; }
+      case "orgAppsOneBranch": { const dr = one(); if (dr) { dr.branch = value ?? ""; clear(dr, "branch"); } break; }
+      case "orgAppsOneSetting": { const dr = one(); if (dr && arg) { dr.settings = { ...dr.settings, [arg]: value ?? "" }; clear(dr, `settings.${arg}`); } break; }
+      case "orgAppsOnePick": {
+        const dr = one();
+        const pick = arg ?? "";
+        const at = pick.indexOf("=");
+        if (dr && at > 0 && !dr.saving) { const k = pick.slice(0, at); dr.settings = { ...dr.settings, [k]: pick.slice(at + 1) }; clear(dr, `settings.${k}`); }
+        break;
+      }
+      case "orgAppsOneSave": oneSave(); return true;
       default: return true;
     }
     rerender();

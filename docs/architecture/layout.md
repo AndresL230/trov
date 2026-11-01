@@ -69,7 +69,9 @@
   the repo scan (repo setups, Phase D — `repo-apps.md` › Detection): `scan.ts` (the guarded reconcile arm),
   `detect/` (the detector registry, the subset parsers, the signal token rules), `signals.ts` (seen signals),
   `scan-reads.ts` (the secret-free read side the facts read uses), `scan-store.ts` (accept / ignore / undo, Scan
-  again — credentialed) and `scan-routes.ts`, `ask-github.ts` (Ask Trov's GitHub transport — credentialed, GET-only,
+  again — credentialed) and `scan-routes.ts`, `one-service.ts` (#144: "one service that does everything" — the
+  recognition from captured signs, a pre-fill, and the confirmed one-step write; `repo-apps.md` › One service),
+  `ask-github.ts` (Ask Trov's GitHub transport — credentialed, GET-only,
   handed to the Ask route by `src/routes.ts`; `ask.md` › GitHub),
   `store.ts` (the snapshot and metric seam: `putSnapshot` / `getSnapshot` over the snapshot kinds —
   `prs_reconciled`, `env_heads`, `drift`, `branches`, `drift_chain`, `not_shipped`, `out_of_step`; `putMetric`, the ONE write seam that
@@ -328,7 +330,7 @@
   rules in `shared/repo-scope-core.ts`, the Worker side `src/tools/repo-scope.ts`) (`repo-apps.md` › The Overview and › Monorepos).
   Migration `0071_repo_settings` (`repo_settings`: an admin's per-repository Overview default; `src/data/repo-settings.ts`,
   `src/repo/settings-routes.ts`). Org settings › Repositories › a repo › Apps: `web/src/repo-apps.ts` (views) and
-  `web/src/repo-apps-actions.ts` (controller), served by `src/repo/apps-routes.ts` + `src/repo/apps-setup.ts`, the
+  `web/src/repo-apps-actions.ts` (controller; its "What is it?" one-service step drawn by `web/src/repo-one-service.ts`), served by `src/repo/apps-routes.ts` + `src/repo/apps-setup.ts`, the
   signal rules in `shared/repo-apps-setup-core.ts` (`repo-apps.md` › Org settings › Repositories › a repo › Apps). And `web/src/sidebar.ts` + `web/src/morph.ts` the sidebar — see "Sidebar & motion" below.
   Signed out, the app renders the **landing page** (`web/src/landing.ts`, ported from the Claude Design
   `Canopy Site.dc.html`; `/` signed out is booted by its own script, `landing-page.ts`, which paints `landing-root.ts`

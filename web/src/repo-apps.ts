@@ -4,7 +4,9 @@
 //
 // ONE read, `GET /api/o/:slug/repos/:owner/:name/apps` (`RepoAppsSetupDTO`), drawn in Org settings' idiom (org-ui.ts)
 // on three pages of the Repositories tab (`#org/repos/<owner>/<name>[/apps/<key>|/new]`, hash.ts):
-//   • APPS — the lead (how many apps, how many more the scan found; Scan again, Add an app, Accept all), the
+//   • APPS — "What is it?" when GitHub's signals say one host and one deployable (#144, ./repo-one-service.ts:
+//     "One service that does everything", pre-filled, confirmed in one step), the lead (how many apps, how many more
+//     the scan found; Scan again, Add an app, Accept all), the
 //     SUGGESTIONS (each: a blue ring "Suggested", folder, kind, host or "no host", its evidence; Ignore / Accept),
 //     the APPS (name, folder, kind, host, a targets line; a row opens the app), the UNASSIGNED deploy names (seen in
 //     30 days, named by no app; "Make an app" prefilled);
@@ -27,6 +29,8 @@ import type { AppSuggestionDTO, RepoAppsSetupDTO, SeenSignal } from "@shared/rep
 import { SIGNAL_WINDOW_DAYS, keyFromSignalName, pickableSignals, settingsNameSignal, signalKey, signalSettings } from "@shared/repo-apps-setup-core";
 import { MAX_PARTS_PER_ENVIRONMENT, PART_KEY_RE, type ConnectionStatus, type EnvironmentPartDTO, type HostingProviderId } from "@shared/hosting";
 import type { OrgRepoRoute } from "./hash";
+import type { HostingSetupDTO } from "@shared/hosting";
+import { oneDraftFor, oneHostDropdown, oneServiceBlock, type OneServiceDraft } from "./repo-one-service";
 
 // ── state ────────────────────────────────────────────────────────────────────
 
@@ -76,6 +80,8 @@ export interface RepoAppsUi {
   busy: string[];
   /** The Remove confirmation's choice: also remove the app's parts. Off by default. */
   removeParts: boolean;
+  /** "What is it?" — the one-service step being filled in (made from the offer on first edit). */
+  one?: OneServiceDraft | null;
 }
 
 // The first value lives in org-core.ts (the app's state is made before this chunk loads).
@@ -279,16 +285,23 @@ function unassignedRow(d: RepoAppsSetupDTO, s: SeenSignal): string {
   </li>`;
 }
 
-function appsList(route: OrgRepoRoute, d: RepoAppsSetupDTO, ui: RepoAppsUi): string {
+function appsList(route: OrgRepoRoute, d: RepoAppsSetupDTO, ui: RepoAppsUi, dd: DropdownUi, hosting: HostingSetupDTO | null): string {
   const pending = d.suggestions.filter((s) => s.state === "pending");
   const n = d.apps.length;
   const anyBusy = ui.busy.length > 0;
+  // "What is it?" answered "One service": that step IS the page's one action — its suggestion rides with it, so
+  // neither Accept all nor the suggestions list competes with it ("Something else" brings them back).
+  const one = oneDraftFor(d, ui.one ?? null);
+  const oneOn = one?.what === "one";
   const actions = `${quietBtn(ui.scanning ? "Scanning…" : "Scan again", "orgAppsScan", { disabled: ui.scanning, busy: ui.scanning, field: "orgAppsScan" })}
     ${quietBtn("Add an app", "orgAppsGo", { arg: "new", field: "orgAppsNew" })}
-    ${accentBtn(pending.length ? `Accept all ${pending.length}` : "Accept all", "orgAppsAcceptAll", { disabled: pending.length === 0 || anyBusy, field: "orgAppsAcceptAll" })}`;
-  const lead = tabLead(`${B(String(n))} ${n === 1 ? "app" : "apps"}${pending.length
+    ${oneOn ? "" : accentBtn(pending.length ? `Accept all ${pending.length}` : "Accept all", "orgAppsAcceptAll", { disabled: pending.length === 0 || anyBusy, field: "orgAppsAcceptAll" })}`;
+  const lead = tabLead(oneOn
+    ? `${B("No app")} yet &middot; Trov sees one service in this repo. Confirm it below and the Repo screen shows it.`
+    : `${B(String(n))} ${n === 1 ? "app" : "apps"}${pending.length
     ? ` &middot; Trov found ${B(String(pending.length))} more in this repo. Nothing changes until you accept them.`
     : d.scan.scannedAt ? " &middot; Trov found nothing more in this repo." : " &middot; This repo has not been scanned yet."}`, `<div style="display:flex;gap:8px;flex-wrap:wrap">${actions}</div>`);
+  const oneBlock = oneServiceBlock(d, ui.one ?? null, hosting, dd);
   const scanned = d.scan.scannedAt ? `scanned ${esc(relTime(d.scan.scannedAt))} · from config files and deploys seen in ${SIGNAL_WINDOW_DAYS} days` : "not scanned yet";
   const scanError = d.scan.error ? `<div role="status" data-apps-scan-error style="${O_HELP};color:var(--fg-55);margin:0 0 10px">The last scan could not run: ${esc(d.scan.error)}</div>` : "";
   const degraded = d.degraded ? `<div role="status" data-apps-degraded style="${O_HELP};color:var(--fg-55);margin:0 0 14px">Part of this page could not be read just now: what the scan found may be missing. Reload to try again.</div>` : "";
@@ -310,7 +323,7 @@ function appsList(route: OrgRepoRoute, d: RepoAppsSetupDTO, ui: RepoAppsUi): str
       ${orgHead("Unassigned deploy names", `${un.length} deploy ${un.length === 1 ? "name belongs" : "names belong"} to no app`, un.length, "org-apps-un-t")}
       <ul${surface(LIST)}>${un.map((s) => unassignedRow(d, s)).join("")}</ul>
     </section>` : "";
-  return `${lead}${degraded}${suggestions}${apps}${unassigned}`;
+  return `${lead}${degraded}${oneBlock}${oneOn ? "" : suggestions}${apps}${unassigned}`;
 }
 
 // ── an APP ───────────────────────────────────────────────────────────────────
@@ -470,7 +483,7 @@ function addView(route: OrgRepoRoute, d: RepoAppsSetupDTO, a: AddDraft, dd: Drop
 // ── the page ─────────────────────────────────────────────────────────────────
 
 /** One repository's page under Org settings › Repositories (admins): its Apps, one app, or Add an app. */
-export function repoAppsPage(route: OrgRepoRoute, ui: RepoAppsUi, dd: DropdownUi = initialDropdownUi(), partRow: PartRowFn | null = null): string {
+export function repoAppsPage(route: OrgRepoRoute, ui: RepoAppsUi, dd: DropdownUi = initialDropdownUi(), partRow: PartRowFn | null = null, hosting: HostingSetupDTO | null = null): string {
   const d = ui.repo === route.repo ? ui.setup.data : null;
   const app = d && route.view === "app" ? d.apps.find((a) => a.key === route.app) ?? null : null;
   const head = crumb(route, route.view === "new" ? "Add an app" : app?.label ?? route.app ?? "");
@@ -482,7 +495,7 @@ export function repoAppsPage(route: OrgRepoRoute, ui: RepoAppsUi, dd: DropdownUi
     if (!app) return `${head}<div data-apps-gone style="font-size:13px;color:var(--fg-55)">There is no app ${CODE(route.app ?? "")} in ${esc(route.repo)}. ${quietBtn("Back to its apps", "orgAppsGo", { arg: "apps" })}</div>`;
     return `${head}${appView(d, app, ui.draft && ui.draft.key === app.key ? ui.draft : draftOf(app), dd, partRow)}`;
   }
-  return `${head}${appsList(route, d, ui)}`;
+  return `${head}${appsList(route, d, ui, dd, hosting)}`;
 }
 
 export const blankAdd = (key = ""): AddDraft => ({ key, folder: "/", kind: "Site", release: "", saving: false, error: null, errorField: null });
@@ -500,6 +513,10 @@ export function repoAppsDropdowns(route: OrgRepoRoute, ui: RepoAppsUi): Dropdown
   const d = ui.repo === route.repo ? ui.setup.data : null;
   if (!d) return [];
   if (route.view === "new") return [releaseDropdown(d, "org-apps-add-release", (ui.add ?? blankAdd()).release, null, !!ui.add?.saving)];
+  if (route.view === "apps") {
+    const one = oneDraftFor(d, ui.one ?? null);
+    return one?.what === "one" ? [oneHostDropdown(d, one)] : [];
+  }
   if (route.view !== "app") return [];
   const app = d.apps.find((a) => a.key === route.app);
   if (!app) return [];
