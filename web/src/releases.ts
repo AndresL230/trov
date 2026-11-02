@@ -104,6 +104,41 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Single-stack repositories (#143 R2, #144 the one-service setup), Ask's copy buttons, the Repo tab bar on a phone,
+  // plugin 0.12.0 (#183) and the site tour's footer: one PR.
+  {
+    version: "0.14",
+    date: "2026-11-02",
+    title: "One service, set up in one step",
+    headline: "A repository that is one service is recognised and set up in one step, a Worker shows its R2 buckets, and code in Ask answers copies with one click.",
+    highlights: [
+      "A repository that is one service, like a single Worker, is recognised and set up in one step: the host, the production URL, then its key.",
+      "A Cloudflare Worker's Usage shows its R2 buckets beside its D1 databases: objects, stored size and operations per day.",
+      "Every code block in an Ask Trov answer has a Copy button, even while the answer is still coming.",
+      "Asking Claude Code in plain words to send a handoff, record the session, file a ticket or update the plan now works.",
+    ],
+    ops: [
+      "Publish the Trov plugin 0.12.0: handoff, record-session, tickets and update-plan load when a person asks in words and still never fire on their own. Installed copies update on `/plugin marketplace update trov`.",
+    ],
+    patches: {
+      added: [
+        "Repositories: a repository that is one service is offered as one, pre-filled, and set up in one step on its Apps page (#208)",
+        "Repo: a Cloudflare Worker shows its R2 buckets (objects, stored size, daily operations) beside its D1 databases (#208)",
+        "Ask Trov: every code block in an answer has a Copy button, while the answer streams and after you reopen it (#208)",
+      ],
+      changed: [
+        "Hosting: the Cloudflare token form says exactly which read-only permissions cover each figure (#208)",
+        "Claude Code plugin: asking in plain words for a handoff, a session record, a ticket or a plan update loads that skill (#208)",
+      ],
+      fixed: [
+        "Repo: a service that is the whole app is health-checked at its URL plus its health path (#208)",
+        "Repo: on a phone the tab bar fits the screen, with shorter CI and Planning labels, instead of hiding its last tab (#208)",
+        "Site: the feature tour's position and dots stay centred as you step through it (#208)",
+      ],
+      removed: [],
+    },
+    prs: [208],
+  },
   // Home (the design `Trov Overview v2`), Unplaced folded into Review, and the sidebar's new icons and grouping: one PR.
   {
     version: "0.13",
