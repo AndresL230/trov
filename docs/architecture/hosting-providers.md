@@ -19,7 +19,7 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
 - **Connection** — how an org is connected: `install` (Vercel's Integration: projects picked at install, uninstall
   webhook), `oauth` (Netlify — no scopes on Netlify's side), `token` (every provider; the narrowest scope it has,
   said plainly — Render keys have none, Fly's is a READ-ONLY org token, Vercel has no read-only token, Railway's is a
-  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read, and optionally Workers CI Read for each deploy's commit), `assume_role`
+  workspace token sent as Bearer, Cloudflare's needs Account Analytics Read + Workers Scripts Read, and optionally Workers CI Read for each deploy's commit — Account Analytics Read covers EVERY figure, D1 and R2 included, so no D1 or R2 permission is asked for, and the token form says so in its steps and its grants (#143)), `assume_role`
   (AWS, later). The secret is an ordinary write-only `org_secrets` row (kinds `vercel` / `render` / `netlify` / `fly` /
   `aws`; Cloudflare and Railway keep `cloudflare_analytics` / `railway` — `HOSTING_INTEGRATION_KIND`); an install / OAuth
   grant also writes `org_hosting_connections` (method, provider-side installation id, account). EVERY provider is
@@ -177,6 +177,9 @@ default branch's root tree sha is unchanged), the detector registry (`src/repo/d
 `describe()` (Vercel, Render, Netlify: which folder a project builds — one list call each, in the scan only), seen
 signals, the suggestion lifecycle (accept / ignore / undo, `repo_scans` and `repo_app_suggestions`, 0072) and the
 read side the facts use — is `repo-apps.md` › Detection. A suggestion changes nothing until an admin accepts it.
+The SAME signs (`detectProviders` over `listDetectRows`) also recognise a single-stack repository: exactly one host
+seen, and at most one deployable the scan found on it, is offered on the repository's Apps page as "One service that
+does everything", pre-filled and confirmed in one step (#144 — `repo-apps.md` › One service that does everything).
 
 **Where detection stands** (`HostingSetupDTO.detection`, `readDetectionStatus`): so a new org sees what Trov is doing
 instead of nothing. `no_repo` (no repository connected) → `no_environment` (a repository, but no environment names a
@@ -218,14 +221,22 @@ for this layer:
   `hostingReads` leaves a production part's previews out of its strips (a previews-only part keeps them; a deploy with
   NO target is never a preview — the test is `COALESCE`d).
 
-## Usage families: outcomes, runtime, D1, crons (repo setups, Phase G)
+## Usage families: outcomes, runtime, D1, crons, R2 (repo setups, Phase G; #143)
 
 **Families** (`shared/usage-families-core.ts`, zod-free): `HOSTING_METRICS` cut into three CORE families — traffic
-(requests, errors, bandwidth), latency (p50, p95), compute (CPU, memory) — and four EXTRA families a provider declares
-in `capabilities.families` only when it really reads them: outcomes, runtime, storage, schedules. A part's families
-are `familiesOf(capabilities)` (`RepoProviderPart.families`); the Usage tab reads them, its states and its capabilities,
-never the provider id. Today only Cloudflare Workers declares the extra four (step 0 of the build confirmed each
-dataset live, Account Analytics Read).
+(requests, errors, bandwidth), latency (p50, p95), compute (CPU, memory) — and five EXTRA families a provider declares
+in `capabilities.families` only when it really reads them: outcomes, runtime, storage (D1), schedules, objects (R2,
+#143). A part's families are `familiesOf(capabilities)` (`RepoProviderPart.families`); the Usage tab reads them, its
+states and its capabilities, never the provider id. Today only Cloudflare Workers declares the extra five (step 0 of
+the build confirmed the first four datasets live with Account Analytics Read; R2's are read in their documented shape,
+UNCONFIRMED live — below).
+
+**A Worker that IS the whole app** (#143). A Cloudflare part is role `web` only, so it never shows the CPU / memory
+`resources` block of a service: the Worker's CPU is the runtime family (CPU time p50 / p99, wall time p50 per
+completed day) and the limits it hit are the outcomes family's own buckets (`exceededResources`, `exceededCpu`,
+`exceededMemory` — "Exceeded limits", amber); requests and error rate are the traffic card, deploys the Workers
+Deployments API (with the Workers Builds commit), the database D1 (`storage`), the bucket R2 (`objects`), the crons
+`schedules`. A figure Cloudflare does not report through the token is "—" or the family's reason, never 0.
 
 **What the Cloudflare poll adds** (`src/hosting/providers/cloudflare.ts`): the hourly analytics query now groups by
 `status` — the invocation OUTCOME (`success`, `clientDisconnected`, `scriptThrewException`, `exceededResources`, …),
@@ -243,9 +254,31 @@ then, when the part names D1 databases (its optional `d1_database_ids` setting, 
 scan's wrangler detector proposes it), ONE query of `d1AnalyticsAdaptiveGroups` / `d1StorageAdaptiveGroups` for the
 day: `hx_d1_<read_queries|write_queries|rows_read|rows_written|size_bytes>:<id>`. A part with no D1 id says so every
 poll ("no D1 database is named for this part"), never zero. The optional `crons` setting (the detector's
-`triggers.crons`) lists expressions the screen shows even when one never ran. `pollCost` 3 → **6** (deployments,
-the build, analytics, cron runs, and once a day the quantiles and D1). Fixtures: `fixtures/hosting/cloudflare/`
-(`analytics.json` grouped by status, `scheduled.json`, `runtime.json`, `d1.json` — the README marks what is hand-shaped).
+`triggers.crons`) lists expressions the screen shows even when one never ran. `pollCost` 3 → 6 (deployments,
+the build, analytics, cron runs, and once a day the quantiles and D1) → **7** with R2 (below). Fixtures:
+`fixtures/hosting/cloudflare/` (`analytics.json` grouped by status, `scheduled.json`, `runtime.json`, `d1.json`,
+`r2.json` — the README marks what is hand-shaped).
+
+**R2** (#143, the `objects` family). On the same daily poll, when the part names R2 buckets (its optional
+`r2_bucket_names` setting — up to 3, each R2's own name rule `R2_BUCKET_RE`; the wrangler detector proposes it from
+`[[r2_buckets]]` `bucket_name`, an environment's own bindings only, as for D1), ONE more GraphQL query for the
+completed day (`datetime_geq` 00:00, `datetime_leq` 23:59:59 — inclusive), one alias pair per bucket:
+`r<i>: r2StorageAdaptiveGroups(limit: 1, filter: { bucketName, datetime_geq, datetime_leq }, orderBy: [datetime_DESC])
+{ dimensions { datetime } max { objectCount payloadSize metadataSize } }` (the day's newest reading) and
+`o<i>: r2OperationsAdaptiveGroups(limit: 100, filter: { bucketName, … }) { dimensions { actionType } sum { requests } }`.
+Stored per bucket at 00:00 UTC of the day: `hx_r2_object_count:<bucket>`, `hx_r2_size_bytes:<bucket>` (payload +
+metadata — both must be numbers, never one alone) and `hx_r2_operations:<bucket>` (every action type summed — Class A
+and B are not split, so no pricing table is guessed at). Operations are 0 only when that day's storage row proves the
+bucket exists (an unknown bucket answers with no row anywhere, which stores nothing); an operations answer that fills
+its limit stores no operations. A part with no bucket says so every poll ("no R2 bucket is named for this part"),
+never zero; a refusal is the family's reason. **The cost decision**: R2 is its OWN request, not aliased into D1's — a
+GraphQL document fails whole on one unknown field, and the R2 datasets are UNCONFIRMED against a live account (Trov's
+build could not reach one; the shape is Cloudflare's R2 metrics guide), so a wrong R2 field must never take the
+CONFIRMED D1 read down with it. That makes Cloudflare's worst case **7** fetches (`pollCost`; the contract allows 10,
+and the cron's 900-request invocation budget absorbs the one extra fetch per Cloudflare part per hour — in practice
+only once a day). The permission is the same Account Analytics Read (Cloudflare documents its GraphQL datasets, R2's
+included, under it) — UNCONFIRMED live, like the field names: a human with a real account should run the query once
+and tick it off in `fixtures/hosting/cloudflare/README.md`.
 
 **Validated like every point** (`validatePoll`'s `extraPoints`): a name one of the builders makes (`parseExtraMetric`),
 of a family the provider DECLARES and the part's role reads; an hourly point at a complete hour, a daily one at 00:00
@@ -256,14 +289,15 @@ read); `hosting_poll_state.unavailable` keeps `{ family, reason }` entries besid
 cleanly drops it). Every extra point is `hx_*`, pruned at 100 days with the rest.
 
 **The projection** (`src/tools/repo-extras.ts`, through `projectProviders`; `RepoProviderPart.extras`): ONE more
-statement (`extraMetricsSince`, GLOB index ranges) only when some part's provider declares an extra family. Per
-family a state — `ok`, `stale`, `unavailable` (its reason), `none` (never read, not drawn): outcomes per range (the
-buckets that exist, largest first; `[]` = covered and quiet), runtime (the newest completed day's quantiles in ms while
-≤ 2 days old, subrequests per range, the CPU p99 line), storage per database (sums of the range's last 1 / 7 / 30
-completed days, the size while current, the reads line) and schedules per cron (runs, failures, the last run; a
-configured cron with no point listed). An hourly range figure with no point is 0 ONLY inside the covered interval of a
+statement (`extraMetricsSince`, GLOB index ranges — `hx_r2_*` among them) only when some part's provider declares an
+extra family. Per family a state — `ok`, `stale`, `unavailable` (its reason), `none` (never read, not drawn): outcomes
+per range (the buckets that exist, largest first; `[]` = covered and quiet), runtime (the newest completed day's
+quantiles in ms while ≤ 2 days old, subrequests per range, the CPU p99 line), storage per database (sums of the range's
+last 1 / 7 / 30 completed days, the size while current, the reads line), schedules per cron (runs, failures, the last
+run; a configured cron with no point listed) and objects per bucket (operations summed like D1's counts, the object
+count and stored bytes while current, the operations-per-day line). An hourly range figure with no point is 0 ONLY inside the covered interval of a
 family that was read; a daily one with no point is null; a range that starts before the family's first point says
-"since …". MCP collapses the extras to the asked range (`extrasForRange`). Tests: `test/hosting.provider.cloudflare.test.ts`,
+"since …". MCP collapses the extras to the asked range (`extrasForRange`; a bucket's `operations` too). Tests: `test/hosting.provider.cloudflare.test.ts`,
 `test/hosting.poll.families.test.ts`, `test/repo-dashboard.extras.test.ts`.
 
 **Apps** (`repo_apps`, 0070) — an app is a part key with a home (repository, folder, kind, watch paths, release
@@ -369,7 +403,8 @@ the app key: `repo-apps.md` › Org settings › Repositories › a repo › App
 
 **Repo dashboard › Usage › Hosting** (`web/src/repo-hosting.ts`, called from `repo.ts` `usageTab`): ONE section
 from `providers` (the old `cloudflare` / `hosting` sections are gone from the payload and from MCP), below the targets
-and the extra families (`web/src/repo-usage.ts`, `repo-dashboard.md` › On screen).
+and the extra families (`web/src/repo-usage.ts`, `repo-dashboard.md` › On screen — an R2 bucket's block sits beside
+the D1 databases: Objects, Stored, Operations for the range; no bucket named is the family's sentence, never 0).
 Environments side by side on the `.repo-cells` lattice, parts stacked: a tone dot, the label, the provider's glyph
 and name, the role, Open in <provider>; the last deploy (state pill — in flight pulses —, short sha when there is
 one, branch, the message's first line, who, when, "ready in 1m 42s", Open / Log) and a strip of the last ≤ 10 as
@@ -389,7 +424,7 @@ only. Render tests: `test/render.hosting.test.ts`, `test/render.repo-hosting.tes
 
 The `hosting` job (`src/repo/cron.ts`; the cron itself is described in `repo-dashboard.md` › The repo cron): one
 unit per (org, environment, STORED part) from `listPartUnits` (`src/platform/jobs.ts`), each costing its provider's
-`pollCost` (≤ 6 — Cloudflare's 6 counts its cron-runs query and its once-a-day quantile and D1 reads; the contract
+`pollCost` (≤ 7 — Cloudflare's 7 counts its cron-runs query and its once-a-day quantile, D1 and R2 reads; the contract
 test allows 10) + 1 for the possible rollback compare (a `github` part: 0), served by rotation like the other jobs; health keeps half the budget on this tick only when some
 org has a stored part. Cloudflare and Railway are polled here like every other provider; the `:00` usage job reads
 only the app-metrics endpoint. Background-job tenancy (the

@@ -125,7 +125,9 @@ describe("every other scenario loads on its own", () => {
   });
 
   it("free-at-cap: every limit reached on Free (the plan block reads them at the cap)", async () => {
-    await loadScenarios(db, ["free-at-cap"], { now: NOW });
+    // The real clock, not NOW: the plan route counts AI usage for the CURRENT calendar month, so a fixed date
+    // falls out of it once that month ends.
+    await loadScenarios(db, ["free-at-cap"], { now: new Date() });
     const cookie = await cookieFor("kai-moreno");
     const res = await app.request("/api/o/pinecone/plan", { headers: { cookie } }, env);
     expect(res.status).toBe(200);

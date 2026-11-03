@@ -655,6 +655,13 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   before it is parsed — a bare heading / list / fence marker or a table row not yet closed by its bar waits, an unclosed
   `**` / `*` / backtick is closed for now (the words show bold as they arrive), a half `[link](…` shows its text, a half
   `[[ref` waits — so no raw marks flash before they render (the owner). A finished part is parsed as it came.
+- **A code block's Copy** (`codeBlock`, ask-conversation.ts; ticket #60): every fenced block carries the command box's
+  corner button (ui.ts `COPY_GLYPH` / `COPY_BTN_LOOK`, the same one as mcp-connect.ts `copyBox`, class `cnpy-copybtn`),
+  always shown (a phone has no hover) and outside the `<pre>` (`.ask-pre-w`), so it stays put while long lines scroll.
+  `askCvCopyCode <where>:<answerKey>:<part>.<k>` (`codeArg`: the `shownParts` index, then the block's place in that
+  part) copies the block's own text, read from the part's words as they show — while it streams, what is out so far,
+  never the settled tail's closing marks; a reloaded thread draws the same. "Copied" (the label and `data-mtip`, the
+  glyph a check) holds for a moment through `conversation.copied`, beside the answer's own Copy.
 - **Working, shown** (`ask-conversation.ts`, `thinking-orb.ts`; `web-ui.md` › The thinking orb): while a turn is live a
   20px thinking orb says what Trov is doing, in ONE place under the steps (the owner, 2026-10-16): the wait row — the
   orb beside "Thinking…" ("Writing…" once a block is out and no step runs) in the sweep of light — is there for the whole wait, before

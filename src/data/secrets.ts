@@ -553,7 +553,10 @@ export async function currentKeyVersion(ctx: TenantContext): Promise<number | nu
  * every integration but GitHub reads (`resolveGithubCredential`, src/github-app/credential.ts, which comes here
  * for an org's stored `github_token`).
  */
-export async function resolveCredential(ctx: TenantContext, kind: IntegrationKind, scope: string): Promise<Secret | null> {
+export function resolveCredential(ctx: TenantContext, kind: IntegrationKind, scope: string): Promise<Secret | null> {
+  // Not `async`: getSecret's own promise goes straight to the caller. An async wrapper adopts a promise that is
+  // ALREADY rejected (a bearer or member context throws before any await) a tick later, and the Workers runtime
+  // reports that window as an unhandled rejection even when the caller awaits it.
   return getSecret(ctx, kind, scope);
 }
 

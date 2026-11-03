@@ -1,5 +1,5 @@
 // The Usage tab's EXTRA usage families per part (repo setups, Phase G — shared/usage-families-core.ts): outcomes,
-// runtime, storage, schedules — what a provider that declares them (today Cloudflare Workers) stored, projected IN
+// runtime, storage, schedules, objects (R2, #143) — what a provider that declares them (today Cloudflare Workers) stored, projected IN
 // MEMORY from ONE read (`extraMetricsSince`, src/repo/store.ts). Pure: rows in, `PartExtras` out. Reachable from
 // src/mcp.ts through src/tools/repo.ts, so it imports nothing that resolves a credential.
 //
@@ -7,12 +7,13 @@
 // complete hours; with no point it is 0 only where the part's covered interval (its last good polls) overlaps the
 // range AND the family was read (no reason stored for it) — else null. A daily family's range figure is the sum of
 // the daily points of the range's last 1 / 7 / 30 COMPLETED UTC days; with none it is null (a day with no point was
-// not read, or read nothing: never a zero). The day's quantiles and a database's size are shown only while their day
-// is at most two days old. A family the provider could not read carries its reason; one never read is `none` and is
+// not read, or read nothing: never a zero). The day's quantiles, a database's size and a bucket's size and object count
+// are shown only while their day is at most two days old. A family the provider could not read carries its reason; one never read is `none` and is
 // not drawn.
 import { REPO_RANGES, type RepoRange } from "@shared/repo";
 import {
-  outcomeWords, parseExtraMetric, type ExtraFamily, type FamilyState, type PartExtras, type UsageCron, type UsageDatabase, type UsageOutcome,
+  isExtraFamily, outcomeWords, parseExtraMetric, type ExtraFamily, type FamilyState, type PartExtras, type UsageBucket, type UsageCron, type UsageDatabase,
+  type UsageOutcome,
 } from "@shared/usage-families-core";
 
 const HOUR = 3_600_000;
@@ -47,7 +48,7 @@ export function familyReasons(json: string | null | undefined): Map<ExtraFamily,
     if (!Array.isArray(v)) return out;
     for (const x of v) {
       const o = x && typeof x === "object" ? (x as { family?: unknown; reason?: unknown }) : {};
-      if ((o.family === "outcomes" || o.family === "runtime" || o.family === "storage" || o.family === "schedules") && typeof o.reason === "string") out.set(o.family, o.reason);
+      if (isExtraFamily(o.family) && typeof o.reason === "string") out.set(o.family, o.reason);
     }
   } catch { /* a malformed state says nothing */ }
   return out;
@@ -155,6 +156,35 @@ export function projectExtras(input: ExtrasInput, rows: readonly ExtraRow[], end
     out.storage = { ...stateOf(any.length > 0, any.some((p) => isFreshDay(p.t)), input.reasons.get("storage")), databases };
   }
 
+  if (input.families.includes("objects")) {
+    const names: string[] = [];
+    const series = new Map<string, Pt[]>();
+    for (const p of parsed) {
+      if (p.name.family !== "objects") continue;
+      if (!names.includes(p.name.bucket)) names.push(p.name.bucket);
+      const key = `${p.name.bucket}|${p.name.field}`;
+      series.set(key, [...(series.get(key) ?? []), { t: p.t, value: p.value }]);
+    }
+    const of = (name: string, field: string) => series.get(`${name}|${field}`) ?? [];
+    const newestFresh = (pts: Pt[]): Pt | undefined => pts.filter((p) => isFreshDay(p.t)).sort((a, b) => b.t - a.t)[0];
+    const buckets = names.map((name): UsageBucket => {
+      const count = newestFresh(of(name, "object_count"));
+      const size = newestFresh(of(name, "size_bytes"));
+      const ops = of(name, "operations");
+      const day = size ?? count;
+      return {
+        name,
+        object_count: count ? count.value : null,
+        size_bytes: size ? size.value : null,
+        size_day: day ? new Date(day.t).toISOString().slice(0, 10) : null,
+        operations: perRange((r) => daily(ops, r)),
+        trend: ops.filter((p) => p.t >= today - 30 * DAY && p.t < today).sort((a, b) => a.t - b.t).map((p) => ({ at: new Date(p.t).toISOString(), operations: p.value })),
+      };
+    });
+    const any = [...series.values()].flat();
+    out.objects = { ...stateOf(any.length > 0, any.some((p) => isFreshDay(p.t)), input.reasons.get("objects")), buckets };
+  }
+
   if (input.families.includes("schedules")) {
     const configured = (input.settings.crons ?? "").split(";").map((c) => c.trim().replace(/\s+/g, " ")).filter(Boolean);
     const exprs: string[] = [];
@@ -192,5 +222,6 @@ export function extrasForRange(x: PartExtras, range: RepoRange): unknown {
       ...d, read_queries: pick(d.read_queries), write_queries: pick(d.write_queries), rows_read: pick(d.rows_read), rows_written: pick(d.rows_written),
     })) } } : {}),
     ...(x.schedules ? { schedules: { ...x.schedules, crons: x.schedules.crons.map((c) => ({ ...c, runs: pick(c.runs), failed: pick(c.failed) })) } } : {}),
+    ...(x.objects ? { objects: { ...x.objects, buckets: x.objects.buckets.map((b) => ({ ...b, operations: pick(b.operations) })) } } : {}),
   };
 }

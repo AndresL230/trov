@@ -152,12 +152,19 @@ function viaOf(p: PartRow): string | null {
  * keyed `frontend` / `backend` is that target; otherwise the ONE part of the environment with the target's role
  * (`web` → frontend, `service` → backend) when no other part carries the target's name. Two web parts — which is
  * the site? — is not a guess the read makes: no target, no health.
+ *
+ * One service (#144): the environment's ONLY part, where the environment's two addresses are one origin (or only the
+ * API URL is set), IS both — its health is the API URL + health path, the URL the person asked Trov to check.
  */
+const sameOrigin = (a: string, b: string): boolean => {
+  try { return new URL(a).origin === new URL(b).origin; } catch { return false; }
+};
 function healthTargetOf(p: PartRow, envParts: PartRow[], cfg: FactsEnvConfig): { key: string; url: string; base: string } | null {
   const of = (key: "frontend" | "backend") =>
     key === "frontend" ? (cfg.frontendUrl ? { key, url: cfg.frontendUrl, base: cfg.frontendUrl } : null)
       : (cfg.apiUrl ? { key, url: cfg.apiUrl + cfg.healthPath, base: cfg.apiUrl } : null);
   if (p.key === "frontend" || p.key === "backend") return of(p.key);
+  if (envParts.length === 1 && cfg.apiUrl && (!cfg.frontendUrl || sameOrigin(cfg.frontendUrl, cfg.apiUrl))) return of("backend");
   const key = p.role === "web" ? "frontend" : "backend";
   if (envParts.some((o) => o.key === key)) return null;
   if (envParts.filter((o) => o.role === p.role).length !== 1) return null;

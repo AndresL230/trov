@@ -7,6 +7,10 @@
 //                                                       watch, release_signal, position; audited `app.set`
 //   DELETE /repos/:owner/:name/apps/:key       admin+   AppRemoved — `?parts=remove` takes its parts too (each
 //                                                       audited `part.delete`); default keeps them
+//   POST   /repos/:owner/:name/one-service     admin+   OneServiceResult — #144's one step, confirmed: the environment's
+//                                                       URL and health path, the app and its one part on the host
+//                                                       (src/repo/one-service.ts); 409 `key_taken`, 402 `plan_limit`
+//                                                       when a new environment does not fit the plan
 //
 // The scan and the suggestions' accept / ignore / undo (`POST …/scan`, `…/suggestions/…`) are the scan's own routes.
 // Every refusal is a status with fixed text; nothing answers 500 with an Error's own words.
@@ -15,7 +19,9 @@ import type { Context, MiddlewareHandler } from "hono";
 import type { AppEnv } from "../auth/principal";
 import { RoleError, requireRole } from "../data/context";
 import { SettingsError } from "../integrations/settings";
+import { PlanLimitError } from "../plans/state";
 import { APPS_SETUP_DEPS, connectedRepo, getRepoAppsSetup, putAppInRepo, removeAppInRepo, type AppsSetupDeps } from "./apps-setup";
+import { setUpOneService } from "./one-service";
 
 type C = Context<AppEnv>;
 
@@ -29,6 +35,7 @@ async function guard(c: C, fn: () => Promise<Response>): Promise<Response> {
     return await fn();
   } catch (e) {
     if (e instanceof RoleError) return c.json({ error: "forbidden" }, 403);
+    if (e instanceof PlanLimitError) throw e; // the app's one handler answers 402 (src/routes.ts)
     if (e instanceof SettingsError) return c.json({ error: e.code, ...(e.field ? { field: e.field } : {}), message: e.message }, e.status);
     console.error("repo apps route failed", e instanceof Error ? e.name : "error"); // the name only — never the Error
     return c.json({ error: "internal" }, 500);
@@ -55,6 +62,7 @@ export function makeRepoAppsApp(deps: AppsSetupDeps = APPS_SETUP_DEPS): Hono<App
   const r = new Hono<AppEnv>();
   r.use("/repos/:owner/:name/apps", personOnly);
   r.use("/repos/:owner/:name/apps/*", personOnly);
+  r.use("/repos/:owner/:name/one-service", personOnly);
 
   r.get("/repos/:owner/:name/apps", (c) => guard(c, async () => {
     const repo = await repoOf(c);
@@ -84,6 +92,14 @@ export function makeRepoAppsApp(deps: AppsSetupDeps = APPS_SETUP_DEPS): Hono<App
     const parts = c.req.query("parts") ?? "keep";
     if (parts !== "keep" && parts !== "remove") return c.json({ error: "invalid", field: "parts", message: "parts must be keep or remove" }, 400);
     return c.json(await removeAppInRepo(c.var.ctx, repo, c.req.param("key"), parts === "remove"));
+  }));
+
+  r.post("/repos/:owner/:name/one-service", (c) => guard(c, async () => {
+    const repo = await repoOf(c);
+    if (repo instanceof Response) return repo;
+    const body = await jsonBody(c);
+    if (!body) return c.json({ error: "invalid_json", message: "the body must be a JSON object" }, 400);
+    return c.json(await setUpOneService(c.var.ctx, c.var.ctx.userId, repo, body, deps.providers), 201);
   }));
 
   return r;

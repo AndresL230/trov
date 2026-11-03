@@ -192,6 +192,21 @@ describe("the extra families — drawn because the part carries them", () => {
     expect(x).toContain("*/10 * * * *");
   });
 
+  it("B: the Worker's R2 bucket beside its D1 database — objects, stored bytes and operations for the range (#143)", () => {
+    const html = view("B");
+    const x = html.slice(html.indexOf('data-uextras="production/trov"'));
+    const r2 = x.slice(x.indexOf('data-ubucket="trov-artifacts"'));
+    expect(x.indexOf('data-udb="')).toBeLessThan(x.indexOf('data-ubucket="')); // next to D1, in the same pair grid
+    expect(r2).toContain("R2 bucket · trov-artifacts");
+    expect(r2).toContain(">Objects<");
+    expect(r2).toContain("18.4K");
+    expect(r2).toContain(">Stored<");
+    expect(r2).toContain(">Operations<");
+    expect(r2).toContain("71.2K"); // the 7d range on screen
+    expect(r2).toContain('data-uspark="r2_operations"');
+    expect(r2).toContain("counts over the last 7 completed days");
+  });
+
   it("B/failed: the failing cron's failures turn red, CPU p99 climbs", () => {
     const x = view("B", "failed");
     const cron = x.slice(x.indexOf('data-ucron="*/10 * * * *"'));
@@ -203,6 +218,10 @@ describe("the extra families — drawn because the part carries them", () => {
     const html = view("A");
     const x = html.slice(html.indexOf('data-uextras="production/web"'));
     expect(x).toContain("Not available from Cloudflare Workers: no D1 database is named for this part");
+    // No R2 bucket named: a plain sentence where the bucket would be — never a 0.
+    const r2 = x.slice(x.indexOf('data-uextra="objects"'), x.indexOf('data-uextra="objects"') + 1200);
+    expect(r2).toContain("Not available from Cloudflare Workers: no R2 bucket is named for this part");
+    expect(r2).not.toContain("data-ustat");
     expect(x).not.toContain('data-uextra="schedules"');
   });
 
@@ -213,10 +232,15 @@ describe("the extra families — drawn because the part carries them", () => {
       extras: {
         runtime: { state: "stale", reason: null, day: null, cpu_p50_ms: null, cpu_p99_ms: null, wall_p50_ms: null, subrequests: { "24h": null, "7d": null, "30d": null }, since: null, trend: [] },
         outcomes: { state: "none", reason: null, since: null, ranges: { "24h": null, "7d": null, "30d": null } },
+        objects: { state: "stale", reason: null, buckets: [{ name: "old-bkt", object_count: null, size_bytes: null, size_day: null, operations: { "24h": null, "7d": null, "30d": null }, trend: [] }] },
       },
     };
     const html = usageExtras([bare], tools, { admin: false, sample: false });
     expect(html).not.toContain("CPU time");
+    // A bucket with nothing current draws no figure — not "0 objects".
+    expect(html).toContain("R2 bucket · old-bkt");
+    expect(html).not.toContain(">Objects<");
+    expect(html).toContain("No reading for this range.");
     expect(html).toContain("No recent reading.");
     expect(html).not.toContain('data-uextra="outcomes"');
   });

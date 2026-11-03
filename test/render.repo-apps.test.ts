@@ -18,6 +18,12 @@ import { pickableSignals, signalKey, unassignedSignals } from "@shared/repo-apps
 import type { AppSuggestionDTO, RepoAppsSetupDTO, SeenSignal } from "@shared/repo-scan-core";
 import type { EnvironmentPartDTO, HostingProviderId } from "@shared/hosting";
 import type { MyOrg, OrgRole } from "@shared/orgs";
+import oneSrc from "../web/src/repo-one-service.ts?raw";
+import renderSrc from "../web/src/render.ts?raw";
+import { hostingScenario } from "../web/src/hosting-sample";
+import { oneDraftOf, type OneServiceDraft } from "../web/src/repo-one-service";
+import type { OneServiceOfferDTO } from "@shared/repo-scan-core";
+import type { HostingSetupDTO } from "@shared/hosting";
 
 const ago = (min: number): string => new Date(Date.now() - min * 60_000).toISOString();
 const org = (role: OrgRole = "owner"): MyOrg => ({ slug: "acme", name: "Acme", role });
@@ -335,5 +341,116 @@ describe("wiring", () => {
     // The toast's Undo carries an id, never a token, on the Apps page.
     expect(actionsSrc).toMatch(/\{ label: "Undo", act: "orgAppsUndo", arg: id \}/);
     expect(actionsSrc).toContain("APPS_UNDO_MS = 5000");
+  });
+});
+
+describe("Setup 0 · What is it? — one service, pre-filled, confirmed in one step (#144)", () => {
+  const OFFER: OneServiceOfferDTO = {
+    provider: "cloudflare", evidence: "GitHub check runs posted by the Cloudflare Workers and Pages app", suggestion: "s-trov", key: "trov", folder: "/", kind: "Worker",
+    settings: { worker: "trov", d1_database_ids: "6c71838c-18f7-4f68-8513-b58e86c237b9", crons: "*/10 * * * *;0 * * * *" },
+    env: { key: "production", label: "Production", branch: "main", exists: false, url: "", health_path: "" },
+  };
+  const EXISTS: OneServiceOfferDTO = { ...OFFER, env: { ...OFFER.env, exists: true, url: "https://trov.dev", health_path: "/api/health" } };
+  const one = (over: Partial<RepoAppsSetupDTO> = {}): RepoAppsSetupDTO => setup({
+    apps: [], unassigned: [], oneService: OFFER,
+    suggestions: [{ ...suggestion("trov", "Worker", "/", "cloudflare", ["from wrangler.toml · Worker trov"]), id: "s-trov" }], ...over,
+  });
+  const notConnected = (): HostingSetupDTO => hostingScenario("start", "cloudflare_railway");
+  const connected = (): HostingSetupDTO => hostingScenario("live", "cloudflare_railway");
+  const view = (d: RepoAppsSetupDTO, h: HostingSetupDTO | null, apps: Partial<RepoAppsUi> = {}): string => {
+    const ui = uiOf(route("apps"), appsUi(d, apps));
+    return orgSettingsView({ org: org(), orgsStatus: "ok", me: "andres", ui: { ...ui, hosting: { ...ui.hosting, setup: h ? { status: "ok", data: h } : { status: "loading", data: null } } } });
+  };
+  const block = (html: string): string => html.slice(html.indexOf('data-apps-group="one-service"'), html.indexOf('data-apps-group="apps"'));
+
+  it("opens on the pre-filled answer: what was seen, a segmented What is it?, the host, URL, health path, the scan's Worker settings", () => {
+    const html = view(one(), notConnected());
+    const b = block(html);
+    expect(text(b)).toContain("Trov sees one host deploying acme/storefront: GitHub check runs posted by the Cloudflare Workers and Pages app, and the scan found one app to deploy (Worker trov). So it looks like one service.");
+    expect(b).toContain('data-seg="org-apps-one-what"');
+    expect(b).toContain("One service that does everything");
+    expect(b).toContain("Something else");
+    expect(b).toContain('id="org-apps-one-host"');
+    expect(b).not.toContain("<select"); // dropdown(), never a native select
+    expect(b).toContain('id="org-apps-one-url"');
+    expect(b).toContain('id="org-apps-one-health"');
+    expect(b).toMatch(/id="org-apps-one-set-worker"[^>]*value="trov"/);
+    expect(b).toMatch(/id="org-apps-one-set-d1_database_ids"[^>]*value="6c71838c-18f7-4f68-8513-b58e86c237b9"/);
+    expect(b).toContain('id="org-apps-one-branch"'); // a new environment: its branch is asked
+    expect(text(b)).toContain("Trov makes one environment for it, Production.");
+    // No URL yet: the one action is there but off; it names the connect that follows.
+    expect(b).toMatch(/data-act="orgAppsOneSave"[^>]*disabled[^>]*>Set it up and connect Cloudflare Workers</);
+    expect(text(b)).toContain("Cloudflare Workers isn't connected yet: its dialog opens next");
+    // The step is the page's one action: no Accept all, no suggestions list competing with it.
+    expect(html).not.toContain('data-act="orgAppsAcceptAll"');
+    expect(html).not.toContain('data-apps-group="suggestions"');
+    expect(text(html)).toContain("No app yet · Trov sees one service in this repo. Confirm it below and the Repo screen shows it.");
+    noButtonInButton(html);
+  });
+
+  it("GUARD: no frontend / backend vocabulary anywhere on the one-service path", () => {
+    const filled: OneServiceDraft = { ...oneDraftOf(REPO, OFFER), url: "https://trov.dev", health: "/api/health" };
+    for (const h of [notConnected(), connected(), null]) {
+      for (const html of [view(one(), h), view(one(), h, { one: filled }), view(one(), h, { one: { ...filled, errorField: "url", error: "Bad URL." } })]) {
+        expect(text(block(html))).not.toMatch(/front[\s-]?end|back[\s-]?end/i);
+      }
+    }
+  });
+
+  it("filled in and connected: Set it up, and nothing more to connect", () => {
+    const b = block(view(one({ oneService: EXISTS }), connected(), { one: oneDraftOf(REPO, EXISTS) }));
+    expect(b).toMatch(/id="org-apps-one-url"[^>]*value="https:\/\/trov.dev"/);
+    expect(b).toMatch(/id="org-apps-one-health"[^>]*value="\/api\/health"/);
+    expect(b).not.toContain('id="org-apps-one-branch"'); // the environment exists: its branch is its own
+    expect(text(b)).toContain("It goes in Production, which deploys from main.");
+    expect(b).toMatch(/data-act="orgAppsOneSave"(?![^>]*disabled)[^>]*>Set it up</);
+    expect(b).toContain("data-one-connected");
+  });
+
+  it("checks what the server checks: an http URL, a health path without /, a Worker name that is missing", () => {
+    const bad: OneServiceDraft = { ...oneDraftOf(REPO, OFFER), url: "http://trov.dev", health: "api/health", settings: {} };
+    const b = block(view(one(), notConnected(), { one: bad }));
+    expect(text(b)).toContain("An https address with no query string, such as https://example.com.");
+    expect(text(b)).toContain("Starts with /, such as /api/health.");
+    expect(b).toMatch(/data-act="orgAppsOneSave"[^>]*disabled/);
+    // A refusal the form cannot place goes above the button.
+    const refused = block(view(one(), notConnected(), { one: { ...oneDraftOf(REPO, OFFER), url: "https://trov.dev", error: "Your plan allows 2 environments.", errorField: null } }));
+    expect(refused).toMatch(/role="alert" data-one-error[^>]*>Your plan allows 2 environments\./);
+  });
+
+  it("while Hosting's read is out it waits for the host's settings, and cannot be saved", () => {
+    const b = block(view(one(), null, { one: { ...oneDraftOf(REPO, OFFER), url: "https://trov.dev" } }));
+    expect(text(b)).toContain("Reading Cloudflare Workers's settings");
+    expect(b).toMatch(/data-act="orgAppsOneSave"[^>]*disabled/);
+  });
+
+  it("Something else folds it away: the suggestions and Accept all come back", () => {
+    const html = view(one(), notConnected(), { one: { ...oneDraftOf(REPO, OFFER), what: "other" } });
+    expect(block(html)).not.toContain('id="org-apps-one-url"');
+    expect(text(block(html))).toContain("Set it up app by app below");
+    expect(html).toContain('data-apps-group="suggestions"');
+    expect(html).toContain('data-act="orgAppsAcceptAll"');
+  });
+
+  it("no offer, no block — the page as it was", () => {
+    expect(view(one({ oneService: null }), notConnected())).not.toContain('data-apps-group="one-service"');
+  });
+
+  it("the host picker is a dropdown() the page draws (every host Trov reads, not GitHub deployments)", () => {
+    const list = orgDropdowns({ org: org(), orgsStatus: "ok", me: "andres", ui: uiOf(route("apps"), appsUi(one())) });
+    const host = list.find((x) => x.id === "org-apps-one-host")!;
+    expect(host.value).toBe("cloudflare");
+    expect(host.options.map((o) => o.value)).toEqual(["cloudflare", "vercel", "render", "fly"]);
+    expect(host.options[0].hint).toBe("Seen deploying this repository");
+    for (const m of oneSrc.matchAll(/act: "([A-Za-z]+)"/g)) expect(m[1]).toMatch(/^orgAppsOne/);
+    for (const a of ["orgAppsOneWhat", "orgAppsOneHost", "orgAppsOneUrl", "orgAppsOneHealth", "orgAppsOneKey", "orgAppsOneBranch", "orgAppsOneSetting", "orgAppsOnePick", "orgAppsOneSave"]) {
+      expect(actionsSrc).toContain(`case "${a}"`);
+    }
+  });
+
+  it("the Guide says what a single-stack setup monitors and what it cannot", () => {
+    expect(renderSrc).toContain("One service that does everything.");
+    expect(renderSrc).toContain("What it monitors:");
+    expect(renderSrc).toContain("What it cannot:");
   });
 });

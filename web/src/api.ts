@@ -622,6 +622,11 @@ export function putRepoAppSetup(slug: string, repo: string, key: string, body: R
 export function deleteRepoAppSetup(slug: string, repo: string, key: string, removeParts: boolean): Promise<{ key: string; removed_parts: { env: string; part: string }[]; kept_parts: number }> {
   return orgSend("DELETE", repoPath(slug, repo, `/apps/${encodeURIComponent(key)}${removeParts ? "?parts=remove" : ""}`));
 }
+/** "What is it?" answered "One service" (#144): the environment's URL and health path, the app and its one part, in
+ *  one step. Refusals: `invalid` (+ `field`), `key_taken`, `plan_limit` (402: a new environment does not fit). */
+export function setUpOneService(slug: string, repo: string, body: ScanT.OneServiceWrite): Promise<ScanT.OneServiceResult> {
+  return orgSend("POST", repoPath(slug, repo, "/one-service"), body);
+}
 // The scan's own routes (the scan and the suggestion lifecycle, Phase D1): called here, written there.
 /** Scan again: read the repository's config files now. */
 export function scanRepoNow(slug: string, repo: string): Promise<unknown> { return orgSend("POST", repoPath(slug, repo, "/scan")); }

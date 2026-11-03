@@ -197,7 +197,7 @@ export function initialHostingUi(): HostingUi {
 }
 
 export function initialRepoAppsUi(): RepoAppsUi {
-  return { repo: null, setup: { status: "idle", data: null }, draft: null, add: null, scanning: false, busy: [], removeParts: false };
+  return { repo: null, setup: { status: "idle", data: null }, draft: null, add: null, scanning: false, busy: [], removeParts: false, one: null };
 }
 
 /** The org's GitHub App connection, from whichever read has it: its own (`GET …/github`, every member)

@@ -54,7 +54,7 @@ import {
 } from "@shared/usage-families-core";
 
 /** The extra families read once a day, for a completed UTC day. */
-const DAILY_FAMILIES: readonly ExtraFamily[] = ["runtime", "storage"];
+const DAILY_FAMILIES: readonly ExtraFamily[] = ["runtime", "storage", "objects"];
 
 /** The providers a poll may run — the registry, or (tests) a map holding a fake. */
 export type ProviderMap = Readonly<Partial<Record<HostingProviderId, HostingProvider>>>;
@@ -444,7 +444,7 @@ export async function pollPart(
     const missing = fieldProblem(provider.orgConfigFields, config) ?? fieldProblem(provider.partSettings, part.settings);
     if (missing) return await settle({ ...base, status: "skipped", written: 0, detail: missing });
 
-    // The once-a-day rule (Phase G): a provider with a DAILY family (runtime, storage) is handed the completed day
+    // The once-a-day rule (Phase G): a provider with a DAILY family (runtime, storage, objects) is handed the completed day
     // to read only while that day's marker is not stored yet.
     const declared = provider.capabilities.families ?? [];
     const day = declared.some((f) => DAILY_FAMILIES.includes(f)) ? dailyDay(now) : null;

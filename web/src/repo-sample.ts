@@ -971,14 +971,14 @@ export function repoScenario(key: ScenarioKey, variant = "", opts: { now?: numbe
 // What the projection (src/tools/repo.ts `projectProviders`, src/tools/repo-extras.ts) would send for the scenario's
 // parts: one `RepoProviderPart` per target, with the families its provider REALLY reads (the registry's capabilities,
 // mirrored below), its connection as the scenario has it, figures where the host is connected and reads them, and —
-// for a Cloudflare Worker — the extra families (outcomes, runtime, D1, crons) the Cloudflare poll stores. The numbers
+// for a Cloudflare Worker — the extra families (outcomes, runtime, D1, crons, R2) the Cloudflare poll stores. The numbers
 // are placeholders shaped like the design's `usageExtras` (repo-data.js); every state is one the Worker can produce.
 // test/render.repo-usage.test.ts draws each scenario from here.
 
 /** The usage families each provider reads — `familiesOf(capabilities)` of the registry (test/render.repo-usage.test.ts
  *  holds the two together). */
 export const PROVIDER_FAMILIES: Record<string, UsageFamily[]> = {
-  cloudflare: ["traffic", "outcomes", "runtime", "storage", "schedules"], railway: ["traffic", "latency", "compute"],
+  cloudflare: ["traffic", "outcomes", "runtime", "storage", "schedules", "objects"], railway: ["traffic", "latency", "compute"],
   render: ["traffic", "latency", "compute"], fly: ["traffic", "latency", "compute"], aws: ["traffic", "latency", "compute"],
   vercel: [], netlify: [], github: [],
 };
@@ -1072,7 +1072,7 @@ export function repoScenarioUsage(key: ScenarioKey, variant = "", opts: { now?: 
     : { status: "not_connected" };
   return { usage, providers, product };
 
-  /** A Worker's extra families, shaped like the design's `workerExtras` (and B's D1 and crons). */
+  /** A Worker's extra families, shaped like the design's `workerExtras` (and B's D1, R2 and crons). */
   function workerExtras(seed: string, name: string, broke: boolean, at: number): PartExtras {
     const req7 = name === "trov" ? 335_000 : 1_240_000;
     const scale = (n: number, r: RepoRange) => Math.round(n * RANGE_SCALE[r]);
@@ -1107,6 +1107,13 @@ export function repoScenarioUsage(key: ScenarioKey, variant = "", opts: { now?: 
             { expr: "0 13 * * MON", runs: { "24h": 0, "7d": 1, "30d": 4 }, failed: { "24h": 0, "7d": 0, "30d": 0 }, last_run: new Date(at - 2 * DAY).toISOString() },
           ] }
         : { state: "none", reason: null, since: null, crons: [] },
+      objects: name === "trov"
+        ? { state: "ok", reason: null, buckets: [{
+            name: "trov-artifacts", object_count: 18_400, size_bytes: 2_310_000_000, size_day: dayIso(1).slice(0, 10),
+            operations: { "24h": 9_800, "7d": 71_200, "30d": 301_000 },
+            trend: series(`${seed}r2`, 14, 9_000, 3_000).map((operations, i) => ({ at: dayIso(14 - i), operations })),
+          }] }
+        : { state: "unavailable", reason: "no R2 bucket is named for this part — set its R2 bucket names (the repo scan fills them from wrangler)", buckets: [] },
     };
     return extras;
   }

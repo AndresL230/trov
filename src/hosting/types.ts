@@ -126,7 +126,7 @@ export interface PollResult {
    *  Workers CI Read") — scrubbed and appended to the poll state's detail. */
   notes?: string[];
   /** Points of the provider's EXTRA usage families (shared/usage-families-core.ts — outcomes, runtime, storage,
-   *  schedules), named by its builders: hourly ones at a complete hour's start, daily ones at 00:00 UTC of a
+   *  schedules, objects), named by its builders: hourly ones at a complete hour's start, daily ones at 00:00 UTC of a
    *  completed day. Validated by the framework like every point; only for families the provider declares. */
   extraPoints?: { metric: string; at: string; value: number }[];
   /** Each extra family this poll ATTEMPTED: `reason` null = read, else why it could not be (scrubbed, ≤ 200). A

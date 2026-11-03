@@ -54,24 +54,28 @@ describe("the subset parsers", () => {
 });
 
 describe("the detectors, each on its fixture", () => {
-  it("wrangler.toml (Trov's own): a Worker named trov, its D1 id and crons as extras, [env.preview] as trov-preview", () => {
+  it("wrangler.toml (Trov's own): a Worker named trov, its D1 id, R2 bucket and crons as extras, [env.preview] as trov-preview", () => {
     const [c] = run("wrangler", input({ "wrangler.toml": single("wrangler.toml") }));
     expect(c).toMatchObject({ folder: "/", kind: "Worker", provider: "cloudflare", source: "deploy" });
-    expect(c.settings).toEqual({ worker: "trov", d1_database_ids: "6c71838c-18f7-4f68-8513-b58e86c237b9", crons: "*/10 * * * *;0 * * * *;0 * * * SUN,MON" });
+    expect(c.settings).toEqual({ worker: "trov", d1_database_ids: "6c71838c-18f7-4f68-8513-b58e86c237b9", r2_bucket_names: "trov-artifacts", crons: "*/10 * * * *;0 * * * *;0 * * * SUN,MON" });
+    // wrangler does not inherit bindings into an environment: [env.preview] names no R2 bucket, so none is proposed.
     expect(c.envSettings).toEqual({ preview: { worker: "trov-preview", d1_database_ids: "b8e88540-be00-4938-9f71-1eac4a8e7232", crons: "*/10 * * * *;0 * * * *;0 * * * SUN,MON" } });
     expect(c.evidence).toEqual([{ kind: "file", text: "from wrangler.toml · Worker trov" }]);
   });
 
-  it("wrangler: more D1 databases or crons than a Cloudflare part accepts keep the first 5 / 10, and the proposed settings still pass the provider's patterns", async () => {
+  it("wrangler: more D1 databases, R2 buckets or crons than a Cloudflare part accepts keep the first 5 / 3 / 10, and the proposed settings still pass the provider's patterns", async () => {
     const ids = Array.from({ length: 7 }, (_, i) => `00000000-0000-4000-8000-00000000000${i}`);
-    const toml = `name = "big"\nmain = "src/index.ts"\n${ids.map((id) => `[[d1_databases]]\nbinding = "DB"\ndatabase_name = "d"\ndatabase_id = "${id}"\n`).join("")}[triggers]\ncrons = [${Array.from({ length: 12 }, (_, i) => `"${i} * * * *"`).join(", ")}]\n`;
+    const buckets = ["Not_A_Bucket", "files-a", "files-b", "files-a", "files-c", "files-d"];
+    const toml = `name = "big"\nmain = "src/index.ts"\n${ids.map((id) => `[[d1_databases]]\nbinding = "DB"\ndatabase_name = "d"\ndatabase_id = "${id}"\n`).join("")}${buckets.map((b) => `[[r2_buckets]]\nbinding = "B"\nbucket_name = "${b}"\n`).join("")}[triggers]\ncrons = [${Array.from({ length: 12 }, (_, i) => `"${i} * * * *"`).join(", ")}]\n`;
     const [c] = run("wrangler", input({ "wrangler.toml": toml }));
     const settings = c.settings ?? {};
     expect(settings.d1_database_ids?.split(",")).toEqual(ids.slice(0, 5));
+    // A name R2 would refuse is skipped (it would drop the whole suggestion), duplicates once, the first three kept.
+    expect(settings.r2_bucket_names).toBe("files-a,files-b,files-c");
     expect(settings.crons?.split(";")).toHaveLength(10);
     const { PROVIDERS } = await import("../src/hosting/registry");
     const fields = PROVIDERS.cloudflare.partSettings ?? [];
-    for (const key of ["d1_database_ids", "crons"]) {
+    for (const key of ["d1_database_ids", "r2_bucket_names", "crons"]) {
       const f = fields.find((x) => x.key === key)!;
       expect(new RegExp(f.pattern!).test(settings[key]!)).toBe(true);
     }

@@ -74,4 +74,55 @@ export interface RepoAppsSetupDTO {
   providers?: { id: HostingProviderId; label: string; via_github: boolean }[];
   /** A sub-read failed and fell back to empty (the screen says so; never a 500). */
   degraded?: boolean;
+  /** #144: the captured signals say ONE host deploys this repository — offered as "one service that does
+   *  everything", a pre-filled answer the person confirms. null (or absent) when Trov cannot say so. */
+  oneService?: OneServiceOfferDTO | null;
+}
+
+/**
+ * "One service that does everything" (#144) — recognised from what is already captured, never from a call:
+ * the org's PRIMARY repository has no app yet; exactly ONE host shows signs in GitHub's captured check runs,
+ * deployments and commit statuses (the same signs "Detected" reads, src/hosting/detect.ts); and the repo scan
+ * proposes at most one deployable app, on that host (or on none). Everything here is a PRE-FILL: nothing is
+ * written until an admin confirms it (`POST …/repos/:owner/:name/one-service`).
+ */
+export interface OneServiceOfferDTO {
+  /** The one host the signals name. */
+  provider: HostingProviderId;
+  /** What was seen, in words ("GitHub check runs posted by the Cloudflare app"). Carries GitHub text — escape it. */
+  evidence: string;
+  /** The pending suggestion it builds on (accepted with it), or null when the scan proposed nothing. */
+  suggestion: string | null;
+  /** The app key to create (the suggestion's, else one from the repository's name). */
+  key: string;
+  folder: string;
+  kind: AppKind;
+  /** The host's part settings the scan read (a Worker name, D1 ids, crons) — prefilled, the person may change them. */
+  settings: Record<string, string>;
+  /** The environment it goes in: the one called production, else the only one, else a new `production`. Its URL
+   *  and health path prefill from what is stored ("" / "" when nothing is). */
+  env: { key: string; label: string; branch: string; exists: boolean; url: string; health_path: string };
+}
+
+/** `POST /api/o/:slug/repos/:owner/:name/one-service` — the one step, confirmed. */
+export interface OneServiceWrite {
+  provider: HostingProviderId;
+  /** The app key (also every part key of it). */
+  key: string;
+  /** The production URL: https, no query string. Health is read from it (plus `health_path`). */
+  url: string;
+  /** Optional; "" or absent = the URL itself. Starts with /. */
+  health_path?: string;
+  /** The branch production deploys from — used only when the environment is created. */
+  branch?: string;
+  /** The host's part settings (its own keys only). */
+  settings: Record<string, string>;
+  /** The pending suggestion this confirms, if any — marked accepted. */
+  suggestion?: string | null;
+}
+
+export interface OneServiceResult {
+  env: { key: string; created: boolean };
+  app: RepoApp;
+  part: { env: string; key: string; provider: HostingProviderId };
 }

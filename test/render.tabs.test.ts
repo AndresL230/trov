@@ -40,6 +40,13 @@ describe("tabBar — markup and semantics", () => {
     expect(bar()).toContain('>Beta &amp; co<span class="cnpy-badge" data-n="2">2</span></button>');
   });
 
+  it("a tab with a short label carries both, the short one for a phone-width bar; its name stays the full label", () => {
+    const html = tabBar({ id: "demo", ariaLabel: "Demo", act: "setDemo", value: "a", tabs: [{ value: "a", label: "Alpha" }, { value: "b", label: "Beta & co", short: "Beta" }] });
+    expect(html).toContain('data-field="tab:demo:b" aria-label="Beta &amp; co"><span class="cnpy-tab-full">Beta &amp; co</span><span class="cnpy-tab-short" aria-hidden="true">Beta</span></button>');
+    // A tab without one is unchanged.
+    expect(html).toContain('data-field="tab:demo:a">Alpha</button>');
+  });
+
   it("labels the panel by the picked tab", () => {
     expect(tabPanelAttrs("demo", "c")).toBe(' role="tabpanel" id="demo-panel" aria-labelledby="demo-c" data-morph-key="demo-panel:c"');
   });
@@ -99,6 +106,11 @@ describe("tabBar — the CSS contract", () => {
     expect(ind).toContain("height:2px");
     expect(ind).toContain("background:var(--accent)");
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.cnpy-tabs-ind\.is-sliding \{ transition:none; \}/);
+  });
+
+  it("shows a tab's short label only at phone width (≤600px), the full one above it", () => {
+    expect(rule(".cnpy-tab-short")).toContain("display:none");
+    expect(css).toContain("@media (max-width:600px) { .cnpy-tab > .cnpy-tab-full { display:none; } .cnpy-tab > .cnpy-tab-short { display:inline; } }");
   });
 
   it("brightens the picked tab's badge like the sidebar's active row", () => {

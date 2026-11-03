@@ -349,6 +349,8 @@ const TENANT: Record<string, Row> = {
   // src/repo/apps-routes.ts — Org settings › Repositories › a repo › Apps: A's repository in the path is not B's, so B's
   // admin gets 404 and B's member the 403; nothing is read or written for A.
   "GET /repos/:owner/:name/apps": {}, "PUT /repos/:owner/:name/apps/:key": J({ kind: "Site", label: "hijacked" }), "DELETE /repos/:owner/:name/apps/:key": {},
+  // …and #144's one-service step: the same repository check, before anything is read or written.
+  "POST /repos/:owner/:name/one-service": J({ provider: "cloudflare", key: "hijacked", url: "https://hijacked.example.com", settings: { worker: "hijacked" } }),
   // src/github-app/routes.ts — the GitHub App's connection. `GET /github/install` only ever redirects (to GitHub for an
   // admin of the org in the path, back to its own Repositories tab otherwise); B has no installation, so the rest answer
   // B's own "not connected" and never reach for the network.

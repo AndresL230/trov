@@ -13,6 +13,7 @@ import { render, initialState } from "../web/src/render";
 import { QUICK_SCREENS } from "../web/src/quicksearch";
 import mainSrc from "../web/src/main.ts?raw";
 import hashSrc from "../web/src/hash.ts?raw";
+import css from "../web/src/trov.css?raw";
 import { repoStateFixture } from "@shared/ai-fixtures";
 import { aiHiddenKey, initialAiUi } from "../web/src/ai-ui";
 import { aiItemRef } from "@shared/ai-core";
@@ -459,7 +460,7 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
     const bar = tabs(repoView(props({ tab: "usage" })));
     expect(bar).toContain('role="tablist" aria-label="Repo sections"');
     expect(bar.match(/role="tab"/g)?.length).toBe(5);
-    const at = REPO_TABS.map(([, label]) => bar.indexOf(`>${label.replace("&", "&amp;")}</button>`));
+    const at = REPO_TABS.map(([, label]) => bar.indexOf(`>${label.replace("&", "&amp;")}<`));
     expect(at.every((n) => n > 0)).toBe(true);
     for (let i = 1; i < at.length; i++) expect(at[i]).toBeGreaterThan(at[i - 1]);
     expect(bar).toMatch(/id="repo-tab-usage" class="cnpy-tab is-on" aria-selected="true"[^>]*tabindex="0"[^>]*>Usage/);
@@ -470,6 +471,16 @@ describe("Repo — the tab bar heading the page (the sidebar has no sub-page lis
     // ONE rerender, no load: the payload covers every tab.
     expect(mainSrc).toMatch(/case "setRepoTab": \{[\s\S]{0,160}state\.repoTab = tab;[\s\S]{0,120}break;/);
     expect(mainSrc).not.toMatch(/case "setRepoTab": \{[^}]*loadRepo/);
+  });
+
+  // #45: at 360px the five tabs were wider than the bar, which scrolled with Team & Planning out of sight. On a phone
+  // (≤600px) the two long tabs show short labels and the gap tightens, so the row fits a 320px screen.
+  it("fits a phone: CI & Deploys and Team & Planning carry short labels, their names stay whole", () => {
+    const bar = tabs(repoView(props({ tab: "overview" })));
+    expect(bar).toContain('data-field="tab:repo-tab:ci" aria-label="CI &amp; Deploys"><span class="cnpy-tab-full">CI &amp; Deploys</span><span class="cnpy-tab-short" aria-hidden="true">CI</span></button>');
+    expect(bar).toContain('data-field="tab:repo-tab:planning" aria-label="Team &amp; Planning"><span class="cnpy-tab-full">Team &amp; Planning</span><span class="cnpy-tab-short" aria-hidden="true">Planning</span></button>');
+    expect(bar).toContain('data-field="tab:repo-tab:overview">Overview</button>');
+    expect(css).toContain('@media (max-width:600px) { .repo-frame .cnpy-tabs[data-tabs="repo-tab"] { gap:12px; } }');
   });
 
   it("heads the page BODY on every tab, and the labelled panel follows its line", () => {

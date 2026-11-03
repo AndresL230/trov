@@ -1,24 +1,29 @@
 // wrangler.toml / wrangler.json / wrangler.jsonc — a Cloudflare Worker (or a Pages site).
 //   `name`                      → a Worker on Cloudflare (part setting `worker`)
 //   `pages_build_output_dir`    → a Site on Cloudflare Pages (no Worker name to read, so no part setting)
-//   `d1_databases[].database_id`, `triggers.crons` → extras on the proposed part settings (`d1_database_ids`,
-//                                 `crons`), for the Usage tab's storage and schedules (Phase G); an Accept keeps
-//                                 them on the suggestion and writes only the provider's own settings.
+//   `d1_databases[].database_id`, `r2_buckets[].bucket_name`, `triggers.crons` → the proposed part's optional
+//                                 settings (`d1_database_ids`, `r2_bucket_names`, `crons`), for the Usage tab's D1,
+//                                 R2 (#143) and schedules (Phase G).
 //   `[env.<name>]`              → that environment's Worker: its own `name`, else wrangler's `<name>-<env>`.
+import { R2_BUCKET_RE } from "@shared/usage-families-core";
 import { parseJsonc, parseToml, rec, str, arr, type Rec } from "./parse";
 import { baseOf, folderOf, fromFile, type Candidate, type Detector } from "./types";
 
 const FILES = ["wrangler.toml", "wrangler.json", "wrangler.jsonc"];
 
-/** The Cloudflare part settings' own bounds (src/hosting/providers/cloudflare.ts `D1_IDS` / `CRONS`): past them the
- *  pattern refuses the setting, and a refused setting would drop the whole suggestion — so keep the first ones. */
+/** The Cloudflare part settings' own bounds (src/hosting/providers/cloudflare.ts `D1_IDS` / `R2_NAMES` / `CRONS`): past
+ *  them the pattern refuses the setting, and a refused setting would drop the whole suggestion — so keep the first ones
+ *  (and only bucket names R2 itself would allow). */
 export const WRANGLER_MAX_D1 = 5;
+export const WRANGLER_MAX_R2 = 3;
 export const WRANGLER_MAX_CRONS = 10;
 
 function extras(cfg: Rec): Record<string, string> {
   const out: Record<string, string> = {};
   const d1 = arr(cfg.d1_databases).map((d) => str(rec(d)?.database_id)).filter((s): s is string => s !== null);
   if (d1.length) out.d1_database_ids = [...new Set(d1)].slice(0, WRANGLER_MAX_D1).join(",");
+  const r2 = arr(cfg.r2_buckets).map((b) => str(rec(b)?.bucket_name)).filter((s): s is string => s !== null && R2_BUCKET_RE.test(s));
+  if (r2.length) out.r2_bucket_names = [...new Set(r2)].slice(0, WRANGLER_MAX_R2).join(",");
   const crons = arr(rec(cfg.triggers)?.crons).map(str).filter((s): s is string => s !== null);
   if (crons.length) out.crons = [...new Set(crons)].slice(0, WRANGLER_MAX_CRONS).join(";");
   return out;
@@ -51,8 +56,8 @@ export const wrangler: Detector = {
       for (const [env, body] of Object.entries(rec(cfg.env) ?? {})) {
         const e = rec(body);
         if (!e) continue;
-        // wrangler: bindings (d1_databases) are NOT inherited by an environment; triggers are.
-        envSettings[env] = { worker: str(e.name) ?? `${name}-${env}`, ...extras({ d1_databases: e.d1_databases, triggers: e.triggers ?? cfg.triggers }) };
+        // wrangler: bindings (d1_databases, r2_buckets) are NOT inherited by an environment; triggers are.
+        envSettings[env] = { worker: str(e.name) ?? `${name}-${env}`, ...extras({ d1_databases: e.d1_databases, r2_buckets: e.r2_buckets, triggers: e.triggers ?? cfg.triggers }) };
       }
       out.push({
         folder, kind: "Worker", provider: "cloudflare", source: "deploy", names: [name!, ...Object.values(envSettings).map((s) => s.worker)],

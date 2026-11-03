@@ -1,7 +1,7 @@
 // How many D1 round trips the hot reads cost, counted through a wrapped binding (test/helpers/d1-count.ts):
 // `serial` is the chain a request waits on, `total` every statement. Pinned so a later change that puts a
 // read back in series shows up here. docs/architecture/data-layer.md › Round trips.
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { env } from "cloudflare:test";
 import { countingEnv } from "./helpers/d1-count";
 import { systemCtx, platformCtx, ORG_A } from "./helpers/tenant";
@@ -115,13 +115,20 @@ describe("D1 round trips", () => {
   it("GET /api/o/:slug/repo/dashboard: the session gate, the org's repo + environments, the dashboard", async () => {
     await seedBusyRepo();
     const cookie = await cookieFor("AndresL230");
+    // The route reads at the clock, and what it reads depends on how old the seed is (a recent push, run or capture
+    // takes three more reads; a coverage window with no point takes a fallback), so the clock is held an hour after
+    // the seed: a busy repository NOW. Unheld, the count drifted with the calendar (54 at 20 days old, 55 past 30).
+    vi.useFakeTimers({ toFake: ["Date"], now: NOW + 3_600_000 });
     const c = countingEnv();
-    const res = await app.request("/api/o/saplinglearn/repo/dashboard", { headers: { cookie } }, c.env);
+    let res: Response;
+    try { res = await app.request("/api/o/saplinglearn/repo/dashboard", { headers: { cookie } }, c.env); } finally { vi.useRealTimers(); }
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ degraded: false, prs: { status: "ok" }, environments: { status: "ok" } });
     // Was 40 of 54 before the dashboard's reads ran as a dataflow and the session gate read the membership in its own statement.
     // + 1 since #178: Trov's written state for the repository (src/tools/repo-state.ts), read beside the dashboard.
-    expect(c.total).toBe(54);
+    // 57 with the clock held: the three reads a fresh repository adds (failed runs this week, when capture began, pushes
+    // per day) were skipped when 54 was pinned, because the seed was already weeks old at the real clock.
+    expect(c.total).toBe(57);
     expect(c.serial).toBe(GATE + 1 + 5);
   });
 

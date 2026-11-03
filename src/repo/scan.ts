@@ -159,11 +159,17 @@ const SIGNAL_RANK: Record<SeenSignal["kind"], number> = { deployment: 0, check: 
  *     environment, check run or workflow);
  *   - nothing named and no own host: the deploying workflow (a Dockerfile's), else the one matched signal, on the
  *     first environment.
- * Settings keep the detector's extras (a Worker's `d1_database_ids`, `crons`) for Phase G; Accept writes only the
+ * Settings keep the detector's extras (a Worker's `d1_database_ids`, `r2_bucket_names`, `crons`) for Phase G and #143; Accept writes only the
  * provider's own keys. A Package has no parts.
  */
 export function buildParts(c: Candidate, signals: readonly SeenSignal[], envs: readonly RepoEnvConfig[], providers: ProviderMap): StoredPart[] {
-  if (c.kind === "Package" || !envs.length) return [];
+  if (c.kind === "Package") return [];
+  const provider = c.provider ? providers[c.provider] : undefined;
+  const own = provider && provider.id !== "github" ? validSettings(provider, c.settings) : null;
+  // No environment yet (a new org): the host's own part is still proposed, for `production`, so what the files said
+  // (a Worker name, its D1 ids) is not lost — Accept puts it in the first environment there is by then, and the
+  // one-service step (./one-service.ts) prefills from it. No `github` part: there is no branch to name a signal on.
+  if (!envs.length) return provider && own ? [{ env: "production", provider: provider.id, settings: { ...(c.settings ?? {}) } }] : [];
   const out: StoredPart[] = [];
   const github = providers.github;
   // The environment each matched signal names (the best signal per environment: deployment > check > workflow).
@@ -173,8 +179,6 @@ export function buildParts(c: Candidate, signals: readonly SeenSignal[], envs: r
     if (env && !named.has(env) && githubSettingsOf(s)) named.set(env, s);
   }
   const used = new Set<string>();
-  const provider = c.provider ? providers[c.provider] : undefined;
-  const own = provider && provider.id !== "github" ? validSettings(provider, c.settings) : null;
   if (provider && own) {
     for (const [envName, s] of Object.entries(c.envSettings ?? {})) {
       const env = envForHint(envName, envs);
