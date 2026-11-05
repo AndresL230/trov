@@ -31,9 +31,11 @@ export type NavOpen = Record<NavGroup, boolean>;
 export const NAV_CLOSED: NavOpen = { library: false };
 
 /** The nav entry a screen lights up (a ticket lights Tickets, a sprint lights Roadmap). */
-export type NavKey = "home" | "mywork" | "ask" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "guide" | "releases" | "platform" | "org";
+export type NavKey = "home" | "mywork" | "ask" | "projects" | "tickets" | "roadmap" | "handoffs" | "repo" | "feed" | "library" | "artifacts" | "prompts" | "review" | "guide" | "releases" | "platform" | "org";
 const NAV_OF: Record<string, NavKey> = {
   home: "home", mywork: "mywork", ask: "ask", feed: "feed", roadmap: "roadmap", sprint: "roadmap", repo: "repo",
+  // Projects: the list and a project's home (a thread in a project is the Ask screen, which lights Trov).
+  projects: "projects", project: "projects",
   // Unplaced is Review's other view (the same screen, `#review/unplaced`): Review's row is lit for both.
   review: "review", guide: "guide", releases: "releases",
   tickets: "tickets", ticketdetail: "tickets", newticket: "tickets",
@@ -89,6 +91,8 @@ const ICONS: Record<NavKey | "search" | "collapse", string> = {
   mywork: ICON(`<rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M3 12.5h18"></path>`),
   // A constellation: Ask Trov (the design's `askGraph`; ask-icons.ts holds the same path).
   ask: ICON(`<circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path>`),
+  // A folder: Projects (the design's).
+  projects: ICON(`<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M3 10h18"></path>`),
   tickets: ICON(`<path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path>`),
   roadmap: ICON(`<path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path>`),
   handoffs: ICON(`<path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path>`),
@@ -185,6 +189,7 @@ export function sidebarView(p: SidebarProps): string {
       ${item("home", "goHome", "Home")}
       ${item("mywork", "goMyWork", "My Work")}
       ${item("ask", "goAsk", "Trov")}
+      ${item("projects", "goProjects", "Projects")}
       ${item("tickets", "goTickets", "Tickets", c.tickets)}
       ${item("roadmap", "goRoadmap", "Roadmap")}
       ${item("handoffs", "goRelay", "Relay", c.handoffs)}

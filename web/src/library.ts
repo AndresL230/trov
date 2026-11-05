@@ -25,11 +25,11 @@ import { SPACE_ICON_PATHS, lineIcon, pageIcon, spaceIconSvg, spaceTile } from ".
 export { SPACE_ICON_PATHS, pageIcon, spaceIconSvg, spaceTile };
 
 /** The words an icon is called by (the Create space dialog's buttons). */
-const ICON_WORD: Record<SpaceIcon, string> = {
+export const ICON_WORD: Record<SpaceIcon, string> = {
   braces: "Code", compass: "Compass", pen: "Pen", shield: "Shield", flask: "Flask", rocket: "Rocket",
   book: "Book", users: "People", chart: "Chart", server: "Server", megaphone: "Megaphone", lock: "Lock",
 };
-const COLOR_WORD: Record<SpaceColor, string> = {
+export const COLOR_WORD: Record<SpaceColor, string> = {
   "#525cc3": "Indigo", "#2467af": "Blue", "#2f7d57": "Green", "#607a29": "Olive",
   "#966800": "Ochre", "#b4562c": "Rust", "#a84a68": "Rose", "#7a4f8f": "Plum",
 };

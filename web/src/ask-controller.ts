@@ -27,7 +27,7 @@ import { ASK_FX, askEnterNew, askFollowBottom, askGlideDock, askHoldScroll, askK
 import { createReplayApi, loadReplayIndex, replayFromLocation, replayPlan, replayQuestionFiles } from "./ask-replay";
 import { inspectorRef, isViewerConvo, type AskCtx, type AskPart, type AskSendInput, type AskWhere } from "./ask-state";
 import { AskPacer, type PaceClock } from "./ask-pace";
-import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type AskMessage, type RefView } from "@shared/ai-ask-core";
+import { ASK_PEEK_MAX, ASK_DEFAULT_MODE, parseAskRef, type AskBlock, type AskEvent, type AskMessage, type AskThreadProject, type RefView } from "@shared/ai-ask-core";
 import { pointOf, rectOf, viewportOf } from "./zoom";
 
 export interface AskHost {
@@ -40,6 +40,8 @@ export interface AskHost {
   search?(): string;
   /** Refetch the Tickets queue if it is already loaded (main.ts `loadTickets`): an Ask write the queue shows changed. */
   refreshTickets?(): void;
+  /** The thread list is read again (a thread asked, renamed, moved, deleted): a project's page that lists it follows. */
+  threadsChanged?(): void;
 }
 
 export interface AskController {
@@ -50,6 +52,9 @@ export interface AskController {
   /** Before every paint's swap: where the conversations' scrollers are (ask-motion.ts `askHoldScroll`). */
   beforePaint(): void;
   afterPaint(): void;
+  /** The page conversation becomes a NEW thread in this project (the project page's composer): a fresh conversation
+   *  and composer, unless it already is one (its unsent words stay) or an answer is streaming in it. */
+  prepareProject(p: AskThreadProject): void;
   /** The context parts get (tests drive parts through it). */
   readonly ctx: AskCtx;
 }
@@ -175,6 +180,10 @@ export function createAskController(host: AskHost): AskController {
     const where = input.where ?? "page";
     let c = ui()[where];
     if (c.busy) return;
+    // The project page's composer is the page conversation's (a new thread in that project): its first question
+    // opens the thread on the Ask screen, where it streams (docs/architecture/projects.md › Ask in a project).
+    if (where === "page" && s.screen === "project") s.screen = "ask";
+    const projectId = c.threadId === null && c.project ? c.project.slug : undefined;
     const st = ui().state.data;
     const mode = input.mode ?? c.thread?.mode ?? st?.defaultMode ?? ASK_DEFAULT_MODE;
     const auto = input.auto ?? c.thread?.auto ?? false;
@@ -220,7 +229,7 @@ export function createAskController(host: AskHost): AskController {
     try {
       await api.ask({
         threadId: c.threadId, text: input.text, command: input.command, mode, auto, context: input.context ?? [], attachments: input.attachments ?? [],
-        replaceFrom: input.replaceFrom, origin: where === "panel" ? "panel" : undefined,
+        replaceFrom: input.replaceFrom, origin: where === "panel" ? "panel" : undefined, ...(projectId ? { projectId } : {}),
       }, { signal: ctl.signal, onEvent: (e) => { if (streams[where] === ctl) pacer.push(e); } });
       // The stream is over; its last words (and `done`) are still going out — Send stays Stop until they have.
       pacer.close();
@@ -295,6 +304,7 @@ export function createAskController(host: AskHost): AskController {
   }
 
   function reloadThreads(): void {
+    host.threadsChanged?.();
     if (ui().threads.status === "idle") ui().threads = { status: "loading", data: [] };
     api.listThreads().then((data) => { ui().threads = { status: "ok", data }; }).catch((e) => {
       if (isUnauthorized(e)) host.unauth(e);
@@ -425,7 +435,8 @@ export function createAskController(host: AskHost): AskController {
     { layer: "hovercard", isOpen: () => ui().hover !== null, close: () => hideCard() },
     { layer: "inspector", isOpen: () => inspectorRef(ui()) !== null && (s.screen === "ask" || ui().cmdj.open), close: () => closeInspector() },
   ];
-  const askOnScreen = () => s.view === "app" && (s.screen === "ask" || ui().cmdj.open);
+  // The project page holds the page conversation's composer too (projects.ts), so its keys and after-paint run there.
+  const askOnScreen = () => s.view === "app" && (s.screen === "ask" || s.screen === "project" || ui().cmdj.open);
 
   if (typeof document !== "undefined") {
     document.addEventListener("keydown", (e) => {
@@ -550,14 +561,16 @@ export function createAskController(host: AskHost): AskController {
     }
   }
 
+  function loadState(): void {
+    if (ui().state.status === "ok") return;
+    ui().state = { status: "loading", data: ui().state.data };
+    api.getState().then((data) => { ui().state = { status: "ok", data }; }).catch((e) => {
+      ui().state = { status: "error", data: null };
+      fail(e, "Couldn't read Ask Trov's state.");
+    }).finally(paint);
+  }
   function load(): void {
-    if (ui().state.status !== "ok") {
-      ui().state = { status: "loading", data: ui().state.data };
-      api.getState().then((data) => { ui().state = { status: "ok", data }; }).catch((e) => {
-        ui().state = { status: "error", data: null };
-        fail(e, "Couldn't read Ask Trov's state.");
-      }).finally(paint);
-    }
+    loadState();
     reloadThreads();
     reloadShared();
   }
@@ -615,6 +628,16 @@ export function createAskController(host: AskHost): AskController {
       return true;
     },
     enter,
+    prepareProject(p) {
+      const c = ui().page;
+      if (c.busy) return;
+      if (!ui().replay && ui().state.status === "idle") loadState();
+      if (c.threadId === null && c.messages.length === 0 && c.project?.slug === p.slug) { if (c.project.name !== p.name || c.project.color !== p.color || c.project.icon !== p.icon) setConvo("page", { ...c, project: p }); return; }
+      ui().conversation.stick = true;
+      setConvo("page", { ...emptyConvo(), project: p });
+      ui().composer.page = { ...initialComposerUi(), forced: ui().composer.page.forced };
+      if (ui().inspector.where === "page") ui().inspector = { ...ui().inspector, stack: [], idx: -1 };
+    },
     beforePaint: () => askHoldScroll(host.mount),
     afterPaint: () => after(),
   };

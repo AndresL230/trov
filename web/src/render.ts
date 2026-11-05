@@ -114,6 +114,10 @@ import { actionDropdowns } from "./ask-actions";
 import { phoneHeaderControls } from "./ask-phone";
 import { cmdjHeaderButton } from "./ask-cmdj";
 import { appRoot, railCollapsed, resolvedTheme, toastBlock, type ToastAction } from "./app-root";
+import { initialProjectsUi, projectsListView, projectHomeView, projectDialog, pinDialog, shareDialog, deleteDialog, projectDropdowns, type ProjectsUi } from "./projects";
+import { composerView } from "./ask-composer";
+import { askView, convoProject } from "./ask-state";
+import { PLANS } from "@shared/plans";
 
 // A docs "space" is one of the org's own spaces (the Docs Library, 0081_docs_library): its slug.
 export type DocSpace = string;
@@ -156,7 +160,9 @@ export type Screen =
   // The guided first-run setup: a full page, no sidebar (`#welcome[/<step>]`, web/src/welcome.ts).
   | "welcome"
   // Ask Trov (Workspace › Trov): threads, the conversation, the inspector (`#ask[/<thread id>]`, web/src/ask-*.ts).
-  | "ask";
+  | "ask"
+  // Projects (Workspace › Projects): the list (`#projects`) and one project's home (`#project/<slug>`), web/src/projects.ts.
+  | "projects" | "project";
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
@@ -286,6 +292,8 @@ export interface AppState {
   spaceTab: SpaceTab;
   /** The Library screens' dialogs and the description edited in place (library.ts). */
   libUi: LibraryUi;
+  /** Projects: the list, the open project's page, and the screens' own state (web/src/projects.ts). */
+  projects: ProjectsUi;
   /** The import wizard and Imports history's own state, and the run this tab drives (import.ts; the files' text stays
    *  in import-actions.ts). */
   imp: ImportUi;
@@ -636,6 +644,7 @@ export function initialState(): AppState {
     spaceSlug: null,
     spaceTab: "overview",
     libUi: initialLibraryUi(),
+    projects: initialProjectsUi(),
     imp: initialImportUi(),
     importRuns: { status: "idle", data: [] },
     docDetail: { status: "idle", data: null },
@@ -1085,6 +1094,10 @@ function headerCrumb(s: AppState): string {
   if (s.screen === "space") return s.spaceHome.data?.space.slug === s.spaceSlug ? s.spaceHome.data.space.name : spaceName(s, s.spaceSlug ?? "");
   if (s.screen === "docs") return spaceName(s, paneSpaceSlug(s) ?? s.docSpace);
   if (s.screen === "tag") return s.tagName ?? "";
+  if (s.screen === "project") {
+    const d = s.projects.detail.data;
+    return d && d.project.slug === s.projects.slug ? d.project.name : s.projects.list.data?.projects.find((p) => p.slug === s.projects.slug)?.name ?? "";
+  }
   if (s.screen === "platformorg") return platformCrumb(s.plat);
   if (s.screen === "ticketdetail") return s.ticketDetail.data?.title ?? "";
   if (s.screen === "sprint") {
@@ -1127,6 +1140,7 @@ function header(s: AppState): string {
     platform: "Platform", platformorg: "Platform",
     org: "Org settings", tag: "Tags",
     ask: "Trov",
+    projects: "Projects", project: "Projects",
   };
   // dark = "show the moon icon".
   const dark = resolved(s) !== "light";
@@ -1150,7 +1164,7 @@ function header(s: AppState): string {
     `<button data-act="${act}" class="cnpy-accentbtn" style="display:flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap;transition:filter .12s ease">${PLUS_ICON}${sizeAs
       ? `<span style="display:grid;justify-items:center"><span style="grid-area:1/1">${label}</span><span aria-hidden="true" style="grid-area:1/1;visibility:hidden">${sizeAs}</span></span>`
       : label}</button>`;
-  const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff", "Start a link") : s.screen === "links" ? accentNew("linkStartOpen", "Start a link", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : "";
+  const newControls = s.screen === "handoffs" ? accentNew("newHandoff", "New handoff", "Start a link") : s.screen === "links" ? accentNew("linkStartOpen", "Start a link", "New handoff") : s.screen === "prompts" ? accentNew("newPrompt", "New prompt") : s.screen === "projects" ? accentNew("projNew", "New project") : "";
 
   // The Roadmap header: New sprint (it opens the panel at the top of whichever tab is
   // showing). Narrative / Timeline are the tab bar heading the page body (`roadmapTabBar`).
@@ -1197,7 +1211,7 @@ function header(s: AppState): string {
   const child = s.screen === "ticketdetail" || s.screen === "newticket" || s.screen === "sprint"
     || s.screen === "handoffs" || s.screen === "links" || s.screen === "handoff" || s.screen === "newhandoff" || s.screen === "link" || s.screen === "prompt" || s.screen === "promptedit" || s.screen === "newdoc"
     || s.screen === "space" || s.screen === "docs" || s.screen === "import" || s.screen === "imports"
-    || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag";
+    || (s.screen === "releases" && s.releaseVersion !== null) || s.screen === "platformorg" || s.screen === "tag" || s.screen === "project";
   // The act the title's back button fires: each child screen returns to its own parent.
   const backAct = s.screen === "handoffs" || s.screen === "links" ? "goRelay"
     : s.screen === "handoff" || s.screen === "newhandoff" ? "goHandoffs"
@@ -1208,6 +1222,7 @@ function header(s: AppState): string {
     : s.screen === "releases" ? "goReleases"
     : s.screen === "platformorg" ? "platGo"
     : s.screen === "tag" ? "tagsGo"
+    : s.screen === "project" ? "goProjects"
     : "ticketsBack";
   const trail = s.screen === "docs" ? docTrail(s) : null;
   const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : trail ? trail : child
@@ -3079,6 +3094,50 @@ function personCardFor(s: AppState, handle: string): string {
   return personCardModal({ person, detail, self: h === (s.me?.handle ?? "").toLowerCase() });
 }
 
+// ── projects ─────────────────────────────────────────────────────────────────
+/** The org on screen's name ("the org" before it is known): what the Org visibility is called. */
+const orgNameOf = (s: AppState): string => currentOrg(s)?.name ?? "the org";
+const orgRoleOf = (s: AppState): "owner" | "admin" | "member" | null => currentOrg(s)?.role ?? null;
+const planNameOf = (s: AppState): string => { const p = currentOrg(s)?.plan; return p ? PLANS[p].name : "Your plan"; };
+function projectsListProps(s: AppState): Parameters<typeof projectsListView>[0] {
+  const p = s.projects;
+  return { list: p.list, ui: p, me: s.me?.handle ?? null, persons: s.persons.data, org: orgNameOf(s), role: orgRoleOf(s), plan: planNameOf(s), dd: s.dd };
+}
+function projectHomeProps(s: AppState): Parameters<typeof projectHomeView>[0] {
+  const p = s.projects;
+  // Ask's own composer, for a new thread in this project (the page conversation, prepared by projects-actions.ts).
+  const c = s.ask.page;
+  const ready = c.threadId === null && convoProject(c)?.slug === p.slug;
+  return {
+    slug: p.slug, detail: p.detail, ui: p, me: s.me?.handle ?? null, persons: s.persons.data, org: orgNameOf(s), admin: viewerIsAdmin(s),
+    composer: ready ? composerView(askView(s, "page")) : "",
+  };
+}
+/** The open dialog and the open dropdown's menu (root-level overlays). */
+function projectsOverlays(s: AppState): string {
+  const p = s.projects;
+  const dlg = p.dialog;
+  const d = p.detail.data;
+  const role = orgRoleOf(s);
+  let out = "";
+  if (dlg?.kind === "edit") {
+    const owner = dlg.draft.mode === "new" || summaryOwner(s, dlg.draft.slug);
+    out = projectDialog(dlg.draft, { org: orgNameOf(s), owner, limit: p.list.data?.limit ?? null, plan: planNameOf(s), role });
+  } else if (dlg?.kind === "pin" && d) out = pinDialog(dlg.pick, d);
+  else if (dlg?.kind === "share" && d) out = shareDialog(dlg.share, d, { org: orgNameOf(s), persons: s.persons.data, dd: s.dd, owner: d.project.access === "owner" });
+  else if (dlg?.kind === "delete") {
+    const x = (d?.project.slug === dlg.slug ? d.project : null) ?? p.list.data?.projects.find((q) => q.slug === dlg.slug) ?? p.list.data?.archived.find((q) => q.slug === dlg.slug);
+    if (x) out = deleteDialog(x, dlg.busy, dlg.error);
+  }
+  return out + (s.dd.open ? dropdownMenu(projectDropdowns(p, s.persons.data, s.screen), s.dd) : "");
+}
+/** Whether the reader owns the project a dialog edits (only the owner changes who can see it). */
+function summaryOwner(s: AppState, slug: string | null): boolean {
+  const p = s.projects;
+  const x = (p.detail.data?.project.slug === slug ? p.detail.data?.project : null) ?? p.list.data?.projects.find((q) => q.slug === slug) ?? null;
+  return x?.access === "owner";
+}
+
 // ── root ─────────────────────────────────────────────────────────────────────
 function screenBody(s: AppState): string {
   switch (s.screen) {
@@ -3131,6 +3190,8 @@ function screenBody(s: AppState): string {
     case "import": return importWizardView({ ui: s.imp, library: s.library, pages: s.imp.space && s.spaceHome.data?.space.slug === s.imp.space ? s.spaceHome.data.pages : null, admin: viewerIsAdmin(s) });
     case "imports": return importsHistoryView({ runs: { status: s.importRuns.status, data: s.importRuns.data }, ui: s.imp, persons: s.persons.data, me: s.me?.handle ?? null, admin: viewerIsAdmin(s), spaces: liveSpaces(s), driver: s.imp.run });
     case "org": return orgSettingsView(orgProps(s));
+    case "projects": return projectsListView(projectsListProps(s));
+    case "project": return projectHomeView(projectHomeProps(s));
     default: return feedView(s);
   }
 }
@@ -3228,6 +3289,9 @@ function appView(s: AppState): string {
     // patched in place. A space's home, a doc page and New page are ONE page per space (`lib:<space>`): the docs pane
     // beside them is patched across the three (its open chevrons, its scroll), and only the content is replaced.
     : s.screen === "library" ? "library"
+    // Projects: the list's search and the dialogs' fields patch in place; a project's home holds Ask's composer, the
+    // instructions edited in place and a tab bar — one page per project.
+    : s.screen === "projects" ? "projects" : s.screen === "project" ? `project:${s.projects.slug ?? ""}`
     // The import wizard holds a form (a rename field per title that exists) and its steps are keyed parts
     // (`imp:<step>`); Imports history's rows are a keyed list (one opens in place).
     : s.screen === "import" ? "import" : s.screen === "imports" ? "imports"
@@ -3283,7 +3347,7 @@ export function render(real: AppState): string {
     ${s.toast ? toastBlock(s.toast, Math.max(0, Date.now() - s.toastAt), s.toastMs, s.toastAction) : ""}
     ${s.view === "app" ? syncOverlay(syncPropsOf(s)) : ""}
     ${askOverlays(s)}
-    ${s.view === "app" && s.dd.open ? dropdownMenu(actionDropdowns(s), s.dd) : ""}
+    ${s.view === "app" && s.dd.open ? dropdownMenu(actionDropdowns(s), s.dd) : ""}${s.view === "app" && (s.screen === "projects" || s.screen === "project") ? projectsOverlays(s) : ""}
     ${s.view === "app" && isArtScreen(s.screen) ? artifactsDialogs(artProps(s, s.screen)) : ""}
     ${s.view === "app" && s.screen === "handoff" && s.handoffPromptOpen && s.handoffDetail.data ? handoffPromptModal(s.handoffDetail.data) : ""}
     ${s.view === "app" && s.personCard ? personCardFor(s, s.personCard) : ""}
