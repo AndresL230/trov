@@ -18,6 +18,7 @@ import { getOrgLogo, removeOrgLogo, setOrgLogo } from "./logo";
 import { rateLimited } from "../platform/limits";
 import { usableGrants, createOrgFromGrant } from "../plans/grants";
 import { createFreeOrg, freeOrgState } from "../plans/free";
+import { createSampleOrg, ownedSampleOrg } from "./sample";
 import { orgPlanView } from "../plans/gate";
 import { orgBillingView } from "../billing/view";
 import type { MyOrgsResponse } from "@shared/orgs";
@@ -88,6 +89,17 @@ orgsApp.post("/", async (c) => {
     const org = free ? await createFreeOrg(c.var.p, me(c), input) : await createOrgFromGrant(c.var.p, me(c), { ...input, grant: b.grant });
     await welcomeFirstJoin(c.env, c.var.p, org.id, me(c), firstJoin, mailOrigin(c.env, c.req.url));
     return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const, logo_url: null } }, 201);
+  } catch (e) { return orgFail(c, e); }
+});
+
+// The caller's Sample workspace (src/orgs/sample.ts; organizations.md › 1e) — for someone who signed up before it
+// existed, or deleted theirs. One per person: if they own one, that one is the answer (200), else it is made (201).
+// No welcome mail: the sample is not the person's first real org.
+orgsApp.post("/sample", async (c) => {
+  try {
+    const owned = await ownedSampleOrg(c.var.p, me(c));
+    const org = owned ?? (await createSampleOrg(c.var.p, me(c)));
+    return c.json({ ok: true, org: { slug: org.slug, name: org.name, role: "owner" as const, logo_url: null, sample: true } }, owned ? 200 : 201);
   } catch (e) { return orgFail(c, e); }
 });
 

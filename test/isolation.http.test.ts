@@ -440,6 +440,7 @@ const PLATFORM: Record<string, string> = {
   "GET /api/orgs": "the caller's own memberships and pending invites",
   "GET /api/orgs/slug-check": "is an organization handle (slug) free — orgs are global; no org's content, capped per person",
   "POST /api/orgs": "creates an org the caller owns (cap 3 per person)",
+  "POST /api/orgs/sample": "the caller's own Sample workspace — the one they own, or a new one they own (one per person); no other org is read",
   "GET /api/invites": "the caller's own pending invites (matched on their GitHub login / provider-verified email)",
   "POST /api/invites/:id/accept": "an invite that is the caller's — anyone else's id is 404",
   "POST /api/invites/:id/decline": "an invite that is the caller's",

@@ -123,7 +123,8 @@ export async function expireGifts(p: PlatformContext, now: number): Promise<Gift
   const cutoff = new Date(now).toISOString();
   let due: { id: string; slug: string; plan: string; plan_gift_until: string }[];
   try {
-    due = await all(p, `SELECT id, slug, plan, plan_gift_until FROM orgs WHERE plan_gift_until IS NOT NULL AND plan_gift_until <= ? ORDER BY plan_gift_until LIMIT 500`, cutoff);
+    // A Sample workspace (0087_sample_orgs) is left alone, like every other job leaves it.
+    due = await all(p, `SELECT id, slug, plan, plan_gift_until FROM orgs WHERE plan_gift_until IS NOT NULL AND plan_gift_until <= ? AND sample = 0 ORDER BY plan_gift_until LIMIT 500`, cutoff);
   } catch {
     return { ...out, failed: 1 };
   }

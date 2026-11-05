@@ -1,0 +1,11 @@
+-- 0087_sample_orgs: the Sample workspace (docs/architecture/organizations.md › 1e). Every new person gets one at
+-- onboarding (src/orgs/sample.ts `createSampleOrg`): an organization they own, filled with made-up content so they —
+-- and anyone reviewing Trov's MCP connector — can try every tool with nothing set up. `orgs.sample = 1` marks it:
+--   · it does not count toward the one Free organization a person may own (src/plans/free.ts `OWNED_FREE`);
+--   · every background job leaves it alone (src/platform/jobs.ts lists, the handoff / link / gift sweeps), so
+--     nothing ever calls GitHub, a hosting provider, a model or the mail sender for it;
+--   · Sync GitHub and Poll now refuse it (src/routes.ts).
+-- Existing orgs are 0. Rollback by hand:
+--   ALTER TABLE orgs DROP COLUMN sample;
+-- then DELETE FROM d1_migrations WHERE name = '0087_sample_orgs.sql'.
+ALTER TABLE orgs ADD COLUMN sample INTEGER NOT NULL DEFAULT 0 CHECK (sample IN (0, 1));

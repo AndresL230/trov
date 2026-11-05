@@ -99,6 +99,8 @@ export const ORG_AUDIT_ACTIONS = [
   // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
   // keeps them to one owned Free org at a time.
   "org.create_free",
+  // The person's Sample workspace (src/orgs/sample.ts): the row is also the guard that keeps them to one.
+  "org.create_sample",
   // Deletion (src/deletion/): an organization deleted by its owner or a superadmin — a PLATFORM row (org_id
   // NULL, the org is gone), its slug as the target; a person's account deleted — the target is the tombstone
   // handle their content now carries, never the handle they had.
@@ -158,6 +160,8 @@ export interface MyOrg {
   plan?: PlanId;
   /** The org pays for that plan through a live subscription (not Free, not granted, not a gift, not ended). */
   paid?: boolean;
+  /** The person's Sample workspace (0087_sample_orgs): made-up content, deletable anytime. */
+  sample?: boolean;
 }
 
 /** A pending invite that is the caller's (§5.3). `role` is what accepting grants — `owner` for a
@@ -201,6 +205,8 @@ export interface OrgMeResponse {
   title: string | null;
   responsibilities: string | null;
   repos: OrgRepos;
+  /** A Sample workspace (0087_sample_orgs): the app says its data is made up. */
+  sample?: boolean;
 }
 
 export interface OrgSettings { slug: string; name: string; created_at: string; created_by: string; logo?: OrgLogo }

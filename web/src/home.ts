@@ -6,7 +6,7 @@
 // a figure that has not landed is "—", a list still loading draws its rows' shapes.
 
 import type { HomeRange } from "@shared/home-core";
-import { markShape, aiMark, type MarkShape } from "./marks";
+import { markShape, aiMark, stateMark, type MarkShape } from "./marks";
 import { segmented } from "./segmented";
 import { esc, attr } from "./ui";
 import { renderMarkdown } from "./markdown";
@@ -356,10 +356,18 @@ export interface HomeProps {
   activity: HomeActivity;
   latest: { rows: HomeFeedRow[] | null; sub: string };
   team: { rows: HomeTeamItem[] | null; count: number | null; invite: boolean };
+  /** The org is a Sample workspace (0087_sample_orgs): one line above everything says its data is made up. */
+  sample?: boolean;
+}
+
+/** The Sample workspace's line: a mark (never a pill) and where to delete it. */
+export function sampleNote(): string {
+  return `<p class="hm-sample" data-sample-note>${stateMark("Sample data", "var(--fg-55)", "ring", 12.5, "Everything in this workspace is made up, to try Trov with")}<span>Delete this workspace anytime in <a href="#org/general" class="hm-sample-a">Org settings</a>.</span></p>`;
 }
 
 export function homePage(p: HomeProps): string {
   return `<div class="cnpy-scroll hm-scroll"><div class="hm-page" data-screen-label="Home">
+    ${p.sample ? sampleNote() : ""}
     ${headView(p.head)}
     ${searchView(p.search, p.answer)}
     <div class="hm-cols">${p.cols.map(colView).join("")}</div>

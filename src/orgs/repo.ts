@@ -75,8 +75,9 @@ export interface CreateOrgInput {
    *  is invited instead (they are NOT made a member — §5.4). */
   owner: string | null;
   plan: OrgPlanSeed;
-  /** Statements to run in the same batch, given the new org's id (the superadmin's owner invite). */
-  extra?: (orgId: string, at: string) => Stmt[];
+  /** Statements to run in the same batch, given the new org's id (the superadmin's owner invite) — and, for the
+   *  tenant rows a caller seeds with it (the Sample workspace, src/orgs/sample.ts), the new org's system tenant. */
+  extra?: (orgId: string, at: string, sys: TenantContext) => Stmt[];
 }
 
 /**
@@ -131,7 +132,7 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
       auditStmt(p, id, "member.add", input.owner, { role: "owner" }, at),
     );
   }
-  if (input.extra) stmts.push(...input.extra(id, at));
+  if (input.extra) stmts.push(...input.extra(id, at, sys));
   try {
     await batch(p, stmts);
   } catch (e) {
@@ -146,12 +147,12 @@ export async function createOrg(p: PlatformContext, input: CreateOrgInput): Prom
 /** The caller's organizations. `plan` and `paid` are what personal Settings says beside each (the plan's
  *  chip, and whether the org pays for it through a live subscription) — Trov's own columns, no Stripe call. */
 export async function listMyOrgs(p: PlatformContext, handle: string): Promise<MyOrg[]> {
-  const rows = await all<{ slug: string; name: string; role: OrgRole; logo_sha: string | null; plan: string | null; paid: number | null }>(p,
-    `SELECT o.slug, o.name, m.role, o.logo_sha, o.plan,
+  const rows = await all<{ slug: string; name: string; role: OrgRole; logo_sha: string | null; plan: string | null; paid: number | null; sample: number }>(p,
+    `SELECT o.slug, o.name, m.role, o.logo_sha, o.plan, o.sample,
             (o.plan_source = 'billing' AND o.billing_subscription_id IS NOT NULL AND o.plan <> '${FREE_PLAN}' AND o.plan_status <> 'canceled') AS paid
        FROM memberships m JOIN orgs o ON o.id = m.org_id
       WHERE m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
-  return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r), plan: planDef(r.plan).id, paid: r.paid === 1 }));
+  return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r), plan: planDef(r.plan).id, paid: r.paid === 1, ...(r.sample === 1 ? { sample: true } : {}) }));
 }
 
 interface InviteJoinRow {
@@ -233,10 +234,13 @@ export async function respondToInvite(p: PlatformContext, handle: string, id: nu
 // ── inside one org: me, settings ─────────────────────────────────────────────
 
 export async function orgMe(p: PlatformContext, ctx: TenantContext): Promise<Omit<OrgMeResponse, "repos"> | null> {
-  const row = await first<{ slug: string; name: string; logo_sha: string | null; role: OrgRole; title: string | null; responsibilities: string | null }>(p,
-    `SELECT o.slug, o.name, o.logo_sha, m.role, m.title, m.responsibilities FROM orgs o JOIN memberships m ON m.org_id = o.id
+  const row = await first<{ slug: string; name: string; logo_sha: string | null; role: OrgRole; title: string | null; responsibilities: string | null; sample: number }>(p,
+    `SELECT o.slug, o.name, o.logo_sha, o.sample, m.role, m.title, m.responsibilities FROM orgs o JOIN memberships m ON m.org_id = o.id
       WHERE o.id = ? AND m.user_id = ? COLLATE NOCASE`, ctx.orgId, ctx.userId);
-  return row ? { org: { slug: row.slug, name: row.name, logo_url: orgLogoSrc(row) }, role: row.role, title: row.title, responsibilities: row.responsibilities } : null;
+  return row ? {
+    org: { slug: row.slug, name: row.name, logo_url: orgLogoSrc(row) }, role: row.role, title: row.title, responsibilities: row.responsibilities,
+    ...(row.sample === 1 ? { sample: true } : {}),
+  } : null;
 }
 
 interface SettingsRow {
@@ -487,12 +491,14 @@ export async function resendableInvite(p: PlatformContext, ctx: TenantContext, i
 /**
  * Has `handle` never been a member of ANY org? Asked BEFORE a join is written: no membership today and
  * no `member.add` in the audit trail (so leaving every org and joining another is not a second "first").
- * People from before orgs have a membership (0042_organizations), so they never read as new.
+ * People from before orgs have a membership (0042_organizations), so they never read as new. Their Sample
+ * workspace (0087_sample_orgs) does not count: the welcome is for the first REAL org they join.
  */
 export async function neverJoined(p: PlatformContext, handle: string): Promise<boolean> {
   const row = await first<{ n: number }>(p,
-    `SELECT (SELECT COUNT(*) FROM memberships WHERE user_id = ?1 COLLATE NOCASE)
-          + (SELECT COUNT(*) FROM org_admin_audit WHERE action = 'member.add' AND target = ?1 COLLATE NOCASE) AS n`, handle);
+    `SELECT (SELECT COUNT(*) FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = ?1 COLLATE NOCASE AND o.sample = 0)
+          + (SELECT COUNT(*) FROM org_admin_audit a WHERE a.action = 'member.add' AND a.target = ?1 COLLATE NOCASE
+               AND NOT EXISTS (SELECT 1 FROM orgs o WHERE o.id = a.org_id AND o.sample = 1)) AS n`, handle);
   return (row?.n ?? 0) === 0;
 }
 

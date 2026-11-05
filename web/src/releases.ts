@@ -104,6 +104,31 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The Sample workspace every new person gets at sign-up: one PR.
+  {
+    version: "0.15",
+    date: "2026-11-05",
+    title: "A Sample workspace to try Trov with",
+    headline: "Every new account starts with a Sample workspace full of made-up docs, tickets, a roadmap and a repository, so every tool can be tried at once.",
+    highlights: [
+      "Signing up gives you a Sample workspace: a small made-up team's docs, decisions, sprints, tickets, feed, prompts, roadmap and repository.",
+      "Your coding agent can try every Trov tool against it right away, with nothing to connect first.",
+      "It never sends mail, calls a model or connects to GitHub, and it doesn't use up your one Free organization.",
+      "Already have an account? Create one from the organization menu; delete it anytime in Org settings.",
+    ],
+    ops: [
+      "Apply migration `0087_sample_orgs` (`npm run db:migrate:remote`): adds `orgs.sample`. Existing organizations are not samples; no backfill.",
+    ],
+    patches: {
+      added: [
+        "Organizations: every new account gets a Sample workspace of made-up content, and anyone can create one from the organization menu (#210)",
+      ],
+      changed: [],
+      fixed: [],
+      removed: [],
+    },
+    prs: [210],
+  },
   // Single-stack repositories (#143 R2, #144 the one-service setup), Ask's copy buttons, the Repo tab bar on a phone,
   // plugin 0.12.0 (#183) and the site tour's footer: one PR.
   {

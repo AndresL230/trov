@@ -217,7 +217,9 @@ where the app opens: signing in, an empty or unknown hash (`hash.ts` falls back 
 `web/src/home.ts` (pure), props in `web/src/home-view.ts` (`homeProps`), state `state.home` (`HomeUi`). ONE order,
 never reordered: the headline and the status line → the search-or-ask bar → Repositories · Roadmap · For you →
 Activity → Latest beside Team. One centred column, `--frame-home`; titles, row icons, the cards and the bar's own box
-share one left and right edge (a row's hover bleeds 10px past it; the bar's ring sits outside it).
+share one left and right edge (a row's hover bleeds 10px past it; the bar's ring sits outside it). In a Sample workspace
+(`organizations.md` › 1e) one line comes first, above the headline: a "Sample data" mark and "Delete this workspace
+anytime in Org settings." (`sampleNote`; `HomeProps.sample`, from `MyOrg.sample` / `OrgMeResponse.sample`).
 
 - **Its one server read** is `GET /home` (`src/tools/home.ts`, `HomeData` in `shared/home-core.ts`), D1 only, `tz` =
   the viewer's minutes east of UTC (a bad one is a 400, a failed read a 503 `{ error }`): `HOME_DAYS` (180) local days,

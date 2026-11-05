@@ -9,7 +9,7 @@ each step is named in brackets; the rules those modules obey are in `data-layer.
 | | Scope | Becomes one by |
 |---|---|---|
 | **Superadmin** | the platform: the list of organizations, who owns each, suspension, usage, the audit trail | a row in `platform_admins` (0042_organizations seeds andres); another superadmin adds more in Platform › Admins & limits |
-| **Owner** | one organization, everything in it | creating a Free organization (§1d) or one with a grant (§1b), accepting a superadmin's owner invitation, or being made one by another owner |
+| **Owner** | one organization, everything in it | creating a Free organization (§1d) or one with a grant (§1b), signing up (their Sample workspace, §1e), accepting a superadmin's owner invitation, or being made one by another owner |
 | **Admin** | one organization, everything but owners and the encryption key | an invitation "as admin", or a role change by an admin or owner |
 | **Member** | one organization: reads and the everyday writes | an invitation "as member" |
 
@@ -23,9 +23,10 @@ Platform › Organizations › **Add organization** [`web/src/platform.ts`, `POS
 organization — so a superadmin who belongs to none still reaches it; the org switcher's menu and the org
 picker link to it.
 
-An organization comes to exist in one of four ways: the superadmin creates it for someone (this section),
+An organization comes to exist in one of five ways: the superadmin creates it for someone (this section),
 grants someone the right to create their own (§1b), someone buys Pro and sets theirs up with nobody at Trov
-involved (§1c), or someone signed in creates a Free one of their own (§1d).
+involved (§1c), someone signed in creates a Free one of their own (§1d), or a new person gets their Sample
+workspace at sign-up (§1e).
 
 Give the organization a name, a slug (its address: `/<slug>/`, not editable later; a name the app itself answers on — `api`, `feed`, `pricing`, … `RESERVED_ORG_SLUGS` — is refused), the **plan** it starts
 on (Free, Pro or Enterprise — `plans.md`; Pro unless you pick another) and its first owner:
@@ -103,6 +104,64 @@ Its owner upgrades it to Pro from Org settings › General (**Upgrade to Pro**, 
 the seat cap): a Stripe checkout for that organization, starting at one seat per member and pending
 invitation. It appears in Platform as **free**; you can change its plan like any granted org's. What bounds
 open creation: `abuse-limits.md`.
+
+### 1e. …or every new person gets a Sample workspace
+
+[`src/orgs/sample.ts`, its content `src/orgs/sample-content.ts`; 0087_sample_orgs; tests `test/sample-org.test.ts`]
+
+The moment a person finishes onboarding (`POST /auth/onboard`, after their person and identity are written and
+before an MCP client's pending authorize is taken — so the MCP consent screen has an org to offer), Trov makes them
+an organization named **Sample workspace**, slug `sample-<handle>` (fixed up to a valid slug; a taken one gets a
+short random suffix, once). They are its owner and only member. It is filled with made-up content — a small team
+building **Habitloop**, a habit-tracking app (never Trov itself) — so they, and anyone reviewing the MCP connector
+(who signs up through the MCP OAuth flow), can try every tool with nothing set up:
+
+| What | Seeded |
+|---|---|
+| Library | 5 live pages over the starter Engineering / Product / Design spaces, two of them linked (`doc_links`), one with a second version in its history; starter tags |
+| Decisions | 3 ADRs (two ratified, one draft), one about auth |
+| Sprints and tickets | one done sprint and one active one; 12 tickets across every status, ALL assigned to the person (so the lane-scoped MCP writes work), 3 comments, one sub-ticket |
+| Feed | 7 authored, live entries over the past two weeks, starter tags only — nothing staged, nothing in Unplaced |
+| Handoff | one pending, from the person to themselves |
+| Prompts | 2 published, one with `{{variables}}` |
+| Roadmap | a Now / Next / Later narrative (version 1) |
+| Repo dashboard | one made-up repository (`habitloop-example/habitloop`, primary), staging and production with one Vercel web part each, 6 deploys, 10 CI runs, pull requests opened / reviewed / merged, the branch heads — stored rows only |
+| Counters | `ticket` and `handoff` moved past the seed, so the next ticket is `#13` |
+
+**How it is made.** `createSampleOrg(p, handle)` goes through `createOrg` (owner, Free plan with source `granted`,
+counters, starter tags and spaces, notification rows) and its content rides in `createOrg`'s `extra` — given the new
+org's system tenant — so it is ONE batch: all of it or none. Every time is relative to the moment it is made. Every
+author is the person themselves (tickets, memberships and the rest reference `persons(handle)`; there are no made-up
+persons), and every handle it writes is in a `HANDLE_COLUMNS` column, so a rename carries it. **One per person**: a
+second ask returns the one they own, and an `org.create_sample` audit row in the same batch refuses a racing second
+(the pattern of the Free guard). **A failure never blocks sign-in**: it is logged (scrubbed) and onboarding finishes
+without one.
+
+**Existing people** — anyone who signed up before it existed, or deleted theirs — get one from **Create sample
+workspace** in the switcher's menu or on the org picker [`POST /api/orgs/sample`: 201 made, 200 the one they own]. No
+backfill.
+
+**What makes it different from any other Free org** (`orgs.sample = 1`):
+
+- **It is not their Free org.** `OWNED_FREE` (`src/plans/free.ts`) skips it, so the person can still create their one
+  Free organization (`plans.md` › Free).
+- **No welcome mail** for it, and it does not count as their first join (`neverJoined`), so the welcome goes out for
+  the first real org they create or join.
+- **It is inert.** `ai_automation = 0` (no model is ever called for it), every `notification_policy` row is
+  `enabled = 0`, and every background list skips it (`src/platform/jobs.ts`: `listActiveOrgIds` — the digest crons,
+  the pre-warm, the AI pass, the doc-links backfill — `listEnvUnits`, `listRepoUnits`, `listPartUnits` and the
+  per-repo webhook's `hookRepo`), as do the handoff expiry sweep (its handoff stays waiting) and the gift sweep. It
+  has no GitHub App binding, no credential and no installation row, so nothing calls GitHub, a hosting provider or the
+  mail sender for it.
+- **It connects to nothing.** On a sample org every tenant route that could reach outside Trov — Sync GitHub, Poll now,
+  Poll usage, connecting GitHub or a host, Test connection, storing a credential, adding a repository, Scan again,
+  removing the image — answers 409 `{ error: "sample_org" }` and does nothing (`reachesOutside` in
+  `src/orgs/sample.ts`, applied once after the tenant gate in `src/routes.ts`). Reads answer as usual.
+- **Home says so**: one line at the top, a mark and "Delete this workspace anytime in Org settings."
+  (`sampleNote`, `web/src/home.ts`). `MyOrg.sample` and `OrgMeResponse.sample` carry the flag.
+
+**Deleting it** is the ordinary Delete organization (§8): its owner, Org settings › General. Everything it seeded has
+its `org_id`, so `ORG_TABLES` takes all of it; the person can make a new one afterwards.
 
 ## 2. The owner signs in, accepts, and lands on the guided setup
 

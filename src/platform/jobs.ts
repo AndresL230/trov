@@ -6,14 +6,16 @@
 // `org_hosting_connections` are declared in test/data-layer.static.test.ts (PLATFORM_ALLOW).
 //
 // A SUSPENDED org (0042_organizations) is absent from every list here: its crons do not run and its hooks read as
-// unknown, exactly as it resolves for no member (src/data/context.ts).
+// unknown, exactly as it resolves for no member (src/data/context.ts). So is a SAMPLE workspace (0087_sample_orgs,
+// src/orgs/sample.ts): its content is made up and stored once, so no job — digests, health pings, pollers, the
+// reconcile, the hosting job, the AI pass — ever runs for it, and nothing calls GitHub, a host or the mail sender.
 import type { Env } from "../env";
 import { platform, systemTenant, type PlatformContext, type TenantContext } from "../data/context";
 import { all, first, nowIso, run } from "../data/platform-sql";
 
-/** Every org that is not suspended, by id — the digest cron's list. */
+/** Every org that is not suspended (nor a sample), by id — the digest cron's list. */
 export async function listActiveOrgIds(p: PlatformContext): Promise<string[]> {
-  return (await all<{ id: string }>(p, `SELECT id FROM orgs WHERE suspended_at IS NULL ORDER BY id`)).map((r) => r.id);
+  return (await all<{ id: string }>(p, `SELECT id FROM orgs WHERE suspended_at IS NULL AND sample = 0 ORDER BY id`)).map((r) => r.id);
 }
 
 export interface EnvUnit { org_id: string; key: string }
@@ -24,7 +26,7 @@ export interface EnvUnit { org_id: string; key: string }
 export function listEnvUnits(p: PlatformContext): Promise<EnvUnit[]> {
   return all<EnvUnit>(p,
     `SELECT e.org_id, e.key FROM org_environments e JOIN orgs o ON o.id = e.org_id
-      WHERE o.suspended_at IS NULL ORDER BY e.org_id, e.position`);
+      WHERE o.suspended_at IS NULL AND o.sample = 0 ORDER BY e.org_id, e.position`);
 }
 
 export interface RepoUnit { org_id: string; envs: number }
@@ -35,7 +37,7 @@ export function listRepoUnits(p: PlatformContext): Promise<RepoUnit[]> {
   return all<RepoUnit>(p,
     `SELECT r.org_id, (SELECT COUNT(*) FROM org_environments e WHERE e.org_id = r.org_id) AS envs
        FROM org_repos r JOIN orgs o ON o.id = r.org_id
-      WHERE r.is_primary = 1 AND o.suspended_at IS NULL ORDER BY r.org_id`);
+      WHERE r.is_primary = 1 AND o.suspended_at IS NULL AND o.sample = 0 ORDER BY r.org_id`);
 }
 
 export interface PartUnit { org_id: string; env_key: string; part_key: string; provider: string }
@@ -50,7 +52,7 @@ export function listPartUnits(p: PlatformContext): Promise<PartUnit[]> {
     `SELECT pt.org_id, pt.env_key, pt.part_key, pt.provider FROM org_environment_parts pt
        JOIN org_environments e ON e.org_id = pt.org_id AND e.key = pt.env_key
        JOIN orgs o ON o.id = pt.org_id
-      WHERE o.suspended_at IS NULL ORDER BY pt.org_id, e.position, pt.position, pt.part_key`);
+      WHERE o.suspended_at IS NULL AND o.sample = 0 ORDER BY pt.org_id, e.position, pt.position, pt.part_key`);
 }
 
 export interface HookRepo { id: string; org_id: string; repo_full_name: string; is_primary: number }
@@ -59,7 +61,7 @@ const HOOK_COLS = `r.id, r.org_id, r.repo_full_name, r.is_primary`;
 /** The repo a per-org webhook URL names (`/webhook/github/<org_repos.id>`), or null. */
 export function hookRepo(p: PlatformContext, hookId: string): Promise<HookRepo | null> {
   return first<HookRepo>(p,
-    `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id WHERE r.id = ? AND o.suspended_at IS NULL`, hookId);
+    `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id WHERE r.id = ? AND o.suspended_at IS NULL AND o.sample = 0`, hookId);
 }
 
 // ── the GitHub App: which orgs an installation is connected to (0043_github_app, 0053_installation_repos) ──

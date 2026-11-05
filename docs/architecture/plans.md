@@ -374,7 +374,10 @@ while holding a grant; holding none, Free is what naming nothing makes. They bec
 
 **One owned Free org at a time** (`DEFAULT_ORG_LIMIT = 1`, `shared/orgs.ts`): what counts is the Free orgs
 the person is an OWNER of — suspended ones too. One they upgraded to Pro, or one somebody else owns, does not
-count; one whose Pro subscription ended (it moved to Free) does. Past it: **403 `free_org_limit`** ("you
+count; one whose Pro subscription ended (it moved to Free) does. **A Sample workspace never counts**
+(`orgs.sample = 1`, 0087_sample_orgs; `organizations.md` › 1e): every new person owns one, on Free, from the moment
+they sign up, and `OWNED_FREE` skips it — otherwise it would use up the one Free org before they made their real
+one. It is held to Free's limits like any other Free org. Past it: **403 `free_org_limit`** ("you
 already own a Free organization (<name>)…"). The rule is held INSIDE the creating batch: `freeGuardStmt`
 writes the `org.create_free` audit row with a NULL `detail` (a NOT NULL column) when, counting the org being
 created, the person owns more than one Free org — so the statement and the whole batch fail, and two racing

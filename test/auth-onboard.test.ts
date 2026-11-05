@@ -33,7 +33,7 @@ describe("GET /auth/handle-check", () => {
 });
 
 describe("POST /auth/onboard", () => {
-  it("creates person + identity, sets a session, clears the cookie — in no org", async () => {
+  it("creates person + identity, sets a session, clears the cookie — in no org but their Sample workspace", async () => {
     const res = await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, handle: "priya" });
@@ -43,8 +43,10 @@ describe("POST /auth/onboard", () => {
     const p = (await first<PersonRow>(env.DB, `SELECT * FROM persons WHERE handle = 'priya'`))!;
     expect(p.name).toBe("Priya N"); expect(p.color).toBe("plum"); expect(p.email).toBe("priya.n@gmail.com");
     expect((await first<IdentityRow>(env.DB, `SELECT * FROM identities WHERE subject = 'g-123'`))?.person).toBe("priya");
-    // A new person is in no org (§5.1): they accept an invitation or create one. The session works at once.
-    expect(await first(env.DB, `SELECT 1 AS x FROM memberships WHERE user_id = 'priya'`)).toBeNull();
+    // A new person's one org is their Sample workspace (0087_sample_orgs, src/orgs/sample.ts) — owned, made up; a real
+    // one comes from an invitation or creating one. The session works at once.
+    expect(await all(env.DB, `SELECT m.role, o.sample, o.slug FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = 'priya'`))
+      .toEqual([{ role: "owner", sample: 1, slug: "sample-priya" }]);
     const session = /session=[^;]+/.exec(setCookies)![0];
     expect((await app.request("/auth/me", { headers: { cookie: session } }, env)).status).toBe(200);
   });
@@ -57,11 +59,11 @@ describe("POST /auth/onboard", () => {
     expect(await taken.json()).toEqual({ error: "handle_taken" });
     expect(taken.headers.get("set-cookie") ?? "").not.toContain("onboard=;");
   });
-  it("a Google account needs no invite: it creates the person, in no org", async () => {
+  it("a Google account needs no invite: it creates the person, in no org but their Sample workspace", async () => {
     const res = await post("/auth/onboard", await cookie(), { handle: "priya", name: "x", color: "plum" });
     expect(res.status).toBe(200);
     expect(await first(env.DB, `SELECT 1 AS x FROM persons WHERE handle = 'priya'`)).not.toBeNull();
-    expect(await first(env.DB, `SELECT 1 AS x FROM memberships WHERE user_id = 'priya'`)).toBeNull();
+    expect(await first(env.DB, `SELECT 1 AS x FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = 'priya' AND o.sample = 0`)).toBeNull();
   });
   it("a GitHub payload onboards without any invite", async () => {
     const res = await post("/auth/onboard", await cookie({ ...PAYLOAD, provider: "github", subject: "newdev", label: "newdev" }), { handle: "newdev", name: "New", color: "sky" });
