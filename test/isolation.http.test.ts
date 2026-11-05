@@ -407,6 +407,7 @@ const TENANT: Record<string, Row> = {
   "POST /projects/:project/archive": J({}), "POST /projects/:project/restore": J({}),
   "PUT /projects/:project/members": J({ members: [] }), "POST /projects/:project/pins": { body: (fx: Fx) => ({ refs: [`ticket:${fx.ticketId}`] }) },
   "DELETE /projects/:project/pins/:ref": {}, "POST /projects/:project/files": J({}),
+  "GET /projects/:project/candidates": { query: "?q=CANARY" },
   // src/repo/settings-routes.ts — the PATH's org's default for one of ITS repositories (0071_repo_settings): A's repo
   // is not B's, so B's admin gets 404 and B's member the 403; nothing is written for A.
   "PUT /repo/settings": J({ repo: "SaplingLearn/sapling", overview_group: "app" }),
