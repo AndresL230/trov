@@ -92,6 +92,10 @@ export interface ProjectSummary {
   updatedAt: string;
   archivedAt: string | null;
   archivedBy: string | null;
+  /** What deleting it takes — EVERY thread in it (anyone's, private ones too) and every artifact it holds — for the
+   *  delete confirmation. Only for a reader who may delete it (its owner, or an org admin who can open it); absent
+   *  otherwise. Counts only: nothing of a thread the reader can't open is said. */
+  deleteCounts?: { chats: number; artifacts: number };
 }
 
 export interface ProjectMember {
@@ -162,7 +166,7 @@ export interface ProjectPinsBody { refs: string[] }
 export const PROJECT_ROUTES = {
   /** GET → ProjectList (`?q=` filters by name and description). POST ProjectCreateBody → { project: ProjectSummary }. */
   list: "/projects",
-  /** GET → ProjectDetail. PATCH ProjectPatchBody → ProjectDetail. DELETE → { ok: true } (owner or org admin). */
+  /** GET → ProjectDetail. PATCH ProjectPatchBody → ProjectDetail. DELETE → ProjectDeleted `{ ok: true, chats, artifacts }` (owner or org admin). */
   one: "/projects/:project",
   /** POST → ProjectSummary (owner, editor or org admin). */
   archive: "/projects/:project/archive",
@@ -177,6 +181,9 @@ export const PROJECT_ROUTES = {
    *  with `project_id` (private on a private project, else org) and is pinned. */
   upload: "/projects/:project/files",
 } as const;
+
+/** `DELETE /projects/:project`'s answer: what went (`chats`, every thread in it) and what stayed (`artifacts`). */
+export interface ProjectDeleted { ok: true; chats: number; artifacts: number }
 
 /** Errors a project route answers with, besides the app's 402 `plan_limit` body. */
 export type ProjectError = "not_found" | "forbidden" | "invalid" | "archived" | "private_pin";

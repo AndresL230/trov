@@ -27,6 +27,8 @@ import {
 import { deleteProject } from "../deletion/projects";
 import { resolveViews } from "../ai/ask/refs";
 import { AttachError, checkFiles } from "../ai/ask/attachments";
+import { ArtifactError, ARTIFACT_ERROR_STATUS } from "../tools/artifacts";
+import { ASK_ATTACH_FILES_MAX } from "@shared/ai-ask-core";
 import { projectChats } from "../ai/ask/routes";
 
 type C = Context<AppEnv>;
@@ -47,6 +49,8 @@ async function guard(c: C, fn: () => Promise<Response>): Promise<Response> {
     if (e instanceof PlanLimitError || e instanceof PlanFeatureError) throw e;
     if (e instanceof ProjectRefusal) return c.json(e.code === "not_found" ? { error: "not_found" } : { error: e.code, message: e.message }, e.status);
     if (e instanceof AttachError) return c.json({ error: e.code, message: e.message }, e.status); // Ask's own codes
+    // An upload's artifact refused by the artifacts store's own writer (`createPage`: its title, size and type checks).
+    if (e instanceof ArtifactError) return c.json({ error: e.code, message: e.message }, ARTIFACT_ERROR_STATUS[e.code]);
     throw e;
   }
 }
@@ -135,7 +139,9 @@ projectsApp.post(PROJECT_ROUTES.upload, (c) => guard(c, async () => {
     if (typeof v === "string") continue;
     files.push({ name: v.name || "file", type: v.type || "application/octet-stream", bytes: new Uint8Array(await v.arrayBuffer()) });
   }
-  // Ask's attachment rules, checked whole before anything is stored: ≤ 5 files, 10 MB each, images / PDFs / text.
+  // Ask's attachment rules, checked whole before anything is stored: ≤ 5 files, 10 MB each, images / PDFs / text. The
+  // count is said here in the project's words (Ask's own sentence is "per message").
+  if (files.length > ASK_ATTACH_FILES_MAX) return c.json({ error: "invalid", message: `Add at most ${ASK_ATTACH_FILES_MAX} files at a time.` }, 400);
   const checked = checkFiles(files);
   await uploadIntoProject(c.var.ctx, c.env.ARTIFACTS_BUCKET, slugOf(c), checked.map((x) => ({ ...x.f, kind: x.kind })));
   return c.json(await detail(c, slugOf(c)));

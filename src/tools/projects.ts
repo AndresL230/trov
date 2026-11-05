@@ -19,7 +19,7 @@
 import { hasRole, type TenantContext } from "../data/context";
 import { memberHandles, projectThreadCounts } from "../data/ask";
 import {
-  addPins, artifactCounts, artifactsOf, insertProject, membersOf, pinCounts, pinsOf, projectById, projectBySlug, projectsByIds, projectsFor,
+  addPins, artifactCounts, artifactsOf, insertProject, membersOf, pinCounts, pinsOf, projectById, projectBySlug, projectHoldings, projectsByIds, projectsFor,
   removePin, replaceMembers, setArchived, setArtifactProject, slugTaken, updateProject,
   type ProjectArtifactRow, type ProjectForRow, type ProjectMemberRow,
 } from "../data/projects";
@@ -273,29 +273,39 @@ function membersOfProject(p: ProjectForRow, rows: readonly ProjectMemberRow[]): 
   return [{ handle: p.owner, role: "owner", addedAt: null }, ...added.map((m) => ({ handle: m.handle, role: m.role, addedAt: m.added_at }))];
 }
 
-interface Counts { members: ProjectMemberRow[]; chats: Map<number, number>; pins: Map<number, number>; artifacts: Map<number, number> }
+interface Counts {
+  members: ProjectMemberRow[]; chats: Map<number, number>; pins: Map<number, number>; artifacts: Map<number, number>;
+  /** Everything each project the reader may DELETE holds (`ProjectSummary.deleteCounts`); none for the others. */
+  holdings: Map<number, { chats: number; artifacts: number }>;
+}
 
-async function countsFor(ctx: TenantContext, ids: readonly number[]): Promise<Counts> {
-  const [members, chats, pins, artifacts] = await Promise.all([
-    membersOf(ctx, ids), projectThreadCounts(ctx, ctx.userId, ids), pinCounts(ctx, ids), artifactCounts(ctx, ids, ctx.userId),
+/** The counts the summaries of these projects draw. `opened`: each with the reader's access — the ones they may delete
+ *  also get what deleting takes (every thread, anyone's; every artifact), as counts only. */
+async function countsFor(ctx: TenantContext, opened: readonly { row: ProjectForRow; access: ProjectAccess }[]): Promise<Counts> {
+  const ids = opened.map((o) => o.row.id);
+  const deletable = opened.filter((o) => mayChange(ctx, o.access, "delete")).map((o) => o.row.id);
+  const [members, chats, pins, artifacts, holdings] = await Promise.all([
+    membersOf(ctx, ids), projectThreadCounts(ctx, ctx.userId, ids), pinCounts(ctx, ids), artifactCounts(ctx, ids, ctx.userId), projectHoldings(ctx, deletable),
   ]);
-  return { members, chats, pins, artifacts };
+  return { members, chats, pins, artifacts, holdings };
 }
 
 function summaryOf(p: ProjectForRow, access: ProjectAccess, c: Counts): ProjectSummary {
   const members = membersOfProject(p, c.members);
+  const holds = c.holdings.get(p.id);
   return {
     slug: p.slug, name: p.name, description: p.description, icon: p.icon as ProjectIcon, color: p.color as ProjectColor, visibility: p.visibility,
     owner: p.owner, access, people: members.slice(0, 3).map((m) => m.handle), memberCount: members.length,
     chats: c.chats.get(p.id) ?? 0, pins: c.pins.get(p.id) ?? 0, artifacts: c.artifacts.get(p.id) ?? 0,
     updatedAt: p.updated_at, archivedAt: p.archived_at, archivedBy: p.archived_by,
+    ...(holds ? { deleteCounts: holds } : {}),
   };
 }
 
 /** One project's summary, as the person reads it (the answer of create, archive and restore). */
 export async function readSummary(ctx: TenantContext, slug: string): Promise<ProjectSummary> {
   const o = await openProject(ctx, slug);
-  return summaryOf(o.row, o.access, await countsFor(ctx, [o.row.id]));
+  return summaryOf(o.row, o.access, await countsFor(ctx, [o]));
 }
 
 /** `GET /projects` — the live projects the person can open, most recently updated first, and the archived ones;
@@ -306,7 +316,7 @@ export async function readProjectList(ctx: TenantContext, q = ""): Promise<Proje
     .map((row) => ({ row, access: accessOf(ctx, row) }))
     .filter((x): x is { row: ProjectForRow; access: ProjectAccess } => x.access !== null)
     .filter((x) => !needle || x.row.name.toLowerCase().includes(needle) || x.row.description.toLowerCase().includes(needle));
-  const [c, plan, used] = await Promise.all([countsFor(ctx, rows.map((x) => x.row.id)), planFor(ctx), limitUse(ctx, "projects")]);
+  const [c, plan, used] = await Promise.all([countsFor(ctx, rows), planFor(ctx), limitUse(ctx, "projects")]);
   const all = rows.map((x) => summaryOf(x.row, x.access, c));
   return {
     projects: all.filter((s) => !s.archivedAt),
@@ -323,7 +333,7 @@ export type ProjectChats = (ctx: TenantContext, projectId: number, mark: AskThre
 export async function readProjectDetail(ctx: TenantContext, slug: string, views: PinViews, chats: ProjectChats): Promise<ProjectDetail> {
   const o = await openProject(ctx, slug);
   const p = o.row;
-  const [c, pins, arts, plan] = await Promise.all([countsFor(ctx, [p.id]), pinsOf(ctx, p.id), artifactsOf(ctx, p.id, ctx.userId), planFor(ctx)]);
+  const [c, pins, arts, plan] = await Promise.all([countsFor(ctx, [o]), pinsOf(ctx, p.id), artifactsOf(ctx, p.id, ctx.userId), planFor(ctx)]);
   const seen = pins.length ? await views(ctx, ctx.userId, pins.map((x) => x.ref)) : new Map<string, RefView>();
   const pinList: ProjectPin[] = pins.map((x) => ({ ref: x.ref, view: seen.get(x.ref) ?? { ref: x.ref, hidden: true as const }, addedBy: x.added_by, addedAt: x.added_at }));
   return {

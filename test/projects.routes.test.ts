@@ -6,9 +6,10 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { createPage } from "../src/tools/artifacts";
 import { create_ticket } from "../src/tools/tickets";
-import { ProjectDetailSchema, ProjectListSchema, ProjectSummarySchema } from "@shared/projects";
+import { ProjectDeletedSchema, ProjectDetailSchema, ProjectListSchema, ProjectSummarySchema } from "@shared/projects";
+import { app } from "../src/routes";
 import { first } from "./helpers/db";
-import { call, ask, eventsOf, BASE } from "./helpers/ask";
+import { call, ask, eventsOf, BASE, KEYED } from "./helpers/ask";
 import { tenantCtx } from "./helpers/tenant";
 import { addOrgRepo } from "./helpers/org-config";
 import { EDITOR, OTHER, OWNER, P, VIEWER, cast, newProject, planOf, teamProject } from "./helpers/projects";
@@ -287,11 +288,17 @@ describe("deleting a project", () => {
     const art = await createPage(await tenantCtx(OWNER), { title: "Kept", kind: "markdown", area: "data", repo: "", visibility: "org", content: "x" }, OWNER);
     await env.DB.prepare(`UPDATE artifact_pages SET project_id = (SELECT id FROM projects WHERE slug = ?) WHERE id = ?`).bind(p.slug, art.id).run();
     expect((await call("GET", `${P}/${p.slug}`, c.owner)).json.project).toMatchObject({ chats: 1, artifacts: 1 });
+    // The confirmation's numbers: everything deleting takes — the viewer's own thread too, which the owner can't open
+    // (counts only) — for the owner, on the page and in the list; nobody who may not delete is told.
+    expect(ProjectDetailSchema.parse((await call("GET", `${P}/${p.slug}`, c.owner)).json).project.deleteCounts).toEqual({ chats: 2, artifacts: 1 });
+    expect(ProjectListSchema.parse((await call("GET", P, c.owner)).json).projects.find((x) => x.slug === p.slug)?.deleteCounts).toEqual({ chats: 2, artifacts: 1 });
+    for (const who of [c.editor, c.viewer]) expect((await call("GET", `${P}/${p.slug}`, who)).json.project.deleteCounts).toBeUndefined();
 
     // The editor may not; the owner may.
-    expect((await call("DELETE", `${P}/${p.slug}`, c.editor)).status).toBe(403);
+    const refused = await call("DELETE", `${P}/${p.slug}`, c.editor);
+    expect([refused.status, refused.json]).toEqual([403, { error: "forbidden", message: "Only the owner or an org admin can delete this project." }]);
     const r = await call("DELETE", `${P}/${p.slug}`, c.owner);
-    expect(r.json).toEqual({ ok: true, chats: 2, artifacts: 1 });
+    expect(ProjectDeletedSchema.parse(r.json)).toEqual({ ok: true, chats: 2, artifacts: 1 });
     expect((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM chat_threads WHERE id IN (?, ?)`, own, theirs))!.n).toBe(0);
     expect((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM chat_messages WHERE thread_id IN (?, ?)`, own, theirs))!.n).toBe(0);
     expect(await first(env.DB, `SELECT project_id, deleted_at FROM artifact_pages WHERE id = ?`, art.id)).toEqual({ project_id: null, deleted_at: null });
@@ -299,8 +306,47 @@ describe("deleting a project", () => {
     expect((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM project_pins`))!.n).toBe(0);
     for (const who of [c.owner, c.editor]) expect((await call("GET", `${P}/${p.slug}`, who)).json).toEqual({ error: "not_found" });
     expect((await newProject(c.owner)).slug).toBe(`${p.slug}-2`);
-    // The org's admin, who could open an org project, may delete it too.
+    // The org's admin, who could open an org project, may delete it too — and is told what it takes; another member is not.
     const orgProject = await newProject(c.owner, { name: "Open", visibility: "org" });
-    expect((await call("DELETE", `${P}/${orgProject.slug}`, c.admin)).status).toBe(200);
+    await ask(c.owner, { text: "private to the owner", command: "search", projectId: orgProject.slug });
+    const asAdmin = ProjectDetailSchema.parse((await call("GET", `${P}/${orgProject.slug}`, c.admin)).json).project;
+    expect([asAdmin.chats, asAdmin.deleteCounts]).toEqual([0, { chats: 1, artifacts: 0 }]);
+    expect((await call("GET", `${P}/${orgProject.slug}`, c.other)).json.project.deleteCounts).toBeUndefined();
+    expect((await call("DELETE", `${P}/${orgProject.slug}`, c.admin)).json).toEqual({ ok: true, chats: 1, artifacts: 0 });
+  });
+});
+
+describe("uploading files into a project", () => {
+  async function upload(cookie: string, slug: string, files: { name: string; type: string; body: string }[]) {
+    const form = new FormData();
+    for (const f of files) form.append("file", new File([f.body], f.name, { type: f.type }));
+    const res = await app.request(`${P}/${slug}/files`, { method: "POST", headers: { cookie }, body: form }, KEYED);
+    return { status: res.status, json: await res.json() as Record<string, unknown> };
+  }
+
+  it("stores each file as the project's artifact and pins it", async () => {
+    const c = await cast();
+    const p = await teamProject(c);
+    const r = await upload(c.editor, p.slug, [{ name: "notes.md", type: "text/markdown", body: "# Notes" }]);
+    expect(r.status).toBe(200);
+    const d = ProjectDetailSchema.parse(r.json);
+    expect(d.artifacts.map((a) => a.title)).toEqual(["notes.md"]);
+    expect(d.pins.map((x) => x.ref)).toEqual([`artifact:${d.artifacts[0].slug}`]);
+  });
+
+  it("says the count in the project's words, and stores nothing", async () => {
+    const c = await cast();
+    const p = await teamProject(c);
+    const r = await upload(c.owner, p.slug, Array.from({ length: 6 }, (_, i) => ({ name: `f${i}.txt`, type: "text/plain", body: "x" })));
+    expect([r.status, r.json]).toEqual([400, { error: "invalid", message: "Add at most 5 files at a time." }]);
+    expect((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM artifact_pages`))!.n).toBe(0);
+  });
+
+  it("a file the artifacts store refuses is its 4xx with its code and words, never a 500", async () => {
+    const c = await cast();
+    const p = await teamProject(c);
+    // A blank name passes Ask's check (a text type) and is refused by `createPage` (a title is required).
+    const r = await upload(c.owner, p.slug, [{ name: "   ", type: "text/plain", body: "x" }]);
+    expect([r.status, r.json]).toEqual([400, { error: "bad_request", message: "title is required" }]);
   });
 });

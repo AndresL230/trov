@@ -11,8 +11,9 @@ import {
   type ProjectDetail, type ProjectList, type ProjectSummary, type ProjectVisibility, type ProjectPin, type ProjectPinType,
   type ProjectIcon, type ProjectColor, type ProjectRole, type ProjectArtifact,
 } from "@shared/projects-core";
-import { parseAskRef, type AskThreadSummary, type PeekResult, type RefView } from "@shared/ai-ask-core";
+import { ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, parseAskRef, type AskThreadSummary, type PeekResult, type RefView } from "@shared/ai-ask-core";
 import type { PersonSummary } from "@shared/people";
+import { capReached } from "@shared/plans";
 import { esc, attr, surface, hitArea, HITBOX, relTime } from "./ui";
 import { personChip, handleTag } from "./people";
 import { avatarStack } from "./tickets";
@@ -133,6 +134,9 @@ export const PROJECT_NOT_FOUND = "There is no project here. It may have been del
 /** The delete confirmation's sentence (the spec's copy). */
 export const deleteProjectText = (chats: number, arts: number): string =>
   `Its ${chats} ${chats === 1 ? "chat is" : "chats are"} deleted, including any shared with the project. Its ${arts} ${arts === 1 ? "artifact stays" : "artifacts stay"} in Artifacts. The tickets, docs and PRs it pinned aren't touched.`;
+/** The toast after a delete, with what went (the server's count of every thread in it); no clause at none. */
+export const deletedProjectText = (name: string, chats: number): string =>
+  chats > 0 ? `${name} deleted, with its ${chats} ${chats === 1 ? "chat" : "chats"}` : `${name} deleted`;
 /** A visibility's hint, with the org's own name for "the org". */
 export const visibilityHint = (v: ProjectVisibility, org: string): string => PROJECT_VISIBILITY_WORDS[v].hint.replace(/the org/g, org);
 /** A visibility's label (the switch's options): the org's own name for Org. */
@@ -144,6 +148,24 @@ export const atProjectCap = (l: ProjectList["limit"] | null | undefined): boolea
 export function capText(l: ProjectList["limit"], owner: boolean, plan: string): string {
   const used = `${owner ? "You've" : "This organization has"} used the ${l.cap} projects ${plan} includes.`;
   return owner ? `${used} Archive one, or upgrade to Pro for unlimited projects.` : `${used} An owner can upgrade, or archive one.`;
+}
+
+/** Add to Knowledge past the project's `project_pins` room (`cap` null = unlimited: never): the sentence the dialog
+ *  says instead of sending, worded as the projects cap is (`capText`); null when the pick fits. */
+export function pinRoomText(l: ProjectDetail["pinLimit"], adding: number, owner: boolean, plan: string): string | null {
+  if (l.cap === null || !capReached(l.used, l.cap, adding)) return null;
+  const left = Math.max(0, l.cap - l.used);
+  const used = left ? `This project has used ${l.used} of the ${l.cap} pinned items ${plan} includes.` : `This project has used all ${l.cap} pinned items ${plan} includes.`;
+  const next = left ? `Pick ${left} or fewer` : "Unpin one first";
+  return `${used} ${next}${owner ? ", or upgrade for more." : ", or ask an owner to upgrade."}`;
+}
+
+/** Files for Knowledge past Ask's attachment rules (`ASK_ATTACH_FILES_MAX` a time, `ASK_ATTACH_BYTES_MAX` each), said in
+ *  the project's words before anything is sent; null when they may go. The server checks the same (and the type). */
+export function uploadRefusalText(files: readonly { name: string; size: number }[]): string | null {
+  if (files.length > ASK_ATTACH_FILES_MAX) return `Add at most ${ASK_ATTACH_FILES_MAX} files at a time.`;
+  const big = files.find((f) => f.size > ASK_ATTACH_BYTES_MAX);
+  return big ? `${big.name} is too large. Files can be up to ${ASK_ATTACH_BYTES_MAX / (1024 * 1024)} MB.` : null;
 }
 
 const VIS_ICON: Record<ProjectVisibility, readonly string[]> = {
@@ -699,9 +721,12 @@ export const addPersonDropdown = (s: ShareDraft, owner: string, persons: readonl
   options: persons.filter((p) => !sameHandle(p.handle, owner) && !s.members.some((m) => sameHandle(m.handle, p.handle))).map((p) => ({ value: p.handle, label: p.name || p.handle, hint: `@${p.handle}` })),
 });
 
-export function deleteDialog(x: Pick<ProjectSummary, "name" | "chats" | "artifacts">, busy: boolean, error: string | null): string {
+/** Delete: the server's count of EVERYTHING it takes (`deleteCounts`, every thread anyone started in it) — the reader's
+ *  own counts only when the server sent none. */
+export function deleteDialog(x: Pick<ProjectSummary, "name" | "chats" | "artifacts" | "deleteCounts">, busy: boolean, error: string | null): string {
+  const n = x.deleteCounts ?? { chats: x.chats, artifacts: x.artifacts };
   return confirmModal({
-    id: "pj-delete", title: `Delete ${x.name}?`, body: deleteProjectText(x.chats, x.artifacts),
+    id: "pj-delete", title: `Delete ${x.name}?`, body: deleteProjectText(n.chats, n.artifacts),
     confirmAct: "projDeleteGo", cancelAct: "projDialogClose", busy, confirmLabel: "Delete project", busyLabel: "Deleting…", error,
   });
 }

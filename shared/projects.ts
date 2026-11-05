@@ -4,7 +4,7 @@
 import { z } from "zod";
 import {
   PROJECT_COLORS, PROJECT_ICONS, PROJECT_LIMITS, PROJECT_ROLES, PROJECT_VISIBILITIES,
-  type ProjectArtifact, type ProjectCreateBody, type ProjectDetail, type ProjectList, type ProjectMember, type ProjectMembersBody,
+  type ProjectArtifact, type ProjectCreateBody, type ProjectDeleted, type ProjectDetail, type ProjectList, type ProjectMember, type ProjectMembersBody,
   type ProjectPatchBody, type ProjectPin, type ProjectPinsBody, type ProjectSummary,
 } from "./projects-core";
 import { AskRefSchema, AskThreadSummarySchema, RefViewSchema } from "./ai-ask";
@@ -50,6 +50,7 @@ export const ProjectSummarySchema = z.strictObject({
   visibility: z.enum(PROJECT_VISIBILITIES), owner: z.string(), access: z.enum(["owner", "editor", "viewer"]),
   people: z.array(z.string()).max(3), memberCount: z.number().int().min(1), chats: z.number().int().min(0), pins: z.number().int().min(0),
   artifacts: z.number().int().min(0), updatedAt: z.string(), archivedAt: z.string().nullable(), archivedBy: z.string().nullable(),
+  deleteCounts: z.strictObject({ chats: z.number().int().min(0), artifacts: z.number().int().min(0) }).optional(),
 }) satisfies z.ZodType<ProjectSummary>;
 
 export const ProjectMemberSchema = z.strictObject({
@@ -81,3 +82,7 @@ export const ProjectListSchema = z.strictObject({
   archived: z.array(ProjectSummarySchema),
   limit: z.strictObject({ used: z.number().int().min(0), cap: z.number().int().nullable() }),
 }) satisfies z.ZodType<ProjectList>;
+
+export const ProjectDeletedSchema = z.strictObject({
+  ok: z.literal(true), chats: z.number().int().min(0), artifacts: z.number().int().min(0),
+}) satisfies z.ZodType<ProjectDeleted>;

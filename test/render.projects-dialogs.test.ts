@@ -16,8 +16,11 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import {
   projectDialog, pinDialog, shareDialog, deleteDialog, blankProjectDraft, draftFrom, blankPinPick, privatePicks, pinCandidates,
+  pinRoomText, uploadRefusalText, deletedProjectText,
   type PinPick, type ShareDraft,
 } from "../web/src/projects";
+import { projectErrorText } from "../web/src/projects-api";
+import { OrgApiError } from "../web/src/api";
 import { createProjectsController } from "../web/src/projects-actions";
 import { setApiOrg } from "../web/src/api";
 import { initialDropdownUi } from "../web/src/dropdown";
@@ -141,6 +144,14 @@ describe("Share and Delete", () => {
     expect(html).toContain(">Delete Hosting providers?<");
     expect(html).toContain(esc("Its 4 chats are deleted, including any shared with the project. Its 2 artifacts stay in Artifacts. The tickets, docs and PRs it pinned aren't touched."));
     expect(html).toContain(">Delete project<");
+  });
+
+  it("Delete counts what deleting takes: the server's `deleteCounts` (every chat, anyone's), else the reader's own", () => {
+    const html = deleteDialog({ ...PROJECT_HOSTING, chats: 4, deleteCounts: { chats: 7, artifacts: 1 } }, false, null);
+    expect(html).toContain(esc("Its 7 chats are deleted, including any shared with the project. Its 1 artifact stays in Artifacts."));
+    expect(deletedProjectText("Hosting providers", 5)).toBe("Hosting providers deleted, with its 5 chats");
+    expect(deletedProjectText("Hosting providers", 1)).toBe("Hosting providers deleted, with its 1 chat");
+    expect(deletedProjectText("Hosting providers", 0)).toBe("Hosting providers deleted");
   });
 
   it("the app draws the open dialog at its root", () => {
@@ -270,6 +281,69 @@ describe("the controller — writes, the plan's sentence, Undo", () => {
     ]);
     expect(calls[0].body).toEqual({ visibility: "org" });
     expect(calls[1].body).toEqual({ members: [{ handle: "Jose-Gael-Cruz-Lopez", role: "editor" }, { handle: "meilin", role: "editor" }] });
+  });
+
+  it("a 403 says the server's own sentence; without one, the fixed one", () => {
+    expect(projectErrorText(new OrgApiError(403, "forbidden", "Only the owner can change who can see this project.", null), "Couldn't save.")).toBe("Only the owner can change who can see this project.");
+    expect(projectErrorText(new OrgApiError(403, "forbidden", null, null), "Couldn't save.")).toBe("Only the project's owner or an editor can change that.");
+  });
+
+  it("Delete's toast says how many chats went with it (the server's count)", async () => {
+    answer = (c) => ({ status: 200, body: c.method === "DELETE" ? { ok: true, chats: 5, artifacts: 2 } : PROJECT_LIST });
+    const { state, ctl, flashes } = make();
+    state.screen = "project";
+    state.projects = { ...state.projects, slug: "hosting-providers", list: { status: "ok", data: PROJECT_LIST }, detail: { status: "ok", data: HOSTING_DETAIL } };
+    ctl.act("projDelete", "hosting-providers", null);
+    ctl.act("projDeleteGo", null, null);
+    await settle(); await settle();
+    expect(calls[0]).toMatchObject({ method: "DELETE", url: "/api/o/saplinglearn/projects/hosting-providers" });
+    expect(flashes.map((f) => f.msg)).toContain("Hosting providers deleted, with its 5 chats");
+  });
+
+  it("Add to Knowledge past the project's pin room is refused in the dialog, and nothing is sent", async () => {
+    const { state, ctl } = make();
+    state.me = { orgs: [{ slug: "saplinglearn", name: "SaplingLearn", role: "owner", plan: "free" }] } as unknown as AppState["me"];
+    state.screen = "project";
+    state.projects = { ...state.projects, slug: "hosting-providers", detail: { status: "ok", data: { ...HOSTING_DETAIL, pinLimit: { used: 19, cap: 20 } } } };
+    ctl.act("projAdd", null, null);
+    ctl.act("projPinToggle", "ticket:90", "1");
+    ctl.act("projPinToggle", "doc:hosting-connections", "1");
+    ctl.act("projPinGo", null, null);
+    await settle();
+    expect(calls.filter((c) => c.method === "POST")).toEqual([]);
+    const d = state.projects.dialog;
+    expect(d?.kind === "pin" && d.pick.error).toBe("This project has used 19 of the 20 pinned items Free includes. Pick 1 or fewer, or upgrade for more.");
+    expect(pinRoomText({ used: 20, cap: 20 }, 1, false, "Free")).toBe("This project has used all 20 pinned items Free includes. Unpin one first, or ask an owner to upgrade.");
+    expect(pinRoomText({ used: 19, cap: 20 }, 1, true, "Free")).toBeNull();
+    expect(pinRoomText({ used: 500, cap: null }, 99, true, "Enterprise")).toBeNull();
+  });
+
+  it("a pick sent in chunks, one refused after others landed: the page shows what was added and the dialog says how many", async () => {
+    const after = { ...HOSTING_DETAIL, pinLimit: { used: 35, cap: null } };
+    let posts = 0;
+    answer = (c) => (c.method === "POST" && ++posts > 1
+      ? { status: 402, body: { error: "plan_limit", limit: "project_pins", used: 35, cap: 40, plan: "team", status: "active", message: "This project has reached the 40 pinned items per project this organization's Pro plan includes." } }
+      : { status: 200, body: after });
+    const { state, ctl } = make();
+    state.screen = "project";
+    state.projects = { ...state.projects, slug: "hosting-providers", detail: { status: "ok", data: { ...HOSTING_DETAIL, pinLimit: { used: 10, cap: null } } } };
+    ctl.act("projAdd", null, null);
+    const refs = Array.from({ length: 30 }, (_, i) => `ticket:${200 + i}`);
+    for (const r of refs) ctl.act("projPinToggle", r, "1");
+    ctl.act("projPinGo", null, null);
+    await settle(); await settle(); await settle();
+    expect(calls.filter((c) => c.method === "POST").map((c) => (c.body as { refs: string[] }).refs.length)).toEqual([25, 5]);
+    expect(state.projects.detail.data?.pinLimit.used).toBe(35);
+    const d = state.projects.dialog;
+    expect(d?.kind === "pin" && d.pick.error).toBe("Added 25 of 30. This project has reached the 40 pinned items per project this organization's Pro plan includes. Ask Trov to change your plan.");
+    // What landed leaves the pick: Add again sends only the rest.
+    expect(d?.kind === "pin" && d.pick.sel).toEqual(refs.slice(25));
+  });
+
+  it("files past Ask's rules are refused before anything is sent, in the project's words", () => {
+    expect(uploadRefusalText(Array.from({ length: 6 }, (_, i) => ({ name: `f${i}.txt`, size: 1 })))).toBe("Add at most 5 files at a time.");
+    expect(uploadRefusalText([{ name: "huge.pdf", size: 11 * 1024 * 1024 }])).toBe("huge.pdf is too large. Files can be up to 10 MB.");
+    expect(uploadRefusalText([{ name: "ok.pdf", size: 1024 }])).toBeNull();
   });
 
   it("a project the person can't open is the one 404: the page says there is no project here", async () => {

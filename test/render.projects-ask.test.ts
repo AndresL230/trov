@@ -32,6 +32,7 @@ import { askHeader } from "../web/src/ask-screen";
 import { composerView, projectFoot } from "../web/src/ask-composer";
 import { threadsView, threadsPart, projectMark } from "../web/src/ask-threads";
 import { emptyConvo } from "../web/src/ask-stream";
+import { conversationView, turnErrorWords } from "../web/src/ask-conversation";
 import { sidebarView, NAV_CLOSED } from "../web/src/sidebar";
 import { askStateFixture, askThreadsFixture } from "@shared/ai-fixtures";
 import { HOSTING_CHATS, HOSTING_DETAIL, PROJECT_LIST, PROJECT_FIXTURE_PEOPLE } from "@shared/projects-fixtures";
@@ -153,6 +154,39 @@ describe("the project page's composer sends a new thread in the project", () => 
     s.ask.composer.page = { ...s.ask.composer.page, text: "half a question" };
     ctl.prepareProject(HOSTING);
     expect(s.ask.composer.page.text).toBe("half a question");
+  });
+});
+
+describe("the project refuses a new thread (before anything streams)", () => {
+  async function refusedWith(status: number, body: unknown) {
+    const s = app();
+    s.screen = "project";
+    const ctl = createAskController({ state: s, mount: { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement, rerender: () => undefined, flash: () => undefined, unauth: () => undefined, search: () => "" });
+    ctl.prepareProject(HOSTING);
+    transport.handler = (path) => (path === "/ask" ? Response.json(body, { status }) : Response.json({ threads: [] }));
+    ctl.ctx.send({ text: "What blocks the sprint?", where: "page" });
+    await vi.waitFor(() => expect(s.ask.page.busy).toBe(false), { timeout: 3000 });
+    return conversationView(askView(s, "page"));
+  }
+
+  it("archived: the server's sentence, and no Try again", async () => {
+    const html = await refusedWith(409, { error: "archived", message: "This project is archived. Restore it to change it." });
+    expect(html).toContain("This project is archived. Restore it to change it.");
+    expect(html).not.toContain("Something went wrong.");
+    expect(html).not.toContain('data-act="askCvRetry"');
+  });
+
+  it("not_found: the project isn't there any more, and no Try again", async () => {
+    const html = await refusedWith(404, { error: "not_found" });
+    expect(html).toContain("This project isn&#39;t there any more.");
+    expect(html).not.toContain('data-act="askCvRetry"');
+  });
+
+  it("any other failure, or a refusal outside a project, keeps the generic line with Try again", () => {
+    expect(turnErrorWords({ threadId: null, project: HOSTING }, { code: "failed", message: "boom" })).toEqual({ title: "Something went wrong.", sub: "Nothing was changed.", retry: true });
+    expect(turnErrorWords({ threadId: null, project: null }, { code: "not_found", message: "not_found" }).retry).toBe(true);
+    // A stored thread's question never went with `projectId`: its not_found is the thread's, not the project's.
+    expect(turnErrorWords({ threadId: 303, project: HOSTING }, { code: "not_found", message: "not_found" }).retry).toBe(true);
   });
 });
 

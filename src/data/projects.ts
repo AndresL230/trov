@@ -206,6 +206,22 @@ export async function artifactCounts(ctx: TenantContext, ids: readonly number[],
   return new Map(rows.map((r) => [r.project_id, Number(r.n)]));
 }
 
+/** What each project holds, WHOEVER may see it — every thread in it and every artifact it holds — as two grouped
+ *  counts (the delete confirmation's numbers, src/tools/projects.ts `countsFor`; the same rows deleting takes). */
+export async function projectHoldings(ctx: TenantContext, ids: readonly number[]): Promise<Map<number, { chats: number; artifacts: number }>> {
+  const out = new Map<number, { chats: number; artifacts: number }>();
+  if (!ids.length) return out;
+  const marks = ids.map(() => "?").join(", ");
+  const [chats, arts] = await Promise.all([
+    all<{ project_id: number; n: number }>(ctx, `SELECT project_id, COUNT(*) AS n FROM chat_threads WHERE org_id = ? AND project_id IN (${marks}) GROUP BY project_id`, ctx.orgId, ...ids),
+    all<{ project_id: number; n: number }>(ctx, `SELECT project_id, COUNT(*) AS n FROM artifact_pages WHERE org_id = ? AND deleted_at IS NULL AND project_id IN (${marks}) GROUP BY project_id`, ctx.orgId, ...ids),
+  ]);
+  for (const id of ids) out.set(id, { chats: 0, artifacts: 0 });
+  for (const r of chats) out.get(r.project_id)!.chats = Number(r.n);
+  for (const r of arts) out.get(r.project_id)!.artifacts = Number(r.n);
+  return out;
+}
+
 /** The artifact is the project's (saved from one of its threads, or uploaded on its page). */
 export async function setArtifactProject(ctx: TenantContext, pageId: number, projectId: number): Promise<void> {
   await run(ctx, `UPDATE artifact_pages SET project_id = ? WHERE id = ? AND org_id = ?`, projectId, pageId, ctx.orgId);

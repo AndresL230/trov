@@ -12,14 +12,16 @@ import { OrgApiError, Unauthorized, quickSearch, patchArtifact } from "./api";
 import { askApi, quickHitsToRefs, type AskRefHit } from "./ask-api";
 import { knownHits } from "./ask-composer";
 import {
-  blankPinPick, blankProjectDraft, draftFrom, atProjectCap, privatePicks, PIN_TYPE_TABS, PROJECT_SORTS,
+  blankPinPick, blankProjectDraft, draftFrom, atProjectCap, privatePicks, pinRoomText, uploadRefusalText, deletedProjectText, PIN_TYPE_TABS, PROJECT_SORTS,
   type PinTypeTab, type ProjectSort, type ProjectsUi,
 } from "./projects";
+import { currentOrg } from "./org-core";
+import { PLANS } from "@shared/plans";
+import type { AskThreadProject } from "@shared/ai-ask-core";
 import {
   PROJECT_LIMITS, PROJECT_PIN_TYPES, isProjectVisibility, type ProjectDetail, type ProjectSummary, type ProjectPatchBody, type ProjectRole,
 } from "@shared/projects-core";
 import { isSpaceColor, isSpaceIcon } from "@shared/docs-core";
-import type { AskThreadProject } from "@shared/ai-ask-core";
 
 export interface ProjectsHost {
   state: AppState;
@@ -70,6 +72,8 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
   const rerender = () => host.rerender();
   const fail = (e: unknown): boolean => { if (e instanceof Unauthorized) { host.unauth(e); return true; } return false; };
   const text = (e: unknown, fallback: string) => projectErrorText(e, fallback, host.role());
+  /** The org's plan's name ("Free"), for the pin room's sentence. */
+  const planName = (): string => { const p = currentOrg(state)?.plan; return p ? PLANS[p].name : "Your plan"; };
   let listSeq = 0;
   let detailSeq = 0;
   /** The slug the detail read in flight is for. */
@@ -255,21 +259,38 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
     if (dlg?.kind !== "pin" || !d || dlg.pick.busy || !dlg.pick.sel.length) return;
     const slug = d.project.slug;
     const refs = dlg.pick.sel.slice();
+    // Past the project's pin room the whole pick is refused here, before anything is sent: each chunk below is
+    // committed alone, so a later one refused (402) would leave the earlier ones pinned.
+    const room = pinRoomText(d.pinLimit, refs.length, host.role() === "owner", planName());
+    if (room) { dlg.pick = { ...dlg.pick, error: room }; rerender(); return; }
     dlg.pick = { ...dlg.pick, busy: true, error: null };
     rerender();
     // At most `pinsPerRequest` refs a call; the last answer is the page.
     const chunks: string[][] = [];
     for (let i = 0; i < refs.length; i += PROJECT_LIMITS.pinsPerRequest) chunks.push(refs.slice(i, i + PROJECT_LIMITS.pinsPerRequest));
-    chunks.reduce<Promise<ProjectDetail | null>>((p, c) => p.then(() => addProjectPins(slug, c)), Promise.resolve(null))
-      .then((detail) => {
-        if (detail) landed(detail);
+    const added: string[] = [];
+    let page: ProjectDetail | null = null;
+    chunks.reduce<Promise<void>>((p, c) => p.then(() => addProjectPins(slug, c)).then((detail) => { page = detail; added.push(...c); }), Promise.resolve())
+      .then(() => {
+        if (page) landed(page);
         host.confirmOut(() => {
           ui().dialog = null;
           rerender();
           undoable(`Added ${refs.length} to Knowledge`, () => unpinAll(slug, refs));
         });
       })
-      .catch((e) => { if (fail(e)) return; const now = ui().dialog; if (now?.kind === "pin") { now.pick = { ...now.pick, busy: false, error: text(e, "Couldn't add them.") }; rerender(); } });
+      .catch((e) => {
+        if (fail(e)) return;
+        // Some chunks were pinned before one was refused: the page shows what is pinned now, and the dialog says so
+        // (what was added leaves the pick, so Add again sends only the rest).
+        if (page) landed(page);
+        const now = ui().dialog;
+        if (now?.kind === "pin") {
+          const why = text(e, "Couldn't add the rest.");
+          now.pick = { ...now.pick, busy: false, sel: now.pick.sel.filter((r) => !added.includes(r)), error: added.length ? `Added ${added.length} of ${refs.length}. ${why}` : text(e, "Couldn't add them.") };
+        }
+        rerender();
+      });
   }
   function unpinAll(slug: string, refs: string[]): void {
     refs.reduce<Promise<ProjectDetail | null>>((p, r) => p.then(() => removeProjectPin(slug, r)), Promise.resolve(null))
@@ -281,6 +302,13 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
     const d = ui().detail.data;
     if (!d || !files.length) return;
     const dlg = ui().dialog;
+    // Ask's attachment rules, checked before anything is sent, in the project's words (the server's are a message's).
+    const refused = uploadRefusalText(files);
+    if (refused) {
+      if (dlg?.kind === "pin") { dlg.pick = { ...dlg.pick, error: refused }; rerender(); }
+      else host.flash(refused, 4200);
+      return;
+    }
     if (dlg?.kind === "pin") { dlg.pick = { ...dlg.pick, uploading: true, error: null }; rerender(); }
     uploadProjectFiles(d.project.slug, files)
       .then((detail) => {
@@ -359,7 +387,7 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
     dlg.busy = true; dlg.error = null;
     rerender();
     deleteProject(slug)
-      .then(() => {
+      .then((done) => {
         host.confirmOut(() => {
           ui().dialog = null;
           const l = ui().list.data;
@@ -369,7 +397,7 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
           loadList();
           host.threadsChanged();
           rerender();
-          host.flash(`${p?.name ?? "The project"} deleted`);
+          host.flash(deletedProjectText(p?.name ?? "The project", done.chats));
         });
       })
       .catch((e) => { if (fail(e)) return; const now = ui().dialog; if (now?.kind === "delete") { now.busy = false; now.error = text(e, "Couldn't delete the project."); rerender(); } });

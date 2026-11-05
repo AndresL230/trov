@@ -7,7 +7,7 @@ import { apiFetch, ApiError, OrgApiError, PreviewBlocked, planLimitText } from "
 import { isPlanRefusal } from "@shared/plans";
 import {
   PROJECT_ROUTES,
-  type ProjectCreateBody, type ProjectDetail, type ProjectList, type ProjectMembersBody, type ProjectPatchBody, type ProjectSummary,
+  type ProjectCreateBody, type ProjectDeleted, type ProjectDetail, type ProjectList, type ProjectMembersBody, type ProjectPatchBody, type ProjectSummary,
 } from "@shared/projects-core";
 
 /** A route of PROJECT_ROUTES with its `:project` (and `:ref`) filled in, URL-encoded. */
@@ -41,8 +41,8 @@ export const createProject = (body: ProjectCreateBody): Promise<ProjectSummary> 
 export const getProject = (slug: string): Promise<ProjectDetail> => send("GET", projectPath(PROJECT_ROUTES.one, slug));
 /** `PATCH /projects/:project` — details, instructions or visibility (owner; editors all but visibility). */
 export const patchProject = (slug: string, body: ProjectPatchBody): Promise<ProjectDetail> => send("PATCH", projectPath(PROJECT_ROUTES.one, slug), body);
-/** `DELETE /projects/:project` — owner or org admin. */
-export const deleteProject = (slug: string): Promise<{ ok: true }> => send("DELETE", projectPath(PROJECT_ROUTES.one, slug));
+/** `DELETE /projects/:project` — owner or org admin. Answers what went (`chats`: every thread in it) and what stayed. */
+export const deleteProject = (slug: string): Promise<ProjectDeleted> => send("DELETE", projectPath(PROJECT_ROUTES.one, slug));
 export const archiveProject = (slug: string): Promise<ProjectSummary> => send("POST", projectPath(PROJECT_ROUTES.archive, slug), {});
 export const restoreProject = (slug: string): Promise<ProjectSummary> => send("POST", projectPath(PROJECT_ROUTES.restore, slug), {});
 /** `PUT /projects/:project/members` — the WHOLE member list (never on a private project: `400 invalid`). */
@@ -68,7 +68,7 @@ export function projectErrorText(e: unknown, fallback: string, role: "owner" | "
   const detail = raw ? `${raw[0].toUpperCase()}${raw.slice(1)}${/[.!?]$/.test(raw) ? "" : "."}` : null;
   switch (e.message) {
     case "not_found": return "That project isn't there any more, or you can't open it. Reload the page.";
-    case "forbidden": return "Only the project's owner or an editor can change that.";
+    case "forbidden": return detail ?? "Only the project's owner or an editor can change that.";
     case "archived": return "This project is archived, so it is read-only. Restore it first.";
     case "private_pin": return detail ?? "A private artifact can't be pinned here: people in the project wouldn't see it. Publish it to the org first.";
     case "invalid": return detail ?? `${fallback} Check what you entered.`;
