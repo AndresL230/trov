@@ -30,6 +30,7 @@ import { briefDevStatements } from "./brief-dev.mjs";
 import { aiRoadmapDevStatements } from "./ai-roadmap-dev.mjs";
 import { teamRichStatements, insert, insertMany, makeClock, datedRoadmap } from "./team-rich.mjs";
 import * as showcase from "./ai-showcase.mjs";
+import { projectStatements } from "./projects.mjs";
 import docs from "../../fixtures/dev/docs.json" with { type: "json" };
 import feed from "../../fixtures/dev/feed.json" with { type: "json" };
 import adrs from "../../fixtures/dev/adrs.json" with { type: "json" };
@@ -190,6 +191,8 @@ export async function teamShowcase(db, { now = new Date(), image = null, views =
   const v = views ? await views(showcase.showcaseRefs(pre, snap, now)) : {};
   const { statements, unresolved } = showcase.aiStatements(pre, snap, v, now, { origin, image: image ?? undefined });
   await db.apply("AI showcase: output", statements);
+  // Projects (0086_projects) last: they pin the showcase's hosting sprint and tickets and take four of its threads.
+  await db.apply("Projects", projectStatements(now));
   return { unresolved };
 }
 

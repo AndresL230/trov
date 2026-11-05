@@ -1461,6 +1461,9 @@ a.repo-st-src:focus-visible { outline:2px solid var(--focus); outline-offset:1px
 .cnpy-cmodal-back { position:absolute; inset:0; background:rgba(0,0,0,.5); animation:cnpy-cm-fade .16s ease both; }
 .cnpy-cmodal-wrap { position:absolute; inset:0; display:grid; place-items:center; padding:16px; pointer-events:none; }
 .cnpy-cmodal-box { pointer-events:auto; box-sizing:border-box; width:min(420px, 100%); padding:20px 22px 18px; border-color:var(--border-strong) !important; box-shadow:0 20px 60px rgba(0,0,0,.45); outline:none; animation:cnpy-cm-in .18s cubic-bezier(.2,.8,.2,1) both; }
+/* Leaving, it takes no clicks: the click that comes straight after Cancel (a ⋯ menu under it) reaches the page, not
+   the fading layer (main.ts `confirmOut` holds it for its exit). Reduced motion has no exit, so nothing to let through. */
+.cnpy-cmodal[data-closing], .cnpy-cmodal[data-closing] .cnpy-cmodal-box { pointer-events:none; }
 .cnpy-cmodal[data-closing] .cnpy-cmodal-back { animation:cnpy-cm-fade-out .14s ease both; }
 .cnpy-cmodal[data-closing] .cnpy-cmodal-box { animation:cnpy-cm-out .14s ease both; }
 @keyframes cnpy-cm-fade { from { opacity:0; } to { opacity:1; } }
@@ -4415,6 +4418,67 @@ a.ask-btn { text-decoration:none; }
 .cnpy-sub-ghost > span:first-child { width:14px; height:14px; box-shadow:inset 0 0 0 1px var(--border-strong); }
 .cnpy-sub-ghost > span:last-child { width:70px; height:8px; box-shadow:inset 0 0 0 1px var(--border-strong); }
 @media (prefers-reduced-motion: reduce) { .cnpy-lib-newcard, .cnpy-libm-ic { transition:none; } }
+
+/* ── Projects (projects.ts; the Claude Design canvas "Trov Projects") ────────────────────────────────────────────── */
+/* The list: the Library's cards, a table of rows (each a hit area with its ⋯ above it), Archived · N. */
+.pj-row { position:relative; }
+.pj-row:hover { background:var(--hover); }
+.pj-row.has-menu { z-index:5; }
+.pj-row .pj-rowmenu { top:32px; right:0; }
+.pj-headmenu { top:40px; right:0; }
+.pj-menu-sep { height:1px; margin:4px 2px; background:var(--border); }
+.pj-sfbar .cnpy-dd { height:100%; border:none; background:transparent; color:var(--fg-70); }
+.pj-sfbar .cnpy-dd:hover:not(:disabled), .pj-sfbar .cnpy-dd.is-open { background:var(--hover); box-shadow:none; }
+.pj-archgo .pj-chev { transition:transform .14s ease; }
+.pj-archgo[aria-expanded="true"] .pj-chev { transform:rotate(90deg); }
+/* A project's home: the column (Ask's composer at its full width, the tabs) beside Instructions and Knowledge. */
+.pj-cols { display:flex; gap:28px; margin-top:24px; flex-wrap:wrap; align-items:flex-start; }
+.pj-main { flex:999 1 520px; min-width:0; display:flex; flex-direction:column; gap:18px; }
+/* No max-width: beside the column the 999:1 grow keeps it about 320px; wrapped under it, alone on its line, it fills. */
+.pj-side { flex:1 1 320px; min-width:0; display:flex; flex-direction:column; gap:12px; }
+.pj-chat:hover { background:var(--hover); }
+.pj-home .ask-composer { padding:0; }
+.pj-home .ask-co-in { max-width:none; margin:0; padding-bottom:0; }
+.pj-k { display:flex; align-items:center; gap:9px; padding:6px 8px; font-size:13px; min-width:0; }
+.pj-k:not(.is-hidden):hover { background:var(--hover); }
+.pj-k .pj-x { opacity:0; transition:opacity .12s ease; }
+.pj-k:hover .pj-x, .pj-k .pj-x:focus-visible { opacity:1; }
+@media (hover: none) { .pj-k .pj-x { opacity:1; } }
+/* Add to <project>: the candidates (a checkbox each; a pinned one ticked and disabled) and the upload drop zone. */
+.pj-pick { display:flex; align-items:center; gap:10px; padding:7px 10px; font-size:13px; cursor:pointer; }
+.pj-pick:hover { background:var(--hover); }
+.pj-pick input { width:15px; height:15px; margin:0; flex:none; accent-color:var(--accent); }
+.pj-pick:has(input:disabled) { cursor:default; color:var(--fg-55); }
+.pj-drop[data-over] { border-color:var(--accent) !important; background:var(--accent-soft); }
+/* Ask in a project: the crumb's links, a thread row's tile, the list's first group, the ⋯ menu's projects. */
+.ask-crumb-link { padding:0; color:var(--fg-55); cursor:pointer; max-width:240px; }
+.ask-crumb-link:hover, .ask-crumb-link:focus-visible { color:var(--fg); }
+.ask-th-proj { flex:none; display:inline-flex; margin-left:6px; }
+.ask-th-head--proj { display:flex; align-items:center; gap:7px; }
+.ask-menu-label { padding:6px 9px 2px; font-size:11.5px; font-weight:500; color:var(--fg-55); }
+.ask-menu > button.ask-th-mv { gap:8px; }
+.ask-th-mv-n { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ask-co-ico--proj { background:transparent; border-color:transparent; }
+.ask-co-proj { color:var(--fg-55); }
+.ask-co-inproj { display:inline-flex; align-items:center; gap:6px; margin-left:4px; font-size:12px; color:var(--fg-55); white-space:nowrap; }
+/* The list sizes to its own width, not the window's (the sidebar takes a share of it): Recent stays three in a row as
+   the design has it, down to one column where three would not fit; the table gives up Owner and Updated before the
+   Project column truncates, then everything but the name and its ⋯. */
+.pj-list { container:pjlist / inline-size; }
+@container pjlist (max-width: 860px) {
+  .pj-row, .pj-th, .pj-rowsk { grid-template-columns:minmax(0,1fr) 110px 52px 52px 34px !important; }
+  :is(.pj-row, .pj-th, .pj-rowsk) > :is(:nth-child(3), :nth-child(6)) { display:none !important; } /* the cells set their own inline display */
+}
+@container pjlist (max-width: 520px) {
+  .pj-grid { grid-template-columns:minmax(0,1fr) !important; }
+  .pj-row, .pj-th, .pj-rowsk { grid-template-columns:minmax(0,1fr) 34px !important; }
+  :is(.pj-row, .pj-th, .pj-rowsk) > :nth-child(n+2):nth-child(-n+6) { display:none !important; }
+}
+@media (max-width:640px) {
+  .pj-list, .pj-home { padding-left:16px !important; padding-right:16px !important; }
+  .pj-arts { grid-template-columns:minmax(0,1fr) !important; }
+}
+@media (prefers-reduced-motion: reduce) { .pj-archgo .pj-chev, .pj-k .pj-x { transition:none; } }
 
 /* ── the docs pane, the page tree and its drag (docs-pane.ts, tree-drag.ts) ─────────────────────────────── */
 /* The Library's frame (render.ts `libraryFrame`): the pane beside the content, each scrolling on its own. Under 900px

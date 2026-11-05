@@ -48,6 +48,8 @@
 //   #tags/<name>      → one tag's page: everything that carries it. The list itself is
 //                       Org settings › Tags (`#org/tags`), where a bare `#tags` lands
 //   #ask              → Ask Trov, a new thread; #ask/<id> one stored thread (its id, a positive integer)
+//   #projects         → Projects (Workspace › Projects): the list; #project/<slug> one project's home. A thread in
+//                       a project opens on the Ask route (`#ask/<id>`), its crumb naming the project
 //   #welcome          → the guided first-run setup, at its first step; #welcome/agent,
 //                       #welcome/team and #welcome/done its others (welcome.ts)
 //   #<screen>         → every other screen, named exactly as the Screen union
@@ -72,7 +74,7 @@ import { SPACE_SLUG_RE } from "@shared/docs-core";
  *  sprint routes are parsed separately below. */
 const PLAIN_SCREENS: Screen[] = [
   "home", "mywork", "feed", "library", "review",
-  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports", "relay",
+  "search", "settings", "guide", "tickets", "site", "handoffs", "prompts", "imports", "relay", "projects",
 ];
 
 export interface Route {
@@ -127,12 +129,16 @@ export interface Route {
   importSpace?: string;
   /** Set only on `review`, in its Unplaced view (`#review/unplaced`); absent = the queue. */
   reviewView?: "unplaced";
+  /** Set only on `project` (the project's slug, `#project/<slug>`). */
+  projectSlug?: string;
 }
 
 /** One repository's page under Org settings › Repositories: its Apps (`apps`), one app (`app`), or Add an app (`new`). */
 export interface OrgRepoRoute { repo: string; view: "apps" | "app" | "new"; app?: string }
 const REPO_SEG = /^[A-Za-z0-9_.-]{1,100}$/;
 const APP_KEY_SEG = /^[a-z0-9_-]{1,32}$/;
+/** A project's slug (shared/projects-core.ts `projectSlug`, plus the server's `-2`, `-3`… on a clash). */
+const PROJECT_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** Whether two routes name the same place (the hashchange no-op check). */
 export function sameRoute(a: Route, b: Route): boolean {
@@ -142,7 +148,7 @@ export function sameRoute(a: Route, b: Route): boolean {
     && a.releaseVersion === b.releaseVersion && a.releasePage === b.releasePage
     && a.platTab === b.platTab && a.platOrg === b.platOrg && a.platReport === b.platReport
     && a.orgTab === b.orgTab && a.welcomeStep === b.welcomeStep && a.tagName === b.tagName && a.askThread === b.askThread
-    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug && a.importSpace === b.importSpace && a.reviewView === b.reviewView
+    && a.spaceSlug === b.spaceSlug && a.docSlug === b.docSlug && a.importSpace === b.importSpace && a.reviewView === b.reviewView && a.projectSlug === b.projectSlug
     && JSON.stringify(a.art ?? null) === JSON.stringify(b.art ?? null)
     && JSON.stringify(a.orgRepo ?? null) === JSON.stringify(b.orgRepo ?? null);
 }
@@ -346,6 +352,11 @@ export function parseHash(hash: string): Route {
     const name = parts.length === 2 ? normalizeTagName(seg(parts[1])) : null;
     return name ? { screen: "tag", ...base, tagName: name } : none;
   }
+  // One project's home (Projects is the bare `#projects`, a plain screen).
+  if (parts[0] === "project") {
+    const slug = parts.length === 2 ? seg(parts[1]) : null;
+    return slug && PROJECT_SLUG_RE.test(slug) ? { screen: "project", ...base, projectSlug: slug } : parts.length === 1 ? { screen: "projects", ...base } : none;
+  }
   // Ask Trov: a new thread, or one stored thread.
   if (parts[0] === "ask") {
     if (parts.length === 1) return { screen: "ask", ...base };
@@ -412,6 +423,7 @@ export function hashForRoute(r: Route): string {
   }
   if (r.screen === "tag") return r.tagName ? `#tags/${encodeURIComponent(r.tagName)}` : "#org/tags";
   if (r.screen === "ask") return r.askThread ? `#ask/${r.askThread}` : "#ask";
+  if (r.screen === "project") return r.projectSlug ? `#project/${encodeURIComponent(r.projectSlug)}` : "#projects";
   if (r.screen === "welcome") return !r.welcomeStep || r.welcomeStep === "github" ? "#welcome" : `#welcome/${r.welcomeStep}`;
   return `#${r.screen}`;
 }

@@ -105,7 +105,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
     `deleted-…` tombstone through `HANDLE_COLUMNS`; Stripe is cancelled first, R2 freed after the commit.
     Ask Trov's PRIVATE attachments are hard-deleted with their conversation (unless a ticket or doc refers to
     them), with the account, and one at a time when removed before it was ever sent, also only through
-    `src/deletion/` (`ask.md`).
+    `src/deletion/` (`ask.md`). A project's delete is soft and takes its threads that way (`src/deletion/projects.ts`).
     A new table with an `org_id` or a handle column must be added to `ORG_TABLES` / `HANDLE_COLUMNS`.
 12. **Credentials go through their one resolver; secrets never reach logs or responses.** A GitHub read
     uses `resolveGithubCredential`, any other integration `resolveCredential` — never a Worker secret or
@@ -179,6 +179,7 @@ Trust `live`; scrutinize `staged_pending` / `unpromoted` / `draft` — not settl
 | plans, limits, grants, the pricing page, the summarizer allowance | `plans.md` |
 | `src/ai/`, where a model may be called, the router and the AI pass, the kinds and their evals, `ai_runs`, the AI switch, suggestions / "Wrong?", AI cost, `LOCAL_AI_PREVIEW` | `ai.md` |
 | Ask Trov: `src/ai/ask/`, the `/ask` routes and SSE contract, `chat_*` tables, `ai_chat`; the Ask screen (`web/src/ask-*.ts`) | `ask.md` |
+| Projects: `src/projects/`, `src/tools/projects.ts`, `project*` tables, Ask in a project (`src/ai/ask/project.ts`), `shared/projects*.ts` | `projects.md` |
 | Stripe, checkout, `src/billing/` | `billing.md` |
 | rate limits, the mail sender, what a stranger can do | `abuse-limits.md` |
 | the bug-report / support form, `support_reports`, Platform › Support | `support.md` |

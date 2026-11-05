@@ -47,6 +47,14 @@ seats make it unlimited. An override of the per-seat limit itself is the org's W
 
 | `jev_checks` | 1,000 | 10,000 | unlimited | 1,000 | PER CALENDAR MONTH (UTC): Sift's checks (requests to TypeSafe AI's Jev — ONE request per candidate item; `org_usage_daily` metric `ai_suggest`) | `startTagFit` / `continueTagFit` (the Sift run, `src/ai/sift.ts`) — it refuses nothing with a 402: past it a run stops (`capped`) and the Tags tab says so |
 | `tags` | 30 | 50 | unlimited | 30 | LIVE `org_tags` rows (a retired tag does not count) | `addTag`, `restoreTag`, `resolveSuggestion` accept (`src/tools/tags.ts`) |
+| `projects` | 2 | unlimited | unlimited | 2 | LIVE projects (`0086_projects`: not archived, not deleted) | `createProject`, `restoreProject` (`src/tools/projects.ts`) |
+| `project_pins` | 20 | 200 | unlimited | 20 | PER PROJECT (`LimitDef.per: "project"`): one project's pins — `requirePlan(ctx, "project_pins", n, { project })` | `pinRefs`, `uploadIntoProject` (`src/tools/projects.ts`). **Not listed** (below) |
+
+**Projects (2026-11-05)** — `projects.md` › Limits. Not per seat. `project_pins` is counted per PROJECT, the first limit
+that is: `requirePlan` and `limitUse` take an optional scope (`{ project }`) for it, and unscoped (the Plan view's one
+number) it reads the org's most-pinned live project. It is NOT LISTED (`listed: false`): the Plan block and Settings ›
+Limits draw one meter per limit, and this one has one per project — the project page shows it ("N of 200 pinned").
+`projects` is listed like `tags`.
 
 **Tag checks (`jev_checks`).** The owner's numbers (2026-10-14): 1,000 a month on Free and Personal, 10,000 on Pro,
 unlimited on Enterprise. A run asks Jev about ONE item per request, so a

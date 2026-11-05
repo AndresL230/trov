@@ -24,6 +24,8 @@ export interface ChatThreadRow {
   pending: number;
   /** When the owner shared it with the org (0076_ask_sharing): NULL = private. */
   shared_at: string | null;
+  /** The project it is in (0086_projects), or NULL. Being in a project never shares it. */
+  project_id: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -84,12 +86,12 @@ export function getThread(ctx: TenantContext, handle: string, id: number): Promi
   return first<ChatThreadRow>(ctx, `SELECT * FROM chat_threads WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0`, id, ctx.orgId, handle);
 }
 
-export interface NewThread { mode: AskMode; origin?: AskOrigin; contextRef?: string | null; auto?: boolean }
+export interface NewThread { mode: AskMode; origin?: AskOrigin; contextRef?: string | null; auto?: boolean; projectId?: number | null }
 
 export async function createThread(ctx: TenantContext, handle: string, t: NewThread, at: string = nowIso()): Promise<number> {
   const res = await run(ctx,
-    `INSERT INTO chat_threads (org_id, handle, mode, origin, context_ref, auto_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ctx.orgId, handle, t.mode, t.origin ?? "page", t.contextRef ?? null, t.auto ? 1 : 0, at, at);
+    `INSERT INTO chat_threads (org_id, handle, mode, origin, context_ref, auto_mode, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ctx.orgId, handle, t.mode, t.origin ?? "page", t.contextRef ?? null, t.auto ? 1 : 0, t.projectId ?? null, at, at);
   return Number(res.meta.last_row_id);
 }
 
@@ -186,6 +188,44 @@ export async function listSharedThreads(ctx: TenantContext, handle: string, limi
       ORDER BY COALESCE(p.shared_at, t.shared_at) DESC, t.id DESC LIMIT ?`,
     handle, ctx.orgId, handle, ctx.orgId, limit);
   return rows.map(sharedOf);
+}
+
+// ── a project's threads (0086_projects; docs/architecture/projects.md) ───────
+//
+// Being in a project never shares a thread: a person reaches a project's thread exactly as `threadFor` says — their
+// own, or one shared with them by name or with the org while its owner is still a member. These are that same rule
+// with the project as a filter (the project page's Chats, and its count).
+
+const PROJECT_REACH = `(t.handle = ? COLLATE NOCASE OR ((t.shared_at IS NOT NULL OR p.handle IS NOT NULL) AND ${OWNER_LIVE}))`;
+
+/** The threads in a project that `handle` reaches: their own first, then others' shared with them; newest first in each. */
+export async function projectThreadsFor(ctx: TenantContext, handle: string, projectId: number, limit = 200): Promise<ThreadFor[]> {
+  const rows = await all<SharedRow>(ctx,
+    `SELECT t.*, p.access AS person_access FROM chat_threads t
+       LEFT JOIN chat_thread_people p ON p.org_id = t.org_id AND p.thread_id = t.id AND p.handle = ? COLLATE NOCASE
+      WHERE t.org_id = ? AND t.project_id = ? AND t.pending = 0 AND ${PROJECT_REACH}
+      ORDER BY (t.handle = ? COLLATE NOCASE) DESC, t.updated_at DESC, t.id DESC LIMIT ?`,
+    handle, ctx.orgId, projectId, handle, ctx.orgId, handle, limit);
+  return rows.map((r) => (sameHandle(r.handle, handle) ? { thread: sharedOf(r).thread, access: "owner" as const, direct: false } : sharedOf(r)));
+}
+
+/** How many threads of each project `handle` reaches (the same rule). */
+export async function projectThreadCounts(ctx: TenantContext, handle: string, projectIds: readonly number[]): Promise<Map<number, number>> {
+  if (!projectIds.length) return new Map();
+  const rows = await all<{ project_id: number; n: number }>(ctx,
+    `SELECT t.project_id, COUNT(*) AS n FROM chat_threads t
+       LEFT JOIN chat_thread_people p ON p.org_id = t.org_id AND p.thread_id = t.id AND p.handle = ? COLLATE NOCASE
+      WHERE t.org_id = ? AND t.pending = 0 AND t.project_id IN (${projectIds.map(() => "?").join(", ")}) AND ${PROJECT_REACH}
+      GROUP BY t.project_id`,
+    handle, ctx.orgId, ...projectIds, handle, ctx.orgId);
+  return new Map(rows.map((r) => [r.project_id, Number(r.n)]));
+}
+
+/** Move the owner's thread into a project (its id) or out of one (null). False when it is not the owner's. */
+export async function setThreadProject(ctx: TenantContext, handle: string, id: number, projectId: number | null): Promise<boolean> {
+  const res = await run(ctx, `UPDATE chat_threads SET project_id = ? WHERE id = ? AND org_id = ? AND handle = ? COLLATE NOCASE AND pending = 0`,
+    projectId, id, ctx.orgId, handle);
+  return (res.meta.changes ?? 0) > 0;
 }
 
 /** The people each of these threads is shared with by name (the owner's list and Share dialog), in the order they

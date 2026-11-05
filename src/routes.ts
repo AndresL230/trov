@@ -74,6 +74,7 @@ import { readOrgLogo } from "./orgs/logo";
 import { rateLimited } from "./platform/limits";
 import { aiApp } from "./ai/routes";
 import { askApp, provideAskGithub, provideAskLocalUpstream } from "./ai/ask/routes";
+import { projectsApp } from "./projects/routes";
 import { localUpstreamFetch } from "./sync/local-upstream";
 import { askGithubTransport } from "./repo/ask-github";
 import { askFlagsFor } from "./data/ask";
@@ -1396,6 +1397,7 @@ provideAskGithub(askGithubTransport);
 // LOCAL DEVELOPMENT ONLY: `LOCAL_UPSTREAM` stands in for Anthropic in Ask too (loopback http only, never beside a live key).
 provideAskLocalUpstream(localUpstreamFetch);
 app.route("/api/o/:slug", askApp); // Ask Trov: the stream, threads, write cards, attachments, Settings › Trov — cookie only (src/ai/ask/routes.ts)
+app.route("/api/o/:slug", projectsApp); // Projects (0086_projects): the list, a project, members, pins, files — cookie only (src/projects/routes.ts)
 app.route("/api/o/:slug", repoSettingsApp); // the Repo screen's per-repository defaults (0071_repo_settings) — admin, cookie only (src/repo/settings-routes.ts)
 // The org segment is named `:org` on this mount, NOT `:slug`: many tenant routes have a `:slug` of their
 // own (`/doc/:slug`, `/prompts/:slug`, `/artifacts/:slug`), and one path must not carry the name twice.

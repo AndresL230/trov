@@ -561,6 +561,21 @@ export function searchArtifactsStmt(ctx: TenantContext, match: string, viewer: s
   );
 }
 
+/** The most recently updated pages `viewer` may see (the same visibility rule), as one statement for the quick
+ *  search's batch: what the Add to <project> dialog offers before anything is typed. `liveOnly` drops drafts. */
+export function recentArtifactsStmt(ctx: TenantContext, viewer: string, limit = 8, liveOnly = false): Stmt {
+  const n = Math.max(1, Math.min(100, Math.floor(limit) || 8));
+  return stmt(
+    ctx,
+    `SELECT p.id, p.slug, p.title, p.kind, p.status, p.visibility, p.author_id, p.current_version, p.updated_at, NULL AS description, NULL AS snippet
+       FROM artifact_pages p
+      WHERE p.org_id = ? AND p.current_version > 0 AND ${VISIBLE_SQL}${liveOnly ? ` AND p.status <> 'draft'` : ""}
+      ORDER BY p.updated_at DESC, p.id DESC
+      LIMIT ${n}`,
+    ctx.orgId, viewer
+  );
+}
+
 // ── writes ───────────────────────────────────────────────────────────────────
 
 /** What a version write stores. Exactly one of content / r2_key is set. */

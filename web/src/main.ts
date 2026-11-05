@@ -53,6 +53,7 @@ import { selectedUnplacedId, effectivePicks, UNPLACED_EXIT_MS, type UnplacedVerd
 import { ASSIGN_OPTIONS } from "./triage-map";
 import { draftFromPrompt, blankPromptDraft, slugify, tagOptions } from "./prompts";
 import { createLibraryController } from "./library-actions";
+import { createProjectsController } from "./projects-actions";
 import { createNewDocController } from "./newdoc-actions";
 import { createTreeController } from "./tree-actions";
 import { installTreeDrag, treeKeyTarget } from "./tree-drag";
@@ -319,7 +320,21 @@ const aiCtl = createAiController({
 // Ask Trov (web/src/ask-controller.ts): every `ask…` act, the screen's reads and streams, ⌘J over any page,
 // the hover cards, the inspector's edge, and the dev replay (`?askReplay=<scenario>`).
 const askCtl = createAskController({ state, mount, rerender: () => rerender(), flash: (m, ms) => flash(m, ms), unauth: (e) => unauth(e),
-  refreshTickets: () => { if (state.tickets.status !== "idle") loadTickets(); } });
+  refreshTickets: () => { if (state.tickets.status !== "idle") loadTickets(); },
+  // A project's page (or the project of the thread open here) lists its threads: it follows the thread list.
+  threadsChanged: () => projCtl.refreshDetail() });
+// Projects (web/src/projects-actions.ts): every `proj…` act, the list's read, a project's home. Its page's composer is
+// Ask's own (the page conversation, made a new thread in the project by `prepareProject`).
+const projCtl = createProjectsController({
+  state, mount, rerender: () => rerender(), rerenderSoon: () => rerenderSoon(), flash: (m, ms, a) => flash(m, ms, a ?? null), unauth: (e) => unauth(e), confirmOut: (then) => confirmOut(then),
+  role: () => currentOrg(state)?.role ?? null,
+  prepareAsk: (p) => askCtl.prepareProject(p),
+  openThread: (id) => { state.screen = "ask"; askCtl.enter(id); },
+  openHref: (href) => { if (href.startsWith("#")) location.hash = href; else window.open(href, "_blank", "noopener"); },
+  upgrade: () => dispatch("orgGo", "general", null),
+  threadsChanged: () => askCtl.ctx.reloadThreads(),
+});
+projCtl.install();
 // The plain-language filter (web/src/ai-filter-actions.ts, #162): every `aiFilter…` act. Its answer is applied
 // to each screen's OWN filter state here — the same fields the Filter menu, the switch and the search box set.
 const aiFilterCtl = createAiFilterController({
@@ -710,6 +725,7 @@ function paintApp(): void {
   welcomeCtl.afterPaint();
   syncCtl.afterPaint();
   askCtl.afterPaint();
+  projCtl.afterPaint();
   if (pendingFlash) {
     for (const el of Array.from(mount.querySelectorAll(pendingFlash))) el.classList.add("cnpy-flash");
     pendingFlash = null;
@@ -903,6 +919,7 @@ function currentRoute(): Route {
   }
   if (state.screen === "tag" && state.tagName) r.tagName = state.tagName;
   if (state.screen === "space" && state.spaceSlug) r.spaceSlug = state.spaceSlug;
+  if (state.screen === "project" && state.projects.slug) r.projectSlug = state.projects.slug;
   if (state.screen === "docs" && state.docSlug) r.docSlug = state.docSlug;
   if (state.screen === "import" && state.imp.space) r.importSpace = state.imp.space;
   if (state.screen === "ask" && state.ask.page.threadId !== null) r.askThread = state.ask.page.threadId;
@@ -960,6 +977,7 @@ function applyRoute(r: Route): void {
     state.spaceSlug = r.spaceSlug;
   }
   if (r.screen === "docs" && r.docSlug && r.docSlug !== state.docSlug) { state.docSlug = r.docSlug; state.showHistory = false; state.treeMenu = null; state.docDetail = { status: "idle", data: null }; }
+  if (r.screen === "project" && r.projectSlug) state.projects.slug = r.projectSlug;
   if (r.screen === "ask") askRoute = r.askThread ?? null;
   if (r.screen === "import") importRoute = r.importSpace ?? null;
   if (r.welcomeStep) { state.welcome.step = r.welcomeStep; state.welcome.byHand = false; }
@@ -1013,6 +1031,8 @@ function startScreenLoads(screen: Screen): void {
     case "org": loadOrgAdminExtras(); orgCtl.load(); break;
     case "welcome": welcomeCtl.enter(); break;
     case "ask": askCtl.enter(askRoute); askRoute = null; break;
+    case "projects": projCtl.loadList(); rerender(); break;
+    case "project": if (state.projects.slug) projCtl.open(state.projects.slug); else rerender(); break;
     // The queue's sprint group headers and the form/rail menus all read `sprints`.
     case "tickets": loadSprintsIfNeeded(); loadTicketsIfNeeded(); break;
     case "newticket": loadSprintsIfNeeded(); rerender(); break;
@@ -3484,6 +3504,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
 
     // ── Tickets: navigation ──────────────────────────────────────────────────
     case "goAsk": state.screen = "ask"; askCtl.enter(null); return;
+    case "goProjects": state.screen = "projects"; state.projects.rowMenu = null; projCtl.loadList(); rerender(); return;
     case "goTickets": state.screen = "tickets"; state.ticketId = null; loadSprintsIfNeeded(); loadTicketsIfNeeded(); return;
     case "newTicket":
       state.screen = "newticket";
@@ -4961,6 +4982,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       if (act.startsWith("tag")) { tagsCtl.act(act, arg, value); return; }
       // The Docs Library: Library home, a space's home, the space dialogs (library-actions.ts).
       if (act.startsWith("lib")) { libCtl.act(act, arg, value); return; }
+      // Projects: the list, a project's home, its dialogs (projects-actions.ts).
+      if (act.startsWith("proj") && projCtl.act(act, arg, value)) return;
       if (act.startsWith("imp") && impCtl.act(act, arg, value)) return;
       if (act.startsWith("tree") || act === "docToc") { treeCtl.act(act, arg, value); return; }
       if (act.startsWith("nd") && ndCtl.act(act, arg, value)) return;
@@ -5749,7 +5772,8 @@ document.addEventListener("keydown", (e) => {
 // never deletes twice — the reducers' busy guards say the same.
 document.addEventListener("keydown", (e) => {
   if (state.view !== "app" && state.view !== "platform") return;
-  const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
+  // A dialog on its way out (`confirmOut`'s `data-closing`) no longer owns the keys: they reach the page again.
+  const dlg = Array.from(mount.querySelectorAll<HTMLElement>("[data-confirm-dialog]")).find((d) => !d.closest("[data-closing]"));
   if (!dlg) return;
   // A dropdown open over the dialog (Edit space's Position) owns its own keys (dropdown.ts).
   if (state.dd.open && (e.target as Element | null)?.closest?.("[data-dd-pop]")) return;

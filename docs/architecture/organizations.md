@@ -475,6 +475,10 @@ agent connection whose current organization this was, but which may also act in 
 tokens. Its members keep their accounts and their other organizations; a member left with none lands on the
 org picker. Its owner lands on the app with "The organization has been deleted." The slug is free again.
 
+Deleting ONE PROJECT is not this: it is soft (its slug reserved) and takes the project's threads through Ask's thread
+deletion — `src/deletion/projects.ts`, `projects.md` › Deleting. An account's deletion drops the person's project
+memberships; a project they owned stays, under the tombstone.
+
 ### Deleting an account — the guard rails
 
 The same for the person and for a superadmin; they protect the OTHER people (`accountDeletionPreview`):

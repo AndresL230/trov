@@ -40,6 +40,10 @@ export const RESET_STATEMENTS = [
   // AI (0059_ai_batches): the pass's open Message Batches — platform tables, no org_id (requests first).
   "DELETE FROM ai_batch_requests",
   "DELETE FROM ai_batches",
+  // Projects (0086_projects): pins and members reference their project (threads and artifacts only name it).
+  "DELETE FROM project_pins",
+  "DELETE FROM project_members",
+  "DELETE FROM projects",
   // Ask Trov (0066_ask): cards, attachment links and messages hang off threads (chat_fts follows its messages by trigger).
   "DELETE FROM chat_thread_people", // 0077_ask_people_sharing: who a thread is shared with by name
   "DELETE FROM chat_actions",

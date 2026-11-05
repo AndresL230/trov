@@ -400,6 +400,9 @@ export interface AskRequest {
   replaceFrom?: number;
   /** A new thread from the ⌘J panel (`panel`) — its first context ref is the thread's `contextRef`. */
   origin?: AskOrigin;
+  /** A NEW thread started inside a project (its slug; shared/projects-core.ts): the thread is the project's, and
+   *  every turn reads the project's instructions and pins. Ignored with a `threadId` (a thread moves by PATCH). */
+  projectId?: string;
 }
 
 /** Why `POST /ask` refused before streaming (JSON, not SSE). */
@@ -460,7 +463,13 @@ export interface AskThreadSummary {
    *  thread list's mark and the line at the top of the thread. Absent or empty: none (or the read failed — never a
    *  guess). */
   links?: AskThreadLink[];
+  /** The project the thread is in (docs/architecture/projects.md), for its crumb and its mark in the thread list.
+   *  Absent or null = not in a project, or a project the reader can't open. */
+  project?: AskThreadProject | null;
 }
+
+/** A thread's project, as the thread list and the crumb draw it. */
+export interface AskThreadProject { slug: string; name: string; icon: string; color: string }
 
 /** One open link with notes waiting for a thread: "Link #12 with @jose: 2 new notes". */
 export interface AskThreadLink {
@@ -535,7 +544,8 @@ export interface AskThreadDetail {
 
 /** `shared`: share the thread with the org (true) or stop sharing it (false); `people`: the people it is shared with
  *  by name — the WHOLE list, replacing the one before (empty = nobody). Its owner only. */
-export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string; shared?: boolean; people?: AskSharePerson[] }
+/** `project`: move the owner's thread into a project they can open (its slug), or out of one (null). */
+export interface AskThreadPatch { title?: string; pinned?: boolean; auto?: boolean; mode?: AskMode; draft?: string; shared?: boolean; people?: AskSharePerson[]; project?: string | null }
 
 /** `POST /ask/threads/:id/save` — the whole thread (no `messageId`), one answer, or one block of it. */
 export interface AskSaveBody {

@@ -212,6 +212,11 @@ async function seedEveryHandleColumn(handle: string): Promise<void> {
     VALUES (?, 'closed', 'person', ?, 'r', ?, ?, ?, ?, ?, ?)`, org, handle, handle, handle, nowIso(), nowIso(), nowIso(), handle);
   await run(env.DB, `INSERT INTO agent_link_notes (org_id, link_number, side, author, author_kind, body, created_at)
     SELECT org_id, number, 'requester', ?, 'person', 'hi', ? FROM agent_links WHERE org_id = ? AND requester = ?`, handle, nowIso(), org, handle);
+  // 0086_projects: a project the person owns and archived, one they are a member of (added by them), a pin they made.
+  const project = Number((await run(env.DB, `INSERT INTO projects (org_id, slug, name, icon, color, visibility, owner, archived_at, archived_by, created_at, updated_at)
+    VALUES (?, ?, 'Rename', 'book', '#525cc3', 'members', ?, ?, ?, ?, ?)`, org, `rename-${handle}`, handle, nowIso(), handle, nowIso(), nowIso())).meta.last_row_id);
+  await run(env.DB, `INSERT INTO project_members (org_id, project_id, handle, role, added_by, added_at) VALUES (?, ?, ?, 'editor', ?, ?)`, org, project, handle, handle, nowIso());
+  await run(env.DB, `INSERT INTO project_pins (org_id, project_id, ref, added_by, added_at) VALUES (?, ?, 'doc:rename', ?, ?)`, org, project, handle, nowIso());
 }
 
 describe("renamePerson", () => {

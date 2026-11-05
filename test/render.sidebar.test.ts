@@ -49,6 +49,9 @@ describe("sidebar — structure is stable across every state", () => {
       { counts: { review: 0, tickets: 0, handoffs: 0, prompts: 0, imports: 1 } },
       { screen: "imports" },
       { screen: "import" },
+      // Projects: the list and a project's home light the one Projects row (attributes, not nodes).
+      { screen: "projects" },
+      { screen: "project" },
     ];
     for (const v of variants) expect(skeleton(sidebarView(props(v))), JSON.stringify(v)).toBe(base);
   });
@@ -63,7 +66,7 @@ describe("sidebar — groups and order (the design's five sections)", () => {
   it("orders Workspace · Monitor · Knowledge · Help, with Repo in Monitor and Review last in Knowledge", () => {
     const html = sidebarView(props());
     const at = (needle: string) => html.indexOf(needle);
-    const order = [">Workspace<", "goHome", "goMyWork", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", "goReview", ">Help<", "goGuide", "goReleases"];
+    const order = [">Workspace<", "goHome", "goMyWork", "goAsk", "goProjects", "goTickets", "goRoadmap", "goRelay", ">Monitor<", "goRepo", "goFeed", ">Knowledge<", "goLibrary", "goArtifacts", "goPrompts", "goReview", ">Help<", "goGuide", "goReleases"];
     for (let i = 1; i < order.length; i++) expect(at(order[i]), order[i]).toBeGreaterThan(at(order[i - 1]));
   });
 
@@ -136,6 +139,8 @@ describe("sidebar — groups and order (the design's five sections)", () => {
 describe("sidebar — active state", () => {
   it("lights the owning entry for child screens", () => {
     expect(navKeyOf("ticketdetail")).toBe("tickets");
+    expect(navKeyOf("projects")).toBe("projects");
+    expect(navKeyOf("project")).toBe("projects");
     expect(navKeyOf("sprint")).toBe("roadmap");
     expect(navKeyOf("settings")).toBeNull();
     expect(navKeyOf("artifact")).toBe("artifacts");

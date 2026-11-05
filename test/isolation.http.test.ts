@@ -138,8 +138,13 @@ async function seed(): Promise<Fx> {
   const importId = Number((await run(env.DB, `INSERT INTO doc_imports (org_id, space_slug, file_name, started_by, started_at, updated_at, status, counts, failures, total, manifest)
      VALUES (?, 'canary-space', ?, ?, ?, ?, 'running', '{}', '[]', 1, ?)`, ORG_A, `${CANARY}.zip`, ALICE, T, new Date().toISOString(),
     JSON.stringify({ files: [{ path: `${CANARY}.md`, size: 9, title: CANARY }], choices: {}, writes: [{ key: `${CANARY}.md`, path: `${CANARY}.md`, mode: "new", slug: "canary-import", title: CANARY, parent_slug: null }], links: [], images: [`${CANARY}.png`] }))).meta.last_row_id);
+  // A project of A's (0086_projects), open to the org, alice's, with the canary in its name, description and
+  // instructions, pinning A's ticket; Alice's Ask thread below is in it.
+  const projectId = Number((await run(env.DB, `INSERT INTO projects (org_id, slug, name, description, icon, color, instructions, visibility, owner, created_at, updated_at)
+     VALUES (?, 'canary-project', ?, ?, 'server', '#525cc3', ?, 'org', ?, ?, ?)`, ORG_A, `${CANARY} project`, `${CANARY} project description`, `${CANARY} instructions`, ALICE, T, T)).meta.last_row_id);
+  await run(env.DB, `INSERT INTO project_pins (org_id, project_id, ref, added_by, added_at) VALUES (?, ?, ?, ?, ?)`, ORG_A, projectId, `ticket:${ticketId}`, ALICE, T);
   // Ask Trov (0066_ask): Alice's thread in A, a question and an answer that carry the canary, a proposed card.
-  const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, shared_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, T, T)).meta.last_row_id);
+  const askThreadId = Number((await run(env.DB, `INSERT INTO chat_threads (org_id, handle, title, shared_at, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`, ORG_A, ALICE, `${CANARY} thread`, T, projectId, T, T)).meta.last_row_id);
   // Shared BY NAME too (0077_ask_people_sharing), to continue — with B's bob and the removed `gone`, written straight
   // in (the route would refuse both): a share row never reaches across orgs, nor outlives a membership.
   for (const h of ["bob", "gone"]) await run(env.DB, `INSERT INTO chat_thread_people (org_id, thread_id, handle, access, shared_at) VALUES (?, ?, ?, 'continue', ?)`, ORG_A, askThreadId, h, T);
@@ -230,7 +235,8 @@ function paramValue(suffix: string, name: string, fx: Fx): string {
     case "kind": return "github_token";
     case "a": case "b": return "nope"; // never `test`: Test connection would reach for the network
     case "email": return encodeURIComponent(INVITED);
-    case "ref": return under("/ask/item") ? encodeURIComponent(`ticket:${fx.ticketId}`) : fx.artifactSlug;
+    case "ref": return under("/ask/item") || under("/projects") ? encodeURIComponent(`ticket:${fx.ticketId}`) : fx.artifactSlug;
+    case "project": return "canary-project"; // A's project (0086_projects)
     case "scenario": return "answer";
     case "part": return "web";
     case "provider": return "vercel"; // never `test` against a configured credential: B has none, and A's is never B's
@@ -394,6 +400,14 @@ const TENANT: Record<string, Row> = {
   "POST /ask/messages/:id/save-form": J({}), "POST /ask/messages/:id/wrong": J({ reason: "source_wrong" }),
   "POST /ask/actions/:id/confirm": J({}), "POST /ask/actions/:id/cancel": J({}), "POST /ask/actions/:id/undo": J({}),
   "POST /ask/attachments": J({}), "DELETE /ask/attachments/:id": {}, "GET /ask/settings": {}, "PUT /ask/settings": J({ instructions: "hijacked" }),
+  // src/projects/routes.ts — Projects (0086_projects): A's project is not B's, so under B's slug every route is the one
+  // 404 (or a B-only list / a 400 for a body B can't use), and nothing of A's is read or written.
+  "GET /projects": { query: "?q=CANARY" }, "POST /projects": J({ name: "Hijack", icon: "server", color: "#525cc3", visibility: "org" }),
+  "GET /projects/:project": {}, "PATCH /projects/:project": J({ name: "hijacked" }), "DELETE /projects/:project": {},
+  "POST /projects/:project/archive": J({}), "POST /projects/:project/restore": J({}),
+  "PUT /projects/:project/members": J({ members: [] }), "POST /projects/:project/pins": { body: (fx: Fx) => ({ refs: [`ticket:${fx.ticketId}`] }) },
+  "DELETE /projects/:project/pins/:ref": {}, "POST /projects/:project/files": J({}),
+  "GET /projects/:project/candidates": { query: "?q=CANARY" },
   // src/repo/settings-routes.ts — the PATH's org's default for one of ITS repositories (0071_repo_settings): A's repo
   // is not B's, so B's admin gets 404 and B's member the 403; nothing is written for A.
   "PUT /repo/settings": J({ repo: "SaplingLearn/sapling", overview_group: "app" }),
@@ -576,6 +590,7 @@ describe("controls", () => {
       "/img/:sha", "/docs", "/doc/:slug", "/doc/:slug/versions/:version", "/feed", "/search", "/search/quick", "/needs-triage", "/adrs", "/proposals", "/identity-tasks",
       "/persons", "/tickets", "/tickets/:id", "/sprints", "/sprints/:id", "/artifacts", "/artifacts/:slug", "/handoffs", "/handoffs/:id", "/links", "/links/:id",
       "/prompts", "/prompts/:slug", "/prompts/:slug/versions", "/people/:handle", "/members", "/repos", "/environments", "/me",
+      "/projects", "/projects/:project", "/ask/threads/:id",
     ]));
   });
 

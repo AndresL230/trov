@@ -35,6 +35,7 @@ import { PersonError } from "../../auth/persons";
 import { PlanFeatureError, PlanLimitError } from "../../plans/state";
 import { ChartError } from "./charts";
 import type { AttachmentNotice } from "./attachments";
+import { pinnedFirst } from "./project";
 import { GithubToolError, githubLine, isGithubTool } from "./github";
 
 export type Emit = <K extends AskEventName>(event: K, data: AskEventMap[K]) => Promise<void>;
@@ -162,11 +163,15 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
 
   // An attachment the model could not take: the person is told first, as a finished activity line (and it is kept
   // with the answer, so the thread shows it again).
+  // A project's instructions read (./project.ts) is the same kind of line, first.
   for (const [i, n] of notices.entries()) {
     const step = i + 1;
-    result.activity.push({ step, tool: "read_attachment", icon: "read", label: n.label, results: [], resultLine: "Not read" });
-    await t.emit("activity", { step, tool: "read_attachment", icon: "read", label: n.label, state: "run" });
-    await t.emit("activity", { step, state: "done", resultLine: "Not read" });
+    const tool = n.tool ?? "read_attachment";
+    const icon = n.icon ?? "read";
+    const line = n.resultLine === undefined ? "Not read" : n.resultLine;
+    result.activity.push({ step, tool, icon, label: n.label, results: [], resultLine: line });
+    await t.emit("activity", { step, tool, icon, label: n.label, state: "run" });
+    await t.emit("activity", { step, state: "done", ...(line ? { resultLine: line } : {}) });
   }
 
   try {
@@ -301,7 +306,8 @@ async function runTool(
         const prev = t.tool.searched.get(area);
         t.tool.searched.set(area, prev === undefined ? since : prev && since ? (since < prev ? since : prev) : prev ?? since);
       }
-      const out = await spec.run(t.tool, args);
+      // In a project's thread a pinned result ranks first (./project.ts).
+      const out = pinnedFirst(use.name, await spec.run(t.tool, args), t.tool.pinned);
       // read_attachment answers with the file itself (image / PDF blocks, or fenced text).
       if (out && typeof out === "object" && "__blocks" in out) {
         await finish();
