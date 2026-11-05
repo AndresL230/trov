@@ -4467,12 +4467,12 @@ a.ask-btn { text-decoration:none; }
 .pj-list { container:pjlist / inline-size; }
 @container pjlist (max-width: 860px) {
   .pj-row, .pj-th, .pj-rowsk { grid-template-columns:minmax(0,1fr) 110px 52px 52px 34px !important; }
-  :is(.pj-row, .pj-th, .pj-rowsk) > :is(:nth-child(3), :nth-child(6)) { display:none; }
+  :is(.pj-row, .pj-th, .pj-rowsk) > :is(:nth-child(3), :nth-child(6)) { display:none !important; } /* the cells set their own inline display */
 }
 @container pjlist (max-width: 520px) {
   .pj-grid { grid-template-columns:minmax(0,1fr) !important; }
   .pj-row, .pj-th, .pj-rowsk { grid-template-columns:minmax(0,1fr) 34px !important; }
-  :is(.pj-row, .pj-th, .pj-rowsk) > :nth-child(n+2):nth-child(-n+6) { display:none; }
+  :is(.pj-row, .pj-th, .pj-rowsk) > :nth-child(n+2):nth-child(-n+6) { display:none !important; }
 }
 @media (max-width:640px) {
   .pj-list, .pj-home { padding-left:16px !important; padding-right:16px !important; }

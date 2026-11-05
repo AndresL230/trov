@@ -206,7 +206,7 @@ describe("a project's home — the layout", () => {
   });
   it("the list measures its own width: Recent stays three across until one column, and the table drops Owner and Updated first", () => {
     expect(css).toContain(".pj-list { container:pjlist / inline-size; }");
-    expect(css).toMatch(/@container pjlist \(max-width: 860px\) \{[^@]*:is\(:nth-child\(3\), :nth-child\(6\)\) \{ display:none; \}/);
+    expect(css).toMatch(/@container pjlist \(max-width: 860px\) \{[^@]*:is\(:nth-child\(3\), :nth-child\(6\)\) \{ display:none !important; \}/);
     expect(css).toMatch(/@container pjlist \(max-width: 520px\) \{\s*\.pj-grid \{ grid-template-columns:minmax\(0,1fr\) !important; \}/);
     expect(css).not.toMatch(/\.pj-grid \{ grid-template-columns:repeat\(2/);
   });
