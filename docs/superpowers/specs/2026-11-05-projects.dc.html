@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Trov Projects</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="/_blob/2c4b2a74716f3a917e973f570109cbbd">
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.pj-k{display:flex;align-items:center;gap:9px;padding:6px 8px;border-radius:7px;font-size:13px;min-width:0}
+.pj-k:hover{background:var(--hover)}
+.pj-k .pj-x{opacity:0}.pj-k:hover .pj-x{opacity:1}
+.pj-pick{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;font-size:13px;cursor:pointer}
+.pj-pick:hover{background:var(--hover)}
+.pj-row:hover{background:var(--hover)}
+.pj-mi{display:flex;width:100%;align-items:center;gap:9px;padding:7px 10px;border-radius:7px;font-size:13px;text-align:left;color:var(--fg)}
+.pj-mi:hover{background:var(--hover)}
+</style>
+</helmet>
+<div data-cnpy-theme="{{theme}}" data-screen="{{screenKey}}" data-collapsed="0" data-narrow="0" data-phone="0" data-drawer="0" style="background: var(--bg); color: var(--fg); min-height: calc(100 * var(--vh)); font-family: Geist, 'Geist Fallback', system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; position: relative">
+<div class="cnpy-shell" style="display: flex; height: calc(100 * var(--vh)); overflow: hidden">
+
+<aside class="cnpy-aside" data-screen-label="Sidebar">
+<div class="cnpy-logo"><button class="cnpy-logo-b" aria-label="About Trov"><svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true" style="flex:none"><path fill="var(--mark,#616ACB)" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"></path></svg><span class="cnpy-lbl cnpy-logo-t">Trov</span></button></div>
+<div class="cnpy-orgslot"><div class="cnpy-orgsw"><button type="button" class="cnpy-orgsw-b" style="border-radius:8px" aria-label="SaplingLearn: switch organization"><span class="cnpy-orgtile" aria-hidden="true" style="position:relative;overflow:hidden;width:24px;height:24px;font-size:12px;border-radius:7px">S</span><span class="cnpy-lbl cnpy-orgsw-n">SaplingLearn</span><span class="cnpy-lbl cnpy-badge" data-n="2">2</span><span class="cnpy-dot" data-n="2"></span><svg class="cnpy-lbl" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="m7 9 5-5 5 5"></path><path d="m7 15 5 5 5-5"></path></svg></button></div></div>
+<nav class="cnpy-navlist" aria-label="Primary">
+<div class="cnpy-searchwrap"><div class="cnpy-search"><svg class="cnpy-nav-ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg><input class="cnpy-lbl cnpy-search-in" placeholder="Search Trov" aria-label="Search Trov" autocomplete="off" spellcheck="false"><kbd class="cnpy-lbl cnpy-kbd">⌘K</kbd></div></div>
+<div class="cnpy-sec is-first"><span class="cnpy-lbl">Workspace</span></div>
+<div class="cnpy-navrow n-home"><button class="cnpy-nav-i" aria-label="Home"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Home</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-navrow n-mywork"><button class="cnpy-nav-i" aria-label="My Work"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path><path d="M3 12.5h18"></path></svg><span class="cnpy-lbl cnpy-nav-t">My Work</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="{{navAskCls}}"><button class="cnpy-nav-i" aria-label="Trov" onClick="{{goThreads}}"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="2.6"></circle><circle cx="5" cy="5.5" r="1.9"></circle><circle cx="19" cy="6.5" r="1.9"></circle><circle cx="17.5" cy="19" r="1.9"></circle><circle cx="5.5" cy="17.5" r="1.9"></circle><path d="M10 10.2 6.4 6.9M14.2 10.7l3.3-2.7M13.6 14.1l2.7 3.3M10 13.8l-3.1 2.4"></path></svg><span class="cnpy-lbl cnpy-nav-t">Trov</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="{{navProjCls}}"><button class="cnpy-nav-i" aria-label="Projects" onClick="{{goList}}"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M3 10h18"></path></svg><span class="cnpy-lbl cnpy-nav-t">Projects</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-navrow n-tickets"><button class="cnpy-nav-i" aria-label="Tickets"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path></svg><span class="cnpy-lbl cnpy-nav-t">Tickets</span><span class="cnpy-lbl cnpy-badge" data-n="19">19</span><span class="cnpy-dot" data-n="19"></span></button></div>
+<div class="cnpy-navrow n-roadmap"><button class="cnpy-nav-i" aria-label="Roadmap"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4"></path><path d="M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0"></path></svg><span class="cnpy-lbl cnpy-nav-t">Roadmap</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-navrow n-handoffs"><button class="cnpy-nav-i" aria-label="Relay"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3l4 4-4 4"></path><path d="M20 7H4"></path><path d="M8 21l-4-4 4-4"></path><path d="M4 17h16"></path></svg><span class="cnpy-lbl cnpy-nav-t">Relay</span><span class="cnpy-lbl cnpy-badge" data-n="4">4</span><span class="cnpy-dot" data-n="4"></span></button></div>
+<div class="cnpy-sec"><span class="cnpy-lbl">Monitor</span></div>
+<div class="cnpy-navrow n-repo"><button class="cnpy-nav-i" aria-label="Repo"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v12"></path><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg><span class="cnpy-lbl cnpy-nav-t">Repo</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-navrow n-feed"><button class="cnpy-nav-i" aria-label="Feed"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h10"></path></svg><span class="cnpy-lbl cnpy-nav-t">Feed</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-sec"><span class="cnpy-lbl">Knowledge</span></div>
+<div class="cnpy-navrow n-library"><button class="cnpy-nav-i" aria-label="Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h6a4 4 0 0 1 4 4v13a3 3 0 0 0-3-3H2z"></path><path d="M22 4h-6a4 4 0 0 0-4 4v13a3 3 0 0 1 3-3h7z"></path></svg><span class="cnpy-lbl cnpy-nav-t">Library</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button><button class="cnpy-chev" aria-label="Show or hide spaces" aria-expanded="false"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></button></div>
+<div class="cnpy-navrow n-artifacts"><button class="cnpy-nav-i" aria-label="Artifacts"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="M2 17l10 5 10-5"></path><path d="M2 12l10 5 10-5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Artifacts</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-navrow n-prompts"><button class="cnpy-nav-i" aria-label="Prompt Library"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 18l6-6-6-6"></path><path d="M8 6l-6 6 6 6"></path></svg><span class="cnpy-lbl cnpy-nav-t">Prompt Library</span><span class="cnpy-lbl cnpy-badge" data-n="2">2</span><span class="cnpy-dot" data-n="2"></span></button></div>
+<div class="cnpy-navrow n-review"><button class="cnpy-nav-i" aria-label="Review"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="m9 12 2 2 4-4"></path></svg><span class="cnpy-lbl cnpy-nav-t">Review</span><span class="cnpy-lbl cnpy-badge" data-n="20">20</span><span class="cnpy-dot" data-n="20"></span></button></div>
+<div class="cnpy-sec"><span class="cnpy-lbl">Help</span></div>
+<div class="cnpy-navrow n-guide"><button class="cnpy-nav-i" aria-label="Guide"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M9.5 9.5a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.4-2.5 2.4"></path><circle cx="12" cy="16.6" r=".4" fill="currentColor"></circle></svg><span class="cnpy-lbl cnpy-nav-t">Guide</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+<div class="cnpy-navrow n-releases"><button class="cnpy-nav-i" aria-label="What's new"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"></path><path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"></path></svg><span class="cnpy-lbl cnpy-nav-t">What's new</span><span class="cnpy-lbl cnpy-badge" data-n="0">0</span><span class="cnpy-dot" data-n="0"></span></button></div>
+</nav>
+<div class="cnpy-collapse"><button class="cnpy-nav-i" aria-label="Collapse sidebar"><svg class="cnpy-nav-ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="M14.5 9.5 12 12l2.5 2.5"></path></svg><span class="cnpy-lbl cnpy-nav-t">Collapse</span></button></div>
+<div class="cnpy-foot"><button aria-label="Settings" class="cnpy-chip"><div class="cnpy-av" style="--c:var(--p-moss);position:relative;width:28px;height:28px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:10px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">AN</div><div class="cnpy-lbl cnpy-chip-t"><div class="cnpy-chip-n">Andres</div><div class="cnpy-chip-h"><span style="font-family:var(--sans);font-size:11px;font-weight:500;color:var(--p-moss)">@AndresL230</span></div></div></button></div>
+</aside>
+
+<main style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg)">
+<header class="cnpy-hdr" style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 24px;min-height:57px;border-bottom:1px solid var(--border);flex:none">
+<div class="cnpy-hdr-l" style="display:flex;align-items:center;gap:12px;min-width:0">
+<sc-if value="{{isList}}" hint-placeholder-val="{{ true }}"><h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0">Projects</h1></sc-if>
+<sc-if value="{{isProject}}" hint-placeholder-val="{{ false }}"><h1 class="ask-h1"><button type="button" class="ask-h1-t is-parent" onClick="{{goList}}">Projects</button></h1><span class="ask-crumb"><span class="ask-crumb-sep">›</span><span class="ask-crumb-t">{{cur.name}}</span></span></sc-if>
+<sc-if value="{{isChat}}" hint-placeholder-val="{{ false }}"><h1 class="ask-h1"><button type="button" class="ask-h1-t is-parent" onClick="{{goList}}">Projects</button></h1><span class="ask-crumb"><span class="ask-crumb-sep">›</span><button type="button" class="ask-crumb-t" style="color:var(--fg-55)" onClick="{{backProject}}">{{cur.name}}</button><span class="ask-crumb-sep">›</span><span class="ask-crumb-t">{{chatTitle}}</span></span></sc-if>
+</div>
+<div class="cnpy-hdr-r" style="display:flex;align-items:center;gap:8px;flex:none">
+<sc-if value="{{isList}}" hint-placeholder-val="{{ true }}"><button type="button" class="cnpy-accentbtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600;white-space:nowrap" onClick="{{openNew}}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New project</button></sc-if>
+<button title="Report a bug" aria-label="Report a bug" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="7" width="8" height="12" rx="4"></rect><path d="M12 12v7"></path><path d="M9.5 7.5a2.5 2.5 0 0 1 5 0"></path><path d="M4 13h4M16 13h4M5 7l3.2 2.6M19 7l-3.2 2.6M5 20l3.2-2.8M19 20l-3.2-2.8"></path></svg></button>
+<button title="Toggle theme" aria-label="Toggle theme" class="cnpy-iconbtn" style="width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)" onClick="{{cycleTheme}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="4.2"></circle><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"></path></svg></button>
+</div>
+</header>
+<div class="cnpy-scroll" style="flex: 1; overflow-y: auto; min-height: 0">
+
+<sc-if value="{{isList}}" hint-placeholder-val="{{ true }}">
+<div style="max-width: 1120px; margin: 0 auto; padding: 28px 40px 90px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+<div style="min-width:0"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;margin:0;line-height:1.2">Projects</h1>
+<p style="font-size:13.5px;line-height:1.5;color:var(--fg-70);max-width:600px;margin:6px 0 0">One place for a piece of work: its instructions, the tickets and docs it's about, and the chats and artifacts made for it. Trov reads all of it in every chat inside the project.</p></div>
+</div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:22px 0 0">
+<div class="cnpy-sfbar"><div class="cnpy-sfbar-q"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg><input class="cnpy-search-in" style="font-size:12.5px" placeholder="Search projects by name, ticket or person" aria-label="Search projects" value="{{q}}" onInput="{{typeQ}}" autocomplete="off" spellcheck="false"></div><span class="cnpy-sfbar-div" aria-hidden="true"></span><button class="cnpy-ghostbtn fm-btn" style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;border-radius:0 7px 7px 0;border:none;height:100%;padding:0 11px 0 12px;white-space:nowrap;color:var(--fg-70)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 6h16"></path><path d="M7 12h10"></path><path d="M10 18h4"></path></svg>Sort: Recently updated<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true" style="opacity:.7"><path d="m6 9 6 6 6-6"></path></svg></button></div>
+<div class="cnpy-seg cnpy-seg--sm cnpy-seg--bar" role="group" aria-label="Show"><button type="button" class="{{fAllCls}}" aria-pressed="{{fAllOn}}" onClick="{{fAll}}">All</button><button type="button" class="{{fMineCls}}" aria-pressed="{{fMineOn}}" onClick="{{fMine}}">Mine</button><button type="button" class="{{fSharedCls}}" aria-pressed="{{fSharedOn}}" onClick="{{fShared}}">Shared with me</button></div>
+<span style="font-size:12px;color:var(--fg-40);white-space:nowrap;margin-left:auto;flex:none">{{countLine}}</span>
+</div>
+
+<sc-if value="{{showCards}}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:26px 0 10px"><h2 style="font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);margin:0">Recent</h2></div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+<sc-for list="{{recent}}" as="p" hint-placeholder-count="3">
+<div class="cnpy-surface cnpy-card cnpy-hitbox cnpy-lib-card" style="min-height:150px;padding:16px 18px;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:11px;min-width:0;padding-right:26px"><span class="cnpy-spt" style="{{p.tile32}}" aria-hidden="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{p.icon}}"></path></svg></span><span style="font-size:15px;font-weight:500;letter-spacing:-0.01em;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{p.name}}</span></div>
+<p style="font-size:12.5px;line-height:1.5;margin:10px 0 0;color:var(--fg-55)">{{p.desc}}</p>
+<div style="display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:14px;font-size:12px;color:var(--fg-55);flex-wrap:wrap"><div class="cnpy-avstack" style="display:flex;flex:none"><sc-for list="{{p.avs}}" as="a" hint-placeholder-count="2"><span style="{{a.wrap}}"><div class="cnpy-av" style="{{a.st18}}">{{a.ini}}</div></span></sc-for></div><span>{{p.short}}</span><span style="color:var(--border-strong)">·</span><span style="display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{p.visIcon}}"></path></svg>{{p.visWord}}</span></div>
+<button class="cnpy-hit" aria-label="Open {{p.name}}" onClick="{{p.open}}"></button>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:34px 0 10px"><h2 style="font-size:14px;font-weight:500;letter-spacing:-0.005em;color:var(--fg);margin:0">{{listTitle}}</h2></div>
+<div class="cnpy-surface" style="padding:0;overflow:hidden">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 130px 120px 62px 62px 90px 34px;gap:12px;align-items:center;padding:9px 16px;border-bottom:1px solid var(--border);font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-55)"><span>Project</span><span>Who can see it</span><span>Owner</span><span style="text-align:right">Chats</span><span style="text-align:right">Pinned</span><span style="text-align:right">Updated</span><span></span></div>
+<sc-for list="{{rows}}" as="p" hint-placeholder-count="4">
+<div class="cnpy-hitbox pj-row" style="display:grid;grid-template-columns:minmax(0,1fr) 130px 120px 62px 62px 90px 34px;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid var(--border)">
+<div style="display:flex;align-items:flex-start;gap:11px;min-width:0"><span style="display:flex;flex:none;margin-top:2px"><span class="cnpy-spt" style="{{p.tile14}}" aria-hidden="true"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="{{p.icon}}"></path></svg></span></span><div style="min-width:0"><div style="font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{p.name}}</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{p.desc}}</div></div></div>
+<span style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg-70)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--fg-55)"><path d="{{p.visIcon}}"></path></svg>{{p.visWord}}</span>
+<span style="display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--fg-70);min-width:0"><div class="cnpy-av" style="{{p.ownerAv}}">{{p.ownerIni}}</div><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{p.ownerName}}</span></span>
+<span style="text-align:right;font-size:12.5px;color:var(--fg-70);font-variant-numeric:tabular-nums">{{p.nChats}}</span>
+<span style="text-align:right;font-size:12.5px;color:var(--fg-70);font-variant-numeric:tabular-nums">{{p.nPins}}</span>
+<span style="text-align:right;font-size:12px;color:var(--fg-55)">{{p.updated}}</span>
+<button class="cnpy-iconbtn cnpy-hitctl" aria-label="Options for {{p.name}}" style="display:grid;place-items:center;width:28px;height:28px;border-radius:7px;color:var(--fg-55);position:relative;z-index:2"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button>
+<button class="cnpy-hit" aria-label="Open {{p.name}}" onClick="{{p.open}}"></button>
+</div>
+</sc-for>
+<sc-if value="{{noRows}}" hint-placeholder-val="{{ false }}"><div style="padding:22px 16px;font-size:13px;color:var(--fg-55)">No projects match “{{q}}”.</div></sc-if>
+</div>
+<button type="button" class="cnpy-link" style="display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)" onClick="{{toggleArchived}}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true" style="{{archChev}}"><path d="M9 6l6 6-6 6"></path></svg>Archived · 1</button>
+<sc-if value="{{showArchived}}" hint-placeholder-val="{{ false }}">
+<div class="cnpy-surface" style="padding:0;overflow:hidden;margin-top:10px"><div style="display:flex;align-items:center;gap:11px;padding:11px 16px"><span class="cnpy-spt" style="--spt-r:3.5px;width:14px;height:14px;background:#966800;opacity:.6" aria-hidden="true"></span><div style="flex:1;min-width:0"><div style="font-size:13.5px;color:var(--fg-70)">Streak features</div><div style="font-size:12px;color:var(--fg-55);margin-top:2px">Archived Oct 12 by Luke Cooper · 3 chats · 5 pinned</div></div><button type="button" class="cnpy-outlinebtn" style="padding:5px 11px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Restore</button></div></div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{isProject}}" hint-placeholder-val="{{ false }}">
+<div style="max-width: 1180px; margin: 0 auto; padding: 28px 40px 90px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">
+<div style="display:flex;align-items:flex-start;gap:14px;min-width:0;flex:1">
+<span class="cnpy-spt" style="{{cur.tile40}}" aria-hidden="true"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{cur.icon}}"></path></svg></span>
+<div style="min-width:0"><h1 style="font-size:24px;font-weight:650;letter-spacing:-0.02em;margin:0;line-height:1.2">{{cur.name}}</h1>
+<p style="font-size:13.5px;line-height:1.5;color:var(--fg-70);max-width:620px;margin:6px 0 0">{{cur.desc}}</p>
+<div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--fg-55);flex-wrap:wrap"><div class="cnpy-avstack" style="display:flex;flex:none"><sc-for list="{{cur.avs}}" as="a" hint-placeholder-count="3"><span style="{{a.wrap}}"><div class="cnpy-av" style="{{a.st18}}">{{a.ini}}</div></span></sc-for></div><span style="display:inline-flex;align-items:center;gap:5px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{cur.visIcon}}"></path></svg>{{cur.visLine}}</span></div></div>
+</div>
+<div style="display:flex;gap:8px;flex:none;position:relative">
+<button type="button" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)" onClick="{{openShare}}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><path d="M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8z"></path><path d="M19 8v6M22 11h-6"></path></svg>Share</button>
+<button type="button" class="cnpy-iconbtn" aria-label="Project options" aria-expanded="{{menuOpen}}" style="width:33px;height:33px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;color:var(--fg-55)" onClick="{{toggleMenu}}"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"></circle><circle cx="12" cy="12" r="1.6"></circle><circle cx="19" cy="12" r="1.6"></circle></svg></button>
+<sc-if value="{{menuOpen}}" hint-placeholder-val="{{ false }}"><div class="cnpy-surface" role="menu" style="position:absolute;right:0;top:40px;z-index:20;width:210px;padding:5px;box-shadow:var(--menu-shadow)"><button class="pj-mi" role="menuitem" onClick="{{openEdit}}">Edit details</button><button class="pj-mi" role="menuitem" onClick="{{openShare}}">Members and visibility</button><button class="pj-mi" role="menuitem" onClick="{{archive}}">Archive</button><div style="height:1px;background:var(--border);margin:4px 2px"></div><button class="pj-mi" role="menuitem" style="color:var(--red)" onClick="{{openDelete}}">Delete project</button></div></sc-if>
+</div>
+</div>
+
+<div style="display:flex;gap:28px;margin-top:24px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:999 1 520px;min-width:0;display:flex;flex-direction:column;gap:18px">
+<form class="ask-composer" style="padding:0" onSubmit="{{send}}"><div class="ask-co-in" style="max-width:none;margin:0;padding-bottom:0"><div class="ask-box"><textarea rows="2" class="ask-input" placeholder="Ask about {{cur.name}}" aria-label="Ask about {{cur.name}}"></textarea><div class="ask-box-bar"><button type="button" class="ask-co-tool" aria-label="Attach files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"></path></svg></button><button type="button" class="ask-co-tool" aria-label="Mention an item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path></svg></button><span style="display:inline-flex;align-items:center;gap:6px;margin-left:4px;font-size:12px;color:var(--fg-55)"><span class="cnpy-spt" style="{{cur.tile12}}" aria-hidden="true"></span>In this project</span><span class="ask-co-grow"></span><div class="ask-co-modewrap"><button type="button" class="ask-co-modebtn" aria-label="Mode: Smart">Smart<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="m6 9 6 6 6-6"></path></svg></button></div><button type="submit" class="ask-send is-on" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path></svg></button></div></div></div></form>
+
+<div class="cnpy-tabs" role="tablist" aria-label="Project sections"><button type="button" role="tab" class="{{tabChatsCls}}" aria-selected="{{tabChats}}" onClick="{{tChats}}">Chats<span class="cnpy-badge" data-n="{{cur.nChats}}">{{cur.nChats}}</span></button><button type="button" role="tab" class="{{tabArtsCls}}" aria-selected="{{tabArts}}" onClick="{{tArts}}">Artifacts<span class="cnpy-badge" data-n="{{cur.nArts}}">{{cur.nArts}}</span></button></div>
+
+<sc-if value="{{tabChats}}" hint-placeholder-val="{{ true }}">
+<sc-if value="{{cur.hasChats}}" hint-placeholder-val="{{ true }}">
+<div class="cnpy-surface" style="padding:0;overflow:hidden">
+<sc-for list="{{cur.chats}}" as="c" hint-placeholder-count="4">
+<div class="cnpy-lib-item cnpy-hitbox" style="{{c.rowSt}}">
+<span style="display:flex;flex:none;margin-top:2px;color:var(--fg-55)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"></path></svg></span>
+<div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{c.title}}</span><sc-if value="{{c.pinned}}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:var(--fg-55)">Pinned</span></sc-if></div>
+<div style="display:flex;align-items:center;gap:7px;margin-top:4px;font-size:12px;color:var(--fg-55);min-width:0"><div class="cnpy-av" style="{{c.av}}">{{c.ini}}</div><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{c.meta}}</span></div></div>
+<button class="cnpy-hit" aria-label="Open {{c.title}}" onClick="{{c.open}}"></button>
+</div>
+</sc-for>
+</div>
+<p style="font-size:12px;color:var(--fg-55);margin:-6px 0 0">Your chats here are yours. Share one from its menu to show it to the project.</p>
+</sc-if>
+<sc-if value="{{cur.noChats}}" hint-placeholder-val="{{ false }}">
+<div class="cnpy-surface" style="padding:22px 20px;display:flex;flex-direction:column;gap:12px"><div style="display:flex;flex-direction:column;gap:8px" aria-hidden="true"><span style="display:block;height:9px;width:44%;border-radius:4px;background:var(--hover)"></span><span style="display:block;height:9px;width:68%;border-radius:4px;background:var(--hover)"></span></div><p style="font-size:13px;line-height:1.5;color:var(--fg-70);margin:4px 0 0">Chats you start here show up here. Each one reads the project's instructions and Knowledge.</p></div>
+</sc-if>
+</sc-if>
+
+<sc-if value="{{tabArts}}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+<sc-for list="{{cur.arts}}" as="a" hint-placeholder-count="2">
+<div class="cnpy-surface cnpy-card cnpy-hitbox" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+<div style="height:112px;padding:14px 18px;font-size:12px;line-height:1.55;color:var(--fg-55);background:var(--bg);border-bottom:1px solid var(--border);overflow:hidden;white-space:pre-line">{{a.preview}}</div>
+<div style="padding:12px 16px 14px"><div style="font-size:14.5px;font-weight:600;letter-spacing:-0.01em">{{a.title}}</div><div style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--fg-55)"><div class="cnpy-av" style="{{a.av}}">{{a.ini}}</div><span>{{a.who}}</span><span>{{a.kind}}</span><span style="{{a.visSt}}">{{a.vis}}</span><span style="margin-left:auto">{{a.when}}</span></div></div>
+<button class="cnpy-hit" aria-label="Open {{a.title}}"></button>
+</div>
+</sc-for>
+</div>
+<sc-if value="{{savedArt}}" hint-placeholder-val="{{ false }}"><p style="font-size:12px;color:var(--fg-55);margin:0">Saved from a chat a moment ago. It also shows in Artifacts.</p></sc-if>
+</sc-if>
+</div>
+
+<div style="flex:1 1 320px;max-width:380px;min-width:0;display:flex;flex-direction:column;gap:12px">
+<section class="cnpy-surface cnpy-card" style="padding:16px 18px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><h2 style="font-size:14px;font-weight:500;letter-spacing:-0.005em;margin:0;flex:1">Instructions</h2><sc-if value="{{notEditing}}" hint-placeholder-val="{{ true }}"><button type="button" class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--fg-55)" onClick="{{editInstr}}">Edit</button></sc-if></div>
+<sc-if value="{{notEditing}}" hint-placeholder-val="{{ true }}"><p style="font-size:13px;line-height:1.55;color:var(--fg-70);margin:0;white-space:pre-line">{{instrShown}}</p><p style="font-size:12px;color:var(--fg-55);margin:10px 0 0">Trov reads these in every chat in this project.</p></sc-if>
+<sc-if value="{{editing}}" hint-placeholder-val="{{ false }}"><label for="pj-instr" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Project instructions</label><textarea id="pj-instr" rows="6" class="cnpy-input cnpy-libm-in cnpy-libm-ta" style="border-radius:8px;width:100%;box-sizing:border-box" value="{{instrDraft}}" onInput="{{typeInstr}}"></textarea><div style="display:flex;align-items:center;gap:8px;margin-top:10px"><span style="flex:1;font-size:12px;color:var(--fg-55)">{{instrCount}}/2000</span><button type="button" class="cnpy-outlinebtn" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)" onClick="{{cancelInstr}}">Cancel</button><button type="button" class="cnpy-confirm-go cnpy-confirm-go--neutral" style="padding:6px 14px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:12.5px;font-weight:600" onClick="{{saveInstr}}">Save</button></div></sc-if>
+</section>
+<section class="cnpy-surface cnpy-card" style="padding:16px 10px 12px">
+<div style="display:flex;align-items:center;gap:8px;margin:0 8px 6px"><h2 style="font-size:14px;font-weight:500;letter-spacing:-0.005em;margin:0;flex:1">Knowledge</h2><button type="button" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70)" onClick="{{openPin}}"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Add</button></div>
+<sc-if value="{{cur.hasPins}}" hint-placeholder-val="{{ true }}">
+<sc-for list="{{knowledge}}" as="g" hint-placeholder-count="4">
+<div style="font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-55);padding:10px 8px 3px">{{g.label}}</div>
+<sc-for list="{{g.items}}" as="it" hint-placeholder-count="2">
+<div class="pj-k"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="{{it.icon}}"></path></svg><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:var(--fg-55)">{{it.num}}</span> {{it.title}}</span><span style="display:inline-flex;align-items:center;gap:5px;flex:none;font-size:12px;color:var(--fg-70);white-space:nowrap"><sc-if value="{{it.hasMark}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" style="flex:none;display:block"><circle cx="7" cy="7" r="{{it.r}}" style="{{it.cs}}"></circle><path d="{{it.d}}" style="{{it.ps}}"></path></svg></sc-if>{{it.word}}</span><button type="button" class="cnpy-iconbtn pj-x" aria-label="Remove {{it.title}}" style="display:grid;place-items:center;width:22px;height:22px;border-radius:6px;color:var(--fg-55);flex:none"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+</sc-for>
+</sc-for>
+</sc-if>
+<sc-if value="{{cur.noPins}}" hint-placeholder-val="{{ false }}"><p style="font-size:13px;line-height:1.5;color:var(--fg-70);margin:4px 8px 6px">Pin the tickets, sprints, docs and PRs this work is about, or upload files. A pinned ticket always shows its current status.</p></sc-if>
+<div style="display:flex;align-items:center;gap:8px;margin:10px 8px 0;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--fg-55)"><span style="flex:1">{{pinCount}} of 200 pinned</span><button type="button" class="cnpy-link" style="padding:0;font-size:12px;font-weight:500;color:var(--fg-55)" onClick="{{openPin}}">Upload files</button></div>
+</section>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{isChat}}" hint-placeholder-val="{{ false }}">
+<div class="ask-screen" data-threads="column" data-insp="closed" data-empty="0">
+<aside class="ask-threads" aria-label="Threads"><div class="ask-threads-in">
+<div class="ask-th-top"><div class="ask-th-newrow"><button type="button" class="ask-th-new" onClick="{{backProject}}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>New thread</button></div><div class="ask-th-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg><input class="ask-th-q" placeholder="Search threads" aria-label="Search threads" spellcheck="false" autocomplete="off"></div></div>
+<div class="ask-th-scroll">
+<div class="ask-th-head">In {{cur.name}}</div>
+<div class="ask-th-list"><sc-for list="{{cur.chats}}" as="c" hint-placeholder-count="4"><div class="{{c.thCls}}"><div class="ask-th-in"><button type="button" class="ask-th-b" onClick="{{c.open}}"><span class="ask-th-title">{{c.title}}</span><span class="ask-th-at">{{c.when}}</span></button></div></div></sc-for></div>
+<div class="ask-th-head">Today</div>
+<div class="ask-th-list"><div class="ask-th"><div class="ask-th-in"><button type="button" class="ask-th-b"><span class="ask-th-title">What's left on #87</span><span class="ask-th-at">21:56</span></button></div></div><div class="ask-th"><div class="ask-th-in"><button type="button" class="ask-th-b"><span class="ask-th-title">Summarize ticket #48</span><span class="ask-th-at">19:02</span></button></div></div></div>
+<div class="ask-th-head">This week</div>
+<div class="ask-th-list"><div class="ask-th"><div class="ask-th-in"><button type="button" class="ask-th-b"><span class="ask-th-title">Handoffs waiting on me</span><span class="ask-th-at">Mon</span></button></div></div><div class="ask-th"><div class="ask-th-in"><button type="button" class="ask-th-b"><span class="ask-th-title">Tidy the hosting board</span><span class="ask-th-at">Sat</span></button></div></div></div>
+</div>
+</div></aside>
+<section class="ask-conv" aria-label="Conversation">
+<div class="ask-scroll"><div class="ask-col"><div class="ask-msgs">
+<div class="ask-q"><div class="ask-q-col"><div class="ask-q-bubble">Why does the Production backend deploy keep failing? Check the ticket and the build log.</div></div></div>
+<div class="ask-a">
+<div class="ask-steps">
+<div class="ask-step-w"><button type="button" class="ask-step" aria-expanded="false"><span class="ask-step-i"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path></svg></span><span class="ask-step-l">Read the project's instructions</span></button></div>
+<div class="ask-step-w"><button type="button" class="ask-step" aria-expanded="false"><span class="ask-step-i"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg></span><span class="ask-step-l">Searched Knowledge first</span><span class="ask-step-n">· 3 results</span><span class="ask-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M9 6l6 6-6 6"></path></svg></span></button></div>
+<div class="ask-step-w"><button type="button" class="ask-step" aria-expanded="false"><span class="ask-step-i"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 11v2M13 17v2"></path></svg></span><span class="ask-step-l">Read ticket #87</span><span class="ask-step-n">· 4 results</span><span class="ask-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M9 6l6 6-6 6"></path></svg></span></button></div>
+<div class="ask-step-w"><button type="button" class="ask-step" aria-expanded="false"><span class="ask-step-i"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><circle cx="12" cy="12" r="9"></circle><path d="m8.5 12.5 2.5 2.5 4.5-5"></path></svg></span><span class="ask-step-l">Checked CI on SaplingLearn/sapling</span><span class="ask-step-n">· 1 result</span><span class="ask-chev" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M9 6l6 6-6 6"></path></svg></span></button></div>
+</div>
+<div class="ask-text">
+<p class="ask-p">Production is still serving b4c21de. The deploy of 3e9a1f2 fails at the e2e typecheck, which <button type="button" class="ask-chip ask-chip--inline" aria-label="Ticket: #87 Production backend deploy fails on Railway, In progress" style="color:var(--fg)"><svg width="12" height="12" viewBox="0 0 14 14" fill="none" style="flex:none;display:block;color:var(--accent)" aria-hidden="true"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.5"></circle><path d="M7 7V3.5A3.5 3.5 0 0 1 7 10.5Z" fill="currentColor"></path></svg><span class="ask-chip-t">#87</span></button> tracks. The build log pinned in this project shows the same 2 type errors.</p>
+<h3 class="ask-h">What fails</h3>
+<ul class="ask-ul">
+<li>test-e2e fails tsc with 2 errors, both in the hosting fixtures that <button type="button" class="ask-chip ask-chip--inline" aria-label="Pull request: #185, Merged" style="color:var(--fg)"><svg width="9" height="9" viewBox="0 0 10 10" fill="none" style="flex:none;display:block;color:var(--accent)" aria-hidden="true"><circle cx="5" cy="5" r="4.7" fill="currentColor"></circle><path d="M2.9 5.2l1.4 1.4 2.8-2.9" fill="none" style="stroke:var(--surface)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="ask-chip-t">#185 merged</span></button> changed.</li>
+<li><button type="button" class="ask-chip ask-chip--inline" aria-label="Person: Jose" style="color:var(--p-sky)"><div class="cnpy-av" style="--c:var(--p-sky);position:relative;width:15px;height:15px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:8px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden">JO</div><span class="ask-chip-t">@jose</span></button> owns #87. It has no linked PR yet.</li>
+<li><button type="button" class="ask-chip ask-chip--inline" aria-label="Doc: Deploys and environments, Live" style="color:var(--fg)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-55)"><path d="M6 3h7l5 5v13H6z"></path><path d="M13 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg><span class="ask-chip-t">Deploys and environments</span></button> says production deploys only from a green main, so nothing new reaches it until this is fixed.</li>
+</ul>
+</div>
+<div class="ask-foot-w"><div class="ask-foot"><span class="ask-foot-mode"><svg width="13" height="13" viewBox="0 0 100 100" aria-hidden="true" style="flex:none;display:block"><path fill="var(--mark)" d="M0 83.72H46.51V46.51H0ZM46.51 46.51H83.72V0H46.51ZM83.72 46.51V83.72H46.51V100H100V46.51Z"></path></svg><span>Smart</span></span><span class="ask-foot-sep" aria-hidden="true"></span><button type="button" class="ask-fb" aria-expanded="false">5 sources<span class="ask-chev ask-chev--down" aria-hidden="true"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="m6 9 6 6 6-6"></path></svg></span></button><button type="button" class="ask-fb"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg><span>Copy</span></button><button type="button" class="ask-fb"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M21 12a9 9 0 1 1-2.6-6.4"></path><path d="M21 4v5h-5"></path></svg><span>Regenerate</span></button><button type="button" class="ask-fb" onClick="{{saveArt}}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M3 9h18"></path><path d="M12 12v5M9.5 14.5h5"></path></svg><span>{{saveWord}}</span></button><button type="button" class="ask-fb" aria-expanded="false">Wrong?</button></div></div>
+<sc-if value="{{savedArt}}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:13px;color:var(--fg-70)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Saved to {{cur.name}}: Why the Production deploy fails · Private<button type="button" class="cnpy-link" style="padding:0;font-size:13px;font-weight:500;color:var(--accent)" onClick="{{viewArts}}">Open</button></div></sc-if>
+<div class="ask-follow" role="list" aria-label="Follow-up questions"><div role="listitem"><button type="button" class="ask-fu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><path d="M4 4v7a4 4 0 0 0 4 4h12"></path><path d="m15 10 5 5-5 5"></path></svg><span>Hand off the type fix to an agent</span></button></div><div role="listitem"><button type="button" class="ask-fu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><path d="M4 4v7a4 4 0 0 0 4 4h12"></path><path d="m15 10 5 5-5 5"></path></svg><span>What else waits on #87?</span></button></div><div role="listitem"><button type="button" class="ask-fu"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block;color:var(--fg-40)"><path d="M4 4v7a4 4 0 0 0 4 4h12"></path><path d="m15 10 5 5-5 5"></path></svg><span>Draft the status line for the Hosting sprint</span></button></div></div>
+</div>
+</div></div></div>
+<div class="ask-composer"><div class="ask-co-in"><div class="ask-co-chips" role="group" aria-label="Attached"><span class="ask-co-chip"><span class="cnpy-spt" style="{{cur.tile12}}" aria-hidden="true"></span><span class="ask-co-chip-t">{{cur.name}}</span></span></div><div class="ask-box"><textarea rows="1" class="ask-input" placeholder="Ask a follow-up" aria-label="Message Ask Trov"></textarea><div class="ask-box-bar"><button type="button" class="ask-co-tool" aria-label="Attach files"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7"></path></svg></button><button type="button" class="ask-co-tool" aria-label="Mention an item"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><circle cx="12" cy="12" r="4"></circle><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"></path></svg></button><button type="button" class="ask-co-tool" aria-label="Commands"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M15 4 9 20"></path></svg></button><span class="ask-co-grow"></span><div class="ask-co-modewrap"><button type="button" class="ask-co-modebtn" aria-label="Mode: Smart">Smart<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="m6 9 6 6 6-6"></path></svg></button></div><div class="ask-co-auto"><div class="cnpy-seg cnpy-seg--xs ask-co-auto-seg" role="group" aria-label="Changes in this thread"><button type="button" class="cnpy-seg-btn is-on" aria-pressed="true">Ask before changes</button><button type="button" class="cnpy-seg-btn" aria-pressed="false">Auto</button></div></div><button type="button" class="ask-send" aria-label="Send" aria-disabled="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;display:block"><path d="M12 19V5"></path><path d="m6 11 6-6 6 6"></path></svg></button></div></div><div class="ask-co-foot"><span>Uses {{cur.name}}'s instructions and {{pinCount}} pinned items</span></div></div></div>
+</section>
+</div>
+</sc-if>
+
+</div>
+</main>
+</div>
+
+<sc-if value="{{anyModal}}" hint-placeholder-val="{{ false }}">
+<div class="cnpy-cmodal"><div class="cnpy-cmodal-back" aria-hidden="true" onClick="{{closeAll}}"></div><div class="cnpy-cmodal-wrap">
+
+<sc-if value="{{mNew}}" hint-placeholder-val="{{ false }}">
+<div role="dialog" aria-modal="true" aria-labelledby="pj-new-t" class="cnpy-surface cnpy-cmodal-box" style="width:min(500px,100%)">
+<div id="pj-new-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35">{{newTitle}}</div>
+<div style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:7px">A project holds the context for one piece of work. Chats and artifacts made in it stay with it.</div>
+<div class="cnpy-cm-detail"><div class="cnpy-libm">
+<div><div class="cnpy-libm-l"><label for="pj-n">Name</label></div><input id="pj-n" value="{{newName}}" onInput="{{typeName}}" maxlength="60" placeholder="Like Hosting providers or Spring rollout" autocomplete="off" spellcheck="false" class="cnpy-input cnpy-libm-in" style="border-radius:8px"></div>
+<div><div class="cnpy-libm-l"><span id="pj-ic-l">Icon</span></div><div role="radiogroup" aria-labelledby="pj-ic-l" class="cnpy-libm-icons"><sc-for list="{{iconOpts}}" as="o" hint-placeholder-count="8"><button type="button" role="radio" aria-checked="{{o.on}}" aria-label="{{o.label}}" class="{{o.cls}}" onClick="{{o.pick}}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{o.d}}"></path></svg></button></sc-for></div></div>
+<div><div class="cnpy-libm-l"><span id="pj-co-l">Color</span></div><div role="radiogroup" aria-labelledby="pj-co-l" class="cnpy-libm-sws"><sc-for list="{{colorOpts}}" as="o" hint-placeholder-count="8"><button type="button" role="radio" aria-checked="{{o.on}}" aria-label="{{o.label}}" class="{{o.cls}}" style="{{o.st}}" onClick="{{o.pick}}"></button></sc-for></div></div>
+<div><div class="cnpy-libm-l"><span id="pj-vis-l">Who can see it</span></div><div class="cnpy-seg cnpy-seg--sm" role="group" aria-labelledby="pj-vis-l"><button type="button" class="{{nvPrivCls}}" aria-pressed="{{nvPrivOn}}" onClick="{{nvPriv}}">Private</button><button type="button" class="{{nvMemCls}}" aria-pressed="{{nvMemOn}}" onClick="{{nvMem}}">Members</button><button type="button" class="{{nvOrgCls}}" aria-pressed="{{nvOrgOn}}" onClick="{{nvOrg}}">SaplingLearn</button></div><div style="font-size:12px;line-height:1.5;color:var(--fg-55);margin-top:7px">{{newVisHint}}</div></div>
+<div><div class="cnpy-libm-l"><label for="pj-d">Short description</label><span class="cnpy-libm-opt">Optional</span></div><textarea id="pj-d" rows="2" maxlength="140" placeholder="What is this work?" class="cnpy-input cnpy-libm-in cnpy-libm-ta" style="border-radius:8px"></textarea></div>
+</div></div>
+<div class="cnpy-cmodal-btns" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:18px"><span style="flex:1;font-size:12px;color:var(--fg-55)">{{planLine}}</span><button type="button" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)" onClick="{{closeAll}}">Cancel</button><button type="button" class="cnpy-confirm-go cnpy-confirm-go--neutral" disabled="{{noName}}" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600;white-space:nowrap" onClick="{{create}}">{{newCta}}</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{mPin}}" hint-placeholder-val="{{ false }}">
+<div role="dialog" aria-modal="true" aria-labelledby="pj-pk-t" class="cnpy-surface cnpy-cmodal-box" style="width:min(580px,100%);padding:20px 0 16px">
+<div style="padding:0 22px"><div id="pj-pk-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35">Add to {{cur.name}}</div>
+<div style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:7px">Pinned items stay live. Trov reads them first in every chat here.</div>
+<div class="cnpy-sfbar" style="margin-top:14px;width:100%;box-sizing:border-box"><div class="cnpy-sfbar-q" style="flex:1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" style="flex:none"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.2-3.2"></path></svg><input class="cnpy-search-in" style="font-size:12.5px" placeholder="Search tickets, sprints, docs, PRs and artifacts" aria-label="Search items to pin"></div></div>
+<div class="cnpy-seg cnpy-seg--xs" role="group" aria-label="Type" style="margin-top:10px"><button type="button" class="cnpy-seg-btn is-on" aria-pressed="true">All</button><button type="button" class="cnpy-seg-btn" aria-pressed="false">Tickets</button><button type="button" class="cnpy-seg-btn" aria-pressed="false">Sprints</button><button type="button" class="cnpy-seg-btn" aria-pressed="false">Docs</button><button type="button" class="cnpy-seg-btn" aria-pressed="false">Pull requests</button><button type="button" class="cnpy-seg-btn" aria-pressed="false">Artifacts</button></div></div>
+<div style="max-height:300px;overflow:auto;margin-top:10px;padding:0 12px;border-top:1px solid var(--border)">
+<sc-for list="{{cands}}" as="g" hint-placeholder-count="3">
+<div style="font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--fg-55);padding:12px 10px 4px">{{g.label}}</div>
+<sc-for list="{{g.items}}" as="c" hint-placeholder-count="2">
+<label class="pj-pick" for="{{c.id}}"><input type="checkbox" id="{{c.id}}" checked="{{c.checked}}" disabled="{{c.pinned}}" onChange="{{c.toggle}}" style="width:15px;height:15px;margin:0;accent-color:var(--accent)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;color:var(--fg-40)"><path d="{{c.icon}}"></path></svg><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="color:var(--fg-55)">{{c.num}}</span> {{c.title}}</span><span style="display:inline-flex;align-items:center;gap:5px;flex:none;font-size:12px;color:var(--fg-70)"><sc-if value="{{c.hasMark}}" hint-placeholder-val="{{ true }}"><svg width="12" height="12" viewBox="0 0 14 14" aria-hidden="true" style="flex:none;display:block"><circle cx="7" cy="7" r="{{c.r}}" style="{{c.cs}}"></circle><path d="{{c.d}}" style="{{c.ps}}"></path></svg></sc-if>{{c.word}}</span></label>
+</sc-for>
+</sc-for>
+</div>
+<sc-if value="{{privWarn}}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:flex-start;gap:9px;margin:10px 22px 0;padding:10px 12px;border-radius:8px;background:var(--hover);font-size:12.5px;line-height:1.5;color:var(--fg-70)"><svg width="11" height="11" viewBox="0 0 10 10" aria-hidden="true" style="flex:none;margin-top:4px"><path d="M5 1.2 9 8.6H1z" style="fill:var(--amber)"></path></svg><span style="flex:1">Railway cold start notes is private to you. People in this project won't see it until you publish it to the org.</span><button type="button" class="cnpy-outlinebtn" style="padding:4px 10px;border-radius:7px;border:1px solid var(--border-strong);font-size:12px;font-weight:500;color:var(--fg-70);white-space:nowrap">Publish to org</button></div></sc-if>
+<div style="display:flex;align-items:center;gap:10px;margin:12px 22px 0;padding:11px 12px;border:1px dashed var(--border-strong);border-radius:8px;font-size:12.5px;color:var(--fg-70)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--fg-55)"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"></path></svg><span style="flex:1">Drop files here, or <button type="button" class="cnpy-link" style="padding:0;font-size:12.5px;font-weight:500;color:var(--accent)">upload</button>. Up to 10 MB each.</span></div>
+<div class="cnpy-cmodal-btns" style="display:flex;align-items:center;gap:8px;margin:16px 22px 0"><span style="flex:1;font-size:12px;color:var(--fg-55)">{{selWord}}</span><button type="button" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)" onClick="{{closeAll}}">Cancel</button><button type="button" class="cnpy-confirm-go cnpy-confirm-go--neutral" disabled="{{noSel}}" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600;white-space:nowrap" onClick="{{addPins}}">{{addCta}}</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{mShare}}" hint-placeholder-val="{{ false }}">
+<div role="dialog" aria-modal="true" aria-labelledby="pj-sh-t" class="cnpy-surface cnpy-cmodal-box" style="width:min(480px,100%)">
+<div id="pj-sh-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35">Share {{cur.name}}</div>
+<div class="cnpy-cm-detail"><div class="cnpy-libm">
+<div><div class="cnpy-libm-l"><span id="pj-sv-l">Who can see it</span></div><div class="cnpy-seg cnpy-seg--sm" role="group" aria-labelledby="pj-sv-l"><button type="button" class="{{svPrivCls}}" aria-pressed="{{svPrivOn}}" onClick="{{svPriv}}">Private</button><button type="button" class="{{svMemCls}}" aria-pressed="{{svMemOn}}" onClick="{{svMem}}">Members</button><button type="button" class="{{svOrgCls}}" aria-pressed="{{svOrgOn}}" onClick="{{svOrg}}">SaplingLearn</button></div><div style="font-size:12px;line-height:1.5;color:var(--fg-55);margin-top:7px">{{shareVisHint}}</div></div>
+<div><div class="cnpy-libm-l"><label for="pj-add">People</label></div><input id="pj-add" placeholder="Add people by name or handle" autocomplete="off" class="cnpy-input cnpy-libm-in" style="border-radius:8px"></div>
+</div></div>
+<div style="margin-top:6px">
+<sc-for list="{{members}}" as="m" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--border)"><div class="cnpy-av" style="{{m.av28}}">{{m.ini}}</div><div style="flex:1;min-width:0"><div style="font-size:13.5px;font-weight:500">{{m.name}}</div><div style="font-size:11.5px;font-weight:500;color:{{m.color}}">@{{m.handle}}</div></div><button type="button" class="cnpy-ghostbtn" disabled="{{m.fixed}}" style="display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--fg-70)">{{m.role}}<sc-if value="{{m.canChange}}" hint-placeholder-val="{{ true }}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true" style="opacity:.7"><path d="m6 9 6 6 6-6"></path></svg></sc-if></button></div>
+</sc-for>
+</div>
+<div style="font-size:12px;line-height:1.5;color:var(--fg-55);margin-top:8px">Editors change instructions and Knowledge. Viewers read them and start their own chats. Chats stay with whoever started them.</div>
+<div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px"><button type="button" class="cnpy-confirm-go cnpy-confirm-go--neutral" style="padding:8px 16px;border-radius:8px;background:var(--accent);color:var(--accent-fg);font-size:13px;font-weight:600" onClick="{{closeAll}}">Done</button></div>
+</div>
+</sc-if>
+
+<sc-if value="{{mDelete}}" hint-placeholder-val="{{ false }}">
+<div role="alertdialog" aria-modal="true" aria-labelledby="pj-del-t" class="cnpy-surface cnpy-cmodal-box">
+<div id="pj-del-t" style="font-size:16px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);line-height:1.35">Delete {{cur.name}}?</div>
+<div style="font-size:13px;line-height:1.55;color:var(--fg-70);margin-top:7px">Its {{cur.nChats}} chats are deleted, including any shared with the project. Its {{cur.nArts}} artifacts stay in Artifacts. The tickets, docs and PRs it pinned aren't touched.</div>
+<div class="cnpy-cmodal-btns" style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px"><button type="button" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:13px;font-weight:500;color:var(--fg-70)" onClick="{{closeAll}}">Cancel</button><button type="button" class="cnpy-confirm-go" style="padding:8px 16px;border-radius:8px;background:var(--red);color:var(--red-fg);font-size:13px;font-weight:600" onClick="{{doDelete}}">Delete project</button></div>
+</div>
+</sc-if>
+
+</div></div>
+</sc-if>
+
+<sc-if value="{{hasToast}}" hint-placeholder-val="{{ false }}">
+<div role="status" aria-live="polite" style="position:fixed;bottom:22px;left:0;right:0;margin:0 auto;width:max-content;max-width:min(520px,calc(100 * var(--vw) - 32px));z-index:90;display:flex;align-items:flex-start;gap:9px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:10px;background:var(--bg);box-shadow:0 8px 30px rgba(0,0,0,.18);font-size:13px;color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.4" style="flex:none;margin-top:2px" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg><span>{{toast}}</span><sc-if value="{{toastUndo}}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="color:var(--fg-40)">·</span><button type="button" class="cnpy-toast-act" style="padding:0;font-size:13px;font-weight:600;color:var(--accent)" onClick="{{undo}}">Undo</button></sc-if><button type="button" aria-label="Dismiss" style="padding:0 0 0 6px;color:var(--fg-55)" onClick="{{dismiss}}"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg></button></div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["light","dark"],"default":"light"},"startView":{"editor":"enum","options":["list","project","chat"],"default":"list"},"$preview":{"width":1440,"height":920}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { view: props.startView || 'list', pid: 'hosting', chat: 0, modal: null, menu: false, tab: 'chats', editing: false, theme: null,
+      instr: 'Hosting is mostly built. Focus on what blocks the Hosting sprint.\nPrefer Deploys and environments over old chats.\nFile new tickets in the Hosting sprint and assign them to @jose unless I say otherwise.',
+      draft: '', sel: {}, added: [], prevAdded: null, newName: '', newVis: 'members', newIcon: 'server', newColor: '#525cc3', mode: 'new',
+      shareVis: 'members', filter: 'all', q: '', archived: false, toast: null, toastUndo: false, saved: false, made: null, gone: {} };
+  }
+  renderVals() {
+    const s = this.state, set = (o) => this.setState(o);
+    const IC = {
+      server: 'M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01', chart: 'M4 20V11M10 20V5M16 20v-6M21 20H3', book: 'M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5zM5 19.5A1.5 1.5 0 0 0 6.5 21H19v-3',
+      shield: 'M12 3l7 3v6c0 4.4-3 7.6-7 9-4-1.4-7-4.6-7-9V6z', rocket: 'M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M9 15l-3-3c1-4 4.5-8.5 12-9-.5 7.5-5 11-9 12zM14.5 8a1.5 1.5 0 1 0 0 3a1.5 1.5 0 1 0 0-3z',
+      flask: 'M9 3h6M10 3v6l-5.5 9.5A1.6 1.6 0 0 0 5.9 21h12.2a1.6 1.6 0 0 0 1.4-2.5L14 9V3M7.5 15h9', users: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+      megaphone: 'M3 10v4h3l6 4V6L6 10zM16 9a3.5 3.5 0 0 1 0 6M19 6a8 8 0 0 1 0 12',
+      ticket: 'M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2zM13 5v2M13 11v2M13 17v2',
+      sprint: 'M5 21V4M5 4.5C7 3 9 3 12 4.5s5 1.5 7 0V13c-2 1.5-4 1.5-7 0s-5-1.5-7 0', doc: 'M6 3h7l5 5v13H6zM13 3v5h5M9 13h6M9 17h6',
+      pr: 'M6 3v12M18 9a9 9 0 0 1-9 9M18 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM6 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6z', repo: 'M6 3v12M18 9a9 9 0 0 1-9 9M18 3a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM6 15a3 3 0 1 0 0 6a3 3 0 1 0 0-6z',
+      art: 'M12 2 2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5', file: 'm21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L15 7'
+    };
+    const MK = {
+      triage: { hasMark: true, r: 5.5, cs: 'fill:none;stroke:var(--fg-55);stroke-width:1.5;stroke-dasharray:2.4 1.9', d: '', ps: '' },
+      progress: { hasMark: true, r: 5.5, cs: 'fill:none;stroke:var(--accent);stroke-width:1.5', d: 'M7 7V3.5A3.5 3.5 0 0 1 7 10.5Z', ps: 'fill:var(--accent)' },
+      testing: { hasMark: true, r: 5.5, cs: 'fill:none;stroke:var(--amber);stroke-width:1.5', d: 'M7 7V3.5A3.5 3.5 0 1 1 3.5 7Z', ps: 'fill:var(--amber)' },
+      done: { hasMark: true, r: 6.25, cs: 'fill:var(--accent)', d: 'M4.3 7.2l1.9 1.9 3.6-3.8', ps: 'fill:none;stroke:var(--surface);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round' },
+      failing: { hasMark: true, r: 0, cs: 'fill:none', d: 'M7 2 12 7 7 12 2 7z', ps: 'fill:var(--red)' },
+      waiting: { hasMark: true, r: 4, cs: 'fill:none;stroke:var(--amber);stroke-width:1.6', d: '', ps: '' },
+      none: { hasMark: false, r: 0, cs: '', d: '', ps: '' }
+    };
+    const VIS = {
+      private: { icon: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4', word: 'Private', hint: 'Only you. Good for your own notes and drafts.' },
+      members: { icon: IC.users, word: 'Members', hint: 'Only the people you add. The rest of SaplingLearn won’t see it.' },
+      org: { icon: 'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M2 21h20M8 7h4M8 11h4M8 15h4', word: 'SaplingLearn', hint: 'Everyone in SaplingLearn can open it and start chats. Only the people you add can change it.' }
+    };
+    const PEOPLE = {
+      andres: { ini: 'AN', name: 'Andres', handle: 'AndresL230', c: 'var(--p-moss)' },
+      jose: { ini: 'JO', name: 'Jose', handle: 'Jose-Gael-Cruz-Lopez', c: 'var(--p-sky)' },
+      jack: { ini: 'JA', name: 'Jack', handle: 'jack-he', c: 'var(--p-plum)' },
+      meilin: { ini: 'MZ', name: 'Meilin Zhao', handle: 'meilin', c: 'var(--p-rose)' },
+      luke: { ini: 'LU', name: 'Luke', handle: 'luke-cooper', c: 'var(--p-fern)' }
+    };
+    const av = (h, n) => '--c:' + PEOPLE[h].c + ';position:relative;width:' + n + 'px;height:' + n + 'px;border-radius:50%;background:var(--c);box-shadow:0 0 0 1.5px color-mix(in srgb,var(--c) 45%,transparent);display:grid;place-items:center;font-size:' + (n < 20 ? 8.5 : 10) + 'px;font-weight:600;color:var(--p-ink);flex:none;overflow:hidden';
+    const tile = (c, n, r) => '--spt-r:' + r + 'px;width:' + n + 'px;height:' + n + 'px;background:' + c + ';flex:none';
+    const k = (type, num, title, mk, word) => Object.assign({ icon: IC[type], num: num, title: title, word: word || '' }, MK[mk]);
+
+    const P = [
+      { id: 'hosting', name: 'Hosting providers', icon: 'server', color: '#525cc3', vis: 'members', people: ['andres', 'jose', 'jack'], owner: 'andres', updated: '5m ago',
+        desc: 'Vercel, Render, Netlify and Fly.io behind one interface, and the Railway failures in the way of shipping it.',
+        chats: [
+          { title: 'Why the Production backend deploy failed', who: 'andres', when: '20:41', meta: 'You · 20:41' },
+          { title: 'Where hosting stands this week', who: 'andres', when: '22:20', meta: 'You · 22:20', pinned: true },
+          { title: 'What changed in PR #185', who: 'andres', when: '21:26', meta: 'You · 21:26' },
+          { title: 'File the hosting review follow-ups', who: 'jose', when: 'Sun', meta: 'Jose · Shared with the project, can read · Sun' }
+        ],
+        arts: [
+          { title: 'Where hosting stands this week, Nov 5', who: 'andres', kind: 'markdown', vis: 'Private', when: '5m ago', preview: 'Hosting is mostly built: PR 185 put Vercel, Render, Netlify and Fly.io behind one interface.\nWhat holds the sprint back is narrow.' },
+          { title: 'railway-build-log.png', who: 'andres', kind: 'image', vis: 'Private', when: '2h ago', preview: 'Build failed: test-e2e tsc found 2 errors.\n3e9a1f2 failed 3h ago. b4c21de is still serving.' }
+        ],
+        knowledge: [
+          { label: 'Sprint', items: [k('sprint', '', 'Hosting', 'none', 'Due Nov 14 · 6 of 9 done')] },
+          { label: 'Tickets', items: [k('ticket', '#87', 'Production backend deploy fails on Railway', 'progress', 'In progress'), k('ticket', '#89', 'Fly.io: one part per region', 'testing', 'Testing'), k('ticket', '#88', 'Render: poll deploys every 10 minutes', 'triage', 'Triage'), k('ticket', '#84', 'Connect hosting providers', 'done', 'Done')] },
+          { label: 'Pull requests', items: [k('pr', '#185', 'Hosting providers behind one interface', 'done', 'Merged')] },
+          { label: 'Docs', items: [k('doc', '', 'Deploys and environments', 'none', '')] },
+          { label: 'Repository', items: [k('repo', '', 'SaplingLearn/sapling', 'failing', 'Production failing')] },
+          { label: 'Files', items: [k('file', '', 'railway-build-log.png', 'none', '412 KB')] }
+        ] },
+      { id: 'pilot', name: 'Teacher dashboard pilot', icon: 'chart', color: '#a84a68', vis: 'org', people: ['meilin', 'andres', 'luke'], owner: 'meilin', updated: '4d ago',
+        desc: 'Feedback from the 12 pilot schools and what changes before the spring rollout.',
+        chats: [{ title: 'What did teachers ask for most?', who: 'meilin', when: 'Oct 31', meta: 'Meilin Zhao · Shared with the project, can continue · Oct 31' }, { title: 'Sort the pilot feedback by school', who: 'andres', when: 'Oct 30', meta: 'You · Oct 30' }],
+        arts: [{ title: 'Teacher dashboard: pilot feedback, week 2', who: 'meilin', kind: 'ui', vis: 'Org', when: '4d ago', preview: 'What worked\nThe topic grid: teachers finally see which topic the whole class is stuck on.' }],
+        knowledge: [{ label: 'Docs', items: [k('doc', '', 'Teacher dashboard', 'waiting', 'Change pending review')] }, { label: 'Tickets', items: [k('ticket', '#20', 'Flag students who haven’t studied in 7 days', 'testing', 'Testing')] }] },
+      { id: 'gradebook', name: 'Gradebook export rework', icon: 'book', color: '#2f7d57', vis: 'members', people: ['jose', 'andres'], owner: 'jose', updated: 'Oct 23',
+        desc: 'Whole-school exports: the job queue, progress, and the export that comes back empty.',
+        chats: [{ title: 'Why is the export empty for Northside?', who: 'jose', when: 'Oct 23', meta: 'Jose · Shared with the project, can read · Oct 23' }],
+        arts: [{ title: 'Gradebook export job: sequence', who: 'jose', kind: 'mermaid', vis: 'Org', when: 'Oct 23', preview: 'sequenceDiagram\nparticipant T as Teacher\nparticipant API' }],
+        knowledge: [{ label: 'Tickets', items: [k('ticket', '#91', 'Gradebook export comes back empty for a whole school', 'triage', 'Triage'), k('ticket', '#33', 'Export job queue with progress', 'progress', 'In progress')] }] },
+      { id: 'incident', name: 'Exam week incident', icon: 'shield', color: '#b4562c', vis: 'private', people: ['andres'], owner: 'andres', updated: 'Oct 18',
+        desc: 'What happened with the Supabase pool during exam week, and the follow-ups.',
+        chats: [{ title: 'Timeline of the pool incident', who: 'andres', when: 'Oct 18', meta: 'You · Oct 18' }],
+        arts: [{ title: 'Exam week pool incident: timeline', who: 'jack', kind: 'infra', vis: 'Org', when: 'Oct 18', preview: '09:02 Connections climb past 50\n09:05 60/60, API returns 503' }],
+        knowledge: [{ label: 'Docs', items: [k('doc', '', 'Incident: Supabase pool exhausted', 'none', '')] }] }
+    ];
+    if (s.made) P.unshift({ id: 'made', name: s.made.name, icon: s.made.icon, color: s.made.color, vis: s.made.vis, people: ['andres'], owner: 'andres', updated: 'Just now', desc: 'No description yet.', chats: [], arts: [], knowledge: [] });
+    const live = P.filter((p) => !s.gone[p.id]);
+    const base = P.find((p) => p.id === s.pid) || P[0];
+    const pins = (p) => p.knowledge.reduce((n, g) => n + g.items.length, 0) + (p.id === 'hosting' ? s.added.length : 0);
+    const knowledge = base.id === 'hosting' && s.added.length ? base.knowledge.concat([{ label: 'Added just now', items: s.added }]) : base.knowledge;
+    const arts = base.id === 'hosting' && s.saved ? [{ title: 'Why the Production deploy fails', who: 'andres', kind: 'markdown', vis: 'Private', when: 'Just now', preview: 'Production is still serving b4c21de.\nThe deploy of 3e9a1f2 fails at the e2e typecheck, which #87 tracks.' }].concat(base.arts) : base.arts;
+    const visWord = (p) => (p.vis === 'members' ? p.people.length + ' members' : VIS[p.vis].word);
+    const shape = (p) => Object.assign({}, p, {
+      icon: IC[p.icon], tile32: tile(p.color, 32, 4.8), tile40: tile(p.color, 40, 6), tile14: tile(p.color, 14, 3.5), tile12: tile(p.color, 12, 3),
+      visIcon: VIS[p.vis].icon, visWord: visWord(p),
+      visLine: p.vis === 'private' ? 'Private · only you' : p.vis === 'members' ? p.people.length + ' members · owned by ' + (p.owner === 'andres' ? 'you' : PEOPLE[p.owner].name) : 'Everyone in SaplingLearn · ' + p.people.length + ' editors',
+      avs: p.people.slice(0, 3).map((h, i) => ({ ini: PEOPLE[h].ini, st18: av(h, 18), wrap: 'display:flex;flex:none;border-radius:50%;box-shadow:0 0 0 2px var(--surface);z-index:' + (9 - i) + (i ? ';margin-left:-7px' : '') })),
+      ownerAv: av(p.owner, 18), ownerIni: PEOPLE[p.owner].ini, ownerName: p.owner === 'andres' ? 'You' : PEOPLE[p.owner].name,
+      nChats: String(p.chats.length), nPins: String(pins(p)), nArts: String(p.id === 'hosting' && s.saved ? p.arts.length + 1 : p.arts.length),
+      short: p.chats.length + ' chats · ' + pins(p) + ' pinned',
+      hasChats: p.chats.length > 0, noChats: p.chats.length === 0, hasPins: p.knowledge.length > 0 || (p.id === 'hosting' && s.added.length > 0), noPins: p.knowledge.length === 0,
+      chats: p.chats.map((c, i) => Object.assign({}, c, { ini: PEOPLE[c.who].ini, av: av(c.who, 16), rowSt: 'display:flex;align-items:flex-start;gap:11px;padding:11px 16px' + (i ? ';border-top:1px solid var(--border)' : ''),
+        thCls: 'ask-th' + (s.view === 'chat' && s.chat === i ? ' is-on' : ''), open: () => set({ view: 'chat', chat: i, modal: null, menu: false }) })),
+      arts: (p.id === base.id ? arts : p.arts).map((a) => Object.assign({}, a, { ini: PEOPLE[a.who].ini, av: av(a.who, 18), visSt: a.vis === 'Private' ? 'color:var(--accent)' : 'color:var(--fg-55)' })),
+      open: () => set({ view: 'project', pid: p.id, tab: 'chats', menu: false, editing: false })
+    });
+    const all = live.map(shape);
+    const cur = shape(base);
+    const ql = s.q.trim().toLowerCase();
+    const rows = all.filter((p) => (s.filter === 'all' || (s.filter === 'mine' ? p.owner === 'andres' : p.owner !== 'andres')) && (!ql || (p.name + ' ' + p.desc).toLowerCase().indexOf(ql) >= 0));
+
+    const CAND = [
+      { label: 'Tickets', items: [{ id: 'c87', pinned: true, it: k('ticket', '#87', 'Production backend deploy fails on Railway', 'progress', 'Pinned') }, { id: 'c90', it: k('ticket', '#90', 'Docs: how to connect each hosting provider', 'triage', 'Triage') }, { id: 'c86', it: k('ticket', '#86', 'Vercel: show preview deploys on their PR', 'done', 'Done') }, { id: 'c85', it: k('ticket', '#85', 'Netlify: connect with a personal access token', 'done', 'Done') }] },
+      { label: 'Docs', items: [{ id: 'cdep', pinned: true, it: k('doc', '', 'Deploys and environments', 'none', 'Pinned') }, { id: 'chc', it: k('doc', '', 'Hosting connections', 'waiting', 'Change pending review') }] },
+      { label: 'Artifacts', items: [{ id: 'crw', priv: true, it: k('art', '', 'Railway cold start notes', 'none', 'Private') }, { id: 'csig', it: k('art', '', 'Sign-in flow', 'none', 'Org') }] }
+    ];
+    const cands = CAND.map((g) => ({ label: g.label, items: g.items.map((c) => Object.assign({}, c.it, { id: c.id, pinned: !!c.pinned, checked: !!c.pinned || !!s.sel[c.id],
+      toggle: () => { const sel = Object.assign({}, s.sel); sel[c.id] = !sel[c.id]; set({ sel: sel }); } })) }));
+    const chosen = [];
+    CAND.forEach((g) => g.items.forEach((c) => { if (s.sel[c.id] && !c.pinned) chosen.push(c); }));
+    const nSel = chosen.length;
+
+    const seg = (on) => 'cnpy-seg-btn' + (on ? ' is-on' : '');
+    const ICON_OPTS = ['server', 'chart', 'book', 'shield', 'rocket', 'flask', 'users', 'megaphone'];
+    const COLOR_OPTS = [['Indigo', '#525cc3'], ['Blue', '#2467af'], ['Green', '#2f7d57'], ['Olive', '#607a29'], ['Ochre', '#966800'], ['Rust', '#b4562c'], ['Rose', '#a84a68'], ['Plum', '#7a4f8f']];
+    const theme = s.theme || this.props.theme || 'light';
+    const chatTitles = cur.chats.map((c) => c.title);
+
+    return {
+      theme: theme, screenKey: s.view === 'chat' ? 'ask' : 'library',
+      cycleTheme: () => set({ theme: theme === 'light' ? 'dark' : 'light' }),
+      isList: s.view === 'list', isProject: s.view === 'project', isChat: s.view === 'chat',
+      navProjCls: 'cnpy-navrow n-projects' + (s.view !== 'chat' ? ' is-active' : ''), navAskCls: 'cnpy-navrow n-ask' + (s.view === 'chat' ? ' is-active' : ''),
+      goList: () => set({ view: 'list', modal: null, menu: false }), goThreads: () => set({ view: 'chat', pid: s.pid, chat: 0 }),
+      backProject: () => set({ view: 'project', tab: 'chats', menu: false }),
+      cur: cur, recent: all.slice(0, 3), rows: rows, noRows: rows.length === 0, showCards: !ql && s.filter === 'all',
+      listTitle: ql ? 'Matching projects' : s.filter === 'mine' ? 'Projects you own' : s.filter === 'shared' ? 'Shared with you' : 'All projects',
+      countLine: rows.length + ' shown · ' + all.length + ' total',
+      q: s.q, typeQ: (e) => set({ q: e.target.value }),
+      fAllCls: seg(s.filter === 'all'), fMineCls: seg(s.filter === 'mine'), fSharedCls: seg(s.filter === 'shared'),
+      fAllOn: s.filter === 'all', fMineOn: s.filter === 'mine', fSharedOn: s.filter === 'shared',
+      fAll: () => set({ filter: 'all' }), fMine: () => set({ filter: 'mine' }), fShared: () => set({ filter: 'shared' }),
+      showArchived: s.archived, toggleArchived: () => set({ archived: !s.archived }), archChev: s.archived ? 'transform:rotate(90deg)' : '',
+      knowledge: knowledge, pinCount: String(pins(base)),
+      tabChats: s.tab === 'chats', tabArts: s.tab === 'arts', tabChatsCls: 'cnpy-tab' + (s.tab === 'chats' ? ' is-on' : ''), tabArtsCls: 'cnpy-tab' + (s.tab === 'arts' ? ' is-on' : ''),
+      tChats: () => set({ tab: 'chats' }), tArts: () => set({ tab: 'arts' }),
+      send: (e) => { if (e && e.preventDefault) e.preventDefault(); set({ view: 'chat', chat: 0 }); },
+      chatTitle: chatTitles[s.chat] || 'New thread',
+      saveArt: () => { if (!s.saved) set({ saved: true, toast: 'Saved as an artifact in ' + base.name, toastUndo: false }); },
+      saveWord: s.saved ? 'Saved' : 'Save as artifact', savedArt: s.saved,
+      viewArts: () => set({ view: 'project', tab: 'arts' }),
+      editing: s.editing, notEditing: !s.editing,
+      instrShown: base.id === 'hosting' ? s.instr : base.id === 'made' ? 'No instructions yet. Tell Trov what this work is and how to answer.' : 'Answer briefly. Link the ticket or doc you used.',
+      instrDraft: s.draft, instrCount: String(s.draft.length),
+      editInstr: () => set({ editing: true, draft: base.id === 'hosting' ? s.instr : '' }), typeInstr: (e) => set({ draft: e.target.value.slice(0, 2000) }),
+      cancelInstr: () => set({ editing: false }),
+      saveInstr: () => set({ editing: false, instr: base.id === 'hosting' ? s.draft : s.instr, toast: 'Instructions saved. New messages use them.', toastUndo: false }),
+      menuOpen: s.menu, toggleMenu: () => set({ menu: !s.menu }),
+      archive: () => { const g = Object.assign({}, s.gone); g[base.id] = true; set({ menu: false, view: 'list', gone: g, toast: base.name + ' archived', toastUndo: true, prevAdded: '__arch:' + base.id }); },
+      anyModal: !!s.modal, mNew: s.modal === 'new', mPin: s.modal === 'pin', mShare: s.modal === 'share', mDelete: s.modal === 'delete',
+      openNew: () => set({ modal: 'new', mode: 'new', newName: '', newVis: 'members', newIcon: 'server', newColor: '#525cc3', menu: false }),
+      openEdit: () => set({ modal: 'new', mode: 'edit', newName: base.name, newVis: base.vis, newIcon: base.icon, newColor: base.color, menu: false }),
+      openDelete: () => set({ modal: 'delete', menu: false }),
+      doDelete: () => { const g = Object.assign({}, s.gone); g[base.id] = true; set({ modal: null, view: 'list', gone: g, toast: base.name + ' deleted', toastUndo: false }); },
+      newTitle: s.mode === 'edit' ? 'Edit details' : 'New project', newCta: s.mode === 'edit' ? 'Save' : 'Create project',
+      newName: s.newName, typeName: (e) => set({ newName: e.target.value }), noName: !s.newName.trim(),
+      iconOpts: ICON_OPTS.map((n) => ({ d: IC[n], label: n.charAt(0).toUpperCase() + n.slice(1), on: s.newIcon === n, cls: 'cnpy-libm-ic' + (s.newIcon === n ? ' is-on' : ''), pick: () => set({ newIcon: n }) })),
+      colorOpts: COLOR_OPTS.map((c) => ({ label: c[0], on: s.newColor === c[1], cls: 'cnpy-libm-sw' + (s.newColor === c[1] ? ' is-on' : ''), st: '--sw:' + c[1] + ';background:' + c[1], pick: () => set({ newColor: c[1] }) })),
+      nvPrivCls: seg(s.newVis === 'private'), nvMemCls: seg(s.newVis === 'members'), nvOrgCls: seg(s.newVis === 'org'),
+      nvPrivOn: s.newVis === 'private', nvMemOn: s.newVis === 'members', nvOrgOn: s.newVis === 'org',
+      nvPriv: () => set({ newVis: 'private' }), nvMem: () => set({ newVis: 'members' }), nvOrg: () => set({ newVis: 'org' }),
+      newVisHint: VIS[s.newVis].hint, planLine: s.mode === 'edit' ? '' : 'Pro · unlimited projects',
+      create: () => {
+        if (s.mode === 'edit') { set({ modal: null, toast: 'Details saved', toastUndo: false }); return; }
+        set({ modal: null, made: { name: s.newName.trim(), vis: s.newVis, icon: s.newIcon, color: s.newColor }, pid: 'made', view: 'project', tab: 'chats', toast: 'Project created', toastUndo: false });
+      },
+      openPin: () => set({ modal: 'pin', sel: {}, menu: false }),
+      cands: cands, noSel: nSel === 0, selWord: nSel === 0 ? 'Pick what this project is about' : nSel + ' selected', addCta: nSel === 0 ? 'Add' : 'Add ' + nSel,
+      privWarn: !!s.sel.crw && base.vis !== 'private',
+      addPins: () => set({ modal: null, prevAdded: s.added, added: base.id === 'hosting' ? s.added.concat(chosen.map((c) => c.it)) : s.added, toast: 'Added ' + nSel + ' to Knowledge', toastUndo: true }),
+      openShare: () => set({ modal: 'share', shareVis: base.vis, menu: false }),
+      svPrivCls: seg(s.shareVis === 'private'), svMemCls: seg(s.shareVis === 'members'), svOrgCls: seg(s.shareVis === 'org'),
+      svPrivOn: s.shareVis === 'private', svMemOn: s.shareVis === 'members', svOrgOn: s.shareVis === 'org',
+      svPriv: () => set({ shareVis: 'private' }), svMem: () => set({ shareVis: 'members' }), svOrg: () => set({ shareVis: 'org' }),
+      shareVisHint: VIS[s.shareVis].hint,
+      members: base.people.map((h, i) => Object.assign({}, PEOPLE[h], { av28: av(h, 28), color: PEOPLE[h].c, role: h === base.owner ? 'Owner' : i === 2 ? 'Viewer' : 'Editor', fixed: h === base.owner, canChange: h !== base.owner })),
+      closeAll: () => set({ modal: null, menu: false }),
+      hasToast: !!s.toast, toast: s.toast || '', toastUndo: s.toastUndo,
+      undo: () => {
+        if (typeof s.prevAdded === 'string' && s.prevAdded.indexOf('__arch:') === 0) { const g = Object.assign({}, s.gone); delete g[s.prevAdded.slice(7)]; set({ gone: g, toast: null, prevAdded: null }); return; }
+        set({ added: s.prevAdded || [], toast: null, prevAdded: null });
+      },
+      dismiss: () => set({ toast: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

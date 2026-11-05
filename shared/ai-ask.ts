@@ -109,6 +109,7 @@ export const AskRequestSchema = z.strictObject({
   attachments: z.array(z.number().int().positive()).max(ASK_ATTACH_FILES_MAX).default([]),
   replaceFrom: z.number().int().positive().optional(),
   origin: z.enum(ASK_ORIGINS).optional(),
+  projectId: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).optional(),
 }) satisfies z.ZodType<AskRequest, unknown>;
 
 export const AskPeekBodySchema = z.strictObject({ refs: z.array(AskRefSchema).min(1).max(ASK_PEEK_MAX) });
@@ -123,6 +124,7 @@ export const AskThreadPatchSchema = z.strictObject({
   draft: z.string().max(ASK_DRAFT_MAX).optional(),
   shared: z.boolean().optional(),
   people: z.array(AskSharePersonSchema).max(ASK_SHARE_PEOPLE_MAX).optional(),
+  project: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/).nullable().optional(),
 }) satisfies z.ZodType<AskThreadPatch>;
 
 export const AskSaveBodySchema = z.strictObject({
