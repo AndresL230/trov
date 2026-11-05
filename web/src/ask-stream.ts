@@ -15,7 +15,7 @@
 
 import type {
   AskAction, AskActionKind, AskActionPreview, AskActivityIcon, AskBlock, AskEvent, AskEventMap, AskMessage, AskMode, AskTokens,
-  AskThreadSummary, RefView,
+  AskThreadSummary, AskThreadProject, RefView,
 } from "@shared/ai-ask-core";
 
 export interface AskStep {
@@ -274,6 +274,9 @@ export interface AskConvo {
   status: "idle" | "loading" | "ok" | "error";
   /** A stream is in flight (Send is Stop). */
   busy: boolean;
+  /** A NEW conversation started in a project (the project page's composer, docs/architecture/projects.md): its first
+   *  question goes with `projectId`, and its crumb, chip and foot line name the project until the thread carries it. */
+  project?: AskThreadProject | null;
 }
 let convoSeq = 0;
 export const emptyConvo = (): AskConvo => ({ uid: `c${++convoSeq}`, threadId: null, thread: null, draft: "", title: "", messages: [], status: "idle", busy: false });
@@ -296,7 +299,9 @@ export function foldThreadEvent(c: AskConvo, d: AskEventMap["thread"]): AskConvo
   const { links: _delivered, ...known } = c.thread ?? ({} as Partial<AskThreadSummary>);
   const base: AskThreadSummary = c.thread ? (known as AskThreadSummary) : { id: d.id, title: d.title, pinned: false, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef,
     hasDraft: false, group: "today", createdAt: "", updatedAt: "" };
-  return { ...c, threadId: d.id, title: d.title || c.title, thread: { ...base, id: d.id, title: d.title || base.title, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef } };
+  // A thread started in a project is the project's from its first event (the list's next read says so too).
+  const project = base.project ?? c.project ?? undefined;
+  return { ...c, threadId: d.id, title: d.title || c.title, thread: { ...base, id: d.id, title: d.title || base.title, mode: d.mode, auto: d.auto, origin: d.origin, contextRef: d.contextRef, ...(project ? { project } : {}) } };
 }
 
 /** The last answer of the conversation (the one a stream folds into). */

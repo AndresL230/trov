@@ -19,7 +19,7 @@ the page (a copy button's toast) keeps the keyboard where it was.
 Platform, personal Settings (its name, handle and digest-address fields), the Artifacts screens, Library home
 (`library`) and the Library's frame — a space's home, a doc page and New page are ONE page per space (`lib:<space>`:
 the docs pane beside them is patched across the three, the content is a `data-morph-key` per screen and per doc;
-the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), the import
+the dialogs are `data-overlay`s, the tab bar's panel a `data-morph-key`; `docs-library.md` › The screens), Projects' list (`projects`) and a project's home (`project:<slug>`), the import
 wizard (`import`: each step a `data-morph-key`, `imp:<step>`) and Imports history (`imports`: its rows a keyed list), Review (`review`, ONE key for both its views — the queue and Unplaced; each list is keyed: see "A row leaving a list" below), one tag's page (`tag:<name>`; its To review list is keyed the same way), Relay › Links (`links`; its Start a link card holds a form and a running line) and a link's page (`link:<n>`), the Roadmap's Narrative tab (`roadmap:narrative`; Trov's suggestion cards are keyed the same way — `roadmap-my-work.md` › Roadmap intelligence; the Timeline tab is still rebuilt), the three first-run pages (onboarding `onboard`, the org picker `orgs`,
 the guided setup `welcome`), and the two payment cards (`billing-done`, `billing-checkout`). Org settings › Hosting adds three dialogs with forms (the part editor, the connect
 confirmation, the token form): each is a root-level `data-overlay` of that morphed page, so typing in one patches
@@ -879,6 +879,46 @@ owner — a quiet `dangerLink`, Org settings' rule for a destructive act), Platf
 Admins › Accounts (a superadmin). Each repaints with a plain `rerender()`: all three host pages are
 `data-morph`ed, and the overlay is patched in place, so typing keeps the focus. Tests:
 `test/render.deletion.test.ts`.
+
+## Projects — the list, a project's home, a chat in a project (`web/src/projects*.ts`)
+
+The screens of Projects (the spec `docs/superpowers/specs/2026-11-05-projects.md`, the contract `shared/projects-core.ts`),
+ported from the Claude Design canvas onto the app's own pieces. **Sidebar:** one row, **Projects**, in Workspace after
+Trov (a folder; nav key `projects`, lit on `#projects` and `#project/<slug>`; a chat in a project is the Ask screen and
+lights Trov). Files: `projects.ts` (pure views and `ProjectsUi`, `AppState.projects`), `projects-actions.ts` (every
+`proj…` act, the reads and writes, the file picker and drop zone, the menus' outside click and Escape),
+`projects-api.ts` (one function per `PROJECT_ROUTES` entry over api.ts's one sender; a refusal is an `OrgApiError`,
+said by `projectErrorText`, a 402 by the plan's one sentence). The fixtures, one per state, are
+`shared/projects-fixtures.ts`; the tests `test/render.projects*.test.ts`.
+
+- **The list** (`data-morph="projects"`): the Library home's frame and cards (Recent: three, only with no search and
+  All), the search bar (`cnpy-sfbar`) filtering the LOADED list on the client, Sort a `dropdown()` inside the bar
+  (Recently updated / Name), All · Mine · Shared with me a `segmented()`, the count line, the rows (a hit area each,
+  the ⋯ a `cnpy-hitctl` with a `cnpy-dp-menu`), Archived · N opening the archived rows with Restore. Free at the
+  `projects` cap: a notice — Upgrade to Pro for the owner, "An owner can upgrade, or archive one" for the rest — and
+  New project cannot create.
+- **A project's home** (`data-morph="project:<slug>"`): the header (the tile is `spaceTile`: a project's icon and
+  colour are the spaces' sets), Share and the ⋯ menu; then **Ask's own composer** — the page conversation, made a NEW
+  thread in the project by `askCtl.prepareProject` when the project's read lands (its unsent words kept; never while
+  an answer streams) — at the column's full width (`.pj-home .ask-co-in { max-width:none }` in trov.css); Chats ·
+  Artifacts is a `tabBar()`; the right column is Instructions (edited in place, the counter, Save / Cancel) and
+  Knowledge (pins grouped by type, each drawn from its `RefView` with Ask's marks, a hidden pin as "An item you don't
+  have access to", remove on hover, Add, "N of 200 pinned", Upload files). A viewer gets no Edit, Add, remove or
+  Share; an archived project shows its read-only line with Restore in the composer's place.
+- **Dialogs** are `confirmModal` (root `data-overlay`s, the one keyboard contract): New project / Edit details (the New
+  space dialog's fields; only the owner changes who can see it), Add to <project> (the app's quick search through
+  Ask's `quickHitsToRefs`, peeked for marks; already-pinned rows ticked and disabled; a private artifact picked into a
+  project others can open warns, with Publish to org; the drop zone), Share (who can see it, Add a person and each
+  member's role as `dropdown()`s), Delete (the spec's copy). Add to Knowledge and Archive put up a toast with Undo.
+- **Sending from the project page**: the composer's Send runs Ask's own send; `run` moves the screen to Ask and sends
+  `POST /ask { projectId }` for a new conversation that carries `project` (`AskConvo.project`), and the `thread` event
+  keeps it on the thread. Ask's keys and after-paint run on the project page too (`askOnScreen`).
+- **Ask in a project** (`convoProject`): the crumb is "Projects › <project> › <thread>" (the first two link); the
+  thread list's first group is "In <project>" (the person's own threads in it, then others' shared with them from the
+  project's read) and the usual groups follow without them; a thread in a project carries the project's 11px tile; the
+  ⋯ menu adds Move to project (the live projects) and Remove from project (`PATCH /ask/threads/:id { project }`); the
+  composer shows the project chip and "Uses <project>'s instructions and N pinned items" (N from the project's read,
+  hidden pins left out). The project's read for Ask is taken after a paint (`projCtl.afterPaint`), never on a render.
 
 ## Full pages without the sidebar
 

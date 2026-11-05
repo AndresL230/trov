@@ -117,6 +117,16 @@ export function previewState(s: AppState, mode: PreviewMode, blank: AppState): A
     },
   };
   out.plat = blankSlices(s.plat, blank.plat, mode, mode === "empty" ? ["detail", "usage", "admins"] : []);
+  // Projects: loading — both reads out; empty — no project yet (the plan's cap stays real), and a project's page is
+  // "one thing": the real project, with nothing in it.
+  const pd = s.projects.detail.data;
+  out.projects = mode === "loading"
+    ? { ...s.projects, list: { status: "loading", data: null }, detail: { status: "loading", data: null } }
+    : {
+      ...s.projects,
+      list: { status: "ok", data: { projects: [], archived: [], limit: { used: 0, cap: s.projects.list.data?.limit.cap ?? null } } },
+      detail: pd ? { status: "ok", data: { ...pd, pins: [], chats: [], artifacts: [], pinLimit: { ...pd.pinLimit, used: 0 }, project: { ...pd.project, chats: 0, pins: 0, artifacts: 0 } } } : s.projects.detail,
+    };
 
   // Loading: whether the organization has a repository is "not known yet" too (the Repo dashboard and
   // My Work's Repo tile then hold their skeleton). Role and name are kept: only the status changes.

@@ -13,7 +13,7 @@
 
 import { esc, attr } from "./ui";
 import type { AppState } from "./render";
-import { askView, convoOf, inspectorRef, type AskView } from "./ask-state";
+import { askView, convoOf, convoProject, inspectorRef, type AskView } from "./ask-state";
 import { askLayout, inspectorWidth } from "./ask-layout";
 import { askIcon } from "./ask-icons";
 import { hoverCard, personName, refShort, refTypeWord, viewOf, refFallbackText } from "./ask-refs";
@@ -94,6 +94,16 @@ export function askHeader(app: AppState): AskHeaderParts {
   const t = c.thread;
   const tip = !t ? null : t.viewer ? viewerSharedTip(askOrgName(app), personName(look, t.owner ?? ""), t) : (() => { const who = sharedWith(askOrgName(app), t, look); return who ? ownerSharedTip(who) : null; })();
   const shared = tip ? `<span class="ask-crumb-mark">${sharedMark(tip, 12)}</span>` : "";
+  // A thread in a project (docs/architecture/projects.md): "Projects › <project> › <thread>", the first two links back.
+  const proj = convoProject(c);
+  if (proj) {
+    const sep = `<span class="ask-crumb-sep">›</span>`;
+    return {
+      lead: "",
+      title: `<h1 class="ask-h1"><button type="button" class="ask-h1-t is-parent ask-crumb-link" data-act="goProjects">Projects</button></h1>`,
+      crumb: `<span class="ask-crumb">${sep}<button type="button" class="ask-crumb-t ask-crumb-link" data-act="projOpen" data-arg="${attr(proj.slug)}">${esc(proj.name)}</button>${title ? `${sep}<span class="ask-crumb-t">${esc(title)}</span>${shared}` : ""}</span>`,
+    };
+  }
   return {
     lead: "",
     title: `<h1 class="ask-h1"><span class="ask-h1-t${title ? " is-parent" : ""}">Ask Trov</span></h1>`,

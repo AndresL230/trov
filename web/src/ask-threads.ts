@@ -14,15 +14,16 @@ import type { AskCtx, AskPart, AskUi, AskView } from "./ask-state";
 import { askIcon, type AskIconName } from "./ask-icons";
 import { closingAttr, reducedMotion } from "./ask-motion";
 import { skeleton, skList, skLine, skW } from "./skeleton";
-import { askExportName, type AskSearchHit, type AskShareAccess, type AskSharePerson, type AskThreadGroup, type AskThreadSummary } from "@shared/ai-ask-core";
+import { askExportName, type AskSearchHit, type AskShareAccess, type AskSharePerson, type AskThreadGroup, type AskThreadProject, type AskThreadSummary } from "@shared/ai-ask-core";
 import { confirmModal } from "./confirm";
 import { markShape, sharedMark } from "./marks";
 import { personName, refAvatar, type RefLook } from "./ask-refs";
-import { askView, sameHandle } from "./ask-state";
+import { askView, convoOf, convoProject, sameHandle } from "./ask-state";
 import { segmented } from "./segmented";
 import { dropdown, type DropdownOption, type DropdownProps } from "./dropdown";
 import { AskApiError, isUnauthorized } from "./ask-api";
 import type { AppState } from "./render";
+import { spaceTile } from "./space-tile";
 
 const GROUP_LABEL: Record<AskThreadGroup, string> = { pinned: "Pinned", today: "Today", week: "This week", earlier: "Earlier" };
 const GROUPS: AskThreadGroup[] = ["pinned", "today", "week", "earlier"];
@@ -75,6 +76,21 @@ export function viewerSharedTip(org: string, owner: string, t: Pick<AskThreadSum
 
 const isShared = (t: Pick<AskThreadSummary, "shared" | "people">): boolean => !!t.shared || !!t.people?.length;
 
+/** The person's live projects a thread may move into (any they can open, but the one it is in), at most eight. */
+export function moveTargets(app: Pick<AppState, "projects">, t: Pick<AskThreadSummary, "project">): { slug: string; name: string; icon: string; color: string }[] {
+  return (app.projects.list.data?.projects ?? []).filter((p) => p.slug !== t.project?.slug).slice(0, 8);
+}
+
+/** The ⋯ menu's project items: "Move to project" with each of the person's live projects (its tile and name), and
+ *  "Remove from project" for a thread in one (`PATCH /ask/threads/:id { project }`). */
+function projectItems(v: AskView, t: AskThreadSummary): string {
+  const to = moveTargets(v.app, t);
+  const moves = to.map((p) => `<button type="button" role="menuitem" class="ask-th-mv" data-act="askThMove" data-arg="${attr(`${t.id}|${p.slug}`)}">${spaceTile(p, 14)}<span class="ask-th-mv-n">${esc(p.name)}</span></button>`).join("");
+  const out = t.project ? `<button type="button" role="menuitem" data-act="askThUnproject" data-arg="${t.id}">${askIcon("close", 14)}Remove from project</button>` : "";
+  if (!moves && !out) return "";
+  return `<div class="ask-menu-sep" role="separator"></div>${moves ? `<div class="ask-menu-label" aria-hidden="true">Move to project</div>${moves}` : ""}${out}`;
+}
+
 function menu(v: AskView, t: AskThreadSummary): string {
   return `<div class="ask-menu ask-th-menu" role="menu" aria-label="Thread actions"${closingAttr(v.ui.closing, "menu")}>
     <button type="button" role="menuitem" data-act="askThRename" data-arg="${t.id}">${askIcon("rename", 14)}Rename</button>
@@ -82,6 +98,7 @@ function menu(v: AskView, t: AskThreadSummary): string {
     <button type="button" role="menuitem" data-act="askThShare" data-arg="${t.id}" aria-haspopup="dialog">${askIcon("share", 14)}Share…</button>
     ${isShared(t) ? `<button type="button" role="menuitem" data-act="askThUnshare" data-arg="${t.id}">${askIcon("lock", 14)}Stop sharing</button>` : ""}
     <button type="button" role="menuitem" data-act="askThExport" data-arg="${t.id}">${askIcon("download", 14)}Export as markdown</button>
+    ${projectItems(v, t)}
     <div class="ask-menu-sep" role="separator"></div>
     <button type="button" role="menuitem" class="is-danger" data-act="askThDelete" data-arg="${t.id}">${askIcon("trash", 14)}Delete</button>
   </div>`;
@@ -111,7 +128,7 @@ function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string 
   const time = `${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span>`;
   // Shared (with the org, or people by name): a quiet mark after the title (private, the normal state, has none).
   const who = sharedWith(askOrgName(v.app), t, v.look);
-  const mark = who ? `<span class="ask-th-mark">${sharedMark(ownerSharedTip(who), 13, false)}</span>` : "";
+  const mark = `${projectMark(t)}${who ? `<span class="ask-th-mark">${sharedMark(ownerSharedTip(who), 13, false)}</span>` : ""}`;
   const main = hit
     ? `<button type="button" class="ask-th-b ask-th-b--hit${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}>
         <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "New thread")}</span>${mark}${time}</span>
@@ -120,6 +137,12 @@ function row(v: AskView, t: AskThreadSummary, hit: AskSearchHit | null): string 
       </button>`
     : `<button type="button" class="ask-th-b${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""}><span class="ask-th-title">${esc(t.title || "New thread")}</span>${mark}${time}</button>`;
   return `<div class="ask-th${open ? " is-menu" : ""}" data-morph-key="th:${t.id}"${leaving}${leaving ? " inert" : ""}><div class="ask-th-in">${main}<button type="button" class="ask-th-more" data-act="askThMore" data-arg="${t.id}" aria-label="Thread actions" aria-haspopup="menu" aria-expanded="${open}">${askIcon("more", 14)}</button>${open ? menu(v, t) : ""}</div></div>`;
+}
+
+/** A thread in a project: the project's small tile after the title, its name in the tooltip. Nothing otherwise. */
+export function projectMark(t: Pick<AskThreadSummary, "project">): string {
+  const p = t.project;
+  return p ? `<span class="ask-th-proj" role="img" aria-label="${attr(`In ${p.name}`)}" data-mtip="${attr(`In ${p.name}`)}">${spaceTile(p, 11)}</span>` : "";
 }
 
 /** Someone else's conversation: the title and time, then its owner's picture and name — one button that opens it
@@ -131,19 +154,29 @@ function sharedRow(v: AskView, t: AskThreadSummary): string {
   const name = personName(v.look, owner);
   const cont = t.direct && t.access === "continue";
   return `<div class="ask-th ask-th--shared" data-morph-key="sh:${t.id}"><div class="ask-th-in"><button type="button" class="ask-th-b ask-th-b--hit ask-th-b--shared${on ? " is-on" : ""}" data-act="askThOpen" data-arg="${t.id}"${on ? ' aria-current="page"' : ""} aria-label="${attr(`${t.title || "Untitled thread"}, shared by ${name}${cont ? ", you can continue it" : ""}`)}">
-      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span>${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span></span>
+      <span class="ask-th-line"><span class="ask-th-title">${esc(t.title || "Untitled thread")}</span>${projectMark(t)}${threadLinkMark(t)}<span class="ask-th-at">${esc(threadTime(t))}</span></span>
       <span class="ask-th-owner">${refAvatar(v.look, owner, 16)}<span class="ask-th-owner-n">${esc(name)}</span>${cont ? `<span class="ask-th-can">· Can continue</span>` : ""}</span>
     </button></div></div>`;
 }
 
 /** Other people's conversations, under the person's own: "Shared with you" (shared with them by name — a thread
  *  shared both ways is here only), then "Organization" (shared with everyone). An empty one has no section. */
-export function sharedSection(v: AskView): string {
-  const rows = v.ui.shared.data;
+export function sharedSection(v: AskView, skip: ReadonlySet<number> = new Set()): string {
+  const rows = v.ui.shared.data.filter((t) => !skip.has(t.id));
   const section = (head: string, list: AskThreadSummary[]) => list.length
     ? `<div class="ask-th-head ask-th-head--shared">${esc(head)}</div><div class="ask-th-list" data-morph-list data-ask-enter="rise">${list.map((t) => sharedRow(v, t)).join("")}</div>`
     : "";
   return section("Shared with you", rows.filter((t) => t.direct)) + section("Organization", rows.filter((t) => !t.direct));
+}
+
+/** A project's threads for the list's first group: the person's own (fresh from the thread list), then the ones others
+ *  shared with them that the project's page lists — newest first, each once. */
+export function projectThreads(v: Pick<AskView, "app" | "ui">, slug: string): AskThreadSummary[] {
+  const own = v.ui.threads.data.filter((t) => t.project?.slug === slug);
+  const d = v.app.projects.detail.data;
+  const ids = new Set(own.map((t) => t.id));
+  const others = d && d.project.slug === slug ? d.chats.filter((t) => t.viewer && !ids.has(t.id)) : [];
+  return [...own, ...others].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 /** The whole list: New thread, the search box, then the groups (or the search's hits). */
@@ -164,13 +197,21 @@ export function threadsView(v: AskView): string {
   } else if (ui.threads.status === "error" && !ui.threads.data.length) {
     body = `<div class="ask-th-none">Couldn't load your threads.</div>`;
   } else {
-    body = GROUPS.map((g) => {
-      const rows = ui.threads.data.filter((t) => (t.pinned ? "pinned" : t.group) === g);
+    // A thread in a project open (docs/architecture/projects.md): its project's threads first — the person's own, then
+    // others' shared with them (the project page's read) — and the usual groups after, without those.
+    const proj = convoProject(convoOf(v));
+    const inProj = proj ? projectThreads(v, proj.slug) : [];
+    const shown = new Set(inProj.map((t) => t.id));
+    const head = proj && inProj.length
+      ? `<div class="ask-th-head ask-th-head--proj">${spaceTile(proj, 12)}<span>${esc(`In ${proj.name}`)}</span></div><div class="ask-th-list" data-morph-list data-ask-enter="rise">${inProj.map((t) => (t.viewer ? sharedRow(v, t) : row(v, t, null))).join("")}</div>`
+      : "";
+    body = head + GROUPS.map((g) => {
+      const rows = ui.threads.data.filter((t) => !shown.has(t.id) && (t.pinned ? "pinned" : t.group) === g);
       // Each group is a keyed list (`data-morph-list`): a new thread's row rises in, a pinned one moves groups, a
       // deleted one collapses — and a repaint never replays a row (ask-motion.ts rule 2).
       return rows.length ? `<div class="ask-th-head">${GROUP_LABEL[g]}</div><div class="ask-th-list" data-morph-list data-ask-enter="rise">${rows.map((t) => row(v, t, null)).join("")}</div>` : "";
     }).join("") || `<div class="ask-th-none">No threads yet. Ask something to start one.</div>`;
-    body += sharedSection(v);
+    body += sharedSection(v, shown);
   }
   return `<div class="ask-threads-in">
     <div class="ask-th-top">
@@ -525,6 +566,29 @@ export const threadsPart: AskPart = {
         ctx.ui.threadMenu = null;
         stopSharing(ctx, id);
         return;
+      // Move to project / Remove from project: the owner's own thread, into a project they can open (or out of one).
+      case "askThMove": case "askThUnproject": {
+        const [idText, slug] = (arg ?? "").split("|");
+        const tid = Number(idText);
+        const t = threadById(ctx, tid);
+        ctx.ui.threadMenu = null;
+        if (!t) { ctx.paint(); return; }
+        const target = name === "askThMove" ? (ctx.app.projects.list.data?.projects.find((p) => p.slug === slug) ?? null) : null;
+        if (name === "askThMove" && !target) { ctx.paint(); return; }
+        const project: AskThreadProject | null = target ? { slug: target.slug, name: target.name, icon: target.icon, color: target.color } : null;
+        const was = t.project ?? null;
+        const apply = (p: AskThreadProject | null) => {
+          ctx.ui.threads.data = ctx.ui.threads.data.map((x) => (x.id === tid ? { ...x, project: p } : x));
+          if (ctx.ui.page.threadId === tid && ctx.ui.page.thread) ctx.ui.page = { ...ctx.ui.page, thread: { ...ctx.ui.page.thread, project: p } };
+        };
+        apply(project);
+        ctx.paint();
+        if (ctx.replay) { ctx.flash("Replay: nothing was moved."); return; }
+        ctx.api.patchThread(tid, { project: project?.slug ?? null })
+          .then(() => { ctx.flash(project ? `Moved to ${project.name}` : `Removed from ${was?.name ?? "the project"}`); ctx.reloadThreads(); })
+          .catch((e) => { apply(was); ctx.fail(e, project ? "Couldn't move the thread." : "Couldn't take the thread out of the project."); ctx.reloadThreads(); });
+        return;
+      }
       case "askThExport": {
         const t = threadById(ctx, id);
         ctx.ui.threadMenu = null;

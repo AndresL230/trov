@@ -125,6 +125,7 @@ export const RELEASES: Release[] = [
         "Repositories: a repository that is one service is offered as one, pre-filled, and set up in one step on its Apps page (#208)",
         "Repo: a Cloudflare Worker shows its R2 buckets (objects, stored size, daily operations) beside its D1 databases (#208)",
         "Ask Trov: every code block in an answer has a Copy button, while the answer streams and after you reopen it (#208)",
+        "Projects: a home for one piece of work, with its instructions, pinned tickets and docs, its chats and artifacts (#PR)",
       ],
       changed: [
         "Hosting: the Cloudflare token form says exactly which read-only permissions cover each figure (#208)",
