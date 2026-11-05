@@ -15,7 +15,10 @@ that person can then do is `abuse-limits.md` and `organizations.md`). Three auth
   the callback, `/?denied=unverified`, before the fork). The fork: known identity → session (denied only when
   the login is on file under a different provider account id); verified email matches a person → link +
   session; anyone else → onboarding (a sealed 10-minute `onboard` cookie; the person row is created only on
-  `POST /auth/onboard` with handle + color). Link mode (`?link=1` with a session) attaches a second provider in
+  `POST /auth/onboard` with handle + color). Onboarding also gives the new person their **Sample workspace** — an org
+  they own, full of made-up content, and so an org the MCP consent screen can offer (`organizations.md` › 1e); it is
+  their only membership until they create a real org or accept an invitation, and a failure to make it never blocks
+  sign-in. Link mode (`?link=1` with a session) attaches a second provider in
   Settings; the last identity can't be unlinked.
 - **Consent at sign-up** (the compliance pass, 2026-10-12; words in `shared/legal-core.ts`): every place a
   provider button can create an account says "By continuing you agree to the Terms of Service and Privacy

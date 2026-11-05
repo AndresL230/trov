@@ -50,7 +50,14 @@ async function onboard(callback: Response, handle: string): Promise<string> {
   expect([done.status, done.json]).toEqual([200, { ok: true, handle }]);
   return cookieOf(done.res, "session")!;
 }
-const memberships = (handle: string) => all<{ org_id: string; role: string }>(env.DB, `SELECT org_id, role FROM memberships WHERE user_id = ? ORDER BY org_id`, handle);
+// A new person's Sample workspace (0087_sample_orgs, src/orgs/sample.ts) is beside the point of these tests — what an
+// invite or a Free org grants — so both reads look past it; the first new-account test checks it is there.
+const memberships = (handle: string) => all<{ org_id: string; role: string }>(env.DB,
+  `SELECT m.org_id, m.role FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = ? AND o.sample = 0 ORDER BY m.org_id`, handle);
+const meNow = async (session: string): Promise<Record<string, unknown>> => {
+  const j = (await json("GET", "/auth/me", session)).json as Record<string, unknown> & { orgs?: { sample?: boolean }[] };
+  return j.orgs ? { ...j, orgs: j.orgs.filter((o) => !o.sample) } : j;
+};
 const orgInvite = (o: { org?: string; email?: string; github_login?: string; role?: string }) =>
   run(env.DB, `INSERT INTO org_invites (org_id, github_login, email, role, invited_by, status, created_at) VALUES (?, ?, ?, ?, 'AndresL230', 'pending', '2026-10-06T00:00:00Z')`,
     o.org ?? ORG_B, o.github_login ?? null, o.email ?? null, o.role ?? "member").then((r) => r.meta.last_row_id as number);
@@ -94,8 +101,10 @@ describe("a new GitHub account", () => {
   it("with no invite: onboards (no GitHub org is asked about), joins NO org, reaches nothing tenant-scoped, and may create ONE Free org of their own", async () => {
     const session = await onboard(await github("stranger", VERIFIED("stranger@example.com")), "stranger");
     expect(await memberships("stranger")).toEqual([]);
+    // …but their Sample workspace, which they own and which does not use up their one Free org (below).
+    expect((await json("GET", "/auth/me", session)).json.orgs).toEqual([expect.objectContaining({ slug: "sample-stranger", name: "Sample workspace", role: "owner", sample: true })]);
     expect(await first(env.DB, `SELECT verified_email FROM identities WHERE subject = 'stranger'`)).toEqual({ verified_email: "stranger@example.com" });
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ handle: "stranger", superadmin: false, orgs: [], pending_invites: 0 });
+    expect((await meNow(session))).toMatchObject({ handle: "stranger", superadmin: false, orgs: [], pending_invites: 0 });
 
     for (const path of ["/docs", "/api/prompts", "/raw/a/anything"]) expect((await json("GET", path, session)).status, path).toBe(404); // no org route outside /api/o
     expect((await json("GET", "/api/o/saplinglearn/docs", session)).status).toBe(404);
@@ -107,7 +116,7 @@ describe("a new GitHub account", () => {
     // They can make themselves ONE Free org (src/plans/free.ts) — and see only its content.
     expect((await json("POST", "/api/orgs", session, { slug: "stranger-co", name: "Stranger Co" })).status).toBe(201);
     expect(await first(env.DB, `SELECT plan FROM orgs WHERE slug = 'stranger-co'`)).toEqual({ plan: "free" });
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
+    expect((await meNow(session))).toMatchObject({ orgs: [{ slug: "stranger-co", name: "Stranger Co", role: "owner" }] });
     expect((await json("GET", "/api/o/stranger-co/docs", session)).json).toEqual({ docs: [] });
     expect((await json("GET", "/api/o/stranger-co/persons", session)).json).toEqual({ persons: [expect.objectContaining({ handle: "stranger" })] });
     expect((await json("GET", "/api/o/saplinglearn/docs", session)).status).toBe(404);
@@ -134,7 +143,7 @@ describe("a new GitHub account", () => {
     const id = await orgInvite({ org: ORG_A, email: "new.hire@example.com" });
     const session = await onboard(await github("newhire", VERIFIED("new.hire@example.com")), "newhire");
     expect(await memberships("newhire")).toEqual([]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1 });
+    expect((await meNow(session))).toMatchObject({ orgs: [], pending_invites: 1 });
     expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("newhire")).toEqual([{ org_id: ORG_A, role: "member" }]);
   });
@@ -143,12 +152,12 @@ describe("a new GitHub account", () => {
     const id = await orgInvite({ github_login: "Invited-Dev", role: "admin" });
     const session = await onboard(await github("invited-dev"), "invited-dev");
     expect(await memberships("invited-dev")).toEqual([]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1 });
+    expect((await meNow(session))).toMatchObject({ orgs: [], pending_invites: 1 });
     expect((await json("GET", "/api/o/acme/docs", session)).status).toBe(404);
 
     expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("invited-dev")).toEqual([{ org_id: ORG_B, role: "admin" }]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ pending_invites: 0, orgs: [{ slug: "acme", name: "Acme", role: "admin" }] });
+    expect((await meNow(session))).toMatchObject({ pending_invites: 0, orgs: [{ slug: "acme", name: "Acme", role: "admin" }] });
     expect((await json("GET", "/api/o/acme/docs", session)).status).toBe(200);
   });
 });
@@ -160,7 +169,7 @@ describe("a new Google account", () => {
     expect(await first(env.DB, `SELECT 1 AS x FROM identities WHERE subject = 'g-123'`)).toBeNull(); // nothing written yet
     const session = await onboard(res, "priya");
     expect(await memberships("priya")).toEqual([]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ handle: "priya", orgs: [], pending_invites: 0 });
+    expect((await meNow(session))).toMatchObject({ handle: "priya", orgs: [], pending_invites: 0 });
   });
 
   it("someone else's invites give a new Google account nothing; an unverified address is refused even with its own", async () => {
@@ -177,7 +186,7 @@ describe("a new Google account", () => {
     // Verified: an account, a member of nothing — the other address's, the login's and the suspended org's invites are not theirs.
     const session = await onboard(await google(), "priya");
     expect(await memberships("priya")).toEqual([]);
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 0 });
+    expect((await meNow(session))).toMatchObject({ orgs: [], pending_invites: 0 });
   });
 
   it("with an org invite for its verified email: onboards into NO org, then accepts", async () => {
@@ -185,7 +194,7 @@ describe("a new Google account", () => {
     const session = await onboard(await google(), "priya");
     expect(await memberships("priya")).toEqual([]);
     expect(await first(env.DB, `SELECT verified_email FROM identities WHERE provider = 'google' AND subject = 'g-123'`)).toEqual({ verified_email: "priya.n@gmail.com" });
-    expect((await json("GET", "/auth/me", session)).json).toMatchObject({ orgs: [], pending_invites: 1 });
+    expect((await meNow(session))).toMatchObject({ orgs: [], pending_invites: 1 });
     expect((await json("GET", "/api/o/acme/me", session)).status).toBe(404);
     expect((await json("POST", `/api/invites/${id}/accept`, session)).status).toBe(200);
     expect(await memberships("priya")).toEqual([{ org_id: ORG_B, role: "member" }]);
@@ -212,7 +221,7 @@ describe("an editable address is never a way into someone else's account", () =>
     // …the victim is later invited and signs in with Google: a NEW person, not the squatter's.
     await orgInvite({ email: "priya.n@gmail.com" });
     const session = await onboard(await google(), "priya");
-    expect((await json("GET", "/auth/me", session)).json.handle).toBe("priya");
+    expect((await meNow(session)).handle).toBe("priya");
     expect(await first(env.DB, `SELECT person FROM identities WHERE subject = 'g-123'`)).toEqual({ person: "priya" });
   });
 

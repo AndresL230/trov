@@ -31,7 +31,8 @@ Both surfaces export the same helpers — `first`, `all`, `run`, `stmt`, `batch`
   Unknown slug, non-member, removed member and suspended org are the same 404; a superadmin is no member
   (`test/data-layer.context.test.ts` › the merged read).
 - A repository never builds a context. A module that touches both kinds takes the tenant ctx and receives
-  `p` as a parameter. (One exception: `createOrg` writes the new org's seed rows as `systemTenant(p, newId)`.)
+  `p` as a parameter. (One exception: `createOrg` writes the new org's seed rows as `systemTenant(p, newId)` — and
+  hands that context to its `extra`, which is how the Sample workspace's content rides in the same batch.)
 - `src/data/secrets.ts` reads its key through `kekOf(ctx)`; no other module can reach a context's `Env`. The one
   other accessor is `aiKeySet(ctx)` — ONE BIT (is there an Anthropic key?), never the key — for the AI read rule
   (`ai.md` › The read rule).
@@ -272,6 +273,11 @@ own cursor (`ai_pass`, one unit per org, keyed `<org>`), written only when a tic
 Queues stay a deferred seam: a unit runner (`runEnvJob(env, orgId, envKey, job, now)`,
 `runOrgJob(env, orgId, job, now)`) is what a consumer would call, unchanged.
 
+**A Sample workspace is in no list** (0087_sample_orgs): `listActiveOrgIds`, `listEnvUnits`, `listRepoUnits`,
+`listPartUnits` and `hookRepo` all add `sample = 0`, as do the handoff expiry and gift sweeps — so no job ever runs for
+it — and its outbound tenant routes (Sync GitHub, Poll now, connect / test / credentials, add a repository, Scan) are
+409 `sample_org` (`reachesOutside`, `src/orgs/sample.ts`; `organizations.md` › 1e).
+
 **Isolation.** A unit is TOTAL: it catches its own failure, logs it with `org=<id>`, records it on THAT
 org's integration row (`recordSecretOutcome` → `last_error`; a success → `last_used_at`), and the loop moves
 on. An org with no environment and no primary repo has no unit — no statement, no request, no log line. A
@@ -355,8 +361,9 @@ mounted under `/api/o/:slug`), and any other address no route answers is a 404.
   unverified Google address is refused before the fork). No invite is needed (`auth-identity-people.md`). `identities.verified_email` is written at every
   sign-in; `identities.provider_uid` (0042_organizations) pins a GitHub identity to the account's numeric id, and a sign-in
   with the same login but another id is refused.
-- **Onboarding creates a person, never a membership** — a new person accepts an invite (`/api/invites`) or creates
-  an org (`/api/orgs`), and the welcome mail goes out then.
+- **Onboarding creates a person and their Sample workspace** (`src/orgs/sample.ts`, `organizations.md` › 1e) — an org
+  they own, made up, inert — and no other membership: a new person accepts an invite (`/api/invites`) or creates an
+  org (`/api/orgs`), and the welcome mail goes out then (never for the sample: `neverJoined` skips it).
 - **Invitation and welcome mail** (`src/orgs/mail.ts`, 0042_organizations). An e-mail invite created through
   `POST /api/o/:slug/invites` — or by the superadmin naming an owner — is MAILED as the inviting org, and the
   outcome is on its row: `name`, `mail_status` (`sent` / `failed` / null = none), `mail_at`, `mail_error`.

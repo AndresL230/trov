@@ -175,3 +175,16 @@ describe("Home — the answer under the bar", () => {
     expect(homeAnswerView({ ...base, text: "", cites: [], phase: "error", error: "Monthly AI allowance used." })).toContain("Monthly AI allowance used.");
   });
 });
+
+describe("Home in a Sample workspace (organizations.md › 1e)", () => {
+  it("leads with one line — a mark, never a pill — saying the data is made up and where to delete it", () => {
+    const sample = state({ myOrgs: { status: "ok", data: { orgs: [{ slug: "saplinglearn", name: "Sample workspace", role: "owner", sample: true }] } } as unknown as AppState["myOrgs"] });
+    const html = page(sample);
+    expect(html).toContain("data-sample-note");
+    expect(text(html)).toMatch(/Sample data Delete this workspace anytime in Org settings ?\./);
+    expect(html).toContain('href="#org/general"');
+    expect(html.indexOf("data-sample-note")).toBeLessThan(html.indexOf("hm-head"));
+    // An ordinary org has no such line.
+    expect(page(state())).not.toContain("data-sample-note");
+  });
+});

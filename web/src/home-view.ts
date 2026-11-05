@@ -12,7 +12,7 @@ import { HOME_DAYS, homeRangeDays, homeSum, type HomeData, type HomeRange } from
 import { sprintDueState } from "@shared/sprints-core";
 import { TICKET_STATUS_LABEL } from "@shared/tickets-core";
 import type { AppState, Loadable } from "./render";
-import { triageCounts, viewerIsAdmin } from "./render";
+import { triageCounts, viewerIsAdmin, viewerOrg } from "./render";
 import { handoffsForMe } from "./mywork";
 import { reviewHeadsFromReads } from "./triage-map";
 import { feedKind } from "./feed-kind";
@@ -380,6 +380,7 @@ export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps 
     activity: { range, cards, from, nBars },
     latest: { rows: latestRows(s), sub: s.home.feed.status === "ok" && feedToday ? `${feedToday} today` : "" },
     team: { rows: team, count: s.home.data.data?.team.length ?? (s.persons.data.length || null), invite: admin && (team?.length ?? 0) === 1 },
+    sample: viewerOrg(s)?.sample === true || s.orgMe.data?.sample === true,
   };
 }
 

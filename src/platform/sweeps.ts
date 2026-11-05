@@ -14,9 +14,11 @@ import { SYNC_RUN_RETENTION_DAYS } from "@shared/sync";
 import { LINK_IDLE_MS } from "@shared/links";
 import { COMMIT_PATHS_RETENTION_DAYS } from "../repo/commit-paths";
 
-/** Every pending handoff, in any org, past its `expires_at` flips to expired. Returns how many flipped. */
+/** Every pending handoff, in any org but a Sample workspace (0087_sample_orgs: its handoff stays waiting to be tried),
+ *  past its `expires_at` flips to expired. Returns how many flipped. */
 export async function expireDueHandoffs(p: PlatformContext, nowMs: number): Promise<number> {
-  const res = await run(p, `UPDATE handoffs SET status = 'expired' WHERE status = 'pending' AND expires_at < ?`, new Date(nowMs).toISOString());
+  const res = await run(p, `UPDATE handoffs SET status = 'expired' WHERE status = 'pending' AND expires_at < ?
+    AND org_id NOT IN (SELECT id FROM orgs WHERE sample = 1)`, new Date(nowMs).toISOString());
   return res.meta.changes ?? 0;
 }
 

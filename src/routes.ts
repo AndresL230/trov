@@ -59,6 +59,7 @@ import { dashboardRepo, orgEnvironments } from "./repo/config";
 import { runLockedRepoRefresh, runUsagePolls } from "./repo/cron";
 import type { DashboardData } from "@shared/dashboard";
 import { platformContext, tenantGate } from "./data/gate";
+import { SAMPLE_REFUSAL, isSampleOrg, reachesOutside } from "./orgs/sample";
 import { orgsApp, myInvitesApp, orgTenantApp, cookieOnly } from "./orgs/routes";
 import { hasRole } from "./data/context";
 import { platformApp } from "./platform/routes";
@@ -126,6 +127,13 @@ app.use("*", sessionGate);
 // one belongs on `tenant` (or another sub-app mounted under `/api/o/:slug`).
 app.use("*", platformContext);
 app.use("/api/o/:slug/*", tenantGate);
+// A Sample workspace (0087_sample_orgs) connects to nothing: a route that could call GitHub or a host for it is
+// refused here, before any sub-app (`reachesOutside`, src/orgs/sample.ts). One read, and only on those routes.
+app.use("/api/o/:slug/*", async (c, next) => {
+  const suffix = c.req.path.replace(/^\/api\/o\/[^/]+/, "");
+  if (reachesOutside(c.req.method, suffix) && (await isSampleOrg(c.var.p, c.var.ctx.orgId))) return c.json(SAMPLE_REFUSAL, 409);
+  return next();
+});
 
 // The raw artifact bytes (issue #52), session-gated: `/api/o/:slug/raw/a/…` for the org the path names
 // (`tenantGate`; src/artifacts/raw.ts). A slug that is another org's is the same 404 as an unknown one.

@@ -55,8 +55,14 @@ export interface OrgsUi {
   inviteError: string | null;
   /** The picker's opening sentence: the org the URL named is not this person's. */
   lost: string | null;
+  /** "Create sample workspace" is on its way (its button waits), or what went wrong. */
+  sampleBusy?: boolean;
+  sampleError?: string | null;
 }
-export const initialOrgsUi = (): OrgsUi => ({ menu: false, create: null, inviteBusy: null, inviteError: null, lost: null });
+export const initialOrgsUi = (): OrgsUi => ({ menu: false, create: null, inviteBusy: null, inviteError: null, lost: null, sampleBusy: false, sampleError: null });
+
+/** Does this person own a Sample workspace (0087_sample_orgs)? Then "Create sample workspace" is not offered. */
+export const ownsSample = (orgs: readonly MyOrg[]): boolean => orgs.some((o) => o.sample === true && o.role === "owner");
 
 // ── the create rules (pure; the server re-checks every one) ──────────────────
 /** An organization's HANDLE is its slug: the address its links start with, unique across Trov. */
@@ -174,6 +180,10 @@ export function orgMenu(p: OrgMenuProps): string {
   const create = !p.orgs ? (p.status === "error" ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--fg-55);padding:8px 10px">Couldn't load your invitations. <button type="button" data-act="orgsReload" class="cnpy-mutelink" style="padding:0;font-size:12px;font-weight:500;color:var(--accent)">Try again</button></div>` : "")
     : p.orgs.can_create ? `<button type="button" data-act="orgsCreateOpen" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}">${PLUS}<span style="flex:1;min-width:0">Create organization</span></button>`
     : "";
+  // The Sample workspace (src/orgs/sample.ts), for a person who has none: signed up before it existed, or deleted it.
+  const sample = p.orgs && !ownsSample(orgs)
+    ? `<button type="button" data-act="orgsCreateSample" data-orgs-item class="cnpy-menurow" style="${MENU_ROW}"${p.ui.sampleBusy ? " disabled" : ""}>${PLUS}<span style="flex:1;min-width:0">${p.ui.sampleBusy ? "Creating sample workspace…" : "Create sample workspace"}</span></button>${p.ui.sampleError ? `<div role="alert" style="font-size:12px;line-height:1.45;color:var(--red);padding:2px 10px 6px">${esc(p.ui.sampleError)}</div>` : ""}`
+    : "";
   return `<div data-overlay="orgs-menu" class="cnpy-orgmenu-layer">
     <div data-act="orgsMenuClose" class="cnpy-orgmenu-back" aria-hidden="true"></div>
     <div id="orgs-menu" role="dialog" aria-label="Organizations" data-orgs-menu class="cnpy-orgmenu cnpy-scroll" style="border-radius:11px">
@@ -182,7 +192,7 @@ export function orgMenu(p: OrgMenuProps): string {
         <ul style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:1px">${rows}</ul>
       </div>
       ${inviteBlock}
-      <div style="border-top:1px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:1px">${settings}${create}${p.superadmin ? `<a href="${PLATFORM_HREF}" data-orgs-item data-orgs-platform class="cnpy-menurow" style="${MENU_ROW};text-decoration:none;box-sizing:border-box">${SHIELD}<span style="flex:1;min-width:0">Platform</span></a>` : ""}</div>
+      <div style="border-top:1px solid var(--border);padding:6px;display:flex;flex-direction:column;gap:1px">${settings}${create}${sample}${p.superadmin ? `<a href="${PLATFORM_HREF}" data-orgs-item data-orgs-platform class="cnpy-menurow" style="${MENU_ROW};text-decoration:none;box-sizing:border-box">${SHIELD}<span style="flex:1;min-width:0">Platform</span></a>` : ""}</div>
     </div>
   </div>`;
 }
@@ -320,9 +330,15 @@ export function orgPickerView(p: OrgPickerProps): string {
       orgs.length === 0 && grants.length === 0 ? accentBtn("Create organization", "orgsCreateOpen", o) : quietBtn("Create organization", "orgsCreateOpen", { ...o, extra: "height:36px;color:var(--fg)" }),
       " data-orgs-free");
   })() : "";
+  // The Sample workspace (src/orgs/sample.ts): made-up content to try every tool with, for a person who has none.
+  const sample = p.orgs && !ownsSample(orgs) ? optRow("Try a Sample workspace",
+    `Made-up docs, tickets, a roadmap and a repository to try Trov and its coding-agent tools with. Delete it anytime.${p.ui.sampleError ? ` <span role="alert" style="color:var(--red)">${esc(p.ui.sampleError)}</span>` : ""}`,
+    quietBtn(p.ui.sampleBusy ? "Creating…" : "Create sample workspace", "orgsCreateSample", { field: "orgsCreateSample", disabled: p.ui.sampleBusy === true, label: "Create a Sample workspace", extra: "height:36px;color:var(--fg)" }),
+    " data-orgs-sample") : "";
   const options = [
     ...grants.map(grantRow),
     free,
+    sample,
     p.orgs && nothing ? optRow(grants.length ? "Or wait for an invitation" : "Wait for an invitation", `If your team already uses Trov, ask one of its admins to invite ${esc(askFor)}. The invitation appears on this page the next time you open it.`, "") : "",
     p.superadmin ? optRow("Platform", "You are a superadmin: add an organization and name its admin, suspend one, and see usage. No membership needed.",
       `<a href="${PLATFORM_HREF}" class="cnpy-outlinebtn" style="display:inline-flex;align-items:center;height:36px;padding:0 14px;border:1px solid var(--border);border-radius:8px;font-size:12.5px;font-weight:500;color:var(--fg-70);text-decoration:none;white-space:nowrap;box-sizing:border-box">Open Platform</a>`, " data-orgs-platform") : "",

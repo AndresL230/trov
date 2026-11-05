@@ -6,7 +6,7 @@
 // another's name.
 
 import type { AppState } from "./render";
-import { ApiError, Unauthorized, checkOrgSlug, createOrg, respondToInvite } from "./api";
+import { ApiError, Unauthorized, checkOrgSlug, createOrg, createSampleOrg, respondToInvite } from "./api";
 import { acceptLanding, blankCreateOrg, createLanding, createOrgErrors, createOrgServerError, handleError, handleTaken } from "./org-picker";
 import { slugFromName } from "./platform-core";
 import { orgHref } from "./org-context";
@@ -115,6 +115,22 @@ export function createOrgsController(h: OrgsHost) {
       });
   }
 
+  /** The Sample workspace: made (or the one they own found), then opened — on Home, where its note is. */
+  function createSample(): void {
+    const u = ui();
+    if (u.sampleBusy) return;
+    u.sampleBusy = true; u.sampleError = null; u.menu = false;
+    h.rerender();
+    createSampleOrg()
+      .then((org) => land(org, orgHref(org.slug)))
+      .catch((e) => {
+        if (e instanceof Unauthorized) { h.unauth(e); return; }
+        ui().sampleBusy = false;
+        ui().sampleError = "The sample workspace wasn't created. Check your connection and try again.";
+        h.rerender();
+      });
+  }
+
   function answerInvite(id: number, accept: boolean): void {
     const u = ui();
     const invite = state.myOrgs.data?.invites.find((i) => i.id === id);
@@ -182,6 +198,7 @@ export function createOrgsController(h: OrgsHost) {
         scheduleSlugCheck();
         break;
       case "orgsCreateSubmit": submitCreate(); return;
+      case "orgsCreateSample": createSample(); return;
       default: return;
     }
     h.rerender();

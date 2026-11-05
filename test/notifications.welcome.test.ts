@@ -141,9 +141,10 @@ describe("POST /auth/onboard → welcome", () => {
     expect((await bodies()).length).toBe(0);
   });
 
-  it("sends nothing to a new person who joined no org (no mail goes out under an org they are not in)", async () => {
+  it("sends nothing to a new person who joined no org but their Sample workspace (no welcome for a sample)", async () => {
     expect((await post("/auth/onboard", await cookie(), { handle: "priya", name: "Priya N", color: "plum" })).status).toBe(200);
-    expect(await first(env.DB, `SELECT 1 AS x FROM memberships WHERE user_id = 'priya'`)).toBeNull();
+    expect(await first(env.DB, `SELECT 1 AS x FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = 'priya' AND o.sample = 0`)).toBeNull();
+    expect(await first(env.DB, `SELECT 1 AS x FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = 'priya' AND o.sample = 1`)).not.toBeNull();
     expect((await bodies()).length).toBe(0);
     expect(await first(env.DB, `SELECT 1 AS x FROM notification_outbox`)).toBeNull();
   });

@@ -842,3 +842,17 @@ describe("the confirmation modal has a neutral tone", () => {
     expect(dialog("suspend")).toContain('data-confirm-tone="danger"');
   });
 });
+
+describe("the Sample workspace in the menu and on the picker (organizations.md › 1e)", () => {
+  it("offers Create sample workspace only to someone who owns none", () => {
+    const menu = (orgs: MyOrg[]) => orgMenu({ orgs: mine({ orgs }), mine: orgs, current: "acme", status: "ok", ui: ui({ menu: true }) });
+    expect(menu([acme(), sapling()])).toContain('data-act="orgsCreateSample"');
+    expect(menu([acme(), { slug: "sample-ines", name: "Sample workspace", role: "owner", sample: true }])).not.toContain('data-act="orgsCreateSample"');
+    // Not before the person's orgs are known (the menu shows `me.orgs` until then).
+    expect(orgMenu({ orgs: null, mine: [acme()], current: "acme", status: "loading", ui: ui({ menu: true }) })).not.toContain("orgsCreateSample");
+    // The picker offers it too.
+    const picker = orgPickerView({ me: me([]), mine: [], orgs: mine({ orgs: [] }), status: "ok", ui: ui(), hash: "" });
+    expect(picker).toContain("data-orgs-sample");
+    expect(picker).toContain("Create sample workspace");
+  });
+});

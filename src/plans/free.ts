@@ -14,9 +14,11 @@ import { OrgError, createOrg, type OrgRow } from "../orgs/repo";
 import { FREE_PLAN } from "@shared/plans";
 import { DEFAULT_ORG_LIMIT, type OrgSummary } from "@shared/orgs";
 
-// The Free orgs a person OWNS — suspended ones too: suspending one is not a way to make another.
+// The Free orgs a person OWNS — suspended ones too: suspending one is not a way to make another. A Sample workspace
+// (0087_sample_orgs, src/orgs/sample.ts) is on Free too but never counts: it would use up the one Free org a person
+// may own before they made their real one.
 const OWNED_FREE = `FROM memberships m JOIN orgs o ON o.id = m.org_id
-  WHERE m.user_id = ?1 COLLATE NOCASE AND m.role = 'owner' AND o.plan = '${FREE_PLAN}'`;
+  WHERE m.user_id = ?1 COLLATE NOCASE AND m.role = 'owner' AND o.plan = '${FREE_PLAN}' AND o.sample = 0`;
 
 /** The Free organization `handle` owns (the oldest, should there be more), or null. */
 export async function ownedFreeOrg(p: PlatformContext, handle: string): Promise<OrgSummary | null> {

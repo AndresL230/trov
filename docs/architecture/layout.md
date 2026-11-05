@@ -273,10 +273,14 @@
   and `org_repos.legacy_hook`, which nothing read since the Phase 7 cleanup shipped — `data-layer.md`].
   Then `0086_projects` (Projects) [`projects`, `project_members`, `project_pins`, and `chat_threads.project_id` /
   `artifact_pages.project_id`; additive — `projects.md`].
+  Then `0087_sample_orgs` [`orgs.sample`: the Sample workspace every new person gets — `organizations.md` › 1e].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
   `src/deletion/projects.ts`, `scripts/seed/projects.mjs` (the team scenario's projects) — `projects.md`.
+- The Sample workspace: `src/orgs/sample.ts` (`createSampleOrg`, the one-per-person guard, the seed's statements,
+  `reachesOutside` — the outbound routes a sample refuses), `src/orgs/sample-content.ts` (its made-up content, pure
+  data) — `organizations.md` › 1e.
 - Home: `shared/home-core.ts` (zod-free: `HomeData`, the ranges, `homeSum`), `src/tools/home.ts` (`GET /home`, D1
   only), web: `home.ts` (the markup), `home-view.ts` (its props from the app's reads) — `roadmap-my-work.md` › Home.
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,

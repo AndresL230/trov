@@ -429,6 +429,10 @@ export function checkOrgSlug(slug: string): Promise<{ available: boolean; reason
 export function createOrg(body: { slug: string; name: string; grant?: number; plan?: "free" }): Promise<OrgT.MyOrg> {
   return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs", body).then((r) => r.org);
 }
+/** My Sample workspace (src/orgs/sample.ts): the one I own, or a new one. */
+export function createSampleOrg(): Promise<OrgT.MyOrg> {
+  return orgSend<{ org: OrgT.MyOrg }>("POST", "/api/orgs/sample").then((r) => r.org);
+}
 /** Answer one of MY pending invites (`GET /api/orgs`'s `invites`). */
 export function respondToInvite(id: number, accept: boolean): Promise<unknown> { return orgSend("POST", `/api/invites/${id}/${accept ? "accept" : "decline"}`); }
 /** My membership of one org, and its connected repositories. A 404 = not mine (or suspended, or unknown). */

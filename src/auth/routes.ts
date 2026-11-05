@@ -19,8 +19,9 @@ import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant, setGrantOrg, setGrantCurrent, setGrantMode, requireOwnGrant, GrantScopeError, type GrantScopeCode } from "./oauth";
 import { PlanLimitError, PLAN_LIMIT_STATUS } from "../plans/state";
 import { platformContext } from "../data/gate";
-import { isSuperadmin, resolveTenant } from "../data/context";
+import { isSuperadmin, platform, resolveTenant } from "../data/context";
 import { listMyOrgs, listMyInvites } from "../orgs/repo";
+import { createSampleOrgSafely } from "../orgs/sample";
 import { rateLimited } from "../platform/limits";
 import { cookieOnly } from "../orgs/routes";
 import { accountDeletionPreview, deleteAccount } from "../deletion/person";
@@ -185,8 +186,12 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
       if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return c.json({ error: "already_onboarded" }, 409);
       throw e;
     }
-    // A new person is in NO org (§5.1): they accept an invite (`/api/invites`) or create one (`/api/orgs`);
-    // the welcome mail goes out then (src/orgs/mail.ts `welcomeFirstJoin`).
+    // A new person's one org is their Sample workspace (src/orgs/sample.ts; organizations.md › 1e) — made-up content
+    // to try every tool with, and an org the MCP consent screen can offer. Created as THEM (its creator and owner),
+    // before an MCP client's pending authorize is taken below. A failure is logged and sign-in carries on. Their
+    // real org comes from an invite (`/api/invites`) or creating one (`/api/orgs`); the welcome mail goes out then
+    // (src/orgs/mail.ts `welcomeFirstJoin`) — never for the sample.
+    await createSampleOrgSafely(platform(c.env, parsed.data.handle), parsed.data.handle);
     deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
     const { id } = await createSession(c.var.p, parsed.data.handle);
     await setSessionCookie(c, id, c.env.COOKIE_SECRET);
