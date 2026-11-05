@@ -50,6 +50,10 @@ export const PROJECT_LIMITS = {
   pinsPerRequest: 25,
 } as const;
 
+/** The most of an Ask turn's prompt a project's context may take, in tokens (about 4 characters each): its name, its
+ *  instructions and its pins' cards. Past it, the newest pins go first and a line says how many were left out. */
+export const ASK_PROJECT_CONTEXT_MAX = 6000;
+
 /** The plan limits (shared/plans.ts `LIMIT_KEYS`): `projects` per org (live, not archived), `project_pins` per
  *  project. Free 2 and 20; Personal as Free; Pro and Enterprise unlimited projects, 200 pins. Enforced with
  *  `requirePlan` (402 `plan_limit`). */

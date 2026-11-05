@@ -172,6 +172,7 @@ export const AskThreadSummarySchema = z.object({
   shared: z.boolean().optional(), people: z.array(AskSharePersonSchema).optional(), owner: z.string().optional(), viewer: z.boolean().optional(),
   access: z.enum(ASK_SHARE_ACCESS).optional(), direct: z.boolean().optional(),
   links: z.array(z.object({ id: z.number().int().positive(), with: z.string(), self: z.boolean(), notes: z.number().int().positive() })).optional(),
+  project: z.object({ slug: z.string(), name: z.string(), icon: z.string(), color: z.string() }).nullable().optional(),
 }) satisfies z.ZodType<AskThreadSummary>;
 
 export const AskSearchHitSchema = z.object({
