@@ -1,10 +1,11 @@
 // The team scenario's Projects (scripts/seed/projects.mjs; docs/architecture/local-dev.md): the prototype's five
-// projects in SaplingLearn, every pin a ref that really exists in the seed (each resolves for its project's owner), and
-// four of AndresL230's showcase threads in "Hosting providers".
+// projects in SaplingLearn, every pin a ref that really exists in the seed (each resolves for its project's owner), four
+// of AndresL230's showcase threads in "Hosting providers" and its Files pin, and the prototype's chats in "Teacher
+// dashboard pilot" (two) and "Gradebook export rework" (one), each under Ask's own sharing.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { loadScenarios, type SeedDb } from "../scripts/seed/scenarios.mjs";
-import { HOSTING_INSTRUCTIONS, PROJECT_CHECKS } from "../scripts/seed/projects.mjs";
+import { HOSTING_INSTRUCTIONS, PROJECT_CHECKS, projectStatements } from "../scripts/seed/projects.mjs";
 import { ProjectDetailSchema, ProjectListSchema } from "@shared/projects";
 import { call } from "./helpers/ask";
 import { cookieFor } from "./helpers/persons";
@@ -19,7 +20,10 @@ const P = "/api/o/saplinglearn/projects";
 
 describe("the team scenario's projects", () => {
   it("holds its promises, and every pin resolves for its project's owner", async () => {
-    await loadScenarios(db, ["team"], { now: new Date("2026-11-05T15:00:00.000Z") });
+    // The showcase's attached image (its bytes go to R2 only in the dev seed): the Files pin is that same file uploaded.
+    const now = new Date("2026-11-05T15:00:00.000Z");
+    await loadScenarios(db, ["team"], { now, image: { sha: "ab".repeat(32), size: 421_888 } });
+    await db.apply("Projects again", projectStatements(now)); // idempotent: it rewrites only what it owns
     for (const [label, sql, want] of PROJECT_CHECKS) {
       expect(Number((await env.DB.prepare(sql).first<{ n: number }>())?.n ?? 0), label).toBe(want);
     }
@@ -38,8 +42,33 @@ describe("the team scenario's projects", () => {
       const d = ProjectDetailSchema.parse((await call("GET", `${P}/${slug}`, andres)).json);
       expect(d.pins.filter((x) => "hidden" in x.view).map((x) => x.ref), slug).toEqual([]);
     }
-    // Jack sees Hosting providers as its viewer; Sana (in no project) sees only the org one.
-    expect((await call("GET", `${P}/hosting-providers`, await cookieFor("Darkest-Teddy"))).json.project.access).toBe("viewer");
-    expect(ProjectListSchema.parse((await call("GET", P, await cookieFor("sanaok"))).json).projects.map((p) => p.slug)).toEqual(["teacher-dashboard-pilot"]);
+    // Files: the uploaded image is the project's, the org's (so every member sees the pin), pinned.
+    const file = "artifact:railway-build-log-png-2";
+    expect(hosting.pins.find((x) => x.ref === file)?.view).toMatchObject({ type: "artifact", title: "railway-build-log.png", extra: { kind: "image", visibility: "org" } });
+    expect(hosting.artifacts.find((a) => `artifact:${a.slug}` === file)).toMatchObject({ kind: "image", visibility: "org", author: "AndresL230" });
+    // Jack sees Hosting providers as its viewer, the file pin included; Sana (in no project) sees only the org one.
+    const jack = await cookieFor("Darkest-Teddy");
+    const asJack = ProjectDetailSchema.parse((await call("GET", `${P}/hosting-providers`, jack)).json);
+    expect(asJack.project.access).toBe("viewer");
+    expect(asJack.pins.filter((x) => "hidden" in x.view).map((x) => x.ref)).toEqual([]);
+    expect(asJack.pins.map((x) => x.ref)).toContain(file);
+    const sana = await cookieFor("sanaok");
+    expect(ProjectListSchema.parse((await call("GET", P, sana)).json).projects.map((p) => p.slug)).toEqual(["teacher-dashboard-pilot"]);
+
+    // Chats keep Ask's privacy. Teacher dashboard pilot: Andres has his own and Mei Lin's (shared by name, Can continue);
+    // Mei Lin has only hers; Sana reads hers through the org share.
+    const chats = async (slug: string, cookie: string) =>
+      ProjectDetailSchema.parse((await call("GET", `${P}/${slug}`, cookie)).json).chats.map((c) => [c.title, c.owner ?? null, c.access ?? null]);
+    expect(await chats("teacher-dashboard-pilot", andres)).toEqual([
+      ["Sort the pilot feedback by school", null, null], ["What did teachers ask for most?", "meilin", "continue"],
+    ]);
+    expect((await chats("teacher-dashboard-pilot", await cookieFor("meilin"))).map((c) => c[0])).toEqual(["What did teachers ask for most?"]);
+    expect(await chats("teacher-dashboard-pilot", sana)).toEqual([["What did teachers ask for most?", "meilin", "read"]]);
+    // Gradebook export rework: Jose's thread, shared with the org: Andres and Jack read it.
+    expect(await chats("gradebook-export-rework", andres)).toEqual([["Why is the export empty for Northside?", "Jose-Gael-Cruz-Lopez", "read"]]);
+    expect(await chats("gradebook-export-rework", jack)).toEqual([["Why is the export empty for Northside?", "Jose-Gael-Cruz-Lopez", "read"]]);
+    expect(list.projects.filter((p) => p.slug !== "exam-week-incident").map((p) => [p.slug, p.chats])).toEqual(expect.arrayContaining([
+      ["hosting-providers", 4], ["teacher-dashboard-pilot", 2], ["gradebook-export-rework", 1],
+    ]));
   });
 });
