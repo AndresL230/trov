@@ -1,7 +1,8 @@
 // The team scenario's Projects (scripts/seed/projects.mjs; docs/architecture/local-dev.md): the prototype's five
 // projects in SaplingLearn, every pin a ref that really exists in the seed (each resolves for its project's owner), four
 // of AndresL230's showcase threads in "Hosting providers" and its Files pin, and the prototype's chats in "Teacher
-// dashboard pilot" (two) and "Gradebook export rework" (one), each under Ask's own sharing.
+// dashboard pilot" (two), "Gradebook export rework" (one) and the private "Exam week incident" (its owner's one), each
+// under Ask's own sharing.
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { loadScenarios, type SeedDb } from "../scripts/seed/scenarios.mjs";
@@ -67,8 +68,13 @@ describe("the team scenario's projects", () => {
     // Gradebook export rework: Jose's thread, shared with the org: Andres and Jack read it.
     expect(await chats("gradebook-export-rework", andres)).toEqual([["Why is the export empty for Northside?", "Jose-Gael-Cruz-Lopez", "read"]]);
     expect(await chats("gradebook-export-rework", jack)).toEqual([["Why is the export empty for Northside?", "Jose-Gael-Cruz-Lopez", "read"]]);
-    expect(list.projects.filter((p) => p.slug !== "exam-week-incident").map((p) => [p.slug, p.chats])).toEqual(expect.arrayContaining([
-      ["hosting-providers", 4], ["teacher-dashboard-pilot", 2], ["gradebook-export-rework", 1],
+    // Exam week incident: private, so its one thread is Andres's alone; to anyone else the project is the one 404.
+    expect(await chats("exam-week-incident", andres)).toEqual([["Timeline of the pool incident", null, null]]);
+    for (const h of ["Jose-Gael-Cruz-Lopez", "Darkest-Teddy", "meilin", "sanaok"]) {
+      expect((await call("GET", `${P}/exam-week-incident`, await cookieFor(h))).status, h).toBe(404);
+    }
+    expect(list.projects.map((p) => [p.slug, p.chats])).toEqual(expect.arrayContaining([
+      ["hosting-providers", 4], ["teacher-dashboard-pilot", 2], ["gradebook-export-rework", 1], ["exam-week-incident", 1],
     ]));
   });
 });

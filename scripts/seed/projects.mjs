@@ -2,7 +2,7 @@
 // projects in SaplingLearn, with refs that really exist in the seed — the rich layer's sprints, tickets, docs and
 // artifacts (team-rich.mjs / team-content.mjs) and the AI showcase's hosting sprint, tickets and Ask threads
 // (ai-showcase.mjs), so it runs AFTER the showcase (scenarios.mjs `teamShowcase`). Idempotent: it deletes and rewrites
-// only what it owns — projects 7901–7905 and their pins and members, Ask threads 7901–7903 (their messages and shares),
+// only what it owns — projects 7901–7905 and their pins and members, Ask threads 7901–7904 (their messages and shares),
 // artifact 7901 — and moves four of AndresL230's showcase threads into "Hosting providers".
 //
 //   Hosting providers        server  #525cc3  members  AndresL230 (owner), Jose (editor), Jack (viewer)
@@ -14,6 +14,7 @@
 //   Gradebook export rework  book    #2f7d57  members  Jose (owner), AndresL230 (editor), Jack (viewer)
 //                            + Jose's thread, shared with the org (Can read)
 //   Exam week incident       shield  #b4562c  private  AndresL230
+//                            + his own thread, never shared (a private project's threads are its owner's)
 //   Streak features          rocket  #966800  members  AndresL230 (owner), Jose (viewer) — archived
 //
 // (The handle the prototype calls jack-he is the seed's Jack: `Darkest-Teddy`.)
@@ -140,6 +141,8 @@ export function projectStatements(now = new Date()) {
     icon: "shield", color: "#b4562c", visibility: "private", owner: ME, created_at: c.days(16), updated_at: c.days(6) });
   pin(E, "doc:sapling-incident-exam-week", ME, 16);
   pin(E, "artifact:exam-week-pool-timeline", ME, 15);
+  thread(7904, E, ME, "Timeline of the pool incident", [[15.8, "Give me the timeline of the exam-week pool incident, minute by minute.",
+    "Monday of exam week, in the team's time:\n\n- **09:02** Connections climb past 50 of the 60 Supabase allows.\n- **09:05** 60/60: the API returns 503s on the study and quiz routes.\n- **09:07** The alert fires; Jack picks it up.\n- **09:11** The transaction-pooler switch from `ops/pooler` goes to production.\n- **09:16** Connections drop to 22 and the errors stop.\n\n11 minutes of 503s, no data lost. The cause was the OCR workers opening a session per page: two of them held 30 idle connections each."]]);
 
   // ── Streak features (archived) ──
   const S = PROJECT_IDS.streak;
@@ -158,4 +161,7 @@ export const PROJECT_CHECKS = [
   ["Projects › threads in Hosting providers", `SELECT COUNT(*) AS n FROM chat_threads WHERE org_id = ${O} AND project_id = ${PROJECT_IDS.hosting}`, 4],
   ["Projects › threads in Teacher dashboard pilot", `SELECT COUNT(*) AS n FROM chat_threads WHERE org_id = ${O} AND project_id = ${PROJECT_IDS.teacher}`, 2],
   ["Projects › threads in Gradebook export rework", `SELECT COUNT(*) AS n FROM chat_threads WHERE org_id = ${O} AND project_id = ${PROJECT_IDS.gradebook}`, 1],
+  ["Projects › threads in Exam week incident, its owner's", `SELECT COUNT(*) AS n FROM chat_threads WHERE org_id = ${O} AND project_id = ${PROJECT_IDS.exam} AND handle = '${ME}'`, 1],
+  ["Projects › Exam week incident's threads shared with nobody", `SELECT COUNT(*) AS n FROM chat_threads t WHERE t.org_id = ${O} AND t.project_id = ${PROJECT_IDS.exam}
+     AND (t.shared_at IS NOT NULL OR EXISTS (SELECT 1 FROM chat_thread_people p WHERE p.org_id = t.org_id AND p.thread_id = t.id))`, 0],
 ];
