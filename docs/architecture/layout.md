@@ -271,6 +271,12 @@
   reads unknown before it — `roadmap-my-work.md` › Home].
   Then `0085_drop_legacy_invites_hook` (the Phase 7 cleanup's last step) [drops the pre-organization `invites` table
   and `org_repos.legacy_hook`, which nothing read since the Phase 7 cleanup shipped — `data-layer.md`].
+  Then `0086_projects` (Projects) [`projects`, `project_members`, `project_pins`, and `chat_threads.project_id` /
+  `artifact_pages.project_id`; additive — `projects.md`].
+- Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
+  `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
+  the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
+  `src/deletion/projects.ts`, `scripts/seed/projects.mjs` (the team scenario's projects) — `projects.md`.
 - Home: `shared/home-core.ts` (zod-free: `HomeData`, the ranges, `homeSum`), `src/tools/home.ts` (`GET /home`, D1
   only), web: `home.ts` (the markup), `home-view.ts` (its props from the app's reads) — `roadmap-my-work.md` › Home.
 - The Docs Library's spaces: `shared/docs-core.ts` (zod-free: `SPACE_ALIASES`, the starter spaces, icons / colors,
