@@ -17,7 +17,7 @@ export type PlanId = (typeof PLAN_IDS)[number];
 export const isPlanId = (v: unknown): v is PlanId => typeof v === "string" && (PLAN_IDS as readonly string[]).includes(v);
 
 /** Every limit a plan sets. `null` as a value means UNLIMITED. */
-export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "ai_chat", "tags"] as const;
+export const LIMIT_KEYS = ["seats", "repositories", "environments", "artifact_bytes", "agent_connections", "ai_summaries", "ai_runs", "jev_checks", "ai_chat", "tags", "projects", "project_pins"] as const;
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 export type Entitlements = Record<LimitKey, number | null>;
 /** Per-org exceptions: a key that is present replaces the plan's value (null = unlimited); absent = the plan's. */
@@ -31,8 +31,8 @@ export interface LimitDef {
   many: string;
   /** What counts toward it — one line, shown under the row and in the docs. */
   counts: string;
-  /** Counted per org, or per person within the org. */
-  per: "org" | "person";
+  /** Counted per org, per person within the org, or per project (`project_pins`). */
+  per: "org" | "person" | "project";
   unit: "count" | "bytes";
   /** The smallest value an override may set (a seat cap of 0 would lock the owner out). */
   min: number;
@@ -82,6 +82,14 @@ export const LIMITS: Record<LimitKey, LimitDef> = {
   },
   // The organization's tag list (0056_org_tags; src/tools/tags.ts). min 6: the starters are never removed.
   tags: { label: "Tags", one: "tag", many: "tags", counts: "Tags on the list. Retired tags do not count.", per: "org", unit: "count", min: 6 },
+  // Projects (0086_projects; docs/architecture/projects.md): the org's LIVE projects — an archived or deleted one does
+  // not count — and what ONE project pins. Not per seat.
+  projects: { label: "Projects", one: "project", many: "projects", counts: "Live projects. Archived projects do not count.", per: "org", unit: "count", min: 0 },
+  // PER PROJECT: the screen says it beside the project ("N of 200 pinned"), so it is NOT LISTED with the org's limits
+  // (the Plan block's rows read one number per limit; this one has one per project).
+  project_pins: {
+    label: "Pinned items", one: "pinned item", many: "pinned items", counts: "Items pinned to one project.", per: "project", unit: "count", min: 0, listed: false,
+  },
 };
 
 /** The limits a plan is SHOWN with — the pricing page, the Plan block, Settings' Limits: every key but
@@ -133,27 +141,29 @@ const GB = 1024 * MB;
 // one Anthropic bill, not from measured use (plans.md › AI summaries); `ai_runs` likewise (ai.md).
 // Tags and Sift's checks: the owner's numbers (2026-10-14). Personal follows Free, as everywhere. Ask Trov
 // (`ai_chat`, questions, 2026-10-15): 50 per org on Free and Personal, 300 PER SEAT on Pro (`perSeat`), unlimited on Enterprise.
+// Projects (2026-11-05): 2 live projects and 20 pins a project on Free and Personal; Pro unlimited projects and 200 pins;
+// Enterprise unlimited both.
 
 export const PLANS: Record<PlanId, PlanDef> = {
   free: {
     id: "free", name: "Free", description: "For a small team trying Trov out.",
-    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30 },
+    entitlements: { seats: 3, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30, projects: 2, project_pins: 20 },
     features: [], offered: true, billing: null,
   },
   // LEGACY: no longer offered or sold. An org or grant already on it keeps these limits.
   personal: {
     id: "personal", name: "Personal", description: "One person's own organization.",
-    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30 },
+    entitlements: { seats: 1, repositories: 1, environments: 2, artifact_bytes: 250 * MB, agent_connections: 5, ai_summaries: 300, ai_runs: 250, jev_checks: 1000, ai_chat: 50, tags: 30, projects: 2, project_pins: 20 },
     features: [], offered: false, billing: null,
   },
   team: {
     id: "team", name: "Pro", description: "For a team, paid per seat.",
-    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50 },
+    entitlements: { seats: 50, repositories: 5, environments: 5, artifact_bytes: 5 * GB, agent_connections: 10, ai_summaries: 3000, ai_runs: 2000, jev_checks: 10000, ai_chat: 300, tags: 50, projects: null, project_pins: 200 },
     features: [], offered: true, billing: null, perSeat: ["ai_chat"],
   },
   enterprise: {
     id: "enterprise", name: "Enterprise", description: "Limits set for the organization by Trov.",
-    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null },
+    entitlements: { seats: null, repositories: 10, environments: 10, artifact_bytes: null, agent_connections: null, ai_summaries: null, ai_runs: null, jev_checks: null, ai_chat: null, tags: null, projects: null, project_pins: null },
     features: [], offered: true, billing: null,
   },
 };
@@ -363,7 +373,7 @@ export const limitNoun = (key: LimitKey): string => (LIMITS[key].unit === "bytes
 export function limitPhrase(key: LimitKey, value: number | null): [value: string, what: string] {
   const d = LIMITS[key];
   const what = value === 1 && d.unit !== "bytes" ? d.one : limitNoun(key);
-  return [formatLimit(key, value), `${what}${d.per === "person" ? " per person" : ""}${d.period && value !== null ? ` per ${d.period}` : ""}`];
+  return [formatLimit(key, value), `${what}${d.per === "person" ? " per person" : d.per === "project" ? " per project" : ""}${d.period && value !== null ? ` per ${d.period}` : ""}`];
 }
 /** A plan's seats in words: "for one person", "up to 10 people", "any number of people". */
 export function seatsPhrase(seats: number | null, sentence = false): string {
@@ -387,7 +397,9 @@ function refusalMessage(state: OrgPlanState, limit: LimitKey, cap: number): stri
   const what = `${formatCount(cap)} ${cap === 1 ? d.one : d.many}`;
   return d.per === "person"
     ? `You have reached the ${what} per person this organization's ${name} plan includes.`
-    : `This organization has reached the ${what} its ${name} plan includes.`;
+    : d.per === "project"
+      ? `This project has reached the ${what} per project this organization's ${name} plan includes.`
+      : `This organization has reached the ${what} its ${name} plan includes.`;
 }
 
 /**

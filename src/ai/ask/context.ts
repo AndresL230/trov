@@ -25,6 +25,8 @@ export interface AskToolCtx {
   now: () => Date;
   /** This turn's searches: area → the earliest `since` asked (feed), or null. */
   searched: Map<SearchArea, string | null>;
+  /** In a project's thread: the pins the person can see — a search's pinned results rank first (./project.ts). */
+  pinned?: ReadonlySet<string>;
 }
 
 /** The artifacts adapter's context, as the person: author and viewer of every call. */

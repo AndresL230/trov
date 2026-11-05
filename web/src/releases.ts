@@ -104,6 +104,35 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // Projects (#209): one PR.
+  {
+    version: "0.15",
+    date: "2026-11-05",
+    title: "Projects",
+    headline: "A project is a home for one piece of work: its instructions, the tickets, docs and PRs it rests on, and the Ask chats and artifacts made in it.",
+    highlights: [
+      "Start a project for one piece of work, give it instructions, and pin the tickets, docs, pull requests and artifacts it rests on.",
+      "Ask Trov inside a project and every answer reads its instructions and pinned items, only those you can see.",
+      "Keep a project to yourself, share it with chosen people as editors or viewers, or open it to the whole team.",
+      "Move a conversation into a project or out of it from its menu; archive a project when the work is done and restore it later.",
+    ],
+    ops: [
+      "Apply migration `0086_projects` (new tables for projects, their members and pins; merging to main applies it). Its header has the rollback.",
+    ],
+    patches: {
+      added: [
+        "Projects: a home for one piece of work, with its instructions, pinned tickets and docs, its chats and artifacts (#209)",
+        "Ask Trov: a conversation can be moved into a project or out of it from its menu (#209)",
+        "Plans: Free and Personal include 2 live projects with 20 pinned items each; Pro has unlimited projects (#209)",
+      ],
+      changed: [],
+      fixed: [
+        "Dialogs: the first click after closing a confirmation is no longer lost while it fades out (#209)",
+      ],
+      removed: [],
+    },
+    prs: [209],
+  },
   // Single-stack repositories (#143 R2, #144 the one-service setup), Ask's copy buttons, the Repo tab bar on a phone,
   // plugin 0.12.0 (#183) and the site tour's footer: one PR.
   {

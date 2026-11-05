@@ -310,7 +310,8 @@ describe("prompt delete", () => {
     expect(k("a")).toBeNull();
     // main.ts wires it once, in the capture phase, for every [data-confirm-dialog].
     expect(mainSrc).toMatch(/confirmKeyAction\(e\.key/);
-    expect(mainSrc).toMatch(/querySelector<HTMLElement>\("\[data-confirm-dialog\]"\)/);
+    // (A dialog on its way out — `data-closing` — is skipped: the keys reach the page again.)
+    expect(mainSrc).toMatch(/querySelectorAll<HTMLElement>\("\[data-confirm-dialog\]"\)\)\.find\(\(d\) => !d\.closest\("\[data-closing\]"\)\)/);
   });
 
   it("the toast carries the Undo button that restores it", () => {

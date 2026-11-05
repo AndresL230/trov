@@ -14,7 +14,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import {
   ASK_ATTACH_BYTES_MAX, ASK_ATTACH_FILES_MAX, ASK_ATTACH_TEXT_INLINE_MAX, ASK_MODEL_FILES_MAX, ASK_MODEL_IMAGE_B64_MAX, ASK_MODEL_IMAGE_PX_MAX,
-  askAttachKind, type AskAttachKind, type AskAttachment,
+  askAttachKind, type AskActivityIcon, type AskAttachKind, type AskAttachment,
 } from "@shared/ai-ask-core";
 import { ARTIFACT_IMAGE_TYPES, ARTIFACT_TEXT_CAP, kindForFilename, isTextKind, type ArtifactKind } from "@shared/artifacts-core";
 import { createPage, readRaw } from "../../tools/artifacts";
@@ -145,8 +145,16 @@ export function imageSize(b: Uint8Array): { width: number; height: number } | nu
   return null;
 }
 
-/** What the PERSON is told about an attachment the model could not take (an activity line in the stream). */
-export interface AttachmentNotice { title: string; label: string }
+/** What the PERSON is told about an attachment the model could not take (an activity line in the stream). The same
+ *  line, with its own tool / icon / result, says a project's instructions were read (./project.ts). */
+export interface AttachmentNotice {
+  title: string;
+  label: string;
+  /** Default `read_attachment`, icon `read`, "Not read". */
+  tool?: string;
+  icon?: AskActivityIcon;
+  resultLine?: string | null;
+}
 /** The notices' copy: plain and short. */
 export const noticeFor = (name: string, why: "too_large" | "no_room"): string =>
   why === "too_large"

@@ -16,7 +16,12 @@
 //   sprint   — roadmap_fts (the plan narrative + sprints). Authored, always live.
 //   artifact — `searchArtifactsStmt` (src/tools/artifacts.ts), which owns THE
 //              visibility rule: a private page reaches only its author, a page whose
-//              upload never landed reaches no one; drafts dropped (live-only).
+//              upload never landed reaches no one; drafts dropped (live-only) — except
+//              for the Add to <project> dialog (`artifactDrafts`, its own route), which
+//              offers the drafts the viewer may see.
+//
+// `quickRecent` is the same groups with nothing typed (most recently changed first,
+// the same rules), for that dialog only.
 //   prompt   — prompts_fts; only a prompt with at least one PUBLISHED version (a
 //              prompt that is still only a draft or an agent's staged proposal is
 //              not settled), and never a soft-deleted one (0035 PART C — prompts_fts
@@ -33,7 +38,7 @@
 
 import { type TenantContext, type Stmt, stmt, batch } from "../data/sql";
 import { RESERVED_HANDLES } from "../auth/persons";
-import { searchArtifactsStmt } from "./artifacts";
+import { recentArtifactsStmt, searchArtifactsStmt } from "./artifacts";
 import { avatarSrc } from "@shared/people";
 import {
   QUICK_TYPES, QUICK_MIN_CHARS, QUICK_LIMIT_DEFAULT, QUICK_LIMIT_MAX,
@@ -88,6 +93,76 @@ export interface QuickSearchOpts {
   limit?: number;
   /** Restrict to these groups (default: all). */
   types?: readonly QuickType[];
+  /** Artifacts include DRAFTS the viewer may see (an org page, or their own private one — the visibility rule is
+   *  `searchArtifactsStmt`'s either way). Only the Add to <project> dialog asks for it (src/projects/routes.ts): a
+   *  private artifact is a draft, and the dialog offers it with "Publish to org". */
+  artifactDrafts?: boolean;
+}
+
+// The rows of the groups both reads draw (the typed search and `quickRecent`), mapped to hits the same way.
+const TICKET_HIT = (r: Row): QuickHit => ({
+  type: "ticket", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.status), by: str(r.by), at: str(r.at),
+});
+const DOC_HIT = (r: Row): QuickHit => ({ type: "doc", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.section), by: str(r.by), at: str(r.at) });
+const DECISION_HIT = (r: Row): QuickHit => ({ type: "decision", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: "ratified", by: str(r.by), at: str(r.at) });
+const SPRINT_HIT = (r: Row): QuickHit => ({ type: "sprint", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.status), by: null, at: str(r.at) });
+const ARTIFACT_HIT = (r: Row): QuickHit => ({ type: "artifact", id: str(r.slug) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)) ?? oneLine(str(r.snippet)), status: str(r.kind), by: str(r.author_id), at: str(r.updated_at) });
+
+/** Run a plan in ONE batch and group its hits in `QUICK_TYPES` order, at most `n` a group, none twice. */
+async function runPlan(ctx: TenantContext, q: string, n: number, plan: { type: QuickType; stmt: Stmt; map: (r: Row) => QuickHit }[]): Promise<QuickSearchResult> {
+  const out: QuickSearchResult = { q, groups: [] };
+  if (!plan.length) return out;
+  const results = await batch<Row>(ctx, plan.map((p) => p.stmt));
+  const byType = new Map<QuickType, QuickHit[]>();
+  plan.forEach((p, i) => {
+    const list = byType.get(p.type) ?? [];
+    for (const r of results[i]?.results ?? []) {
+      const h = p.map(r);
+      if (list.length < n && !list.some((x) => x.id === h.id)) list.push(h);
+    }
+    byType.set(p.type, list);
+  });
+  for (const type of QUICK_TYPES) {
+    const hits = byType.get(type);
+    if (hits && hits.length) out.groups.push({ type, hits });
+  }
+  return out;
+}
+
+/** The groups the recent read covers: the team records a project pins. */
+const RECENT_TYPES = ["ticket", "doc", "decision", "sprint", "artifact"] as const satisfies readonly QuickType[];
+
+/**
+ * Nothing typed yet: the most recently changed items per group, under the SAME visibility rules as the typed search
+ * (tickets and sprints open ones first; a doc live and not archived; a decision ratified; an artifact the viewer may
+ * see — drafts only with `artifactDrafts`). What the Add to <project> dialog shows before a search. One batch.
+ */
+export async function quickRecent(ctx: TenantContext, viewer: string, opts: QuickSearchOpts = {}): Promise<QuickSearchResult> {
+  const n = Math.trunc(Math.min(Math.max(opts.limit ?? QUICK_LIMIT_DEFAULT, 1), QUICK_LIMIT_MAX));
+  const want = new Set<QuickType>((opts.types && opts.types.length ? opts.types : RECENT_TYPES).filter((t) => (RECENT_TYPES as readonly string[]).includes(t)));
+  const plan: { type: QuickType; stmt: Stmt; map: (r: Row) => QuickHit }[] = [];
+  if (want.has("ticket")) {
+    plan.push({ type: "ticket", map: TICKET_HIT, stmt: stmt(ctx,
+      `SELECT number AS id, title, status, requester AS by, updated_at AS at, NULL AS snippet FROM tickets
+        WHERE org_id = ? ORDER BY (status IN ('done', 'declined')) ASC, updated_at DESC, id DESC LIMIT ${n}`, ctx.orgId) });
+  }
+  if (want.has("doc")) {
+    plan.push({ type: "doc", map: DOC_HIT, stmt: stmt(ctx,
+      `SELECT slug AS id, title, section, updated_at AS at, updated_by AS by, NULL AS snippet FROM docs
+        WHERE org_id = ? AND current_version > 0 AND archived_at IS NULL ORDER BY updated_at DESC LIMIT ${n}`, ctx.orgId) });
+  }
+  if (want.has("decision")) {
+    plan.push({ type: "decision", map: DECISION_HIT, stmt: stmt(ctx,
+      `SELECT id, title, created_by AS by, created_at AS at, NULL AS snippet FROM adrs
+        WHERE org_id = ? AND status = 'ratified' ORDER BY created_at DESC, id DESC LIMIT ${n}`, ctx.orgId) });
+  }
+  if (want.has("sprint")) {
+    plan.push({ type: "sprint", map: SPRINT_HIT, stmt: stmt(ctx,
+      `SELECT 'sprint:' || id AS id, title, status, COALESCE(updated_at, created_at) AS at, NULL AS snippet FROM sprints
+        WHERE org_id = ? ORDER BY (status = 'done') ASC, COALESCE(updated_at, created_at) DESC, id DESC LIMIT ${n}`, ctx.orgId) });
+  }
+  if (want.has("artifact")) plan.push({ type: "artifact", map: ARTIFACT_HIT, stmt: recentArtifactsStmt(ctx, viewer, n, !opts.artifactDrafts) });
+  return runPlan(ctx, "", n, plan);
 }
 
 export async function quickSearch(ctx: TenantContext, q: string, viewer: string, opts: QuickSearchOpts = {}): Promise<QuickSearchResult> {
@@ -108,10 +183,7 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
   const plan: { type: QuickType; stmt: Stmt; map: (r: Row) => QuickHit }[] = [];
 
   if (want.has("ticket")) {
-    const map = (r: Row): QuickHit => ({
-      type: "ticket", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)),
-      status: str(r.status), by: str(r.by), at: str(r.at),
-    });
+    const map = TICKET_HIT;
     // An exact number first: `#12` or `12` is how people name a ticket — its per-org NUMBER, which is
     // also what every hit's `id` is (the FTS row is keyed by the row id; that never goes out).
     if (id !== null) {
@@ -130,7 +202,7 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
          FROM docs_fts JOIN docs d ON d.slug = docs_fts.slug AND d.org_id = ?
         WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND d.current_version > 0 AND d.archived_at IS NULL
         ORDER BY bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
-      map: (r) => ({ type: "doc", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.section), by: str(r.by), at: str(r.at) }) });
+      map: DOC_HIT });
   }
 
   if (want.has("decision")) {
@@ -139,7 +211,7 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
          FROM adrs_fts JOIN adrs a ON a.id = CAST(adrs_fts.adr_id AS INTEGER) AND a.org_id = ?
         WHERE adrs_fts MATCH ? AND adrs_fts.org_id = ? AND a.status = 'ratified'
         ORDER BY bm25(adrs_fts, 1.0, 5.0, 1.0, 1.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
-      map: (r) => ({ type: "decision", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: "ratified", by: str(r.by), at: str(r.at) }) });
+      map: DECISION_HIT });
   }
 
   if (want.has("sprint")) {
@@ -149,12 +221,11 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
          FROM roadmap_fts
          LEFT JOIN sprints s ON roadmap_fts.ref LIKE 'sprint:%' AND s.id = CAST(substr(roadmap_fts.ref, 8) AS INTEGER) AND s.org_id = ?
         WHERE roadmap_fts MATCH ? AND roadmap_fts.org_id = ? ORDER BY bm25(roadmap_fts, 1.0, 5.0, 1.0) LIMIT ${n}`, ctx.orgId, match, ctx.orgId),
-      map: (r) => ({ type: "sprint", id: str(r.id) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.snippet)), status: str(r.status), by: null, at: str(r.at) }) });
+      map: SPRINT_HIT });
   }
 
   if (want.has("artifact")) {
-    plan.push({ type: "artifact", stmt: searchArtifactsStmt(ctx, match, viewer, n, true),
-      map: (r) => ({ type: "artifact", id: str(r.slug) ?? "", title: str(r.title) ?? "", snippet: oneLine(str(r.description)) ?? oneLine(str(r.snippet)), status: str(r.kind), by: str(r.author_id), at: str(r.updated_at) }) });
+    plan.push({ type: "artifact", stmt: searchArtifactsStmt(ctx, match, viewer, n, !opts.artifactDrafts), map: ARTIFACT_HIT });
   }
 
   if (want.has("prompt")) {
@@ -218,21 +289,5 @@ export async function quickSearch(ctx: TenantContext, q: string, viewer: string,
       map: (r) => ({ type: "feed", id: String(r.id), title: str(r.title) ?? "", snippet: oneLine(str(r.brief)) ?? oneLine(str(r.snippet)), status: null, by: str(r.by), at: str(r.at) }) });
   }
 
-  if (!plan.length) return out;
-  const results = await batch<Row>(ctx, plan.map((p) => p.stmt));
-
-  const byType = new Map<QuickType, QuickHit[]>();
-  plan.forEach((p, i) => {
-    const list = byType.get(p.type) ?? [];
-    for (const r of results[i]?.results ?? []) {
-      const h = p.map(r);
-      if (list.length < n && !list.some((x) => x.id === h.id)) list.push(h);
-    }
-    byType.set(p.type, list);
-  });
-  for (const type of QUICK_TYPES) {
-    const hits = byType.get(type);
-    if (hits && hits.length) out.groups.push({ type, hits });
-  }
-  return out;
+  return runPlan(ctx, trimmed, n, plan);
 }

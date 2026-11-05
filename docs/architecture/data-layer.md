@@ -168,7 +168,8 @@ of them is also in `ORG_TABLES` (`src/deletion/tables.ts`), what an organization
   the router's stale scopes; nothing writes it yet),
   and `org_tags`, `org_tag_suggestions` (0056_org_tags — the org's tag list and what was suggested for it,
   `src/tools/tags.ts`; `feed-and-search.md` › Tags), and the Docs Library's `doc_spaces`, `doc_space_owners`,
-  `doc_links`, `doc_imports` (0081_docs_library — `src/tools/spaces.ts`; `docs-library.md`).
+  `doc_links`, `doc_imports` (0081_docs_library — `src/tools/spaces.ts`; `docs-library.md`), and `projects`,
+  `project_members`, `project_pins` (0086_projects — `src/data/projects.ts`; `projects.md`).
 - **Platform-owned org-keyed tables**: `memberships`, `org_invites`, `org_counters`, `org_usage_daily`,
   `org_admin_audit` — an org's place on the platform, written by `src/orgs`, `src/platform`, `src/data/meter.ts`.
   A tenant statement may read or write them too (membership checks, the settings audit) — with its `org_id`.
@@ -337,7 +338,8 @@ mounted under `/api/o/:slug`), and any other address no route answers is a 404.
   functions as the cron for `c.var.ctx`'s org — its repo, environments and stored credentials. An org with
   nothing configured gets "not configured" (503 from Sync GitHub, `"not_configured"` per source from the two
   polls) and no outbound request (`test/jobs.multi-org.test.ts`).
-- **Plan limits** (`plans.md`): a write a plan limits calls `requirePlan(ctx, limit)` / `seatGate(p, orgId, …)`
+- **Plan limits** (`plans.md`): a write a plan limits calls `requirePlan(ctx, limit)` (a per-project limit with its
+  scope: `requirePlan(ctx, "project_pins", n, { project })`) / `seatGate(p, orgId, …)`
   in its REPOSITORY and lets the `PlanLimitError` go — `app.onError` (`src/routes.ts`) answers 402
   `{ error: "plan_limit", limit, used, cap, plan, status, message }` for every route. A route that catches
   every error itself (`src/integrations/routes.ts` `guard`) rethrows it.

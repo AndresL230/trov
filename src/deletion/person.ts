@@ -239,6 +239,9 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `DELETE FROM chat_messages WHERE thread_id IN (SELECT id FROM chat_threads WHERE handle = ? COLLATE NOCASE)`, h),
     stmt(p, `DELETE FROM chat_threads WHERE handle = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM person_ask_settings WHERE handle = ? COLLATE NOCASE`, h),
+    // Projects (0086_projects): they are no longer a member of any project. A project they OWN stays, under the
+    // tombstone (`projects.owner` is in HANDLE_COLUMNS), for its members and an org admin (projects.md › Deleting).
+    stmt(p, `DELETE FROM project_members WHERE handle = ? COLLATE NOCASE`, h),
     ...(a.emails.length ? [stmt(p, `DELETE FROM platform_outbox_bodies WHERE lower(to_address) IN (${ph(a.emails.length)})`, ...a.emails)] : []),
     // Every organization they leave says so in the admin trail, then the memberships go.
     stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at)

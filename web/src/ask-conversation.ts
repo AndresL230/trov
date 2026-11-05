@@ -35,7 +35,7 @@ import {
   repoFactsOf, repoHeadEnv, repoMark, personName, personOf, refAvatar,
 } from "./ask-refs";
 import { askIcon, ACTIVITY_ICON, REF_ICON, trovMark } from "./ask-icons";
-import { shownParts, turnLive, type AskAnswer, type AskQuestion, type AskStep, type AskTurn, type AskShownPart } from "./ask-stream";
+import { shownParts, turnLive, type AskAnswer, type AskConvo, type AskQuestion, type AskStep, type AskTurn, type AskShownPart } from "./ask-stream";
 import { actionGroupView, feedbackView, saveFormArg, saveFormView, wrongIsOpen } from "./ask-actions";
 import {
   ASK_STARTERS_FALLBACK, askMode, isAskMode,
@@ -577,6 +577,23 @@ function partView(v: AskView, a: AskAnswer, p: AskShownPart, i: number, cur: boo
 
 const STOP_SQ = `<svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true" style="flex:none;color:var(--fg-40)"><rect x=".8" y=".8" width="8.4" height="8.4" rx="1.2" fill="currentColor"></rect></svg>`;
 
+/** The project's refusal of `POST /ask { projectId }` (docs/architecture/projects.md › Ask in a project), before
+ *  anything streamed: `archived`, `not_found`. */
+const PROJECT_ASK_GONE = "This project isn't there any more.";
+const PROJECT_ASK_ARCHIVED = "This project is archived. Restore it to change it.";
+
+/** A failed turn in words. A NEW conversation in a project (its question went with `projectId`) refused because the
+ *  project is archived says the server's sentence, and one refused because the project is gone (or no longer opens
+ *  for the person) says so — neither offers Try again, which would be refused the same. Anything else is the
+ *  generic line with Try again. */
+export function turnErrorWords(c: Pick<AskConvo, "threadId" | "project">, e: { code: string; message: string }): { title: string; sub: string | null; retry: boolean } {
+  if (c.threadId === null && c.project) {
+    if (e.code === "archived") return { title: e.message && e.message !== e.code ? e.message : PROJECT_ASK_ARCHIVED, sub: null, retry: false };
+    if (e.code === "not_found") return { title: PROJECT_ASK_GONE, sub: null, retry: false };
+  }
+  return { title: "Something went wrong.", sub: "Nothing was changed.", retry: true };
+}
+
 function answer(v: AskView, a: AskAnswer, last: boolean): string {
   const t: AskTurn = a.turn;
   const live = turnLive(t);
@@ -603,7 +620,8 @@ function answer(v: AskView, a: AskAnswer, last: boolean): string {
   const waitOrb: OrbState = running ? stepOrb(running) : parts.length ? "composing" : "solving";
   // Try again asks again: the turn's own asker's step, nobody else's.
   const retry = !ownTurn(v, a.askedBy) ? "" : `<button type="button" class="ask-btn ask-btn--sm" data-act="askCvRetry" data-arg="${attr(`${v.where}:${a.key}`)}">Try again</button>`;
-  const err = t.error ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">Something went wrong.</span><span class="ask-err-s">Nothing was changed.</span><span style="flex:1"></span>${retry}</div>` : "";
+  const said = t.error ? turnErrorWords(convoOf(v), t.error) : null;
+  const err = said ? `<div class="ask-err" role="alert">${markShape("diamond", "var(--red)", 10)}<span class="ask-err-t">${esc(said.title)}</span>${said.sub ? `<span class="ask-err-s">${esc(said.sub)}</span>` : ""}<span style="flex:1"></span>${said.retry ? retry : ""}</div>` : "";
   const stopped = t.stopped ? `<div class="ask-stopped">${STOP_SQ}<span>Stopped. The answer above is partial.</span></div>` : "";
   // Something written: words, a block or a card. A finished answer with none (the model spent its calls on lookups)
   // says so, with Try again, and has no Copy / Save of nothing (Q-F2; the server did not count it).

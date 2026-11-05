@@ -221,7 +221,7 @@ describe("sidebar — the Tickets entry (design call #2)", () => {
     expect(html).toContain('data-collapsed="1"');
     expect(ticketsRow(html)).toContain('<span class="cnpy-dot" data-n="4"></span>');
     // review/unplaced counts are 0 here, so theirs stay hidden
-    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(14); // every other entry (the Unplaced queue and Trov included)
+    expect(html.match(/class="cnpy-dot" data-n="0"/g)?.length).toBe(15); // every other entry (the Unplaced queue, Trov and Projects included)
   });
 
   it("lights Tickets on all three ticket screens", () => {

@@ -26,8 +26,8 @@ import {
 import {
   actionInOrg, askerOf, attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAskSettings, getThread, groupActions, insertAction,
   insertMessage, linkArtifact, listActions, listMessages, listSharedThreads, listThreads, markAttachmentsSent, markUndone, memberHandles, messageInOrg, moveAction,
-  patchThread, pendingAttachments, pendingHolder, putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, sameHandle, searchThreads,
-  setMessageContent, setThreadPeople, setThreadShared, setThreadTitle, startTurn, threadFor, threadPeople,
+  patchThread, pendingAttachments, pendingHolder, projectThreadsFor, putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, sameHandle, searchThreads,
+  setMessageContent, setThreadPeople, setThreadProject, setThreadShared, setThreadTitle, startTurn, threadFor, threadPeople,
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow, type ThreadFor,
 } from "../../data/ask";
 import { orgIdentityOf, appBase } from "../../tools/org-links";
@@ -56,6 +56,10 @@ import { LinkError, askThreadLinkNotes } from "../../tools/links";
 import { deliverLinkNotes, linkNotesText, linkRefsOf } from "./links";
 import { askGithub, connectedRepos, type AskGithub, type GithubTransportFactory } from "./github";
 import type { Env } from "../../env";
+import { ProjectRefusal, projectForAsk, projectForSave, projectForTurn, projectMarks } from "../../tools/projects";
+import { setArtifactProject, touchProject } from "../../data/projects";
+import { projectTurnContext, pinnedFirstList } from "./project";
+import type { AskThreadProject } from "@shared/ai-ask-core";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock;
  *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint, the access check and every read go
@@ -306,6 +310,17 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
 
   let thread: ChatThreadRow | null = null;
   let own = true;
+  // A NEW thread started in a project (`projectId`; ignored with a `threadId` — a thread moves by PATCH): one the person
+  // can open (else the one 404) and live (else 409 archived) — refused before anything streams (projects.md).
+  let projectId: number | null = null;
+  if (req.projectId && !req.threadId) {
+    try {
+      projectId = (await projectForAsk(ctx, req.projectId)).id;
+    } catch (e) {
+      if (e instanceof ProjectRefusal) return c.json({ error: e.code, ...(e.code === "not_found" ? {} : { message: e.message }) }, e.status);
+      throw e;
+    }
+  }
   if (req.threadId) {
     // The owner's thread, or one shared with the person TO CONTINUE (0077); read access is the same 404 as none.
     const reach = await threadFor(ctx, handle, req.threadId);
@@ -370,7 +385,7 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   };
   const work = (async () => {
     try {
-      await converse(c, { req, thread, own, rows, text, replace, st, settings, emit, signal: gone.signal });
+      await converse(c, { req, thread, own, rows, text, replace, st, settings, emit, signal: gone.signal, projectId });
     } catch (e) {
       console.error("ask turn", e instanceof Error ? e.name : "error");
       await emit("error", { code: "failed", message: "Something went wrong. Nothing was changed. Try again." });
@@ -395,6 +410,8 @@ interface Conversation {
   settings: Awaited<ReturnType<typeof getAskSettings>>;
   emit: Emit;
   signal: AbortSignal;
+  /** The project a NEW thread starts in (checked by the route), or null. */
+  projectId: number | null;
 }
 
 /** What the answer SHOWED, in the order it streamed — text runs (merged deltas), blocks (their index among the
@@ -448,8 +465,12 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   const ctxSeen = askedContext.length ? await resolveViews(ctx, handle, askedContext, nowDate()) : new Map<string, RefView>();
   const visibleContext = askedContext.filter((r) => ctxSeen.has(r));
   const thread = v.thread ?? (await getThread(ctx, handle, await createThread(ctx, handle, {
-    mode, auto, origin: v.req.origin ?? "page", contextRef: v.req.origin === "panel" ? visibleContext[0] ?? null : null,
+    mode, auto, origin: v.req.origin ?? "page", contextRef: v.req.origin === "panel" ? visibleContext[0] ?? null : null, projectId: v.projectId,
   })))!;
+  if (!v.thread && v.projectId !== null) await touchProject(ctx, v.projectId);
+  // The project this turn reads (projects.md › Ask in a project): live, and one the person ASKING can open — else the
+  // thread answers as one with no project.
+  const project = await projectForTurn(ctx, thread.project_id ?? null);
   // A shared thread's turn leaves its mode and Auto as the owner set them (0077).
   const turn = await startTurn(ctx, thread.id, mode, auto, undefined, v.own);
   await v.emit("thread", { id: thread.id, title: thread.title, mode, auto, origin: thread.origin, contextRef: thread.context_ref, ...autoOff });
@@ -489,7 +510,10 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   let qc = contentOf(question);
   let seen = seenRefs([...earlier, question]);
 
-  if (search) return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen, rec.parts);
+  if (search) {
+    const pinned = project ? new Set((await resolveViews(ctx, handle, project.refs, nowDate())).keys()) : new Set<string>();
+    return answerSearch(c, v, thread, turn, question, qc.text ?? "", seen, rec.parts, pinned);
+  }
 
   // Agent links: the notes the other side wrote to this thread's side are delivered NOW, once, into this turn — after
   // the gate (the AI switch off, no key or the allowance used: nothing is delivered) and never to a `/search` (no
@@ -521,7 +545,11 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   // model is told, and the person sees a notice (the turn's first activity lines).
   const files = await attachmentBlocks(ctx, env.ARTIFACTS_BUCKET, handle, attachments, nonce);
   const linkNotes = linkNotesText(nonce, qc.linkNotes ?? [], qc.linkMore ?? 0);
+  // The project's name, instructions and pins (the ones the asker can see), fenced; its pins join the seen set.
+  const proj = project ? await projectTurnContext(ctx, handle, project.row, project.refs, nonce, nowDate()) : null;
+  for (const r of proj?.visible ?? []) seen.add(r);
   const user = [
+    ...(proj ? [{ type: "text" as const, text: proj.text }] : []),
     ...(actionsNote ? [{ type: "text" as const, text: actionsNote }] : []),
     ...(linkNotes ? [{ type: "text" as const, text: linkNotes }] : []),
     ...files.blocks,
@@ -537,15 +565,17 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   const tool: AskToolCtx = {
     env, ctx, handle, orgSlug, origin: new URL(c.req.url).origin, threadId: thread.id,
     docs: askDeps.docs ?? assetsDocs(env), github, now: nowDate, searched: new Map(),
+    ...(proj ? { pinned: new Set(proj.visible) } : {}),
   };
   const out = await runTurn({
     env, ctx, tool, mode, turn,
     system: contextBlock({
       orgName: org?.name ?? "this organization", orgSlug, handle, role: ctx.role, mode,
       today: nowDate().toISOString().slice(0, 10), instructions: v.settings.instructions, autoMode: auto,
-      githubRepos: github?.repos ?? null, githubOff: gh.offWithRepos,
+      githubRepos: github?.repos ?? null, githubOff: gh.offWithRepos, inProject: !!proj,
     }),
-    history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: files.notices,
+    // The project's line first ("Read the project's instructions"), then any attachment the model could not take.
+    history, user, seen, autoMode: auto, autoAllowed: v.st.chatAuto, nonce, emit: v.emit, signal: v.signal, notices: [...(proj ? [proj.notice] : []), ...files.notices],
     fetchImpl: modelFetch(env), now: nowMs, stopPollMs: askDeps.stopPollMs,
   });
   await meterBy(p, ctx.orgId, handle, [[METRIC_AI_TOKENS_IN, out.tokens.in], [METRIC_AI_TOKENS_OUT, out.tokens.out], [METRIC_AI_TOKENS_CACHED, out.tokens.cached]]);
@@ -622,15 +652,16 @@ async function storeAnswer(ctx: TenantContext, threadId: number, turn: number, m
 }
 
 /** `/search <q>`: item cards from Trov's own search — no model call, nothing counted. */
-async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: number, question: ChatMessageRow, q: string, seen: Set<string>, parts: AskMessagePart[]): Promise<void> {
+async function answerSearch(c: C, v: Conversation, thread: ChatThreadRow, turn: number, question: ChatMessageRow, q: string, seen: Set<string>, parts: AskMessagePart[], pinned: ReadonlySet<string> = new Set()): Promise<void> {
   const ctx = c.var.ctx;
   await v.emit("activity", { step: 1, tool: "search", icon: "search", label: `Searched Trov for '${q}'`, state: "run" });
   const res = await quickSearch(ctx, q, me(c), { limit: 4 });
-  const refs = res.groups.flatMap((g) => g.hits.flatMap((h) => {
+  // In a project's thread a pinned result ranks first (projects.md).
+  const refs = pinnedFirstList(res.groups.flatMap((g) => g.hits.flatMap((h) => {
     if (g.type === "sprint") return /^sprint:\d+$/.test(h.id) ? [h.id] : [];
     if (g.type === "person") return [`person:${h.id.toLowerCase()}`];
     return [`${g.type}:${h.id}`];
-  })).filter((r) => parseAskRef(r) !== null).slice(0, 9);
+  })), (r) => r, pinned).filter((r) => parseAskRef(r) !== null).slice(0, 9);
   const views = await resolveViews(ctx, me(c), refs, nowDate());
   const items = refs.flatMap((r) => (views.has(r) ? [views.get(r)!] : []));
   await v.emit("activity", { step: 1, state: "done", results: items.map((i) => i.ref), resultLine: resultLine(items.length) });
@@ -681,6 +712,9 @@ async function saveFromThread(c: C, thread: ChatThreadRow, s: SaveAsk): Promise<
     : partsMarkdown(s.title, parts, base);
   const page = await createPage(ctx, { title: s.title, kind: s.kind, area: "data", repo: "", visibility: s.visibility, content, summary: "Saved from Ask Trov", links }, me(c));
   await linkArtifact(ctx, thread.id, page.id, "saved", s.messageId);
+  // Saved from a project's thread: the artifact is the project's (when the person can open it and it is live).
+  const pid = await projectForSave(ctx, thread.project_id ?? null);
+  if (pid !== null) await setArtifactProject(ctx, page.id, pid);
   return { slug: page.slug, title: page.title, visibility: s.visibility, url: `#artifacts/${page.slug}` };
 }
 
@@ -713,25 +747,57 @@ export function threadGroup(t: Pick<ChatThreadRow, "pinned" | "updated_at">, now
   return now.getTime() - new Date(t.updated_at).getTime() < 7 * 86_400_000 ? "week" : "earlier";
 }
 
-/** The owner's own thread; `people` = who it is shared with by name (0077), when anyone. */
-const summaryOf = (t: ChatThreadRow, people?: AskSharePerson[], links: readonly AskThreadLink[] = []): AskThreadSummary => ({
+/** The owner's own thread; `people` = who it is shared with by name (0077), when anyone; `project` = its project as the
+ *  READER may see it (0086_projects: absent when it is in none, or in one they can't open). */
+const summaryOf = (t: ChatThreadRow, people?: AskSharePerson[], links: readonly AskThreadLink[] = [], project?: AskThreadProject | null): AskThreadSummary => ({
   id: t.id, title: t.title, pinned: t.pinned === 1, mode: t.mode, auto: t.auto_mode === 1, origin: t.origin, contextRef: t.context_ref,
   hasDraft: t.draft.trim().length > 0, group: threadGroup(t, nowDate()), createdAt: t.created_at, updatedAt: t.updated_at,
   shared: t.shared_at !== null, ...(people?.length ? { people } : {}),
   ...(links.length ? { links: [...links] } : {}),
+  ...(project ? { project } : {}),
 });
 
 /** Someone else's thread as a person it is shared with reads it: none of the owner's own settings — no draft, no
  *  pin, no Auto, nor who else it is shared with — but whose it is, what the person may do, and how it reached them. */
-const viewerSummaryOf = (r: ThreadFor): AskThreadSummary => ({
-  ...summaryOf(r.thread), pinned: false, auto: false, hasDraft: false, group: threadGroup({ pinned: 0, updated_at: r.thread.updated_at }, nowDate()),
+const viewerSummaryOf = (r: ThreadFor, project?: AskThreadProject | null): AskThreadSummary => ({
+  ...summaryOf(r.thread, undefined, [], project), pinned: false, auto: false, hasDraft: false, group: threadGroup({ pinned: 0, updated_at: r.thread.updated_at }, nowDate()),
   owner: r.thread.handle, viewer: true, access: r.access === "continue" ? "continue" : "read", direct: r.direct,
 });
 
 /** The owner's threads with who each is shared with by name, and the link notes waiting for each. */
 async function ownSummaries(ctx: TenantContext, threads: readonly ChatThreadRow[], links: ReadonlyMap<number, AskThreadLink[]> = new Map()): Promise<AskThreadSummary[]> {
-  const people = await threadPeople(ctx, threads.map((t) => t.id));
-  return threads.map((t) => summaryOf(t, people.get(t.id), links.get(t.id)));
+  const [people, projects] = await Promise.all([threadPeople(ctx, threads.map((t) => t.id)), marksOf(ctx, threads)]);
+  return threads.map((t) => summaryOf(t, people.get(t.id), links.get(t.id), markOf(projects, t)));
+}
+
+/** The projects these threads are in, as the reader may see them — one read; a failed one is no mark (invariant 7). */
+async function marksOf(ctx: TenantContext, threads: readonly Pick<ChatThreadRow, "project_id">[]): Promise<Map<number, AskThreadProject>> {
+  if (!threads.some((t) => t.project_id)) return new Map();
+  try {
+    return await projectMarks(ctx, threads.map((t) => t.project_id ?? null));
+  } catch (e) {
+    console.error("ask project marks", e instanceof Error ? e.name : "error");
+    return new Map();
+  }
+}
+const markOf = (m: ReadonlyMap<number, AskThreadProject>, t: Pick<ChatThreadRow, "project_id">): AskThreadProject | null =>
+  (t.project_id ? m.get(t.project_id) ?? null : null);
+
+/**
+ * A project page's Chats (src/projects/routes.ts → src/tools/projects.ts `readProjectDetail`): the threads in the
+ * project the person reaches by Ask's own rule (`projectThreadsFor` — their own, then others' shared with them or the
+ * org), each drawn as the thread list draws it, with `project`. Being in a project never shares a thread.
+ */
+export async function projectChats(ctx: TenantContext, projectId: number, mark: AskThreadProject): Promise<AskThreadSummary[]> {
+  const handle = ctx.userId;
+  const [rows, links] = await Promise.all([projectThreadsFor(ctx, handle, projectId), linkNotesByThread(ctx, handle)]);
+  const people = await threadPeople(ctx, rows.filter((r) => r.access === "owner").map((r) => r.thread.id));
+  return rows.map((r) => {
+    const waiting = links.get(r.thread.id) ?? [];
+    return r.access === "owner"
+      ? summaryOf(r.thread, people.get(r.thread.id), waiting, mark)
+      : { ...viewerSummaryOf(r, mark), ...(waiting.length ? { links: [...waiting] } : {}) };
+  });
 }
 
 /**
@@ -773,9 +839,10 @@ askApp.get(ASK_ROUTES.shared, async (c) => {
     // The link notes waiting for the READER's own side of each (a shared thread's side is whoever confirmed its card;
     // the owner's side shows in the owner's own list, never here).
     const [rows, links] = await Promise.all([listSharedThreads(c.var.ctx, me(c)), linkNotesByThread(c.var.ctx, me(c))]);
+    const projects = await marksOf(c.var.ctx, rows.map((r) => r.thread));
     return c.json({ threads: rows.map((r) => {
       const waiting = links.get(r.thread.id) ?? [];
-      return { ...viewerSummaryOf(r), ...(waiting.length ? { links: [...waiting] } : {}) };
+      return { ...viewerSummaryOf(r, markOf(projects, r.thread)), ...(waiting.length ? { links: [...waiting] } : {}) };
     }) });
   } catch (e) {
     console.error("ask shared", e instanceof Error ? e.name : "error");
@@ -867,9 +934,10 @@ askApp.get("/ask/threads/:id", async (c) => {
   const waiting = links.get(t.id) ?? [];
   // Every turn someone ELSE asked reads as theirs — for the owner too, once a thread is shared to continue.
   const messages = await asViewer(c.var.ctx, me(c), rows.map((m) => messageOf(m, actions, t)));
+  const project = markOf(await marksOf(c.var.ctx, [t]), t);
   const body: AskThreadDetail = reach.access === "owner"
-    ? { thread: { ...summaryOf(t, (await threadPeople(c.var.ctx, [t.id])).get(t.id), waiting), draft: t.draft }, messages }
-    : { thread: { ...viewerSummaryOf(reach), ...(waiting.length ? { links: [...waiting] } : {}), draft: "" }, messages };
+    ? { thread: { ...summaryOf(t, (await threadPeople(c.var.ctx, [t.id])).get(t.id), waiting, project), draft: t.draft }, messages }
+    : { thread: { ...viewerSummaryOf(reach, project), ...(waiting.length ? { links: [...waiting] } : {}), draft: "" }, messages };
   return c.json(body);
 });
 
@@ -948,7 +1016,18 @@ askApp.patch("/ask/threads/:id", async (c) => {
   const st = await standing(c.var.ctx);
   if (parsed.data.auto === true && !st.chatAuto) return c.json({ error: "auto_off", message: "An admin turned off Auto for this org. Trov asks before every change." }, 409);
   if (parsed.data.mode && !st.modes.includes(parsed.data.mode)) return c.json({ error: "mode_unavailable" }, 403);
-  const { shared, people, ...rest } = parsed.data;
+  const { shared, people, project, ...rest } = parsed.data;
+  // Into a project the owner can open and that is live (its slug), or out of one (null) — checked before anything is
+  // written (projects.md). Moving it never shares it.
+  let projectId: number | null | undefined;
+  if (project !== undefined) {
+    try {
+      projectId = project === null ? null : (await projectForAsk(c.var.ctx, project)).id;
+    } catch (e) {
+      if (e instanceof ProjectRefusal) return c.json({ error: e.code, ...(e.code === "not_found" ? {} : { message: e.message }) }, e.status);
+      throw e;
+    }
+  }
   // Who it is shared with by name (0077): members of this org, never the owner, each once — checked before anything
   // is written, so a refused list changes nothing.
   let named: AskSharePerson[] | null = null;
@@ -961,6 +1040,10 @@ askApp.patch("/ask/threads/:id", async (c) => {
   // — `threadOr404` answered 404 to anyone else, a person it is shared with included.
   if (shared !== undefined) await setThreadShared(c.var.ctx, me(c), t.id, shared);
   if (named) await setThreadPeople(c.var.ctx, me(c), t.id, named);
+  if (projectId !== undefined) {
+    await setThreadProject(c.var.ctx, me(c), t.id, projectId);
+    if (projectId !== null) await touchProject(c.var.ctx, projectId);
+  }
   return c.json({ thread: (await ownSummaries(c.var.ctx, [(await getThread(c.var.ctx, me(c), t.id))!]))[0] });
 });
 

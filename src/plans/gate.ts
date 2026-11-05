@@ -22,7 +22,10 @@ export async function planFor(ctx: TenantContext): Promise<OrgPlan> {
 
 // What counts toward each limit — the ONE definition (plans.md repeats it in words).
 const count = async (ctx: TenantContext, sql: string, ...params: unknown[]): Promise<number> => (await first<{ n: number }>(ctx, sql, ...params))?.n ?? 0;
-const USE: Record<TenantLimit, (ctx: TenantContext) => Promise<number>> = {
+/** What a per-project limit is counted over (`project_pins`): the project's row id. Without one, the org's
+ *  most-pinned live project (the Plan view's one number). */
+export interface LimitScope { project?: number }
+const USE: Record<TenantLimit, (ctx: TenantContext, scope: LimitScope) => Promise<number>> = {
   repositories: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_repos WHERE org_id = ?`, ctx.orgId),
   environments: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_environments WHERE org_id = ?`, ctx.orgId),
   // Every stored version of every page, deleted pages included (their bytes are still held).
@@ -44,6 +47,13 @@ const USE: Record<TenantLimit, (ctx: TenantContext) => Promise<number>> = {
   ai_chat: (ctx) => aiChatUsed(ctx),
   // The org's LIVE tags (0056_org_tags): a retired tag does not count.
   tags: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM org_tags WHERE org_id = ? AND retired_at IS NULL`, ctx.orgId),
+  // Projects (0086_projects): the org's LIVE projects — an archived or deleted one does not count.
+  projects: (ctx) => count(ctx, `SELECT COUNT(*) AS n FROM projects WHERE org_id = ? AND deleted_at IS NULL AND archived_at IS NULL`, ctx.orgId),
+  // PER PROJECT: what one project pins (scoped); unscoped, the most any live project of the org pins.
+  project_pins: (ctx, scope) => scope.project !== undefined
+    ? count(ctx, `SELECT COUNT(*) AS n FROM project_pins WHERE org_id = ? AND project_id = ?`, ctx.orgId, scope.project)
+    : count(ctx, `SELECT COALESCE(MAX(c), 0) AS n FROM (SELECT COUNT(*) AS c FROM project_pins pp JOIN projects p ON p.id = pp.project_id AND p.org_id = pp.org_id
+                   WHERE pp.org_id = ? AND p.deleted_at IS NULL AND p.archived_at IS NULL GROUP BY pp.project_id)`, ctx.orgId),
 };
 
 /** Model calls for suggestions made for the org this calendar month (UTC). */
@@ -135,15 +145,15 @@ export async function planAndAiSettings(ctx: TenantContext, now: Date = new Date
   };
 }
 
-export const limitUse = (ctx: TenantContext, limit: TenantLimit): Promise<number> => USE[limit](ctx);
+export const limitUse = (ctx: TenantContext, limit: TenantLimit, scope: LimitScope = {}): Promise<number> => USE[limit](ctx, scope);
 
 /**
  * THE enforcement call of a tenant write path: may `ctx`'s org add `adding` more of `limit` now?
  * Throws `PlanLimitError` (HTTP 402 / MCP `plan_limit`) when it may not. `adding` is 1 for a counted
  * thing and the byte size for `artifact_bytes`.
  */
-export async function requirePlan(ctx: TenantContext, limit: TenantLimit, adding = 1): Promise<void> {
-  const [state, used] = await Promise.all([planFor(ctx), limitUse(ctx, limit)]);
+export async function requirePlan(ctx: TenantContext, limit: TenantLimit, adding = 1, scope: LimitScope = {}): Promise<void> {
+  const [state, used] = await Promise.all([planFor(ctx), limitUse(ctx, limit, scope)]);
   assertWithinPlan(state, limit, used, adding);
 }
 
@@ -159,17 +169,18 @@ export async function requireFeature(ctx: TenantContext, feature: FeatureKey): P
 
 /** `GET /api/o/:slug/plan` — any member: the plan, what it includes, and the org's use of each limit. */
 export async function orgPlanView(ctx: TenantContext): Promise<OrgPlanView> {
-  const [state, ai_summaries, ai_runs, seats, repositories, environments, artifact_bytes, agent_connections, tags, jev_checks, ai_chat] = await Promise.all([
+  const [state, ai_summaries, ai_runs, seats, repositories, environments, artifact_bytes, agent_connections, tags, jev_checks, ai_chat, projects, project_pins] = await Promise.all([
     planFor(ctx), limitUse(ctx, "ai_summaries"), limitUse(ctx, "ai_runs"),
     first<{ members: number; pending: number }>(ctx,
       `SELECT (SELECT COUNT(*) FROM memberships WHERE org_id = ?1) AS members,
               (SELECT COUNT(*) FROM org_invites WHERE org_id = ?1 AND status = 'pending') AS pending`, ctx.orgId),
     limitUse(ctx, "repositories"), limitUse(ctx, "environments"), limitUse(ctx, "artifact_bytes"), limitUse(ctx, "agent_connections"), limitUse(ctx, "tags"), limitUse(ctx, "jev_checks"), limitUse(ctx, "ai_chat"),
+    limitUse(ctx, "projects"), limitUse(ctx, "project_pins"),
   ]);
   const def = planDef(state.plan);
   const entitlements = resolveEntitlements(state.plan, state.overrides, seats?.members ?? state.members);
   const split = { members: seats?.members ?? 0, pending: seats?.pending ?? 0 };
-  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_runs, jev_checks, ai_chat, tags };
+  const usage = { seats: split.members + split.pending, repositories, environments, artifact_bytes, agent_connections, ai_summaries, ai_runs, jev_checks, ai_chat, tags, projects, project_pins };
   return {
     plan: def.id, name: def.name, description: def.description, status: state.status, source: state.source, period_end: state.period_end,
     gift_until: state.gift_until, entitlements, overridden: LIMIT_KEYS.filter((k) => k in state.overrides), usage, seats: split, over: overLimits(entitlements, usage),

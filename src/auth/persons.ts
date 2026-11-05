@@ -315,6 +315,9 @@ export const HANDLE_COLUMNS: ReadonlyArray<readonly [table: string, column: stri
   // Agent links (0078_agent_links): a link's two sides and who closed it; who wrote a note.
   ["agent_links", "requester"], ["agent_links", "recipient"], ["agent_links", "closed_by"],
   ["agent_link_notes", "author"],
+  // Projects (0086_projects): a project's owner and who archived it; its members and who added them; who pinned what.
+  ["projects", "owner"], ["projects", "archived_by"], ["project_members", "handle"], ["project_members", "added_by"],
+  ["project_pins", "added_by"],
 ];
 
 export type RenameResult = { ok: true } | { ok: false; reason: HandleProblem | "same" | "not_found" };

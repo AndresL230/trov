@@ -539,6 +539,19 @@ lets other people of the SAME org reach it, two ways at once or either:
   else's thread reloads the shared lists, never the person's own. Delete's confirmation names who loses it ("It is
   shared with <org>, so it goes for everyone there too." / "… with Mei Lin, so it goes for them too."). Tests: `test/render.ask-sharing.test.ts`.
 
+## Projects (`0086_projects`)
+
+A thread may be in ONE project (`chat_threads.project_id`); the whole of it is `projects.md` › Ask in a project. In
+short: `POST /ask { projectId }` starts a new thread in a project the person can open (else the one 404, before the
+stream; archived: 409); `PATCH /ask/threads/:id { project }` moves the owner's thread in or out; every thread read
+carries `project` for a project the reader can open; a turn in a live project's thread gets ONE fenced block in front of
+the question (the project's name, instructions and the pins the ASKER can see, ≤ `ASK_PROJECT_CONTEXT_MAX` tokens —
+`src/ai/ask/project.ts`) after one activity line, "Read the project's instructions" (`tool: "project"`, icon `docs`,
+emitted like the attachment notices, first); pinned results rank first in the search tools and `/search`; Save as
+artifact sets `artifact_pages.project_id`. Being in a project never shares a thread: a project's Chats are
+`threadFor`'s rule with the project as a filter (`projectThreadsFor`). No new model call, no new tool. Deleting a
+project deletes its threads through `deleteAskThread` (› Deletion and renames).
+
 ## Deletion and renames
 
 Every Ask table is in `ORG_TABLES` and the reset seed; `chat_threads.handle`, `person_ask_settings.handle`, and

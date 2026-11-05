@@ -269,7 +269,10 @@ it has a PUBLISHED version (its context is the description, not the body); hando
 left for them, left for anyone, or sent by them — pending or claimed (the inbox boxes' union); reserved
 system handles never appear as people. **Speed**: a query under 2 characters (or with nothing matchable)
 returns no groups WITHOUT touching D1 (the Screens list is static, client-side); otherwise every lookup is a
-LIMITed statement and all of them go in ONE `db.batch` (one D1 round trip). FTS input is rebuilt by
+LIMITed statement and all of them go in ONE `db.batch` (one D1 round trip). **One other caller**: Add to <project>'s
+`GET /projects/:project/candidates` (projects.md) runs the same `quickSearch` with `artifactDrafts` (drafts the
+viewer may see — `searchArtifactsStmt`'s rule unchanged), and with nothing typed `quickRecent` (the same groups'
+most recently changed items under the same rules, one batch); `/search/quick` itself never asks for either. FTS input is rebuilt by
 `buildPrefixMatch` — word tokens only, each quoted and PREFIX-matched (`"tok"*`), so typed operators/quotes
 are inert (never a 500); porter stems a prefix term too, so the last token also tries itself 1–2 characters
 shorter (`searchi` → `search*`) to match past its stem. Handoffs and people are not FTS: a LIKE (literal —

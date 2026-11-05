@@ -20,7 +20,7 @@
 // and writes through `AskCtx` (below) — never fetch, never main.ts.
 
 import type { AppState } from "./render";
-import type { AskCommand, AskMode, AskSearchHit, AskSharePerson, AskState, AskThreadSummary, PeekResult } from "@shared/ai-ask-core";
+import type { AskCommand, AskMode, AskSearchHit, AskSharePerson, AskState, AskThreadProject, AskThreadSummary, PeekResult } from "@shared/ai-ask-core";
 import type { AskApi } from "./ask-api";
 import type { AskConvo } from "./ask-stream";
 import { emptyConvo } from "./ask-stream";
@@ -145,6 +145,10 @@ export const canContinueConvo = (c: Pick<AskConvo, "thread">): boolean => !isVie
 /** Read-only: someone else's conversation the person may only read — no composer, no follow-ups, nothing asked again
  *  (ask.md › Sharing a conversation). */
 export const readOnly = (v: Pick<AskView, "ui" | "where">): boolean => !canContinueConvo(convoOf(v));
+
+/** The project a conversation is in: its thread's, else the one a new conversation was started in (the project page's
+ *  composer) — null when neither, or the thread's project is one the reader can't open (the server leaves it off). */
+export const convoProject = (c: Pick<AskConvo, "thread" | "project">): AskThreadProject | null => c.thread?.project ?? c.project ?? null;
 
 /** Two handles name the same person (handles compare without case). */
 export const sameHandle = (a: string | null | undefined, b: string | null | undefined): boolean => !!a && !!b && a.toLowerCase() === b.toLowerCase();
