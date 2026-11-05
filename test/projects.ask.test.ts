@@ -188,7 +188,8 @@ describe("every turn in a project's thread", () => {
     expect((await first<{ slug: string }>(env.DB, `SELECT p.slug FROM artifact_pages a JOIN projects p ON p.id = a.project_id WHERE a.slug = ?`, saved.json.slug))!.slug).toBe(p.slug);
     const d = ProjectDetailSchema.parse((await call("GET", `${P}/${p.slug}`, c.viewer)).json);
     expect(d.artifacts).toEqual([expect.objectContaining({ slug: saved.json.slug, title: "Hosting state", visibility: "org", author: EDITOR, threadId: id })]);
-    expect(d.artifacts[0].preview).toContain("Hosting state");
+    // The card's preview is the answer's words: the saved page's first heading only repeats its title, so it goes.
+    expect(d.artifacts[0].preview).toBe("Hosting is mostly done; Render polling is left, and the Netlify token flow needs a retry path.");
     expect(d.project.artifacts).toBe(1);
   });
 });

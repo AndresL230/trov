@@ -5,6 +5,7 @@
 // `plan_limit` body — so a screen says it with `projectErrorText`, and the plan's one sentence with `planLimitText`.
 import { apiFetch, ApiError, OrgApiError, PreviewBlocked, planLimitText } from "./api";
 import { isPlanRefusal } from "@shared/plans";
+import type { QuickSearchResult } from "@shared/quick-search";
 import {
   PROJECT_ROUTES,
   type ProjectCreateBody, type ProjectDeleted, type ProjectDetail, type ProjectList, type ProjectMembersBody, type ProjectPatchBody, type ProjectSummary,
@@ -56,6 +57,16 @@ export function uploadProjectFiles(slug: string, files: readonly File[]): Promis
   const form = new FormData();
   for (const f of files) form.append("file", f, f.name);   // Ask's field name (`POST /ask/attachments`)
   return send("POST", projectPath(PROJECT_ROUTES.upload, slug), form);
+}
+
+/** `GET /projects/:project/candidates` — what Add to <project> offers: the quick search's matches for `q` (2+ characters),
+ *  else the most recently changed items per type; artifacts with the drafts the reader may see. `type` narrows it. */
+export function projectCandidates(slug: string, q: string, type: string, signal?: AbortSignal): Promise<QuickSearchResult> {
+  const p = new URLSearchParams({ q, type });
+  return apiFetch(`${projectPath(PROJECT_ROUTES.candidates, slug)}?${p}`, { signal }).then(async (res) => {
+    if (!res.ok) throw await refusal(res);
+    return ((await res.json()) as { result?: QuickSearchResult }).result ?? { q, groups: [] };
+  });
 }
 
 /** A refused project call as a sentence that says what to do next — the plan's own sentence for a 402. */

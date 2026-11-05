@@ -876,7 +876,10 @@ spaces aside — Enter in the field confirms only a match, the reducer re-checks
 on a short screen). The field has a visible focus ring (`.cnpy-cm-typed .cnpy-input:focus-visible`), and the
 modal's Tab trap includes it (`main.ts`). Where it opens: Settings (the person), Org settings › General (an
 owner — a quiet `dangerLink`, Org settings' rule for a destructive act), Platform's organization page and
-Admins › Accounts (a superadmin). Each repaints with a plain `rerender()`: all three host pages are
+Admins › Accounts (a superadmin). On its way out (`confirmOut`'s `data-closing`, 140ms) a confirmation takes no
+clicks and no keys — `pointer-events:none` on the layer, and main.ts's key handler skips a closing dialog — so the
+click that comes straight after Cancel reaches the page; a closer gives focus back to its trigger only when focus
+went nowhere. Reduced motion has no exit. Each repaints with a plain `rerender()`: all three host pages are
 `data-morph`ed, and the overlay is patched in place, so typing keeps the focus. Tests:
 `test/render.deletion.test.ts`.
 
@@ -892,22 +895,30 @@ said by `projectErrorText`, a 402 by the plan's one sentence). The fixtures, one
 `shared/projects-fixtures.ts`; the tests `test/render.projects*.test.ts`.
 
 - **The list** (`data-morph="projects"`): the Library home's frame and cards (Recent: three, only with no search and
-  All), the search bar (`cnpy-sfbar`) filtering the LOADED list on the client, Sort a `dropdown()` inside the bar
+  All; three across until the list itself is under 520px, then one — `.pj-list` is an inline-size container, so the
+  sidebar's share counts; under 860px the table drops Owner and Updated before the Project column truncates), the search bar (`cnpy-sfbar`) filtering the LOADED list on the client, Sort a `dropdown()` inside the bar
   (Recently updated / Name), All · Mine · Shared with me a `segmented()`, the count line, the rows (a hit area each,
   the ⋯ a `cnpy-hitctl` with a `cnpy-dp-menu`), Archived · N opening the archived rows with Restore. Free at the
   `projects` cap: a notice — Upgrade to Pro for the owner, "An owner can upgrade, or archive one" for the rest — and
   New project cannot create.
-- **A project's home** (`data-morph="project:<slug>"`): the header (the tile is `spaceTile`: a project's icon and
-  colour are the spaces' sets), Share and the ⋯ menu; then **Ask's own composer** — the page conversation, made a NEW
-  thread in the project by `askCtl.prepareProject` when the project's read lands (its unsent words kept; never while
-  an answer streams) — at the column's full width (`.pj-home .ask-co-in { max-width:none }` in trov.css); Chats ·
-  Artifacts is a `tabBar()`; the right column is Instructions (edited in place, the counter, Save / Cancel) and
-  Knowledge (pins grouped by type, each drawn from its `RefView` with Ask's marks, a hidden pin as "An item you don't
-  have access to", remove on hover, Add, "N of 200 pinned", Upload files). A viewer gets no Edit, Add, remove or
+- **A project's home** (`data-morph="project:<slug>"`, opened at the top of `#cnpy-main` like Artifacts' `goArt`):
+  the header (the tile is `spaceTile`: a project's icon and color are the spaces' sets), Share and the ⋯ menu; then
+  **Ask's own composer** — the page conversation, made a NEW thread in the project by `askCtl.prepareProject` when
+  the project's read lands (its unsent words kept; never while an answer streams) — at the column's full width
+  (`.pj-home .ask-co-in { max-width:none }` in trov.css), with "In this project" in the box's tool row (its tooltip
+  the foot line's words) instead of a chip above the box and no foot line (the design's); Chats · Artifacts is a
+  `tabBar()` (a chat row lights on hover; the note says to open one and share it from its ⋯ menu — the rows have
+  no menu of their own, as in the design); the right column is Instructions (edited in place, the counter,
+  Save / Cancel) and Knowledge (pins grouped by type under fixed plural labels — Sprints, Tickets, Pull requests,
+  Docs, Decisions, Repositories, Artifacts — each drawn from its `RefView` with Ask's marks, the normal state with
+  none: a live doc, an org artifact; a hidden pin as "An item you don't have access to", remove on hover, Add, "N of
+  200 pinned", Upload files). Wrapped under the column (a narrow window), the right column fills the width. A viewer gets no Edit, Add, remove or
   Share; an archived project shows its read-only line with Restore in the composer's place.
 - **Dialogs** are `confirmModal` (root `data-overlay`s, the one keyboard contract): New project / Edit details (the New
-  space dialog's fields; only the owner changes who can see it), Add to <project> (the app's quick search through
-  Ask's `quickHitsToRefs`, peeked for marks; already-pinned rows ticked and disabled; a private artifact picked into a
+  space dialog's fields; only the owner changes who can see it), Add to <project> (opens on candidates — the most
+  recently changed items per type, before anything is typed — then the quick search's matches, both from the
+  project's own `GET …/candidates`, which offers the drafts the reader may see; through Ask's `quickHitsToRefs`,
+  peeked for marks; already-pinned rows ticked and disabled; a private artifact picked into a
   project others can open warns, with Publish to org; the drop zone), Share (who can see it, Add a person and each
   member's role as `dropdown()`s), Delete (the spec's copy). Add to Knowledge and Archive put up a toast with Undo.
 - **Sending from the project page**: the composer's Send runs Ask's own send; `run` moves the screen to Ask and sends
@@ -917,8 +928,11 @@ said by `projectErrorText`, a 402 by the plan's one sentence). The fixtures, one
   thread list's first group is "In <project>" (the person's own threads in it, then others' shared with them from the
   project's read) and the usual groups follow without them; a thread in a project carries the project's 11px tile; the
   ⋯ menu adds Move to project (the live projects) and Remove from project (`PATCH /ask/threads/:id { project }`); the
-  composer shows the project chip and "Uses <project>'s instructions and N pinned items" (N from the project's read,
-  hidden pins left out). The project's read for Ask is taken after a paint (`projCtl.afterPaint`), never on a render.
+  composer shows the project chip and its foot line (`projectFoot`), saying only what is there and without the
+  name's possessive: "Answers here read <project>: its instructions and N pinned items" — "its instructions" or "its N
+  pinned items" alone, "<project> has no instructions or pinned items yet", or the general words while the project's
+  read is not in (N from that read, hidden pins left out). The spec's "Uses <project>'s …" gave way to this (the
+  owner's browser check). A header crumb with nothing to name yet (a project that is not there) is left out, "›" and all. The project's read for Ask is taken after a paint (`projCtl.afterPaint`), never on a render.
 
 ## Full pages without the sidebar
 

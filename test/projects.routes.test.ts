@@ -246,6 +246,60 @@ describe("pins", () => {
   });
 });
 
+describe("an artifact card's preview", () => {
+  it("is plain words: Markdown's marks gone, a title-only heading dropped, Ask's ref tokens named as Ask names them", async () => {
+    const c = await cast();
+    const p = await teamProject(c);
+    const ctx = await tenantCtx(OWNER);
+    const n = await create_ticket(ctx, { title: "Connect Netlify", body: "", category: "bug", priority: "normal", assignees: [] }, OWNER);
+    const content = `# Where hosting stands\n\n**Hosting** is _mostly_ built: see [[ticket:${n}]] and [#185 Hosting providers](https://trov.dev/x/#prs/185).\n\n- Render \`polling\` is left\n> a quote`;
+    const art = await createPage(ctx, { title: "Where hosting stands", kind: "markdown", area: "data", repo: "", visibility: "org", content }, OWNER);
+    await env.DB.prepare(`UPDATE artifact_pages SET project_id = (SELECT id FROM projects WHERE slug = ?) WHERE id = ?`).bind(p.slug, art.id).run();
+    const d = ProjectDetailSchema.parse((await call("GET", `${P}/${p.slug}`, c.viewer)).json);
+    expect(d.artifacts[0].preview).toBe(`Hosting is mostly built: see #${n} and #185 Hosting providers.\nRender polling is left\na quote`);
+  });
+});
+
+describe("Add to <project>'s candidates (GET …/candidates)", () => {
+  type Result = { q: string; groups: { type: string; hits: { id: string; title: string }[] }[] };
+  const titles = (r: Result, type: string) => r.groups.find((g) => g.type === type)?.hits.map((h) => h.title) ?? [];
+
+  it("offers the reader's own private draft and the org's drafts — never another person's private one — typed or not", async () => {
+    const c = await cast();
+    const p = await teamProject(c);
+    const page = (who: string, title: string, visibility: "private" | "org") => tenantCtx(who).then((ctx) =>
+      createPage(ctx, { title, kind: "markdown", area: "data", repo: "", visibility, content: "railway cold start" }, who));
+    await page(OWNER, "Railway cold start notes", "private");   // the owner's own draft: offered (the warning's case)
+    await page(OTHER, "Railway sign-in flow", "org");            // an org draft: offered
+    await page(OTHER, "Railway private plan", "private");        // someone else's private draft: never
+    const ctx = await tenantCtx(OWNER);
+    await create_ticket(ctx, { title: "Railway deploy fails", body: "", category: "bug", priority: "normal", assignees: [] }, OWNER);
+
+    // Nothing typed: the most recently changed items per type.
+    const recent = await call("GET", `${P}/${p.slug}/candidates?q=&type=all`, c.owner);
+    expect(recent.status).toBe(200);
+    expect(titles(recent.json.result, "artifact").sort()).toEqual(["Railway cold start notes", "Railway sign-in flow"]);
+    expect(titles(recent.json.result, "ticket")).toEqual(["Railway deploy fails"]);
+    // Typed: the quick search's matches, the drafts the reader may see included.
+    const typed = (await call("GET", `${P}/${p.slug}/candidates?q=railway&type=artifact`, c.owner)).json.result as Result;
+    expect(typed.groups.map((g) => g.type)).toEqual(["artifact"]);
+    expect(titles(typed, "artifact").sort()).toEqual(["Railway cold start notes", "Railway sign-in flow"]);
+    // The app's quick search stays live-only: no drafts there.
+    expect(titles((await call("GET", `${BASE}/search/quick?q=railway`, c.owner)).json.result, "artifact")).toEqual([]);
+    // Pinning the private draft on a members project is the one the dialog warns about.
+    const refused = await call("POST", `${P}/${p.slug}/pins`, c.owner, { refs: [`artifact:${(await first<{ slug: string }>(env.DB, `SELECT slug FROM artifact_pages WHERE title = 'Railway cold start notes'`))!.slug}`] });
+    expect([refused.status, refused.json.error]).toEqual([400, "private_pin"]);
+  });
+
+  it("is the pinner's: a viewer is refused (403), someone who can't open the project gets the one 404", async () => {
+    const c = await cast();
+    const p = await teamProject(c);
+    expect((await call("GET", `${P}/${p.slug}/candidates?q=`, c.editor)).status).toBe(200);
+    expect((await call("GET", `${P}/${p.slug}/candidates?q=`, c.viewer)).status).toBe(403);
+    expect((await call("GET", `${P}/${p.slug}/candidates?q=`, c.other)).json).toEqual({ error: "not_found" });
+  });
+});
+
 describe("the members list (PUT, the whole list)", () => {
   it("refuses a non-member, the owner or a duplicate with 400 invalid, and writes nothing", async () => {
     const c = await cast();
@@ -296,7 +350,9 @@ describe("deleting a project", () => {
 
     // The editor may not; the owner may.
     const refused = await call("DELETE", `${P}/${p.slug}`, c.editor);
-    expect([refused.status, refused.json]).toEqual([403, { error: "forbidden", message: "Only the owner or an org admin can delete this project." }]);
+    // The project's own sentence, and a hint about the PROJECT role — never the API's generic org-role one.
+    expect([refused.status, refused.json]).toEqual([403, { error: "forbidden", message: "Only the owner or an org admin can delete this project.",
+      hint: "Only the owner or an org admin can delete this project. Nothing was changed." }]);
     const r = await call("DELETE", `${P}/${p.slug}`, c.owner);
     expect(ProjectDeletedSchema.parse(r.json)).toEqual({ ok: true, chats: 2, artifacts: 1 });
     expect((await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM chat_threads WHERE id IN (?, ?)`, own, theirs))!.n).toBe(0);

@@ -456,17 +456,35 @@ export function projectPins(app: AskView["app"], slug: string): number | null {
   if (d && d.project.slug === slug) return d.pins.filter((p) => !("hidden" in p.view)).length;
   return app.projects.list.data?.projects.find((p) => p.slug === slug)?.pins ?? null;
 }
-/** The foot line of a conversation in a project: what every turn in it reads. */
-export function projectFoot(name: string, pins: number | null): string {
-  return pins === null ? `Uses ${name}'s instructions and pinned items` : `Uses ${name}'s instructions and ${pins} pinned ${pins === 1 ? "item" : "items"}`;
+/** Whether the conversation's project has instructions (its page's read), or null while it is not known. */
+export function projectHasInstructions(app: AskView["app"], slug: string): boolean | null {
+  const d = app.projects.detail.data;
+  return d && d.project.slug === slug ? d.project.instructions.trim() !== "" : null;
+}
+/** The foot line of a conversation in a project: what every turn in it reads — only what is there (no "0 pinned
+ *  items", no instructions it doesn't have), and without the name's possessive. Unknown counts say it in general. */
+export function projectFoot(name: string, pins: number | null, instructions: boolean | null = null): string {
+  if (instructions === null || pins === null) return `Answers here read ${name}: its instructions and pinned items`;
+  if (!instructions && pins === 0) return `${name} has no instructions or pinned items yet`;
+  const what = [instructions ? "instructions" : "", pins ? `${pins} pinned ${pins === 1 ? "item" : "items"}` : ""].filter(Boolean).join(" and ");
+  return `Answers here read ${name}: its ${what}`;
+}
+const projectFootOf = (v: AskView, p: { slug: string; name: string }): string =>
+  projectFoot(p.name, projectPins(v.app, p.slug), projectHasInstructions(v.app, p.slug));
+/** On the project's own page the composer is already the project's: "In this project" sits in the box's tool row
+ *  (the design's), its tooltip saying what every turn reads — not a chip above the box. */
+const onProjectHome = (v: AskView): boolean => v.where === "page" && v.app.screen === "project" && !v.app.phone;
+function inProjectMark(v: AskView): string {
+  const p = onProjectHome(v) ? convoProject(convoOf(v)) : null;
+  if (!p) return "";
+  return `<span class="ask-co-inproj" data-morph-key="inproj" data-mtip="${attr(projectFootOf(v, p))}">${spaceTile(p, 12)}<span>In this project</span></span>`;
 }
 /** The project a conversation is in, as the composer's first chip (not removable: a thread moves out from its ⋯
- *  menu). On the project's own page it reads "In this project". */
+ *  menu) — on the Ask screen; on the project's own page `inProjectMark` says it instead. */
 function projectChip(v: AskView): string {
   const p = v.where === "page" ? convoProject(convoOf(v)) : null;
-  if (!p) return "";
-  const here = v.app.screen === "project";
-  return `<span class="ask-co-chip ask-co-chip--proj" data-morph-key="proj:${attr(p.slug)}" aria-label="${attr(`In ${p.name}`)}"><span class="ask-co-ico ask-co-ico--proj">${spaceTile(p, 14)}</span><span class="ask-co-chip-t"><span class="ask-co-chip-n">${esc(here ? "In this project" : p.name)}</span><span class="ask-co-chip-m">Project</span></span></span>`;
+  if (!p || onProjectHome(v)) return "";
+  return `<span class="ask-co-chip ask-co-chip--proj" data-morph-key="proj:${attr(p.slug)}" aria-label="${attr(`In ${p.name}`)}"><span class="ask-co-ico ask-co-ico--proj">${spaceTile(p, 14)}</span><span class="ask-co-chip-t"><span class="ask-co-chip-n">${esc(p.name)}</span><span class="ask-co-chip-m">Project</span></span></span>`;
 }
 
 function chipsRow(v: AskView): string {
@@ -492,7 +510,7 @@ function boxView(v: AskView): string {
     : `<div class="ask-box-bar" data-morph-key="bar" data-morph-list>
         <button type="button" class="ask-co-tool" data-morph-key="att" data-act="askCoAttach" data-arg="${v.where}" aria-label="Attach files" data-mtip="Attach files, or drop and paste them">${askIcon("attach", 16, null, 1.8)}</button>
         <button type="button" class="ask-co-tool" data-morph-key="at" data-act="askCoAt" data-arg="${v.where}" aria-label="Mention an item" data-mtip="Mention a ticket, doc, PR or person">${askIcon("at", 16, null, 1.8)}</button>
-        <button type="button" class="ask-co-tool" data-morph-key="sl" data-act="askCoSlash" data-arg="${v.where}" aria-label="Commands" data-mtip="Commands">${askIcon("cmd", 15, null, 2)}</button>
+        <button type="button" class="ask-co-tool" data-morph-key="sl" data-act="askCoSlash" data-arg="${v.where}" aria-label="Commands" data-mtip="Commands">${askIcon("cmd", 15, null, 2)}</button>${inProjectMark(v)}
         <span class="ask-co-grow" data-morph-key="sp"></span>${modeControl(v)}${autoSwitch(v, false)}${sendButton(v, false)}
       </div>`;
   return `<div class="ask-box" data-morph-key="box" data-morph-list>${ta}${bar}</div>`;
@@ -572,7 +590,8 @@ export function composerView(v: AskView): string {
   // No Enter hint while blocked: there is no box to type in (Q-F4).
   // In a project the line says what every turn reads (the Enter hint gives way to it).
   const proj = v.where === "page" ? convoProject(convoOf(v)) : null;
-  const lead = proj && !block ? `<span class="ask-co-proj">${esc(projectFoot(proj.name, projectPins(v.app, proj.slug)))}</span>` : !phone && !block ? `<span>Enter to send · Shift+Enter for a new line</span>` : "";
+  // On the project's own page the box's "In this project" says it (the design has no foot line there).
+  const lead = proj && onProjectHome(v) ? "" : proj && !block ? `<span class="ask-co-proj">${esc(projectFootOf(v, proj))}</span>` : !phone && !block ? `<span>Enter to send · Shift+Enter for a new line</span>` : "";
   const foot = lead + (usage ? `<span class="ask-co-usage">${esc(usage)}</span>` : "");
   inner.push(`<div class="ask-co-foot" data-morph-key="foot">${foot}</div>`);
   if (empty && v.where === "page" && v.app.screen !== "project") inner.push(`<p class="ask-disclaimer" data-morph-key="disc">Answers come from what you can see in Trov, with sources. Trov asks before it changes anything.</p>`);

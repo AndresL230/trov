@@ -180,6 +180,10 @@ export const PROJECT_ROUTES = {
   /** POST multipart (Ask's attachment rules: ≤ 5 files, 10 MB each) → ProjectDetail: each file becomes an artifact
    *  with `project_id` (private on a private project, else org) and is pinned. */
   upload: "/projects/:project/files",
+  /** GET `?q=&type=` → `{ result: QuickSearchResult }`: what Add to <project> offers to pin (owner or editor). The quick
+   *  search's own read (`?q=`, 2+ characters), else the most recently changed items per type; artifacts include the
+   *  drafts the reader may see (their own private ones), so a private one can be offered with Publish to org. */
+  candidates: "/projects/:project/candidates",
 } as const;
 
 /** `DELETE /projects/:project`'s answer: what went (`chats`, every thread in it) and what stayed (`artifacts`). */

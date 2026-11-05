@@ -5772,7 +5772,8 @@ document.addEventListener("keydown", (e) => {
 // never deletes twice — the reducers' busy guards say the same.
 document.addEventListener("keydown", (e) => {
   if (state.view !== "app" && state.view !== "platform") return;
-  const dlg = mount.querySelector<HTMLElement>("[data-confirm-dialog]");
+  // A dialog on its way out (`confirmOut`'s `data-closing`) no longer owns the keys: they reach the page again.
+  const dlg = Array.from(mount.querySelectorAll<HTMLElement>("[data-confirm-dialog]")).find((d) => !d.closest("[data-closing]"));
   if (!dlg) return;
   // A dropdown open over the dialog (Edit space's Position) owns its own keys (dropdown.ts).
   if (state.dd.open && (e.target as Element | null)?.closest?.("[data-dd-pop]")) return;

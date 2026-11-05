@@ -6,9 +6,9 @@
 import type { AppState, ToastAction } from "./render";
 import {
   listProjects, getProject, createProject, patchProject, deleteProject, archiveProject, restoreProject, putProjectMembers,
-  addProjectPins, removeProjectPin, uploadProjectFiles, projectErrorText,
+  addProjectPins, removeProjectPin, uploadProjectFiles, projectErrorText, projectCandidates,
 } from "./projects-api";
-import { OrgApiError, Unauthorized, quickSearch, patchArtifact } from "./api";
+import { OrgApiError, Unauthorized, patchArtifact } from "./api";
 import { askApi, quickHitsToRefs, type AskRefHit } from "./ask-api";
 import { knownHits } from "./ask-composer";
 import {
@@ -136,6 +136,8 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
     if (cached) readyAsk(cached);
     readDetail(slug, false);
     rerender();
+    // A project opens at its top, wherever the list was scrolled to (as Artifacts' `goArt`).
+    mount.querySelector<HTMLElement>("#cnpy-main")?.scrollTo?.(0, 0);
   }
 
   function refreshDetail(): void {
@@ -176,7 +178,10 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
       ui().dialog = null;
       state.dd = { open: null, opening: false, closing: false };
       rerender();
-      focus("[data-confirm-trigger]");
+      // Back to the trigger only when focus went nowhere: the closing layer lets clicks through (trov.css), so the
+      // person may already be in the ⋯ menu they clicked while it left — never take that focus away.
+      const at = typeof document !== "undefined" ? document.activeElement : null;
+      if (!at || at === document.body || !mount.contains(at)) focus("[data-confirm-trigger]");
     });
   }
 
@@ -219,38 +224,44 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
 
   // ── Add to Knowledge ───────────────────────────────────────────────────────
 
-  function search(): void {
+  /** Add to <project>'s candidates for the query and the type switch as they stand: with nothing typed, the most
+   *  recently changed items (the dialog opens on them); typed, the quick search's matches — both the project's own
+   *  read (`GET …/candidates`), so a draft the person may see (their private artifact) is offered too. The pull
+   *  requests Trov already shows join them (the quick search has none). `now`: at once (the dialog opening, a type). */
+  function search(now = false): void {
     const dlg = ui().dialog;
-    if (dlg?.kind !== "pin") return;
+    const d = ui().detail.data;
+    if (dlg?.kind !== "pin" || !d) return;
     if (searchTimer) clearTimeout(searchTimer);
     const q = dlg.pick.q.trim();
-    if (q.length < 2) { dlg.pick = { ...dlg.pick, status: "idle", hits: [] }; return; }
+    const type = dlg.pick.type;
     dlg.pick = { ...dlg.pick, status: "loading" };
     const seq = ++searchSeq;
-    searchTimer = setTimeout(() => {
-      quickSearch(q)
+    const slug = d.project.slug;
+    const go = () => {
+      (type === "pr" ? Promise.resolve({ q, groups: [] }) : projectCandidates(slug, q, type))
         .then(async (r) => {
-          // The quick search has no pull requests: the ones Trov already shows are offered, as in Ask's @ picker.
-          const known = knownHits({ views: state.ask.refViews }, q).filter((h) => h.type === "pr");
+          const known = type === "all" || type === "pr" ? knownHits({ views: state.ask.refViews }, q).filter((h) => h.type === "pr") : [];
           const seen = new Set<string>();
           const hits = [...quickHitsToRefs(r), ...known].filter((h) => (PROJECT_PIN_TYPES as readonly string[]).includes(h.type) && !seen.has(h.ref) && seen.add(h.ref));
           let views: Record<string, import("@shared/ai-ask-core").PeekResult> = {};
-          try { for (const v of await askApi.peek(hits.map((h) => h.ref).slice(0, 50))) views[v.ref] = v; } catch { views = {}; }
+          try { if (hits.length) for (const v of await askApi.peek(hits.map((h) => h.ref).slice(0, 50))) views[v.ref] = v; } catch { views = {}; }
           return { hits, views };
         })
         .then(({ hits, views }) => {
-          const now = ui().dialog;
-          if (seq !== searchSeq || now?.kind !== "pin") return;
-          now.pick = { ...now.pick, status: "ok", hits, views: { ...now.pick.views, ...views } };
+          const cur = ui().dialog;
+          if (seq !== searchSeq || cur?.kind !== "pin") return;
+          cur.pick = { ...cur.pick, status: "ok", hits, views: { ...cur.pick.views, ...views } };
           host.rerenderSoon();
         })
         .catch((e) => {
-          const now = ui().dialog;
-          if (fail(e) || seq !== searchSeq || now?.kind !== "pin") return;
-          now.pick = { ...now.pick, status: "error" };
+          const cur = ui().dialog;
+          if (fail(e) || seq !== searchSeq || cur?.kind !== "pin") return;
+          cur.pick = { ...cur.pick, status: "error" };
           host.rerenderSoon();
         });
-    }, SEARCH_MS);
+    };
+    if (now) go(); else searchTimer = setTimeout(go, SEARCH_MS);
   }
 
   function addPins(): void {
@@ -486,9 +497,9 @@ export function createProjectsController(host: ProjectsHost): ProjectsController
           .catch((e) => { u.unpinning = null; if (fail(e)) return; host.flash(text(e, "Couldn't remove it."), 4200); rerender(); });
         return true;
       }
-      case "projAdd": openDialog({ kind: "pin", pick: blankPinPick() }); return true;
+      case "projAdd": openDialog({ kind: "pin", pick: blankPinPick() }); search(true); return true;
       case "projPinQ": if (dlg?.kind === "pin") { dlg.pick = { ...dlg.pick, q: value ?? "", error: null }; search(); rerender(); } return true;
-      case "projPinType": if (dlg?.kind === "pin" && (PIN_TYPE_TABS as readonly string[]).includes(arg ?? "")) { dlg.pick = { ...dlg.pick, type: arg as PinTypeTab }; rerender(); } return true;
+      case "projPinType": if (dlg?.kind === "pin" && (PIN_TYPE_TABS as readonly string[]).includes(arg ?? "") && dlg.pick.type !== arg) { dlg.pick = { ...dlg.pick, type: arg as PinTypeTab }; search(true); rerender(); } return true;
       case "projPinToggle":
         if (dlg?.kind === "pin" && arg && !dlg.pick.busy) {
           const on = value === "1";

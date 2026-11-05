@@ -12,6 +12,7 @@
 //   POST   /projects/:project/pins        ProjectPinsBody → ProjectDetail
 //   DELETE /projects/:project/pins/:ref   ProjectDetail
 //   POST   /projects/:project/files       multipart (Ask's attachment rules) → ProjectDetail
+//   GET    /projects/:project/candidates  `?q=&type=` → { result: QuickSearchResult } (what Add to <project> offers)
 //
 // The rules (who may open and change what, the refusals' order) are src/tools/projects.ts's; a project the person
 // can't open is the ONE `404 { error: "not_found" }`. A plan refusal goes to the app's one 402 handler.
@@ -21,7 +22,7 @@ import { platform } from "../data/context";
 import { PlanFeatureError, PlanLimitError } from "../plans/state";
 import { ProjectCreateBodySchema, ProjectMembersBodySchema, ProjectPatchBodySchema, ProjectPinsBodySchema, PROJECT_ROUTES } from "@shared/projects";
 import {
-  ProjectRefusal, archiveProject, createProject, patchProject, pinRefs, projectToDelete, putMembers, readProjectDetail, readProjectList, readSummary,
+  ProjectRefusal, archiveProject, createProject, patchProject, pinRefs, projectForPinning, projectToDelete, putMembers, readProjectDetail, readProjectList, readSummary,
   restoreProject, unpinRef, uploadIntoProject, type PinViews,
 } from "../tools/projects";
 import { deleteProject } from "../deletion/projects";
@@ -29,6 +30,8 @@ import { resolveViews } from "../ai/ask/refs";
 import { AttachError, checkFiles } from "../ai/ask/attachments";
 import { ArtifactError, ARTIFACT_ERROR_STATUS } from "../tools/artifacts";
 import { ASK_ATTACH_FILES_MAX } from "@shared/ai-ask-core";
+import { quickRecent, quickSearch } from "../tools/quick-search";
+import { QUICK_MIN_CHARS, type QuickType } from "@shared/quick-search";
 import { projectChats } from "../ai/ask/routes";
 
 type C = Context<AppEnv>;
@@ -47,7 +50,12 @@ async function guard(c: C, fn: () => Promise<Response>): Promise<Response> {
     return await fn();
   } catch (e) {
     if (e instanceof PlanLimitError || e instanceof PlanFeatureError) throw e;
-    if (e instanceof ProjectRefusal) return c.json(e.code === "not_found" ? { error: "not_found" } : { error: e.code, message: e.message }, e.status);
+    if (e instanceof ProjectRefusal) {
+      if (e.code === "not_found") return c.json({ error: "not_found" }, 404);
+      // A project's 403 is about the PROJECT role (owner, editor, viewer), not the org's: it carries its own hint, so
+      // the API's generic one ("needs a role… (admin or owner)… Ask an admin") never answers it (src/error-hints.ts).
+      return c.json({ error: e.code, message: e.message, ...(e.code === "forbidden" ? { hint: `${e.message} Nothing was changed.` } : {}) }, e.status);
+    }
     if (e instanceof AttachError) return c.json({ error: e.code, message: e.message }, e.status); // Ask's own codes
     // An upload's artifact refused by the artifacts store's own writer (`createPage`: its title, size and type checks).
     if (e instanceof ArtifactError) return c.json({ error: e.code, message: e.message }, ARTIFACT_ERROR_STATUS[e.code]);
@@ -129,6 +137,22 @@ projectsApp.delete(PROJECT_ROUTES.pin, (c) => guard(c, async () => {
   try { ref = decodeURIComponent(raw); } catch { /* already decoded */ }
   await unpinRef(c.var.ctx, slugOf(c), ref);
   return c.json(await detail(c, slugOf(c)));
+}));
+
+/** The quick search's groups a project can pin (pull requests are not in it: the dialog offers the ones Trov shows). */
+const CANDIDATE_TYPES = ["ticket", "sprint", "doc", "decision", "artifact"] as const satisfies readonly QuickType[];
+
+projectsApp.get(PROJECT_ROUTES.candidates, (c) => read(c, "what to pin", async () => {
+  await projectForPinning(c.var.ctx, slugOf(c));
+  const type = c.req.query("type") ?? "all";
+  const types: QuickType[] = (CANDIDATE_TYPES as readonly string[]).includes(type) ? [type as QuickType] : type === "all" ? [...CANDIDATE_TYPES] : [];
+  const q = (c.req.query("q") ?? "").slice(0, 200).trim();
+  const opts = { types, limit: types.length === 1 ? 8 : 4, artifactDrafts: true };
+  c.header("cache-control", "private, no-store");
+  if (!types.length) return c.json({ result: { q, groups: [] } });
+  // Under the quick search's 2 characters, what changed most recently (the quick search would answer nothing).
+  const me = c.var.ctx.userId;
+  return c.json({ result: q.length >= QUICK_MIN_CHARS ? await quickSearch(c.var.ctx, q, me, opts) : await quickRecent(c.var.ctx, me, opts) });
 }));
 
 projectsApp.post(PROJECT_ROUTES.upload, (c) => guard(c, async () => {

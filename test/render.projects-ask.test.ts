@@ -125,9 +125,14 @@ describe("Ask in a project — the composer", () => {
     const html = composerView(askView(app(), "page"));
     expect(html).toContain("ask-co-chip--proj");
     expect(html).toContain(">Hosting providers<");
-    expect(html).toContain("Uses Hosting providers&#39;s instructions and 9 pinned items");
-    expect(projectFoot("X", null)).toBe("Uses X's instructions and pinned items");
-    expect(projectFoot("X", 1)).toBe("Uses X's instructions and 1 pinned item");
+    // Only what is there, and no possessive on the name.
+    expect(html).toContain("Answers here read Hosting providers: its instructions and 9 pinned items");
+    expect(projectFoot("X", null)).toBe("Answers here read X: its instructions and pinned items");
+    expect(projectFoot("X", 1, null)).toBe("Answers here read X: its instructions and pinned items");
+    expect(projectFoot("X", 1, true)).toBe("Answers here read X: its instructions and 1 pinned item");
+    expect(projectFoot("X", 0, true)).toBe("Answers here read X: its instructions");
+    expect(projectFoot("X", 3, false)).toBe("Answers here read X: its 3 pinned items");
+    expect(projectFoot("X", 0, false)).toBe("X has no instructions or pinned items yet");
   });
 });
 

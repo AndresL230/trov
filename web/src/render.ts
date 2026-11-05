@@ -1225,10 +1225,13 @@ function header(s: AppState): string {
     : s.screen === "project" ? "goProjects"
     : "ticketsBack";
   const trail = s.screen === "docs" ? docTrail(s) : null;
-  const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : trail ? trail : child
+  // A child page with nothing to name yet (still loading, or not there: a project the person can't open) shows the
+  // title alone — never a "›" with nothing after it.
+  const crumbText = child && !trail && s.screen !== "repo" ? headerCrumb(s) : "";
+  const crumb = s.screen === "repo" ? repoCrumb(repoProps(s)) : trail ? trail : crumbText
     // The crumb is set like the title before it (15px, semibold) — the page you are on, in full strength; the
     // title is the quieter link back.
-    ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(headerCrumb(s))}</span></span>`
+    ? `<span style="display:inline-flex;align-items:center;gap:10px;min-width:0"><span style="color:var(--fg-40);font-size:15px">›</span><span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0">${esc(crumbText)}</span></span>`
     : "";
   const title = child
     ? `<h1 style="font-size:15px;font-weight:600;letter-spacing:-0.01em;margin:0;white-space:nowrap;flex:none"><button data-act="${backAct}" style="font-size:15px;font-weight:600;letter-spacing:-0.01em;padding:0;color:var(--fg-55);cursor:pointer">${titles[s.screen]}</button></h1>`

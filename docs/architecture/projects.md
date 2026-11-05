@@ -38,6 +38,7 @@ A request carrying an `Authorization` header is refused (403, invariant 8). None
 | `POST /projects/:project/pins` | `ProjectDetail` | owner, editor |
 | `DELETE /projects/:project/pins/:ref` (the ref URL-encoded) | `ProjectDetail` | owner, editor |
 | `POST /projects/:project/files` (multipart) | `ProjectDetail` | owner, editor |
+| `GET /projects/:project/candidates?q=&type=` | `{ result: QuickSearchResult }` (what Add to <project> offers) | owner, editor (live) |
 
 A slug comes from the name (`projectSlug`) at creation and never changes with a rename. A clash with ANY project of the
 org — live, archived or deleted — adds `-2`, `-3`… (a deleted project's slug stays reserved, invariant 11).
@@ -55,9 +56,10 @@ org — live, archived or deleted — adds `-2`, `-3`… (a deleted project's sl
 - An **org admin** who is not the owner or a member reads an `org` project as a viewer and may archive, restore and
   delete it. A `members` / `private` project they are not in is the one 404 to them too.
 - The refusals, in order: the ONE `404 { error: "not_found" }` for a project the person can't open (unknown, deleted,
-  another org's, private, members-only); `403 { error: "forbidden", message }` for one they can open but not change
-  (the message says who may: "Only the owner can change who can see this project.", "Only the owner or an org admin can
-  delete this project."; the screen shows it, `projectErrorText`);
+  another org's, private, members-only); `403 { error: "forbidden", message, hint }` for one they can open but not
+  change (the message says who may: "Only the owner can change who can see this project.", "Only the owner or an org
+  admin can delete this project."; the screen shows it, `projectErrorText`; the `hint` is the same sentence, so the
+  API's generic org-role hint never answers a project role, `src/error-hints.ts`);
   `409 { error: "archived" }` for a write to an archived project; then `400 invalid` / `400 private_pin`; a plan limit
   is the app's one `402 plan_limit`.
 - **Archived** is read-only: every write but restore and delete is 409; it is left out of new answers (› Ask in a
@@ -82,6 +84,14 @@ project's words (`400 invalid` "Add at most 5 files at a time.", before `checkFi
 file the artifacts store refuses (`ArtifactError` from `createPage`) is its own status (`ARTIFACT_ERROR_STATUS`) with
 `{ error: code, message }`, never a 500. The screen checks the count and the size first (`uploadRefusalText`).
 
+**Candidates** (`GET …/candidates`, the Add to <project> dialog's only read): the app's quick search (`quickSearch`,
+`?q=` of 2+ characters) restricted to the pinnable groups (`ticket`, `sprint`, `doc`, `decision`, `artifact`; one with
+`type=`), else — nothing typed — `quickRecent`, the same groups' most recently changed items. Artifacts include the
+DRAFTS the reader may see (`artifactDrafts`: an org page, or their own private one — the visibility rule is
+`searchArtifactsStmt` / `recentArtifactsStmt`'s, never another person's private page): a private artifact is a draft,
+and the dialog offers it with its "private to you … Publish to org" warning. No second search surface: `/search/quick`
+stays live-only. Pull requests are not in the quick search; the dialog adds the ones Trov already shows.
+
 **Add to Knowledge** on the screen sends at most `pinsPerRequest` refs a call, each call committed alone. So the dialog
 refuses a pick past the project's room (`pinRoomText`: `pinLimit.cap - used`, when capped) before sending anything; if
 a later call is still refused after earlier ones landed, the page takes the last answer (what is pinned now), the
@@ -91,6 +101,11 @@ dialog says "Added N of M." and the refusal, and what landed leaves the pick.
 `projectThreadCounts` in src/data/ask.ts, `threadFor`'s rule with the project as a filter): the reader's own threads in
 the project, then threads others shared with them by name or with the org (while their owner is a member). Being in a
 project never shares a thread. **Artifacts** are the project's the reader may see (the org's, and their own private ones).
+A card's `preview` is plain words (`previewOf`): a Markdown page's marks dropped (`plainMarkdown`) and a first heading
+that only repeats its title left out; HTML's tags stripped; a diagram's own first lines. Ask's ref tokens in it are
+named as Ask names them, for the reader (`#87`, `PR #185`, a sprint's name; one they can't see is "an item"). A saved
+answer's refs are already links (`[#185 …](url)`) and read as their text; a ref the save could not resolve was written
+as `pr 185` / `sprint 9701` (`tokensToMarkdown`'s fallback) and reads so.
 
 ## Limits (`shared/plans.ts`)
 
@@ -144,7 +159,8 @@ own, and those shared with others — is hard-deleted through Ask's own `deleteA
 unless a ticket or a doc refers to one; R2 after the commit). The batch goes first so nobody can start a thread in it
 or move one into it meanwhile; a thread a failure leaves behind names a deleted project, which every read treats as
 none. The tickets, docs and PRs it pinned are not touched. The answer counts what went and what stayed (`chats`,
-`artifacts`); the toast says the chats ("Hosting providers deleted, with its 5 chats").
+`artifacts`); the toast says the chats ("Hosting providers deleted, with its 5 chats"). The confirmation leaves out
+the artifacts clause when there are none.
 
 **The confirmation's numbers** are `ProjectSummary.deleteCounts` (`{ chats, artifacts }`: EVERY thread in the project,
 anyone's, and every artifact it holds — what the delete takes, not what the reader can open), sent only to a reader who
@@ -171,12 +187,20 @@ nothing of a thread the reader can't open.
   but the spec also says every route answers a project the person can't open with the one 404 — the one 404 wins, so a
   `members` / `private` project's existence never shows to an admin outside it.
 
+- The composer's foot line is "Answers here read <project>: its instructions and N pinned items" (only what is there),
+  not the spec's "Uses <project>'s instructions and N pinned items"; on the project's own page it is the box's "In
+  this project" (the prototype's), with no line under the box.
+- Knowledge's group labels are fixed plurals (Sprints, Tickets, Pull requests, Docs, Decisions, Repositories,
+  Artifacts); the prototype mixed "Sprint" / "Repository" for one item.
+- Wrapped under the column, Instructions and Knowledge fill the width (the prototype kept them at 380px).
+
 ## Tests
 
 `test/projects.routes.test.ts` (CRUD and slugs, the access table row by row for a `members` and an `org` project,
 another org, cookie only, private and archived, Free's 2 projects and 20 pins, hidden pins and `private_pin`, members
 validation, deletion and `deleteCounts`, uploads: the count in the project's words and an `ArtifactError` as its own
-4xx), `test/projects.ask.test.ts` (`projectId`, the refusal, PATCH in / out, the project page's
+4xx, the 403's own hint, an artifact card's plain preview, the candidates: the reader's own private draft and the org's
+drafts offered, another person's private one never, `/search/quick` still live-only), `test/projects.ask.test.ts` (`projectId`, the refusal, PATCH in / out, the project page's
 Chats, the turn's fenced block and its activity line, hidden pins, an unopenable or archived project, pinned first,
 save), `test/projects.seed.test.ts` (the dev seed's promises), `test/render.projects-dialogs.test.ts` (the dialogs and
 the controller's writes: the 403's sentence, the delete counts and toast, the pin room, a chunked add refused halfway,

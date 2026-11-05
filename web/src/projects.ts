@@ -121,7 +121,7 @@ export const PROJECTS_EMPTY = "A project holds one piece of work: its instructio
 export const PROJECT_CHATS_EMPTY = "Chats you start here show up here. Each one reads the project's instructions and Knowledge.";
 export const PROJECT_ARTS_EMPTY = "Artifacts saved from this project's chats, and files uploaded here, show up here.";
 export const PROJECT_PINS_EMPTY = "Pin the tickets, sprints, docs and PRs this work is about, or upload files. A pinned ticket always shows its current status.";
-export const PROJECT_CHATS_NOTE = "Your chats here are yours. Share one from its menu to show it to the project.";
+export const PROJECT_CHATS_NOTE = "Your chats here are yours. To show one to the project, open it and share it from its ⋯ menu.";
 export const PROJECT_INSTR_EMPTY = "No instructions yet. Tell Trov what this work is and how to answer.";
 export const PROJECT_INSTR_NOTE = "Trov reads these in every chat in this project.";
 export const PROJECT_NEW_INTRO = "A project holds the context for one piece of work. Chats and artifacts made in it stay with it.";
@@ -133,7 +133,7 @@ export const PROJECT_NOT_FOUND = "There is no project here. It may have been del
 
 /** The delete confirmation's sentence (the spec's copy). */
 export const deleteProjectText = (chats: number, arts: number): string =>
-  `Its ${chats} ${chats === 1 ? "chat is" : "chats are"} deleted, including any shared with the project. Its ${arts} ${arts === 1 ? "artifact stays" : "artifacts stay"} in Artifacts. The tickets, docs and PRs it pinned aren't touched.`;
+  `Its ${chats} ${chats === 1 ? "chat is" : "chats are"} deleted, including any shared with the project.${arts ? ` Its ${arts} ${arts === 1 ? "artifact stays" : "artifacts stay"} in Artifacts.` : ""} The tickets, docs and PRs it pinned aren't touched.`;
 /** The toast after a delete, with what went (the server's count of every thread in it); no clause at none. */
 export const deletedProjectText = (name: string, chats: number): string =>
   chats > 0 ? `${name} deleted, with its ${chats} ${chats === 1 ? "chat" : "chats"}` : `${name} deleted`;
@@ -292,7 +292,7 @@ function projectRow(p: ProjectSummary, o: { persons: readonly PersonSummary[]; o
   </div>`;
 }
 const rowShape = (i: number): string =>
-  `<div style="display:grid;grid-template-columns:${ROW_COLS};gap:12px;align-items:center;padding:11px 16px;border-top:1px solid var(--border)"><div style="display:flex;gap:11px">${skBox(14, 14)}<div style="flex:1">${skLine(skW(i), 13.5, 1.3)}<div style="margin-top:4px">${skLine(skW(i + 2), 12, 1.3)}</div></div></div>${skBar(80, 9)}${skBar(70, 9)}${skBar(20, 9)}${skBar(20, 9)}${skBar(50, 9)}<span></span></div>`;
+  `<div class="pj-rowsk" style="display:grid;grid-template-columns:${ROW_COLS};gap:12px;align-items:center;padding:11px 16px;border-top:1px solid var(--border)"><div style="display:flex;gap:11px">${skBox(14, 14)}<div style="flex:1">${skLine(skW(i), 13.5, 1.3)}<div style="margin-top:4px">${skLine(skW(i + 2), 12, 1.3)}</div></div></div>${skBar(80, 9)}${skBar(70, 9)}${skBar(20, 9)}${skBar(20, 9)}${skBar(50, 9)}<span></span></div>`;
 const tableHead = (): string =>
   `<div class="pj-th" style="display:grid;grid-template-columns:${ROW_COLS};gap:12px;align-items:center;padding:9px 16px;font-size:11.5px;font-weight:500;letter-spacing:.04em;color:var(--fg-55)"><span>Project</span><span>Who can see it</span><span>Owner</span><span style="text-align:right">Chats</span><span style="text-align:right">Pinned</span><span style="text-align:right">Updated</span><span></span></div>`;
 
@@ -442,7 +442,7 @@ function chatsPanel(d: ProjectDetail, p: ProjectHomeProps): string {
   }
   const rows = d.chats.map((t, i) => {
     const who = t.viewer ? t.owner ?? "" : p.me ?? "";
-    return `<div class="cnpy-lib-item ${HITBOX}" data-pj-chat="${t.id}" style="display:flex;align-items:flex-start;gap:11px;padding:11px 16px${i ? ";border-top:1px solid var(--border)" : ""}">
+    return `<div class="cnpy-lib-item pj-chat ${HITBOX}" data-pj-chat="${t.id}" style="display:flex;align-items:flex-start;gap:11px;padding:11px 16px${i ? ";border-top:1px solid var(--border)" : ""}">
       <span style="display:flex;flex:none;margin-top:2px;color:var(--fg-55)">${CHAT_IC}</span>
       <div style="flex:1;min-width:0"><div style="display:flex;align-items:center;gap:10px;min-width:0"><span style="font-size:13.5px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${esc(t.title || "New thread")}</span>${t.pinned ? `<span style="font-size:12px;color:var(--fg-55)">Pinned</span>` : ""}</div>
         <div style="display:flex;align-items:center;gap:7px;margin-top:4px;font-size:12px;color:var(--fg-55);min-width:0">${personChip(findPerson(p.persons, who), 16, who || "?")}<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(chatMeta(t, p.persons, p.org))}</span></div></div>
@@ -487,12 +487,12 @@ function instructionsCard(d: ProjectDetail, p: ProjectHomeProps): string {
   return `<section${surface("padding:16px 18px", { cls: "pj-instr" })}>${head}${text}<p style="font-size:12px;color:var(--fg-55);margin:10px 0 0">${esc(PROJECT_INSTR_NOTE)}</p></section>`;
 }
 
-/** The order Knowledge groups its pins in, and each group's label (one / many). */
-const PIN_GROUPS: { type: ProjectPinType; one: string; many: string }[] = [
-  { type: "sprint", one: "Sprint", many: "Sprints" }, { type: "ticket", one: "Ticket", many: "Tickets" },
-  { type: "pr", one: "Pull request", many: "Pull requests" }, { type: "doc", one: "Doc", many: "Docs" },
-  { type: "decision", one: "Decision", many: "Decisions" }, { type: "repo", one: "Repository", many: "Repositories" },
-  { type: "artifact", one: "Artifact", many: "Artifacts" },
+/** The order Knowledge (and Add to <project>) groups pins in, and each group's label — one fixed plural, however many
+ *  it holds (the design's). */
+const PIN_GROUPS: { type: ProjectPinType; many: string }[] = [
+  { type: "sprint", many: "Sprints" }, { type: "ticket", many: "Tickets" }, { type: "pr", many: "Pull requests" },
+  { type: "doc", many: "Docs" }, { type: "decision", many: "Decisions" }, { type: "repo", many: "Repositories" },
+  { type: "artifact", many: "Artifacts" },
 ];
 /** A pin's type, from its ref (a hidden pin's too: its type is known, its item is not). */
 export const pinType = (ref: string): ProjectPinType | null => {
@@ -503,16 +503,21 @@ export const pinType = (ref: string): ProjectPinType | null => {
 export function groupPins(pins: readonly ProjectPin[]): { label: string; pins: ProjectPin[] }[] {
   return PIN_GROUPS.map((g) => {
     const list = pins.filter((p) => pinType(p.ref) === g.type);
-    return { label: list.length === 1 ? g.one : g.many, pins: list };
+    return { label: g.many, pins: list };
   }).filter((g) => g.pins.length > 0);
 }
 /** The pins the reader can see (a hidden pin is left out of their answers, and of "N pinned items"). */
 export const visiblePins = (d: Pick<ProjectDetail, "pins">): number => d.pins.filter((p) => !("hidden" in p.view)).length;
 
-/** A pin's mark: the item's live status (a repository's from its Overview's verdicts), nothing when it has none. */
-function pinMark(v: RefView): string {
+/** The normal state of a kind has no mark (CLAUDE.md › marks): a live doc. In Knowledge an org artifact too (the
+ *  dialog says Private or Org: what Publish to org is about). */
+export const normalPinState = (v: RefView, inKnowledge: boolean): boolean =>
+  (v.type === "doc" && v.status?.word === "Live") || (inKnowledge && v.type === "artifact" && v.extra.visibility === "org");
+/** A pin's mark: the item's live status (a repository's from its Overview's verdicts), nothing when it has none or
+ *  when it is the normal state (`normalPinState`). */
+function pinMark(v: RefView, inKnowledge = false): string {
   if (v.type === "repo") return repoMark(repoFactsOf(v), 12);
-  return v.status ? refStatusMark(v.status, 12) : "";
+  return v.status && !normalPinState(v, inKnowledge) ? refStatusMark(v.status, 12) : "";
 }
 function pinRow(pin: ProjectPin, removable: boolean, busy: boolean): string {
   const v = pin.view;
@@ -524,7 +529,7 @@ function pinRow(pin: ProjectPin, removable: boolean, busy: boolean): string {
     return `<div class="pj-k is-hidden" data-pin="${attr(pin.ref)}" style="border-radius:7px">${askIcon("lock", 14, "var(--fg-40)", 1.8)}<span style="flex:1;min-width:0;color:var(--fg-55);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" data-mtip="It's left out of your answers too.">${esc(PROJECT_HIDDEN_PIN)}</span>${remove}</div>`;
   }
   const num = (v.type === "ticket" || v.type === "pr") && v.num != null ? `<span style="color:var(--fg-55)">#${v.num}</span> ` : "";
-  return `<div class="pj-k ${HITBOX}" data-pin="${attr(pin.ref)}" style="border-radius:7px">${askIcon(type ? REF_ICON[type] : "file", 14, "var(--fg-40)", 1.8)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${num}${esc(v.title)}</span><span style="display:inline-flex;flex:none">${pinMark(v)}</span>${remove}${v.href ? hitArea("projPinOpen", pin.ref, `Open ${refLabel(v)}`) : ""}</div>`;
+  return `<div class="pj-k ${HITBOX}" data-pin="${attr(pin.ref)}" style="border-radius:7px">${askIcon(type ? REF_ICON[type] : "file", 14, "var(--fg-40)", 1.8)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${num}${esc(v.title)}</span><span style="display:inline-flex;flex:none">${pinMark(v, true)}</span>${remove}${v.href ? hitArea("projPinOpen", pin.ref, `Open ${refLabel(v)}`) : ""}</div>`;
 }
 
 function knowledgeCard(d: ProjectDetail, p: ProjectHomeProps): string {
@@ -618,7 +623,7 @@ export function projectDialog(d: ProjectDraft, o: { org: string; owner: boolean;
     ${plan ? `<div class="pj-plan" style="font-size:12px;color:var(--fg-55)">${esc(plan)}</div>` : ""}
   </div>`;
   return confirmModal({
-    id: "pj-edit", title: create ? "New project" : "Edit details", body: create ? PROJECT_NEW_INTRO : "Its name, icon and colour show in Projects and on its chats.",
+    id: "pj-edit", title: create ? "New project" : "Edit details", body: create ? PROJECT_NEW_INTRO : "Its name, icon and color show in Projects and on its chats.",
     detail, confirmAct: "projSave", cancelAct: "projDialogClose", tone: "neutral", busy: d.busy,
     confirmLabel: create ? "Create project" : "Save", busyLabel: create ? "Creating…" : "Saving…",
     confirmDisabled: !d.name.trim() || capped, error: d.error,
@@ -661,12 +666,15 @@ export function pinDialog(pick: PinPick, d: ProjectDetail): string {
     const label = view ? refLabel(view) : h.title;
     return `<label class="pj-pick" for="${attr(id)}" style="border-radius:8px"><input type="checkbox" id="${attr(id)}" data-act="projPinToggle" data-arg="${attr(h.ref)}"${on || pick.sel.includes(h.ref) ? " checked" : ""}${on || pick.busy ? " disabled" : ""}>${askIcon(REF_ICON[h.type], 14, "var(--fg-40)", 1.8)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(label)}</span><span style="display:inline-flex;flex:none">${mark}</span></label>`;
   };
-  const list = !pick.q.trim()
-    ? `<p class="pj-pick-hint" style="margin:14px 10px;font-size:12.5px;color:var(--fg-55)">Search for a ticket, sprint, doc, pull request or artifact.</p>`
-    : pick.status === "loading" && !pick.hits.length ? `<p class="pj-pick-hint" role="status" style="margin:14px 10px;font-size:12.5px;color:var(--fg-55)">Searching…</p>`
-    : pick.status === "error" ? `<p class="pj-pick-hint" role="alert" style="margin:14px 10px;font-size:12.5px;color:var(--fg-55)">Couldn't search. Try again.</p>`
-    : groups.length ? groups.map((g) => `<div style="${GROUP_LABEL};padding:12px 10px 4px">${esc(g.many)}</div>${g.hits.map(row).join("")}`).join("")
-    : `<p class="pj-pick-hint" style="margin:14px 10px;font-size:12.5px;color:var(--fg-55)">Nothing matches “${esc(pick.q.trim())}”.</p>`;
+  // With nothing typed, what changed most recently per type (the design's: the dialog opens on candidates); typed,
+  // the quick search's matches. Both from `GET …/candidates` (projects-actions.ts `search`).
+  const q = pick.q.trim();
+  const hint = (text: string, role = "") => `<p class="pj-pick-hint"${role ? ` role="${role}"` : ""} style="margin:14px 10px;font-size:12.5px;color:var(--fg-55)">${esc(text)}</p>`;
+  const list = groups.length ? groups.map((g) => `<div style="${GROUP_LABEL};padding:12px 10px 4px">${esc(g.many)}</div>${g.hits.map(row).join("")}`).join("")
+    : pick.status === "loading" || pick.status === "idle" ? hint(q ? "Searching…" : "Loading…", "status")
+    : pick.status === "error" ? hint("Couldn't search. Try again.", "alert")
+    : q ? hint(`Nothing matches “${q}”.`)
+    : hint(pick.type === "all" ? "Nothing to pin yet. Search for a ticket, sprint, doc, pull request or artifact." : `No ${PIN_TAB_LABEL[pick.type].toLowerCase()} to pin yet.`);
   const warn = privatePicks(pick, d.project.visibility).map((a) =>
     `<div class="pj-warn" role="note" style="display:flex;align-items:flex-start;gap:9px;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--hover);font-size:12.5px;line-height:1.5;color:var(--fg-70)"><span style="display:flex;margin-top:3px">${markShape("triangle", "var(--amber)", 10)}</span><span style="flex:1">${esc(`${a.title} is private to you. People in this project won't see it until you publish it to the org.`)}</span>${outlineBtn("projPublish", a.slug, pick.publishing === a.slug ? "Publishing…" : "Publish to org", { busy: pick.publishing === a.slug, small: true })}</div>`).join("");
   const n = pick.sel.length;

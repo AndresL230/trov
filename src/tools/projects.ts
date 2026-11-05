@@ -28,7 +28,7 @@ import { createPage } from "./artifacts";
 import { ARTIFACT_IMAGE_TYPES, isTextKind, type ArtifactKind } from "@shared/artifacts-core";
 import { planFor, requirePlan, limitUse } from "../plans/gate";
 import { resolveEntitlements } from "@shared/plans";
-import { parseAskRef, type AskThreadProject, type AskThreadSummary, type RefView } from "@shared/ai-ask-core";
+import { ASK_REF_TOKEN_RE, askRefTokens, parseAskRef, type AskThreadProject, type AskThreadSummary, type RefView } from "@shared/ai-ask-core";
 import {
   PROJECT_PIN_TYPES, projectSlug,
   type ProjectAccess, type ProjectArtifact, type ProjectCreateBody, type ProjectDetail, type ProjectError, type ProjectIcon, type ProjectColor,
@@ -211,6 +211,11 @@ export async function uploadIntoProject(ctx: TenantContext, bucket: R2Bucket, sl
   return refs;
 }
 
+/** The project the person may pin into (owner or editor, live): Add to <project>'s candidates are theirs to ask for. */
+export async function projectForPinning(ctx: TenantContext, slug: string): Promise<ProjectForRow> {
+  return (await changeable(ctx, slug, "edit")).row;
+}
+
 /** The project the person may delete: its owner, or an org admin who can open it (archived or not). */
 export async function projectToDelete(ctx: TenantContext, slug: string): Promise<ProjectForRow> {
   return (await changeable(ctx, slug, "delete", false)).row;
@@ -253,18 +258,61 @@ export async function projectForSave(ctx: TenantContext, projectId: number | nul
 const PREVIEW_LINES = 3;
 const TEXT_KINDS = new Set(["markdown", "html", "mermaid"]);
 
-/** A few lines of a text artifact for its card: the first non-empty lines, markup stripped from HTML. */
-export function previewOf(kind: string, content: string | null): string | null {
+/** Markdown as the plain words a card shows: headings, lists, quotes, emphasis, code marks, rules and table pipes
+ *  gone; a link or an image its text. Ask's ref tokens (`[[pr:185]]`) are left for `withRefWords`. */
+export function plainMarkdown(md: string): string {
+  return md
+    .replace(/```[^\n]*\n([\s\S]*?)```/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/(^|[^[])\[([^\][]+)\]\([^)]*\)/g, "$1$2")
+    .split(/\r?\n/)
+    .map((l) => l
+      .replace(/^\s{0,3}#{1,6}\s+/, "").replace(/^\s*>\s?/, "").replace(/^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/, "")
+      .replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)*\|?\s*$/, "").replace(/^\s*(?:-{3,}|\*{3,}|_{3,})\s*$/, "")
+      .replace(/^\s*\|(.*)\|\s*$/, (_m, row: string) => row.split("|").map((c) => c.trim()).filter(Boolean).join(" · "))
+      .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, "$2").replace(/(^|[^*\w])\*(?=\S)([^*\n]+?)(?<=\S)\*(?!\*)/g, "$1$2")
+      .replace(/(^|\W)_(?=\S)([^_\n]+?)(?<=\S)_(?=\W|$)/g, "$1$2").replace(/~~(.+?)~~/g, "$1").replace(/`([^`\n]+)`/g, "$1"))
+    .join("\n");
+}
+
+/** A few lines of a text artifact for its card: the first non-empty lines as plain text — markup stripped from HTML,
+ *  Markdown's marks dropped (and a first heading that only repeats the title) — or a diagram's own first lines. */
+export function previewOf(kind: string, content: string | null, title = ""): string | null {
   if (!content || !TEXT_KINDS.has(kind)) return null;
-  const text = kind === "html" ? content.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, "\n").replace(/&nbsp;/g, " ") : content;
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, PREVIEW_LINES);
+  const text = kind === "html" ? content.replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ").replace(/<[^>]+>/g, "\n").replace(/&nbsp;/g, " ")
+    : kind === "markdown" ? plainMarkdown(content.replace(/^\s{0,3}#{1,6}\s+(.+)\n/, (m, h: string) => (h.trim().toLowerCase() === title.trim().toLowerCase() ? "" : m)))
+    : content;
+  const lines = text.split(/\r?\n/).map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, PREVIEW_LINES);
   const out = lines.join("\n").slice(0, 280);
   return out || null;
 }
 
+/** How a card's plain text names a ref, the way Ask's chips do: `#87`, `PR #185`, else the item's title (a sprint's
+ *  name, a doc's) — for the reader; one they can't see (or that is gone) is "an item". */
+function refWord(v: RefView | undefined): string {
+  if (!v) return "an item";
+  if (v.type === "ticket" && v.num != null) return `#${v.num}`;
+  if (v.type === "pr" && v.num != null) return `PR #${v.num}`;
+  return v.title;
+}
+
+/** Ask's ref tokens in the cards' previews as words (`refWord`), each ref drawn once through Ask's views for the reader. */
+async function withRefWords(ctx: TenantContext, views: PinViews, arts: ProjectArtifact[]): Promise<ProjectArtifact[]> {
+  const refs = [...new Set(arts.flatMap((a) => (a.preview ? askRefTokens(a.preview) : [])))];
+  if (!refs.length) return arts;
+  const seen = await views(ctx, ctx.userId, refs);
+  return arts.map((a) => (a.preview ? {
+    ...a,
+    preview: a.preview.replace(ASK_REF_TOKEN_RE, (_m, type: string, key: string, status?: string) => {
+      const v = seen.get(type === "person" ? `${type}:${key.toLowerCase()}` : `${type}:${key}`);
+      return status ? v?.status?.word ?? "" : refWord(v);
+    }),
+  } : a));
+}
+
 const artifactOf = (a: ProjectArtifactRow): ProjectArtifact => ({
   slug: a.slug, title: a.title, kind: a.kind, visibility: a.visibility, author: a.author_id, updatedAt: a.updated_at,
-  threadId: a.thread_id, preview: previewOf(a.kind, a.content),
+  threadId: a.thread_id, preview: previewOf(a.kind, a.content, a.title),
 });
 
 /** The member list as the screen draws it: the owner first, then the people added (none while private). */
@@ -341,7 +389,7 @@ export async function readProjectDetail(ctx: TenantContext, slug: string, views:
     members: membersOfProject(p, c.members),
     pins: pinList,
     chats: await chats(ctx, p.id, { slug: p.slug, name: p.name, icon: p.icon, color: p.color }),
-    artifacts: arts.map(artifactOf),
+    artifacts: await withRefWords(ctx, views, arts.map(artifactOf)),
     pinLimit: { used: pins.length, cap: resolveEntitlements(plan.plan, plan.overrides, plan.members).project_pins },
   };
 }

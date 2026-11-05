@@ -27,6 +27,8 @@ import { initialDropdownUi } from "../web/src/dropdown";
 import { esc } from "../web/src/ui";
 import { HOSTING_DETAIL, PROJECT_LIST, PROJECT_LIST_FREE_CAP, PROJECT_PILOT, PROJECT_FIXTURE_PEOPLE, PROJECT_HOSTING } from "@shared/projects-fixtures";
 import type { PersonSummary } from "@shared/people";
+import css from "../web/src/trov.css?raw";
+import mainSrc from "../web/src/main.ts?raw";
 
 const PERSONS = PROJECT_FIXTURE_PEOPLE as unknown as PersonSummary[];
 const opts = { org: "SaplingLearn", owner: true, limit: PROJECT_LIST.limit, plan: "Pro", role: "owner" as const };
@@ -60,6 +62,8 @@ describe("New project / Edit details", () => {
   it("Edit details: Save; an editor sees who can see it locked", () => {
     const html = projectDialog(draftFrom(PROJECT_PILOT), { ...opts, owner: false });
     expect(html).toContain(">Edit details<");
+    // "color", as its field's label says.
+    expect(html).toContain("Its name, icon and color show in Projects and on its chats.");
     expect(html).toContain(">Save<");
     expect(html).toContain("Only the owner can change who can see it.");
     expect(html).toMatch(/data-field="seg:pj-vis:private"[^>]*disabled/);
@@ -344,6 +348,51 @@ describe("the controller — writes, the plan's sentence, Undo", () => {
     expect(uploadRefusalText(Array.from({ length: 6 }, (_, i) => ({ name: `f${i}.txt`, size: 1 })))).toBe("Add at most 5 files at a time.");
     expect(uploadRefusalText([{ name: "huge.pdf", size: 11 * 1024 * 1024 }])).toBe("huge.pdf is too large. Files can be up to 10 MB.");
     expect(uploadRefusalText([{ name: "ok.pdf", size: 1024 }])).toBeNull();
+  });
+
+  it("Add to Knowledge opens on candidates before anything is typed (the project's candidates read), and a private draft among them warns once picked", async () => {
+    const cands = { q: "", groups: [
+      { type: "ticket", hits: [{ type: "ticket", id: "90", title: "Docs: how to connect each hosting provider", snippet: null, status: "submitted", by: null, at: null }] },
+      { type: "artifact", hits: [{ type: "artifact", id: "railway-cold-start", title: "Railway cold start notes", snippet: null, status: "markdown", by: "AndresL230", at: null }] },
+    ] };
+    const priv = { ref: "artifact:railway-cold-start", type: "artifact", title: "Railway cold start notes", status: null, href: null, extra: { visibility: "private" } };
+    answer = (c) => (c.url.includes("/candidates") ? { status: 200, body: { result: cands } } : c.url.endsWith("/ask/peek") ? { status: 200, body: { items: [priv] } } : { status: 200, body: HOSTING_DETAIL });
+    const { state, ctl } = make();
+    state.screen = "project";
+    state.projects = { ...state.projects, slug: "hosting-providers", detail: { status: "ok", data: HOSTING_DETAIL } };
+    ctl.act("projAdd", null, null);
+    await settle(); await settle(); await settle();
+    expect(calls[0]).toMatchObject({ method: "GET", url: "/api/o/saplinglearn/projects/hosting-providers/candidates?q=&type=all" });
+    const d = state.projects.dialog!;
+    expect(d.kind === "pin" && d.pick.status).toBe("ok");
+    const html = pinDialog((d as { pick: PinPick }).pick, HOSTING_DETAIL);
+    for (const w of [">Tickets<", ">Artifacts<", "Railway cold start notes"]) expect(html).toContain(w);
+    ctl.act("projPinToggle", "artifact:railway-cold-start", "1");
+    expect(pinDialog((state.projects.dialog as { pick: PinPick }).pick, HOSTING_DETAIL)).toContain(esc("Railway cold start notes is private to you."));
+    // The type switch asks again, for that type.
+    ctl.act("projPinType", "ticket", null);
+    await settle();
+    expect(calls.filter((c) => c.url.includes("/candidates")).at(-1)?.url).toBe("/api/o/saplinglearn/projects/hosting-providers/candidates?q=&type=ticket");
+  });
+
+  it("opening a project from a scrolled list starts at its top", () => {
+    const state: AppState = initialState();
+    state.view = "app"; state.orgSlug = "saplinglearn";
+    const main = { scrollTo: vi.fn() };
+    const mount = { querySelector: (sel: string) => (sel === "#cnpy-main" ? main : null) } as unknown as HTMLElement;
+    const ctl = createProjectsController({
+      state, mount, rerender: () => undefined, rerenderSoon: () => undefined, unauth: () => undefined, flash: () => undefined,
+      confirmOut: (then) => then(), role: () => "owner", prepareAsk: () => undefined, openThread: () => undefined,
+      openHref: () => undefined, upgrade: () => undefined, threadsChanged: () => undefined,
+    });
+    ctl.act("projOpen", "hosting-providers", null);
+    expect(state.screen).toBe("project");
+    expect(main.scrollTo).toHaveBeenCalledWith(0, 0);
+  });
+
+  it("a confirmation on its way out takes no clicks (the next one reaches the page), and no keys", () => {
+    expect(css).toMatch(/\.cnpy-cmodal\[data-closing\], \.cnpy-cmodal\[data-closing\] \.cnpy-cmodal-box \{ pointer-events:none; \}/);
+    expect(mainSrc).toContain(`Array.from(mount.querySelectorAll<HTMLElement>("[data-confirm-dialog]")).find((d) => !d.closest("[data-closing]"))`);
   });
 
   it("a project the person can't open is the one 404: the page says there is no project here", async () => {

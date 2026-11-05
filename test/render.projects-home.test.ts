@@ -15,14 +15,15 @@ vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, render
 import { render, initialState, type AppState } from "../web/src/render";
 import {
   projectHomeView, groupPins, visiblePins, visLine, deleteProjectText, PROJECT_CHATS_EMPTY, PROJECT_PINS_EMPTY, PROJECT_HIDDEN_PIN,
-  PROJECT_ARTS_EMPTY, type ProjectHomeProps,
+  PROJECT_ARTS_EMPTY, PROJECT_NOT_FOUND, type ProjectHomeProps,
 } from "../web/src/projects";
+const PROJECT_NOT_FOUND_TEXT = PROJECT_NOT_FOUND.replace(/'/g, "&#39;");
 import { emptyConvo } from "../web/src/ask-stream";
 import { esc } from "../web/src/ui";
-import { HOSTING_DETAIL, EMPTY_DETAIL, VIEWER_DETAIL, ARCHIVED_DETAIL, PROJECT_FIXTURE_PEOPLE, HOSTING_INSTRUCTIONS } from "@shared/projects-fixtures";
+import { HOSTING_DETAIL, EMPTY_DETAIL, VIEWER_DETAIL, ARCHIVED_DETAIL, PROJECT_FIXTURE_PEOPLE, HOSTING_INSTRUCTIONS, PIN_DOC_DEPLOYS } from "@shared/projects-fixtures";
 import { askStateFixture } from "@shared/ai-fixtures";
 import type { PersonSummary } from "@shared/people";
-import type { ProjectDetail } from "@shared/projects-core";
+import type { ProjectDetail, ProjectPin } from "@shared/projects-core";
 import css from "../web/src/trov.css?raw";
 
 const PERSONS = PROJECT_FIXTURE_PEOPLE as unknown as PersonSummary[];
@@ -74,7 +75,10 @@ describe("a project's home — the owner's page", () => {
     expect(html).toContain("Where hosting stands this week");
     expect(html).toContain(">Pinned<");
     expect(html).toContain("Jose · Shared with SaplingLearn, can read");
-    expect(html).toContain("Your chats here are yours. Share one from its menu to show it to the project.");
+    expect(html).toContain(esc("Your chats here are yours. To show one to the project, open it and share it from its ⋯ menu."));
+    // Each row lights on hover (trov.css), like the list's rows.
+    expect(html).toContain('class="cnpy-lib-item pj-chat ');
+    expect(css).toMatch(/\.pj-chat:hover \{ background:var\(--hover\); \}/);
   });
 
   it("shows the instructions with Edit; editing has the counter, Cancel and Save", () => {
@@ -90,7 +94,8 @@ describe("a project's home — the owner's page", () => {
   });
 
   it("groups Knowledge by type with each pin's live mark, remove on each, Add, the count and Upload files", () => {
-    expect(groupPins(HOSTING_DETAIL.pins).map((g) => g.label)).toEqual(["Sprint", "Tickets", "Pull request", "Docs", "Repository", "Artifact"]);
+    // The design's labels: one fixed plural a group, however many it holds.
+    expect(groupPins(HOSTING_DETAIL.pins).map((g) => g.label)).toEqual(["Sprints", "Tickets", "Pull requests", "Docs", "Repositories", "Artifacts"]);
     expect(html).toContain("In progress");
     expect(html).toContain("Merged");
     expect(html).toContain('<span style="color:var(--fg-55)">#87</span> Production backend deploy fails on Railway');
@@ -180,6 +185,30 @@ describe("a project's home — the states", () => {
   it("words: the visibility line and the delete copy", () => {
     expect(visLine(EMPTY_DETAIL, "AndresL230", PERSONS, "SaplingLearn")).toBe("1 member · owned by you");
     expect(deleteProjectText(4, 2)).toBe("Its 4 chats are deleted, including any shared with the project. Its 2 artifacts stay in Artifacts. The tickets, docs and PRs it pinned aren't touched.");
+    // No artifacts: no clause about them.
+    expect(deleteProjectText(1, 0)).toBe("Its 1 chat is deleted, including any shared with the project. The tickets, docs and PRs it pinned aren't touched.");
+  });
+
+  it("a live doc is the normal state: no mark in Knowledge (CLAUDE.md › marks); an org artifact neither", () => {
+    const live = { mark: "dot", tone: "green", word: "Live", tip: "Promoted. This is the version agents read." } as const;
+    const doc = { ...PIN_DOC_DEPLOYS, view: { ...PIN_DOC_DEPLOYS.view, status: live } } as ProjectPin;
+    const html = home({ ...HOSTING_DETAIL, pins: [doc] });
+    expect(html).toContain("Deploys and environments");
+    expect(html).not.toContain(">Live<");
+  });
+});
+
+describe("a project's home — the layout", () => {
+  it("wrapped under the column, Instructions and Knowledge fill the width (no 380px cap)", () => {
+    const side = /\.pj-side \{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(side).toContain("flex:1 1 320px");
+    expect(side).not.toContain("max-width");
+  });
+  it("the list measures its own width: Recent stays three across until one column, and the table drops Owner and Updated first", () => {
+    expect(css).toContain(".pj-list { container:pjlist / inline-size; }");
+    expect(css).toMatch(/@container pjlist \(max-width: 860px\) \{[^@]*:is\(:nth-child\(3\), :nth-child\(6\)\) \{ display:none; \}/);
+    expect(css).toMatch(/@container pjlist \(max-width: 520px\) \{\s*\.pj-grid \{ grid-template-columns:minmax\(0,1fr\) !important; \}/);
+    expect(css).not.toMatch(/\.pj-grid \{ grid-template-columns:repeat\(2/);
   });
 });
 
@@ -190,9 +219,12 @@ describe("a project's home — inside the app", () => {
     expect(html).toMatch(/class="pj-ask"><div class="ask-composer" data-ask-composer="page"/);
     expect(html).toContain('placeholder="Ask about Hosting providers"');
     expect(html).toContain('data-act="askCoSend" data-arg="page"');
-    // The chip and the foot line say what every turn here reads.
-    expect(html).toContain(">In this project<");
-    expect(html).toContain("Uses Hosting providers&#39;s instructions and 9 pinned items");
+    // "In this project" sits in the box's tool row (the design's), its tooltip saying what every turn reads; no chip
+    // above the box and no foot line on the project's own page.
+    expect(html).toMatch(/data-act="askCoSlash"[^>]*>[\s\S]*?<\/button><span class="ask-co-inproj" data-morph-key="inproj" data-mtip="Answers here read Hosting providers: its instructions and 9 pinned items">/);
+    expect(html).toContain("<span>In this project</span>");
+    expect(html).not.toContain("ask-co-chip--proj");
+    expect(html).not.toContain('class="ask-co-proj"');
     // trov.css lifts the composer's max-width under the project page.
     expect(css).toMatch(/\.pj-home \.ask-co-in \{ max-width:none; margin:0; padding-bottom:0; \}/);
     expect(css).toMatch(/\.pj-home \.ask-composer \{ padding:0; \}/);
@@ -203,6 +235,16 @@ describe("a project's home — inside the app", () => {
     expect(html).toContain('data-act="goProjects"');
     expect(html).toMatch(/›<\/span><span[^>]*>Hosting providers<\/span>/);
     expect(html).toMatch(/class="cnpy-navrow n-projects is-active"/);
+  });
+
+  it("a project the person can't open: the header is Projects alone, never a “›” with nothing after it", () => {
+    const s = app(HOSTING_DETAIL);
+    s.projects = { ...s.projects, slug: "someone-elses", detail: { status: "ok", data: null }, list: { status: "ok", data: null } };
+    const html = render(s);
+    expect(html).toContain(PROJECT_NOT_FOUND_TEXT);
+    const head = /<header class="cnpy-hdr"[\s\S]*?<\/header>/.exec(html)?.[0] ?? "";
+    expect(head).toContain(">Projects</button>");
+    expect(head).not.toContain(">›<");
   });
 
   it("an archived project's page has no composer, whatever the conversation", () => {
