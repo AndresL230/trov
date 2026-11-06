@@ -96,6 +96,9 @@ export const ORG_AUDIT_ACTIONS = [
   // A plan given for free until a date (0048_plan_gifts, src/plans/gifts.ts): given or extended; ended —
   // by the superadmin, by its date (actor `system`), or cleared because the org pays through Stripe.
   "plan.gift", "plan.gift_end",
+  // Billing (src/billing/sync.ts `upgradeOrg`): a second paid upgrade of an org that already pays was cancelled at
+  // Stripe at once; its first payment is refunded by hand (docs/architecture/billing.md).
+  "billing.duplicate",
   // A person created a Free organization of their own (src/plans/free.ts): the row is also the guard that
   // keeps them to one owned Free org at a time.
   "org.create_free",

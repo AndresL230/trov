@@ -201,6 +201,25 @@ cap): `POST /api/o/:slug/billing/upgrade` starts a checkout FOR THAT ORG (`billi
 the org's Stripe customer when it has one (an org whose earlier subscription ended) and the quantity at
 members + pending. Fulfilment is `upgradeOrg` (`src/billing/sync.ts`): `setOrgPlan(team, { seats }, source:
 billing, the new ids)` — no grant. A self-served Free org (source `granted`) becomes a billing org here.
+
+**One paid upgrade per org.** Two owners, two tabs, or Back and the button again could otherwise leave two
+checkouts open for the same org, and both could be paid. Two guards:
+
+- *At checkout start* (`closeEarlierUpgrades`, `src/billing/routes.ts`): before a new upgrade checkout is
+  made, every earlier one for the org that Stripe could still take a payment for (`billing_checkouts.for_org`,
+  a session, not completed, made in the last 25 hours) is expired at Stripe (`expireCheckoutNow`) — so only the
+  newest can be paid. One found PAID meanwhile ends it: no new checkout; its own buyer is sent to its waiting room
+  (`{ url: "/billing/done?session_id=…" }`, or the payment page's `{ ui: "complete" }`), anyone else gets 409
+  `not_free` ("its upgrade was just paid for"). A Stripe failure there is the usual 502: with an earlier
+  session's state unknown, a second is not offered. A session the payment page already holds is resumed, as
+  before, without touching it.
+- *At fulfilment* (`upgradeOrg`): an org that already pays through ANOTHER subscription that has not ended is
+  left on it. The new one is cancelled at Stripe at once (`cancelSubscriptionNow`), recorded as a
+  `billing.duplicate` row in Platform's audit trail (`{ kept, cancelled, person, refund: "by hand" }`), and the
+  event's outcome is `org_upgrade_duplicate`. **Its first payment is not refunded automatically: refund it by
+  hand in the Stripe dashboard.** The org's write itself is a compare-and-set on the subscription it was read
+  with (`setOrgPlan(…, { if_subscription })`), so two upgrades fulfilled at once land one; the other is the
+  duplicate.
 The same route serves an org whose plan is a **gift** (`plans.md` › Gifts): its owner starts paying before
 the gift's end, the paid plan takes over at once, and the gift is cleared — the date then ends nothing.
 
@@ -218,7 +237,7 @@ the gift's end, the paid plan takes over at once, and the gift is cleared — th
 
 | Event | What Trov does |
 |---|---|
-| `checkout.session.completed`, `checkout.session.async_payment_succeeded` | `fulfilCheckout`: find Trov's row for the session (none → `unknown_checkout`; a `trov_ref` that does not match → `ref_mismatch`; not paid → `not_paid`), re-read the subscription, then the grant (`grantOrganization`, with the seats) and Trov's notice — or, for an upgrade of an existing org, `setOrgPlan` on that org (`org_upgraded`) |
+| `checkout.session.completed`, `checkout.session.async_payment_succeeded` | `fulfilCheckout`: find Trov's row for the session (none → `unknown_checkout`; a `trov_ref` that does not match → `ref_mismatch`; not paid → `not_paid`), re-read the subscription, then the grant (`grantOrganization`, with the seats) and Trov's notice — or, for an upgrade of an existing org, `setOrgPlan` on that org (`org_upgraded`), or — when it already pays through another live subscription — that new one cancelled at once (`org_upgrade_duplicate`, above) |
 | `customer.subscription.created` / `.updated` / `.deleted`, `invoice.paid`, `invoice.payment_failed` | `syncSubscription`: re-read the subscription from Stripe and make Trov match it (next table) |
 | anything else | acknowledged, `ignored` |
 
@@ -319,7 +338,7 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
 - **The superadmin and a paid org.** Change plan is allowed and audited (`plan.change` by the superadmin).
   While the subscription is live the org stays a billing org and a plan that differs from the paid one is
   **pinned** (`billing_subscriptions.plan_pinned`): later events move status and period, never the plan or
-  its limits, until **Follow subscription** (`PUT …/plan { follow_subscription: true }`), which also restores
+  its limits (the plan and its pin are written in ONE batch — `setOrgPlan`'s `also`), until **Follow subscription** (`PUT …/plan { follow_subscription: true }`), which also restores
   the paid seats from the mirror. Refusing instead would leave the owner of the platform unable to fix a
   customer's org without logging in to Stripe. On an ENDED subscription (`PlatformOrgBilling.ended`),
   Change plan takes the org back as a granted one and billing stops moving it.
@@ -336,7 +355,7 @@ its own, so there is one clock and it is the one the customer's e-mails from Str
 | `GET /api/billing/config` | public | `BillingConfigResponse`: `available`, `mode`, `embedded: true` while embedded checkout is on (a flag — never the key), `plans[id] = { purchasable, intervals, href }`, `contact`, `signed_in`, `manage[]` (the caller's own paid orgs, ended ones too) |
 | `GET /api/billing/status?session_id=` | session; the caller's own checkout (else 404) | `{ state: "pending", paid }` \| `{ state: "ready", plan, grant }` \| `{ state: "done", org }` \| `{ state: "unpaid" }` \| `{ state: "ended" }` |
 | `POST /api/o/:slug/billing/portal { seats? }` | owner, cookie only, an org with a Stripe customer | `{ url }` (`seats: true` and a live subscription: the subscription-update flow); 403 `forbidden`; 409 `not_billed`; 502 `billing_failed` |
-| `POST /api/o/:slug/billing/upgrade { plan?, interval? }` | owner, cookie only, an org on Free (or a legacy `canceled` one, or one whose plan is a gift) | the button (no `ui`): `{ url }` — Stripe's page, or with embedded checkout on `/billing/checkout?…&org=<slug>` (nothing created). The payment page (`ui`, `session_id?`): `BillingCheckoutResponse`, as above, for this org. 400 `invalid_plan`; 409 `not_free`; 429; 502; 503 |
+| `POST /api/o/:slug/billing/upgrade { plan?, interval? }` | owner, cookie only, an org on Free (or a legacy `canceled` one, or one whose plan is a gift) | the button (no `ui`): `{ url }` — Stripe's page, or with embedded checkout on `/billing/checkout?…&org=<slug>` (nothing created). The payment page (`ui`, `session_id?`): `BillingCheckoutResponse`, as above, for this org. An earlier upgrade checkout for the org that was paid meanwhile: its buyer is sent to its waiting room (`{ url: "/billing/done?session_id=…" }` / `{ ui: "complete" }`), anyone else 409 `not_free`. 400 `invalid_plan`; 409 `not_free`; 429; 502; 503 |
 | `GET /api/o/:slug/plan` | any member | adds `billing: OrgBillingView \| null` (no id of Stripe's): `subscribed`, `ended`, `customer`, `interval`, `seats`, `cancel_at_period_end`, `pinned`, `upgrade_to`. Present for a billing org and for every Free org |
 | `GET /api/platform/orgs[/:slug]` | superadmin | `plan.billing` for a paid org: ids, Stripe's status, `ended`, `seats`, `pinned`, `dashboard_url` (test or live) |
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | also `{ follow_subscription: true }`; 409 `not_billed` |

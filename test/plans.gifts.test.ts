@@ -200,6 +200,21 @@ describe("expireGifts — the date passes", () => {
     expect([refused.status, refused.json.error, refused.json.limit, refused.json.next]).toEqual([402, "plan_limit", "seats", "upgrade"]);
   });
 
+  it("the date is the rule: a lapsed gift reads as Free from the instant it ends, before the sweep has run — and can still be extended", async () => {
+    await gift("saplinglearn", { plan: "team", gift: { days: 30 } });
+    await lapse("saplinglearn");
+    expect(await orgRow("saplinglearn")).toMatchObject({ plan: "team", plan_gift_until: expect.any(String) }); // the row is not swept yet
+    const owner = await boss();
+    const view = (await call<OrgPlanView>("GET", "/api/o/saplinglearn/plan", owner)).json;
+    expect(view).toMatchObject({ plan: "free", status: "active", gift_until: null });
+    expect(view.entitlements.seats).toBe(3);
+    const refused = await call<{ error: string; limit: string; plan: string }>("POST", "/api/o/saplinglearn/invites", owner, { email: "late@example.com", role: "member" });
+    expect([refused.status, refused.json.error, refused.json.limit, refused.json.plan]).toEqual([402, "plan_limit", "seats", "free"]);
+    // A superadmin may still extend it (a write reads the row as stored): the plan is back with its new end.
+    expect((await extend("saplinglearn", { days: 30 })).status).toBe(200);
+    expect((await call<OrgPlanView>("GET", "/api/o/saplinglearn/plan", owner)).json).toMatchObject({ plan: "team" });
+  });
+
   it("an org that pays through Stripe keeps its paid plan: the lapsed gift is only cleared", async () => {
     await exec(`UPDATE orgs SET plan = 'team', plan_overrides = '{"seats":6}', plan_source = 'billing', billing_subscription_id = 'sub_x', billing_customer_id = 'cus_x', plan_gift_until = ? WHERE slug = 'acme'`,
       new Date(Date.now() - DAY).toISOString());

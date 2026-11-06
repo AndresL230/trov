@@ -56,7 +56,7 @@ const auditIfChanged = (p: PlatformContext, orgId: string, action: "plan.gift" |
  */
 export async function extendOrgGift(p: PlatformContext, slug: string, length: unknown, now: number = Date.now()): Promise<OrgPlan> {
   const org = await orgBySlug(p, slug);
-  const before = await orgPlan(p, org.id);
+  const before = await orgPlan(p, org.id, { stored: true }); // a gift that lapsed a minute ago can still be extended
   if (!before.gift_until || before.source === "billing") throw new PlanError("not_gifted", "this organization's plan is not a gift");
   const until = giftEnd(length, now, Date.parse(before.gift_until));
   if (!until) throw new PlanError("invalid_gift", BAD_LENGTH);
@@ -95,7 +95,7 @@ function endStmts(p: PlatformContext, org: { id: string; slug: string; plan: Pla
  *  `not_gifted` (409) for an org that holds none. */
 export async function endOrgGift(p: PlatformContext, slug: string): Promise<OrgPlan> {
   const org = await orgBySlug(p, slug);
-  const before = await orgPlan(p, org.id);
+  const before = await orgPlan(p, org.id, { stored: true });
   if (!before.gift_until) throw new PlanError("not_gifted", "this organization's plan is not a gift");
   const res = await batch(p, endStmts(p, { ...org, plan: before.plan, gift_until: before.gift_until }, nowIso(), "ended", null));
   if ((res[0].meta.changes ?? 0) + (res[2].meta.changes ?? 0) === 0) throw new PlanError("not_gifted", "this organization's plan is not a gift");

@@ -27,8 +27,9 @@ import { sendGrantNotice } from "../notifications/grant";
 import { welcomeRecipient } from "../orgs/repo";
 import { planOfPrice, type BillingConfig } from "./config";
 import { stripeCall } from "./stripe";
+import { cancelSubscriptionNow } from "./cancel";
 import {
-  checkoutBySession, completeCheckout, getSubscription, grantOfSubscription, orgById, orgOfSubscription, putSubscription,
+  checkoutBySession, completeCheckout, getSubscription, grantOfSubscription, orgById, orgOfSubscription, putSubscription, recordDuplicateUpgrade,
   type BilledOrg, type CheckoutRow,
 } from "./store";
 
@@ -207,7 +208,7 @@ export async function fulfilCheckout(env: Env, cfg: BillingConfig, session: Chec
   const sub = await fetchSubscription(cfg, session.subscription, opts.fetchImpl);
   if (!sub) return "unreadable_subscription";
   await completeCheckout(p, row.ref, sub.id);
-  return row.for_org ? upgradeOrg(p, cfg, row, sub) : grantBuyer(env, p, cfg, row, sub, opts);
+  return row.for_org ? upgradeOrg(p, cfg, row, sub, opts) : grantBuyer(env, p, cfg, row, sub, opts);
 }
 
 async function grantBuyer(env: Env, p: PlatformContext, cfg: BillingConfig, row: CheckoutRow, sub: SubscriptionState, opts: SyncOpts): Promise<string> {
@@ -236,8 +237,15 @@ async function grantBuyer(env: Env, p: PlatformContext, cfg: BillingConfig, row:
 }
 
 /** A Free org's owner paid for Pro — one that never paid, or one whose subscription ended: a NEW
- *  subscription for the SAME org (and, when it had one, the same Stripe customer) — no grant. */
-async function upgradeOrg(p: PlatformContext, cfg: BillingConfig, row: CheckoutRow, sub: SubscriptionState): Promise<string> {
+ *  subscription for the SAME org (and, when it had one, the same Stripe customer) — no grant.
+ *
+ *  An org pays through ONE subscription. If it already pays through another LIVE one when this payment
+ *  lands — two checkouts were both paid (two owners, two tabs), or two fulfilments raced — the org is left
+ *  on the one it has, and THIS one is cancelled at Stripe at once (`cancelSubscriptionNow`: no proration, no
+ *  final invoice) so it never charges again. Its first payment is not refunded here: that is done by hand in
+ *  the Stripe dashboard, found by the `billing.duplicate` audit row (docs/architecture/billing.md). A Stripe
+ *  failure throws: the webhook answers 500 and Stripe delivers the event again. */
+async function upgradeOrg(p: PlatformContext, cfg: BillingConfig, row: CheckoutRow, sub: SubscriptionState, opts: SyncOpts): Promise<string> {
   const org = row.for_org ? await orgById(p, row.for_org) : null;
   if (!org) return "org_gone";
   const plan = planOfPrice(cfg, sub.priceId)?.plan ?? planDef(row.plan).id;
@@ -246,6 +254,24 @@ async function upgradeOrg(p: PlatformContext, cfg: BillingConfig, row: CheckoutR
   if (before.subscription_id === sub.id && before.source === "billing") return outcome;
   // Ended before fulfilment ran (an immediate cancel): the org stays as it is; the mirror row records it.
   if (planStatusOf(sub.status) === "canceled") return "org_upgrade_ended";
-  await setOrgPlan(p, org.slug, { plan, overrides: paidSeats(plan, sub.quantity), source: "billing", status: planStatusOf(sub.status), period_end: sub.periodEnd, customer_id: sub.customer, subscription_id: sub.id });
-  return "org_upgraded";
+  let kept = await liveOtherSubscription(p, before, sub.id);
+  if (!kept) {
+    // Compare-and-set on the subscription the org was read with: of two upgrades fulfilled at once, one lands.
+    const after = await setOrgPlan(p, org.slug, {
+      plan, overrides: paidSeats(plan, sub.quantity), source: "billing", status: planStatusOf(sub.status), period_end: sub.periodEnd,
+      customer_id: sub.customer, subscription_id: sub.id, if_subscription: before.subscription_id,
+    });
+    if (after.subscription_id === sub.id) return "org_upgraded";
+    kept = after.subscription_id ?? "unknown";
+  }
+  await cancelSubscriptionNow(cfg, sub.id, opts.fetchImpl);
+  await recordDuplicateUpgrade(p, org, { kept, cancelled: sub.id, person: row.person });
+  return "org_upgrade_duplicate";
+}
+
+/** The subscription, other than `subscriptionId`, that the org already pays through and that has not ended — or null. */
+async function liveOtherSubscription(p: PlatformContext, now: { source: string | null; subscription_id: string | null }, subscriptionId: string): Promise<string | null> {
+  if (now.source !== "billing" || !now.subscription_id || now.subscription_id === subscriptionId) return null;
+  const held = await getSubscription(p, now.subscription_id);
+  return held && held.plan_status !== "canceled" ? held.subscription_id : null;
 }

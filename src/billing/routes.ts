@@ -42,9 +42,10 @@ import {
 import { billingConfig, billingOffers, intervalsOf, priceFor, type BillingConfig } from "./config";
 import { StripeError, stripeCall } from "./stripe";
 import {
-  checkoutBySession, createCheckout, dropCheckout, grantOfSubscription, managedOrgs, orgById, setCheckoutSession, takeCheckoutLook,
+  checkoutBySession, createCheckout, dropCheckout, grantOfSubscription, managedOrgs, openOrgCheckouts, orgById, setCheckoutSession, takeCheckoutLook,
   type CheckoutRow,
 } from "./store";
+import { expireCheckoutNow } from "./cancel";
 import { fulfilCheckout, readCheckoutSession, sessionPaid } from "./sync";
 import { enterprisePage, rateLimitedPage, stripeFailedPage, superadminPage, unavailablePage } from "./pages";
 
@@ -81,7 +82,37 @@ async function seatQuantity(p: PlatformContext, plan: PurchasablePlan, orgId: st
 
 // ── starting a checkout ──────────────────────────────────────────────────────
 
-class CheckoutRefused extends Error { constructor(readonly why: "rate_limited" | "stripe", readonly retryAfter = 0) { super(why); } }
+/** `paid`: an earlier upgrade checkout of the same org was paid meanwhile (`closeEarlierUpgrades`) — no new one. */
+class CheckoutRefused extends Error {
+  constructor(readonly why: "rate_limited" | "stripe" | "paid", readonly retryAfter = 0, readonly paid: { sessionId: string; mine: boolean } | null = null) { super(why); }
+}
+
+/**
+ * An org is upgraded through ONE open checkout at a time. Before a new one is made for `orgId`, every earlier
+ * one Stripe could still take a payment for — another owner's, another tab's, the one left behind by Back —
+ * is expired at Stripe (`expireCheckoutNow`), so the org can never be paid for twice. One that was PAID
+ * meanwhile is returned: the caller then makes nothing (the webhook is fulfilling that one). A Stripe
+ * failure is `CheckoutRefused("stripe")`: with an earlier session's state unknown, a second could be paid too.
+ * (Fulfilment refuses a second live subscription as well — ./sync.ts `upgradeOrg` — this is the front door.)
+ */
+async function closeEarlierUpgrades(p: PlatformContext, cfg: BillingConfig, orgId: string, person: string): Promise<{ sessionId: string; mine: boolean } | null> {
+  try {
+    for (const row of await openOrgCheckouts(p, orgId)) {
+      if (!row.session_id) continue;
+      const { subscription } = await expireCheckoutNow(cfg, row.session_id);
+      if (subscription) return { sessionId: row.session_id, mine: row.person.toLowerCase() === person.toLowerCase() };
+    }
+    return null;
+  } catch (e) {
+    if (!(e instanceof StripeError)) throw e;
+    logStripe("billing upgrade: closing an earlier checkout failed", e);
+    throw new CheckoutRefused("stripe");
+  }
+}
+/** What the upgrade routes answer when an earlier checkout for the org was paid: the buyer's own goes on to
+ *  its waiting room; anyone else's is the org's "already paid" — the org moves to Pro in a moment. */
+const upgradePaid = (c: Context<AppEnv>) =>
+  c.json({ error: "not_free", message: "this organization's upgrade to Pro was just paid for; it moves to Pro in a moment" }, 409);
 
 interface CheckoutAsk { person: string; plan: PurchasablePlan; interval: BillingInterval; price: string; forOrg?: { id: string; slug: string; customer: string | null } }
 /** A session Stripe made: its page on Stripe (hosted), or the secret Trov's own page mounts it with (embedded). */
@@ -102,6 +133,11 @@ type StartedCheckout = { ui: "hosted"; url: string } | { ui: "embedded"; clientS
 async function startCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: CheckoutAsk, want: { hosted?: boolean } = {}): Promise<StartedCheckout> {
   const p = c.var.p;
   const embedded = cfg.embedded && !want.hosted;
+  // An upgrade: no earlier checkout for the org may still be paid once this one exists.
+  if (o.forOrg) {
+    const paid = await closeEarlierUpgrades(p, cfg, o.forOrg.id, o.person);
+    if (paid) throw new CheckoutRefused("paid", 0, paid);
+  }
   // Per person per day (docs/architecture/abuse-limits.md): each one is a Stripe object and a row here.
   const retryAfter = await takeLimit(p, o.person, "checkout");
   if (retryAfter !== null) throw new CheckoutRefused("rate_limited", retryAfter);
@@ -208,6 +244,10 @@ async function pageCheckout(c: Context<AppEnv>, cfg: BillingConfig, o: CheckoutA
   } catch (e) {
     if (!(e instanceof CheckoutRefused)) throw e;
     if (e.why === "stripe") return stripeFailed(c, "Trov could not reach Stripe just now. Nothing was charged. Try again in a minute.");
+    if (e.why === "paid") {
+      // The page must never offer a second payment: the buyer's own paid session → its waiting room.
+      return e.paid?.mine ? c.json({ ui: "complete", session_id: e.paid.sessionId } satisfies BillingCheckoutResponse, 200, NO_STORE) : upgradePaid(c);
+    }
     return c.json({ error: "rate_limited", retry_after: e.retryAfter }, 429, { "retry-after": String(e.retryAfter) });
   }
 }
@@ -413,6 +453,7 @@ orgBillingApp.post("/billing/upgrade", async (c) => {
   } catch (e) {
     if (!(e instanceof CheckoutRefused)) throw e;
     if (e.why === "stripe") return stripeFailed(c);
+    if (e.why === "paid") return e.paid?.mine ? c.json({ url: `${BILLING_DONE_PATH}?session_id=${encodeURIComponent(e.paid.sessionId)}` }) : upgradePaid(c);
     return c.json({ error: "rate_limited", retry_after: e.retryAfter }, 429, { "retry-after": String(e.retryAfter) });
   }
 });

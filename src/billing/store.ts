@@ -1,7 +1,7 @@
 // Billing's own rows (0045_billing): the event ledger, the checkouts Trov started, and the mirror of each
 // Stripe subscription. Platform surface only — a purchase happens before any org exists. No Stripe call
 // and no key here; the org's PLAN is never written from this file (that is the seam's, src/plans/billing.ts).
-import { type PlatformContext, first, all, run, nowIso } from "../data/platform-sql";
+import { type PlatformContext, type Stmt, first, all, run, stmt, nowIso } from "../data/platform-sql";
 import { orgLive } from "../data/suspension";
 import { planDef, PLAN_STATUSES, type PlanId, type PlanStatus } from "@shared/plans";
 import { isBillingInterval, orgBillingHref, stripeCustomerUrl, type BillingInterval, type BillingManagedOrg, type PlatformOrgBilling } from "@shared/billing";
@@ -52,6 +52,14 @@ export const checkoutBySession = (p: PlatformContext, sessionId: string): Promis
 export async function completeCheckout(p: PlatformContext, ref: string, subscriptionId: string): Promise<void> {
   await run(p, `UPDATE billing_checkouts SET subscription_id = ?, completed_at = COALESCE(completed_at, ?) WHERE ref = ?`, subscriptionId, nowIso(), ref);
 }
+/** How long after it was made Trov treats a checkout as one Stripe may still take a payment for: a
+ *  Checkout Session expires 24 hours after it is created (Trov sets no other expiry), plus an hour's margin. */
+export const CHECKOUT_OPEN_MS = 25 * 3_600_000;
+/** An org's upgrade checkouts that may still be OPEN at Stripe: made (a session exists), not yet paid. */
+export const openOrgCheckouts = (p: PlatformContext, orgId: string, now: number = Date.now()): Promise<Pick<CheckoutRow, "ref" | "person" | "session_id">[]> =>
+  all<Pick<CheckoutRow, "ref" | "person" | "session_id">>(p,
+    `SELECT ref, person, session_id FROM billing_checkouts WHERE for_org = ? AND subscription_id IS NULL AND session_id IS NOT NULL AND created_at > ?
+      ORDER BY created_at`, orgId, new Date(now - CHECKOUT_OPEN_MS).toISOString());
 /** The waiting room may look at Stripe for one session at most once per `everyMs`: true = this caller's turn. */
 export async function takeCheckoutLook(p: PlatformContext, ref: string, everyMs: number, now: number = Date.now()): Promise<boolean> {
   const res = await run(p, `UPDATE billing_checkouts SET checked_at = ?1 WHERE ref = ?2 AND (checked_at IS NULL OR checked_at <= ?3)`,
@@ -90,9 +98,9 @@ export async function putSubscription(p: PlatformContext, s: SubscriptionWrite):
        livemode = excluded.livemode, quantity = excluded.quantity, updated_at = excluded.updated_at`,
     s.subscription_id, s.customer_id, s.person, s.plan, s.price_id, s.interval, s.stripe_status, s.plan_status, s.period_end, s.cancel_at_period_end ? 1 : 0, s.livemode ? 1 : 0, at, s.quantity);
 }
-export async function setPlanPinned(p: PlatformContext, subscriptionId: string, pinned: boolean): Promise<void> {
-  await run(p, `UPDATE billing_subscriptions SET plan_pinned = ?, updated_at = ? WHERE subscription_id = ?`, pinned ? 1 : 0, nowIso(), subscriptionId);
-}
+/** The superadmin's pin as a statement, for the batch that changes the plan (src/plans/routes.ts): both land, or neither. */
+export const planPinnedStmt = (p: PlatformContext, subscriptionId: string, pinned: boolean): Stmt =>
+  stmt(p, `UPDATE billing_subscriptions SET plan_pinned = ?, updated_at = ? WHERE subscription_id = ?`, pinned ? 1 : 0, nowIso(), subscriptionId);
 
 // ── the org a subscription pays for ──────────────────────────────────────────
 
@@ -101,6 +109,14 @@ export const orgOfSubscription = (p: PlatformContext, subscriptionId: string): P
   first<BilledOrg>(p, `SELECT id, slug, name, plan_source FROM orgs WHERE billing_subscription_id = ?`, subscriptionId);
 export const orgById = (p: PlatformContext, id: string): Promise<BilledOrg | null> =>
   first<BilledOrg>(p, `SELECT id, slug, name, plan_source FROM orgs WHERE id = ?`, id);
+
+/** The record of a SECOND paid upgrade, cancelled at Stripe because the org already pays through `kept`
+ *  (./sync.ts `upgradeOrg`): what an operator looks up to refund its first payment by hand. Platform's
+ *  audit trail only — the org's own Audit tab lists repository, environment and integration changes. */
+export async function recordDuplicateUpgrade(p: PlatformContext, org: { id: string; slug: string }, d: { kept: string; cancelled: string; person: string }): Promise<void> {
+  await run(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'billing.duplicate', ?, ?, ?)`,
+    org.id, p.actor, org.slug, JSON.stringify({ kept: d.kept, cancelled: d.cancelled, person: d.person, refund: "by hand" }), nowIso());
+}
 
 /** The grant a payment made, by the subscription it is for (`org_grants.external_ref`), with the org it became. */
 export interface PaidGrant { id: number; plan: string; status: "unused" | "used" | "revoked"; org_slug: string | null; org_name: string | null }

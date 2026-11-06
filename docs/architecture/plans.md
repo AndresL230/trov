@@ -82,7 +82,8 @@ row for it*, and a row is only ever written through `requirePlan` in THAT organi
   into an organization takes a slot there (or the call is refused with `plan_limit`, having read and written
   nothing); it never takes one in an organization it was not used in. Asking where it is (`get_connection`)
   takes nothing.
-- A slot is given back when the connection is revoked (the `oauth_grants_revoked_au` trigger drops its rows),
+- A slot is given back when the connection is revoked (the `oauth_grants_revoked_au` trigger drops its rows —
+  an abandoned consent, whose code was never exchanged, is revoked by `pruneOAuth` after an hour),
   when its person takes that organization out of it (manual), when it is changed to follow the repository
   (all its rows go), or when its person leaves the organization (`removeMember`).
 
@@ -355,7 +356,11 @@ the future and at most three years away. Platform's presets (`GIFT_PRESETS`) are
   to run twice or late, and a payment, an extension or a plan change that lands between the cron's read and
   its write wins. An org that pays (`plan_source = 'billing'`) only has the lapsed gift CLEARED
   (`reason: "paid"`); its plan is left alone. It never throws out of the cron: a failed org is counted and
-  retried on the next tick. Precision is the tick: an org moves within about ten minutes of its end.
+  retried on the next tick. The ROW moves within about ten minutes of its end, but the date is the rule: from
+  the instant a gift lapses every read of the plan (`planOf` — the gates, the Plan view, billing's upgrade
+  check) treats it as what the sweep will write — Free, active, no overrides, no gift — so nothing a Free org
+  could not add is admitted in between. A plan WRITE reads the row as stored (`orgPlan(…, { stored: true })`),
+  so a gift that lapsed a minute ago can still be extended, and the audit says what it was.
 - **A gifted grant** — `POST /api/platform/grants { …, gift_days }` (1–1,095; refused on Free and on a paid
   grant, 400 `invalid_grant`). The clock starts when the grantee CREATES the organization: the creating batch
   sets `plan_gift_until = created + gift_days` (`grantGiftStmts`) and audits `plan.gift` with the grant's id.
@@ -424,6 +429,11 @@ migration.
    status the table's `org_grant_usable` CHECK refuses when it is not, which aborts the batch: a double
    submit, or a grant revoked or expired while the form was open, creates nothing (403 `no_grant`).
 4. **Revoked / expired** — `POST /api/platform/grants/:id/revoke` for an unused one (409 `grant_used` after).
+   Not a PAID one whose subscription still charges (409 `grant_paid`): revoking it would leave the card charged
+   for nothing. Cancel the subscription in Stripe; its webhook revokes the grant. A paid grant whose
+   subscription has ENDED is unusable at once — the consuming UPDATE reads the mirror's `canceled` (`consumeStmt`),
+   so naming the org in the instant before billing revokes the grant is refused (`no_grant`), never an org on a
+   plan nothing pays for.
    `expires_in_days` is optional (1–365; the default is never); "expired" is derived, the row is not
    rewritten.
 5. **Deleted with what it became** (`organizations.md` §8) — deleting an organization deletes the grant it was
@@ -447,7 +457,7 @@ person before any org exists. `org_grants.used_org` is deliberately not named `o
 | `POST /api/orgs` | holds a usable grant, or may own a Free org | 201 the org; 403 `no_grant` (a grant that is not theirs, a superadmin); 403 `free_org_limit` |
 | `GET /api/platform/grants` | superadmin | `{ grants: PlatformGrant[] }` |
 | `POST /api/platform/grants` | superadmin | 201 `{ ok, grant }`; 400 `invalid_grant`; 404 `no_such_person` |
-| `POST /api/platform/grants/:id/revoke` | superadmin | `{ ok, grant }`; 404; 409 `grant_used` |
+| `POST /api/platform/grants/:id/revoke` | superadmin | `{ ok, grant }`; 404; 409 `grant_used`; 409 `grant_paid` (its subscription still charges) |
 | `PUT /api/platform/orgs/:slug/plan` | superadmin | `{ ok, org }` (the Platform row, with `plan` and `plan.gift`); 400 `invalid_plan` / `invalid_overrides`; with `gift`: 400 `invalid_gift`, 409 `billed` |
 | `POST /api/platform/orgs/:slug/gift/extend` | superadmin | `{ ok, org }`; 400 `invalid_gift`; 409 `not_gifted` |
 | `POST /api/platform/orgs/:slug/gift/end` | superadmin | `{ ok, org }` (now on Free); 409 `not_gifted` |
