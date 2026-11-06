@@ -21,6 +21,7 @@ import {
   type OrgMember, type OrgInvite, type OrgMeResponse, type OrgLogoSource, type InviteMailStatus, INVITE_NAME_MAX, orgLogoSrc, orgLogoOf,
 } from "@shared/orgs";
 import { auditStmt } from "./audit";
+import { orgLive } from "../data/suspension";
 
 export type OrgErrorCode =
   | "invalid_slug" | "reserved_slug" | "invalid_name" | "invalid_invite" | "invalid_member"
@@ -151,7 +152,7 @@ export async function listMyOrgs(p: PlatformContext, handle: string): Promise<My
     `SELECT o.slug, o.name, m.role, o.logo_sha, o.plan, o.sample,
             (o.plan_source = 'billing' AND o.billing_subscription_id IS NOT NULL AND o.plan <> '${FREE_PLAN}' AND o.plan_status <> 'canceled') AS paid
        FROM memberships m JOIN orgs o ON o.id = m.org_id
-      WHERE m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
+      WHERE m.user_id = ? COLLATE NOCASE AND ${orgLive("o")} ORDER BY o.name COLLATE NOCASE ASC`, handle);
   return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r), plan: planDef(r.plan).id, paid: r.paid === 1, ...(r.sample === 1 ? { sample: true } : {}) }));
 }
 
@@ -168,7 +169,7 @@ const MINE = `(
   OR i.email IN (SELECT verified_email FROM identities WHERE person = ?1 COLLATE NOCASE AND verified_email IS NOT NULL))`;
 const INVITE_JOIN = `SELECT i.id, i.org_id, o.slug, o.name, o.logo_sha, i.role, i.as_owner, i.invited_by, i.created_at, i.github_login, i.email
   FROM org_invites i JOIN orgs o ON o.id = i.org_id
- WHERE i.status = 'pending' AND o.suspended_at IS NULL AND ${MINE}`;
+ WHERE i.status = 'pending' AND ${orgLive("o")} AND ${MINE}`;
 
 const grantedRole = (r: { role: "admin" | "member"; as_owner: number }): OrgRole => (r.as_owner ? "owner" : r.role);
 

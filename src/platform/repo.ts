@@ -192,8 +192,9 @@ export async function platformOrgPeople(p: PlatformContext, orgId: string): Prom
 
 // ── suspend / unsuspend ──────────────────────────────────────────────────────
 
-/** Suspended: the tenant gates answer 404 to its members and its bearer tokens stop resolving
- *  (src/data/suspension.ts). No row is touched but the org's own. Idempotent. */
+/** Suspended: the tenant gates answer 404 to its members and its bearer tokens stop resolving — every
+ *  statement that asks says it with `orgLive` (src/data/suspension.ts). No row is touched but the org's own.
+ *  Idempotent. */
 export async function setSuspended(p: PlatformContext, slug: string, suspended: boolean): Promise<void> {
   const org = await getOrgBySlug(p, slug);
   if (!org) throw new PlatformError("not_found");

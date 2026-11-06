@@ -19,6 +19,7 @@ import { type TenantContext, first as tenantFirst, run as tenantRun } from "../d
 import { randomToken, sha256Hex, pkceChallenge } from "./crypto";
 import { MCP_INVALID_TOKEN_HINT, MCP_UNAUTHORIZED_HINT } from "@shared/error-hints";
 import type { OAuthGrantSummary } from "@shared/rows";
+import { orgLive } from "../data/suspension";
 
 export const ACCESS_PREFIX = "trov_oat_";
 export const REFRESH_PREFIX = "trov_ort_";
@@ -300,9 +301,9 @@ const GRANT_STANDING = `g.org_id, g.mode, g.revoked_at,
     ELSE EXISTS (SELECT 1 FROM oauth_grant_orgs a JOIN memberships m ON m.org_id = a.org_id AND m.user_id = g.person COLLATE NOCASE WHERE a.grant_id = g.id)
   END AS member,
   CASE g.mode WHEN 'repo'
-    THEN EXISTS (SELECT 1 FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = g.person COLLATE NOCASE AND o.suspended_at IS NULL)
+    THEN EXISTS (SELECT 1 FROM memberships m JOIN orgs o ON o.id = m.org_id WHERE m.user_id = g.person COLLATE NOCASE AND ${orgLive("o")})
     ELSE EXISTS (SELECT 1 FROM oauth_grant_orgs a JOIN memberships m ON m.org_id = a.org_id AND m.user_id = g.person COLLATE NOCASE
-                   JOIN orgs o ON o.id = a.org_id WHERE a.grant_id = g.id AND o.suspended_at IS NULL)
+                   JOIN orgs o ON o.id = a.org_id WHERE a.grant_id = g.id AND ${orgLive("o")})
   END AS reachable`;
 interface GrantStanding { org_id: string; mode: GrantMode; revoked_at: string | null; member: number; reachable: number }
 
@@ -422,7 +423,7 @@ export async function listGrants(p: PlatformContext, handle: string): Promise<OA
   const orgs = await all<{ grant_id: number; org_id: string; slug: string; name: string }>(p,
     `SELECT a.grant_id, a.org_id, o.slug, o.name FROM oauth_grant_orgs a JOIN oauth_grants g ON g.id = a.grant_id
        JOIN orgs o ON o.id = a.org_id JOIN memberships m ON m.org_id = a.org_id AND m.user_id = g.person COLLATE NOCASE
-      WHERE g.person = ? COLLATE NOCASE AND g.revoked_at IS NULL AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
+      WHERE g.person = ? COLLATE NOCASE AND g.revoked_at IS NULL AND ${orgLive("o")} ORDER BY o.name COLLATE NOCASE ASC`, handle);
   return rows.map((r) => {
     const mine = orgs.filter((o) => o.grant_id === r.id);
     const mode: GrantMode = r.mode === "repo" ? "repo" : "manual";

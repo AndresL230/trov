@@ -2,6 +2,7 @@
 // Stripe subscription. Platform surface only — a purchase happens before any org exists. No Stripe call
 // and no key here; the org's PLAN is never written from this file (that is the seam's, src/plans/billing.ts).
 import { type PlatformContext, first, all, run, nowIso } from "../data/platform-sql";
+import { orgLive } from "../data/suspension";
 import { planDef, PLAN_STATUSES, type PlanId, type PlanStatus } from "@shared/plans";
 import { isBillingInterval, orgBillingHref, stripeCustomerUrl, type BillingInterval, type BillingManagedOrg, type PlatformOrgBilling } from "@shared/billing";
 
@@ -133,7 +134,7 @@ export async function platformBillingBySlug(p: PlatformContext, slug?: string): 
 export async function managedOrgs(p: PlatformContext, handle: string): Promise<BillingManagedOrg[]> {
   const rows = await all<{ slug: string; name: string; plan: string; plan_status: string }>(p,
     `SELECT o.slug, o.name, o.plan, o.plan_status FROM memberships m JOIN orgs o ON o.id = m.org_id
-      WHERE m.user_id = ? COLLATE NOCASE AND m.role = 'owner' AND o.suspended_at IS NULL AND o.plan_source = 'billing' AND o.billing_subscription_id IS NOT NULL
+      WHERE m.user_id = ? COLLATE NOCASE AND m.role = 'owner' AND ${orgLive("o")} AND o.plan_source = 'billing' AND o.billing_subscription_id IS NOT NULL
       ORDER BY o.created_at ASC`, handle);
   return rows.map((r) => ({ slug: r.slug, name: r.name, plan: planDef(r.plan).id, status: asStatus(r.plan_status), href: orgBillingHref(r.slug) }));
 }

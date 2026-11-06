@@ -22,6 +22,7 @@ import type { Env } from "../env";
 import { sha256Hex } from "../auth/crypto";
 import { platform, systemTenant } from "../data/context";
 import { type PlatformContext, first } from "../data/platform-sql";
+import { orgLive } from "../data/suspension";
 import { artifactErrorResponse, jsonResponse, NOT_FOUND_BODY } from "./http";
 
 export const UPLOAD_PREFIX = "/api/artifacts/upload/";
@@ -55,7 +56,7 @@ async function uploadTokenOrg(p: PlatformContext, token: string): Promise<string
        SELECT org_id FROM handoff_upload_tokens WHERE token_hash = ?
        UNION ALL
        SELECT org_id FROM artifact_upload_tokens WHERE token_hash = ?
-     ) t JOIN orgs o ON o.id = t.org_id AND o.suspended_at IS NULL LIMIT 1`, hash, hash, hash);
+     ) t JOIN orgs o ON o.id = t.org_id AND ${orgLive("o")} LIMIT 1`, hash, hash, hash);
   return row?.org_id ?? null;
 }
 

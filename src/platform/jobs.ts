@@ -12,10 +12,11 @@
 import type { Env } from "../env";
 import { platform, systemTenant, type PlatformContext, type TenantContext } from "../data/context";
 import { all, first, nowIso, run } from "../data/platform-sql";
+import { orgLive, orgSuspended } from "../data/suspension";
 
 /** Every org that is not suspended (nor a sample), by id — the digest cron's list. */
 export async function listActiveOrgIds(p: PlatformContext): Promise<string[]> {
-  return (await all<{ id: string }>(p, `SELECT id FROM orgs WHERE suspended_at IS NULL AND sample = 0 ORDER BY id`)).map((r) => r.id);
+  return (await all<{ id: string }>(p, `SELECT id FROM orgs WHERE ${orgLive()} AND sample = 0 ORDER BY id`)).map((r) => r.id);
 }
 
 export interface EnvUnit { org_id: string; key: string }
@@ -26,7 +27,7 @@ export interface EnvUnit { org_id: string; key: string }
 export function listEnvUnits(p: PlatformContext): Promise<EnvUnit[]> {
   return all<EnvUnit>(p,
     `SELECT e.org_id, e.key FROM org_environments e JOIN orgs o ON o.id = e.org_id
-      WHERE o.suspended_at IS NULL AND o.sample = 0 ORDER BY e.org_id, e.position`);
+      WHERE ${orgLive("o")} AND o.sample = 0 ORDER BY e.org_id, e.position`);
 }
 
 export interface RepoUnit { org_id: string; envs: number }
@@ -37,7 +38,7 @@ export function listRepoUnits(p: PlatformContext): Promise<RepoUnit[]> {
   return all<RepoUnit>(p,
     `SELECT r.org_id, (SELECT COUNT(*) FROM org_environments e WHERE e.org_id = r.org_id) AS envs
        FROM org_repos r JOIN orgs o ON o.id = r.org_id
-      WHERE r.is_primary = 1 AND o.suspended_at IS NULL AND o.sample = 0 ORDER BY r.org_id`);
+      WHERE r.is_primary = 1 AND ${orgLive("o")} AND o.sample = 0 ORDER BY r.org_id`);
 }
 
 export interface PartUnit { org_id: string; env_key: string; part_key: string; provider: string }
@@ -52,7 +53,7 @@ export function listPartUnits(p: PlatformContext): Promise<PartUnit[]> {
     `SELECT pt.org_id, pt.env_key, pt.part_key, pt.provider FROM org_environment_parts pt
        JOIN org_environments e ON e.org_id = pt.org_id AND e.key = pt.env_key
        JOIN orgs o ON o.id = pt.org_id
-      WHERE o.suspended_at IS NULL AND o.sample = 0 ORDER BY pt.org_id, e.position, pt.position, pt.part_key`);
+      WHERE ${orgLive("o")} AND o.sample = 0 ORDER BY pt.org_id, e.position, pt.position, pt.part_key`);
 }
 
 export interface HookRepo { id: string; org_id: string; repo_full_name: string; is_primary: number }
@@ -61,7 +62,7 @@ const HOOK_COLS = `r.id, r.org_id, r.repo_full_name, r.is_primary`;
 /** The repo a per-org webhook URL names (`/webhook/github/<org_repos.id>`), or null. */
 export function hookRepo(p: PlatformContext, hookId: string): Promise<HookRepo | null> {
   return first<HookRepo>(p,
-    `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id WHERE r.id = ? AND o.suspended_at IS NULL AND o.sample = 0`, hookId);
+    `SELECT ${HOOK_COLS} FROM org_repos r JOIN orgs o ON o.id = r.org_id WHERE r.id = ? AND ${orgLive("o")} AND o.sample = 0`, hookId);
 }
 
 // ── the GitHub App: which orgs an installation is connected to (0043_github_app, 0053_installation_repos) ──
@@ -78,7 +79,7 @@ export interface InstallationOrg { org_id: string; org_slug: string; org_suspend
  */
 export function installationOrgs(p: PlatformContext, installationId: number): Promise<InstallationOrg[]> {
   return all<InstallationOrg>(p,
-    `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended
+    `SELECT i.org_id, o.slug AS org_slug, (${orgSuspended("o")}) AS org_suspended
        FROM org_github_installations i JOIN orgs o ON o.id = i.org_id
       WHERE i.installation_id = ? AND i.removed_at IS NULL ORDER BY i.id`, installationId);
 }
@@ -93,7 +94,7 @@ export interface InstallationRepoOrg extends InstallationOrg { repo_full_name: s
  */
 export function installationRepoOrgs(p: PlatformContext, installationId: number, repo: string): Promise<InstallationRepoOrg[]> {
   return all<InstallationRepoOrg>(p,
-    `SELECT i.org_id, o.slug AS org_slug, (o.suspended_at IS NOT NULL) AS org_suspended, r.repo_full_name, r.is_primary
+    `SELECT i.org_id, o.slug AS org_slug, (${orgSuspended("o")}) AS org_suspended, r.repo_full_name, r.is_primary
        FROM org_github_installations i JOIN orgs o ON o.id = i.org_id JOIN org_repos r ON r.org_id = i.org_id
       WHERE i.installation_id = ? AND i.removed_at IS NULL AND r.repo_full_name = ?
         AND (i.repo_access = 'all' OR EXISTS (SELECT 1 FROM org_github_installation_repos a
@@ -126,7 +127,7 @@ export function connectionsForExternalId(p: PlatformContext, provider: string, e
 export function connectionsForAccount(p: PlatformContext, provider: string, accountId: string): Promise<{ org_id: string }[]> {
   return all<{ org_id: string }>(p,
     `SELECT DISTINCT c.org_id FROM org_hosting_connections c JOIN orgs o ON o.id = c.org_id
-      WHERE c.provider = ? AND c.account_id = ? AND c.status = 'active' AND o.suspended_at IS NULL ORDER BY c.org_id LIMIT 5`, provider, accountId);
+      WHERE c.provider = ? AND c.account_id = ? AND c.status = 'active' AND ${orgLive("o")} ORDER BY c.org_id LIMIT 5`, provider, accountId);
 }
 
 /**
@@ -139,7 +140,7 @@ export function connectionsForAccount(p: PlatformContext, provider: string, acco
 export async function adminOrgForInstallation(p: PlatformContext, provider: string, externalId: string, handle: string): Promise<string | null> {
   const row = await first<{ slug: string }>(p,
     `SELECT o.slug FROM org_hosting_connections c JOIN orgs o ON o.id = c.org_id JOIN memberships m ON m.org_id = c.org_id
-      WHERE c.provider = ? AND c.external_id = ? AND c.status = 'active' AND o.suspended_at IS NULL
+      WHERE c.provider = ? AND c.external_id = ? AND c.status = 'active' AND ${orgLive("o")}
         AND m.user_id = ? COLLATE NOCASE AND m.role IN ('owner', 'admin') ORDER BY o.slug LIMIT 1`, provider, externalId, handle);
   return row?.slug ?? null;
 }

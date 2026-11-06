@@ -3,6 +3,7 @@
 // names its organization only inside `custom_id` (`<org>:<scope>:<key>:<prompt version>`). Every request row is
 // deleted when its batch is collected, so nothing here outlives a batch. Nothing here calls a model.
 import { all, batch, chunked, ph, run, stmt, type PlatformContext } from "./platform-sql";
+import { orgLive } from "./suspension";
 
 export interface OpenBatch { id: string; submitted_at: string }
 export interface BatchRequestRow { request_id: string; custom_id: string; job: string }
@@ -54,7 +55,7 @@ export async function closeBatch(
 export async function orgsStillOn(p: PlatformContext, orgIds: readonly string[]): Promise<Set<string>> {
   const out = new Set<string>();
   for (const ids of chunked([...new Set(orgIds)])) {
-    const rows = await all<{ id: string }>(p, `SELECT id FROM orgs WHERE id IN (${ph(ids.length)}) AND suspended_at IS NULL AND ai_automation = 1`, ...ids);
+    const rows = await all<{ id: string }>(p, `SELECT id FROM orgs WHERE id IN (${ph(ids.length)}) AND ${orgLive()} AND ai_automation = 1`, ...ids);
     for (const r of rows) out.add(r.id);
   }
   return out;
