@@ -29,7 +29,7 @@ import { memberHandle, resolvePersonForLogin } from "../auth/persons";
 import { takeLimit } from "../platform/limits";
 import { orgAppBase } from "./org-links";
 import {
-  ASK_THREAD_SESSION_PREFIX, LINK_DRAFT_TTL_MS, LINK_INBOX_BATCH, LINK_LIVE_MAX, LINK_NOTE_MAX, LINK_NOTES_PER_SIDE,
+  ASK_THREAD_SESSION_PREFIX, LINK_DRAFT_TTL_MS, LINK_IDLE_MS, LINK_INBOX_BATCH, LINK_LIVE_MAX, LINK_LIVE_SQL, LINK_NOTE_MAX, LINK_NOTES_PER_SIDE, linkOpenSql,
   LINK_OPEN_TTL_MS, LINK_REASON_MAX, LINK_REQUEST_TTL_MS, LINK_EXCERPT_MAX, linkTopicLabel,
   type LinkBox, type LinkPreview, type LinkDetail, type LinkNoteAuthorKind, type LinkNoteView, type LinkSideKind, type LinkSideName,
   type LinkState, type LinkTopicKind, type LinkView,
@@ -164,6 +164,12 @@ const linkRow = (ctx: TenantContext, number: number) =>
   first<LinkRow>(ctx, `SELECT * FROM agent_links WHERE number = ? AND org_id = ?`, number, ctx.orgId);
 
 const at = (ms: number) => new Date(ms).toISOString();
+/** The idle bound for `linkOpenSql`: a link with no sign of life since this is idle (the cron ends it). */
+const idleCut = (ms: number) => at(ms - LINK_IDLE_MS);
+/** An open link that is past its `expires_at`, or idle 12 h, is already ended for every reader and writer — the cron
+ *  only catches up with it (`expireDueLinks`). The row-side twin of `linkOpenSql`. */
+const lapsed = (r: LinkRow, nowMs: number): boolean =>
+  r.expires_at <= at(nowMs) || (r.state === "open" && [r.decided_at ?? "", r.requester_seen_at ?? "", r.recipient_seen_at ?? ""].reduce((a, b) => (a > b ? a : b)) < idleCut(nowMs));
 
 /**
  * How many live links `?2` holds in org `?1` — what the 5-link cap counts: links they SENT that are requested or
@@ -464,6 +470,7 @@ export async function sendLinkNote(
   const onReq = same(r.requester, actor), onRec = same(r.recipient, actor);
   if (!onReq && !onRec) throw new LinkError("forbidden", "only the link's two people can write on it");
   if (r.state !== "open") throw new LinkError("conflict", `link is ${r.state}`);
+  if (lapsed(r, nowMs)) throw new LinkError("conflict", "link has expired");
   let side: LinkSideName;
   if (session === null) {
     if (i.side && (i.side === "requester" ? !onReq : !onRec)) throw new LinkError("forbidden", `you are not the link's ${i.side}`);
@@ -482,12 +489,13 @@ export async function sendLinkNote(
   const res = await run(ctx,
     `INSERT INTO agent_link_notes (org_id, link_number, side, author, author_kind, author_agent_session, body, created_at)
      SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
-      WHERE EXISTS (SELECT 1 FROM agent_links l WHERE l.org_id = ?1 AND l.number = ?2 AND l.state = 'open')
+      WHERE EXISTS (SELECT 1 FROM agent_links l WHERE l.org_id = ?1 AND l.number = ?2 AND ${linkOpenSql("l", "?8", "?10")})
         AND (SELECT COUNT(*) FROM agent_link_notes c WHERE c.org_id = ?1 AND c.link_number = ?2 AND c.side = ?3) < ?9`,
-    ctx.orgId, r.number, side, actor, NOTE_AUTHOR[via], session, i.body, at(nowMs), LINK_NOTES_PER_SIDE);
+    ctx.orgId, r.number, side, actor, NOTE_AUTHOR[via], session, i.body, at(nowMs), LINK_NOTES_PER_SIDE, idleCut(nowMs));
   if (!res.meta.changes) {
     const now = await linkRow(ctx, r.number);
     if (now && now.state !== "open") throw new LinkError("conflict", `link is ${now.state}`);
+    if (now && lapsed(now, nowMs)) throw new LinkError("conflict", "link has expired");
     throw new LinkError("limit", `at most ${LINK_NOTES_PER_SIDE} notes per side on a link`);
   }
   // An agent or Ask writing is that side being there; a person's note says nothing about their agent.
@@ -520,7 +528,9 @@ interface StampRow { number: number; requester: string; recipient: string; topic
 
 /**
  * The notes waiting for `session`: on the org's OPEN links where the actor's side is bound to it, written from
- * the OTHER side and not yet delivered. They are marked delivered as they are read, at most
+ * the OTHER side and not yet delivered. "Open" is `linkOpenSql`: a link past its `expires_at` or idle for 12 h is
+ * already ended here, before the cron flips it. A note still undelivered when its link ends is NOT handed over by
+ * any later read — it stays in the link's thread, on the link's page (`getLink`), for its two people. They are marked delivered as they are read, at most
  * `LINK_INBOX_BATCH` per read, oldest first; the rest are counted and wait for the next read.
  *
  * Cost. The first statement is the whole read when nothing is waiting: it stamps the side as seen (what the
@@ -536,24 +546,24 @@ export async function readInbox(ctx: TenantContext, actor: string, session: stri
     `UPDATE agent_links
         SET requester_seen_at = CASE WHEN requester = ?2 AND requester_agent_session = ?3 THEN ?4 ELSE requester_seen_at END,
             recipient_seen_at = CASE WHEN recipient = ?2 AND recipient_agent_session = ?3 THEN ?4 ELSE recipient_seen_at END
-      WHERE org_id = ?1 AND state = 'open'
+      WHERE org_id = ?1 AND ${linkOpenSql("agent_links", "?4", "?5")}
         AND ((requester = ?2 AND requester_agent_session = ?3) OR (recipient = ?2 AND recipient_agent_session = ?3))
       RETURNING number, requester, recipient, topic_kind, topic_ref,
         (SELECT COUNT(*) FROM agent_link_notes n WHERE n.org_id = ?1 AND n.link_number = agent_links.number AND n.delivered_at IS NULL
             AND n.side = CASE WHEN agent_links.requester = ?2 AND agent_links.requester_agent_session = ?3 THEN 'recipient' ELSE 'requester' END) AS waiting`,
-    ctx.orgId, actor, session, now);
+    ctx.orgId, actor, session, now, idleCut(nowMs));
   const waiting = links.reduce((sum, l) => sum + l.waiting, 0);
   if (!waiting) return { notes: [], more: 0 };
   const rows = await all<NoteRow>(ctx,
     `UPDATE agent_link_notes SET delivered_at = ?4
       WHERE org_id = ?1 AND delivered_at IS NULL AND id IN (
         SELECT n.id FROM agent_link_notes n JOIN agent_links l ON l.org_id = n.org_id AND l.number = n.link_number
-         WHERE n.org_id = ?1 AND l.org_id = ?1 AND l.state = 'open' AND n.delivered_at IS NULL
+         WHERE n.org_id = ?1 AND l.org_id = ?1 AND ${linkOpenSql("l", "?4", "?6")} AND n.delivered_at IS NULL
            AND ((l.requester = ?2 AND l.requester_agent_session = ?3 AND n.side = 'recipient')
              OR (l.recipient = ?2 AND l.recipient_agent_session = ?3 AND n.side = 'requester'))
          ORDER BY n.id LIMIT ?5)
       RETURNING id, link_number, side, author, author_kind, body, created_at, delivered_at`,
-    ctx.orgId, actor, session, now, LINK_INBOX_BATCH);
+    ctx.orgId, actor, session, now, LINK_INBOX_BATCH, idleCut(nowMs));
   const byNumber = new Map(links.map((l) => [l.number, l]));
   const notes = rows.sort((a, b) => a.id - b.id).flatMap((n): InboxNote[] => {
     const l = byNumber.get(n.link_number);
@@ -647,16 +657,16 @@ export interface AskThreadLinkNotes { thread: number; id: number; with: string; 
  * `readInbox` would hand over for that session: the reader's side is the one the note was NOT written from. Reads
  * only; delivery happens in the turn.
  */
-export async function askThreadLinkNotes(ctx: TenantContext, actor: string): Promise<AskThreadLinkNotes[]> {
+export async function askThreadLinkNotes(ctx: TenantContext, actor: string, nowMs = Date.now()): Promise<AskThreadLinkNotes[]> {
   const rows = await all<{ session: string; number: number; other: string; requester: string; recipient: string; n: number }>(ctx,
     `SELECT CASE WHEN n.side = 'recipient' THEN l.requester_agent_session ELSE l.recipient_agent_session END AS session,
             l.number, CASE WHEN n.side = 'recipient' THEN l.recipient ELSE l.requester END AS other, l.requester, l.recipient, COUNT(*) AS n
        FROM agent_link_notes n JOIN agent_links l ON l.org_id = n.org_id AND l.number = n.link_number
-      WHERE n.org_id = ?1 AND l.org_id = ?1 AND l.state = 'open' AND n.delivered_at IS NULL
+      WHERE n.org_id = ?1 AND l.org_id = ?1 AND ${linkOpenSql("l", "?3", "?4")} AND n.delivered_at IS NULL
         AND ((n.side = 'recipient' AND l.requester = ?2 AND l.requester_agent_session LIKE '${ASK_THREAD_SESSION_PREFIX}%')
           OR (n.side = 'requester' AND l.recipient = ?2 AND l.recipient_agent_session LIKE '${ASK_THREAD_SESSION_PREFIX}%'))
       GROUP BY session, l.number
-      ORDER BY l.number`, ctx.orgId, actor);
+      ORDER BY l.number`, ctx.orgId, actor, at(nowMs), idleCut(nowMs));
   return rows.flatMap((r) => {
     const thread = Number(r.session.slice(ASK_THREAD_SESSION_PREFIX.length));
     return Number.isInteger(thread) && thread > 0
@@ -673,7 +683,7 @@ const BOX_WHERE: Record<LinkBox, string> = {
   mine: "state IN ('draft', 'requested') AND requester = ?1",
   open: "state = 'open' AND (requester = ?1 OR recipient = ?1)",
   unbound: "state = 'open' AND ((requester = ?1 AND requester_agent_session IS NULL) OR (recipient = ?1 AND recipient_agent_session IS NULL))",
-  closed: "state IN ('declined', 'cancelled', 'closed', 'expired') AND (requester = ?1 OR recipient = ?1)",
+  closed: `state NOT IN ${LINK_LIVE_SQL} AND (requester = ?1 OR recipient = ?1)`,
 };
 /** A box lists at most this many, most recent first (the live boxes hold far fewer: the cap is 5). */
 const LIST_MAX = 50;
@@ -727,7 +737,7 @@ export async function linkPreviews(ctx: TenantContext, actor: string, numbers: n
  */
 export async function listLiveLinks(ctx: TenantContext, actor: string): Promise<Record<Exclude<LinkBox, "closed">, LinkView[]>> {
   const rows = await all<LinkRow>(ctx,
-    `SELECT * FROM agent_links WHERE org_id = ? AND state IN ('draft', 'requested', 'open') AND (requester = ? OR recipient = ?)
+    `SELECT * FROM agent_links WHERE org_id = ? AND state IN ${LINK_LIVE_SQL} AND (requester = ? OR recipient = ?)
       ORDER BY created_at DESC, id DESC`, ctx.orgId, actor, actor);
   const out: Record<Exclude<LinkBox, "closed">, LinkView[]> = { waiting: [], mine: [], open: [], unbound: [] };
   for (const r of rows) {

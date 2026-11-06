@@ -37,6 +37,7 @@ import {
   TOMBSTONE_NAME, TOMBSTONE_PREFIX, type AccountBlocker, type AccountDeletionPreview, type DeletionBy, type OrgRef,
 } from "@shared/deletion-core";
 import type { OrgRole } from "@shared/orgs";
+import { LINK_LIVE_SQL } from "@shared/links";
 import {
   DeletionError, deleteOrganization, endAtStripe, openCheckouts, orgForDeletion, orgSubscriptions, type OrgToDelete,
 } from "./org";
@@ -276,7 +277,7 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
     stmt(p, `UPDATE agent_links SET state = CASE WHEN state = 'open' THEN 'closed' ELSE 'cancelled' END, closed_at = ?2,
                closed_by = CASE WHEN state = 'open' THEN ?1 ELSE closed_by END,
                close_reason = CASE WHEN state = 'open' THEN 'account deleted' ELSE close_reason END
-             WHERE state IN ('draft', 'requested', 'open') AND (requester = ?1 COLLATE NOCASE OR recipient = ?1 COLLATE NOCASE)`, h, at),
+             WHERE state IN ${LINK_LIVE_SQL} AND (requester = ?1 COLLATE NOCASE OR recipient = ?1 COLLATE NOCASE)`, h, at),
     // Rate-limit counters (two days at most anyway), by handle and by the sign-ins they were onboarded with.
     stmt(p, `DELETE FROM abuse_counters WHERE subject = ? COLLATE NOCASE${counters.length ? ` OR subject IN (${ph(counters.length)})` : ""}`, h, ...counters),
     // The ONE sentence Trov writes with a handle in it (src/tools/handoffs.ts: "<sender> left a handoff for

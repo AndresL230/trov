@@ -11,7 +11,7 @@ import {
   PRODUCT_GLOB_SQL, PRODUCT_HOURLY_RETENTION_DAYS, USAGE_GLOB_SQL, USAGE_RETENTION_DAYS,
 } from "../repo/store";
 import { SYNC_RUN_RETENTION_DAYS } from "@shared/sync";
-import { LINK_IDLE_MS } from "@shared/links";
+import { LINK_IDLE_MS, LINK_LIVE_SQL, linkIdleSql } from "@shared/links";
 import { COMMIT_PATHS_RETENTION_DAYS } from "../repo/commit-paths";
 
 /** Every pending handoff, in any org but a Sample workspace (0087_sample_orgs: its handoff stays waiting to be tried),
@@ -31,8 +31,7 @@ export async function expireDueHandoffs(p: PlatformContext, nowMs: number): Prom
 export async function expireDueLinks(p: PlatformContext, nowMs: number): Promise<number> {
   const res = await run(p,
     `UPDATE agent_links SET state = 'expired', closed_at = ?1
-      WHERE (state IN ('draft', 'requested', 'open') AND expires_at < ?1)
-         OR (state = 'open' AND max(COALESCE(decided_at, ''), COALESCE(requester_seen_at, ''), COALESCE(recipient_seen_at, '')) < ?2)`,
+      WHERE (agent_links.state IN ${LINK_LIVE_SQL} AND agent_links.expires_at < ?1) OR ${linkIdleSql("agent_links", "?2")}`,
     new Date(nowMs).toISOString(), new Date(nowMs - LINK_IDLE_MS).toISOString());
   return res.meta.changes ?? 0;
 }
