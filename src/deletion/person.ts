@@ -201,6 +201,16 @@ function personStmts(p: PlatformContext, h: string, tomb: string, a: { logins: s
   const needles = [...new Set([h, ...a.logins, ...a.emails])];
   return [
     stmt(p, "PRAGMA defer_foreign_keys = true"),
+    // The guard rails AGAIN, inside the batch (`GUARD_FAILED`): the preview was read before a Stripe wait of
+    // seconds, and another owner may have left, or another superadmin deleted their own account, meanwhile.
+    // Each writes NULL into a NOT NULL column when the deletion would now leave an organization with people
+    // but no owner, or the platform with no superadmin — which fails the statement, and with it the batch.
+    stmt(p, `UPDATE memberships SET created_at = NULL
+              WHERE user_id = ?1 COLLATE NOCASE AND role = 'owner'
+                AND NOT EXISTS (SELECT 1 FROM memberships o WHERE o.org_id = memberships.org_id AND o.role = 'owner' AND o.user_id <> ?1 COLLATE NOCASE)
+                AND EXISTS (SELECT 1 FROM memberships x WHERE x.org_id = memberships.org_id AND x.user_id <> ?1 COLLATE NOCASE)`, h),
+    stmt(p, `UPDATE platform_admins SET granted_at = NULL
+              WHERE person = ?1 COLLATE NOCASE AND NOT EXISTS (SELECT 1 FROM platform_admins x WHERE x.person <> ?1 COLLATE NOCASE)`, h),
     // Signing in, and every way an agent acted as them.
     stmt(p, `DELETE FROM sessions WHERE person = ? COLLATE NOCASE`, h),
     stmt(p, `DELETE FROM oauth_tokens WHERE grant_id IN (SELECT id FROM oauth_grants WHERE person = ? COLLATE NOCASE)`, h),
@@ -331,25 +341,38 @@ export async function deleteAccount(env: Env, p: PlatformContext, handle: string
   }
   const cancelled = await endAtStripe(env, [...subs], [...checkouts], fetchImpl);
 
-  // 2. The organizations nobody else is in.
+  // 2. The organizations nobody else is in — each refused, in its own batch, if someone joined it meanwhile.
   const actor = ask.by === "self" ? h : ask.actor;
-  for (const org of orgs) await deleteOrganization(env, p, org, { by: ask.by, actor, fetchImpl, billingSettled: true, withAccount: true });
-
-  // 3. The person — one batch. A tombstone that is somehow taken already aborts it whole; one retry.
-  const at = nowIso();
-  const avatar = person.avatar_sha;
-  const askKeys = await askAttachmentKeys(p, h);
-  const ref = await deletionRef(env.COOKIE_SECRET, h);
-  let tomb = tombstoneHandle();
   try {
-    await batch(p, personStmts(p, h, tomb, addresses, ask, orgs.map((o) => o.slug), at, ref));
-  } catch (e) {
-    if (!/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw e;
-    tomb = tombstoneHandle();
-    await batch(p, personStmts(p, h, tomb, addresses, ask, orgs.map((o) => o.slug), at, ref));
-  }
+    for (const org of orgs) await deleteOrganization(env, p, org, { by: ask.by, actor, fetchImpl, billingSettled: true, withAccount: true, onlyMember: h });
 
-  // 4. Their photo and their private Ask attachments' bytes, each if nobody else's is the same bytes.
-  const r2 = await sweepR2(p, env.ARTIFACTS_BUCKET, { ...noCandidates(), artifacts: artifactShas(askKeys), avatars: avatar ? [avatar] : [] });
-  return { tombstone: tomb, orgs_deleted: orgs.map((o) => o.slug), cancelled, r2 };
+    // 3. The person — one batch. A tombstone that is somehow taken already aborts it whole; one retry.
+    const at = nowIso();
+    const avatar = person.avatar_sha;
+    const askKeys = await askAttachmentKeys(p, h);
+    const ref = await deletionRef(env.COOKIE_SECRET, h);
+    let tomb = tombstoneHandle();
+    try {
+      await batch(p, personStmts(p, h, tomb, addresses, ask, orgs.map((o) => o.slug), at, ref));
+    } catch (e) {
+      if (!/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) throw e;
+      tomb = tombstoneHandle();
+      await batch(p, personStmts(p, h, tomb, addresses, ask, orgs.map((o) => o.slug), at, ref));
+    }
+
+    // 4. Their photo and their private Ask attachments' bytes, each if nobody else's is the same bytes.
+    const r2 = await sweepR2(p, env.ARTIFACTS_BUCKET, { ...noCandidates(), artifacts: artifactShas(askKeys), avatars: avatar ? [avatar] : [] });
+    return { tombstone: tomb, orgs_deleted: orgs.map((o) => o.slug), cancelled, r2 };
+  } catch (e) {
+    if (!GUARD_FAILED.test(e instanceof Error ? e.message : String(e))) throw e;
+    // A guard rail moved while Stripe was being asked: the person's batch (or that org's) did not run. Say which.
+    const now = await accountDeletionPreview(p, h, ask);
+    const blockers = now?.blockers.length ? now.blockers : undefined;
+    throw new DeletionError("blocked", blockers ? blockers.map((b) => b.message).join(" ")
+      : "Something changed while the account was being deleted, so it wasn't. Look again and try once more.", blockers);
+  }
 }
+
+/** What a guard statement's failure looks like (`personStmts`, ./org.ts `ONLY_MEMBER_GUARD`): a NOT NULL column set
+ *  to NULL on purpose, so the batch aborts whole. */
+const GUARD_FAILED = /NOT NULL constraint failed: (memberships\.created_at|platform_admins\.granted_at)/i;

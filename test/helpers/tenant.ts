@@ -17,6 +17,18 @@ const e = env as unknown as Env;
 // Every helper takes an optional `env` LAST, for a test that drives its own (extra secrets, a failing
 // DB): the context is bound to the Env it was built from.
 
+/** The Worker's env with a D1 that runs `before` once, just before the next `batch` — the moment a racing
+ *  request lands between a writer's read and its write. Everything else is the real database. */
+export function racing(before: () => Promise<unknown>): Env {
+  let armed = true;
+  const db = e.DB;
+  const DB = {
+    prepare: (q: string) => db.prepare(q),
+    batch: async (stmts: D1PreparedStatement[]) => { if (armed) { armed = false; await before(); } return db.batch(stmts); },
+  };
+  return { ...e, DB: DB as unknown as Env["DB"] };
+}
+
 /** A PlatformContext — for the global tables (persons, identities, sessions, tokens, oauth, orgs). */
 export const platformCtx = (actor = "test", envOver: Env = e): PlatformContext => platform(envOver, actor);
 

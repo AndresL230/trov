@@ -168,7 +168,10 @@ its `org_id`, so `ORG_TABLES` takes all of it; the person can make a new one aft
 The mail links to the site root — never to a token; the invitation is matched to the person's
 provider-verified address (or GitHub login) at sign-in [`src/orgs/repo.ts` `MINE`]. A person with no
 organization lands on the **org picker**, which lists their invitations; **Accept** makes them a member
-[`POST /api/invites/:id/accept`].
+[`POST /api/invites/:id/accept`]. The invitation is read again IN the statement that adds the member: one
+revoked, answered elsewhere, or whose organization was suspended since the picker showed it adds nobody and
+writes no stamp or audit row (404 `not_found`; a suspended org's invitation stays pending for when it is lifted).
+Pending invitations do not expire (each holds a seat until it is answered or revoked).
 
 ### The guided setup (`#welcome`)
 
@@ -382,7 +385,8 @@ invitation, Platform. Without one the SPA draws the first letter of the name [`w
 Platform › the organization › **Suspend** [`POST /api/platform/orgs/:slug/suspend`]. From that moment, for
 that organization only: every page and API route answers its members as if the organization did not exist
 (404), every agent token and connected app stops working (401), webhook deliveries are refused, and the
-background jobs and digests skip it. **Nothing is deleted** and no other organization is affected.
+background jobs and digests skip it — every statement that asks says so with the one fragment `orgLive`
+(`src/data/suspension.ts`). **Nothing is deleted** and no other organization is affected.
 **Unsuspend** restores all of it as it was. Members see "You don't have access to …" on the org picker.
 
 ## 6. Usage
@@ -495,6 +499,14 @@ account, through the organization core; the confirmation names each one. Pending
 as people. A plan **paid for but never set up** (an unused paid grant) has its subscription cancelled, and the
 grant is revoked.
 
+**Checked again where it is written.** The guard rails are read before Stripe is asked, which takes seconds; the
+batches that delete check them again: the person's batch begins with two guard statements (another owner who
+stepped down meanwhile — `last_owner`; another superadmin who went — `last_superadmin`), and an organization
+going WITH the account is deleted only while the person is still its only member (`onlyMember`: someone who
+joined meanwhile refuses it). A guard writes NULL into a NOT NULL column, which fails the statement and aborts
+its batch whole; the route then answers 409 `blocked` with the guard rails as they are now. What Stripe already
+ended stays ended, and an organization the account's deletion already deleted before the refusal stays deleted.
+
 The account's own rows are deleted and every other column that holds the handle is rewritten, in one batch, to
 a **tombstone** — `deleted-<10 random characters>` — through the same `HANDLE_COLUMNS` list a rename uses.
 The `persons` row becomes that tombstone (name "Deleted user", no e-mail, photo, picture, role or
@@ -544,7 +556,7 @@ at once; "kept" says why.
 | E-mail | digest preferences, every digest outbox row addressed to them (and local/dev rendered bodies to their addresses) |
 | Memberships | every one (each organization's trail gets `member.leave` by the tombstone); the superadmin role |
 | Attribution | every organization's map of a GitHub login to them |
-| Invitations | the ones they accepted or declined, and SaplingLearn legacy invitations to their addresses |
+| Invitations | the ones they accepted or declined |
 | Support | the reports and messages they sent, signed in or signed out from one of their addresses |
 | Grants | an unused one is revoked (a paid one's subscription cancelled); none keeps their handle, login or address |
 | Rate limits | their counters (two days at most anyway) |
