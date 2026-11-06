@@ -875,6 +875,11 @@ export function addFiles(ctx: AskCtx, where: AskWhere, list: readonly File[]): v
   for (const x of send) void upload(ctx, where, [x]);
 }
 
+/** A conversation with no thread yet uploads one file after another (keyed by its `uid`): the first upload names the
+ *  holder thread the server keeps the files pending on (Q60) and the next ones join it, instead of each sending
+ *  `threadId: null` and making a holder of its own. Once there is a thread, uploads run side by side. */
+const holderQueue = new Map<string, Promise<void>>();
+
 async function upload(ctx: AskCtx, where: AskWhere, items: { f: ComposerFile; file: File }[]): Promise<void> {
   const convo = ctx.ui[where];
   const uid = convo.uid;
@@ -884,8 +889,24 @@ async function upload(ctx: AskCtx, where: AskWhere, items: { f: ComposerFile; fi
     const files = ui.files.map((f) => (keys.has(f.key) ? fn(f, items.findIndex((x) => x.f.key === f.key)) : f));
     ctx.ui.composer[where] = { ...ui, files, attachments: files.flatMap((f) => (f.state === "ready" && f.att ? [f.att] : [])) };
   };
+  let threadId = convo.threadId;
+  let release = (): void => undefined;
+  if (threadId === null) {
+    const before = holderQueue.get(uid);
+    const turn = new Promise<void>((r) => { release = r; });
+    const queued = (before ?? Promise.resolve()).then(() => turn);
+    holderQueue.set(uid, queued);
+    const done = release;
+    release = () => { done(); if (holderQueue.get(uid) === queued) holderQueue.delete(uid); };
+    // The first upload starts at once (nothing to wait for); the next ones wait for the one before.
+    if (before) {
+      await before;
+      if (ctx.ui[where].uid !== uid) { release(); return; }  // another thread now: nothing of this one is sent
+      threadId = ctx.ui[where].threadId;                     // named by the upload before this one, if it landed
+    }
+  }
   try {
-    const r = await ctx.api.uploadAttachments(items.map((x) => x.file), convo.threadId);
+    const r = await ctx.api.uploadAttachments(items.map((x) => x.file), threadId);
     if (ctx.ui[where].uid !== uid) return;                     // another thread now: these stay on the old one
     patch((f, i) => (r.attachments[i] ? { ...f, state: "ready", att: r.attachments[i] } : { ...f, state: "failed" }));
     for (const x of items) rt(ctx).failed.delete(x.f.key);
@@ -908,6 +929,8 @@ async function upload(ctx: AskCtx, where: AskWhere, items: { f: ComposerFile; fi
       for (const x of items) rt(ctx).failed.set(x.f.key, x.file);
       ctx.ui.composer[where].error = true;
     }
+  } finally {
+    release();
   }
   ctx.paint();
 }

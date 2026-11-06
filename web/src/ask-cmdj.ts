@@ -94,7 +94,7 @@ export function cmdjOverlay(app: AppState): string {
       <div class="ask-panel-head">
         ${trovMark(12)}<span class="ask-panel-t" id="ask-panel-t">Ask Trov</span><kbd class="ask-kbd">${cmdjKeyLabel()}</kbd>
         <span class="ask-panel-gap"></span>
-        <button type="button" class="ask-ghostbtn" data-act="askCjOpenThread">Open as thread${askIcon("openNew", 12, null, 2)}</button>
+        <button type="button" class="ask-ghostbtn" data-act="askCjOpenThread"${convo.busy && convo.threadId === null ? " disabled" : ""}>Open as thread${askIcon("openNew", 12, null, 2)}</button>
         <button type="button" class="ask-iconbtn" data-act="askCjClose" aria-label="Close" data-tip="Close (Esc)">${askIcon("close", 13, null, 2.2)}</button>
       </div>
       <div class="ask-scroll" data-ask-scroll="panel">${empty ? emptyView(v) : `${conversationView(v)}${jumpButton(v)}`}</div>
@@ -187,6 +187,9 @@ export function closePanel(ctx: AskCtx): void {
  *  first answer names a thread there is nothing stored: the Ask screen opens a new thread with the draft. */
 export function openAsThread(ctx: AskCtx): void {
   const id = ctx.ui.panel.threadId;
+  // A first answer streaming before the server named its thread has nothing to open yet (a moment): the button is
+  // disabled until it has. A named one moves with its stream (ask-controller.ts `movePanelToPage`).
+  if (id === null && ctx.ui.panel.busy) return;
   const draft = ctx.ui.composer.panel;
   const panelInspector = ctx.ui.inspector.where === "panel" && inspectorRef(ctx.ui) !== null;
   ctx.cancelExit("cmdj");
