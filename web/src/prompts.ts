@@ -48,7 +48,7 @@ const tagLine = (tags: string[]) => (tags.length ? `<span style="font-size:12px;
 // ── library ──────────────────────────────────────────────────────────────────
 export type PromptFilterCat = "tag" | "sort";
 export interface PromptLibraryProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   prompts: PromptSummary[];
   q: string;
   tag: string | null;
@@ -181,7 +181,7 @@ export function promptLibraryView(p: PromptLibraryProps): string {
 
 // ── one prompt ───────────────────────────────────────────────────────────────
 export interface PromptDetailProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   prompt: PromptDetail | null;
   versions: PromptVersion[];
   persons: PersonSummary[];

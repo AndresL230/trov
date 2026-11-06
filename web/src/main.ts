@@ -589,8 +589,8 @@ function countUp(root: HTMLElement): void {
 let pendingFlash: string | null = null;
 
 let lastNavGroup: NavGroup | null = null;
-/** The route the phone drawer was last seen on (rerender closes it when this changes). */
-let drawerRoute = "";
+/** The route the last paint drew (the hash in the app, else the view): a paint of another one runs leaveScreen first. */
+let paintedRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
@@ -656,18 +656,14 @@ function paintApp(): void {
   if ((state.view === "platform" || state.view === "app") && (state.screen === "platform" || state.screen === "platformorg")) withChunk(platformChunk);
   // Signed in: the Markdown chunk starts loading beside the first reads (once).
   if (state.view === "app" || state.view === "platform") prefetchMarkdownLib();
-  // The phone drawer closes whenever the route changes (a nav row, a search, Back).
-  const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
-  if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
+  // Leaving a route (a nav row, a search, Back) closes what belonged to it, the phone drawer too (leaveScreen).
+  const routeKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
+  if (routeKey !== paintedRoute) { paintedRoute = routeKey; leaveScreen(); }
   // The "Poll now" result is session-only and belongs to the Repo screen: leaving
   // it (any route, or signing out) clears it, and an in-flight poll's answer is
   // then dropped on arrival (runRepoPoll checks it is still the one polling).
   // Switching between the Repo TABS keeps it — the strip renders on all five.
   state.repoPoll = repoPollFor(state.repoPoll, state.view === "app" && state.screen === "repo");
-  // The queue's filter menu left open never survives leaving the queue.
-  if (state.screen !== "tickets") state.qFilterOpen = false;
-  if (state.screen !== "feed") state.feedFilterOpen = false;
-  if (state.screen !== "settings") state.avatarMenu = false;
   syncCtl.beforePaint(); // the Sync panel closes with the control it hangs from
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
@@ -927,8 +923,34 @@ function currentRoute(): Route {
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
 }
+/**
+ * Leaving a route, however it is left — a nav act (`go…`, which paints), Back / Forward or an edited hash (`applyRoute`), a
+ * link — closes what belonged to the screen being left: its dialogs, menus and armed confirms, and the phone drawer. ONE
+ * list, run from `applyRoute` and from `paintApp` whenever the route it paints is not the one it painted last (so every
+ * `go…` act reaches it without naming it). A delete whose write is in flight keeps its confirm, busy, until its own answer
+ * closes it (the artifact's and the ticket's alike). Idempotent: nothing here opens anything.
+ */
+function leaveScreen(): void {
+  state.drawer = false;
+  state.personCard = null;
+  state.mcpSetup = false;
+  state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null;
+  state.avatarMenu = false;
+  state.handoffPromptOpen = false;
+  state.promptExpanded = false;
+  state.home.attnOpen = false;
+  state.repoAttentionOpen = false;   // Needs attention's dialog
+  state.rmTrovOpen = false;          // the Roadmap's Trov dialog
+  // The filter menus, and a close of one still playing out (a reopen would take it for a revival).
+  state.qFilterOpen = false; state.feedFilterOpen = false; state.promptFilterOpen = false; state.art.filterOpen = false;
+  dropFilterMenuClose();
+  // The artifact viewer's menus and dialogs (the design's onHash).
+  state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
+  if (!state.art.deleteBusy) state.art.deleteArm = false;
+  if (!state.tdDeleteBusy) state.tdDeleteArm = false;
+}
 function applyRoute(r: Route): void {
-  if (r.ticketId !== state.ticketId) { state.tdDeleteArm = false; state.tdDeleteBusy = false; }   // a confirm never carries to another ticket
+  if (!sameRoute(r, currentRoute())) leaveScreen();
   state.screen = r.screen;
   state.ticketId = r.ticketId;
   state.sprintId = r.sprintId;
@@ -952,11 +974,6 @@ function applyRoute(r: Route): void {
     state.releaseVersion = v; state.releasePage = page;
   }
   state.artRoute = r.art ?? ART_ROUTE_NONE;
-  state.repoAttentionOpen = false;   // Needs attention's dialog never outlives a route change
-  state.rmTrovOpen = false;          // nor does the Roadmap's Trov dialog
-  // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
-  state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
-  if (!state.art.deleteBusy) state.art.deleteArm = false;
   if (r.handoffId) state.handoffId = r.handoffId;
   // A link's confirm never carries to another link.
   if (r.linkId !== state.linkId) { state.linkCancelArm = false; state.linkCancelBusy = false; }
@@ -1397,13 +1414,18 @@ function writePromptTags(tags: string[]): void {
 }
 
 // ── per-screen data loaders ──────────────────────────────────────────────────
+/** The Feed's filters change faster than its reads land: only the newest read commits (the rows, the switch's note,
+ *  the author menu), so an older answer for other filters never replaces what the screen now asks for. */
+let feedSeq = 0;
 function loadFeed(): void {
+  const seq = ++feedSeq;
   state.feed = { status: "loading", data: state.feed.data };
   rerender();
   const author = state.feedAuthor !== "all" ? state.feedAuthor : undefined;
   const tags = state.feedTag !== "all" ? [state.feedTag] : undefined;
   getFeedPage({ author, tags })
     .then(({ feed: rows, aiOff }) => {
+      if (seq !== feedSeq) return;
       state.feed = { status: "ok", data: rows };
       state.ai.feedAiOff = aiOff;
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
@@ -1411,7 +1433,8 @@ function loadFeed(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
+      if (seq !== feedSeq) return;
       state.feed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1440,8 +1463,8 @@ function loadFeedStats(): void {
       rerenderSoon();
     })
     .catch((e) => {
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== feedStatsSeq) return;
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.feedStats = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1456,7 +1479,7 @@ function loadMyWork(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.mywork = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1622,25 +1645,33 @@ function loadMyWorkIfNeeded(): void {
 // ── Repo dashboard ───────────────────────────────────────────────────────────
 // A refresh keeps the last payload on screen (the header says "refreshing…");
 // only a first load shows skeletons.
+/** Only the newest dashboard read commits — a refresh, another repository or app (`goRepoFor`, Back), sample data
+ *  switched on or off — and only while the screen still asks for the scope it was read for. */
+let repoSeq = 0;
 function loadRepo(): void {
+  const seq = ++repoSeq;
   state.repo = { status: "loading", data: state.repo.data };
   rerender();
   const sample = state.repoSample;
+  const slug = state.repoSlug, app = state.repoApp;
+  // A live answer is for one repository and app; the sample's is narrowed at render time, so only its switch counts.
+  const stale = (): boolean => seq !== repoSeq || sample !== state.repoSample || (!sample && (slug !== state.repoSlug || app !== state.repoApp));
   // The sample carries the picked scenario's facts (unnarrowed: the App menu narrows them at render time, as
   // `narrowFacts` does on the server); the live read is scoped by the address's repository and app.
   const sc = state.repoScenario;
   const read = sample
     ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant), ...m.repoScenarioScopes(sc.key, sc.variant) }))
-    : getRepoDashboard({ repo: state.repoSlug, app: state.repoApp });
+    : getRepoDashboard({ repo: slug, app });
   read
     .then((data) => {
-      if (sample !== state.repoSample) return; // switched source mid-flight — the newer load wins
+      if (stale()) return; // a newer load, or another scope, wins
       state.repo = { status: "ok", data };
       state.repoFetchedAt = Date.now();
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
+      if (stale()) return;
       state.repo = { status: "error", data: state.repo.data, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1667,7 +1698,7 @@ async function runRepoPoll(): Promise<void> {
     pendingFlash = ".repo-poll-strip";
     loadRepo(); // rerenders now (the strip, "refreshing…") and again when the fresh projection lands
   } catch (e) {
-    if (e instanceof Unauthorized) { state.repoPoll = null; state.view = "auth"; state.authStep = "login"; rerender(); return; }
+    if (e instanceof Unauthorized) { toSignedOut(); return; }
     if (state.repoPoll?.status !== "polling") return;
     state.repoPoll = { status: e instanceof ApiError && e.status === 409 ? "busy" : "error" };
     pendingFlash = ".repo-poll-strip";
@@ -1704,7 +1735,7 @@ function loadNotifPrefs(): void {
   getNotificationPrefs()
     .then((data) => { state.notifPrefs = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.notifPrefs = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1716,7 +1747,7 @@ function loadGrants(): void {
   listOAuthGrants()
     .then((data) => { state.grants = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1774,7 +1805,7 @@ function saveGrantScope(change: Promise<OAuthGrantSummary[]>, done: string, org?
   change
     .then((data) => { state.grants = { status: "ok", data }; state.grantScopeNote = { kind: "saved", text: done }; rerender(); refocus(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       // A plan refusal is the named organization's: say it as its owner is told it, when that is me.
       const role = org ? (state.myOrgs.data?.orgs ?? state.me?.orgs ?? []).find((o) => o.slug === org)?.role ?? null : null;
       const text = planLimitText(e, role) ?? (e instanceof ApiError ? GRANT_SCOPE_REFUSALS[e.message] : undefined) ?? "That could not be saved. Try again.";
@@ -1830,7 +1861,7 @@ function writePrefs(body: PrefsWrite, done: string | null): void {
   putNotificationPrefs(body)
     .then((data) => { state.notifPrefs = { status: "ok", data }; if (done) flash(done); rerender(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       flash(refusalText(e, "Could not save email settings"), isRateLimited(e) ? 7000 : 2200);
     });
 }
@@ -1840,8 +1871,7 @@ function loadNotifAdmin(): void {
   state.notifSettings = { status: "loading", data: state.notifSettings.data };
   state.notifOutbox = { status: "loading", data: state.notifOutbox.data };
   rerender();
-  const unauth = (e: unknown) => { if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); } };
-  getNotificationPolicy()
+    getNotificationPolicy()
     .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerenderSoon(); })
     .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
   getNotificationSettings()
@@ -1863,7 +1893,7 @@ function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done
   putNotificationSettings(body)
     .then((data) => { state.notifSettings = { status: "ok", data }; state.fromDraft = null; state.fromError = null; flash(done); rerender(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       // A sender name the server refused (it checks again — shared/sender.ts): said under the field, not as a code.
       if ("from_address" in body && e instanceof ApiError && e.status === 400) state.fromError = "That sender name can't be used. Use letters, digits, spaces and . & ' + _ - only, without \"trov\".";
       else flash(refusalText(e, "Could not save schedule"), isRateLimited(e) ? 7000 : 2200);
@@ -1890,7 +1920,7 @@ function loadDoc(slug: string): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== docSeq) return;
       if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.docDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
@@ -1920,7 +1950,7 @@ function loadSearch(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.searchResults = { status: "error", data: EMPTY_QUERY_RESULT, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1954,7 +1984,7 @@ function loadRoadmap(): Promise<void> {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.roadmap = {
         status: "error",
         data: { narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] },
@@ -1988,8 +2018,8 @@ function loadRoadmapFeed(): void {
       rerenderSoon();
     })
     .catch((e) => {
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== roadmapFeedSeq) return;
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.roadmapFeed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -2008,7 +2038,7 @@ function loadProposals(after?: () => void): void {
   listStagedProposals()
     .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); noteGroupTotals(); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== proposalsSeq) return;
       state.proposals = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
@@ -2034,7 +2064,7 @@ function loadDraftAdrs(after?: () => void): void {
   listAdrs("draft")
     .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; listed("decisions", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== draftAdrsSeq) return;
       state.draftAdrs = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
@@ -2133,7 +2163,7 @@ function reviewVerdict(id: string, accept: boolean): void {
       reviewExits.delete(id);
       delete state.reviewLeaving[id];
       if (state.reviewSel === exit.selAfter) state.reviewSel = exit.selBefore;
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       flash(e instanceof ApiError ? e.message : "Action failed");
       settleReview();
     });
@@ -2211,7 +2241,7 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
         for (const it of items) { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
         if (state.reviewSel === null) state.reviewSel = selBefore;
       }
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       flash(e instanceof ApiError ? (rateLimitText(e) ?? (done > 0 ? `${done} of the pages went through, then it stopped. Try again for the rest.` : "Couldn't do that. Try again.")) : "Couldn't do that. Check your connection and try again.", 5000);
       settleReview();
       rerender();
@@ -2245,7 +2275,7 @@ function loadNeedsTriage(after?: () => void): void {
   listNeedsTriage()
     .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); after?.(); pruneUnplacedLeaving(); rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== needsTriageSeq) return;
       state.needsTriage = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneUnplacedLeaving();
@@ -2327,7 +2357,7 @@ function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Prom
       unplacedExits.delete(id);
       delete state.unplacedLeaving[id];
       if (state.assignOpen === exit.selAfter) { state.assignOpen = exit.selBefore; Object.assign(state, exit.picks); }
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       // e.g. "could not place doc: the space \"design\" is archived: use one of …" — the gate's words, verbatim.
       flash(e instanceof ApiError ? e.message : verdict === "placed" ? "Could not place this item" : "Could not discard");
       settleUnplaced();
@@ -2364,7 +2394,7 @@ function loadIdentityTasks(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== identityTasksSeq) return;
       state.identityTasks = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
@@ -2394,7 +2424,7 @@ function loadTickets(): void {
       state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== ticketsSeq) return;
       state.tickets = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
@@ -2436,7 +2466,7 @@ function loadTicketDetail(id: number): void {
   getTicket(id)
     .then((t) => { if (seq !== ticketDetailSeq) return; state.ticketDetail = { status: "ok", data: t }; rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== ticketDetailSeq) return;
       // A deleted/unknown id is "no such ticket", not a failure to load.
       if (e instanceof ApiError && e.status === 404) { state.ticketDetail = { status: "ok", data: null }; rerenderSoon(); return; }
@@ -2515,7 +2545,7 @@ function loadSprintDetail(id: number): void {
 }
 
 function sprintErr(e: unknown): void {
-  if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+  if (e instanceof Unauthorized) { toSignedOut(); return; }
   flash(e instanceof ApiError ? e.message : "Could not update the sprint");
 }
 
@@ -2553,13 +2583,32 @@ function applyTicketWrite(t: TicketDetail, msg: string, seq: number): void {
   flash(msg);
 }
 function ticketErr(e: unknown): void {
-  if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+  if (e instanceof Unauthorized) { toSignedOut(); return; }
   flash(e instanceof ApiError ? e.message : "Could not update the ticket");
 }
 
+// ── signing out: ONE transition ──────────────────────────────────────────────
+/** Out of the app onto the signed-out landing page, by every way there is: an expired session (any read or write
+ *  answered 401 — `unauth`, below), Sign out, a boot that finds no session. No person, no org open (a request after
+ *  this one is refused before it leaves, api.ts `apiUrl`), nothing of the screen left open, and nothing of the app's
+ *  still polling or ticking (Home's, the Repo screen's and the guided setup's timers stand down on their own once
+ *  the view is not the app; Sync's are stopped here). The address bar is the caller's: an expired session keeps it, so
+ *  signing in again comes back to it (landing-actions.ts `stashReturn`); Sign out drops it. Idempotent. */
+function toSignedOut(): void {
+  setApiOrg(null);
+  setPrimaryRepo(null);
+  state.me = null;
+  state.orgSlug = null;
+  state.orgsUi = initialOrgsUi();
+  state.repoPoll = null;
+  leaveScreen();
+  syncCtl.stop();
+  state.view = "auth"; state.authStep = "login";
+  rerender();
+}
 // ── auth-expired transition (shared by every loader/write below) ────────────
 function unauth(e: unknown): void {
-  if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); }
+  if (e instanceof Unauthorized) toSignedOut();
 }
 
 // A Link attempt that didn't cleanly attach redirects the whole page to
@@ -3179,18 +3228,18 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.authStep = "login";
       history.replaceState({}, "", "/");
       break;
+    // The boot's "couldn't reach Trov" / "didn't open" card (showBootFailed): the whole boot again, from the page.
+    case "bootRetry": location.reload(); return;
     case "signOut": {
       // A deliberate exit lands on the bare landing page: drop the route hash, or the
       // URL stays /#settings and the next sign-in would treat it as a return-to.
+      // Signed out here whether or not the server answered: the person asked to leave (toSignedOut drops `me`).
       const leave = () => {
-        setApiOrg(null);
-        state.orgSlug = null; state.orgsUi = initialOrgsUi();
-        state.view = "auth"; state.authStep = "login";
         history.replaceState(null, "", "/");
-        rerender();
+        toSignedOut();
         window.scrollTo(0, 0);
       };
-      logout().then(() => { state.me = null; leave(); }).catch(leave);
+      logout().then(leave, leave);
       return;
     }
 
@@ -3422,7 +3471,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         state.repoGroupFlipped = false;
         flash(`Group by ${group === "app" ? "app" : "environment"} is now the default for ${saved.repo}.`);
       }).catch((e) => {
-        if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+        if (e instanceof Unauthorized) { toSignedOut(); return; }
         flash("Couldn't save the default. Try again.");
       });
       return;
@@ -3533,7 +3582,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.ticketId = id;
       state.commentDraft = ""; state.mention = null; state.commentHeight = null; state.linkDraft = "";
       state.lkOpen = false; state.asgMenu = false; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null;
-      state.tdEdit = null; state.tdDeleteArm = false; state.tdDeleteBusy = false;
+      state.tdEdit = null; if (!state.tdDeleteBusy) state.tdDeleteArm = false;   // a delete in flight keeps its confirm (leaveScreen)
       loadSprintsIfNeeded();
       loadTicketsIfNeeded();          // backs the sub-ticket candidate menu
       loadTicketDetail(id);
@@ -3613,7 +3662,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           flash(`${sp.label} created — it's on the Roadmap now`);
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           // A date refusal from the server reads under the dates, like the client's own.
           if (e instanceof ApiError && e.status === 400 && /\b(start|due)\b/.test(e.message)) { state.nsError = e.message; rerender(); return; }
           flash(e instanceof ApiError ? e.message : "Could not create the sprint");
@@ -3795,7 +3844,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
             : "Ticket submitted — it's in the queue for triage");
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not submit the ticket");
         });
       return;
@@ -3888,9 +3937,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       deleteTicket(d.id)
         .then((r) => {
           state.tdDeleteArm = false; state.tdDeleteBusy = false;
-          state.ticketDetail = { status: "idle", data: null };
+          if (state.ticketDetail.data?.id === d.id) state.ticketDetail = { status: "idle", data: null };
           state.tickets = { ...state.tickets, data: state.tickets.data.filter((x) => x.id !== r.id) };
-          state.screen = "tickets"; state.ticketId = null;
+          // Back to the queue only from the deleted ticket's own page: whoever moved on meanwhile stays where they went.
+          if (state.screen === "ticketdetail" && state.ticketId === d.id) { state.screen = "tickets"; state.ticketId = null; }
           loadTickets();
           loadTicketBadge();
           flash(`Deleted #${r.id} “${r.title}”`);
@@ -4035,7 +4085,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "setReviewView": if (arg === "queue" || arg === "unplaced") showReview(arg); return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; leaveScreen(); loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (its chunk is loaded by the paint: releases-lazy.ts). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -4192,7 +4242,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       completeSprint(Number(arg))
         .then(() => { flash("Sprint marked done"); loadRoadmap(); })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not complete sprint");
         });
       return;
@@ -4655,7 +4705,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           loadNeedsTriage();
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not undo the discard");
         });
       rerender();
@@ -4683,7 +4733,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           loadPersons();
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not map login");
         });
       return;
@@ -4698,7 +4748,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           flash(`Discarded @${arg}`, UNDO_TOAST_MS, { label: "Undo", act: "identityRestore", arg });
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not discard login");
         });
       return;
@@ -4709,7 +4759,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       restoreIdentity(arg)
         .then(() => { loadIdentityTasks(); flash(`Restored @${arg}`); })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not restore login");
         });
       rerender();
@@ -4825,7 +4875,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           rerender();
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not disconnect the app");
         });
       return;
@@ -5053,6 +5103,15 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
 };
 const FM_CLOSE_MS = 130;
 let fmClosing: string | null = null;
+/** The pending end of `fmClosing`'s exit: cancelled by a reopen, a new close, or leaving the screen. */
+let fmCloseTimer: ReturnType<typeof setTimeout> | null = null;
+const cancelFmClose = (): void => { if (fmCloseTimer !== null) { clearTimeout(fmCloseTimer); fmCloseTimer = null; } };
+/** Leaving the screen (leaveScreen): its menus are shut outright, so an exit still playing is forgotten — a reopen
+ *  is a fresh open, not the revival of a menu that is no longer there. */
+function dropFilterMenuClose(): void {
+  cancelFmClose();
+  fmClosing = null;
+}
 /** The close in progress is the hover's own (the pointer left): only that one is revived when the pointer comes back.
  *  A close that was asked for — Apply, Escape, the backdrop, the Filter button — runs to its end, even when the screen
  *  repaints under a pointer still resting on the fading popover (that fires a pointerover without a move). */
@@ -5072,6 +5131,7 @@ function openFilterMenu(id: string): void {
   if (!spec) return;
   cancelHoverClose();
   if (fmClosing === id) {           // re-entered while it was fading out: keep it
+    cancelFmClose();
     fmClosing = null;
     livePopover(id)?.classList.remove("is-closing");
     return;
@@ -5089,16 +5149,20 @@ function closeFilterMenu(id: string, refocus = false, byHover = false): void {
   if (!spec || !spec.isOpen() || fmClosing === id) return;
   cancelHoverClose();
   const finish = () => {
-    fmClosing = null; spec.setOpen(false); rerender();
+    if (fmClosing === id) { cancelFmClose(); fmClosing = null; }
+    spec.setOpen(false); rerender();
     if (refocus) mount.querySelector<HTMLElement>(`[data-act="fmToggle"][data-arg="${id}"]`)?.focus({ preventScroll: true });
   };
   const pop = livePopover(id);
   if (!pop || reducedMotion()) { finish(); return; }
+  // One exit plays at a time: another menu still leaving is shut now (the timer below replaces its own).
+  if (fmClosing !== null && fmClosing !== id) FILTER_MENUS[fmClosing]?.setOpen(false);
   fmClosing = id;
   fmClosingByHover = byHover;
   pop.classList.remove("is-opening");
   pop.classList.add("is-closing");
-  setTimeout(() => { if (fmClosing === id) finish(); }, FM_CLOSE_MS);
+  cancelFmClose();
+  fmCloseTimer = setTimeout(() => { fmCloseTimer = null; if (fmClosing === id) finish(); }, FM_CLOSE_MS);
 }
 function switchFilterCat(id: string, key: string): void {
   const spec = FILTER_MENUS[id];
@@ -5996,8 +6060,25 @@ if (params.get("denied") === "1") {
       if (land.kind === "org") { enterOrg(land.slug, hash); return; }
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);
       showPicker(land.lost);
+    }, (e: unknown) => {
+      // No session (401) → the landing page. Anything else — offline, a 5xx — says nothing about the session, so it
+      // is never taken for a sign-out (never guess): the page says Trov could not be reached.
+      if (e instanceof Unauthorized) showSignedOut(); else showBootFailed("unreachable", e);
     })
-    .catch(() => showSignedOut()); // Unauthorized or any error → the landing page
+    // A throw while opening what the answer named (an org, the picker, Platform) is the app's own failure, not a sign-out.
+    .catch((e: unknown) => showBootFailed("failed", e));
+}
+
+/** The boot could not open the app: Trov did not answer (`unreachable`), or opening it threw (`failed`). Logged, and
+ *  said on the page with a way to try again (render.ts `bootFailedCard`) — never the signed-out landing page. */
+function showBootFailed(step: "unreachable" | "failed", e: unknown): void {
+  console.error(step === "failed" ? "Trov: the app failed to open" : "Trov: /auth/me did not answer", e);
+  state.view = "auth";
+  state.authStep = step;
+  try { rerender(); } catch (again) {
+    console.error("Trov: the error page failed to paint", again);
+    mount.textContent = "Trov didn't open. Reload the page to try again.";
+  }
 }
 
 /** Signed out: the landing page — with what a link to it asked for. */

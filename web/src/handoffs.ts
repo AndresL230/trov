@@ -96,7 +96,7 @@ export function readingListBlock(items: HandoffReadingItem[] | null | undefined,
 
 // ── inbox ────────────────────────────────────────────────────────────────────
 export interface HandoffsListProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   handoffs: HandoffView[];
   me: string;
   persons: PersonSummary[];
@@ -176,7 +176,7 @@ export function handoffsView(p: HandoffsListProps): string {
 
 // ── one handoff ──────────────────────────────────────────────────────────────
 export interface HandoffDetailProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   handoff: HandoffView | null;
   me: string;
   persons: PersonSummary[];

@@ -133,9 +133,9 @@ export function createAiFilterController(host: AiFilterHost): AiFilterController
         host.closeMenu(screen);
       })
       .catch((e) => {
+        if (e instanceof Unauthorized) { host.unauth(e); return; }   // the session, not this request: before the seq (web-ui.md)
         if (mine !== seq) return;
         u.busy = null;
-        if (e instanceof Unauthorized) { host.unauth(e); return; }
         // The switch went off (or the key went) since the row was drawn: the row goes now, as off draws it — no
         // row at all — and the menu shuts on its exit with the reason said once.
         if (e instanceof OrgApiError && (e.message === "off" || e.message === "no_key")) {

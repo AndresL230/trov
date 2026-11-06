@@ -267,6 +267,12 @@ export function createSyncController(h: SyncHost) {
     act,
     load,
     afterPaint,
+    /** Signing out (main.ts `toSignedOut`): this tab stops following a run and stops its clock. */
+    stop(): void {
+      if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+      if (tickTimer) { clearInterval(tickTimer); tickTimer = null; tickMs = 0; }
+      watching = null;
+    },
     /** Before the app paints: the panel does not outlive the control it hangs from (another screen, signing out). */
     beforePaint(): void {
       const u = ui();

@@ -141,7 +141,7 @@ export interface OrgMenuProps {
   /** `me.orgs` — shown until `GET /api/orgs` lands, so the list is never empty on a signed-in page. */
   mine: readonly MyOrg[];
   current: string | null;
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   ui: OrgsUi;
   /** The viewer is a platform superadmin: the menu ends with a link to the Platform area (`/platform/`). */
   superadmin?: boolean;
@@ -248,7 +248,7 @@ export interface OrgPickerProps {
   /** `me.orgs` (from sign-in), until `GET /api/orgs` lands with the invitations too. */
   mine: readonly MyOrg[];
   orgs: MyOrgsResponse | null;
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   ui: OrgsUi;
   /** The hash to keep when an org is opened (an old deep link, an e-mail link). */
   hash: string;
