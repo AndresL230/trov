@@ -133,6 +133,7 @@ import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
+import { escapeTop, type EscapeLayer } from "./escape-layers";
 import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH, signInReturnPath } from "@shared/billing";
 import { askBillingCheckout, getBillingStatus, getAskState } from "./api";
 import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
@@ -5267,16 +5268,7 @@ mount.addEventListener("keydown", onTabBarKey);
 // A segmented switch's keyboard: ←/→ move focus between its options, Home/End jump
 // (./segmented `onSegmentedKey`). On the document: a switch can sit in an overlay.
 document.addEventListener("keydown", onSegmentedKey);
-// Escape closes an open filter menu — and when the keyboard was in it (a row, the typed filter's field, or
-// nowhere after a repaint), focus goes back to its Filter button.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  const active = document.activeElement;
-  for (const [id, spec] of Object.entries(FILTER_MENUS)) {
-    if (!spec.isOpen()) continue;
-    closeFilterMenu(id, !active || active === document.body || !!active.closest(`[data-hover-menu="${id}"]`));
-  }
-});
+// Escape closes an open filter menu: a layer of ESCAPE_LAYERS (below).
 // ↓ / ↑ walk an open filter menu's rows — the typed filter's "Describe a filter" first, then the shown options,
 // then the categories — from its Filter button, a row, or nowhere (a repaint drops focus). Enter on a row is its
 // click; a text field keeps its own arrows.
@@ -5319,12 +5311,7 @@ mount.addEventListener("click", (e) => {
   state.drawer = false;
   rerender();
 });
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !state.drawer) return;
-  state.drawer = false;
-  rerender();
-  mount.querySelector<HTMLElement>(".cnpy-menubtn")?.focus();
-});
+// (Escape closes it: the bottom layer of ESCAPE_LAYERS, below.)
 
 // Right-click on an element that carries `data-ctx` opens ITS menu instead of
 // the browser's (a linked-work chip → its Copy / Remove menu).
@@ -5517,8 +5504,7 @@ mount.addEventListener("keydown", (e) => {
   treeCtl.move(slug, target);
   requestAnimationFrame(() => mount.querySelector<HTMLElement>(`.cnpy-dpane [data-dtree="${cssEscape(slug)}"] > .cnpy-hit`)?.focus());
 });
-// A row's "…" menu closes on Escape or a click anywhere else.
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.treeMenu) { state.treeMenu = null; rerender(); } });
+// A row's "…" menu closes on Escape (ESCAPE_LAYERS) or a click anywhere else.
 mount.addEventListener("click", (e) => {
   if (!state.treeMenu) return;
   const t = e.target as Element | null;
@@ -5527,20 +5513,7 @@ mount.addEventListener("click", (e) => {
   rerender();
 }, true);
 // …and so do a Library card's "…" menu (your own view: pin, sidebar, hide) and a space header's "…" menu; Escape
-// gives focus back to the "…".
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  const card = state.libUi.cardMenu;
-  if (card) {
-    state.libUi.cardMenu = null;
-    rerender();
-    mount.querySelector<HTMLElement>(`[data-act="libCardMenu"][data-arg="${cssEscape(card)}"]`)?.focus();
-  } else if (state.libUi.headMenu) {
-    state.libUi.headMenu = false;
-    rerender();
-    mount.querySelector<HTMLElement>('[data-act="libHeadMenu"]')?.focus();
-  }
-});
+// (ESCAPE_LAYERS) gives focus back to the "…".
 mount.addEventListener("click", (e) => {
   if (!state.libUi.cardMenu && !state.libUi.headMenu) return;
   const t = e.target as Element | null;
@@ -5550,14 +5523,8 @@ mount.addEventListener("click", (e) => {
   rerender();
 }, true);
 
-// Settings › Profile's photo menu: Escape closes it and hands focus back to the avatar;
+// Settings › Profile's photo menu: Escape (ESCAPE_LAYERS) closes it and hands focus back to the avatar;
 // ↑/↓ (and Home/End) move between its rows. Tab leaves it, like the other menus.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !state.avatarMenu || state.view !== "app") return;
-  state.avatarMenu = false;
-  rerender();
-  mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus();
-});
 mount.addEventListener("keydown", (e) => {
   const menu = (e.target as Element | null)?.closest?.<HTMLElement>("[data-avatar-menu]");
   if (!menu || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
@@ -5656,6 +5623,7 @@ mount.addEventListener("keydown", (e) => {
     if (state.home.mode === "ask" && state.home.q.trim()) { dispatch("homeSubmit", null, null); return; }
     if (n) dispatch("homePick", String(Math.min(state.home.active, n - 1)), null);
   } else if (e.key === "Escape") {
+    e.preventDefault();   // spent: Escape leaves the bar and closes nothing else (escape-layers.ts)
     state.home.focused = false; (el as HTMLInputElement).blur(); rerender();
   } else if (e.key === "Tab" && !e.shiftKey && homeAskOn()) {
     e.preventDefault();
@@ -5802,7 +5770,7 @@ mount.addEventListener("keydown", (e) => {
     return;
   }
   if (field === "promptTagDraft") {
-    if (e.key === "Escape") { state.promptTagMenu = false; state.promptTagDraft = ""; rerender(); return; }
+    if (e.key === "Escape") { e.preventDefault(); state.promptTagMenu = false; state.promptTagDraft = ""; rerender(); return; }
     if (e.key !== "Enter") return;
     e.preventDefault();
     const p = state.promptDetail.data?.prompt;
@@ -5821,15 +5789,45 @@ document.addEventListener("keydown", (e) => {
   const last = items.length - 1;
   if (at < 0 || (e.shiftKey && at === 0) || (!e.shiftKey && at === last)) { e.preventDefault(); items[e.shiftKey ? last : 0].focus(); }
 });
-// Escape closes the expanded handoff prompt (the filter menus close in their own listener).
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || state.view !== "app") return;
-  if (state.personCard) { state.personCard = null; rerender(); }
-  else if (state.mcpSetup) closeMcpSetup();
-  else if (state.grantScope !== null && !state.dd.open) closeGrantScope(); // an open menu closes first, on its own
-  else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
-  else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
-});
+// ── Escape: one layer per press, topmost first (web/src/escape-layers.ts) ────
+// The app's own dialogs, menus and the phone drawer, in the order they stack. The layers above these (a confirmation,
+// a dropdown, a drag, the lightbox, Ask's) take Escape in the capture phase; a controller's dialog (Sync, the support
+// form, Org settings', Platform's) is heard first and spends the press (`preventDefault`) — so one press never closes
+// two of them.
+const ESCAPE_LAYERS: EscapeLayer[] = [
+  { open: () => state.view === "app" && state.personCard !== null, close: () => { state.personCard = null; rerender(); } },
+  { open: () => state.view === "app" && state.mcpSetup, close: closeMcpSetup },
+  // An open menu inside it closes first, on its own (dropdown.ts).
+  { open: () => state.view === "app" && state.grantScope !== null && !state.dd.open, close: closeGrantScope },
+  { open: () => state.view === "app" && state.handoffPromptOpen, close: () => { state.handoffPromptOpen = false; rerender(); } },
+  { open: () => state.view === "app" && state.promptExpanded, close: () => { state.promptExpanded = false; rerender(); } },
+  // A filter menu — when the keyboard was in it (a row, the typed filter's field, or nowhere after a repaint), focus goes
+  // back to its Filter button.
+  {
+    open: () => Object.entries(FILTER_MENUS).some(([id, spec]) => spec.isOpen() && fmClosing !== id),
+    close: () => {
+      const active = document.activeElement;
+      for (const [id, spec] of Object.entries(FILTER_MENUS)) {
+        if (spec.isOpen()) closeFilterMenu(id, !active || active === document.body || !!active.closest(`[data-hover-menu="${id}"]`));
+      }
+    },
+  },
+  { open: () => !!state.treeMenu, close: () => { state.treeMenu = null; rerender(); } },
+  // A Library card's "…" menu, or a space header's: focus back to its "…".
+  {
+    open: () => !!state.libUi.cardMenu || state.libUi.headMenu,
+    close: () => {
+      const card = state.libUi.cardMenu;
+      state.libUi.cardMenu = null; state.libUi.headMenu = false;
+      rerender();
+      mount.querySelector<HTMLElement>(card ? `[data-act="libCardMenu"][data-arg="${cssEscape(card)}"]` : '[data-act="libHeadMenu"]')?.focus();
+    },
+  },
+  { open: () => state.view === "app" && state.avatarMenu, close: () => { state.avatarMenu = false; rerender(); mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus(); } },
+  { open: () => state.screen === "home" && state.home.attnOpen, close: () => { state.home.attnOpen = false; rerender(); } },
+  { open: () => state.drawer, close: () => { state.drawer = false; rerender(); mount.querySelector<HTMLElement>(".cnpy-menubtn")?.focus(); } },
+];
+document.addEventListener("keydown", (e) => { escapeTop(e, ESCAPE_LAYERS); });
 
 // ── the confirmation modal (web/src/confirm.ts): ONE keyboard contract for every
 // `[data-confirm-dialog]` — the prompt page's and the artifact viewer's delete. Capture
@@ -5889,10 +5887,7 @@ mount.addEventListener("focusin", (e) => {
   if (!(e.target as Element | null)?.closest?.('[data-field="homeQ"]')) return;
   state.home.focused = true; state.home.attnOpen = false; state.home.active = 0; rerender();
 });
-// Home's Needs attention closes on Escape.
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && state.screen === "home" && state.home.attnOpen) { state.home.attnOpen = false; rerender(); }
-});
+// Home's Needs attention closes on Escape (ESCAPE_LAYERS).
 mount.addEventListener("keydown", (e) => {
   const box = (e.target as Element | null)?.closest?.<HTMLInputElement>('[data-field="sideSearch"]');
   if (!box) return;

@@ -253,7 +253,7 @@ export function createSyncController(h: SyncHost) {
     if (!ui().open) return;
     const panel = h.mount.querySelector<HTMLElement>("[data-sync-panel]");
     if (!panel) return;
-    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    if (e.key === "Escape") { if (!e.defaultPrevented) { e.preventDefault(); close(); } return; }   // one layer per press (escape-layers.ts)
     if (e.key !== "Tab") return;
     const items = Array.from(panel.querySelectorAll<HTMLElement>("button:not([disabled]), a[href]"));
     e.preventDefault();

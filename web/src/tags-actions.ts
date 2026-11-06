@@ -171,9 +171,10 @@ export function createTagsController(host: TagsHost): TagsController {
   if (typeof document !== "undefined") {
     // Escape closes a row's ⋯ menu and gives focus back to its button.
     document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented) return;   // a press another layer took is spent (escape-layers.ts)
       const u = ui();
       if (u.edit && (e.target as Element | null)?.closest?.("[data-tag-inline]")) { e.preventDefault(); cancelEdit(); return; }
+      if (u.aiInfo || u.menu || u.colorOpen) e.preventDefault();
       if (u.aiInfo) { u.aiInfo = false; rerender(); mount.querySelector<HTMLElement>(`[data-field="tagAiInfo"]`)?.focus(); return; }
       const open = u.menu ?? u.colorOpen;
       if (!open) return;

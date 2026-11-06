@@ -159,7 +159,7 @@ export function createSupport(h: SupportHost) {
     if (!s().open) return;
     const dlg = mount.querySelector<HTMLElement>("[data-support-dialog]");
     if (!dlg) return;
-    if (e.key === "Escape") { e.preventDefault(); close(); return; }
+    if (e.key === "Escape") { if (!e.defaultPrevented) { e.preventDefault(); close(); } return; }   // one layer per press (escape-layers.ts)
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.repeat) { e.preventDefault(); send(); return; }
     if (e.key !== "Tab") return;
     // The honeypot (`tabindex="-1"`) is never a stop.

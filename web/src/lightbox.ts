@@ -26,6 +26,10 @@ export interface LightboxOptions {
 }
 
 let current: { close: () => void } | null = null;
+/** A lightbox on its way out (its exit still playing): `end()` finishes it AT ONCE — its node gone, the scroll lock it
+ *  took handed back — without moving focus. A new lightbox calls it first, so the next one never captures the old one's
+ *  `overflow: hidden` as the value to restore, and the old one's timer never unlocks the page under the new one. */
+let exiting: { end: () => void } | null = null;
 
 const CLOSE_ICON = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"></path></svg>`;
 
@@ -35,6 +39,7 @@ function esc(s: string): string {
 
 export function openLightbox(o: LightboxOptions): void {
   current?.close();
+  exiting?.end();
   const opener = document.activeElement as HTMLElement | null;
   const theme = document.querySelector("[data-cnpy-theme]")?.getAttribute("data-cnpy-theme") ?? "light";
 
@@ -79,15 +84,23 @@ export function openLightbox(o: LightboxOptions): void {
     closing = true;
     root.classList.add("cnpy-lightbox--closing");
     document.removeEventListener("keydown", onKey, true);
-    // A timer, not animationend: an animation that never runs (a backgrounded tab,
-    // reduced motion) emits no event and would leave the viewer unclosable.
-    setTimeout(() => {
+    if (current?.close === close) current = null;
+    let done = false;
+    const finish = (refocus: boolean): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      if (exiting === me) exiting = null;
       root.remove();
       restore("overflow-x", prevX);
       restore("overflow-y", prevY);
-      if (current?.close === close) current = null;
-      if (opener && document.contains(opener)) opener.focus({ preventScroll: true });
-    }, EXIT_MS);
+      if (refocus && opener && document.contains(opener)) opener.focus({ preventScroll: true });
+    };
+    const me = { end: () => finish(false) };
+    exiting = me;
+    // A timer, not animationend: an animation that never runs (a backgrounded tab,
+    // reduced motion) emits no event and would leave the viewer unclosable.
+    const timer = setTimeout(() => finish(true), EXIT_MS);
   };
   const onKey = (e: KeyboardEvent): void => {
     if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close(); }

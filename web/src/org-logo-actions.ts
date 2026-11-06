@@ -90,7 +90,8 @@ export function createOrgLogoActions(host: OrgLogoHost): { act(name: string): bo
   });
   // Escape closes the menu and hands focus back to the tile; Tab leaves it, like the other menus.
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || !ui().menu || state.view !== "app") return;
+    if (e.key !== "Escape" || e.defaultPrevented || !ui().menu || state.view !== "app") return;
+    e.preventDefault();   // spent: one layer per press (escape-layers.ts)
     ui().menu = false;
     host.rerender();
     focusTile();

@@ -66,7 +66,8 @@ export function createLandingController(h: LandingHost) {
 
   // Escape closes the landing page's sign-in dialog, wherever focus is.
   document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || !state.signInOpen || state.view !== "auth") return;
+    if (e.key !== "Escape" || e.defaultPrevented || !state.signInOpen || state.view !== "auth") return;
+    e.preventDefault();   // spent: one layer per press (escape-layers.ts)
     state.signInOpen = false;
     h.rerender();
   });

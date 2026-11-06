@@ -10,8 +10,9 @@
 //   • close — the scroll is unlocked AT ONCE (a section link scrolls the page while the sheet is
 //             still leaving), the sheet plays its exit (`data-closing`, MENU_EXIT_MS = `--fx-fast`)
 //             and is then removed; focus returns to the menu button. `instant` skips the exit: the
-//             sign-in sheet is about to stand where the menu was.
-//   • keys  — Esc closes, Tab stays inside.
+//             sign-in sheet is about to stand where the menu was. Opened again while it is leaving, it stays
+//             (the exit is called off).
+//   • keys  — Esc closes, Tab stays inside (not while it is leaving).
 //   • a window grown past 900px has no menu button: the menu closes.
 //
 // The page behind is `data-morph="landing"`, so every repaint here patches it: nothing is rebuilt
@@ -50,10 +51,13 @@ export function createMenuCtl(d: MenuDeps) {
   };
 
   function open(): void {
-    if (d.get()) return;
+    // Open, and not on its way out: nothing to do. On its way out (a tap on the button during the exit): it stays —
+    // the exit is called off, and the page is locked again.
+    if (d.get() && !closing) return;
     clearTimeout(closing);
     closing = 0;
     lock();
+    overlay()?.removeAttribute("data-closing");
     d.set(true);
     d.rerender();
     overlay()?.querySelector<HTMLElement>(".site-menu-link")?.focus({ preventScroll: true });
@@ -79,7 +83,8 @@ export function createMenuCtl(d: MenuDeps) {
 
   /** Document keydown while the menu is open: Esc closes, Tab stays inside. */
   function onKey(e: KeyboardEvent): void {
-    if (!d.get()) return;
+    // Leaving already: its keys are the page's again. An Escape another layer took is spent (web-ui.md › Escape).
+    if (!d.get() || closing || e.defaultPrevented) return;
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
     const sheet = overlay()?.querySelector<HTMLElement>(".site-menu-sheet");
     if (e.key !== "Tab" || !sheet) return;
