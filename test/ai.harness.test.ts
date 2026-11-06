@@ -277,7 +277,7 @@ describe("THE BATCH API: submitted at the end of a tick, collected on a later on
     s.batch.gone = true;
     await pass(s, [drift], later(10 * MIN));
     expect(await first(env.DB, `SELECT state FROM ai_batches`)).toEqual({ state: "lost" });
-    // Due again — and the same tick hands it to a new batch: held (0092), with the lost batch's attempt counted.
+    // Due again — and the same tick hands it to a new batch: held (0088), with the lost batch's attempt counted.
     expect(await dirtyRow(ORG_A, "doc_drift", "auth")).toMatchObject({ attempts: 1, last_error: "batch_lost" });
     expect((await first<{ held_at: string | null }>(env.DB, `SELECT held_at FROM ai_dirty WHERE org_id = ? AND scope = 'doc_drift' AND scope_key = 'auth'`, ORG_A))!.held_at).not.toBeNull();
   });

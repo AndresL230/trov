@@ -8,7 +8,7 @@
 // PR #65), or by the admin plan write (`update_plan` → `write_plan` in plan.ts).
 // `status: 'done'` is set ONLY by `complete_sprint` (the Confirm-done button) or
 // the plan write — never inferred from tickets resolving or issues closing — and
-// each of them stamps `completed_at` (0089); every move off 'done' clears it.
+// each of them stamps `completed_at` (0088); every move off 'done' clears it.
 //
 // TWO VOCABULARIES. The DB keeps `title` / `target_date` / `start_date`; every DTO
 // here speaks `label` / `due` / `start` / `active` (shared/sprints.ts documents the seam, and
@@ -467,7 +467,7 @@ export async function set_sprint_active(ctx: TenantContext, id: number, active: 
 }
 
 /**
- * Human confirmation: flip a live sprint to 'done' and stamp `completed_at` (0089 — what "completed this week"
+ * Human confirmation: flip a live sprint to 'done' and stamp `completed_at` (0088 — what "completed this week"
  * reads). Any member may (promote class, open to every member since PR #65) — 'done' is NEVER inferred from issues
  * or tickets closing. Lives here
  * (with the other sprint writers) and is re-exported from writes.ts so the older

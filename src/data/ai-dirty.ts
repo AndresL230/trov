@@ -199,7 +199,7 @@ export async function failScopes(ctx: TenantContext, keys: readonly ScopeKey[], 
 
 /** HELD: handed to a Message Batch at `at` — BEFORE the batch is submitted, so a failure after the provider accepted
  *  it never submits (and bills) it twice. The scope reads as clean (`last_run_at = at`) and carries `held_at`
- *  (0092_ai_state_guards) until the batch is collected: collecting clears it (`clearScopes` with the same `at`) or
+ *  (0088_state_machines) until the batch is collected: collecting clears it (`clearScopes` with the same `at`) or
  *  fails it; a hold nothing settles is released by `releaseStaleHolds`. */
 export async function holdScopes(ctx: TenantContext, keys: readonly ScopeKey[], at: string): Promise<void> {
   if (!keys.length) return;

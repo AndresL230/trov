@@ -21,7 +21,7 @@ import { set_ticket_sprint } from "../tools/tickets";
 import { write_plan } from "../tools/plan";
 import type { AcceptHandler } from "./suggestions";
 
-/** The key a drafted sprint is created under (`sprints.source_key`, 0092_ai_state_guards): the suggestion and the
+/** The key a drafted sprint is created under (`sprints.source_key`, 0088_state_machines): the suggestion and the
  *  sprint's place in it. */
 export const sprintDraftKey = (suggestionId: number, index: number): string => `ai_suggestion:${suggestionId}:${index}`;
 

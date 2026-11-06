@@ -104,7 +104,7 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
-  // The state-machine fixes (#218–#224): one stacked series, each PR adding its lines here.
+  // The state-machine fixes: one PR (#225), one migration.
   {
     version: "0.17",
     date: "2026-11-06",
@@ -120,37 +120,35 @@ export const RELEASES: Release[] = [
       "The Tickets badge, Home's Triage and the daily sprint line now count tickets the same way the Roadmap does, so some numbers change.",
     ],
     ops: [
-      "Before merging #218, check production has no duplicate doc versions — `SELECT org_id, slug, version, COUNT(*) n FROM doc_versions GROUP BY 1, 2, 3 HAVING n > 1` must return nothing — then apply `0088_doc_versions_unique` (merging applies it).",
-      "Apply `0089_sprint_completed_at` (merging applies it). Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
+      "Before merging, check production has no duplicate doc versions — `SELECT org_id, slug, version, COUNT(*) n FROM doc_versions GROUP BY 1, 2, 3 HAVING n > 1` must return nothing — then apply `0088_state_machines` (merging applies it).",
+      "Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
       "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
-      "Apply `0092_ai_state_guards` (merging applies it).",
-      "Apply `0093_integration_ordering` (merging applies it).",
     ],
     patches: {
       added: [],
       changed: [
-        "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#219)",
-        "An agent can leave as many handoffs in one session as you ask for; only a retry of the same one is folded into it (#219)",
-        "Ask Trov's change cards can't be confirmed while AI is off for the organization (#221)",
-        "GitHub deployments show Removed once the App is uninstalled, and My Work and the Overview agree on an environment's state (#224)",
+        "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#225)",
+        "An agent can leave as many handoffs in one session as you ask for; only a retry of the same one is folded into it (#225)",
+        "Ask Trov's change cards can't be confirmed while AI is off for the organization (#225)",
+        "GitHub deployments show Removed once the App is uninstalled, and My Work and the Overview agree on an environment's state (#225)",
       ],
       fixed: [
-        "Docs: approving an older proposal no longer rolls a page back; a rejected new page frees its name; Approve all skips a page it can't (#218)",
-        "Tickets, sprints, the plan and prompts refuse a change made at the same moment instead of overwriting it; expired handoffs can't be claimed (#219)",
-        "Billing: an organization can no longer pay for Pro twice; a second paid upgrade is cancelled at once (#220)",
-        "Invitations revoked while being accepted no longer add the person; app connections never finished stop counting against your limit (#220)",
-        "Ask Trov answers one question at a time per chat, never marks a change that ran as failed, and keeps Undo after an interrupted answer (#221)",
-        "AI background work never runs or bills twice, and turning AI off drops what was queued (#221)",
-        "Trov no longer looks signed out when it can't be reached or a page fails to open; it says so and offers Try again (#222)",
-        "Back closes an open person card, dialog or menu, and Escape closes one layer at a time (#222)",
-        "A double click no longer files two tickets, handoffs, sprints or prompt versions, and a late answer no longer pulls you back (#223)",
-        "Ask's ⌘J Open as thread keeps an answer that is still coming, and a failed undo in Tags no longer freezes its dialog (#223)",
-        "Repo: deploys never slip back to building, reopened PRs don't count as closed, and deleted releases stay deleted (#224)",
-        "A suspended GitHub App recovers on its own, and a digest that failed mid-send is retried without being sent twice (#224)",
+        "Docs: approving an older proposal no longer rolls a page back; a rejected new page frees its name; Approve all skips a page it can't (#225)",
+        "Tickets, sprints, the plan and prompts refuse a change made at the same moment instead of overwriting it; expired handoffs can't be claimed (#225)",
+        "Billing: an organization can no longer pay for Pro twice; a second paid upgrade is cancelled at once (#225)",
+        "Invitations revoked while being accepted no longer add the person; app connections never finished stop counting against your limit (#225)",
+        "Ask Trov answers one question at a time per chat, never marks a change that ran as failed, and keeps Undo after an interrupted answer (#225)",
+        "AI background work never runs or bills twice, and turning AI off drops what was queued (#225)",
+        "Trov no longer looks signed out when it can't be reached or a page fails to open; it says so and offers Try again (#225)",
+        "Back closes an open person card, dialog or menu, and Escape closes one layer at a time (#225)",
+        "A double click no longer files two tickets, handoffs, sprints or prompt versions, and a late answer no longer pulls you back (#225)",
+        "Ask's ⌘J Open as thread keeps an answer that is still coming, and a failed undo in Tags no longer freezes its dialog (#225)",
+        "Repo: deploys never slip back to building, reopened PRs don't count as closed, and deleted releases stay deleted (#225)",
+        "A suspended GitHub App recovers on its own, and a digest that failed mid-send is retried without being sent twice (#225)",
       ],
       removed: [],
     },
-    prs: [218, 219, 220, 221, 222, 223, 224],
+    prs: [225],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {

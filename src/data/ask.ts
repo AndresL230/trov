@@ -26,7 +26,7 @@ export interface ChatThreadRow {
   shared_at: string | null;
   /** The project it is in (0086_projects), or NULL. Being in a project never shares it. */
   project_id: number | null;
-  /** The running turn's lease (0092_ai_state_guards): when it started; NULL = no turn runs (`claimThread`). */
+  /** The running turn's lease (0088_state_machines): when it started; NULL = no turn runs (`claimThread`). */
   turn_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -312,7 +312,7 @@ export async function deleteThread(ctx: TenantContext, handle: string, id: numbe
   return true;
 }
 
-// ── the turn (0092_ai_state_guards) ──────────────────────────────────────────
+// ── the turn (0088_state_machines) ──────────────────────────────────────────
 //
 // ONE turn runs on a thread at a time. The route CLAIMS the thread before it streams (`claimThread`: a guarded UPDATE
 // of `turn_at`, the lease); a second ask while it runs is refused (`409 busy`) — two turns would read the same turn

@@ -12,7 +12,7 @@ ids, plus `dates` / `summary` / `urgency` / `lead` / `domain` alongside the pre-
 (now rendered as markdown) and `phase`. Sprint `done` is set by a PERSON, never event-inferred: the plan
 write may set it (admin), and ANY signed-in member completes a sprint with `POST /sprints/:id/complete` or MCP
 `complete_sprint` — sprint writes are open to every member; only the whole-plan rewrite is admin-only
-(`ingestion-gate.md` › Sprints). **When** it was completed is `sprints.completed_at` (0089): stamped by
+(`ingestion-gate.md` › Sprints). **When** it was completed is `sprints.completed_at` (0088): stamped by
 `complete_sprint` and by `write_plan` moving a sprint to `done` (kept while it stays done), cleared by every move off
 done (`set_sprint_active`, `write_plan`); "completed this week" (the weekly highlights) reads it — never `updated_at`,
 which every plan write stamps on each sprint it lists. A status outside `SPRINT_STATUSES` is a `bad_request` at the

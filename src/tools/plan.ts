@@ -138,7 +138,7 @@ export async function write_plan(
       // panel) writes those too, and the plan write must not clobber them.
       // An EXPLICIT `null` still CLEARS the column: `undefined` (absent) and
       // `null` (cleared) are distinct here, and that distinction is the contract.
-      // `completed_at` (0089) follows the status: kept while it stays 'done', stamped when it becomes 'done', cleared
+      // `completed_at` (0088) follows the status: kept while it stays 'done', stamped when it becomes 'done', cleared
       // otherwise (every SET expression reads the row as it WAS, so `status` here is the old one).
       const sets: string[] = [`title = ?`, `target_date = ?`, `status = ?`, `updated_at = ?`,
         `completed_at = CASE WHEN ? <> 'done' THEN NULL WHEN status = 'done' THEN COALESCE(completed_at, ?) ELSE ? END`];

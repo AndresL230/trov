@@ -276,16 +276,12 @@
   Then `0086_projects` (Projects) [`projects`, `project_members`, `project_pins`, and `chat_threads.project_id` /
   `artifact_pages.project_id`; additive — `projects.md`].
   Then `0087_sample_orgs` [`orgs.sample`: the Sample workspace every new person gets — `organizations.md` › 1e].
-  Then `0088_doc_versions_unique` [UNIQUE `(org_id, slug, version)` on `doc_versions`, and the stale staged versions
-  earlier promotes left marked `superseded` — `ingestion-gate.md` › Staged-write model].
-  Then `0089_sprint_completed_at` [`sprints.completed_at`: when a sprint was finished, backfilled for done ones —
-  `roadmap-my-work.md`].
-  Then `0092_ai_state_guards` [`chat_threads.turn_at` (an Ask turn's lease), `ai_dirty.held_at` (a scope held for a
-  Message Batch), `sprints.source_key` + its partial unique index (a drafted sprint's suggestion key); additive —
-  `ask.md`, `ai.md`].
-  Then `0093_integration_ordering` [three nullable columns: `notification_outbox.attempted_at` (the digest retry's
-  lease — `notifications.md`), `org_github_installations.suspension_at` and `.repos_changed_at` (suspend / unsuspend
-  ordered by their own time; repository events settled by the next complete list — `github-app.md`)].
+  Then `0088_state_machines` (the state-machine fixes, #225; four parts, one file) [UNIQUE `(org_id, slug, version)`
+  on `doc_versions` and the stale staged versions earlier promotes left marked `superseded` — `ingestion-gate.md` ›
+  Staged-write model; `sprints.completed_at`, backfilled for done ones — `roadmap-my-work.md`; `chat_threads.turn_at`
+  (an Ask turn's lease), `ai_dirty.held_at` (a scope held for a Message Batch), `sprints.source_key` + its partial
+  unique index — `ask.md`, `ai.md`; `notification_outbox.attempted_at` (the digest retry's lease — `notifications.md`),
+  `org_github_installations.suspension_at` / `.repos_changed_at` — `github-app.md`].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),

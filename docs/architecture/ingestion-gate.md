@@ -27,7 +27,7 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   is a no-op (`unchanged`) unless `force: true` is passed. A doc is compared with its LIVE body and with the version
   still WAITING (the newest `staged` one newer than `current_version`) — never a stale staged one under the live
   version, so a real proposal is never dropped against a version nobody can approve.
-- **A page's version numbers are unique** (`0088_doc_versions_unique`: UNIQUE `(org_id, slug, version)`). The next
+- **A page's version numbers are unique** (`0088_state_machines`: UNIQUE `(org_id, slug, version)`). The next
   number is taken inside the INSERT (`COALESCE(MAX(version), 0) + 1` over the slug's rows), so two proposals of one
   page at once get two numbers.
 - **Change-typing**: `change_kind` (`new` / `edit` / `rewrite`) is server-computed via a line LCS diff
@@ -234,7 +234,7 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   `POST /sprints` (created `upcoming`, `phase` `'Unscheduled'`, no `due` → `target_date` `''` which the
   DTO shows as `due: null`), `POST /sprints/:id/active` (`true` → `in_progress`, `false` → `upcoming`;
   on a `done` sprint `false` is a NO-OP and `true` re-opens it), `POST /sprints/:id/resources`,
-  `POST /sprints/:id/complete` which flips status to `done` and stamps `completed_at` (0089), and `POST /sprints/:id/delete` — a HARD delete
+  `POST /sprints/:id/complete` which flips status to `done` and stamps `completed_at` (0088), and `POST /sprints/:id/delete` — a HARD delete
   (`delete_sprint`, one `db.batch`): its tickets move to the backlog (`sprint_id = NULL`), its
   `sprint_resources` and `sprint_progress` rows go with it, past `plan_versions` snapshots keep naming it. All
   direct promote-class writes, open to any signed-in member; the same five are MCP tools for every principal

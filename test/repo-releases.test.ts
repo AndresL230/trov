@@ -214,7 +214,7 @@ describe("reconcile's releases arm", () => {
     // 16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 (Phase B) + the releases arm; the cron's unit also
     // budgets the repo scan (Phase D, `SCAN_COST`), which Poll now does not run
     // (and the PR-files arm, Phase E: 9 on Poll now, 30 on the cron's unit)
-    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 30 + SCAN_COST + LOGO_IMPORT_COST + 1 + 2 + 5 + 7); // … + the open-PR list's two more pages and five closed-PR lookups on the cron's unit, and the App binding's recheck (0093)
+    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 30 + SCAN_COST + LOGO_IMPORT_COST + 1 + 2 + 5 + 7); // … + the open-PR list's two more pages and five closed-PR lookups on the cron's unit, and the App binding's recheck (0088)
     expect(refreshSubrequests(2)).toBe(3 * 2 + 16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 9);
   });
 

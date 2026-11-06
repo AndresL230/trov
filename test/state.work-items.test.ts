@@ -184,7 +184,7 @@ describe("ONE definition per count", () => {
 
 const sprintRow = (id: number) => first<{ status: string; completed_at: string | null; updated_at: string }>(env.DB, `SELECT status, completed_at, updated_at FROM sprints WHERE id = ?`, id);
 
-describe("sprints: completed_at (0089)", () => {
+describe("sprints: completed_at (0088)", () => {
   it("complete_sprint stamps it; re-opening clears it; clearing 'active' never un-finishes a done sprint", async () => {
     const s = await create_sprint(systemCtx(), SprintCreate.parse({ label: "S" }), ME);
     expect((await sprintRow(s.id))!.completed_at).toBeNull();

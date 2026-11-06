@@ -367,7 +367,7 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   // Mode access follows the plan: one the plan does not offer is refused before anything runs.
   if (!st.modes.includes(req.mode)) return c.json({ error: "mode_unavailable", message: `${askMode(req.mode).label} is not on this organization's plan.`, modes: st.modes }, 403);
   const settings = await getAskSettings(ctx, handle);
-  // ONE turn at a time on a thread (0092_ai_state_guards): claimed before anything streams, released when it ends. A
+  // ONE turn at a time on a thread (0088_state_machines): claimed before anything streams, released when it ends. A
   // new thread is claimed as soon as it exists (`converse`).
   const lease: TurnLease = { threadId: null, at: nowDate().toISOString(), turn: null };
   if (thread) {
@@ -437,7 +437,7 @@ interface Conversation {
   lease: TurnLease;
 }
 
-/** The turn's hold on its thread (0092_ai_state_guards): which thread, the lease's instant, and the turn number once
+/** The turn's hold on its thread (0088_state_machines): which thread, the lease's instant, and the turn number once
  *  it started. */
 interface TurnLease { threadId: number | null; at: string; turn: number | null }
 

@@ -258,7 +258,7 @@ price):
   batch and its requests are recorded (`ai_batches`, `ai_batch_requests`: PLATFORM tables, no `org_id` — a request
   names its org only in `custom_id` = `<org>:<scope>:<key>:<prompt version>`; the API's own id is `r0`, `r1`, … since
   it allows only `[A-Za-z0-9_-]`), and each scope is HELD — BEFORE the submit (`last_run_at` = the tick, and
-  `held_at`, `0092_ai_state_guards`: it reads clean, and an open request's scope is skipped, so no tick submits it
+  `held_at`, `0088_state_machines`: it reads clean, and an open request's scope is skipped, so no tick submits it
   twice — not even when recording a batch the provider accepted fails, which is logged loudly and retried once). A
   refused submit fails the scopes. **A hold nothing settles** — a batch never recorded, lost, or collected without
   writing it — is released after `AI_BATCH_HOLD_MAX_MS` (48 h; `releaseStaleHolds`, at the start of each org's turn):
@@ -759,7 +759,7 @@ API (`batch: true`, half the price), the pass's last stage.
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
   real field AS the cookie person, and on its throw the claim is undone. So a handler that writes in more than one
   step is IDEMPOTENT per suggestion: `sprint_draft` creates each drafted sprint under `sprints.source_key`
-  (`ai_suggestion:<id>:<index>`, `0092_ai_state_guards`), so an Accept that failed midway and is pressed again finds
+  (`ai_suggestion:<id>:<index>`, `0088_state_machines`), so an Accept that failed midway and is pressed again finds
   the sprints it made and places only the tickets still in the backlog — never a second sprint. (A Worker that dies
   between the claim and the write leaves the suggestion accepted with nothing applied: not recovered.)
   `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)

@@ -96,7 +96,7 @@ export async function buildWeekInput(ctx: TenantContext, weekId: string, end: Da
       { ref: `ticket:${t.number}`, label: `#${t.number}`, href: `#tickets/${t.number}` });
   }
 
-  // ── sprints a person completed this week: WHEN is `completed_at` (0089), never `updated_at` — every plan write
+  // ── sprints a person completed this week: WHEN is `completed_at` (0088), never `updated_at` — every plan write
   //    stamps `updated_at` on each sprint it lists, which would bring back a sprint finished months ago ──
   const sprints = await all<{ id: number; title: string; completed_at: string }>(ctx,
     `SELECT id, title, completed_at FROM sprints WHERE org_id = ? AND status = 'done' AND completed_at >= ? AND completed_at < ? ORDER BY completed_at DESC LIMIT 5`,

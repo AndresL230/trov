@@ -1,4 +1,4 @@
-// Ask Trov's turns and write cards as state machines (0092_ai_state_guards; docs/architecture/ask.md › The stream,
+// Ask Trov's turns and write cards as state machines (0088_state_machines; docs/architecture/ask.md › The stream,
 // › Write cards): one turn at a time per thread (a second is `409 busy`; a lease past its time is taken over), Stop
 // scoped to its turn, Confirm refused while the org's AI switch is off, a write that RAN is never recorded `failed`
 // (a failure to record it leaves the card `running`, settled later as "may have run"), an Undo that ran never goes

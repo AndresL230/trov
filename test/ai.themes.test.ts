@@ -305,7 +305,7 @@ describe("accept, rename, merge, remove — an ADMIN's, through the cookie sugge
     expect(rows.find((t) => t.id === ids[1])).toMatchObject({ status: "removed", decided_by: FIXTURE_ADMIN });
   });
 
-  // A theme and its card move together (0092 batch): a write that fails halfway leaves both as they were.
+  // A theme and its card move together (0088 batch): a write that fails halfway leaves both as they were.
   const failing = async <T>(sql: string, fn: () => Promise<T>): Promise<T> => {
     await env.DB.prepare(sql).run();
     try { return await fn(); } finally { await env.DB.prepare(`DROP TRIGGER IF EXISTS t_theme_fail`).run(); }

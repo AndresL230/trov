@@ -22,7 +22,7 @@ describe("migration 0021 — notification tables", () => {
     expect(await columns("notification_prefs")).toEqual(["org_id", "user_id", "kind", "cadence", "updated_at"]);
     expect(await columns("notification_outbox")).toEqual([
       "idempotency_key", "user_id", "cadence", "window_id", "kinds", "status", "resend_id", "error", "created_at", "sent_at", "org_id",
-      "attempted_at", // 0093: the digest retry's lease
+      "attempted_at", // 0088: the digest retry's lease
     ]);
   });
 

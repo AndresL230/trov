@@ -47,7 +47,7 @@ function instant(v: unknown): string | null {
   return Number.isFinite(ms) ? new Date(ms).toISOString() : null;
 }
 /** When a suspend / unsuspend happened, by the delivery: a suspension's `suspended_at`, else the installation's
- *  `updated_at`. null (no usable time) = applied as of now, unordered, as before 0093. */
+ *  `updated_at`. null (no usable time) = applied as of now, unordered, as before 0088. */
 export function suspensionTime(installation: Record<string, unknown>, action: "suspend" | "unsuspend"): string | null {
   return (action === "suspend" ? instant(installation.suspended_at) : null) ?? instant(installation.updated_at);
 }

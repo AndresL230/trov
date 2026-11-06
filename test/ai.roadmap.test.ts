@@ -366,7 +366,7 @@ describe("sprint drafts — ≥8 open tickets outside any sprint and none active
     expect((await first<{ decided_by: string }>(env.DB, `SELECT decided_by FROM ai_suggestions WHERE id = ?`, id))!.decided_by).toBe(FIXTURE_ADMIN);
   });
 
-  it("an Accept that fails midway goes back to open, and pressing it again FINDS the sprints it made — never a second one (0092)", async () => {
+  it("an Accept that fails midway goes back to open, and pressing it again FINDS the sprints it made — never a second one (0088)", async () => {
     const t = await backlog(DRAFT_MIN_BACKLOG);
     await batchRound([SPRINT_DRAFT_JOB], { "roadmap.sprint_draft": DRAFT(t) });
     const id = (await first<{ id: number }>(env.DB, `SELECT id FROM ai_suggestions WHERE kind = 'sprint_draft'`))!.id;

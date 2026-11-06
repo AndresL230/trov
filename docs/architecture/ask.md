@@ -76,7 +76,7 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   abort DURING the turn (`runTurn`'s listener, removed when it returns) can mark it; on the client the pacer is
   flushed before the catch reads the error, so `done` has landed and `stopTurn` / `failTurn` leave a finished turn
   alone (`turnLive`), whatever the browser calls the close (`test/render.ask-controller.test.ts`).
-- **One turn at a time** (`0092_ai_state_guards`, `chat_threads.turn_at`): the route CLAIMS an existing thread before
+- **One turn at a time** (`0088_state_machines`, `chat_threads.turn_at`): the route CLAIMS an existing thread before
   anything streams (`claimThread`, one guarded UPDATE of the lease; a new thread is claimed as soon as it exists) and
   the turn RELEASES it when it ends — before the stream closes, so a client that read to the end may ask again at
   once. A second ask on the same thread while a turn runs (its owner's, or a person's it is shared with to continue)
