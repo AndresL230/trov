@@ -145,8 +145,14 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
   search_prompts: read(z.object({ q: z.string().optional(), tags: z.array(z.string()).optional() }), "search", (c, a) => listPrompts(c.ctx, a), () => [["prompts", null]]),
   get_prompt: read(z.object({ slug: z.string(), vars: z.record(z.string(), z.string()).optional() }), "read", async (c, a) => {
     await recordPromptUse(c.ctx, a.slug);
-    const p = await getPrompt(c.ctx, a.slug);
-    if (!p) throw new PromptError("not_found", "prompt not found");
+    const live = await getPrompt(c.ctx, a.slug);
+    if (!live) throw new PromptError("not_found", "prompt not found");
+    // An agent reader is served the newest PUBLISHED version — a staged or draft one after it is not the prompt yet —
+    // or, when none is published, the latest.
+    const v = await first<{ version: number; status: typeof live.status; body: string }>(c.ctx,
+      `SELECT version, status, body FROM prompt_versions WHERE slug = ? AND org_id = ? ORDER BY (status = 'published') DESC, version DESC LIMIT 1`,
+      live.slug, c.ctx.orgId);
+    const p = v ? { ...live, version: v.version, status: v.status, body: v.body } : live;
     const variables = detectVars(p.body);
     const values = a.vars ?? {};
     return { ...p, body: fillVars(p.body, values), variables, unfilled: variables.filter((v) => !values[v]?.trim()) };

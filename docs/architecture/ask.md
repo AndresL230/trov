@@ -158,7 +158,8 @@ turn" — › Agent links). Admin-only tools are offered only to an admin. Besid
 Confirm is the Send) over MCP's input schemas.
 Narrower than MCP: `send_handoff`'s prompt is inline only — MCP's upload form needs a shell to PUT the file, so
 Ask's input refuses its keys and the schema it offers shows `{ title, body }` (`ASK_NARROWED_ARGS`; same argument
-names, so the parity holds). Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
+names, so the parity holds). `get_prompt` serves the newest PUBLISHED version (a staged or draft one after it is not
+the prompt yet), or the latest when none is published. Ask's own: `trov_docs` (Trov's public docs from the prerendered `/llms-full.txt` through the ASSETS binding, no web),
 `read_attachment`, `save_artifact`, `publish_doc`, `show_items`, `show_chart` (fixed queries: merged PRs by week,
 tickets by status, CI failures by week, theme shares — empty until themes exist —, sprint burn-down; the server's
 numbers), `show_themes` (empty until themes exist; caption "Share of merged PRs"), `show_diagram` (structured, ≤ 8
@@ -463,7 +464,8 @@ a thread, and `claim_handoff` with it still works.
   allowance left covering what it counts as: with 1–4 left Thinking cannot; Q50), and the composer never sends a
   mode that cannot (its menu shows it disabled with "Needs 5 questions; fewer are left this month."; the question goes
   in the default, else Smart); every mode out reads as the quota block; starters — always four — by plain rules (the
-  person's top assigned ticket, the active sprint, what is waiting on them), padded from `ASK_STARTERS_FALLBACK`,
+  person's top assigned ticket, the active sprint, what is waiting on them — a pending handoff past its `expires_at`
+  is not waiting, swept or not), padded from `ASK_STARTERS_FALLBACK`,
   which is generic on purpose (it names no ticket, sprint or project). The sprint's name is said short
   (`starterTopic`: a trailing "(…)" aside dropped, past 40 characters cut at a word with "…"). `allowance.cap` is the cap the gate
   enforces (`resolveEntitlements` with the org's members): on Pro 300 × the paid seats, or × the members (at least

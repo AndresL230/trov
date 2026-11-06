@@ -163,7 +163,9 @@ async function starters(ctx: TenantContext, handle: string): Promise<string[]> {
     const sprint = await first<{ title: string }>(ctx, `SELECT title FROM sprints WHERE org_id = ? AND status = 'in_progress' ORDER BY target_date LIMIT 1`, ctx.orgId);
     const topic = sprint ? starterTopic(sprint.title) : "";
     if (topic) out.push(`What's blocking the ${topic} work?`);
-    const waiting = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND (recipient = ? COLLATE NOCASE OR recipient = 'anyone') AND sender <> ? COLLATE NOCASE`, ctx.orgId, handle, handle);
+    // A pending handoff past its `expires_at` reads as expired (the sweep may not have run yet): it is not waiting.
+    const waiting = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND expires_at > ?
+      AND (recipient = ? COLLATE NOCASE OR recipient = 'anyone') AND sender <> ? COLLATE NOCASE`, ctx.orgId, nowDate().toISOString(), handle, handle);
     if ((waiting?.n ?? 0) > 0 || mine.length > 0) out.push("What's waiting on me?");
   } catch (e) {
     console.error("ask starters", e instanceof Error ? e.name : "error");

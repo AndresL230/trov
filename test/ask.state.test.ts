@@ -6,6 +6,10 @@
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { adoptOrphanCards, stopRequested, ASK_ACTION_RUNNING_MAX_MS, ASK_TURN_LEASE_MS } from "../src/data/ask";
+import { createHandoff } from "../src/tools/handoffs";
+import { savePrompt } from "../src/tools/prompts";
+import { ASK_TOOLS } from "../src/ai/ask/tools";
+import type { AskToolCtx } from "../src/ai/ask/context";
 import { all, first, run } from "./helpers/db";
 import { cookieFor } from "./helpers/persons";
 import { ORG_A, tenantCtx } from "./helpers/tenant";
@@ -126,6 +130,28 @@ describe("a write that ran is never recorded as failed", () => {
     expect(res.state).toBe("auto");
     expect(await tickets("Auto late")).toHaveLength(1);
     expect((await card(res.id))!.state).toBe("running");
+  });
+});
+
+describe("what Ask reads: expiry and the published version", () => {
+  it("a pending handoff past its expires_at is not 'waiting' in the starters (the sweep may not have run yet)", async () => {
+    const cookie = await cookieFor(ME);
+    const { handoff } = await createHandoff(await tenantCtx("AndresL230"), "AndresL230", { recipient: ME, body: "Pick this up" });
+    expect((await call("GET", `${BASE}/ask/state`, cookie)).json.starters).toContain("What's waiting on me?");
+    await run(env.DB, `UPDATE handoffs SET expires_at = ? WHERE org_id = ? AND number = ?`, ago(60_000), ORG_A, handoff.id);
+    expect((await call("GET", `${BASE}/ask/state`, cookie)).json.starters).not.toContain("What's waiting on me?");
+  });
+
+  it("get_prompt serves the newest PUBLISHED version — not a staged one after it — or the latest when none is published", async () => {
+    const ctx = await tenantCtx("AndresL230");
+    await savePrompt(ctx, "AndresL230", { slug: "ask-p", title: "P", body: "published body", status: "published" }, "human");
+    await savePrompt(ctx, "AndresL230", { slug: "ask-p", title: "P", body: "staged body" }, "agent");
+    await savePrompt(ctx, "AndresL230", { slug: "ask-q", title: "Q", body: "draft one", status: "draft" }, "human");
+    await savePrompt(ctx, "AndresL230", { slug: "ask-q", title: "Q", body: "draft two", status: "draft" }, "human");
+    const tc = { env, ctx, handle: "AndresL230", orgSlug: "saplinglearn", origin: "http://x", threadId: 0, docs: async () => null, now: () => new Date(), searched: new Map() } as unknown as AskToolCtx;
+    const read = ASK_TOOLS.get_prompt as unknown as { run: (c: AskToolCtx, a: unknown) => Promise<{ body: string; version: number; status: string }> };
+    expect(await read.run(tc, { slug: "ask-p" })).toMatchObject({ body: "published body", version: 1, status: "published" });
+    expect(await read.run(tc, { slug: "ask-q" })).toMatchObject({ body: "draft two", version: 2 });
   });
 });
 
