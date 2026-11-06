@@ -112,7 +112,7 @@ export const importsApp = (() => {
   r.post("/:id/approve-all", (c) => guard(c, async () => {
     const id = runId(c);
     if (id === null) return unknownRun(c);
-    return c.json({ ok: true, ...(await approveImport(c.var.ctx, id, me(c))) });
+    return c.json({ ok: true, ...(await approveImport(c.var.ctx, id, me(c), await body(c))) });
   }));
   r.post("/:id/reject-all", (c) => guard(c, async () => {
     const id = runId(c);

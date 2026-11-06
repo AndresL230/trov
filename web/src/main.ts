@@ -2171,8 +2171,13 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
   rerender();
   let done = 0;
   type Answer = { space: string; space_name: string | null };
-  const call = accept ? approveImport : rejectImport;
-  const importLoop = (): Promise<Answer> => call(g.id).then((a) => { done += a.done; return a.remaining > 0 && a.done > 0 ? importLoop() : a; });
+  // Approve all skips a page that fails (it stays waiting) and says so; its cursor (`next` → `after`) steps past it.
+  let failed = 0;
+  const importLoop = (after: number | null = null): Promise<Answer> => (accept ? approveImport(g.id, after) : rejectImport(g.id)).then((a) => {
+    done += a.done;
+    failed += a.failed ?? 0;
+    return a.remaining > 0 && a.done + (a.failed ?? 0) > 0 ? importLoop(a.next ?? null) : a;
+  });
   const agentLoop = async (): Promise<Answer> => {
     for (const it of [...items].reverse()) {
       const ref = decodeReviewId(it.id);
@@ -2191,7 +2196,9 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
       const name = slug ? a.space_name ?? spaceName(state, slug) : null;
       const pages = `${done} ${done === 1 ? "page" : "pages"}`;
       const verb = done === 1 ? "is" : "are";
-      flash(accept ? `${pages} ${verb} now live${name ? ` in ${name}` : ""}` : `${pages} rejected`, 6000, name ? { label: `Open ${name}`, act: "libOpenSpace", arg: slug } : null);
+      const left = failed === 0 ? "" : `${failed === 1 ? "One page" : `${failed} pages`} couldn't be approved and ${failed === 1 ? "is" : "are"} still waiting in Review.`;
+      const said = !accept ? `${pages} rejected` : done === 0 && left ? left : `${pages} ${verb} now live${name ? ` in ${name}` : ""}${left ? `. ${left}` : ""}`;
+      flash(said, 6000, name ? { label: `Open ${name}`, act: "libOpenSpace", arg: slug } : null);
       if (accept) libCtl.load();
       loadBadges();
       settleReview();

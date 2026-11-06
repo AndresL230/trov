@@ -819,7 +819,10 @@ export interface ImportFinishBody { cancel?: boolean }
 export interface ImportFinishAnswer { ok: true; run: ImportRunView }
 /** `GET /imports`: newest first, and how many are in progress (the sidebar's badge; one at most). */
 export interface ImportsDTO { imports: ImportRunView[]; running: number }
-export interface ImportReviewAnswer { ok: true; done: number; remaining: number; space: string; space_name: string | null }
+/** Approve all / Reject all, one bounded call. Approve all also says what it could not approve this call (`failed`,
+ *  left waiting) and where it stopped (`next`: the client sends it back as `after`, so a page that keeps failing is
+ *  stepped over, never retried forever); `next` is null when nothing was tried. */
+export interface ImportReviewAnswer { ok: true; done: number; remaining: number; space: string; space_name: string | null; failed?: number; next?: number | null }
 
 export type ImportErrorCode =
   | "invalid" | "too_many_files" | "too_large" | "no_markdown" | "not_found" | "archived" | "import_running"
