@@ -43,7 +43,9 @@ decision's number). Tickets, artifacts (`area`) and prompts (free-text tags) are
   colour — a rename rewrites `entry_tags` in the batch, so every tagged item stays tagged, and moves every
   `source = 'model'` row and `org_tag_runs` with it, so Sift's credit and a run's Undo survive; a starter may be
   renamed); `mergeTag` (the source's items move to the target, the source is retired with
-  `merged_into`, and an agent that still sends it gets the target; a starter cannot be merged away);
+  `merged_into`, and an agent that still sends it gets the target — followed to the end of the chain, and when the
+  target has since been RETIRED the agent's tag is suggested as that target (the tag its items carry), never as the
+  empty merged-away name; a starter cannot be merged away);
   `retireTag` (soft: stays on what has it, can no longer be picked, name stays reserved; never a starter) and
   `restoreTag`. Nothing is hard-deleted.
 - **The plan caps the list**: `tags` in `PLANS` (`plans.md`), `requirePlan(ctx, "tags")` on add, restore and

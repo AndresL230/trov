@@ -127,6 +127,18 @@ describe("the gate reads the org's tag list", () => {
     expect(r).toMatchObject({ outcome: "written", tags: ["auth"], suggested_tags: ["onboarding"] });
   });
 
+  it("a name merged into a tag that was later retired suggests THAT tag, never the empty name the merge left", async () => {
+    const admin = await tenantCtx("AndresL230");
+    await addTag(admin, { name: "billing" });
+    await addTag(admin, { name: "invoices" });
+    await mergeTag(admin, "invoices", "billing");
+    await retireTag(admin, "billing");
+
+    const r = await ingestFeedEntry(systemCtx(), entry("late", ["invoices"]), "andres");
+    expect(r).toMatchObject({ outcome: "written", tags: [], suggested_tags: ["billing"] });
+    expect((await suggestions()).map((s) => s.name)).toEqual(["billing"]);
+  });
+
   it("an org with no tag rows (created by the Worker from before 0056) is given the starters on first read", async () => {
     await env.DB.prepare(`DELETE FROM org_tags WHERE org_id = ?`).bind(ORG_B).run();
     const r = await ingestFeedEntry(systemCtx(ORG_B), entry("first", ["infra"]), "andres");

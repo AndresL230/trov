@@ -253,10 +253,17 @@ export async function sortAgentTags(ctx: TenantContext, raw: readonly string[]):
   for (const t of raw) {
     const name = normalizeTagName(t);
     if (!name) { add(out.ignored, String(t).slice(0, 64)); continue; }
-    const row = byName.get(name);
-    const target = row && !live(row) && row.merged_into ? byName.get(row.merged_into) : row;
+    // A name merged into another reads as that one — followed to the end of the chain (a merge repoints the names
+    // merged into the tag it merges away, so it is one step; the walk is only a safety net).
+    let target = byName.get(name);
+    for (let hop = 0, seen = new Set<string>(); target && !live(target) && target.merged_into && !seen.has(target.name) && hop < 8; hop++) {
+      seen.add(target.name);
+      target = byName.get(target.merged_into);
+    }
     if (target && live(target)) add(out.known, target.name);
-    else add(out.suggested, name);
+    // A name that went INTO a tag since retired suggests that tag — the one its items carry — never the empty name
+    // the merge left behind (accepting that would restore a tag with nothing on it).
+    else add(out.suggested, target ? target.name : name);
   }
   return out;
 }
