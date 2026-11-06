@@ -3,11 +3,12 @@
 // A sprint is the container the Roadmap shows: it holds tickets (0024) and,
 // through `github_ref`, a set of GitHub issues whose closed/total counts are
 // cached event-side in `sprint_progress`. Nothing in this file goes through
-// `consume()` / the ingestion gate — a sprint is created and reshaped by a
-// signed-in human over a cookie route, or by the admin plan write
-// (`update_plan` → `write_plan` in plan.ts). `status: 'done'` is set ONLY by
-// `complete_sprint` (the Confirm-done button) or the plan write — never inferred
-// from tickets resolving or issues closing.
+// `consume()` / the ingestion gate — a sprint is created and reshaped by ANY
+// member over a cookie route or MCP (sprint writes are open to every member since
+// PR #65), or by the admin plan write (`update_plan` → `write_plan` in plan.ts).
+// `status: 'done'` is set ONLY by `complete_sprint` (the Confirm-done button) or
+// the plan write — never inferred from tickets resolving or issues closing — and
+// each of them stamps `completed_at` (0089); every move off 'done' clears it.
 //
 // TWO VOCABULARIES. The DB keeps `title` / `target_date` / `start_date`; every DTO
 // here speaks `label` / `due` / `start` / `active` (shared/sprints.ts documents the seam, and
@@ -443,26 +444,32 @@ export async function create_sprint(ctx: TenantContext, input: SprintCreate, aut
  * `active` is derived, never stored, so this writes `status`:
  *
  *   active: true               → 'in_progress'  (from ANY status, including
- *                                'done' — that is an admin re-opening a sprint
- *                                that turned out not to be finished)
+ *                                'done' — that is a member re-opening a sprint
+ *                                that turned out not to be finished; it clears
+ *                                `completed_at`)
  *   active: false, status done → NO-OP: the row is returned unchanged. Clearing
  *                                "active" must never un-finish a sprint; only
- *                                the plan write can move it off 'done'.
+ *                                `active: true` or the plan write moves it off 'done'.
  *   active: false, otherwise   → 'upcoming'
+ *
+ * The no-op rule is held in the UPDATE itself (`status != 'done'` for `active: false`), so a completion that lands
+ * between the read and the write is never undone.
  */
 export async function set_sprint_active(ctx: TenantContext, id: number, active: boolean): Promise<SprintView> {
   const sp = await requireSprint(ctx, id);
   if (!active && sp.status === "done") return viewFor(ctx, id);
   const status = active ? "in_progress" : "upcoming";
   if (sp.status !== status) {
-    await run(ctx, `UPDATE sprints SET status = ?, updated_at = ? WHERE id = ? AND org_id = ?`, status, nowIso(), id, ctx.orgId);
+    await run(ctx, `UPDATE sprints SET status = ?, completed_at = NULL, updated_at = ? WHERE id = ? AND org_id = ?${active ? "" : " AND status != 'done'"}`,
+      status, nowIso(), id, ctx.orgId);
   }
   return viewFor(ctx, id);
 }
 
 /**
- * Human confirmation: flip a live sprint to 'done'. Admin action in the promote
- * class — 'done' is NEVER inferred from issues or tickets closing. Lives here
+ * Human confirmation: flip a live sprint to 'done' and stamp `completed_at` (0089 — what "completed this week"
+ * reads). Any member may (promote class, open to every member since PR #65) — 'done' is NEVER inferred from issues
+ * or tickets closing. Lives here
  * (with the other sprint writers) and is re-exported from writes.ts so the older
  * import path keeps working.
  */
@@ -480,10 +487,12 @@ export async function complete_sprint(ctx: TenantContext, id: number): Promise<S
   // second completion passes the check after the first has already written —
   // both would then report success for the one sprint. `changes === 0` means
   // some other caller got there first, which is exactly the conflict.
+  const now = nowIso();
   const res = await run(
     ctx,
-    `UPDATE sprints SET status = 'done', updated_at = ? WHERE id = ? AND org_id = ? AND status != 'done'`,
-    nowIso(),
+    `UPDATE sprints SET status = 'done', completed_at = ?, updated_at = ? WHERE id = ? AND org_id = ? AND status != 'done'`,
+    now,
+    now,
     id,
     ctx.orgId
   );
