@@ -363,4 +363,5 @@ export interface NotificationOutboxRow {
   error: string | null;
   created_at: string;
   sent_at: string | null;
+  attempted_at?: string | null;       // 0091: when the latest send attempt began (the retry job's lease)
 }

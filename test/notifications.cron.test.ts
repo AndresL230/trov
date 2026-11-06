@@ -172,6 +172,49 @@ describe("retryFailed — failed rows only", () => {
     expect(r.retried).toBe(0);
     expect((await outbox())[0].status).toBe("failed");
   });
+
+  // A claim whose run died before recording an outcome stays `pending`; past the lease it is a dead claim and the
+  // retry job sends it (the key blocks a re-run of the window, so nothing else ever would).
+  it("retries a pending row older than the lease, and leaves a fresh pending row (a run still in flight) alone", async () => {
+    await user("AndresL230", "andres@example.com");
+    await pendingDecision();
+    const stale = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const fresh = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+    await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES ('AndresL230:daily:stale', 'AndresL230', 'daily', 'stale', '["review_queue"]', 'pending', ?)`, stale);
+    await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES ('AndresL230:daily:fresh', 'AndresL230', 'daily', 'fresh', '["review_queue"]', 'pending', ?)`, fresh);
+    const r = await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
+    expect(r.retried).toBe(1);
+    const rows = await outbox();
+    expect(rows.find((x) => x.idempotency_key === "AndresL230:daily:stale")?.status).toBe("sent");
+    expect(rows.find((x) => x.idempotency_key === "AndresL230:daily:fresh")?.status).toBe("pending");
+  });
+
+  it("a dead claim whose send already landed is not delivered twice (the key is the send's idempotency key)", async () => {
+    await user("AndresL230", "andres@example.com");
+    await pendingDecision();
+    const stale = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    await run(env.DB, `INSERT INTO notification_outbox (idempotency_key, user_id, cadence, window_id, kinds, status, created_at) VALUES ('AndresL230:daily:landed', 'AndresL230', 'daily', 'landed', '["review_queue"]', 'pending', ?)`, stale);
+    // The first attempt's body is already there (local mode's stand-in for Resend having accepted it).
+    await run(env.DB, `INSERT INTO notification_outbox_bodies (org_id, idempotency_key, to_address, subject, html, text, created_at) VALUES ('org_saplinglearn', 'AndresL230:daily:landed', 'andres@example.com', 'first', '<p>first</p>', 'first', ?)`, stale);
+    await retryFailed(systemCtx(), platformCtx(), { delivery: localDelivery(systemCtx()), origin: "" });
+    const b = await bodies();
+    expect(b).toHaveLength(1);
+    expect(b[0].text).toBe("first");
+    expect((await outbox())[0].status).toBe("sent");
+  });
+
+  it("two retries over the same failed row send it once", async () => {
+    await user("AndresL230", "andres@example.com");
+    await pendingDecision();
+    await failedRow();
+    const sends: string[] = [];
+    const delivery = { send: async (m: { idempotencyKey: string }) => { sends.push(m.idempotencyKey); return { id: null }; } };
+    await Promise.all([
+      retryFailed(systemCtx(), platformCtx(), { delivery, origin: "" }),
+      retryFailed(systemCtx(), platformCtx(), { delivery, origin: "" }),
+    ]);
+    expect(sends).toHaveLength(1);
+  });
 });
 
 describe("signed one-click unsubscribe token", () => {

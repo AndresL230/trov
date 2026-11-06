@@ -27,7 +27,8 @@ export function localDelivery(ctx: TenantContext): Delivery {
     async send(msg) {
       await run(
         ctx,
-        `INSERT INTO notification_outbox_bodies (org_id, idempotency_key, to_address, subject, html, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        // OR IGNORE: like Resend's Idempotency-Key, a second send under the same key (a retried dead claim) is a no-op.
+        `INSERT OR IGNORE INTO notification_outbox_bodies (org_id, idempotency_key, to_address, subject, html, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         ctx.orgId,
         msg.idempotencyKey,
         msg.to,
