@@ -102,12 +102,14 @@ export function pickRow(inner: string, active: boolean, act: string, arg: string
   return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" style="${style}">${inner}</button>`;
 }
 
-/** Accent primary button that renders inert (muted outline) until `enabled`. */
-export function primaryBtn(label: string, enabled: boolean, act: string, arg: string, extraStyle = ""): string {
-  const style = enabled
+/** Accent primary button that renders inert (muted outline) until `enabled`; `busy` (its write is in flight) draws it
+ *  inert and disabled, `aria-busy`. */
+export function primaryBtn(label: string, enabled: boolean, act: string, arg: string, extraStyle = "", busy = false): string {
+  const on = enabled && !busy;
+  const style = on
     ? "background:var(--accent);color:var(--accent-fg);border:1px solid transparent;cursor:pointer"
     : "background:transparent;color:var(--fg-40);border:1px solid var(--border);cursor:default";
-  return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" class="${enabled ? "cnpy-accentbtn" : ""}" style="${style};border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;transition:all .12s ease;${extraStyle}">${esc(label)}</button>`;
+  return `<button data-act="${attr(act)}" data-arg="${attr(arg)}" class="${on ? "cnpy-accentbtn" : ""}"${busy ? ' disabled aria-busy="true"' : ""} style="${style};border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;transition:all .12s ease;${extraStyle}">${esc(label)}</button>`;
 }
 
 /** Dashed-border empty-state card (Review list + detail). */

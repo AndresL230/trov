@@ -585,6 +585,8 @@ export interface NewTicketProps {
   /** Whether the sprint picker is open — the same `sprMenu` flag the detail
    *  rail's picker uses (the two screens are never mounted together). */
   sprMenu: boolean;
+  /** Submit is in flight (main.ts `beginWrite("ntSubmit")`): the button is busy, a second click does nothing. */
+  busy?: boolean;
 }
 
 /** How tall a ticket screen's body runs: the window, less the header, the
@@ -654,7 +656,7 @@ export function newTicketView(p: NewTicketProps): string {
       </div>
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
         <button data-act="ticketsBack" class="cnpy-outlinebtn" style="padding:8px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);transition:all .12s ease">Cancel</button>
-        ${primaryBtn("Submit ticket", canSubmit, "ntSubmit", "", "padding:8px 16px")}
+        ${primaryBtn(p.busy ? "Submitting…" : "Submit ticket", canSubmit, "ntSubmit", "", "padding:8px 16px", !!p.busy)}
       </div>
     </div>
   </div>`;

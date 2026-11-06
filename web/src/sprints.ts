@@ -211,6 +211,8 @@ export interface NewSprintState {
   domain: SprintDomain | null;
   /** The date refusal to show under the dates (`sprintDatesProblem`, set on Create), or null. */
   error: string | null;
+  /** Create is in flight (main.ts `beginWrite("nsCreate")`): the button is busy, a second click does nothing. */
+  busy?: boolean;
 }
 
 const NS_LABEL = "display:block;font-size:12.5px;font-weight:500;margin-bottom:7px";
@@ -243,7 +245,7 @@ const chipClass = (on: boolean) => `cnpy-pickchip${on ? " is-on" : ""}`;
  */
 export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): string {
   if (!s.open) return "";
-  const canCreate = s.name.trim().length > 0;
+  const canCreate = s.name.trim().length > 0 && !s.busy;
 
   const urgSeg = segmented({
     id: "ns-urgency", ariaLabel: "Urgency", act: "nsUrg", value: s.urgency, size: "sm",
@@ -291,7 +293,7 @@ export function newSprintPanel(s: NewSprintState, persons: PersonSummary[]): str
     <div style="font-size:11.5px;color:var(--fg-40);margin-top:12px">Sprints are the roadmap — a new sprint appears on the Roadmap timeline automatically.</div>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
       <button data-act="nsToggle" class="cnpy-outlinebtn" style="padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70)">Cancel</button>
-      <button data-act="nsCreate" style="border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;${createStyle}">Create sprint</button>
+      <button data-act="nsCreate"${s.busy ? ' disabled aria-busy="true"' : ""} style="border-radius:8px;padding:7px 15px;font-size:12.5px;font-weight:600;${createStyle}">${s.busy ? "Creating…" : "Create sprint"}</button>
     </div>
   </div>`;
 }

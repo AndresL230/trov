@@ -304,6 +304,11 @@ describe("newSprintPanel", () => {
     expect(open).not.toContain("border-radius:13px");
   });
 
+  it("Create sprint shows busy (disabled, inert) while its write is out", () => {
+    const busy = newSprintPanel({ ...NS, open: true, name: "Sprint 14", busy: true }, PERSONS);
+    expect(busy).toMatch(/data-act="nsCreate" disabled aria-busy="true" style="[^"]*cursor:default[^"]*">Creating…</);
+  });
+
   it("leaves Create sprint inert until the sprint has a name", () => {
     const empty = newSprintPanel({ ...NS, open: true }, PERSONS);
     const create = empty.slice(empty.indexOf('data-act="nsCreate"'), empty.indexOf('data-act="nsCreate"') + 220);

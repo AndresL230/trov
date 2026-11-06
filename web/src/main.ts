@@ -1109,7 +1109,8 @@ function loadLinks(): void {
 function openLinkPage(id: number): void {
   if (state.linkId !== id) { state.linkCancelArm = false; state.linkCancelBusy = false; state.linkNoteSide = "requester"; }
   state.linkId = id;
-  state.linkBusy = false;
+  // `linkBusy` is not reset here: a step or a note in flight clears it with its own answer — resetting it on
+  // navigation let a second write start and the first answer clear the second's flag.
   // Keep what the tab already holds on screen (no notes yet) while the fresh read lands.
   const b = state.links.data;
   const known = state.linkDetail.data?.id === id ? state.linkDetail.data
@@ -1166,7 +1167,9 @@ function loadPrompts(): void {
 function openPrompt(slug: string): void {
   state.promptSlug = slug;
   state.promptDiffV = null; state.promptTagMenu = false; state.promptTagDraft = ""; state.promptExpanded = false;
-  state.promptDeleteArm = false; state.promptDeleteBusy = false;
+  // A delete in flight keeps its flags (its answer clears them, as `goArt` keeps an artifact's): resetting them here
+  // let a second delete start and the first answer clear the second's busy.
+  if (!state.promptDeleteBusy) state.promptDeleteArm = false;
   if (state.promptList.status === "idle") loadPrompts(); // the tag picker suggests the library's tags
   const same = state.promptDetail.data?.prompt.slug === slug;
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
@@ -1386,19 +1389,35 @@ function writeErr(e: unknown, fallback: string): void {
   if (e instanceof Unauthorized) { unauth(e); return; }
   flash(e instanceof ApiError && e.message && !/^\d+$/.test(e.message) ? e.message : fallback);
 }
-/** A handoff write landed: show it, and refresh the inbox (the sidebar badge reads it). */
-function applyHandoff(h: HandoffView, msg: string): void {
-  state.handoffId = h.id;
-  state.handoffDetail = { status: "ok", data: h };
-  state.handoffExpireArm = false;
+/** One write per form at a time: `key` is held from the click to the answer (`endWrite` on every exit), so a double
+ *  click is one submit and the button shows busy meanwhile (`state.inFlight`). False: one is already out. */
+function beginWrite(key: string): boolean {
+  if (state.inFlight[key]) return false;
+  state.inFlight = { ...state.inFlight, [key]: true };
+  return true;
+}
+function endWrite(key: string): void {
+  const { [key]: _done, ...rest } = state.inFlight;
+  state.inFlight = rest;
+}
+/** A handoff write landed: show it where it is still on screen (the handoff page it was made on — or, with `show`,
+ *  the one just sent from the compose screen), and refresh the inbox (the sidebar badge reads it). An answer that
+ *  lands after the person moved on changes nothing they are looking at. */
+function applyHandoff(h: HandoffView, msg: string, show = false): void {
+  if (show || (state.screen === "handoff" && state.handoffId === h.id)) {
+    state.handoffId = h.id;
+    state.handoffDetail = { status: "ok", data: h };
+    state.handoffExpireArm = false;
+  }
   loadHandoffs();
   flash(msg);
 }
-/** A prompt write landed: reload the detail + versions and the library (the badge reads it). */
-function afterPromptWrite(slug: string, msg: string): void {
+/** A prompt write landed: reload the library (the badge reads it) and — while the person is still where they made it
+ *  (`stay`) — open the prompt with its detail and versions read again. */
+function afterPromptWrite(slug: string, msg: string, stay: boolean): void {
   loadPrompts();
-  state.screen = "prompt";
-  openPrompt(slug);
+  if (stay) { state.screen = "prompt"; openPrompt(slug); }
+  else rerender();
   flash(msg);
 }
 /** Replace a prompt's tag list (the detail rail's add / remove). */
@@ -2877,17 +2896,22 @@ function runArtWrite(w: ArtWrite): void {
     addArtifactVersion(w.slug, w.body)
       .then((res) => {
         const r = res as { unchanged?: boolean; version_no?: number };
-        state.art.nv = null;
-        // Land on the latest (the new version): refreshArt drops every other cached version and
-        // refetches the one the route names, keeping the old body on screen until it lands.
-        state.artRoute = { slug: w.slug, v: null, diff: null };
+        // Still on this artifact: its New version dialog closes and the page lands on the latest (the new version) —
+        // refreshArt drops every other cached version and refetches the one the route names, keeping the old body on
+        // screen until it lands. Moved on: what they are looking at (and its own dialog) stays as it is.
+        if (state.screen === "artifact" && state.artRoute.slug === w.slug) {
+          state.art.nv = null;
+          state.artRoute = { slug: w.slug, v: null, diff: null };
+        }
         refreshArt(w.slug);
         flash(r.unchanged ? "No change: identical to the latest version" : `Saved v${r.version_no ?? ""}`.trim());
       })
       .catch((e) => {
         if (e instanceof Unauthorized) { unauth(e); return; }
-        if (state.art.nv) state.art.nv.submitting = false;
-        if (e instanceof NotFound) { state.art.nv = null; refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
+        // Only this artifact's dialog (another one opened since has its own request).
+        const mine = state.screen === "artifact" && state.artRoute.slug === w.slug;
+        if (mine && state.art.nv) state.art.nv.submitting = false;
+        if (e instanceof NotFound) { if (mine) state.art.nv = null; refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
         flash(e instanceof ApiError ? `Couldn't save the version (${e.message})` : "Couldn't save the version");
       });
     rerender();
@@ -2903,7 +2927,10 @@ function runArtWrite(w: ArtWrite): void {
         for (const k of Object.keys(state.art.diffs)) if (k.startsWith(`${r.slug}:`)) delete state.art.diffs[k];
         state.art.ticketArts = {};
         state.art.list = { status: "idle", data: (state.art.list.data ?? []).filter((x) => x.slug !== r.slug) };
-        goArt("artifacts", ART_ROUTE_NONE);
+        // Back to the library only from the deleted artifact's page; moved on, they stay where they are.
+        if (state.screen === "artifact" && state.artRoute.slug === r.slug) goArt("artifacts", ART_ROUTE_NONE);
+        else if (state.screen === "artifacts") loadArtifactsIfNeeded(true);
+        else rerender();
         flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "artRestore", arg: r.slug });
       })
       .catch((e) => {
@@ -3659,7 +3686,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const dateProblem = sprintDatesProblem({ start, due });
       // (The rule's "— nothing was written." tail is for API callers; the form never sent anything.)
       if (dateProblem) { state.nsError = dateProblem.replace(/ — nothing was written\.$/, "."); rerender(); return; }
+      if (!beginWrite("nsCreate")) return;
       state.nsError = null;
+      rerender();
       createSprint({
         label,
         summary: state.nsDesc.trim() || null,
@@ -3682,7 +3711,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           // A date refusal from the server reads under the dates, like the client's own.
           if (e instanceof ApiError && e.status === 400 && /\b(start|due)\b/.test(e.message)) { state.nsError = e.message; rerender(); return; }
           flash(e instanceof ApiError ? e.message : "Could not create the sprint");
-        });
+        })
+        .finally(() => { endWrite("nsCreate"); rerender(); });
       return;
     }
 
@@ -3838,6 +3868,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "ntSubmit": {
       const title = state.fTitle.trim();
       if (!title) return;                                            // the button is inert, but guard the dispatch too
+      if (!beginWrite("ntSubmit")) return;                           // a double click is one ticket
+      rerender();
       const link = state.fLink.trim();
       const assigned = state.fAsgs.map(personFirstName);
       createTicket({
@@ -3852,7 +3884,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .then(() => {
           state.fTitle = ""; state.fCat = null; state.fPrio = "normal";
           state.fDesc = ""; state.fAsgs = []; state.fLink = ""; state.fSpr = null;
-          state.screen = "tickets"; state.ticketId = null;
+          // Back to the queue only from the form it was filed on: an answer landing after the person moved on
+          // leaves them where they are.
+          if (state.screen === "newticket") { state.screen = "tickets"; state.ticketId = null; }
           loadTickets();
           loadTicketBadge();
           flash(assigned.length
@@ -3862,7 +3896,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .catch((e) => {
           if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not submit the ticket");
-        });
+        })
+        .finally(() => { endWrite("ntSubmit"); rerender(); });
       return;
     }
 
@@ -4420,12 +4455,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // screen; then the claim, which is permanent and takes the handoff from everyone else.
       const h = state.handoffs.data.find((x) => x.id === Number(arg));
       if (!h) return;
+      const key = `handoffClaim:${h.id}`;                  // the same key as the handoff page's Claim: one claim per handoff
+      if (!beginWrite(key)) return;
       const copied = copyToClipboard(handoffAsPrompt(h));
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
+      rerender();
       claimHandoff(h.id, session)
         .then((r) => { state.handoffReading = { id: r.handoff.id, items: r.reading_list }; return copied; })
         .then((ok) => { loadHandoffs(); flash(ok ? `Claimed #${h.id} · copied as prompt` : `Claimed #${h.id} — couldn't reach the clipboard`); })
-        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); });
+        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); })
+        .finally(() => { endWrite(key); rerender(); });
       return;
     }
     case "handoffCopy": {
@@ -4438,7 +4477,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "handoffClaim": {
       const h = state.handoffDetail.data;
       if (!h || h.id !== Number(arg)) return;
+      const key = `handoffClaim:${h.id}`;
+      if (!beginWrite(key)) return;
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
+      rerender();
       claimHandoff(h.id, session)
         .then(({ handoff: nh, reading_list }) => {
           // The claim's reading list (#167) shows on this page and rides along in the copied prompt.
@@ -4448,7 +4490,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           return copyToClipboard(handoffAsPrompt(nh, reading_list ?? [])).then((ok) =>
             applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`));
         })
-        .catch((e) => { writeErr(e, "Couldn't claim this handoff"); openHandoff(h.id); loadHandoffs(); });
+        .catch((e) => { writeErr(e, "Couldn't claim this handoff"); if (state.screen === "handoff" && state.handoffId === h.id) openHandoff(h.id); loadHandoffs(); })
+        .finally(() => { endWrite(key); rerender(); });
       return;
     }
     case "handoffPromote": {
@@ -4475,7 +4518,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         if (!Number.isInteger(id)) return;
         expireHandoff(id)
           .then((nh) => applyHandoff(nh, `Handoff #${nh.id} expired`))
-          .catch((e) => { writeErr(e, "Couldn't expire this handoff"); openHandoff(id); loadHandoffs(); });
+          .catch((e) => { writeErr(e, "Couldn't expire this handoff"); if (state.screen === "handoff" && state.handoffId === id) openHandoff(id); loadHandoffs(); });
       }
       return;
     case "nhField": {
@@ -4491,6 +4534,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "nhSend": {
       const n = state.nh;
       if (!n.body.trim()) return;
+      if (!beginWrite("nhSend")) return;                     // a double click is one handoff
+      rerender();
       const lines = (t: string) => t.split("\n").map((x) => x.replace(/^\s*[-*]\s*/, "").trim()).filter(Boolean);
       createHandoff({
         recipient: n.recipient,
@@ -4498,8 +4543,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         prompt: n.promptBody.trim() ? { title: n.promptTitle.trim() || "Prompt", body: n.promptBody } : null,
         context: { repo: n.repo.trim(), branch: n.branch.trim(), task: n.task.trim(), done: lines(n.done), next: lines(n.next), files: lines(n.files) },
       })
-        .then((h) => { state.screen = "handoff"; state.nh = blankHandoff(primaryRepoName()); applyHandoff(h, `Handoff sent · #${h.id}`); })
-        .catch((e) => writeErr(e, "Couldn't send the handoff"));
+        .then((h) => {
+          // The draft it was sent from is spent; the sent handoff opens only if the person is still on the compose
+          // screen (an answer landing after they moved on leaves them where they are).
+          const here = state.screen === "newhandoff";
+          if (state.nh === n) state.nh = blankHandoff(primaryRepoName());
+          if (here) state.screen = "handoff";
+          applyHandoff(h, `Handoff sent · #${h.id}`, here);
+        })
+        .catch((e) => writeErr(e, "Couldn't send the handoff"))
+        .finally(() => { endWrite("nhSend"); rerender(); });
       return;
     }
 
@@ -4555,9 +4608,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const p = state.promptDetail.data?.prompt;
       const v = Number(arg);
       if (!p || !Number.isInteger(v)) return;
+      const key = `promptPublish:${p.slug}`;
+      if (!beginWrite(key)) return;
+      rerender();
+      const onIt = () => state.screen === "prompt" && state.promptSlug === p.slug;
       publishPrompt(p.slug, v)
-        .then((np) => afterPromptWrite(np.slug, `Published v${v}`))
-        .catch((e) => { writeErr(e, "Couldn't publish"); openPrompt(p.slug); });
+        .then((np) => afterPromptWrite(np.slug, `Published v${v}`, onIt()))
+        .catch((e) => { writeErr(e, "Couldn't publish"); if (onIt()) openPrompt(p.slug); })
+        .finally(() => { endWrite(key); rerender(); });
       return;
     }
     // Delete (author / admin only — the server re-checks): the confirmation modal (Delete
@@ -4585,10 +4643,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       deletePrompt(p.slug)
         .then((r) => {
           state.promptDeleteArm = false; state.promptDeleteBusy = false;
-          state.promptDetail = { status: "idle", data: null };
-          state.promptSlug = null;
           state.promptList = { ...state.promptList, data: state.promptList.data.filter((x) => x.slug !== r.slug) };
-          state.screen = "prompts";
+          // Back to the library only from the deleted prompt's own page (where the confirmation held the person);
+          // an answer landing after they moved on leaves them where they are.
+          if (state.promptSlug === r.slug) {
+            state.promptDetail = { status: "idle", data: null };
+            state.promptSlug = null;
+            if (state.screen === "prompt") state.screen = "prompts";
+          }
           loadPrompts();
           flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "promptRestore", arg: r.slug });
         })
@@ -4636,9 +4698,17 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "edSave": {
       const ed = state.promptEd;
       if (!ed || !ed.title.trim() || !ed.body.trim() || !ed.slug) return;
+      if (!beginWrite("edSave")) return;                     // a double click is one version
+      rerender();
       savePrompt({ base_slug: ed.baseSlug, slug: ed.slug, title: ed.title.trim(), tags: normalizeTags(ed.tags), body: ed.body, status: ed.status, summary: ed.summary.trim() || undefined })
-        .then((p) => { state.promptEd = null; afterPromptWrite(p.slug, `Saved v${p.version}`); })
-        .catch((e) => writeErr(e, "Couldn't save the prompt"));
+        .then((p) => {
+          // Into the saved prompt only from the editor it was saved from; the draft is spent either way.
+          const here = state.screen === "promptedit" && state.promptEd === ed;
+          if (state.promptEd === ed) state.promptEd = null;
+          afterPromptWrite(p.slug, `Saved v${p.version}`, here);
+        })
+        .catch((e) => writeErr(e, "Couldn't save the prompt"))
+        .finally(() => { endWrite("edSave"); rerender(); });
       return;
     }
 

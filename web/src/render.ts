@@ -560,6 +560,10 @@ export interface AppState {
   promptView: PromptView;
   promptMode: "new" | "edit" | "version";
   promptEd: PromptDraft | null;
+  /** The form writes in flight (main.ts `beginWrite` / `endWrite`), by key — `ntSubmit`, `nhSend`, `edSave`,
+   *  `nsCreate`, `promptPublish:<slug>`, `handoffClaim:<id>`: a second click while one is out does nothing, and its
+   *  button shows busy until the answer. */
+  inFlight: Record<string, true>;
   // ── Docs › New doc / Unplaced ──────────────────────────────────────
   nd: NewDocDraft;
   // ── Platform (superadmin): everything its screens hold (platform.ts) ───────
@@ -734,7 +738,7 @@ export function initialState(): AppState {
     promptSlug: null,
     promptDetail: { status: "idle", data: null },
     promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptDeleteArm: false, promptDeleteBusy: false, promptExpanded: false, promptView: "raw",
-    promptMode: "new", promptEd: null,
+    promptMode: "new", promptEd: null, inFlight: {},
     nd: blankDoc(DEFAULT_SPACE),
     plat: initialPlat(),
     fmOpening: null,
@@ -1944,7 +1948,7 @@ const RM_CARD = "min-width:0";
 function roadmapNewSprint(s: AppState): string {
   const panel = newSprintPanel({
     open: s.nsOpen, name: s.nsName, start: s.nsStart, desc: s.nsDesc,
-    urgency: s.nsUrg, due: s.nsDue, lead: s.nsLead, domain: s.nsDom, error: s.nsError,
+    urgency: s.nsUrg, due: s.nsDue, lead: s.nsLead, domain: s.nsDom, error: s.nsError, busy: !!s.inFlight.nsCreate,
   }, s.persons.data);
   // The panel carries its own 14px top margin for sitting under a header row; at
   // the top of the column it is pulled flush and given room below instead.
@@ -3069,6 +3073,7 @@ function newTicketScreen(s: AppState): string {
     sprints: s.sprints.data,
     persons: s.persons.data,
     sprMenu: s.sprMenu,
+    busy: !!s.inFlight.ntSubmit,
   });
 }
 
@@ -3193,16 +3198,17 @@ function screenBody(s: AppState): string {
       status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
       draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,
     });
-    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at });
-    case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
+    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at, claiming: !!s.handoffDetail.data && !!s.inFlight[`handoffClaim:${s.handoffDetail.data.id}`] });
+    case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null, busy: !!s.inFlight.nhSend });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
     case "prompt": return promptDetailView({
       status: s.promptDetail.status, prompt: s.promptDetail.data?.prompt ?? null, versions: s.promptDetail.data?.versions ?? [],
       persons: s.persons.data, knownTags: [...new Set(s.promptList.data.flatMap((p) => p.tags))],
       diffVersion: s.promptDiffV, tagMenu: s.promptTagMenu, tagDraft: s.promptTagDraft, promptView: s.promptView,
       canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
+      publishing: !!s.promptDetail.data && !!s.inFlight[`promptPublish:${s.promptDetail.data.prompt.slug}`],
     });
-    case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
+    case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug), busy: !!s.inFlight.edSave });
     case "platform": return platformView(s.plat, s.me?.handle ?? null);
     case "platformorg": return platformOrgView(s.plat);
     case "tag": return tagPageView({
