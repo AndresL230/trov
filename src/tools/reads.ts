@@ -11,7 +11,7 @@ import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, 
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
-import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
+import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES, UNPICKED_TICKET_SQL } from "@shared/tickets-core";
 import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
@@ -496,16 +496,13 @@ export async function get_ticket(ctx: TenantContext, number: number): Promise<Ti
   };
 }
 
-/** The sidebar badge: active tickets nobody has picked up (unassigned + open).
- *  NATIVE tickets only — an unassigned mirrored ticket is an unassigned GitHub
- *  issue, triaged on GitHub, and would otherwise flood the badge (0032). */
+/** The sidebar badge: the tickets nobody has picked up — the ONE rule, `UNPICKED_TICKET_SQL` (a NATIVE ticket in
+ *  Triage with no assignee; an unassigned mirrored ticket is an unassigned GitHub issue, triaged on GitHub, and would
+ *  otherwise flood the badge, 0032). The ticketq digest and Home's Triage count the same set. */
 export async function ticket_badge(ctx: TenantContext): Promise<number> {
   const row = await first<{ n: number }>(
     ctx,
-    `SELECT COUNT(*) AS n FROM tickets t
-      WHERE t.org_id = ? AND t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
-        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = ? AND a.ticket_id = t.id)`,
-    ctx.orgId,
+    `SELECT COUNT(*) AS n FROM tickets t WHERE t.org_id = ? AND ${UNPICKED_TICKET_SQL}`,
     ctx.orgId
   );
   return row?.n ?? 0;

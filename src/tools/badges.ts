@@ -1,5 +1,5 @@
 import type { SidebarBadges } from "@shared/badges";
-import { OPEN_STATUS_SQL } from "@shared/tickets-core";
+import { UNPICKED_TICKET_SQL } from "@shared/tickets-core";
 import { IMPORT_STALE_MS } from "@shared/docs-import-core";
 import { type TenantContext, stmt, batch } from "../data/sql";
 import { NOT_SUPERSEDED_IMPORT } from "./reads";
@@ -21,11 +21,10 @@ export async function sidebarBadges(ctx: TenantContext, me: string): Promise<Sid
     stmt(ctx, `SELECT COUNT(*) AS n FROM adrs WHERE org_id = ? AND status = 'draft'`, o),
     stmt(ctx, `SELECT COUNT(*) AS n FROM needs_triage WHERE org_id = ? AND resolved = 0`, o),
     stmt(ctx, `SELECT COUNT(*) AS n FROM identity_tasks WHERE org_id = ? AND status = 'pending'`, o),
-    stmt(ctx, `SELECT COUNT(*) AS n FROM tickets t
-                WHERE t.org_id = ? AND t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
-                  AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = ? AND a.ticket_id = t.id)`, o, o),
-    // `handoffsForMe`: pending, addressed to me (case-insensitive) — `anyone` is not me.
-    stmt(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND recipient = ? COLLATE NOCASE`, o, me),
+    stmt(ctx, `SELECT COUNT(*) AS n FROM tickets t WHERE t.org_id = ? AND ${UNPICKED_TICKET_SQL}`, o),
+    // `handoffsForMe`: pending, addressed to me (case-insensitive) — `anyone` is not me — and not past its
+    // `expires_at` (the cron flips it within ten minutes; until then it already reads as expired, `toHandoffView`).
+    stmt(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND expires_at > ? AND recipient = ? COLLATE NOCASE`, o, new Date().toISOString(), me),
     stmt(ctx, `SELECT COUNT(*) AS n FROM prompts p
                  JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version AND v.org_id = ?
                 WHERE p.org_id = ? AND p.deleted_at IS NULL AND v.status = 'staged'`, o, o),
