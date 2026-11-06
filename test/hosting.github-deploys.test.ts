@@ -21,7 +21,7 @@ import { setSecret } from "../src/data/secrets";
 import { reconcileRepo } from "../src/repo/github";
 import { ingestRepoEvent } from "../src/consumer";
 import { checkRollback } from "../src/hosting/rollback";
-import { upsertDeploys, type CleanDeploy } from "../src/hosting/deploy-store";
+import { upsertDeployWrites, upsertDeploys, type CleanDeploy } from "../src/hosting/deploy-store";
 import { repoEventsFromDelivery } from "../src/repo/capture";
 import type { RepoEvent } from "../src/repo/types";
 
@@ -175,6 +175,42 @@ describe("THE ROLLBACK COMPARE", () => {
     const broken = gh(null);
     expect(await checkRollback(systemCtx(ORG_A), ref, "live", broken.get)).toBe("skipped");
     expect(await rolledBack("live")).toBeNull();
+  });
+});
+
+describe("a deploy's state only moves forward (DEPLOY_STATE_RANK)", () => {
+  const ref = { env: "production", key: "web", provider: "vercel" };
+  const cd = (state: CleanDeploy["state"], o: Partial<CleanDeploy> = {}): CleanDeploy => ({
+    id: "d1", state, target: "production", sha: SHA1, branch: "main", message: null, by: null, createdAt: "2026-10-15T08:00:00.000Z",
+    readyAt: state === "ready" ? "2026-10-15T08:05:00.000Z" : null, url: null, inspectUrl: null, reason: null, ...o,
+  });
+  const row = () => first<{ state: string; ready_at: string | null; url: string | null }>(env.DB,
+    `SELECT state, ready_at, url FROM hosting_deploys WHERE org_id = ? AND deploy_id = 'd1'`, ORG_A);
+
+  it("a late queued / building signal never takes a ready deploy back; its other fields still fold in", async () => {
+    const ctx = systemCtx(ORG_A);
+    expect(await upsertDeployWrites(ctx, ref, [cd("building")], Date.now())).toEqual({ changed: ["d1"], readyChanged: [] });
+    expect(await upsertDeployWrites(ctx, ref, [cd("ready")], Date.now())).toEqual({ changed: ["d1"], readyChanged: ["d1"] });
+    expect(await upsertDeployWrites(ctx, ref, [cd("queued")], Date.now())).toEqual({ changed: [], readyChanged: [] });
+    expect(await upsertDeployWrites(ctx, ref, [cd("building", { url: "https://x.example" })], Date.now())).toEqual({ changed: ["d1"], readyChanged: [] });
+    expect(await row()).toEqual({ state: "ready", ready_at: "2026-10-15T08:05:00.000Z", url: "https://x.example" });
+  });
+
+  it("the rollback check's trigger fires once: a ready deploy re-reported is changed, not made ready again", async () => {
+    const ctx = systemCtx(ORG_A);
+    await upsertDeployWrites(ctx, ref, [cd("ready")], Date.now());
+    expect(await upsertDeployWrites(ctx, ref, [cd("ready", { message: "now with a message" })], Date.now())).toEqual({ changed: ["d1"], readyChanged: [] });
+    // A new commit on a ready deploy is a reason to compare again.
+    expect(await upsertDeployWrites(ctx, ref, [cd("ready", { sha: SHA2 })], Date.now())).toEqual({ changed: ["d1"], readyChanged: ["d1"] });
+  });
+
+  it("one terminal state may follow another (the provider's later word)", async () => {
+    const ctx = systemCtx(ORG_A);
+    await upsertDeployWrites(ctx, ref, [cd("ready")], Date.now());
+    await upsertDeployWrites(ctx, ref, [cd("canceled")], Date.now());
+    expect((await row())?.state).toBe("canceled");
+    await upsertDeployWrites(ctx, ref, [cd("building")], Date.now());
+    expect((await row())?.state).toBe("canceled");
   });
 });
 

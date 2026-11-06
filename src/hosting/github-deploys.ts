@@ -21,7 +21,7 @@
 import type { DeployState } from "@shared/hosting";
 import { all, type TenantContext } from "../data/sql";
 import type { RepoEvent } from "../repo/types";
-import { upsertDeploys, REASON_STORED_MAX, type CleanDeploy } from "./deploy-store";
+import { upsertDeployWrites, upsertDeploys, REASON_STORED_MAX, type CleanDeploy } from "./deploy-store";
 import { listAllParts, type PartRow } from "./parts";
 import { workflowPath } from "./providers/github";
 
@@ -130,7 +130,7 @@ export interface GithubDeployWrite { env: string; part: string; id: string; stat
 
 /**
  * Offer ONE newly captured signal to the org's `github` parts: each part whose setting it matches gets the
- * deploy upserted (`source = 'github'`). `afterReady` runs for a deploy that was new or changed and is `ready`
+ * deploy upserted (`source = 'github'`). `afterReady` runs for a deploy this write made `ready` (or gave a commit)
  * (the rollback check, src/hosting/rollback.ts). Returns what was written. An org with no `github` part reads
  * its parts once and writes nothing.
  */
@@ -145,9 +145,11 @@ export async function writeGithubDeploys(
   if (!d) return [];
   const out: GithubDeployWrite[] = [];
   for (const part of parts) {
-    const changed = (await upsertDeploys(ctx, part, [d], now, "github")).length > 0;
-    out.push({ env: part.env, part: part.key, id: d.id, state: d.state, changed });
-    if (changed && d.state === "ready" && afterReady) await afterReady(part, d.id);
+    const w = await upsertDeployWrites(ctx, part, [d], now, "github");
+    out.push({ env: part.env, part: part.key, id: d.id, state: d.state, changed: w.changed.length > 0 });
+    // Only the write that made it ready (or gave a ready deploy its commit): a redelivered or re-reported ready
+    // deploy, or a late `building` after it, does not run the compare again.
+    if (w.readyChanged.length && afterReady) await afterReady(part, d.id);
   }
   return out;
 }
