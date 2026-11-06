@@ -675,4 +675,34 @@ describe("your own Library view (0084_library_prefs)", () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it("two quick changes: the first one's refusal never rolls back over the second (the latest answer decides)", async () => {
+    const s = withPrefs({ sidebar: null, pinned: [], hidden: [] });
+    const realFetch = globalThis.fetch;
+    let refuseFirst!: () => void;
+    const first = new Promise<void>((r) => { refuseFirst = r; });
+    let n = 0;
+    globalThis.fetch = (async (_u: unknown, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as { pinned: string[] };
+      if (n++ === 0) { await first; return new Response(JSON.stringify({ error: "failed" }), { status: 500, headers: { "content-type": "application/json" } }); }
+      return new Response(JSON.stringify({ ok: true, prefs: { sidebar: null, pinned: body.pinned, hidden: [] } }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    try {
+      setApiOrg("acme");
+      const ctl = createLibraryController({ state: s, mount: { querySelector: () => null } as unknown as HTMLElement, rerender() {}, rerenderSoon() {}, flash() {}, unauth() {}, pageChanged() {}, treeChanged() {}, confirmOut: (then) => then(), openDoc() {}, newPage() {} });
+      ctl.act("libPin", "echo", null);
+      ctl.act("libPin", "alpha", null);
+      expect(s.library.data?.prefs?.pinned).toEqual(["alpha", "echo"]);
+      await vi.waitFor(() => expect(n).toBe(2));
+      await new Promise((r) => setTimeout(r, 0));
+      refuseFirst();
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      // The second change carried both pins and the server took it: the first one's refusal changes nothing.
+      expect(s.library.data?.prefs?.pinned).toEqual(["alpha", "echo"]);
+    } finally {
+      globalThis.fetch = realFetch;
+      setApiOrg(null);
+    }
+  });
 });

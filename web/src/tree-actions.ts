@@ -23,6 +23,8 @@ export interface TreeHost {
   reducedMotion(): boolean;
   /** A move went through: what is drawn from the doc read (the open page's "Pages under", its breadcrumb) is read again. */
   treeChanged(): void;
+  /** A move was refused: read the space's pages again (what the Worker holds), when it is still the one open. */
+  reloadSpace?(slug: string): void;
 }
 
 export interface TreeController {
@@ -71,11 +73,14 @@ export function createTreeController(host: TreeHost): TreeController {
   const space = () => state.spaceHome.data?.space ?? null;
   const pages = (): LibraryPageDTO[] | null => state.spaceHome.data?.pages ?? null;
   const titleOf = (slug: string) => pages()?.find((p) => p.slug === slug)?.title ?? slug;
-  const setPages = (list: LibraryPageDTO[]) => {
+  /** Write the pane's pages — only into the space they were read from (`spaceSlug`): a late answer for a space no
+   *  longer open never lands in another. */
+  const setPages = (list: LibraryPageDTO[], spaceSlug?: string) => {
     const h = state.spaceHome.data;
-    if (h) state.spaceHome = { ...state.spaceHome, data: { ...h, pages: withPaths(list) } };
+    if (h && (spaceSlug === undefined || h.space.slug === spaceSlug)) state.spaceHome = { ...state.spaceHome, data: { ...h, pages: withPaths(list) } };
   };
-  let undoNext: { slug: string; target: MoveTarget } | null = null;
+  /** Each toast's Undo, by the page it moved (the toast's arg): bound to its own move, whatever answered since. */
+  const undos = new Map<string, MoveTarget>();
   let seq = 0;
 
   function move(slug: string, target: MoveTarget, isUndo = false): void {
@@ -101,13 +106,13 @@ export function createTreeController(host: TreeHost): TreeController {
       .then((r) => {
         // The Worker's places win (the same plan, unless someone moved a page meanwhile).
         const now = pages();
-        if (now && mine === seq) {
+        if (now && mine === seq && space()?.slug === sp.slug) {
           const at = new Map<string, DocTreePlace>(r.places.map((p) => [p.slug, p]));
-          setPages(now.map((p) => { const w = at.get(p.slug); return w ? { ...p, parent_slug: w.parent_slug, tree_rank: w.tree_rank } : p; }));
+          setPages(now.map((p) => { const w = at.get(p.slug); return w ? { ...p, parent_slug: w.parent_slug, tree_rank: w.tree_rank } : p; }), sp.slug);
         }
         host.treeChanged();
         if (isUndo) { host.flash(`Moved “${title}” back`); host.rerender(); return; }
-        undoNext = { slug, target: back };
+        undos.set(slug, back);
         const words = target.kind === "into" ? `Moved “${title}” inside ${titleOf(target.ref)}`
           : target.kind === "top" ? `Moved “${title}” to the top level of ${sp.name}` : `Moved “${title}”`;
         host.flash(words, 4200, { label: "Undo", act: "treeUndo", arg: slug });
@@ -115,7 +120,13 @@ export function createTreeController(host: TreeHost): TreeController {
       })
       .catch((e) => {
         if (e instanceof Unauthorized) { host.unauth(e); return; }
-        if (mine === seq) setPages(before);
+        // Put the tree back: at once when no move was made since (`before` is then exactly what the Worker holds,
+        // bar earlier moves still out), and in every case by reading the space again — a refused move with another
+        // in flight after it was never put back. Only into its own space, while it is still the one open.
+        if (space()?.slug === sp.slug) {
+          if (mine === seq) setPages(before, sp.slug);
+          host.reloadSpace?.(sp.slug);
+        }
         host.flash(e instanceof PreviewBlocked ? "This is a preview: nothing is changed." : moveRefusalText(e instanceof ApiError ? e.message : ""), 5000);
         host.rerender();
       });
@@ -220,9 +231,8 @@ export function createTreeController(host: TreeHost): TreeController {
       }
       case "treeMoveTop": if (arg) move(arg, { kind: "top" }); return true;
       case "treeUndo": {
-        const u = undoNext;
-        undoNext = null;
-        if (u && u.slug === arg) move(u.slug, u.target, true);
+        const target = arg ? undos.get(arg) : undefined;
+        if (arg && target) { undos.delete(arg); move(arg, target, true); }
         return true;
       }
       case "treeNew": {

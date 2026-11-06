@@ -284,6 +284,7 @@ const treeCtl = createTreeController({
   reducedMotion: () => reducedMotion(),
   // The open doc page's children and breadcrumb come from its own read, not the pane's: read it again after a move.
   treeChanged: () => { if (state.screen === "docs" && state.docSlug) loadDoc(state.docSlug); },
+  reloadSpace: (slug) => libCtl.openSpace(slug),
 });
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
