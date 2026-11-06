@@ -141,10 +141,12 @@ export const RELEASES: Release[] = [
         "AI background work never runs or bills twice, and turning AI off drops what was queued (#221)",
         "Trov no longer looks signed out when it can't be reached or a page fails to open; it says so and offers Try again (#222)",
         "Back closes an open person card, dialog or menu, and Escape closes one layer at a time (#222)",
+        "A double click no longer files two tickets, handoffs, sprints or prompt versions, and a late answer no longer pulls you back (#223)",
+        "Ask's ⌘J Open as thread keeps an answer that is still coming, and a failed undo in Tags no longer freezes its dialog (#223)",
       ],
       removed: [],
     },
-    prs: [218, 219, 220, 221, 222],
+    prs: [218, 219, 220, 221, 222, 223],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
