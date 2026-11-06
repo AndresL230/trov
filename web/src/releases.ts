@@ -104,6 +104,30 @@ export const TROV_REPO_URL = TROV_SOURCE_REPO;
 export const prUrl = (n: number): string => `${TROV_REPO_URL}/pull/${n}`;
 
 export const RELEASES: Release[] = [
+  // The state-machine fixes (#218–#224): one stacked series, each PR adding its lines here.
+  {
+    version: "0.17",
+    date: "2026-11-06",
+    title: "Steadier Trov: no lost, doubled or stuck changes",
+    headline: "Approvals, moves, payments, Ask's changes and background work now refuse a stale or doubled change instead of overwriting it, repeating it or getting stuck.",
+    highlights: [
+      "Approving an older doc proposal can no longer roll a page back, and a rejected decision can't be ratified by mistake.",
+      "When two people change the same ticket, sprint, plan or prompt at once, the second is told it changed meanwhile instead of overwriting it.",
+      "A double click, a slow answer or a lost connection no longer creates something twice or leaves a screen stuck.",
+    ],
+    ops: [
+      "Before merging #218, check production has no duplicate doc versions — `SELECT org_id, slug, version, COUNT(*) n FROM doc_versions GROUP BY 1, 2, 3 HAVING n > 1` must return nothing — then apply `0088_doc_versions_unique` (merging applies it).",
+    ],
+    patches: {
+      added: [],
+      changed: [],
+      fixed: [
+        "Docs: approving an older proposal no longer rolls a page back; a rejected new page frees its name; Approve all skips a page it can't (#218)",
+      ],
+      removed: [],
+    },
+    prs: [218],
+  },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
     version: "0.16",
