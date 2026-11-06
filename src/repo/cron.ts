@@ -22,7 +22,8 @@ import { resolveGithubCredential, type GithubCredential } from "../github-app/cr
 import { importLogoForOrg } from "../integrations/logo";
 import { LOGO_IMPORT_COST } from "../orgs/logo";
 import { CRON_SUBREQUEST_BUDGET, newBudget, serveJob, type Unit } from "./dispatch";
-import { reconcileRepo, reconcileRequests, type ReconcileResult } from "./github";
+import { OPEN_PR_PAGES, OPEN_PR_SYNC_PAGES, PR_CLOSE_LOOKUPS, reconcileRepo, reconcileRequests, type ReconcileResult } from "./github";
+import { INSTALLATION_RECHECK_COST, recheckInstallation } from "../github-app/repos";
 import { SCAN_COST } from "./scan";
 import { PR_FILES_REQUESTS, PR_FILES_SYNC_REQUESTS } from "./pr-files";
 import { describeSources } from "./scan-store";
@@ -218,7 +219,8 @@ export async function runReconcileJob(env: Env, caller: TenantContext, now: numb
     const scan = opts.scan === false ? undefined : { describe: () => describeSources(env, ctx, opts.fetchImpl, now) };
     // The PR-files arm's allowance: Poll now keeps `reconcileRequests`' own (inside `SUBREQUEST_CAP`); the cron's
     // unit and Sync GitHub — the callers that scan — read up to ten PRs (`reconcileCost` counts the difference).
-    const limits = scan ? { prFiles: PR_FILES_SYNC_REQUESTS } : {};
+    // So do the open-PR pages and the closed-PR lookups (src/repo/github.ts `ReconcileLimits`).
+    const limits = scan ? { prFiles: PR_FILES_SYNC_REQUESTS, openPrPages: OPEN_PR_SYNC_PAGES, prCloseLookups: PR_CLOSE_LOOKUPS } : {};
     const res = await (opts.reconcile ?? reconcileRepo)(ctx, { token: gh.token.reveal(), repo: repo.repo, fetchImpl: gh.fetch(opts.fetchImpl) }, envs, now, scan, limits);
     if (res.failed.length) console.error(`${label} reconcile: arms failed`, res.failed, `org=${ctx.orgId}`);
     // `failed` is arm NAMES — nothing an upstream wrote — so it is safe to keep as the last error.
@@ -241,6 +243,9 @@ export async function runOrgJob(env: Env, orgId: string, job: OrgJob, now: numbe
     // reconcileRepo already covers drift and branches as arms (and writes
     // env_heads) — calling refreshDrift/refreshBranches here too would double
     // the requests, not add coverage.
+    // First, what the App's webhook may have left wrong (a suspension lifted, repositories changed in an order the
+    // events could not say) — GitHub's own answer, at most `INSTALLATION_RECHECK_COST` requests. TOTAL.
+    await recheckInstallation(ctx, env, { fetchImpl, now });
     await runReconcileJob(env, ctx, now, { fetchImpl });
     // The org's image follows its primary repository's owner (src/orgs/logo.ts): imported here so it
     // arrives for an org connected before the image existed, and refreshes when the owner changes
@@ -482,10 +487,12 @@ export const USAGE_COST = 1;                                    // the app's met
 export const GITHUB_MINT_COST = 1;
 /** `reconcileRepo`'s `reconcileRequests(N)` (16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 + the
  *  releases arm's `RELEASES_RECONCILE_COST` + the PR-files arm's `PR_FILES_REQUESTS`, widened here to
- *  `PR_FILES_SYNC_REQUESTS`) and its repo scan (`SCAN_COST`, src/repo/scan.ts), plus the org image's
- *  import that rides the same unit (`runOrgJob`) and a mint. */
+ *  `PR_FILES_SYNC_REQUESTS`; the open-PR list widened to `OPEN_PR_SYNC_PAGES` pages, and `PR_CLOSE_LOOKUPS`)
+ *  and its repo scan (`SCAN_COST`, src/repo/scan.ts), plus the org image's import that rides the same unit
+ *  (`runOrgJob`), a mint, and the App binding's recheck (`INSTALLATION_RECHECK_COST`, src/github-app/repos.ts). */
 export const reconcileCost = (envs: number): number =>
-  reconcileRequests(envs) + (PR_FILES_SYNC_REQUESTS - PR_FILES_REQUESTS) + SCAN_COST + LOGO_IMPORT_COST + GITHUB_MINT_COST;
+  reconcileRequests(envs) + (PR_FILES_SYNC_REQUESTS - PR_FILES_REQUESTS) + (OPEN_PR_SYNC_PAGES - OPEN_PR_PAGES) + PR_CLOSE_LOOKUPS
+  + SCAN_COST + LOGO_IMPORT_COST + GITHUB_MINT_COST + INSTALLATION_RECHECK_COST;
 /** `recomputeAllProgress` is UNBOUNDED (one request per issue number of every array-ref sprint), so
  *  this is an ESTIMATE for deciding whether another org may start; what a unit really spent is
  *  counted (`Budget.spent`), so one large org shortens the slice instead of overrunning it. */

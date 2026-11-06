@@ -52,6 +52,19 @@ function fromPush(p: Obj): RepoEvent[] {
   }];
 }
 
+/**
+ * WHEN a PR row happened — ONE rule for the webhook's rows and the reconcile's (src/repo/github.ts `prEvent`), so
+ * the newest row per PR (what every reader takes) is ordered the same whichever path wrote it: a merged PR at its
+ * merge, a closed one at its close, an open one at its last update. A PR reopened later is updated after its
+ * close, so its open row wins.
+ */
+export function prOccurredAt(pr: { merged?: boolean; state?: unknown; merged_at?: unknown; closed_at?: unknown; updated_at?: unknown }): string | null {
+  const updated = str(pr.updated_at);
+  if (pr.merged === true || str(pr.merged_at)) return str(pr.merged_at) ?? str(pr.closed_at) ?? updated;
+  if (str(pr.state) === "closed") return str(pr.closed_at) ?? updated;
+  return updated ?? str(pr.closed_at);
+}
+
 function fromPullRequest(p: Obj): RepoEvent[] {
   const action = str(p.action);
   const pr = obj(p.pull_request);
@@ -67,7 +80,7 @@ function fromPullRequest(p: Obj): RepoEvent[] {
     actor_login: str(obj(pr.user)?.login), title: (str(pr.title) ?? "").slice(0, 300), url: str(pr.html_url),
     // `labels` (names, ≤ 20): a release's waiting PR is a feature by a `feature` / `enhancement` label (src/repo/releases.ts).
     raw: JSON.stringify({ action, base: str(obj(pr.base)?.ref), draft: pr.draft === true, labels: labelNames(pr.labels) }),
-    provenance: "webhook", occurred_at: at,
+    provenance: "webhook", occurred_at: prOccurredAt(pr) ?? at,
   }];
 }
 

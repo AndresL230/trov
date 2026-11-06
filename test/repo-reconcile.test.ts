@@ -236,4 +236,57 @@ describe("reconcileRepo — the prs_reconciled completeness marker", () => {
     await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl }, ENVS, NOW);
     expect(await getSnapshot(systemCtx(), "prs_reconciled")).toBeNull();
   });
+
+  const pr = (number: number, o: Record<string, unknown> = {}) => ({ ...openPr, number, html_url: `https://github.com/o/r/pull/${number}`, ...o });
+  const latest = async (n: number) => (await first<{ state: string; occurred_at: string }>(env.DB,
+    `SELECT state, occurred_at FROM repo_events WHERE kind = 'pr' AND number = ? ORDER BY occurred_at DESC, id DESC LIMIT 1`, n));
+
+  it("a list cut by the page bound is not complete: no marker (an earlier one is removed), and nothing is closed by it", async () => {
+    const full = Array.from({ length: 100 }, (_, i) => pr(1000 + i));
+    const first1 = fakeGithub({ "/pulls?state=open": [openPr], "/pulls?state=closed": [], "/commits?": [] });
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: first1.fetchImpl }, ENVS, NOW);
+    expect(await getSnapshot(systemCtx(), "prs_reconciled")).not.toBeNull();
+    const cut = fakeGithub({ "/pulls?state=open": full, "/pulls?state=closed": [], "/commits?": [], "/pulls/482": pr(482, { state: "closed", closed_at: "2026-09-20T10:00:00Z" }) });
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: cut.fetchImpl }, ENVS, NOW, undefined, { prCloseLookups: 5 });
+    expect(await getSnapshot(systemCtx(), "prs_reconciled")).toBeNull();
+    expect(cut.calls.filter((u) => /\/pulls\/482$/.test(u))).toEqual([]);
+    expect((await latest(482))?.state).toBe("review");
+  });
+
+  it("the cron's and Sync's reconcile page the open list (bounded) — a list complete on page 2 earns the marker", async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => pr(2000 + i));
+    const gh = fakeGithub({
+      "state=open&sort=updated&direction=desc&per_page=100&page=1": page1, "state=open&sort=updated&direction=desc&per_page=100&page=2": [pr(3001), pr(3002)],
+      "/pulls?state=closed": [], "/commits?": [],
+    });
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: gh.fetchImpl }, ENVS, NOW, undefined, { openPrPages: 3 });
+    expect(gh.calls.filter((u) => u.includes("/pulls?state=open"))).toHaveLength(2);
+    expect(await getSnapshot(systemCtx(), "prs_reconciled")).not.toBeNull();
+    expect((await first<{ n: number }>(env.DB, `SELECT COUNT(DISTINCT number) AS n FROM repo_events WHERE kind = 'pr'`))?.n).toBe(102);
+  });
+
+  it("a PR the capture holds open that a COMPLETE open list no longer names is read and recorded as GitHub says — never guessed", async () => {
+    const opened = fakeGithub({ "/pulls?state=open": [openPr, pr(483)], "/pulls?state=closed": [], "/commits?": [] });
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: opened.fetchImpl }, ENVS, NOW);
+    // Both closed while the webhook was down, too long ago to be in the recent closed list.
+    const routes = {
+      "/pulls?state=open": [], "/pulls?state=closed": [], "/commits?": [],
+      "/pulls/482": pr(482, { state: "closed", merged_at: "2026-09-20T11:00:00Z", closed_at: "2026-09-20T11:00:00Z", updated_at: "2026-09-20T11:05:00Z" }),
+      "/pulls/483": pr(483, { state: "closed", closed_at: "2026-09-20T11:30:00Z", updated_at: "2026-09-20T11:30:00Z" }),
+    };
+    // Poll now (no lookups allowed): nothing is closed — the PRs wait for the next cron / Sync run.
+    const poll = fakeGithub(routes);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: poll.fetchImpl }, ENVS, NOW);
+    expect(poll.calls.filter((u) => /\/pulls\/\d+$/.test(u))).toEqual([]);
+    expect((await latest(482))?.state).toBe("review");
+    // The cron's unit / Sync: each is read once, merged or closed as GitHub answers, at its close.
+    const cron = fakeGithub(routes);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: cron.fetchImpl }, ENVS, NOW, undefined, { prCloseLookups: 5 });
+    expect(await latest(482)).toEqual({ state: "merged", occurred_at: "2026-09-20T11:00:00Z" });
+    expect(await latest(483)).toEqual({ state: "closed", occurred_at: "2026-09-20T11:30:00Z" });
+    // Settled: the next run asks nothing more.
+    const again = fakeGithub(routes);
+    await reconcileRepo(systemCtx(), { token: "t", repo: "o/r", fetchImpl: again.fetchImpl }, ENVS, NOW, undefined, { prCloseLookups: 5 });
+    expect(again.calls.filter((u) => /\/pulls\/\d+$/.test(u))).toEqual([]);
+  });
 });
