@@ -239,7 +239,9 @@ const ENV_VERDICT: Record<string, { word: string; kind: StateKind; hint: string 
   DEGRADED: { word: "Degraded", kind: "warn", hint: "Checks are failing on the branch head." },
   FAILING: { word: "Failing", kind: "bad", hint: "A deploy part failed." },
   DOWN: { word: "Down", kind: "stopped", hint: "Its health ping says it cannot be reached." },
-  UNKNOWN: { word: "Unknown", kind: "waiting", hint: "No checks captured on the branch head yet." },
+  UNKNOWN: { word: "Unknown", kind: "waiting", hint: "Trov has not seen a deploy here yet." },
+  LIVE: { word: "Live", kind: "good", hint: "Serving traffic; no checks have passed on the branch head yet." },
+  "OUT OF STEP": { word: "Out of step", kind: "warn", hint: "Apps in this environment run different commits." },
 };
 const envVerdict = (pill: string) => ENV_VERDICT[pill] ?? { word: pill.charAt(0) + pill.slice(1).toLowerCase(), kind: "waiting" as const, hint: "" };
 

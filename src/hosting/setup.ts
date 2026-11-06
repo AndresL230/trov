@@ -10,7 +10,7 @@ import {
   type ConnectionStatus, type EnvironmentPartDTO, type HostingChecklistItem, type HostingConnectionDTO, type HostingEnvironmentDTO,
   type HostingMetric, type HostingProviderId, type HostingSetupDTO, type PartPollStateDTO,
 } from "@shared/hosting";
-import { hostingStatus } from "@shared/hosting-status-core";
+import { githubLinkOf, hostingStatus, type GithubLink } from "@shared/hosting-status-core";
 import { requireRole } from "../data/context";
 import { resolveCloudflareAccountId, secretsAvailable } from "../data/secrets";
 import { all, type TenantContext } from "../data/sql";
@@ -64,9 +64,10 @@ async function effectiveConfigs(ctx: TenantContext, env: Env, s: ConnectionState
 
 /** A part's connection: its provider's org-wide connection, as EVERY surface says it (`hostingStatus` — the
  *  card, the checklist, the lead and Test this part read the same function). */
-function partConnection(connections: HostingConnectionDTO[], provider: HostingProvider, part: PartRow): ConnectionStatus {
-  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: nothing to connect here.
-  if (provider.credential) return "connected";
+function partConnection(connections: HostingConnectionDTO[], provider: HostingProvider, part: PartRow, github: GithubLink): ConnectionStatus {
+  // A provider with no credential of its own (`github`) reads through the org's GitHub capture: nothing to connect
+  // here, and its status is that capture's (`githubLinkOf`) — never "connected" merely because it exists.
+  if (provider.credential) return hostingStatus(null, provider.label, true, github).state;
   const c = connections.find((x) => x.provider === provider.id && x.scope === credentialScopeOf(provider, part)) ?? null;
   return hostingStatus(c, provider.label).state;
 }
@@ -83,6 +84,15 @@ interface PartContext {
   connections: HostingConnectionDTO[];
   config: (provider: HostingProviderId, scope: string) => Record<string, string>;
   polls: PollRow[];
+  github: GithubLink;
+}
+
+/** How the org's GitHub capture reaches Trov: its newest App binding and whether a repository has its own webhook
+ *  secret (metadata already in `s`). D1 only. */
+async function githubLink(ctx: TenantContext, s: ConnectionState): Promise<GithubLink> {
+  const [binding] = await all<{ removed_at: string | null; removed_reason: string | null; suspended_at: string | null }>(ctx,
+    `SELECT removed_at, removed_reason, suspended_at FROM org_github_installations WHERE org_id = ? ORDER BY id DESC LIMIT 1`, ctx.orgId);
+  return githubLinkOf(binding ?? null, s.secrets.some((m) => m.kind === "github_webhook"));
 }
 
 function partDTO(x: PartContext, part: PartRow): EnvironmentPartDTO {
@@ -96,7 +106,7 @@ function partDTO(x: PartContext, part: PartRow): EnvironmentPartDTO {
     provider: part.provider,
     settings: { ...part.settings },
     position: part.position,
-    connection: partConnection(x.connections, provider, part),
+    connection: partConnection(x.connections, provider, part, x.github),
     console_url: consoleUrlOf(provider, part, x.config(part.provider, credentialScopeOf(provider, part))),
     last_poll: poll ? pollDTO(poll) : null,
     updated_at: part.updatedAt,
@@ -105,7 +115,7 @@ function partDTO(x: PartContext, part: PartRow): EnvironmentPartDTO {
 }
 
 async function partContext(ctx: TenantContext, env: Env, providers: ProviderMap, s: ConnectionState): Promise<PartContext> {
-  return { providers, connections: await listConnections(ctx, env, providers, s), config: await effectiveConfigs(ctx, env, s), polls: await listPollRows(ctx) };
+  return { providers, connections: await listConnections(ctx, env, providers, s), config: await effectiveConfigs(ctx, env, s), polls: await listPollRows(ctx), github: await githubLink(ctx, s) };
 }
 
 /** Parts as the wire describes them — what a part write answers with. */
@@ -232,5 +242,6 @@ export async function getHostingSetup(ctx: TenantContext, env: Env, providers: P
     detection: await readDetectionStatus(ctx, detected, envs.length),
     secrets_available: await secretsAvailable(env),
     leftovers: listLeftovers(s),
+    github_link: x.github,
   };
 }

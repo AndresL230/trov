@@ -51,14 +51,40 @@ export function endedOnProvider(c: ConnectionFacts | null, label: string): boole
   return !!c && c.status === "revoked" && c.revoked_reason !== null && lostTexts(label).includes(c.revoked_reason);
 }
 
-/** What a provider with NO credential of its own (`via_github` — GitHub deployments, repo setups Phase A) reads as:
- *  live, nothing stored, never "Not connected" — it reads through the org's GitHub connection. */
+/** What a provider with NO credential of its own (`via_github` — GitHub deployments, repo setups Phase A) reads as
+ *  while the org's GitHub capture delivers: live, nothing stored — it reads through the org's GitHub connection. */
 export const VIA_GITHUB_WORD = "Through GitHub";
 
+/**
+ * How the org's GitHub capture reaches Trov — what a provider read THROUGH GitHub depends on (`githubLinkOf`):
+ *   app        a live, unsuspended GitHub App binding
+ *   hook       no live App, but a repository's own webhook (a `github_webhook` secret is stored)
+ *   suspended  the App binding is suspended on GitHub, and no webhook of its own
+ *   removed    the App was uninstalled on GitHub (or GitHub no longer knows it), and nothing replaced it
+ *   none       never connected, or disconnected here
+ */
+export type GithubLink = "app" | "hook" | "suspended" | "removed" | "none";
+
+/** The org's GitHub link from its NEWEST App binding (live or ended; null = never one) and whether a repository has
+ *  its own webhook secret. D1 facts only — nothing here asks GitHub. */
+export function githubLinkOf(binding: { removed_at: string | null; removed_reason: string | null; suspended_at: string | null } | null, hook: boolean): GithubLink {
+  if (binding && binding.removed_at === null && binding.suspended_at === null) return "app";
+  if (hook) return "hook";
+  if (binding && binding.removed_at === null) return "suspended";
+  if (binding && (binding.removed_reason === "uninstalled" || binding.removed_reason === "not_found")) return "removed";
+  return "none";
+}
+
 /** THE status function: what every surface says about a provider's org-wide connection (null = nothing known of it).
- *  `viaGithub`: the provider has no credential of its own (`HostingProviderDTO.via_github`) — always live. */
-export function hostingStatus(c: ConnectionFacts | null, label: string, viaGithub = false): HostingStatus {
-  if (viaGithub) return { state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false };
+ *  `viaGithub`: the provider has no credential of its own (`HostingProviderDTO.via_github`) — its status is the org's
+ *  GitHub link (`github`): live through the App or a webhook, Removed when the App was uninstalled on GitHub, else
+ *  Not connected. Without `github` (a payload from before the field existed) it reads as live, as it always did. */
+export function hostingStatus(c: ConnectionFacts | null, label: string, viaGithub = false, github?: GithubLink): HostingStatus {
+  if (viaGithub) {
+    if (github === undefined || github === "app" || github === "hook") return { state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false };
+    const state: ConnectionStatus = github === "removed" ? "revoked" : "not_connected";
+    return { state, word: HOSTING_STATUS_WORD[state], live: false, stored: false };
+  }
   const stored = !!c && (c.status === "connected" || c.status === "error");
   const state: ConnectionStatus = stored ? c!.status
     : endedOnProvider(c, label) ? "revoked"

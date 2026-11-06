@@ -336,6 +336,9 @@ export interface HostingSetupDTO {
   /** Credentials stored under a non-empty scope for a provider connected once per org — never a connection
    *  (shared/hosting-status-core.ts). Absent in a payload from before the field existed. */
   leftovers?: HostingLeftoverDTO[];
+  /** How the org's GitHub capture reaches Trov — the status of a provider read through GitHub
+   *  (shared/hosting-status-core.ts `GithubLink`). Absent in a payload from before the field existed. */
+  github_link?: "app" | "hook" | "suspended" | "removed" | "none";
 }
 
 /** `PUT /api/o/:slug/environments/:env/parts/:part` body. */

@@ -2,7 +2,8 @@
  * The `github` provider (repo setups, Phase A): GitHub deployments, with NO credential of its own. What
  * matters: its settings are exactly one of an environment / a check run / a workflow, a poll resolves no
  * credential and fetches nothing, and nothing lists it as a connection to make (no card, no checklist step,
- * no Integrations slot) — its parts are as connected as GitHub is.
+ * no Integrations slot) — its parts are as connected as the org's GitHub capture is (its App binding, or a
+ * repository's own webhook).
  */
 import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
@@ -18,7 +19,8 @@ import { hostingPollCost, pollPart, providerPollCost } from "../src/hosting/poll
 import { PROVIDERS, providerDTO } from "../src/hosting/registry";
 import { getHostingSetup } from "../src/hosting/setup";
 import { SettingsError } from "../src/integrations/settings";
-import { VIA_GITHUB_WORD, hostingStatus } from "@shared/hosting-status-core";
+import { VIA_GITHUB_WORD, githubLinkOf, hostingStatus } from "@shared/hosting-status-core";
+import { seedInstallation } from "./helpers/github-app";
 
 const e = env as unknown as Env;
 
@@ -70,20 +72,46 @@ describe("a github part is never polled with a credential", () => {
 });
 
 describe("the setup read", () => {
-  it("lists no connection, card step or checklist step for it; its part reads connected; its DTO says via_github", async () => {
+  it("lists no connection, card step or checklist step for it; its part is as connected as the org's GitHub capture; its DTO says via_github", async () => {
     await setOrgEnvironments(ENVS, ORG_A);
     const admin = await tenantCtx("AndresL230");
     await putPart(admin, "staging", "jobs", { provider: "github", role: "service", settings: { environment: "jobs / staging" } });
+    await env.DB.prepare(`DELETE FROM org_secrets WHERE org_id = ? AND kind = 'github_webhook'`).bind(ORG_A).run();
+    const part = async () => (await getHostingSetup(admin, e)).environments.find((x) => x.key === "staging")!.parts[0];
     const dto = await getHostingSetup(admin, e);
     expect(dto.connections.map((c) => c.provider)).not.toContain("github");
     expect(dto.checklist.map((c) => c.id).filter((id) => id.includes("github"))).toEqual([]);
-    expect(dto.environments.find((x) => x.key === "staging")!.parts[0]).toMatchObject({ provider: "github", connection: "connected" });
     expect(dto.providers.find((p) => p.id === "github")).toMatchObject({ via_github: true, connection_methods: [] });
     expect(providerDTO(PROVIDERS.vercel, {}).via_github).toBeUndefined();
+    // No App, no webhook: nothing delivers its deploys.
+    expect(dto.github_link).toBe("none");
+    expect(await part()).toMatchObject({ provider: "github", connection: "not_connected" });
+    // A live App binding: connected. Uninstalled on GitHub: Removed — never still "connected".
+    await seedInstallation(ORG_A, 601, "SaplingLearn");
+    expect(await part()).toMatchObject({ connection: "connected" });
+    await env.DB.prepare(`UPDATE org_github_installations SET removed_at = '2026-10-20T00:00:00.000Z', removed_reason = 'uninstalled' WHERE org_id = ?`).bind(ORG_A).run();
+    expect((await getHostingSetup(admin, e)).github_link).toBe("removed");
+    expect(await part()).toMatchObject({ connection: "revoked" });
   });
 
-  it("THE status function reads a credential-less provider as live — never Not connected", () => {
-    expect(hostingStatus(null, "GitHub deployments", true)).toEqual({ state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false });
+  it("THE status function reads a credential-less provider by the org's GitHub link", () => {
+    expect(hostingStatus(null, "GitHub deployments", true, "app")).toEqual({ state: "connected", word: VIA_GITHUB_WORD, live: true, stored: false });
+    expect(hostingStatus(null, "GitHub deployments", true, "hook").state).toBe("connected");
+    expect(hostingStatus(null, "GitHub deployments", true, "removed")).toEqual({ state: "revoked", word: "Removed", live: false, stored: false });
+    for (const link of ["suspended", "none"] as const) expect(hostingStatus(null, "GitHub deployments", true, link).state).toBe("not_connected");
+    // A payload from before the link existed reads as it always did.
+    expect(hostingStatus(null, "GitHub deployments", true).state).toBe("connected");
     expect(hostingStatus(null, "Vercel").state).toBe("not_connected");
+  });
+
+  it("githubLinkOf: a live unsuspended App, else a repository's webhook, else suspended / removed / none", () => {
+    const b = (o: Partial<{ removed_at: string; removed_reason: string; suspended_at: string }> = {}) => ({ removed_at: null, removed_reason: null, suspended_at: null, ...o });
+    expect(githubLinkOf(b(), false)).toBe("app");
+    expect(githubLinkOf(b({ suspended_at: "x" }), true)).toBe("hook");
+    expect(githubLinkOf(b({ suspended_at: "x" }), false)).toBe("suspended");
+    expect(githubLinkOf(b({ removed_at: "x", removed_reason: "uninstalled" }), false)).toBe("removed");
+    expect(githubLinkOf(b({ removed_at: "x", removed_reason: "disconnected" }), false)).toBe("none");
+    expect(githubLinkOf(null, true)).toBe("hook");
+    expect(githubLinkOf(null, false)).toBe("none");
   });
 });
