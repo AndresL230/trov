@@ -23,7 +23,7 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
   `email_unsubscribed = 0`) the outbox row is claimed FIRST by `INSERT OR IGNORE` on `outboxKey`,
   `org:user:cadence:window_id` — a conflict skips the user, so a double fire is harmless. Then render, drop nulls, `skipped` on zero sections, else one message → `sent` (with `resend_id`)
   or `failed` (with the error). `retry.ts` (hourly, on the daily trigger) re-attempts `failed` rows AND `pending`
-  rows whose claim — or latest attempt, `attempted_at` (0091) — is older than `PENDING_LEASE_MINUTES` (30): a run
+  rows whose claim — or latest attempt, `attempted_at` (0093) — is older than `PENDING_LEASE_MINUTES` (30): a run
   that died mid-send left them, and the claim key would block the window forever. It takes a row by a
   compare-and-set (status + `attempted_at`), so two retries never send it twice. Every send carries the row's
   idempotency key as Resend's `Idempotency-Key` (kept 24 h by Resend): a retry after a send that DID land is

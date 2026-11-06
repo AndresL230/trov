@@ -28,11 +28,11 @@ export interface InstallationRow {
   connected_by: string;
   connected_at: string;
   suspended_at: string | null;
-  /** When the suspend / unsuspend the row now reflects HAPPENED (0091): GitHub's time for a webhook's, ours for a
+  /** When the suspend / unsuspend the row now reflects HAPPENED (0093): GitHub's time for a webhook's, ours for a
    *  state Trov read from GitHub. An event older than this is stale and changes nothing (`setInstallationSuspended`). */
   suspension_at: string | null;
   /** An `installation_repositories` event was applied and a complete repository list has not confirmed it since
-   *  (0091): the cron's reconcile unit re-reads the list (./repos.ts `recheckInstallation`). */
+   *  (0093): the cron's reconcile unit re-reads the list (./repos.ts `recheckInstallation`). */
   repos_changed_at: string | null;
   removed_at: string | null;
   removed_reason: GithubRemovedReason | null;

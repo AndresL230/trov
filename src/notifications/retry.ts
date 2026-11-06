@@ -53,7 +53,7 @@ export async function retryFailed(ctx: TenantContext, p: PlatformContext, opts: 
     );
     if (!who || !who.email || who.email_unsubscribed !== 0) continue;
     // Take the row — a compare-and-set on what was read: failed → pending, or a dead pending claim re-leased — and stamp
-    // the attempt (`attempted_at`, 0091), so a second retry running beside this one skips it, and so the lease counts
+    // the attempt (`attempted_at`, 0093), so a second retry running beside this one skips it, and so the lease counts
     // from THIS attempt: if it dies too, the next retry past the lease finds the row again.
     const took = await run(ctx,
       `UPDATE notification_outbox SET status = 'pending', attempted_at = ?

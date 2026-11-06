@@ -14,7 +14,7 @@ SaplingLearn runs on them until it installs the App, and a self-hosted Trov may 
 `org_github_installations` — the binding of a GitHub installation to a Trov org: the installation id, the
 account it is on (login, numeric id, `User` / `Organization`), `all` / `selected` repositories, who
 connected it and when, `suspended_at`, `removed_at` + `removed_reason`, `last_used_at`, `last_error`, and
-(0091) `suspension_at` — when the suspend / unsuspend the row reflects HAPPENED — and `repos_changed_at` — an
+(0093) `suspension_at` — when the suspend / unsuspend the row reflects HAPPENED — and `repos_changed_at` — an
 `installation_repositories` event applied that no complete repository list has confirmed yet.
 A row is never deleted; ending a binding sets `removed_at`.
 

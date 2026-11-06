@@ -1,4 +1,4 @@
--- 0091_integration_ordering: three nullable columns so out-of-order signals and dead runs can be told apart
+-- 0093_integration_ordering: three nullable columns so out-of-order signals and dead runs can be told apart
 -- (docs/architecture/notifications.md › Runs, github-app.md › Uninstall, suspend, disconnect). Additive only:
 -- nothing is backfilled, and a Worker that does not know them yet keeps working (NULL reads as "not known").
 --   · notification_outbox.attempted_at — when the latest send attempt of a row began. A `pending` row whose
@@ -14,7 +14,7 @@
 --   ALTER TABLE notification_outbox DROP COLUMN attempted_at;
 --   ALTER TABLE org_github_installations DROP COLUMN suspension_at;
 --   ALTER TABLE org_github_installations DROP COLUMN repos_changed_at;
--- then DELETE FROM d1_migrations WHERE name = '0091_integration_ordering.sql'.
+-- then DELETE FROM d1_migrations WHERE name = '0093_integration_ordering.sql'.
 ALTER TABLE notification_outbox ADD COLUMN attempted_at TEXT;
 ALTER TABLE org_github_installations ADD COLUMN suspension_at TEXT;
 ALTER TABLE org_github_installations ADD COLUMN repos_changed_at TEXT;
