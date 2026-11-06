@@ -246,6 +246,35 @@ describe("the lock: one run per org", () => {
     expect(ok(await runSyncBatch(e(), ctx, "admin-user", {}, slow)).run.id).not.toBe(one.run.id);
   });
 
+  it("two requests continuing the same run at once: one takes the next batch, the other is told the run is busy", async () => {
+    await ready();
+    const ctx = await admin();
+    const one = ok(await runSyncBatch(e(), ctx, "admin-user", { batch: 1, of: 10, start: true }, slow));
+    const [a, b] = await Promise.all([
+      runSyncBatch(e(), ctx, "admin-user", { batch: 2, of: 10, run: one.run.id }, slow),
+      runSyncBatch(e(), ctx, "admin-user", { batch: 2, of: 10, run: one.run.id }, slow),
+    ]);
+    expect([a.status, b.status].sort()).toEqual([200, 409]);
+    expect((await rows())[0].batch).toBe(2);
+  });
+
+  it("the closing reconcile keeps the run live (a heartbeat) however long it reads — another start cannot take it for abandoned", async () => {
+    await ready();
+    const ctx = await admin();
+    let now = Date.parse("2026-10-07T10:00:00.000Z");
+    let during: Awaited<ReturnType<typeof runSyncBatch>> | null = null;
+    // A reconcile that outlasts the stale window: the clock moves past it while it reads, and another admin tries to start.
+    const reconcile = vi.fn(async () => {
+      for (let i = 0; i < 4; i++) { now += SYNC_STALE_MS / 2; await new Promise((r) => setTimeout(r, 30)); }
+      during = await runSyncBatch(e(), await admin("second-admin"), "second-admin", { start: true }, { ...slow, now: () => now });
+      return { written: 4, unchanged: 9, failed: [] as string[] };
+    });
+    const out = ok(await runSyncBatch(e(), ctx, "admin-user", { batch: 1, of: 1, start: true }, { ...slow, now: () => now, reconcile, heartbeatMs: 10 }));
+    expect(during).toMatchObject({ status: 409, body: { error: "sync_running" } });
+    expect(out.run.status).toBe("ok");
+    expect((await rows()).map((r) => r.status)).toEqual(["ok"]);
+  });
+
   it("is per org: a run in one org neither blocks nor shows in another", async () => {
     await ready();
     ok(await runSyncBatch(e(), await admin(), "admin-user", { start: true }, slow));

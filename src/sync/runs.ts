@@ -108,6 +108,29 @@ async function report(ctx: TenantContext, id: number, set: Partial<Pick<RunRow, 
   });
 }
 
+/**
+ * The next batch of a live run, CLAIMED: a compare-and-set on the batch number the caller read, so two requests
+ * continuing the same run at once (a double click, a retried POST) cannot both run batch N + 1 — the loser is told
+ * the run is busy. True when this caller took it.
+ */
+async function advance(ctx: TenantContext, row: RunRow, now: number): Promise<boolean> {
+  const res = await run(ctx,
+    `UPDATE sync_runs SET updated_at = ?, batch = ?, phase = 'starting', done = NULL, total = NULL
+      WHERE org_id = ? AND id = ? AND status = 'running' AND batch = ?`,
+    new Date(now).toISOString(), row.batch + 1, ctx.orgId, row.id, row.batch);
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** How often a batch says it is alive while a step that reports no progress of its own runs (the closing
+ *  reconcile can outlast `SYNC_STALE_MS`): well inside the stale window, so the run is never taken for dead. */
+export const SYNC_HEARTBEAT_MS = 30_000;
+
+/** Run `fn`, touching the run's `updated_at` every `everyMs` until it settles. */
+async function withHeartbeat<T>(ctx: TenantContext, id: number, clock: () => number, everyMs: number, fn: () => Promise<T>): Promise<T> {
+  const timer = setInterval(() => { void report(ctx, id, {}, clock()); }, everyMs);
+  try { return await fn(); } finally { clearInterval(timer); }
+}
+
 // ── what a new run would do (GET /sync) ──────────────────────────────────────
 
 /** The org's primary repository, and where the credential to read it with would come from — the org's
@@ -185,6 +208,8 @@ export interface SyncBatchOpts {
   backfill?: typeof runBackfill;
   backfillOpts?: Parameters<typeof runBackfill>[3];
   reconcile?: typeof runReconcileJob;
+  /** The heartbeat's interval (`SYNC_HEARTBEAT_MS`); a test makes it short. */
+  heartbeatMs?: number;
 }
 
 const add = (c: SyncCounts, res: BackfillResult): SyncCounts => ({
@@ -223,15 +248,13 @@ export async function runSyncBatch(env: Env, ctx: TenantContext, by: string, bod
   let row: RunRow | null;
   if (typeof body.run === "number") {
     if (!live || live.id !== body.run || !mine) return { status: 409, body: live ? { error: "sync_running", run: runView(live, clock()) } : { error: "sync_not_running" } };
-    row = live;
-    await report(ctx, row.id, { batch: row.batch + 1, phase: "starting", done: null, total: null }, clock());
-    row = { ...row, batch: row.batch + 1 };
+    if (!(await advance(ctx, live, clock()))) return { status: 409, body: { error: "sync_running", run: runView((await getRun(ctx, live.id)) ?? live, clock()) } };
+    row = { ...live, batch: live.batch + 1 };
   } else if (live && (body.start === true || !mine)) {
     return { status: 409, body: { error: "sync_running", run: runView(live, clock()) } };
   } else if (live) {
-    row = live;
-    await report(ctx, row.id, { batch: row.batch + 1, phase: "starting", done: null, total: null }, clock());
-    row = { ...row, batch: row.batch + 1 };
+    if (!(await advance(ctx, live, clock()))) return { status: 409, body: { error: "sync_running", run: runView((await getRun(ctx, live.id)) ?? live, clock()) } };
+    row = { ...live, batch: live.batch + 1 };
   } else {
     row = await startRun(ctx, ready.repo, by, clock());
     if (!row) {
@@ -268,7 +291,10 @@ export async function runSyncBatch(env: Env, ctx: TenantContext, by: string, bod
   let repo: ReconcileResult | undefined;
   if (final) {
     await report(ctx, id, { phase: "reconcile", done: null, total: null, counts: JSON.stringify(counts) }, clock());
-    repo = (await (opts.reconcile ?? runReconcileJob)(env, ctx, clock(), { fetchImpl: local }).catch(() => null)) ?? undefined;
+    // The reconcile reports nothing while it reads, and can take longer than `SYNC_STALE_MS`: a heartbeat keeps the
+    // run live, so another start cannot take it for abandoned and leave this batch's close writing to nothing.
+    repo = (await withHeartbeat(ctx, id, clock, opts.heartbeatMs ?? SYNC_HEARTBEAT_MS,
+      () => (opts.reconcile ?? runReconcileJob)(env, ctx, clock(), { fetchImpl: local })).catch(() => null)) ?? undefined;
     // `failed` is the reconcile's ARM NAMES (or "unexpected error") — never upstream text.
     // `via` is where the credential stood when the batch began: it points the fix at the right tab.
     const failures: SyncFailure[] = (repo?.failed ?? []).map((arm) => (arm === "unexpected error" ? { code: "reconcile:unexpected" } : { code: `reconcile:${arm}`, via: ready.via ?? undefined }));
