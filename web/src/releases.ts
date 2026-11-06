@@ -121,6 +121,7 @@ export const RELEASES: Release[] = [
     ops: [
       "Before merging #218, check production has no duplicate doc versions — `SELECT org_id, slug, version, COUNT(*) n FROM doc_versions GROUP BY 1, 2, 3 HAVING n > 1` must return nothing — then apply `0088_doc_versions_unique` (merging applies it).",
       "Apply `0089_sprint_completed_at` (merging applies it). Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
+      "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
     ],
     patches: {
       added: [],
@@ -131,10 +132,12 @@ export const RELEASES: Release[] = [
       fixed: [
         "Docs: approving an older proposal no longer rolls a page back; a rejected new page frees its name; Approve all skips a page it can't (#218)",
         "Tickets, sprints, the plan and prompts refuse a change made at the same moment instead of overwriting it; expired handoffs can't be claimed (#219)",
+        "Billing: an organization can no longer pay for Pro twice; a second paid upgrade is cancelled at once (#220)",
+        "Invitations revoked while being accepted no longer add the person; app connections never finished stop counting against your limit (#220)",
       ],
       removed: [],
     },
-    prs: [218, 219],
+    prs: [218, 219, 220],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
