@@ -303,6 +303,26 @@ describe("the lifecycle", () => {
     await expect(acceptSuggestion(member, "meilin", web.id)).rejects.toBeInstanceOf(RoleError);
   });
 
+  it("a decision is a compare-and-set: two accepts (or an accept and an ignore) at once — one wins, the other is refused, one app", async () => {
+    await seedOrgSettings();
+    await scanRepo(ctxA(), gh(fakeGh(STOREFRONT)), { now: NOW });
+    const api = (await listSuggestions(ctxA(), REPO, NOW)).find((s) => s.key === "api")!;
+    const ctx = await admin();
+    const both = await Promise.allSettled([
+      acceptSuggestion(ctx, "AndresL230", api.id, { now: NOW }),
+      acceptSuggestion(ctx, "AndresL230", api.id, { now: NOW + 1 }),
+    ]);
+    expect(both.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    expect(both.find((r) => r.status === "rejected")).toMatchObject({ reason: { status: 409 } });
+    expect((await listRepoApps(ctxA())).filter((a) => a.key === "api")).toHaveLength(1);
+
+    const ui = (await listSuggestions(ctxA(), REPO, NOW)).find((s) => s.key === "ui")!;
+    const raced = await Promise.allSettled([acceptSuggestion(ctx, "AndresL230", ui.id, { now: NOW }), ignoreSuggestion(ctx, "AndresL230", ui.id, NOW)]);
+    expect(raced.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const state = (await first<{ state: string }>(env.DB, `SELECT state FROM repo_app_suggestions WHERE org_id = ? AND id = ?`, ORG_A, ui.id))!.state;
+    expect((await listRepoApps(ctxA())).some((a) => a.key === "ui")).toBe(state === "accepted");
+  });
+
   it("a Package is accepted with no part; a part a host refuses rolls the accept back", async () => {
     await seedOrgSettings();
     await scanRepo(ctxA(), gh(fakeGh(STOREFRONT)), { now: NOW });

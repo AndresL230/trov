@@ -371,17 +371,25 @@ export async function scanRepo(ctx: TenantContext, gh: GhOpts, opts: ScanOpts = 
     const state = prev?.state === "ignored" && !opts.resetIgnored ? "ignored" : "pending";
     if (state === "pending") pending++;
     if (!prev) added++;
+    // The state moves only from the one this scan READ (`prevState`, NULL for a new row): an admin's accept or ignore
+    // made between that read and this write stands — the scan never takes a decision back to pending. An accepted
+    // row is not touched at all (it is the record of an app an admin added).
+    const prevState = prev?.state ?? null;
+    const moved = `(CASE WHEN repo_app_suggestions.state IS ? THEN excluded.state ELSE repo_app_suggestions.state END)`;
     stmts.push(stmt(ctx, `INSERT INTO repo_app_suggestions (org_id, repo, id, key, folder, kind, provider, evidence, parts, used_by, state, decided_at, decided_by, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
         ON CONFLICT(org_id, id) DO UPDATE SET key = excluded.key, folder = excluded.folder, kind = excluded.kind, provider = excluded.provider,
-          evidence = excluded.evidence, parts = excluded.parts, used_by = excluded.used_by, state = excluded.state,
-          decided_at = CASE WHEN excluded.state = repo_app_suggestions.state THEN repo_app_suggestions.decided_at ELSE NULL END,
-          decided_by = CASE WHEN excluded.state = repo_app_suggestions.state THEN repo_app_suggestions.decided_by ELSE NULL END`,
-      ctx.orgId, repo, b.id, b.key, b.folder, b.kind, b.provider, JSON.stringify(b.evidence), JSON.stringify(b.parts), JSON.stringify(b.usedBy), state, at));
+          evidence = excluded.evidence, parts = excluded.parts, used_by = excluded.used_by, state = ${moved},
+          decided_at = CASE WHEN ${moved} = repo_app_suggestions.state THEN repo_app_suggestions.decided_at ELSE NULL END,
+          decided_by = CASE WHEN ${moved} = repo_app_suggestions.state THEN repo_app_suggestions.decided_by ELSE NULL END
+        WHERE repo_app_suggestions.state <> 'accepted'`,
+      ctx.orgId, repo, b.id, b.key, b.folder, b.kind, b.provider, JSON.stringify(b.evidence), JSON.stringify(b.parts), JSON.stringify(b.usedBy), state, at,
+      prevState, prevState, prevState));
   }
-  // What the scan no longer finds goes (an accepted one stays: it is the record of an app an admin added).
+  // What the scan no longer finds goes (an accepted one stays: it is the record of an app an admin added — checked
+  // in the statement too, so one accepted since the read stays).
   for (const r of existing) {
-    if (!builtIds.has(r.id) && r.state !== "accepted") stmts.push(stmt(ctx, `DELETE FROM repo_app_suggestions WHERE org_id = ? AND id = ?`, ctx.orgId, r.id));
+    if (!builtIds.has(r.id) && r.state !== "accepted") stmts.push(stmt(ctx, `DELETE FROM repo_app_suggestions WHERE org_id = ? AND id = ? AND state <> 'accepted'`, ctx.orgId, r.id));
   }
   const error = tree.truncated ? "the repository is too large to list in one read; Trov looked at the files GitHub listed" : null;
   stmts.push(stmt(ctx, `INSERT INTO repo_scans (org_id, repo, tree_sha, scanned_at, looked, error) VALUES (?, ?, ?, ?, ?, ?)
