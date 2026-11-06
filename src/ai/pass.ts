@@ -41,7 +41,7 @@ import { AI_PASS_STAGES, debounceFrom, debounceMs, isAiScope } from "@shared/ai"
 import { listActiveOrgIds, readCursor, writeCursor } from "../platform/jobs";
 import { rotated, type Budget } from "../repo/dispatch";
 import { planAndAiSettings } from "../plans/gate";
-import { clearScopes, dueScopes, failScopes, type DirtyScope } from "../data/ai-dirty";
+import { AI_BATCH_HOLD_MAX_MS, clearScopes, dueScopes, failScopes, releaseStaleHolds, type DirtyScope } from "../data/ai-dirty";
 import { inFlightCustomIds } from "../data/ai-batches";
 import { providerFor, type AiProviderOpts, type AiUsage, type JevAsk, type JevKind } from "./client";
 import { groupOf, takes, validJob, customIdOf, type AiJob, type ClaudeJob, type JevGate, type JevJob, type JevRequest, type JobItem } from "./jobs";
@@ -183,6 +183,9 @@ export async function runAiPass(env: Env, budget: Budget, opts: AiPassOpts = {})
       state = await planAndAiSettings(ctx, now);
       // The switch off: nothing is read, asked or counted.
       if (!state.enabled) return true;
+      // Holds no batch settled within their time are due again (a batch never recorded, lost, or collected without
+      // writing them) — never "clean" for good.
+      await releaseStaleHolds(ctx, new Date(nowMs - AI_BATCH_HOLD_MAX_MS).toISOString());
       due = (await dueScopes(ctx)).filter((s) => isDue(s, state.plan.plan, nowMs) && !inFlight.has(`${orgId}:${s.scope}:${s.key}`));
     } catch (e) {
       console.error("ai pass: read failed", errName(e), `org=${orgId}`);

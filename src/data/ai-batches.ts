@@ -1,7 +1,8 @@
 // The AI pass's Message Batches (0059_ai_batches; docs/architecture/ai.md › Batches). A PLATFORM module: a batch
 // carries requests from several organizations, so `ai_batches` / `ai_batch_requests` have no `org_id` — a request
-// names its organization only inside `custom_id` (`<org>:<scope>:<key>:<prompt version>`). Every request row is
-// deleted when its batch is collected, so nothing here outlives a batch. Nothing here calls a model.
+// names its organization only inside `custom_id` (`<org>:<scope>:<key>:<prompt version>`). A request row is deleted
+// when its result is claimed (`claimRequest`) and the rest when its batch is closed, so nothing here outlives a
+// batch. Nothing here calls a model.
 import { all, batch, chunked, ph, run, stmt, type PlatformContext } from "./platform-sql";
 import { orgLive } from "./suspension";
 
@@ -38,13 +39,22 @@ export async function batchChecked(p: PlatformContext, id: string, at: string): 
   await run(p, `UPDATE ai_batches SET checked_at = ? WHERE id = ?`, at, id);
 }
 
-/** Collected (or `lost`: the provider no longer knows it): its counts, and its request rows go. */
+/** CLAIM one result before it is written: its request row goes, in one guarded statement, so a result is written AT
+ *  MOST ONCE — a collect that dies midway and runs again (or two collects at once) skips what was already taken. A
+ *  result claimed but never written leaves its scope held, and the hold is released later (`releaseStaleHolds`). */
+export async function claimRequest(p: PlatformContext, batchId: string, requestId: string): Promise<boolean> {
+  const res = await run(p, `DELETE FROM ai_batch_requests WHERE batch_id = ? AND request_id = ?`, batchId, requestId);
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** Collected (or `lost`: the provider no longer knows it): its counts, and its request rows go — only from
+ *  `submitted` (a batch is closed once). */
 export async function closeBatch(
   p: PlatformContext, id: string, state: "collected" | "lost", at: string, counts: BatchCounts | null, written: number | null,
 ): Promise<void> {
   await batch(p, [
     stmt(p, `UPDATE ai_batches SET state = ?1, checked_at = ?2, ended_at = COALESCE(ended_at, ?2), collected_at = ?2,
-                    succeeded = ?3, errored = ?4, canceled = ?5, expired = ?6, written = ?7 WHERE id = ?8`,
+                    succeeded = ?3, errored = ?4, canceled = ?5, expired = ?6, written = ?7 WHERE id = ?8 AND state = 'submitted'`,
       state, at, counts?.succeeded ?? null, counts?.errored ?? null, counts?.canceled ?? null, counts?.expired ?? null, written, id),
     stmt(p, `DELETE FROM ai_batch_requests WHERE batch_id = ?`, id),
   ]);

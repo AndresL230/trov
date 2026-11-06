@@ -5,15 +5,19 @@
 // from src/mcp.ts imports it.
 import type { AiCite, AiFeedbackBody, AiSuggestion, AiSuggestionState } from "@shared/ai";
 import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
+import { dropPendingStmt } from "./ai-dirty";
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
-/** Turn the org's AI on or off, audited (`org.ai`) in the same batch. The caller has checked the role. */
+/** Turn the org's AI on or off, audited (`org.ai`) in the same batch. Off also drops the AI router's pending marks
+ *  (`ai_dirty`), in that batch: turning it on again starts from the next writes — nothing marked before runs then
+ *  (ai.md › The router). The caller has checked the role. */
 export async function setAiAutomation(ctx: TenantContext, enabled: boolean, at: string = nowIso()): Promise<void> {
   await batch(ctx, [
     stmt(ctx, `UPDATE orgs SET ai_automation = ? WHERE id = ?`, enabled ? 1 : 0, ctx.orgId),
     stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'org.ai', 'ai', ?, ?)`,
       ctx.orgId, ctx.userId, JSON.stringify({ enabled }), at),
+    ...(enabled ? [] : [dropPendingStmt(ctx)]),
   ]);
 }
 
