@@ -731,9 +731,10 @@ export type CreateArtifactInput = CreateTextArtifactInput | CreateBinaryArtifact
 
 /**
  * Create a page with its v1 (status `draft`). Text kinds carry `content`; binary kinds
- * carry `bytes` and need `bucket` (the bytes go to `artifacts/<sha256>` first).
+ * carry `bytes` and need `bucket` (the bytes go to `artifacts/<sha256>` first). `extra` (given the new page's slug)
+ * adds the caller's own rows to the page's ONE batch — Ask's link to its thread — so they land together or not at all.
  */
-export async function createPage(ctx: TenantContext, input: CreateArtifactInput, author: string, bucket?: R2Bucket): Promise<ArtifactDetailDTO> {
+export async function createPage(ctx: TenantContext, input: CreateArtifactInput, author: string, bucket?: R2Bucket, extra?: (slug: string) => Stmt[]): Promise<ArtifactDetailDTO> {
   const f = pageFields(input);
   const summary = checkSummary(input.summary);
   const links = await normalizeLinks(ctx, input.links, f.repo);
@@ -746,7 +747,8 @@ export async function createPage(ctx: TenantContext, input: CreateArtifactInput,
     if (!b.bytes) throw bad("bytes are required");
     payload = await binaryPayload(bucket, f.kind as ArtifactBinaryKind, b.bytes, b.content_type, b.filename, summary);
   }
-  const slug = await insertPage(ctx, f, links, payload, author);
+  const own = extra ? await uniqueSlug(ctx, f.title) : undefined;
+  const slug = await insertPage(ctx, f, links, payload, author, own && extra ? extra(own) : [], own);
   return await getPage(ctx, slug, null, author);
 }
 

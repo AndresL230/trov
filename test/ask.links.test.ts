@@ -219,10 +219,12 @@ describe("the AI switch (invariant 15)", () => {
       const off = await withAsk({ fetchImpl: fakeModel([answer()]).fetchImpl }, () => ask(cookie, { threadId: t1, text: "anything?" }));
       expect(eventsOf(off.events, "error")[0].code).toBe("off");
       expect(await undelivered()).toBe(1);
-      // …is refused at Confirm: no link is sent, no side bound.
+      // …is refused at Confirm, like every card while the switch is off: no link is sent, no side bound, and the card
+      // stays as it was.
       const ok = await call("POST", `${BASE}/ask/actions/${card.id}/confirm`, cookie, {});
-      expect(ok.json.results[0]).toMatchObject({ state: "failed" });
-      expect(String(ok.json.results[0].result.error)).toMatch(/off for this org/);
+      expect(ok.status).toBe(403);
+      expect(ok.json).toMatchObject({ error: "off" });
+      expect(String(ok.json.message)).toMatch(/off for this org/);
       expect(await links()).toHaveLength(1);
     } finally {
       await setAi(true);

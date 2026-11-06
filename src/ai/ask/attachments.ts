@@ -19,7 +19,7 @@ import {
 import { ARTIFACT_IMAGE_TYPES, ARTIFACT_TEXT_CAP, kindForFilename, isTextKind, type ArtifactKind } from "@shared/artifacts-core";
 import { createPage, readRaw } from "../../tools/artifacts";
 import { all, first, type TenantContext } from "../../data/sql";
-import { linkArtifact, type ChatArtifactRow } from "../../data/ask";
+import { artifactLinkId, linkNewArtifactStmt, type ChatArtifactRow } from "../../data/ask";
 import { fence } from "./prompt";
 
 export class AttachError extends Error {
@@ -59,14 +59,16 @@ export async function storeAttachments(ctx: TenantContext, bucket: R2Bucket, han
   const out: AskAttachment[] = [];
   for (const { f, attach, kind } of checked) {
     const base = { title: f.name.slice(0, 200) || "Attachment", area: "data" as const, repo: "", visibility: "private" as const, summary: "Attached in Ask Trov" };
+    // The page and its link to the thread in ONE batch: never a private artifact that no thread holds.
+    const link = (slug: string) => [linkNewArtifactStmt(ctx, threadId, slug, "attachment", null)];
     const page = isTextKind(kind)
-      ? await createPage(ctx, { ...base, kind, content: new TextDecoder().decode(f.bytes) }, handle)
+      ? await createPage(ctx, { ...base, kind, content: new TextDecoder().decode(f.bytes) }, handle, undefined, link)
       : await createPage(ctx, {
         ...base, kind: kind as "image" | "pdf" | "file", bytes: f.bytes, filename: f.name,
         // An image's type is its own only when it is one we serve; else it is inferred from the name.
         content_type: kind === "image" ? ((ARTIFACT_IMAGE_TYPES as readonly string[]).includes(f.type) ? f.type : null) : kind === "file" ? "text/plain" : f.type,
-      }, handle, bucket);
-    const id = await linkArtifact(ctx, threadId, page.id, "attachment", null);
+      }, handle, bucket, link);
+    const id = (await artifactLinkId(ctx, threadId, page.id, "attachment"))!;
     out.push({
       id, slug: page.slug, title: page.title, kind: attach, contentType: page.version.content_type, size: page.version.size_bytes, sha256: page.version.sha256,
       ...(attach === "image" && orgSlug ? { thumbUrl: `/api/o/${orgSlug}${page.raw_url}` } : {}),
