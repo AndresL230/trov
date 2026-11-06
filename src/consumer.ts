@@ -377,6 +377,17 @@ export async function ingestEvent(ctx: TenantContext, p: PlatformContext, event:
     event.raw, event.provenance, event.occurred_at ?? null, nowIso(), recordedBy
   );
   const written = (res.meta.changes ?? 0) > 0;
+  // A PR closed, REOPENED and closed again keeps its one `gh:pr:<n>:closed` row (the key names no occurrence, so a
+  // redelivery and Sync's backfill still collapse onto it) — but the row moves to the LATEST close: a later close
+  // refreshes its time and snapshot, an earlier one (a redelivery, an older backfill) changes nothing. Reported
+  // `unchanged`: nothing downstream (the summary, the AI router) runs twice for one PR. Whether the PR is closed NOW
+  // is the capture's newest `pr` row (repo_events), which a reopen moves — the readers check it.
+  if (!written && event.event_type === "pr_closed" && event.occurred_at) {
+    await run(ctx,
+      `UPDATE events SET occurred_at = ?, raw = ?, subject_login = ?, recorded_at = ?
+        WHERE org_id = ? AND semantic_key = ? AND event_type = 'pr_closed' AND (occurred_at IS NULL OR occurred_at < ?)`,
+      event.occurred_at, event.raw, event.subject_login, nowIso(), ctx.orgId, event.semantic_key, event.occurred_at);
+  }
   // Identity intake AFTER the event write: an unmapped subject_login raises one
   // pending identity task (login PK, INSERT OR IGNORE). Runs on unchanged
   // deliveries too, so events captured before the task store existed still

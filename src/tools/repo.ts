@@ -1180,7 +1180,9 @@ export async function getRepoDashboard(
   const merged = recentPrs.filter((p) => p.event_type === "pr_merged");
   const mergedThisWeek = merged.filter((p) => p.at > weekAgo);
   const mergedLastWeek = merged.filter((p) => p.at <= weekAgo && p.at > twoWeeksAgo);
-  const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo);
+  // A PR reopened since it was closed (its newest capture row is open, and newer than the close) is not closed now.
+  const reopened = (p: PrRow) => prStatesNow.some((r) => r.number === p.ref_number && isOpen(r) && r.occurred_at > p.at);
+  const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo && !reopened(p));
 
   const { prCaptured, prsThen, prRows, prRecordingSince, mergedSince, tickets } = pr;
   const prsNow = prCaptured ? prStatesNow.filter(isOpen) : [];
