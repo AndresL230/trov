@@ -43,7 +43,7 @@ the allowances and the switches: `ai.md`.
 
 Body (`AskRequestSchema`): `{ threadId?, text, command?, mode, auto, context[], attachments[], replaceFrom?, origin? }`.
 JSON refusals before the stream: `400 invalid`, `404 not_found` (another person's / org's thread), `403
-mode_unavailable`. Then SSE, in order: `thread` (again once the first exchange names it) → an attachment notice per
+mode_unavailable`, `409 busy` (a turn is already running on that thread — › One turn at a time). Then SSE, in order: `thread` (again once the first exchange names it) → an attachment notice per
 file the model could not take (an `activity` line, run then done at once — › Attachments) → `thinking` run/done
 (Thinking only; the SUMMARY, never raw thinking) → `activity` run then done (`results` refs, `resultLine`) → `text`
 deltas → `block` → `action` / `action_result` / `artifact_saved` → `followups` → `action_result` carries the write itself (`tool`, `kind`, the card's `preview`) beside its decision. `done { messageId, questionId, cites, tokens,
@@ -76,6 +76,20 @@ live order — a row stored before it has none and reads as text, blocks, cards.
   abort DURING the turn (`runTurn`'s listener, removed when it returns) can mark it; on the client the pacer is
   flushed before the catch reads the error, so `done` has landed and `stopTurn` / `failTurn` leave a finished turn
   alone (`turnLive`), whatever the browser calls the close (`test/render.ask-controller.test.ts`).
+- **One turn at a time** (`0092_ai_state_guards`, `chat_threads.turn_at`): the route CLAIMS an existing thread before
+  anything streams (`claimThread`, one guarded UPDATE of the lease; a new thread is claimed as soon as it exists) and
+  the turn RELEASES it when it ends — before the stream closes, so a client that read to the end may ask again at
+  once. A second ask on the same thread while a turn runs (its owner's, or a person's it is shared with to continue)
+  is `409 { error: "busy", message }`, with nothing stored or counted: two turns would read the same turn number, and
+  the second would expire the first's cards and clear its Stop. A lease older than `ASK_TURN_LEASE_MS` (3 min — the
+  longest turn is Thinking's 90 s) belongs to a turn whose Worker died; the next ask takes it over, and Stop is scoped
+  to the turn (`stopRequested(…, turn)`: the flag, or the thread having moved past this turn's number), so a dead turn
+  still running anywhere stops itself (`test/ask.state.test.ts`).
+- **A turn that fails after Auto writes ran** says so: the error is "The changes Trov already made are kept, each with
+  its Undo" instead of "Nothing was changed", and cards it made that never got their answer (the turn died after
+  making them) get one — an empty, stopped answer of their asker's (`adoptOrphanCards`: on the failing turn's own
+  catch, at the next turn's start, and on the thread read once no live turn holds the lease) — so they show, with
+  their Undo.
 - **Replace** (`replaceFrom`): the last question (edit-and-resend, with the new text) or the last answer
   (regenerate, in any mode). The replaced messages get `replaced_at` (hidden, out of search) and their undecided cards
   expire.
@@ -269,6 +283,18 @@ is replaced.
   recipient, Publish's `mayPromote`, `update_plan`'s admin check). Refused → the card is `failed` with the
   writer's `forbidden` and nothing is written (`test/ask.rulings.test.ts`). The turn asks the same before it builds a
   card.
+- **The org's AI switch off refuses every Confirm** (invariant 15; the owner's ruling, #215): `403 { error: "off",
+  message }` before anything is claimed — the card stays as it was and nothing is written (it used to be refused only
+  for agent-link cards). Cancel and Undo still work: they write nothing new of Ask's (Undo puts back what was).
+- **A write that ran is never recorded `failed`.** Only the write (or Undo) itself throwing decides `failed` (or, for
+  Undo, puts the card back as it was). Once it HAS run, recording the outcome (`recordAction` / `recordUndone`) is
+  retried; if it still fails the card stays `running` — never `failed` (that would lie, and lose its Undo) and never
+  back to its Undo after an undo that ran. **A card `running` past `ASK_ACTION_RUNNING_MAX_MS`** (10 min: a Worker
+  that died mid-write, or a record that kept failing) is settled at the next turn's start and on the thread read
+  (`recoverStuckActionsStmts`): one whose outcome was never recorded becomes `failed` with `{ code: "interrupted",
+  error: "Trov lost track of this change, so it may have run. Check the item before trying again." }` — it says it
+  MAY have run; one caught mid-Undo goes back to `confirmed` with its Undo, whose own "changed since" check refuses if
+  the undo did run (`test/ask.state.test.ts`). The same holds for Auto writes and the Auto save.
 - **A waiting card's note** is rebuilt by the thread read (`waitingNote`: a Confirm-only write's own note, else the
   Auto cap's — the only two reasons a card waits), so it survives a reload (Q55).
 
@@ -374,9 +400,12 @@ a thread, and `claim_handoff` with it still works.
   (`bindPendingAttachments`, the person's own holder only). Never sent, they go 24 hours after the upload
   (`sweepPendingAskAttachments`, src/deletion/ask-pending.ts, on the hourly digest trigger `0 * * * *` — no cron of
   its own), by the composer ✕'s hard delete; one published or referenced meanwhile keeps its artifact and loses only
-  the link; an empty holder goes too. The holder is an ordinary thread of the person's, so account and org deletion
-  already take it. The composer sends EACH FILE AS ITS OWN REQUEST, so one failure is that chip's alone (no batch
-  atomicity). A message names them by id; the model gets them read BACK from the
+  the link; an empty holder goes too. **A file uploaded INTO a conversation and never sent goes the same way** (the
+  same sweep, as its uploader — the artifact's author), rather than waiting for the thread's deletion. The holder is
+  an ordinary thread of the person's, so account and org deletion already take it. Each file's private artifact and
+  its link to the thread are written in ONE batch (`createPage`'s `extra`, `linkNewArtifactStmt` — Save as artifact's
+  `saved` link too): never a private artifact no thread holds. The composer sends EACH FILE AS ITS OWN REQUEST, so one
+  failure is that chip's alone (no batch atomicity across files). A message names them by id; the model gets them read BACK from the
   store (`readRaw`, as the person) — whole only in that turn. Later turns carry one line; `read_attachment(id)` reads
   one again, this person's thread's only.
 - **An image over the model's limit** is stored, NOT read, and the person is told. The limits are the Messages API's
@@ -631,7 +660,8 @@ Artifact, which wraps it). A new part or state goes in `specimens.ts` as one mor
 `test/ask.stream.test.ts` (the event order and contract, caching, grounding, the gate, modes by plan, the allowance,
 Stop, regenerate, tenant isolation, the fence), `test/ask.actions.test.ts` (Confirm / Cancel / expiry / edits / the
 lane, Auto and its cap, Confirm-only writes, Publish, Undo and "changed since", groups, saving),
-`test/ask.attachments.test.ts` (with the over-the-limit notice and `imageSize`), `test/ask.deletion.test.ts`,
+`test/ask.state.test.ts` (one turn per thread and its lease, Stop scoped to its turn, Confirm with the AI switch off,
+a write that ran but could not be recorded, cards a dead turn left behind), `test/ask.attachments.test.ts` (with the over-the-limit notice and `imageSize`), `test/ask.deletion.test.ts`,
 `test/ask.declined.test.ts`, `test/ask.views.test.ts` (peek, the inspector, "Wrong?" and Review's flags, threads,
 /search, ⌘J, state, settings, account deletion), `test/ask.sharing.test.ts` (sharing, stopping, the reader's 404s,
 another org / a non-member / a removed owner, what a reader's copy leaves out, deleting),

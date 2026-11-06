@@ -131,7 +131,8 @@ curl -X PUT --data-binary @threat-model.pdf -H "Content-Type: application/pdf" "
 - The URL is the credential: **single use, valid 5 minutes**, bound to your person, the page, the kind,
   the size, the hash, the type, the filename and the summary. No cookie or bearer on the PUT.
 - A body whose length or SHA-256 does not match what you declared is refused (400) and the same URL may
-  be retried until it expires; an expired or used URL is `410`. Ask for a fresh one with
+  be retried until it expires — so may one whose upload failed on Trov's side after it arrived; an expired or used
+  URL is `410`. Ask for a fresh one with
   `artifact_update` on the same slug (the author may do that even before the first upload landed).
 - Until the PUT lands, a new page does not exist to anyone — not even in your own `artifact_get`.
 - Re-uploading bytes identical to the latest version writes nothing.

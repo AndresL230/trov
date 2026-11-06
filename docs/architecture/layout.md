@@ -276,6 +276,11 @@
   Then `0087_sample_orgs` [`orgs.sample`: the Sample workspace every new person gets — `organizations.md` › 1e].
   Then `0088_doc_versions_unique` [UNIQUE `(org_id, slug, version)` on `doc_versions`, and the stale staged versions
   earlier promotes left marked `superseded` — `ingestion-gate.md` › Staged-write model].
+  Then `0089_sprint_completed_at` [`sprints.completed_at`: when a sprint was finished, backfilled for done ones —
+  `roadmap-my-work.md`].
+  Then `0092_ai_state_guards` [`chat_threads.turn_at` (an Ask turn's lease), `ai_dirty.held_at` (a scope held for a
+  Message Batch), `sprints.source_key` + its partial unique index (a drafted sprint's suggestion key); additive —
+  `ask.md`, `ai.md`].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),
