@@ -1,7 +1,12 @@
 // The Prompt Library (0028) — versioned, reusable instructions addressed by slug.
 //
 // Every save appends a prompt_versions row; `prompts.current_version` points at
-// the latest, whose status and body ARE the prompt's. Two writers, one function:
+// the latest, whose status and body are what the LIBRARY shows (the web's list and
+// page, where a person publishes). An AGENT reading a prompt (MCP `search_prompts` /
+// `get_prompt`) gets the SETTLED one instead: the newest PUBLISHED version, else —
+// nothing published yet — the latest, with its status saying so. So a version an
+// agent staged never replaces the published one for other sessions until a person
+// publishes it. Two writers, one function:
 // a PERSON (session cookie) saves draft / staged / published and may rename the
 // slug; an AGENT (MCP bearer) always stages and never renames — a staged version
 // waits for a person to publish it, the same agents-stage-humans-confirm rule the
@@ -51,13 +56,20 @@ export type PromptSaveInput = z.infer<typeof PromptSaveInput>;
 
 interface PromptRow {
   slug: string; title: string; description: string; tags: string; author: string;
-  current_version: number; updated_at: string; status: PromptStatus | null; body: string | null;
+  current_version: number; updated_at: string; status: PromptStatus | null; body: string | null; version: number | null;
   use_count: number; last_used_at: string | null;
 }
-const COLS = `p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body,
+const COLS = `p.slug, p.title, p.description, p.tags, p.author, p.current_version, p.updated_at, v.status, v.body, v.version,
     p.use_count, p.last_used_at`;
 // The current version's row. Binds the org FIRST; every read then adds its own `p.org_id = ?`.
 const VERSION = `LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.version = p.current_version AND v.org_id = ?`;
+// The SETTLED version's row (what an agent reads): the newest published one, else the latest. Binds the org FIRST.
+const SETTLED_VERSION = `LEFT JOIN prompt_versions v ON v.slug = p.slug AND v.org_id = ? AND v.version = COALESCE(
+    (SELECT MAX(pv.version) FROM prompt_versions pv WHERE pv.org_id = p.org_id AND pv.slug = p.slug AND pv.status = 'published'),
+    p.current_version)`;
+/** Which version a read serves: `latest` (the library, where a person works) or `settled` (an agent's read). */
+export type PromptRead = "latest" | "settled";
+const JOIN: Record<PromptRead, string> = { latest: VERSION, settled: SETTLED_VERSION };
 /** The live-prompt condition every read carries: a soft-deleted prompt is absent. */
 const LIVE = `p.deleted_at IS NULL`;
 
@@ -67,7 +79,7 @@ function tagsOf(json: string): string[] {
 function toDetail(r: PromptRow): PromptDetail {
   return {
     slug: r.slug, title: r.title, description: r.description, tags: tagsOf(r.tags), author: r.author,
-    version: r.current_version, status: r.status ?? "draft", updated_at: r.updated_at, body: r.body ?? "",
+    version: r.version ?? r.current_version, status: r.status ?? "draft", updated_at: r.updated_at, body: r.body ?? "",
     use_count: r.use_count ?? 0, last_used_at: r.last_used_at ?? null,
   };
 }
@@ -85,20 +97,23 @@ const ORDER: Record<PromptSort, string> = {
 
 /** The library: `q` is an FTS5 match over slug / title / description / body / tags
  *  (ranked by bm25, title weighted), `tags` are ANDed, then sorted by `sort`
- *  (default recency; `used` = most used first). */
-export async function listPrompts(ctx: TenantContext, opts: { q?: string; tags?: string[]; sort?: PromptSort } = {}): Promise<PromptSummary[]> {
+ *  (default recency; `used` = most used first). `read` picks the version each row
+ *  shows — `latest` for the library, `settled` for an agent (see the header). */
+export async function listPrompts(ctx: TenantContext, opts: { q?: string; tags?: string[]; sort?: PromptSort; read?: PromptRead } = {}): Promise<PromptSummary[]> {
   const match = buildMatch(opts.q ?? "");
   const order = ORDER[opts.sort ?? "updated_desc"] ?? ORDER.updated_desc;
+  const join = JOIN[opts.read ?? "latest"];
   const rows = match
-    ? await all<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${VERSION} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? AND f.org_id = ? AND p.org_id = ? AND ${LIVE} ORDER BY ${order}`,
+    ? await all<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${join} JOIN prompts_fts f ON f.slug = p.slug WHERE prompts_fts MATCH ? AND f.org_id = ? AND p.org_id = ? AND ${LIVE} ORDER BY ${order}`,
         ctx.orgId, match, ctx.orgId, ctx.orgId)
-    : await all<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${VERSION} WHERE p.org_id = ? AND ${LIVE} ORDER BY ${order}`, ctx.orgId, ctx.orgId);
+    : await all<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${join} WHERE p.org_id = ? AND ${LIVE} ORDER BY ${order}`, ctx.orgId, ctx.orgId);
   const want = normalizeTags(opts.tags ?? []);
   return rows.map(toDetail).filter((p) => want.every((t) => p.tags.includes(t))).map(toSummary);
 }
 
-export async function getPrompt(ctx: TenantContext, slug: string): Promise<PromptDetail | null> {
-  const r = await first<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${VERSION} WHERE p.slug = ? AND p.org_id = ? AND ${LIVE}`, ctx.orgId, slug, ctx.orgId);
+/** One live prompt; `read` picks the version it serves (`latest` for the library, `settled` for an agent). */
+export async function getPrompt(ctx: TenantContext, slug: string, read: PromptRead = "latest"): Promise<PromptDetail | null> {
+  const r = await first<PromptRow>(ctx, `SELECT ${COLS} FROM prompts p ${JOIN[read]} WHERE p.slug = ? AND p.org_id = ? AND ${LIVE}`, ctx.orgId, slug, ctx.orgId);
   return r ? toDetail(r) : null;
 }
 
@@ -147,22 +162,33 @@ export async function savePrompt(
   const now = nowIso();
   const version = existing ? existing.current_version + 1 : 1;
 
+  // ONE batch, every write GUARDED on what was read: a new prompt's row only if the slug is still free; an existing
+  // one's only while it is still live (not deleted meanwhile) and still at the version read (a racing save made the
+  // same next version). The version row reads `changes()` — written only when the prompt's own write just before it
+  // took — so a lost race writes nothing and is a 409 below, never a version on a deleted prompt or a key collision.
   const stmts: Stmt[] = [];
   if (!existing) {
-    stmts.push(stmt(ctx, `INSERT INTO prompts (org_id, slug, title, description, tags, author, current_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    stmts.push(stmt(ctx, `INSERT OR IGNORE INTO prompts (org_id, slug, title, description, tags, author, current_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ctx.orgId, input.slug, input.title, input.description ?? "", tags ?? "[]", writer, version, now, now));
   } else {
     // Rename first (both tables), so the version row below lands under the new slug.
     if (renaming) {
-      stmts.push(stmt(ctx, `UPDATE prompts SET slug = ? WHERE slug = ? AND org_id = ?`, input.slug, existing.slug, ctx.orgId));
-      stmts.push(stmt(ctx, `UPDATE prompt_versions SET slug = ? WHERE slug = ? AND org_id = ?`, input.slug, existing.slug, ctx.orgId));
+      stmts.push(stmt(ctx, `UPDATE prompts SET slug = ? WHERE slug = ? AND org_id = ? AND deleted_at IS NULL AND current_version = ?`,
+        input.slug, existing.slug, ctx.orgId, existing.current_version));
+      stmts.push(stmt(ctx, `UPDATE prompt_versions SET slug = ? WHERE slug = ? AND org_id = ? AND changes() > 0`, input.slug, existing.slug, ctx.orgId));
     }
-    stmts.push(stmt(ctx, `UPDATE prompts SET title = ?, description = COALESCE(?, description), tags = COALESCE(?, tags), current_version = ?, updated_at = ? WHERE slug = ? AND org_id = ?`,
-      input.title, input.description ?? null, tags, version, now, input.slug, ctx.orgId));
+    stmts.push(stmt(ctx, `UPDATE prompts SET title = ?, description = COALESCE(?, description), tags = COALESCE(?, tags), current_version = ?, updated_at = ?
+                           WHERE slug = ? AND org_id = ? AND deleted_at IS NULL AND current_version = ?`,
+      input.title, input.description ?? null, tags, version, now, input.slug, ctx.orgId, existing.current_version));
   }
-  stmts.push(stmt(ctx, `INSERT INTO prompt_versions (org_id, slug, version, status, author, summary, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  stmts.push(stmt(ctx, `INSERT INTO prompt_versions (org_id, slug, version, status, author, summary, body, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
     ctx.orgId, input.slug, version, status, writer, summary, input.body, now));
-  await batch(ctx, stmts);
+  const results = await batch(ctx, stmts);
+  if (!results[results.length - 1].meta.changes) {
+    const now2 = await first<{ deleted_at: string | null }>(ctx, `SELECT deleted_at FROM prompts WHERE slug = ? AND org_id = ?`, key, ctx.orgId);
+    if (now2?.deleted_at) throw new PromptError("conflict", reservedMessage(key));
+    throw new PromptError("conflict", existing ? "the prompt changed while you were saving — reload it and save again" : `slug taken: ${input.slug}`);
+  }
   return (await getPrompt(ctx, input.slug))!;
 }
 
@@ -205,12 +231,26 @@ export async function setPromptTags(ctx: TenantContext, slug: string, tags: stri
   return (await getPrompt(ctx, slug))!;
 }
 
-/** Publish a STAGED version (people only). Anything else is a 409 `not staged`. */
+/**
+ * Publish a STAGED version (people only) — the NEWEST one that is not a draft: publishing an older staged version
+ * than one already published or staged after it would change nothing an agent reads (it gets the newest published).
+ * A version that is not staged is a 409 `not staged`; a staged one with a newer published or staged version is a 409
+ * naming that. ONE batch: the version flips (compare-and-set on `staged`, the rule in the same WHERE, the prompt
+ * still live) and the prompt's `updated_at` moves only when it did (`changes()`).
+ */
 export async function publishPrompt(ctx: TenantContext, slug: string, version: number): Promise<PromptDetail> {
   if (!(await first(ctx, `SELECT 1 FROM prompts WHERE slug = ? AND org_id = ? AND deleted_at IS NULL`, slug, ctx.orgId))) throw new PromptError("not_found", "prompt not found");
-  const res = await run(ctx, `UPDATE prompt_versions SET status = 'published' WHERE slug = ? AND org_id = ? AND version = ? AND status = 'staged'`, slug, ctx.orgId, version);
-  if (!res.meta.changes) throw new PromptError("conflict", "not staged");
-  await run(ctx, `UPDATE prompts SET updated_at = ? WHERE slug = ? AND org_id = ?`, nowIso(), slug, ctx.orgId);
+  const [res] = await batch(ctx, [
+    stmt(ctx, `UPDATE prompt_versions SET status = 'published' WHERE slug = ?1 AND org_id = ?2 AND version = ?3 AND status = 'staged'
+                 AND NOT EXISTS (SELECT 1 FROM prompt_versions n WHERE n.org_id = ?2 AND n.slug = ?1 AND n.version > ?3 AND n.status <> 'draft')
+                 AND EXISTS (SELECT 1 FROM prompts p WHERE p.org_id = ?2 AND p.slug = ?1 AND p.deleted_at IS NULL)`, slug, ctx.orgId, version),
+    stmt(ctx, `UPDATE prompts SET updated_at = ? WHERE slug = ? AND org_id = ? AND changes() > 0`, nowIso(), slug, ctx.orgId),
+  ]);
+  if (!res.meta.changes) {
+    const v = await first<{ status: string }>(ctx, `SELECT status FROM prompt_versions WHERE slug = ? AND org_id = ? AND version = ?`, slug, ctx.orgId, version);
+    if (!v || v.status !== "staged") throw new PromptError("conflict", "not staged");
+    throw new PromptError("conflict", "a newer version is already staged or published — publish the newest one");
+  }
   return (await getPrompt(ctx, slug))!;
 }
 

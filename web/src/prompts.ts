@@ -235,8 +235,10 @@ export function promptDetailView(p: PromptDetailProps): string {
     return shell(notice(p.status === "error" ? "Couldn't load this prompt." : "Prompt not found."));
   }
   const au = personOf(p.persons, x.author);
-  /** The newest staged version — a person may publish it from the header. */
-  const staged = p.versions.find((v) => v.status === "staged") ?? null;
+  /** The version a person may publish from the header: the newest version that is not a draft, when it is staged (the
+   *  server publishes only that one — an older staged version than a published one would change nothing). */
+  const newest = p.versions.find((v) => v.status !== "draft") ?? null;
+  const staged = newest?.status === "staged" ? newest : null;
 
   // The body, or — with a version picked in the history — what that version changed.
   const idx = p.versions.findIndex((v) => v.version === p.diffVersion);
@@ -369,7 +371,7 @@ export function promptEditorView(p: PromptEditorProps): string {
   const slugStatus = !ed.slug ? "" : s.taken ? "taken" : !s.ok ? "invalid" : ed.slugTouched ? "available" : "auto";
   const slugColor = s.taken || (!s.ok && ed.slug) ? "var(--red)" : ed.slugTouched ? "var(--green)" : "var(--fg-40)";
   const suggest = TAGS.filter((t) => !ed.tags.includes(t));
-  const help = ed.status === "draft" ? "Only visible to you in the library until it's staged."
+  const help = ed.status === "draft" ? "Saved, not published. Sessions that pull this slug get the newest published version, if there is one."
     : ed.status === "staged" ? "Shows as STAGED in the library until someone publishes it."
     : "Live for every session that pulls this slug.";
   const can = !!ed.title.trim() && !!ed.body.trim() && s.ok && !s.taken;

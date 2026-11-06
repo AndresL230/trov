@@ -678,17 +678,19 @@ function registerOrgTools(server: McpServer, env: Env, ctx: TenantContext, opts:
     "search_prompts",
     "Search the team's Prompt Library for a reusable prompt. `q` is full-text over slug, title, description, body and tags; `tags` must ALL match. Returns summaries (slug, title, tags, author, version, status, updated_at, excerpt) — prefer 'published' ones; 'staged' and 'draft' are not settled yet. Use get_prompt to read one. Read-only.",
     { q: z.string().optional(), tags: z.array(z.string()).optional() },
-    async ({ q, tags }) => runTool(() => listPrompts(ctx, { q, tags })),
+    async ({ q, tags }) => runTool(() => listPrompts(ctx, { q, tags, read: "settled" })),
   );
 
   server.tool(
     "get_prompt",
-    "Read a library prompt by slug, with its {{variables}} filled from `vars`. The response lists `variables` (every one the prompt uses) and `unfilled` (the ones still left as {{placeholders}}) — ASK the person for any unfilled value instead of guessing it. Each call counts as one USE of the prompt (`use_count` / `last_used_at`, which the library's most-used sort reads); it changes nothing else.",
+    "Read a library prompt by slug, with its {{variables}} filled from `vars`. You get its newest PUBLISHED version (a newer staged or draft version waits for a person to publish it); a prompt with nothing published yet comes back at its latest version, its `status` saying so. The response lists `variables` (every one the prompt uses) and `unfilled` (the ones still left as {{placeholders}}) — ASK the person for any unfilled value instead of guessing it. Each call counts as one USE of the prompt (`use_count` / `last_used_at`, which the library's most-used sort reads); it changes nothing else.",
     { slug: z.string(), vars: z.record(z.string(), z.string()).optional() },
     async ({ slug, vars }) => runTool(async () => {
       // One conditional UPDATE: counts this call once, and writes nothing for an unknown slug.
       await recordPromptUse(ctx, slug);
-      const p = await getPrompt(ctx, slug);
+      // The SETTLED version (src/tools/prompts.ts): the newest published one, else the latest — never a version an
+      // agent staged over a published one.
+      const p = await getPrompt(ctx, slug, "settled");
       if (!p) throw new PromptError("not_found", "prompt not found");
       const variables = detectVars(p.body);
       const values = vars ?? {};

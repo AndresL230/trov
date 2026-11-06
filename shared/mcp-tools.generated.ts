@@ -1902,7 +1902,7 @@ export const MCP_TOOLS: readonly McpToolDoc[] = [
   },
   {
     "name": "get_prompt",
-    "description": "Read a library prompt by slug, with its {{variables}} filled from `vars`. The response lists `variables` (every one the prompt uses) and `unfilled` (the ones still left as {{placeholders}}) — ASK the person for any unfilled value instead of guessing it. Each call counts as one USE of the prompt (`use_count` / `last_used_at`, which the library's most-used sort reads); it changes nothing else.",
+    "description": "Read a library prompt by slug, with its {{variables}} filled from `vars`. You get its newest PUBLISHED version (a newer staged or draft version waits for a person to publish it); a prompt with nothing published yet comes back at its latest version, its `status` saying so. The response lists `variables` (every one the prompt uses) and `unfilled` (the ones still left as {{placeholders}}) — ASK the person for any unfilled value instead of guessing it. Each call counts as one USE of the prompt (`use_count` / `last_used_at`, which the library's most-used sort reads); it changes nothing else.",
     "admin": false,
     "inputSchema": {
       "type": "object",
