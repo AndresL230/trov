@@ -332,6 +332,20 @@ describe("rotation", () => {
     expect(await readCursor(p, "health")).toBe("");
   });
 
+  it("the cursor names a unit BEFORE it runs: an invocation killed inside one resumes after it, so a poison unit never starves the rest", async () => {
+    const p = platformCtx("system");
+    const units = ["a/1", "b/1", "c/1"].map((k) => unit(k));
+    // b/1 never comes back: the platform kills the invocation inside it (nothing settles, no `finally` runs).
+    void serveJob(p, "health", units, newBudget(), 100, (u) => (u.key === "b/1" ? new Promise<void>(() => undefined) : Promise.resolve()));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await readCursor(p, "health")).toBe("b/1");
+    // The next tick starts AFTER it: c/1 and a/1 are served first; b/1 comes last.
+    const ran: string[] = [];
+    expect((await serveJob(p, "health", units, newBudget(), 100, async (u) => { ran.push(u.key); })).deferred).toBe(0);
+    expect(ran).toEqual(["c/1", "a/1", "b/1"]);
+    expect(await readCursor(p, "health")).toBe("");
+  });
+
   it("a unit that throws is logged by NAME and org id only, and the next unit still runs", async () => {
     const p = platformCtx("system");
     const ran: string[] = [];

@@ -146,14 +146,19 @@ export default {
   //    registry is empty, so today it does nothing.
   async scheduled(controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
     if (controller.cron === DAILY_CRON || controller.cron === WEEKLY_CRON) {
-      await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
-      await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
-      await pruneEvents(platform(env, "system")).catch(() => undefined); // billing_events past Stripe's retry horizon
-      await pruneSyncRuns(platform(env, "system"), controller.scheduledTime).catch(() => undefined); // sync_runs retention (90 days)
-      // Pages promoted before doc_links existed get their links (0081_docs_library): bounded, resumable, done once.
-      await backfillDocLinks(env).catch((e) => console.error("doc links backfill", e instanceof Error ? e.name : "error"));
-      // Ask attachments uploaded with no conversation and never sent: gone after 24 h (0068_ask_pending; ask.md).
-      await sweepPendingAskAttachments(platform(env, "system"), env.ARTIFACTS_BUCKET, controller.scheduledTime).catch(() => undefined);
+      // The hourly housekeeping rides the DAILY trigger only: on Sunday and Monday the weekly one fires at the same
+      // minute, and the two invocations run side by side — so it would run twice at once (the doc-links backfill's
+      // cursor among it). The daily trigger fires every hour of every day, so nothing is skipped.
+      if (controller.cron === DAILY_CRON) {
+        await pruneUsage(platform(env, "system")).catch(() => undefined); // org_usage_daily retention (400 days)
+        await pruneLimits(platform(env, "system")).catch(() => undefined); // abuse_counters of past windows
+        await pruneEvents(platform(env, "system")).catch(() => undefined); // billing_events past Stripe's retry horizon
+        await pruneSyncRuns(platform(env, "system"), controller.scheduledTime).catch(() => undefined); // sync_runs retention (90 days)
+        // Pages promoted before doc_links existed get their links (0081_docs_library): bounded, resumable, done once.
+        await backfillDocLinks(env).catch((e) => console.error("doc links backfill", e instanceof Error ? e.name : "error"));
+        // Ask attachments uploaded with no conversation and never sent: gone after 24 h (0068_ask_pending; ask.md).
+        await sweepPendingAskAttachments(platform(env, "system"), env.ARTIFACTS_BUCKET, controller.scheduledTime).catch(() => undefined);
+      }
       await handleNotificationCron(env, controller.cron, new Date(controller.scheduledTime));
       return;
     }
