@@ -75,21 +75,29 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
   const tag = normalizeTagName(rawTag) ?? "";
   let calls = 0, added = 0, candidates = 0;
   let status: TagRunDTO["status"] = "done";
+  // The run's row stopped being `running` (a later start let it go as dead, `STALE_MS`): this run is a zombie — it
+  // asks nothing more and writes nothing more, and never touches the row again (the new run owns the tag).
+  let reaped = false;
   try {
     const desc = (await first<{ description: string }>(ctx, `SELECT description FROM org_tags WHERE org_id = ? AND name = ?`, ctx.orgId, tag))?.description ?? "";
-    await run(ctx, `UPDATE org_tag_suggestions SET state = 'superseded', resolved_at = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, nowIso(), ctx.orgId, tag);
-    const list = await fitCandidates(ctx, tag, desc);
-    candidates = list.length;
-    // The run, as it goes: what the Tags tab draws live (`GET …/tags/:name/run`).
+    // The run, as it goes: what the Tags tab draws live (`GET …/tags/:name/run`) — and its heartbeat: a progress write
+    // that finds the row no longer `running` means the run was let go.
     let checked = 0;
-    const progress = (): Promise<unknown> =>
-      run(ctx, `UPDATE org_tag_runs SET candidates = ?, calls = ?, checked = ?, added = ? WHERE org_id = ? AND id = ? AND status = 'running'`,
-        candidates, calls, checked, added, ctx.orgId, runId).catch(() => undefined);
+    const progress = async (): Promise<void> => {
+      const res = await run(ctx, `UPDATE org_tag_runs SET candidates = ?, calls = ?, checked = ?, added = ? WHERE org_id = ? AND id = ? AND status = 'running'`,
+        candidates, calls, checked, added, ctx.orgId, runId).catch(() => null);
+      if (res && !(res.meta.changes ?? 0)) reaped = true;
+    };
+    // First the heartbeat: a run already let go must not supersede the NEW run's suggestions either.
     await progress();
+    if (!reaped) await run(ctx, `UPDATE org_tag_suggestions SET state = 'superseded', resolved_at = ? WHERE org_id = ? AND tag = ? AND source = 'model' AND state = 'open'`, nowIso(), ctx.orgId, tag);
+    const list = reaped ? [] : await fitCandidates(ctx, tag, desc);
+    candidates = list.length;
+    if (!reaped) await progress();
     const classifier = opts.classifier ?? providerFor(TAG_FIT_KIND, { ...opts.jev, apiKey: env.TYPESAFE_API_KEY });
     const question = fitQuestion(tag, desc);
     if (!classifier) status = "failed";
-    else if (list.length) {
+    else if (list.length && !reaped) {
       let capped = false;
       const result = await classifier.classify({
         kind: TAG_FIT_KIND,
@@ -102,6 +110,7 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
         // Before EACH request: either switch can be turned off mid-run, and the month's allowance is
         // checked — then the request is counted, before it is made.
         gate: async () => {
+          if (reaped) return false;
           if (!(await siftSwitches(ctx)).on) return false;
           if ((await suggestAllowance(ctx)).spent) { capped = true; return false; }
           await meter(platform(env, ctx.userId), ctx.orgId, ctx.userId, METRIC_AI_SUGGEST);
@@ -113,7 +122,7 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
         // a less sure one is SUGGESTED, and the run's counts move on.
         onItem: async (it, j) => {
           checked++;
-          if (j) {
+          if (j && !reaped) {
             const c = list[Number(it.id)];
             const did = await storeFit(ctx, {
               type: c.type, id: c.id, tag, fits: j.answer === FIT_ANSWERS[0], confidence: j.confidence, reason: j.reason,
@@ -132,10 +141,12 @@ export async function continueTagFit(env: Env, ctx: TenantContext, runId: number
     status = "failed";
     console.error("tag fit run failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
   }
+  if (reaped) return "failed"; // let go: its row says so already, and stays so
   const end = nowIso();
-  // The run's end, and ONE audit row for it (counts only), in one batch.
+  // The run's end, and ONE audit row for it (counts only), in one batch — only from `running`: a run let go meanwhile
+  // is never revived as done while the new one works.
   await batch(ctx, [
-    stmt(ctx, `UPDATE org_tag_runs SET status = ?, ended_at = ?, candidates = ?, calls = ?, added = MAX(added, ?) WHERE org_id = ? AND id = ?`,
+    stmt(ctx, `UPDATE org_tag_runs SET status = ?, ended_at = ?, candidates = ?, calls = ?, added = MAX(added, ?) WHERE org_id = ? AND id = ? AND status = 'running'`,
       status, end, candidates, calls, added, ctx.orgId, runId),
     fitAuditStmt(ctx, "tag.fit", tag, { run: runId, status, candidates, calls, added }, end),
   ]).catch(() => undefined);

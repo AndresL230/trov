@@ -269,6 +269,23 @@ describe("a run", () => {
     expect((await startTagFit(KEYED, systemCtx(), "billing")).status).toBe("started");
   });
 
+  it("a run let go as dead while it still works (a later start reaped it) stops: nothing more asked or tagged, and never revived as done", async () => {
+    for (let i = 0; i < 10; i++) await append_feed(systemCtx(), { author: OWNER, summary: `billing ${i}`, body: "billing" });
+    await billingTag();
+    const s = await startTagFit(KEYED, systemCtx(), "billing");
+    if (s.status !== "started") throw new Error("not started");
+    // A later start let this run go (STALE_MS) and began its own, before this one asked anything.
+    await env.DB.prepare(`UPDATE org_tag_runs SET status = 'failed', ended_at = ? WHERE id = ?`).bind(new Date().toISOString(), s.run).run();
+    const next = await startTagFit(KEYED, systemCtx(), "billing");
+    expect(next.status).toBe("started");
+    const j = jev(fitsIf("billing"));
+    expect(await continueTagFit(KEYED, systemCtx(), s.run, "billing", { classifier: j.classifier })).toBe("failed");
+    expect(j.sent.length).toBe(0); // its heartbeat found it let go: nothing asked
+    expect(await tagged("billing")).toEqual([]);
+    const rows = await all<{ id: number; status: string }>(env.DB, `SELECT id, status FROM org_tag_runs WHERE org_id = ? AND tag = 'billing' ORDER BY id`, ORG_A);
+    expect(rows).toEqual([{ id: s.run, status: "failed" }, { id: (next as { run: number }).run, status: "running" }]); // never revived as done
+  });
+
   it("the month's allowance (jev_checks) is checked before every request: the run stops at it, and a new one is refused", async () => {
     for (let i = 0; i < 10; i++) await append_feed(systemCtx(), { author: OWNER, summary: `billing ${i}`, body: "billing" });
     await billingTag();
