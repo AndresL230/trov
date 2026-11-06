@@ -82,6 +82,11 @@ step of the guided setup is a route) — so `.cnpy-fr-bg` turns animation and tr
 it. That is the cause of "the screen behind refreshes on every step", not a rebuild: check `getAnimations({
 subtree: true })` on the backdrop after a step change; it must be 0. From the picker, an org just created or joined is entered IN PLACE (`enterNew` in `main.ts`) when the
 page has held no other org's data; opening an org from anywhere else stays a page load.
+**`morphStep` runs its `change` LATER** when there is a transition (the browser calls it once the old page is
+captured), so it returns a promise settled once `change` has run (`updateCallbackDone`; at once without a
+transition). What must see the new step — the guided setup's focus on the step's heading, its re-check of the
+agent step — waits for it, and a guard against a second click is taken BEFORE the call (`enterNew` sets
+`enteredAnOrg` first; a second click while it morphs is the same entry, not a page load).
 
 ## Paints: now, batched, or once a frame (`web/src/paint-queue.ts`)
 
@@ -104,11 +109,65 @@ calls it directly), in one of three ways:
   meantime takes the waiting one's place.
 
 **Rule:** a loader's completion calls `rerenderSoon()`; its start (the "loading" state) and everything a person
-does call `rerender()`. An expired session (`Unauthorized`) still leaves with `rerender()`. A controller module
+does call `rerender()`. An expired session (`Unauthorized`) still leaves at once (`toSignedOut()`, › The shell's
+transitions, paints with `rerender()`). A controller module
 gets `rerenderSoon` on its host where it has a read the boot starts (`tags-actions.ts`). Never call
 `rerenderSoon()` where the next line reads the DOM. Measured on My Work against `wrangler dev` (2026-10-15):
 27 full-app paints at boot before, 4–5 after; the longest task at 4× CPU throttling 1.7 s → about 0.2 s. Tests:
 `test/paint-queue.test.ts`.
+
+**A drag holds paints** (`web/src/pointer-drag.ts`, `dragging()`): from the PRESS, not only once the 5 px slop is
+passed — a read landing in between would replace the very row `begin` lifts, and the drop would then post a move for a
+card that never moved. A press that never became a drag releases them right after its click (so the click lands on
+the row it was pressed on). Never forever: a move with no button down (the release happened outside the window) or
+the window losing focus ends the press or cancels the drag. The board's drop also sends nothing for a card no longer
+on screen.
+
+## The shell's transitions — one way in, one way out (`main.ts`)
+
+The app's mode (`view` × `authStep` × `orgSlug` × `me`) and its route are changed by many acts; each change that
+has more than one way in goes through ONE function. Pinned in `test/web-shell.test.ts` (main.ts at the source; the
+modules against a fake page).
+
+- **The boot never guesses** (CLAUDE.md invariant 7). `GET /auth/me` answering 401 is the signed-out landing page
+  (`showSignedOut`); any other failure — offline, a 5xx — says nothing about the session, so it is the
+  "Trov couldn't be reached." card (`authStep: "unreachable"`, render.ts `bootFailedCard`); a throw while opening
+  what the answer named (an org, the picker, Platform) is logged and is the "Trov didn't open." card
+  (`"failed"`). The answer's handler and the failure's are the two arms of ONE `then`, so a paint that throws is
+  never taken for a sign-out. Try again reloads the page.
+- **Signing out is `toSignedOut()`** — an expired session (every loader's and write's `Unauthorized`, through
+  `unauth(e)`), Sign out (whether or not `/auth/logout` answered), and nothing else writes `authStep = "login"`
+  but the boot's own paths and Back to sign in. It drops `me`, the org (`orgSlug`, api.ts `setApiOrg(null)` — a
+  request after it is refused before it leaves), the Repo poll, the screen's layers (`leaveScreen`), and stops
+  Sync's timers (`syncCtl.stop()`); Home's, the Repo screen's and the guided setup's timers stand down on their own
+  once the view is not the app. The address bar is the caller's: an expired session keeps it (signing in comes
+  back to it, `stashReturn`), Sign out drops it.
+- **Leaving a route is `leaveScreen()`** — ONE list of what a screen owns: the person card, MCP setup and the
+  scope dialog, the expanded prompts (handoff and library), Home's Needs attention, Repo's and the Roadmap's
+  dialogs, the four filter menus (and a close of one still playing), the photo menu, the artifact viewer's menus,
+  the armed delete confirms, the phone drawer. It runs from `applyRoute` (Back / Forward, an edited hash) when the
+  route changes, and from `paintApp` whenever the route it paints is not the one it painted last — which is how
+  every `go…` act reaches it without naming it (sidebar navigation stays a `replaceState`, the owner's ruling).
+  A delete whose write is in flight keeps its confirm, busy, until its own answer closes it — the artifact's and
+  the ticket's alike — and that answer moves the screen only if the person is still on what was deleted (a
+  ticket's delete returns to the queue only from that ticket's page).
+- **A late read never lands on a newer one.** Every loader whose inputs can change while it is out keeps a seq
+  (`loadTickets`, `loadFeed` — its rows and its author menu —, the triage slices, …) and drops an answer that is
+  not the newest; `loadRepo` also drops one asked for another repository or app. A 401 is the SESSION's, not the
+  request's: `Unauthorized` is handled BEFORE the seq check, everywhere (a newer request would be refused too).
+  `Loadable` has no `unauth` status — nothing ever set it.
+- **Escape closes one layer per press** (`web/src/escape-layers.ts`). The layers above everything take it in the
+  capture phase and stop it (a confirmation, a dropdown, a drag, the lightbox, Ask's own stack); a field that
+  handles Escape itself prevents its default. Every other Escape listener follows one rule: a press whose default
+  was prevented is SPENT, and a listener that closes something prevents its default. main.ts's own layers are ONE
+  ordered list (`ESCAPE_LAYERS`, topmost first: the person card, MCP setup, the scope dialog, the expanded
+  prompts, a filter menu, the tree's and the Library's "…" menus, the photo menu, Needs attention, the drawer);
+  a controller's dialog (Sync, the support form, Org settings', Platform's, the sign-in dialog) is heard first and
+  spends the press. A new layer in main.ts is a line in that list, never a listener of its own.
+- **Overlays that animate out can be reopened mid-exit.** The lightbox: opening one while the last is still
+  leaving ends that exit at once, so the new one captures the scroll lock from an unlocked page and the old timer
+  never unlocks the page under it. The site menu: a tap on its button during the exit calls the exit off. A filter
+  menu: its close timer is stored, cancelled by a reopen, and forgotten on leaving the screen.
 
 ## Markdown is rendered once per body (`web/src/markdown.ts`, `web/src/lru.ts`)
 
@@ -214,7 +273,9 @@ Org settings 62, Repo 43, Platform 30, the landing 26, Artifacts 20, What's new 
   a controller that lives in a chunk (Platform's, Org settings') is made when it lands, and a load or an act
   asked for before then runs once it has (`withChunk(chunk, fn)`). The landing runs everything that waited and
   repaints in ONE batched paint (`batchRender`), like a read landing. A failed chunk is not retried by a paint
-  (its screen says to reload); an act asked for again tries again. Opening Org settings before its chunk is in
+  (its screen says to reload); an act asked for again tries again, and while that retry runs the chunk is not
+  `failed()` (its screen is the skeleton again, not "did not load"). What's new is a `lazyChunk` too
+  (`releasesChunk`, loaded by the same `withChunk`) — there is ONE load / fail / retry machine. Opening Org settings before its chunk is in
   shows the screen's skeleton at once (main.ts sets what `orgGo` sets), and the act runs again with its reads.
 - **Tests** that draw a lazy screen through `render()` hand the chunks in first (`test/helpers/web-chunks.ts`
   `loadWebChunks()`); the build does the same for the landing (`site-prerender.ts`).
