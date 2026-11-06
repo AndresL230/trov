@@ -124,6 +124,7 @@ export const RELEASES: Release[] = [
       "Apply `0089_sprint_completed_at` (merging applies it). Publish the Trov plugin 0.12.1: the handoff and trov skills drop the one-handoff-per-session rule.",
       "A duplicate Pro subscription is cancelled automatically but not refunded: refund it by hand in Stripe — Platform's `billing.duplicate` audit row names both subscriptions.",
       "Apply `0092_ai_state_guards` (merging applies it).",
+      "Apply `0093_integration_ordering` (merging applies it).",
     ],
     patches: {
       added: [],
@@ -131,6 +132,7 @@ export const RELEASES: Release[] = [
         "A sprint finished long ago no longer shows as finished this week, and agents read a prompt's published version (#219)",
         "An agent can leave as many handoffs in one session as you ask for; only a retry of the same one is folded into it (#219)",
         "Ask Trov's change cards can't be confirmed while AI is off for the organization (#221)",
+        "GitHub deployments show Removed once the App is uninstalled, and My Work and the Overview agree on an environment's state (#224)",
       ],
       fixed: [
         "Docs: approving an older proposal no longer rolls a page back; a rejected new page frees its name; Approve all skips a page it can't (#218)",
@@ -143,10 +145,12 @@ export const RELEASES: Release[] = [
         "Back closes an open person card, dialog or menu, and Escape closes one layer at a time (#222)",
         "A double click no longer files two tickets, handoffs, sprints or prompt versions, and a late answer no longer pulls you back (#223)",
         "Ask's ⌘J Open as thread keeps an answer that is still coming, and a failed undo in Tags no longer freezes its dialog (#223)",
+        "Repo: deploys never slip back to building, reopened PRs don't count as closed, and deleted releases stay deleted (#224)",
+        "A suspended GitHub App recovers on its own, and a digest that failed mid-send is retried without being sent twice (#224)",
       ],
       removed: [],
     },
-    prs: [218, 219, 220, 221, 222, 223],
+    prs: [218, 219, 220, 221, 222, 223, 224],
   },
   // The Sample workspace every new person gets at sign-up: one PR.
   {
