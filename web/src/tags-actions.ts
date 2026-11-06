@@ -357,12 +357,13 @@ export function createTagsController(host: TagsHost): TagsController {
     c.busy = true;
     rerender();
     const done = (msg: string) => { ui().confirm = null; host.flash(msg); load(); host.planChanged(); };
+    // Declared before every branch that uses it (the undo-run branch returns early: a `const` below it was never set).
+    const failed = (e: unknown, fallback: string) => { ui().confirm = null; if (fail(e)) return; host.flash(errorText(e, fallback), 6000); load(); };
     if (c.what === "rerun") { ui().confirm = null; find(c.name); return; }
     if (c.what === "undoRun") {
       undoTagRun(c.name).then((r) => done(`Took ${c.name} off ${r.removed} ${r.removed === 1 ? "item" : "items"}`)).catch((e) => failed(e, "Couldn't undo the run."));
       return;
     }
-    const failed = (e: unknown, fallback: string) => { ui().confirm = null; if (fail(e)) return; host.flash(errorText(e, fallback), 6000); load(); };
     if (c.what === "retire") retireOrgTag(c.name).then(() => done(`Retired ${c.name}`)).catch((e) => failed(e, `Couldn't retire ${c.name}.`));
     else if (c.what === "merge" && c.into) {
       const into = c.into;
