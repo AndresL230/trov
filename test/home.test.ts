@@ -25,10 +25,12 @@ async function cookieFor(login: string): Promise<string> {
 const q = (sql: string, ...args: unknown[]) => env.DB.prepare(sql).bind(...args).run();
 
 let n = 1;
-async function ticket(o: { status?: string; sprint?: number | null; assignee?: string; title?: string; created?: string; updated?: string; org?: string } = {}): Promise<number> {
+async function ticket(o: { status?: string; sprint?: number | null; assignee?: string; title?: string; created?: string; updated?: string; org?: string; source?: "canopy" | "github" } = {}): Promise<number> {
   const id = n++;
-  await q(`INSERT INTO tickets (id, org_id, number, title, status, requester, sprint_id, created_at, updated_at, source) VALUES (?, ?, ?, ?, ?, 'AndresL230', ?, ?, ?, 'canopy')`,
-    id, o.org ?? ORG, id, o.title ?? `Ticket ${id}`, o.status ?? "submitted", o.sprint ?? null, o.created ?? "2026-10-01T00:00:00.000Z", o.updated ?? "2026-10-01T00:00:00.000Z");
+  const source = o.source ?? "canopy";
+  await q(`INSERT INTO tickets (id, org_id, number, title, status, requester, sprint_id, created_at, updated_at, source, source_ref) VALUES (?, ?, ?, ?, ?, 'AndresL230', ?, ?, ?, ?, ?)`,
+    id, o.org ?? ORG, id, o.title ?? `Ticket ${id}`, o.status ?? "submitted", o.sprint ?? null, o.created ?? "2026-10-01T00:00:00.000Z", o.updated ?? "2026-10-01T00:00:00.000Z",
+    source, source === "github" ? `acme/app#${id}` : null);
   if (o.assignee) await q(`INSERT INTO ticket_assignees (org_id, ticket_id, login) VALUES (?, ?, ?)`, o.org ?? ORG, id, o.assignee);
   return id;
 }
@@ -47,7 +49,7 @@ describe("homeData", () => {
   beforeEach(() => timed("2000-01-01T00:00:00.000Z"));
 
   it("counts each figure per local day over HOME_DAYS days, the last one today, zero days included", async () => {
-    const a = await ticket(), b = await ticket();
+    const a = await ticket({ status: "done" }), b = await ticket({ status: "done" });
     await done(a, "2026-10-17T09:00:00.000Z");
     await done(a, "2026-10-17T10:00:00.000Z"); // the same ticket set done twice that day counts once
     await done(b, "2026-10-15T09:00:00.000Z");
@@ -65,8 +67,16 @@ describe("homeData", () => {
     expect(homeSum(h.days, "tickets", 7, 7)).toBe(0);
   });
 
+  it("tickets done is the ONE rule: a ticket reopened since is not done (TICKET_DONE_EVENT_SQL)", async () => {
+    const stays = await ticket({ status: "done" }), reopened = await ticket({ status: "in_progress" });
+    await done(stays, "2026-10-17T09:00:00.000Z");
+    await done(reopened, "2026-10-17T09:30:00.000Z"); // set done, then moved back: no longer done
+    const h = await homeData(systemCtx(), { now: NOW });
+    expect(h.days.at(-1)?.tickets).toBe(1);
+  });
+
   it("buckets into the viewer's local days with a tz offset", async () => {
-    const a = await ticket();
+    const a = await ticket({ status: "done" });
     await done(a, "2026-10-17T02:00:00.000Z"); // 22:00 on the 16th in UTC-4
     const local = await homeData(systemCtx(), { now: NOW, tzOffsetMin: -240 });
     expect(local.days.at(-1)?.date).toBe("2026-10-17");
@@ -114,6 +124,8 @@ describe("homeData", () => {
     await ticket({ status: "done", sprint: null }); // closed: not backlog
     await ticket({ status: "submitted", created: "2026-10-02T00:00:00.000Z" });
     await ticket({ status: "submitted", assignee: "meilin" }); // assigned: not waiting in Triage
+    await ticket({ status: "submitted", source: "github", sprint: 1 }); // mirrored: triaged on GitHub (UNPICKED_TICKET_SQL)
+    await ticket({ status: "in_progress", sprint: 1 }); // unassigned, but out of Triage: picked up
     const h = await homeData(systemCtx(), { now: NOW });
     expect(h.repos).toEqual([
       { repo: "acme/app", primary: true, lastPush: "2026-10-17T10:00:00.000Z", accessLost: false },
@@ -124,7 +136,7 @@ describe("homeData", () => {
   });
 
   it("reads only its own organization", async () => {
-    const a = await ticket({ org: "org_b" });
+    const a = await ticket({ org: "org_b", status: "done" });
     await done(a, "2026-10-17T09:00:00.000Z", "AndresL230", "org_b");
     await handoff("2026-10-17T09:00:00.000Z", "meilin", "org_b");
     const h = await homeData(systemCtx(), { now: NOW });

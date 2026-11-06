@@ -70,10 +70,30 @@ describe("fetchGithubRefProgress", () => {
     expect(p).toBeNull();
   });
 
-  it("skips a missing issue (404) but keeps counting the resolvable ones", async () => {
+  it("counts an issue GitHub does not know (404) in the total, not closed — as the event path counts one with no snapshot", async () => {
     const fetchImpl = stubFetch({ "/issues/1": { state: "closed" }, "/issues/3": { state: "open" } }); // issue 2 → 404
     const p = await fetchGithubRefProgress({ token: "t", repo: "o/r", ref: "[1,2,3]", fetchImpl });
-    expect(p).toEqual({ closed: 1, total: 2 });
+    expect(p).toEqual({ closed: 1, total: 3 });
+  });
+
+  it("counts an issue that LEFT the repo (410 deleted, 301 transferred — never followed) as closed, like the event path", async () => {
+    const seen: (RequestInit | undefined)[] = [];
+    const fetchImpl = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push(init);
+      const u = String(url);
+      if (u.endsWith("/issues/1")) return new Response("gone", { status: 410 });
+      if (u.endsWith("/issues/2")) return new Response(null, { status: 301, headers: { location: "https://api.github.com/repos/o/elsewhere/issues/9" } });
+      return new Response(JSON.stringify({ state: "open" }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+    const p = await fetchGithubRefProgress({ token: "t", repo: "o/r", ref: "[1,2,3]", fetchImpl });
+    expect(p).toEqual({ closed: 2, total: 3 });
+    expect(seen.every((i) => i?.redirect === "manual")).toBe(true);
+  });
+
+  it("an outage on any issue makes the whole count unknown (null): the cache keeps what it had", async () => {
+    const fetchImpl = (async (url: string | URL | Request) =>
+      String(url).endsWith("/issues/2") ? new Response("boom", { status: 502 }) : new Response(JSON.stringify({ state: "closed" }), { status: 200 })) as unknown as typeof fetch;
+    expect(await fetchGithubRefProgress({ token: "t", repo: "o/r", ref: "[1,2]", fetchImpl })).toBeNull();
   });
 });
 
