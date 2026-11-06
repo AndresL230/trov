@@ -41,7 +41,8 @@ export interface HomeUi {
   attnOpen: boolean;
   /** Which headline of the pool; moves on every entry to Home. */
   headIdx: number;
-  /** Every read the head is built on has landed once (`homeHeadReady`); it then holds, and a refresh only updates it. */
+  /** Every read the head is built on has landed once (`homeHeadLanded`), or Home waited long enough for them; it then
+   *  holds, and a refresh only updates it. Set by main.ts (`refreshHome`), never by the props builder. */
   headReady: boolean;
   /** The question asked from the bar and its answer, streaming under it (null: none). */
   answer: HomeAnswer | null;
@@ -325,14 +326,15 @@ export function homeDropRows(s: AppState): { label: string; rows: QuickRow[] }[]
 
 /** The headline and the status line speak only once every read they are built on has landed (read or failed): drawn
  *  from part of them, they said one thing and then another a moment later ("Good afternoon." → "What needs a
- *  decision?", "1 thing needs you" → "3 things"). Latched on the Home state, so a refresh only updates them. */
-function homeHeadReady(s: AppState): boolean {
-  if (s.home.headReady) return true;
+ *  decision?", "1 thing needs you" → "3 things"). Pure: the latch (`s.home.headReady`, so a refresh only updates them)
+ *  is set by main.ts where the reads are started again (`refreshHome`), and after a wait whatever is still out. */
+export function homeHeadLanded(s: AppState): boolean {
   const landed = (l: { status: string }): boolean => l.status === "ok" || l.status === "error";
   const review = s.badges.proposals !== undefined || (landed(s.proposals) && landed(s.draftAdrs) && landed(s.needsTriage));
-  const ready = !!s.me && review && [s.orgMe, s.mywork, s.sprints, s.handoffs, s.repo, s.home.data, s.home.github].every(landed);
-  if (ready) s.home.headReady = true;
-  return ready;
+  return !!s.me && review && [s.orgMe, s.mywork, s.sprints, s.handoffs, s.repo, s.home.data, s.home.github].every(landed);
+}
+function homeHeadReady(s: AppState): boolean {
+  return s.home.headReady || homeHeadLanded(s);
 }
 
 export function homeProps(s: AppState, mac: boolean, answer: string): HomeProps {

@@ -15,7 +15,7 @@ vi.mock("../web/src/markdown", () => ({
 
 import { initialState, type AppState } from "../web/src/render";
 import { homePage, homeAnswerView } from "../web/src/home";
-import { homeProps, initialHomeUi } from "../web/src/home-view";
+import { homeProps, homeHeadLanded, initialHomeUi } from "../web/src/home-view";
 import { navKeyOf } from "../web/src/sidebar";
 import { HOME_DAYS, type HomeData, type HomeDay } from "@shared/home-core";
 import type { RepoDashboard } from "@shared/repo";
@@ -90,7 +90,10 @@ describe("Home — the page", () => {
     const after = page(s);
     expect(after).not.toContain("hm-h-pending");
     expect(text(after)).toContain("All clear · nothing needs you");
-    s.handoffs = { status: "loading", data: [] }; // a refresh: what it said stays
+    // A refresh: main.ts `refreshHome` latches the head before its reads go out again, so what it said stays.
+    expect(homeHeadLanded(s)).toBe(true);
+    s.home.headReady = true;
+    s.handoffs = { status: "loading", data: [] };
     expect(text(page(s))).toContain("All clear · nothing needs you");
   });
 
@@ -173,6 +176,32 @@ describe("Home — the answer under the bar", () => {
   it("while it thinks there is no byline yet; an error says so", () => {
     expect(homeAnswerView({ ...base, text: "", cites: [], phase: "thinking" })).not.toContain("Written by Trov");
     expect(homeAnswerView({ ...base, text: "", cites: [], phase: "error", error: "Monthly AI allowance used." })).toContain("Monthly AI allowance used.");
+  });
+  it("an answer cut off part-way keeps its words, says it stopped, and has no finished byline", () => {
+    const html = homeAnswerView({ ...base, text: "We shipped", cites: [], phase: "error", error: "The answer stopped before it finished." });
+    expect(html).toContain("We shipped");
+    expect(html).toContain("The answer stopped before it finished.");
+    expect(html).not.toContain("Written by Trov");
+    expect(html).not.toContain("hm-caret");
+  });
+});
+
+describe("Home — the head waits for its reads, without writing to the state while it draws", () => {
+  it("is a skeleton while a read is out, speaks once they land; drawing never sets the latch", () => {
+    const repo = { orgMe: { status: "ok", data: { repos: { primary: "acme/app", all: ["acme/app"] } } } as never };
+    const out = state({ ...repo, sprints: { status: "loading", data: [] } });
+    expect(homeHeadLanded(out)).toBe(false);
+    page(out);
+    expect(out.home.headReady).toBe(false);
+    const landed = state(repo);
+    expect(homeHeadLanded(landed)).toBe(true);
+    expect(text(page(landed))).toContain("All clear · nothing needs you");
+    expect(landed.home.headReady).toBe(false);
+    // Latched (main.ts `refreshHome`, or after its wait): a refresh's reads going out again keep it speaking.
+    const held = state({ ...repo, sprints: { status: "loading", data: [] } });
+    held.home.headReady = true;
+    expect(text(page(held))).toContain("All clear · nothing needs you");
+    expect(text(page(out))).not.toContain("All clear · nothing needs you");
   });
 });
 

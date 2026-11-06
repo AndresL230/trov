@@ -258,6 +258,9 @@ anytime in Org settings." (`sampleNote`; `HomeProps.sample`, from `MyOrg.sample`
   behind it. A MEMBER gets a connection as a calm row ("Repo updates are paused"), no action, no red. The status line
   repeats the first row's mark and counts the rows with an action; nothing waiting is "All clear · nothing needs
   you". The headline is picked from the same facts (on fire, all quiet, a new org, or a greeting), moving per visit.
+  Both are a skeleton until every read they are built on has landed (`homeHeadLanded`, pure), then hold — the latch
+  (`home.headReady`) is set by `refreshHome` before the reads go out again, or after `HOME_HEAD_WAIT_MS` (5 s) so a
+  read that never comes back never keeps them a skeleton; the props builder never writes it.
 - **Fresh**: every visit reads all of it again (`refreshHome`), and so does every minute while Home is on screen and
   the tab is visible — not while the bar is in use (its dropdown would move under the keyboard). Each loader keeps what
   is on screen while it reads.
@@ -265,7 +268,8 @@ anytime in Org settings." (`sampleNote`; `HomeProps.sample`, from `MyOrg.sample`
   (↑ ↓, ↵, Tab flips to Ask Trov, Esc); empty, it offers Jump to. Ask Trov (only while Ask is on for the org and the
   person) posts a NEW Ask thread in the org's default mode and streams the answer under the bar with Ask's own
   contract — the byline, the cited items, Wrong? with Ask's three reasons (`POST /ask/messages/:id/wrong`), and
-  Continue in Trov (`#ask/<id>`). ⌘K on Home focuses the bar, not the sidebar's box.
+  Continue in Trov (`#ask/<id>`). A stream that closes with no `done` is an error ("The answer stopped before it
+  finished.", as Ask's `failTurn`), the words so far kept above it. ⌘K on Home focuses the bar, not the sidebar's box.
 - **Activity**: 7D / 30D / 90D (`segmented()`), each card the range's sum, its delta against the range before (more is
   green, fewer amber, the same muted) and one bar a day (a week on 90D). A figure not known is "—" and its card a
   ghost; the read failing says so with Try again.

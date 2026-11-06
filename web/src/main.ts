@@ -90,7 +90,7 @@ import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
 import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick, type QuickRow } from "./quicksearch";
-import { homeDropRows, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
+import { homeDropRows, homeHeadLanded, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
 import { askApi } from "./ask-api";
 import { ASK_WRONG_REASONS, type AskWrongReason } from "@shared/ai-ask-core";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
@@ -1548,9 +1548,24 @@ function loadHomeGithub(): void {
 /** Every read Home is built on, again: on each visit, and every HOME_REFRESH_MS while it is on screen (all D1 —
  *  nothing here reaches GitHub). Each loader keeps what it had on screen while it reads, so nothing blanks. */
 const HOME_REFRESH_MS = 60_000;
+/** The head waits this long for its reads at most: one that never comes back (or never starts) does not keep the
+ *  headline a skeleton — it then speaks from what has landed, and holds. */
+const HOME_HEAD_WAIT_MS = 5_000;
 let homeReadAt = 0;
+let homeHeadTimer: ReturnType<typeof setTimeout> | undefined;
 function refreshHome(): void {
   homeReadAt = Date.now();
+  // The head's latch, before its reads go out again: once they have all landed, a refresh only updates it.
+  if (homeHeadLanded(state)) state.home.headReady = true;
+  if (!state.home.headReady && homeHeadTimer === undefined) {
+    const home = state.home;
+    homeHeadTimer = setTimeout(() => {
+      homeHeadTimer = undefined;
+      if (state.home !== home || home.headReady) return;
+      home.headReady = true;
+      if (state.screen === "home") rerenderSoon();
+    }, HOME_HEAD_WAIT_MS);
+  }
   loadHomeData(); loadHomeFeed(); loadHomeGithub();
   loadMyWork(); loadProposals(); loadDraftAdrs(); loadNeedsTriage();
   loadSprints(); loadHandoffs(); loadRepo(); loadBadges();
@@ -1608,7 +1623,8 @@ function homeAskRun(q: string): void {
         else if (e.event === "error") fail(e.data.message || "Couldn't get an answer.");
       },
     }))
-    .then(() => { if (live() && a.phase !== "done" && a.phase !== "error") { a.phase = "done"; rerender(); } })
+    // Closed with no `done` and no `error`: the connection dropped mid-answer — an error, as Ask says it (failTurn).
+    .then(() => { if (live() && a.phase !== "done" && a.phase !== "error") fail("The answer stopped before it finished."); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (e instanceof DOMException && e.name === "AbortError") return;
