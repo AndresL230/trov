@@ -373,6 +373,6 @@ export async function deleteAccount(env: Env, p: PlatformContext, handle: string
   }
 }
 
-/** What a guard statement's failure looks like (`personStmts`, ./org.ts `ONLY_MEMBER_GUARD`): a NOT NULL column set
+/** What a guard statement's failure looks like (`personStmts`, ./org.ts `onlyMemberGuard`): a NOT NULL column set
  *  to NULL on purpose, so the batch aborts whole. */
 const GUARD_FAILED = /NOT NULL constraint failed: (memberships\.created_at|platform_admins\.granted_at)/i;
