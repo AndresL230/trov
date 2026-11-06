@@ -115,7 +115,7 @@ async function requireParsedLink(ctx: TenantContext, raw: string) {
  * File a ticket. The requester is ALWAYS the authenticated principal — a
  * client-supplied requester is not read by this function at all.
  *
- * Writes, in one logical unit: the ticket row (status 'submitted'), its
+ * Writes, in ONE batch: the ticket row (status 'submitted'), its
  * assignees, the OPENING `ticket_events` row (from_status NULL → 'submitted',
  * which the detail screen renders as "opened this ticket"), and the parsed link
  * when one was given. Returns the new ticket's per-org NUMBER (allocated by the organizations migration's trigger in the
@@ -123,8 +123,7 @@ async function requireParsedLink(ctx: TenantContext, raw: string) {
  */
 export async function create_ticket(ctx: TenantContext, input: TicketCreate, requester: string): Promise<number> {
   const author = await requireMember(ctx, requester);
-  // Validate everything BEFORE the first insert: a bad assignee or sprint must
-  // not leave a half-built ticket behind (D1 has no transaction here).
+  // Validate everything BEFORE the write: a bad assignee or sprint is refused with nothing written.
   const assignees: string[] = [];
   for (const a of input.assignees) {
     const handle = await requireMember(ctx, a);
@@ -136,61 +135,76 @@ export async function create_ticket(ctx: TenantContext, input: TicketCreate, req
   const link = rawLink ? await requireParsedLink(ctx, rawLink) : null;
 
   const now = nowIso();
-  const res = await run(
-    ctx,
-    `INSERT INTO tickets (org_id, title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'submitted', ?, NULL, ?, ?, ?)`,
-    ctx.orgId,
-    input.title,
-    input.body,
-    input.category,
-    input.priority,
-    author,
-    sprintId,
-    now,
-    now
-  );
-  const id = res.meta.last_row_id as number;
-
-  for (const handle of assignees) {
-    await run(ctx, `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login) VALUES (?, ?, ?)`, ctx.orgId, id, handle);
-  }
-
-  // The opening history row. Every later status change appends one more.
-  await run(
-    ctx,
-    `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, NULL, 'submitted', ?)`,
-    ctx.orgId,
-    id,
-    author,
-    now
-  );
-
-  if (link) {
-    await run(
-      ctx,
-      `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ctx.orgId, id, link.url, link.kind, link.label, link.meta, author, now
-    );
-  }
-
-  const number = (await first<{ number: number }>(ctx, `SELECT number FROM tickets WHERE id = ? AND org_id = ?`, id, ctx.orgId))!.number;
+  const org = ctx.orgId;
+  // ONE batch — a D1 transaction — so the ticket, its assignees, its opening history row and its link land together
+  // or not at all (a failure can no longer leave a ticket with no "opened this ticket" row). Each child selects the
+  // new row as this org's NEWEST ticket: inside the batch nothing else inserts, and a new row id is always the largest.
+  // The last statement reads back the per-org number the insert trigger allocated.
+  const TID = `(SELECT MAX(id) FROM tickets WHERE org_id = ?)`;
+  const results = await batch<{ number: number }>(ctx, [
+    stmt(ctx,
+      `INSERT INTO tickets (org_id, title, body, category, priority, status, requester, parent_id, sprint_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'submitted', ?, NULL, ?, ?, ?)`,
+      org, input.title, input.body, input.category, input.priority, author, sprintId, now, now),
+    ...assignees.map((handle) =>
+      stmt(ctx, `INSERT OR IGNORE INTO ticket_assignees (org_id, ticket_id, login) SELECT ?, ${TID}, ?`, org, org, handle)),
+    // The opening history row. Every later status change appends one more.
+    stmt(ctx,
+      `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) SELECT ?, ${TID}, ?, NULL, 'submitted', ?`,
+      org, org, author, now),
+    ...(link
+      ? [stmt(ctx,
+          `INSERT INTO ticket_links (org_id, ticket_id, url, kind, label, meta, created_by, created_at) SELECT ?, ${TID}, ?, ?, ?, ?, ?, ?`,
+          org, org, link.url, link.kind, link.label, link.meta, author, now)]
+      : []),
+    stmt(ctx, `SELECT number FROM tickets WHERE id = ${TID} AND org_id = ?`, org, org),
+  ]);
+  const number = results[results.length - 1].results[0].number;
   await routeAi(ctx, { type: "ticket_created", number });
   return number;
 }
 
 /** What closing a ticket also writes, for the status writer's own batch: a ticket that becomes `done` / `declined`
  *  closes Trov's OPEN suggestions about it (owner ruling Q35: superseded — not shown, an Accept refused). Every status
- *  writer uses it: `transition_ticket`, `move_ticket` and the GitHub mirror's forced status (./ticket-mirror.ts). */
+ *  writer uses it: `transition_ticket`, `move_ticket` and the GitHub mirror's forced status (./ticket-mirror.ts). It
+ *  acts only on a ticket that IS closed when it runs, so a move that lost its compare-and-set closes nothing. */
 export function closingStmts(ctx: TenantContext, ticketId: number, from: TicketStatus, to: TicketStatus): Stmt[] {
   const closed = (s: TicketStatus) => s === "done" || s === "declined";
   return closed(to) && !closed(from) ? [supersedeOpenTicketSuggestions(ctx, ticketId)] : [];
 }
 
 /**
+ * The statements of ONE status move, for the writer's batch, COMPARE-AND-SET on `from`: the UPDATE takes only while
+ * the ticket is still `from` (a racing move makes it touch nothing); the history row reads `changes()` — written only
+ * when that UPDATE took — so `ticket_events.from_status` is always a state the ticket really left; and closing it
+ * closes Trov's suggestions about it (`closingStmts`, which acts only on a ticket that IS closed). `rank` is the board
+ * position (null = the top of the column). A same-status call (a drop within its column) writes no history row. The
+ * UPDATE is FIRST: the caller checks its `changes` (`assertMoved`). Shared by `transition_ticket` and `move_ticket`.
+ */
+function statusMoveStmts(ctx: TenantContext, id: number, from: TicketStatus, to: TicketStatus, actor: string, now: string, rank: number | null): Stmt[] {
+  return [
+    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ? AND org_id = ? AND status = ?`, to, rank, now, id, ctx.orgId, from),
+    ...(to !== from
+      ? [stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
+          ctx.orgId, id, actor, from, to, now)]
+      : []),
+    ...closingStmts(ctx, id, from, to),
+  ];
+}
+
+/** After a status batch: its first statement (the compare-and-set UPDATE) must have taken, else the ticket moved
+ *  under the caller — a 409 naming where it is now, with nothing written; the caller refetches and tries again. */
+async function assertMoved(ctx: TenantContext, results: { meta: { changes?: number } }[], number: number): Promise<void> {
+  if (results[0]?.meta.changes) return;
+  const now = await ticketByNumber(ctx, number);
+  if (!now) throw new TicketError("not_found", `no such ticket: ${number}`);
+  throw new TicketError("conflict", `ticket ${number} changed while you were moving it: it is ${now.status} now — reload and try again`);
+}
+
+/**
  * Move a ticket's status. The move must be legal per `canTransition` (the ONE
  * table in shared/tickets.ts) — an illegal one throws and writes NOTHING, not
- * even the history row.
+ * even the history row. So does a move that lost a race (409, `assertMoved`).
  */
 export async function transition_ticket(ctx: TenantContext, number: number, to: TicketStatus, actor: string): Promise<void> {
   const t = await getTicketRow(ctx, number);
@@ -199,18 +213,9 @@ export async function transition_ticket(ctx: TenantContext, number: number, to: 
   if (!canTransition(t.status, to)) {
     throw new TicketError("conflict", `illegal transition: ${t.status} → ${to}`);
   }
-  const now = nowIso();
-  await run(
-    ctx,
-    `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    ctx.orgId, id, who, t.status, to, now
-  );
-  // A move that is not a board drop clears the card's position: it lands at the
-  // TOP of its new column (`boardOrder`), where a person will see it. Closing it closes what Trov suggested about it.
-  await batch(ctx, [
-    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ? WHERE id = ? AND org_id = ?`, to, now, id, ctx.orgId),
-    ...closingStmts(ctx, id, t.status, to),
-  ]);
+  // ONE compare-and-set batch (`statusMoveStmts`). A move that is not a board drop clears the card's position: it
+  // lands at the TOP of its new column (`boardOrder`), where a person will see it.
+  await assertMoved(ctx, await batch(ctx, statusMoveStmts(ctx, id, t.status, to, who, nowIso(), null)), number);
   await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
 
@@ -221,8 +226,9 @@ export async function transition_ticket(ctx: TenantContext, number: number, to: 
  * back into its own column only reorders. The position comes from the ONE
  * `placeInColumn` the board uses for its optimistic drop, over the WHOLE column —
  * so a filtered board places relative to what the person saw, and the hidden cards
- * keep their order. When the column had to be renumbered, every renumbered row is
- * written in the same batch.
+ * keep their order. The move itself is ONE compare-and-set batch (a ticket that moved
+ * meanwhile is a 409 with nothing written); when the column had to be renumbered, the
+ * renumbered rows are written right after it.
  */
 export async function move_ticket(ctx: TenantContext, number: number, to: TicketStatus, afterNumber: number | null, actor: string): Promise<void> {
   const t = await getTicketRow(ctx, number);
@@ -239,16 +245,11 @@ export async function move_ticket(ctx: TenantContext, number: number, to: Ticket
     ctx.orgId, to, id
   );
   const { rank, renumber } = placeInColumn(column, afterNumber);
-  const now = nowIso();
-  const stmts: Stmt[] = [];
-  for (const [n, r] of renumber ?? []) stmts.push(stmt(ctx, `UPDATE tickets SET board_rank = ? WHERE number = ? AND org_id = ?`, r, n, ctx.orgId));
-  if (to !== t.status) {
-    stmts.push(stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-      ctx.orgId, id, who, t.status, to, now));
-  }
-  stmts.push(stmt(ctx, `UPDATE tickets SET status = ?, board_rank = ?, updated_at = ? WHERE id = ? AND org_id = ?`, to, rank, now, id, ctx.orgId));
-  stmts.push(...closingStmts(ctx, id, t.status, to));
-  // D1 caps a batch well above a board column; chunk anyway so a huge Done column never trips it.
+  // The move — status, position, history row and what closing closes — is ONE compare-and-set batch, FIRST; only once
+  // it took is the column renumbered (chunked: D1 caps a batch well above a board column, but a huge Done column must
+  // never trip it). A move that lost a race is a 409 with nothing written.
+  await assertMoved(ctx, await batch(ctx, statusMoveStmts(ctx, id, t.status, to, who, nowIso(), rank)), number);
+  const stmts: Stmt[] = [...(renumber ?? [])].map(([n, r]) =>stmt(ctx, `UPDATE tickets SET board_rank = ? WHERE number = ? AND org_id = ?`, r, n, ctx.orgId));
   for (let i = 0; i < stmts.length; i += 100) await batch(ctx, stmts.slice(i, i + 100));
   if (to !== t.status) await routeAi(ctx, { type: "ticket_changed", ticketId: id });
 }
@@ -358,13 +359,14 @@ export async function set_ticket_sprint(ctx: TenantContext, number: number, spri
 
 /**
  * Nest ticket NUMBER `childNumber` under ticket NUMBER `parentNumber` (`parent_id` stores the
- * parent's row id). Tickets nest EXACTLY ONE level, so four
+ * parent's row id). Tickets nest EXACTLY ONE level, so these
  * rejections guard the write (plus the degenerate self-parent):
  *   - the parent itself has a parent      → that would be level two
  *   - the child already has a parent      → it is already nested somewhere
  *   - the child is done/declined          → closed work is not re-filed under a parent
+ *   - the parent is done/declined         → closed work takes no new sub-tickets
  *   - the child has children of its own   → it is a parent, and would become level two
- * Every rejection leaves the database untouched.
+ * Every rejection leaves the database untouched, and the UPDATE re-checks them all (a race is a 409 too).
  */
 export async function set_ticket_parent(ctx: TenantContext, parentNumber: number, childNumber: number): Promise<void> {
   const parent = await getTicketRow(ctx, parentNumber);
@@ -374,13 +376,24 @@ export async function set_ticket_parent(ctx: TenantContext, parentNumber: number
   if (parent.parent_id !== null) throw new TicketError("conflict", "tickets nest one level: this ticket already has a parent");
   if (child.parent_id !== null) throw new TicketError("conflict", "that ticket already has a parent");
   if (child.status === "done" || child.status === "declined") throw new TicketError("conflict", "that ticket is closed");
+  if (parent.status === "done" || parent.status === "declined") throw new TicketError("conflict", "a closed ticket cannot take sub-tickets");
   const kids = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM tickets WHERE parent_id = ? AND org_id = ?`, child.id, ctx.orgId);
   if ((kids?.n ?? 0) > 0) throw new TicketError("conflict", "that ticket has sub-tickets of its own");
 
+  // The checks above say WHY; the write re-checks every rule in its own WHERE (compare-and-set), so a nesting or a
+  // close that landed since cannot slip through — then it is a 409 and nothing is written. The parent's sub-ticket
+  // count changed, so it is a write on the parent too — only when the nesting took (`changes()`).
   const now = nowIso();
-  await run(ctx, `UPDATE tickets SET parent_id = ?, updated_at = ? WHERE id = ? AND org_id = ?`, parent.id, now, child.id, ctx.orgId);
-  // The parent's sub-ticket count changed, so it is a write on the parent too.
-  await touch(ctx, parent.id, now);
+  const [res] = await batch(ctx, [
+    stmt(ctx,
+      `UPDATE tickets SET parent_id = ?1, updated_at = ?2
+        WHERE id = ?3 AND org_id = ?4 AND parent_id IS NULL AND status NOT IN ('done', 'declined')
+          AND NOT EXISTS (SELECT 1 FROM tickets k WHERE k.org_id = ?4 AND k.parent_id = ?3)
+          AND EXISTS (SELECT 1 FROM tickets p WHERE p.org_id = ?4 AND p.id = ?1 AND p.parent_id IS NULL AND p.status NOT IN ('done', 'declined'))`,
+      parent.id, now, child.id, ctx.orgId),
+    stmt(ctx, `UPDATE tickets SET updated_at = ? WHERE id = ? AND org_id = ? AND changes() > 0`, now, parent.id, ctx.orgId),
+  ]);
+  if (!res.meta.changes) throw new TicketError("conflict", "one of these tickets changed meanwhile — reload and try again");
 }
 
 /** Append one comment. The body is trimmed and must survive it (min 1 char). */
