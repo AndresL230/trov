@@ -1871,7 +1871,7 @@ function loadNotifAdmin(): void {
   state.notifSettings = { status: "loading", data: state.notifSettings.data };
   state.notifOutbox = { status: "loading", data: state.notifOutbox.data };
   rerender();
-    getNotificationPolicy()
+  getNotificationPolicy()
     .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerenderSoon(); })
     .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
   getNotificationSettings()
