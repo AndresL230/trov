@@ -4,7 +4,7 @@
 // 0077_home timed promotions).
 import { HOME_DAYS, type HomeData, type HomeDay, type HomeRepo, type HomeTeamRow } from "@shared/home-core";
 import { RESERVED_HANDLES } from "../auth/persons";
-import { OPEN_STATUS_SQL } from "@shared/tickets-core";
+import { OPEN_STATUS_SQL, TICKET_DONE_EVENT_SQL, UNPICKED_TICKET_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first } from "../data/sql";
 import { feedStatsWindow, isFeedStatsTz } from "./feed-stats";
 
@@ -22,10 +22,12 @@ export async function homeData(ctx: TenantContext, opts: { tzOffsetMin?: number;
   const reserved = RESERVED_HANDLES.map(() => "?").join(", ");
 
   const [ticketsDone, claimed, promoted, sessions, org, members, onTicket, onFeed, seen, repos, pushes, backlog, triage] = await Promise.all([
-    // A ticket set done twice in one day counts once that day.
+    // Tickets done — the ONE rule (`TICKET_DONE_EVENT_SQL`: set done, and still done). A ticket set done twice in
+    // one day counts once that day.
     all<DayCount>(ctx,
-      `SELECT date(created_at, ?) AS day, COUNT(DISTINCT ticket_id) AS n FROM ticket_events
-        WHERE org_id = ? AND to_status = 'done' AND created_at >= ? AND created_at < ? GROUP BY day`,
+      `SELECT date(e.created_at, ?) AS day, COUNT(DISTINCT e.ticket_id) AS n
+         FROM ticket_events e JOIN tickets t ON t.org_id = e.org_id AND t.id = e.ticket_id
+        WHERE e.org_id = ? AND ${TICKET_DONE_EVENT_SQL} AND e.created_at >= ? AND e.created_at < ? GROUP BY day`,
       shift, ctx.orgId, since, until),
     all<DayCount>(ctx,
       `SELECT date(claimed_at, ?) AS day, COUNT(*) AS n FROM handoffs
@@ -79,10 +81,9 @@ export async function homeData(ctx: TenantContext, opts: { tzOffsetMin?: number;
     first<{ n: number }>(ctx,
       `SELECT COUNT(*) AS n FROM tickets WHERE org_id = ? AND sprint_id IS NULL AND status IN ${OPEN_STATUS_SQL}`,
       ctx.orgId),
+    // Triage — what nobody has picked up: the ONE rule (`UNPICKED_TICKET_SQL`) the badge and the digest count too.
     first<{ n: number; oldest: string | null }>(ctx,
-      `SELECT COUNT(*) AS n, MIN(t.created_at) AS oldest FROM tickets t
-        WHERE t.org_id = ? AND t.status = 'submitted'
-          AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = t.org_id AND a.ticket_id = t.id)`,
+      `SELECT COUNT(*) AS n, MIN(t.created_at) AS oldest FROM tickets t WHERE t.org_id = ? AND ${UNPICKED_TICKET_SQL}`,
       ctx.orgId),
   ]);
 

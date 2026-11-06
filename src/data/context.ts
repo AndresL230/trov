@@ -2,6 +2,7 @@
 // D1Database: a repository reaches D1 through a context, and a context is only ever built by one of
 // the constructors below — a TenantContext needs a membership check or an explicit system scope.
 import type { Env } from "../env";
+import { orgLive } from "./suspension";
 
 /** The D1 binding's type, for `Env` — the one place outside this directory that has to name it. */
 export type Database = D1Database;
@@ -62,7 +63,7 @@ export function platform(env: Env, actor: string): PlatformContext {
 export async function resolveTenant(env: Env, userId: string, slug: string): Promise<TenantContext | null> {
   const row = await env.DB.prepare(
     `SELECT o.id, m.role FROM orgs o JOIN memberships m ON m.org_id = o.id
-      WHERE o.slug = ? AND m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL`
+      WHERE o.slug = ? AND m.user_id = ? COLLATE NOCASE AND ${orgLive("o")}`
   ).bind(slug, userId).first<{ id: string; role: OrgRole }>();
   return row ? tenant(env, row.id, userId, row.role, "session") : null;
 }
@@ -88,7 +89,7 @@ export async function resolveSessionTenant(env: Env, sessionId: string, slug: st
   const row = await env.DB.prepare(
     `SELECT s.person, s.expires_at, t.id, t.role FROM sessions s
        LEFT JOIN (SELECT o.id, m.role, m.user_id FROM orgs o JOIN memberships m ON m.org_id = o.id
-                   WHERE o.slug = ? AND o.suspended_at IS NULL) t ON t.user_id = s.person COLLATE NOCASE
+                   WHERE o.slug = ? AND ${orgLive("o")}) t ON t.user_id = s.person COLLATE NOCASE
       WHERE s.id = ?`
   ).bind(slug, sessionId).first<{ person: string; expires_at: string; id: string | null; role: OrgRole | null }>();
   if (!row) return null;
@@ -103,7 +104,7 @@ export async function resolveSessionTenant(env: Env, sessionId: string, slug: st
 export async function resolveTenantById(env: Env, userId: string, orgId: string, via: "session" | "bearer"): Promise<TenantContext | null> {
   const row = await env.DB.prepare(
     `SELECT m.role FROM memberships m JOIN orgs o ON o.id = m.org_id
-      WHERE m.org_id = ? AND m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL`
+      WHERE m.org_id = ? AND m.user_id = ? COLLATE NOCASE AND ${orgLive("o")}`
   ).bind(orgId, userId).first<{ role: OrgRole }>();
   return row ? tenant(env, orgId, userId, row.role, via) : null;
 }
@@ -132,7 +133,7 @@ export type TenantFilter =
  */
 export async function liveTenants(env: Env, userId: string, filter: TenantFilter): Promise<OrgTenant[]> {
   const base = `SELECT o.id, o.slug, o.name, m.role FROM memberships m JOIN orgs o ON o.id = m.org_id
-      WHERE m.user_id = ?1 COLLATE NOCASE AND o.suspended_at IS NULL`;
+      WHERE m.user_id = ?1 COLLATE NOCASE AND ${orgLive("o")}`;
   const q = filter.kind === "grant"
     ? env.DB.prepare(`${base} AND EXISTS (SELECT 1 FROM oauth_grant_orgs a WHERE a.org_id = o.id AND a.grant_id = ?2) ORDER BY o.slug`).bind(userId, filter.grantId)
     : filter.kind === "repo"

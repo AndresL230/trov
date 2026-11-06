@@ -15,15 +15,22 @@
 // The value is the suggested one, or the admin's edited one (`{ value }` on the accept), checked here against the
 // contract. A refusal throws: the suggestion goes back to open (src/ai/suggestions.ts).
 import { AiPlanNarrativeValueSchema, AiSprintDraftValueSchema, aiNarrativeParts } from "@shared/ai";
-import { all, ph, type TenantContext } from "../data/sql";
+import { all, first, ph, run, type TenantContext } from "../data/sql";
 import { create_sprint, SprintError } from "../tools/sprints";
 import { set_ticket_sprint } from "../tools/tickets";
 import { write_plan } from "../tools/plan";
 import type { AcceptHandler } from "./suggestions";
 
+/** The key a drafted sprint is created under (`sprints.source_key`, 0088_state_machines): the suggestion and the
+ *  sprint's place in it. */
+export const sprintDraftKey = (suggestionId: number, index: number): string => `ai_suggestion:${suggestionId}:${index}`;
+
 export const SPRINT_DRAFT_ACCEPT: AcceptHandler = {
   role: "admin",
-  async apply(ctx: TenantContext, _row, value) {
+  // IDEMPOTENT per suggestion: each drafted sprint is created under its key, so an Accept that failed midway (the
+  // suggestion went back to open) and is pressed again FINDS the sprints it already made instead of making them twice,
+  // and places only the tickets still in the backlog.
+  async apply(ctx: TenantContext, row, value) {
     const parsed = AiSprintDraftValueSchema.safeParse(value);
     if (!parsed.success) throw new SprintError("bad_request", "that sprint draft is not one Trov can create");
     const numbers = [...new Set(parsed.data.sprints.flatMap((s) => s.tickets))];
@@ -31,11 +38,16 @@ export const SPRINT_DRAFT_ACCEPT: AcceptHandler = {
       `SELECT number FROM tickets WHERE org_id = ? AND sprint_id IS NULL AND status IN ('submitted', 'in_progress', 'testing') AND number IN (${ph(numbers.length)})`,
       ctx.orgId, ...numbers)).map((r) => r.number));
     const placed = new Set<number>();
-    for (const sp of parsed.data.sprints) {
-      const sprint = await create_sprint(ctx, { label: sp.name, summary: sp.goal || null, urgency: "normal" }, ctx.userId);
+    for (const [i, sp] of parsed.data.sprints.entries()) {
+      const key = sprintDraftKey(row.id, i);
+      let sprintId = (await first<{ id: number }>(ctx, `SELECT id FROM sprints WHERE org_id = ? AND source_key = ?`, ctx.orgId, key))?.id ?? null;
+      if (sprintId === null) {
+        sprintId = (await create_sprint(ctx, { label: sp.name, summary: sp.goal || null, urgency: "normal" }, ctx.userId)).id;
+        await run(ctx, `UPDATE sprints SET source_key = ? WHERE id = ? AND org_id = ? AND source_key IS NULL`, key, sprintId, ctx.orgId);
+      }
       for (const n of sp.tickets) {
         if (!open.has(n) || placed.has(n)) continue;
-        await set_ticket_sprint(ctx, n, sprint.id);
+        await set_ticket_sprint(ctx, n, sprintId);
         placed.add(n);
       }
     }

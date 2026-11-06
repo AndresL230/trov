@@ -48,6 +48,22 @@ describe("resendDelivery", () => {
     expect(body.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
   });
 
+  it("sends the message's idempotency key as Resend's Idempotency-Key", async () => {
+    const { calls, fetchImpl } = capture();
+    await resendDelivery({ apiKey: "re_test", from: "Trov <c@x>", fetchImpl }).send(MSG);
+    expect(new Headers(calls[0].init.headers).get("idempotency-key")).toBe("AndresL230:daily:2026-09-11");
+  });
+
+  it("a 409 invalid_idempotent_request (the key was already accepted, the body re-rendered) counts as delivered", async () => {
+    const { fetchImpl } = capture(409, { name: "invalid_idempotent_request", message: "Same idempotency key used with a different request payload." });
+    expect(await resendDelivery({ apiKey: "re_test", from: "Trov <c@x>", fetchImpl }).send(MSG)).toEqual({ id: null });
+  });
+
+  it("a 409 concurrent_idempotent_requests (the first send is still in flight) is a failure to retry", async () => {
+    const { fetchImpl } = capture(409, { name: "concurrent_idempotent_requests", message: "in progress" });
+    await expect(resendDelivery({ apiKey: "re_test", from: "Trov <c@x>", fetchImpl }).send(MSG)).rejects.toThrow(/409/);
+  });
+
   it("throws with the provider's message on a non-2xx response", async () => {
     const { fetchImpl } = capture(422, { message: "Invalid `from` field" });
     const d = resendDelivery({ apiKey: "re_test", from: "bad", fetchImpl });

@@ -208,6 +208,36 @@ describe("the run", () => {
     expect(flash).toHaveBeenCalledWith("Import cancelled. Nothing was added.", 4200);
   });
 
+  it("Retry does nothing while a Cancel is out; a refused Cancel lets the stalled run be retried", async () => {
+    const { state, ctl } = setup();
+    ctl.open("engineering");
+    ctl.addFiles([new File(["# One\n\nx"], "one.md")]);
+    await settle();
+    ctl.act("impStep", "preview", null);
+    vi.mocked(api.startImport).mockImplementation(async (body) => ({ ok: true, run: runView(), plan: serverPlan(body) }));
+    vi.mocked(api.sendImportPages).mockRejectedValueOnce(new TypeError("fetch failed"))
+      .mockResolvedValue({ ok: true, run: runView({ counts: { ...zeroImportCounts(), staged: 1 } }), results: [] });
+    let refuse!: () => void;
+    vi.mocked(api.finishImport)
+      .mockImplementationOnce(() => new Promise((_ok, no) => { refuse = () => no(new api.OrgApiError(409, "not_running", null, null)); }))
+      .mockResolvedValue({ ok: true, run: runView({ status: "done", counts: { ...zeroImportCounts(), pages: 1, staged: 1, staged_new: 1 } }) });
+    ctl.act("impStart", null, null);
+    await settle();
+    expect(state.imp.run?.phase).toBe("stalled");
+    ctl.act("impCancel", null, null);
+    ctl.act("impRetry", null, null);                     // while the cancel is out: nothing moves
+    await settle();
+    expect(state.imp.run?.phase).toBe("stalled");
+    expect(vi.mocked(api.sendImportPages)).toHaveBeenCalledTimes(1);
+    refuse();
+    await settle();
+    expect(state.imp.run?.phase).toBe("stalled");       // the cancel was refused: still stalled, and Retry works
+    ctl.act("impRetry", null, null);
+    await settle();
+    expect(vi.mocked(api.sendImportPages)).toHaveBeenCalledTimes(2);
+    expect(state.imp.run?.phase).toBe("done");
+  });
+
   it("a refused start stays on Preview and says why", async () => {
     const { state, ctl } = setup();
     ctl.open("engineering");

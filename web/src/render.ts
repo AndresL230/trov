@@ -166,7 +166,7 @@ export type Screen =
 
 /** Async data slice: a screen's fetched payload plus its load status. */
 export interface Loadable<T> {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   data: T;
   error?: string;
 }
@@ -175,8 +175,10 @@ export interface AppState {
   /** `orgs` = signed in, but no org is open: the org picker (`/`, with no org or several). */
   /** `platform` = the superadmin's Platform area at `/platform/`, outside any org (platform.ts `platformPage`). */
   view: "auth" | "app" | "orgs" | "platform";
-  /** `nonmember` = a GitHub sign-in that was refused; `unverified` = a Google account whose address Google has not verified. */
-  authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard";
+  /** `nonmember` = a GitHub sign-in that was refused; `unverified` = a Google account whose address Google has not verified;
+   *  `unreachable` = the boot's `/auth/me` did not answer (offline, a 5xx: nothing is known about the session, so it is
+   *  not "signed out"); `failed` = opening the app threw (main.ts `showBootFailed`). */
+  authStep: "login" | "verifying" | "nonmember" | "unverified" | "onboard" | "unreachable" | "failed";
   /** The landing page's sign-in dialog (authStep "login" only). */
   signInOpen: boolean;
   /** Which button opened it (landing.ts `SignInMode`): the dialog's title and foot follow. */
@@ -558,6 +560,10 @@ export interface AppState {
   promptView: PromptView;
   promptMode: "new" | "edit" | "version";
   promptEd: PromptDraft | null;
+  /** The form writes in flight (main.ts `beginWrite` / `endWrite`), by key — `ntSubmit`, `nhSend`, `edSave`,
+   *  `nsCreate`, `promptPublish:<slug>`, `handoffClaim:<id>`: a second click while one is out does nothing, and its
+   *  button shows busy until the answer. */
+  inFlight: Record<string, true>;
   // ── Docs › New doc / Unplaced ──────────────────────────────────────
   nd: NewDocDraft;
   // ── Platform (superadmin): everything its screens hold (platform.ts) ───────
@@ -732,7 +738,7 @@ export function initialState(): AppState {
     promptSlug: null,
     promptDetail: { status: "idle", data: null },
     promptDiffV: null, promptTagMenu: false, promptTagDraft: "", promptDeleteArm: false, promptDeleteBusy: false, promptExpanded: false, promptView: "raw",
-    promptMode: "new", promptEd: null,
+    promptMode: "new", promptEd: null, inFlight: {},
     nd: blankDoc(DEFAULT_SPACE),
     plat: initialPlat(),
     fmOpening: null,
@@ -965,6 +971,7 @@ function authView(s: AppState): string {
     ${s.authStep === "nonmember" ? nonmemberCard() : ""}
     ${s.authStep === "unverified" ? unverifiedCard(s.deniedEmail) : ""}
     ${s.authStep === "verifying" ? verifyingCard() : ""}
+    ${s.authStep === "unreachable" || s.authStep === "failed" ? bootFailedCard(s.authStep) : ""}
     ${s.authStep === "onboard" ? onboardView(s.onboard, firstRunBackdrop()) : ""}
   </div>`;
 }
@@ -1008,6 +1015,24 @@ function unverifiedCard(email: string | null): string {
         <button data-act="signInGoogleSwitch" class="cnpy-outlinebtn" style="width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--border-strong);font-size:13.5px;font-weight:500">Try a different Google account</button>
       </div>
       <p class="cnpy-consent" data-consent style="margin:0;font-size:12px;line-height:1.5;color:var(--fg-55)">${consentHtml()}</p>
+    </div>
+  </div>`;
+}
+
+/** The boot could not open the app (main.ts `showBootFailed`): Trov did not answer, or opening it went wrong. Never the
+ *  landing page — the person may well be signed in. Try again reloads the page (the whole boot, fresh). */
+export function bootFailedCard(step: "unreachable" | "failed"): string {
+  const [title, body] = step === "unreachable"
+    ? ["Trov couldn't be reached.", "Nothing answered just now, so Trov can't tell whether you're signed in. Check your connection and try again."]
+    : ["Trov didn't open.", `Something went wrong while opening this page. Try again, and if it keeps happening, write to <a href="mailto:hello@trov.dev" style="color:var(--fg-70)">hello@trov.dev</a>.`];
+  return `<div style="width:400px;max-width:100%" role="alert" data-boot-failed="${step}">
+    <div${surface("padding:34px;display:flex;flex-direction:column;align-items:center;gap:20px;text-align:center", { cls: "cnpy-authcard" })}>
+      <div style="display:flex;align-items:center;gap:11px;opacity:.95">${logo(28)}<span style="font-size:23px;font-weight:600;letter-spacing:-0.02em">Trov</span></div>
+      <div>
+        <div style="font-size:18px;font-weight:600;letter-spacing:-0.01em">${title}</div>
+        <div style="font-size:13.5px;color:var(--fg-55);margin-top:8px;line-height:1.55">${body}</div>
+      </div>
+      <button data-act="bootRetry" class="cnpy-accentbtn" style="width:100%;padding:11px 16px;border-radius:9px;background:var(--accent);color:var(--accent-fg);font-size:13.5px;font-weight:600">Try again</button>
     </div>
   </div>`;
 }
@@ -1923,7 +1948,7 @@ const RM_CARD = "min-width:0";
 function roadmapNewSprint(s: AppState): string {
   const panel = newSprintPanel({
     open: s.nsOpen, name: s.nsName, start: s.nsStart, desc: s.nsDesc,
-    urgency: s.nsUrg, due: s.nsDue, lead: s.nsLead, domain: s.nsDom, error: s.nsError,
+    urgency: s.nsUrg, due: s.nsDue, lead: s.nsLead, domain: s.nsDom, error: s.nsError, busy: !!s.inFlight.nsCreate,
   }, s.persons.data);
   // The panel carries its own 14px top margin for sitting under a header row; at
   // the top of the column it is pulled flush and given room below instead.
@@ -3048,6 +3073,7 @@ function newTicketScreen(s: AppState): string {
     sprints: s.sprints.data,
     persons: s.persons.data,
     sprMenu: s.sprMenu,
+    busy: !!s.inFlight.ntSubmit,
   });
 }
 
@@ -3172,20 +3198,21 @@ function screenBody(s: AppState): string {
       status: s.linkDetail.status, link: s.linkDetail.data, me: s.me?.handle ?? "", persons: s.persons.data,
       draft: s.linkNote && s.linkNote.id === s.linkId ? s.linkNote.text : "", busy: s.linkBusy, noteSide: s.linkNoteSide,
     });
-    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at });
-    case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null });
+    case "handoff": return handoffDetailView({ status: s.handoffDetail.status, handoff: s.handoffDetail.data, me: s.me?.handle ?? "", persons: s.persons.data, expireArm: s.handoffExpireArm, promptView: s.promptView, reading: s.handoffReading && s.handoffDetail.data && s.handoffReading.id === s.handoffDetail.data.id ? s.handoffReading.items : null, readingT: s.handoffReading?.at === undefined ? null : Date.now() - s.handoffReading.at, claiming: !!s.handoffDetail.data && !!s.inFlight[`handoffClaim:${s.handoffDetail.data.id}`] });
+    case "newhandoff": return newHandoffView({ draft: s.nh, me: s.me?.handle ?? "", persons: s.persons.data, primaryRepo: s.orgMe.data?.repos.primary ?? null, busy: !!s.inFlight.nhSend });
     case "prompts": return promptLibraryView({ status: s.promptList.status, prompts: s.promptList.data, q: s.promptQ, tag: s.promptTag, sort: s.promptSort, filterOpen: s.promptFilterOpen, filterCat: s.promptFilterCat, fmOpening: s.fmOpening, persons: s.persons.data });
     case "prompt": return promptDetailView({
       status: s.promptDetail.status, prompt: s.promptDetail.data?.prompt ?? null, versions: s.promptDetail.data?.versions ?? [],
       persons: s.persons.data, knownTags: [...new Set(s.promptList.data.flatMap((p) => p.tags))],
       diffVersion: s.promptDiffV, tagMenu: s.promptTagMenu, tagDraft: s.promptTagDraft, promptView: s.promptView,
       canDelete: canDeletePrompt(s), deleteArm: s.promptDeleteArm, deleteBusy: s.promptDeleteBusy,
+      publishing: !!s.promptDetail.data && !!s.inFlight[`promptPublish:${s.promptDetail.data.prompt.slug}`],
     });
-    case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug) });
+    case "promptedit": return promptEditorView({ draft: s.promptEd, takenSlugs: s.promptList.data.map((p) => p.slug), busy: !!s.inFlight.edSave });
     case "platform": return platformView(s.plat, s.me?.handle ?? null);
     case "platformorg": return platformOrgView(s.plat);
     case "tag": return tagPageView({
-      name: s.tagName, page: { ...s.tagPage, status: s.tagPage.status === "unauth" ? "error" : s.tagPage.status }, tab: s.tagsUi.pageTab, leaving: s.tagsUi.reviewLeaving, bump: s.tagsUi.bump,
+      name: s.tagName, page: s.tagPage, tab: s.tagsUi.pageTab, leaving: s.tagsUi.reviewLeaving, bump: s.tagsUi.bump,
       orgName: currentOrg(s)?.name ?? "this organization", who: (h) => handleLink(personFor(s, h), h),
       colorOf: (h) => personFor(s, h)?.color ?? null, tagColorOf: (n) => s.tags.data?.tags.find((t) => t.name === n)?.color ?? null,
     });
@@ -3207,12 +3234,12 @@ export function welcomeProps(s: AppState): WelcomeProps {
 
 /** Project the app state onto Org settings' props. The current org is `currentOrg` — one place. */
 function orgProps(s: AppState): OrgSettingsProps {
-  const status = s.myOrgs.status === "unauth" ? "error" : s.myOrgs.status;
+  const status = s.myOrgs.status;
   // What an ADMIN administers beyond the org's own reads — both null for a member, who is
   // shown neither: the logins to match to a person (Members), and the e-mail digests (Notifications).
   const admin = viewerIsAdmin(s);
   const identity: IdentityProps | null = admin ? {
-    status: s.identityTasks.status === "unauth" ? "error" : s.identityTasks.status,
+    status: s.identityTasks.status,
     groups: s.identityTasks.data.map(identityFromTask),
     discarded: s.identityDiscarded.map(discardedFromRow),
     showDiscarded: s.identityShowDiscarded,
@@ -3226,7 +3253,7 @@ function orgProps(s: AppState): OrgSettingsProps {
     outboxExpanded: s.outboxExpanded, fromDraft: s.fromDraft, fromError: s.fromError,
   } : null;
   return { org: currentOrg(s), orgsStatus: currentOrg(s) ? "ok" : status, me: s.me?.handle ?? "", ui: s.org, identity, notif, dd: s.dd,
-    tags: { list: { ...s.tags, status: s.tags.status === "unauth" ? "error" : s.tags.status }, ui: s.tagsUi } };
+    tags: { list: s.tags, ui: s.tagsUi } };
 }
 
 /** Project the app state onto the Repo dashboard's props (its components never see AppState). */

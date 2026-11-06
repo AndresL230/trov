@@ -4,12 +4,12 @@ import { isSection } from "@shared/vocabulary";
 import { normalizeTagName } from "@shared/tags-core";
 import { DEFAULT_SPACE } from "@shared/docs-core";
 import { liveTagNames } from "./tags";
-import { type TenantContext, first, run, stmt, batch, nowIso } from "../data/sql";
+import { type TenantContext, type Stmt, first, run, stmt, batch, nowIso } from "../data/sql";
 import type { PlatformContext } from "../data/platform-sql";
 import { memberPerson, resolvePersonForLogin } from "../auth/persons";
 import { routeAi } from "./ai-route";
 import { REVIEW_ITEM, reviewRef, supersedeOpenSuggestions } from "../data/ai";
-import { linkStmts, promoteTreeStmts } from "./doc-tree";
+import { linkStmts, promoteTreeStmts, type StmtGuard } from "./doc-tree";
 // NOTE: writes.ts ↔ consumer.ts is a deliberate circular import. consumer.ts
 // imports the low-level writers below; assign_triage imports the gate functions.
 // It is safe because every reference is INSIDE a function body (resolved lazily
@@ -21,6 +21,22 @@ import { ingestDocProposal, ingestAdrDraft, ingestFeedEntry } from "../consumer"
 const humanizeSlug = (slug: string): string =>
   slug.replace(/[-_]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
+/**
+ * The values `doc_versions.status` and `adrs.status` take — the columns have no CHECK (no table rebuild for one), so
+ * this file, their one writer, is where they are held. Every move is a compare-and-set on the from-state:
+ *   doc version: staged → promoted   (a person's promote, only of a version NEWER than the live one)
+ *                staged → rejected   (a person's reject)
+ *                staged → superseded (the promote of a newer version of the page: what waited under it is stale)
+ *   ADR:         draft → ratified | rejected (a person; nothing else moves)
+ */
+export const DOC_VERSION_STATUSES = ["staged", "promoted", "rejected", "superseded"] as const;
+export const ADR_STATUSES = ["draft", "ratified", "rejected"] as const;
+
+/**
+ * The gate's writers below take `extra`: statements run in the SAME batch, after the write — the replay-ledger row
+ * (src/consumer.ts), so an item and its ledger record land together or not at all. Such a statement may name the row
+ * just written as the org's newest of its table (`MAX(id)`): a batch is one transaction, nothing interleaves.
+ */
 export async function append_feed(
   ctx: TenantContext,
   entry: {
@@ -28,34 +44,36 @@ export async function append_feed(
     /** Set ONLY for an entry Trov wrote (0061_ai_digests; the gate's `ingestFeedEntry` with `ai`): origin 'ai', the
      *  model that wrote it and the member it was for. Absent = an agent's entry, exactly as before. */
     ai?: { model: string; subject: string | null };
-  }
+  },
+  extra: Stmt[] = []
 ): Promise<number> {
   const created_at = nowIso();
-  const res = await run(
-    ctx,
-    `INSERT INTO feed (org_id, author, summary, brief, body, artifacts, created_at, origin, model, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ctx.orgId,
-    entry.author,
-    entry.summary,
-    entry.brief ?? null,
-    entry.body ?? null,
-    entry.artifacts !== undefined ? JSON.stringify(entry.artifacts) : null,
-    created_at,
-    entry.ai ? "ai" : "agent",
-    entry.ai?.model ?? null,
-    entry.ai?.subject ?? null
-  );
-  const id = res.meta.last_row_id as number;
-  for (const tag of entry.tags ?? []) {
-    await run(
+  // ONE batch: the entry, its tags (each naming the entry just written — the org's newest) and the caller's extra.
+  const res = await batch(ctx, [
+    stmt(
       ctx,
-      `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) VALUES (?, ?, 'feed', ?)`,
+      `INSERT INTO feed (org_id, author, summary, brief, body, artifacts, created_at, origin, model, subject) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ctx.orgId,
+      entry.author,
+      entry.summary,
+      entry.brief ?? null,
+      entry.body ?? null,
+      entry.artifacts !== undefined ? JSON.stringify(entry.artifacts) : null,
+      created_at,
+      entry.ai ? "ai" : "agent",
+      entry.ai?.model ?? null,
+      entry.ai?.subject ?? null
+    ),
+    ...(entry.tags ?? []).map((tag) => stmt(
+      ctx,
+      `INSERT OR IGNORE INTO entry_tags (org_id, tag, entry_type, entry_id) SELECT ?, ?, 'feed', CAST(MAX(f.id) AS TEXT) FROM feed f WHERE f.org_id = ?`,
       ctx.orgId,
       tag,
-      String(id)
-    );
-  }
-  return id;
+      ctx.orgId
+    )),
+    ...extra,
+  ]);
+  return res[0].meta.last_row_id as number;
 }
 
 export async function propose_doc_update(
@@ -80,53 +98,49 @@ export async function propose_doc_update(
     // Server-only (never the contract): the import run and the file's path in it.
     import_id?: number | null;
     import_path?: string | null;
+    // Set by the gate when the slug's row is an EMPTY SHELL (never approved, every version rejected — src/tools/spaces.ts
+    // `inLibrary`): this proposal takes the row over as a NEW page — its section, title, space, owner and place.
+    revive?: boolean;
   },
-  author: string
+  author: string,
+  extra: Stmt[] = []
 ): Promise<{ slug: string; version: number; status: "staged" }> {
   const created_at = nowIso();
-  const existing = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
+  const existing = proposal.revive ? null : await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, proposal.slug);
+  const stmts: Stmt[] = [];
 
   if (!existing) {
     // Title resolution on first creation only: proposal.title ?? humanizeSlug(slug).
     // (On an existing doc we never rewrite title/section — a human may have set them.)
-    // `space` (audit F4) is persisted on the INSERT: the space the gate checked, else the default space.
+    // `space` (audit F4) is persisted with the row: the space the gate checked, else the default space.
+    // `owner` (0035) = the proposer of the FIRST version, set here once and never overwritten — later proposals and
+    // promotions leave it alone. (A shell taken over is a new page: its first live-able version is this one.)
     const title = proposal.title ?? humanizeSlug(proposal.slug);
-    await run(
-      ctx,
-      `INSERT INTO docs (org_id, slug, section, title, body, current_version, updated_at, updated_by, space, owner, parent_slug, tree_rank)
-       VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, ?, ?, ?)`,
-      ctx.orgId,
-      proposal.slug,
-      proposal.section,
-      title,
-      created_at,
-      author,
-      proposal.space ?? DEFAULT_SPACE,
-      // `owner` (0035) = the proposer of the FIRST version, set here once and never
-      // overwritten — later proposals and promotions leave it alone.
-      author,
-      proposal.parent_slug ?? null,
-      proposal.tree_rank ?? null
-    );
+    const cols = [proposal.section, title, created_at, author, proposal.space ?? DEFAULT_SPACE, author, proposal.parent_slug ?? null, proposal.tree_rank ?? null];
+    stmts.push(proposal.revive
+      ? stmt(ctx,
+        `UPDATE docs SET section = ?, title = ?, updated_at = ?, updated_by = ?, space = ?, owner = ?, parent_slug = ?, tree_rank = ?
+          WHERE org_id = ? AND slug = ? AND current_version = 0 AND archived_at IS NULL`,
+        ...cols, ctx.orgId, proposal.slug)
+      // OR IGNORE: when a proposal of the same new slug landed first, it made the page and this is its next version.
+      : stmt(ctx,
+        `INSERT OR IGNORE INTO docs (org_id, slug, section, title, body, current_version, updated_at, updated_by, space, owner, parent_slug, tree_rank)
+         VALUES (?, ?, ?, ?, '', 0, ?, ?, ?, ?, ?, ?)`,
+        ctx.orgId, proposal.slug, ...cols));
   }
 
-  const max = await first<{ v: number | null }>(
-    ctx,
-    `SELECT MAX(version) AS v FROM doc_versions WHERE org_id = ? AND slug = ?`,
-    ctx.orgId,
-    proposal.slug
-  );
-  const version = (max?.v ?? 0) + 1;
-
-  await run(
+  // The version number is taken INSIDE the insert (the slug's highest + 1), so two proposals of one page never both
+  // read the same highest; the unique index on (org, slug, version) (0088) holds it in the schema too.
+  stmts.push(stmt(
     ctx,
     `INSERT INTO doc_versions
        (org_id, slug, version, body, summary, status, confidence, created_at, created_by,
         content_hash, base_version, change_kind, low_confidence, parent_slug, import_id, import_path)
-     VALUES (?, ?, ?, ?, ?, 'staged', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     SELECT ?, ?, COALESCE(MAX(w.version), 0) + 1, ?, ?, 'staged', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+       FROM doc_versions w WHERE w.org_id = ? AND w.slug = ?
+     RETURNING version`,
     ctx.orgId,
     proposal.slug,
-    version,
     proposal.body,
     proposal.change_summary,
     proposal.confidence,
@@ -138,8 +152,13 @@ export async function propose_doc_update(
     proposal.low_confidence ? 1 : 0,
     proposal.parent_slug ?? null,
     proposal.import_id ?? null,
-    proposal.import_path ?? null
-  );
+    proposal.import_path ?? null,
+    ctx.orgId,
+    proposal.slug
+  ));
+  const at = stmts.length - 1;
+  const res = await batch<{ version: number }>(ctx, [...stmts, ...extra]);
+  const version = res[at].results[0].version;
 
   // docs.current_version intentionally untouched — promotion is a human action (out of scope).
   return { slug: proposal.slug, version, status: "staged" };
@@ -149,10 +168,11 @@ export async function stage_adr(
   ctx: TenantContext,
   draft: { title: string; context: string; decision: string; rationale: string; confidence: "high" | "low" },
   author: string,
-  contentHash?: string | null
+  contentHash?: string | null,
+  extra: Stmt[] = []
 ): Promise<number> {
   const created_at = nowIso();
-  const res = await run(
+  const res = await batch(ctx, [stmt(
     ctx,
     `INSERT INTO adrs (org_id, title, context, decision, rationale, status, confidence, created_at, created_by, content_hash)
      VALUES (?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?)`,
@@ -165,17 +185,18 @@ export async function stage_adr(
     created_at,
     author,
     contentHash ?? null
-  );
-  return res.meta.last_row_id as number;
+  ), ...extra]);
+  return res[0].meta.last_row_id as number;
 }
 
 export async function route_triage(
   ctx: TenantContext,
-  item: { raw: unknown; reason: string; source_author?: string }
+  item: { raw: unknown; reason: string; source_author?: string },
+  extra: Stmt[] = []
 ): Promise<number> {
   const created_at = nowIso();
   const raw = typeof item.raw === "string" ? item.raw : JSON.stringify(item.raw);
-  const res = await run(
+  const res = await batch(ctx, [stmt(
     ctx,
     `INSERT INTO needs_triage (org_id, raw, reason, source_author, resolved, created_at)
      VALUES (?, ?, ?, ?, 0, ?)`,
@@ -184,9 +205,10 @@ export async function route_triage(
     item.reason,
     item.source_author ?? null,
     created_at
-  );
-  await routeAi(ctx, { type: "unplaced", id: res.meta.last_row_id as number });
-  return res.meta.last_row_id as number;
+  ), ...extra]);
+  const id = res[0].meta.last_row_id as number;
+  await routeAi(ctx, { type: "unplaced", id });
+  return id;
 }
 
 /**
@@ -333,9 +355,35 @@ export class DocArchivedError extends Error {
   }
 }
 
+/** A promote of a version that is not NEWER than the page's live one — approving it would roll the page back. The
+ *  route answers 409 `stale`. */
+export class DocStaleVersionError extends Error {
+  readonly code = "stale";
+  constructor(slug: string, version: number, current: number) {
+    super(`${slug} v${version} is older than the live v${current}: it can't be approved over it`);
+    this.name = "DocStaleVersionError";
+  }
+}
+
+/** Why a doc version can't be promoted, read again after the guarded promote found it moved on (a race). */
+async function promoteRefusal(ctx: TenantContext, slug: string, version: number): Promise<Error> {
+  const [ver, doc] = await Promise.all([
+    first<DocVersionRow>(ctx, `SELECT * FROM doc_versions WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version),
+    first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug),
+  ]);
+  if (!ver) return new Error(`no such doc version: ${slug} v${version}`);
+  if (ver.status !== "staged") return new Error(`doc version not staged: ${slug} v${version} is ${ver.status}`);
+  // An archived page (0083_doc_archive) takes no version: its staged ones wait, hidden from Review, until it is restored.
+  if (doc?.archived_at) return new DocArchivedError(slug);
+  if (doc && version <= doc.current_version) return new DocStaleVersionError(slug, version, doc.current_version);
+  return new Error(`doc version not promoted: ${slug} v${version}`);
+}
+
 /**
  * Human confirmation: promote a staged doc version into the live doc.
- * Non-destructive — prior versions remain. Rejects if the version is missing or not staged.
+ * Non-destructive — prior versions remain. Refused when the version is missing or not staged, when its page is
+ * archived (`DocArchivedError`), and when it is not newer than the live version (`DocStaleVersionError`: approving
+ * it would roll the page back). The page's OLDER versions still staged become `superseded` in the same batch.
  */
 export async function promote_doc(
   ctx: TenantContext,
@@ -350,39 +398,54 @@ export async function promote_doc(
     slug,
     version
   );
-  if (!ver) throw new Error(`no such doc version: ${slug} v${version}`);
-  if (ver.status !== "staged") throw new Error(`doc version not staged: ${slug} v${version} is ${ver.status}`);
+  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  if (!ver || ver.status !== "staged" || doc?.archived_at || (doc && version <= doc.current_version)) throw await promoteRefusal(ctx, slug, version);
 
   const updated_at = nowIso();
-  const doc = await first<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
-  // An archived page (0083_doc_archive) takes no version: its staged ones wait, hidden from Review, until it is restored.
-  if (doc?.archived_at) throw new DocArchivedError(slug);
-  // ONE batch: the version, its risk closed (Q37: open suggestions superseded), the live body, the page's links
-  // rebuilt from that body, and — when the version asked for a parent that is still a valid place — the move
-  // under it (src/tools/doc-tree.ts; the tree PR of 0081_docs_library).
-  const tree = doc ? await promoteTreeStmts(ctx, doc, ver.body, ver.parent_slug ?? null) : linkStmts(ctx, slug, ver.body);
-  await batch(ctx, [
+  // ONE batch: the version, its risk closed (Q37: open suggestions superseded), the live body, the page's older staged
+  // versions superseded, its links rebuilt from that body, and — when the version asked for a parent that is still a
+  // valid place — the move under it (src/tools/doc-tree.ts; the tree PR of 0081_docs_library).
+  // The FIRST statement is the compare-and-set: still staged, newer than the live version, the page not archived. Every
+  // statement after it runs only if it applied (`won`: this version promoted at this instant), so a promote that lost a
+  // race — another version went live, the page was archived — writes nothing at all.
+  const won: StmtGuard = {
+    sql: `EXISTS (SELECT 1 FROM doc_versions pw WHERE pw.org_id = ? AND pw.slug = ? AND pw.version = ? AND pw.status = 'promoted' AND pw.promoted_at = ?)`,
+    params: [ctx.orgId, slug, version, updated_at],
+  };
+  const tree = doc ? await promoteTreeStmts(ctx, doc, ver.body, ver.parent_slug ?? null, won) : linkStmts(ctx, slug, ver.body, won);
+  const res = await batch(ctx, [
     // `promoted_at` (0077_home): when, for Home's Docs promoted figure.
-    stmt(ctx, `UPDATE doc_versions SET status = 'promoted', promoted_at = ? WHERE org_id = ? AND slug = ? AND version = ?`, updated_at, ctx.orgId, slug, version),
-    supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version)),
-    stmt(ctx, `UPDATE docs SET body = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND slug = ?`,
-      ver.body, version, updated_at, author, ctx.orgId, slug),
+    stmt(ctx, `UPDATE doc_versions SET status = 'promoted', promoted_at = ? WHERE org_id = ? AND slug = ? AND version = ? AND status = 'staged'
+                 AND ? > (SELECT d.current_version FROM docs d WHERE d.org_id = ? AND d.slug = ? AND d.archived_at IS NULL)`,
+      updated_at, ctx.orgId, slug, version, version, ctx.orgId, slug),
+    supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version), won),
+    stmt(ctx, `UPDATE docs SET body = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND slug = ? AND archived_at IS NULL AND current_version < ? AND ${won.sql}`,
+      ver.body, version, updated_at, author, ctx.orgId, slug, version, ...won.params),
+    stmt(ctx, `UPDATE doc_versions SET status = 'superseded' WHERE org_id = ? AND slug = ? AND status = 'staged' AND version < ? AND ${won.sql}`,
+      ctx.orgId, slug, version, ...won.params),
     ...tree,
   ]);
+  if ((res[0].meta.changes ?? 0) === 0) throw await promoteRefusal(ctx, slug, version);
   await routeAi(ctx, { type: "doc_promoted", slug });
   return { slug, version, status: "promoted" };
 }
 
-/** Human confirmation: ratify an ADR draft. Rejects if missing or already ratified. */
+/** Human confirmation: ratify an ADR DRAFT. Refused if missing, already ratified, or rejected — only a draft moves. */
 export async function ratify_adr(ctx: TenantContext, id: number): Promise<{ id: number; status: "ratified" }> {
   const adr = await first<AdrRow>(ctx, `SELECT * FROM adrs WHERE id = ? AND org_id = ?`, id, ctx.orgId);
   if (!adr) throw new Error(`no such adr: ${id}`);
   if (adr.status === "ratified") throw new Error(`adr already ratified: ${id}`);
+  if (adr.status !== "draft") throw new Error(`cannot ratify adr ${id}: it is ${adr.status}`);
   // Ratifying closes its open risk (owner ruling Q37): superseded in the same batch, gone from Review and /adrs.
-  await batch(ctx, [
-    stmt(ctx, `UPDATE adrs SET status = 'ratified' WHERE id = ? AND org_id = ?`, id, ctx.orgId),
+  // Compare-and-set on `draft`: a reject that landed first wins, and this ratifies nothing.
+  const res = await batch(ctx, [
+    stmt(ctx, `UPDATE adrs SET status = 'ratified' WHERE id = ? AND org_id = ? AND status = 'draft'`, id, ctx.orgId),
     supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.adr(id)),
   ]);
+  if ((res[0].meta.changes ?? 0) === 0) {
+    const now = await first<AdrRow>(ctx, `SELECT * FROM adrs WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+    throw new Error(now?.status === "ratified" ? `adr already ratified: ${id}` : `cannot ratify adr ${id}: it is ${now?.status ?? "gone"}`);
+  }
   return { id, status: "ratified" };
 }
 
@@ -419,10 +482,15 @@ export async function reject_doc_version(
   if (!ver) throw new Error(`no such doc version: ${slug} v${version}`);
   if (ver.status === "rejected") return { slug, version, status: "rejected" }; // idempotent
   if (ver.status !== "staged") throw new Error(`cannot reject ${slug} v${version}: it is ${ver.status}`);
-  await batch(ctx, [
-    stmt(ctx, `UPDATE doc_versions SET status = 'rejected' WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version),
+  // Compare-and-set on `staged`: a promote that landed first wins, and this rejects nothing.
+  const res = await batch(ctx, [
+    stmt(ctx, `UPDATE doc_versions SET status = 'rejected' WHERE org_id = ? AND slug = ? AND version = ? AND status = 'staged'`, ctx.orgId, slug, version),
     supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.doc(slug, version)),
   ]);
+  if ((res[0].meta.changes ?? 0) === 0) {
+    const now = await first<{ status: string }>(ctx, `SELECT status FROM doc_versions WHERE org_id = ? AND slug = ? AND version = ?`, ctx.orgId, slug, version);
+    if (now?.status !== "rejected") throw new Error(`cannot reject ${slug} v${version}: it is ${now?.status ?? "gone"}`);
+  }
   return { slug, version, status: "rejected" };
 }
 
@@ -435,11 +503,15 @@ export async function reject_adr(ctx: TenantContext, id: number): Promise<{ id: 
   if (!adr) throw new Error(`no such adr: ${id}`);
   if (adr.status === "rejected") return { id, status: "rejected" }; // idempotent
   if (adr.status !== "draft") throw new Error(`cannot reject adr ${id}: it is ${adr.status}`);
-  // Rejecting closes its open risk too (Q37).
-  await batch(ctx, [
-    stmt(ctx, `UPDATE adrs SET status = 'rejected' WHERE id = ? AND org_id = ?`, id, ctx.orgId),
+  // Rejecting closes its open risk too (Q37). Compare-and-set on `draft`: a ratify that landed first wins.
+  const res = await batch(ctx, [
+    stmt(ctx, `UPDATE adrs SET status = 'rejected' WHERE id = ? AND org_id = ? AND status = 'draft'`, id, ctx.orgId),
     supersedeOpenSuggestions(ctx, REVIEW_ITEM, reviewRef.adr(id)),
   ]);
+  if ((res[0].meta.changes ?? 0) === 0) {
+    const now = await first<AdrRow>(ctx, `SELECT * FROM adrs WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+    if (now?.status !== "rejected") throw new Error(`cannot reject adr ${id}: it is ${now?.status ?? "gone"}`);
+  }
   return { id, status: "rejected" };
 }
 
@@ -461,9 +533,11 @@ export async function resolve_triage(
     // Already resolved — idempotent no-op, surface what it became.
     return { id, resolution: row.resolution ?? resolution, assigned_ref: row.assigned_ref };
   }
-  await run(
+  // Compare-and-set on `resolved = 0`: of a discard and an assign racing (or two of either), the first one stands and
+  // the other reports what the item became.
+  const res = await run(
     ctx,
-    `UPDATE needs_triage SET resolved = 1, resolved_at = ?, resolved_by = ?, resolution = ?, assigned_ref = ? WHERE id = ? AND org_id = ?`,
+    `UPDATE needs_triage SET resolved = 1, resolved_at = ?, resolved_by = ?, resolution = ?, assigned_ref = ? WHERE id = ? AND org_id = ? AND resolved = 0`,
     nowIso(),
     by,
     resolution,
@@ -471,6 +545,11 @@ export async function resolve_triage(
     id,
     ctx.orgId
   );
+  if ((res.meta.changes ?? 0) === 0) {
+    const now = await first<NeedsTriageRow>(ctx, `SELECT * FROM needs_triage WHERE id = ? AND org_id = ?`, id, ctx.orgId);
+    if (!now) throw new Error(`no such triage item: ${id}`);
+    return { id, resolution: now.resolution ?? resolution, assigned_ref: now.assigned_ref };
+  }
   return { id, resolution, assigned_ref };
 }
 
@@ -518,7 +597,9 @@ export interface AssignTarget {
  * anything back to the queue: what it REFUSES (a space that is not live, an archived
  * page) throws with the gate's reason — the route answers the person 400 and the item
  * stays unresolved. Idempotent-safe: a second assign on an already-resolved item
- * materializes nothing new.
+ * materializes nothing new; and the gate's replay ledger is keyed by the ITEM
+ * (`triageLedger`), so a retry after a write whose resolve never landed — or two
+ * assigns racing — replays the first one's write instead of making the thing twice.
  */
 export async function assign_triage(
   ctx: TenantContext,
@@ -543,8 +624,15 @@ export async function assign_triage(
   }
 
   const type: AssignType = target.type ?? "doc";
-  // A fresh ledger so the materialization is reconciled on its own merits (never a replay).
-  const ledger = { sessionId: crypto.randomUUID(), itemIndex: 0 };
+  // The ledger key is the ITEM's (stable across retries), so whatever the first assign wrote is what a retry gets back.
+  // A refusal is never ledgered, so placing the item again after one (another space) stages as usual.
+  const ledger = triageLedger(row);
+  // What the first assign made, when the gate answers this one as a replay (`unchanged` with no slug / id).
+  const replayed = async (): Promise<string | null> => {
+    const hit = await first<{ item_type: string; ref: string | null }>(ctx,
+      `SELECT item_type, ref FROM processed_items WHERE org_id = ? AND session_id = ? AND item_index = ?`, ctx.orgId, ledger.sessionId, ledger.itemIndex);
+    return hit ? `${hit.item_type}:${hit.ref ?? "unchanged"}` : null;
+  };
   let assigned_ref: string;
 
   if (type === "doc") {
@@ -558,11 +646,12 @@ export async function assign_triage(
     });
     const r = await ingestDocProposal(ctx, proposal, by, ledger);
     if (r.outcome === "refused") throw new Error(`could not place doc: ${r.reason}`);
-    assigned_ref = r.outcome === "written" ? `doc:${r.slug}@${r.version}` : `doc:${r.slug ?? proposal.slug}`;
+    assigned_ref = r.outcome === "written" ? `doc:${r.slug}@${r.version}`
+      : r.slug ? `doc:${r.slug}` : (await replayed()) ?? `doc:${proposal.slug}`;
   } else if (type === "adr") {
     const draft = AdrDraft.parse({ ...raw, confidence: "high" });
     const r = await ingestAdrDraft(ctx, draft, by, ledger);
-    assigned_ref = `adr:${r.id}`;
+    assigned_ref = r.id !== undefined ? `adr:${r.id}` : (await replayed()) ?? "adr:unchanged";
   } else {
     // Tags the PERSON picked must be on the org's list (the picker offers nothing else). With none
     // picked, the item's own tags go to the gate as they came: it keeps the ones on the list and
@@ -575,9 +664,14 @@ export async function assign_triage(
     const entry = FeedEntry.parse({ ...raw, tags: target.tags ?? (raw.tags as string[] | undefined) ?? [] });
     const r = await ingestFeedEntry(ctx, entry, by, ledger);
     if (r.outcome === "triaged") throw new Error(`could not place feed entry: ${r.reason}`);
-    assigned_ref = r.outcome === "written" ? `feed:${r.id}` : "feed:unchanged";
+    assigned_ref = r.outcome === "written" ? `feed:${r.id}` : (await replayed()) ?? "feed:unchanged";
   }
 
-  await resolve_triage(ctx, id, by, "assigned", assigned_ref);
-  return { id, resolution: "assigned", assigned_ref };
+  // Guarded: when the item was resolved meanwhile (a discard, another assign), this reports what it became.
+  const res = await resolve_triage(ctx, id, by, "assigned", assigned_ref);
+  return { id, resolution: res.resolution, assigned_ref: res.assigned_ref ?? "" };
 }
+
+/** The replay-ledger key of placing one Unplaced item: the item's own (its id and when it was held), the same on every
+ *  retry, in a namespace of its own (an agent's session ids are UUIDs; an import's are `import:<id>`). */
+const triageLedger = (row: Pick<NeedsTriageRow, "id" | "created_at">) => ({ sessionId: `triage:${row.id}:${row.created_at}`, itemIndex: 0 });

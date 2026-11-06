@@ -7,8 +7,12 @@
 //     real drag's release fires is swallowed (it is not an "open");
 //   • a claimed press never selects text or starts the browser's own drag;
 //   • Escape (the drag's alone) and pointercancel cancel; pointerup drops;
-//   • while a drag is on (and while its drop settles), paints are held — the DOM IS the drag state — and the paint
-//     that was held runs once it is over (`onIdle`).
+//   • from the PRESS on (not only once the slop is passed) until the drop settles, paints are held — the DOM IS the
+//     drag state, and a read landing between the press and the slop would otherwise replace the very row `begin`
+//     lifts — and the paint that was held runs once it is over (`onIdle`). A press that never became a drag releases
+//     them right after its click (so the click lands on the row that was pressed). Never held forever: a release the
+//     document missed (the button let go outside the window: the next move has no button down) or the window losing
+//     focus ends the press or cancels the drag.
 // One drag at a time across every engine.
 
 export const DRAG_SLOP = 5;
@@ -32,19 +36,25 @@ let swallowClick = false;
 const idlers: (() => void)[] = [];
 let installed: HTMLElement | null = null;
 
-/** Is a drag (or its drop's settling) on? main.ts holds every paint while it is. */
-export const dragging = (): boolean => live !== null && live.begun;
+/** Is a press, a drag, or its drop's settling on? main.ts holds every paint while it is. */
+export const dragging = (): boolean => live !== null;
+
+const idle = (): void => { for (const f of idlers) f(); };
 
 function finish(): void {
   live = null;
   document.documentElement.classList.remove("cnpy-grabbing");
-  for (const f of idlers) f();
+  idle();
 }
 
 function end(commit: boolean): void {
   const d = live;
   if (!d || d.settling) return;
-  if (!d.begun) { live = null; return; }            // a plain click: let it open what was pressed
+  if (!d.begun) {                                    // a plain click: let it open what was pressed
+    live = null;
+    setTimeout(idle, 0);                             // the held paint, once the click has landed on the pressed row
+    return;
+  }
   swallowClick = true;                               // the click this release fires is not an "open"
   setTimeout(() => { swallowClick = false; }, 0);
   d.settling = true;
@@ -58,6 +68,8 @@ function install(mount: HTMLElement): void {
   document.addEventListener("pointermove", (e) => {
     const d = live;
     if (!d || d.settling) return;
+    // No button down any more: the release happened where the document did not hear it (outside the window).
+    if (e.buttons === 0) { end(false); return; }
     if (!d.begun) {
       if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < DRAG_SLOP) return;
       d.begun = true;
@@ -74,6 +86,7 @@ function install(mount: HTMLElement): void {
   document.addEventListener("dragstart", (e) => { if (live) e.preventDefault(); });
   document.addEventListener("pointerup", () => end(true));
   document.addEventListener("pointercancel", () => end(false));
+  window.addEventListener("blur", () => end(false));  // the window lost focus mid-press: its release may never come
   // Escape mid-drag cancels the drag and nothing else (not the dialog or menu the list sits in): heard in the capture
   // phase, ahead of every other key handler.
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && live?.begun) { e.preventDefault(); e.stopImmediatePropagation(); end(false); } }, true);

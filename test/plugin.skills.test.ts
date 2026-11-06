@@ -13,7 +13,7 @@ const allowed = (text: string): string[] => (/^allowed-tools: (.*)$/m.exec(text)
 describe("the Trov plugin's skills and the organization a call acts in", () => {
   it("ships the eleven skills, at the version the release notes name", () => {
     expect(Object.keys(SKILLS).sort()).toEqual(["artifacts", "handoff", "link", "load-context", "my-work", "prompts", "read-plan", "record-session", "tickets", "trov", "update-plan"]);
-    expect(plugin.version).toBe("0.12.0");
+    expect(plugin.version).toBe("0.12.1");
   });
 
   // GitHub #183: `disable-model-invocation: true` kept these four from firing at a stopping point, but it also blocked a

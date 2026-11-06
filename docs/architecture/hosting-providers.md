@@ -39,9 +39,14 @@ host behind ONE provider interface. Four nouns (`shared/hosting.ts`, zod-free �
   and `providers/*` — must never import src/data/secrets.ts (`http.ts` carries this layer's own `scrub`).
 - **Reading** — normalised: hourly `hx_<metric>` points in `repo_metrics` (env = environment key, part = part key,
   complete hours only, `pollWindow`: the last 3 hours closed ≥ 15 min — first write wins, so a running hour is never
-  stored), deploys upserted into `hosting_deploys` (state moves building → ready), the last poll in
+  stored), deploys upserted into `hosting_deploys` (the state only moves FORWARD — `DEPLOY_STATE_RANK`: queued <
+  building < ready / error / canceled; a late queued or building signal never takes a settled deploy back, one
+  terminal state may follow another, and `ready_at` moves only with the state), the last poll in
   `hosting_poll_state` (outcome, scrubbed detail, the metrics the provider could not read and why, and the contiguous
-  COVERED interval: inside it, an hour with no point is a true zero).
+  COVERED interval: inside it, an hour with no point is a true zero). That row has three writers — the `:40` unit, a
+  provider webhook's nudge, an admin's Poll now — so its merge is a COMPARE-AND-SET (`writeState`: the write names
+  every column it read; moved under it → read and merge again), and a poll that finishes after a newer one adds its
+  window but keeps the newer poll's outcome.
 
 **Every provider fetch goes through `hostFetch`** (`src/hosting/http.ts`): https only, the hostname exactly one of the
 provider's `apiHosts` (refused BEFORE anything is sent), `redirect: "manual"` (a credential never crosses a redirect),
@@ -204,16 +209,19 @@ checklist and Test this part to the same status for every combination.
 The full reference is `repo-apps.md` › The `github` provider, GitHub deploy signals and deploy provenance. In short,
 for this layer:
 - **The `github` provider** (`src/hosting/providers/github.ts`, "GitHub deployments"): `credential: "github_app"`
-  (no connection method, no card, no checklist step, no Integrations slot; `via_github: true`; always live in
-  `hostingStatus`), `capabilities: { deploys: true, metrics: [] }`, `pollCost` 0 — the framework never resolves a
+  (no connection method, no card, no checklist step, no Integrations slot; `via_github: true`; in `hostingStatus` it
+  is as connected as the org's GitHub capture — `GithubLink` / `githubLinkOf`: a live unsuspended App binding or a
+  repository's own webhook → connected ("Through GitHub"), the App uninstalled on GitHub → Removed, else Not
+  connected; the setup DTO carries it as `github_link`, the dashboard reads it in `hostingReads`), `capabilities: { deploys: true, metrics: [] }`, `pollCost` 0 — the framework never resolves a
   credential for it and never runs its `poll`. Part settings: EXACTLY one of `environment`, `check_app` +
   `check_name`, `workflow` (`checkSettings`). Its deploys are written from the webhook capture
   (`src/hosting/github-deploys.ts`, `source = 'github'`) only through the part's own setting (`signalMatchesPart`).
 - **`hosting_deploys` columns (0070)**: `source`, `reason` (scrubbed BEFORE the cut to 140, an `error` deploy only —
   `validatePoll`), `sha_source` (`provider` | `joined` | NULL), `rolled_back_from`; ONE upsert,
   `src/hosting/deploy-store.ts` (secret-free; a provider sha replaces a joined one, never the reverse).
-- **After a poll**: the one-candidate commit join (`src/hosting/sha-join.ts`) and, for a new production `ready` sha,
-  the one-compare rollback check (`src/hosting/rollback.ts`, `ROLLBACK_COMPARE_COST` in `providerPollCost`).
+- **After a poll**: the one-candidate commit join (`src/hosting/sha-join.ts`) and, for a production deploy THIS write
+  made `ready` or gave a new commit (`upsertDeployWrites`' `readyChanged` — a re-reported ready deploy does not run it
+  again), the one-compare rollback check (`src/hosting/rollback.ts`, `ROLLBACK_COMPARE_COST` in `providerPollCost`).
   Cloudflare reads the commit from the Workers Builds API (`builds?version_ids=`; refused → the note "commit: the
   token needs Workers CI Read" in `PollResult.notes`, and the join).
 - **Previews**: a Vercel or Netlify PRODUCTION part also reads its previews (a second list, `pollCost` 2 each),

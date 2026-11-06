@@ -73,6 +73,7 @@ export const SprintRow = z.object({
   lead: z.string().nullable(),              // person handle — 0025
   domain: SprintDomain.nullable(),          // 0025
   start_date: z.string().nullable(),        // the DTO's `start`; YYYY-MM-DD or NULL — 0035
+  completed_at: z.string().nullable().optional(), // when it became `done` (NULL while it is not) — 0088
 });
 
 export const SprintResourceRow = z.object({

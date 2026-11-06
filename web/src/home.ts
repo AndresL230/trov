@@ -170,11 +170,13 @@ function refsAsText(text: string, cites: readonly RefView[]): string {
 }
 
 export function homeAnswerView(a: HomeAnswerView): string {
+  const err = `<div class="hm-ans-err">${markShape("diamond", "var(--red)", 8)}<span>${esc(a.error ?? "Couldn't get an answer.")}</span></div>`;
   const body = a.phase === "thinking"
     ? `<div class="hm-ans-wait"><span class="hm-dots" aria-hidden="true"><span></span><span></span><span></span></span>Reading your organization…</div>`
     : a.phase === "error" && !a.text
-      ? `<div class="hm-ans-err">${markShape("diamond", "var(--red)", 8)}<span>${esc(a.error ?? "Couldn't get an answer.")}</span></div>`
-      : `<div class="hm-ans-text">${renderMarkdown(refsAsText(a.text, a.cites))}${a.phase === "streaming" ? `<span class="hm-caret" aria-hidden="true"></span>` : ""}</div>`;
+      ? err
+      // An answer cut off part-way keeps its words and says it stopped (Ask does the same).
+      : `<div class="hm-ans-text">${renderMarkdown(refsAsText(a.text, a.cites))}${a.phase === "streaming" ? `<span class="hm-caret" aria-hidden="true"></span>` : ""}</div>${a.phase === "error" ? err : ""}`;
   const src = a.cites.slice(0, 6).map((c) => c.href
     ? (/^https?:/i.test(c.href)
       ? `<a class="hm-src" href="${attr(c.href)}" target="_blank" rel="noopener noreferrer">${esc(c.title)}</a>`

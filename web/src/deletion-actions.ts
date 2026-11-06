@@ -39,19 +39,25 @@ export function deletionFailure(e: unknown): string {
 export function createDeletion(h: DeletionHost) {
   const focus = (sel: string): void => { h.mount.querySelector<HTMLElement>(sel)?.focus(); };
 
-  /** Settings: read what deleting the account would do (shown in the tile, and needed to open the confirmation). */
-  async function loadAccount(): Promise<void> {
-    const d = h.state.acctDelete;
-    if (d.preview.status === "loading") return;
-    h.state.acctDelete = { ...d, preview: { status: "loading", data: d.preview.data } };
-    h.rerender();
-    try {
-      h.state.acctDelete = { ...h.state.acctDelete, preview: { status: "ok", data: await getAccountDeletion() } };
-    } catch (e) {
-      if (e instanceof Unauthorized) { h.unauth(e); return; }
-      h.state.acctDelete = { ...h.state.acctDelete, preview: { status: "error", data: h.state.acctDelete.preview.data } };
-    }
-    h.rerender();
+  /** Settings: read what deleting the account would do (shown in the tile, and needed to open the confirmation).
+   *  One read at a time, shared: Delete clicked while the tile's read is still out waits for THAT read and opens
+   *  when it lands (it was dropped: the second call returned at once, with no preview yet). */
+  let accountLoad: Promise<void> | null = null;
+  function loadAccount(): Promise<void> {
+    if (accountLoad) return accountLoad;
+    accountLoad = (async () => {
+      const d = h.state.acctDelete;
+      h.state.acctDelete = { ...d, preview: { status: "loading", data: d.preview.data } };
+      h.rerender();
+      try {
+        h.state.acctDelete = { ...h.state.acctDelete, preview: { status: "ok", data: await getAccountDeletion() } };
+      } catch (e) {
+        if (e instanceof Unauthorized) { h.unauth(e); return; }
+        h.state.acctDelete = { ...h.state.acctDelete, preview: { status: "error", data: h.state.acctDelete.preview.data } };
+      }
+      h.rerender();
+    })().finally(() => { accountLoad = null; });
+    return accountLoad;
   }
 
   async function loadOrg(slug: string): Promise<boolean> {

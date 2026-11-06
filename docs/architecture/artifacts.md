@@ -25,7 +25,9 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   (`ArtifactError` codes → 404/403/400/409/413/410); every surface calls it, none re-implements a rule.
 - **Rules**: create = v1 `draft`; draft ⇄ published by anyone who can READ the page; a later version →
   `published` and clears `ratified_*`; → draft clears `ratified_*`; an identical sha256 to the current version is
-  a no-op (`unchanged`). Only the AUTHOR may set `private`; a private page is readable (and writable) only by its
+  a no-op (`unchanged`). A PATCH is compare-and-set on everything it read (title, area, repo, visibility, status,
+  current version, not deleted): a ratify, a new version or another PATCH that landed since is never silently undone —
+  the PATCH is `409 conflict` ("the page changed — reload and retry") with nothing written. Only the AUTHOR may set `private`; a private page is readable (and writable) only by its
   author; a binary page whose upload has not landed (`current_version = 0`) exists to NO reader. Those three and
   a missing slug are ONE byte-identical not-found on every surface (HTTP, raw, MCP, query, list) — pinned by
   `test/artifacts.security-access.test.ts`. Slugs are one namespace, so allocating `<slug>-2` does reveal that a
@@ -80,7 +82,10 @@ agents is `docs/artifact-contract.md` (referenced by `AGENTS.md` and the `trov` 
   only, nothing stored — a Worker cannot resolve DNS first, so rebinding is out of its reach).
 - **Two token-authenticated routes sit in `src/index.ts` BEFORE the session-gated app** (like `/u/`): the upload
   `PUT /api/artifacts/upload/:token` (`src/artifacts/upload.ts`: single use, 5 minutes, bound to principal /
-  page / kind / size / sha256; stored only as a hash; a length or hash mismatch leaves it retryable — the same
+  page / kind / size / sha256; stored only as a hash; a length or hash mismatch leaves it retryable, and so does a
+  version that fails to land after the bytes reached R2 — the route frees those bytes first when nothing else holds
+  them (`sweepR2`, checked while the token is still claimed, so it does not count itself; D1 decided, then R2), then
+  the claim is released; the same
   route takes doc-image tokens and a handoff's uploaded prompt, `handoffs-prompts.md`) and the
   agent download `GET /api/artifacts/download/:token` (`src/artifacts/download.ts`: stateless HMAC over
   {handle, page, version, exp} keyed from COOKIE_SECRET with its own purpose label, 5 minutes, reusable, the

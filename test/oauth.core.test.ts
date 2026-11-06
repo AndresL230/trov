@@ -12,7 +12,7 @@ import {
 } from "../src/auth/oauth";
 
 import { MCP_INVALID_TOKEN_HINT, MCP_UNAUTHORIZED_HINT } from "@shared/error-hints";
-import { platformCtx, tenantCtx, ORG_A } from "./helpers/tenant";
+import { platformCtx, racing, tenantCtx, ORG_A } from "./helpers/tenant";
 const NOW = Date.parse("2026-09-24T12:00:00.000Z");
 
 describe("0029_oauth schema", () => {
@@ -183,6 +183,39 @@ describe("checkAuthorizeRequest", () => {
   it("canonicalAuthorizeQuery keeps only the authorize keys, in a fixed order, skipping empties", () => {
     const q = new URLSearchParams({ state: "s", junk: "x", client_id: "c", response_type: "code", scope: "" });
     expect(canonicalAuthorizeQuery(q)).toBe("response_type=code&client_id=c&state=s");
+  });
+});
+
+describe("issueAuthorization — consent is one batch", () => {
+  const counts = async (person: string) => ({
+    grants: (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM oauth_grants WHERE person = ?`, person))!.n,
+    codes: (await first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM oauth_codes WHERE person = ?`, person))!.n,
+    orgs: await all<{ org_id: string }>(env.DB, `SELECT org_id FROM oauth_grant_orgs WHERE person = ? ORDER BY org_id`, person),
+  });
+
+  it("the grant, its code and a row for each organization consented to — the code carries the grant's id", async () => {
+    await seedPerson("real-user");
+    const c = await client();
+    const { challenge } = await pkce();
+    const check = await checkAuthorizeRequest(platformCtx(), authQuery(c, challenge), ORIGIN);
+    if (!check.ok) throw new Error("expected ok");
+    const { grantId } = await issueAuthorization(await tenantCtx("real-user"), { client: c, params: check.params, nowMs: NOW, orgs: [await tenantCtx("real-user", undefined, { orgId: "org_b" })] });
+    expect(await counts("real-user")).toEqual({ grants: 1, codes: 1, orgs: [{ org_id: "org_b" }, { org_id: ORG_A }] });
+    expect(await first(env.DB, `SELECT grant_id FROM oauth_codes WHERE person = 'real-user'`)).toEqual({ grant_id: grantId });
+    expect(await first(env.DB, `SELECT COUNT(*) AS n FROM oauth_grant_orgs WHERE grant_id = ?`, grantId)).toEqual({ n: 2 });
+  });
+
+  it("any statement failing writes nothing: no connection left with no code to finish it", async () => {
+    await seedPerson("real-user");
+    const c = await client();
+    const { challenge } = await pkce();
+    const check = await checkAuthorizeRequest(platformCtx(), authQuery(c, challenge), ORIGIN);
+    if (!check.ok) throw new Error("expected ok");
+    // The app's registration goes in the instant before the write: the code (which references it) cannot be stored.
+    const e2 = racing(() => env.DB.prepare(`DELETE FROM oauth_clients WHERE client_id = ?`).bind(c.client_id).run());
+    const ctx = await tenantCtx("real-user", undefined, { env: e2 });
+    await expect(issueAuthorization(ctx, { client: c, params: check.params, nowMs: NOW, orgs: [await tenantCtx("real-user", undefined, { orgId: "org_b", env: e2 })] })).rejects.toThrow();
+    expect(await counts("real-user")).toEqual({ grants: 0, codes: 0, orgs: [] });
   });
 });
 
@@ -362,6 +395,20 @@ describe("pruneOAuth", () => {
     expect(await getClient(platformCtx(), staleOrphan.client_id)).toBeNull();
     expect(await getClient(platformCtx(), a.c.client_id)).not.toBeNull();
     expect(await grantRow(a.grantId)).not.toBeNull();
+  });
+  it("revokes a consent whose code was never exchanged, once its hour is up — it leaves Connected apps and frees its agent-connection slots", async () => {
+    const abandoned = await authorized("real-user");
+    const live = await connected("real-user");
+    const slots = () => first<{ n: number }>(env.DB, `SELECT COUNT(*) AS n FROM oauth_grant_orgs WHERE person = 'real-user'`);
+    expect(await slots()).toEqual({ n: 2 });
+    // Inside the hour the app may still be on its way back: nothing is touched.
+    await pruneOAuth(platformCtx(), NOW + 30 * 60_000);
+    expect((await grantRow(abandoned.grantId))?.revoked_at).toBeNull();
+    await pruneOAuth(platformCtx(), NOW + 2 * 3_600_000);
+    expect(await grantRow(abandoned.grantId)).toEqual({ revoked_at: expect.any(String), revoked_reason: "abandoned" });
+    expect(await grantRow(live.grantId)).toEqual({ revoked_at: null, revoked_reason: null });
+    expect((await listGrants(platformCtx(), "real-user")).map((g) => g.id)).toEqual([live.grantId]);
+    expect(await slots()).toEqual({ n: 1 });
   });
   it("keeps rotated refresh tokens until expiry so late reuse is still detected", async () => {
     const a = await connected();

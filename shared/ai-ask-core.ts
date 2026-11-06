@@ -280,6 +280,10 @@ export type AskActivityIcon = (typeof ASK_ACTIVITY_ICONS)[number];
 
 export const ASK_ACTION_KINDS = ["ticket", "handoff", "doc_edit", "move", "publish", "sprint", "other"] as const;
 export type AskActionKind = (typeof ASK_ACTION_KINDS)[number];
+/** A turn that failed AFTER some of its Auto writes ran: those changes stay, each with its Undo. The server sends it as the
+ *  `failed` error's message; the client recognises it to say so instead of "Nothing was changed". */
+export const ASK_CHANGES_KEPT = "Something went wrong. The changes Trov already made are kept, each with its Undo. Try again.";
+
 export const ASK_ACTION_STATES = ["proposed", "waiting", "running", "confirmed", "auto", "undone", "cancelled", "failed", "expired"] as const;
 export type AskActionState = (typeof ASK_ACTION_STATES)[number];
 

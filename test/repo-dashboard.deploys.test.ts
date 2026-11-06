@@ -97,7 +97,7 @@ describe("environment cards", () => {
     await backend("z", "building", "zzzzzzz9", 5);
     const d = await dash();
     const [staging] = ok(d.environments);
-    expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral" });
+    expect(staging).toMatchObject({ pill: "LIVE", tone: "good" }); // a deploy on record: not Unknown (shared/env-verdict-core.ts)
     expect(staging.parts[1]).toMatchObject({ part: "backend", result: "running", deployedAt: at(5) });
     expect(d.deploys).toEqual({ status: "empty" });
   });
@@ -154,13 +154,14 @@ describe("environment cards", () => {
 });
 
 // M7: HEALTHY is a claim about CHECKS. A deploy that landed says the deploy
-// landed; it says nothing about whether CI on that head is green.
+// landed; it says nothing about whether CI on that head is green. The pill ranks with the Overview's ONE function
+// (shared/env-verdict-core.ts): a landed deploy with no checks is LIVE — never HEALTHY.
 describe("the environment pill", () => {
-  it("a successful deploy with no checks captured is UNKNOWN, not HEALTHY — but the section IS connected", async () => {
+  it("a successful deploy with no checks captured is LIVE, not HEALTHY — and the section IS connected", async () => {
     await stack();
     await backend("1", "ready", "abc", 20);
     const [staging] = ok((await dash()).environments);
-    expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral", ci: "No checks captured" });
+    expect(staging).toMatchObject({ pill: "LIVE", tone: "good", ci: "No checks captured" });
     expect(staging.parts[1].result).toBe("ok");
   });
 
@@ -180,7 +181,7 @@ describe("the environment pill", () => {
     await backend("1", "error", "abc", 20);
     expect(ok((await dash()).environments)[0]).toMatchObject({ pill: "FAILING", tone: "bad" });
     await backend("2", "canceled", "def", 10);
-    expect(ok((await dash()).environments)[0]).toMatchObject({ pill: "UNKNOWN", tone: "neutral" });
+    expect(ok((await dash()).environments)[0]).toMatchObject({ pill: "LIVE", tone: "good" });
   });
 
   it("checks alone, with no deploy at all, still connect the section", async () => {

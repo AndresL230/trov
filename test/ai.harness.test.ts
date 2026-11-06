@@ -16,6 +16,7 @@ import { newBudget, CRON_SUBREQUEST_BUDGET, CRON_WALL_BUDGET_MS } from "../src/r
 import { captureDelivery } from "../src/webhook";
 import { create_ticket } from "../src/tools/tickets";
 import { markDirty } from "../src/data/ai-dirty";
+import { setAiAutomation } from "../src/data/ai";
 import { batch as sqlBatch } from "../src/data/sql";
 import { orgRowDeletes } from "../src/deletion/tables";
 import { all, first, run } from "./helpers/db";
@@ -276,7 +277,84 @@ describe("THE BATCH API: submitted at the end of a tick, collected on a later on
     s.batch.gone = true;
     await pass(s, [drift], later(10 * MIN));
     expect(await first(env.DB, `SELECT state FROM ai_batches`)).toEqual({ state: "lost" });
-    expect(await dirtyRow(ORG_A, "doc_drift", "auth")).toMatchObject({ attempts: 1, last_error: "batch_lost", last_run_at: null });
+    // Due again — and the same tick hands it to a new batch: held (0088), with the lost batch's attempt counted.
+    expect(await dirtyRow(ORG_A, "doc_drift", "auth")).toMatchObject({ attempts: 1, last_error: "batch_lost" });
+    expect((await first<{ held_at: string | null }>(env.DB, `SELECT held_at FROM ai_dirty WHERE org_id = ? AND scope = 'doc_drift' AND scope_key = 'auth'`, ORG_A))!.held_at).not.toBeNull();
+  });
+
+  it("recording an accepted batch fails: its scopes were HELD before the submit, so no tick submits (and bills) them again — until the hold's time is up", async () => {
+    await markRow(ORG_A, "doc_drift", "auth", new Date(Date.now() - 31 * 24 * 60 * MIN).toISOString());
+    const s = stubProviders();
+    const drift = claudeJob("doc_drift", { batch: true, name: "test.drift" });
+    await env.DB.prepare(`CREATE TRIGGER t_no_batch BEFORE INSERT ON ai_batches BEGIN SELECT RAISE(ABORT, 'record failed'); END`).run();
+    try {
+      expect((await pass(s, [drift], later(0))).batched).toBe(1);
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS t_no_batch`).run();
+    }
+    expect(s.batchCreates).toBe(1);
+    expect(await count(`SELECT COUNT(*) AS n FROM ai_batches`)).toBe(0);
+    expect((await first<{ held_at: string | null }>(env.DB, `SELECT held_at FROM ai_dirty WHERE org_id = ? AND scope = 'doc_drift'`, ORG_A))!.held_at).not.toBeNull();
+    await pass(s, [drift], later(10 * MIN));
+    expect(s.batchCreates).toBe(1); // held: not submitted twice
+    // Past the hold's time nothing will ever settle it: it is due again (one attempt spent), and submitted again.
+    await pass(s, [drift], later(49 * 60 * MIN));
+    expect(s.batchCreates).toBe(2);
+    expect(await dirtyRow(ORG_A, "doc_drift", "auth")).toMatchObject({ attempts: 1, last_error: "batch_lost" });
+  });
+
+  it("a collect that dies before closing the batch: the next one writes and meters nothing twice", async () => {
+    await markRow(ORG_A, "doc_drift", "auth", new Date(Date.now() - 31 * 24 * 60 * MIN).toISOString());
+    const s = stubProviders();
+    const writes: string[] = [];
+    const drift = claudeJob("doc_drift", { batch: true, name: "test.drift" });
+    const tracking: AiJob = { ...drift, write: async (ctx, items, out, meta) => { writes.push(ctx.orgId); return drift.write(ctx, items, out, meta); } };
+    await pass(s, [tracking], later(0));
+    const reqs = await all<{ request_id: string }>(env.DB, `SELECT request_id FROM ai_batch_requests`);
+    s.batch.ended = true;
+    s.batch.results = reqs.map((q) => succeededLine(q.request_id, JSON.stringify({ items: [{ key: "auth", text: "drifted" }] })));
+    // Closing the batch fails (the Worker dying there, in effect): the result was written once.
+    await env.DB.prepare(`CREATE TRIGGER t_no_close BEFORE UPDATE OF state ON ai_batches BEGIN SELECT RAISE(ABORT, 'close failed'); END`).run();
+    try {
+      await pass(s, [tracking], later(10 * MIN));
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS t_no_close`).run();
+    }
+    expect(writes).toEqual([ORG_A]);
+    expect(await first(env.DB, `SELECT state FROM ai_batches`)).toEqual({ state: "submitted" });
+    const meters = await count(`SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ?`, ORG_A);
+    await pass(s, [tracking], later(20 * MIN));
+    expect(writes).toEqual([ORG_A]); // not again
+    expect(await count(`SELECT COALESCE(SUM(count), 0) AS n FROM org_usage_daily WHERE org_id = ?`, ORG_A)).toBe(meters); // nor metered again
+    expect(await first(env.DB, `SELECT state FROM ai_batches`)).toEqual({ state: "collected" });
+  });
+
+  it("a batch still open past its age is given up as `lost`: its scopes are due again", async () => {
+    await markRow(ORG_A, "doc_drift", "auth", new Date(Date.now() - 31 * 24 * 60 * MIN).toISOString());
+    const s = stubProviders();
+    const drift = claudeJob("doc_drift", { batch: true, name: "test.drift" });
+    await pass(s, [drift], later(0));
+    s.batch.ended = false; // the provider never says it ended
+    await pass(s, [drift], later(8 * 24 * 60 * MIN));
+    expect(await first(env.DB, `SELECT state FROM ai_batches WHERE id = ?`, s.batch.id)).toEqual({ state: "lost" });
+    expect((await dirtyRow(ORG_A, "doc_drift", "auth"))!.attempts).toBe(1);
+  });
+
+  it("turning the org's AI switch OFF drops what was pending, so turning it on starts from the next writes (ai.md)", async () => {
+    const at = new Date(Date.now() - 31 * 24 * 60 * MIN).toISOString();
+    await markRow(ORG_A, "doc_drift", "auth", at); // dirty
+    await markRow(ORG_A, "repo", REPO, at);
+    await run(env.DB, `UPDATE ai_dirty SET last_run_at = ? WHERE org_id = ? AND scope = 'repo'`, new Date().toISOString(), ORG_A); // clean
+    await setAiAutomation(systemCtx(ORG_A), false);
+    try {
+      expect(await dirtyRow(ORG_A, "doc_drift", "auth")).toBeNull();
+      expect(await dirtyRow(ORG_A, "repo", REPO)).not.toBeNull(); // a clean scope keeps its row
+    } finally {
+      await setAiAutomation(systemCtx(ORG_A), true);
+    }
+    const s = stubProviders();
+    await pass(s, [claudeJob("doc_drift", { batch: true, name: "test.drift" })], later(0));
+    expect(s.batchCreates).toBe(0); // nothing marked before the switch went off runs
   });
 });
 

@@ -30,6 +30,17 @@ export const LINK_DRAFT_TTL_MS = 60 * 60 * 1000;
 export const LINK_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 export const LINK_OPEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const LINK_IDLE_MS = 12 * 60 * 60 * 1000;
+
+/** `LINK_LIVE_STATES` as an SQL list — every statement that means "a live link" spells it with this. */
+export const LINK_LIVE_SQL = `(${LINK_LIVE_STATES.map((s) => `'${s}'`).join(", ")})`;
+/** SQL: the newest sign of life on link row `a` — its opening, or either side's agent checking, joining or writing. */
+const linkLastSign = (a: string) => `max(COALESCE(${a}.decided_at, ''), COALESCE(${a}.requester_seen_at, ''), COALESCE(${a}.recipient_seen_at, ''))`;
+/** SQL: link row `a` is OPEN but IDLE — no sign of life since `cut` (a bound ISO time: now − LINK_IDLE_MS). */
+export const linkIdleSql = (a: string, cut: string) => `(${a}.state = 'open' AND ${linkLastSign(a)} < ${cut})`;
+/** SQL: link row `a` is OPEN and still within its time — not past `expires_at` (`now`, a bound ISO time) and not idle
+ *  since `cut`. The ONE predicate the note writer and the inbox read by; the cron's `expireDueLinks` ends the rest. */
+export const linkOpenSql = (a: string, now: string, cut: string) =>
+  `(${a}.state = 'open' AND ${a}.expires_at > ${now} AND ${linkLastSign(a)} >= ${cut})`;
 /** Notes handed over by one inbox read; the rest wait for the next. */
 export const LINK_INBOX_BATCH = 5;
 /** The prefix of an Ask thread's session (`ask-thread-<id>`): written only by Ask, refused over MCP. */

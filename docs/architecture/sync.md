@@ -86,7 +86,7 @@ the panel says "which part was not recorded" — never an invented code, never a
 
 | `status` | Means |
 |---|---|
-| `running` | In progress. `updated_at` is its heartbeat: written at every phase change, and at most once a second inside a phase. |
+| `running` | In progress. `updated_at` is its heartbeat: written at every phase change, at most once a second inside a phase, and every `SYNC_HEARTBEAT_MS` (30 s) while the closing reconcile runs — it reports nothing of its own and can outlast `SYNC_STALE_MS`, so without the beat another start would take the run for abandoned and its close would write to nothing. |
 | `ok` | Finished; nothing failed. |
 | `partial` | Finished, but one or more parts of the closing refresh failed (`failures`: `reconcile:<part>`). |
 | `failed` | Stopped: GitHub could not be read (`list_prs` / `list_issues`, with GitHub's status), or the batch threw (`unexpected`). Nothing from that batch was written. |
@@ -118,7 +118,7 @@ its last report — as "did not finish", with Sync now available again. It does 
 
 | Route | Gate | Answers |
 |---|---|---|
-| `POST /api/o/:slug/admin/backfill` (alias `/admin/backfill`) | admin or owner | One batch. Body `{ batch, of, start?, run? }`: `start: true` begins a new run (409 `{ error: "sync_running", run }` if one is live); `run: <id>` continues it (it must be live and the caller's). A body with neither continues the caller's own live run or starts one. 200: the batch's counts as before (`captured`, `unchanged`, `summarized`, `summaryBudgetExhausted`, …, and `repo` on the batch that reconciled) plus `run: SyncRunView` and `summaries: SyncSummariesView`. 503 `{ error }` when there is no repository or no credential (`githubCredentialSource` — no run is recorded) or GitHub refused a list (`run` is the failed run). 502 if the batch threw. 403 for a member. |
+| `POST /api/o/:slug/admin/backfill` (alias `/admin/backfill`) | admin or owner | One batch. Body `{ batch, of, start?, run? }`: `start: true` begins a new run (409 `{ error: "sync_running", run }` if one is live); `run: <id>` continues it (it must be live and the caller's; the next batch is CLAIMED by a compare-and-set on the batch number, so two requests continuing at once — a double click, a retried POST — run it once and the other gets 409 `sync_running`). A body with neither continues the caller's own live run or starts one. 200: the batch's counts as before (`captured`, `unchanged`, `summarized`, `summaryBudgetExhausted`, …, and `repo` on the batch that reconciled) plus `run: SyncRunView` and `summaries: SyncSummariesView`. 503 `{ error }` when there is no repository or no credential (`githubCredentialSource` — no run is recorded) or GitHub refused a list (`run` is the failed run). 502 if the batch threw. 403 for a member. |
 | `GET /api/o/:slug/sync` (alias `/api/sync`) | any member | `SyncStatusView`: `repo`, `admin`, `blocked` (`no_repo` / `no_token` = no credential of either kind / `running` / null), `via` (`app` / `token` / null — what a sync would read with), `connect` (`app` when the GitHub App is configured on this deployment, else `token`), `wrong_account` (the account the org's App installation is on when it does not own `repo`, else null), `running`, `last`, `summaries` (status, used, cap, remaining, pending, per_run), `refreshed_at`. A non-member gets the tenant 404. |
 
 With no credential the panel sends an admin where **this deployment** connects GitHub — the same test

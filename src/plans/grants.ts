@@ -21,8 +21,8 @@ import {
 import { cleanPlan, cleanOverrides, PlanError } from "./state";
 import { grantGiftStmts } from "./gifts";
 
-export type GrantErrorCode = "invalid_grant" | "no_such_person" | "not_found" | "grant_used";
-export const GRANT_ERROR_STATUS: Record<GrantErrorCode, 400 | 404 | 409> = { invalid_grant: 400, no_such_person: 404, not_found: 404, grant_used: 409 };
+export type GrantErrorCode = "invalid_grant" | "no_such_person" | "not_found" | "grant_used" | "grant_paid";
+export const GRANT_ERROR_STATUS: Record<GrantErrorCode, 400 | 404 | 409> = { invalid_grant: 400, no_such_person: 404, not_found: 404, grant_used: 409, grant_paid: 409 };
 export class GrantError extends Error {
   constructor(readonly code: GrantErrorCode, message?: string) { super(message ?? code); }
 }
@@ -187,17 +187,31 @@ export async function mailGrant(env: Env, p: PlatformContext, grant: Pick<Platfo
   await sendGrantNotice(env, p, { grantId: grant.id, email: grant.email, granterHandle: byPerson ? grant.granted_by : null, planName: def.name, planDescription: def.description, origin, fetchImpl, giftDays: grant.gift_days ?? null });
 }
 
+/** SQL, true while a grant was PAID for and its subscription can still charge (its mirror has not ended). */
+const PAID_LIVE = `(org_grants.source = 'billing' AND EXISTS (SELECT 1 FROM billing_subscriptions b
+  WHERE b.subscription_id = org_grants.external_ref AND b.plan_status <> 'canceled'))`;
+
 /** Revoke an UNUSED grant (an expired one too). A used one is 409 `grant_used`: the org exists, and
- *  suspending or re-planning it is done on the org. Audited as `grant.revoke`. */
-export async function revokeGrant(p: PlatformContext, id: number): Promise<PlatformGrant> {
+ *  suspending or re-planning it is done on the org. Audited as `grant.revoke`.
+ *  `keepPaid` (the superadmin's Revoke): a grant someone PAID for whose subscription still charges is refused,
+ *  409 `grant_paid` — revoking it would leave the card charged for nothing. Cancel the subscription in Stripe;
+ *  its webhook then revokes the grant itself (billing, which calls this without `keepPaid`). */
+export async function revokeGrant(p: PlatformContext, id: number, opts: { keepPaid?: boolean } = {}): Promise<PlatformGrant> {
   const at = nowIso();
   const [res] = await batch(p, [
-    stmt(p, `UPDATE org_grants SET status = 'revoked', revoked_at = ?, revoked_by = ? WHERE id = ? AND status = 'unused'`, at, p.actor, id),
+    stmt(p, `UPDATE org_grants SET status = 'revoked', revoked_at = ?, revoked_by = ? WHERE id = ? AND status = 'unused' AND (? = 0 OR NOT ${PAID_LIVE})`,
+      at, p.actor, id, opts.keepPaid ? 1 : 0),
     stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT NULL, ?, 'grant.revoke', ?, '{}', ? WHERE changes() > 0`, p.actor, `grant:${id}`, at),
   ]);
   const grant = await getGrant(p, id);
   if (!grant) throw new GrantError("not_found");
-  if ((res.meta.changes ?? 0) === 0) throw new GrantError(grant.status === "used" ? "grant_used" : "not_found");
+  if ((res.meta.changes ?? 0) === 0) {
+    if (grant.status === "used") throw new GrantError("grant_used");
+    if (grant.status !== "revoked" && grant.source === "billing") {
+      throw new GrantError("grant_paid", "this grant was paid for through Stripe and its subscription still charges: cancel the subscription in Stripe, and the grant is revoked by itself");
+    }
+    throw new GrantError("not_found");
+  }
   return grant;
 }
 
@@ -229,10 +243,18 @@ export async function usableGrants(p: PlatformContext, handle: string): Promise<
  * writes the row: `used` when the grant is still usable — and, when it is not (used by a double submit,
  * revoked or expired since it was read), a status the table's CHECK (`org_grant_usable`) refuses, which
  * fails the statement and with it the whole batch. So one grant makes one org, with no window between "check" and "use".
+ *
+ * A PAID grant whose subscription has ENDED is not usable either, read here at write time: billing writes the
+ * mirror's `canceled` (src/billing/sync.ts `applySubscription`) BEFORE it revokes the grant, so a buyer naming
+ * their org between the two would otherwise get an org on a plan nothing pays for. Either the org was made
+ * first — its link is live, and the same sync then finds it and moves it to Free — or it is refused here.
  */
 export const consumeStmt = (p: PlatformContext, grantId: number, handle: string, orgId: string, at: string): Stmt =>
   stmt(p, `UPDATE org_grants SET
-             status = CASE WHEN status = 'unused' AND (expires_at IS NULL OR expires_at > ?1) THEN 'used' ELSE 'spent' END,
+             status = CASE WHEN status = 'unused' AND (expires_at IS NULL OR expires_at > ?1)
+                            AND NOT (source = 'billing' AND EXISTS (SELECT 1 FROM billing_subscriptions b
+                                       WHERE b.subscription_id = org_grants.external_ref AND b.plan_status = 'canceled'))
+                       THEN 'used' ELSE 'spent' END,
              used_at = ?1, used_by = ?2, used_org = ?3
             WHERE id = ?4`, at, handle, orgId, grantId);
 

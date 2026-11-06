@@ -549,14 +549,15 @@ export async function finishImport(ctx: TenantContext, id: number, by: string, r
 interface Target { id: number; slug: string; version: number }
 
 /** The import's versions still waiting: staged, the doc's newest staged one, newer than its live version — in the
- *  order they were staged (parents first). A newer change on top of one (an agent's) is what Review shows, so the
- *  import's own is left alone. */
-const waitingTargets = (ctx: TenantContext, id: number, limit: number): Promise<Target[]> =>
+ *  order they were staged (parents first), after the version row `after` (Approve all's cursor; 0 = from the start).
+ *  A newer change on top of one (an agent's) is what Review shows, so the import's own is left alone. */
+const waitingTargets = (ctx: TenantContext, id: number, limit: number, after = 0): Promise<Target[]> =>
   all<Target>(ctx,
     `SELECT v.id AS id, v.slug AS slug, v.version AS version FROM doc_versions v JOIN docs d ON d.org_id = ? AND d.slug = v.slug
       WHERE v.org_id = ? AND v.import_id = ? AND v.status = 'staged' AND v.version > d.current_version AND d.archived_at IS NULL
         AND v.version = (SELECT MAX(w.version) FROM doc_versions w WHERE w.org_id = ? AND w.slug = v.slug AND w.status = 'staged')
-      ORDER BY v.id LIMIT ${limit}`, ctx.orgId, ctx.orgId, id, ctx.orgId);
+        AND v.id > ?
+      ORDER BY v.id LIMIT ${limit}`, ctx.orgId, ctx.orgId, id, ctx.orgId, after);
 
 async function waitingCount(ctx: TenantContext, id: number): Promise<number> {
   const r = await first<{ n: number }>(ctx,
@@ -576,19 +577,27 @@ async function runSpace(ctx: TenantContext, id: number): Promise<{ space: string
 }
 
 /** "Approve all": promote the import's waiting pages through the promote writer (links and parents apply), at most
- *  `IMPORT_APPROVE_PER_CALL` a call. Any signed-in member, like a single promote. */
-export async function approveImport(ctx: TenantContext, id: number, by: string): Promise<{ done: number; remaining: number; space: string; space_name: string | null }> {
+ *  `IMPORT_APPROVE_PER_CALL` a call, from the cursor `after` (the `next` of the call before). A page that fails is
+ *  SKIPPED and counted (`failed`; it stays waiting, for Review one by one) — the cursor steps past it, so it never
+ *  holds up the pages after it. Any signed-in member, like a single promote. */
+export async function approveImport(ctx: TenantContext, id: number, by: string, raw?: unknown): Promise<{ done: number; failed: number; next: number | null; remaining: number; space: string; space_name: string | null }> {
   const where = await runSpace(ctx, id);
+  const a = raw && typeof raw === "object" ? (raw as { after?: unknown }).after : undefined;
+  const after = typeof a === "number" && Number.isSafeInteger(a) && a > 0 ? a : 0;
   let done = 0;
-  for (const t of await waitingTargets(ctx, id, IMPORT_APPROVE_PER_CALL)) {
+  let failed = 0;
+  let next: number | null = null;
+  for (const t of await waitingTargets(ctx, id, IMPORT_APPROVE_PER_CALL, after)) {
+    next = t.id;
     try {
       await promote_doc(ctx, t.slug, t.version, by);
       done++;
     } catch (e) {
+      failed++;
       console.error("import approve failed", e instanceof Error ? e.name : "error", `org=${ctx.orgId}`);
     }
   }
-  return { done, remaining: await waitingCount(ctx, id), ...where };
+  return { done, failed, next, remaining: await waitingCount(ctx, id), ...where };
 }
 
 /** "Reject all": soft — each waiting version flips to `rejected` (restorable, its body kept), its open risk closed,

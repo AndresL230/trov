@@ -1,8 +1,8 @@
 import type { SprintRow, PlanRow } from "@shared/rows";
 import type { SprintView } from "@shared/sprints";
 import type { AiPlanDrift, AiSuggestion } from "@shared/ai-core";
-import { composePlanNarrative, planNarrativeParts, normalizeSprintDate, sprintDateProblem, sprintDatesProblem, type PlanNarrativeInput } from "@shared/sprints-core";
-import { type TenantContext, first, all, run, nowIso } from "../data/sql";
+import { composePlanNarrative, planNarrativeParts, normalizeSprintDate, sprintDateProblem, sprintDatesProblem, SPRINT_STATUSES, type PlanNarrativeInput } from "@shared/sprints-core";
+import { type TenantContext, type Stmt, first, run, stmt, batch, nowIso } from "../data/sql";
 import { list_sprints, sprintLead, SprintError } from "./sprints";
 import { planDrift } from "../data/org-insights";
 
@@ -20,7 +20,7 @@ export interface PlanSprintInput {
   dates?: string | null;
   start?: string | null;                       // YYYY-MM-DD; absent = unchanged on an update, null/"" clears
   due: string;                                 // YYYY-MM-DD, or "" = unscheduled
-  status: "upcoming" | "in_progress" | "done"; // 'done' allowed HERE ONLY (admin-authored)
+  status: "upcoming" | "in_progress" | "done"; // any of the three (`complete_sprint` also sets 'done', for any member)
   urgency?: "low" | "normal" | "high";
   lead?: string | null;                        // person handle
   domain?: "notifications" | "tickets" | "gate" | "feed" | "search" | "infra" | null;
@@ -46,13 +46,20 @@ export interface PlanView {
   suggestions?: AiSuggestion[];
 }
 
+/** Every `sprints` column, as `plan_versions.sprints_json` snapshots each row (a full SprintRow, as `SELECT *` reads
+ *  it). Built in SQL so the snapshot is taken inside the plan write's own batch; a test holds this list to the table. */
+export const SPRINT_SNAPSHOT_COLUMNS = [
+  "id", "title", "description", "target_date", "status", "github_ref", "created_at", "created_by", "updated_at", "phase",
+  "dates", "summary", "urgency", "lead", "domain", "start_date", "org_id", "completed_at", "source_key",
+] as const;
+
 const githubRefJson = (ref: number | number[] | null | undefined): string | null =>
   ref === undefined || ref === null ? null : JSON.stringify(ref);
 
 /**
  * ADMIN direct write (promote-class, like promote_doc — NOT the ingestion gate):
- * replace the plan narrative and create/update sprints (including status 'done',
- * which is admin-authored and therefore legal ONLY here) in one non-destructively
+ * replace the plan narrative and create/update sprints (including status 'done' —
+ * which `complete_sprint` also sets, for any member) in one non-destructively
  * versioned write. Sprints not mentioned are left untouched — never implicitly
  * deleted. `INSERT OR IGNORE` guards the singleton row for prod resilience (the
  * test harness never deletes it, but a fresh/drifted D1 might be missing it).
@@ -68,7 +75,17 @@ const githubRefJson = (ref: number | number[] | null | undefined): string | null
  * plan_versions row, no sprint touched.
  * So are bad sprint dates (`bad_request`): `due` / `start` must each be a real
  * YYYY-MM-DD day or blank, and start <= due — checked against the STORED start when
- * an update omits `start`, so a new due cannot slip in before an existing start.
+ * an update omits `start`, so a new due cannot slip in before an existing start —
+ * and a status that is not one of SPRINT_STATUSES.
+ *
+ * The write is ONE batch (a D1 transaction): every sprint, the plan row and its
+ * `plan_versions` snapshot land together or not at all. The version is GUARDED: the
+ * plan row moves only from the version this call read (compare-and-set), and the
+ * snapshot's insert fails the whole batch when that did not take or the version is
+ * already there — so two plan writes racing on one version cannot both apply: the
+ * second is a `conflict` (409) with nothing written, never a half-applied plan and
+ * a 500. Each sprint that becomes 'done' here gets `completed_at`; one that leaves
+ * 'done' loses it.
  */
 export async function write_plan(
   ctx: TenantContext,
@@ -79,6 +96,9 @@ export async function write_plan(
   if ("problem" in shaped) throw new SprintError("bad_request", shaped.problem);
   const narrative = composePlanNarrative(shaped.parts);
   for (const sp of input.sprints) {
+    if (!(SPRINT_STATUSES as readonly string[]).includes(sp.status)) {
+      throw new SprintError("bad_request", `sprint "${sp.label}": status must be one of ${SPRINT_STATUSES.join(", ")}`);
+    }
     const own = sprintDateProblem("start", sp.start) ?? sprintDateProblem("due", sp.due);
     if (own) throw new SprintError("bad_request", `sprint "${sp.label}": ${own}`);
     let start = sp.start;
@@ -101,9 +121,11 @@ export async function write_plan(
   await run(ctx, `INSERT OR IGNORE INTO plan (org_id, narrative, current_version) VALUES (?, '', 0)`, ctx.orgId);
 
   const plan = await first<PlanRow>(ctx, `SELECT * FROM plan WHERE org_id = ?`, ctx.orgId);
-  const version = (plan?.current_version ?? 0) + 1;
+  const base = plan?.current_version ?? 0;
+  const version = base + 1;
   const now = nowIso();
 
+  const stmts: Stmt[] = [];
   for (const sp of input.sprints) {
     const github_ref = githubRefJson(sp.github_ref);
     if (sp.id !== undefined) {
@@ -116,8 +138,11 @@ export async function write_plan(
       // panel) writes those too, and the plan write must not clobber them.
       // An EXPLICIT `null` still CLEARS the column: `undefined` (absent) and
       // `null` (cleared) are distinct here, and that distinction is the contract.
-      const sets: string[] = [`title = ?`, `target_date = ?`, `status = ?`, `updated_at = ?`];
-      const binds: unknown[] = [sp.label, normalizeSprintDate(sp.due) ?? "", sp.status, now];
+      // `completed_at` (0088) follows the status: kept while it stays 'done', stamped when it becomes 'done', cleared
+      // otherwise (every SET expression reads the row as it WAS, so `status` here is the old one).
+      const sets: string[] = [`title = ?`, `target_date = ?`, `status = ?`, `updated_at = ?`,
+        `completed_at = CASE WHEN ? <> 'done' THEN NULL WHEN status = 'done' THEN COALESCE(completed_at, ?) ELSE ? END`];
+      const binds: unknown[] = [sp.label, normalizeSprintDate(sp.due) ?? "", sp.status, now, sp.status, now, now];
       const optional: [string, unknown][] = [
         ["description", sp.description],
         ["summary", sp.summary],
@@ -134,14 +159,13 @@ export async function write_plan(
         sets.push(`${col} = ?`);
         binds.push(value);
       }
-      const res = await run(ctx, `UPDATE sprints SET ${sets.join(", ")} WHERE id = ? AND org_id = ?`, ...binds, sp.id, ctx.orgId);
-      if ((res.meta.changes ?? 0) === 0) throw new Error(`no such sprint: ${sp.id}`);
+      stmts.push(stmt(ctx, `UPDATE sprints SET ${sets.join(", ")} WHERE id = ? AND org_id = ?`, ...binds, sp.id, ctx.orgId));
     } else {
-      await run(
+      stmts.push(stmt(
         ctx,
         `INSERT INTO sprints (org_id, title, description, summary, phase, dates, start_date, target_date, status, urgency, lead, domain,
-                              github_ref, created_at, created_by, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                              github_ref, created_at, created_by, updated_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ctx.orgId,
         sp.label,
         sp.description ?? null,
@@ -157,33 +181,38 @@ export async function write_plan(
         github_ref,
         now,
         author,
-        now
-      );
+        now,
+        sp.status === "done" ? now : null
+      ));
     }
   }
 
-  const sprints = await all<SprintRow>(ctx, `SELECT * FROM sprints WHERE org_id = ? ORDER BY target_date ASC, id ASC`, ctx.orgId);
+  // The guarded version: the plan row moves only from `base`; the snapshot right after it inserts a NULL version
+  // (NOT NULL — the batch fails and rolls back) when that UPDATE did not take, and collides on the
+  // (org_id, version) key when another write already made this version. Either way nothing of this call lands.
+  stmts.push(stmt(ctx,
+    `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ? AND current_version = ?`,
+    narrative, version, now, author, ctx.orgId, base));
+  stmts.push(stmt(ctx,
+    `INSERT INTO plan_versions (org_id, version, narrative, sprints_json, created_at, created_by)
+     SELECT ?, CASE WHEN changes() > 0 THEN ? END, ?,
+            (SELECT json_group_array(json_object(${SPRINT_SNAPSHOT_COLUMNS.map((c) => `'${c}', ${c}`).join(", ")}))
+               FROM (SELECT * FROM sprints WHERE org_id = ? ORDER BY target_date ASC, id ASC)),
+            ?, ?`,
+    ctx.orgId, version, narrative, ctx.orgId, now, author));
+  stmts.push(stmt(ctx, `SELECT * FROM sprints WHERE org_id = ? ORDER BY target_date ASC, id ASC`, ctx.orgId));
 
-  await run(
-    ctx,
-    `UPDATE plan SET narrative = ?, current_version = ?, updated_at = ?, updated_by = ? WHERE org_id = ?`,
-    narrative,
-    version,
-    now,
-    author,
-    ctx.orgId
-  );
-  await run(
-    ctx,
-    `INSERT INTO plan_versions (org_id, version, narrative, sprints_json, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)`,
-    ctx.orgId,
-    version,
-    narrative,
-    JSON.stringify(sprints),
-    now,
-    author
-  );
-
+  let results;
+  try {
+    results = await batch<SprintRow>(ctx, stmts);
+  } catch (e) {
+    const err = e as { message?: unknown; cause?: { message?: unknown } } | null;
+    if (/constraint failed: plan_versions/i.test(`${String(err?.message ?? e)} ${String(err?.cause?.message ?? "")}`)) {
+      throw new SprintError("conflict", "the plan changed while this write was in flight: read it again (get_roadmap) and retry");
+    }
+    throw e;
+  }
+  const sprints = results[results.length - 1].results;
   return { version, sprints };
 }
 

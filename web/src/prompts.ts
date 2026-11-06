@@ -48,7 +48,7 @@ const tagLine = (tags: string[]) => (tags.length ? `<span style="font-size:12px;
 // ── library ──────────────────────────────────────────────────────────────────
 export type PromptFilterCat = "tag" | "sort";
 export interface PromptLibraryProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   prompts: PromptSummary[];
   q: string;
   tag: string | null;
@@ -181,7 +181,7 @@ export function promptLibraryView(p: PromptLibraryProps): string {
 
 // ── one prompt ───────────────────────────────────────────────────────────────
 export interface PromptDetailProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   prompt: PromptDetail | null;
   versions: PromptVersion[];
   persons: PersonSummary[];
@@ -198,6 +198,8 @@ export interface PromptDetailProps {
   deleteArm: boolean;
   /** The delete request is in flight. */
   deleteBusy?: boolean;
+  /** Publish is in flight (main.ts `beginWrite("promptPublish:<slug>")`): its button is busy. */
+  publishing?: boolean;
 }
 
 const PROP_ROW = "display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:center;height:30px";
@@ -235,8 +237,10 @@ export function promptDetailView(p: PromptDetailProps): string {
     return shell(notice(p.status === "error" ? "Couldn't load this prompt." : "Prompt not found."));
   }
   const au = personOf(p.persons, x.author);
-  /** The newest staged version — a person may publish it from the header. */
-  const staged = p.versions.find((v) => v.status === "staged") ?? null;
+  /** The version a person may publish from the header: the newest version that is not a draft, when it is staged (the
+   *  server publishes only that one — an older staged version than a published one would change nothing). */
+  const newest = p.versions.find((v) => v.status !== "draft") ?? null;
+  const staged = newest?.status === "staged" ? newest : null;
 
   // The body, or — with a version picked in the history — what that version changed.
   const idx = p.versions.findIndex((v) => v.version === p.diffVersion);
@@ -287,7 +291,7 @@ export function promptDetailView(p: PromptDetailProps): string {
         <div style="display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:8px;font-size:12px;color:var(--fg-55)"><span style="font-family:var(--sans);font-size:11.5px;color:var(--fg-55);white-space:nowrap">${esc(x.slug)}</span></div>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex:none;padding-top:2px;flex-wrap:wrap">
-        ${staged ? `<button data-act="promptPublish" data-arg="${staged.version}" class="cnpy-accentbtn" style="${primaryStyle(true)}">Publish v${staged.version}</button>` : ""}
+        ${staged ? `<button data-act="promptPublish" data-arg="${staged.version}" class="${p.publishing ? "" : "cnpy-accentbtn"}"${p.publishing ? ' disabled aria-busy="true"' : ""} style="${primaryStyle(!p.publishing)}">${p.publishing ? "Publishing…" : `Publish v${staged.version}`}</button>` : ""}
         <button data-act="promptEdit" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">Edit</button>
         <button data-act="promptNewVersion" data-arg="${attr(x.slug)}" class="cnpy-outlinebtn" style="padding:8px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap">New version</button>
         ${p.canDelete ? dangerTrigger({ label: "Delete prompt", act: "promptDeleteArm", armed: p.deleteArm, controls: "prompt-delete-confirm" }) : ""}
@@ -356,7 +360,11 @@ export function slugState(ed: PromptDraft, taken: string[]): { ok: boolean; take
   return { ok: /^[a-z0-9][a-z0-9-]{1,59}$/.test(ed.slug), taken: isTaken };
 }
 
-export interface PromptEditorProps { draft: PromptDraft | null; takenSlugs: string[] }
+export interface PromptEditorProps {
+  draft: PromptDraft | null; takenSlugs: string[];
+  /** Save is in flight (main.ts `beginWrite("edSave")`): the button is busy, a second click does nothing. */
+  busy?: boolean;
+}
 
 const FIELD = "border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);outline:none";
 
@@ -369,7 +377,7 @@ export function promptEditorView(p: PromptEditorProps): string {
   const slugStatus = !ed.slug ? "" : s.taken ? "taken" : !s.ok ? "invalid" : ed.slugTouched ? "available" : "auto";
   const slugColor = s.taken || (!s.ok && ed.slug) ? "var(--red)" : ed.slugTouched ? "var(--green)" : "var(--fg-40)";
   const suggest = TAGS.filter((t) => !ed.tags.includes(t));
-  const help = ed.status === "draft" ? "Only visible to you in the library until it's staged."
+  const help = ed.status === "draft" ? "Saved, not published. Sessions that pull this slug get the newest published version, if there is one."
     : ed.status === "staged" ? "Shows as STAGED in the library until someone publishes it."
     : "Live for every session that pulls this slug.";
   const can = !!ed.title.trim() && !!ed.body.trim() && s.ok && !s.taken;
@@ -418,7 +426,7 @@ export function promptEditorView(p: PromptEditorProps): string {
     </div>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
       <button data-act="edCancel" class="cnpy-outlinebtn" style="padding:8px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);transition:all .12s ease;white-space:nowrap">Cancel</button>
-      <button data-act="edSave" class="${can ? "cnpy-accentbtn" : ""}" style="${primaryStyle(can)}">Save v${ed.nextVersion}</button>
+      <button data-act="edSave" class="${can && !p.busy ? "cnpy-accentbtn" : ""}"${p.busy ? ' disabled aria-busy="true"' : ""} style="${primaryStyle(can && !p.busy)}">${p.busy ? "Saving…" : `Save v${ed.nextVersion}`}</button>
     </div>
   </div>`);
 }

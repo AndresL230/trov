@@ -2,8 +2,8 @@
 // and the environment cards (repo-env-cards.ts), so the two can never disagree. The design's `verdictFor`
 // (docs/superpowers/specs/repo-setups-design/repo-data.js), read from `RepoFacts` instead of the design's targets:
 //
-//   every part of the environment reports nothing yet        → Unknown   (ring)
 //   a part's health check gets no answer (a fresh reading)   → Down      (square)
+//   every part of the environment reports nothing yet        → Unknown   (ring)
 //   a part's newest production deploy failed                 → Failing   (diamond)
 //   an app serves an older commit than another app here      → Out of step (triangle)
 //   checks fail on the environment's branch head             → Degraded  (triangle)
@@ -16,9 +16,10 @@
 // = good, live = good, degraded / out of step = warn, failing = bad, down = stopped, unknown = waiting. A stale health reading is
 // never read as up or down (it is "no recent reading", repo-facts-core.ts `FactsHealth.stale`).
 import type { FactsCi, FactsPart, RepoFacts } from "@shared/repo-facts-core";
+import { envVerdictKey, type EnvVerdictKey } from "@shared/env-verdict-core";
 import type { MarkShape, StateKind } from "./marks";
 
-export type VerdictKey = "healthy" | "live" | "degraded" | "failing" | "down" | "unknown" | "outOfStep";
+export type VerdictKey = EnvVerdictKey;
 
 export interface EnvVerdict {
   key: VerdictKey;
@@ -51,16 +52,16 @@ export const partFailed = (p: FactsPart): boolean => p.latest?.state === "error"
 
 const of = (key: VerdictKey): EnvVerdict => ({ key, ...VERDICT[key] });
 
-/** The verdict of environment `envKey` over the parts in view. An environment with no part in view is Unknown. */
+/** The verdict of environment `envKey` over the parts in view. An environment with no part in view is Unknown. The
+ *  ORDER is shared/env-verdict-core.ts `envVerdictKey` — the same one the dashboard's served pill ranks with. */
 export function envVerdict(f: Pick<RepoFacts, "parts" | "outOfStep" | "ci">, envKey: string): EnvVerdict {
   const parts = f.parts.filter((p) => p.env === envKey);
-  if (parts.every(partUnknown)) return of("unknown");
-  if (parts.some(partDown)) return of("down");
-  if (parts.some(partFailed)) return of("failing");
-  if (f.outOfStep.some((o) => o.env === envKey && parts.some((p) => p.app === o.app))) return of("outOfStep");
   const ci = f.ci.find((c) => c.env === envKey)?.state ?? null;
-  if (ci === "fail") return of("degraded");
-  return of(ci === "pass" ? "healthy" : "live");
+  return of(envVerdictKey({
+    down: parts.some(partDown), allUnknown: parts.every(partUnknown), failing: parts.some(partFailed),
+    outOfStep: f.outOfStep.some((o) => o.env === envKey && parts.some((p) => p.app === o.app)),
+    ci: ci === "pass" || ci === "fail" ? ci : null,
+  }));
 }
 
 /** An environment's CI line ("All 14 checks passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2", "Checks running

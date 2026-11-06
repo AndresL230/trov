@@ -97,7 +97,17 @@ export async function acceptSuggestion(ctx: TenantContext, handle: string, id: s
   if (!targets.length && proposed.length && envKeys.length) targets = [{ ...proposed[0], env: envKeys[0] }];
   targets = targets.filter((p, i) => targets.findIndex((q) => q.env === p.env) === i);
 
-  const { app } = await putRepoApp(ctx, row.key, { repo: row.repo, folder: row.folder, kind, source: "suggested" });
+  // The decision is CLAIMED first — a compare-and-set on the state read above — so two accepts (two tabs, two admins),
+  // or an accept racing an ignore or a scan, cannot both write: the loser is refused before it writes an app or a part.
+  const at = new Date(opts.now ?? Date.now()).toISOString();
+  await claimDecision(ctx, row, "accepted", at, handle);
+  let app: RepoApp;
+  try {
+    ({ app } = await putRepoApp(ctx, row.key, { repo: row.repo, folder: row.folder, kind, source: "suggested" }));
+  } catch (e) {
+    await releaseDecision(ctx, row, at);
+    throw e;
+  }
   const written: { env: string; key: string; provider: string }[] = [];
   try {
     for (const p of targets) {
@@ -111,11 +121,29 @@ export async function acceptSuggestion(ctx: TenantContext, handle: string, id: s
   } catch (e) {
     for (const w of written) await deletePart(ctx, w.env, w.key).catch(() => undefined);
     await deleteRepoApp(ctx, row.key).catch(() => undefined);
+    await releaseDecision(ctx, row, at);
     throw e;
   }
-  const at = new Date(opts.now ?? Date.now()).toISOString();
-  await run(ctx, `UPDATE repo_app_suggestions SET state = 'accepted', decided_at = ?, decided_by = ? WHERE org_id = ? AND id = ?`, at, handle, ctx.orgId, id);
   return { app, parts: written, undo: undoToken(id, at) };
+}
+
+/** Move one suggestion from the state `row` was read in to `to` — compare-and-set; refused (409) when it moved
+ *  since: `already_accepted`, or `changed` for any other decision made in between. */
+async function claimDecision(ctx: TenantContext, row: SuggestionRow, to: "accepted" | "ignored", at: string, handle: string): Promise<void> {
+  const res = await run(ctx, `UPDATE repo_app_suggestions SET state = ?, decided_at = ?, decided_by = ? WHERE org_id = ? AND id = ? AND state = ?`,
+    to, at, handle, ctx.orgId, row.id, row.state);
+  if ((res.meta.changes ?? 0) > 0) return;
+  const now = await rowOf(ctx, row.id);
+  if (!now) throw notFound();
+  if (now.state === "accepted") throw new SettingsError("already_accepted", 409, "this suggestion is already accepted");
+  throw new SettingsError("changed", 409, "this suggestion changed while you were deciding; look again");
+}
+
+/** An accept that failed after its claim: the suggestion goes back to the state it was claimed from — only if the
+ *  claim is still the one this accept made. */
+async function releaseDecision(ctx: TenantContext, row: SuggestionRow, at: string): Promise<void> {
+  await run(ctx, `UPDATE repo_app_suggestions SET state = ?, decided_at = ?, decided_by = ? WHERE org_id = ? AND id = ? AND state = 'accepted' AND decided_at = ?`,
+    row.state, row.decided_at, row.decided_by, ctx.orgId, row.id, at).catch(() => undefined);
 }
 
 /** Ignore one pending suggestion: hidden until an admin's Scan again. */
@@ -125,7 +153,7 @@ export async function ignoreSuggestion(ctx: TenantContext, handle: string, id: s
   if (!row) throw notFound();
   if (row.state === "accepted") throw new SettingsError("already_accepted", 409, "this suggestion is already accepted");
   const at = new Date(now).toISOString();
-  await run(ctx, `UPDATE repo_app_suggestions SET state = 'ignored', decided_at = ?, decided_by = ? WHERE org_id = ? AND id = ?`, at, handle, ctx.orgId, id);
+  await claimDecision(ctx, row, "ignored", at, handle);
   return { undo: undoToken(id, at) };
 }
 
@@ -144,7 +172,8 @@ export async function undoAccept(ctx: TenantContext, _handle: string, token: str
     const app = await first<{ source: string }>(ctx, `SELECT source FROM repo_apps WHERE org_id = ? AND key = ?`, ctx.orgId, row.key);
     if (app?.source === "suggested") await deleteRepoApp(ctx, row.key);
   }
-  await run(ctx, `UPDATE repo_app_suggestions SET state = 'pending', decided_at = NULL, decided_by = NULL WHERE org_id = ? AND id = ?`, ctx.orgId, id);
+  await run(ctx, `UPDATE repo_app_suggestions SET state = 'pending', decided_at = NULL, decided_by = NULL WHERE org_id = ? AND id = ? AND state = ? AND decided_at = ?`,
+    ctx.orgId, id, row.state, at);
   return { id, undone: row.state === "accepted" ? "accept" : "ignore" };
 }
 

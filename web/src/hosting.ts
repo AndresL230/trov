@@ -136,7 +136,7 @@ export const scopeFor = (_p: HostingProviderDTO, _env: string): string => "";
  *  on it, the checklist, the lead and Test this part say. */
 export function providerStatusOf(d: HostingSetupDTO, id: HostingProviderId): HostingStatus {
   const p = providerOf(d, id);
-  return hostingStatus(orgConnection(d.connections, id), p?.label ?? id, !!p?.via_github);
+  return hostingStatus(orgConnection(d.connections, id), p?.label ?? id, !!p?.via_github, d.github_link);
 }
 /** A provider's leftover per-environment tokens (`HostingSetupDTO.leftovers`) — never a connection. */
 export const leftoversOf = (d: HostingSetupDTO, id: HostingProviderId): HostingLeftoverDTO[] => (d.leftovers ?? []).filter((l) => l.provider === id);

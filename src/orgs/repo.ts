@@ -21,6 +21,7 @@ import {
   type OrgMember, type OrgInvite, type OrgMeResponse, type OrgLogoSource, type InviteMailStatus, INVITE_NAME_MAX, orgLogoSrc, orgLogoOf,
 } from "@shared/orgs";
 import { auditStmt } from "./audit";
+import { orgLive } from "../data/suspension";
 
 export type OrgErrorCode =
   | "invalid_slug" | "reserved_slug" | "invalid_name" | "invalid_invite" | "invalid_member"
@@ -151,7 +152,7 @@ export async function listMyOrgs(p: PlatformContext, handle: string): Promise<My
     `SELECT o.slug, o.name, m.role, o.logo_sha, o.plan, o.sample,
             (o.plan_source = 'billing' AND o.billing_subscription_id IS NOT NULL AND o.plan <> '${FREE_PLAN}' AND o.plan_status <> 'canceled') AS paid
        FROM memberships m JOIN orgs o ON o.id = m.org_id
-      WHERE m.user_id = ? COLLATE NOCASE AND o.suspended_at IS NULL ORDER BY o.name COLLATE NOCASE ASC`, handle);
+      WHERE m.user_id = ? COLLATE NOCASE AND ${orgLive("o")} ORDER BY o.name COLLATE NOCASE ASC`, handle);
   return rows.map((r) => ({ slug: r.slug, name: r.name, role: r.role, logo_url: orgLogoSrc(r), plan: planDef(r.plan).id, paid: r.paid === 1, ...(r.sample === 1 ? { sample: true } : {}) }));
 }
 
@@ -168,7 +169,7 @@ const MINE = `(
   OR i.email IN (SELECT verified_email FROM identities WHERE person = ?1 COLLATE NOCASE AND verified_email IS NOT NULL))`;
 const INVITE_JOIN = `SELECT i.id, i.org_id, o.slug, o.name, o.logo_sha, i.role, i.as_owner, i.invited_by, i.created_at, i.github_login, i.email
   FROM org_invites i JOIN orgs o ON o.id = i.org_id
- WHERE i.status = 'pending' AND o.suspended_at IS NULL AND ${MINE}`;
+ WHERE i.status = 'pending' AND ${orgLive("o")} AND ${MINE}`;
 
 const grantedRole = (r: { role: "admin" | "member"; as_owner: number }): OrgRole => (r.as_owner ? "owner" : r.role);
 
@@ -213,21 +214,29 @@ export async function respondToInvite(p: PlatformContext, handle: string, id: nu
   }
   const gate = await seatGate(p, inv.org_id, "accept", !!(await memberOf(p, inv.org_id, handle)));
   const joined = `EXISTS (SELECT 1 FROM memberships WHERE org_id = ? AND user_id = ? COLLATE NOCASE)`;
+  // The invitation is re-read IN the statement that takes the seat: revoked, answered or its org suspended
+  // since it was read above, and nothing is written — no member, no stamp, no audit row.
+  const stillOpen = `EXISTS (SELECT 1 FROM org_invites i JOIN orgs o ON o.id = i.org_id WHERE i.id = ? AND i.status = 'pending' AND ${orgLive("o")})`;
+  // Each audit row is written only when the statement before it wrote (the stamp, then the first row).
   const audit = (action: OrgAuditAction, target: string, detail: Record<string, unknown>): Stmt =>
-    stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE ${joined}`,
-      inv.org_id, p.actor, action, target, JSON.stringify(detail), at, inv.org_id, handle);
+    stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
+      inv.org_id, p.actor, action, target, JSON.stringify(detail), at);
   const [res] = await batch(p, [
     // Already a member (invited twice, or an owner invite for a current member): never a demotion, and no new seat.
     stmt(p, `INSERT INTO memberships (org_id, user_id, role, created_at, created_by)
-             SELECT ?, ?, ?, ?, ? WHERE ${MEMBER_SEAT_FREE} OR ${joined}
+             SELECT ?, ?, ?, ?, ? WHERE (${MEMBER_SEAT_FREE} OR ${joined}) AND ${stillOpen}
              ON CONFLICT(org_id, user_id) DO UPDATE SET role = CASE WHEN excluded.role = 'owner' THEN 'owner' ELSE memberships.role END`,
-      inv.org_id, handle, role, at, inv.invited_by, gate.cap, inv.org_id, gate.cap, inv.org_id, handle),
+      inv.org_id, handle, role, at, inv.invited_by, gate.cap, inv.org_id, gate.cap, inv.org_id, handle, id),
     stmt(p, `UPDATE org_invites SET status = 'accepted', responded_at = ?, responded_by = ? WHERE id = ? AND status = 'pending' AND ${joined}`,
       at, handle, id, inv.org_id, handle),
     audit("invite.accept", `invite:${id}`, { role }),
     audit("member.add", handle, { role, invite: id }),
   ]);
-  if ((res.meta.changes ?? 0) === 0) throw gate.refuse(); // lost the race for the last seat
+  if ((res.meta.changes ?? 0) === 0) {
+    // Nothing written: the invitation went (revoked, answered elsewhere, its org suspended) — or the last seat did.
+    if (!(await first<{ id: number }>(p, `${INVITE_JOIN} AND i.id = ?2`, handle, id))) throw new OrgError("not_found");
+    throw gate.refuse();
+  }
   return { org: { slug: inv.slug, name: inv.name }, role, org_id: inv.org_id, first_join: firstJoin };
 }
 

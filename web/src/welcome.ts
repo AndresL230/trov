@@ -57,7 +57,7 @@ export const initialWelcomeUi = (): WelcomeUi => ({ step: "github", byHand: fals
 export type StepState = "done" | "todo" | "unknown";
 
 /** One read as the wizard needs it (AppState's `Loadable` and Org settings' `OrgSlice` both fit). */
-export interface WelcomeRead<T> { status: "idle" | "loading" | "ok" | "error" | "unauth"; data: T; error?: string }
+export interface WelcomeRead<T> { status: "idle" | "loading" | "ok" | "error"; data: T; error?: string }
 
 export interface WelcomeProps {
   /** What sits behind the card: the app itself, loading (render.ts `firstRunBackdrop`). */

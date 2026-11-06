@@ -202,10 +202,10 @@ export function sampleContentStmts(sys: TenantContext, me: string, now: number, 
   // ── sprints ──
   for (const sp of C.SPRINTS) {
     const start = date(sp.start), due = date(sp.due);
-    s.push(stmt(sys, `INSERT INTO sprints (org_id, title, description, summary, dates, start_date, target_date, status, urgency, lead, created_at, created_by, updated_at)
-                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    s.push(stmt(sys, `INSERT INTO sprints (org_id, title, description, summary, dates, start_date, target_date, status, urgency, lead, created_at, created_by, updated_at, completed_at)
+                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       org, sp.title, sp.description, sp.summary, `${shortDay(start)} – ${shortDay(due)}`, start, due, sp.status, sp.urgency, me,
-      ago(-sp.start + 2), me, ago(sp.status === "done" ? -sp.due : 1)));
+      ago(-sp.start + 2), me, ago(sp.status === "done" ? -sp.due : 1), sp.status === "done" ? ago(-sp.due) : null));
   }
   const sprintTitle = (key: string | null): string | null => C.SPRINTS.find((x) => x.key === key)?.title ?? null;
 

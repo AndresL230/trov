@@ -190,7 +190,7 @@ export interface SettingsOrgsProps {
   orgs: MyOrgsResponse | null;
   /** The session's own list (`me.orgs`), shown until — or if — the read above lands. */
   mine: readonly MyOrg[];
-  status: OrgSlice<unknown>["status"] | "unauth";
+  status: OrgSlice<unknown>["status"];
   /** The organization on screen. */
   current: string | null;
 }

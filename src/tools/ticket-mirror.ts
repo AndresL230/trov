@@ -1,4 +1,4 @@
-// The GitHub issue → ticket MIRROR. Every issue in GITHUB_REPO appears as a
+// The GitHub issue → ticket MIRROR. Every issue of the org's PRIMARY repository (its `org_repos` row) appears as a
 // ticket, linked to the issue by a LOCKED link that can never be removed.
 //
 // ADR-007, amended (0032): a ticket may link to GitHub work, and may be SOURCED
@@ -128,7 +128,7 @@ export function ticketFromIssue(payload: unknown): IssueMirror | null {
 }
 
 export type MirrorOutcome =
-  | "out_of_scope"  // not an issue of GITHUB_REPO (or GITHUB_REPO unset)
+  | "out_of_scope"  // not an issue of the org's primary repository (or the org has none)
   | "created"       // a new ticket
   | "updated"       // an existing ticket: a forced status move, or a newer source_updated_at
   | "unchanged"     // a redelivery — nothing to write
@@ -141,9 +141,9 @@ interface MirrorTicketRow {
 }
 
 /**
- * Apply one `issues` delivery to its mirrored ticket. `repo` is env.GITHUB_REPO:
- * unset mirrors nothing, and only an issue whose repository.full_name equals it
- * (ignoring case) is mirrored. Throws only on a D1 failure — the webhook wraps it so the `events`
+ * Apply one `issues` delivery to its mirrored ticket. `repo` is the org's PRIMARY repository (its `org_repos`
+ * row, as the caller read it — the `GITHUB_REPO` var is read by nothing): none mirrors nothing, and only an issue
+ * whose repository.full_name equals it (ignoring case) is mirrored. Throws only on a D1 failure — the webhook wraps it so the `events`
  * capture never pays for a mirror failure. A SYSTEM write (§4.1): `ctx` is the org the delivery belongs
  * to, never a member's; `p` reads the global login → person map.
  */
@@ -151,15 +151,16 @@ export async function mirrorIssue(ctx: TenantContext, p: PlatformContext, repo: 
   if (ctx.role !== "system") throw new Error("mirrorIssue is a system write");
   const parsed = ticketFromIssue(payload);
   // GitHub treats owner/repo names case-INsensitively, and its deliveries carry
-  // the repo's canonical spelling ("SaplingLearn/Sapling") while GITHUB_REPO may
+  // the repo's canonical spelling ("SaplingLearn/Sapling") while the stored primary repository may
   // not ("SaplingLearn/sapling"). So scope compares without case, and the key is
-  // ALWAYS built from the configured spelling — else the webhook and a backfill
-  // (which reconstructs full_name FROM GITHUB_REPO) would key one issue twice.
+  // ALWAYS built from the stored spelling — else the webhook and a backfill
+  // (which reconstructs full_name FROM that row) would key one issue twice.
   if (!parsed || !repo || parsed.repo.toLowerCase() !== repo.toLowerCase()) return "out_of_scope";
   const m: IssueMirror = { ...parsed, repo, sourceRef: `${repo}#${parsed.number}` };
 
-  const existing = await first<MirrorTicketRow>(
+  const read = () => first<MirrorTicketRow>(
     ctx, `SELECT id, status, source_updated_at FROM tickets WHERE source_ref = ? AND org_id = ?`, m.sourceRef, ctx.orgId);
+  let existing = await read();
 
   if (!existing) {
     // An issue that left the repo before it was ever mirrored has nothing to decline.
@@ -180,13 +181,23 @@ export async function mirrorIssue(ctx: TenantContext, p: PlatformContext, repo: 
   // have moved the status in Trov since, and a redelivery must not undo that.
   // The move and the new source_updated_at land in ONE batch, so a failure
   // leaves source_updated_at behind and the redelivery re-applies the move.
+  // The forced move is compare-and-set on the status it was read in: a person's move that lands in between makes it
+  // touch nothing, and the delivery re-reads and decides again (a few times at most — then it throws, the webhook
+  // logs it, and a redelivery or the backfill applies it later, since `source_updated_at` was not stamped).
   const alreadyApplied = existing.source_updated_at === m.updatedAt;
-  const forced = alreadyApplied ? null : forcedStatus(m, existing.status);
-  if (forced) {
-    await forceStatus(ctx, existing.id, existing.status, forced, m.updatedAt);
-    await routeAi(ctx, { type: "ticket_changed", ticketId: existing.id });
-    wrote = true;
-  } else if (!alreadyApplied) {
+  let forced = alreadyApplied ? null : forcedStatus(m, existing.status);
+  for (let attempt = 0; forced; attempt++) {
+    if (await forceStatus(ctx, existing.id, existing.status, forced, m.updatedAt)) {
+      await routeAi(ctx, { type: "ticket_changed", ticketId: existing.id });
+      return "updated";
+    }
+    if (attempt >= 2) throw new Error(`mirror: ${m.sourceRef} kept changing under the forced status move`);
+    existing = await read();
+    // Gone, or a delivery as new or newer has applied meanwhile: nothing left for this one to force.
+    if (!existing || (existing.source_updated_at !== null && m.updatedAt <= existing.source_updated_at)) return wrote ? "updated" : "unchanged";
+    forced = forcedStatus(m, existing.status);
+  }
+  if (!alreadyApplied) {
     await run(ctx, `UPDATE tickets SET source_updated_at = ? WHERE id = ? AND org_id = ?`, m.updatedAt, existing.id, ctx.orgId);
     wrote = true;
   }
@@ -208,16 +219,20 @@ function forcedStatus(m: IssueMirror, current: TicketStatus): TicketStatus | nul
  * THE internal status writer — the mirror's only way to move a status, writing
  * as `github-webhook` and stamping `source_updated_at`. Module-private on
  * purpose: routes and MCP reach status only through `transition_ticket`.
+ * ONE batch, COMPARE-AND-SET on `from` like the ticket writers: the UPDATE takes only while the ticket is still
+ * `from`, and the history row and what closing closes act only when it took (`changes()`; `closingStmts` acts only
+ * on a closed ticket). False when the ticket had moved — nothing was written.
  */
-async function forceStatus(ctx: TenantContext, id: number, from: TicketStatus, to: TicketStatus, sourceUpdatedAt: string): Promise<void> {
+async function forceStatus(ctx: TenantContext, id: number, from: TicketStatus, to: TicketStatus, sourceUpdatedAt: string): Promise<boolean> {
   const now = nowIso();
-  await batch(ctx, [
-    stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+  const [moved] = await batch(ctx, [
+    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ?, source_updated_at = ? WHERE id = ? AND org_id = ? AND status = ?`,
+      to, now, sourceUpdatedAt, id, ctx.orgId, from),
+    stmt(ctx, `INSERT INTO ticket_events (org_id, ticket_id, actor, from_status, to_status, created_at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
       ctx.orgId, id, MIRROR_ACTOR, from, to, now),
-    stmt(ctx, `UPDATE tickets SET status = ?, board_rank = NULL, updated_at = ?, source_updated_at = ? WHERE id = ? AND org_id = ?`,
-      to, now, sourceUpdatedAt, id, ctx.orgId),
     ...closingStmts(ctx, id, from, to),
   ]);
+  return (moved.meta.changes ?? 0) > 0;
 }
 
 /** Resolve GitHub logins to person handles; an unmapped login is dropped. */

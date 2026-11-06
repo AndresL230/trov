@@ -1,6 +1,7 @@
 // Ask Trov's PENDING attachments past their day (0068_ask_pending; the owner's ruling Q60, docs/architecture/ask.md ›
 // Attachments). A file uploaded before its conversation existed waits, unsent, on the person's hidden holder thread
-// (`chat_threads.pending = 1`); sending the question moves it onto the real thread. What is never sent goes 24 hours
+// (`chat_threads.pending = 1`); sending the question moves it onto the real thread. A file uploaded INTO a conversation
+// waits on it, unsent, the same way. What is never sent — on a holder or on a real thread — goes 24 hours
 // after it was uploaded — through the SAME hard delete as the composer's ✕ (`deleteUnsentAttachment`: its page's rows
 // and its link in one batch, the R2 bytes after the commit when nothing else holds them). One the person published
 // from the library meanwhile, or that a ticket or a doc now refers to, keeps its artifact: only the pending link goes,
@@ -17,11 +18,14 @@ export const ASK_PENDING_TTL_MS = 24 * 3_600_000;
 /** At most this many links per run (each is a few statements); the rest wait for the next hour. */
 const SWEEP_MAX = 100;
 
-/** The sweep's unit list: pending links past the TTL, with their org and person — ids and a handle only. */
+/** The sweep's unit list: UNSENT attachment links past the TTL — on a holder, or on a real thread (uploaded into a
+ *  conversation and never sent with a question) — with their org and the person who uploaded each (its artifact's
+ *  author: in a thread shared to continue that may be someone other than the owner). Ids and a handle only. */
 function staleHolders(p: PlatformContext, cutoff: string) {
   return all<{ org_id: string; handle: string; link: number }>(p,
-    `SELECT ca.org_id, t.handle, ca.id AS link
-       FROM chat_artifacts ca JOIN chat_threads t ON t.id = ca.thread_id AND t.org_id = ca.org_id AND t.pending = 1
+    `SELECT ca.org_id, COALESCE(pg.author_id, t.handle) AS handle, ca.id AS link
+       FROM chat_artifacts ca JOIN chat_threads t ON t.id = ca.thread_id AND t.org_id = ca.org_id
+       LEFT JOIN artifact_pages pg ON pg.id = ca.artifact_id AND pg.org_id = ca.org_id
       WHERE ca.role = 'attachment' AND ca.message_id IS NULL AND ca.created_at < ?
       ORDER BY ca.id LIMIT ?`, cutoff, SWEEP_MAX);
 }

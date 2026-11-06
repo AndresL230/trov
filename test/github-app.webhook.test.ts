@@ -319,6 +319,24 @@ describe("the installation's own events", () => {
     expect(await binding(ORG_A)).toMatchObject({ suspended_at: null, removed_at: null });
   });
 
+  it("suspend / unsuspend are ordered by the change's own time: one delivered after a newer one changes nothing", async () => {
+    await twoOrgs();
+    const T1 = "2026-11-01T10:00:00Z", T2 = "2026-11-01T11:00:00Z", T3 = "2026-11-01T12:00:00Z";
+    // GitHub suspended at T1 and lifted it at T2 — the two deliveries arrive the wrong way round.
+    expect((await deliver("installation", { action: "unsuspend", installation: { id: INST_B, suspended_at: null, updated_at: T2 } })).status).toBe(200);
+    expect((await deliver("installation", { action: "suspend", installation: { id: INST_B, suspended_at: T1, updated_at: T1 } })).status).toBe(200);
+    expect((await binding(ORG_B))!.suspended_at).toBeNull();
+    expect(await audit(ORG_B)).toEqual([]);
+    // A newer suspension applies (dated by GitHub's suspended_at), and an installation's updated_at in epoch seconds is read too.
+    await deliver("installation", { action: "suspend", installation: { id: INST_B, suspended_at: T3, updated_at: T3 } });
+    expect((await binding(ORG_B))!.suspended_at).toBe("2026-11-01T12:00:00.000Z");
+    await deliver("installation", { action: "unsuspend", installation: { id: INST_B, updated_at: Date.parse(T2) / 1000 } });
+    expect((await binding(ORG_B))!.suspended_at).toBe("2026-11-01T12:00:00.000Z");
+    await deliver("installation", { action: "unsuspend", installation: { id: INST_B, updated_at: Date.parse(T3) / 1000 + 60 } });
+    expect((await binding(ORG_B))!.suspended_at).toBeNull();
+    expect((await audit(ORG_B)).map((a) => a.action)).toEqual(["github.suspend", "github.unsuspend"]);
+  });
+
   it("installation_repositories: a removed repository is marked as no longer visible, an added one as reachable again", async () => {
     await twoOrgs();
     await addOrgRepo("beta-co/docs", ORG_B, { id: "hook_beta_docs", primary: false }); // connected by hand
@@ -342,5 +360,8 @@ describe("the installation's own events", () => {
     ]);
     // SaplingLearn's rows did not move.
     expect(await all(env.DB, `SELECT connection, access_lost_at FROM org_repos WHERE org_id = ?`, ORG_A)).toEqual([{ connection: "app", access_lost_at: null }]);
+    // The events carry no time to order them by: the binding is flagged for the next complete list to settle.
+    expect(await first(env.DB, `SELECT repos_changed_at IS NOT NULL AS flagged FROM org_github_installations WHERE org_id = ?`, ORG_B)).toEqual({ flagged: 1 });
+    expect(await first(env.DB, `SELECT repos_changed_at FROM org_github_installations WHERE org_id = ?`, ORG_A)).toEqual({ repos_changed_at: null });
   });
 });

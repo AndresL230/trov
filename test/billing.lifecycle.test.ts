@@ -11,7 +11,11 @@ import type { OrgPlanView, PlanRefusal } from "@shared/plans";
 import { planRefusalSentence } from "@shared/plans";
 import { cookieFor, seedPerson } from "./helpers/persons";
 import { call, one, rows, exec, SUPERADMIN } from "./helpers/orgs";
-import { FakeStripe, PRICES, PERIOD_1, PERIOD_2, bcall, billingEnv, deliver, event, iso } from "./helpers/billing";
+import { FakeStripe, PRICES, PERIOD_1, PERIOD_2, bcall, billingEnv, deliver, embeddedEnv, event, iso } from "./helpers/billing";
+import { platformCtx } from "./helpers/tenant";
+import type { Env } from "../src/env";
+import { setOrgPlan } from "../src/plans/state";
+import { stmt } from "../src/data/platform-sql";
 
 let stripe: FakeStripe;
 beforeEach(() => { stripe = new FakeStripe(); vi.stubGlobal("fetch", stripe.fetch); });
@@ -488,5 +492,128 @@ describe("the superadmin and a paid org", () => {
     // Nothing about payment is shown or offered any more.
     expect((await planOf("maya-co", cookie)).billing).toBeNull();
     expect((await bcall("POST", "/api/o/maya-co/billing/portal", cookie, {})).json).toMatchObject({ error: "not_billed" });
+  });
+});
+
+describe("one paid upgrade per org (src/billing/routes.ts `closeEarlierUpgrades`, src/billing/sync.ts `upgradeOrg`)", () => {
+  const up = (slug: string, cookie: string, body: Record<string, unknown> = {}, o: { env?: Env } = {}) =>
+    bcall<{ url?: string; error?: string; ui?: string; session_id?: string }>("POST", `/api/o/${slug}/billing/upgrade`, cookie, body, o);
+  async function freeOrg(handle: string, slug: string) {
+    const cookie = await cookieFor(handle, { member: false, email: `${handle}@example.com`, verified: true });
+    expect((await call("POST", "/api/orgs", cookie, { slug, name: slug })).status).toBe(201);
+    return cookie;
+  }
+
+  it("a second Upgrade to Pro expires the first checkout at Stripe; one paid meanwhile is never sold again", async () => {
+    const cookie = await freeOrg("maya", "maya-free");
+    expect((await up("maya-free", cookie)).status).toBe(200);
+    const a = stripe.lastSession();
+    expect((await up("maya-free", cookie)).status).toBe(200);
+    const b = stripe.lastSession();
+    expect(b.id).not.toBe(a.id);
+    // Only the newest checkout can still be paid.
+    expect([stripe.sessions.get(a.id)!.status, b.status]).toEqual(["expired", "open"]);
+
+    // B is paid at Stripe, and the webhook has not landed yet: no new checkout is made for anyone.
+    stripe.pay(b.id);
+    const made = stripe.callsTo("POST", "/v1/checkout/sessions").length;
+    // Its buyer is sent on to its waiting room (the button), or told it is complete (the payment page)…
+    expect((await up("maya-free", cookie)).json).toEqual({ url: `/billing/done?session_id=${b.id}` });
+    expect((await up("maya-free", cookie, { ui: "embedded" }, { env: embeddedEnv() })).json).toEqual({ ui: "complete", session_id: b.id });
+    // …and another owner is told the org is being upgraded already.
+    const other = await addMember("maya-free", "omar", "owner");
+    const refused = await up("maya-free", other);
+    expect([refused.status, refused.json.error]).toEqual([409, "not_free"]);
+    expect(stripe.callsTo("POST", "/v1/checkout/sessions")).toHaveLength(made);
+
+    // Stripe failing while an earlier session's state is unknown: nothing new is made either.
+    stripe.fail = (c) => (c.method === "GET" ? new Response("upstream down", { status: 503 }) : null);
+    expect((await up("maya-free", other)).status).toBe(502);
+    expect(stripe.callsTo("POST", "/v1/checkout/sessions")).toHaveLength(made);
+  });
+
+  it("two upgrades both paid: the org keeps the first subscription; the second is cancelled at Stripe at once and recorded for a refund by hand", async () => {
+    const cookie = await freeOrg("maya", "maya-free");
+    await up("maya-free", cookie);
+    const a = stripe.lastSession();
+    await up("maya-free", cookie);
+    const b = stripe.lastSession();
+    // The payment of A landed in the instant its expiry was asked for: both were paid.
+    const subA = stripe.pay(a.id, 3);
+    const subB = stripe.pay(b.id, 5);
+    expect((await deliver(event("checkout.session.completed", stripe.sessionJson(a)))).json).toEqual({ ok: true, outcome: "org_upgraded" });
+    expect((await deliver(event("checkout.session.completed", stripe.sessionJson(b)))).json).toEqual({ ok: true, outcome: "org_upgrade_duplicate" });
+    // The org pays through A, with A's seats; B will never charge again.
+    expect(await orgRow("maya-free")).toMatchObject({ plan: "team", plan_overrides: '{"seats":3}', plan_status: "active", billing_subscription_id: subA.id });
+    expect(stripe.subscriptions.get(subB.id)!.status).toBe("canceled");
+    expect(stripe.callsTo("DELETE", `/v1/subscriptions/${subB.id}`)).toHaveLength(1);
+    expect(stripe.callsTo("DELETE", `/v1/subscriptions/${subA.id}`)).toHaveLength(0);
+    const dup = await one<{ actor: string; detail: string }>(`SELECT actor, detail FROM org_admin_audit WHERE action = 'billing.duplicate'`);
+    expect(dup!.actor).toBe("billing");
+    expect(JSON.parse(dup!.detail)).toEqual({ kept: subA.id, cancelled: subB.id, person: "maya", refund: "by hand" });
+    // Delivered again, and B's own end: the org stays on A.
+    expect((await deliver(event("checkout.session.completed", stripe.sessionJson(b)))).json).toEqual({ ok: true, outcome: "org_upgrade_ended" });
+    expect((await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(subB)))).json).toEqual({ ok: true, outcome: "no_org" });
+    expect(await orgRow("maya-free")).toMatchObject({ plan: "team", plan_status: "active", billing_subscription_id: subA.id });
+    // The buyer's waiting room for B lands on the org, which is on Pro.
+    expect((await bcall("GET", `/api/billing/status?session_id=${b.id}`, cookie)).json).toEqual({ state: "done", org: { slug: "maya-free", name: "maya-free" } });
+  });
+
+  it("the upgrade's write is a compare-and-set on the subscription it read: once another landed, nothing is written or audited", async () => {
+    const before = await orgRow("acme");
+    const trail = await audit("acme");
+    const after = await setOrgPlan(platformCtx("billing"), "acme", { plan: "team", source: "billing", subscription_id: "sub_late", customer_id: "cus_late", if_subscription: "sub_other" });
+    expect(after.subscription_id).toBeNull();
+    expect(await orgRow("acme")).toEqual(before);
+    expect(await audit("acme")).toEqual(trail);
+  });
+});
+
+describe("the superadmin's plan writes are one batch each", () => {
+  it("Change plan and its pin land together: a pin that fails leaves the plan as it was", async () => {
+    const before = await orgRow("acme");
+    const p = platformCtx(SUPERADMIN);
+    // A statement that fails when it RUNS (a NOT NULL column set to NULL), after the plan's own.
+    const failing = stmt(p, `UPDATE memberships SET created_at = NULL WHERE org_id = 'org_saplinglearn'`);
+    await expect(setOrgPlan(p, "acme", { plan: "team", also: [failing] })).rejects.toThrow(/NOT NULL/);
+    expect(await orgRow("acme")).toEqual(before);
+  });
+});
+
+describe("a paid grant and its subscription", () => {
+  async function paidGrant(handle: string) {
+    const cookie = await cookieFor(handle, { member: false });
+    await bcall("GET", "/billing/start?plan=team", cookie);
+    const session = stripe.lastSession();
+    const sub = stripe.pay(session.id);
+    await deliver(event("checkout.session.completed", stripe.sessionJson(session)));
+    const [grant] = (await call<MyOrgsResponse>("GET", "/api/orgs", cookie)).json.grants;
+    return { cookie, sub, grant };
+  }
+
+  it("ended before the buyer named the org, in the instant before the grant is revoked: the org is refused, never made on a plan nothing pays for", async () => {
+    const { cookie, sub, grant } = await paidGrant("maya");
+    // What the subscription's sync writes first (the mirror's `canceled`), before it revokes the grant.
+    await exec(`UPDATE billing_subscriptions SET stripe_status = 'canceled', plan_status = 'canceled' WHERE subscription_id = ?`, sub.id);
+    expect((await call("POST", "/api/orgs", cookie, { slug: "too-late", name: "Too late", grant: grant.id })).status).toBe(403);
+    expect(await one(`SELECT id FROM orgs WHERE slug = 'too-late'`)).toBeNull();
+    expect(await one(`SELECT status FROM org_grants WHERE id = ?`, grant.id)).toEqual({ status: "unused" });
+    sub.status = "canceled";
+    expect((await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)))).json).toEqual({ ok: true, outcome: "grant_revoked" });
+  });
+
+  it("the superadmin cannot revoke a paid grant whose subscription still charges; once it is cancelled in Stripe the grant is revoked by itself", async () => {
+    const { sub, grant } = await paidGrant("maya");
+    const refused = await call<{ error: string; message: string }>("POST", `/api/platform/grants/${grant.id}/revoke`, await boss());
+    expect([refused.status, refused.json.error]).toEqual([409, "grant_paid"]);
+    expect(refused.json.message).toMatch(/cancel the subscription in Stripe/);
+    expect(await one(`SELECT status FROM org_grants WHERE id = ?`, grant.id)).toEqual({ status: "unused" });
+    sub.status = "canceled";
+    expect((await deliver(event("customer.subscription.deleted", stripe.subscriptionJson(sub)))).json).toEqual({ ok: true, outcome: "grant_revoked" });
+    expect(await one(`SELECT status, revoked_by FROM org_grants WHERE id = ?`, grant.id)).toEqual({ status: "revoked", revoked_by: "billing" });
+    // A grant given by hand is revoked as ever.
+    await seedPerson("omar", { member: false });
+    const given = await call<{ grant: { id: number } }>("POST", "/api/platform/grants", await boss(), { to: { handle: "omar" }, plan: "team" });
+    expect((await call("POST", `/api/platform/grants/${given.json.grant.id}/revoke`, await boss())).status).toBe(200);
   });
 });

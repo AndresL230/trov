@@ -263,6 +263,26 @@ describe("the owner's rulings (2026-10-16) on a blocked composer and the modes",
     expect(s.ask.composer.page.attachments.map((a) => a.id)).toEqual([900]);
     expect(s.ask.page.threadId).toBeNull();
   });
+
+  it("Q60: a new thread's files go one after another — the first names the holder thread, the rest join it", async () => {
+    const s = askState();
+    const seen: (number | null | undefined)[] = [];
+    let inFlight = 0, most = 0;
+    const ctx = makeCtx(s, {
+      uploadAttachments: async (files, threadId) => {
+        seen.push(threadId);
+        inFlight++; most = Math.max(most, inFlight);
+        await flush();
+        inFlight--;
+        return { threadId: threadId ?? 77, attachments: files.map((f) => ({ id: 900 + seen.length, slug: "ok", title: f.name, kind: "image" as const, contentType: f.type, size: f.size, sha256: "" })) };
+      },
+    });
+    addFiles(ctx, "page", [file("a.png", 10, "image/png"), file("b.png", 10, "image/png"), file("c.png", 10, "image/png")]);
+    await vi.waitFor(() => expect(s.ask.composer.page.files.every((f) => f.state === "ready")).toBe(true));
+    expect(seen).toEqual([null, 77, 77]);
+    expect(most).toBe(1);
+    expect(s.ask.page.threadId).toBe(77);
+  });
 });
 
 describe("composer:free and composer:low — the usage line, the switcher", () => {
@@ -382,11 +402,14 @@ describe("attaching — upload on attach, limits from ask/state", () => {
     const s = askState();
     const ctx = makeCtx(s);
     addFiles(ctx, "page", [bigFile("deploys-october.csv", 18432, "text/csv"), bigFile("netlify-api.pdf", 1258291, "application/pdf")]);
-    expect(ctx.uploads).toEqual([{ names: ["deploys-october.csv"], threadId: null }, { names: ["netlify-api.pdf"], threadId: null }]);
+    // No thread yet: one after another (the first would name the holder; this stub's names none).
+    expect(ctx.uploads).toEqual([{ names: ["deploys-october.csv"], threadId: null }]);
     expect(s.ask.composer.page.files.map((f) => f.state)).toEqual(["uploading", "uploading"]);
     expect(html(s)).toContain(">Uploading<");
     expect(canSend(askView(s))).toBe(false);
     await flush();
+    await flush();
+    expect(ctx.uploads).toEqual([{ names: ["deploys-october.csv"], threadId: null }, { names: ["netlify-api.pdf"], threadId: null }]);
     expect(s.ask.composer.page.files.map((f) => f.state)).toEqual(["ready", "ready"]);
     expect(s.ask.page.threadId).toBeNull(); // no visible thread until the question is sent
     const h = html(s);
@@ -419,13 +442,15 @@ describe("attaching — upload on attach, limits from ask/state", () => {
     expect(html(s)).not.toContain("is too large");
   });
 
-  it("the kinds and the count are the state's", () => {
+  it("the kinds and the count are the state's", async () => {
     const s = askState("pro", (st) => withState(st, (x) => ({ ...x, attach: { ...x.attach, maxFiles: 2, kinds: ["image"] } })));
     const ctx = makeCtx(s);
     addFiles(ctx, "page", [file("notes.md", 10, "text/markdown")]);
     expect(ctx.uploads).toEqual([]);
     expect(html(s)).toContain("<b>notes.md</b> can't be attached. Images only.");
     addFiles(ctx, "page", [file("a.png", 10, "image/png"), file("b.png", 10, "image/png"), file("c.png", 10, "image/png")]);
+    await flush();
+    await flush();
     expect(ctx.uploads.map((u) => u.names)).toEqual([["a.png"], ["b.png"]]);
     expect(html(s)).toContain("<b>c.png</b> was not attached. A message can carry up to 2 files.");
     expect(kindsPhrase(["image", "pdf", "text"])).toBe("Images, PDFs and text files");
@@ -453,7 +478,7 @@ describe("attaching — upload on attach, limits from ask/state", () => {
     expect(s.ask.composer.page.attachments.map((a) => a.id)).toEqual([600]);
   });
 
-  it("paste attaches the clipboard's files; composer:drag shows the overlay, a drop attaches", () => {
+  it("paste attaches the clipboard's files; composer:drag shows the overlay, a drop attaches", async () => {
     const s = askState();
     const ctx = makeCtx(s);
     const ta = { dataset: { askInput: "page" } };
@@ -471,6 +496,8 @@ describe("attaching — upload on attach, limits from ask/state", () => {
     expect(h).toMatch(/<div class="ask-co-drop" data-morph-key="drop" aria-hidden="true"><div class="ask-co-drop-in">.*Drop files to attach.*Images, PDFs and text files, up to 10 MB each/);
     expect(composerPart.onDrop!(ctx, ev())).toBe(true);
     expect(s.ask.composer.page.drag).toBe(false);
+    await flush();
+    await flush();
     expect(ctx.uploads[1].names).toEqual(["drop.txt"]);
     // A drag that leaves the conversation takes the overlay away (with its fade: ctx.exit).
     composerPart.onDragOver!(ctx, ev());

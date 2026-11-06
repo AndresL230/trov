@@ -5,42 +5,33 @@
 // else in the app imports releases.ts as a value; the newest version is release-latest.ts.
 // The build-time readers (docs-changelog.ts, the tests) import releases.ts itself.
 //
-// `loadReleases()` is started by main.ts whenever a paint lands on the screen without it, and the
-// screen repaints when it arrives (`rerenderSoon`). A chunk that fails to load (an old page after
-// a deploy, whose chunk names are gone) says so, with what to do — reload — and is not retried in
-// a loop.
+// It is one of the app's lazy chunks (lazy-chunk.ts — the one load / fail / retry machine): main.ts starts the load
+// whenever a paint lands on the screen without it (`withChunk(releasesChunk)`), and the screen repaints when it arrives
+// (`rerenderSoon`). A chunk that fails to load (an old page after a deploy, whose chunk names are gone) says so, with
+// what to do — reload — and is not retried in a loop.
 import type * as ReleasesModule from "./releases";
 import type { ReleasePage } from "./releases";
+import { lazyChunk } from "./lazy-chunk";
 import { skeleton, skLine, skLines, skList, skW } from "./skeleton";
 import { surface } from "./ui";
 import { brandBanner } from "./brand-banner";
 
 type Releases = typeof ReleasesModule;
 
-let mod: Releases | null = null;
-let inflight: Promise<Releases> | null = null;
-let failed = false;
+/** The chunk itself (main.ts loads it through `withChunk`, like every other). */
+export const releasesChunk = lazyChunk<Releases>(() => import("./releases"));
 
 /** The loaded module, or null while it is not in. */
-export const releasesLoaded = (): Releases | null => mod;
+export const releasesLoaded = (): Releases | null => releasesChunk.get();
 /** The last load failed (the screen says so; a reload tries again). */
-export const releasesFailed = (): boolean => failed;
+export const releasesFailed = (): boolean => releasesChunk.failed();
 
 /** Start (or join) the chunk's load. Resolves once it is in; rejects if it failed. */
-export function loadReleases(): Promise<Releases> {
-  if (mod) return Promise.resolve(mod);
-  inflight ??= import("./releases").then(
-    (m) => { mod = m; failed = false; return m; },
-    (e: unknown) => { inflight = null; failed = true; throw e; },
-  );
-  return inflight;
-}
+export const loadReleases = (): Promise<Releases> => releasesChunk.load();
 
 /** For tests: hand in the module as if it had loaded (or forget it with null). */
 export function setReleasesModule(m: Releases | null): void {
-  mod = m;
-  inflight = null;
-  failed = false;
+  releasesChunk.set(m);
 }
 
 const ARROW_L = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>`;
@@ -82,8 +73,9 @@ function failedView(): string {
 
 /** The `releases` screen: the real one once the chunk is in, its skeleton until then. */
 export function releasesView(slug: string | null, page: ReleasePage): string {
+  const mod = releasesChunk.get();
   if (mod) return mod.releasesScreen(slug, page);
-  if (failed) return failedView();
+  if (releasesChunk.failed()) return failedView();
   return slug ? pageSkeleton() : indexSkeleton();
 }
 
@@ -93,6 +85,7 @@ export function releasesView(slug: string | null, page: ReleasePage): string {
 export function releaseCrumb(slug: string | null, page: ReleasePage): string {
   if (!slug) return "";
   let name: string;
+  const mod = releasesChunk.get();
   if (mod) {
     const r = mod.findRelease(slug);
     name = r ? mod.releaseName(r) : slug;

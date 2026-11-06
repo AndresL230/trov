@@ -3,14 +3,14 @@
  * organization (owners only), Platform's two — each confirmed in THE confirmation modal with the handle or
  * slug typed, saying what goes, what stays and why, and a guard rail shown as the reason, never as blame.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import css from "../web/src/trov.css?raw";
 import { render, initialState, type AppState } from "../web/src/render";
 import { accountDeleteModal, accountDeleteTile, initialDeleteUi, orgDeleteModal, orgDeleteTile, personDeleteSection, type DeleteUi } from "../web/src/deletion";
 import { confirmKeyAction, confirmModal, typedMatches } from "../web/src/confirm";
 import { orgSettingsView, orgOverlays, initialOrgUi, type OrgUi } from "../web/src/org-settings";
 import { initialPlat, platformDialogs, adminsTab } from "../web/src/platform";
-import { deletionFailure, DELETED_SENTENCE } from "../web/src/deletion-actions";
+import { createDeletion, deletionFailure, DELETED_SENTENCE } from "../web/src/deletion-actions";
 import { OrgApiError } from "../web/src/api";
 import type { AccountDeletionPreview, OrgDeletionPreview } from "@shared/deletion-core";
 import type { MyOrg, OrgRole } from "@shared/orgs";
@@ -189,5 +189,26 @@ describe("after, and when it is refused", () => {
     expect(DELETED_SENTENCE.org).toMatch(/members keep their Trov accounts/);
     expect(deletionFailure(new OrgApiError(502, "billing_failed", "Trov couldn't reach Stripe to cancel the subscription, so nothing was deleted.", null))).toMatch(/nothing was deleted/);
     expect(deletionFailure(new Error("network"))).toMatch(/nothing was deleted/);
+  });
+});
+
+describe("Delete account clicked while its preview is still being read (deletion-actions.ts)", () => {
+  it("waits for that read and opens the confirmation when it lands — the click is never dropped", async () => {
+    let land!: () => void;
+    const held = new Promise<void>((r) => { land = r; });
+    let reads = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => { reads++; await held; return new Response(JSON.stringify(preview()), { status: 200, headers: { "content-type": "application/json" } }); }));
+    try {
+      const state = { acctDelete: initialDeleteUi<AccountDeletionPreview>(), org: { del: initialDeleteUi<OrgDeletionPreview>() }, orgSlug: null };
+      const d = createDeletion({ state, mount: { querySelector: () => null } as unknown as HTMLElement, rerender: () => undefined, unauth: () => undefined, confirmOut: (then) => then(), leave: () => undefined });
+      d.act("acctDelLoad", null, null);                  // the tile's read
+      d.act("acctDelArm", null, null);                   // Delete, before it lands
+      expect(state.acctDelete.open).toBe(false);
+      land();
+      await vi.waitFor(() => expect(state.acctDelete.open).toBe(true));
+      expect(reads).toBe(1);                             // one read, shared
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

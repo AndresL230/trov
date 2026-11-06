@@ -10,6 +10,7 @@
 import { z } from "zod";
 import { AiLineSchema, type AiLine } from "@shared/ai";
 import type { NotificationKind, Section, Window } from "@shared/notifications";
+import { TICKET_DONE_EVENT_SQL } from "@shared/tickets-core";
 import { type TenantContext, first } from "../../data/sql";
 import { weekHighlights } from "../../data/digest-highlights";
 import { primaryRepo } from "../../integrations/settings";
@@ -45,7 +46,7 @@ export async function weekNumbers(ctx: TenantContext, window: Window): Promise<W
     : null;
   const tickets = await first<{ n: number }>(ctx,
     `SELECT COUNT(DISTINCT e.ticket_id) AS n FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ?
-      WHERE e.org_id = ? AND e.to_status = 'done' AND t.status = 'done' AND e.created_at >= ? AND e.created_at < ?`, ctx.orgId, ctx.orgId, from, to);
+      WHERE e.org_id = ? AND ${TICKET_DONE_EVENT_SQL} AND e.created_at >= ? AND e.created_at < ?`, ctx.orgId, ctx.orgId, from, to);
   const feed = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM feed WHERE org_id = ? AND created_at >= ? AND created_at < ?`, ctx.orgId, from, to);
   return { prsMerged: prs ? Number(prs.n) : null, ticketsDone: Number(tickets?.n ?? 0), feedEntries: Number(feed?.n ?? 0) };
 }

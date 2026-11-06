@@ -20,11 +20,11 @@ import { avatarKey } from "../src/tools/people";
 import { mintToken } from "../src/auth/tokens";
 import { completeSignIn } from "../src/auth/onboard";
 import { handleAvailable } from "../src/auth/persons";
-import { deletionRef } from "../src/deletion/person";
+import { deleteAccount, deletionRef } from "../src/deletion/person";
 import { buildTrovMcpServer } from "../src/mcp";
 import { call, exec, one, rows } from "./helpers/orgs";
 import { cookieFor, seedPerson } from "./helpers/persons";
-import { ORG_A, ORG_B, ensureMember, platformCtx, systemCtx, tenantCtx } from "./helpers/tenant";
+import { ORG_A, ORG_B, ensureMember, platformCtx, racing, systemCtx, tenantCtx } from "./helpers/tenant";
 import { fillOrg, newOrg, orgDigest } from "./helpers/deletion";
 import { FakeStripe, bcall, deliver, event } from "./helpers/billing";
 
@@ -237,6 +237,42 @@ describe("the guard rails", () => {
     const preview = (await call<AccountDeletionPreview>("GET", "/auth/me/deletion", cookie)).json;
     expect(preview.blockers.map((b) => b.code).sort()).toEqual(["last_owner", "last_superadmin"]);
     expect((await del(cookie, "AndresL230")).status).toBe(409);
+  });
+});
+
+// The guard rails are read before a Stripe wait of seconds; the batches that delete re-check them (`personStmts`'s
+// guards, ./org.ts `onlyMemberGuard`). `racing` lands the other person's change in exactly that window.
+describe("the guard rails, again inside the batch", () => {
+  const self = { by: "self" as const, actor: ZED };
+
+  it("the other owner stepped down meanwhile: blocked (`last_owner`), and nothing of the account is deleted", async () => {
+    await seedZed();
+    const id = await newOrg(ZED, "zedteam");
+    await seedPerson("pal", { member: false });
+    await exec(`INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, 'pal', 'owner', ?, 'seed')`, id, T);
+    const e2 = racing(() => env.DB.prepare(`UPDATE memberships SET role = 'member' WHERE org_id = ? AND user_id = 'pal'`).bind(id).run());
+    await expect(deleteAccount(e2, platformCtx(ZED, e2), ZED, self)).rejects.toMatchObject({ code: "blocked", blockers: [{ code: "last_owner" }] });
+    expect(await one(`SELECT handle FROM persons WHERE handle = ?`, ZED)).toEqual({ handle: ZED });
+    expect(await rows(`SELECT user_id, role FROM memberships WHERE org_id = ? ORDER BY user_id`, id)).toEqual([{ user_id: "pal", role: "member" }, { user_id: ZED, role: "owner" }]);
+  });
+
+  it("the only other superadmin went meanwhile: blocked (`last_superadmin`)", async () => {
+    await seedPerson("boss2", { member: false });
+    await exec(`INSERT INTO platform_admins (person, granted_at, granted_by) VALUES ('boss2', ?, 'seed')`, T);
+    const e2 = racing(() => env.DB.prepare(`DELETE FROM platform_admins WHERE person = 'AndresL230'`).run());
+    await expect(deleteAccount(e2, platformCtx("boss2", e2), "boss2", { by: "self", actor: "boss2" })).rejects.toMatchObject({ code: "blocked", blockers: [{ code: "last_superadmin" }] });
+    expect(await rows(`SELECT person FROM platform_admins`)).toEqual([{ person: "boss2" }]);
+  });
+
+  it("someone joined the organization that was to go with the account: it is not deleted, nor is the account", async () => {
+    await seedZed();
+    const solo = await newOrg(ZED, "zedsolo");
+    await seedPerson("pal", { member: false });
+    const e2 = racing(() => env.DB.prepare(`INSERT INTO memberships (org_id, user_id, role, created_at, created_by) VALUES (?, 'pal', 'member', ?, 'seed')`).bind(solo, T).run());
+    await expect(deleteAccount(e2, platformCtx(ZED, e2), ZED, self)).rejects.toMatchObject({ code: "blocked", blockers: [{ code: "last_owner", org: { slug: "zedsolo" } }] });
+    expect(await one(`SELECT slug FROM orgs WHERE id = ?`, solo)).toEqual({ slug: "zedsolo" });
+    expect(await one(`SELECT handle FROM persons WHERE handle = ?`, ZED)).toEqual({ handle: ZED });
+    expect(await one(`SELECT COUNT(*) AS n FROM org_admin_audit WHERE action IN ('org.delete', 'person.delete')`)).toEqual({ n: 0 });
   });
 });
 

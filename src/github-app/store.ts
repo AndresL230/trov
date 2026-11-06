@@ -28,13 +28,19 @@ export interface InstallationRow {
   connected_by: string;
   connected_at: string;
   suspended_at: string | null;
+  /** When the suspend / unsuspend the row now reflects HAPPENED (0088): GitHub's time for a webhook's, ours for a
+   *  state Trov read from GitHub. An event older than this is stale and changes nothing (`setInstallationSuspended`). */
+  suspension_at: string | null;
+  /** An `installation_repositories` event was applied and a complete repository list has not confirmed it since
+   *  (0088): the cron's reconcile unit re-reads the list (./repos.ts `recheckInstallation`). */
+  repos_changed_at: string | null;
   removed_at: string | null;
   removed_reason: GithubRemovedReason | null;
   last_used_at: string | null;
   last_error: string | null;
 }
 const COLS = `id, installation_id, account_login, account_id, account_type, repository_selection, repo_access, connected_by, connected_at,
-  suspended_at, removed_at, removed_reason, last_used_at, last_error`;
+  suspended_at, suspension_at, repos_changed_at, removed_at, removed_reason, last_used_at, last_error`;
 
 const auditStmt = (ctx: TenantContext, action: OrgSettingsAuditAction, target: string, detail: Record<string, unknown>, at: string): Stmt =>
   stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -93,9 +99,9 @@ export async function bindInstallation(
     const widen = access.mode === "all" && live.repo_access !== "all";
     await batch(ctx, [
       stmt(ctx,
-        `UPDATE org_github_installations SET account_login = ?, account_id = ?, account_type = ?, repository_selection = ?, suspended_at = ?, last_error = NULL${widen ? ", repo_access = 'all'" : ""}
+        `UPDATE org_github_installations SET account_login = ?, account_id = ?, account_type = ?, repository_selection = ?, suspended_at = ?, suspension_at = ?, last_error = NULL${widen ? ", repo_access = 'all'" : ""}
           WHERE org_id = ? AND id = ?`,
-        info.account_login, info.account_id, info.account_type, info.repository_selection, info.suspended_at, ctx.orgId, live.id),
+        info.account_login, info.account_id, info.account_type, info.repository_selection, info.suspended_at, at, ctx.orgId, live.id),
       ...(widen ? [stmt(ctx, `DELETE FROM org_github_installation_repos WHERE org_id = ? AND binding_id = ?`, ctx.orgId, live.id)] : []),
       ...(access.mode === "selected" && live.repo_access === "selected" ? listed(access.repos) : []),
     ]);
@@ -115,9 +121,9 @@ export async function bindInstallation(
     await batch(ctx, [
       ...ending,
       stmt(ctx,
-        `INSERT INTO org_github_installations (org_id, installation_id, account_login, account_id, account_type, repository_selection, repo_access, connected_by, connected_at, suspended_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ctx.orgId, info.installation_id, info.account_login, info.account_id, info.account_type, info.repository_selection, access.mode, ctx.userId, at, info.suspended_at),
+        `INSERT INTO org_github_installations (org_id, installation_id, account_login, account_id, account_type, repository_selection, repo_access, connected_by, connected_at, suspended_at, suspension_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ctx.orgId, info.installation_id, info.account_login, info.account_id, info.account_type, info.repository_selection, access.mode, ctx.userId, at, info.suspended_at, at),
       auditStmt(ctx, "github.connect", info.account_login, {
         installation_id: info.installation_id, account_type: info.account_type, repository_selection: info.repository_selection,
         repo_access: access.mode, ...(access.mode === "selected" ? { repositories: access.repos.length } : {}),
@@ -156,14 +162,28 @@ export async function endInstallation(ctx: TenantContext, row: InstallationRow, 
   return (ended?.meta.changes ?? 0) > 0;
 }
 
-/** Suspended / unsuspended on GitHub. A no-op when the row already says so. Audited. */
-export async function setInstallationSuspended(ctx: TenantContext, row: InstallationRow, suspended: boolean): Promise<void> {
-  if ((row.suspended_at !== null) === suspended) return;
+/**
+ * Suspended / unsuspended on GitHub, as of `eventAt` — a webhook's own time for the change (GitHub's), or, with
+ * none, NOW: a state Trov just read from GitHub (Test connection, a refused mint, the cron's recheck). Ordered: a
+ * change older than the one the row already reflects (`suspension_at`) is a late delivery and changes nothing, so
+ * a suspend delivered after its unsuspend cannot suspend the binding again. A no-op when the row already says so,
+ * but a newer time is still recorded. Audited once per change (the audit row reads the UPDATE's `changes()`).
+ * Returns whether the state changed.
+ */
+export async function setInstallationSuspended(ctx: TenantContext, row: Pick<InstallationRow, "id" | "account_login" | "installation_id">, suspended: boolean, eventAt: string | null = null): Promise<boolean> {
   const at = nowIso();
-  await batch(ctx, [
-    stmt(ctx, `UPDATE org_github_installations SET suspended_at = ? WHERE org_id = ? AND id = ? AND removed_at IS NULL`, suspended ? at : null, ctx.orgId, row.id),
-    auditStmt(ctx, suspended ? "github.suspend" : "github.unsuspend", row.account_login, { installation_id: row.installation_id }, at),
+  const stamp = eventAt ?? at;
+  const [moved] = await batch(ctx, [
+    stmt(ctx,
+      `UPDATE org_github_installations SET suspended_at = ?, suspension_at = ?
+        WHERE org_id = ? AND id = ? AND removed_at IS NULL AND (suspension_at IS NULL OR suspension_at <= ?) AND (suspended_at IS NULL) = ?`,
+      suspended ? stamp : null, stamp, ctx.orgId, row.id, stamp, suspended ? 1 : 0),
+    stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`,
+      ctx.orgId, ctx.userId, suspended ? "github.suspend" : "github.unsuspend", row.account_login, JSON.stringify({ installation_id: row.installation_id }), at),
+    stmt(ctx, `UPDATE org_github_installations SET suspension_at = ? WHERE org_id = ? AND id = ? AND removed_at IS NULL AND (suspension_at IS NULL OR suspension_at < ?)`,
+      stamp, ctx.orgId, row.id, stamp),
   ]);
+  return (moved?.meta.changes ?? 0) > 0;
 }
 
 /** The installation accepted new permissions on GitHub — recorded, nothing else changes. */
@@ -217,6 +237,13 @@ export async function repoAllowed(ctx: TenantContext, row: Pick<InstallationRow,
 
 // ── the org's repositories, seen through the installation ────────────────────
 
+/** Has the org's connected `repo` lost the App's access (`org_repos.access_lost_at`)? */
+export async function repoAccessLost(ctx: TenantContext, repo: string): Promise<boolean> {
+  return (await first(ctx,
+    `SELECT 1 AS x FROM org_repos WHERE org_id = ? AND lower(repo_full_name) = lower(?) AND connection = 'app' AND access_lost_at IS NOT NULL`,
+    ctx.orgId, repo)) !== null;
+}
+
 const lower = (names: readonly string[]): Set<string> => new Set(names.map((n) => n.toLowerCase()));
 
 /**
@@ -249,6 +276,14 @@ export async function syncRepoAccess(ctx: TenantContext, change: { visible?: rea
   if (stmts.length) await batch(ctx, stmts);
 }
 
+/** A complete repository list re-marked the org's repositories: the binding's `repos_changed_at` flag is cleared —
+ *  only when it still holds `seen`, the value read BEFORE the list was asked for (an event applied meanwhile keeps
+ *  it, and the next check reads again). */
+export async function clearReposChanged(ctx: TenantContext, row: Pick<InstallationRow, "id" | "repos_changed_at">): Promise<void> {
+  if (row.repos_changed_at === null) return;
+  await run(ctx, `UPDATE org_github_installations SET repos_changed_at = NULL WHERE org_id = ? AND id = ? AND repos_changed_at = ?`, ctx.orgId, row.id, row.repos_changed_at);
+}
+
 /** GitHub's `installation_repositories` event, on the binding: the selection it now reports, the
  *  repositories' marks, and ONE audit row naming what was added and removed (names only). */
 export async function recordRepositoriesChanged(
@@ -258,6 +293,10 @@ export async function recordRepositoriesChanged(
   await batch(ctx, [
     ...(change.selection && change.selection !== row.repository_selection
       ? [stmt(ctx, `UPDATE org_github_installations SET repository_selection = ? WHERE org_id = ? AND id = ? AND removed_at IS NULL`, change.selection, ctx.orgId, row.id)] : []),
+    // These events carry no time to order them by: an `added` and a `removed` of one repository delivered the wrong
+    // way round would leave the wrong mark. So the binding is flagged, and the next complete list GitHub gives
+    // (the cron's reconcile unit asks for one — ./repos.ts `recheckInstallation`) settles every mark.
+    stmt(ctx, `UPDATE org_github_installations SET repos_changed_at = ? WHERE org_id = ? AND id = ? AND removed_at IS NULL`, at, ctx.orgId, row.id),
     auditStmt(ctx, "github.repos", row.account_login, { installation_id: row.installation_id, added: change.added.slice(0, 50), removed: change.removed.slice(0, 50) }, at),
   ]);
   // A repository newly added to the installation is this org's only if its binding reaches it.

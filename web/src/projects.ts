@@ -32,7 +32,7 @@ import type { AskRefHit } from "./ask-api";
 // ── state ────────────────────────────────────────────────────────────────────
 
 /** A read's status, as the app's `Loadable` (render.ts) has it. */
-export interface ProjLoad<T> { status: "idle" | "loading" | "ok" | "error" | "unauth"; data: T }
+export interface ProjLoad<T> { status: "idle" | "loading" | "ok" | "error"; data: T }
 
 export type ProjectFilter = "all" | "mine" | "shared";
 export const PROJECT_SORTS = ["updated", "name"] as const;

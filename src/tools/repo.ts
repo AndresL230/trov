@@ -13,6 +13,7 @@ import {
   type ProviderTrafficRange, type RepoProviderPart, type RepoProvidersSection,
 } from "@shared/hosting";
 import { hostingStatus, storedConnectionStatus } from "@shared/hosting-status-core";
+import { ENV_PILL, ENV_PILL_TONE, envVerdictKey } from "@shared/env-verdict-core";
 import { OPEN_STATUS_SQL } from "@shared/tickets-core";
 import { type TenantContext, all, first, nowIso, ph } from "../data/sql";
 import { ISSUE_GONE_ACTIONS } from "./issue-gone";
@@ -759,8 +760,9 @@ const isHttps = (u: string | null): u is string => {
  */
 function partConnectionOf(info: PartInfo, reads: HostingReads): RepoProviderPart["connection"] {
   const label = info.provider?.label ?? info.part.provider;
-  // A provider with no credential of its own (`github`) reads through the org's GitHub connection: always live.
-  if (info.provider?.credential === "github_app") return hostingStatus(null, label, true).state;
+  // A provider with no credential of its own (`github`) reads through the org's GitHub capture: live while the org's
+  // App binding (or a repository's own webhook) delivers, never merely because the provider exists.
+  if (info.provider?.credential === "github_app") return hostingStatus(null, label, true, reads.github).state;
   const secret = reads.secrets.get(HOSTING_INTEGRATION_KIND[info.part.provider] ?? "") ?? null;
   const row = reads.connections.get(info.part.provider) ?? null;
   const status = storedConnectionStatus(secret, row);
@@ -1180,7 +1182,9 @@ export async function getRepoDashboard(
   const merged = recentPrs.filter((p) => p.event_type === "pr_merged");
   const mergedThisWeek = merged.filter((p) => p.at > weekAgo);
   const mergedLastWeek = merged.filter((p) => p.at <= weekAgo && p.at > twoWeeksAgo);
-  const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo);
+  // A PR reopened since it was closed (its newest capture row is open, and newer than the close) is not closed now.
+  const reopened = (p: PrRow) => prStatesNow.some((r) => r.number === p.ref_number && isOpen(r) && r.occurred_at > p.at);
+  const closedUnmerged = recentPrs.filter((p) => p.event_type === "pr_closed" && p.at > weekAgo && !reopened(p));
 
   const { prCaptured, prsThen, prRows, prRecordingSince, mergedSince, tickets } = pr;
   const prsNow = prCaptured ? prStatesNow.filter(isOpen) : [];
@@ -1256,12 +1260,17 @@ export async function getRepoDashboard(
     // asked for its deploys.
     const connected = deployCapture || onHead.length > 0 || envHealth.length > 0;
     const failed = parts.some((p) => p.result === "fail");
-    const known = onHead.length > 0;
+    // The verdict is ranked by the ONE function the Overview's pills use (shared/env-verdict-core.ts), from what this
+    // render holds. Out of step is the facts' (the Overview's) alone: this projection does not read it.
+    const verdict = envVerdictKey({
+      down, allUnknown: own.every((i) => i.deploys.length === 0), failing: failed, outOfStep: false,
+      ci: failing.length ? "fail" : onHead.length && settled.length === onHead.length ? "pass" : null,
+    });
     const card: RepoEnv = {
       key: cfg.key, name: cfg.label, note: cfg.note, parts, url: cfg.frontendUrl, ci,
       ciTone: !onHead.length ? "neutral" : failing.length ? "bad" : "good",
-      pill: down ? "DOWN" : failed ? "FAILING" : failing.length ? "DEGRADED" : known ? "HEALTHY" : "UNKNOWN",
-      tone: down || failed ? "bad" : failing.length ? "warn" : known ? "good" : "neutral",
+      pill: ENV_PILL[verdict],
+      tone: ENV_PILL_TONE[verdict],
     };
     return { card, connected, deployCapture };
   });

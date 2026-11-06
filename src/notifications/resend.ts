@@ -55,9 +55,12 @@ export function resendDelivery(opts: { apiKey: string; from: string; fetchImpl?:
     mode: "resend",
     async send(msg) {
       const headers = msg.unsubscribeUrl ? unsubscribeHeaders(msg.unsubscribeUrl) : undefined;
+      // The caller's idempotency key (a digest's outbox key) rides as Resend's `Idempotency-Key`: a retry of a row whose
+      // first send DID reach Resend (the Worker died before it recorded `sent`) is answered from that first send, never
+      // delivered twice. Resend keeps a key for 24 hours and allows 256 characters.
       const res = await fetchImpl(RESEND_URL, {
         method: "POST",
-        headers: { authorization: `Bearer ${opts.apiKey}`, "content-type": "application/json" },
+        headers: { authorization: `Bearer ${opts.apiKey}`, "content-type": "application/json", "idempotency-key": msg.idempotencyKey.slice(0, 256) },
         body: JSON.stringify({
           from: opts.from,
           to: [msg.to],
@@ -70,12 +73,17 @@ export function resendDelivery(opts: { apiKey: string; from: string; fetchImpl?:
       });
       if (!res.ok) {
         let detail = "";
+        let name = "";
         try {
-          const j = (await res.json()) as { message?: string };
+          const j = (await res.json()) as { message?: string; name?: string };
           detail = j.message ?? "";
+          name = j.name ?? "";
         } catch {
           /* non-JSON error body */
         }
+        // 409 `invalid_idempotent_request`: this key was already accepted with a different body — the retry re-rendered a
+        // message Resend already has from the first attempt. That first send is the delivery; don't send it again.
+        if (res.status === 409 && name === "invalid_idempotent_request") return { id: null };
         throw new Error(`resend ${res.status}${detail ? `: ${detail}` : ""}`);
       }
       const data = (await res.json()) as { id?: string };

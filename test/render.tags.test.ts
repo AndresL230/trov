@@ -706,3 +706,29 @@ describe("Find items names the switch that is off", () => {
     expect(tagsActionsSrc).not.toContain("Suggestions are off. Turn them on above first.");
   });
 });
+
+describe("the confirmation's Undo run — a refusal ends it (tags-actions.ts `runConfirm`)", () => {
+  // The undo-run branch's `.catch` called a `const failed` declared AFTER that branch returned: a ReferenceError, no
+  // toast, and the dialog stuck busy (closeConfirm refuses while busy) until a reload.
+  it("a failed undo closes the dialog and says why", async () => {
+    const { createTagsController } = await import("../web/src/tags-actions");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "failed" }), { status: 500, headers: { "content-type": "application/json" } })));
+    try {
+      const s = initialState();
+      s.view = "app"; s.orgSlug = "acme";
+      (s as { me: unknown }).me = { handle: "andres", name: "Andres", avatar_url: null, color: "moss", identities: [], orgs: [org("owner")], superadmin: false, pending_invites: 0 };
+      s.tagsUi = { ...initialTagsUi(), confirm: { what: "undoRun", name: "auth", busy: false } };
+      const flashes: string[] = [];
+      const ctl = createTagsController({
+        state: s, mount: { querySelector: () => null } as unknown as HTMLElement, rerender: () => undefined, flash: (m) => { flashes.push(m); },
+        unauth: () => undefined, confirmOut: (then) => then(), search: () => undefined, planChanged: () => undefined, goList: () => undefined,
+      });
+      ctl.act("tagConfirmGo", null, null);
+      expect(s.tagsUi.confirm?.busy).toBe(true);
+      await vi.waitFor(() => expect(s.tagsUi.confirm).toBeNull());
+      expect(flashes.some((m) => m.startsWith("Couldn't undo the run."))).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});

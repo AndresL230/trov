@@ -24,10 +24,11 @@ import {
   type PeekResult, type RefView,
 } from "@shared/ai-ask";
 import {
-  actionInOrg, askerOf, attachActionsToMessage, bindPendingAttachments, createThread, finishAction, getAskSettings, getThread, groupActions, insertAction,
-  insertMessage, linkArtifact, listActions, listMessages, listSharedThreads, listThreads, markAttachmentsSent, markUndone, memberHandles, messageInOrg, moveAction,
-  patchThread, pendingAttachments, pendingHolder, projectThreadsFor, putAskSettings, recordAskWrong, replaceMessagesFrom, requestStop, rewriteAction, sameHandle, searchThreads,
-  setMessageContent, setThreadPeople, setThreadProject, setThreadShared, setThreadTitle, startTurn, threadFor, threadPeople,
+  ASK_TURN_LEASE_MS, actionInOrg, adoptOrphanCards, askerOf, attachActionsToMessage, bindPendingAttachments, claimThread, createThread, getAskSettings, getThread, groupActions,
+  insertAction, insertMessage, linkNewArtifactStmt, listActions, listMessages, listSharedThreads, listThreads, markAttachmentsSent, memberHandles, messageInOrg, moveAction,
+  patchThread, pendingAttachments, pendingHolder, projectThreadsFor, putAskSettings, recordAction, recordAskWrong, recordUndone, recoverStuckActions, releaseThread,
+  replaceMessagesFrom, requestStop, rewriteAction, sameHandle, searchThreads, setMessageContent, setThreadPeople, setThreadProject, setThreadShared, setThreadTitle, startTurn,
+  threadFor, threadPeople, turnWrote,
   type ActionWithTurn, type ChatActionRow, type ChatMessageRow, type ChatThreadRow, type ThreadFor,
 } from "../../data/ask";
 import { orgIdentityOf, appBase } from "../../tools/org-links";
@@ -52,14 +53,14 @@ import { AttachError, attachmentBlocks, attachmentsOf, checkFiles, storeAttachme
 import { partsHtml, partsMarkdown, type SavedPart } from "./render";
 import { shortDay } from "./charts";
 import { deleteAskThread, deleteUnsentAttachment } from "../../deletion/ask";
-import { LinkError, askThreadLinkNotes } from "../../tools/links";
+import { askThreadLinkNotes } from "../../tools/links";
 import { deliverLinkNotes, linkNotesText, linkRefsOf } from "./links";
 import { askGithub, connectedRepos, type AskGithub, type GithubTransportFactory } from "./github";
 import type { Env } from "../../env";
 import { ProjectRefusal, projectForAsk, projectForSave, projectForTurn, projectMarks } from "../../tools/projects";
 import { setArtifactProject, touchProject } from "../../data/projects";
 import { projectTurnContext, pinnedFirstList } from "./project";
-import type { AskThreadProject } from "@shared/ai-ask-core";
+import { ASK_CHANGES_KEPT, type AskThreadProject } from "@shared/ai-ask-core";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock;
  *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint, the access check and every read go
@@ -162,7 +163,9 @@ async function starters(ctx: TenantContext, handle: string): Promise<string[]> {
     const sprint = await first<{ title: string }>(ctx, `SELECT title FROM sprints WHERE org_id = ? AND status = 'in_progress' ORDER BY target_date LIMIT 1`, ctx.orgId);
     const topic = sprint ? starterTopic(sprint.title) : "";
     if (topic) out.push(`What's blocking the ${topic} work?`);
-    const waiting = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND (recipient = ? COLLATE NOCASE OR recipient = 'anyone') AND sender <> ? COLLATE NOCASE`, ctx.orgId, handle, handle);
+    // A pending handoff past its `expires_at` reads as expired (the sweep may not have run yet): it is not waiting.
+    const waiting = await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM handoffs WHERE org_id = ? AND status = 'pending' AND expires_at > ?
+      AND (recipient = ? COLLATE NOCASE OR recipient = 'anyone') AND sender <> ? COLLATE NOCASE`, ctx.orgId, nowDate().toISOString(), handle, handle);
     if ((waiting?.n ?? 0) > 0 || mine.length > 0) out.push("What's waiting on me?");
   } catch (e) {
     console.error("ask starters", e instanceof Error ? e.name : "error");
@@ -364,6 +367,15 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   // Mode access follows the plan: one the plan does not offer is refused before anything runs.
   if (!st.modes.includes(req.mode)) return c.json({ error: "mode_unavailable", message: `${askMode(req.mode).label} is not on this organization's plan.`, modes: st.modes }, 403);
   const settings = await getAskSettings(ctx, handle);
+  // ONE turn at a time on a thread (0088_state_machines): claimed before anything streams, released when it ends. A
+  // new thread is claimed as soon as it exists (`converse`).
+  const lease: TurnLease = { threadId: null, at: nowDate().toISOString(), turn: null };
+  if (thread) {
+    if (!(await claimThread(ctx, thread.id, lease.at, nowMs()))) {
+      return c.json({ error: "busy", message: "Trov is still answering in this conversation. Wait for it to finish, then ask again." }, 409);
+    }
+    lease.threadId = thread.id;
+  }
 
   const enc = new TextEncoder();
   const gone = new AbortController();
@@ -385,11 +397,20 @@ askApp.post(ASK_ROUTES.ask, async (c) => {
   };
   const work = (async () => {
     try {
-      await converse(c, { req, thread, own, rows, text, replace, st, settings, emit, signal: gone.signal, projectId });
+      await converse(c, { req, thread, own, rows, text, replace, st, settings, emit, signal: gone.signal, projectId, lease });
     } catch (e) {
       console.error("ask turn", e instanceof Error ? e.name : "error");
-      await emit("error", { code: "failed", message: "Something went wrong. Nothing was changed. Try again." });
+      // The turn died after its cards were made: they get an answer to sit under (so Undo is reachable), and the
+      // error says whether anything was written.
+      let wrote = false;
+      if (lease.threadId !== null && lease.turn !== null) {
+        await adoptOrphanCards(ctx, lease.threadId, lease.turn + 1, req.mode).catch(() => []);
+        wrote = await turnWrote(ctx, lease.threadId, lease.turn).catch(() => true);
+      }
+      await emit("error", { code: "failed", message: wrote ? CHANGES_KEPT : "Something went wrong. Nothing was changed. Try again." });
     } finally {
+      // The lease goes BEFORE the stream closes: a client that reads to the end may ask again at once.
+      if (lease.threadId !== null) await releaseThread(ctx, lease.threadId, lease.at).catch((e) => console.error("ask release", e instanceof Error ? e.name : "error"));
       open = false;
       try { out!.close(); } catch { /* cancelled already */ }
     }
@@ -412,7 +433,16 @@ interface Conversation {
   signal: AbortSignal;
   /** The project a NEW thread starts in (checked by the route), or null. */
   projectId: number | null;
+  /** The thread's turn lease: the route claimed an existing thread; `converse` claims a new one and records the turn. */
+  lease: TurnLease;
 }
+
+/** The turn's hold on its thread (0088_state_machines): which thread, the lease's instant, and the turn number once
+ *  it started. */
+interface TurnLease { threadId: number | null; at: string; turn: number | null }
+
+/** The error a turn ends with when it failed after writes ran (Auto): they stay, each with its Undo. */
+const CHANGES_KEPT = ASK_CHANGES_KEPT;
 
 /** What the answer SHOWED, in the order it streamed — text runs (merged deltas), blocks (their index among the
  *  answer's blocks), write cards (by id, once) — stored with the answer so a reload draws the live order. */
@@ -468,11 +498,16 @@ async function converse(c: C, outer: Conversation): Promise<void> {
     mode, auto, origin: v.req.origin ?? "page", contextRef: v.req.origin === "panel" ? visibleContext[0] ?? null : null, projectId: v.projectId,
   })))!;
   if (!v.thread && v.projectId !== null) await touchProject(ctx, v.projectId);
+  // A new thread is this turn's from its first row: nobody else can know its id yet, so the claim always holds.
+  if (v.lease.threadId === null && (await claimThread(ctx, thread.id, v.lease.at, nowMs()))) v.lease.threadId = thread.id;
   // The project this turn reads (projects.md › Ask in a project): live, and one the person ASKING can open — else the
   // thread answers as one with no project.
   const project = await projectForTurn(ctx, thread.project_id ?? null);
   // A shared thread's turn leaves its mode and Auto as the owner set them (0077).
   const turn = await startTurn(ctx, thread.id, mode, auto, undefined, v.own);
+  v.lease.turn = turn;
+  // Cards an earlier turn left with no answer (it died after making them) get one first, so they keep their place.
+  if (v.thread) await adoptOrphanCards(ctx, thread.id, turn, thread.mode);
   await v.emit("thread", { id: thread.id, title: thread.title, mode, auto, origin: thread.origin, contextRef: thread.context_ref, ...autoOff });
 
   // The question: kept (regenerate), replaced (edit — its attachments carried over), or new.
@@ -589,7 +624,11 @@ async function converse(c: C, outer: Conversation): Promise<void> {
   const empty = out.ended === "done" && isEmptyAnswer(out, rec.parts);
   if (empty) await unmeterBy(p, ctx.orgId, handle, [[METRIC_AI_CHAT, def.countsAs]], meteredAt);
   const messageId = await storeAnswer(ctx, thread.id, turn, mode, out, seen, cites, stopped || failed, empty ? 0 : def.countsAs, handle, rec.parts, lastAnswerWithContent(earlier));
-  if (failed) return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : "Something went wrong. Nothing was changed. Try again." });
+  if (failed) {
+    // Auto writes that ran before the failure stay (with their Undo, under this answer): the error says so.
+    const wrote = rec.parts.some((x) => x.kind === "action") && (await turnWrote(ctx, thread.id, turn).catch(() => true));
+    return v.emit("error", { code: "failed", message: out.ended === "refused" ? "Trov can't answer that." : wrote ? CHANGES_KEPT : "Something went wrong. Nothing was changed. Try again." });
+  }
 
   const title = thread.title || out.title || fallbackTitle(qc.text ?? "");
   if (!thread.title) {
@@ -710,8 +749,9 @@ async function saveFromThread(c: C, thread: ChatThreadRow, s: SaveAsk): Promise<
   const content = s.kind === "html"
     ? partsHtml(s.title, parts, base, `${org?.name ?? "Trov"} · ${shortDay(nowDate().toISOString().slice(0, 10))}`)
     : partsMarkdown(s.title, parts, base);
-  const page = await createPage(ctx, { title: s.title, kind: s.kind, area: "data", repo: "", visibility: s.visibility, content, summary: "Saved from Ask Trov", links }, me(c));
-  await linkArtifact(ctx, thread.id, page.id, "saved", s.messageId);
+  // The page and its link to the thread in ONE batch (never a saved page the thread does not know).
+  const page = await createPage(ctx, { title: s.title, kind: s.kind, area: "data", repo: "", visibility: s.visibility, content, summary: "Saved from Ask Trov", links }, me(c),
+    undefined, (slug) => [linkNewArtifactStmt(ctx, thread.id, slug, "saved", s.messageId)]);
   // Saved from a project's thread: the artifact is the project's (when the person can open it and it is live).
   const pid = await projectForSave(ctx, thread.project_id ?? null);
   if (pid !== null) await setArtifactProject(ctx, page.id, pid);
@@ -724,17 +764,21 @@ async function autoSave(c: C, thread: ChatThreadRow, turn: number, messageId: nu
   const title = a.title ?? `${threadTitle}, ${shortDay(nowDate().toISOString().slice(0, 10))}`;
   const preview = { title: `Save "${title}" as an artifact`, lines: [{ label: "Visibility", value: "Private" }], item: null };
   const id = await insertAction(ctx, { threadId: thread.id, turn, tool: "save_artifact", kind: "other", groupId: a.groupId, toolUseId: "", args: a, preview, state: "running", askedBy: me(c) });
+  // The card sits under this answer from the start (a turn that dies after the save still shows it, with its Undo).
+  await attachActionsToMessage(ctx, thread.id, turn, messageId);
+  let saved: AskEventMap["artifact_saved"];
   try {
-    const saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : target, block: null, title, kind: a.kind, visibility: "private" });
-    await finishAction(ctx, id, "auto", saved, { slug: saved.slug });
-    await attachActionsToMessage(ctx, thread.id, turn, messageId);
-    await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "auto", result: saved, ref: `artifact:${saved.slug}`, undo: true, at: nowDate().toISOString() });
-    await emit("artifact_saved", saved);
+    saved = await saveFromThread(c, thread, { messageId: a.scope === "thread" ? null : target, block: null, title, kind: a.kind, visibility: "private" });
   } catch (e) {
+    // Only the SAVE failing makes the card `failed`; a failure to record a save that happened leaves it `running`.
     const body = errorBody(e);
-    await finishAction(ctx, id, "failed", body, null);
+    await recordAction(ctx, id, "failed", body, null);
     await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "failed", result: body, ref: null, undo: false, at: nowDate().toISOString() });
+    return;
   }
+  await recordAction(ctx, id, "auto", saved, { slug: saved.slug });
+  await emit("action_result", { id, groupId: a.groupId, tool: "save_artifact", kind: "other", preview, state: "auto", result: saved, ref: `artifact:${saved.slug}`, undo: true, at: nowDate().toISOString() });
+  await emit("artifact_saved", saved);
 }
 
 // ── threads ──────────────────────────────────────────────────────────────────
@@ -916,6 +960,14 @@ function messageOf(m: ChatMessageRow, actions: ChatActionRow[], thread: Pick<Cha
   };
 }
 
+/** Recover what a dead turn left on the thread (the thread read): stuck `running` cards, and — while no live turn holds
+ *  the thread's lease — cards that never got their answer. */
+async function settleThread(ctx: TenantContext, t: ChatThreadRow): Promise<void> {
+  await recoverStuckActions(ctx, t.id);
+  const live = !!t.turn_at && Date.parse(t.turn_at) > nowMs() - ASK_TURN_LEASE_MS;
+  if (!live) await adoptOrphanCards(ctx, t.id, t.turn + 1, t.mode);
+}
+
 async function threadOr404(c: C): Promise<ChatThreadRow | Response> {
   const id = positiveId(c.req.param("id"));
   const t = id === null ? null : await getThread(c.var.ctx, me(c), id);
@@ -929,6 +981,9 @@ askApp.get("/ask/threads/:id", async (c) => {
   const reach = id === null ? null : await threadFor(c.var.ctx, me(c), id);
   if (!reach) return c.json({ error: "not_found" }, 404);
   const t = reach.thread;
+  // A turn that died leaves its cards behind: stuck `running` ones are settled, and — once no live turn holds the
+  // thread — cards with no answer get one, so they show (with their Undo). Best effort: the read never fails on it.
+  await settleThread(c.var.ctx, t).catch((e) => console.error("ask settle", e instanceof Error ? e.name : "error"));
   // The link notes waiting count for the READER's own side (a shared thread's side is whoever confirmed its card).
   const [rows, actions, links] = await Promise.all([listMessages(c.var.ctx, t.id), listActions(c.var.ctx, t.id), linkNotesByThread(c.var.ctx, me(c))]);
   const waiting = links.get(t.id) ?? [];
@@ -1188,12 +1243,19 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
     await moveAction(c.var.ctx, a.id, ["proposed", "waiting"], "expired");
     return c.json({ error: "expired", message: "This card expired with its turn." }, 409);
   }
+  // The org's AI switch covers every AI feature (invariant 15): with it off, no card Ask Trov proposed is written —
+  // refused before anything is claimed, so the card stays as it was (the owner's ruling, #215).
+  let st: Standing;
+  try {
+    st = await standing(c.var.ctx);
+  } catch (e) {
+    console.error("ask standing", e instanceof Error ? e.name : "error");
+    return c.json({ error: "Couldn't read Ask Trov's state" }, 503);
+  }
+  if (!st.enabled) return c.json({ error: "off", message: "Ask Trov is off for this org, so its changes can't be made. An admin can turn it on in Org settings › AI." }, 403);
   const org = await orgIdentityOf(c.var.ctx);
   const tc = toolCtxFor(c, a.thread_id, org?.slug ?? "");
   const results: AskEventMap["action_result"][] = [];
-  // An agent-link card acts AS the thread's side: with the org's AI switch off there is no Ask, so no Ask side
-  // (invariant 15) — read once, only when such a card is confirmed.
-  let aiOn: boolean | null = null;
   for (const one of await targets(c, a, !!parsed.data.only || !!parsed.data.args)) {
     const spec = WRITES[one.tool];
     if (!spec || (one.state !== "proposed" && one.state !== "waiting")) continue;
@@ -1216,22 +1278,22 @@ askApp.post("/ask/actions/:id/confirm", async (c) => {
         return c.json({ error: "invalid", message: msg }, 400);
       }
     }
+    let ran: Awaited<ReturnType<typeof spec.run>>;
     try {
       // The CONFIRMER's rights now, as if they called the tool themselves — never the rights the card was made
       // under (Q57); each writer's own rule (the lane, the assignment rule…) runs again inside `run`.
       assertMayRunNow(c.var.ctx, one.tool);
-      if (spec.asSide) {
-        aiOn ??= (await standing(c.var.ctx)).enabled;
-        if (!aiOn) throw new LinkError("forbidden", "Ask Trov is off for this org, so this thread can't act on a Trov link.");
-      }
-      const ran = await spec.run(tc, spec.input.parse(args));
-      await finishAction(c.var.ctx, one.id, "confirmed", ran.result, ran.undo);
-      results.push(result(one, "confirmed", ran.result, ran.ref, ran.undo !== null));
+      ran = await spec.run(tc, spec.input.parse(args));
     } catch (e) {
       const body = errorBody(e);
-      await finishAction(c.var.ctx, one.id, "failed", body, null);
+      await recordAction(c.var.ctx, one.id, "failed", body, null);
       results.push(result(one, "failed", body, null, false));
+      continue;
     }
+    // The write HAS run: a failure to record it never makes the card `failed` (that would lie and lose its Undo) —
+    // it is retried, and left `running` for recovery (`recoverStuckActionsStmts`) when it still fails.
+    await recordAction(c.var.ctx, one.id, "confirmed", ran.result, ran.undo);
+    results.push(result(one, "confirmed", ran.result, ran.ref, ran.undo !== null));
   }
   const answer: AskActionAnswer = { results };
   return c.json(answer);
@@ -1263,17 +1325,21 @@ askApp.post("/ask/actions/:id/undo", async (c) => {
   for (const one of list) {
     const from = one.state;
     if (!(await moveAction(c.var.ctx, one.id, from, "running"))) continue;
+    let res: unknown;
     try {
       const data = parseJson<Record<string, unknown>>(one.undo_json, {});
-      const res = one.tool === "save_artifact" ? await undoSave(tc, data.slug as string) : await WRITES[one.tool]!.undo!(tc, data);
-      await markUndone(c.var.ctx, one.id);
-      results.push(result(one, "undone", res, null, false));
+      res = one.tool === "save_artifact" ? await undoSave(tc, data.slug as string) : await WRITES[one.tool]!.undo!(tc, data);
     } catch (e) {
+      // The undo did not run: the card is back as it was, Undo and all.
       await moveAction(c.var.ctx, one.id, "running", from);
       if (e instanceof ChangedSince) return c.json({ error: "changed", message: e.message, ref: e.ref, results }, 409);
       const body = errorBody(e);
       return c.json({ error: body.code ?? "failed", message: body.error, results }, 409);
     }
+    // The undo HAS run: never back to `from` (its Undo would offer to undo it again). Retried; when it still fails the
+    // card stays `running` and recovery puts it back as `confirmed`, whose Undo's own check then says "Changed since".
+    await recordUndone(c.var.ctx, one.id);
+    results.push(result(one, "undone", res, null, false));
   }
   return c.json({ results } satisfies AskActionAnswer);
 });

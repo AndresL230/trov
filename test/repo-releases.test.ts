@@ -36,7 +36,7 @@ const ghRelease = (tag: string, daysAgo: number, extra: Record<string, unknown> 
 });
 
 const releaseRows = () => all<{ tag: string; source: string; sha: string | null; published_at: string; author: string | null; is_prerelease: number; name: string | null }>(
-  env.DB, `SELECT tag, source, sha, published_at, author, is_prerelease, name FROM releases WHERE org_id = ? ORDER BY published_at`, ORG_A);
+  env.DB, `SELECT tag, source, sha, published_at, author, is_prerelease, name FROM releases WHERE org_id = ? AND is_draft = 0 ORDER BY published_at`, ORG_A);
 
 const capture = (eventName: string, payload: unknown) =>
   captureDelivery(systemCtx(ORG_A, "github-webhook"), env as unknown as Env, { repo: REPO, githubToken: async () => null }, eventName, JSON.stringify(payload));
@@ -64,6 +64,31 @@ describe("the release / create capture", () => {
     expect(await releaseRows()).toEqual([]);
     // Nothing reached repo_events: a release is its own row, not an append-only event.
     expect(await all(env.DB, `SELECT * FROM repo_events`)).toEqual([]);
+  });
+
+  it("a removed release does not come back from a late published / edited (a tombstone, by published_at); a later publication does", async () => {
+    const rel = ghRelease("v2.4.0", 9);
+    await capture("release", { action: "published", release: rel });
+    await capture("release", { action: "deleted", release: rel });
+    expect(await releaseRows()).toEqual([]);
+    // GitHub delivered an edit of the same release after its deletion: it is the removed one — nothing comes back.
+    const late = await capture("release", { action: "edited", release: { ...rel, name: "Range mode" } });
+    expect((await late.json() as { repo: unknown }).repo).toEqual({ captured: 0, unchanged: 1 });
+    await capture("release", { action: "published", release: rel });
+    expect(await releaseRows()).toEqual([]);
+    // The tag released again (a new publication, newer published_at) is a release again.
+    await capture("release", { action: "published", release: ghRelease("v2.4.0", 2) });
+    expect((await releaseRows()).map((r) => [r.tag, r.published_at])).toEqual([["v2.4.0", iso(2)]]);
+    // A stale delete of the OLD publication leaves the new one alone.
+    await capture("release", { action: "deleted", release: rel });
+    expect((await releaseRows()).map((r) => r.tag)).toEqual(["v2.4.0"]);
+  });
+
+  it("deleted delivered BEFORE its published: the late published writes nothing", async () => {
+    const rel = ghRelease("v2.4.0", 9);
+    await capture("release", { action: "deleted", release: rel });
+    await capture("release", { action: "published", release: rel });
+    expect(await releaseRows()).toEqual([]);
   });
 
   it("a draft is never captured — created, edited, even 'published' with draft: true", async () => {
@@ -131,10 +156,10 @@ describe("reconcile's releases arm", () => {
   const opts = (fetchImpl: typeof fetch) => ({ token: "t", repo: REPO, fetchImpl });
 
   it("releases present: one request, every published one captured (drafts skipped), idempotent; the tags query never runs", async () => {
-    const gh = fakeGithub({ "/releases?per_page=30": [ghRelease("v2.4.0", 9), ghRelease("v2.5.0-draft", 1, { draft: true }), ghRelease("v2.3.2", 23)] });
+    const gh = fakeGithub({ "/releases?per_page=100": [ghRelease("v2.4.0", 9), ghRelease("v2.5.0-draft", 1, { draft: true }), ghRelease("v2.3.2", 23)] });
     const first1 = await reconcileReleases(systemCtx(ORG_A), opts(gh.fetchImpl), NOW);
     expect(first1).toEqual({ written: 2, unchanged: 0 });
-    expect(gh.calls).toEqual([`https://api.github.com/repos/${REPO}/releases?per_page=30`]);
+    expect(gh.calls).toEqual([`https://api.github.com/repos/${REPO}/releases?per_page=100`]);
     expect(gh.graphql).toEqual([]);
     expect((await releaseRows()).map((r) => r.tag)).toEqual(["v2.3.2", "v2.4.0"]);
     expect(await reconcileReleases(systemCtx(ORG_A), opts(gh.fetchImpl), NOW)).toEqual({ written: 0, unchanged: 2 });
@@ -143,7 +168,7 @@ describe("reconcile's releases arm", () => {
 
   it("a list shorter than the page is the whole history: a captured release no longer in it is removed", async () => {
     await ingestRepoRelease(systemCtx(ORG_A), releaseEventsFromDelivery("release", { action: "published", release: ghRelease("v9.9.9", 2) }, REPO)[0]);
-    const gh = fakeGithub({ "/releases?per_page=30": [ghRelease("v2.4.0", 9)] });
+    const gh = fakeGithub({ "/releases?per_page=100": [ghRelease("v2.4.0", 9)] });
     expect(await reconcileReleases(systemCtx(ORG_A), opts(gh.fetchImpl), NOW)).toEqual({ written: 2, unchanged: 0 });
     expect((await releaseRows()).map((r) => r.tag)).toEqual(["v2.4.0"]);
   });
@@ -178,7 +203,7 @@ describe("reconcile's releases arm", () => {
     expect(res.failed).toEqual(["releases"]);
     expect(base.calls.some((c) => c.includes("/pulls?state=open"))).toBe(true);
     // Healthy: it ran, inside reconcileRepo, through the same gate.
-    const gh = fakeGithub({ "/releases?per_page=30": [ghRelease("v2.4.0", 9)] });
+    const gh = fakeGithub({ "/releases?per_page=100": [ghRelease("v2.4.0", 9)] });
     const ok = await reconcileRepo(systemCtx(ORG_A), opts(gh.fetchImpl), [], NOW);
     expect(ok.failed).toEqual([]);
     expect((await releaseRows()).map((r) => r.tag)).toEqual(["v2.4.0"]);
@@ -189,7 +214,7 @@ describe("reconcile's releases arm", () => {
     // 16 + 2N + the promotion chain's max(2, N) + the facts arms' 6 (Phase B) + the releases arm; the cron's unit also
     // budgets the repo scan (Phase D, `SCAN_COST`), which Poll now does not run
     // (and the PR-files arm, Phase E: 9 on Poll now, 30 on the cron's unit)
-    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 30 + SCAN_COST + LOGO_IMPORT_COST + 1);
+    expect(reconcileCost(2)).toBe(16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 30 + SCAN_COST + LOGO_IMPORT_COST + 1 + 2 + 5 + 7); // … + the open-PR list's two more pages and five closed-PR lookups on the cron's unit, and the App binding's recheck (0088)
     expect(refreshSubrequests(2)).toBe(3 * 2 + 16 + 2 * 2 + 2 + 6 + RELEASES_RECONCILE_COST + 9);
   });
 
@@ -389,7 +414,7 @@ describe("readTags and the week figure", () => {
     const ctx = systemCtx(ORG_A);
     await ingestRepoRelease(ctx, { op: "upsert", repo: REPO, tag: "v1", publishedAt: iso(2), provenance: "webhook" });
     expect(await releaseWeekFigure(ctx, REPO, NOW)).toEqual({ key: "releases", value: null, delta: null });
-    const gh = fakeGithub({ "/releases?per_page=30": [ghRelease("v1", 2), ghRelease("v0.9", 3), ghRelease("v0.8", 10), ghRelease("v0.8-rc", 1, { prerelease: true })] });
+    const gh = fakeGithub({ "/releases?per_page=100": [ghRelease("v1", 2), ghRelease("v0.9", 3), ghRelease("v0.8", 10), ghRelease("v0.8-rc", 1, { prerelease: true })] });
     await reconcileReleases(ctx, { token: "t", repo: REPO, fetchImpl: gh.fetchImpl }, NOW);
     expect(await releaseWeekFigure(ctx, REPO, NOW)).toEqual({ key: "releases", value: 2, delta: 1 });
     // The marker names the repository it read.

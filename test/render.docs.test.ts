@@ -320,6 +320,74 @@ describe("a move reads the open doc page again (tree-actions.ts; e2e Batch D, th
       vi.unstubAllGlobals();
     }
   });
+
+  it("a refused move with another still out is put back by reading the space again — and a late answer never writes into another space", async () => {
+    // The first move (rate) is refused only after the second (start) was made: its seq is no longer the latest.
+    let refuse!: () => void;
+    const held = new Promise<void>((r) => { refuse = r; });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (String(url).includes("/rate/")) { await held; return new Response(JSON.stringify({ error: "cycle" }), { status: 409, headers: { "content-type": "application/json" } }); }
+      return new Response(JSON.stringify({ ok: true, places: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    setApiOrg("acme");
+    try {
+      const state = docState({ docSlug: "api" });
+      const reloads: string[] = [];
+      const ctl = createTreeController({
+        state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, newPage: () => {},
+        reducedMotion: () => true, treeChanged: () => {}, reloadSpace: (slug) => reloads.push(slug),
+      });
+      ctl.move("rate", { kind: "before", ref: "auth" });
+      ctl.move("start", { kind: "after", ref: "long" });
+      await new Promise((r) => setTimeout(r, 0));
+      refuse();
+      await vi.waitFor(() => expect(reloads).toEqual(["engineering"]));
+
+      // Another space opened while a refused move was out: nothing of the old space is written into it.
+      let refuse2!: () => void;
+      const held2 = new Promise<void>((r) => { refuse2 = r; });
+      const posted: string[] = [];
+      vi.stubGlobal("fetch", vi.fn(async (url: string) => { posted.push(String(url)); await held2; return new Response(JSON.stringify({ error: "cycle" }), { status: 409, headers: { "content-type": "application/json" } }); }));
+      ctl.move("rate", { kind: "top" });
+      const other = { space: SPACES[1], pages: [pg("brief", "Product brief", null, 1024)], can_edit: false, can_admin: false };
+      state.spaceHome = { status: "ok", data: other as never };
+      refuse2();
+      await new Promise((r) => setTimeout(r, 0));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(posted).toHaveLength(1);
+      expect(state.spaceHome.data?.pages.map((p) => p.slug)).toEqual(["brief"]);
+      expect(reloads).toEqual(["engineering"]);
+    } finally {
+      setApiOrg(null);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("each toast's Undo is bound to its own move", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true, places: [] }), { status: 200, headers: { "content-type": "application/json" } })));
+    vi.stubGlobal("CSS", { escape: (s: string) => s });
+    setApiOrg("acme");
+    try {
+      const state = docState({ docSlug: "api" });
+      const ctl = createTreeController({
+        state, mount: { querySelectorAll: () => [], querySelector: () => null } as unknown as HTMLElement, rerender: () => {}, flash: () => {}, unauth: () => {}, newPage: () => {},
+        reducedMotion: () => true, treeChanged: () => {},
+      });
+      const parentOf = (slug: string) => state.spaceHome.data?.pages.find((p) => p.slug === slug)?.parent_slug ?? null;
+      ctl.move("rate", { kind: "top" });
+      ctl.move("start", { kind: "into", ref: "long" });
+      await new Promise((r) => setTimeout(r, 0));
+      expect([parentOf("rate"), parentOf("start")]).toEqual([null, "long"]);
+      // The first toast's Undo, pressed after the second move answered, puts back the FIRST move.
+      ctl.act("treeUndo", "rate", null);
+      expect(parentOf("rate")).toBe("api");
+      expect(parentOf("start")).toBe("long");
+    } finally {
+      setApiOrg(null);
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("opening and closing a page's children (tree-actions.ts treeToggle)", () => {

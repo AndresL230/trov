@@ -38,6 +38,14 @@ interface PageRow {
   current_version: number; updated_at: string | null; updated_by: string | null; owner: string | null; staged: number | null;
 }
 
+/** The SQL test that a `docs` row (alias `d`) is a page IN THE LIBRARY: not archived (0083_doc_archive), and either
+ *  live or with a version still waiting (`staged`). A page that was never approved and whose every version was
+ *  rejected is no page — an empty shell, kept only because its versions are (soft; Invariant 11). It is in no list, no
+ *  tree and no count, is no parent, and holds no slug: the next proposal of that slug takes the row over as a NEW page
+ *  (src/consumer.ts `ingestDocProposal`; docs-library.md › Statuses). */
+export const inLibrary = (d: string): string =>
+  `${d}.archived_at IS NULL AND (${d}.current_version > 0 OR EXISTS (SELECT 1 FROM doc_versions lv WHERE lv.org_id = ${d}.org_id AND lv.slug = ${d}.slug AND lv.status = 'staged'))`;
+
 const auditStmt = (ctx: TenantContext, action: SpaceAuditAction, target: string, detail: Record<string, unknown>, at: string): Stmt =>
   stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`,
     ctx.orgId, ctx.userId, action, target, JSON.stringify(detail), at);
@@ -68,11 +76,12 @@ async function ownersOf(ctx: TenantContext, slug?: string): Promise<Map<string, 
 }
 
 /** Every page of the org (or of one space) IN THE LIBRARY without its body, with its newest staged version. An
- *  archived page (0083_doc_archive) is left out: it is in no tree, no count and no list but its space's Archived pages. */
+ *  archived page (0083_doc_archive) is left out: it is in no tree, no count and no list but its space's Archived pages.
+ *  So is an empty shell (`inLibrary`). */
 async function pageRows(ctx: TenantContext, space?: string): Promise<PageRow[]> {
   const sel = `SELECT d.slug, d.title, d.space, d.section, d.parent_slug, d.tree_rank, d.current_version, d.updated_at, d.updated_by, d.owner,
                       (SELECT MAX(v.version) FROM doc_versions v WHERE v.org_id = ? AND v.slug = d.slug AND v.status = 'staged') AS staged
-                 FROM docs d WHERE d.org_id = ? AND d.archived_at IS NULL`;
+                 FROM docs d WHERE d.org_id = ? AND ${inLibrary("d")}`;
   return space
     ? all<PageRow>(ctx, `${sel} AND d.space = ?`, ctx.orgId, ctx.orgId, space)
     : all<PageRow>(ctx, sel, ctx.orgId, ctx.orgId);
@@ -193,7 +202,7 @@ async function topSummaries(ctx: TenantContext, space: string, pages: PageRow[])
 export async function listSpacesForAgent(ctx: TenantContext): Promise<{ spaces: { slug: string; name: string; description: string; pages: number }[] }> {
   const [rows, counts] = await Promise.all([
     spaceRows(ctx),
-    all<{ space: string; n: number }>(ctx, `SELECT space, COUNT(*) AS n FROM docs WHERE org_id = ? AND archived_at IS NULL GROUP BY space`, ctx.orgId),
+    all<{ space: string; n: number }>(ctx, `SELECT space, COUNT(*) AS n FROM docs WHERE org_id = ? AND ${inLibrary("docs")} GROUP BY space`, ctx.orgId),
   ]);
   const n = new Map(counts.map((c) => [c.space, c.n]));
   return { spaces: rows.filter((r) => r.archived_at === null).map((r) => ({ slug: r.slug, name: r.name, description: r.description, pages: n.get(r.slug) ?? 0 })) };
@@ -381,9 +390,13 @@ export async function archiveSpace(ctx: TenantContext, slug: unknown): Promise<S
   const row = await existing(ctx, slug);
   if (row.archived_at === null) {
     const at = nowIso();
+    // Guarded: a second archive racing this one changes nothing — not the first's who and when, and no second audit
+    // row (the audit is written only while the space is still live, just before the UPDATE in the same batch).
     await batch(ctx, [
-      stmt(ctx, `UPDATE doc_spaces SET archived_at = ?, archived_by = ? WHERE org_id = ? AND slug = ?`, at, ctx.userId, ctx.orgId, row.slug),
-      auditStmt(ctx, "space.archive", row.slug, {}, at),
+      stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, 'space.archive', ?, '{}', ?
+                  WHERE EXISTS (SELECT 1 FROM doc_spaces s WHERE s.org_id = ? AND s.slug = ? AND s.archived_at IS NULL)`,
+        ctx.orgId, ctx.userId, row.slug, at, ctx.orgId, row.slug),
+      stmt(ctx, `UPDATE doc_spaces SET archived_at = ?, archived_by = ? WHERE org_id = ? AND slug = ? AND archived_at IS NULL`, at, ctx.userId, ctx.orgId, row.slug),
     ]);
   }
   return dtoOf(ctx, row.slug);

@@ -5,12 +5,13 @@ import { withAiMeta, type FeedDbRow } from "./feed-ai";
 import { extractOutline } from "@shared/doc-outline";
 import { resolveSpaceAlias, type DocPageDTO } from "@shared/docs-core";
 import { readDocPage } from "./doc-tree";
+import { inLibrary } from "./spaces";
 import { buildTree, ancestorsOf, type DocTreeNode } from "@shared/docs-tree-core";
 import type { QueryRequest, QueryResult, QueryPrimary, QueryPointer, Authority, QueryType as ContractQueryType } from "@shared/contract";
 import { ARTIFACT_INLINE_MAX, type ArtifactKind, type ArtifactStatus } from "@shared/artifacts";
 import { ftsBody, listPages, searchArtifacts } from "./artifacts";
 import type { TicketListItem, TicketDetail, TicketRef, TicketSeg, TicketAssigneeFilter, TicketCategory } from "@shared/tickets";
-import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES } from "@shared/tickets-core";
+import { OPEN_STATUSES, OPEN_STATUS_SQL, TICKET_STATUSES, UNPICKED_TICKET_SQL } from "@shared/tickets-core";
 import { type TenantContext, first, all, ph, fanOut } from "../data/sql";
 // The sprint read model lives next to the sprint writers; `query()` borrows its
 // progress RULE so the assembled sprint body and the Roadmap can never disagree.
@@ -36,10 +37,12 @@ export async function get_doc(
   return { doc, versions, tags };
 }
 
-/** Does ANY page of the org hold this slug — an archived one too (a slug stays reserved, 0083_doc_archive)? */
+/** Does ANY page of the org hold this slug — an archived one too (a slug stays reserved, 0083_doc_archive)? An empty
+ *  shell (never approved, every version rejected — `inLibrary`) holds none: a new page takes its row over. */
 export async function doc_slug_taken(ctx: TenantContext, slug: string): Promise<"live" | "archived" | null> {
-  const row = await first<{ archived: number }>(ctx, `SELECT archived_at IS NOT NULL AS archived FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
-  return row ? (row.archived ? "archived" : "live") : null;
+  const row = await first<{ archived: number; shell: number }>(ctx,
+    `SELECT archived_at IS NOT NULL AS archived, NOT (${inLibrary("docs")}) AS shell FROM docs WHERE org_id = ? AND slug = ?`, ctx.orgId, slug);
+  return !row ? null : row.archived ? "archived" : row.shell ? null : "live";
 }
 
 /** The Docs screen's read of one doc (`GET /doc/:slug`): the doc with its live body, its tags, and
@@ -83,8 +86,8 @@ export async function get_doc_version(ctx: TenantContext, slug: string, version:
  *  MCP `list_docs` keeps the bodies (its contract). */
 export async function list_doc_tree(ctx: TenantContext, section?: string): Promise<DocListRow[]> {
   const docs = section
-    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? AND archived_at IS NULL ORDER BY slug ASC`, ctx.orgId, section)
-    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND archived_at IS NULL ORDER BY slug ASC`, ctx.orgId);
+    ? await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND section = ? AND ${inLibrary("docs")} ORDER BY slug ASC`, ctx.orgId, section)
+    : await all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND ${inLibrary("docs")} ORDER BY slug ASC`, ctx.orgId);
   return docs.map((d) => ({
     slug: d.slug, section: d.section, title: d.title, current_version: d.current_version,
     updated_at: d.updated_at, updated_by: d.updated_by, space: d.space, owner: d.owner,
@@ -100,14 +103,14 @@ export async function list_docs(ctx: TenantContext, section?: string, space?: st
   if (section) { clauses.push("section = ?"); params.push(section); }
   const sp = resolveSpaceAlias(space);
   if (sp) { clauses.push("space = ?"); params.push(sp); }
-  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
+  return all<DocRow>(ctx, `SELECT * FROM docs WHERE org_id = ? AND ${inLibrary("docs")}${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY slug ASC`, ...params);
 }
 
 /** Every doc WITHOUT its body — for a surface that only lists (My Work's "Docs you
  *  own"), so it never pulls every doc's full text over the wire. */
 export async function list_doc_meta(ctx: TenantContext): Promise<DocMetaRow[]> {
   return await all<DocMetaRow>(ctx,
-    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? AND archived_at IS NULL ORDER BY slug ASC`,
+    `SELECT slug, section, title, current_version, updated_at, updated_by, space, owner FROM docs WHERE org_id = ? AND ${inLibrary("docs")} ORDER BY slug ASC`,
     ctx.orgId);
 }
 
@@ -251,7 +254,7 @@ export async function list_proposals(ctx: TenantContext): Promise<ProposalRow[]>
   );
   if (!rows.length) return [];
   // Each page's place: the org's tree read once (no bodies), resolved as forgivingly as the Library's own read.
-  const tree = buildTree(await all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND archived_at IS NULL`, ctx.orgId));
+  const tree = buildTree(await all<DocTreeNode>(ctx, `SELECT slug, parent_slug, tree_rank, space, title FROM docs WHERE org_id = ? AND ${inLibrary("docs")}`, ctx.orgId));
   return rows.map((r) => ({ ...r, path: ancestorsOf(tree, r.slug).map((a) => a.title ?? a.slug) }));
 }
 
@@ -493,16 +496,13 @@ export async function get_ticket(ctx: TenantContext, number: number): Promise<Ti
   };
 }
 
-/** The sidebar badge: active tickets nobody has picked up (unassigned + open).
- *  NATIVE tickets only — an unassigned mirrored ticket is an unassigned GitHub
- *  issue, triaged on GitHub, and would otherwise flood the badge (0032). */
+/** The sidebar badge: the tickets nobody has picked up — the ONE rule, `UNPICKED_TICKET_SQL` (a NATIVE ticket in
+ *  Triage with no assignee; an unassigned mirrored ticket is an unassigned GitHub issue, triaged on GitHub, and would
+ *  otherwise flood the badge, 0032). The ticketq digest and Home's Triage count the same set. */
 export async function ticket_badge(ctx: TenantContext): Promise<number> {
   const row = await first<{ n: number }>(
     ctx,
-    `SELECT COUNT(*) AS n FROM tickets t
-      WHERE t.org_id = ? AND t.status IN ${OPEN_STATUS_SQL} AND t.source = 'canopy'
-        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = ? AND a.ticket_id = t.id)`,
-    ctx.orgId,
+    `SELECT COUNT(*) AS n FROM tickets t WHERE t.org_id = ? AND ${UNPICKED_TICKET_SQL}`,
     ctx.orgId
   );
   return row?.n ?? 0;
@@ -698,7 +698,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
         `SELECT docs_fts.slug AS key, bm25(docs_fts, 1.0, 5.0, 1.0, 1.0) AS rank,
                 snippet(docs_fts, -1, ${SNIPPET}) AS snip
          FROM docs_fts JOIN docs ON docs.slug = docs_fts.slug AND docs.org_id = ?
-         WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND docs.archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
+         WHERE docs_fts MATCH ? AND docs_fts.org_id = ? AND ${inLibrary("docs")}${clauses.map((c) => ` AND ${c}`).join("")} ORDER BY rank LIMIT ${fetchCap}`,
         ...params
       );
       for (const r of rows) candidates.push({ type: "doc", key: String(r.key), score: -r.rank, snippet: r.snip });
@@ -709,7 +709,7 @@ export async function query(ctx: TenantContext, req: QueryRequest, viewer?: stri
       if (space !== undefined) { clauses.push("space = ?"); params.push(space); }
       const rows = await all<{ key: string; ts: string | null }>(
         ctx,
-        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ? AND archived_at IS NULL${clauses.map((c) => ` AND ${c}`).join("")}
+        `SELECT slug AS key, updated_at AS ts FROM docs WHERE org_id = ? AND ${inLibrary("docs")}${clauses.map((c) => ` AND ${c}`).join("")}
          ORDER BY (updated_at IS NULL), updated_at DESC, slug DESC LIMIT ${fetchCap}`,
         ...params
       );

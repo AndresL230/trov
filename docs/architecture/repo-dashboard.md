@@ -150,16 +150,24 @@ allows 1,000 an invocation; D1 does not count) and `CRON_WALL_BUDGET_MS` = 8 min
 goes first and, on a tick that also has a heavy job, may use at most HALF, so neither starves the other. A
 unit is started only while its worst-case cost still fits, what it really spent is counted through the
 budget's own `fetch`, and each job resumes after the unit its previous invocation stopped at (`cron_cursor`)
-— so more orgs than one invocation can serve lengthen the cycle; they never overrun it. With few orgs every
-tick serves every unit and the cursor is never written. ONE org's on-demand "Poll now" has its own, smaller
+— so more orgs than one invocation can serve lengthen the cycle; they never overrun it. The cursor is advanced to
+a unit BEFORE the unit runs (with more than one unit), so an invocation the platform kills inside a unit resumes
+after it: a unit that always dies is served last, never starving the rest; once every unit is served it is `''`. ONE org's on-demand "Poll now" has its own, smaller
 ceiling, `SUBREQUEST_CAP` = 100 (below; it was the free plan's 50 until repo setups' compares outgrew it).
 `src/index.ts` dispatches by EXACT string equality on `controller.cron`, so `REPO_CRON` and the expression
 in `wrangler.toml` must stay identical (pinned by a test).
 
 **PR and commit capture — the fallback turns on a completeness marker, deltas on a recording window.**
 `prCaptured` = the `prs_reconciled` snapshot exists, which `reconcileRepo` writes only after the open-PR list
-was BOTH fetched AND ingested without throwing — a marker, not `provenance = 'backfill'`, because a repo with
-zero open PRs would otherwise never earn one. Until it exists the Overview reads Merged PRs · issues · Open
+was fetched WHOLE (paged 100 at a time — 1 page on Poll now, up to `OPEN_PR_SYNC_PAGES` (3) on the cron's unit and
+Sync — complete when the last page read is short) AND ingested without throwing — a marker, not
+`provenance = 'backfill'`, because a repo with zero open PRs would otherwise never earn one. A list cut by the page
+bound REMOVES the marker (the counts read unknown). With a complete list, a PR the capture still holds open that
+GitHub no longer lists (closed while the webhook was away, too long ago for the closed list) is read once
+(`GET /pulls/<n>`, at most `PR_CLOSE_LOOKUPS` (5) a run, cron and Sync only — `closed_missing`) and recorded merged
+or closed as GitHub says: never closed by guess. Webhook and reconcile rows are dated by ONE rule (`prOccurredAt`,
+`src/repo/capture.ts`: a merge at `merged_at`, a close at `closed_at`, an open PR at `updated_at`), so the newest
+row per PR is the same whichever path wrote it, and a reopen (updated after the close) is newest. Until it exists the Overview reads Merged PRs · issues · Open
 tickets (a live ticket count with a net 7-day delta from `ticket_events`) and the Code tab reads Closed
 unmerged, instead of lying with "Open PRs: 0" off one webhook delivery, and the PR list stays the
 merged/closed list from `events`; once it flips, Open PRs / Awaiting review replace them (Open tickets
@@ -210,11 +218,13 @@ part with a SETTLED deploy, labelled "<environment> · <part label>", oldest fir
 `deployDots` / `envPartOf` (`shared/repo.ts` — the sample uses the same two): a deploy still queued or
 building is not a dot; canceled is abandoned, never a failure. Nothing here reads GitHub's deployments or
 Workers Builds checks directly: a GitHub signal reaches a card only as a `github` part's own `hosting_deploys` row
-(`repo-apps.md` › The `github` provider). **The section's pill is a verdict about CHECKS, with health as an override**:
-`HEALTHY` needs checks captured on the branch head, none failing, and no failed part; a deploy that landed
-with NO checks captured reads `UNKNOWN`; a part whose newest deploy errored is a fact on its own, so
-`FAILING` does not wait for checks; failing head checks read `DEGRADED`; `DOWN` OUTRANKS everything — a fresh
-health ping saying the environment is unreachable is the headline. `RepoEnv.pill` is still computed and served
+(`repo-apps.md` › The `github` provider). **The section's pill is ranked by the Overview's own function**
+(`shared/env-verdict-core.ts` `envVerdictKey`, the one `envVerdict` uses): `DOWN` OUTRANKS everything — a fresh
+health ping saying the environment is unreachable is the headline; then `UNKNOWN` when no part has a deploy (an
+environment with no part included); a part whose newest deploy errored is a fact on its own, so `FAILING` does not
+wait for checks; failing head checks read `DEGRADED`; `HEALTHY` needs checks captured on the branch head, all
+settled and none failing; otherwise `LIVE` — a deploy that landed with NO checks captured is never HEALTHY. The
+served pill does not read out of step (`OUT OF STEP` is the facts' alone). `RepoEnv.pill` is still computed and served
 over MCP, but the screen draws it only for a payload WITHOUT `facts` — every Worker payload carries them now, and
 then the header pills and cards draw `envVerdict` (`repo-apps.md` › The Overview: Healthy only on passing checks,
 else Live). Without facts the verdict is a status mark,
@@ -307,7 +317,8 @@ GitHub (`POST /admin/backfill`) and the cron's 6-hourly `:20` tick, so a repo no
 heals within 6 hours (an admin's "Poll now" runs it too). Every caller needs the org's primary repository and
 a GitHub credential (`resolveGithubCredential`: its App installation's token, else its stored `github_token`).
 Its arms, each in its own `safely`
-block: open PRs (+ the `prs_reconciled` marker), closed PRs, the pre-capture commit window,
+block: open PRs (+ the `prs_reconciled` marker), closed PRs, the open PRs GitHub no longer lists (`closed_missing`,
+cron and Sync only), the pre-capture commit window,
 completed workflow runs, the failing-job label pass, the environment heads, each environment's head checks,
 the `canopy/*` commit statuses, PR reviews, branches, drift (the promotion chain), and the Overview facts'
 `not_shipped` and `out_of_step` (below), releases (below) — and, when the caller asks (`runReconcileJob`'s

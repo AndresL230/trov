@@ -31,9 +31,18 @@ export function progressFromIssueEvent(
 /**
  * Live progress for a sprint's `github_ref`, computed from GitHub. `ref` is JSON:
  * a number (the number of an issue GROUP on GitHub) or an array of issue numbers.
- * Never throws — returns null on parse failure, a non-OK response (expired/revoked
- * token, missing resource), or any error, so the recompute degrades gracefully.
- * `fetchImpl` is injectable for tests (the pool has no exported fetch mock).
+ * Never throws — returns null on parse failure, an auth failure (expired/revoked
+ * token), a GitHub error, or any exception, so the recompute degrades gracefully
+ * and leaves the cache as it was. `fetchImpl` is injectable for tests (the pool has
+ * no exported fetch mock).
+ *
+ * An ARRAY ref counts the way the webhook's event path does (`applyEventProgress`) —
+ * ONE rule, so the two writers of the cache never disagree: total = every issue in
+ * the array; closed = the closed ones PLUS the ones that LEFT the repository
+ * (`deleted` → GitHub's 410, `transferred` → its 301, read without following it:
+ * the event path counts a gone issue as resolved, `isIssueGone`). An issue GitHub
+ * does not know (404) stays in the total, not closed — as the event path counts an
+ * issue it has no snapshot of.
  */
 export async function fetchGithubRefProgress(opts: {
   token: string;
@@ -56,16 +65,17 @@ export async function fetchGithubRefProgress(opts: {
       let closed = 0;
       let total = 0;
       for (const n of parsed) {
-        const res = await doFetch(`https://api.github.com/repos/${opts.repo}/issues/${n}`, { headers });
-        if (!res.ok) {
-          // Token/auth-level failure → the whole sprint's progress is unknown.
-          if (res.status === 401 || res.status === 403) return null;
-          // A single missing/inaccessible issue (e.g. 404) → skip it; keep counting the rest.
-          continue;
-        }
+        const res = await doFetch(`https://api.github.com/repos/${opts.repo}/issues/${n}`, { headers, redirect: "manual" });
+        total++;
+        // Gone from the repository (deleted / transferred): resolved, for the sprint's purposes.
+        if (res.status === 410 || res.status === 301) { closed++; continue; }
+        // Unknown to GitHub: in the total, not closed (the event path's issue with no snapshot).
+        if (res.status === 404) continue;
+        // Anything else that is not a plain answer — auth (401/403), a rate limit, an outage — makes the whole
+        // sprint's progress unknown: null, and the cache keeps what it had.
+        if (!res.ok) return null;
         const data = (await res.json()) as { state?: string };
         if (data.state === "closed") closed++;
-        total++;
       }
       return { closed, total };
     }
@@ -143,7 +153,8 @@ function latestIssueSnapshotSql(count: number): string {
  * (b) Array ref: for every sprint whose github_ref is a JSON array containing
  *     this event's issue number, recount from the LATEST captured snapshot of
  *     each array member (total = array length; closed = how many of those
- *     latest snapshots have state:"closed").
+ *     latest snapshots have state:"closed" or left the repo) — the same rule the
+ *     recompute's `fetchGithubRefProgress` counts by.
  *
  * Never throws on a malformed payload — both branches simply no-op.
  */

@@ -194,6 +194,7 @@ function workStatements(c) {
       id: sp.id, org_id: ORG, title: sp.title, description: sp.description, summary: sp.summary, phase: null, dates: `${shortDay(start)} – ${shortDay(due)}`,
       start_date: start, target_date: due, status: sp.status, urgency: sp.urgency, lead: sp.lead, domain: sp.domain, github_ref: null,
       created_at: c.days(Math.max(-sp.start + 3, 3)), created_by: sp.lead, updated_at: c.days(sp.status === "done" ? -sp.due : 1),
+      completed_at: sp.status === "done" ? c.days(-sp.due) : null,
     }));
     for (const [url, kind, label, meta] of sp.resources) s.push(insert("sprint_resources", { org_id: ORG, sprint_id: sp.id, url, kind, label, meta }));
   }
@@ -201,7 +202,7 @@ function workStatements(c) {
   // and statuses come from `CANONICAL_SPRINT_DATES` (an idempotent UPDATE on rows the layer does not own — the AI
   // showcase reads sprint 3's date back, so run it after this layer, as the `team` scenario does).
   for (const [id, sp] of datedSprints(c)) {
-    s.push(`UPDATE sprints SET start_date = ${q(sp.start_date)}, target_date = ${q(sp.target_date)}, dates = ${q(sp.dates)}, status = ${q(sp.status)}${sp.updated_at ? `, updated_at = ${q(sp.updated_at)}` : ""} WHERE org_id = ${q(ORG)} AND id = ${id}`);
+    s.push(`UPDATE sprints SET start_date = ${q(sp.start_date)}, target_date = ${q(sp.target_date)}, dates = ${q(sp.dates)}, status = ${q(sp.status)}${sp.updated_at ? `, updated_at = ${q(sp.updated_at)}` : ""}, completed_at = ${sp.status !== "done" ? "NULL" : sp.updated_at ? q(sp.updated_at) : "COALESCE(completed_at, updated_at)"} WHERE org_id = ${q(ORG)} AND id = ${id}`);
   }
   for (const [n, title, category, priority, requester, assignees, sprint, moves, body, extra = {}] of C.TICKETS) {
     const id = 7000 + n;

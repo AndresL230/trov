@@ -17,9 +17,19 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
 
 - **Replay ledger** (`processed_items`, keyed by `session.id + item_index`): a re-POST of the same
   payload drops every item as `unchanged` — nothing is double-written. MCP tools use an ephemeral
-  UUID session so each call is independently reconciled without ever hitting the ledger.
+  UUID session so each call is independently reconciled without ever hitting the ledger. **An item and its ledger
+  row are ONE batch** (#211): the writers (`append_feed`, `propose_doc_update`, `stage_adr`, `route_triage`) take the
+  gate's `ledgerStmt` as `extra`, a plain INSERT whose `ref` reads the row just written (the org's newest — a batch is
+  one transaction). A crash can no longer leave an item written but unrecorded, and two runs of the same item at once
+  write it once: the second batch fails on the ledger's primary key and rolls back whole, which `writeOnce` answers as
+  `unchanged`. A refusal is still never ledgered; an `unchanged` dedupe still is (on its own).
 - **Content-hash dedupe** (SHA-256 via Web Crypto): an identical body for an existing slug/ADR
-  is a no-op (`unchanged`) unless `force: true` is passed.
+  is a no-op (`unchanged`) unless `force: true` is passed. A doc is compared with its LIVE body and with the version
+  still WAITING (the newest `staged` one newer than `current_version`) — never a stale staged one under the live
+  version, so a real proposal is never dropped against a version nobody can approve.
+- **A page's version numbers are unique** (`0088_state_machines`: UNIQUE `(org_id, slug, version)`). The next
+  number is taken inside the INSERT (`COALESCE(MAX(version), 0) + 1` over the slug's rows), so two proposals of one
+  page at once get two numbers.
 - **Change-typing**: `change_kind` (`new` / `edit` / `rewrite`) is server-computed via a line LCS diff
   of the proposed body against the current promoted body; `base_version` records the version the writer
   read, surfacing stale-edit warnings. Both are stored on `doc_versions`.
@@ -108,7 +118,12 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
 - **Events** carry no vocab/confidence — an event is external fact captured verbatim, deduped by a UNIQUE
   `semantic_key` (`gh:pr:42:merged`, `gh:issue:…`) written `INSERT OR IGNORE` (a redelivery/backfill
   overlap drops as `unchanged`). Its `subject_login` is a SECOND identity (who the event is about),
-  trusted only post-HMAC — distinct from the writer.
+  trusted only post-HMAC — distinct from the writer. The ONE refresh: a `pr_closed` row (`gh:pr:<n>:closed`, a key
+  that names no occurrence) moves to a LATER close of the same PR — a PR reopened and closed again — its
+  `occurred_at`, `raw` and `subject_login` replaced; an older close (a redelivery, an older backfill) changes
+  nothing, and the refresh reports `unchanged` so nothing downstream (summary, AI router) runs twice. Whether a PR
+  is closed NOW is the capture's newest `pr` row, which a reopen moves (the Overview's Closed unmerged and Ask's PR
+  state check it). A merge is final: `gh:pr:<n>:merged` is never refreshed.
 - **Author is ALWAYS the authenticated principal**, passed in by the caller. The client-supplied
   `session.author` is advisory and ignored. (This writer rule does NOT clobber an event's `subject_login`.)
   **The ONE exception: what Trov writes itself.** A session digest (the AI pass's `digest.session` job,
@@ -149,7 +164,11 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   identity is `(org, repo, tag)` and its dedupe is the gate's content hash over the settled row (a redelivery,
   a no-op edit or a re-read writes nothing); the write itself is `releases` (`src/repo/release-store.ts`).
   A draft is never captured, a tag never downgrades a release, and a row without GitHub's own date is not
-  written. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
+  written. A removal (`deleted`, `unpublished`, or reconcile's list no longer naming it) does not delete the row:
+  it becomes a TOMBSTONE (`is_draft = 1`, skipped by every read) dated by the removed release's `published_at`,
+  and an `upsert` no newer than a tombstone is that release delivered late and writes nothing — a late
+  `published` / `edited` cannot resurrect it; a later publication of the tag replaces it. A removal of an older
+  publication leaves a newer one alone, and a removal delivered before its release leaves a tombstone of its own. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
   `status` delivery's `metricsFromStatus` arm, the cron's pollers and reconcile's snapshots write them direct
   through `putMetric` / `putSnapshot` (`src/repo/store.ts`) — each validates its own input, and `putMetric`
   is first-write-wins.
@@ -176,7 +195,17 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   copies it into the live doc and bumps `current_version` (non-destructive; prior versions remain). The promote is
   ONE batch: the version's status, its open risk superseded, the live body, the page's `doc_links` rebuilt from that
   body (`[[slug]]` links, `shared/docs-links-core.ts`), and the version's requested parent applied when still valid.
-  Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'`; the row
+  **Every move is a compare-and-set on its from-state** (#211; the values live in `src/tools/writes.ts`
+  `DOC_VERSION_STATUSES` / `ADR_STATUSES` — the columns have no CHECK): promote's FIRST statement flips the version
+  only while it is `staged`, NEWER than `current_version`, and its page not archived, and every statement after it in
+  the batch runs only if that one applied (`StmtGuard` "won": this version promoted at this instant) — so a promote
+  that lost a race writes nothing and answers why. **A version not newer than the live one is refused 409 `stale`**
+  (`DocStaleVersionError`): approving it would roll the page back. **A promote supersedes what waited under it**: the
+  page's older versions still `staged` become `superseded` in the same batch (soft — rows and bodies stay; the doc
+  history shows them unmarked, as before); `0088` marked the ones earlier promotes had left. A superseded version is
+  neither promoted nor rejected. An import's older version under an agent's newer change (`NOT_SUPERSEDED_IMPORT`,
+  `docs-library.md`) is a different thing: still `staged`, hidden while the newer one waits.
+  Reject (soft): `POST /doc/:slug/reject` flips a staged version to `status='rejected'` (guarded on `staged`); the row
   and body remain (non-destructive). Idempotent. A version of an ARCHIVED page is refused 409 `archived` by promote
   (`DocArchivedError`): its staged versions stay `staged`, HIDDEN from Review and the badge (every Review read joins
   `d.archived_at IS NULL`), and come back when the page is restored — hiding, not rejecting, because they were made
@@ -192,7 +221,9 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
 - ADRs: an ADR draft arrives in a batch — `adr_drafts` of MCP `record_session` or of `POST /ingest` — and
   the gate's `ingestAdrDraft` stages it as a `draft` through the writer `stage_adr` (`src/tools/writes.ts`;
   a function, NOT an MCP tool — there is no per-entry ADR tool). `POST /adr/:id/ratify` flips it to `ratified`.
-  Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains. Ratifying or rejecting
+  Reject (soft): `POST /adr/:id/reject` flips a draft to `status='rejected'`; the row remains. **Only a `draft` moves**
+  (both guarded `AND status = 'draft'`): a rejected decision can't be ratified, nor a ratified one rejected (400).
+  Ratifying or rejecting
   a draft — and promoting or rejecting a doc proposal — closes Trov's open risk on it in the same batch (superseded;
   owner ruling Q37, `ai.md` › The kinds).
 - Sprints: **nothing about a sprint is ever staged.** 0025 dropped `milestone_proposals` and with it
@@ -203,7 +234,7 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   `POST /sprints` (created `upcoming`, `phase` `'Unscheduled'`, no `due` → `target_date` `''` which the
   DTO shows as `due: null`), `POST /sprints/:id/active` (`true` → `in_progress`, `false` → `upcoming`;
   on a `done` sprint `false` is a NO-OP and `true` re-opens it), `POST /sprints/:id/resources`,
-  `POST /sprints/:id/complete` which flips status to `done`, and `POST /sprints/:id/delete` — a HARD delete
+  `POST /sprints/:id/complete` which flips status to `done` and stamps `completed_at` (0088), and `POST /sprints/:id/delete` — a HARD delete
   (`delete_sprint`, one `db.batch`): its tickets move to the backlog (`sprint_id = NULL`), its
   `sprint_resources` and `sprint_progress` rows go with it, past `plan_versions` snapshots keep naming it. All
   direct promote-class writes, open to any signed-in member; the same five are MCP tools for every principal
@@ -216,7 +247,11 @@ Agents only ever stage; humans confirm via **authenticated HTTP routes that are 
   discard — Unplaced's Undo toast: back to unresolved with the audit columns cleared; only a `discarded` item, an
   assigned one is 409) and `POST /needs-triage/:id/assign` (re-runs the item's `raw` through the SAME gate for the
   target type, then records `resolution='assigned'` with `assigned_ref`; a refusal is a 400 with the gate's reason and
-  resolves nothing). Placing an item as a feed entry: tags the PERSON picks must be live on the org's
+  resolves nothing). The assign's ledger key is the ITEM's own (`triage:<id>:<created_at>`, item 0 — stable across
+  retries), so a retry after a write whose resolve never landed, or two assigns at once, replays the first write
+  (its `assigned_ref` read back from the ledger) instead of making the thing twice; and the resolve — discard's too —
+  is guarded `AND resolved = 0`: of two racing, the first stands and the other answers what the item became.
+  Placing an item as a feed entry: tags the PERSON picks must be live on the org's
   list (400 otherwise); with none picked, the item's own tags go to the gate as they came — an item held
   before 0056 for an unknown tag is placed with the tags it may have, the other becoming a suggestion. All triage exits are soft — nothing is hard-deleted; `resolved=1` + audit columns
   (`resolved_at`, `resolved_by`, `resolution`, `assigned_ref`) record how each item left the queue.

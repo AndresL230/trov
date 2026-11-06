@@ -22,7 +22,9 @@ import type { Env } from "../env";
 import { sha256Hex } from "../auth/crypto";
 import { platform, systemTenant } from "../data/context";
 import { type PlatformContext, first } from "../data/platform-sql";
+import { orgLive } from "../data/suspension";
 import { artifactErrorResponse, jsonResponse, NOT_FOUND_BODY } from "./http";
+import { noCandidates, sweepR2 } from "../deletion/r2";
 
 export const UPLOAD_PREFIX = "/api/artifacts/upload/";
 /** A minted token: 32 random bytes, base64url, no padding. */
@@ -55,7 +57,7 @@ async function uploadTokenOrg(p: PlatformContext, token: string): Promise<string
        SELECT org_id FROM handoff_upload_tokens WHERE token_hash = ?
        UNION ALL
        SELECT org_id FROM artifact_upload_tokens WHERE token_hash = ?
-     ) t JOIN orgs o ON o.id = t.org_id AND o.suspended_at IS NULL LIMIT 1`, hash, hash, hash);
+     ) t JOIN orgs o ON o.id = t.org_id AND ${orgLive("o")} LIMIT 1`, hash, hash, hash);
   return row?.org_id ?? null;
 }
 
@@ -82,7 +84,10 @@ export async function handleArtifactUpload(request: Request, env: Env): Promise<
     if (image) return jsonResponse(image, 200);
     const sent = await consumeHandoffUploadToken(ctx, token, request.body, len);
     if (sent) return jsonResponse({ id: sent.handoff.id, url: sent.url, ...(sent.replayed ? { replayed: true } : {}) }, 200);
-    const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body);
+    // Bytes stored but no version landed: freed when nothing else holds them (checked while the token is still
+    // claimed), before the token is released for a retry.
+    const result = await consumeUploadToken(ctx, env.ARTIFACTS_BUCKET, token, request.body,
+      (sha) => sweepR2(p, env.ARTIFACTS_BUCKET, { ...noCandidates(), artifacts: [sha] }));
     return jsonResponse(result, 200);
   } catch (e) {
     if (e instanceof HandoffError) {

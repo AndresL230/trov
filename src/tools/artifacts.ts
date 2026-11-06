@@ -731,9 +731,10 @@ export type CreateArtifactInput = CreateTextArtifactInput | CreateBinaryArtifact
 
 /**
  * Create a page with its v1 (status `draft`). Text kinds carry `content`; binary kinds
- * carry `bytes` and need `bucket` (the bytes go to `artifacts/<sha256>` first).
+ * carry `bytes` and need `bucket` (the bytes go to `artifacts/<sha256>` first). `extra` (given the new page's slug)
+ * adds the caller's own rows to the page's ONE batch — Ask's link to its thread — so they land together or not at all.
  */
-export async function createPage(ctx: TenantContext, input: CreateArtifactInput, author: string, bucket?: R2Bucket): Promise<ArtifactDetailDTO> {
+export async function createPage(ctx: TenantContext, input: CreateArtifactInput, author: string, bucket?: R2Bucket, extra?: (slug: string) => Stmt[]): Promise<ArtifactDetailDTO> {
   const f = pageFields(input);
   const summary = checkSummary(input.summary);
   const links = await normalizeLinks(ctx, input.links, f.repo);
@@ -746,7 +747,8 @@ export async function createPage(ctx: TenantContext, input: CreateArtifactInput,
     if (!b.bytes) throw bad("bytes are required");
     payload = await binaryPayload(bucket, f.kind as ArtifactBinaryKind, b.bytes, b.content_type, b.filename, summary);
   }
-  const slug = await insertPage(ctx, f, links, payload, author);
+  const own = extra ? await uniqueSlug(ctx, f.title) : undefined;
+  const slug = await insertPage(ctx, f, links, payload, author, own && extra ? extra(own) : [], own);
   return await getPage(ctx, slug, null, author);
 }
 
@@ -828,7 +830,9 @@ export async function patchPage(ctx: TenantContext, slug: string, input: PatchAr
     if (input.status !== "draft" && input.status !== "published") throw bad("status must be draft or published — ratify has its own route");
     status = input.status; // an explicit status wins over the private → org rule above
   }
-  const stmts: Stmt[] = [
+  // Compare-and-set on everything this patch read and writes back: a ratify, a new version, another patch or a delete
+  // that landed since the read is never silently undone — the patch is `conflict` and writes nothing.
+  const res = await batch(ctx, [
     stmt(
       ctx,
       `UPDATE artifact_pages SET title = ?, area = ?, repo = ?, visibility = ?, status = ?,
@@ -836,12 +840,16 @@ export async function patchPage(ctx: TenantContext, slug: string, input: PatchAr
               ratified_by      = CASE WHEN ? = 'ratified' THEN ratified_by END,
               ratified_at      = CASE WHEN ? = 'ratified' THEN ratified_at END,
               published_at     = CASE WHEN ? = 'draft' THEN NULL ELSE COALESCE(published_at, ?) END
-        WHERE id = ? AND org_id = ?`,
-      title, area, repo, visibility, status, status, status, status, status, nowIso(), p.id, ctx.orgId
+        WHERE id = ? AND org_id = ? AND deleted_at IS NULL
+          AND title = ? AND area = ? AND repo = ? AND visibility = ? AND status = ? AND current_version = ?`,
+      title, area, repo, visibility, status, status, status, status, status, nowIso(), p.id, ctx.orgId,
+      p.title, p.area, p.repo, p.visibility, p.status, p.current_version
     ),
-  ];
-  if (title !== p.title) stmts.push(stmt(ctx, `UPDATE artifacts_fts SET title = ? WHERE page_id = ? AND org_id = ?`, title, String(p.id), ctx.orgId));
-  await batch(ctx, stmts);
+    // The search row follows the title — only when the patch above landed.
+    ...(title !== p.title ? [stmt(ctx, `UPDATE artifacts_fts SET title = ? WHERE page_id = ? AND org_id = ?
+        AND EXISTS (SELECT 1 FROM artifact_pages WHERE id = ? AND org_id = ? AND title = ?)`, title, String(p.id), ctx.orgId, p.id, ctx.orgId, title)] : []),
+  ]);
+  if (!res[0].meta.changes) throw new ArtifactError("conflict", "the page changed — reload and retry");
   return await getPage(ctx, p.slug, null, who);
 }
 
@@ -995,10 +1003,12 @@ export async function mintUploadToken(ctx: TenantContext, input: UploadTicketInp
  * into R2 at `artifacts/<sha256>` with R2's own `sha256` check — ALWAYS a put, even if
  * the key exists, so knowing a hash never attaches bytes the caller does not have —
  * then land the version. Unknown token → not_found; expired / used → gone; a length or
- * hash mismatch → bad_request (the claim is released so the same token can retry).
+ * hash mismatch → bad_request (the claim is released so the same token can retry). A version that fails to land
+ * after the bytes went to R2 releases the claim too, after `unlanded(sha)` — the HTTP route's R2 cleanup
+ * (src/deletion/r2.ts, which nothing reachable from src/mcp.ts may import): without it the bytes stay, as orphans.
  */
 export async function consumeUploadToken(
-  ctx: TenantContext, bucket: R2Bucket, token: string, body: ReadableStream<Uint8Array> | null
+  ctx: TenantContext, bucket: R2Bucket, token: string, body: ReadableStream<Uint8Array> | null, unlanded?: (sha256: string) => Promise<unknown>
 ): Promise<ArtifactVersionResult> {
   const hash = await sha256Hex(String(token ?? ""));
   const now = nowIso();
@@ -1035,8 +1045,17 @@ export async function consumeUploadToken(
     await release();
     throw bad("the upload did not match its declared size_bytes or sha256");
   }
-  return await writeVersion(ctx, p, {
-    content: null, r2_key: key, size_bytes: t.size_bytes, content_type: t.content_type,
-    sha256: t.sha256, filename: t.filename, summary: t.summary,
-  }, t.principal);
+  try {
+    return await writeVersion(ctx, p, {
+      content: null, r2_key: key, size_bytes: t.size_bytes, content_type: t.content_type,
+      sha256: t.sha256, filename: t.filename, summary: t.summary,
+    }, t.principal);
+  } catch (e) {
+    // The bytes are in R2 but the version did not land (D1 decided: nothing written). The object goes when nothing else
+    // holds it — checked while this token is still claimed, so it does not count itself (src/deletion/r2.ts; a retry
+    // puts the bytes again anyway) — and THEN the token is released, so the same link can retry until it expires.
+    if (unlanded) await unlanded(t.sha256).catch(() => undefined);
+    await release().catch(() => undefined);
+    throw e;
+  }
 }

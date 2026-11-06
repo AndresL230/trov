@@ -1,4 +1,5 @@
 import type { NotificationKind, Section } from "@shared/notifications";
+import { UNPICKED_TICKET_SQL } from "@shared/tickets-core";
 import { type TenantContext, first } from "../../data/sql";
 import { countAssignedTickets } from "../../tools/mywork";
 import { queueLine } from "../assemble";
@@ -6,15 +7,14 @@ import { queueLine } from "../assemble";
 const DEEP_LINK = "/#tickets";
 
 /**
- * What nobody has picked up: `submitted` NATIVE tickets with no assignee, org-wide and NOT window-scoped — the queue
- * is state, not a log. A mirrored ticket (0032) is a GitHub issue, and GitHub's own triage covers it.
+ * What nobody has picked up — the ONE rule, `UNPICKED_TICKET_SQL` (the sidebar badge and Home's Triage count the same
+ * set): `submitted` NATIVE tickets with no assignee, org-wide and NOT window-scoped — the queue is state, not a log.
+ * A mirrored ticket (0032) is a GitHub issue, and GitHub's own triage covers it.
  */
 async function unassignedCount(ctx: TenantContext): Promise<number> {
   const row = await first<{ n: number }>(ctx,
-    `SELECT COUNT(*) AS n FROM tickets t
-      WHERE t.org_id = ? AND t.status = 'submitted' AND t.source = 'canopy'
-        AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.ticket_id = t.id AND a.org_id = ?)`,
-    ctx.orgId, ctx.orgId);
+    `SELECT COUNT(*) AS n FROM tickets t WHERE t.org_id = ? AND ${UNPICKED_TICKET_SQL}`,
+    ctx.orgId);
   return Number(row?.n ?? 0);
 }
 

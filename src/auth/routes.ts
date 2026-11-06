@@ -12,8 +12,7 @@ import { buildAuthorizeUrl, exchangeCode, getUser, getPrimaryEmail } from "./git
 import { buildGoogleAuthorizeUrl, exchangeGoogleCode, verifyGoogleIdToken } from "./google";
 import { devSignIn, devSignOut } from "./dev-signin";
 import { createSession, setSessionCookie, readSessionCookie, deleteSession, clearSessionCookie } from "./session";
-import { getPerson, listIdentities, findIdentity, handleAvailable, createPerson, HandleTakenError, linkIdentity, unlinkIdentity, updateProfile, renamePerson } from "./persons";
-import { run } from "../data/platform-sql";
+import { getPerson, listIdentities, findIdentity, handleAvailable, createPersonWithIdentity, HandleTakenError, IdentityTakenError, unlinkIdentity, updateProfile, renamePerson } from "./persons";
 import { completeSignIn, linkSignIn, sealOnboard, openOnboard, ONBOARD_COOKIE, ONBOARD_TTL_S, type ProviderProfile, type ForkResult } from "./onboard";
 import { takeOAuthPending } from "./oauth-routes";
 import { listGrants, revokeGrant, setGrantOrg, setGrantCurrent, setGrantMode, requireOwnGrant, GrantScopeError, type GrantScopeCode } from "./oauth";
@@ -161,8 +160,7 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     if (!parsed.success) return c.json({ error: "invalid payload", issues: parsed.error.issues }, 400);
     // A sealed onboard cookie is a capability, but it can be replayed (a second POST
     // with the same cookie and a different handle) — once the (provider, subject) pair
-    // is actually linked, treat the cookie as spent instead of racing createPerson into
-    // an orphan persons row that linkIdentity's PK conflict would otherwise leave behind.
+    // is actually linked, treat the cookie as spent (a replay racing past this is caught by the batch below).
     if (await findIdentity(c.var.p, p.provider, p.subject)) {
       deleteCookie(c, ONBOARD_COOKIE, { path: "/" });
       return c.json({ error: "already_onboarded" }, 409);
@@ -170,20 +168,16 @@ export function buildAuthApp(deps: AuthDeps = {}): Hono<AppEnv> {
     const avail = await handleAvailable(c.var.p, parsed.data.handle);
     if (!avail.available) return c.json({ error: avail.reason === "taken" ? "handle_taken" : `handle_${avail.reason}` }, avail.reason === "taken" ? 409 : 400);
     try {
-      await createPerson(c.var.p, { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email });
+      // The person and the sign-in that names them in ONE batch: the findIdentity pre-check above closes the
+      // common replay window, and a second request racing past it collides on the (provider, subject) key and
+      // writes nothing — never a persons row with no identity. `p.email` is provider-verified (completeSignIn's
+      // contract) — recorded on the identity (Q1).
+      await createPersonWithIdentity(c.var.p,
+        { handle: parsed.data.handle, name: parsed.data.name ?? p.name, color: parsed.data.color, avatar_url: p.avatar_url, avatar_source: p.provider, email: p.email },
+        { provider: p.provider, subject: p.subject, label: p.label, verifiedEmail: p.email, providerUid: p.uid });
     } catch (e) {
       if (e instanceof HandleTakenError) return c.json({ error: "handle_taken" }, 409);
-      throw e;
-    }
-    try {
-      // `p.email` is provider-verified (completeSignIn's contract) — recorded on the identity (Q1).
-      await linkIdentity(c.var.p, { provider: p.provider, subject: p.subject, label: p.label, person: parsed.data.handle, linkedBy: parsed.data.handle, verifiedEmail: p.email, providerUid: p.uid });
-    } catch (e) {
-      // The findIdentity pre-check above closes the common replay window, but a second
-      // request racing between that check and this insert can still collide on the
-      // (provider, subject) primary key — never leave a persons row with no identity.
-      await run(c.var.p, `DELETE FROM persons WHERE handle = ?`, parsed.data.handle);
-      if (/UNIQUE constraint failed/i.test(e instanceof Error ? e.message : String(e))) return c.json({ error: "already_onboarded" }, 409);
+      if (e instanceof IdentityTakenError) return c.json({ error: "already_onboarded" }, 409);
       throw e;
     }
     // A new person's one org is their Sample workspace (src/orgs/sample.ts; organizations.md › 1e) — made-up content

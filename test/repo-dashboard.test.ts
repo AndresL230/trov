@@ -114,6 +114,14 @@ describe("getRepoDashboard — a D1-only projection", () => {
     expect(code[1]).toMatchObject({ label: "Merged this week", value: 3, sub: "by 2 people" });
   });
 
+  it("a PR reopened since its close is not counted as closed unmerged (its newest capture row is open)", async () => {
+    await ingestAll([prEvent(13, "meilin", ago(4), false), prEvent(14, "meilin", ago(3), false)]);
+    // #13 was reopened two days after it closed; #14 stays closed.
+    await ingestRepo([prRow(13, "closed", ago(4)), prRow(13, "review", ago(2)), prRow(14, "closed", ago(3))]);
+    const d = await getRepoDashboard(systemCtx(), "o/r", NOW);
+    expect(data(d.codeStats)[0]).toMatchObject({ label: "Closed unmerged", value: 1 });
+  });
+
   // Task 12: `refreshBranches` (src/repo/github.ts) writes a `branches`
   // snapshot; the projection only reads it back — never guessed.
   it("reads the branches snapshot back as `ok`, and swaps the 4th code tile to Active branches once one exists", async () => {

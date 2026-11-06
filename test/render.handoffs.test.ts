@@ -60,6 +60,21 @@ describe("handoffs — numeric ids", () => {
     expect(claimed).not.toContain('data-act="handoffExpire"');
   });
 
+  it("Claim and Send show busy (disabled) while their write is out — a second click is no second write", () => {
+    const claiming = handoffDetailView({ status: "ok", handoff: h({ body: "Quiz agent still fails." }), me: "AndresL230", persons, expireArm: false, promptView: "raw", claiming: true });
+    expect(claiming).toMatch(/data-act="handoffClaim" data-arg="12" class="cnpy-accentbtn" disabled aria-busy="true"[^>]*>Claiming…</);
+    const sending = newHandoffView({ draft: { ...blankHandoff(), body: "Pick up the quiz agent" }, me: "AndresL230", persons, busy: true });
+    expect(sending).toMatch(/data-act="nhSend" class="" disabled aria-busy="true"[^>]*>Sending…</);
+    // main.ts: each of these writes holds its key from the click to the answer (beginWrite … finally endWrite).
+    for (const [act, key] of [["ntSubmit", '"ntSubmit"'], ["nhSend", '"nhSend"'], ["edSave", '"edSave"'], ["nsCreate", '"nsCreate"'], ["handoffClaim", "key"], ["mwHandoffClaim", "key"], ["promptPublish", "key"]] as const) {
+      const at = mainSrc.indexOf(`case "${act}": {`);
+      expect(at, act).toBeGreaterThan(-1);
+      const body = mainSrc.slice(at, mainSrc.indexOf("\n      return;\n    }", at));
+      expect(body, act).toContain(`if (!beginWrite(${key})) return;`);
+      expect(body, act).toContain(`.finally(() => { endWrite(${key}); rerender(); })`);
+    }
+  });
+
   it("copy-as-prompt names the handoff #12", () => {
     expect(handoffAsPrompt(h()).split("\n")[0]).toBe("HANDOFF #12 · from @Darkest-Teddy · to @AndresL230");
   });
@@ -93,6 +108,14 @@ describe("prompts", () => {
   it("offers Publish vN only while a staged version exists", () => {
     expect(promptDetailView({ ...props, versions: [v(3, "staged"), v(2, "published")] })).toContain('data-act="promptPublish" data-arg="3"');
     expect(promptDetailView({ ...props, versions: [v(2, "published")] })).not.toContain("promptPublish");
+  });
+
+  it("Publish and Save show busy (disabled) while their write is out", () => {
+    const pub = promptDetailView({ ...props, versions: [v(3, "staged")], publishing: true });
+    expect(pub).toMatch(/data-act="promptPublish" data-arg="3" class="" disabled aria-busy="true"[^>]*>Publishing…</);
+    const ed = { ...blankPromptDraft(), title: "Lint", slug: "lint", body: "Lint." };
+    expect(promptEditorView({ draft: ed, takenSlugs: [], busy: true })).toMatch(/data-act="edSave" class="" disabled aria-busy="true"[^>]*>Saving…</);
+    expect(promptEditorView({ draft: ed, takenSlugs: [] })).toMatch(/data-act="edSave" class="cnpy-accentbtn" style="[^"]*">Save v1</);
   });
 
   it("shows its body in the SAME prompt box a handoff's prompt uses", () => {

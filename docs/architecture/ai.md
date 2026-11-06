@@ -89,7 +89,10 @@ ONLY in these places, all behind THE client (the fifth, Ask Trov, is `ask.md`):
    (`waitUntil`). Kind `tag.fit` (Jev). Everything about Sift that is NOT a call — candidates, the question, the
    bands and their writer, the switches' read, Undo, review counts — is `src/tools/tag-fit.ts`, which imports no
    client (MCP reaches it through `src/tools/tags.ts`). Sift on NEW items runs in the pass (› Jobs); the admin's run
-   over existing items stays here.
+   over existing items stays here. A run still `running` 15 minutes after it started is let go by the next start
+   (`failed`); the run's progress write is its HEARTBEAT — once it finds its row no longer `running`, a run that was
+   let go but still works asks nothing more, stores no fit, supersedes nothing of the new run's, and its final UPDATE
+   (guarded on `running`) never revives it as `done`.
 4. **The plain-language filter route** — `POST /api/o/:slug/ai/filter` (`src/ai/routes.ts` → `src/ai/filter.ts`), on
    a person's request only (Enter in the Filter menu's "Describe a filter" field). Kind `filter` (Claude). See "The plain-language filter" below.
 5. **Ask Trov** — `POST /api/o/:slug/ask` (`src/ai/ask/routes.ts`, cookie only): the turn (`src/ai/ask/turn.ts`,
@@ -128,7 +131,9 @@ either off stops a run in progress at its next request. The Tags tab says when t
 
 Plain code, no model, no network: `routeAi(ctx, event)` turns a write that happened into the scopes it made stale
 (`scopesFor`, the ONE table `AI_ROUTES`) and `markDirty` writes them — rows only, one D1 batch, only while the org's
-switch is on (an org with AI off accrues nothing; turning it on starts from the next writes). It lives in
+switch is on (an org with AI off accrues nothing; turning it OFF drops what was pending — `setAiAutomation`'s own
+batch deletes the org's dirty and held `ai_dirty` rows, `dropPendingStmt` — so turning it on starts from the next
+writes, and nothing marked before runs then). It lives in
 `src/tools/` + `src/data/` because MCP's writers call it and nothing reachable from `src/mcp.ts` may import
 `src/ai/`; `src/ai/router.ts` re-exports it. Every call site is ONE line after its write commits, and a failed mark
 never fails the write (`routeAi` logs the error's name with the org id).
@@ -252,16 +257,24 @@ price):
   each request exactly what a direct call sends, prefix first. `ai_run:<kind>` is counted per request BEFORE it. The
   batch and its requests are recorded (`ai_batches`, `ai_batch_requests`: PLATFORM tables, no `org_id` — a request
   names its org only in `custom_id` = `<org>:<scope>:<key>:<prompt version>`; the API's own id is `r0`, `r1`, … since
-  it allows only `[A-Za-z0-9_-]`), and each scope is HELD (`last_run_at` = the tick: it reads clean, and an open
-  request's scope is skipped, so no tick submits it twice). A refused submit fails the scopes.
+  it allows only `[A-Za-z0-9_-]`), and each scope is HELD — BEFORE the submit (`last_run_at` = the tick, and
+  `held_at`, `0088_state_machines`: it reads clean, and an open request's scope is skipped, so no tick submits it
+  twice — not even when recording a batch the provider accepted fails, which is logged loudly and retried once). A
+  refused submit fails the scopes. **A hold nothing settles** — a batch never recorded, lost, or collected without
+  writing it — is released after `AI_BATCH_HOLD_MAX_MS` (48 h; `releaseStaleHolds`, at the start of each org's turn):
+  due again, one attempt spent (`batch_lost`), so a held scope never looks clean for good.
 - **Collect**, at the start of a later tick: the oldest open batches (`AI_BATCH_COLLECT_PER_TICK = 3`, 3 subrequests
   each): `retrieve`; once ended, `results`. Per result, and ONLY for an org that still exists, is not suspended and
-  has the switch ON (else NOTHING is written — no row, no meter, no scope): the answer is read exactly as a direct
+  has the switch ON (else NOTHING is written — no row, no meter, no scope): the result is CLAIMED first (its
+  `ai_batch_requests` row deleted, one guarded statement — `claimRequest` — so a collect that died before closing the
+  batch, or two at once, never writes or meters a result twice; one claimed but never written leaves its scope held
+  until released), the answer is read exactly as a direct
   call's (`answer`: a refusal, `max_tokens` or a schema miss is null), its tokens metered, the item's input re-read
   from D1, and the job's `write` stores it — the scope clears, or fails (`batch_errored` / `_expired` /
   `_canceled`, `no_answer`, `not_written`; a job gone or with a new prompt version: `batch_stale`). Then the batch
-  keeps its counts (`collected`) and its request rows are deleted. A batch the provider no longer knows (404) is
-  `lost`: its scopes are due again.
+  keeps its counts (`collected`, only from `submitted`) and its request rows are deleted. A batch the provider no
+  longer knows (404), or still open `AI_BATCH_MAX_AGE_MS` (7 days) after its submit, is `lost`: its scopes are due
+  again.
 
 ## Sections (`src/ai/sections.ts`)
 
@@ -594,7 +607,14 @@ themes and sorts PRs into them; an admin approves the themes; the server counts.
   none waiting on an admin; at most 8 live themes. Input: up to 120 PR cards (number, card title, what — never a body).
   Output `{ themes: [{ name, description, prs }] }`, per theme (`checkProposal`): the name 1–40 characters, not taken;
   only PR numbers from the input; ≥ 3 of them or the theme is not written. Each written theme is a `proposed` row and an
-  `ai_suggestions` row (item `theme` / `<repo>#<id>`, kind `themes.propose`, reason = its description, cites = its PRs).
+  `ai_suggestions` row (item `theme` / `<repo>#<id>`, kind `themes.propose`, reason = its description, cites = its PRs),
+  written in ONE batch (`insertProposedThemes`' `card`) — never a theme without its card. The theme and its card move
+  together on every answer too: Accept / Rename activate it and write its seed PRs in one batch (`activateTheme`'s
+  `seed`), Merge folds it and seeds the active lane in one batch, and Remove moves it in the dismissal's OWN batch
+  (`dismissWith`, guarded on the dismissal). An Accept that finds its theme already active (or already folded into
+  the asked theme) — a card left open by an Accept from before these batches — finishes it and closes the card.
+  (`AI_THEME_STATUSES`, shared/ai-core.ts, is a LANE's status — proposed or active; the stored enum, with `removed`,
+  is `THEME_STATUSES` in src/data/themes.ts.)
 - **The admin's answers** (cookie routes, `src/ai/themes-accept.ts`; the handler's `role` and `dismissRole` are
   `admin`): Accept `{}` (active as proposed), Rename `{ value: { name } }` (a live theme's name → `invalid` with "A theme named … already exists."), Merge
   `{ value: { mergeInto } }` (another live theme of the repo: this one is removed, its PRs join), Remove = dismiss.
@@ -737,7 +757,12 @@ API (`batch: true`, half the price), the pass's last stage.
   `not_found`). In order: `not_found` (404) → `off` (403: the read rule's off — the switch off or no key; Dismiss
   answers it too) → `not_open` (409) → `not_available` (409: no handler for the kind) →
   `forbidden` (403: below the handler's role) → `invalid` (400: a body the contract refuses). Then the row is claimed by one guarded UPDATE, the handler writes the
-  real field AS the cookie person, and on its throw the claim is undone. `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
+  real field AS the cookie person, and on its throw the claim is undone. So a handler that writes in more than one
+  step is IDEMPOTENT per suggestion: `sprint_draft` creates each drafted sprint under `sprints.source_key`
+  (`ai_suggestion:<id>:<index>`, `0088_state_machines`), so an Accept that failed midway and is pressed again finds
+  the sprints it made and places only the tickets still in the backlog — never a second sprint. (A Worker that dies
+  between the claim and the write leaves the suggestion accepted with nothing applied: not recovered.)
+  `AI_ACCEPT_HANDLERS` (`src/ai/suggestions.ts`)
   holds Phase C's (`src/ai/jobs/accept.ts`), the theme handlers (kind `themes.propose`) and the Roadmap's `sprint_draft` /
   `plan_narrative` (admin; `src/ai/roadmap-accept.ts`); a kind with none
   (`review.risk`) is `not_available`. A handler gets the request's origin too (`AcceptRequest`: the in-app address a
@@ -746,7 +771,7 @@ API (`batch: true`, half the price), the pass's last stage.
   handler's `dismissRole`, else its `role` — so a Roadmap draft or narrative is an admin's to dismiss as to accept, a
   theme's Remove an admin's, a ticket or Unplaced card any member's, and a kind with no handler (`review.risk`, whose
   proposal any member may promote or reject) any member's. A dismissal also records the dismisser's `ai_feedback`
-  (item type `suggestion`, ref = its id, its kind, model and prompt version) for the evals, and a handler may also act on a dismissal (`dismissed`), check a value before the claim (`valid`:
+  (item type `suggestion`, ref = its id, its kind, model and prompt version) for the evals, and a handler may also act on a dismissal (`dismissed` after it, or `dismissWith`: statements in the dismissal's own batch), check a value before the claim (`valid`:
   `invalid` 400) and refuse with a code (`AcceptRefused`) — `src/ai/accept.ts`. A refusal is never a 500: Phase C's
   handlers check their value in `valid` and answer a writer's refusal after the claim (the ticket or triage item
   gone) as `not_available` / `invalid` / `forbidden` (`refusing`, `src/ai/jobs/accept.ts`); a Roadmap writer refusing

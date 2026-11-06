@@ -140,25 +140,31 @@ export function createOrgController(host: OrgHost): OrgController {
   /** Run one read into its slice; a slice for an org that is no longer current is dropped.
    *  A slice that already holds an answer is REFRESHED: it stays "ok" with what it has until the
    *  fresh answer lands, so coming back to the screen (or a write's follow-up read) never blanks
-   *  a tab, flips the setup checklist off and on, or shows "Loading…" over rows already there. */
-  function read<T>(get: () => OrgSlice<T>, set: (v: OrgSlice<T>) => void, ask: (slug: string) => Promise<T>): void {
+   *  a tab, flips the setup checklist off and on, or shows "Loading…" over rows already there.
+   *  Every write reads its slices again, so two reads of one slice can be out at once: only the latest (`key`'s
+   *  seq) lands — an older one answering late is stale. */
+  const readSeq = new Map<string, number>();
+  function read<T>(key: string, get: () => OrgSlice<T>, set: (v: OrgSlice<T>) => void, ask: (slug: string) => Promise<T>): void {
     const slug = ui().slug;
     if (!slug) return;
     const held = get().data;
     if (get().status !== "ok") set({ status: "loading", data: held });
+    const mine = (readSeq.get(key) ?? 0) + 1;
+    readSeq.set(key, mine);
+    const current = (): boolean => ui().slug === slug && readSeq.get(key) === mine;
     ask(slug)
-      .then((data) => { if (ui().slug !== slug) return; set({ status: "ok", data }); rerender(); })
-      .catch((e) => { if (fail(e) || ui().slug !== slug) return; set({ status: "error", data: held, error: e instanceof Error ? e.message : String(e) }); rerender(); });
+      .then((data) => { if (!current()) return; set({ status: "ok", data }); rerender(); })
+      .catch((e) => { if (fail(e) || !current()) return; set({ status: "error", data: held, error: e instanceof Error ? e.message : String(e) }); rerender(); });
   }
-  const loadSettings = () => read(() => ui().settings, (v) => { ui().settings = v; }, getOrgSettings);
-  const loadMembers = () => read(() => ui().members, (v) => { ui().members = v; }, listOrgMembers);
-  const loadInvites = () => read(() => ui().invites, (v) => { ui().invites = v; }, listOrgInvites);
-  const loadRepos = () => read(() => ui().repos, (v) => { ui().repos = v; }, listOrgRepos);
-  const loadEnvs = () => read(() => ui().envs, (v) => { ui().envs = v; }, listOrgEnvironments);
-  const loadIntegrations = () => read(() => ui().integrations, (v) => { ui().integrations = v; }, listOrgIntegrations);
-  const loadAudit = () => read(() => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
+  const loadSettings = () => read("settings", () => ui().settings, (v) => { ui().settings = v; }, getOrgSettings);
+  const loadMembers = () => read("members", () => ui().members, (v) => { ui().members = v; }, listOrgMembers);
+  const loadInvites = () => read("invites", () => ui().invites, (v) => { ui().invites = v; }, listOrgInvites);
+  const loadRepos = () => read("repos", () => ui().repos, (v) => { ui().repos = v; }, listOrgRepos);
+  const loadEnvs = () => read("envs", () => ui().envs, (v) => { ui().envs = v; }, listOrgEnvironments);
+  const loadIntegrations = () => read("integrations", () => ui().integrations, (v) => { ui().integrations = v; }, listOrgIntegrations);
+  const loadAudit = () => read("audit", () => ui().audit, (v) => { ui().audit = v; }, (slug) => listOrgAudit(slug));
   /** AI (org-ai.ts): the switches, this month's allowances, what is sent — every member reads it. */
-  const loadAi = () => read(() => ui().ai, (v) => { ui().ai = v; }, getAiSettings);
+  const loadAi = () => read("ai", () => ui().ai, (v) => { ui().ai = v; }, getAiSettings);
   /** A switch — the AI switch (`enabled`), Ask Trov's Auto (`chatAuto`) or its GitHub lookups (`chatGithub`): an
    *  admin's write. The answer is the settings as they now stand. */
   function toggleAi(which: "enabled" | "chatAuto" | "chatGithub"): void {
@@ -187,7 +193,7 @@ export function createOrgController(host: OrgHost): OrgController {
       });
   }
   /** The org's plan and its use of each limit — read again after any write a limit counts. */
-  const loadPlan = () => read(() => ui().plan, (v) => { ui().plan = v; }, getOrgPlan);
+  const loadPlan = () => read("plan", () => ui().plan, (v) => { ui().plan = v; }, getOrgPlan);
   /** A refusal as words: the plan's one sentence when the plan refused (a 402), else `orgErrorText`. */
   const errorText = (e: unknown, fallback: string): string => {
     const plan = planLimitText(e, org()?.role ?? null);

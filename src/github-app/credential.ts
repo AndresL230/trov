@@ -22,7 +22,7 @@ import type { Env } from "../env";
 import { Secret, SecretAccessError, markSecretUsed, recordSecretOutcome, resolveCredential, type Revealed } from "../data/secrets";
 import type { TenantContext } from "../data/sql";
 import { INSTALLATION_SCOPE, appCanSign, forgetInstallationToken, installationToken, repoScope, type AppRefusal, type TokenScope } from "./api";
-import { endInstallation, liveInstallation, markInstallationUsed, recordInstallationOutcome, repoAllowed, setInstallationSuspended, type InstallationRow } from "./store";
+import { endInstallation, liveInstallation, markInstallationUsed, recordInstallationOutcome, repoAccessLost, repoAllowed, setInstallationSuspended, type InstallationRow } from "./store";
 
 export type GithubCredentialSource = "app" | "token";
 export type CredentialOutcome = { ok: true } | { ok: false; message: string; revealed: Revealed };
@@ -105,6 +105,10 @@ async function answeringInstallation(ctx: TenantContext, env: Env, repo: string 
   const row = appCanSign(env) ? await liveInstallation(ctx) : null;
   if (!row || row.suspended_at !== null || !covers(row, repo)) return null;
   if (repo && !(await repoAllowed(ctx, row, repo))) return null;
+  // A connected repository the installation no longer reaches (`access_lost_at`, set by GitHub's
+  // `installation_repositories` event or a complete list) is not minted for: the stored token answers, as for a
+  // repository outside the binding. A mark the events left wrong is settled by the next complete list.
+  if (repo && (await repoAccessLost(ctx, repo))) return null;
   return row;
 }
 

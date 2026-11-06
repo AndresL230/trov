@@ -286,14 +286,15 @@ export function createAppsActions(host: AppsHost): AppsActions {
     putRepoAppSetup(o.slug, p.repo, app.key, body)
       .then(async (r) => {
         for (const x of parts) await putEnvironmentPart(o.slug, x.env, app.key, x.write);
-        u().draft = null;
+        // Only the draft this save started from (another app's page opened since keeps its own).
+        if (u().draft === dr) u().draft = null;
         host.flash(`Saved ${r.app.label}. The Repo screen redraws from it.`);
         afterWrite();
         rerender();
       })
       .catch((e) => {
-        const cur = u().draft;
-        if (cur) cur.saving = false;
+        dr.saving = false;
+        const cur = u().draft === dr ? dr : null;
         if (fail(e)) return;
         if (cur) {
           const field = e instanceof OrgApiError ? e.field : null;
@@ -314,14 +315,16 @@ export function createAppsActions(host: AppsHost): AppsActions {
     rerender();
     putRepoAppSetup(o.slug, p.repo, key, { kind: a.kind, label: key, folder: a.folder.trim() || "/", release_signal: a.release || null })
       .then(() => {
-        u().add = null;
+        // Its dialog closes and the new app's page opens only while that dialog is still the one up.
+        const still = u().add === a;
+        if (still) u().add = null;
         host.flash(`Added ${key} to ${p.repo}.${a.release ? ` Its Overview follows ${a.release.startsWith("tag:") ? "releases from tags" : "its workflow's runs"}.` : ""}`);
-        go({ repo: p.repo, view: "app", app: key });
+        if (still) go({ repo: p.repo, view: "app", app: key });
         void load();
       })
       .catch((e) => {
-        const cur = u().add;
-        if (cur) cur.saving = false;
+        a.saving = false;
+        const cur = u().add === a ? a : null;
         if (fail(e)) return;
         if (cur) {
           const field = e instanceof OrgApiError ? e.field : null;
@@ -360,15 +363,15 @@ export function createAppsActions(host: AppsHost): AppsActions {
       ...(offer?.suggestion && offer.provider === hp.id ? { suggestion: offer.suggestion } : {}),
     })
       .then((r) => {
-        u().one = null;
+        if (u().one === dr) u().one = null;               // only the step this request started from
         const where = d.environments?.find((e) => e.key === r.env.key)?.label ?? (r.env.created ? "Production" : r.env.key);
         host.flash(`Set up ${key} in ${where}.${live ? " The Repo screen now shows it." : ` Next: connect ${hp.label}.`}`, 5000);
         afterWrite();
         if (!live) host.connect?.(hp.id);
       })
       .catch((e) => {
-        const cur = u().one;
-        if (cur) cur.saving = false;
+        dr.saving = false;
+        const cur = u().one === dr ? dr : null;
         if (fail(e)) return;
         if (cur) {
           cur.errorField = e instanceof OrgApiError ? e.field : null;

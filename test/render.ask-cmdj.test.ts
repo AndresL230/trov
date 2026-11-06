@@ -5,11 +5,13 @@
  * the thread contract (`origin: "panel"`, the page's item as the first context ref → `context_ref`) through the real
  * client, and the motion (the slide in / out through `ctx.exit` + `data-closing`, all off under reduced motion).
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../web/src/markdown", () => ({ renderMarkdown: (b: string) => b, renderMarkdownInline: (t: string) => t }));
-// The real Ask client over a stubbed transport: `POST /ask` streams the recorded `cmdj` transcript.
+// The real Ask client over a stubbed transport: `POST /ask` streams the recorded `cmdj` transcript (or, when a test
+// sets `askResponse`, a stream it releases on cue).
 const calls: { path: string; body: unknown }[] = [];
+let askResponse: (() => Response) | null = null;
 vi.mock("../web/src/api", async (orig) => {
   const real = await orig<typeof import("../web/src/api")>();
   const { askTranscript, askTranscriptSse, askStateFixture, askThreadsFixture } = await import("@shared/ai-fixtures");
@@ -18,6 +20,7 @@ vi.mock("../web/src/api", async (orig) => {
     ...real,
     apiFetch: async (path: string, init: RequestInit = {}) => {
       calls.push({ path, body: typeof init.body === "string" ? JSON.parse(init.body) : null });
+      if (path === "/ask" && askResponse) return askResponse();
       if (path === "/ask") return new Response(askTranscriptSse(askTranscript("cmdj", now)), { headers: { "content-type": "text/event-stream" } });
       if (path === "/ask/state") return Response.json(askStateFixture("pro", now));
       if (path === "/ask/threads") return Response.json({ threads: askThreadsFixture(now) });
@@ -35,7 +38,7 @@ import { topLayer, type EscEntry } from "../web/src/ask-escape";
 import { emptyConvo, foldAskEvent, foldThreadEvent, newTurn, withLastTurn, type AskConvo } from "../web/src/ask-stream";
 import { initialComposerUi } from "../web/src/ask-composer";
 import { inspectorRef, type AskCtx } from "../web/src/ask-state";
-import { askRefFixtures, askStateFixture, askThreadsFixture, askTranscript, ASK_SCENARIO_QUESTION } from "@shared/ai-fixtures";
+import { askRefFixtures, askStateFixture, askThreadsFixture, askTranscript, askTranscriptSse, ASK_SCENARIO_QUESTION } from "@shared/ai-fixtures";
 import type { AskEvent } from "@shared/ai-ask-core";
 import css from "../web/src/trov.css?raw";
 
@@ -325,6 +328,77 @@ describe("the thread contract — a normal thread with origin panel and the page
     const t = askTranscript("cmdj", NOW)[0].event;
     expect(t.event).toBe("thread");
     expect(t.data).toMatchObject({ origin: "panel", contextRef: "ticket:14" });
+  });
+});
+
+describe("Open as thread while the answer is still coming — the stream moves with the conversation", () => {
+  /** A `POST /ask` whose events the test releases: the thread event first, the rest on cue. */
+  function heldStream() {
+    const steps = askTranscript("cmdj", NOW);
+    const enc = new TextEncoder();
+    let ctl!: ReadableStreamDefaultController<Uint8Array>;
+    const body = new ReadableStream<Uint8Array>({ start(c) { ctl = c; } });
+    askResponse = () => new Response(body, { headers: { "content-type": "text/event-stream" } });
+    return {
+      first: () => ctl.enqueue(enc.encode(askTranscriptSse(steps.slice(0, 1)))),
+      rest: () => { ctl.enqueue(enc.encode(askTranscriptSse(steps.slice(1)))); ctl.close(); },
+    };
+  }
+  const controller = (app: AppState) => createAskController({ state: app, mount: { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement, rerender: () => undefined, flash: () => undefined, unauth: () => undefined, search: () => "" });
+  beforeEach(() => { calls.length = 0; });
+  afterEach(() => { askResponse = null; });
+
+  it("its words land on the page, the panel stays empty, and its end clears the page's busy", async () => {
+    const held = heldStream();
+    const app = ticketState();
+    const ctl = controller(app);
+    openPanel(ctl.ctx);
+    ctl.ctx.send({ text: ASK_SCENARIO_QUESTION.cmdj!.text, where: "panel", context: app.ask.composer.panel.context });
+    // Before the server names the thread there is nothing to open: the button is disabled and does nothing.
+    expect(cmdjOverlay(app)).toMatch(/data-act="askCjOpenThread" disabled/);
+    openAsThread(ctl.ctx);
+    expect(app.ask.cmdj.open).toBe(true);
+    held.first();
+    await vi.waitFor(() => expect(app.ask.panel.threadId).toBe(10));
+    expect(app.ask.panel.busy).toBe(true);
+    openAsThread(ctl.ctx);
+    expect(app.ask.page).toMatchObject({ threadId: 10, busy: true });
+    expect(app.ask.panel.messages).toEqual([]);
+    held.rest();
+    await vi.waitFor(() => expect(app.ask.page.busy).toBe(false), { timeout: 3000 });
+    const a = app.ask.page.messages.at(-1)!;
+    expect(a.role === "assistant" && a.turn.done).toBeTruthy();
+    expect(app.ask.panel).toMatchObject({ messages: [], busy: false, threadId: null });
+  });
+
+  it("a signed-out answer ends its turn (no cursor left live) before the sign-in", async () => {
+    const { Unauthorized } = await import("../web/src/api");
+    askResponse = () => { throw new Unauthorized(); };
+    const app = ticketState();
+    let signedOut = 0;
+    const ctl = createAskController({ state: app, mount: { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement, rerender: () => undefined, flash: () => undefined, unauth: () => { signedOut++; }, search: () => "" });
+    openPanel(ctl.ctx);
+    ctl.ctx.send({ text: ASK_SCENARIO_QUESTION.cmdj!.text, where: "panel", context: app.ask.composer.panel.context });
+    await vi.waitFor(() => expect(app.ask.panel.busy).toBe(false));
+    expect(signedOut).toBe(1);
+    const a = app.ask.panel.messages.at(-1)!;
+    expect(a.role === "assistant" && a.turn.stopped).toBe(true);
+  });
+
+  it("Stop on the page stops it", async () => {
+    const held = heldStream();
+    const app = ticketState();
+    const ctl = controller(app);
+    openPanel(ctl.ctx);
+    ctl.ctx.send({ text: ASK_SCENARIO_QUESTION.cmdj!.text, where: "panel", context: app.ask.composer.panel.context });
+    held.first();
+    await vi.waitFor(() => expect(app.ask.panel.threadId).toBe(10));
+    openAsThread(ctl.ctx);
+    ctl.ctx.stop("page");
+    await vi.waitFor(() => expect(app.ask.page.busy).toBe(false), { timeout: 3000 });
+    const a = app.ask.page.messages.at(-1)!;
+    expect(a.role === "assistant" && a.turn.stopped).toBe(true);
+    expect(calls.some((c) => c.path === "/ask/threads/10/stop")).toBe(true);
   });
 });
 

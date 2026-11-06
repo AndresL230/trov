@@ -390,6 +390,28 @@ describe("Review: Approve all / Reject all for one import", () => {
     expect((await call<ImportReviewAnswer>("POST", `${BASE}/${id}/approve-all`, cookie, {})).json).toMatchObject({ done: 0, remaining: 0 });
   });
 
+  it("approve-all skips a page that fails and counts it: the cursor steps past it, the pages after it still go live", async () => {
+    const cookie = await cookieFor(MEMBER);
+    const id = await imported(cookie);
+    // The first page in the import's order fails every promote (a trigger here; in life, anything that throws).
+    const stuck = (await versions("import_id = ?", id))[0].slug;
+    await env.DB.prepare(`CREATE TRIGGER test_fail_promote BEFORE UPDATE OF status ON doc_versions WHEN NEW.slug = '${stuck}' AND NEW.status = 'promoted'
+                          BEGIN SELECT RAISE(ABORT, 'boom'); END`).run();
+    try {
+      const r = await call<ImportReviewAnswer>("POST", `${BASE}/${id}/approve-all`, cookie, {});
+      expect(r.json).toMatchObject({ done: 3, failed: 1, remaining: 1 });
+      expect(typeof r.json.next).toBe("number");
+      // Sent back as `after`, the cursor is past everything: nothing is tried again, and the client stops.
+      const again = await call<ImportReviewAnswer>("POST", `${BASE}/${id}/approve-all`, cookie, { after: r.json.next });
+      expect(again.json).toMatchObject({ done: 0, failed: 0, next: null, remaining: 1 });
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS test_fail_promote`).run();
+    }
+    const vs = await versions("import_id = ?", id);
+    expect(vs.filter((v) => v.status === "promoted")).toHaveLength(3);
+    expect(vs.find((v) => v.slug === stuck)?.status).toBe("staged");
+  });
+
   it("reject-all is soft, and leaves alone a page whose newest change is someone else's", async () => {
     const cookie = await cookieFor(MEMBER);
     const id = await imported(cookie);

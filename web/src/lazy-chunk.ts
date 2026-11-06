@@ -3,7 +3,7 @@
 // the screen itself once the chunk is in. main.ts starts the load whenever a paint needs the chunk
 // and repaints when it lands (`rerenderSoon`). A chunk that fails to load (an old page after a
 // deploy, whose chunk names are gone) is not retried in a loop: `failed()` says so, and the screen
-// says what to do — reload. The pattern of Help › What's new (releases-lazy.ts).
+// says what to do — reload. Help › What's new (releases-lazy.ts) is one of these too.
 //
 // `import("./x")` must be written out at each call site (Vite splits on the literal), so a chunk is
 // made from a function that does the import: `lazyChunk(() => import("./platform"))`.
@@ -11,7 +11,8 @@
 export interface LazyChunk<M> {
   /** The loaded module, or null while it is not in. */
   get(): M | null;
-  /** The last load failed (a reload tries again). */
+  /** The last load failed and no other is under way (a reload, or an act asked for again, tries again — the screen is
+   *  then its skeleton until that one lands). */
   failed(): boolean;
   /** Start (or join) the load. Resolves once it is in; rejects if it failed. */
   load(): Promise<M>;
@@ -28,6 +29,8 @@ export function lazyChunk<M>(importer: () => Promise<M>): LazyChunk<M> {
     failed: () => failed,
     load() {
       if (mod) return Promise.resolve(mod);
+      // A retry starts: the chunk is loading again, not failed, until this one answers.
+      if (!inflight) failed = false;
       inflight ??= importer().then(
         (m) => { mod = m; failed = false; return m; },
         (e: unknown) => { inflight = null; failed = true; throw e; },

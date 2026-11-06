@@ -16,7 +16,7 @@ import { mailOrigin } from "../orgs/mail";
 import { GrantError, GRANT_ERROR_STATUS, createGrant, getGrant, listGrants, mailGrant, revokeGrant } from "./grants";
 import { PlanError, PLAN_ERROR_STATUS, cleanPlan, setOrgPlan } from "./state";
 import { endOrgGift, extendOrgGift, giftOrgPlan } from "./gifts";
-import { platformBillingBySlug, setPlanPinned } from "../billing/store";
+import { platformBillingBySlug, planPinnedStmt } from "../billing/store";
 import { paidSeats } from "@shared/billing";
 
 function fail(c: Context<AppEnv>, e: unknown): Response {
@@ -49,7 +49,8 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
     const id = Number(c.req.param("id"));
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: "not_found" }, 404);
     try {
-      return c.json({ ok: true, grant: await revokeGrant(c.var.p, id) });
+      // A paid grant whose subscription still charges is not revoked here (`grant_paid`): its subscription is ended in Stripe.
+      return c.json({ ok: true, grant: await revokeGrant(c.var.p, id, { keepPaid: true }) });
     } catch (e) { return fail(c, e); }
   });
 
@@ -69,8 +70,8 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
       if (b.follow_subscription === true) {
         if (!paid || !now) return c.json({ error: "not_billed", message: "this organization has no subscription to follow" }, 409);
         // …with the seats it pays for (Pro is per seat: the quantity is the seat cap).
-        await setOrgPlan(c.var.p, slug, { plan: paid.plan, overrides: paidSeats(paid.plan, paid.seats), source: "billing", status: now.status });
-        await setPlanPinned(c.var.p, paid.subscription_id, false);
+        await setOrgPlan(c.var.p, slug, { plan: paid.plan, overrides: paidSeats(paid.plan, paid.seats), source: "billing", status: now.status,
+          also: [planPinnedStmt(c.var.p, paid.subscription_id, false)] });
       } else if (b.gift !== undefined && b.gift !== null) {
         // A GIFT (0048_plan_gifts, ./gifts.ts): the plan is free until a date, then the org moves to Free. Not for
         // an org on a live subscription: it pays for its plan, and a date must not end what Stripe charges for.
@@ -78,8 +79,9 @@ export function registerPlanRoutes(app: Hono<AppEnv>, orgRow: (slug: string, p: 
         await giftOrgPlan(c.var.p, slug, { plan: b.plan, overrides: b.overrides, gift: b.gift });
       } else if (paid && now && !paid.ended && now.status !== "canceled") {
         const plan = cleanPlan(b.plan);
-        await setOrgPlan(c.var.p, slug, { plan, overrides: b.overrides, source: "billing", status: now.status });
-        await setPlanPinned(c.var.p, paid.subscription_id, plan !== paid.plan);
+        // The plan and its pin in ONE batch: a pin without its plan (or the reverse) would let the next event undo it.
+        await setOrgPlan(c.var.p, slug, { plan, overrides: b.overrides, source: "billing", status: now.status,
+          also: [planPinnedStmt(c.var.p, paid.subscription_id, plan !== paid.plan)] });
       } else {
         await setOrgPlan(c.var.p, slug, { plan: b.plan, overrides: b.overrides });
       }

@@ -5,14 +5,15 @@
 //   • MARKING (`markDirty`) — what every write path calls, through the router (src/tools/ai-route.ts), AFTER its
 //     own write. Rows only: no model, no network, no read the caller waits on beyond the one batch. It is
 //     reachable from src/mcp.ts (the MCP writers mark too), so this file imports nothing from src/ai/.
-//   • THE PASS'S SIDE (`dueScopes`, `clearScopes`, `failScopes`, `holdScopes`) — what src/ai/pass.ts reads and
-//     writes back.
+//   • THE PASS'S SIDE (`dueScopes`, `clearScopes`, `failScopes`, `holdScopes`, `releaseStaleHolds`) — what
+//     src/ai/pass.ts reads and writes back.
 //
 // A scope is DIRTY while it was marked after its last run: `last_run_at IS NULL OR marked_at > last_run_at`.
 // Marking an already-dirty scope keeps its `dirty_since` (the FIRST mark since the last run) and moves
 // `marked_at` (the LAST); marking a clean one starts a new `dirty_since`. A mark resets `attempts`, so a scope that
 // failed 3 times (and waits) runs again once something marks it. Marks are written only while the org's AI
-// switch is on: an org with AI off accrues nothing, and turning it on starts from the next writes.
+// switch is on: an org with AI off accrues nothing, turning it off drops what was pending (`dropPendingStmt`), and
+// turning it on starts from the next writes.
 import type { AiScope } from "@shared/ai-core";
 import { all, batch, nowIso, stmt, type Stmt, type TenantContext } from "./sql";
 
@@ -177,7 +178,7 @@ export async function clearScopes(ctx: TenantContext, keys: readonly ScopeKey[],
         ctx.orgId, k.scope, k.key, runAt));
     }
     stmts.push(stmt(ctx,
-      `UPDATE ai_dirty SET last_run_at = ?1, attempts = 0, last_error = NULL,
+      `UPDATE ai_dirty SET last_run_at = ?1, attempts = 0, last_error = NULL, held_at = NULL,
               urgent = CASE WHEN COALESCE(marked_at, dirty_since) > ?1 THEN urgent ELSE 0 END,
               dirty_since = CASE WHEN COALESCE(marked_at, dirty_since) > ?1 THEN marked_at ELSE dirty_since END
         WHERE org_id = ?2 AND scope = ?3 AND scope_key = ?4`, runAt, ctx.orgId, k.scope, k.key));
@@ -187,19 +188,41 @@ export async function clearScopes(ctx: TenantContext, keys: readonly ScopeKey[],
 
 /** FAILED: one more attempt, and why (a fixed NAME — never a model's text, never a secret). After
  *  `AI_MAX_ATTEMPTS` the scope waits until it is marked again (`dueScopes` skips it). A scope held for a batch
- *  becomes dirty again (`last_run_at` back to NULL) so its next attempt can run. */
+ *  becomes dirty again (`last_run_at` back to NULL, no longer held) so its next attempt can run. */
 export async function failScopes(ctx: TenantContext, keys: readonly ScopeKey[], error: string): Promise<void> {
   if (!keys.length) return;
   const why = error.replace(/[^\w .:/-]/g, "").slice(0, 80) || "failed";
   await batch(ctx, keys.map((k) => stmt(ctx,
-    `UPDATE ai_dirty SET attempts = attempts + 1, last_error = ?, last_run_at = NULL
+    `UPDATE ai_dirty SET attempts = attempts + 1, last_error = ?, last_run_at = NULL, held_at = NULL
       WHERE org_id = ? AND scope = ? AND scope_key = ?`, why, ctx.orgId, k.scope, k.key)));
 }
 
-/** HELD: handed to a Message Batch at `at`. The scope reads as clean (`last_run_at = at`) until the batch is
- *  collected, so no tick submits it twice; collecting clears it (`clearScopes` with the same `at`) or fails it. */
+/** HELD: handed to a Message Batch at `at` — BEFORE the batch is submitted, so a failure after the provider accepted
+ *  it never submits (and bills) it twice. The scope reads as clean (`last_run_at = at`) and carries `held_at`
+ *  (0088_state_machines) until the batch is collected: collecting clears it (`clearScopes` with the same `at`) or
+ *  fails it; a hold nothing settles is released by `releaseStaleHolds`. */
 export async function holdScopes(ctx: TenantContext, keys: readonly ScopeKey[], at: string): Promise<void> {
   if (!keys.length) return;
-  await batch(ctx, keys.map((k) => stmt(ctx, `UPDATE ai_dirty SET last_run_at = ? WHERE org_id = ? AND scope = ? AND scope_key = ?`,
-    at, ctx.orgId, k.scope, k.key)));
+  await batch(ctx, keys.map((k) => stmt(ctx, `UPDATE ai_dirty SET last_run_at = ?, held_at = ? WHERE org_id = ? AND scope = ? AND scope_key = ?`,
+    at, at, ctx.orgId, k.scope, k.key)));
+}
+
+/** How long a hold may stand. A batch ends within 24 hours and is collected within a few ticks of that; a hold older
+ *  than this belongs to a batch that was never recorded, lost, or collected without writing it. */
+export const AI_BATCH_HOLD_MAX_MS = 48 * 3_600_000;
+
+/** RELEASED: the org's holds older than `before` become due again (one more attempt, `batch_lost`) — a scope never
+ *  stays "clean" because a batch that would have written it went missing. A scope still in an OPEN batch is not
+ *  submitted again either way (the pass skips in-flight custom ids). Returns how many were released. */
+export async function releaseStaleHolds(ctx: TenantContext, before: string): Promise<number> {
+  const res = await batch(ctx, [stmt(ctx,
+    `UPDATE ai_dirty SET last_run_at = NULL, held_at = NULL, attempts = attempts + 1, last_error = 'batch_lost'
+      WHERE org_id = ? AND held_at IS NOT NULL AND held_at < ?`, ctx.orgId, before)]);
+  return res[0]?.meta.changes ?? 0;
+}
+
+/** The org's AI switch turned OFF: what was marked (and what is held for a batch) is dropped, so turning it on again
+ *  starts from the next writes — nothing marked before is run then. For the switch's own batch. */
+export function dropPendingStmt(ctx: TenantContext): Stmt {
+  return stmt(ctx, `DELETE FROM ai_dirty WHERE org_id = ? AND (held_at IS NOT NULL OR last_run_at IS NULL OR COALESCE(marked_at, dirty_since) > last_run_at)`, ctx.orgId);
 }

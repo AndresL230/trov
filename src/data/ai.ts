@@ -5,15 +5,19 @@
 // from src/mcp.ts imports it.
 import type { AiCite, AiFeedbackBody, AiSuggestion, AiSuggestionState } from "@shared/ai";
 import { all, batch, first, nowIso, run, stmt, type Stmt, type TenantContext } from "./sql";
+import { dropPendingStmt } from "./ai-dirty";
 
 // ── the switch ───────────────────────────────────────────────────────────────
 
-/** Turn the org's AI on or off, audited (`org.ai`) in the same batch. The caller has checked the role. */
+/** Turn the org's AI on or off, audited (`org.ai`) in the same batch. Off also drops the AI router's pending marks
+ *  (`ai_dirty`), in that batch: turning it on again starts from the next writes — nothing marked before runs then
+ *  (ai.md › The router). The caller has checked the role. */
 export async function setAiAutomation(ctx: TenantContext, enabled: boolean, at: string = nowIso()): Promise<void> {
   await batch(ctx, [
     stmt(ctx, `UPDATE orgs SET ai_automation = ? WHERE id = ?`, enabled ? 1 : 0, ctx.orgId),
     stmt(ctx, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, 'org.ai', 'ai', ?, ?)`,
       ctx.orgId, ctx.userId, JSON.stringify({ enabled }), at),
+    ...(enabled ? [] : [dropPendingStmt(ctx)]),
   ]);
 }
 
@@ -97,25 +101,33 @@ export async function putSuggestion(ctx: TenantContext, s: NewSuggestion, at: st
 
 /** Decide an OPEN suggestion — one guarded UPDATE, so two people answering at once cannot both win.
  *  false = it was not open (or not this org's). */
-export async function decideSuggestion(ctx: TenantContext, id: number, state: "accepted" | "dismissed", by: string, at: string = nowIso()): Promise<boolean> {
-  const res = await run(ctx, `UPDATE ai_suggestions SET state = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND state = 'open'`,
+export async function decideSuggestion(ctx: TenantContext, id: number, state: "accepted" | "dismissed", by: string, at: string = nowIso(), extra: Stmt[] = []): Promise<boolean> {
+  const decide = stmt(ctx, `UPDATE ai_suggestions SET state = ?, decided_by = ?, decided_at = ? WHERE id = ? AND org_id = ? AND state = 'open'`,
     state, by, at, id, ctx.orgId);
-  return (res.meta.changes ?? 0) > 0;
+  // `extra` rides in the same batch (a dismissal's effect on the real item): each statement guards itself on this
+  // decision having been made (`suggestionDecidedSql`), so a lost race writes nothing.
+  const res = await batch(ctx, [decide, ...extra]);
+  return (res[0].meta.changes ?? 0) > 0;
 }
+
+/** SQL true only once suggestion ?id was decided `state` by ?by at ?at — the guard of `decideSuggestion`'s `extra`.
+ *  Binds, in order: org, id, state, by, at. */
+export const SUGGESTION_DECIDED_SQL = `EXISTS (SELECT 1 FROM ai_suggestions s WHERE s.org_id = ? AND s.id = ? AND s.state = ? AND s.decided_by = ? AND s.decided_at = ?)`;
 
 /**
  * A decision about the ITEM closes what Trov suggested about it (owner rulings Q35, Q37): its OPEN suggestions are
  * `superseded` — not shown again, and an Accept answers `not_open`. A decided one (accepted / dismissed) keeps the
  * person's choice. ONE statement, for the deciding writer's own batch (or a `run` right after it):
  *   • a ticket that closes (done / declined) — `ticket` + its NUMBER, the card kinds' item (src/ai/jobs/cards.ts
- *     `CARD_ITEM_TYPES`), named by the ticket's row id so every status writer can use it;
+ *     `CARD_ITEM_TYPES`), named by the ticket's row id so every status writer can use it — and only while the ticket
+ *     IS closed, so a status move that lost its compare-and-set (src/tools/tickets.ts) closes nothing;
  *   • a drafted decision ratified or rejected, or a doc proposal promoted or rejected — `proposal` + Review's own id
  *     (`reviewRef`), its risk.
  */
 export function supersedeOpenTicketSuggestions(ctx: TenantContext, ticketId: number): Stmt {
   return stmt(ctx,
     `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ?1 AND item_type = 'ticket' AND state = 'open'
-        AND item_ref = (SELECT CAST(number AS TEXT) FROM tickets WHERE id = ?2 AND org_id = ?1)`, ctx.orgId, ticketId);
+        AND item_ref = (SELECT CAST(number AS TEXT) FROM tickets WHERE id = ?2 AND org_id = ?1 AND status IN ('done', 'declined'))`, ctx.orgId, ticketId);
 }
 /** A Review item's suggestions (`review.risk`): item type `proposal`, and Review's own ids (web/src/triage-map.ts;
  *  src/ai/jobs/cards.ts writes them, src/ai/attach.ts reads them). */
@@ -124,9 +136,11 @@ export const reviewRef = {
   doc: (slug: string, version: number): string => `doc:${slug}@${version}`,
   adr: (id: number): string => `adr:${id}`,
 } as const;
-export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string): Stmt {
-  return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'`,
-    ctx.orgId, itemType, itemRef);
+/** `guard` (optional): a condition the statement runs under inside its batch — `promote_doc` closes the risk only if
+ *  its own compare-and-set applied. */
+export function supersedeOpenSuggestions(ctx: TenantContext, itemType: string, itemRef: string, guard?: { sql: string; params: unknown[] }): Stmt {
+  return stmt(ctx, `UPDATE ai_suggestions SET state = 'superseded' WHERE org_id = ? AND item_type = ? AND item_ref = ? AND state = 'open'${guard ? ` AND ${guard.sql}` : ""}`,
+    ctx.orgId, itemType, itemRef, ...(guard?.params ?? []));
 }
 
 /** Undo an accept whose handler failed: back to open, only if it is still the accept `by` just made. */

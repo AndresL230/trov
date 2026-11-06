@@ -25,6 +25,7 @@ import {
 } from "./week-core";
 import type { AiCite } from "@shared/ai";
 import { isFeedImportance } from "@shared/ai";
+import { TICKET_DONE_EVENT_SQL } from "@shared/tickets-core";
 
 export * from "./week-core";
 
@@ -84,10 +85,10 @@ export async function buildWeekInput(ctx: TenantContext, weekId: string, end: Da
     { ref: `feed:${f.id}`, label: clip(f.summary, 48) || `feed entry ${f.id}`, href: "#feed" });
   }
 
-  // ── tickets a person marked done this week (a person's act: nothing infers it) ──
+  // ── tickets done this week (the ONE "tickets done" rule, `TICKET_DONE_EVENT_SQL`: set done, and still done) ──
   const done = await all<{ number: number; title: string; at: string; actor: string }>(ctx,
     `SELECT t.number, t.title, MAX(e.created_at) AS at, e.actor FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id AND t.org_id = ?
-      WHERE e.org_id = ? AND e.to_status = 'done' AND t.status = 'done' AND e.created_at >= ? AND e.created_at < ? AND t.number IS NOT NULL
+      WHERE e.org_id = ? AND ${TICKET_DONE_EVENT_SQL} AND e.created_at >= ? AND e.created_at < ? AND t.number IS NOT NULL
       GROUP BY t.id ORDER BY at DESC LIMIT ${MAX_TICKETS}`,
     ctx.orgId, ctx.orgId, start.toISOString(), until.toISOString());
   for (const t of done) {
@@ -95,12 +96,13 @@ export async function buildWeekInput(ctx: TenantContext, weekId: string, end: Da
       { ref: `ticket:${t.number}`, label: `#${t.number}`, href: `#tickets/${t.number}` });
   }
 
-  // ── sprints a person completed this week ──
-  const sprints = await all<{ id: number; title: string; updated_at: string }>(ctx,
-    `SELECT id, title, updated_at FROM sprints WHERE org_id = ? AND status = 'done' AND updated_at >= ? AND updated_at < ? ORDER BY updated_at DESC LIMIT 5`,
+  // ── sprints a person completed this week: WHEN is `completed_at` (0088), never `updated_at` — every plan write
+  //    stamps `updated_at` on each sprint it lists, which would bring back a sprint finished months ago ──
+  const sprints = await all<{ id: number; title: string; completed_at: string }>(ctx,
+    `SELECT id, title, completed_at FROM sprints WHERE org_id = ? AND status = 'done' AND completed_at >= ? AND completed_at < ? ORDER BY completed_at DESC LIMIT 5`,
     ctx.orgId, start.toISOString(), until.toISOString());
   for (const s of sprints) {
-    add({ ref: `sprint:${s.id}`, kind: "sprint", at: day(s.updated_at), title: clip(s.title, 200), detail: null, importance: null, who: null },
+    add({ ref: `sprint:${s.id}`, kind: "sprint", at: day(s.completed_at), title: clip(s.title, 200), detail: null, importance: null, who: null },
       { ref: `sprint:${s.id}`, label: clip(s.title, 48), href: "#roadmap" });
   }
 

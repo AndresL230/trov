@@ -1,13 +1,13 @@
 // Service-token reads of the GitHub API for the repo dashboard. NEVER on the
 // render path: called from the webhook handler (event-triggered) and scheduled().
 import type { TenantContext } from "../data/sql";
-import { fanOut, first, run } from "../data/sql";
+import { all, fanOut, first, run } from "../data/sql";
 import { ingestRepoEvent } from "../consumer";
-import { putMetric, putSnapshot } from "./store";
+import { deleteSnapshot, putMetric, putSnapshot } from "./store";
 import { untitledFailedRuns } from "./reads";
 import type { RepoEnvConfig } from "./config";
 import type { RepoEvent } from "./types";
-import { labelNames, metricsFromStatus, repoEventsFromDelivery } from "./capture";
+import { labelNames, metricsFromStatus, prOccurredAt, repoEventsFromDelivery } from "./capture";
 import { reconcileReleases, RELEASES_RECONCILE_COST } from "./releases";
 import { ghGraphql, ghJson, ghJsonOrNull, scrubbedMessage, type GhOpts } from "./gh-http";
 import { FACTS_COMPARE_CAP, computeDriftChain, computeNotShipped, computeOutOfStep, driftCompares, factsBudget } from "./facts-compute";
@@ -35,7 +35,7 @@ const JOB_LOOKUP_DAYS = 7;
 export interface ReconcileResult { written: number; unchanged: number; failed: string[] }
 
 const DAY = 86_400_000;
-interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string }; labels?: { name?: string }[] }
+interface GhPull { number: number; title: string; html_url: string; state: string; draft: boolean; merged_at: string | null; closed_at?: string | null; updated_at: string; user: { login: string }; head: { ref: string; sha: string }; base: { ref: string }; labels?: { name?: string }[] }
 interface GhCommit { sha: string; commit: { message: string; committer: { date: string } }; author: { login: string } | null }
 
 const prEvent = (pr: GhPull): RepoEvent => ({
@@ -44,8 +44,27 @@ const prEvent = (pr: GhPull): RepoEvent => ({
   state: pr.merged_at ? "merged" : pr.state === "closed" ? "closed" : pr.draft ? "draft" : "review",
   ref: pr.head.ref, sha: pr.head.sha, actor_login: pr.user.login, title: pr.title.slice(0, 300), url: pr.html_url,
   raw: JSON.stringify({ action: "backfill", base: pr.base.ref, draft: pr.draft, labels: labelNames(pr.labels) }),
-  provenance: "backfill", occurred_at: pr.merged_at ?? pr.updated_at,
+  provenance: "backfill", occurred_at: prOccurredAt(pr) ?? pr.updated_at, // the webhook's own rule (./capture.ts)
 });
+
+/** One `GET /pulls/<n>` answer that has what `prEvent` reads, else null (a 404 body, a bad shape). */
+const asPull = (v: unknown): GhPull | null => {
+  const o = v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  const head = o?.head as Record<string, unknown> | undefined;
+  return o && typeof o.number === "number" && typeof o.title === "string" && typeof o.state === "string" && typeof o.updated_at === "string"
+    && head && typeof head.ref === "string" && typeof head.sha === "string" && o.user && typeof o.user === "object" && o.base && typeof o.base === "object"
+    ? (o as unknown as GhPull) : null;
+};
+
+/** Pages of the open-PR list (100 a page) Poll now reads — 1, inside `reconcileRequests`. The cron's unit and Sync
+ *  GitHub read up to `OPEN_PR_SYNC_PAGES` (`ReconcileLimits.openPrPages`; `reconcileCost` counts the difference). */
+export const OPEN_PR_PAGES = 1;
+export const OPEN_PR_SYNC_PAGES = 3;
+/** PRs the capture says are open that a COMPLETE open list does not name and the recent closed list did not
+ *  either (closed long ago, or while the webhook was down): each is read once (`GET /pulls/<n>`) so its row says
+ *  merged or closed. At most this many a run on the cron's unit and Sync GitHub (`ReconcileLimits.prCloseLookups`);
+ *  Poll now reads none (the rest wait for the next run). */
+export const PR_CLOSE_LOOKUPS = 5;
 
 /** The shape/key scheme `reconcileRepo`'s pre-capture commit backfill has always
  *  used: `gh:push:<sha>:<branch>`, `count: 1`, `provenance: "backfill"`. */
@@ -143,6 +162,10 @@ export interface ReconcileLimits {
   /** The `pr_files` arm's request allowance (src/repo/pr-files.ts): `PR_FILES_REQUESTS` (counted in
    *  `reconcileRequests`) unless the caller's budget says more — the cron and Sync GitHub pass `PR_FILES_SYNC_REQUESTS`. */
   prFiles?: number;
+  /** Pages of the open-PR list (`OPEN_PR_PAGES` unless widened — the cron and Sync GitHub pass `OPEN_PR_SYNC_PAGES`). */
+  openPrPages?: number;
+  /** PRs no longer open to read one by one (none unless widened — the cron and Sync GitHub pass `PR_CLOSE_LOOKUPS`). */
+  prCloseLookups?: number;
 }
 
 export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: RepoEnvConfig[], now: number = Date.now(), scan?: ScanOpts, limits: ReconcileLimits = {}): Promise<ReconcileResult> {
@@ -165,19 +188,46 @@ export async function reconcileRepo(ctx: TenantContext, opts: GhOpts, envs: Repo
     }
   };
 
-  // The completeness marker: written only after the OPEN-PR list has been both
-  // fetched AND ingested without throwing. `prCaptured` in src/tools/repo.ts
-  // gates on THIS snapshot, not on "any pr row exists" — a lone webhook
-  // delivery (the first `pull_request` after deploy) must not make the
-  // Overview claim a complete open-PR count. A marker (not `provenance =
-  // 'backfill'`) because a repo with zero open PRs would otherwise never earn
-  // one.
+  // The completeness marker: written only after the OPEN-PR list has been fetched WHOLE (the last page read was
+  // short of 100 — at most `openPrPages` pages) AND ingested without throwing. `prCaptured` in src/tools/repo.ts
+  // gates on THIS snapshot, not on "any pr row exists" — a lone webhook delivery (the first `pull_request` after
+  // deploy) must not make the Overview claim a complete open-PR count. A marker (not `provenance = 'backfill'`)
+  // because a repo with zero open PRs would otherwise never earn one. A list cut by the page bound cannot say
+  // which PRs closed: the marker is REMOVED (the counts read "unknown", never a guess) and nothing is closed.
+  let openNow: Set<number> | null = null;
   await safely("open_prs", async () => {
-    const openPrs = await ghJson<GhPull[]>(opts, `/pulls?state=open&sort=updated&direction=desc&per_page=100`);
+    const pages = Math.max(1, limits.openPrPages ?? OPEN_PR_PAGES);
+    const openPrs: GhPull[] = [];
+    let complete = false;
+    for (let page = 1; page <= pages && !complete; page++) {
+      const one = await ghJson<GhPull[]>(opts, `/pulls?state=open&sort=updated&direction=desc&per_page=100&page=${page}`);
+      openPrs.push(...one);
+      complete = one.length < 100;
+    }
     await take(openPrs.map(prEvent));
+    if (!complete) { await deleteSnapshot(ctx, "prs_reconciled"); return; }
+    openNow = new Set(openPrs.map((p) => p.number));
     await putSnapshot(ctx, "prs_reconciled", { at: new Date(now).toISOString() }, new Date(now).toISOString());
   });
   await safely("closed_prs", async () => { await take((await ghJson<GhPull[]>(opts, `/pulls?state=closed&sort=updated&direction=desc&per_page=50`)).map(prEvent)); });
+  // A PR whose newest row still says open, missing from the COMPLETE open list (and not just written closed by the
+  // closed list above): GitHub has closed it. Read it to learn merged or closed — a PR is never closed by guess.
+  const lookups = limits.prCloseLookups ?? 0;
+  const open = openNow as Set<number> | null;
+  if (open && lookups > 0) {
+    await safely("closed_missing", async () => {
+      const stale = (await all<{ number: number }>(ctx,
+        `SELECT number FROM (
+           SELECT number, state, occurred_at, ROW_NUMBER() OVER (PARTITION BY number ORDER BY occurred_at DESC, id DESC) AS rn
+             FROM repo_events WHERE org_id = ? AND kind = 'pr' AND number IS NOT NULL
+         ) WHERE rn = 1 AND state IN ('review', 'draft') ORDER BY occurred_at DESC`, ctx.orgId))
+        .map((r) => r.number).filter((n) => !open.has(n)).slice(0, lookups);
+      for (const n of stale) {
+        const pr = asPull(await ghJsonOrNull<unknown>(opts, `/pulls/${n}`));
+        if (pr && pr.number === n) await take([prEvent(pr)]);
+      }
+    });
+  }
 
   // Commits on the default environment branch, ONLY for the stretch before push
   // capture began — a backfilled commit is a count-1 push, and overlapping a real

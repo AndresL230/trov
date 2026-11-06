@@ -1,6 +1,7 @@
 import { type TenantContext, type Stmt, all, first, run, stmt, batch, nowIso, ph, chunked } from "../data/sql";
 import { PRODUCT_PREFIX } from "./product";
 import { EXTRA_METRIC_GLOBS } from "@shared/usage-families-core";
+import { githubLinkOf, type GithubLink } from "@shared/hosting-status-core";
 import type { RepoMetric } from "./types";
 
 // An async reader here AWAITS its statement (`return await all(…)`) — see the note atop ./reads.ts.
@@ -350,6 +351,8 @@ export interface HostingReads {
   secrets: Map<string, { last_error: string | null }>;
   /** The org-wide install / OAuth connection rows (`org_hosting_connections`, scope ''), by provider. */
   connections: Map<string, { status: string; revoked_reason: string | null }>;
+  /** How the org's GitHub capture reaches Trov (`githubLinkOf`) — the status of a provider read through GitHub. */
+  github: GithubLink;
 }
 
 const jsonRecord = (text: string | null): Record<string, unknown> => {
@@ -402,11 +405,22 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
      UNION ALL
      SELECT 'config', kind, scope, '', config FROM org_integration_config WHERE org_id = ? AND scope = ''
      UNION ALL
-     SELECT 'secret', kind, scope, '', json_object('last_error', last_error) FROM org_secrets WHERE org_id = ? AND scope = ''
+     SELECT 'secret', kind, scope, '', json_object('last_error', last_error) FROM org_secrets
+      WHERE org_id = ? AND (scope = '' OR kind = 'github_webhook')
      UNION ALL
-     SELECT 'conn', provider, scope, '', json_object('status', status, 'revoked_reason', revoked_reason) FROM org_hosting_connections WHERE org_id = ? AND scope = ''`,
-    ctx.orgId, ctx.orgId, since, ctx.orgId, perPart, ctx.orgId, ctx.orgId, ctx.orgId);
-  const out: HostingReads = { states: [], deploys: [], config: new Map(), secrets: new Map(), connections: new Map() };
+     -- D1 allows at most 5 terms in ONE compound select: the org's newest GitHub App binding rides this arm as a
+     -- nested compound of its own (a subquery's terms are not the outer statement's).
+     SELECT src, a, b, '', j FROM (
+       SELECT 'conn' AS src, provider AS a, scope AS b, json_object('status', status, 'revoked_reason', revoked_reason) AS j
+         FROM org_hosting_connections WHERE org_id = ? AND scope = ''
+       UNION ALL
+       SELECT 'gh', '', '', j FROM (
+         SELECT json_object('removed_at', removed_at, 'removed_reason', removed_reason, 'suspended_at', suspended_at) AS j
+           FROM org_github_installations WHERE org_id = ? ORDER BY id DESC LIMIT 1))`,
+    ctx.orgId, ctx.orgId, since, ctx.orgId, perPart, ctx.orgId, ctx.orgId, ctx.orgId, ctx.orgId);
+  const out: HostingReads = { states: [], deploys: [], config: new Map(), secrets: new Map(), connections: new Map(), github: "none" };
+  let binding: { removed_at: string | null; removed_reason: string | null; suspended_at: string | null } | null = null;
+  let hook = false;
   for (const r of rows) {
     const j = jsonRecord(r.j);
     if (r.src === "state") {
@@ -426,11 +440,16 @@ export async function hostingReads(ctx: TenantContext, sinceIso: string, perPart
     } else if (r.src === "config") {
       out.config.set(r.a, Object.fromEntries(Object.entries(j).filter((e): e is [string, string] => typeof e[1] === "string")));
     } else if (r.src === "secret") {
-      out.secrets.set(r.a, { last_error: strOrNull(j.last_error) });
+      // A repo's webhook secret (scope = its hook id) says only that GitHub can reach Trov through it.
+      if (r.a === "github_webhook" && r.b !== "") hook = true;
+      else out.secrets.set(r.a, { last_error: strOrNull(j.last_error) });
     } else if (r.src === "conn") {
       if (typeof j.status === "string") out.connections.set(r.a, { status: j.status, revoked_reason: strOrNull(j.revoked_reason) });
+    } else if (r.src === "gh") {
+      binding = { removed_at: strOrNull(j.removed_at), removed_reason: strOrNull(j.removed_reason), suspended_at: strOrNull(j.suspended_at) };
     }
   }
+  out.github = githubLinkOf(binding, hook);
   // The arms come back in no promised order: newest first within each part, the order the DTO carries.
   out.deploys.sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
   return out;

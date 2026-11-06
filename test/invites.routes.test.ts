@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { env } from "cloudflare:test";
 import { app } from "../src/routes";
 import { all, first } from "./helpers/db";
-import { cookieFor } from "./helpers/persons";
+import { cookieFor, seedPerson } from "./helpers/persons";
+import { platformCtx, racing } from "./helpers/tenant";
+import { respondToInvite } from "../src/orgs/repo";
 import { renderInviteEmail, inviteSignInUrl } from "../src/notifications/invite";
 import type { OrgInvite } from "@shared/orgs";
 
@@ -139,5 +141,43 @@ describe("/api/o/:slug/invites (admin, session-cookie)", () => {
     expect(body.invite.mail_status).toBe("failed");
     expect(body.invite.mail_error).toContain("RESEND_API_KEY");
     expect((await first<{ mail_status: string; mail_error: string }>(env.DB, `SELECT mail_status, mail_error FROM org_invites WHERE email = 'm@x.io'`))).toEqual({ mail_status: "failed", mail_error: expect.stringContaining("RESEND_API_KEY") });
+  });
+});
+
+describe("an invitation that goes while it is being accepted (respondToInvite)", () => {
+  const INVITEE = "zara-x";
+  async function invited(): Promise<number> {
+    await seedPerson(INVITEE, { member: false });
+    const res = await env.DB.prepare(`INSERT INTO org_invites (org_id, github_login, role, invited_by, created_at) VALUES ('org_b', ?, 'member', 'AndresL230', '2026-10-01T00:00:00Z')`).bind(INVITEE).run();
+    return Number(res.meta.last_row_id);
+  }
+  const traces = async (id: number) => ({
+    member: await first(env.DB, `SELECT role FROM memberships WHERE org_id = 'org_b' AND user_id = ?`, INVITEE),
+    audit: await all(env.DB, `SELECT action FROM org_admin_audit WHERE org_id = 'org_b' AND (target = ? OR target = ?)`, `invite:${id}`, INVITEE),
+  });
+
+  it("revoked in the instant before the accept lands: not found, and no member, no stamp, no audit row", async () => {
+    const id = await invited();
+    const e = racing(() => env.DB.prepare(`UPDATE org_invites SET status = 'revoked' WHERE id = ?`).bind(id).run());
+    await expect(respondToInvite(platformCtx(INVITEE, e), INVITEE, id, true)).rejects.toMatchObject({ code: "not_found" });
+    expect(await traces(id)).toEqual({ member: null, audit: [] });
+    expect(await first(env.DB, `SELECT status, responded_by FROM org_invites WHERE id = ?`, id)).toEqual({ status: "revoked", responded_by: null });
+  });
+
+  it("its organization suspended in that instant: the same — and the invitation stays pending for when it is lifted", async () => {
+    const id = await invited();
+    const e = racing(() => env.DB.prepare(`UPDATE orgs SET suspended_at = '2026-10-01T00:00:00Z', suspended_by = 'AndresL230' WHERE id = 'org_b'`).run());
+    await expect(respondToInvite(platformCtx(INVITEE, e), INVITEE, id, true)).rejects.toMatchObject({ code: "not_found" });
+    expect(await traces(id)).toEqual({ member: null, audit: [] });
+    expect(await first(env.DB, `SELECT status FROM org_invites WHERE id = ?`, id)).toEqual({ status: "pending" });
+  });
+
+  it("nothing in the way: the member, the stamp and both audit rows, in one batch", async () => {
+    const id = await invited();
+    expect(await respondToInvite(platformCtx(INVITEE), INVITEE, id, true)).toMatchObject({ role: "member" });
+    const t = await traces(id);
+    expect(t.member).toEqual({ role: "member" });
+    expect((t.audit as { action: string }[]).map((a) => a.action).sort()).toEqual(["invite.accept", "member.add"]);
+    expect(await first(env.DB, `SELECT status, responded_by FROM org_invites WHERE id = ?`, id)).toEqual({ status: "accepted", responded_by: INVITEE });
   });
 });

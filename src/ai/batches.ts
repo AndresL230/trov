@@ -7,21 +7,25 @@
 //   submit   ONE `batches.create` (one subrequest) for every queued request, each exactly what a direct call would
 //            send — the org's cached prefix first. `ai_run:<kind>` is counted per request BEFORE it (one request
 //            is one run). Recorded in `ai_batches` / `ai_batch_requests` (platform: src/data/ai-batches.ts) with
-//            `custom_id` = `<org>:<scope>:<key>:<prompt version>`, and each scope HELD (it reads clean, so no tick
-//            submits it twice; a mark after the submit makes it due again only once the batch is collected).
+//            `custom_id` = `<org>:<scope>:<key>:<prompt version>`. Each scope is HELD BEFORE the submit (it reads
+//            clean and carries `held_at`, so no tick submits it twice — not even when recording the accepted batch
+//            fails, which is logged loudly; a mark after the submit makes it due again only once the batch is
+//            collected). A hold nothing settles is released after `AI_BATCH_HOLD_MAX_MS` (data/ai-dirty.ts).
 //   collect  the oldest open batches, a few per tick: `retrieve` (one subrequest); once it ENDED, `results` (two).
 //            Per result — and ONLY for an org that still exists, is not suspended and has the AI switch on (else
-//            NOTHING is written: no row, no meter, no scope) — the answer is read exactly as a direct call's
-//            (`answer`: refusal / max_tokens / a schema miss is null), the item's input re-read from D1, and the
-//            job's `write` stores it; the scope clears, or fails (attempts + 1). Then the batch's counts are kept
-//            and its request rows deleted.
+//            NOTHING is written: no row, no meter, no scope) — the result is CLAIMED (its request row deleted, one
+//            guarded statement: a collect that died midway never writes or meters it twice), the answer is read
+//            exactly as a direct call's (`answer`: refusal / max_tokens / a schema miss is null), the item's input
+//            re-read from D1, and the job's `write` stores it; the scope clears, or fails (attempts + 1). Then the
+//            batch's counts are kept and its request rows deleted (`closeBatch`, only from `submitted`). A batch the
+//            provider no longer knows, or still open after `AI_BATCH_MAX_AGE_MS`, is `lost`: its scopes are due again.
 import { systemTenant, type PlatformContext, type TenantContext } from "../data/context";
 import {
   METRIC_AI_TOKENS_CACHED, METRIC_AI_TOKENS_IN, METRIC_AI_TOKENS_OUT, aiRunFailedMetric, aiRunMetric, meterBy,
 } from "../data/meter";
 import { clearScopes, failScopes, holdScopes, type DirtyScope, type ScopeKey } from "../data/ai-dirty";
 import {
-  batchChecked, batchRequests, closeBatch, openBatches, orgsStillOn, recordBatch, type BatchRequestRow,
+  batchChecked, batchRequests, claimRequest, closeBatch, openBatches, orgsStillOn, recordBatch, type BatchRequestRow,
 } from "../data/ai-batches";
 import { nowIso } from "../data/sql";
 import { providerFor, type AiProviderOpts, type AiUsage, type ClaudeBatchRequest, type ClaudeProvider } from "./client";
@@ -35,6 +39,9 @@ export const AI_BATCH_COLLECT_PER_TICK = 3;
 /** Subrequests: a submit is one; a collect is a retrieve, then the results (the batch again, then its file). */
 export const BATCH_SUBMIT_COST = 1;
 export const BATCH_COLLECT_COST = 3;
+/** A batch still open this long after its submit is given up as `lost` (the provider ends one within 24 hours and
+ *  keeps its results for 29 days; a week of failed asks is a batch that will not be collected). */
+export const AI_BATCH_MAX_AGE_MS = 7 * 24 * 3_600_000;
 const ACTOR = "ai-pass";
 
 /** One item waiting for the end-of-tick submit. */
@@ -84,6 +91,9 @@ export async function submitBatches(d: Deps, queue: readonly QueuedRequest[]): P
       sent.push(q);
     }
     if (!reqs.length) return 0;
+    // HELD before the submit: whatever fails after the provider accepted the batch (recording it, the Worker), no
+    // later tick submits — and bills — these scopes again. A hold nothing settles is released (`releaseStaleHolds`).
+    for (const q of sent) await holdScopes(q.ctx, [keyOf(q.item.scope)], d.at);
     // The attempts are counted BEFORE the call: one request is one run of its org's month.
     for (const q of sent) await meterBy(d.p, q.orgId, ACTOR, [[aiRunMetric(q.job.kind), 1]], d.at);
     const provider = providerFor(sent[0].job.kind, { ...d.ai, apiKey: d.apiKey, fetchImpl: d.budget.fetch }) as ClaudeProvider | null;
@@ -95,8 +105,13 @@ export async function submitBatches(d: Deps, queue: readonly QueuedRequest[]): P
       }
       return 0;
     }
-    await recordBatch(d.p, batch.id, rows, d.at);
-    for (const q of sent) await holdScopes(q.ctx, [keyOf(q.item.scope)], d.at);
+    // Recorded, or said loudly: an unrecorded batch is never collected (its scopes stay held until released).
+    let recorded = false;
+    for (let i = 0; i < 2 && !recorded; i++) {
+      try { await recordBatch(d.p, batch.id, rows, d.at); recorded = true; } catch (e) {
+        console.error("ai batch: RECORDING A SUBMITTED BATCH FAILED", batch.id, `requests=${rows.length}`, `try=${i + 1}`, errName(e));
+      }
+    }
     return sent.length;
   } catch (e) {
     console.error("ai batch: submit failed", errName(e));
@@ -128,27 +143,32 @@ async function collectOne(d: Deps & { jobs: readonly AiJob[] }, batchId: string,
   if (!provider) return 0;
   const status = await provider.retrieveBatch(batchId);
   const at = nowIso();
-  if (status === null) { await batchChecked(d.p, batchId, at); return 0; }
+  // A batch still open past `AI_BATCH_MAX_AGE_MS` (the provider would not say, or its results never came) is given up:
+  // `lost`, like one the provider no longer knows, so it neither holds its scopes nor blocks the queue for good.
+  const tooOld = Date.parse(submittedAt) < Date.parse(d.at) - AI_BATCH_MAX_AGE_MS;
+  if (status === null && !tooOld) { await batchChecked(d.p, batchId, at); return 0; }
   const parsed = reqs.map((r) => ({ r, id: parseCustomId(r.custom_id) }));
   // ONLY orgs that still exist, are not suspended and have the switch on are written to — anything else, nothing.
   const on = await orgsStillOn(d.p, parsed.flatMap((x) => (x.id ? [x.id.orgId] : [])));
   const scopeOf = (x: NonNullable<(typeof parsed)[number]["id"]>): DirtyScope =>
     ({ scope: x.scope, key: x.key, dirtySince: submittedAt, markedAt: submittedAt, attempts: 0, urgent: false });
 
-  if (status === "gone") {
-    // The provider no longer knows it: its scopes are due again (for the orgs that may still be written).
+  const results = status !== null && status !== "gone" && status.ended ? await provider.batchResults(batchId) : null;
+  if (status === "gone" || (tooOld && !results)) {
+    // The provider no longer knows it (or it was given up): its scopes are due again (for the orgs that may still be
+    // written).
     for (const { id } of parsed) if (id && on.has(id.orgId)) await failScopes(systemTenant(d.p, id.orgId, "system"), [{ scope: id.scope, key: id.key }], "batch_lost").catch(() => undefined);
     await closeBatch(d.p, batchId, "lost", at, null, null);
     return 0;
   }
-  if (!status.ended) { await batchChecked(d.p, batchId, at); return 0; }
-  const results = await provider.batchResults(batchId);
-  if (!results) { await batchChecked(d.p, batchId, at); return 0; }
+  if (status === null || !status.ended || !results) { await batchChecked(d.p, batchId, at); return 0; }
   const byId = new Map(results.map((r) => [r.requestId, r]));
 
   let wrote = 0;
   for (const { r, id } of parsed) {
     if (!id || !on.has(id.orgId)) continue; // a deleted, suspended or switched-off org: NOTHING is written
+    // Claimed first: a result is written (and metered) at most once, however often this batch is collected.
+    if (!(await claimRequest(d.p, batchId, r.request_id))) continue;
     const ctx = systemTenant(d.p, id.orgId, "system");
     const key: ScopeKey = { scope: id.scope, key: id.key };
     const meter = (entries: [string, number][]) => meterBy(d.p, id.orgId, ACTOR, entries, d.at);

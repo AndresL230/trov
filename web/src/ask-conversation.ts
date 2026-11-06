@@ -40,6 +40,7 @@ import { actionGroupView, feedbackView, saveFormArg, saveFormView, wrongIsOpen }
 import {
   ASK_STARTERS_FALLBACK, askMode, isAskMode,
   type AskAttachment, type AskChart, type AskDiagram, type AskMode, type AskNotFound, type AskThemesBlock, type RefView,
+  ASK_CHANGES_KEPT,
 } from "@shared/ai-ask-core";
 import { skeleton, skBox, skLine, skLines, skW } from "./skeleton";
 import { markShape, tagSquare, tagTone } from "./marks";
@@ -591,6 +592,11 @@ export function turnErrorWords(c: Pick<AskConvo, "threadId" | "project">, e: { c
     if (e.code === "archived") return { title: e.message && e.message !== e.code ? e.message : PROJECT_ASK_ARCHIVED, sub: null, retry: false };
     if (e.code === "not_found") return { title: PROJECT_ASK_GONE, sub: null, retry: false };
   }
+  // One turn at a time per conversation (409 busy) and Ask off for the org: the server's own words, as they are.
+  if (e.code === "busy") return { title: "Trov is still answering in this conversation.", sub: "Wait for it to finish, then ask again.", retry: true };
+  if (e.code === "off") return { title: e.message && e.message !== e.code ? e.message : "Ask Trov is off for this org.", sub: null, retry: false };
+  // A turn that failed after its Auto writes ran: they are kept, each with its Undo — never "Nothing was changed".
+  if (e.message === ASK_CHANGES_KEPT) return { title: "Something went wrong.", sub: "The changes Trov already made are kept, each with its Undo.", retry: true };
   return { title: "Something went wrong.", sub: "Nothing was changed.", retry: true };
 }
 

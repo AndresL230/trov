@@ -90,7 +90,7 @@ import { REPO_SCENARIOS, isScenarioKey } from "./repo-sample-keys";
 import { ALL_APPS } from "./repo-core";
 import { twinSelector } from "./focus-twin";
 import { createQuickSearch, type QuickPick, type QuickRow } from "./quicksearch";
-import { homeDropRows, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
+import { homeDropRows, homeHeadLanded, askAvailable as homeAskAvailable, type HomeAnswer } from "./home-view";
 import { askApi } from "./ask-api";
 import { ASK_WRONG_REASONS, type AskWrongReason } from "@shared/ai-ask-core";
 import { SENDER_NAME_HELP, senderNamePart, senderNameProblem } from "@shared/sender";
@@ -121,7 +121,7 @@ import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
 import { LATEST_RELEASE } from "./release-latest";
-import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
+import { releasesChunk } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg, isOrgTab } from "./org-core";
@@ -133,6 +133,7 @@ import { initialOrgsUi } from "./org-picker";
 import { LAST_ORG_KEY, RETURN_HASH_KEY, RETURN_ORG_KEY, orgBase, orgHref, orgSlugFromPath, resolveLanding } from "./org-context";
 import { SETUP_PARAM, initialBillingDone, startBillingDone } from "./billing";
 import { morphStep } from "./transition";
+import { escapeTop, type EscapeLayer } from "./escape-layers";
 import { BILLING_CHECKOUT_PATH, BILLING_DONE_PATH, PRICING_PATH, signInReturnPath } from "@shared/billing";
 import { askBillingCheckout, getBillingStatus, getAskState } from "./api";
 import { BILLING_MOUNT_ID, billingCheckoutHosted, initialBillingCheckout, startBillingCheckout, type BillingCheckoutHost } from "./billing-checkout";
@@ -283,6 +284,7 @@ const treeCtl = createTreeController({
   reducedMotion: () => reducedMotion(),
   // The open doc page's children and breadcrumb come from its own read, not the pane's: read it again after a move.
   treeChanged: () => { if (state.screen === "docs" && state.docSlug) loadDoc(state.docSlug); },
+  reloadSpace: (slug) => libCtl.openSpace(slug),
 });
 // Trov's AI screens (web/src/ai-actions.ts): every `ai…` act — "Wrong?", the Feed's Source switch and
 // note, the themes' range and lane, Accept / Rename / Remove on a suggestion.
@@ -404,7 +406,10 @@ const orgsCtl = createOrgsController({
   // A first run: the picker has held no org's data, so the org just created or joined is entered in
   // place and the card morphs into the guided setup — no page load, no flash of a blank page.
   enterNew: (org, hash) => {
+    if (enteringNew === org.slug) return true;   // a second click while the first is still morphing in: already on its way
     if (state.view !== "orgs" || enteredAnOrg || !state.me) return false;
+    // Taken NOW, not inside the morph (whose callback runs later, transition.ts): a second click meanwhile is not a second entry.
+    enteredAnOrg = true; enteringNew = org.slug;
     if (!state.me.orgs.some((o) => o.slug === org.slug)) state.me.orgs = [...state.me.orgs, org];
     if (state.myOrgs.data && !state.myOrgs.data.orgs.some((o) => o.slug === org.slug)) state.myOrgs.data = { ...state.myOrgs.data, orgs: [...state.myOrgs.data.orgs, org] };
     morphStep(() => { state.orgsUi = initialOrgsUi(); enterOrg(org.slug, hash); rerender(); });
@@ -589,8 +594,8 @@ function countUp(root: HTMLElement): void {
 let pendingFlash: string | null = null;
 
 let lastNavGroup: NavGroup | null = null;
-/** The route the phone drawer was last seen on (rerender closes it when this changes). */
-let drawerRoute = "";
+/** The route the last paint drew (the hash in the app, else the view): a paint of another one runs leaveScreen first. */
+let paintedRoute = "";
 /** The group the app opened on its own (so it may close it again). */
 let autoOpened: NavGroup | null = null;
 
@@ -619,12 +624,6 @@ function withChunk<M>(chunk: LazyChunk<M>, fn?: (m: M) => void): void {
   );
 }
 
-let releasesWanted = false;
-function wantReleases(): void {
-  if (releasesWanted) return;
-  releasesWanted = true;
-  loadReleases().catch(() => undefined).finally(() => { releasesWanted = false; rerenderSoon(); });
-}
 
 /** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
 function paintApp(): void {
@@ -642,7 +641,7 @@ function paintApp(): void {
   }
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
-  if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  if (state.view === "app" && state.screen === "releases") withChunk(releasesChunk);
   // The landing is its own chunk in the app (the signed-out page `/` boots it alone, landing-page.ts):
   // a signed-out paint, or the landing reopened by the sidebar logo, starts the load.
   if (state.view === "auth" ? state.authStep === "login" : state.view === "app" && state.screen === "site") withChunk(landingChunk);
@@ -656,18 +655,14 @@ function paintApp(): void {
   if ((state.view === "platform" || state.view === "app") && (state.screen === "platform" || state.screen === "platformorg")) withChunk(platformChunk);
   // Signed in: the Markdown chunk starts loading beside the first reads (once).
   if (state.view === "app" || state.view === "platform") prefetchMarkdownLib();
-  // The phone drawer closes whenever the route changes (a nav row, a search, Back).
-  const drawerKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
-  if (drawerKey !== drawerRoute) { drawerRoute = drawerKey; state.drawer = false; }
+  // Leaving a route (a nav row, a search, Back) closes what belonged to it, the phone drawer too (leaveScreen).
+  const routeKey = state.view === "app" ? hashForRoute(currentRoute()) : state.view;
+  if (routeKey !== paintedRoute) { paintedRoute = routeKey; leaveScreen(); }
   // The "Poll now" result is session-only and belongs to the Repo screen: leaving
   // it (any route, or signing out) clears it, and an in-flight poll's answer is
   // then dropped on arrival (runRepoPoll checks it is still the one polling).
   // Switching between the Repo TABS keeps it — the strip renders on all five.
   state.repoPoll = repoPollFor(state.repoPoll, state.view === "app" && state.screen === "repo");
-  // The queue's filter menu left open never survives leaving the queue.
-  if (state.screen !== "tickets") state.qFilterOpen = false;
-  if (state.screen !== "feed") state.feedFilterOpen = false;
-  if (state.screen !== "settings") state.avatarMenu = false;
   syncCtl.beforePaint(); // the Sync panel closes with the control it hangs from
   // Entering a group's pages opens its sub-page list, and leaving folds it again —
   // unless the person opened or closed it by hand, which sticks (and is what persists).
@@ -927,8 +922,34 @@ function currentRoute(): Route {
   if (state.screen === "welcome") r.welcomeStep = effectiveWelcomeStep(state.welcome.step, welcomeStepsFor(currentOrg(state)?.role, state.org));
   return r;
 }
+/**
+ * Leaving a route, however it is left — a nav act (`go…`, which paints), Back / Forward or an edited hash (`applyRoute`), a
+ * link — closes what belonged to the screen being left: its dialogs, menus and armed confirms, and the phone drawer. ONE
+ * list, run from `applyRoute` and from `paintApp` whenever the route it paints is not the one it painted last (so every
+ * `go…` act reaches it without naming it). A delete whose write is in flight keeps its confirm, busy, until its own answer
+ * closes it (the artifact's and the ticket's alike). Idempotent: nothing here opens anything.
+ */
+function leaveScreen(): void {
+  state.drawer = false;
+  state.personCard = null;
+  state.mcpSetup = false;
+  state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null;
+  state.avatarMenu = false;
+  state.handoffPromptOpen = false;
+  state.promptExpanded = false;
+  state.home.attnOpen = false;
+  state.repoAttentionOpen = false;   // Needs attention's dialog
+  state.rmTrovOpen = false;          // the Roadmap's Trov dialog
+  // The filter menus, and a close of one still playing out (a reopen would take it for a revival).
+  state.qFilterOpen = false; state.feedFilterOpen = false; state.promptFilterOpen = false; state.art.filterOpen = false;
+  dropFilterMenuClose();
+  // The artifact viewer's menus and dialogs (the design's onHash).
+  state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
+  if (!state.art.deleteBusy) state.art.deleteArm = false;
+  if (!state.tdDeleteBusy) state.tdDeleteArm = false;
+}
 function applyRoute(r: Route): void {
-  if (r.ticketId !== state.ticketId) { state.tdDeleteArm = false; state.tdDeleteBusy = false; }   // a confirm never carries to another ticket
+  if (!sameRoute(r, currentRoute())) leaveScreen();
   state.screen = r.screen;
   state.ticketId = r.ticketId;
   state.sprintId = r.sprintId;
@@ -952,11 +973,6 @@ function applyRoute(r: Route): void {
     state.releaseVersion = v; state.releasePage = page;
   }
   state.artRoute = r.art ?? ART_ROUTE_NONE;
-  state.repoAttentionOpen = false;   // Needs attention's dialog never outlives a route change
-  state.rmTrovOpen = false;          // nor does the Roadmap's Trov dialog
-  // A route change closes the artifact viewer's menus and dialogs (the design's onHash).
-  state.art.verMenu = false; state.art.dotMenu = false; state.art.ratifyOpen = false; state.art.attachOpen = false;
-  if (!state.art.deleteBusy) state.art.deleteArm = false;
   if (r.handoffId) state.handoffId = r.handoffId;
   // A link's confirm never carries to another link.
   if (r.linkId !== state.linkId) { state.linkCancelArm = false; state.linkCancelBusy = false; }
@@ -1094,7 +1110,8 @@ function loadLinks(): void {
 function openLinkPage(id: number): void {
   if (state.linkId !== id) { state.linkCancelArm = false; state.linkCancelBusy = false; state.linkNoteSide = "requester"; }
   state.linkId = id;
-  state.linkBusy = false;
+  // `linkBusy` is not reset here: a step or a note in flight clears it with its own answer — resetting it on
+  // navigation let a second write start and the first answer clear the second's flag.
   // Keep what the tab already holds on screen (no notes yet) while the fresh read lands.
   const b = state.links.data;
   const known = state.linkDetail.data?.id === id ? state.linkDetail.data
@@ -1151,7 +1168,9 @@ function loadPrompts(): void {
 function openPrompt(slug: string): void {
   state.promptSlug = slug;
   state.promptDiffV = null; state.promptTagMenu = false; state.promptTagDraft = ""; state.promptExpanded = false;
-  state.promptDeleteArm = false; state.promptDeleteBusy = false;
+  // A delete in flight keeps its flags (its answer clears them, as `goArt` keeps an artifact's): resetting them here
+  // let a second delete start and the first answer clear the second's busy.
+  if (!state.promptDeleteBusy) state.promptDeleteArm = false;
   if (state.promptList.status === "idle") loadPrompts(); // the tag picker suggests the library's tags
   const same = state.promptDetail.data?.prompt.slug === slug;
   state.promptDetail = { status: "loading", data: same ? state.promptDetail.data : null };
@@ -1294,6 +1313,8 @@ function enterPlatform(hash: string): void {
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 /** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
 let enteredAnOrg = false;
+/** The org a first run is entering in place (orgsCtl `enterNew`), while its morph has not yet run. */
+let enteringNew: string | null = null;
 /** Batched: the boot starts a dozen and a half reads here, and their "loading" paints are ONE paint,
  *  made before this returns (each read's landing is a `rerenderSoon`). */
 function enterOrg(slug: string, hash: string): void {
@@ -1369,19 +1390,35 @@ function writeErr(e: unknown, fallback: string): void {
   if (e instanceof Unauthorized) { unauth(e); return; }
   flash(e instanceof ApiError && e.message && !/^\d+$/.test(e.message) ? e.message : fallback);
 }
-/** A handoff write landed: show it, and refresh the inbox (the sidebar badge reads it). */
-function applyHandoff(h: HandoffView, msg: string): void {
-  state.handoffId = h.id;
-  state.handoffDetail = { status: "ok", data: h };
-  state.handoffExpireArm = false;
+/** One write per form at a time: `key` is held from the click to the answer (`endWrite` on every exit), so a double
+ *  click is one submit and the button shows busy meanwhile (`state.inFlight`). False: one is already out. */
+function beginWrite(key: string): boolean {
+  if (state.inFlight[key]) return false;
+  state.inFlight = { ...state.inFlight, [key]: true };
+  return true;
+}
+function endWrite(key: string): void {
+  const { [key]: _done, ...rest } = state.inFlight;
+  state.inFlight = rest;
+}
+/** A handoff write landed: show it where it is still on screen (the handoff page it was made on — or, with `show`,
+ *  the one just sent from the compose screen), and refresh the inbox (the sidebar badge reads it). An answer that
+ *  lands after the person moved on changes nothing they are looking at. */
+function applyHandoff(h: HandoffView, msg: string, show = false): void {
+  if (show || (state.screen === "handoff" && state.handoffId === h.id)) {
+    state.handoffId = h.id;
+    state.handoffDetail = { status: "ok", data: h };
+    state.handoffExpireArm = false;
+  }
   loadHandoffs();
   flash(msg);
 }
-/** A prompt write landed: reload the detail + versions and the library (the badge reads it). */
-function afterPromptWrite(slug: string, msg: string): void {
+/** A prompt write landed: reload the library (the badge reads it) and — while the person is still where they made it
+ *  (`stay`) — open the prompt with its detail and versions read again. */
+function afterPromptWrite(slug: string, msg: string, stay: boolean): void {
   loadPrompts();
-  state.screen = "prompt";
-  openPrompt(slug);
+  if (stay) { state.screen = "prompt"; openPrompt(slug); }
+  else rerender();
   flash(msg);
 }
 /** Replace a prompt's tag list (the detail rail's add / remove). */
@@ -1397,13 +1434,18 @@ function writePromptTags(tags: string[]): void {
 }
 
 // ── per-screen data loaders ──────────────────────────────────────────────────
+/** The Feed's filters change faster than its reads land: only the newest read commits (the rows, the switch's note,
+ *  the author menu), so an older answer for other filters never replaces what the screen now asks for. */
+let feedSeq = 0;
 function loadFeed(): void {
+  const seq = ++feedSeq;
   state.feed = { status: "loading", data: state.feed.data };
   rerender();
   const author = state.feedAuthor !== "all" ? state.feedAuthor : undefined;
   const tags = state.feedTag !== "all" ? [state.feedTag] : undefined;
   getFeedPage({ author, tags })
     .then(({ feed: rows, aiOff }) => {
+      if (seq !== feedSeq) return;
       state.feed = { status: "ok", data: rows };
       state.ai.feedAiOff = aiOff;
       // Capture the author chip set only from the unfiltered view, so filtering doesn't shrink it.
@@ -1411,7 +1453,8 @@ function loadFeed(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
+      if (seq !== feedSeq) return;
       state.feed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1440,8 +1483,8 @@ function loadFeedStats(): void {
       rerenderSoon();
     })
     .catch((e) => {
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== feedStatsSeq) return;
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.feedStats = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1456,7 +1499,7 @@ function loadMyWork(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.mywork = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1525,9 +1568,24 @@ function loadHomeGithub(): void {
 /** Every read Home is built on, again: on each visit, and every HOME_REFRESH_MS while it is on screen (all D1 —
  *  nothing here reaches GitHub). Each loader keeps what it had on screen while it reads, so nothing blanks. */
 const HOME_REFRESH_MS = 60_000;
+/** The head waits this long for its reads at most: one that never comes back (or never starts) does not keep the
+ *  headline a skeleton — it then speaks from what has landed, and holds. */
+const HOME_HEAD_WAIT_MS = 5_000;
 let homeReadAt = 0;
+let homeHeadTimer: ReturnType<typeof setTimeout> | undefined;
 function refreshHome(): void {
   homeReadAt = Date.now();
+  // The head's latch, before its reads go out again: once they have all landed, a refresh only updates it.
+  if (homeHeadLanded(state)) state.home.headReady = true;
+  if (!state.home.headReady && homeHeadTimer === undefined) {
+    const home = state.home;
+    homeHeadTimer = setTimeout(() => {
+      homeHeadTimer = undefined;
+      if (state.home !== home || home.headReady) return;
+      home.headReady = true;
+      if (state.screen === "home") rerenderSoon();
+    }, HOME_HEAD_WAIT_MS);
+  }
   loadHomeData(); loadHomeFeed(); loadHomeGithub();
   loadMyWork(); loadProposals(); loadDraftAdrs(); loadNeedsTriage();
   loadSprints(); loadHandoffs(); loadRepo(); loadBadges();
@@ -1585,7 +1643,8 @@ function homeAskRun(q: string): void {
         else if (e.event === "error") fail(e.data.message || "Couldn't get an answer.");
       },
     }))
-    .then(() => { if (live() && a.phase !== "done" && a.phase !== "error") { a.phase = "done"; rerender(); } })
+    // Closed with no `done` and no `error`: the connection dropped mid-answer — an error, as Ask says it (failTurn).
+    .then(() => { if (live() && a.phase !== "done" && a.phase !== "error") fail("The answer stopped before it finished."); })
     .catch((e) => {
       if (e instanceof Unauthorized) { unauth(e); return; }
       if (e instanceof DOMException && e.name === "AbortError") return;
@@ -1622,25 +1681,33 @@ function loadMyWorkIfNeeded(): void {
 // ── Repo dashboard ───────────────────────────────────────────────────────────
 // A refresh keeps the last payload on screen (the header says "refreshing…");
 // only a first load shows skeletons.
+/** Only the newest dashboard read commits — a refresh, another repository or app (`goRepoFor`, Back), sample data
+ *  switched on or off — and only while the screen still asks for the scope it was read for. */
+let repoSeq = 0;
 function loadRepo(): void {
+  const seq = ++repoSeq;
   state.repo = { status: "loading", data: state.repo.data };
   rerender();
   const sample = state.repoSample;
+  const slug = state.repoSlug, app = state.repoApp;
+  // A live answer is for one repository and app; the sample's is narrowed at render time, so only its switch counts.
+  const stale = (): boolean => seq !== repoSeq || sample !== state.repoSample || (!sample && (slug !== state.repoSlug || app !== state.repoApp));
   // The sample carries the picked scenario's facts (unnarrowed: the App menu narrows them at render time, as
   // `narrowFacts` does on the server); the live read is scoped by the address's repository and app.
   const sc = state.repoScenario;
   const read = sample
     ? import("./repo-sample").then((m) => ({ ...m.repoSample(), facts: m.repoScenario(sc.key, sc.variant), ...m.repoScenarioUsage(sc.key, sc.variant), ...m.repoScenarioScopes(sc.key, sc.variant) }))
-    : getRepoDashboard({ repo: state.repoSlug, app: state.repoApp });
+    : getRepoDashboard({ repo: slug, app });
   read
     .then((data) => {
-      if (sample !== state.repoSample) return; // switched source mid-flight — the newer load wins
+      if (stale()) return; // a newer load, or another scope, wins
       state.repo = { status: "ok", data };
       state.repoFetchedAt = Date.now();
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
+      if (stale()) return;
       state.repo = { status: "error", data: state.repo.data, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1667,7 +1734,7 @@ async function runRepoPoll(): Promise<void> {
     pendingFlash = ".repo-poll-strip";
     loadRepo(); // rerenders now (the strip, "refreshing…") and again when the fresh projection lands
   } catch (e) {
-    if (e instanceof Unauthorized) { state.repoPoll = null; state.view = "auth"; state.authStep = "login"; rerender(); return; }
+    if (e instanceof Unauthorized) { toSignedOut(); return; }
     if (state.repoPoll?.status !== "polling") return;
     state.repoPoll = { status: e instanceof ApiError && e.status === 409 ? "busy" : "error" };
     pendingFlash = ".repo-poll-strip";
@@ -1704,7 +1771,7 @@ function loadNotifPrefs(): void {
   getNotificationPrefs()
     .then((data) => { state.notifPrefs = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.notifPrefs = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1716,7 +1783,7 @@ function loadGrants(): void {
   listOAuthGrants()
     .then((data) => { state.grants = { status: "ok", data }; rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.grants = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1774,7 +1841,7 @@ function saveGrantScope(change: Promise<OAuthGrantSummary[]>, done: string, org?
   change
     .then((data) => { state.grants = { status: "ok", data }; state.grantScopeNote = { kind: "saved", text: done }; rerender(); refocus(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       // A plan refusal is the named organization's: say it as its owner is told it, when that is me.
       const role = org ? (state.myOrgs.data?.orgs ?? state.me?.orgs ?? []).find((o) => o.slug === org)?.role ?? null : null;
       const text = planLimitText(e, role) ?? (e instanceof ApiError ? GRANT_SCOPE_REFUSALS[e.message] : undefined) ?? "That could not be saved. Try again.";
@@ -1830,7 +1897,7 @@ function writePrefs(body: PrefsWrite, done: string | null): void {
   putNotificationPrefs(body)
     .then((data) => { state.notifPrefs = { status: "ok", data }; if (done) flash(done); rerender(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       flash(refusalText(e, "Could not save email settings"), isRateLimited(e) ? 7000 : 2200);
     });
 }
@@ -1840,7 +1907,6 @@ function loadNotifAdmin(): void {
   state.notifSettings = { status: "loading", data: state.notifSettings.data };
   state.notifOutbox = { status: "loading", data: state.notifOutbox.data };
   rerender();
-  const unauth = (e: unknown) => { if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); } };
   getNotificationPolicy()
     .then(({ kinds }) => { state.notifPolicy = { status: "ok", data: kinds }; rerenderSoon(); })
     .catch((e) => { unauth(e); state.notifPolicy = { status: "error", data: [], error: String(e) }; rerenderSoon(); });
@@ -1863,7 +1929,7 @@ function writeSettings(body: Parameters<typeof putNotificationSettings>[0], done
   putNotificationSettings(body)
     .then((data) => { state.notifSettings = { status: "ok", data }; state.fromDraft = null; state.fromError = null; flash(done); rerender(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       // A sender name the server refused (it checks again — shared/sender.ts): said under the field, not as a code.
       if ("from_address" in body && e instanceof ApiError && e.status === 400) state.fromError = "That sender name can't be used. Use letters, digits, spaces and . & ' + _ - only, without \"trov\".";
       else flash(refusalText(e, "Could not save schedule"), isRateLimited(e) ? 7000 : 2200);
@@ -1890,7 +1956,7 @@ function loadDoc(slug: string): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== docSeq) return;
       if (e instanceof NotFound) { state.docDetail = { status: "ok", data: null }; rerenderSoon(); return; }
       state.docDetail = { status: "error", data: null, error: e instanceof Error ? e.message : String(e) };
@@ -1920,7 +1986,7 @@ function loadSearch(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.searchResults = { status: "error", data: EMPTY_QUERY_RESULT, error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -1954,7 +2020,7 @@ function loadRoadmap(): Promise<void> {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       state.roadmap = {
         status: "error",
         data: { narrative: "", version: 0, updated_at: null, updated_by: null, sprints: [] },
@@ -1988,8 +2054,8 @@ function loadRoadmapFeed(): void {
       rerenderSoon();
     })
     .catch((e) => {
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== roadmapFeedSeq) return;
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
       state.roadmapFeed = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
     });
@@ -2008,7 +2074,7 @@ function loadProposals(after?: () => void): void {
   listStagedProposals()
     .then((rows) => { if (seq !== proposalsSeq) return; state.proposals = { status: "ok", data: rows }; listed("proposals", rows.length); noteGroupTotals(); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== proposalsSeq) return;
       state.proposals = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
@@ -2034,7 +2100,7 @@ function loadDraftAdrs(after?: () => void): void {
   listAdrs("draft")
     .then((rows) => { if (seq !== draftAdrsSeq) return; state.draftAdrs = { status: "ok", data: rows }; listed("decisions", rows.length); after?.(); pruneReviewLeaving(); rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== draftAdrsSeq) return;
       state.draftAdrs = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneReviewLeaving();
@@ -2133,7 +2199,7 @@ function reviewVerdict(id: string, accept: boolean): void {
       reviewExits.delete(id);
       delete state.reviewLeaving[id];
       if (state.reviewSel === exit.selAfter) state.reviewSel = exit.selBefore;
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       flash(e instanceof ApiError ? e.message : "Action failed");
       settleReview();
     });
@@ -2142,8 +2208,9 @@ function reviewVerdict(id: string, accept: boolean): void {
  *  optimistically. An import's is `POST /imports/:id/approve-all` / `reject-all` (cookie-only; each call is bounded,
  *  so it is repeated while `remaining` > 0); an agent's is its pages' own promote / reject routes (cookie-only, the
  *  same as deciding each by hand), one page after another — oldest first, so a page's newest change goes live last.
- *  A failure before anything was decided puts the group back as it was; one part way through lets the refetch say
- *  what is left. */
+ *  A failure before anything was decided puts the group back as it was. One part way through: an agent's pages were
+ *  decided one by one, so those that went through leave and the rest come back at once; an import's are decided by
+ *  the server in bounded calls (which pages, it does not say), so the refetch says what is left. */
 const groupBusy = new Set<string>();
 function reviewGroupVerdict(key: string, accept: boolean): void {
   const props = reviewProps(state);
@@ -2170,15 +2237,23 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
   }, REVIEW_EXIT_MS);
   rerender();
   let done = 0;
+  /** An agent group's pages the server has decided (its loop is one page at a time). */
+  const decided = new Set<string>();
   type Answer = { space: string; space_name: string | null };
-  const call = accept ? approveImport : rejectImport;
-  const importLoop = (): Promise<Answer> => call(g.id).then((a) => { done += a.done; return a.remaining > 0 && a.done > 0 ? importLoop() : a; });
+  // Approve all skips a page that fails (it stays waiting) and says so; its cursor (`next` → `after`) steps past it.
+  let failed = 0;
+  const importLoop = (after: number | null = null): Promise<Answer> => (accept ? approveImport(g.id, after) : rejectImport(g.id)).then((a) => {
+    done += a.done;
+    failed += a.failed ?? 0;
+    return a.remaining > 0 && a.done + (a.failed ?? 0) > 0 ? importLoop(a.next ?? null) : a;
+  });
   const agentLoop = async (): Promise<Answer> => {
     for (const it of [...items].reverse()) {
       const ref = decodeReviewId(it.id);
       if (ref?.kind !== "doc") continue;
       await (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version));
       done++;
+      decided.add(it.id);
     }
     return { space: g.space, space_name: null };
   };
@@ -2191,20 +2266,29 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
       const name = slug ? a.space_name ?? spaceName(state, slug) : null;
       const pages = `${done} ${done === 1 ? "page" : "pages"}`;
       const verb = done === 1 ? "is" : "are";
-      flash(accept ? `${pages} ${verb} now live${name ? ` in ${name}` : ""}` : `${pages} rejected`, 6000, name ? { label: `Open ${name}`, act: "libOpenSpace", arg: slug } : null);
+      const left = failed === 0 ? "" : `${failed === 1 ? "One page" : `${failed} pages`} couldn't be approved and ${failed === 1 ? "is" : "are"} still waiting in Review.`;
+      const said = !accept ? `${pages} rejected` : done === 0 && left ? left : `${pages} ${verb} now live${name ? ` in ${name}` : ""}${left ? `. ${left}` : ""}`;
+      flash(said, 6000, name ? { label: `Open ${name}`, act: "libOpenSpace", arg: slug } : null);
       if (accept) libCtl.load();
       loadBadges();
       settleReview();
     })
     .catch((e) => {
       groupBusy.delete(key);
-      if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
+      if (done > 0 && g.kind === "agent") {
+        // Only the pages that went through leave; the others are back where they were.
+        items.forEach((it, i) => {
+          if (decided.has(it.id)) exits[i].ok = true;
+          else { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
+        });
+        reviewRefetch.doc = true;
+      } else if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
       else {
         if (exits[0].timer !== null) clearTimeout(exits[0].timer);
         for (const it of items) { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
         if (state.reviewSel === null) state.reviewSel = selBefore;
       }
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       flash(e instanceof ApiError ? (rateLimitText(e) ?? (done > 0 ? `${done} of the pages went through, then it stopped. Try again for the rest.` : "Couldn't do that. Try again.")) : "Couldn't do that. Check your connection and try again.", 5000);
       settleReview();
       rerender();
@@ -2238,7 +2322,7 @@ function loadNeedsTriage(after?: () => void): void {
   listNeedsTriage()
     .then((rows) => { if (seq !== needsTriageSeq) return; state.needsTriage = { status: "ok", data: rows }; listed("unplaced", rows.length); after?.(); pruneUnplacedLeaving(); rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== needsTriageSeq) return;
       state.needsTriage = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       after?.(); pruneUnplacedLeaving();
@@ -2320,7 +2404,7 @@ function unplacedVerdict(id: string, verdict: UnplacedVerdict, write: () => Prom
       unplacedExits.delete(id);
       delete state.unplacedLeaving[id];
       if (state.assignOpen === exit.selAfter) { state.assignOpen = exit.selBefore; Object.assign(state, exit.picks); }
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       // e.g. "could not place doc: the space \"design\" is archived: use one of …" — the gate's words, verbatim.
       flash(e instanceof ApiError ? e.message : verdict === "placed" ? "Could not place this item" : "Could not discard");
       settleUnplaced();
@@ -2357,7 +2441,7 @@ function loadIdentityTasks(): void {
       rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== identityTasksSeq) return;
       state.identityTasks = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
@@ -2369,6 +2453,8 @@ function loadIdentityTasks(): void {
 // refetch it too (never locally patch a row — the server is the shape of truth),
 // hence the seq guard: a slow earlier response must not overwrite a fresher one.
 let ticketsSeq = 0;
+/** Board drops whose write is still out (`queueDrop`): the queue is read again once the last one settles. */
+let boardDropsOut = 0;
 /** The queue has landed at least once this session. */
 let ticketsLanded = false;
 function loadTickets(): void {
@@ -2387,7 +2473,7 @@ function loadTickets(): void {
       state.tickets = { status: "ok", data: rows }; ticketsLanded = true; rerenderSoon();
     })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== ticketsSeq) return;
       state.tickets = { status: "error", data: [], error: e instanceof Error ? e.message : String(e) };
       rerenderSoon();
@@ -2429,7 +2515,7 @@ function loadTicketDetail(id: number): void {
   getTicket(id)
     .then((t) => { if (seq !== ticketDetailSeq) return; state.ticketDetail = { status: "ok", data: t }; rerenderSoon(); })
     .catch((e) => {
-      if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+      if (e instanceof Unauthorized) { toSignedOut(); return; }
       if (seq !== ticketDetailSeq) return;
       // A deleted/unknown id is "no such ticket", not a failure to load.
       if (e instanceof ApiError && e.status === 404) { state.ticketDetail = { status: "ok", data: null }; rerenderSoon(); return; }
@@ -2508,7 +2594,7 @@ function loadSprintDetail(id: number): void {
 }
 
 function sprintErr(e: unknown): void {
-  if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+  if (e instanceof Unauthorized) { toSignedOut(); return; }
   flash(e instanceof ApiError ? e.message : "Could not update the sprint");
 }
 
@@ -2546,13 +2632,32 @@ function applyTicketWrite(t: TicketDetail, msg: string, seq: number): void {
   flash(msg);
 }
 function ticketErr(e: unknown): void {
-  if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+  if (e instanceof Unauthorized) { toSignedOut(); return; }
   flash(e instanceof ApiError ? e.message : "Could not update the ticket");
 }
 
+// ── signing out: ONE transition ──────────────────────────────────────────────
+/** Out of the app onto the signed-out landing page, by every way there is: an expired session (any read or write
+ *  answered 401 — `unauth`, below), Sign out, a boot that finds no session. No person, no org open (a request after
+ *  this one is refused before it leaves, api.ts `apiUrl`), nothing of the screen left open, and nothing of the app's
+ *  still polling or ticking (Home's, the Repo screen's and the guided setup's timers stand down on their own once
+ *  the view is not the app; Sync's are stopped here). The address bar is the caller's: an expired session keeps it, so
+ *  signing in again comes back to it (landing-actions.ts `stashReturn`); Sign out drops it. Idempotent. */
+function toSignedOut(): void {
+  setApiOrg(null);
+  setPrimaryRepo(null);
+  state.me = null;
+  state.orgSlug = null;
+  state.orgsUi = initialOrgsUi();
+  state.repoPoll = null;
+  leaveScreen();
+  syncCtl.stop();
+  state.view = "auth"; state.authStep = "login";
+  rerender();
+}
 // ── auth-expired transition (shared by every loader/write below) ────────────
 function unauth(e: unknown): void {
-  if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); }
+  if (e instanceof Unauthorized) toSignedOut();
 }
 
 // A Link attempt that didn't cleanly attach redirects the whole page to
@@ -2805,17 +2910,22 @@ function runArtWrite(w: ArtWrite): void {
     addArtifactVersion(w.slug, w.body)
       .then((res) => {
         const r = res as { unchanged?: boolean; version_no?: number };
-        state.art.nv = null;
-        // Land on the latest (the new version): refreshArt drops every other cached version and
-        // refetches the one the route names, keeping the old body on screen until it lands.
-        state.artRoute = { slug: w.slug, v: null, diff: null };
+        // Still on this artifact: its New version dialog closes and the page lands on the latest (the new version) —
+        // refreshArt drops every other cached version and refetches the one the route names, keeping the old body on
+        // screen until it lands. Moved on: what they are looking at (and its own dialog) stays as it is.
+        if (state.screen === "artifact" && state.artRoute.slug === w.slug) {
+          state.art.nv = null;
+          state.artRoute = { slug: w.slug, v: null, diff: null };
+        }
         refreshArt(w.slug);
         flash(r.unchanged ? "No change: identical to the latest version" : `Saved v${r.version_no ?? ""}`.trim());
       })
       .catch((e) => {
         if (e instanceof Unauthorized) { unauth(e); return; }
-        if (state.art.nv) state.art.nv.submitting = false;
-        if (e instanceof NotFound) { state.art.nv = null; refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
+        // Only this artifact's dialog (another one opened since has its own request).
+        const mine = state.screen === "artifact" && state.artRoute.slug === w.slug;
+        if (mine && state.art.nv) state.art.nv.submitting = false;
+        if (e instanceof NotFound) { if (mine) state.art.nv = null; refreshArt(w.slug); flash("This artifact isn't available anymore"); return; }
         flash(e instanceof ApiError ? `Couldn't save the version (${e.message})` : "Couldn't save the version");
       });
     rerender();
@@ -2831,7 +2941,10 @@ function runArtWrite(w: ArtWrite): void {
         for (const k of Object.keys(state.art.diffs)) if (k.startsWith(`${r.slug}:`)) delete state.art.diffs[k];
         state.art.ticketArts = {};
         state.art.list = { status: "idle", data: (state.art.list.data ?? []).filter((x) => x.slug !== r.slug) };
-        goArt("artifacts", ART_ROUTE_NONE);
+        // Back to the library only from the deleted artifact's page; moved on, they stay where they are.
+        if (state.screen === "artifact" && state.artRoute.slug === r.slug) goArt("artifacts", ART_ROUTE_NONE);
+        else if (state.screen === "artifacts") loadArtifactsIfNeeded(true);
+        else rerender();
         flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "artRestore", arg: r.slug });
       })
       .catch((e) => {
@@ -3172,18 +3285,18 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.authStep = "login";
       history.replaceState({}, "", "/");
       break;
+    // The boot's "couldn't reach Trov" / "didn't open" card (showBootFailed): the whole boot again, from the page.
+    case "bootRetry": location.reload(); return;
     case "signOut": {
       // A deliberate exit lands on the bare landing page: drop the route hash, or the
       // URL stays /#settings and the next sign-in would treat it as a return-to.
+      // Signed out here whether or not the server answered: the person asked to leave (toSignedOut drops `me`).
       const leave = () => {
-        setApiOrg(null);
-        state.orgSlug = null; state.orgsUi = initialOrgsUi();
-        state.view = "auth"; state.authStep = "login";
         history.replaceState(null, "", "/");
-        rerender();
+        toSignedOut();
         window.scrollTo(0, 0);
       };
-      logout().then(() => { state.me = null; leave(); }).catch(leave);
+      logout().then(leave, leave);
       return;
     }
 
@@ -3415,7 +3528,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         state.repoGroupFlipped = false;
         flash(`Group by ${group === "app" ? "app" : "environment"} is now the default for ${saved.repo}.`);
       }).catch((e) => {
-        if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+        if (e instanceof Unauthorized) { toSignedOut(); return; }
         flash("Couldn't save the default. Try again.");
       });
       return;
@@ -3526,7 +3639,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       state.ticketId = id;
       state.commentDraft = ""; state.mention = null; state.commentHeight = null; state.linkDraft = "";
       state.lkOpen = false; state.asgMenu = false; state.sprMenu = false; state.relMenu = false; state.lkMenu = null; state.stMenu = null;
-      state.tdEdit = null; state.tdDeleteArm = false; state.tdDeleteBusy = false;
+      state.tdEdit = null; if (!state.tdDeleteBusy) state.tdDeleteArm = false;   // a delete in flight keeps its confirm (leaveScreen)
       loadSprintsIfNeeded();
       loadTicketsIfNeeded();          // backs the sub-ticket candidate menu
       loadTicketDetail(id);
@@ -3587,7 +3700,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const dateProblem = sprintDatesProblem({ start, due });
       // (The rule's "— nothing was written." tail is for API callers; the form never sent anything.)
       if (dateProblem) { state.nsError = dateProblem.replace(/ — nothing was written\.$/, "."); rerender(); return; }
+      if (!beginWrite("nsCreate")) return;
       state.nsError = null;
+      rerender();
       createSprint({
         label,
         summary: state.nsDesc.trim() || null,
@@ -3606,11 +3721,12 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           flash(`${sp.label} created — it's on the Roadmap now`);
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           // A date refusal from the server reads under the dates, like the client's own.
           if (e instanceof ApiError && e.status === 400 && /\b(start|due)\b/.test(e.message)) { state.nsError = e.message; rerender(); return; }
           flash(e instanceof ApiError ? e.message : "Could not create the sprint");
-        });
+        })
+        .finally(() => { endWrite("nsCreate"); rerender(); });
       return;
     }
 
@@ -3732,10 +3848,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         data: state.tickets.data.map((r) =>
           r.id === id ? { ...r, status: next, board_rank: rank } : renumber?.has(r.id) ? { ...r, board_rank: renumber.get(r.id) as number } : r),
       };
+      // A read already out was asked before this move: it would put the card back (`loadTickets`' seq drops it). The
+      // refetch waits for the LAST drop in flight — one after an earlier drop's write could land before a later
+      // drop's write and snap that card back.
+      ticketsSeq++;
+      boardDropsOut++;
       rerender();
+      const settle = (): void => { if (--boardDropsOut === 0) { loadTickets(); loadTicketBadge(); } };
       moveTicket(id, next, afterId)
-        .then(() => { loadTickets(); loadTicketBadge(); if (next !== t.status) flash(`#${id} moved to ${TICKET_STATUS_LABEL[next]}`); })
-        .catch((e) => { ticketErr(e); loadTickets(); });
+        .then(() => { settle(); if (next !== t.status) flash(`#${id} moved to ${TICKET_STATUS_LABEL[next]}`); })
+        .catch((e) => { ticketErr(e); settle(); });
       return;
     }
     case "queueTable": state.qView = "table"; break;
@@ -3766,6 +3888,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "ntSubmit": {
       const title = state.fTitle.trim();
       if (!title) return;                                            // the button is inert, but guard the dispatch too
+      if (!beginWrite("ntSubmit")) return;                           // a double click is one ticket
+      rerender();
       const link = state.fLink.trim();
       const assigned = state.fAsgs.map(personFirstName);
       createTicket({
@@ -3780,7 +3904,9 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         .then(() => {
           state.fTitle = ""; state.fCat = null; state.fPrio = "normal";
           state.fDesc = ""; state.fAsgs = []; state.fLink = ""; state.fSpr = null;
-          state.screen = "tickets"; state.ticketId = null;
+          // Back to the queue only from the form it was filed on: an answer landing after the person moved on
+          // leaves them where they are.
+          if (state.screen === "newticket") { state.screen = "tickets"; state.ticketId = null; }
           loadTickets();
           loadTicketBadge();
           flash(assigned.length
@@ -3788,9 +3914,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
             : "Ticket submitted — it's in the queue for triage");
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not submit the ticket");
-        });
+        })
+        .finally(() => { endWrite("ntSubmit"); rerender(); });
       return;
     }
 
@@ -3881,9 +4008,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       deleteTicket(d.id)
         .then((r) => {
           state.tdDeleteArm = false; state.tdDeleteBusy = false;
-          state.ticketDetail = { status: "idle", data: null };
+          if (state.ticketDetail.data?.id === d.id) state.ticketDetail = { status: "idle", data: null };
           state.tickets = { ...state.tickets, data: state.tickets.data.filter((x) => x.id !== r.id) };
-          state.screen = "tickets"; state.ticketId = null;
+          // Back to the queue only from the deleted ticket's own page: whoever moved on meanwhile stays where they went.
+          if (state.screen === "ticketdetail" && state.ticketId === d.id) { state.screen = "tickets"; state.ticketId = null; }
           loadTickets();
           loadTicketBadge();
           flash(`Deleted #${r.id} “${r.title}”`);
@@ -4028,7 +4156,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       return;
     case "setReviewView": if (arg === "queue" || arg === "unplaced") showReview(arg); return;
     case "goSearch": state.screen = "search"; loadSearchIfNeeded(); return;
-    case "goSettings": state.screen = "settings"; state.personCard = null; state.mcpSetup = false; state.grantRevokeArm = null; state.grantScope = null; state.grantScopeNote = null; loadSettingsReads(); checkLinkConflict(); return;
+    case "goSettings": state.screen = "settings"; leaveScreen(); loadSettingsReads(); checkLinkConflict(); return;
     case "goGuide": state.screen = "guide"; break;
     // Help › What's new (its chunk is loaded by the paint: releases-lazy.ts). `arg` "patches" opens Patch notes.
     case "goReleases": state.screen = "releases"; state.releaseVersion = null; state.releasePage = "notes"; document.getElementById("cnpy-main")?.scrollTo(0, 0); break;
@@ -4185,7 +4313,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       completeSprint(Number(arg))
         .then(() => { flash("Sprint marked done"); loadRoadmap(); })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not complete sprint");
         });
       return;
@@ -4347,12 +4475,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       // screen; then the claim, which is permanent and takes the handoff from everyone else.
       const h = state.handoffs.data.find((x) => x.id === Number(arg));
       if (!h) return;
+      const key = `handoffClaim:${h.id}`;                  // the same key as the handoff page's Claim: one claim per handoff
+      if (!beginWrite(key)) return;
       const copied = copyToClipboard(handoffAsPrompt(h));
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
+      rerender();
       claimHandoff(h.id, session)
         .then((r) => { state.handoffReading = { id: r.handoff.id, items: r.reading_list }; return copied; })
         .then((ok) => { loadHandoffs(); flash(ok ? `Claimed #${h.id} · copied as prompt` : `Claimed #${h.id} — couldn't reach the clipboard`); })
-        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); });
+        .catch((e) => { if (e instanceof Unauthorized) { unauth(e); return; } writeErr(e, "Couldn't claim this handoff"); loadHandoffs(); })
+        .finally(() => { endWrite(key); rerender(); });
       return;
     }
     case "handoffCopy": {
@@ -4365,7 +4497,10 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "handoffClaim": {
       const h = state.handoffDetail.data;
       if (!h || h.id !== Number(arg)) return;
+      const key = `handoffClaim:${h.id}`;
+      if (!beginWrite(key)) return;
       const session = "sess_web_" + Math.random().toString(36).slice(2, 10).toUpperCase();
+      rerender();
       claimHandoff(h.id, session)
         .then(({ handoff: nh, reading_list }) => {
           // The claim's reading list (#167) shows on this page and rides along in the copied prompt.
@@ -4375,7 +4510,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           return copyToClipboard(handoffAsPrompt(nh, reading_list ?? [])).then((ok) =>
             applyHandoff(nh, ok ? `Claimed #${nh.id} · copied as prompt` : `Claimed #${nh.id} — couldn't reach the clipboard`));
         })
-        .catch((e) => { writeErr(e, "Couldn't claim this handoff"); openHandoff(h.id); loadHandoffs(); });
+        .catch((e) => { writeErr(e, "Couldn't claim this handoff"); if (state.screen === "handoff" && state.handoffId === h.id) openHandoff(h.id); loadHandoffs(); })
+        .finally(() => { endWrite(key); rerender(); });
       return;
     }
     case "handoffPromote": {
@@ -4402,7 +4538,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         if (!Number.isInteger(id)) return;
         expireHandoff(id)
           .then((nh) => applyHandoff(nh, `Handoff #${nh.id} expired`))
-          .catch((e) => { writeErr(e, "Couldn't expire this handoff"); openHandoff(id); loadHandoffs(); });
+          .catch((e) => { writeErr(e, "Couldn't expire this handoff"); if (state.screen === "handoff" && state.handoffId === id) openHandoff(id); loadHandoffs(); });
       }
       return;
     case "nhField": {
@@ -4418,6 +4554,8 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "nhSend": {
       const n = state.nh;
       if (!n.body.trim()) return;
+      if (!beginWrite("nhSend")) return;                     // a double click is one handoff
+      rerender();
       const lines = (t: string) => t.split("\n").map((x) => x.replace(/^\s*[-*]\s*/, "").trim()).filter(Boolean);
       createHandoff({
         recipient: n.recipient,
@@ -4425,8 +4563,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         prompt: n.promptBody.trim() ? { title: n.promptTitle.trim() || "Prompt", body: n.promptBody } : null,
         context: { repo: n.repo.trim(), branch: n.branch.trim(), task: n.task.trim(), done: lines(n.done), next: lines(n.next), files: lines(n.files) },
       })
-        .then((h) => { state.screen = "handoff"; state.nh = blankHandoff(primaryRepoName()); applyHandoff(h, `Handoff sent · #${h.id}`); })
-        .catch((e) => writeErr(e, "Couldn't send the handoff"));
+        .then((h) => {
+          // The draft it was sent from is spent; the sent handoff opens only if the person is still on the compose
+          // screen (an answer landing after they moved on leaves them where they are).
+          const here = state.screen === "newhandoff";
+          if (state.nh === n) state.nh = blankHandoff(primaryRepoName());
+          if (here) state.screen = "handoff";
+          applyHandoff(h, `Handoff sent · #${h.id}`, here);
+        })
+        .catch((e) => writeErr(e, "Couldn't send the handoff"))
+        .finally(() => { endWrite("nhSend"); rerender(); });
       return;
     }
 
@@ -4482,9 +4628,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       const p = state.promptDetail.data?.prompt;
       const v = Number(arg);
       if (!p || !Number.isInteger(v)) return;
+      const key = `promptPublish:${p.slug}`;
+      if (!beginWrite(key)) return;
+      rerender();
+      const onIt = () => state.screen === "prompt" && state.promptSlug === p.slug;
       publishPrompt(p.slug, v)
-        .then((np) => afterPromptWrite(np.slug, `Published v${v}`))
-        .catch((e) => { writeErr(e, "Couldn't publish"); openPrompt(p.slug); });
+        .then((np) => afterPromptWrite(np.slug, `Published v${v}`, onIt()))
+        .catch((e) => { writeErr(e, "Couldn't publish"); if (onIt()) openPrompt(p.slug); })
+        .finally(() => { endWrite(key); rerender(); });
       return;
     }
     // Delete (author / admin only — the server re-checks): the confirmation modal (Delete
@@ -4512,10 +4663,14 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       deletePrompt(p.slug)
         .then((r) => {
           state.promptDeleteArm = false; state.promptDeleteBusy = false;
-          state.promptDetail = { status: "idle", data: null };
-          state.promptSlug = null;
           state.promptList = { ...state.promptList, data: state.promptList.data.filter((x) => x.slug !== r.slug) };
-          state.screen = "prompts";
+          // Back to the library only from the deleted prompt's own page (where the confirmation held the person);
+          // an answer landing after they moved on leaves them where they are.
+          if (state.promptSlug === r.slug) {
+            state.promptDetail = { status: "idle", data: null };
+            state.promptSlug = null;
+            if (state.screen === "prompt") state.screen = "prompts";
+          }
           loadPrompts();
           flash(`Deleted “${r.title}”`, UNDO_TOAST_MS, { label: "Undo", act: "promptRestore", arg: r.slug });
         })
@@ -4563,9 +4718,17 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
     case "edSave": {
       const ed = state.promptEd;
       if (!ed || !ed.title.trim() || !ed.body.trim() || !ed.slug) return;
+      if (!beginWrite("edSave")) return;                     // a double click is one version
+      rerender();
       savePrompt({ base_slug: ed.baseSlug, slug: ed.slug, title: ed.title.trim(), tags: normalizeTags(ed.tags), body: ed.body, status: ed.status, summary: ed.summary.trim() || undefined })
-        .then((p) => { state.promptEd = null; afterPromptWrite(p.slug, `Saved v${p.version}`); })
-        .catch((e) => writeErr(e, "Couldn't save the prompt"));
+        .then((p) => {
+          // Into the saved prompt only from the editor it was saved from; the draft is spent either way.
+          const here = state.screen === "promptedit" && state.promptEd === ed;
+          if (state.promptEd === ed) state.promptEd = null;
+          afterPromptWrite(p.slug, `Saved v${p.version}`, here);
+        })
+        .catch((e) => writeErr(e, "Couldn't save the prompt"))
+        .finally(() => { endWrite("edSave"); rerender(); });
       return;
     }
 
@@ -4648,7 +4811,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           loadNeedsTriage();
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not undo the discard");
         });
       rerender();
@@ -4676,7 +4839,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           loadPersons();
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not map login");
         });
       return;
@@ -4691,7 +4854,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           flash(`Discarded @${arg}`, UNDO_TOAST_MS, { label: "Undo", act: "identityRestore", arg });
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not discard login");
         });
       return;
@@ -4702,7 +4865,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
       restoreIdentity(arg)
         .then(() => { loadIdentityTasks(); flash(`Restored @${arg}`); })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not restore login");
         });
       rerender();
@@ -4818,7 +4981,7 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
           rerender();
         })
         .catch((e) => {
-          if (e instanceof Unauthorized) { state.view = "auth"; state.authStep = "login"; rerender(); return; }
+          if (e instanceof Unauthorized) { toSignedOut(); return; }
           flash(e instanceof ApiError ? e.message : "Could not disconnect the app");
         });
       return;
@@ -5046,6 +5209,15 @@ const FILTER_MENUS: Record<string, FilterMenuSpec> = {
 };
 const FM_CLOSE_MS = 130;
 let fmClosing: string | null = null;
+/** The pending end of `fmClosing`'s exit: cancelled by a reopen, a new close, or leaving the screen. */
+let fmCloseTimer: ReturnType<typeof setTimeout> | null = null;
+const cancelFmClose = (): void => { if (fmCloseTimer !== null) { clearTimeout(fmCloseTimer); fmCloseTimer = null; } };
+/** Leaving the screen (leaveScreen): its menus are shut outright, so an exit still playing is forgotten — a reopen
+ *  is a fresh open, not the revival of a menu that is no longer there. */
+function dropFilterMenuClose(): void {
+  cancelFmClose();
+  fmClosing = null;
+}
 /** The close in progress is the hover's own (the pointer left): only that one is revived when the pointer comes back.
  *  A close that was asked for — Apply, Escape, the backdrop, the Filter button — runs to its end, even when the screen
  *  repaints under a pointer still resting on the fading popover (that fires a pointerover without a move). */
@@ -5065,6 +5237,7 @@ function openFilterMenu(id: string): void {
   if (!spec) return;
   cancelHoverClose();
   if (fmClosing === id) {           // re-entered while it was fading out: keep it
+    cancelFmClose();
     fmClosing = null;
     livePopover(id)?.classList.remove("is-closing");
     return;
@@ -5082,16 +5255,20 @@ function closeFilterMenu(id: string, refocus = false, byHover = false): void {
   if (!spec || !spec.isOpen() || fmClosing === id) return;
   cancelHoverClose();
   const finish = () => {
-    fmClosing = null; spec.setOpen(false); rerender();
+    if (fmClosing === id) { cancelFmClose(); fmClosing = null; }
+    spec.setOpen(false); rerender();
     if (refocus) mount.querySelector<HTMLElement>(`[data-act="fmToggle"][data-arg="${id}"]`)?.focus({ preventScroll: true });
   };
   const pop = livePopover(id);
   if (!pop || reducedMotion()) { finish(); return; }
+  // One exit plays at a time: another menu still leaving is shut now (the timer below replaces its own).
+  if (fmClosing !== null && fmClosing !== id) FILTER_MENUS[fmClosing]?.setOpen(false);
   fmClosing = id;
   fmClosingByHover = byHover;
   pop.classList.remove("is-opening");
   pop.classList.add("is-closing");
-  setTimeout(() => { if (fmClosing === id) finish(); }, FM_CLOSE_MS);
+  cancelFmClose();
+  fmCloseTimer = setTimeout(() => { fmCloseTimer = null; if (fmClosing === id) finish(); }, FM_CLOSE_MS);
 }
 function switchFilterCat(id: string, key: string): void {
   const spec = FILTER_MENUS[id];
@@ -5196,16 +5373,7 @@ mount.addEventListener("keydown", onTabBarKey);
 // A segmented switch's keyboard: ←/→ move focus between its options, Home/End jump
 // (./segmented `onSegmentedKey`). On the document: a switch can sit in an overlay.
 document.addEventListener("keydown", onSegmentedKey);
-// Escape closes an open filter menu — and when the keyboard was in it (a row, the typed filter's field, or
-// nowhere after a repaint), focus goes back to its Filter button.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  const active = document.activeElement;
-  for (const [id, spec] of Object.entries(FILTER_MENUS)) {
-    if (!spec.isOpen()) continue;
-    closeFilterMenu(id, !active || active === document.body || !!active.closest(`[data-hover-menu="${id}"]`));
-  }
-});
+// Escape closes an open filter menu: a layer of ESCAPE_LAYERS (below).
 // ↓ / ↑ walk an open filter menu's rows — the typed filter's "Describe a filter" first, then the shown options,
 // then the categories — from its Filter button, a row, or nowhere (a repaint drops focus). Enter on a row is its
 // click; a text field keeps its own arrows.
@@ -5248,12 +5416,7 @@ mount.addEventListener("click", (e) => {
   state.drawer = false;
   rerender();
 });
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !state.drawer) return;
-  state.drawer = false;
-  rerender();
-  mount.querySelector<HTMLElement>(".cnpy-menubtn")?.focus();
-});
+// (Escape closes it: the bottom layer of ESCAPE_LAYERS, below.)
 
 // Right-click on an element that carries `data-ctx` opens ITS menu instead of
 // the browser's (a linked-work chip → its Copy / Remove menu).
@@ -5393,7 +5556,9 @@ pointerDrag<BoardPress>(mount, {
     if (!p.ghost || !slot) { clearBoardDrag(p); done(); return; }
     const to = (slot.closest<HTMLElement>("[data-tdrop]")?.dataset.tdrop ?? p.from) as TicketStatus;
     const after = prevLive(slot);
-    const unmoved = to === p.from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext;
+    // Dropped where it started — or lifted from a board that is no longer the one on screen (paints are held from the
+    // press, pointer-drag.ts, so this is a guard): nothing to send.
+    const unmoved = (to === p.from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext) || !p.card.isConnected || !p.homeList?.isConnected;
     const finish = () => {
       clearBoardDrag(p);
       done();
@@ -5446,8 +5611,7 @@ mount.addEventListener("keydown", (e) => {
   treeCtl.move(slug, target);
   requestAnimationFrame(() => mount.querySelector<HTMLElement>(`.cnpy-dpane [data-dtree="${cssEscape(slug)}"] > .cnpy-hit`)?.focus());
 });
-// A row's "…" menu closes on Escape or a click anywhere else.
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && state.treeMenu) { state.treeMenu = null; rerender(); } });
+// A row's "…" menu closes on Escape (ESCAPE_LAYERS) or a click anywhere else.
 mount.addEventListener("click", (e) => {
   if (!state.treeMenu) return;
   const t = e.target as Element | null;
@@ -5456,20 +5620,7 @@ mount.addEventListener("click", (e) => {
   rerender();
 }, true);
 // …and so do a Library card's "…" menu (your own view: pin, sidebar, hide) and a space header's "…" menu; Escape
-// gives focus back to the "…".
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  const card = state.libUi.cardMenu;
-  if (card) {
-    state.libUi.cardMenu = null;
-    rerender();
-    mount.querySelector<HTMLElement>(`[data-act="libCardMenu"][data-arg="${cssEscape(card)}"]`)?.focus();
-  } else if (state.libUi.headMenu) {
-    state.libUi.headMenu = false;
-    rerender();
-    mount.querySelector<HTMLElement>('[data-act="libHeadMenu"]')?.focus();
-  }
-});
+// (ESCAPE_LAYERS) gives focus back to the "…".
 mount.addEventListener("click", (e) => {
   if (!state.libUi.cardMenu && !state.libUi.headMenu) return;
   const t = e.target as Element | null;
@@ -5479,14 +5630,8 @@ mount.addEventListener("click", (e) => {
   rerender();
 }, true);
 
-// Settings › Profile's photo menu: Escape closes it and hands focus back to the avatar;
+// Settings › Profile's photo menu: Escape (ESCAPE_LAYERS) closes it and hands focus back to the avatar;
 // ↑/↓ (and Home/End) move between its rows. Tab leaves it, like the other menus.
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || !state.avatarMenu || state.view !== "app") return;
-  state.avatarMenu = false;
-  rerender();
-  mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus();
-});
 mount.addEventListener("keydown", (e) => {
   const menu = (e.target as Element | null)?.closest?.<HTMLElement>("[data-avatar-menu]");
   if (!menu || !["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
@@ -5585,6 +5730,7 @@ mount.addEventListener("keydown", (e) => {
     if (state.home.mode === "ask" && state.home.q.trim()) { dispatch("homeSubmit", null, null); return; }
     if (n) dispatch("homePick", String(Math.min(state.home.active, n - 1)), null);
   } else if (e.key === "Escape") {
+    e.preventDefault();   // spent: Escape leaves the bar and closes nothing else (escape-layers.ts)
     state.home.focused = false; (el as HTMLInputElement).blur(); rerender();
   } else if (e.key === "Tab" && !e.shiftKey && homeAskOn()) {
     e.preventDefault();
@@ -5731,7 +5877,7 @@ mount.addEventListener("keydown", (e) => {
     return;
   }
   if (field === "promptTagDraft") {
-    if (e.key === "Escape") { state.promptTagMenu = false; state.promptTagDraft = ""; rerender(); return; }
+    if (e.key === "Escape") { e.preventDefault(); state.promptTagMenu = false; state.promptTagDraft = ""; rerender(); return; }
     if (e.key !== "Enter") return;
     e.preventDefault();
     const p = state.promptDetail.data?.prompt;
@@ -5750,15 +5896,45 @@ document.addEventListener("keydown", (e) => {
   const last = items.length - 1;
   if (at < 0 || (e.shiftKey && at === 0) || (!e.shiftKey && at === last)) { e.preventDefault(); items[e.shiftKey ? last : 0].focus(); }
 });
-// Escape closes the expanded handoff prompt (the filter menus close in their own listener).
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || state.view !== "app") return;
-  if (state.personCard) { state.personCard = null; rerender(); }
-  else if (state.mcpSetup) closeMcpSetup();
-  else if (state.grantScope !== null && !state.dd.open) closeGrantScope(); // an open menu closes first, on its own
-  else if (state.handoffPromptOpen) { state.handoffPromptOpen = false; rerender(); }
-  else if (state.promptExpanded) { state.promptExpanded = false; rerender(); }
-});
+// ── Escape: one layer per press, topmost first (web/src/escape-layers.ts) ────
+// The app's own dialogs, menus and the phone drawer, in the order they stack. The layers above these (a confirmation,
+// a dropdown, a drag, the lightbox, Ask's) take Escape in the capture phase; a controller's dialog (Sync, the support
+// form, Org settings', Platform's) is heard first and spends the press (`preventDefault`) — so one press never closes
+// two of them.
+const ESCAPE_LAYERS: EscapeLayer[] = [
+  { open: () => state.view === "app" && state.personCard !== null, close: () => { state.personCard = null; rerender(); } },
+  { open: () => state.view === "app" && state.mcpSetup, close: closeMcpSetup },
+  // An open menu inside it closes first, on its own (dropdown.ts).
+  { open: () => state.view === "app" && state.grantScope !== null && !state.dd.open, close: closeGrantScope },
+  { open: () => state.view === "app" && state.handoffPromptOpen, close: () => { state.handoffPromptOpen = false; rerender(); } },
+  { open: () => state.view === "app" && state.promptExpanded, close: () => { state.promptExpanded = false; rerender(); } },
+  // A filter menu — when the keyboard was in it (a row, the typed filter's field, or nowhere after a repaint), focus goes
+  // back to its Filter button.
+  {
+    open: () => Object.entries(FILTER_MENUS).some(([id, spec]) => spec.isOpen() && fmClosing !== id),
+    close: () => {
+      const active = document.activeElement;
+      for (const [id, spec] of Object.entries(FILTER_MENUS)) {
+        if (spec.isOpen()) closeFilterMenu(id, !active || active === document.body || !!active.closest(`[data-hover-menu="${id}"]`));
+      }
+    },
+  },
+  { open: () => !!state.treeMenu, close: () => { state.treeMenu = null; rerender(); } },
+  // A Library card's "…" menu, or a space header's: focus back to its "…".
+  {
+    open: () => !!state.libUi.cardMenu || state.libUi.headMenu,
+    close: () => {
+      const card = state.libUi.cardMenu;
+      state.libUi.cardMenu = null; state.libUi.headMenu = false;
+      rerender();
+      mount.querySelector<HTMLElement>(card ? `[data-act="libCardMenu"][data-arg="${cssEscape(card)}"]` : '[data-act="libHeadMenu"]')?.focus();
+    },
+  },
+  { open: () => state.view === "app" && state.avatarMenu, close: () => { state.avatarMenu = false; rerender(); mount.querySelector<HTMLElement>(".cnpy-avbtn")?.focus(); } },
+  { open: () => state.screen === "home" && state.home.attnOpen, close: () => { state.home.attnOpen = false; rerender(); } },
+  { open: () => state.drawer, close: () => { state.drawer = false; rerender(); mount.querySelector<HTMLElement>(".cnpy-menubtn")?.focus(); } },
+];
+document.addEventListener("keydown", (e) => { escapeTop(e, ESCAPE_LAYERS); });
 
 // ── the confirmation modal (web/src/confirm.ts): ONE keyboard contract for every
 // `[data-confirm-dialog]` — the prompt page's and the artifact viewer's delete. Capture
@@ -5818,10 +5994,7 @@ mount.addEventListener("focusin", (e) => {
   if (!(e.target as Element | null)?.closest?.('[data-field="homeQ"]')) return;
   state.home.focused = true; state.home.attnOpen = false; state.home.active = 0; rerender();
 });
-// Home's Needs attention closes on Escape.
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && state.screen === "home" && state.home.attnOpen) { state.home.attnOpen = false; rerender(); }
-});
+// Home's Needs attention closes on Escape (ESCAPE_LAYERS).
 mount.addEventListener("keydown", (e) => {
   const box = (e.target as Element | null)?.closest?.<HTMLInputElement>('[data-field="sideSearch"]');
   if (!box) return;
@@ -5989,8 +6162,25 @@ if (params.get("denied") === "1") {
       if (land.kind === "org") { enterOrg(land.slug, hash); return; }
       if (back && back !== location.hash) history.replaceState(null, "", `${location.pathname}${back}`);
       showPicker(land.lost);
+    }, (e: unknown) => {
+      // No session (401) → the landing page. Anything else — offline, a 5xx — says nothing about the session, so it
+      // is never taken for a sign-out (never guess): the page says Trov could not be reached.
+      if (e instanceof Unauthorized) showSignedOut(); else showBootFailed("unreachable", e);
     })
-    .catch(() => showSignedOut()); // Unauthorized or any error → the landing page
+    // A throw while opening what the answer named (an org, the picker, Platform) is the app's own failure, not a sign-out.
+    .catch((e: unknown) => showBootFailed("failed", e));
+}
+
+/** The boot could not open the app: Trov did not answer (`unreachable`), or opening it threw (`failed`). Logged, and
+ *  said on the page with a way to try again (render.ts `bootFailedCard`) — never the signed-out landing page. */
+function showBootFailed(step: "unreachable" | "failed", e: unknown): void {
+  console.error(step === "failed" ? "Trov: the app failed to open" : "Trov: /auth/me did not answer", e);
+  state.view = "auth";
+  state.authStep = step;
+  try { rerender(); } catch (again) {
+    console.error("Trov: the error page failed to paint", again);
+    mount.textContent = "Trov didn't open. Reload the page to try again.";
+  }
 }
 
 /** Signed out: the landing page — with what a link to it asked for. */

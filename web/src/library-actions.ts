@@ -140,15 +140,33 @@ export function createLibraryController(host: LibraryHost): LibraryController {
     const lib = state.library.data;
     if (lib) state.library = { ...state.library, data: { ...lib, prefs } };
   };
+  /** Changes saved one after another can answer out of order. Only the LATEST change's answer is drawn; a refusal
+   *  puts the view back to what the server last confirmed (`prefsConfirmed`) — never over a newer change still out
+   *  (each change carries the whole view, so the newer one's answer decides). */
+  let prefsSeq = 0;
+  let prefsOut = 0;
+  let confirmedSeq = 0;
+  let prefsConfirmed: LibraryPrefsDTO | null = null;
   /** Apply a change at once and save it; on a refusal put the view back and say why. */
   function savePrefs(next: LibraryPrefsDTO, done: string): void {
-    const before = prefsNow();
+    if (prefsOut === 0) prefsConfirmed = prefsNow();
+    prefsOut++;
+    const mine = ++prefsSeq;
     setPrefs(next);
     ui().cardMenu = null;
     rerender();
     saveLibraryPrefs(next)
-      .then(({ prefs }) => { setPrefs(prefs); host.flash(done); rerender(); })
-      .catch((e) => { if (fail(e)) return; setPrefs(before); host.flash(spaceErrorText(e, "Couldn't save your Library view.")); rerender(); });
+      .then(({ prefs }) => {
+        if (mine > confirmedSeq) { confirmedSeq = mine; prefsConfirmed = prefs; }
+        if (mine === prefsSeq) setPrefs(prefs);
+        host.flash(done); rerender();
+      })
+      .catch((e) => {
+        if (fail(e)) return;
+        if (mine === prefsSeq && prefsConfirmed) setPrefs(prefsConfirmed);
+        host.flash(spaceErrorText(e, "Couldn't save your Library view.")); rerender();
+      })
+      .finally(() => { prefsOut--; });
   }
   const liveSpaces = (): SpaceDTO[] => state.library.data?.spaces ?? [];
   const nameOf = (slug: string): string => liveSpaces().find((s) => s.slug === slug)?.name ?? slug;

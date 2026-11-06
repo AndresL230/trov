@@ -18,7 +18,7 @@ import { handoffsForMe } from "./mywork";
 import { clientIcon, liveLinks, type LinkBoxes } from "./links";
 import { esc, hitArea, HITBOX, relTime, surface } from "./ui";
 
-type Load<T> = { status: "idle" | "loading" | "ok" | "error" | "unauth"; data: T };
+type Load<T> = { status: "idle" | "loading" | "ok" | "error"; data: T };
 
 export interface RelayProps {
   me: string;

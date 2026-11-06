@@ -307,7 +307,7 @@ describe("GET /tickets/:id", () => {
 });
 
 describe("GET /tickets/badge", () => {
-  it("counts unassigned OPEN tickets only, and is routed before /tickets/:id", async () => {
+  it("counts native unassigned tickets still in Triage (UNPICKED_TICKET_SQL), and is routed before /tickets/:id", async () => {
     const cookie = await cookieFor("andres");
     await seedPerson("meilin");
 
@@ -321,16 +321,16 @@ describe("GET /tickets/badge", () => {
     expect(await badge()).toBe(3); // a + b + willClose; `assigned` has an assignee
 
     await post(`/tickets/${b.id}/status`, cookie, { to: "in_progress" });
-    expect(await badge(), "in_progress is still open, so it still counts").toBe(3);
+    expect(await badge(), "in_progress has left Triage, so it no longer counts").toBe(2);
 
     await post(`/tickets/${willClose.id}/status`, cookie, { to: "declined" });
-    expect(await badge(), "declined leaves the badge").toBe(2);
+    expect(await badge(), "declined leaves the badge").toBe(1);
 
     await post(`/tickets/${a.id}/assignees`, cookie, { login: "meilin", on: true });
-    expect(await badge(), "assigning leaves the badge").toBe(1);
+    expect(await badge(), "assigning leaves the badge").toBe(0);
 
     await post(`/tickets/${assigned.id}/assignees`, cookie, { login: "meilin", on: false });
-    expect(await badge(), "unassigning brings it back").toBe(2);
+    expect(await badge(), "unassigning brings it back").toBe(1);
   });
 });
 

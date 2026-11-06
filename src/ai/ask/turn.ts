@@ -15,7 +15,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Env } from "../../env";
 import type { TenantContext } from "../../data/sql";
-import { insertAction, finishAction, stopRequested } from "../../data/ask";
+import { insertAction, recordAction, stopRequested } from "../../data/ask";
 import {
   ASK_AUTO_WRITES_MAX, askMode, type AskActivityIcon, type AskBlock, type AskEventMap, type AskEventName, type AskMode,
 } from "@shared/ai-ask-core";
@@ -176,7 +176,7 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
 
   try {
     for (let iter = 0; iter < def.maxCalls + 3 && !why; iter++) {
-      if (await stopRequested(t.ctx, t.tool.threadId)) { stop("stopped"); break; }
+      if (await stopRequested(t.ctx, t.tool.threadId, t.turn)) { stop("stopped"); break; }
       const stream = chat.client.messages.stream({
         model: chat.model,
         max_tokens: MAX_TOKENS[t.mode],
@@ -199,7 +199,7 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
         // `enable_request_signal`), so without this a long answer ran to its end after Stop.
         if (t.now() - polled >= (t.stopPollMs ?? STOP_POLL_MS)) {
           polled = t.now();
-          if (await stopRequested(t.ctx, t.tool.threadId)) { stop("stopped"); break; }
+          if (await stopRequested(t.ctx, t.tool.threadId, t.turn)) { stop("stopped"); break; }
         }
         if (ev.type === "content_block_start") {
           blockType = ev.content_block.type;
@@ -239,7 +239,7 @@ export async function runTurn(t: TurnInput): Promise<TurnResult> {
       messages.push({ role: "assistant", content: msg.content });
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const use of uses) {
-        if (why || (await stopRequested(t.ctx, t.tool.threadId))) {
+        if (why || (await stopRequested(t.ctx, t.tool.threadId, t.turn))) {
           stop("stopped");
           results.push({ type: "tool_result", tool_use_id: use.id, is_error: true, content: "Stopped by the person." });
           continue;
@@ -370,19 +370,22 @@ async function runTool(
     // Auto mode: it runs now, as the person, still recorded as a chat_actions row (state `auto`).
     if (!spec.outsideCap) st.autoWrites++;
     const id = await insertAction(t.ctx, { threadId: t.tool.threadId, turn: t.turn, tool: use.name, kind: spec.card, groupId, toolUseId: use.id, args, preview, state: "running", askedBy: t.tool.handle });
+    // Only the WRITE throwing makes the card `failed`. Once it ran, a failure to record it (`recordAction`, retried)
+    // leaves the card `running` for recovery — never `failed`, which would lie and lose its Undo.
+    let ran: Awaited<ReturnType<typeof spec.run>>;
     try {
-      const ran = await spec.run(t.tool, args);
-      await finishAction(t.ctx, id, "auto", ran.result, ran.undo);
-      for (const r of refsFromResult(use.name, ran.result, args)) t.seen.add(r);
-      if (ran.ref) t.seen.add(normalRef(ran.ref));
-      await t.emit("action_result", { id, groupId, tool: use.name, kind: spec.card, preview, state: "auto", result: ran.result, ref: ran.ref, undo: ran.undo !== null, at: new Date(t.now()).toISOString() });
-      return { type: "tool_result", tool_use_id: use.id, content: `Ran (Auto mode) as card #${id}; the person can undo it.\n${fence(t.nonce, `Result of ${use.name}`, json(ran.result))}` };
+      ran = await spec.run(t.tool, args);
     } catch (e) {
       const body = errorBody(e);
-      await finishAction(t.ctx, id, "failed", body, null);
+      await recordAction(t.ctx, id, "failed", body, null);
       await t.emit("action_result", { id, groupId, tool: use.name, kind: spec.card, preview, state: "failed", result: body, ref: null, undo: false, at: new Date(t.now()).toISOString() });
       return err(body);
     }
+    await recordAction(t.ctx, id, "auto", ran.result, ran.undo);
+    for (const r of refsFromResult(use.name, ran.result, args)) t.seen.add(r);
+    if (ran.ref) t.seen.add(normalRef(ran.ref));
+    await t.emit("action_result", { id, groupId, tool: use.name, kind: spec.card, preview, state: "auto", result: ran.result, ref: ran.ref, undo: ran.undo !== null, at: new Date(t.now()).toISOString() });
+    return { type: "tool_result", tool_use_id: use.id, content: `Ran (Auto mode) as card #${id}; the person can undo it.\n${fence(t.nonce, `Result of ${use.name}`, json(ran.result))}` };
   } catch (e) {
     const GH_LINE: Partial<Record<string, string>> = { not_connected: "Not connected", not_linked: "GitHub not linked", no_access: "No access on GitHub" };
     const failLine = (e instanceof GithubToolError && GH_LINE[e.code]) || "Did not work";

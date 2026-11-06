@@ -72,7 +72,7 @@ export function legalMoves(status: TicketStatus): TicketStatus[] {
 /** The DISPLAY vocabulary — the DB values never change. `submitted` reads
  *  "Triage" because that is what the state is for a reader: filed, waiting for
  *  a person to pick it up or decide against it. It is deliberately NOT called
- *  "Open" (the queue's `seg=open` covers `submitted` AND `in_progress`, so one
+ *  "Open" (the queue's `seg=open` covers `submitted`, `in_progress` AND `testing`, so one
  *  status owning that word would contradict `isOpenStatus`) and not "Backlog"
  *  (a sprint-less ticket is already in the Backlog group). */
 export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
@@ -87,6 +87,17 @@ export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
  *  The SQL readers spell the same set as `OPEN_STATUS_SQL`. */
 export const OPEN_STATUSES = ["submitted", "in_progress", "testing"] as const;
 export const OPEN_STATUS_SQL = "('submitted','in_progress','testing')";
+
+/** "Nobody has picked it up" — ONE rule for every count of it (the sidebar badge, the ticketq digest's
+ *  "waiting for someone", Home's Triage): a NATIVE ticket still in Triage (`submitted`) with no assignee. A mirrored
+ *  ticket is a GitHub issue, triaged on GitHub (tickets.md › No double counting). SQL over a `tickets` row aliased `t`. */
+export const UNPICKED_TICKET_SQL =
+  "(t.source = 'canopy' AND t.status = 'submitted' AND NOT EXISTS (SELECT 1 FROM ticket_assignees a WHERE a.org_id = t.org_id AND a.ticket_id = t.id))";
+
+/** "Tickets done" over a window — ONE rule for every count of it (Home's Activity, the weekly numbers line, the weekly
+ *  highlights): a `ticket_events` row `e` that moved its ticket `t` to `done` and the ticket is STILL done (one reopened
+ *  since is not done). Each reader joins `t ON t.org_id = e.org_id AND t.id = e.ticket_id` and binds its own window. */
+export const TICKET_DONE_EVENT_SQL = "(e.to_status = 'done' AND t.status = 'done')";
 
 export function isOpenStatus(s: TicketStatus): boolean {
   return (OPEN_STATUSES as readonly string[]).includes(s);

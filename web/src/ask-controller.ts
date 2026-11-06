@@ -84,6 +84,8 @@ export function createAskController(host: AskHost): AskController {
   const ui = () => s.ask;
   let api: AskApi = askApi;
   const streams: Partial<Record<AskWhere, AbortController>> = {};
+  /** Each running stream's conversation (`run`'s `at()`): the panel's moves to the page with "Open as thread". */
+  const homes = new Map<AbortController, AskWhere>();
 
   // ── painting: many calls, one frame ──────────────────────────────────────
   let paintQueued = false;
@@ -205,20 +207,26 @@ export function createAskController(host: AskHost): AskController {
     paint();
     const ctl = new AbortController();
     streams[where] = ctl;
+    homes.set(ctl, where);
+    // Where this stream's conversation lives NOW: ⌘J's "Open as thread" moves a streaming panel conversation to the
+    // page, and its stream with it (`movePanelToPage`) — the events, Stop and the end follow the conversation.
+    const at = (): AskWhere => homes.get(ctl) ?? where;
+    const owns = () => streams[at()] === ctl;
     const wasNew = c.threadId === null;
     let textSeen = "";
     const deliver = (e: AskEvent) => {
-      if (streams[where] !== ctl) return;
+      if (!owns()) return;
+      const w = at();
       if (e.event === "thread") {
-        setConvo(where, foldThreadEvent(ui()[where], e.data));
+        setConvo(w, foldThreadEvent(ui()[w], e.data));
         // Q52: Auto was asked for but the org has it off — the answer ran asking first, and the switch says so now.
-        if (e.data.autoOff) autoTurnedOff(where);
+        if (e.data.autoOff) autoTurnedOff(w);
       }
-      else if (e.event === "done") setConvo(where, withLastTurn(withQuestionId(ui()[where], e.data.questionId), (t) => foldAskEvent(t, e, Date.now())));
-      else setConvo(where, withLastTurn(ui()[where], (t) => foldAskEvent(t, e, Date.now())));
+      else if (e.event === "done") setConvo(w, withLastTurn(withQuestionId(ui()[w], e.data.questionId), (t) => foldAskEvent(t, e, Date.now())));
+      else setConvo(w, withLastTurn(ui()[w], (t) => foldAskEvent(t, e, Date.now())));
       primeFromEvent(e);
       if (e.event === "text") { textSeen += e.data.delta; if (/\]\]/.test(e.data.delta)) want(refsInText(textSeen)); }
-      for (const p of PARTS) p.onEvent?.(ctx, where, e);
+      for (const p of PARTS) p.onEvent?.(ctx, w, e);
       paint();
     };
     // The answer's words go out at a reading pace (ask-pace.ts): a burst the model held back arrives as a stream.
@@ -230,34 +238,45 @@ export function createAskController(host: AskHost): AskController {
       await api.ask({
         threadId: c.threadId, text: input.text, command: input.command, mode, auto, context: input.context ?? [], attachments: input.attachments ?? [],
         replaceFrom: input.replaceFrom, origin: where === "panel" ? "panel" : undefined, ...(projectId ? { projectId } : {}),
-      }, { signal: ctl.signal, onEvent: (e) => { if (streams[where] === ctl) pacer.push(e); } });
+      }, { signal: ctl.signal, onEvent: (e) => { if (owns()) pacer.push(e); } });
       // The stream is over; its last words (and `done`) are still going out — Send stays Stop until they have.
       pacer.close();
       await pacer.idle();
-      if (streams[where] === ctl) setConvo(where, withLastTurn(ui()[where], (t) => failTurn(t)));
+      if (owns()) setConvo(at(), withLastTurn(ui()[at()], (t) => failTurn(t)));
     } catch (e) {
       pacer.flush();
+      const w = at();
       if (isAbort(e) || ctl.signal.aborted) {
-        setConvo(where, withLastTurn(ui()[where], stopTurn));
-        // Stop ends the request before `done` can name the stored answer: the footer draws at once (Copy works on what
-        // is on screen), and the stored id — Regenerate, Save, Wrong? — is read back as soon as the server has it (QA-4).
-        const tid = ui()[where].threadId;
-        const last = ui()[where].messages.at(-1);
-        // (An abort after `done` changed nothing above — that answer is finished, and nothing is read back.)
-        if (tid !== null && !ui().replay && last?.role === "assistant" && last.key === `a${key}` && last.turn.stopped) void readBackStopped(where, `a${key}`, tid);
+        // Only while this stream still owns the conversation: a new thread (or another thread) opened there since
+        // aborted it, and that conversation has no turn of this stream's to stop.
+        if (owns()) {
+          setConvo(w, withLastTurn(ui()[w], stopTurn));
+          // Stop ends the request before `done` can name the stored answer: the footer draws at once (Copy works on what
+          // is on screen), and the stored id — Regenerate, Save, Wrong? — is read back as soon as the server has it (QA-4).
+          const tid = ui()[w].threadId;
+          const last = ui()[w].messages.at(-1);
+          // (An abort after `done` changed nothing above — that answer is finished, and nothing is read back.)
+          if (tid !== null && !ui().replay && last?.role === "assistant" && last.key === `a${key}` && last.turn.stopped) void readBackStopped(w, `a${key}`, tid);
+        }
       }
-      else if (isUnauthorized(e)) { host.unauth(e); }
+      else if (isUnauthorized(e)) {
+        // The turn ends (no cursor left blinking behind the sign-in) before the session is handed back.
+        if (owns()) setConvo(w, withLastTurn(ui()[w], stopTurn));
+        host.unauth(e);
+      }
       else {
         const message = e instanceof AskApiError ? e.message : "Something went wrong.";
         const code = e instanceof AskApiError ? e.code : "failed";
-        setConvo(where, withLastTurn(ui()[where], (t) => (turnLive(t) ? { ...t, error: { code, message } } : t)));
+        if (owns()) setConvo(w, withLastTurn(ui()[w], (t) => (turnLive(t) ? { ...t, error: { code, message } } : t)));
       }
     } finally {
-      if (streams[where] === ctl) { delete streams[where]; setConvo(where, { ...ui()[where], busy: false }); }
+      const w = at();
+      if (owns()) { delete streams[w]; setConvo(w, { ...ui()[w], busy: false }); }
+      homes.delete(ctl);
       paint();
       // Someone else's conversation the person continued stays in their shared lists (moved up), never their own.
-      if (isViewerConvo(ui()[where])) reloadShared();
-      else if (wasNew || where === "page") reloadThreads();
+      if (isViewerConvo(ui()[w])) reloadShared();
+      else if (wasNew || w === "page") reloadThreads();
     }
   }
 
@@ -333,13 +352,22 @@ export function createAskController(host: AskHost): AskController {
     raf(() => composerFocus(host.mount, where));
   }
 
+  /** The panel's conversation becomes the page's, and an answer streaming in it moves with it: its words land on the
+   *  page, Stop there stops it, its end clears the page's busy. A stream the page had of its own is stopped first. */
+  function movePanelToPage(): void {
+    if (streams.page) { stop("page"); delete streams.page; }
+    setConvo("page", ui().panel);
+    setConvo("panel", emptyConvo());
+    const moving = streams.panel;
+    if (moving) { delete streams.panel; streams.page = moving; homes.set(moving, "page"); }
+  }
+
   function openThread(id: number): void {
     s.screen = "ask";
     closeDrawer(ctx);                                 // the phone drawer slides out (its exit), the thread opens under it
     if (ui().page.threadId !== id) ui().conversation.stick = true;     // another thread opens at its latest answer
     if (ui().panel.threadId === id) {                 // ⌘J's "Open as thread": the panel's conversation moves over
-      setConvo("page", ui().panel);
-      setConvo("panel", emptyConvo());
+      movePanelToPage();
       paint();
       return;
     }

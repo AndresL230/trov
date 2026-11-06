@@ -96,7 +96,7 @@ export function readingListBlock(items: HandoffReadingItem[] | null | undefined,
 
 // ── inbox ────────────────────────────────────────────────────────────────────
 export interface HandoffsListProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   handoffs: HandoffView[];
   me: string;
   persons: PersonSummary[];
@@ -176,7 +176,7 @@ export function handoffsView(p: HandoffsListProps): string {
 
 // ── one handoff ──────────────────────────────────────────────────────────────
 export interface HandoffDetailProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   handoff: HandoffView | null;
   me: string;
   persons: PersonSummary[];
@@ -187,6 +187,8 @@ export interface HandoffDetailProps {
   reading?: HandoffReadingItem[] | null;
   /** How long ago a claim on this page drew the list (ms), or null — its one-shot rise (`readingListBlock`). */
   readingT?: number | null;
+  /** Claim is in flight (main.ts `beginWrite("handoffClaim:<id>")`): the button is busy, a second click does nothing. */
+  claiming?: boolean;
 }
 
 /** Inline `code` → a monospace span; everything else escaped. The checklist's one bit of markup. */
@@ -212,7 +214,7 @@ export function handoffDetailView(p: HandoffDetailProps): string {
   const outline = "padding:7px 14px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);white-space:nowrap";
   const actions = `<button data-act="handoffPromote" data-arg="${h.id}" class="cnpy-outlinebtn" style="${outline}">Promote to doc</button>`
     + (pending
-      ? `<button data-act="handoffClaim" data-arg="${h.id}" class="cnpy-accentbtn" style="background:var(--accent);color:var(--accent-fg);border-radius:8px;padding:8px 18px;font-size:12.5px;font-weight:600;white-space:nowrap">Claim</button>`
+      ? `<button data-act="handoffClaim" data-arg="${h.id}" class="cnpy-accentbtn"${p.claiming ? ' disabled aria-busy="true"' : ""} style="background:var(--accent);color:var(--accent-fg);border-radius:8px;padding:8px 18px;font-size:12.5px;font-weight:600;white-space:nowrap">${p.claiming ? "Claiming…" : "Claim"}</button>`
       : `<button data-act="handoffCopy" data-arg="${h.id}" class="cnpy-outlinebtn" style="${outline}">Copy as prompt</button>`);
 
   const promptSection = h.prompt
@@ -320,6 +322,8 @@ export interface NewHandoffProps {
   draft: NewHandoffDraft; me: string; persons: PersonSummary[];
   /** The org's primary repository, or null when none is connected (the Repo field says so). */
   primaryRepo?: string | null;
+  /** Send is in flight (main.ts `beginWrite("nhSend")`): the button is busy, a second click does nothing. */
+  busy?: boolean;
 }
 
 const FIELD = "border:1px solid var(--border-strong);border-radius:9px;background:transparent;color:var(--fg);outline:none";
@@ -390,7 +394,7 @@ export function newHandoffView(p: NewHandoffProps): string {
     </div>
     <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)">
       <button data-act="goHandoffs" class="cnpy-outlinebtn" style="padding:8px 15px;border-radius:8px;border:1px solid var(--border-strong);font-size:12.5px;font-weight:500;color:var(--fg-70);transition:all .12s ease;white-space:nowrap">Cancel</button>
-      <button data-act="nhSend" class="${canSend ? "cnpy-accentbtn" : ""}" style="${primaryStyle(canSend)}">Send handoff</button>
+      <button data-act="nhSend" class="${canSend && !p.busy ? "cnpy-accentbtn" : ""}"${p.busy ? ' disabled aria-busy="true"' : ""} style="${primaryStyle(canSend && !p.busy)}">${p.busy ? "Sending…" : "Send handoff"}</button>
     </div>
   </div>
 </div>`;

@@ -43,7 +43,7 @@ import { listAllParts, partRef, type PartRow } from "./parts";
 import { PROVIDERS } from "./registry";
 import type { HostingField, HostingProvider, PollResult } from "./types";
 import { routeAi } from "../tools/ai-route";
-import { REASON_STORED_MAX, upsertDeploys, type CleanDeploy } from "./deploy-store";
+import { REASON_STORED_MAX, upsertDeployWrites, type CleanDeploy } from "./deploy-store";
 import { joinShas } from "./sha-join";
 import { ROLLBACK_COMPARE_COST, checkRollback, newestReadyChanged } from "./rollback";
 import { resolveGithubCredential } from "../github-app/credential";
@@ -321,37 +321,56 @@ export function mergeCovered(prev: { from: number; to: number } | null, next: { 
 
 // ── storage ──────────────────────────────────────────────────────────────────
 
-interface StateRow { provider: string; last_ok_at: string | null; covered_from: string | null; covered_to: string | null; unavailable: string }
+interface StateRow { provider: string; polled_at: string; status: string; detail: string | null; last_ok_at: string | null; covered_from: string | null; covered_to: string | null; unavailable: string }
+
+/** How many times `writeState` re-reads and re-merges when another writer moved the row under it. */
+const STATE_WRITE_TRIES = 4;
 
 /**
- * `hosting_poll_state` after this poll — a read-modify-write of ONE row (no lock: the cron's units run one
- * after another, and an on-demand poll overlapping a tick computes the same window, so a lost update is
- * re-written identically by the next poll). A row left by a DIFFERENT provider
- * (the part was re-pointed) is not this provider's history: its interval, `last_ok_at` and `unavailable`
- * are dropped. A failed or skipped poll keeps the interval and `unavailable` of the last good one.
+ * `hosting_poll_state` after this poll — a read-merge-write of ONE row, made a COMPARE-AND-SET: the write
+ * names every column it read (`IS`, so NULLs compare), and when another writer — the cron's `:40` unit, the
+ * provider webhook's nudge, an admin's Poll now — moved the row in between, nothing is written and the merge
+ * is made again over what that writer left (up to `STATE_WRITE_TRIES`). So two polls overlapping never lose
+ * either's covered window. A poll that finishes AFTER a newer one (its `now` is older) still merges its window
+ * and its notes, but the row keeps the newer poll's status, detail and time. A row left by a DIFFERENT
+ * provider (the part was re-pointed) is not this provider's history: its interval, `last_ok_at` and
+ * `unavailable` are dropped. A failed or skipped poll keeps the interval and `unavailable` of the last good one.
  */
 async function writeState(
   ctx: TenantContext, part: PartRow, now: number, status: HostingPollOutcome["status"], detail: string | null,
   ok: { covered: { from: number; to: number } | null; unavailable: CleanPoll["unavailable"]; families?: CleanPoll["families"] } | null,
 ): Promise<void> {
-  const prev = await first<StateRow>(ctx,
-    `SELECT provider, last_ok_at, covered_from, covered_to, unavailable FROM hosting_poll_state WHERE org_id = ? AND env = ? AND part = ?`,
-    ctx.orgId, part.env, part.key);
-  const mine = prev && prev.provider === part.provider ? prev : null;
-  const prevFrom = instantMs(mine?.covered_from), prevTo = instantMs(mine?.covered_to);
-  const prevCovered = prevFrom !== null && prevTo !== null && prevFrom <= prevTo ? { from: prevFrom, to: prevTo } : null;
-  const covered = ok ? mergeCovered(prevCovered, ok.covered) : prevCovered;
   const at = iso(now);
-  await run(ctx,
-    `INSERT INTO hosting_poll_state (org_id, env, part, provider, polled_at, status, detail, last_ok_at, covered_from, covered_to, unavailable)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(org_id, env, part) DO UPDATE SET provider = excluded.provider, polled_at = excluded.polled_at, status = excluded.status,
-       detail = excluded.detail, last_ok_at = excluded.last_ok_at, covered_from = excluded.covered_from, covered_to = excluded.covered_to,
-       unavailable = excluded.unavailable`,
-    ctx.orgId, part.env, part.key, part.provider, at, status, detail,
-    ok ? at : mine?.last_ok_at ?? null,
-    covered ? iso(covered.from) : null, covered ? iso(covered.to) : null,
-    ok ? JSON.stringify([...ok.unavailable, ...mergeFamilies(mine?.unavailable ?? null, ok.families ?? [])]) : mine?.unavailable ?? "[]");
+  for (let attempt = 0; attempt < STATE_WRITE_TRIES; attempt++) {
+    const prev = await first<StateRow>(ctx,
+      `SELECT provider, polled_at, status, detail, last_ok_at, covered_from, covered_to, unavailable FROM hosting_poll_state WHERE org_id = ? AND env = ? AND part = ?`,
+      ctx.orgId, part.env, part.key);
+    const mine = prev && prev.provider === part.provider ? prev : null;
+    const prevFrom = instantMs(mine?.covered_from), prevTo = instantMs(mine?.covered_to);
+    const prevCovered = prevFrom !== null && prevTo !== null && prevFrom <= prevTo ? { from: prevFrom, to: prevTo } : null;
+    const covered = ok ? mergeCovered(prevCovered, ok.covered) : prevCovered;
+    // A newer poll already stood here: its outcome stays the row's; this one only adds what it read.
+    const older = !!mine && mine.polled_at > at;
+    const lastOk = ok ? (mine?.last_ok_at && mine.last_ok_at > at ? mine.last_ok_at : at) : mine?.last_ok_at ?? null;
+    const values = [
+      part.provider, older ? mine!.polled_at : at, older ? mine!.status : status, older ? mine!.detail : detail, lastOk,
+      covered ? iso(covered.from) : null, covered ? iso(covered.to) : null,
+      ok ? JSON.stringify([...ok.unavailable, ...mergeFamilies(mine?.unavailable ?? null, ok.families ?? [])]) : mine?.unavailable ?? "[]",
+    ];
+    const res = prev
+      ? await run(ctx,
+        `UPDATE hosting_poll_state SET provider = ?, polled_at = ?, status = ?, detail = ?, last_ok_at = ?, covered_from = ?, covered_to = ?, unavailable = ?
+          WHERE org_id = ? AND env = ? AND part = ? AND provider IS ? AND polled_at IS ? AND status IS ? AND detail IS ? AND last_ok_at IS ?
+            AND covered_from IS ? AND covered_to IS ? AND unavailable IS ?`,
+        ...values, ctx.orgId, part.env, part.key,
+        prev.provider, prev.polled_at, prev.status, prev.detail, prev.last_ok_at, prev.covered_from, prev.covered_to, prev.unavailable)
+      : await run(ctx,
+        `INSERT INTO hosting_poll_state (provider, polled_at, status, detail, last_ok_at, covered_from, covered_to, unavailable, org_id, env, part)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(org_id, env, part) DO NOTHING`,
+        ...values, ctx.orgId, part.env, part.key);
+    if ((res.meta.changes ?? 0) > 0) return;
+  }
+  console.warn("hosting poll", part.provider, part.env, part.key, "state: moved by another writer every try; this poll's state is not recorded", `org=${ctx.orgId}`);
 }
 
 /** Whether `day`'s daily figures were already read for this part — its `hx_daily_read` marker (the once-a-day rule).
@@ -469,18 +488,18 @@ export async function pollPart(
 
     const clean = validatePoll(result, part, now, revealed, declared);
     const newPoints = await putMetrics(ctx, [...clean.points, ...clean.extra]);
-    const changedIds = await upsertDeploys(ctx, part, clean.deploys, now, "provider");
+    const { changed: changedIds, readyChanged } = await upsertDeployWrites(ctx, part, clean.deploys, now, "provider");
     const changedDeploys = changedIds.length;
     // The AI router, after the batch committed: each deploy new or changed (src/tools/ai-route.ts decides which matter).
     for (const d of clean.deploys) {
       if (changedIds.includes(d.id)) await routeAi(ctx, { type: "hosting_deploy", env: part.env, branch: d.branch, state: d.state });
     }
     // A deploy the provider gave no sha: the commit join (exactly one GitHub candidate, else none). Then the
-    // rollback check of the newest production deploy, when this poll created or changed it — ONE compare at
+    // rollback check of the newest production deploy, when this poll made it ready (or gave it its commit) — ONE compare at
     // most, through the org's GitHub credential. Neither ever fails the poll.
     const joined = await joinShas(ctx, { env: part.env, key: part.key, provider: part.provider, branch: part.branch }, now)
       .catch((e: unknown) => { console.error("hosting poll", part.provider, part.env, part.key, "join", lastErrorText(e instanceof Error ? e.message : String(e), revealed), `org=${ctx.orgId}`); return [] as string[]; });
-    const toCheck = await newestReadyChanged(ctx, part, [...changedIds, ...joined]).catch(() => null);
+    const toCheck = await newestReadyChanged(ctx, part, [...readyChanged, ...joined]).catch(() => null);
     if (toCheck) await checkRollback(ctx, part, toCheck, githubFor(env, ctx, fetchImpl)).catch(() => "skipped");
     const notes = (Array.isArray(result.notes) ? result.notes : []).map((n) => lastErrorText(String(n), revealed)).filter(Boolean).slice(0, 3);
     const dropped = droppedText(clean.dropped);

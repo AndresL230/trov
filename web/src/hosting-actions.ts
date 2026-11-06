@@ -122,6 +122,7 @@ export function createHostingActions(host: HostingHost): HostingActions {
   const closeDialogs = (): void => { dropSecret(); dropMetrics(); const u = h(); u.part = null; u.connect = null; u.token = null; u.manage = null; };
 
   // ── the read ───────────────────────────────────────────────────────────────
+  let loadSeq = 0;
   function load(): void {
     const o = org();
     const slug = state.org.slug;
@@ -133,10 +134,12 @@ export function createHostingActions(host: HostingHost): HostingActions {
     } catch { /* no storage: nothing was dismissed */ }
     const held = u.setup.data;
     if (u.setup.status !== "ok") u.setup = { status: "loading", data: held };
+    // Every write reads the setup again: only the latest read lands (an older one answering late is stale).
+    const mine = ++loadSeq;
     getHostingSetup(slug)
-      .then((setup) => { if (state.org.slug !== slug) return; h().setup = { status: "ok", data: setup }; rerender(); })
+      .then((setup) => { if (state.org.slug !== slug || mine !== loadSeq) return; h().setup = { status: "ok", data: setup }; rerender(); })
       .catch((e) => {
-        if (fail(e) || state.org.slug !== slug) return;
+        if (fail(e) || state.org.slug !== slug || mine !== loadSeq) return;
         h().setup = { status: "error", data: held, error: e instanceof Error ? e.message : String(e) };
         rerender();
       });
@@ -215,9 +218,11 @@ export function createHostingActions(host: HostingHost): HostingActions {
     const metrics = metricsDraft.trim();
     const stored = d.environments.find((e) => e.key === dr.env)?.app_metrics?.configured === true;
     const after = (part: Pick<EnvironmentPartDTO, "label">, created: boolean): void => {
-      dropMetrics();
-      u.part = null;
+      // Only while this editor is still the one up: a dialog opened since (and its typed token) stays as it is.
+      const still = h().part === dr;
+      if (still) { dropMetrics(); h().part = null; }
       host.flash(`${created ? "Added" : "Saved"} ${envLabel} › ${part.label}${metrics ? ", and its app metrics token" : ""}`);
+      if (!still) return;
       refocus();
       if (thenConnect) openConnect(p.id, scopeFor(p, dr.env));
     };
@@ -293,6 +298,16 @@ export function createHostingActions(host: HostingHost): HostingActions {
         if (e instanceof ApiError && e.status === 409) load(); // the method is no longer offered: the catalogue says so
       });
   }
+  // Back from the provider by the browser's Back button (a page restored from its cache, `busy` still set): Connect
+  // works again (as org-billing-actions.ts does for Stripe).
+  if (typeof window !== "undefined") {
+    window.addEventListener("pageshow", (e) => {
+      const cd = h().connect;
+      if (!e.persisted || !cd?.busy) return;
+      cd.busy = false;
+      rerender();
+    });
+  }
 
   function openToken(mode: string, provider: HostingProviderId, scope: string): void {
     const d = data();
@@ -325,11 +340,13 @@ export function createHostingActions(host: HostingHost): HostingActions {
     const hasConfig = p.org_config_fields.length > 0;
     const mode = f.mode;
     const saved = (): void => {
-      dropSecret();                 // gone from the variable and from the live input
-      u.token = null;
+      // The dialog moves on only while it is still this one: another opened since (and its typed value) stays.
+      const still = h().token === f;
+      if (still) { dropSecret(); h().token = null; }   // gone from the variable and from the live input
       delete u.tests[ck];
       if (!state.org.openRows.includes(`hx:${ck}`)) state.org.openRows = [...state.org.openRows, `hx:${ck}`];
       host.flash(mode === "config" ? `Saved the ${p.label} settings` : `${mode === "rotate" ? "Replaced" : "Saved"} the ${p.label} ${word}. Test the connection to check it.`, mode === "config" ? 2200 : 6000);
+      if (!still) { rerender(); return; }
       u.manage = mode === "config" ? u.manage : ck;   // back in its Manage dialog, on Test connection
       trigger = `orgHxTest:${ck}`;   // straight to Test connection, the next thing to do
       rerender();

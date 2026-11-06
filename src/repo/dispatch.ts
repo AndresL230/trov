@@ -1,9 +1,10 @@
 // The ROTATION dispatcher behind the repo cron (canopy-multitenancy.md §8.3, D17 as amended by Q4).
 // A job is a list of UNITS — one per (org, environment) or one per org — and one invocation serves as
 // many as its budget allows, in a stable order, starting AFTER the unit the previous invocation
-// stopped at (`cron_cursor`). While every unit fits in one invocation the cursor stays `''` and is
-// never written; once orgs × environments outgrow the budget each tick serves the next slice, so no
-// org starves. No Queues: this is the deferred seam's stand-in, and a unit runner is shaped so a
+// stopped at (`cron_cursor`). The cursor names each unit BEFORE it runs, so an invocation the platform
+// kills inside a unit resumes after it — a unit that always dies is served last, never starving the rest;
+// once every unit is served it is `''` again. Once orgs × environments outgrow the budget each tick serves
+// the next slice, so no org starves. No Queues: this is the deferred seam's stand-in, and a unit runner is shaped so a
 // queue consumer can later call it unchanged (one message = one unit).
 import type { PlatformContext } from "../data/context";
 import { readCursor, writeCursor } from "../platform/jobs";
@@ -60,7 +61,10 @@ export interface Served { served: string[]; deferred: number }
 /**
  * Serve `job`'s units by rotation. A unit starts only while its worst case still fits under `cap`
  * (a share of the invocation's budget) and the wall-clock budget is not spent; the first one that
- * does not fit ends the job for this invocation and the cursor records the last unit served.
+ * does not fit ends the job for this invocation and the cursor records the last unit served. The
+ * cursor is ADVANCED to a unit before the unit runs (with more than one unit): an invocation killed
+ * inside it — CPU, memory, the platform's own clock, none of which a `try` catches — leaves the cursor
+ * past it, so the next tick starts with the units after it and a poison unit cannot starve them.
  * `runUnit` is expected to be TOTAL (it logs its own failures, scrubbed); if it throws all the same,
  * only the error's NAME is logged here — this function knows no credential to scrub a message with —
  * and the loop moves on. One unit's failure never stops another, and nothing throws out of here.
@@ -72,8 +76,13 @@ export async function serveJob<U extends Unit>(
   const cursor = await readCursor(p, job);
   const order = rotated(units, cursor);
   const served: string[] = [];
+  let stored = cursor;
   for (const unit of order) {
     if (budget.spent + unit.cost > cap || Date.now() - budget.started > budget.wallMs) break;
+    if (order.length > 1) {
+      // A failed write costs only the skip-ahead, never the unit.
+      await writeCursor(p, job, unit.key).then(() => { stored = unit.key; }, () => undefined);
+    }
     try {
       await runUnit(unit);
     } catch (e) {
@@ -85,7 +94,7 @@ export async function serveJob<U extends Unit>(
   // All served → nothing is pending and the next invocation starts from the top. Otherwise it resumes
   // after the last unit served; with none served (the budget was already spent) the cursor stands.
   const next = deferred === 0 ? "" : served.length ? served[served.length - 1] : cursor;
-  if (next !== cursor) await writeCursor(p, job, next);
+  if (next !== stored) await writeCursor(p, job, next);
   if (deferred) console.warn("repo cron", job, `served ${served.length} of ${order.length} units; the rest resume next tick`);
   return { served, deferred };
 }

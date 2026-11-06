@@ -1392,7 +1392,8 @@ export function sendImportPages(id: number, pages: ImpT.ImportPagesBody["pages"]
 export function finishImport(id: number, body: ImpT.ImportFinishBody = {}): Promise<ImpT.ImportFinishAnswer> {
   return orgSend("POST", importPath(id, "/finish"), body);
 }
-/** Review › an import's group: approve its waiting pages (at most `IMPORT_APPROVE_PER_CALL` a call — repeat while `remaining`). */
-export function approveImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/approve-all"), {}); }
+/** Review › an import's group: approve its waiting pages (at most `IMPORT_APPROVE_PER_CALL` a call — repeat while
+ *  `remaining`, sending the answer's `next` back as `after` so a page that fails is stepped over). */
+export function approveImport(id: number, after?: number | null): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/approve-all"), after ? { after } : {}); }
 /** Review › an import's group: reject its waiting pages (soft; at most `IMPORT_REJECT_PER_CALL` a call — repeat while `remaining`). */
 export function rejectImport(id: number): Promise<ImpT.ImportReviewAnswer> { return orgSend("POST", importPath(id, "/reject-all"), {}); }

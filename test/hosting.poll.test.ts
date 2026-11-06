@@ -278,6 +278,32 @@ describe("pollPart — the covered interval", () => {
   });
 });
 
+describe("pollPart — overlapping writers (the cron's unit, the webhook's nudge, Poll now)", () => {
+  const covering = (from: string, to: string) => fake(async () => ({ covered: { from, to } }));
+  const covered = async () => { const s = (await state())!; return [s.covered_from, s.covered_to]; };
+
+  it("two polls at once never lose either's window: the state write is a compare-and-set that merges again", async () => {
+    await setup();
+    await poll(covering("2026-09-20T09:00:00Z", "2026-09-20T12:00:00Z"));
+    await Promise.all([
+      // Both at 14:40: a window's end is clamped to the current hour's floor (14:00), so only the second reaches it.
+      poll(covering("2026-09-20T10:00:00Z", "2026-09-20T13:00:00Z"), NOW + 2 * HOUR),
+      poll(covering("2026-09-20T11:00:00Z", "2026-09-20T14:00:00Z"), NOW + 2 * HOUR + 1000),
+    ]);
+    expect(await covered()).toEqual(["2026-09-20T09:00:00.000Z", "2026-09-20T14:00:00.000Z"]);
+  });
+
+  it("a poll that finishes after a newer one adds its window, and the row keeps the newer poll's outcome", async () => {
+    await setup();
+    await poll(covering("2026-09-20T10:00:00Z", "2026-09-20T13:00:00Z"), NOW + 2 * HOUR);
+    const newer = (await state())!;
+    await captured(() => poll(fake(async () => { throw new HostingError("vercel 503"); }), NOW + HOUR));
+    expect(await state()).toMatchObject({ status: "ok", polled_at: newer.polled_at, last_ok_at: newer.last_ok_at });
+    await poll(covering("2026-09-20T08:00:00Z", "2026-09-20T10:00:00Z"), NOW + HOUR);
+    expect(await state()).toMatchObject({ status: "ok", polled_at: newer.polled_at, covered_from: "2026-09-20T08:00:00.000Z", covered_to: "2026-09-20T13:00:00.000Z" });
+  });
+});
+
 describe("pollPart — skipped before any request", () => {
   it("no credential for the provider: `skipped` — the fetch is never called, the provider never asked", async () => {
     await setup({ credential: false });

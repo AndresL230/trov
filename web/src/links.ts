@@ -103,7 +103,7 @@ export interface LinkBoxes { waiting: LinkView[]; open: LinkView[]; mine: LinkVi
 export const NO_LINK_BOXES: LinkBoxes = { waiting: [], open: [], mine: [], closed: [] };
 
 export interface LinksListProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   boxes: LinkBoxes;
   me: string;
   persons: PersonSummary[];
@@ -798,7 +798,7 @@ export function linksView(p: LinksListProps): string {
 
 // ── one link ─────────────────────────────────────────────────────────────────
 export interface LinkDetailProps {
-  status: "idle" | "loading" | "ok" | "error" | "unauth";
+  status: "idle" | "loading" | "ok" | "error";
   link: LinkDetail | null;
   me: string;
   persons: PersonSummary[];

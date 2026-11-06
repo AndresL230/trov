@@ -26,6 +26,8 @@ export interface ChatThreadRow {
   shared_at: string | null;
   /** The project it is in (0086_projects), or NULL. Being in a project never shares it. */
   project_id: number | null;
+  /** The running turn's lease (0088_state_machines): when it started; NULL = no turn runs (`claimThread`). */
+  turn_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -310,21 +312,107 @@ export async function deleteThread(ctx: TenantContext, handle: string, id: numbe
   return true;
 }
 
+// ── the turn (0088_state_machines) ──────────────────────────────────────────
+//
+// ONE turn runs on a thread at a time. The route CLAIMS the thread before it streams (`claimThread`: a guarded UPDATE
+// of `turn_at`, the lease); a second ask while it runs is refused (`409 busy`) — two turns would read the same turn
+// number, and the second would expire the first's cards and clear its Stop. The turn RELEASES its lease when it ends
+// (`releaseThread`, only its own). A lease older than `ASK_TURN_LEASE_MS` is a turn whose Worker died: the next ask
+// takes it over, and the dead turn — should it still be running anywhere — reads itself stopped (`stopRequested`,
+// scoped to its own turn number).
+
+/** How long a turn's lease holds. The longest turn is Thinking's 90 s, plus compaction and storing the answer. */
+export const ASK_TURN_LEASE_MS = 3 * 60_000;
+/** A card still `running` after this long was left by a Worker that died (or that could not record what happened). */
+export const ASK_ACTION_RUNNING_MAX_MS = 10 * 60_000;
+/** What a card whose outcome was never recorded says (`failed`, `code: "interrupted"`): it may well have run. */
+export const ASK_INTERRUPTED = { error: "Trov lost track of this change, so it may have run. Check the item before trying again.", code: "interrupted" } as const;
+
+/** Claim the thread for one turn (`at` = this turn's lease). False when another turn holds it. */
+export async function claimThread(ctx: TenantContext, threadId: number, at: string = nowIso(), nowMs: number = Date.now()): Promise<boolean> {
+  const res = await run(ctx,
+    `UPDATE chat_threads SET turn_at = ? WHERE id = ? AND org_id = ? AND pending = 0 AND (turn_at IS NULL OR turn_at < ?)`,
+    at, threadId, ctx.orgId, new Date(nowMs - ASK_TURN_LEASE_MS).toISOString());
+  return (res.meta.changes ?? 0) > 0;
+}
+
+/** The turn ended: its lease goes — only its own (a turn that outlived its lease leaves the new one alone). */
+export async function releaseThread(ctx: TenantContext, threadId: number, at: string): Promise<void> {
+  await run(ctx, `UPDATE chat_threads SET turn_at = NULL WHERE id = ? AND org_id = ? AND turn_at = ?`, threadId, ctx.orgId, at);
+}
+
 /**
- * A new turn starts: the turn number moves on, a Stop pressed before it is forgotten, the thread takes this
- * answer's mode and Auto setting and moves to the top of the list, and every card still PROPOSED or WAITING from
- * an earlier turn EXPIRES (a card lives only as long as its turn). One batch. Returns the new turn number.
+ * Cards left `running` past `ASK_ACTION_RUNNING_MAX_MS` (a Worker that died mid-write, or a write whose outcome could
+ * not be recorded): one whose write was never recorded (`result_json` NULL — a Confirm or an Auto write) becomes
+ * `failed` saying it MAY have run (`ASK_INTERRUPTED`), never that it did not; one caught mid-Undo (its result is
+ * recorded) goes back to `confirmed` with its Undo, whose own check refuses when the undo did run ("Changed since").
+ */
+export function recoverStuckActionsStmts(ctx: TenantContext, threadId: number, at: string, nowMs: number = Date.now()): Stmt[] {
+  const cutoff = new Date(nowMs - ASK_ACTION_RUNNING_MAX_MS).toISOString();
+  return [
+    stmt(ctx, `UPDATE chat_actions SET state = 'failed', result_json = ?, undo_json = NULL, decided_at = ?
+                WHERE thread_id = ? AND org_id = ? AND state = 'running' AND result_json IS NULL AND COALESCE(decided_at, created_at) < ?`,
+    JSON.stringify(ASK_INTERRUPTED), at, threadId, ctx.orgId, cutoff),
+    stmt(ctx, `UPDATE chat_actions SET state = 'confirmed', decided_at = ?
+                WHERE thread_id = ? AND org_id = ? AND state = 'running' AND result_json IS NOT NULL AND COALESCE(decided_at, created_at) < ?`,
+    at, threadId, ctx.orgId, cutoff),
+  ];
+}
+
+/** `recoverStuckActionsStmts` on its own (the thread read). */
+export async function recoverStuckActions(ctx: TenantContext, threadId: number, at: string = nowIso(), nowMs: number = Date.now()): Promise<void> {
+  await batch(ctx, recoverStuckActionsStmts(ctx, threadId, at, nowMs));
+}
+
+/**
+ * A new turn starts (the caller holds the thread's claim): the turn number moves on, a Stop pressed before it is
+ * forgotten, the thread takes this answer's mode and Auto setting and moves to the top of the list, every card still
+ * PROPOSED or WAITING from an earlier turn EXPIRES (a card lives only as long as its turn), and cards stuck `running`
+ * are recovered. One batch. Returns the new turn number.
  * `settings: false` — the turn of a person the thread is shared with (0077): mode and Auto stay the owner's.
  */
 export async function startTurn(ctx: TenantContext, threadId: number, mode: AskMode, auto: boolean, at: string = nowIso(), settings = true): Promise<number> {
   await batch(ctx, [
     stmt(ctx, `UPDATE chat_actions SET state = 'expired', decided_at = ? WHERE thread_id = ? AND org_id = ? AND state IN ('proposed', 'waiting')`, at, threadId, ctx.orgId),
+    ...recoverStuckActionsStmts(ctx, threadId, at),
     settings
       ? stmt(ctx, `UPDATE chat_threads SET turn = turn + 1, stop_requested = 0, mode = ?, auto_mode = ?, updated_at = ? WHERE id = ? AND org_id = ?`,
         mode, auto ? 1 : 0, at, threadId, ctx.orgId)
       : stmt(ctx, `UPDATE chat_threads SET turn = turn + 1, stop_requested = 0, updated_at = ? WHERE id = ? AND org_id = ?`, at, threadId, ctx.orgId),
   ]);
   return (await first<{ turn: number }>(ctx, `SELECT turn FROM chat_threads WHERE id = ? AND org_id = ?`, threadId, ctx.orgId))?.turn ?? 0;
+}
+
+/**
+ * Cards of an earlier turn that never got their answer — the turn died (a throw, or its Worker) after they were made —
+ * get one: an empty, stopped answer of their asker's, so the thread shows them (with their Undo) under it. One answer
+ * per such turn, each in ONE batch with its cards; returns the cards adopted (id and state).
+ */
+export async function adoptOrphanCards(ctx: TenantContext, threadId: number, beforeTurn: number, mode: AskMode, at: string = nowIso()): Promise<{ id: number; state: string }[]> {
+  const rows = await all<{ id: number; turn: number; state: string; asked_by: string | null }>(ctx,
+    `SELECT id, turn, state, asked_by FROM chat_actions WHERE thread_id = ? AND org_id = ? AND message_id IS NULL AND turn < ? ORDER BY turn, id`,
+    threadId, ctx.orgId, beforeTurn);
+  const turns = new Map<number, typeof rows>();
+  for (const r of rows) turns.set(r.turn, [...(turns.get(r.turn) ?? []), r]);
+  for (const [turn, cards] of turns) {
+    const content = { text: "", refs: [], blocks: [], activity: [], followups: [], thinking: null, parts: cards.map((c) => ({ kind: "action", id: c.id })) };
+    await batch(ctx, [
+      stmt(ctx,
+        `INSERT INTO chat_messages (org_id, thread_id, role, mode, content_json, cites_json, attachments_json, model, tokens_in, tokens_out, tokens_cached, units, stopped, created_at, asked_by)
+         VALUES (?, ?, 'assistant', ?, ?, '[]', '[]', NULL, 0, 0, 0, 0, 1, ?, ?)`,
+        ctx.orgId, threadId, mode, JSON.stringify(content), at, cards[0].asked_by),
+      // The answer just inserted is the thread's newest message (the batch is one transaction).
+      stmt(ctx, `UPDATE chat_actions SET message_id = (SELECT MAX(id) FROM chat_messages WHERE thread_id = ? AND org_id = ?)
+                  WHERE thread_id = ? AND org_id = ? AND turn = ? AND message_id IS NULL`, threadId, ctx.orgId, threadId, ctx.orgId, turn),
+    ]);
+  }
+  return rows.map((r) => ({ id: r.id, state: r.state }));
+}
+
+/** Whether turn `turn` wrote anything (or may have): an Auto card that ran, or one whose write is still `running`. */
+export async function turnWrote(ctx: TenantContext, threadId: number, turn: number): Promise<boolean> {
+  return !!(await first<{ x: number }>(ctx,
+    `SELECT 1 AS x FROM chat_actions WHERE thread_id = ? AND org_id = ? AND turn = ? AND state IN ('auto', 'running') LIMIT 1`, threadId, ctx.orgId, turn));
 }
 
 /** Stop: the running turn ends at its next step (the request's own abort covers a connection that is open). The
@@ -334,8 +422,12 @@ export async function requestStop(ctx: TenantContext, id: number): Promise<boole
   return (res.meta.changes ?? 0) > 0;
 }
 
-export async function stopRequested(ctx: TenantContext, threadId: number): Promise<boolean> {
-  return ((await first<{ s: number }>(ctx, `SELECT stop_requested AS s FROM chat_threads WHERE id = ? AND org_id = ?`, threadId, ctx.orgId))?.s ?? 0) === 1;
+/** Whether turn `turn` should stop: Stop was pressed, or the thread has moved on to a later turn (this one outlived
+ *  its lease and another took over). Without `turn`, the flag alone. */
+export async function stopRequested(ctx: TenantContext, threadId: number, turn?: number): Promise<boolean> {
+  const r = await first<{ s: number; turn: number }>(ctx, `SELECT stop_requested AS s, turn FROM chat_threads WHERE id = ? AND org_id = ?`, threadId, ctx.orgId);
+  if (!r) return false;
+  return r.s === 1 || (turn !== undefined && r.turn !== turn);
 }
 
 export async function setThreadTitle(ctx: TenantContext, threadId: number, title: string): Promise<void> {
@@ -476,6 +568,30 @@ export async function markUndone(ctx: TenantContext, id: number, at: string = no
   return (res.meta.changes ?? 0) > 0;
 }
 
+const RECORD_TRIES = 3;
+
+/** Record a card's outcome once its write (or undo) HAS run — tried again, since a failure to RECORD it is never the
+ *  write failing. False when every try failed: the card stays `running`, and `recoverStuckActionsStmts` settles it
+ *  later without claiming the write failed. Never throws. */
+async function recorded(what: string, id: number, write: () => Promise<unknown>): Promise<boolean> {
+  for (let i = 0; i < RECORD_TRIES; i++) {
+    try { await write(); return true; } catch (e) {
+      console.error(`ask card ${id}: recording ${what} failed (try ${i + 1} of ${RECORD_TRIES})`, e instanceof Error ? e.name : "error");
+    }
+  }
+  return false;
+}
+
+/** `finishAction` for a write that ran (`confirmed` / `auto`), or that threw (`failed`), retried. */
+export function recordAction(ctx: TenantContext, id: number, to: string, result: unknown, undo: unknown | null): Promise<boolean> {
+  return recorded(to, id, () => finishAction(ctx, id, to, result, undo));
+}
+
+/** `markUndone` for an undo that ran, retried. */
+export function recordUndone(ctx: TenantContext, id: number): Promise<boolean> {
+  return recorded("undone", id, () => markUndone(ctx, id));
+}
+
 export async function attachActionsToMessage(ctx: TenantContext, threadId: number, turn: number, messageId: number): Promise<void> {
   await run(ctx, `UPDATE chat_actions SET message_id = ? WHERE thread_id = ? AND org_id = ? AND turn = ? AND message_id IS NULL`, messageId, threadId, ctx.orgId, turn);
 }
@@ -493,6 +609,20 @@ export async function linkArtifact(ctx: TenantContext, threadId: number, artifac
     ctx.orgId, threadId, artifactId, role, messageId, at);
   const row = await first<{ id: number }>(ctx, `SELECT id FROM chat_artifacts WHERE org_id = ? AND thread_id = ? AND artifact_id = ? AND role = ?`, ctx.orgId, threadId, artifactId, role);
   return row!.id;
+}
+
+/** The link of an artifact being CREATED in the same batch (named by its new slug) — so an attachment or a saved answer
+ *  and its link land together, or neither does (`createPage`'s `extra`). */
+export function linkNewArtifactStmt(ctx: TenantContext, threadId: number, slug: string, role: "attachment" | "saved", messageId: number | null, at: string = nowIso()): Stmt {
+  return stmt(ctx,
+    `INSERT INTO chat_artifacts (org_id, thread_id, artifact_id, role, message_id, created_at)
+     VALUES (?, ?, (SELECT id FROM artifact_pages WHERE slug = ? AND org_id = ?), ?, ?, ?)`,
+    ctx.orgId, threadId, slug, ctx.orgId, role, messageId, at);
+}
+
+/** A thread's link to one artifact in one role, or null. */
+export async function artifactLinkId(ctx: TenantContext, threadId: number, artifactId: number, role: "attachment" | "saved"): Promise<number | null> {
+  return (await first<{ id: number }>(ctx, `SELECT id FROM chat_artifacts WHERE org_id = ? AND thread_id = ? AND artifact_id = ? AND role = ?`, ctx.orgId, threadId, artifactId, role))?.id ?? null;
 }
 
 /** The thread's attachments named by `ids` that are NOT sent yet AND that `handle` uploaded (another thread's, a sent
@@ -518,7 +648,8 @@ export function threadAttachment(ctx: TenantContext, threadId: number, id: numbe
 //
 // A file uploaded before its conversation exists is linked to the person's hidden HOLDER thread (`pending = 1`):
 // never listed, searched or opened (every thread read above leaves it out). Sending moves what the question names
-// onto the real thread (`bindPendingAttachments`); what is never sent goes after 24 hours (src/deletion/ask.ts).
+// onto the real thread (`bindPendingAttachments`); what is never sent goes after 24 hours — on the holder, and on a
+// real thread too (src/deletion/ask-pending.ts).
 
 /** The person's holder thread in this org — made the first time it is needed. Two racing uploads may each make
  *  one; every read below takes all of the person's holders, so that costs nothing. */

@@ -70,6 +70,15 @@ describe("repoEventsFromDelivery — pull_request", () => {
     expect(repoEventsFromDelivery("ping", {})).toEqual([]);
   });
 
+  it("dates a row by ONE rule shared with reconcile (prOccurredAt): merged at its merge, closed at its close, open at its last update", () => {
+    const at = (over: object, action: string) =>
+      repoEventsFromDelivery("pull_request", { ...prOpened, action, pull_request: { ...prOpened.pull_request, ...over } })[0]?.occurred_at;
+    expect(at({ state: "closed", merged: true, merged_at: "2026-09-20T10:00:00Z", closed_at: "2026-09-20T10:00:00Z", updated_at: "2026-09-20T10:02:00Z" }, "closed")).toBe("2026-09-20T10:00:00Z");
+    expect(at({ state: "closed", merged: false, closed_at: "2026-09-20T10:00:00Z", updated_at: "2026-09-20T10:02:00Z" }, "closed")).toBe("2026-09-20T10:00:00Z");
+    // Reopened: open again, dated after the close, so it is the PR's newest row.
+    expect(at({ state: "open", closed_at: null, updated_at: "2026-09-20T11:00:00Z" }, "reopened")).toBe("2026-09-20T11:00:00Z");
+  });
+
   it("falls back to merged_at / closed_at when a payload slice carries no updated_at", () => {
     const [ev] = repoEventsFromDelivery("pull_request", prMerged);
     expect(ev).toMatchObject({ kind: "pr", state: "merged" });

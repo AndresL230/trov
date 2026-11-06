@@ -63,8 +63,21 @@ export interface OrgPlan extends OrgPlanState {
 const oneOf = <T extends string>(list: readonly T[], v: unknown): T | null => (typeof v === "string" && (list as readonly string[]).includes(v) ? (v as T) : null);
 
 /** A stored row as the state every gate reads. An unknown plan id reads as the smallest plan and an
- *  unknown status as `active` — a bad value can only ever make an org SMALLER, never unlimited. */
-export function planOf(r: OrgPlanRow | null): OrgPlan {
+ *  unknown status as `active` — a bad value can only ever make an org SMALLER, never unlimited.
+ *
+ *  A GIFT whose end has passed (./gifts.ts) reads as what the sweep will write for it — Free, active, no
+ *  overrides, no gift — from the instant it lapses, not from the repo cron's next tick: the date is the
+ *  rule, `expireGifts` only makes the row say so. (An org that pays through Stripe keeps its paid plan:
+ *  the sweep only clears its gift.) `now` = null reads the row AS STORED — what a plan WRITE starts from
+ *  (`orgPlan(…, { stored: true })`): extending a gift that lapsed a minute ago, or auditing what it was. */
+export function planOf(r: OrgPlanRow | null, now: string | null = nowIso()): OrgPlan {
+  if (now !== null && r?.plan_gift_until && r.plan_gift_until <= now && r.plan_source !== "billing") {
+    return {
+      plan: FREE_PLAN, overrides: {}, status: "active", source: "granted", period_end: r.plan_period_end ?? null,
+      customer_id: r.billing_customer_id ?? null, subscription_id: r.billing_subscription_id ?? null, gift_until: null,
+      ...(r.plan_members !== undefined && r.plan_members !== null ? { members: Number(r.plan_members) } : {}),
+    };
+  }
   return {
     plan: planDef(r?.plan).id, overrides: storedOverrides(r?.plan_overrides), status: oneOf(PLAN_STATUSES, r?.plan_status) ?? "active",
     source: oneOf(PLAN_SOURCES, r?.plan_source), period_end: r?.plan_period_end ?? null,
@@ -74,8 +87,9 @@ export function planOf(r: OrgPlanRow | null): OrgPlan {
   };
 }
 
-export async function orgPlan(p: PlatformContext, orgId: string): Promise<OrgPlan> {
-  return planOf(await first<OrgPlanRow>(p, `SELECT ${PLAN_COLS} FROM orgs WHERE id = ?`, orgId));
+/** The org's plan as every gate reads it — or, `stored`, as its row holds it (a lapsed gift still a gift). */
+export async function orgPlan(p: PlatformContext, orgId: string, o: { stored?: boolean } = {}): Promise<OrgPlan> {
+  return planOf(await first<OrgPlanRow>(p, `SELECT ${PLAN_COLS} FROM orgs WHERE id = ?`, orgId), o.stored ? null : nowIso());
 }
 
 // ── seats ────────────────────────────────────────────────────────────────────
@@ -151,8 +165,11 @@ export function cleanOverrides(v: unknown): PlanOverrides {
   return o;
 }
 
-export const auditPlan = (p: PlatformContext, orgId: string, action: OrgAuditAction, slug: string, detail: Record<string, unknown>, at: string): Stmt =>
-  stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`, orgId, p.actor, action, slug, JSON.stringify(detail), at);
+/** The plan's audit row. `ifChanged`: written only when the statement before it in the batch changed a row. */
+export const auditPlan = (p: PlatformContext, orgId: string, action: OrgAuditAction, slug: string, detail: Record<string, unknown>, at: string, ifChanged = false): Stmt =>
+  ifChanged
+    ? stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) SELECT ?, ?, ?, ?, ?, ? WHERE changes() > 0`, orgId, p.actor, action, slug, JSON.stringify(detail), at)
+    : stmt(p, `INSERT INTO org_admin_audit (org_id, actor, action, target, detail, at) VALUES (?, ?, ?, ?, ?, ?)`, orgId, p.actor, action, slug, JSON.stringify(detail), at);
 
 export const orgBySlug = async (p: PlatformContext, slug: string): Promise<{ id: string; slug: string }> => {
   const org = await first<{ id: string; slug: string }>(p, `SELECT id, slug FROM orgs WHERE slug = ?`, slug);
@@ -176,6 +193,11 @@ export interface SetOrgPlanInput {
    *  Omitted or null = the plan is NOT a gift, and any gift the org held is cleared: a plan set by hand
    *  or paid for through billing has no end of its own. */
   gift_until?: string | null;
+  /** Compare-and-set (BILLING's upgrade, src/billing/sync.ts): write only while the org's subscription id
+   *  is still this one (null = none). When it moved, nothing is written — the plan returned says what won. */
+  if_subscription?: string | null;
+  /** Statements that must land in the SAME batch as the plan (the superadmin's pin, src/plans/routes.ts). */
+  also?: Stmt[];
 }
 
 /**
@@ -194,7 +216,7 @@ export interface SetOrgPlanInput {
 export async function setOrgPlan(p: PlatformContext, slug: string, input: SetOrgPlanInput): Promise<OrgPlan> {
   const org = await orgBySlug(p, slug);
   const plan = cleanPlan(input.plan);
-  const before = await orgPlan(p, org.id);
+  const before = await orgPlan(p, org.id, { stored: true });
   const overrides = input.overrides === undefined ? (plan === before.plan ? before.overrides : {}) : cleanOverrides(input.overrides);
   const source = input.source ?? "granted";
   const status = input.status ?? "active";
@@ -202,21 +224,25 @@ export async function setOrgPlan(p: PlatformContext, slug: string, input: SetOrg
   const at = nowIso();
   const moved = plan !== before.plan || status !== before.status || source !== before.source;
   const gift = input.gift_until ?? null;
+  const guarded = input.if_subscription !== undefined;
+  const audit = auditPlan(p, org.id, gift ? "plan.gift" : moved ? "plan.change" : "plan.overrides", org.slug, {
+    from: before.plan, to: plan, overrides, source, ...(status !== before.status ? { status } : {}),
+    ...(gift ? { until: gift } : before.gift_until ? { gift_cleared: before.gift_until } : {}),
+  }, at, guarded);
   await batch(p, [
     stmt(p, `UPDATE orgs SET plan = ?1, plan_overrides = ?2, plan_source = ?3, plan_status = ?4, plan_changed_at = ?5, plan_changed_by = ?6,
                     plan_period_end = CASE WHEN ?7 THEN ?8 ELSE plan_period_end END,
                     billing_customer_id = CASE WHEN ?9 THEN ?10 ELSE billing_customer_id END,
                     billing_subscription_id = CASE WHEN ?11 THEN ?12 ELSE billing_subscription_id END,
                     plan_gift_until = ?14
-              WHERE id = ?13`,
+              WHERE id = ?13 AND (?15 = 0 OR billing_subscription_id IS ?16)`,
       plan, JSON.stringify(overrides), source, status, at, p.actor,
       input.period_end !== undefined ? 1 : 0, input.period_end ?? null,
       input.customer_id !== undefined ? 1 : 0, input.customer_id ?? null,
-      input.subscription_id !== undefined ? 1 : 0, input.subscription_id ?? null, org.id, gift),
-    auditPlan(p, org.id, gift ? "plan.gift" : moved ? "plan.change" : "plan.overrides", org.slug, {
-      from: before.plan, to: plan, overrides, source, ...(status !== before.status ? { status } : {}),
-      ...(gift ? { until: gift } : before.gift_until ? { gift_cleared: before.gift_until } : {}),
-    }, at),
+      input.subscription_id !== undefined ? 1 : 0, input.subscription_id ?? null, org.id, gift,
+      guarded ? 1 : 0, input.if_subscription ?? null),
+    audit,
+    ...(input.also ?? []),
   ]);
   return orgPlan(p, org.id);
 }
@@ -236,7 +262,7 @@ export async function setOrgPlan(p: PlatformContext, slug: string, input: SetOrg
 export async function setOrgPlanStatus(p: PlatformContext, slug: string, status: PlanStatus, opts: { period_end?: string | null } = {}): Promise<OrgPlan> {
   if (!PLAN_STATUSES.includes(status)) throw new PlanError("invalid_status");
   const org = await orgBySlug(p, slug);
-  const before = await orgPlan(p, org.id);
+  const before = await orgPlan(p, org.id, { stored: true });
   if (before.status === status && opts.period_end === undefined) return before;
   const at = nowIso();
   await batch(p, [

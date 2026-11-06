@@ -145,7 +145,7 @@ describe("pingHealth", () => {
     await deployRow(ORG_A, "staging", "frontend", "cloudflare", "d1", "ready", new Date(T - 20 * 60_000).toISOString());
     await putMetric(systemCtx(), { metric: "health_up", env: "staging", part: "frontend", value: 0, at: new Date(stale).toISOString() });
     const [staging] = ok((await getRepoDashboard(systemCtx(), "o/r", T, ENVS)).environments);
-    expect(staging).toMatchObject({ pill: "UNKNOWN", tone: "neutral" });
+    expect(staging).toMatchObject({ pill: "LIVE", tone: "good" }); // the landed deploy, no checks: Live — never Down on a stale reading
   });
 });
 

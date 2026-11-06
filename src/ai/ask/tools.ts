@@ -26,7 +26,7 @@ import { listPeopleForAgents } from "../../tools/people";
 import { getRepoDashboardForAgent, orgRepoConfig } from "../../tools/repo-agent";
 import { REPO_RANGES, REPO_TAB_SECTIONS, type RepoTab } from "@shared/repo";
 import { listTagRefs } from "../../tools/tags";
-import { listSpacesForAgent } from "../../tools/spaces";
+import { inLibrary, listSpacesForAgent } from "../../tools/spaces";
 import { QueryType } from "@shared/contract";
 import { agentArtifactGet, agentArtifactList, artifactsForTicket } from "../../tools/artifacts-agent";
 import { ARTIFACT_AREAS, ARTIFACT_KINDS, ARTIFACT_STATUSES } from "@shared/artifacts";
@@ -142,10 +142,11 @@ const READS: Record<string, ReadSpec<any>> = { // eslint-disable-line @typescrip
     if (!h) throw new HandoffError("not_found", "handoff not found");
     return h;
   }),
-  search_prompts: read(z.object({ q: z.string().optional(), tags: z.array(z.string()).optional() }), "search", (c, a) => listPrompts(c.ctx, a), () => [["prompts", null]]),
+  search_prompts: read(z.object({ q: z.string().optional(), tags: z.array(z.string()).optional() }), "search", (c, a) => listPrompts(c.ctx, { ...a, read: "settled" }), () => [["prompts", null]]),
   get_prompt: read(z.object({ slug: z.string(), vars: z.record(z.string(), z.string()).optional() }), "read", async (c, a) => {
     await recordPromptUse(c.ctx, a.slug);
-    const p = await getPrompt(c.ctx, a.slug);
+    // An agent reader is served the SETTLED version (src/tools/prompts.ts): the newest published one, else the latest.
+    const p = await getPrompt(c.ctx, a.slug, "settled");
     if (!p) throw new PromptError("not_found", "prompt not found");
     const variables = detectVars(p.body);
     const values = a.vars ?? {};
@@ -255,8 +256,8 @@ async function searchedScopes(c: AskToolCtx): Promise<{ area: string; scope: str
         // The Library's spaces that hold docs, by name, in the Library's order (0081_docs_library).
         const spaces = await all<{ name: string; n: number }>(c.ctx,
           `SELECT s.name AS name, COUNT(*) AS n FROM docs d JOIN doc_spaces s ON s.slug = d.space AND s.org_id = ?
-            WHERE d.org_id = ? AND d.archived_at IS NULL GROUP BY s.slug ORDER BY (s.sort_rank IS NULL), s.sort_rank, s.created_at, s.slug`, c.ctx.orgId, c.ctx.orgId);
-        const total = await n(`SELECT COUNT(*) AS n FROM docs WHERE org_id = ? AND archived_at IS NULL`, c.ctx.orgId);
+            WHERE d.org_id = ? AND ${inLibrary("d")} GROUP BY s.slug ORDER BY (s.sort_rank IS NULL), s.sort_rank, s.created_at, s.slug`, c.ctx.orgId, c.ctx.orgId);
+        const total = await n(`SELECT COUNT(*) AS n FROM docs WHERE org_id = ? AND ${inLibrary("docs")}`, c.ctx.orgId);
         const names = spaces.map((s) => s.name);
         scope = `${names.length ? `${names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names[0]}, ` : ""}${plural(total, "doc")}`;
         break;

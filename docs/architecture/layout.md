@@ -10,7 +10,9 @@
   zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
   since the SPA imports `REPO_TABS` as a value), `hosting.ts` (the hosting-provider contract — zod-free: providers,
   parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, the setup and dashboard DTOs; see
-  `hosting-providers.md`), `hosting-status-core.ts` (THE hosting status function), the repo-setups cores — all
+  `hosting-providers.md`), `hosting-status-core.ts` (THE hosting status function, and the org's GitHub link a provider
+  read through GitHub follows), `env-verdict-core.ts` (THE ranking of an environment's verdict — the Overview's
+  `envVerdict` and the served `RepoEnv.pill`), the repo-setups cores — all
   zod-free, see `repo-apps.md` — `repo-apps-core.ts` (app kinds, roles, `RepoApp`), `repo-facts-core.ts` (`RepoFacts`,
   `narrowFacts`, `layoutInputOf`), `repo-layout-core.ts` (`RULES`, `decide`, `TABS`, `layoutOf`), `repo-scan-core.ts`
   (suggestions, seen signals, the Apps DTO), `repo-apps-setup-core.ts` (signals ↔ `github` part settings) and
@@ -274,6 +276,12 @@
   Then `0086_projects` (Projects) [`projects`, `project_members`, `project_pins`, and `chat_threads.project_id` /
   `artifact_pages.project_id`; additive — `projects.md`].
   Then `0087_sample_orgs` [`orgs.sample`: the Sample workspace every new person gets — `organizations.md` › 1e].
+  Then `0088_state_machines` (the state-machine fixes, #225; four parts, one file) [UNIQUE `(org_id, slug, version)`
+  on `doc_versions` and the stale staged versions earlier promotes left marked `superseded` — `ingestion-gate.md` ›
+  Staged-write model; `sprints.completed_at`, backfilled for done ones — `roadmap-my-work.md`; `chat_threads.turn_at`
+  (an Ask turn's lease), `ai_dirty.held_at` (a scope held for a Message Batch), `sprints.source_key` + its partial
+  unique index — `ask.md`, `ai.md`; `notification_outbox.attempted_at` (the digest retry's lease — `notifications.md`),
+  `org_github_installations.suspension_at` / `.repos_changed_at` — `github-app.md`].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),

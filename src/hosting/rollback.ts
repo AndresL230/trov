@@ -61,7 +61,8 @@ export async function checkRollback(
 
 /**
  * The deploy a poll should check after it stored `changed`: the part's NEWEST non-preview ready deploy, only
- * when THIS write created or changed it (so a quiet re-poll costs no compare). null = nothing to check.
+ * when THIS write made it ready or gave it its commit (`readyChanged`, ./deploy-store.ts — so a quiet re-poll, or a
+ * ready deploy re-reported, costs no compare). null = nothing to check.
  */
 export async function newestReadyChanged(ctx: TenantContext, part: RollbackRef, changed: readonly string[]): Promise<string | null> {
   if (!changed.length) return null;

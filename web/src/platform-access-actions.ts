@@ -93,7 +93,9 @@ export function createAccess(h: AccessHost) {
     }).catch((e) => {
       if (gone(e)) return;
       a().revokeBusy = false; a().revokeArm = null;
-      h.flash(code(e) === "grant_used" ? "That grant was already used: the organization exists. Change or suspend it on its page." : code(e) === "not_found" ? "That grant is no longer unused." : "The grant wasn't revoked. Try again.", 5000);
+      h.flash(code(e) === "grant_used" ? "That grant was already used: the organization exists. Change or suspend it on its page."
+        : code(e) === "grant_paid" ? "That grant was paid for, and its subscription still charges. Cancel the subscription in Stripe: the grant is then revoked by itself."
+        : code(e) === "not_found" ? "That grant is no longer unused." : "The grant wasn't revoked. Try again.", 5000);
       load();
     });
   }

@@ -229,7 +229,9 @@ export async function resolveViews(ctx: TenantContext, viewer: string, refs: rea
           const e = evs.find((x) => x.ref_number === n);
           if (!s && !p && !e) continue;
           const repo = s?.repo ?? p?.repo ?? e?.repo ?? "";
-          let state = e ? (e.event_type === "pr_merged" ? "merged" : "closed") : p?.state ?? null;
+          // A close the capture has since seen reopened (its newest `pr` row is open and newer) reads as open.
+          const reopened = e?.event_type === "pr_closed" && p && (p.state === "review" || p.state === "draft") && !!e.occurred_at && p.occurred_at > e.occurred_at;
+          let state = e && !reopened ? (e.event_type === "pr_merged" ? "merged" : "closed") : p?.state ?? null;
           if (state === "review" && approved.some((a) => a.number === n)) state = "approved";
           const base = (() => { try { return (JSON.parse(p?.raw ?? "{}") as { base?: string }).base ?? null; } catch { return null; } })();
           const checks = p?.sha ? await all<{ name: string; state: string }>(ctx,

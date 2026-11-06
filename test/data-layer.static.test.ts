@@ -125,8 +125,8 @@ const PLATFORM_ALLOW: Allow[] = [
   { file: "src/deletion/person.ts", fn: "addressesOf", tables: ["org_login_map"], why: "the GitHub logins orgs attribute to the person being deleted, so the audit trail can be scrubbed of them — logins only" },
   // Ask's pending attachments (0068_ask_pending): the hourly sweep finds the links unsent past 24 h on the people's
   // hidden holder threads, and the empty holders, in every org; each is then deleted as that org's system tenant.
-  { file: "src/deletion/ask-pending.ts", fn: "staleHolders", tables: ["chat_artifacts", "chat_threads"],
-    why: "the pending-attachment sweep's unit list — org, handle and link ids of unsent uploads past 24 h, no content" },
+  { file: "src/deletion/ask-pending.ts", fn: "staleHolders", tables: ["chat_artifacts", "chat_threads", "artifact_pages"],
+    why: "the unsent-attachment sweep's unit list — org, uploader handle and link ids of unsent uploads past 24 h (on a holder or a real thread), no content" },
   { file: "src/deletion/ask-pending.ts", fn: "emptyHolders", tables: ["chat_threads", "chat_artifacts"],
     why: "the empty holder threads past 24 h — org and thread ids, no content" },
   // R2 after a deletion (src/deletion/r2.ts): content-addressed objects are shared across orgs, so whether ANY

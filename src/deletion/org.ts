@@ -150,7 +150,16 @@ export interface DeleteOrgOpts {
   billingSettled?: boolean;
   /** Called by an account's deletion: the audit row says so. */
   withAccount?: boolean;
+  /** An account's deletion takes an org with it only while its person is the org's ONLY member: re-checked
+   *  inside the batch (`onlyMemberGuard`), so someone who joined during the Stripe wait refuses it whole. */
+  onlyMember?: string;
 }
+
+/** The batch's first statement for `onlyMember`: NULL into a NOT NULL column (which fails the statement, and the
+ *  batch with it) when anyone else is a member of the org now. person.ts `GUARD_FAILED` recognises the failure. */
+const onlyMemberGuard = (p: PlatformContext, orgId: string, handle: string): Stmt =>
+  stmt(p, `UPDATE memberships SET created_at = NULL
+            WHERE org_id = ?1 AND EXISTS (SELECT 1 FROM memberships x WHERE x.org_id = ?1 AND x.user_id <> ?2 COLLATE NOCASE)`, orgId, handle);
 export interface DeletedOrg { slug: string; cancelled: string[]; r2: R2Sweep }
 
 /** Step 1 alone, for a caller that deletes several things and must not start until all of them are paid off. */
@@ -169,6 +178,7 @@ export async function deleteOrganization(env: Env, p: PlatformContext, org: OrgT
   const stripe = org.billing_customer_id || subIds.length ? { customer: org.billing_customer_id, subscriptions: subIds, cancelled } : undefined;
   const stmts: Stmt[] = [
     stmt(p, "PRAGMA defer_foreign_keys = true"),
+    ...(o.onlyMember ? [onlyMemberGuard(p, org.id, o.onlyMember)] : []),
     ...orgRowDeletes(sys),
     // The global rows that point at the org. Its billing mirror and checkouts go (Stripe keeps the customer,
     // the invoices and the payments); a checkout still OPEN was expired at Stripe in step 1.

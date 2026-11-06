@@ -334,6 +334,33 @@ describe("Q60: an upload with no thread is PENDING — bound on send, swept afte
     expect(await holderOf(ME)).toBeNull();
   });
 
+  it("a file uploaded INTO a conversation and never sent goes too, past 24 h; a sent one stays (the same sweep)", async () => {
+    const cookie = await cookieFor(ME);
+    const tid = await threadOf(cookie);
+    const [unsent, sent] = (await upload(cookie, [{ name: "unsent.png", bytes: png(90) }, { name: "sent.png", bytes: png(100) }], tid)).json.attachments;
+    await withAsk({ fetchImpl: fakeModel([answer("Seen.")]).fetchImpl }, () => ask(cookie, { threadId: tid, text: "look", attachments: [sent.id] }));
+    await run(env.DB, `UPDATE chat_artifacts SET created_at = '2026-01-01T00:00:00.000Z' WHERE id IN (?, ?)`, unsent.id, sent.id);
+    const out = await sweepPendingAskAttachments(platformCtx(), env.ARTIFACTS_BUCKET, Date.parse("2026-01-03T00:00:00.000Z"));
+    expect(out).toMatchObject({ deleted: 1 });
+    expect(await pageBySlug(unsent.slug)).toBeNull();
+    expect(await first(env.DB, `SELECT id FROM chat_artifacts WHERE id = ?`, unsent.id)).toBeNull();
+    expect(await pageBySlug(sent.slug)).not.toBeNull();
+    expect((await first<{ message_id: number | null }>(env.DB, `SELECT message_id FROM chat_artifacts WHERE id = ?`, sent.id))!.message_id).not.toBeNull();
+  });
+
+  it("an upload's artifact and its link to the thread land in ONE batch: a link that cannot be written leaves no private artifact behind", async () => {
+    const cookie = await cookieFor(ME);
+    const tid = await threadOf(cookie);
+    const before = (await all(env.DB, `SELECT id FROM artifact_pages WHERE org_id = ?`, ORG_A)).length;
+    await env.DB.prepare(`CREATE TRIGGER t_no_link BEFORE INSERT ON chat_artifacts BEGIN SELECT RAISE(ABORT, 'no link'); END`).run();
+    try {
+      expect((await upload(cookie, [{ name: "orphan.png", bytes: png(110) }], tid)).status).not.toBe(200);
+    } finally {
+      await env.DB.prepare(`DROP TRIGGER IF EXISTS t_no_link`).run();
+    }
+    expect((await all(env.DB, `SELECT id FROM artifact_pages WHERE org_id = ?`, ORG_A)).length).toBe(before);
+  });
+
   it("deleting the account deletes the pending files and the holder (invariant 11)", async () => {
     const cookie = await cookieFor("q60-gone");
     const [p] = (await upload(cookie, [{ name: "p.png", bytes: png(80) }])).json.attachments;

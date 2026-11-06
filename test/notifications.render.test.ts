@@ -11,7 +11,7 @@ import { ingestEvent, ingestDocProposal, ingestAdrDraft } from "../src/consumer"
 import { promote_doc } from "../src/tools/writes";
 import { storePrSummary, type Summarizer, type PrSummary } from "../src/tools/summarize";
 import { create_ticket } from "../src/tools/tickets";
-import { create_sprint, set_sprint_active } from "../src/tools/sprints";
+import { create_sprint, get_sprint, set_sprint_active } from "../src/tools/sprints";
 import { storeBrief } from "../src/data/person-brief";
 import { getKind } from "../src/notifications/registry";
 import { needsMe } from "../src/notifications/renderers/my-work";
@@ -307,7 +307,7 @@ describe("roadmap_plan renderer: the Sprint line", () => {
     expect(await kind().render(systemCtx(), LOGIN, WINDOW)).toBeNull();
   });
 
-  it("'Sprint: Hosting, due Mon, 2 of 3 done' — declined tickets do not count; the person's sprint before another", async () => {
+  it("'Sprint: Hosting, due Mon, 3 of 4 done' — the Roadmap's one progress rule (done or declined, over every ticket); the person's sprint before another", async () => {
     const other = await create_sprint(systemCtx(), SprintCreate.parse({ label: "Other", due: "2026-09-12" }), LOGIN);
     await set_sprint_active(systemCtx(), other.id, true);
     const s = await create_sprint(systemCtx(), SprintCreate.parse({ label: "Hosting", due: "2026-09-14" }), LOGIN);
@@ -319,7 +319,9 @@ describe("roadmap_plan renderer: the Sprint line", () => {
     const before = await tableCounts();
     const line = (await kind().render(systemCtx(), LOGIN, WINDOW))!;
     expect(await tableCounts()).toEqual(before);
-    expect(line.text).toBe("Sprint: Hosting, due Mon, 2 of 3 done");
+    expect(line.text).toBe("Sprint: Hosting, due Mon, 3 of 4 done");
+    // The same numbers the sprint card reads (`sprintProgress`): the mail and the Roadmap never disagree.
+    expect((await get_sprint(systemCtx(), s.id))!.progress).toMatchObject({ closed: 3, total: 4 });
     // Someone with nothing in either gets the org's sprint due soonest; a sprint with no tickets has no count.
     expect((await kind().render(systemCtx(), "Darkest-Teddy", WINDOW))!.text).toBe("Sprint: Other, due Sat");
   });
