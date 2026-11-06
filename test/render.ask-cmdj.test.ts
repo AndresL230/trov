@@ -371,6 +371,20 @@ describe("Open as thread while the answer is still coming — the stream moves w
     expect(app.ask.panel).toMatchObject({ messages: [], busy: false, threadId: null });
   });
 
+  it("a signed-out answer ends its turn (no cursor left live) before the sign-in", async () => {
+    const { Unauthorized } = await import("../web/src/api");
+    askResponse = () => { throw new Unauthorized(); };
+    const app = ticketState();
+    let signedOut = 0;
+    const ctl = createAskController({ state: app, mount: { querySelector: () => null, querySelectorAll: () => [] } as unknown as HTMLElement, rerender: () => undefined, flash: () => undefined, unauth: () => { signedOut++; }, search: () => "" });
+    openPanel(ctl.ctx);
+    ctl.ctx.send({ text: ASK_SCENARIO_QUESTION.cmdj!.text, where: "panel", context: app.ask.composer.panel.context });
+    await vi.waitFor(() => expect(app.ask.panel.busy).toBe(false));
+    expect(signedOut).toBe(1);
+    const a = app.ask.panel.messages.at(-1)!;
+    expect(a.role === "assistant" && a.turn.stopped).toBe(true);
+  });
+
   it("Stop on the page stops it", async () => {
     const held = heldStream();
     const app = ticketState();
