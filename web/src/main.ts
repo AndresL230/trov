@@ -121,7 +121,7 @@ import { createOrgsController } from "./org-picker-actions";
 import { createSupport } from "./support-actions";
 import { createDeletion, DELETED_PARAM, DELETED_SENTENCE } from "./deletion-actions";
 import { LATEST_RELEASE } from "./release-latest";
-import { releasesLoaded, releasesFailed, loadReleases } from "./releases-lazy";
+import { releasesChunk } from "./releases-lazy";
 import { createWelcomeController, parseWelcomeReturn, welcomeReturnHash, WELCOME_RETURN_KEY } from "./welcome-actions";
 import { FIRST_RUN_KEY, effectiveWelcomeStep, welcomeStepsFor } from "./welcome";
 import { currentOrg, isOrgTab } from "./org-core";
@@ -405,7 +405,10 @@ const orgsCtl = createOrgsController({
   // A first run: the picker has held no org's data, so the org just created or joined is entered in
   // place and the card morphs into the guided setup — no page load, no flash of a blank page.
   enterNew: (org, hash) => {
+    if (enteringNew === org.slug) return true;   // a second click while the first is still morphing in: already on its way
     if (state.view !== "orgs" || enteredAnOrg || !state.me) return false;
+    // Taken NOW, not inside the morph (whose callback runs later, transition.ts): a second click meanwhile is not a second entry.
+    enteredAnOrg = true; enteringNew = org.slug;
     if (!state.me.orgs.some((o) => o.slug === org.slug)) state.me.orgs = [...state.me.orgs, org];
     if (state.myOrgs.data && !state.myOrgs.data.orgs.some((o) => o.slug === org.slug)) state.myOrgs.data = { ...state.myOrgs.data, orgs: [...state.myOrgs.data.orgs, org] };
     morphStep(() => { state.orgsUi = initialOrgsUi(); enterOrg(org.slug, hash); rerender(); });
@@ -620,12 +623,6 @@ function withChunk<M>(chunk: LazyChunk<M>, fn?: (m: M) => void): void {
   );
 }
 
-let releasesWanted = false;
-function wantReleases(): void {
-  if (releasesWanted) return;
-  releasesWanted = true;
-  loadReleases().catch(() => undefined).finally(() => { releasesWanted = false; rerenderSoon(); });
-}
 
 /** The paint itself — reached only through the paint queue (`rerender`, `rerenderSoon`, `batchRender`). */
 function paintApp(): void {
@@ -643,7 +640,7 @@ function paintApp(): void {
   }
   // Help › What's new renders from its own chunk (releases-lazy.ts): a paint on the screen without
   // it draws the skeleton and starts the load, and its arrival paints again.
-  if (state.view === "app" && state.screen === "releases" && !releasesLoaded() && !releasesFailed()) wantReleases();
+  if (state.view === "app" && state.screen === "releases") withChunk(releasesChunk);
   // The landing is its own chunk in the app (the signed-out page `/` boots it alone, landing-page.ts):
   // a signed-out paint, or the landing reopened by the sidebar logo, starts the load.
   if (state.view === "auth" ? state.authStep === "login" : state.view === "app" && state.screen === "site") withChunk(landingChunk);
@@ -1312,6 +1309,8 @@ function enterPlatform(hash: string): void {
  *  `/<slug>/` with the hash route after it, and this browser remembers it as last used. */
 /** This page has entered an org (so it holds that org's data): a second one is opened by a page load. */
 let enteredAnOrg = false;
+/** The org a first run is entering in place (orgsCtl `enterNew`), while its morph has not yet run. */
+let enteringNew: string | null = null;
 /** Batched: the boot starts a dozen and a half reads here, and their "loading" paints are ONE paint,
  *  made before this returns (each read's landing is a `rerenderSoon`). */
 function enterOrg(slug: string, hash: string): void {
@@ -5451,7 +5450,9 @@ pointerDrag<BoardPress>(mount, {
     if (!p.ghost || !slot) { clearBoardDrag(p); done(); return; }
     const to = (slot.closest<HTMLElement>("[data-tdrop]")?.dataset.tdrop ?? p.from) as TicketStatus;
     const after = prevLive(slot);
-    const unmoved = to === p.from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext;
+    // Dropped where it started — or lifted from a board that is no longer the one on screen (paints are held from the
+    // press, pointer-drag.ts, so this is a guard): nothing to send.
+    const unmoved = (to === p.from && slot.parentElement === p.homeList && nextLive(slot) === p.homeNext) || !p.card.isConnected || !p.homeList?.isConnected;
     const finish = () => {
       clearBoardDrag(p);
       done();

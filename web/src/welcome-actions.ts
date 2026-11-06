@@ -134,11 +134,13 @@ export function createWelcomeController(h: WelcomeHost): WelcomeController {
 
   function show(to: WelcomeStep): void {
     // One step into the next as a morph (transition.ts), not a snap.
-    morphStep(() => { state.welcome.step = to; state.welcome.byHand = false; h.rerender(); });
+    // With a transition the step changes LATER (transition.ts): what reads the new step waits for it.
+    void morphStep(() => { state.welcome.step = to; state.welcome.byHand = false; h.rerender(); }).then(() => {
+      // The step's heading takes focus: a keyboard or screen-reader user is at the top of the new step.
+      mount.querySelector<HTMLElement>("#wel-t")?.focus({ preventScroll: true });
+      if (step() === "agent") recheck();
+    });
     window.scrollTo(0, 0);
-    // The step's heading takes focus: a keyboard or screen-reader user is at the top of the new step.
-    mount.querySelector<HTMLElement>("#wel-t")?.focus({ preventScroll: true });
-    if (step() === "agent") recheck();
   }
 
   function enter(): void {
