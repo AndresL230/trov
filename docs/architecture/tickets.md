@@ -52,7 +52,9 @@ HELD for the whole drag, and the click a drag's release fires is swallowed. Mous
 scrolls. A card is a `hitArea` container (its `openTicket` button holds the `data-arg`), so the drag reads a card's id
 from its own `data-tdrag` — the lifted card's and the `after_id` neighbour's alike — through ONE reader,
 `web/src/board-drop.ts` (a drop that read `data-arg` sent `after_id: null` and landed every card at the top,
-Z17; `test/render.tickets.test.ts` › board drop).
+Z17; `test/render.tickets.test.ts` › board drop). A drop lands at once and bumps `loadTickets`' seq (a read already
+out would put the card back); the queue is read again once the LAST drop in flight settles (`boardDropsOut`), so two
+quick drops never see the first one's refetch snap the second card back before its write lands.
 
 **The default view hides declined** (owner's ruling, 2026-10-15). The queue opens on **All** (`qSeg: "all"`, the
 board), and All is every status BUT `declined`: `SEG_STATUSES` in `web/src/tickets.ts` is both what a segment shows

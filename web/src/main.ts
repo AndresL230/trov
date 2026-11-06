@@ -2441,6 +2441,8 @@ function loadIdentityTasks(): void {
 // refetch it too (never locally patch a row — the server is the shape of truth),
 // hence the seq guard: a slow earlier response must not overwrite a fresher one.
 let ticketsSeq = 0;
+/** Board drops whose write is still out (`queueDrop`): the queue is read again once the last one settles. */
+let boardDropsOut = 0;
 /** The queue has landed at least once this session. */
 let ticketsLanded = false;
 function loadTickets(): void {
@@ -3834,10 +3836,16 @@ function dispatch(act: string, arg: string | null, value: string | null, caret: 
         data: state.tickets.data.map((r) =>
           r.id === id ? { ...r, status: next, board_rank: rank } : renumber?.has(r.id) ? { ...r, board_rank: renumber.get(r.id) as number } : r),
       };
+      // A read already out was asked before this move: it would put the card back (`loadTickets`' seq drops it). The
+      // refetch waits for the LAST drop in flight — one after an earlier drop's write could land before a later
+      // drop's write and snap that card back.
+      ticketsSeq++;
+      boardDropsOut++;
       rerender();
+      const settle = (): void => { if (--boardDropsOut === 0) { loadTickets(); loadTicketBadge(); } };
       moveTicket(id, next, afterId)
-        .then(() => { loadTickets(); loadTicketBadge(); if (next !== t.status) flash(`#${id} moved to ${TICKET_STATUS_LABEL[next]}`); })
-        .catch((e) => { ticketErr(e); loadTickets(); });
+        .then(() => { settle(); if (next !== t.status) flash(`#${id} moved to ${TICKET_STATUS_LABEL[next]}`); })
+        .catch((e) => { ticketErr(e); settle(); });
       return;
     }
     case "queueTable": state.qView = "table"; break;
