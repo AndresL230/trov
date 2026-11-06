@@ -52,8 +52,26 @@ export async function writeRelease(ctx: TenantContext, w: ReleaseWrite): Promise
     ctx.orgId, w.repo, w.tag, w.name, w.publishedAt, w.author, w.notes, w.prerelease ? 1 : 0, w.sha, w.source, w.hash, nowIso());
 }
 
-/** A release that is no more (deleted, or unpublished back to a draft). A bare tag row is not touched. */
-export async function removeRelease(ctx: TenantContext, repo: string, tag: string): Promise<boolean> {
-  const res = await run(ctx, `DELETE FROM releases WHERE org_id = ? AND repo = ? AND tag = ? AND source = 'release'`, ctx.orgId, repo, tag);
-  return (res.meta.changes ?? 0) > 0;
+/**
+ * A release that is no more (deleted, or unpublished back to a draft). The row is NOT deleted: it stays as a
+ * TOMBSTONE (`is_draft = 1` — every read skips it), so a `published` / `edited` delivery of that same release that
+ * arrives late (its `published_at` no later than the tombstone's) cannot bring it back (`ingestRepoRelease`). A
+ * release published again later carries a newer `published_at` and replaces it. `publishedAt` is the removed
+ * release's own: a removal of an OLDER publication of the tag (a stale delete after the tag was released again) does
+ * not touch a newer one, and a removal delivered before its release was captured leaves a tombstone of its own. A
+ * bare tag row is not touched. True when a live release was removed.
+ */
+export async function removeRelease(ctx: TenantContext, repo: string, tag: string, publishedAt: string | null = null): Promise<boolean> {
+  const res = await run(ctx,
+    `UPDATE releases SET is_draft = 1, captured_at = ?
+      WHERE org_id = ? AND repo = ? AND tag = ? AND source = 'release' AND is_draft = 0 AND (? IS NULL OR published_at <= ?)`,
+    nowIso(), ctx.orgId, repo, tag, publishedAt, publishedAt);
+  if ((res.meta.changes ?? 0) > 0) return true;
+  if (publishedAt) {
+    await run(ctx,
+      `INSERT OR IGNORE INTO releases (org_id, repo, tag, name, published_at, author, notes, is_prerelease, is_draft, sha, source, content_hash, captured_at)
+       VALUES (?, ?, ?, NULL, ?, NULL, NULL, 0, 1, NULL, 'release', '', ?)`,
+      ctx.orgId, repo, tag, publishedAt, nowIso());
+  }
+  return false;
 }

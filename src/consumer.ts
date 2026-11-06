@@ -430,15 +430,20 @@ export async function ingestRepoEvent(ctx: TenantContext, ev: RepoEvent): Promis
  *     release names none.
  *   - `tag` writes only where no RELEASE holds the tag (a release is never downgraded); over a tag row it
  *     refreshes the date / sha when the source said something new.
- *   - `remove` deletes a release row; a bare tag row is left alone.
+ *   - `remove` turns a release row into a TOMBSTONE (src/repo/release-store.ts `removeRelease`); a bare tag row is
+ *     left alone. An `upsert` no newer than a tombstone is the removed release delivered late, and writes nothing —
+ *     a release does not come back from a late `published` / `edited` after its `deleted`.
  * Without a tag, or an `upsert` / `tag` without GitHub's own instant, nothing is written (never guessed).
  */
 export async function ingestRepoRelease(ctx: TenantContext, ev: ReleaseCapture): Promise<{ outcome: "written" | "unchanged" }> {
   if (!ev.repo || !ev.tag) return { outcome: "unchanged" };
-  if (ev.op === "remove") return { outcome: (await removeRelease(ctx, ev.repo, ev.tag)) ? "written" : "unchanged" };
+  if (ev.op === "remove") return { outcome: (await removeRelease(ctx, ev.repo, ev.tag, ev.publishedAt ?? null)) ? "written" : "unchanged" };
   if (!ev.publishedAt) return { outcome: "unchanged" };
   const existing = await releaseRow(ctx, ev.repo, ev.tag);
   if (ev.op === "tag" && existing?.source === "release") return { outcome: "unchanged" };
+  // A removed release's tombstone (`is_draft = 1`): a publication no newer than it is the removed one, delivered late
+  // — it does not come back. A later publication of the tag is a new release and replaces the tombstone.
+  if (existing?.source === "release" && existing.is_draft === 1 && ev.publishedAt <= existing.published_at) return { outcome: "unchanged" };
   const settled = {
     repo: ev.repo, tag: ev.tag, name: ev.name ?? null, publishedAt: ev.publishedAt, author: ev.author ?? null,
     notes: ev.notes ? ev.notes.slice(0, RELEASE_NOTES_MAX) : null, prerelease: ev.prerelease === true,

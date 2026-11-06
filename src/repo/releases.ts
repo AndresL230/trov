@@ -71,7 +71,7 @@ export function releaseEventsFromDelivery(eventName: string, payload: unknown, r
     const rel = obj(p.release);
     const tag = str(rel?.tag_name);
     if (!action || !rel || !tag) return [];
-    if (REMOVE_ACTIONS.includes(action)) return [{ op: "remove", repo, tag, provenance: "webhook" }];
+    if (REMOVE_ACTIONS.includes(action)) return [{ op: "remove", repo, tag, publishedAt: str(rel.published_at) ?? undefined, provenance: "webhook" }];
     if (!UPSERT_ACTIONS.includes(action)) return [];
     const c = releaseCapture(repo, rel, "webhook");
     return c ? [c] : [];
@@ -112,8 +112,11 @@ export function releaseNotesText(body: string | null): string | null {
 /** The worst case of `reconcileReleases`: the releases list, and the tags query when there are no releases.
  *  `reconcileCost` / `refreshSubrequests` (src/repo/cron.ts) count it. */
 export const RELEASES_RECONCILE_COST = 2;
-/** One page of each — enough for the cadence (≤ 9) and the week figure (the last 14 days). */
+/** One page of tags — enough for the cadence (≤ 9) and the week figure (the last 14 days). */
 const PAGE = 30;
+/** One page of releases, as large as GitHub gives: a list shorter than it is the WHOLE history, which is what lets the
+ *  arm remove a release deleted while the webhook was not listening — so it should cover as many as one request can. */
+const RELEASES_PAGE = 100;
 /** `repo_snapshots` kind: written once the arm has read the repository's list — what makes "0 releases this
  *  week" a fact rather than "not read yet". `{ repo }`. */
 export const RELEASES_RECONCILED = "releases_reconciled";
@@ -152,7 +155,7 @@ export function tagCapture(repo: string, node: { name?: string | null; target?: 
 
 /**
  * Reconcile's `releases` arm: the backfill and the self-heal of `releases`, idempotent (every row goes through
- * the gate's content hash). `GET /releases?per_page=30` — drafts skipped; a list SHORTER than the page is the
+ * the gate's content hash). `GET /releases?per_page=100` — drafts skipped; a list SHORTER than the page is the
  * whole history, so a captured release no longer in it is removed (deleted while the webhook was not
  * subscribed). Only when the repository has NO published release: one GraphQL page of tags. Writes the
  * `releases_reconciled` marker after a successful read. THROWS on a failed read — the caller's `safely`
@@ -164,15 +167,16 @@ export async function reconcileReleases(ctx: TenantContext, opts: GhOpts, now: n
     if (!c) return;
     if ((await ingestRepoRelease(ctx, c)).outcome === "written") out.written++; else out.unchanged++;
   };
-  const list = await ghJson<unknown[]>(opts, `/releases?per_page=${PAGE}`);
+  const list = await ghJson<unknown[]>(opts, `/releases?per_page=${RELEASES_PAGE}`);
   const items = Array.isArray(list) ? list : [];
   const published = items.map((r) => releaseCapture(opts.repo, r, "backfill")).filter((c): c is ReleaseCapture => c !== null);
   if (published.length) {
     for (const c of published) await take(c);
-    if (items.length < PAGE) {
+    if (items.length < RELEASES_PAGE) {
       const listed = new Set(published.map((c) => c.tag));
-      const held = await all<{ tag: string }>(ctx, `SELECT tag FROM releases WHERE org_id = ? AND repo = ? AND source = 'release'`, ctx.orgId, opts.repo);
-      for (const r of held) if (!listed.has(r.tag)) await take({ op: "remove", repo: opts.repo, tag: r.tag, provenance: "backfill" });
+      const held = await all<{ tag: string; published_at: string }>(ctx,
+        `SELECT tag, published_at FROM releases WHERE org_id = ? AND repo = ? AND source = 'release' AND is_draft = 0`, ctx.orgId, opts.repo);
+      for (const r of held) if (!listed.has(r.tag)) await take({ op: "remove", repo: opts.repo, tag: r.tag, publishedAt: r.published_at, provenance: "backfill" });
     }
   } else {
     const [owner, name] = opts.repo.split("/");
@@ -355,13 +359,13 @@ async function releaseFacts(
  *  (`RepoAppsSetupDTO.tags`, which takes `count` and `latest`). D1 only. `null` when nothing is held AND reconcile
  *  has not read this repository's list yet (`releases_reconciled`) — "not read yet" is never "no tags". */
 export async function readTags(ctx: TenantContext, repo: string): Promise<FactsUnseen["tags"]> {
-  const count = (await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM releases WHERE org_id = ? AND repo = ?`, ctx.orgId, repo))?.n ?? 0;
+  const count = (await first<{ n: number }>(ctx, `SELECT COUNT(*) AS n FROM releases WHERE org_id = ? AND repo = ? AND is_draft = 0`, ctx.orgId, repo))?.n ?? 0;
   if (count === 0) {
     const marker = await getSnapshot<{ repo?: unknown }>(ctx, RELEASES_RECONCILED);
     if (!(typeof marker?.data?.repo === "string" && marker.data.repo.toLowerCase() === repo.toLowerCase())) return null;
   }
   const recent = await all<{ tag: string; published_at: string; author: string | null }>(ctx,
-    `SELECT tag, published_at, author FROM releases WHERE org_id = ? AND repo = ? ORDER BY published_at DESC, tag DESC LIMIT 4`, ctx.orgId, repo);
+    `SELECT tag, published_at, author FROM releases WHERE org_id = ? AND repo = ? AND is_draft = 0 ORDER BY published_at DESC, tag DESC LIMIT 4`, ctx.orgId, repo);
   const handle = await handlesOf(ctx, recent.map((r) => r.author));
   const list = recent.map((r) => ({ tag: r.tag, at: r.published_at, by: handle(r.author) }));
   return { count, latest: list[0] ?? null, recent: list };
