@@ -98,7 +98,8 @@ deployment's).
 part whose deploys come from GITHUB — an app deployed by Actions (scenario H), or a host Trov has no credential for
 yet. `credential: "github_app"` (it uses the org's GitHub connection; anything it ever reads goes through
 `resolveGithubCredential`), no connection method, no card, checklist step or Integrations slot, `via_github: true`
-on the DTO, always live in `hostingStatus`, `capabilities: { deploys: true, metrics: [] }` (every metric of the
+on the DTO, as connected in `hostingStatus` as the org's GitHub capture (`githubLinkOf`: the App binding or a
+repository's own webhook; Removed once the App is uninstalled), `capabilities: { deploys: true, metrics: [] }` (every metric of the
 role is "not available" — `NO_GITHUB_METRICS`), `pollCost` 0, and its `poll` is never run. Part settings — EXACTLY
 one of (`checkSettings`, enforced on the part write): `environment` (a deployment environment, exactly as GitHub
 names it), `check_app` + `check_name` (a check run: the posting App's slug and the check's name), `workflow`
@@ -137,8 +138,9 @@ D1 only: no GitHub request, so no rollback compare and `reconcileRequests` is un
   from the Workers Builds API instead (`builds?version_ids=`, one more fetch; refused without Workers CI Read on a
   USER token → the poll state's note "commit: the token needs Workers CI Read" and the join takes over). Fly.io, and
   Railway when `meta` lacks `commitHash`, rely on the join.
-- `rolled_back_from` — `src/hosting/rollback.ts`: when a write creates or changes a part's NEWEST non-preview
-  `ready` deploy and its sha differs from the previous ready one's, ONE GitHub compare (previous...new) — through
+- `rolled_back_from` — `src/hosting/rollback.ts`: when a write MAKES a part's NEWEST non-preview deploy `ready` (or
+  gives the ready one a new commit — `readyChanged`, so a redelivered or re-reported ready deploy runs nothing) and
+  its sha differs from the previous ready one's, ONE GitHub compare (previous...new) — through
   `resolveGithubCredential` on the poll path, the webhook's token on the capture path, never on a read. `behind` →
   the previous sha; `ahead` / `identical` / `diverged`, a failed compare or no credential → nothing. No request for
   a preview, the first ready deploy, the same sha or a deploy with no sha. Budgeted as `ROLLBACK_COMPARE_COST` (1)
@@ -316,8 +318,9 @@ own module and `trov.css` section, wrapped in `data-repo-block="<name>"`, worded
 `""` when its facts are absent.
 
 - **The verdict** — ONE function, `envVerdict(f, env)` (`web/src/repo-verdict.ts`, the design's `verdictFor`),
-  read by the header's pills and every block: every part unknown (no serving, latest or history) → Unknown; a fresh
-  health reading down → Down; a newest production deploy failed → Failing; out of step → Out of step; checks fail on
+  read by the header's pills and every block, RANKED by `shared/env-verdict-core.ts` `envVerdictKey` — the same
+  ranking the dashboard's served `RepoEnv.pill` uses (My Work's Deploys tile, MCP), so they cannot disagree: a fresh
+  health reading down → Down (the headline, first); every part unknown (no serving, latest or history) → Unknown; a newest production deploy failed → Failing; out of step → Out of step; checks fail on
   the branch head → Degraded; **checks PASS on the branch head → Healthy; otherwise Live** — no checks captured, or
   still running, is never Healthy. Marks are marks.ts kinds with the design's shape and tone (`VERDICT`). `ciLine(ci)`
   is the one wording of a head's checks ("All 14 checks passing on 3e9a1f2", "2 of 9 checks failing on e07b3a2",
@@ -448,12 +451,15 @@ parts `[{ env, provider, settings }]`, `used_by`, `state` pending / accepted / i
   and crons are kept — and Accept puts it in the first environment there is by then (none: the app alone).
 - **Lifecycle** (`src/repo/scan-store.ts`, routes `src/repo/scan-routes.ts`: admin, cookie only, `/api/o/:slug`,
   repository checked against `org_repos`): a scan upserts pending rows, never touches an accepted one, keeps an
-  ignored one ignored, deletes what it no longer finds. **Scan again** `POST /repos/:o/:n/scan` (`runScanNow`:
+  ignored one ignored, deletes what it no longer finds — and its write moves a row's state only from the state it
+  READ (a compare in the upsert; the delete skips accepted rows), so an accept or ignore made while it ran stands. **Scan again** `POST /repos/:o/:n/scan` (`runScanNow`:
   forced past the guard, ignored ones back to pending; no GitHub credential → `ok: false` with the reason).
   **Accept** `POST …/suggestions/:id/accept` → `{ undo, app, parts }`: the app (`putRepoApp`, source `suggested`,
   audited `app.set`) and its parts (`putPart`, audited `part.set`, the provider's own keys only) as that admin —
   each writer its own batch; a refused part rolls the accept back (audited); 409 `key_taken` when the key already
-  names an app or part. **Ignore** `…/ignore` → `{ undo }`. **Undo** `POST …/suggestions/undo { undo }` within
+  names an app or part. **Ignore** `…/ignore` → `{ undo }`. Both CLAIM the decision first — a compare-and-set on the
+  state they read — so of two decisions at once one wins and the other is 409 (`already_accepted`, or `changed`)
+  before it writes anything; a failed accept releases its claim; Undo is guarded on the decision its token names. **Undo** `POST …/suggestions/undo { undo }` within
   `UNDO_WINDOW_MS` (10 minutes) removes what the accept wrote or lifts the ignore. **A suggestion changes nothing on
   the Repo screen but the found-apps card until accepted.**
 - **The read side** (`src/repo/scan-reads.ts`, secret-free, MCP-reachable — it must never import `scan-store.ts`,
@@ -563,8 +569,8 @@ a GitHub LOGIN — not a handle column, mapped to a person on read; `notes` ≤ 
   `ingestRepoRelease` (`src/consumer.ts`: identity `(org, repo, tag)`, content-hash dedupe; a tag never downgrades a
   release; a release over a tag row keeps the tag's sha) — `ingestion-gate.md`.
 - **Reconcile's `releases` arm** (`reconcileReleases`, ≤ **`RELEASES_RECONCILE_COST` = 2**): ONE `GET
-  /releases?per_page=30` (drafts skipped; a list shorter than the page is the whole history, so a captured release
-  no longer in it is removed) and, ONLY when the repository has no published release, ONE GraphQL page of its 30
+  /releases?per_page=100` (drafts skipped; a list shorter than the page is the whole history, so a captured release
+  no longer in it is removed — a tombstone, `ingestion-gate.md`; a late delivery cannot bring it back) and, ONLY when the repository has no published release, ONE GraphQL page of its 30
   newest tags (`refs(refPrefix:"refs/tags/", orderBy: TAG_COMMIT_DATE)`; an annotated tag dated by its tagger, a
   lightweight one by its commit). Every row through the gate's release arm; a successful read writes the
   `releases_reconciled` snapshot (`{ repo }`).

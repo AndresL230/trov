@@ -13,7 +13,9 @@ SaplingLearn runs on them until it installs the App, and a self-hosted Trov may 
 
 `org_github_installations` — the binding of a GitHub installation to a Trov org: the installation id, the
 account it is on (login, numeric id, `User` / `Organization`), `all` / `selected` repositories, who
-connected it and when, `suspended_at`, `removed_at` + `removed_reason`, `last_used_at`, `last_error`.
+connected it and when, `suspended_at`, `removed_at` + `removed_reason`, `last_used_at`, `last_error`, and
+(0091) `suspension_at` — when the suspend / unsuspend the row reflects HAPPENED — and `repos_changed_at` — an
+`installation_repositories` event applied that no complete repository list has confirmed yet.
 A row is never deleted; ending a binding sets `removed_at`.
 
 - **An org has at most one live installation** — a partial unique index (`WHERE removed_at IS NULL`). One
@@ -31,7 +33,9 @@ A row is never deleted; ending a binding sets `removed_at`.
   `org_github_installation_repos` (GitHub's id, the name, private or not) — the ones that admin could
   read. The list is emptied when the binding ends.
 - `org_repos.connection` is `app` for a repository the org reaches through the installation and `manual`
-  otherwise; `org_repos.access_lost_at` marks an `app` repository the installation stopped seeing.
+  otherwise; `org_repos.access_lost_at` marks an `app` repository the installation stopped seeing — and the
+  resolver honors it: no token is minted for a repository marked lost (the stored token answers, as for a
+  repository outside the binding).
 - **A repository may be tracked by several orgs**, through the App or by hand. Nothing in the database
   limits it to one.
 
@@ -299,8 +303,13 @@ before the per-repo hook's path).
 2. `installation.id` → the orgs with a LIVE binding of it (`installationOrgs`). Unknown installation,
    or none in the payload → `202 ignored`, no rows.
 3. `installation` — `deleted` ends the binding (`uninstalled`), `suspend` / `unsuspend` mark it,
-   `new_permissions_accepted` is recorded; `created` binds nothing. `installation_repositories` —
-   `added` / `removed` re-mark the org's repositories and update the selection. These are about the
+   `new_permissions_accepted` is recorded; `created` binds nothing. A suspend / unsuspend is ORDERED by its own
+   time (`suspensionTime`: the delivery's `installation.suspended_at` for a suspend, else its `updated_at`, ISO or
+   epoch seconds): `setInstallationSuspended` compares it with `suspension_at` and a change older than the one the
+   row reflects is a late delivery and changes nothing (a newer time is still recorded; a state Trov reads from
+   GitHub — Test connection, a refused mint, the cron's recheck — is stamped now). `installation_repositories` —
+   `added` / `removed` re-mark the org's repositories and update the selection. These deliveries carry no time to
+   order them by, so each also flags the binding (`repos_changed_at`) for the next complete list to settle. These are about the
    installation itself, so they are applied to EVERY org bound to it, oldest binding first, each as its
    own system tenant. All audited with the actor `github-webhook`.
 4. Any other event is a repository's, routed by the REPOSITORY (`installationRepoOrgs`) to EVERY org
@@ -328,8 +337,15 @@ suspend, a repository removed) reaches every org bound to the installation, each
 |---|---|---|---|
 | **Disconnect** (an admin, in Trov) | ended, `disconnected` | stay connected, back to `manual` | the stored token, if any. The App stays installed on GitHub |
 | **Uninstalled on GitHub** (webhook, or a 404 at the next token) | ended, `uninstalled` / `not_found` | same | same; Org settings says "GitHub is no longer connected" until reconnected |
-| **Suspended on GitHub** | live, `suspended_at` set | unchanged | the stored token, if any; a banner; Test connection re-reads the state from GitHub and lifts it |
-| **A repository removed from the App's selection** | unchanged | that one gets `access_lost_at` | reads of it fail until access is restored |
+| **Suspended on GitHub** | live, `suspended_at` set | unchanged | the stored token, if any; a banner; Test connection re-reads the state from GitHub and lifts it — and so does the cron's reconcile unit (below), so a lost unsuspend heals without an admin |
+| **A repository removed from the App's selection** | unchanged | that one gets `access_lost_at` | the stored token, if any (no mint for it) until access is restored |
+
+**The recheck** (`repos.ts` `recheckInstallation`, run by the cron's 6-hourly reconcile unit for each org before it
+reads — `src/repo/cron.ts` `runOrgJob`; at most `INSTALLATION_RECHECK_COST` requests, counted in `reconcileCost`):
+a SUSPENDED binding is asked about again (`GET /app/installations/:id`) and takes GitHub's answer (GitHub no longer
+knowing it ends the binding, `not_found`); a binding flagged `repos_changed_at` re-reads its complete repository
+list (`visibleRepos`, refresh), which re-marks every repository whatever order the events came in, and clears the
+flag only if no event moved it meanwhile. TOTAL; a live binding with nothing flagged costs nothing.
 
 ## Permissions ↔ endpoints
 

@@ -255,7 +255,7 @@ belongs to) through `src/platform/jobs.ts`, then does its work as that org's `sy
 | `POST /webhook/hosting/:provider` (`src/hosting/webhook.ts`) | `connectionsForExternalId(p, provider, id)` after the provider's signature is verified | `systemTenant(p, org, "system")` per org — `systemRevocationDeleteStmts` deletes the secret |
 | `GET /hosting/:provider/callback` (`src/hosting/connections.ts`) | the HMAC-sealed intent in the `trov_hx` cookie, then a LIVE membership check of the signed-in admin (`resolveTenantById`) | that admin's own session tenant — a public path that reads the session cookie itself, with no tenant gate in front of it |
 | Test connection's 401 on an install / OAuth credential (`src/integrations/probe.ts` → `endRefusedConnection`) | the admin's session tenant | `jobTenant(env, ctx)` — `systemRevocationDeleteStmts` deletes the secret |
-| the `doc_links` backfill `backfillDocLinks` (`src/platform/doc-links-backfill.ts`, from the daily cron) | `listActiveOrgIds`, resumed on `cron_cursor` job `doc_links_backfill` (`<org>\t<slug>`; `\u0001done` once every org was read — then it reads nothing) | `systemTenant(p, org, "system")` per org; at most 300 pages read (and 60 queries) per invocation (`docs-library.md` › Links) |
+| the `doc_links` backfill `backfillDocLinks` (`src/platform/doc-links-backfill.ts`, from the daily cron — the DAILY trigger only, never the weekly one that fires beside it on Sunday and Monday, so it never runs twice at once) | `listActiveOrgIds`, resumed on `cron_cursor` job `doc_links_backfill` (`<org>\t<slug>`; `\u0001done` once every org was read — then it reads nothing) | `systemTenant(p, org, "system")` per org; at most 300 pages read (and 60 queries) per invocation (`docs-library.md` › Links) |
 | Poll now / Poll usage / Sync GitHub (`runLockedRepoRefresh`, `runUsagePolls`, `runBackfill`, `runReconcileJob`) | the caller's `ctx` | `jobTenant(env, ctx)` — that org's system tenant; a bearer context is refused |
 
 **The rotation dispatcher** (`src/repo/dispatch.ts`). The repo trigger keeps its cadence — `health` every
@@ -265,8 +265,10 @@ sweeps at `:30` — and each cadence is a JOB over UNITS: one per (org, environm
 `reconcile` (key `<org>`). One invocation serves units in order, starting after `cron_cursor.last_key` for
 that job, while the unit's worst-case cost still fits `CRON_SUBREQUEST_BUDGET` (900 fetches; what a unit
 really spent is counted through the budget's own `fetch`) and `CRON_WALL_BUDGET_MS` (8 min) is not spent;
-then it stores the last key served (`''` once every unit was served — so with few orgs the cursor is never
-written). `health` goes first and may use at most half the budget on a tick that also has a heavy job.
+then it stores the last key served (`''` once every unit was served). The cursor names each unit BEFORE it runs
+(one small write per unit, when the job has more than one): an invocation killed inside a unit — CPU, memory, the
+platform's clock, nothing a `try` catches — resumes after it, so a poison unit is served last and never starves
+the units behind it. `health` goes first and may use at most half the budget on a tick that also has a heavy job.
 On a tick with NO heavy job the AI pass (`src/ai/pass.ts`, `ai.md`) runs after the health pings on what they left
 of the same budget — at most `AI_RUNS_PER_TICK` (12) model calls across every org, one subrequest each — with its
 own cursor (`ai_pass`, one unit per org, keyed `<org>`), written only when a tick stops before the last org.

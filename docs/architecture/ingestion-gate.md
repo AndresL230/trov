@@ -118,7 +118,12 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
 - **Events** carry no vocab/confidence — an event is external fact captured verbatim, deduped by a UNIQUE
   `semantic_key` (`gh:pr:42:merged`, `gh:issue:…`) written `INSERT OR IGNORE` (a redelivery/backfill
   overlap drops as `unchanged`). Its `subject_login` is a SECOND identity (who the event is about),
-  trusted only post-HMAC — distinct from the writer.
+  trusted only post-HMAC — distinct from the writer. The ONE refresh: a `pr_closed` row (`gh:pr:<n>:closed`, a key
+  that names no occurrence) moves to a LATER close of the same PR — a PR reopened and closed again — its
+  `occurred_at`, `raw` and `subject_login` replaced; an older close (a redelivery, an older backfill) changes
+  nothing, and the refresh reports `unchanged` so nothing downstream (summary, AI router) runs twice. Whether a PR
+  is closed NOW is the capture's newest `pr` row, which a reopen moves (the Overview's Closed unmerged and Ask's PR
+  state check it). A merge is final: `gh:pr:<n>:merged` is never refreshed.
 - **Author is ALWAYS the authenticated principal**, passed in by the caller. The client-supplied
   `session.author` is advisory and ignored. (This writer rule does NOT clobber an event's `subject_login`.)
   **The ONE exception: what Trov writes itself.** A session digest (the AI pass's `digest.session` job,
@@ -159,7 +164,11 @@ for the Repo dashboard — see below) off the SAME verified delivery. The gate *
   identity is `(org, repo, tag)` and its dedupe is the gate's content hash over the settled row (a redelivery,
   a no-op edit or a re-read writes nothing); the write itself is `releases` (`src/repo/release-store.ts`).
   A draft is never captured, a tag never downgrades a release, and a row without GitHub's own date is not
-  written. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
+  written. A removal (`deleted`, `unpublished`, or reconcile's list no longer naming it) does not delete the row:
+  it becomes a TOMBSTONE (`is_draft = 1`, skipped by every read) dated by the removed release's `published_at`,
+  and an `upsert` no newer than a tombstone is that release delivered late and writes nothing — a late
+  `published` / `edited` cannot resurrect it; a later publication of the tag replaces it. A removal of an older
+  publication leaves a newer one alone, and a removal delivered before its release leaves a tombstone of its own. **`repo_metrics` points and `repo_snapshots` are computed writes, not gated ingestion**: the
   `status` delivery's `metricsFromStatus` arm, the cron's pollers and reconcile's snapshots write them direct
   through `putMetric` / `putSnapshot` (`src/repo/store.ts`) — each validates its own input, and `putMetric`
   is first-write-wins.

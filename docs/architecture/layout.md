@@ -10,7 +10,9 @@
   zod-free: the caps, `avatarSrc`, the profile / directory / agent DTOs), `repo.ts` (the Repo dashboard DTO — zod-free,
   since the SPA imports `REPO_TABS` as a value), `hosting.ts` (the hosting-provider contract — zod-free: providers,
   parts, roles, connection methods, the `hx_<metric>` vocabulary, deploy states, the setup and dashboard DTOs; see
-  `hosting-providers.md`), `hosting-status-core.ts` (THE hosting status function), the repo-setups cores — all
+  `hosting-providers.md`), `hosting-status-core.ts` (THE hosting status function, and the org's GitHub link a provider
+  read through GitHub follows), `env-verdict-core.ts` (THE ranking of an environment's verdict — the Overview's
+  `envVerdict` and the served `RepoEnv.pill`), the repo-setups cores — all
   zod-free, see `repo-apps.md` — `repo-apps-core.ts` (app kinds, roles, `RepoApp`), `repo-facts-core.ts` (`RepoFacts`,
   `narrowFacts`, `layoutInputOf`), `repo-layout-core.ts` (`RULES`, `decide`, `TABS`, `layoutOf`), `repo-scan-core.ts`
   (suggestions, seen signals, the Apps DTO), `repo-apps-setup-core.ts` (signals ↔ `github` part settings) and
@@ -281,6 +283,9 @@
   Then `0092_ai_state_guards` [`chat_threads.turn_at` (an Ask turn's lease), `ai_dirty.held_at` (a scope held for a
   Message Batch), `sprints.source_key` + its partial unique index (a drafted sprint's suggestion key); additive —
   `ask.md`, `ai.md`].
+  Then `0093_integration_ordering` [three nullable columns: `notification_outbox.attempted_at` (the digest retry's
+  lease — `notifications.md`), `org_github_installations.suspension_at` and `.repos_changed_at` (suspend / unsuspend
+  ordered by their own time; repository events settled by the next complete list — `github-app.md`)].
 - Projects: `shared/projects-core.ts` (zod-free: the vocabulary, limits, DTOs, `PROJECT_ROUTES`, `projectSlug`),
   `shared/projects.ts` (zod), `src/data/projects.ts` (the rows), `src/tools/projects.ts` (the access rule, the writers,
   the reads), `src/projects/routes.ts` (the cookie routes at `/projects`), `src/ai/ask/project.ts` (Ask in a project),

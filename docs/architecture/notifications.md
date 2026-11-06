@@ -22,11 +22,19 @@ Digests are assembled from D1 and sent via Resend; the pipeline never writes to 
 - **Runs** (`run.ts`): one digest per (person, org). Per eligible user (a MEMBER of the org, address on file,
   `email_unsubscribed = 0`) the outbox row is claimed FIRST by `INSERT OR IGNORE` on `outboxKey`,
   `org:user:cadence:window_id` — a conflict skips the user, so a double fire is harmless. Then render, drop nulls, `skipped` on zero sections, else one message → `sent` (with `resend_id`)
-  or `failed` (with the error). `retry.ts` re-attempts `failed` rows only. Windows (`window.ts`) are computed
+  or `failed` (with the error). `retry.ts` (hourly, on the daily trigger) re-attempts `failed` rows AND `pending`
+  rows whose claim — or latest attempt, `attempted_at` (0091) — is older than `PENDING_LEASE_MINUTES` (30): a run
+  that died mid-send left them, and the claim key would block the window forever. It takes a row by a
+  compare-and-set (status + `attempted_at`), so two retries never send it twice. Every send carries the row's
+  idempotency key as Resend's `Idempotency-Key` (kept 24 h by Resend): a retry after a send that DID land is
+  answered from the first; a 409 `invalid_idempotent_request` (the key was accepted with another body — the retry
+  re-rendered) counts as delivered. Local mode's body insert is `OR IGNORE` for the same reason. Windows (`window.ts`) are computed
   in the org timezone: daily = previous 24h (72h on Monday), weekly = previous 7 days.
 - **Cron** (`cron.ts`, `wrangler.toml [triggers]`): two hourly triggers (`0 * * * *` daily candidate,
   `0 * * * SUN,MON` weekly candidate) dispatched by expression in `scheduled()`, gated in code on
-  `notification_settings.send_hour` + `timezone` at fire time (static crons cannot read D1 or follow DST).
+  `notification_settings.send_hour` + `timezone` at fire time (static crons cannot read D1 or follow DST). The
+  hourly housekeeping `scheduled()` runs beside them (the prunes, the doc-links backfill, the Ask attachment sweep)
+  rides the DAILY trigger only: on Sunday and Monday both fire at the same minute, side by side.
 - **"Only when something needs me"** (`notification_person_prefs`, 0067; Settings › Email notifications, `PUT
   /prefs { onlyWhenNeeded }`, own row, per org): with it on, `deliverRow` asks `needsMe` (`renderers/my-work.ts`)
   BEFORE rendering — the brief has a Next item (with no brief: an assigned ticket), or a notable or breaking item
