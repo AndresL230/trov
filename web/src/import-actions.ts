@@ -442,7 +442,9 @@ export function createImportController(host: ImportHost): ImportController {
 
   function retry(): void {
     const r = ui().run;
-    if (!job || !r || r.phase !== "stalled") return;
+    // Not while a Cancel is out (`job.cancel`): the driver would stop at once and the run would read "sending" with
+    // nothing sending. The cancel's answer settles it — gone, or (refused) the run goes on from where it stalled.
+    if (!job || job.cancel || !r || r.phase !== "stalled") return;
     setRun({ phase: job.img < job.images.length ? "images" : "pages", error: null });
     void drive();
   }
