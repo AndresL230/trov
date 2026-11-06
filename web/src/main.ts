@@ -2208,8 +2208,9 @@ function reviewVerdict(id: string, accept: boolean): void {
  *  optimistically. An import's is `POST /imports/:id/approve-all` / `reject-all` (cookie-only; each call is bounded,
  *  so it is repeated while `remaining` > 0); an agent's is its pages' own promote / reject routes (cookie-only, the
  *  same as deciding each by hand), one page after another — oldest first, so a page's newest change goes live last.
- *  A failure before anything was decided puts the group back as it was; one part way through lets the refetch say
- *  what is left. */
+ *  A failure before anything was decided puts the group back as it was. One part way through: an agent's pages were
+ *  decided one by one, so those that went through leave and the rest come back at once; an import's are decided by
+ *  the server in bounded calls (which pages, it does not say), so the refetch says what is left. */
 const groupBusy = new Set<string>();
 function reviewGroupVerdict(key: string, accept: boolean): void {
   const props = reviewProps(state);
@@ -2236,6 +2237,8 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
   }, REVIEW_EXIT_MS);
   rerender();
   let done = 0;
+  /** An agent group's pages the server has decided (its loop is one page at a time). */
+  const decided = new Set<string>();
   type Answer = { space: string; space_name: string | null };
   // Approve all skips a page that fails (it stays waiting) and says so; its cursor (`next` → `after`) steps past it.
   let failed = 0;
@@ -2250,6 +2253,7 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
       if (ref?.kind !== "doc") continue;
       await (accept ? promoteDoc(ref.slug, ref.version) : rejectDoc(ref.slug, ref.version));
       done++;
+      decided.add(it.id);
     }
     return { space: g.space, space_name: null };
   };
@@ -2271,7 +2275,14 @@ function reviewGroupVerdict(key: string, accept: boolean): void {
     })
     .catch((e) => {
       groupBusy.delete(key);
-      if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
+      if (done > 0 && g.kind === "agent") {
+        // Only the pages that went through leave; the others are back where they were.
+        items.forEach((it, i) => {
+          if (decided.has(it.id)) exits[i].ok = true;
+          else { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
+        });
+        reviewRefetch.doc = true;
+      } else if (done > 0) { for (const x of exits) x.ok = true; reviewRefetch.doc = true; }
       else {
         if (exits[0].timer !== null) clearTimeout(exits[0].timer);
         for (const it of items) { reviewExits.delete(it.id); delete state.reviewLeaving[it.id]; }
