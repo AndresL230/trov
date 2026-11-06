@@ -406,7 +406,10 @@ a thread, and `claim_handoff` with it still works.
   an ordinary thread of the person's, so account and org deletion already take it. Each file's private artifact and
   its link to the thread are written in ONE batch (`createPage`'s `extra`, `linkNewArtifactStmt` — Save as artifact's
   `saved` link too): never a private artifact no thread holds. The composer sends EACH FILE AS ITS OWN REQUEST, so one
-  failure is that chip's alone (no batch atomicity across files). A message names them by id; the model gets them read BACK from the
+  failure is that chip's alone (no batch atomicity across files). With no thread yet they go ONE AFTER ANOTHER
+  (`holderQueue`, by the conversation's uid): the first names the holder and the next ones join it, never several
+  holders each sending `threadId: null`; once there is a thread they go side by side. A message names them by id; the
+  model gets them read BACK from the
   store (`readRaw`, as the person) — whole only in that turn. Later turns carry one line; `read_attachment(id)` reads
   one again, this person's thread's only.
 - **An image over the model's limit** is stored, NOT read, and the person is told. The limits are the Messages API's
@@ -726,7 +729,12 @@ Workspace › **Trov** (the sidebar row after My Work), `#ask` (a new thread) an
   (`AskUi.panel`) and the composer in panel form; the page's item (`pageRef`: a ticket, sprint, handoff or artifact)
   is the context chip, so the first send makes a normal thread with `origin: panel` and that `context_ref`. Another
   item starts a fresh panel thread; the same item reopens the same one. "Open as thread" moves the conversation, the
-  draft and an open inspector to `#ask/<id>` (a history entry). **Painting**: the pages it opens over are not
+  draft and an open inspector to `#ask/<id>` (a history entry) — and an answer still streaming moves WITH it
+  (`movePanelToPage`: its stream is re-keyed to the page, so its words, Stop and its end follow the conversation; a
+  stream the page had of its own is stopped). Before the server names the thread (the first `thread` event) the
+  button is disabled. Each stream knows where its conversation lives (`homes`); every end of a turn (abort, the
+  refusals, 401) touches the conversation only while the stream still owns it, and a 401 ends the turn before the
+  sign-in. **Painting**: the pages it opens over are not
   `data-morph`ed, so while Ask is not the screen the controller's paint repaints Ask's root overlays alone
   (`cmdjRepaint`: the panel and the hover card, morphed / inserted / removed) and never rebuilds the page behind
   it per keystroke or streamed word. **Keys**: ⌘J on a Mac, Ctrl+J elsewhere (`isCmdjKey`; never with Shift or Alt

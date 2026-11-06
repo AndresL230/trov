@@ -995,6 +995,29 @@ said by `projectErrorText`, a 402 by the plan's one sentence). The fixtures, one
   read is not in (N from that read, hidden pins left out). The spec's "Uses <project>'s …" gave way to this (the
   owner's browser check). A header crumb with nothing to name yet (a project that is not there) is left out, "›" and all. The project's read for Ask is taken after a paint (`projCtl.afterPaint`), never on a render.
 
+## A write from a screen — one at a time, and its answer changes only what it started from
+
+- **One write per form.** A form write still in `main.ts` (Submit ticket, New handoff's Send, a prompt's Save and
+  Publish, New sprint's Create, Claim on a handoff and My Work's Claim & copy) holds a key in `state.inFlight`
+  (`beginWrite` / `endWrite`, released in `.finally` on every exit): a second click while it is out does nothing,
+  and its button draws `disabled aria-busy="true"` with an "…ing…" label (`primaryBtn`'s `busy`, or the form's own
+  button). The extracted controllers keep their own `{ busy }` / `saving` on the draft (artifacts, Ask, import,
+  library, Repo Apps, Hosting).
+- **A late answer moves nothing the person left.** A write's answer opens or closes a screen, a dialog or a draft
+  ONLY while that is still the one up: a handoff's (`applyHandoff`: the page it was made on, or the one just sent
+  from the compose screen), a prompt's (`afterPromptWrite`'s `stay`), the new ticket's (only from `newticket`), an
+  artifact's new version or delete (only on that artifact), Repo Apps' and Hosting's drafts and dialogs (compared
+  with the object the request started from). A busy flag a write holds is never reset by navigating (a link's
+  `linkBusy`, a prompt's or artifact's delete): its own answer clears it.
+- **Latest wins.** A read many writes repeat carries a seq and drops an older answer (`loadTickets`, Hosting's setup,
+  Org settings' slices). An optimistic change answers out of order: the board's drops refetch once the LAST one
+  settles (`boardDropsOut`); the Library view rolls a refusal back only when it is the latest change, to what the
+  server last confirmed; a refused docs-tree move reads its own space again (never another's), and each Undo toast
+  keeps its own move. Review's agent group stopped part way keeps only the pages that went through.
+- **Back from a provider.** A button that leaves for another site with `location.assign` (Hosting's Connect, Org
+  settings › Billing) clears its busy on a `pageshow` from the back-forward cache. The payment page leaves with
+  `location.replace`, so Back never returns to it.
+
 ## Full pages without the sidebar
 
 Three views render outside `.cnpy-shell`, on the picker's frame (`.cnpy-orgs` / `.cnpy-orgs-col`: one calm
