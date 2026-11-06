@@ -60,7 +60,7 @@ import type { Env } from "../../env";
 import { ProjectRefusal, projectForAsk, projectForSave, projectForTurn, projectMarks } from "../../tools/projects";
 import { setArtifactProject, touchProject } from "../../data/projects";
 import { projectTurnContext, pinnedFirstList } from "./project";
-import type { AskThreadProject } from "@shared/ai-ask-core";
+import { ASK_CHANGES_KEPT, type AskThreadProject } from "@shared/ai-ask-core";
 
 /** Test seams (empty in production): the Anthropic fetch (stubbed at the Response level), the docs text, the clock;
  *  GitHub's fetch (`githubFetch`, handed to the real transport — the mint, the access check and every read go
@@ -442,7 +442,7 @@ interface Conversation {
 interface TurnLease { threadId: number | null; at: string; turn: number | null }
 
 /** The error a turn ends with when it failed after writes ran (Auto): they stay, each with its Undo. */
-const CHANGES_KEPT = "Something went wrong. The changes Trov already made are kept, each with its Undo. Try again.";
+const CHANGES_KEPT = ASK_CHANGES_KEPT;
 
 /** What the answer SHOWED, in the order it streamed — text runs (merged deltas), blocks (their index among the
  *  answer's blocks), write cards (by id, once) — stored with the answer so a reload draws the live order. */

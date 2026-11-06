@@ -35,6 +35,7 @@ import { emptyConvo } from "../web/src/ask-stream";
 import { conversationView, turnErrorWords } from "../web/src/ask-conversation";
 import { sidebarView, NAV_CLOSED } from "../web/src/sidebar";
 import { askStateFixture, askThreadsFixture } from "@shared/ai-fixtures";
+import { ASK_CHANGES_KEPT } from "@shared/ai-ask-core";
 import { HOSTING_CHATS, HOSTING_DETAIL, PROJECT_LIST, PROJECT_FIXTURE_PEOPLE } from "@shared/projects-fixtures";
 import type { PersonSummary } from "@shared/people";
 import type { AskCtx } from "../web/src/ask-state";
@@ -192,6 +193,12 @@ describe("the project refuses a new thread (before anything streams)", () => {
     expect(turnErrorWords({ threadId: null, project: null }, { code: "not_found", message: "not_found" }).retry).toBe(true);
     // A stored thread's question never went with `projectId`: its not_found is the thread's, not the project's.
     expect(turnErrorWords({ threadId: 303, project: HOSTING }, { code: "not_found", message: "not_found" }).retry).toBe(true);
+  });
+
+  it("a busy conversation, Ask off, and a failure after Auto writes ran each say what is true", () => {
+    expect(turnErrorWords({ threadId: 7, project: null }, { code: "busy", message: "x" })).toEqual({ title: "Trov is still answering in this conversation.", sub: "Wait for it to finish, then ask again.", retry: true });
+    expect(turnErrorWords({ threadId: 7, project: null }, { code: "off", message: "Ask Trov is off for this org." })).toEqual({ title: "Ask Trov is off for this org.", sub: null, retry: false });
+    expect(turnErrorWords({ threadId: 7, project: null }, { code: "failed", message: ASK_CHANGES_KEPT })).toEqual({ title: "Something went wrong.", sub: "The changes Trov already made are kept, each with its Undo.", retry: true });
   });
 });
 
